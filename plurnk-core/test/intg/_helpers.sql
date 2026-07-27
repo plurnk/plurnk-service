@@ -77,11 +77,11 @@ WHERE entry_id = $entry_id AND name = $name;
 SELECT tag FROM entry_tags WHERE entry_id = $entry_id ORDER BY tag;
 
 -- PREP: test_get_subscription
-SELECT id, worker_id, entry_id, scheme, handle, closed_at, close_status
+SELECT id, worker_id, entry_id, scheme, handle, closed_at, close_status, close_result
 FROM subscriptions WHERE id = $id;
 
 -- PREP: test_get_subscription_by_entry
-SELECT id, worker_id, entry_id, scheme, handle, closed_at, close_status
+SELECT id, worker_id, entry_id, scheme, handle, closed_at, close_status, close_result
 FROM subscriptions WHERE worker_id = $worker_id AND entry_id = $entry_id;
 
 -- PREP: test_count_active_subscriptions
@@ -127,7 +127,7 @@ SELECT status FROM turns WHERE id = $id;
 SELECT id, sequence FROM turns WHERE loop_id = $loop_id ORDER BY sequence;
 
 -- PREP: test_log_entries_by_turn
-SELECT sequence, status_rx, pathname, scheme, fragment, op, origin, signal, status_rx
+SELECT sequence, status_rx, pathname, scheme, fragment, op, origin, signal, rx
 FROM log_entries WHERE turn_id = $turn_id ORDER BY sequence;
 
 -- PREP: test_log_entries_by_run

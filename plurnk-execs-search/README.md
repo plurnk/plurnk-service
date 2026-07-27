@@ -62,7 +62,8 @@ SearXNG payload was ~10–20× that and blew budgets, plurnk-execs#17); successf
 page bodies live in materialized HTTP entries, never the packet. Every emitted
 row names an ordinary readable resource.
 
-Failures emit a `TelemetryEvent` (`source: "exec:<tag>"`): `searxng_not_configured`, `searxng_unreachable`, `searxng_timeout`, `searxng_http_<n>`, `external_bang_refused`.
+Failures return RFC 9457 Problems in the terminal operation result. Bounded
+aggregate acquisition progress remains a transient telemetry notice.
 
 ## Tests
 

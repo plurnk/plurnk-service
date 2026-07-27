@@ -10,7 +10,7 @@ import { strict as assert } from "node:assert";
 import http from "node:http";
 import type { AddressInfo } from "node:net";
 import type {
-    SchemeCtx, SubscriptionHandle, ReadStatement, UrlPath,
+    SchemeCtx, SchemeResult, SubscriptionHandle, ReadStatement, UrlPath,
 } from "@plurnk/plurnk-schemes";
 import Browser from "../../src/Browser.ts";
 import Http from "../../src/Http.ts";
@@ -52,7 +52,7 @@ test("Browser.render: real chromium runs the page JS and serializes the final DO
 // Minimal conformant ctx recording the streamed chunks.
 const makeCtx = () => {
     const chunks: Array<{ channel: string; chunk: string; mimetype?: string }> = [];
-    let closed: { reason: string; outcome?: string } | null = null;
+    let closed: { result: SchemeResult; summary?: string } | null = null;
     const ok = async () => ({ status: 200 });
     const ctx: SchemeCtx = {
         workspaceId: 1, workerId: 1, loopId: 1, turnId: 1, writer: "model", signal: undefined,
@@ -68,7 +68,7 @@ const makeCtx = () => {
         subscriptions: {
             async open(_p: string, _h: SubscriptionHandle) { return new AbortController().signal; },
             async notifyChunk(channel, chunk, mimetype) { chunks.push({ channel, chunk, mimetype }); },
-            async close(reason, outcome) { closed = { reason, outcome }; },
+            async close(result, summary) { closed = { result, summary }; },
         },
     };
     return { ctx, inspect: () => ({ chunks, closed }) };
@@ -95,7 +95,7 @@ test("Http.read: full render path against real chromium — readable body + fait
         const html = inspect().chunks.filter((c) => c.channel === "html");
         assert.match(html[0]?.chunk ?? "", /RENDERED_BY_JS/);
         assert.equal(html[0]?.mimetype, "text/html");
-        assert.equal(inspect().closed?.reason, "done");
+        assert.deepEqual(inspect().closed?.result, { status: 200 });
     } finally {
         await browser.close();
         server.close();

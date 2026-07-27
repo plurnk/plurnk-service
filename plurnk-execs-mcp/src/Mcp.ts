@@ -1,5 +1,5 @@
 import type { Client } from "@modelcontextprotocol/client";
-import { BaseExecutor } from "@plurnk/plurnk-execs";
+import { BaseExecutor, Results } from "@plurnk/plurnk-execs";
 import type { ChannelDecl, Effect, ExecArgs, ExecResult, RuntimeAvailability, RuntimeDecl } from "@plurnk/plurnk-execs";
 import { serverConfig, isInjected, installAllowed, registerServer, deregisterServer, parseTarget } from "./config.ts";
 import { connect, catalog, allTools, cacheHints, readOnlyHint, isAuthRequired, msg } from "./client.ts";
@@ -52,12 +52,11 @@ export default class Mcp extends BaseExecutor {
         return readOnlyHint(this.runtime, target) ? "read" : "host";
     }
 
-    async run({ runtime, command, target, signal, write, setState, emit }: ExecArgs): Promise<ExecResult> {
+    async run({ runtime, command, target, signal, write, setState }: ExecArgs): Promise<ExecResult> {
         const cfg = serverConfig(runtime);
         const fail = (kind: string, message: string, status = 500): ExecResult => {
-            emit({ source: `exec:${runtime}`, kind, message });
             setState("results", "errored");
-            return { status };
+            return Results.failure("executor:mcp", kind.replaceAll("_", "-"), status, message, {}, { runtime });
         };
         if (cfg === null) return fail("mcp_not_configured", `MCP server '${runtime}' is not configured`);
         // Defense in depth behind the consumer's route gate (#240): a runtime-injected
@@ -71,7 +70,10 @@ export default class Mcp extends BaseExecutor {
         try {
             client = await connect(runtime, cfg);
         } catch (err) {
-            if (signal.aborted) { setState("results", "errored"); return { status: 499 }; }
+            if (signal.aborted) {
+                setState("results", "errored");
+                return Results.failure("executor:mcp", "cancelled", 499, "MCP execution was cancelled.", {}, { runtime });
+            }
             // An HTTP server that requires OAuth 401s the connect. The executor is
             // a PRODUCER — it can't run the interactive consent round-trip — so it
             // surfaces the need and stops. The consumer drives the RFC 8628 device
@@ -79,9 +81,15 @@ export default class Mcp extends BaseExecutor {
             // the token via install() / a PLURNK_EXECS_MCP_<server>_HEADERS
             // `Authorization: Bearer …`, and re-dispatches (plurnk-execs-mcp#2).
             if (isAuthRequired(err)) {
-                emit({ source: `exec:${runtime}`, kind: "mcp_auth_required", message: `MCP server '${runtime}' requires authorization`, server: runtime, resource: cfg.url });
                 setState("results", "errored");
-                return { status: 401 };
+                return Results.failure(
+                    "executor:mcp",
+                    "authentication-required",
+                    401,
+                    `MCP server '${runtime}' requires authorization.`,
+                    {},
+                    { runtime, resource: cfg.url },
+                );
             }
             return fail("mcp_unreachable", `MCP '${runtime}' connect failed: ${msg(err)}`);
         }
@@ -99,7 +107,10 @@ export default class Mcp extends BaseExecutor {
                 setState("results", "closed");
                 return { status: 200 };
             } catch (err) {
-                if (signal.aborted) { setState("results", "errored"); return { status: 499 }; }
+                if (signal.aborted) {
+                    setState("results", "errored");
+                    return Results.failure("executor:mcp", "cancelled", 499, "MCP execution was cancelled.", {}, { runtime });
+                }
                 return fail("mcp_list_failed", `catalog for '${runtime}' failed: ${msg(err)}`);
             }
         }
@@ -121,9 +132,21 @@ export default class Mcp extends BaseExecutor {
             // throwing; honor it as an errored close with a 500.
             const errored = result.isError === true;
             setState("results", errored ? "errored" : "closed");
-            return { status: errored ? 500 : 200 };
+            return errored
+                ? Results.failure(
+                    "executor:mcp",
+                    "tool-reported-error",
+                    500,
+                    `MCP tool '${tool}' on '${runtime}' reported an error.`,
+                    {},
+                    { runtime, tool },
+                )
+                : { status: 200 };
         } catch (err) {
-            if (signal.aborted) { setState("results", "errored"); return { status: 499 }; }
+            if (signal.aborted) {
+                setState("results", "errored");
+                return Results.failure("executor:mcp", "cancelled", 499, "MCP execution was cancelled.", {}, { runtime });
+            }
             return fail("mcp_tool_error", `tool '${tool}' on '${runtime}' failed: ${msg(err)}`);
         }
     }

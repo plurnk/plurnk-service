@@ -10,6 +10,7 @@ import DbSubscriptionCaps from "../../src/core/caps/DbSubscriptionCaps.ts";
 import type { WakeWorkerPayload, StreamEventPayload } from "../../src/core/ChannelWrite.ts";
 import { openMigrated, insertWorkspace, insertWorker, makeSchemeCtx, schemeManifest } from "./_helpers.ts";
 import LiveSubscriptions from "../../src/core/LiveSubscriptions.ts";
+import { Results } from "@plurnk/plurnk-schemes";
 
 test("DbSubscriptionCaps: open binds + composes abort, notifyChunk streams, close terminates + wakes", async () => {
     const db = await openMigrated();
@@ -50,13 +51,13 @@ test("DbSubscriptionCaps: open binds + composes abort, notifyChunk streams, clos
         assert.equal((await entries.read("/run")).entry?.channels.stderr.content, "diagnostic", "unpublished auxiliary content is still durable");
         assert.ok(streamEvents.length >= 2, "each chunk fired a stream/event");
 
-        // close("done") → channel terminal, registry closed, run woken with the summary
-        await subs.close("done", "exit 0; 11 bytes");
+        // close(result) → channel terminal, exact result persisted, run woken with the summary
+        await subs.close({ status: 200 }, "exit 0; 11 bytes");
         assert.ok(streamEvents.every((event) => event.channel === "stdout"), "only the selected default channel is published");
         const meta = await db.channel_meta.get<{ state: string }>({ entry_id: entryId, channel: "stdout" });
         assert.equal(meta?.state, "closed");
         assert.equal(wakes.length, 1);
-        assert.equal(wakes[0].closeStatus, 200);
+        assert.deepEqual(wakes[0].result, { status: 200 });
         assert.equal(wakes[0].summary, "exit 0; 11 bytes");
         assert.equal(wakes[0].target, "exec:///run");
 
@@ -73,9 +74,11 @@ test("DbSubscriptionCaps: open binds + composes abort, notifyChunk streams, clos
         assert.equal(cancelCalls, 1, "run abort force-cancels the sibling handle");
         assert.equal(await liveSubscriptions.cancel(cancelledId), true);
         assert.equal(cancelCalls, 1, "the registry reap coalesces with signal cancellation");
-        await subs.close("cancelled", "worker cancelled");
-        const cancelledRow = await db.test_get_subscription.get<{ close_status: number }>({ id: cancelledId });
+        const cancelledResult = Results.failure("scheme:exec", "cancelled", 499, "The worker cancelled the stream.");
+        await subs.close(cancelledResult, "worker cancelled");
+        const cancelledRow = await db.test_get_subscription.get<{ close_status: number; close_result: string }>({ id: cancelledId });
         assert.equal(cancelledRow?.close_status, 499, "cancelled settlement is durable 499");
+        assert.deepEqual(JSON.parse(cancelledRow?.close_result ?? "null"), cancelledResult);
 
         // open on an absent entry → throws (a subscription needs its entry)
         await assert.rejects(() => subs.open("/missing", { cancel: () => {} }), /no entry/);

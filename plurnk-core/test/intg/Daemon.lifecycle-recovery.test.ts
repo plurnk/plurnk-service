@@ -110,8 +110,17 @@ test("boot settles vanished owners and resumes the now-unblocked parent topology
 
         const subscription = await db.test_get_subscription.get<{
             close_status: number | null;
+            close_result: string | null;
         }>({ id: subscriptionId });
         assert.equal(subscription?.close_status, 500);
+        const result = JSON.parse(subscription?.close_result ?? "null") as {
+            status?: number;
+            problem?: { type?: string; status?: number; detail?: string };
+        } | null;
+        assert.equal(result?.status, 500);
+        assert.equal(result?.problem?.status, 500);
+        assert.equal(result?.problem?.type, "https://problems.plurnk.dev/lifecycle/recovery/owner-vanished");
+        assert.match(result?.problem?.detail ?? "", /process-local owner no longer exists/);
         const channel = await db.test_get_channel.get<{ state: string }>({
             entry_id: entryId,
             name: "stdout",

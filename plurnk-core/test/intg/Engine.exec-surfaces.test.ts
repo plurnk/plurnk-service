@@ -52,6 +52,64 @@ test("regression: a model's EXEC result surfaces OPEN in the NEXT turn without a
     });
 });
 
+test("a failed EXEC reaches the model as the executor's exact Problem on its terminal ambient READ", async () => {
+    const mock = new Mock({ contextWindow: 100000, responses: [
+        makeMockResponse("<<EXEC[sh]:exit 3:EXEC\n<<SEND[202]:waiting:SEND", 10),
+        makeMockResponse("<<SEND[200]:failure observed:SEND", 10),
+    ] });
+
+    await withDaemon(mock, async (db, _daemon, addr) => {
+        const ws = await connect(addr);
+        try {
+            await rpcCall(ws, 1, "workspace.create", { name: "exec-failure-surface" });
+            const { finalStatus, turnIds } = await runLoopToTerminal(ws, 2, {
+                prompt: "run a command",
+                flags: { auto: true },
+            });
+            assert.equal(finalStatus, 200, "the model may conclude after observing the failed execution");
+            assert.ok((turnIds?.length ?? 0) >= 2, `expected at least 2 turns; got ${turnIds?.length}`);
+
+            const turn2 = turnIds![1];
+            const rows = await db.test_log_entries_by_turn.all<{
+                sequence: number;
+                status_rx: number;
+                pathname: string;
+                scheme: string;
+                fragment: string | null;
+                op: string;
+                origin: string;
+                rx: string;
+            }>({ turn_id: turn2 });
+            const terminal = rows.find((row) =>
+                row.op === "READ"
+                && row.origin === "plurnk"
+                && row.scheme === "sh"
+                && row.status_rx === 500);
+            assert.ok(terminal !== undefined, "the next turn contains a failed terminal READ, not a synthetic success");
+
+            const result = JSON.parse(terminal.rx) as {
+                status: number;
+                problem?: { type?: string; status?: number; detail?: string; instance?: string };
+            };
+            assert.equal(result.status, 500);
+            assert.equal(result.problem?.status, 500);
+            assert.equal(result.problem?.type, "https://problems.plurnk.dev/executor/subprocess/nonzero-exit");
+            assert.equal(result.problem?.detail, "'sh' exited with code 3.");
+            assert.match(
+                result.problem?.instance ?? "",
+                new RegExp(`^log:///\\d+/\\d+/${terminal.sequence}/READ$`),
+                "the Problem instance names the committed ambient READ row",
+            );
+
+            const packetRow = await db.test_get_packet.get<{ packet: string }>({ id: turn2 });
+            const packet = JSON.parse(packetRow?.packet ?? "{}");
+            const rendered = packetSection(packet, "log");
+            assert.match(rendered, /'sh' exited with code 3\./, "the model-facing packet states the executor's diagnostic");
+            assert.match(rendered, /\"status\":500/, "the model-facing row remains a failure");
+        } finally { ws.close(); }
+    });
+});
+
 test("the cursor-terminal race: a one-burst stream fully shown FOLDED before its close still gets an OPEN terminal delta", async () => {
     // The owner's dogfood find (the search digest): a channel written in one final burst is
     // fully shown (folded) on an interim turn while still ACTIVE; the close arrives with zero

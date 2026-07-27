@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { Results } from "@plurnk/plurnk-schemes";
 import BaseExecutor from "./BaseExecutor.ts";
 import Runtime from "./runtime.ts";
 import type { ChannelDecl, Effect, ExecArgs, ExecResult, RuntimeAvailability, SpawnArgs } from "./types.ts";
@@ -78,14 +79,21 @@ export default class SubprocessExecutor extends BaseExecutor {
         return Runtime.resolve(runtime, command, target);
     }
 
-    run({ runtime, command, cwd, target, env, signal, write, setState, emit }: ExecArgs): Promise<ExecResult> {
+    run({ runtime, command, cwd, target, env, signal, write, setState }: ExecArgs): Promise<ExecResult> {
         const { cmd, args, useShell, stdin } = this.spawnArgs(runtime, command, target);
         return new Promise<ExecResult>((resolve) => {
             // Already cancelled before we start — don't launch a doomed process.
             if (signal.aborted) {
                 setState("stdout", "errored");
                 setState("stderr", "errored");
-                resolve({ status: 499, exitCode: -1 });
+                resolve(Results.failure(
+                    "executor:subprocess",
+                    "cancelled",
+                    499,
+                    `Execution of '${runtime}' was cancelled before it started.`,
+                    { exitCode: -1 },
+                    { runtime },
+                ));
                 return;
             }
 
@@ -158,20 +166,39 @@ export default class SubprocessExecutor extends BaseExecutor {
             child.stderr?.on("data", (chunk: Buffer) => write("stderr", chunk.toString("utf8")));
 
             child.on("error", (err) => {
-                // The process could not be started — a framework-level failure
-                // the model benefits from seeing as telemetry (a nonzero exit,
-                // by contrast, is the program's own result and lives on stderr).
-                emit({ source: `exec:${runtime}`, kind: "spawn_failed", message: err.message });
-                finish({ status: 500, exitCode: -1 }, "errored");
+                finish(Results.failure(
+                    "executor:subprocess",
+                    "spawn-failed",
+                    500,
+                    `Could not start '${runtime}': ${err.message}`,
+                    { exitCode: -1 },
+                    { runtime },
+                ), "errored");
             });
 
             child.on("close", (code) => {
                 if (signal.aborted) {
-                    finish({ status: 499, exitCode: code ?? -1 }, "errored");
+                    finish(Results.failure(
+                        "executor:subprocess",
+                        "cancelled",
+                        499,
+                        `Execution of '${runtime}' was cancelled.`,
+                        { exitCode: code ?? -1 },
+                        { runtime },
+                    ), "errored");
                     return;
                 }
                 const ok = code === 0;
-                finish({ status: ok ? 200 : 500, exitCode: code ?? -1 }, ok ? "closed" : "errored");
+                finish(ok
+                    ? { status: 200, exitCode: 0 }
+                    : Results.failure(
+                        "executor:subprocess",
+                        "nonzero-exit",
+                        500,
+                        `'${runtime}' exited with code ${code ?? -1}.`,
+                        { exitCode: code ?? -1 },
+                        { runtime },
+                    ), ok ? "closed" : "errored");
             });
         });
     }

@@ -73,11 +73,11 @@ test("loop.cancel terminates a backgrounded exec; the stream concludes 499", asy
 
             // The kill actually happened — promptly, not 30s later.
             const conc = await waitFor(
-                () => concluded() as Array<{ scheme: string; closeStatus: number }>,
-                (cs) => cs.some((c) => c.scheme === "sh" && c.closeStatus === 499),
+                () => concluded() as Array<{ scheme: string; result: { status: number } }>,
+                (cs) => cs.some((c) => c.scheme === "sh" && c.result.status === 499),
                 { timeoutMs: 5000 },
             );
-            assert.ok(conc.some((c) => c.scheme === "sh" && c.closeStatus === 499),
+            assert.ok(conc.some((c) => c.scheme === "sh" && c.result.status === 499),
                 "loop.cancel terminated the backgrounded exec (stream concluded 499)");
 
             // #204 — loop.run already returned its 100 accept; loop.cancel never makes it
@@ -269,8 +269,8 @@ test("loop ends before consuming an injected prompt → reconciled into a fresh 
 
 test("loop.cancel reaps the worker's open streams by the subscription registry (closed 499)", async () => {
     // A backgrounded sleep registers an OPEN exec subscription; loop.cancel must reap
-    // it THROUGH the registry — the open row closes at 499 — not merely fire a
-    // notification. Asserted against the registry directly: open→0 + close_status=499.
+    // it THROUGH the registry — the open row closes with the exact 499 Problem — not
+    // merely fire a notification. The indexed status is only a relational projection.
     const mock = new Mock({
         contextWindow: 16384,
         responses: [

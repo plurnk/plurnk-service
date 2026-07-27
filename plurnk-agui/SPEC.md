@@ -47,7 +47,7 @@ One daemon notification in, zero-or-more AG-UI events out (`Translator`, pure):
 | `loop/proposal` | `TOOL_CALL_START/ARGS/END`, then `RUN_FINISHED` with an interrupt outcome |
 | `loop/terminated` | `STATE_DELTA` (budget) + `CUSTOM plurnk.terminated` + `RAW` (the provider's native completion frame, `source: provider`, §475) + `RUN_FINISHED` (200) or `RUN_ERROR` (else) |
 | `telemetry/event` | `CUSTOM plurnk.telemetry` |
-| `stream/event` + `stream/concluded` | `CUSTOM plurnk.stream` + `ACTIVITY_SNAPSHOT` (the standard background-activity channel: `activityType` = the scheme, replace-snapshot, §475) |
+| `stream/event` + `stream/concluded` | `CUSTOM plurnk.stream` + `ACTIVITY_SNAPSHOT` (the standard background-activity channel: `activityType` = the scheme, replace-snapshot, §475). A conclusion preserves its exact universal `result`, including RFC 9457 Problem Details; AG-UI does not reconstruct failure from a status or summary. |
 | `loop/quiesced` | `CUSTOM plurnk.quiesced` |
 
 - **An op row IS a tool call** — its `coordinate` is the `toolCallId`, its tx the args (one

@@ -9,6 +9,7 @@
 
 import type { Db } from "./Db.ts";
 import type { LoopFlags } from "./types.ts";
+import { Results, type SchemeResult } from "@plurnk/plurnk-schemes";
 import { renderAddress } from "./plurnk-uri.ts";
 
 export type ChannelState = "static" | "active" | "closed" | "errored"; // render metadata, never a read gate — §channel-state-state-is-metadata
@@ -49,7 +50,7 @@ export interface WakeWorkerPayload {
     entryId: number;
     target: string;                // the entry's URI (`scheme://pathname`) — #179
     subscriptionId: number;
-    closeStatus: number;          // 200 (clean) | 500 (error) | 499 (aborted)
+    result: SchemeResult;           // exact universal terminal result
     scheme: string;                // the scheme that owned the subscription
     summary: string;               // model-facing one-liner: "exec:///x completed (exit 0); stdout=N bytes, stderr=M bytes"
     loop_seq?: number;             // #224 — the entry's coordinate (see StreamCoordinate)
@@ -182,9 +183,14 @@ export default class ChannelWrite {
 
     static async closeSubscription(
         db: Db,
-        { subscriptionId, status }: { subscriptionId: number; status: number },
+        { subscriptionId, result }: { subscriptionId: number; result: SchemeResult },
     ): Promise<void> {
-        await ChannelWrite.#closeSubStmt(db).run({ status, subscription_id: subscriptionId });
+        Results.assert(result);
+        await ChannelWrite.#closeSubStmt(db).run({
+            result: JSON.stringify(result),
+            status: result.status,
+            subscription_id: subscriptionId,
+        });
     }
 
     // Terminal close_status of a finished exec stream, by coordinate pathname —

@@ -34,6 +34,7 @@ import { setTimeout as delay } from "node:timers/promises";
 // drift between wire and digest possible.
 // Format: markdown (user pick over rummy's XML alternative, 2026-05-22).
 import PacketWire from "./packet-wire.ts";
+import Results, { type SchemeResult } from "./results.ts";
 
 // The engine's collaborators — each owns one machine; Engine owns the loop/turn
 // lifecycle and wires them together as the public facade.
@@ -1632,8 +1633,9 @@ export default class Engine {
     }
 
     // §env-delta — exec streams as an instance of the ambient-observe machine:
-    // each turn, emit each owned channel's unshown byte-delta as a foisted READ@200 row. Folded
-    // while the channel streams; the terminal delta (channel closed) auto-OPENs. The cursor is the
+    // each turn, emit each owned channel's unshown byte-delta as a foisted READ row. It is 200
+    // while the channel streams and preserves the exact terminal result when closed. Ongoing
+    // deltas fold; the terminal delta auto-OPENs. The cursor is the
     // streamEnd recorded on the channel's prior delta — no exec-specific surfacing, just the
     // env-observe loop with a byte cursor where env-delta uses a timestamp. §exec-stream
     async #materializeStreamDeltas(args: {
@@ -1642,7 +1644,7 @@ export default class Engine {
         const { workerId, loopId, turnId, fromSequence } = args;
         const channels = await this.#db.engine_worker_stream_channels.all<{
             subscription_id: number; runtime: string; coord: string; channel: string; content: string;
-            state: string; close_status: number | null; published_channel: string | null;
+            state: string; close_status: number | null; close_result: string | null; published_channel: string | null;
         }>({ worker_id: workerId });
         let written = 0;
         for (const ch of channels) {
@@ -1660,6 +1662,26 @@ export default class Engine {
             const priorAttrs = prior !== undefined ? (JSON.parse(prior.attrs) as { streamEnd?: number; terminal?: boolean }) : {};
             const cursor = priorAttrs.streamEnd ?? 0;
             const closed = ch.state === "closed" || ch.state === "errored";
+            const terminal = closed
+                ? Results.assert(JSON.parse(ch.close_result ?? "null") as SchemeResult)
+                : null;
+            const terminalResult = async (fields: Readonly<Record<string, unknown>>, sequence: number): Promise<SchemeResult> => {
+                if (terminal === null) throw new Error(`closed subscription ${ch.subscription_id} has no terminal result`);
+                const result = Results.assert({
+                    ...terminal,
+                    ...(terminal.problem === undefined ? {} : { problem: { ...terminal.problem } }),
+                    ...fields,
+                });
+                if (result.problem !== undefined) {
+                    const seqs = await this.#db.engine_loop_turn_seqs.get<{ loop_seq: number; turn_seq: number }>({
+                        loop_id: loopId,
+                        turn_id: turnId,
+                    });
+                    if (seqs === undefined) throw new Error(`stream delta has no log coordinate for loop=${loopId} turn=${turnId}`);
+                    Results.attachInstance(result, `log:///${seqs.loop_seq}/${seqs.turn_seq}/${sequence}/READ`);
+                }
+                return result;
+            };
             if (ch.content.length <= cursor) {
                 // The cursor-terminal race (owner's dogfood find): a channel written in one final
                 // burst gets fully shown FOLDED while still active; the close then has zero new
@@ -1672,14 +1694,15 @@ export default class Engine {
                     const pointer = cursor > 0
                         ? `full output already delivered above; READ ${ch.runtime}://${ch.coord}${visibleFragment === null ? "" : `#${visibleFragment}`} to revisit`
                         : "stream produced no output";
+                    const sequence = fromSequence + written;
                     await this.#db.engine_insert_stream_delta.run({
-                        worker_id: workerId, loop_id: loopId, turn_id: turnId, sequence: fromSequence + written,
+                        worker_id: workerId, loop_id: loopId, turn_id: turnId, sequence,
                         scheme: ch.runtime, pathname: ch.coord, fragment: visibleFragment,
-                        rx: JSON.stringify({
-                            status: ch.close_status ?? 200,
+                        rx: JSON.stringify(await terminalResult({
                             content: `[ stream closed (${ch.close_status ?? 200}) — ${pointer} ]`,
                             mimetype: "text/stream",
-                        }),
+                        }, sequence)),
+                        status: terminal?.status ?? 200,
                         attrs: JSON.stringify({ streamEnd: ch.content.length, terminal: true }),
                         expanded: 1,
                     });
@@ -1690,10 +1713,15 @@ export default class Engine {
             // startLine continues the line count across turns: a multi-turn stream's deltas number
             // into one sequence (lines N..M, then M+1..), not N independent "1:" restarts. §exec-stream
             const startLine = (ch.content.slice(0, cursor).match(/\n/g)?.length ?? 0) + 1;
+            const sequence = fromSequence + written;
+            const result = closed
+                ? await terminalResult({ content: ch.content.slice(cursor), mimetype: "text/stream", startLine }, sequence)
+                : { status: 200, content: ch.content.slice(cursor), mimetype: "text/stream", startLine };
             await this.#db.engine_insert_stream_delta.run({
-                worker_id: workerId, loop_id: loopId, turn_id: turnId, sequence: fromSequence + written,
+                worker_id: workerId, loop_id: loopId, turn_id: turnId, sequence,
                 scheme: ch.runtime, pathname: ch.coord, fragment: visibleFragment,
-                rx: JSON.stringify({ status: 200, content: ch.content.slice(cursor), mimetype: "text/stream", startLine }),
+                rx: JSON.stringify(result),
+                status: result.status,
                 attrs: JSON.stringify({ streamEnd: ch.content.length, terminal: closed }),
                 expanded: closed ? 1 : 0,  // §exec-stream — terminal delta auto-OPENs; ongoing folds
             });

@@ -5,6 +5,7 @@
 //
 // The framework surface is `BaseExecutor.run()` + `discover()`.
 
+import type { SchemeResult } from "@plurnk/plurnk-schemes";
 import type { TelemetryEvent } from "./TelemetryEvent.ts";
 
 // Channel lifecycle state. Mirrors plurnk-service's per-channel state machine:
@@ -94,11 +95,10 @@ export interface ExecArgs {
     entry?: (path: string, content: string | null, opts: { tags: string[]; mimetype?: string }) => Promise<string>;
 }
 
-// Terminal result of a `run()`. `status` follows the scheme's close-status
-// convention (200 ok / 499 aborted / 500 error). `exitCode` is present only
-// for the subprocess family.
-export interface ExecResult {
-    status: number;
+// Terminal result of a `run()`. The universal operation-result contract applies
+// at this plugin boundary: every failure carries RFC 9457 Problem Details.
+// `exitCode` is present only for the subprocess family.
+export interface ExecResult extends SchemeResult {
     exitCode?: number;
 }
 

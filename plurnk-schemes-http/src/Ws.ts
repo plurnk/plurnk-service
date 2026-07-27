@@ -117,8 +117,10 @@ export default class Ws implements SchemeHandler {
         try {
             socket = this.#connect(url);
         } catch (err) {
-            await ctx.subscriptions.close("error", err instanceof Error ? err.message : String(err));
-            return Ws.#bad(502, "connect_failed", err instanceof Error ? err.message : String(err));
+            const detail = err instanceof Error ? err.message : String(err);
+            const result = Ws.#bad(502, "connect_failed", detail);
+            await ctx.subscriptions.close(result, detail);
+            return result;
         }
         this.#sockets.set(key, socket);
 
@@ -128,12 +130,12 @@ export default class Ws implements SchemeHandler {
         let messages = 0;
         let settled = false;
         return await new Promise<PassthroughResult>((resolve) => {
-            const settle = (result: PassthroughResult, reason: "done" | "error" | "cancelled", outcome: string) => {
+            const settle = (result: PassthroughResult, terminal: PassthroughResult, summary: string) => {
                 if (settled) return;
                 settled = true;
                 this.#sockets.delete(key);
                 composed.removeEventListener("abort", onAbort);
-                void ctx.subscriptions.close(reason, outcome).then(() => resolve(result));
+                void ctx.subscriptions.close(terminal, summary).then(() => resolve(result));
             };
             socket.addEventListener("message", (event) => {
                 messages += 1;
@@ -141,13 +143,15 @@ export default class Ws implements SchemeHandler {
             });
             socket.addEventListener("error", (event) => {
                 const reason = event.message ?? "ws error";
-                settle(Ws.#bad(502, "ws_error", reason), "error", reason);
+                const result = Ws.#bad(502, "ws_error", reason);
+                settle(result, result, reason);
             });
             socket.addEventListener("close", (event) => {
+                const summary = `ws closed (${event.code ?? 0}); ${messages} messages`;
                 settle(
-                    { shape: "passthrough", status: composed.aborted ? 499 : 102 },
-                    composed.aborted ? "cancelled" : "done",
-                    `ws closed (${event.code ?? 0}); ${messages} messages`,
+                    composed.aborted ? Ws.#bad(499, "cancelled", "WebSocket execution was cancelled.") : { shape: "passthrough", status: 102 },
+                    composed.aborted ? Ws.#bad(499, "cancelled", "WebSocket execution was cancelled.") : { shape: "passthrough", status: 200 },
+                    summary,
                 );
             });
         });

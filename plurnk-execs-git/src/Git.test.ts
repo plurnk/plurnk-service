@@ -127,24 +127,27 @@ test("commit: repo-config author → {oid, message}, oid is 40-hex", async () =>
     assert.deepEqual(states, ["closed"]);
 });
 
-test("commit: no user.name/user.email in repo config → git_no_author, 500, errored", async () => {
+test("commit: no user.name/user.email in repo config → durable Problem, 500, errored", async () => {
     const dir = await initRepo();
     await writeFile(join(dir, "a.txt"), "one\n");
     await run("add a.txt", dir);
     const { result, out, states, events } = await run('commit -m "anonymous"', dir);
     assert.equal(result.status, 500);
     assert.equal(out, undefined);
-    assert.equal(events[0].source, "exec:git");
-    assert.equal(events[0].kind, "git_no_author");
+    assert.equal(result.problem?.type, "https://problems.plurnk.dev/executor/git/git-no-author");
+    assert.match(result.problem?.detail ?? "", /no user\.name\/user\.email/);
+    assert.equal(events.length, 0);
     assert.deepEqual(states, ["errored"]);
 });
 
-test("commit without -m → git_bad_arguments, 400", async () => {
+test("commit without -m → bad-arguments Problem, 400", async () => {
     const dir = await configuredRepo();
     const { result, out, states, events } = await run("commit", dir);
     assert.equal(result.status, 400);
     assert.equal(out, undefined);
-    assert.equal(events[0].kind, "git_bad_arguments");
+    assert.equal(result.problem?.type, "https://problems.plurnk.dev/executor/git/git-bad-arguments");
+    assert.match(result.problem?.detail ?? "", /commit needs a message/);
+    assert.equal(events.length, 0);
     assert.deepEqual(states, ["errored"]);
 });
 
@@ -191,15 +194,15 @@ test("checkout: switches the current branch", async () => {
     assert.equal(await git.currentBranch({ fs, dir, fullname: false }), "feature");
 });
 
-test("unknown verb (push is unsupported day-one) → git_unknown_op, 400, names the verb set", async () => {
+test("unknown verb (push is unsupported day-one) → Problem, 400, names the verb set", async () => {
     const dir = await initRepo();
     const { result, out, states, events } = await run("push origin main", dir);
     assert.equal(result.status, 400);
     assert.equal(out, undefined);
-    assert.equal(events[0].source, "exec:git");
-    assert.equal(events[0].kind, "git_unknown_op");
-    assert.match(String(events[0].message), /'push'/);
-    assert.match(String(events[0].message), /init, status, add, commit, log, branch, checkout/);
+    assert.equal(result.problem?.type, "https://problems.plurnk.dev/executor/git/git-unknown-op");
+    assert.match(result.problem?.detail ?? "", /'push'/);
+    assert.match(result.problem?.detail ?? "", /init, status, add, commit, log, branch, checkout/);
+    assert.equal(events.length, 0);
     assert.deepEqual(states, ["errored"]);
 });
 

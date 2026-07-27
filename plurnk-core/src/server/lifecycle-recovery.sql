@@ -24,7 +24,16 @@ WHERE state = 'active'
 -- PREP: recovery_fail_orphan_subscriptions
 UPDATE subscriptions
 SET closed_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now'),
-    close_status = 500
+    close_status = 500,
+    close_result = json_object(
+        'status', 500,
+        'problem', json_object(
+            'type', 'https://problems.plurnk.dev/lifecycle/recovery/owner-vanished',
+            'title', 'Owner vanished',
+            'status', 500,
+            'detail', 'The daemon restarted while this stream was active; its process-local owner no longer exists.'
+        )
+    )
 WHERE closed_at IS NULL;
 
 -- PREP: recovery_resume_unblocked_parks

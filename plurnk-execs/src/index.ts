@@ -21,6 +21,11 @@ export { default as Policy } from "./policy.ts";
 // availability and fills by confabulating runtimes (execs#24).
 export { default as Advertise } from "./advertise.ts";
 
+// Universal operation-result helpers. Executors return the same result shape as
+// schemes; the consuming daemon validates it at the plugin boundary.
+export { Results } from "@plurnk/plurnk-schemes";
+export type { ProblemDetails, SchemeResult } from "@plurnk/plurnk-schemes";
+
 // Contract types
 export type {
     ChannelState,

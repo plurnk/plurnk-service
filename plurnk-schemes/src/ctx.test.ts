@@ -33,7 +33,7 @@ const makeCtx = () => {
     const events: string[] = [];
     const chunks: Array<{ channel: string; chunk: string; mimetype?: string }> = [];
     let woken = 0;
-    let closed: { reason: string; outcome?: string } | null = null;
+    let closed: { result: Parameters<SubscriptionCaps["close"]>[0]; summary?: string } | null = null;
     const failure = <T extends Readonly<Record<string, unknown>> = Record<never, never>>(
         code: string,
         status: number,
@@ -139,7 +139,7 @@ const makeCtx = () => {
         },
         // close composites the worker wake — there is no separate notify.wakeWorker;
         // the rich, summary-bearing wake lives where the close context is.
-        async close(reason, outcome) { closed = { reason, outcome }; woken += 1; },
+        async close(result, summary) { closed = { result, summary }; woken += 1; },
     };
 
     const ctx: SchemeCtx = {
@@ -208,9 +208,9 @@ test("ctx: notifyChunk carries an optional per-call mimetype (channel retype)", 
 
 test("ctx: subscriptions.close composites state + wake (stream concluded)", async () => {
     const { ctx, inspect } = makeCtx();
-    await ctx.subscriptions.close("done", "exit=0 bytes=42");
+    await ctx.subscriptions.close({ status: 200 }, "exit=0 bytes=42");
     const { closed, woken } = inspect();
-    assert.deepEqual(closed, { reason: "done", outcome: "exit=0 bytes=42" });
+    assert.deepEqual(closed, { result: { status: 200 }, summary: "exit=0 bytes=42" });
     assert.equal(woken, 1); // close fires the worker wake
 });
 

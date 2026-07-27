@@ -1250,7 +1250,7 @@ export default class Daemon {
      * loop needed. Otherwise we open a fresh loop with the synthetic
      * summary as the user prompt so the model gets a chance to react.
      *
-     * Skipped on closeStatus=499 (aborted): the model already knows about
+     * Skipped on result.status=499 (aborted): the model already knows about
      * its own SEND[499], and a forcefully-cancelled loop's spawn-abort
      * shouldn't resurrect into a wake loop (defeats the cancel).
      *
@@ -1259,9 +1259,9 @@ export default class Daemon {
     async #handleWakeWorker(payload: WakeWorkerPayload): Promise<void> {
         // §search-gate — settle the dedup registration: promote on a 200 conclusion, drop on
         // failure (a dead search must never serve as a duplicate). No-op for non-search streams.
-        this.#engine.searchGate.settle(payload.target.replace(/^[a-z+.-]+:\/\//, "/").replace(/^\/+/, "/"), payload.closeStatus);
+        this.#engine.searchGate.settle(payload.target.replace(/^[a-z+.-]+:\/\//, "/").replace(/^\/+/, "/"), payload.result.status);
         // Aborted streams don't wake — the abort was deliberate.
-        if (payload.closeStatus === 499) {
+        if (payload.result.status === 499) {
             this.#broadcast({ workspaceId: payload.workspaceId }, "stream/concluded", {
                 ...payload, wakeAction: "skipped-aborted",
             });

@@ -8,7 +8,7 @@ A runtime executor handles one or more EXEC `runtime` slot values (`sh`, `node`,
 
 The framework ships `SubprocessExecutor` (§4), a concrete `BaseExecutor` for
 subprocess runtimes. Runtime packages override its `spawnArgs()` hook and
-inherit process execution, streaming, cancellation, and telemetry.
+inherit process execution, streaming, cancellation, and result construction.
 
 ## §2 Executor contract
 
@@ -38,17 +38,22 @@ interface ExecArgs {
     signal: AbortSignal;        // cancellation — executors must honor it
     write: (channel: string, chunk: string, mimetype?: string) => void;  // write a chunk; optional mimetype stamps the channel's real per-call output type
     setState: (channel: string, state: ChannelState) => void;            // drive a declared channel's lifecycle
-    emit: (event: TelemetryEvent) => void;                               // emit telemetry/error (§2.2)
+    emit: (event: TelemetryEvent) => void;                               // emit nonterminal notices (§2.4)
     entry?: (path: string, content: string | null, opts: { tags: string[]; mimetype?: string }) => Promise<void>;  // request materialization/prefetch — content null ⇒ consumer-sourced (§2.6)
 }
 
-interface ExecResult {
-    status: number;             // 200 ok / 499 aborted / 500 error
+interface ExecResult extends SchemeResult {
     exitCode?: number;          // subprocess family only
 }
 ```
 
-`run()` must not throw for an expected runtime failure: surface it through `emit` + an `errored` channel state + a non-200 `status`.
+`ExecResult` is the universal operation-result contract from
+`@plurnk/plurnk-schemes`. A result with `status >= 400` must carry exactly one
+RFC 9457 `problem` whose status matches. `run()` must not throw for an expected
+runtime failure: return that failure result and set the affected channel to
+`errored`. The consumer validates every result at the plugin boundary. A thrown
+exception or an invalid result is an executor contract violation, which the
+consumer converts into its own durable failure result before closing the stream.
 
 ### §2.1 Channel topology is executor-declared
 
@@ -90,13 +95,13 @@ For `exec`, per-runtime `effect()` supersedes the static `Exec.manifest.flags.pr
 
 ### §2.4 Telemetry
 
-Runtime failures are emitted as a grammar `TelemetryEvent` via the `emit` sink (plurnk-service#174 Q3); the scheme routes it to the engine's telemetry buffer — the same path grammar's `parse_error` takes. Events are not encoded into `stderr` (that pollutes program output) nor returned on `ExecResult` (that loses mid-run events).
+`emit` is for nonterminal, transient notices such as bounded progress. It is not
+a failure channel and cannot affect the durable result, stream lifecycle,
+scheduler, recovery, or model-visible truth. Terminal failures live only in
+`ExecResult.problem`; duplicating them into telemetry creates two authorities
+that can disagree.
 
-- `source`: `"exec:<runtime>"` (e.g. `"exec:search"`) or `"scheme:exec"`.
-- `kind`: producer-minted, open vocabulary. What the shipped executors actually emit: `SubprocessExecutor` → `spawn_failed` (a failed *start*; a nonzero exit is the program's own result and stays on `stderr`, **not** telemetered); search → `searxng_not_configured` / `searxng_unreachable` / `searxng_timeout` / `searxng_http_<n>` / `external_bang_refused`; sqlite → `sqlite_open_failed` / `sqlite_error`. A cancellation (`signal` abort) is normal flow — **not** emitted.
-- `message`: terse, factual. `position`: typically null at the runtime layer.
-
-The envelope is mirrored locally (`TelemetryEvent`, `ContentOffset`, `LogCoordinate`) so the framework needs no `@plurnk/plurnk-grammar` dependency; grammar's `dist/schema/TelemetryEvent.json` is the source of truth.
+The telemetry envelope remains mirrored locally for executor notices.
 
 ### §2.5 Deadlines & polling — the executor stays oblivious
 
@@ -111,7 +116,7 @@ So the feature is contract-free for executors and applies to all of them uniform
 
 ### §2.6 Output addressing — the executor produces, the consumer reads
 
-An executor is a **producer, not a reader.** Its whole output contract is `run()` writing channels (`write` / `setState` / `emit`); the consumer streams those into an ordinary log entry addressed at **`<tag>://<coord>`** (the worker's `<runtime>:///<loop>/<turn>/<seq>`), and every READ/FIND over that output is the consumer's uniform entry machinery — identical for `sh`, `search`, `sqlite`, and MCP alike. The executor never reads, slices, summarizes, or orients its own output.
+An executor is a **producer, not a reader.** Its whole output contract is `run()` writing channels (`write` / `setState`), emitting optional nonterminal notices, and returning one terminal result; the consumer streams those into an ordinary log entry addressed at **`<tag>://<coord>`** (the worker's `<runtime>:///<loop>/<turn>/<seq>`), and every READ/FIND over that output is the consumer's uniform entry machinery — identical for `sh`, `search`, `sqlite`, and MCP alike. The executor never reads, slices, summarizes, or orients its own output.
 
 The executor's only scheme-facing contribution is a **derived manifest** — `OutputScheme.manifestFromRuntime({ name, glyph, channels, defaultChannel })`, built from the runtime declaration, no separate authoring — so the consumer can mint a per-tag output scheme (name = the tag) and the model can address `<tag>://`. `defaultChannel` (first declared channel; subprocess → `stdout`) is where a bare `READ <tag>://<coord>` lands. `discover()` is unchanged (static install/config truth, §3); activation (§3.2) is the consumer's runtime overlay.
 
@@ -264,8 +269,8 @@ target, the body runs from the project-root working directory.
 `SubprocessExecutor extends BaseExecutor`, declares stdout and stderr channels,
 and implements `run()`. Subclasses override
 `spawnArgs(runtime, command, target) → SpawnArgs` and optionally `binary`.
-They inherit streaming, scoped environment handling, availability probing, exit
-status, and process-group cancellation. Abort sends SIGHUP by default; an
+They inherit streaming, scoped environment handling, availability probing,
+universal result construction, exit status, and process-group cancellation. Abort sends SIGHUP by default; an
 explicit kill reason supplies its signal; loop-end housekeeping may escalate to
 SIGKILL after the consumer-provided grace period.
 
@@ -275,7 +280,7 @@ Per plurnk-service#174/#181/#182, realized in service `0.9.0`, the exec scheme:
 
 1. Boot-discovers executors (`discover()`), `probe()`s each per-package, and offers the model the positive available-runtimes list; an unavailable runtime returns 501 carrying `probe()` `detail`.
 2. Resolves the runtime tag to its executor and runs it through `run()`, seeding the exec entry's channels from `executor.channels`.
-3. Provides the `write` / `setState` / `emit` sinks bound to its channel-write, channel-state, and engine-telemetry machinery; bridges its AbortController to `args.signal`; maps the `ExecResult` to close-status + wake summary.
+3. Provides the `write` / `setState` / `emit` sinks bound to its channel-write, channel-state, and transient-notice machinery; bridges its AbortController to `args.signal`; validates and preserves the exact `ExecResult` through stream close and wake projection.
 4. Gates the proposal lifecycle by `effect(target)` (`EffectPolicy`: `host → propose`, `read`/`pure → auto`), running auto-run runtimes inline (synchronous return) while still landing the result as a re-readable entry.
 
 ## §6 Forbidden (for siblings)

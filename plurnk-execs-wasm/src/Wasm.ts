@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { isAbsolute, resolve } from "node:path";
 import wabtInit from "wabt";
-import { BaseExecutor } from "@plurnk/plurnk-execs";
+import { BaseExecutor, Results } from "@plurnk/plurnk-execs";
 import type { ChannelDecl, Effect, ExecArgs, ExecResult, RuntimeAvailability } from "@plurnk/plurnk-execs";
 
 // `WebAssembly` is a Node/JS global; declare the subset we use so the build
@@ -49,16 +49,18 @@ export default class Wasm extends BaseExecutor {
         return { available: true, detail: "WebAssembly + wabt" };
     }
 
-    async run({ runtime, command, cwd, target, signal, write, setState, emit }: ExecArgs): Promise<ExecResult> {
+    async run({ runtime, command, cwd, target, signal, write, setState }: ExecArgs): Promise<ExecResult> {
         const fail = (kind: string, message: string): ExecResult => {
-            emit({ source: `exec:${runtime}`, kind, message });
             setState("results", "errored");
-            return { status: 500 };
+            return Results.failure("executor:wasm", kind.replaceAll("_", "-"), 500, message, {}, { runtime });
         };
         // Honor an abort at each phase boundary (SPEC §6). The file read, wabt init,
         // and instantiate are the await points where a KILL/cancel can land; the
         // entry-point call itself is synchronous and uninterruptible.
-        const aborted = (): ExecResult => { setState("results", "errored"); return { status: 499 }; };
+        const aborted = (): ExecResult => {
+            setState("results", "errored");
+            return Results.failure("executor:wasm", "cancelled", 499, "WebAssembly execution was cancelled.", {}, { runtime });
+        };
         if (signal.aborted) return aborted();
         // target = a module file, resolved against cwd (the workspace) —
         // plurnk-execs#15; otherwise the module rides the body (WAT / base64).

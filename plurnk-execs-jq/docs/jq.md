@@ -20,4 +20,5 @@ An empty body defaults to `.` (identity). Results land on `results` as `applicat
 
 ## Errors
 
-A failed program or spawn closes `results` as `errored` with status 500 and `jq_error` / `jq_spawn_failed` telemetry carrying jq's own stderr.
+A failed program or spawn closes `results` as `errored` with status 500 and an
+RFC 9457 Problem carrying jq's own stderr.

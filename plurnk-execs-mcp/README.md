@@ -60,7 +60,7 @@ Environment-declared servers do not require the install gate.
 ### Authorization
 
 Static credentials belong in the transport's `_HEADERS` or `_ENV` companion.
-For OAuth, a `401` emits `mcp_auth_required`. The consumer relays the package's
+For OAuth, a `401` returns an `authentication-required` Problem. The consumer relays the package's
 RFC 8628 device-grant primitives:
 
 - `authorize(server, { scope? })` begins the device grant.
@@ -80,7 +80,8 @@ body:
 ```
 
 Tool results are written as `application/json` to the `results` channel. An MCP
-`isError` result closes that channel errored with status `500`.
+`isError` result closes that channel errored with status `500` and a durable
+Problem in the terminal operation result.
 
 Gating is per tool. A cached `readOnlyHint: true` makes `effect()` return
 `read`; mutating and not-yet-probed tools return `host`; catalog discovery is

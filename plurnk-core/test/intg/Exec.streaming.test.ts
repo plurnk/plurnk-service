@@ -162,10 +162,11 @@ test("streaming exec: subscription stays open during emission, closes after exit
         // After completion: subscription closes at 200.
         await exec.idle();
         const endSub = await db.test_get_subscription_by_entry.get<{
-            closed_at: string | null; close_status: number | null;
+            closed_at: string | null; close_status: number | null; close_result: string | null;
         }>({ worker_id: workerId, entry_id: entryRow!.id });
         assert.ok(endSub?.closed_at, "subscription closed after spawn exit");
         assert.equal(endSub?.close_status, 200, "clean exit closes subscription at 200");
+        assert.deepEqual(JSON.parse(endSub?.close_result ?? "null"), { status: 200, exitCode: 0 });
     } finally { await db.close(); }
 });
 

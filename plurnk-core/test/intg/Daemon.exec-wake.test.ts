@@ -2,7 +2,7 @@
 // spawn concludes (an OPEN stream-status transition), Daemon.#handleWakeWorker picks one of:
 //   - "no-op-active-loop" — the worker has a live drain; the conclusion folds into its next turn
 //   - "resumed-loop" — the worker is parked at a slept (202) loop; that SAME loop resumes in place
-//   - "skipped-aborted" — closeStatus=499 (deliberate cancel) — no resume
+//   - "skipped-aborted" — result.status=499 (deliberate cancel) — no resume
 //
 // These exercise the daemon end-to-end through real WS calls with a
 // Mock provider. Mock emissions use the EXEC op per plurnk.md.
@@ -208,14 +208,14 @@ test("wake-on-completion: a slept (202) loop resumes IN PLACE — no new loop, n
             );
 
             const concluded = concludedEvents() as Array<{
-                scheme: string; target: string; closeStatus: number; summary: string;
+                scheme: string; target: string; result: { status: number; problem?: { type: string } }; summary: string;
                 wakeAction: string; wakeLoopId?: number;
                 loop_seq?: number; turn_seq?: number; sequence?: number;
             }>;
             assert.ok(concluded.length >= 1, `expected >=1 stream/concluded event, got ${concluded.length}`);
             const wake = concluded.find((c) => c.scheme === "sh");
             assert.ok(wake, "exec stream concluded");
-            assert.equal(wake.closeStatus, 200);
+            assert.equal(wake.result.status, 200);
             assert.match(wake.target, /^sh:\/\/\//, "stream/concluded carries the tag-authority target URI (#179)");
             assert.match(wake.summary, /^sh:\/\/\/\d+\/\d+\/\d+ completed \(exit 0\)/,
                 "summary references the tag-authority <runtime>:///<loop>/<turn>/<seq> path");
@@ -354,15 +354,15 @@ test("wake-on-completion: streaming spawn outlives loop — wake summary reports
             // Event-driven: wait for the ~2.5s countdown spawn to conclude (200) and its
             // wake to fire, not a fixed sleep that flakes if the spawn runs long under load.
             await waitFor(
-                () => concludedEvents() as Array<{ scheme: string; closeStatus: number }>,
-                (cs) => cs.some((c) => c.scheme === "sh" && c.closeStatus === 200),
+                () => concludedEvents() as Array<{ scheme: string; result: { status: number } }>,
+                (cs) => cs.some((c) => c.scheme === "sh" && c.result.status === 200),
                 { timeoutMs: 8000 },
             );
 
             const concluded = concludedEvents() as Array<{
-                scheme: string; closeStatus: number; summary: string; wakeAction: string; wakeLoopId?: number;
+                scheme: string; result: { status: number }; summary: string; wakeAction: string; wakeLoopId?: number;
             }>;
-            const wake = concluded.find((c) => c.scheme === "sh" && c.closeStatus === 200);
+            const wake = concluded.find((c) => c.scheme === "sh" && c.result.status === 200);
             assert.ok(wake, "exec stream concluded");
             // The KEY assertion: summary has the FULL byte count, not
             // whatever happened to be in the channel when loop ended.
@@ -376,7 +376,7 @@ test("wake-on-completion: streaming spawn outlives loop — wake summary reports
 
 test("wake-on-completion: loop.cancel mid-spawn → daemon skips wake (skipped-aborted)", async () => {
     // Slow exec; loop.cancel RPC fires the drain controller; spawn aborts
-    // with closeStatus=499; daemon's handler skips opening a wake loop.
+    // with result.status=499; daemon's handler skips opening a wake loop.
     const mock = new Mock({
         contextWindow: 16384,
         responses: [
@@ -411,10 +411,11 @@ test("wake-on-completion: loop.cancel mid-spawn → daemon skips wake (skipped-a
                 { timeoutMs: 5000 },
             );
 
-            const concluded = concludedEvents() as Array<{ scheme: string; closeStatus: number; wakeAction: string }>;
+            const concluded = concludedEvents() as Array<{ scheme: string; result: { status: number; problem?: { type: string } }; wakeAction: string }>;
             const wake = concluded.find((c) => c.scheme === "sh");
             assert.ok(wake, "exec stream concluded");
-            assert.equal(wake.closeStatus, 499);
+            assert.equal(wake.result.status, 499);
+            assert.equal(wake.result.problem?.type, "https://problems.plurnk.dev/executor/subprocess/cancelled");
             assert.equal(wake.wakeAction, "skipped-aborted",
                 "deliberate cancellations don't resurrect into a wake loop");
         } finally { ws.close(); }
@@ -461,10 +462,11 @@ test("loop.cancel preserves partial stdout on the 499 conclusion (chunk-capture)
                 { timeoutMs: 4000 },
             );
 
-            const concluded = concludedEvents() as Array<{ scheme: string; closeStatus: number; summary: string }>;
+            const concluded = concludedEvents() as Array<{ scheme: string; result: { status: number; problem?: { type: string } }; summary: string }>;
             const wake = concluded.find((c) => c.scheme === "sh");
             assert.ok(wake, "exec stream concluded");
-            assert.equal(wake.closeStatus, 499, "deliberate cancel concludes at 499");
+            assert.equal(wake.result.status, 499, "deliberate cancel concludes at 499");
+            assert.equal(wake.result.problem?.type, "https://problems.plurnk.dev/executor/subprocess/cancelled");
             assert.match(wake.summary, /stdout=4 bytes/,
                 `partial stdout ("a\\nb\\n" = 4 bytes) survives the abort; got ${wake.summary}`);
         } finally { ws.close(); }

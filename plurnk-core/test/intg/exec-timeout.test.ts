@@ -26,10 +26,11 @@ test("EXEC <T> kills the spawn after T seconds and closes the stream 504", async
             // Wide margin (12s vs ~1-2s actual vs 30s no-timeout) — a correctness check, not a race.
             assert.ok(elapsed < 12000, `spawn timeout-killed near 1s, not run to 30s; elapsed=${elapsed}ms`);
             await flush();
-            const closes = concluded() as Array<{ closeStatus: number }>;
+            const closes = concluded() as Array<{ result: { status: number; problem?: { type: string } } }>;
             assert.ok(
-                closes.some((c) => c.closeStatus === 504),
-                `the exec stream closed 504 (timed out), distinct from a kill; got ${JSON.stringify(closes.map((c) => c.closeStatus))}`,
+                closes.some((c) => c.result.status === 504
+                    && c.result.problem?.type === "https://problems.plurnk.dev/scheme/exec/execution-timeout"),
+                `the exec stream closed with the exact timeout Problem; got ${JSON.stringify(closes.map((c) => c.result))}`,
             );
         } finally { ws.close(); }
     });

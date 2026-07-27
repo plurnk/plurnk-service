@@ -43,7 +43,7 @@ const wire = async (run: Executor["run"]) => {
     return { db, engine, schemes, workspaceId, workerId, loopId, turnId, tag, wakes };
 };
 
-test("a rejecting driver still concludes its stream — 500, driver_crashed, never an open corpse", async () => {
+test("a rejecting driver still concludes its stream with an exact Problem, never an open corpse", async () => {
     const { db, engine, workspaceId, workerId, loopId, turnId, tag, wakes } = await wire(async () => {
         throw new Error("Invalid URL");
     });
@@ -51,12 +51,13 @@ test("a rejecting driver still concludes its stream — 500, driver_crashed, nev
         const result = await engine.dispatch({ statement: execStmt(tag, "go"), workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model" });
         assert.equal(result.status, 200, `the spawn started; got ${result.status}`);
         const concluded = await waitFor(() => wakes, (w) => w.length > 0, { timeoutMs: 4000 });
-        assert.equal(concluded[0].closeStatus, 500, "the rejected run concluded as a FAILURE, not an open subscription");
-        assert.match(concluded[0].summary, /driver_crashed: Invalid URL/, "the summary names the crash, not a synthetic success");
+        assert.equal(concluded[0].result.status, 500, "the rejected run concluded as a FAILURE, not an open subscription");
+        assert.equal(concluded[0].result.problem?.type, "https://problems.plurnk.dev/scheme/exec/executor-threw");
+        assert.match(concluded[0].summary, /executor threw/, "the summary reflects the structured executor-threw result");
     } finally { await db.close(); }
 });
 
-test("a driver resolving 200 under abort is restamped 499 reaped — the service's abort outranks the claim", async () => {
+test("a driver resolving 200 under abort is replaced by a 499 Problem — service truth outranks the claim", async () => {
     const { db, engine, schemes, workspaceId, workerId, loopId, turnId, tag, wakes } = await wire((args) => new Promise((res) => {
         // The 0.3.3-class liar: hangs until aborted, then claims success.
         args.signal.addEventListener("abort", () => res({ status: 200, exitCode: 0 }), { once: true });
@@ -67,9 +68,10 @@ test("a driver resolving 200 under abort is restamped 499 reaped — the service
         const sub = await db.test_open_subscription_for_run.get<{ id: number }>({ worker_id: workerId });
         assert.ok(sub !== undefined, "the spawn's subscription is open");
         await engine.cancelSubscription(sub.id);
-        const concluded = await waitFor(() => wakes.filter((w) => w.closeStatus !== undefined), (w) => w.length > 0, { timeoutMs: 4000 });
-        assert.equal(concluded[0].closeStatus, 499, "the reaped run concluded 499, not the driver's claimed 200");
-        assert.match(concluded[0].summary, /reaped/, "the summary says reaped — no synthetic 'completed (exit -1)' success");
+        const concluded = await waitFor(() => wakes.filter((w) => w.result !== undefined), (w) => w.length > 0, { timeoutMs: 4000 });
+        assert.equal(concluded[0].result.status, 499, "the reaped run concluded 499, not the driver's claimed 200");
+        assert.equal(concluded[0].result.problem?.type, "https://problems.plurnk.dev/scheme/exec/execution-cancelled");
+        assert.match(concluded[0].summary, /aborted/, "the summary reflects the structured cancellation result");
     } finally { await db.close(); }
 });
 
@@ -91,7 +93,7 @@ for (const specimen of [
             });
             assert.equal(started.status, 200);
             await waitFor(() => wakes, (events) => events.length > 0, { timeoutMs: 4000 });
-            assert.equal(wakes[0].closeStatus, specimen.status);
+            assert.equal(wakes[0].result.status, specimen.status);
 
             const waited = await engine.dispatch({
                 statement: sendStmt(202, null, "waiting"),

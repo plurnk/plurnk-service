@@ -5,6 +5,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import ChannelWrite from "../../src/core/ChannelWrite.ts";
 import type { StreamEventPayload } from "../../src/core/ChannelWrite.ts";
+import { Results } from "@plurnk/plurnk-schemes";
 import { openMigrated, insertWorkspace, insertWorker } from "./_helpers.ts";
 import Owner from "../../src/core/Owner.ts";
 
@@ -104,20 +105,22 @@ test("openSubscription: allows new subscription after previous one is closed", a
     const { db, workerId, entryId } = await seedEntryWithChannel("body", "text/plain", "");
     try {
         const sub1 = await ChannelWrite.openSubscription(db, { workerId, entryId, scheme: "sse", handle: "h1" });
-        await ChannelWrite.closeSubscription(db, { subscriptionId: sub1, status: 200 });
+        await ChannelWrite.closeSubscription(db, { subscriptionId: sub1, result: { status: 200 } });
         const sub2 = await ChannelWrite.openSubscription(db, { workerId, entryId, scheme: "sse", handle: "h2" });
         assert.ok(sub2 > sub1);
     } finally { await db.close(); }
 });
 
-test("closeSubscription: sets closed_at + close_status", async () => {
+test("closeSubscription: persists the exact result and indexed status", async () => {
     const { db, workerId, entryId } = await seedEntryWithChannel("body", "text/plain", "");
     try {
         const subId = await ChannelWrite.openSubscription(db, { workerId, entryId, scheme: "sse", handle: "h" });
-        await ChannelWrite.closeSubscription(db, { subscriptionId: subId, status: 499 });
-        const row = await db.test_get_subscription.get<{ closed_at: string; close_status: number }>({ id: subId });
+        const result = Results.failure("scheme:test", "cancelled", 499, "The test stream was cancelled.");
+        await ChannelWrite.closeSubscription(db, { subscriptionId: subId, result });
+        const row = await db.test_get_subscription.get<{ closed_at: string; close_status: number; close_result: string }>({ id: subId });
         assert.ok(row?.closed_at !== null);
         assert.equal(row?.close_status, 499);
+        assert.deepEqual(JSON.parse(row?.close_result ?? "null"), result);
     } finally { await db.close(); }
 });
 
@@ -125,12 +128,16 @@ test("closeSubscription: idempotent — already-closed subscription is a no-op",
     const { db, workerId, entryId } = await seedEntryWithChannel("body", "text/plain", "");
     try {
         const subId = await ChannelWrite.openSubscription(db, { workerId, entryId, scheme: "sse", handle: "h" });
-        await ChannelWrite.closeSubscription(db, { subscriptionId: subId, status: 200 });
+        await ChannelWrite.closeSubscription(db, { subscriptionId: subId, result: { status: 200 } });
         const first = await db.test_get_subscription.get<{ closed_at: string }>({ id: subId });
-        await ChannelWrite.closeSubscription(db, { subscriptionId: subId, status: 499 });
-        const second = await db.test_get_subscription.get<{ closed_at: string; close_status: number }>({ id: subId });
+        await ChannelWrite.closeSubscription(db, {
+            subscriptionId: subId,
+            result: Results.failure("scheme:test", "cancelled", 499, "The test stream was cancelled."),
+        });
+        const second = await db.test_get_subscription.get<{ closed_at: string; close_status: number; close_result: string }>({ id: subId });
         assert.equal(second?.closed_at, first?.closed_at, "closed_at unchanged");
         assert.equal(second?.close_status, 200, "close_status unchanged");
+        assert.deepEqual(JSON.parse(second?.close_result ?? "null"), { status: 200 }, "close_result unchanged");
     } finally { await db.close(); }
 });
 
@@ -149,7 +156,10 @@ test("findOpenTurnScopedSubscriptionsForWorker selects only turn-scoped (<0>) su
         assert.ok(!open.some((s) => s.id === ordinary), "the unbounded sub is excluded");
 
         // Once closed (reaped), it drops out — the pre-turn reap is one-shot, never a double-abort.
-        await ChannelWrite.closeSubscription(db, { subscriptionId: scoped, status: 499 });
+        await ChannelWrite.closeSubscription(db, {
+            subscriptionId: scoped,
+            result: Results.failure("scheme:test", "cancelled", 499, "The test stream was cancelled."),
+        });
         assert.equal((await ChannelWrite.findOpenTurnScopedSubscriptionsForWorker(db, workerId)).length, 0, "a closed turn-scoped sub is no longer selected");
     } finally { await db.close(); }
 });
@@ -170,7 +180,7 @@ test("findActiveSubscription: returns null when nothing active", async () => {
     const { db, workerId, entryId } = await seedEntryWithChannel("body", "text/plain", "");
     try {
         const subId = await ChannelWrite.openSubscription(db, { workerId, entryId, scheme: "sse", handle: "h" });
-        await ChannelWrite.closeSubscription(db, { subscriptionId: subId, status: 200 });
+        await ChannelWrite.closeSubscription(db, { subscriptionId: subId, result: { status: 200 } });
         const found = await ChannelWrite.findActiveSubscription(db, { workerId, entryId });
         assert.equal(found, null);
     } finally { await db.close(); }
@@ -204,16 +214,16 @@ test("subscriptions CASCADE on run delete", async () => {
     } finally { await db.close(); }
 });
 
-test("subscriptions CHECK: closed_at and close_status must be paired", async () => {
+test("subscriptions enforce one paired terminal result", async () => {
     const { db, workerId, entryId } = await seedEntryWithChannel("body", "text/plain", "");
     try {
         await assert.rejects(
             () => db.test_invalid_subscription_only_closed_at.run({ worker_id: workerId, entry_id: entryId }),
-            /CHECK constraint/i,
+            /subscription terminal result violates the operation-result contract/,
         );
         await assert.rejects(
             () => db.test_invalid_subscription_only_close_status.run({ worker_id: workerId, entry_id: entryId }),
-            /CHECK constraint/i,
+            /subscription terminal result violates the operation-result contract/,
         );
     } finally { await db.close(); }
 });

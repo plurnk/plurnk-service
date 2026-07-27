@@ -73,18 +73,21 @@ test("wat: a module with no entry point returns null but still lists exports", a
     assert.deepEqual(parsed.exports, ["helper"]);
 });
 
-test("wat: a parse error → wat_parse_error telemetry, 500", async () => {
+test("wat: a parse error → durable Problem, 500", async () => {
     const { result, events, states } = await run("wat", "(module (this is not valid wat");
     assert.equal(result.status, 500);
-    assert.equal(events[0].source, "exec:wat");
-    assert.equal(events[0].kind, "wat_parse_error");
+    assert.equal(result.problem?.type, "https://problems.plurnk.dev/executor/wasm/wat-parse-error");
+    assert.ok((result.problem?.detail.length ?? 0) > 0);
+    assert.equal(events.length, 0);
     assert.equal(states.at(-1), "errored");
 });
 
 test("wat: a trap (unreachable) → wasm_trap, 500", async () => {
     const { result, events } = await run("wat", `(module (func (export "main") (unreachable)))`);
     assert.equal(result.status, 500);
-    assert.equal(events[0].kind, "wasm_trap");
+    assert.equal(result.problem?.type, "https://problems.plurnk.dev/executor/wasm/wasm-trap");
+    assert.match(result.problem?.detail ?? "", /unreachable/);
+    assert.equal(events.length, 0);
 });
 
 test("wasm: runs a base64-encoded binary module", async () => {
@@ -100,7 +103,9 @@ test("wasm: runs a base64-encoded binary module", async () => {
 test("wasm: invalid bytes → wasm_invalid, 500", async () => {
     const { result, events } = await run("wasm", Buffer.from("not a wasm module").toString("base64"));
     assert.equal(result.status, 500);
-    assert.equal(events[0].kind, "wasm_invalid");
+    assert.equal(result.problem?.type, "https://problems.plurnk.dev/executor/wasm/wasm-invalid");
+    assert.ok((result.problem?.detail.length ?? 0) > 0);
+    assert.equal(events.length, 0);
 });
 
 test("wat from a file-path target compiles + runs the file (body ignored)", async () => {
@@ -140,7 +145,9 @@ test("a relative file target resolves against cwd, not the process dir (#15)", a
 test("a missing file-path target → wasm_read_failed, 500", async () => {
     const { result, events } = await run("wasm", "", "/no/such/execs-wasm-module.wasm");
     assert.equal(result.status, 500);
-    assert.equal(events[0].kind, "wasm_read_failed");
+    assert.equal(result.problem?.type, "https://problems.plurnk.dev/executor/wasm/wasm-read-failed");
+    assert.match(result.problem?.detail ?? "", /cannot read/);
+    assert.equal(events.length, 0);
 });
 
 test("effect: inline body → pure; file-path target → read", () => {

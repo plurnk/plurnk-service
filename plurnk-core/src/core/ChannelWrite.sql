@@ -42,6 +42,7 @@ RETURNING id;
 UPDATE subscriptions
 SET closed_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
   , close_status = $status
+  , close_result = $result
 WHERE id = $subscription_id AND closed_at IS NULL;
 
 -- PREP: find_active_subscription

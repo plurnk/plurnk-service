@@ -40,7 +40,7 @@ const fakeSocket = () => {
 const makeCtx = () => {
     const chunks: Array<{ channel: string; chunk: string; mimetype?: string }> = [];
     let opened: { pathname: string } | null = null;
-    let closed: { reason: string; outcome?: string } | null = null;
+    let closed: { result: Parameters<SubscriptionCaps["close"]>[0]; summary?: string } | null = null;
     let wrote: string | null = null;
     const localAbort = new AbortController();
 
@@ -70,7 +70,7 @@ const makeCtx = () => {
     const subscriptions: SubscriptionCaps = {
         async open(pathname) { opened = { pathname }; return localAbort.signal; },
         async notifyChunk(channel, chunk, mimetype) { chunks.push({ channel, chunk, mimetype }); },
-        async close(reason, outcome) { closed = { reason, outcome }; },
+        async close(result, summary) { closed = { result, summary }; },
     };
     const ctx: SchemeCtx = {
         workspaceId: 1, workerId: 1, loopId: 1, turnId: 1, writer: "model", signal: undefined,
@@ -126,8 +126,8 @@ test("READ: inbound frames stream into messages; socket close settles done", asy
     assert.equal(opened?.pathname, "/feed");
     assert.deepEqual(chunks.filter((c) => c.channel === "messages").map((c) => c.chunk), ["hello", "world"]);
     assert.ok(chunks.every((c) => c.channel !== "messages" || c.mimetype === "text/plain"));
-    assert.equal(closed?.reason, "done");
-    assert.equal(closed?.outcome, "ws closed (1000); 2 messages");
+    assert.equal(closed?.result.status, 200);
+    assert.equal(closed?.summary, "ws closed (1000); 2 messages");
 });
 
 test("READ: an SSRF target is refused (403) and never connects", async () => {
@@ -143,7 +143,8 @@ test("READ: a connect throw settles error (502), not an unhandled throw", async 
     const { ctx, inspect } = makeCtx();
     const r = await new Ws(() => { throw new Error("handshake refused"); }).read(readStmt(wss(PUB, "/feed")), ctx);
     assert.equal(r.status, 502);
-    assert.equal(inspect().closed?.reason, "error");
+    assert.equal(inspect().closed?.result.status, 502);
+    assert.equal(inspect().closed?.result.problem?.type, "https://problems.plurnk.dev/scheme/wss/connect-failed");
 });
 
 test("SEND[200]: pushes the body onto the open socket a prior READ opened", async () => {
@@ -186,7 +187,7 @@ test("KILL: closes the open socket and settles the READ", async () => {
     assert.equal(r.status, 200);
     assert.deepEqual(sock.closed, { code: 1000, reason: "killed" });
     await read; // KILL's close fired the READ's close listener → resolves
-    assert.equal(inspect().closed?.reason, "done");
+    assert.equal(inspect().closed?.result.status, 200);
 });
 
 test("KILL: no open socket → 404", async () => {
@@ -204,5 +205,6 @@ test("cancel: the composed abort signal closes the socket", async () => {
     localAbort.abort(); // loop.cancel → onAbort → socket.close → close listener → settle
     await read;
     assert.deepEqual(sock.closed, { code: 1000, reason: "cancelled" });
-    assert.equal(inspect().closed?.reason, "cancelled");
+    assert.equal(inspect().closed?.result.status, 499);
+    assert.equal(inspect().closed?.result.problem?.type, "https://problems.plurnk.dev/scheme/wss/cancelled");
 });

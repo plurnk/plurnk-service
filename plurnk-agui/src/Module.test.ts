@@ -89,7 +89,7 @@ test("a workspace's stream events FAN to every open run (never last-binder-wins)
         // Let both runs bind their threads to workspace 3 before the event races them.
         await new Promise((r) => setTimeout(r, 60));
         emit(3, "stream/event", { entryId: 5, scheme: "exec", content: "alpha" });
-        emit(3, "stream/concluded", { entryId: 5, closeStatus: 200 });
+        emit(3, "stream/concluded", { entryId: 5, result: { status: 200 } });
         emit(3, "loop/terminated", { loopId: 9, finalStatus: 200, hitMaxTurns: false, turnIds: [1], usage: { promptTokens: 1, completionTokens: 1, costUsd: 0, contextTokens: 2, promptBudget: 1000, meta: {} } });
         const [ea, eb] = await Promise.all([a, b]);
         const hasExecActivity = (evs: AguiEvent[]) => evs.some((e) => e.type === "ACTIVITY_SNAPSHOT" && (e as { messageId?: string }).messageId === "stream-5");
@@ -150,7 +150,7 @@ test("a streaming action remains open until its stream concludes", async () => {
         await new Promise((resolve) => setImmediate(resolve));
         assert.equal(settled, false, "the action result cannot terminate its AG-UI run while its spawned stream is active");
 
-        emit(3, "stream/concluded", { entryId: 81, scheme: "sh", closeStatus: 200, summary: "done" });
+        emit(3, "stream/concluded", { entryId: 81, scheme: "sh", result: { status: 200 }, summary: "done" });
         const events = await run;
         assert.equal(events.at(-1)?.type, "RUN_FINISHED");
         assert.ok(events.some((event) => event.type === "CUSTOM" && (event as { name?: string }).name === "plurnk.action.result"));

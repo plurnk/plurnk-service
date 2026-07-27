@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import { isAbsolute, resolve } from "node:path";
 import git from "isomorphic-git";
-import { BaseExecutor } from "@plurnk/plurnk-execs";
+import { BaseExecutor, Results } from "@plurnk/plurnk-execs";
 import type { ChannelDecl, ExecArgs, ExecResult, RuntimeAvailability } from "@plurnk/plurnk-execs";
 import { tokenizeArgv } from "./tokenizeArgv.ts";
 
@@ -27,15 +27,14 @@ export default class Git extends BaseExecutor {
         return { available: true, detail: "isomorphic-git (in-process)" };
     }
 
-    async run({ command, cwd, target, signal, write, setState, emit }: ExecArgs): Promise<ExecResult> {
+    async run({ command, cwd, target, signal, write, setState }: ExecArgs): Promise<ExecResult> {
         const dir = target === null
             ? (cwd ?? process.cwd())
             : (isAbsolute(target) ? target : resolve(cwd ?? process.cwd(), target));
 
         const fail = (kind: string, message: string, status = 500): ExecResult => {
-            emit({ source: "exec:git", kind, message });
             setState("results", "errored");
-            return { status };
+            return Results.failure("executor:git", kind.replaceAll("_", "-"), status, message);
         };
         const ok = (result: unknown): ExecResult => {
             write("results", JSON.stringify(result));
@@ -45,7 +44,7 @@ export default class Git extends BaseExecutor {
 
         if (signal.aborted) {
             setState("results", "errored");
-            return { status: 499 };
+            return Results.failure("executor:git", "cancelled", 499, "Git execution was cancelled.");
         }
 
         const argv = tokenizeArgv(command.trim());
@@ -118,7 +117,7 @@ export default class Git extends BaseExecutor {
         } catch (err) {
             if (signal.aborted) {
                 setState("results", "errored");
-                return { status: 499 };
+                return Results.failure("executor:git", "cancelled", 499, "Git execution was cancelled.");
             }
             return fail("git_error", `${verb}: ${(err as Error).message}`);
         }

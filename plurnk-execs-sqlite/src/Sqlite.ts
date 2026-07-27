@@ -1,6 +1,6 @@
 import { isAbsolute, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { BaseExecutor } from "@plurnk/plurnk-execs";
+import { BaseExecutor, Results } from "@plurnk/plurnk-execs";
 import type { ChannelDecl, Effect, ExecArgs, ExecResult, RuntimeAvailability } from "@plurnk/plurnk-execs";
 
 const MEMORY = ":memory:";
@@ -53,18 +53,20 @@ export default class Sqlite extends BaseExecutor {
         return target === null || target === MEMORY ? "pure" : "host";
     }
 
-    async run({ command, cwd, target, signal, write, setState, emit }: ExecArgs): Promise<ExecResult> {
+    async run({ command, cwd, target, signal, write, setState }: ExecArgs): Promise<ExecResult> {
         // node:sqlite is fully synchronous — no await point to interrupt mid-query —
         // so the only place to honor an abort is before the work starts (SPEC §6).
         // Matters for a file-backed (host) statement: a cancel/KILL that lands first
         // must not still mutate the db.
-        if (signal.aborted) { setState("results", "errored"); return { status: 499 }; }
+        if (signal.aborted) {
+            setState("results", "errored");
+            return Results.failure("executor:sqlite", "cancelled", 499, "SQLite execution was cancelled.");
+        }
         const path = dbPath(cwd, target);
         const sql = command.trim();
         const fail = (kind: string, message: string, status = 500): ExecResult => {
-            emit({ source: "exec:sqlite", kind, message });
             setState("results", "errored");
-            return { status };
+            return Results.failure("executor:sqlite", kind.replaceAll("_", "-"), status, message);
         };
 
         let db: DatabaseSync;

@@ -38,7 +38,10 @@ The framework instantiates **one executor per tag**, injecting `{ runtime, glyph
 - **Subprocess runtimes** (the common case): subclass **`SubprocessExecutor`** and override one hook — `spawnArgs(runtime, command, target) → { cmd, args, useShell, stdin? }`. With no `target`, `command` is the inline program; with a `target`, run it as the program and hand `command` to `stdin` (plurnk-execs#15). You inherit stdout/stderr streaming, process-group abort, **env scoping**, and exit-code reporting. Override the `binary` getter so `probe()` checks it's on PATH (`null` = always available).
 - **Logical / in-process runtimes** (sqlite, search, wasm, jq): subclass **`BaseExecutor`** directly and implement:
   - `get channels()` — the output channels you write, each `{ mimetype, defaultState? }`.
-  - `run(args) → ExecResult` — do the work, resolve `{ status }`. Never throw for an expected failure — `emit` telemetry and set the channel to `errored` instead.
+  - `run(args) → ExecResult` — do the work. Success resolves `{ status }`;
+    failure resolves the same status plus RFC 9457 `problem`. Never throw for an
+    expected failure; set its channel to `errored`. `emit` is only for
+    nonterminal notices such as progress.
   - `probe(signal?)` *(optional)* — `{ available, detail? }`; defaults to available. Override when you depend on an external binary or config (the `detail` is model-facing on a 501). If you spawn a child (or open a connection) to check, hand it `signal` so a resolved/timed-out probe reaps it — no stray write EPIPEs after teardown (plurnk-execs#16).
   - `effect(target)` *(optional)* — `"pure" | "read" | "host"`; the consumer maps it to its proposal policy (host → propose, read/pure → auto-run inline). Classify the **target only**, never the command. Defaults to `host` (the safe end).
 
@@ -69,6 +72,8 @@ Declare the two and a third-party tag gets the same self-documenting surface the
 - `SubprocessExecutor` — concrete base for subprocess runtimes; override `spawnArgs()` (and `binary`). Streaming + process-group abort + env scoping + exit code, inherited.
 - `discover(options?)` — the scope-agnostic registry scan (trust-gated + runtime-policy-gated, fail-hard on collision).
 - `Policy` — the runtime enable/disable resolver (SPEC §3.3): `Policy.isEnabled(tag, env?)`, `Policy.enabledAcross(tag, layers)`. Same parser the daemon and the consumer's per-workspace client layer share.
+- `Results` and the `ProblemDetails` / `SchemeResult` types — the universal
+  operation-result constructor and contract shared with schemes.
 - Contract types: `ExecArgs`, `ExecResult`, `ChannelDecl`, `ChannelState`, `ExecutorMetadata`, `RuntimeAvailability`, `Effect`, `ExecInfo`, `ExecRegistry`, `Discovery`, `DiscoverOptions`.
 - `TelemetryEvent`, `ContentOffset`, `LogCoordinate` — the `emit` sink's payload (mirror of grammar's telemetry envelope).
 - `SpawnArgs` — the `SubprocessExecutor.spawnArgs()` return shape for

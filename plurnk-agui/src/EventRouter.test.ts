@@ -42,9 +42,17 @@ test("stream events serve the standard ACTIVITY channel AND plurnk.stream (compl
     assert.ok(ev.some((e) => e.type === "CUSTOM" && (e as { name: string }).name === "plurnk.stream"), "the family channel still rides alongside");
 
     // Conclusion also snapshots (final state), and a scheme-less stream falls back to STREAM.
-    const done = r.route("stream/concluded", { entryId: 9, closeStatus: 200, summary: "done" });
+    const problem = {
+        type: "https://problems.plurnk.dev/executor/search/searxng-unreachable",
+        title: "Searxng unreachable",
+        status: 502,
+        detail: "The search relay was unreachable.",
+    };
+    const done = r.route("stream/concluded", { entryId: 9, result: { status: 502, problem }, summary: "done" });
     const dact = done.find((e) => e.type === "ACTIVITY_SNAPSHOT") as { activityType: string } | undefined;
     assert.equal(dact?.activityType, "STREAM", "no scheme → STREAM fallback");
+    const custom = done.find((e) => e.type === "CUSTOM") as { value?: { result?: unknown } } | undefined;
+    assert.deepEqual(custom?.value?.result, { status: 502, problem }, "AG-UI preserves the exact terminal Problem");
 });
 
 test("terminated serves the standard RAW channel — the provider's native completion frame ()", () => {

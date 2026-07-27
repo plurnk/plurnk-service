@@ -43,7 +43,7 @@ const fakeBrowser = (html: string) => {
 const makeCtx = (priorEntry: EntryData | null = null) => {
     const chunks: Array<{ channel: string; chunk: string; mimetype?: string }> = [];
     let opened: { pathname: string; handle: SubscriptionHandle; publishedChannel?: string } | null = null;
-    let closed: { reason: string; outcome?: string } | null = null;
+    let closed: { result: Parameters<SubscriptionCaps["close"]>[0]; summary?: string } | null = null;
     let deleted: string | null = null;
     let wrote: { pathname: string; entry: EntryData } | null = null;
     let observedRead: ReadStatement | null = null;
@@ -84,7 +84,7 @@ const makeCtx = (priorEntry: EntryData | null = null) => {
     const subscriptions: SubscriptionCaps = {
         async open(pathname, handle, options) { opened = { pathname, handle, ...options }; seq.push("open"); return localAbort.signal; },
         async notifyChunk(channel, chunk, mimetype) { chunks.push({ channel, chunk, mimetype }); },
-        async close(reason, outcome) { closed = { reason, outcome }; },
+        async close(result, summary) { closed = { result, summary }; },
     };
     const ctx: SchemeCtx = {
         workspaceId: 1, workerId: 1, loopId: 1, turnId: 1, writer: "model", signal: undefined,
@@ -237,8 +237,8 @@ test("READ: streams response body into the body channel and closes done", async 
     // Byte path labels the body with its real content type (not the seed default).
     assert.ok(chunks.every((c) => c.channel !== "body" || c.mimetype === "text/plain"));
     assert.ok(chunks.some((c) => c.channel === "header" && c.chunk.startsWith("HTTP 200 OK")));
-    assert.equal(closed?.reason, "done");
-    assert.match(closed?.outcome ?? "", /HTTP 200; \d+ bytes/);
+    assert.equal(closed?.result.status, 200);
+    assert.match(closed?.summary ?? "", /HTTP 200; \d+ bytes/);
 });
 
 test("scoped READ observes the materialized readable entry without refetching", async () => {
@@ -313,7 +313,7 @@ test("READ SSE: each event's data becomes one body chunk, framing stripped", asy
     assert.deepEqual(sseBody(chunks), ["hello\n", "world\n"]);
     assert.ok(chunks.every((c) => c.channel !== "body" || c.mimetype === "text/plain"));
     assert.ok(chunks.some((c) => c.channel === "header" && c.chunk.startsWith("HTTP 200 OK")));
-    assert.equal(closed?.outcome, "SSE stream; 2 events");
+    assert.equal(closed?.summary, "SSE stream; 2 events");
 });
 
 test("READ SSE: multi-line data joins with \\n into a single event", async () => {
@@ -331,7 +331,7 @@ test("READ SSE: comment and metadata-only frames drop; only data dispatches", as
     });
     const { chunks, closed } = inspect();
     assert.deepEqual(sseBody(chunks), ["payload\n"]);
-    assert.equal(closed?.outcome, "SSE stream; 1 events");
+    assert.equal(closed?.summary, "SSE stream; 1 events");
 });
 
 test("READ SSE: an event split across network chunks reassembles", async () => {
@@ -360,7 +360,8 @@ test("READ SSE: an oversized incomplete event fails the remote stream", async ()
             assert.equal(result.status, 502);
             assert.match(result.problem?.detail ?? "", /max buffer size of 8/);
         });
-        assert.equal(inspect().closed?.reason, "error");
+        assert.equal(inspect().closed?.result.status, 502);
+        assert.equal(inspect().closed?.result.problem?.type, "https://problems.plurnk.dev/scheme/http/fetch-failed");
     } finally {
         if (previous === undefined) delete process.env.PLURNK_SCHEMES_HTTP_SSE_MAX_BUFFER_CHARS;
         else process.env.PLURNK_SCHEMES_HTTP_SSE_MAX_BUFFER_CHARS = previous;
@@ -384,8 +385,8 @@ test("READ: rendered HTML archives the DOM while body carries the model-facing p
     const htmlChunks = chunks.filter((c) => c.channel === "html");
     assert.equal(htmlChunks[0]?.chunk, "<html><body>rendered</body></html>");
     assert.equal(htmlChunks[0]?.mimetype, "text/html");
-    assert.equal(closed?.reason, "done");
-    assert.match(closed?.outcome ?? "", /rendered HTTP 200; \d+ readable chars/);
+    assert.equal(closed?.result.status, 200);
+    assert.match(closed?.summary ?? "", /rendered HTTP 200; \d+ readable chars/);
 });
 
 test("SEND[200]: an HTML response is NOT rendered (POST can't be a navigation)", async () => {
@@ -414,7 +415,7 @@ test("READ: empty response body closes done without body chunks", async () => {
     });
     const { chunks, closed } = inspect();
     assert.equal(chunks.filter((c) => c.channel === "body").length, 0);
-    assert.equal(closed?.reason, "done");
+    assert.equal(closed?.result.status, 200);
 });
 
 test("READ: network failure → close error + 502", async () => {
@@ -424,7 +425,8 @@ test("READ: network failure → close error + 502", async () => {
         assert.equal(r.status, 502);
         assert.equal(r.problem?.type, "https://problems.plurnk.dev/scheme/http/fetch-failed");
     });
-    assert.equal(inspect().closed?.reason, "error");
+    assert.equal(inspect().closed?.result.status, 502);
+    assert.equal(inspect().closed?.result.problem?.type, "https://problems.plurnk.dev/scheme/http/fetch-failed");
 });
 
 // ── SEND verbs ────────────────────────────────────────────────────────────
@@ -591,7 +593,7 @@ test("READ revalidation: prior ETag → If-None-Match → 304 serves cached proj
     const body = inspect().chunks.filter((c) => c.channel === "body").map((c) => c.chunk).join("");
     assert.equal(body, "cached page");                      // cached body re-served
     assert.equal(inspect().chunks.find((c) => c.channel === "html")?.chunk, "<html>cached page</html>");
-    assert.match(inspect().closed?.outcome ?? "", /revalidated 304/); // honest in the close summary
+    assert.match(inspect().closed?.summary ?? "", /revalidated 304/); // honest in the close summary
 });
 
 test("READ revalidation: 200 (changed) re-fetches + streams normally despite a prior entry", async () => {
@@ -601,7 +603,7 @@ test("READ revalidation: 200 (changed) re-fetches + streams normally despite a p
     });
     const body = inspect().chunks.filter((c) => c.channel === "body").map((c) => c.chunk).join("");
     assert.equal(body, "fresh content");
-    assert.match(inspect().closed?.outcome ?? "", /HTTP 200; \d+ bytes/); // normal path, not revalidated
+    assert.match(inspect().closed?.summary ?? "", /HTTP 200; \d+ bytes/); // normal path, not revalidated
 });
 
 test("READ revalidation: no prior entry → no conditional headers, full fetch", async () => {
@@ -643,7 +645,7 @@ test("TTL: fresh stamp serves the stored copy with ZERO round-trips", async () =
     assert.equal(fetched, false); // no network at all — the pre-fetch phase served
     const body = inspect().chunks.filter((c) => c.channel === "body").map((c) => c.chunk).join("");
     assert.equal(body, "cached page");
-    assert.match(inspect().closed?.outcome ?? "", /ttl-fresh/);
+    assert.match(inspect().closed?.summary ?? "", /ttl-fresh/);
 });
 
 test("TTL: stale stamp falls through to the conditional GET (revalidates)", async () => {
@@ -761,6 +763,7 @@ test("force-cancel via the SubscriptionHandle aborts the fetch → 499", async (
         assert.equal(r.status, 499);
         assert.equal(r.problem?.type, "https://problems.plurnk.dev/scheme/http/aborted");
     });
-    assert.equal(inspect().closed?.reason, "cancelled");
-    assert.equal(inspect().closed?.outcome, "aborted");
+    assert.equal(inspect().closed?.result.status, 499);
+    assert.equal(inspect().closed?.result.problem?.type, "https://problems.plurnk.dev/scheme/http/aborted");
+    assert.equal(inspect().closed?.summary, "aborted");
 });

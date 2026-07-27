@@ -1,4 +1,4 @@
-import { BaseExecutor } from "@plurnk/plurnk-execs";
+import { BaseExecutor, Results } from "@plurnk/plurnk-execs";
 import type { ChannelDecl, Effect, ExecArgs, ExecResult, RuntimeAvailability } from "@plurnk/plurnk-execs";
 
 // Runtime tag → SearXNG `categories=` value. The flat tag set this sibling
@@ -120,9 +120,8 @@ export default class Search extends BaseExecutor {
 
         const query = command.trim();
         const fail = (kind: string, message: string, status = 500): ExecResult => {
-            emit({ source: `exec:${runtime}`, kind, message });
             setState("results", "errored");
-            return { status };
+            return Results.failure("executor:search", kind.replaceAll("_", "-"), status, message, {}, { runtime });
         };
 
         // External bangs (`!!`) redirect to an upstream site instead of
@@ -168,7 +167,7 @@ export default class Search extends BaseExecutor {
             // Caller cancellation is normal flow, not telemetry-worthy.
             if (signal.aborted) {
                 setState("results", "errored");
-                return { status: 499 };
+                return Results.failure("executor:search", "cancelled", 499, "Search execution was cancelled.", {}, { runtime });
             }
             const e = err as { name?: string; code?: string; cause?: { code?: string; message?: string } };
             if (e.name === "TimeoutError") {
@@ -245,7 +244,7 @@ export default class Search extends BaseExecutor {
         if (entry && unique.length > 0) reportProgress("complete");
         if (signal.aborted) {
             setState("results", "errored");
-            return { status: 499 };
+            return Results.failure("executor:search", "cancelled", 499, "Search execution was cancelled.", {}, { runtime });
         }
         // Emit a model-consumable digest, not the raw upstream payload (#17): a
         // raw SearXNG result is ~10–20× its information content, and a wake that

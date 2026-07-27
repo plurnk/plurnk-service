@@ -1,6 +1,7 @@
 import { parsePath } from "@plurnk/plurnk-grammar";
 import type { ExecStatement, FindStatement, ReadStatement, TelemetryEvent } from "@plurnk/plurnk-grammar";
 import { Policy, type ChannelState } from "@plurnk/plurnk-execs";
+import type { ExecResult as ExecutorResult } from "@plurnk/plurnk-execs";
 import { WebFetcher, type WebFetchResult } from "@plurnk/plurnk-schemes-http";
 import type { Executor } from "../core/ExecutorRegistry.ts";
 import WorkspaceSettings from "../core/workspace-settings.ts";
@@ -25,7 +26,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { CoreSchemeAdapterBase } from "../core/CoreSchemeServices.ts";
 import type { CoreSchemeCallContext } from "../core/CoreSchemeServices.ts";
-import Results, { type SchemeResultBase } from "../core/results.ts";
+import Results, { type SchemeResult, type SchemeResultBase } from "../core/results.ts";
 
 type ExecResult = SchemeResultBase & { body?: string; attrs?: object };
 
@@ -139,7 +140,7 @@ export default class Exec extends CoreSchemeAdapterBase {
     }
 
     #activeAborts = new Map<number, { workerId: number; pathname: string; runtime: string; effect: Effect; controller: AbortController; unlink: () => void }>();
-    #activeSpawns = new Map<number, Promise<number>>();
+    #activeSpawns = new Map<number, Promise<SchemeResult>>();
 
     async idle(): Promise<void> {
         await Promise.allSettled([...this.#activeSpawns.values()]);
@@ -444,7 +445,7 @@ export default class Exec extends CoreSchemeAdapterBase {
         pathname: string; entryId: number; subscriptionId: number; signal: AbortSignal;
         controller: AbortController; timeoutSec: number | null;
         tempPath: string | null;
-    }): Promise<number> {
+    }): Promise<SchemeResult> {
         const { executor, runtime, command, cwd, target, ctx, pathname, entryId, subscriptionId, signal, controller, timeoutSec, tempPath } = opts;
         const db = ctx.db;
         const coordinate = coordinateFromPathname(pathname);  // #224 — stamped on stream/event + stream/concluded
@@ -459,8 +460,13 @@ export default class Exec extends CoreSchemeAdapterBase {
         const enqueue = (op: () => Promise<void>): void => {
             queue = queue.then(op, op);
         };
-        let closeStatus = 500;
-        let exitLabel = "spawn_failed";
+        let result: SchemeResult = Results.failure(
+            "scheme:exec",
+            "executor-did-not-conclude",
+            500,
+            `The '${runtime}' executor did not produce a terminal result.`,
+        );
+        let exitLabel = "did not conclude";
         let stdoutLength = 0;
         let stderrLength = 0;
         // §exec-entry-sink (#340) — the executor's entry() materialization request. The executor
@@ -566,9 +572,8 @@ export default class Exec extends CoreSchemeAdapterBase {
             return run;
         };
         try {
-            let result: { status: number; exitCode?: number } | null = null;
             try {
-                result = await executor.run({
+                const reported: ExecutorResult = await executor.run({
                     runtime, command, cwd, target, signal,
                     entry: entrySink,
                     env: ExecEnv.scoped(),  // SPEC §exec {§exec-env-scoped} — never plurnk's own secrets
@@ -588,27 +593,59 @@ export default class Exec extends CoreSchemeAdapterBase {
                 // Drain the queue so the subscription doesn't close before
                 // final chunk events / state transitions have committed.
                 await queue;
+                try {
+                    result = Results.assert(reported);
+                } catch (cause) {
+                    result = Results.failure(
+                        "scheme:exec",
+                        "executor-invalid-result",
+                        500,
+                        `The '${runtime}' executor returned an invalid operation result: ${cause instanceof Error ? cause.message : String(cause)}`,
+                    );
+                }
             } catch (cause) {
                 // A rejecting driver must still CONCLUDE its stream — uncaught, the subscription sat
                 // open forever and the floating spawn promise was an unhandled rejection.
-                exitLabel = `driver_crashed: ${cause instanceof Error ? cause.message : String(cause)}`;
+                result = Results.failure(
+                    "scheme:exec",
+                    "executor-threw",
+                    500,
+                    `The '${runtime}' executor threw: ${cause instanceof Error ? cause.message : String(cause)}`,
+                );
             }
 
-            if (result !== null) {
-                const exitCode = result.exitCode ?? -1;
-                closeStatus = result.status;
-                // A timeout aborts the spawn → the executor reports 499; restamp it 504 so the model
-                // sees "ran out of time" distinct from a deliberate kill/cancel (§exec-timeout).
-                if (timedOut && closeStatus === 499) closeStatus = 504;
-                // The service's own abort knowledge outranks a driver's claim: a spawn we reaped
-                // (teardown/kill/cancel) did not succeed, whatever status it resolved under abort.
-                if (signal.aborted && !timedOut && closeStatus < 400) { closeStatus = 499; exitLabel = "reaped"; }
-                else exitLabel = closeStatus === 504 ? `timed out after ${timeoutSec}s`
-                    : closeStatus === 499 ? "aborted"
-                    : closeStatus === 500 && exitCode === -1 ? "spawn_failed"
-                    : `exit ${exitCode}`;
+            const exitCode = typeof result.exitCode === "number" ? result.exitCode : null;
+            // A timeout aborts the spawn → the executor reports 499; replace the
+            // complete result so status and Problem remain one valid truth.
+            if (timedOut) {
+                result = Results.failure(
+                    "scheme:exec",
+                    "execution-timeout",
+                    504,
+                    `Execution of '${runtime}' exceeded its ${timeoutSec}-second deadline.`,
+                    exitCode === null ? {} : { exitCode },
+                    { runtime, timeoutSeconds: timeoutSec },
+                );
+            // The service's own abort knowledge outranks a driver's claim: a
+            // spawn we reaped did not succeed, whatever it resolved under abort.
+            } else if (signal.aborted && result.status < 400) {
+                result = Results.failure(
+                    "scheme:exec",
+                    "execution-cancelled",
+                    499,
+                    `Execution of '${runtime}' was cancelled by the service.`,
+                    exitCode === null ? {} : { exitCode },
+                    { runtime },
+                );
             }
-            await ChannelWrite.closeSubscription(db, { subscriptionId, status: closeStatus });
+            exitLabel = timedOut
+                ? `timed out after ${timeoutSec}s`
+                : result.status === 499
+                    ? "aborted"
+                    : exitCode !== null
+                        ? `exit ${exitCode}`
+                        : result.problem?.title.toLowerCase() ?? "completed";
+            await ChannelWrite.closeSubscription(db, { subscriptionId, result });
 
             const stdoutMeta = await db.channel_meta.get<{ contentLength: number }>({ entry_id: entryId, channel: "stdout" });
             const stderrMeta = await db.channel_meta.get<{ contentLength: number }>({ entry_id: entryId, channel: "stderr" });
@@ -634,14 +671,14 @@ export default class Exec extends CoreSchemeAdapterBase {
             if (ctx.wakeWorkerNotify !== undefined) {
                 ctx.wakeWorkerNotify({
                     workspaceId: ctx.workspaceId, workerId: ctx.workerId,
-                    entryId, target: `${runtime}://${pathname}`, subscriptionId, closeStatus,
+                    entryId, target: `${runtime}://${pathname}`, subscriptionId, result,
                     scheme: runtime,
                     summary: `${runtime}://${pathname} completed (${exitLabel}); stdout=${stdoutLength} bytes, stderr=${stderrLength} bytes`,
                     ...coordinate,
                 });
             }
         }
-        return closeStatus;
+        return result;
     }
 
     async read(statement: ReadStatement, ctx: CoreSchemeCallContext): Promise<ReadResult> {

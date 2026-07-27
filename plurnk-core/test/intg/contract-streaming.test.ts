@@ -18,7 +18,7 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Exec from "../../src/schemes/Exec.ts";
 import ChannelWrite from "../../src/core/ChannelWrite.ts";
-import type { SchemeCtx } from "@plurnk/plurnk-schemes";
+import { Results, type SchemeCtx } from "@plurnk/plurnk-schemes";
 import {
     openMigrated, seedEnvelope, seedEntryWithChannel,
     insertWorkspace, insertWorker, insertLoop, insertTurn, testExecutors,
@@ -63,7 +63,10 @@ test("SEND[499] resolves the registry to the owning scheme + stored handle and t
                 await ctx.subscriptions.open(path.pathname, {
                     cancel: async () => {
                         teardownByHandle.push(HANDLE);
-                        await ctx.subscriptions.close("cancelled", "cancelled by SEND[499]");
+                        await ctx.subscriptions.close(
+                            Results.failure("scheme:fakestream", "cancelled", 499, "The stream was cancelled by SEND[499]."),
+                            "cancelled by SEND[499]",
+                        );
                     },
                 });
                 return { status: 102 };
@@ -98,9 +101,21 @@ test("SEND[499] resolves the registry to the owning scheme + stored handle and t
         assert.equal(result.status, 200, "owning scheme accepted the cancel");
         assert.deepEqual(teardownByHandle, [HANDLE], "registry routed teardown to the stored handle");
 
-        const sub = await db.test_get_subscription.get<{ closed_at: string | null; close_status: number | null }>({ id: subId });
+        const sub = await db.test_get_subscription.get<{
+            closed_at: string | null;
+            close_status: number | null;
+            close_result: string | null;
+        }>({ id: subId });
         assert.ok(sub?.closed_at !== null, "subscription registry row marked closed");
         assert.equal(sub?.close_status, 499, "registry row closed at 499");
+        const terminal = JSON.parse(sub?.close_result ?? "null") as {
+            status?: number;
+            problem?: { type?: string; status?: number; detail?: string };
+        };
+        assert.equal(terminal.status, 499);
+        assert.equal(terminal.problem?.status, 499);
+        assert.equal(terminal.problem?.type, "https://problems.plurnk.dev/scheme/fakestream/cancelled");
+        assert.equal(terminal.problem?.detail, "The stream was cancelled by SEND[499].");
         assert.equal(await ChannelWrite.findActiveSubscription(db, { workerId, entryId }), null, "no active subscription remains");
 
         const channel = await db.test_get_channel.get<{ state: string }>({ entry_id: entryId, name: "data" });

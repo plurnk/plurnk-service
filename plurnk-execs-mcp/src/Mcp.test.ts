@@ -180,28 +180,33 @@ test("run: an empty body writes the live tool catalog with server-provided schem
 test("run: an isError tool result closes errored with status 500", async () => {
     const { result, writes, states } = await invoke("echo", "", { target: "boom" });
     assert.equal(result.status, 500);
+    assert.equal(result.problem?.type, "https://problems.plurnk.dev/executor/mcp/tool-reported-error");
     assert.equal(JSON.parse(writes[0].chunk).isError, true);
     assert.equal(states.at(-1)?.state, "errored");
 });
 
-test("run: non-JSON tool arguments → mcp_bad_arguments, status 400, no call", async () => {
+test("run: non-JSON tool arguments → durable Problem, status 400, no call", async () => {
     const { result, events, states } = await invoke("echo", "{not json}", { target: "echo" });
     assert.equal(result.status, 400);
-    assert.equal(events[0].kind, "mcp_bad_arguments");
+    assert.equal(result.problem?.type, "https://problems.plurnk.dev/executor/mcp/mcp-bad-arguments");
+    assert.match(result.problem?.detail ?? "", /must be a JSON object/);
+    assert.equal(events.length, 0);
     assert.equal(states.at(-1)?.state, "errored");
 });
 
 test("run: an unknown tool surfaces as mcp_tool_error, status 500", async () => {
     const { result, events } = await invoke("echo", "{}", { target: "nope" });
     assert.equal(result.status, 500);
-    assert.equal(events[0].kind, "mcp_tool_error");
-    assert.match(String(events[0].message), /unknown tool/);
+    assert.equal(result.problem?.type, "https://problems.plurnk.dev/executor/mcp/mcp-tool-error");
+    assert.match(result.problem?.detail ?? "", /unknown tool/);
+    assert.equal(events.length, 0);
 });
 
 test("run: an unconfigured server → mcp_not_configured, status 500", async () => {
     const { result, events } = await invoke("ghost", "anything");
     assert.equal(result.status, 500);
-    assert.equal(events[0].kind, "mcp_not_configured");
+    assert.equal(result.problem?.type, "https://problems.plurnk.dev/executor/mcp/mcp-not-configured");
+    assert.equal(events.length, 0);
 });
 
 test("run: a caller-aborted signal settles 499 with no telemetry", async () => {
@@ -209,6 +214,7 @@ test("run: a caller-aborted signal settles 499 with no telemetry", async () => {
     controller.abort();
     const { result, events } = await invoke("echo", '{"msg":"x"}', { target: "echo", signal: controller.signal });
     assert.equal(result.status, 499);
+    assert.equal(result.problem?.type, "https://problems.plurnk.dev/executor/mcp/cancelled");
     assert.equal(events.length, 0, "caller cancellation is normal flow, not telemetry");
 });
 
@@ -220,8 +226,9 @@ test("run: an HTTP server that requires auth surfaces mcp_auth_required (401), n
     try {
         const { result, events, states } = await invoke("authsrv", "{}", { target: "some_tool" });
         assert.equal(result.status, 401, "auth-required is a distinct 401, not a 500 hard failure");
-        assert.equal(events[0].kind, "mcp_auth_required");
-        assert.equal(events[0].server, "authsrv");
+        assert.equal(result.problem?.type, "https://problems.plurnk.dev/executor/mcp/authentication-required");
+        assert.equal(result.problem?.runtime, "authsrv");
+        assert.equal(events.length, 0);
         assert.equal(states.at(-1)?.state, "errored");
     } finally {
         delete process.env.PLURNK_EXECS_MCP_AUTHSRV;
@@ -268,7 +275,8 @@ test("hotload: an injected server is refused at run() when PLURNK_EXECS_MCP_INST
     delete process.env.PLURNK_EXECS_MCP_INSTALL;
     const { result, events, states } = await invoke("hotecho", "", { target: "echo" });
     assert.equal(result.status, 501);
-    assert.equal(events[0].kind, "mcp_install_disabled");
+    assert.equal(result.problem?.type, "https://problems.plurnk.dev/executor/mcp/mcp-install-disabled");
+    assert.equal(events.length, 0);
     assert.deepEqual(states, [{ channel: "results", state: "errored" }]);
 });
 

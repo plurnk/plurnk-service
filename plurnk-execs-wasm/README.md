@@ -32,7 +32,7 @@ to the `results` channel (`application/json`). A module that imports `(import "e
 
 - **`effect`** — inline body → `pure` (sandboxed; **auto-runs inline**, never proposal-gated). File-path target → `read` (it touches the filesystem, even though execution stays sandboxed). Target-classified, never command-inspected.
 - **`probe`** — always available (`WebAssembly` builtin + bundled `wabt`).
-- **Errors** emit a `TelemetryEvent` (`source: "exec:wat"`/`"exec:wasm"`): `wat_parse_error`, `wasm_invalid`, `wasm_trap`, `wasm_read_failed`, `wabt_init_failed`.
+- **Errors** return RFC 9457 Problems in the terminal operation result.
 
 ## Tests
 

@@ -23,7 +23,10 @@ Built on the [plurnk-execs](https://github.com/plurnk/plurnk-service/tree/main/p
 
 ## Availability & gating
 
-`probe()` is always available — in-process, nothing on PATH to check. Every op is `effect → host` (proposal-gated): mutating verbs exist and `effect()` never inspects the command. Failures emit `TelemetryEvent`s (`source: "exec:git"`): `git_unknown_op`, `git_bad_arguments`, `git_no_author`, `git_error`.
+`probe()` is always available — in-process, nothing on PATH to check. Every op
+is `effect → host` (proposal-gated): mutating verbs exist and `effect()` never
+inspects the command. Failures return RFC 9457 Problems in the terminal
+operation result.
 
 ## Tests
 

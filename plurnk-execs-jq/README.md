@@ -22,7 +22,8 @@ Output → the `results` channel (`application/json`).
 
 - **`effect`** — inline/`-n` → `pure`; a file-path data source → `read` (filesystem). Both **auto-run** (jq is a pure filter — no host writes or exec).
 - **`probe`** — `jq` on PATH (`jq --version`).
-- **Errors** emit a `TelemetryEvent` (`source: "exec:jq"`): `jq_error` (program/parse failure), `jq_spawn_failed`.
+- **Errors** return RFC 9457 Problems (`jq-error`, `spawn-failed`) in the
+  terminal operation result.
 
 jq is a leaf process, so cancellation is a plain signal kill — no process-group handling needed.
 

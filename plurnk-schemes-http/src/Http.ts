@@ -284,7 +284,7 @@ export default class Http implements SchemeHandler {
             await ctx.subscriptions.notifyChunk(HEADER, cached.header, "text/plain");
             if (cached.html !== undefined) await ctx.subscriptions.notifyChunk("html", cached.html.content, cached.html.mimetype);
             await ctx.subscriptions.notifyChunk(BODY, cached.body.content, cached.body.mimetype);
-            await ctx.subscriptions.close("done", `ttl-fresh; ${cached.body.content.length} chars from cache`);
+            await ctx.subscriptions.close({ status: 200 }, `ttl-fresh; ${cached.body.content.length} chars from cache`);
             return { shape: "passthrough", status: 102 };
         }
 
@@ -329,7 +329,7 @@ export default class Http implements SchemeHandler {
                 await ctx.subscriptions.notifyChunk(HEADER, Http.#stamp(cached.header), "text/plain");
                 if (cached.html !== undefined) await ctx.subscriptions.notifyChunk("html", cached.html.content, cached.html.mimetype);
                 await ctx.subscriptions.notifyChunk(BODY, cached.body.content, cached.body.mimetype);
-                await ctx.subscriptions.close("done", `revalidated 304; ${cached.body.content.length} chars from cache`);
+                await ctx.subscriptions.close({ status: 200 }, `revalidated 304; ${cached.body.content.length} chars from cache`);
                 return { shape: "passthrough", status: 102 };
             }
 
@@ -349,7 +349,7 @@ export default class Http implements SchemeHandler {
                 await Http.#writeHeader(ctx, result.status, result.statusText, result.headers);
                 await ctx.subscriptions.notifyChunk("html", result.html, "text/html");
                 await ctx.subscriptions.notifyChunk(BODY, projected.content, projected.mimetype);
-                await ctx.subscriptions.close("done", `rendered HTTP ${result.status}; ${projected.content.length} readable chars`);
+                await ctx.subscriptions.close({ status: 200 }, `rendered HTTP ${result.status}; ${projected.content.length} readable chars`);
                 return { shape: "passthrough", status: 102 };
             }
 
@@ -367,7 +367,7 @@ export default class Http implements SchemeHandler {
             await Http.#writeHeader(ctx, response.status, response.statusText, [...response.headers]);
             const bodyMime = contentType.split(";")[0].trim() || "application/octet-stream";
             if (response.body === null) {
-                await ctx.subscriptions.close("done", `HTTP ${response.status}; empty body`);
+                await ctx.subscriptions.close({ status: 200 }, `HTTP ${response.status}; empty body`);
                 return { shape: "passthrough", status: 102 };
             }
             let bytes = 0;
@@ -379,14 +379,15 @@ export default class Http implements SchemeHandler {
             const tail = decoder.decode();
             if (tail.length > 0) await ctx.subscriptions.notifyChunk(BODY, tail, bodyMime);
 
-            await ctx.subscriptions.close("done", `HTTP ${response.status}; ${bytes} bytes`);
+            await ctx.subscriptions.close({ status: 200 }, `HTTP ${response.status}; ${bytes} bytes`);
             return { shape: "passthrough", status: 102 };
         } catch (err) {
             const aborted = local.signal.aborted;
             const reason = aborted ? "aborted" : err instanceof Error ? err.message : String(err);
-            await ctx.subscriptions.close(aborted ? "cancelled" : "error", reason);
             // 499 for client-cancelled, 502 for upstream/network/render failure.
-            return Http.#bad(aborted ? 499 : 502, "http", aborted ? "aborted" : "fetch_failed", reason);
+            const result = Http.#bad(aborted ? 499 : 502, "http", aborted ? "aborted" : "fetch_failed", reason);
+            await ctx.subscriptions.close(result, reason);
+            return result;
         } finally {
             composed.removeEventListener("abort", onAbort);
         }
@@ -417,7 +418,7 @@ export default class Http implements SchemeHandler {
     // this projection publishes data, not the wire, and does not reconnect.
     static async #streamEvents(ctx: SchemeCtx, response: Response): Promise<PassthroughResult> {
         if (response.body === null) {
-            await ctx.subscriptions.close("done", "SSE stream; empty body");
+            await ctx.subscriptions.close({ status: 200 }, "SSE stream; empty body");
             return { shape: "passthrough", status: 102 };
         }
         const decoder = new TextDecoder();
@@ -449,7 +450,7 @@ export default class Http implements SchemeHandler {
         parser.reset({ consume: true });
         if (fatal !== null) throw fatal;
         await publish();
-        await ctx.subscriptions.close("done", `SSE stream; ${events} events`);
+        await ctx.subscriptions.close({ status: 200 }, `SSE stream; ${events} events`);
         return { shape: "passthrough", status: 102 };
     }
 

@@ -240,7 +240,7 @@ INSERT INTO log_entries (
 -- channel's unshown byte-delta. Stays listed until its last delta is shown (cursor == content len).
 SELECT s.id AS subscription_id, e.scheme AS runtime, e.pathname AS coord,
     ec.name AS channel, ec.content AS content, ec.state AS state, s.close_status AS close_status,
-    s.published_channel AS published_channel
+    s.close_result AS close_result, s.published_channel AS published_channel
 FROM subscriptions s
 JOIN entries e ON e.id = s.entry_id
 JOIN entry_channels ec ON ec.entry_id = s.entry_id
@@ -259,7 +259,7 @@ ORDER BY id DESC LIMIT 1;
 
 -- PREP: engine_insert_stream_delta
 -- §exec-stream / §env-delta — materialize a channel's unshown byte-delta as a
--- foisted READ@200 row (the model READs the stream it never typed). origin=plurnk; fragment is
+-- foisted READ row (the model READs the stream it never typed). origin=plurnk; fragment is
 -- the channel; attrs.streamEnd is the next turn's cursor; expanded=1 when the channel has CLOSED
 -- (the terminal delta auto-OPENs), 0 while it streams (ongoing deltas fold). §exec-stream
 INSERT INTO log_entries (
@@ -267,7 +267,7 @@ INSERT INTO log_entries (
     op, scheme, pathname, fragment, tx, mimetype_tx, rx, mimetype_rx, status_rx, attrs, expanded
 ) VALUES (
     $worker_id, $loop_id, $turn_id, $sequence, 'plurnk', NULL,
-    'READ', $scheme, $pathname, $fragment, '', 'text/plain', $rx, 'application/json', 200, $attrs, $expanded
+    'READ', $scheme, $pathname, $fragment, '', 'text/plain', $rx, 'application/json', $status, $attrs, $expanded
 );
 
 -- PREP: engine_pull_loop_terminations

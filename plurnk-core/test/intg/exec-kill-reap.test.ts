@@ -46,8 +46,8 @@ test("teardown hard-kills a SIGHUP/SIGTERM-ignoring background spawn — the bou
                 assert.equal((cancel.result as { cancelled: boolean }).cancelled, true, "cancel saw the live spawn as work");
 
                 await waitFor(
-                    () => concluded() as Array<{ scheme: string; closeStatus: number }>,
-                    (cs) => cs.some((c) => c.scheme === "sh" && c.closeStatus === 499),
+                    () => concluded() as Array<{ scheme: string; result: { status: number } }>,
+                    (cs) => cs.some((c) => c.scheme === "sh" && c.result.status === 499),
                     { timeoutMs: 5000 },
                 );
             } finally { ws.close(); }

@@ -38,7 +38,9 @@ Writes to the `results` channel as `application/json`, ready for the jsonpath bo
 - **Row-returning statements** (SELECT, RETURNING, PRAGMA) → an array of row objects.
 - **Mutations** (INSERT/UPDATE/DELETE/DDL) → `{ changes, lastInsertRowid }`.
 
-The query/mutation split is decided by the prepared statement's `columns()`, never by parsing the SQL. One statement per EXEC. Errors emit a `TelemetryEvent` (`source: "exec:sqlite"`): `sqlite_open_failed`, `sqlite_error`.
+The query/mutation split is decided by the prepared statement's `columns()`,
+never by parsing the SQL. One statement per EXEC. Errors return RFC 9457
+Problems in the terminal operation result.
 
 ## Availability & proposal gating
 

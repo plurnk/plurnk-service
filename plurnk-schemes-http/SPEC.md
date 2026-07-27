@@ -54,7 +54,9 @@ All verbs share one streaming core:
 3. **Render gate ({§render-lifecycle}):** a GET whose response is HTML routes to the render path; a GET whose response is `text/event-stream` routes to the SSE path ({§sse}); everything else (POST responses, non-HTML bodies) streams raw.
 4. Response status + headers are persisted in `header`.
 5. Non-HTML body is persisted in `body` under its response type. Rendered HTML → `projection.readable(finalDom, "text/html")`, then the readable result goes to `body` and the faithful DOM to `html`. A page with no readable projection fails; raw DOM never silently becomes the model-facing body.
-6. `close("done", …)` on clean end; `close("error", reason)` on failure.
+6. `close(result, summary)` with the exact operation result: `{ status: 200 }`
+   on clean end or an RFC 9457 Problem on failure. The optional summary is
+   presentation only.
 
 Returns `102 Processing` on success (the subscription drives the channel content). The composed signal aborting (loop.cancel) and the local handle (SEND[499]) both tear the fetch/render down.
 

@@ -126,7 +126,8 @@ test("run: a whitespace / malformed URL fails clean (500), never constructs a ba
         process.env.PLURNK_EXECS_SEARCH_SEARXNG_URL = v;
         const { result, events, states } = await invoke("search", "q");
         assert.equal(result.status, 500, `"${v}" → clean 500, not an uncaught throw`);
-        assert.equal(events[0].kind, "searxng_not_configured");
+        assert.equal(result.problem?.type, "https://problems.plurnk.dev/executor/search/searxng-not-configured");
+        assert.equal(events.length, 0);
         assert.equal(states.at(-1)?.state, "errored");
     }
     assert.equal(fetched, false, "a bad base never reaches fetch (and never `new URL`s to throw)");
@@ -374,13 +375,14 @@ test("ENGINES passes the operator's SearXNG engine selection through", async () 
     assert.equal(seen, "braveapi");
 });
 
-test("non-ok response → searxng_http_<n>, errored channel, status 500", async () => {
+test("non-ok response → durable HTTP Problem, errored channel, status 500", async () => {
     setFetch(async () => ({ ok: false, status: 502, statusText: "Bad Gateway", json: async () => ({}) }));
     const { result, states, events } = await invoke("news", "q");
 
     assert.equal(result.status, 500);
-    assert.equal(events[0].source, "exec:news");
-    assert.equal(events[0].kind, "searxng_http_502");
+    assert.equal(result.problem?.type, "https://problems.plurnk.dev/executor/search/searxng-http-502");
+    assert.match(result.problem?.detail ?? "", /SearXNG 502 Bad Gateway/);
+    assert.equal(events.length, 0);
     assert.equal(states.at(-1)?.state, "errored");
 });
 
@@ -393,8 +395,9 @@ test("fetch failure → searxng_unreachable surfacing the cause code", async () 
     const { result, events } = await invoke("search", "q");
 
     assert.equal(result.status, 500);
-    assert.equal(events[0].kind, "searxng_unreachable");
-    assert.match(String(events[0].message), /ENOTFOUND/);
+    assert.equal(result.problem?.type, "https://problems.plurnk.dev/executor/search/searxng-unreachable");
+    assert.match(result.problem?.detail ?? "", /ENOTFOUND/);
+    assert.equal(events.length, 0);
 });
 
 test("timeout → searxng_timeout, errored channel, status 500", async () => {
@@ -404,7 +407,9 @@ test("timeout → searxng_timeout, errored channel, status 500", async () => {
     delete process.env.PLURNK_EXECS_SEARCH_TIMEOUT;
 
     assert.equal(result.status, 500);
-    assert.equal(events[0].kind, "searxng_timeout");
+    assert.equal(result.problem?.type, "https://problems.plurnk.dev/executor/search/searxng-timeout");
+    assert.match(result.problem?.detail ?? "", /timeout after 5ms/);
+    assert.equal(events.length, 0);
     assert.equal(states.at(-1)?.state, "errored");
 });
 
@@ -415,7 +420,8 @@ test("missing SEARXNG url → searxng_not_configured, status 500, no fetch", asy
     const { result, events } = await invoke("search", "q");
 
     assert.equal(result.status, 500);
-    assert.equal(events[0].kind, "searxng_not_configured");
+    assert.equal(result.problem?.type, "https://problems.plurnk.dev/executor/search/searxng-not-configured");
+    assert.equal(events.length, 0);
     assert.equal(called, false);
 });
 
@@ -425,7 +431,9 @@ test("external bang (!!) refused with status 400, no fetch", async () => {
     const { result, events } = await invoke("search", "!!ddg something");
 
     assert.equal(result.status, 400);
-    assert.equal(events[0].kind, "external_bang_refused");
+    assert.equal(result.problem?.type, "https://problems.plurnk.dev/executor/search/external-bang-refused");
+    assert.match(result.problem?.detail ?? "", /external bang refused/);
+    assert.equal(events.length, 0);
     assert.equal(called, false);
 });
 
@@ -436,6 +444,7 @@ test("caller-aborted signal → status 499, no telemetry", async () => {
     const { result, events } = await invoke("search", "q", { signal: controller.signal });
 
     assert.equal(result.status, 499);
+    assert.equal(result.problem?.type, "https://problems.plurnk.dev/executor/search/cancelled");
     assert.equal(events.length, 0);
 });
 

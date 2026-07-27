@@ -127,7 +127,7 @@ export interface TagCaps {
 // content).
 //
 // There is no `wakeWorker` here. The run-wake carries subscription-close
-// context (entryId / subscriptionId / closeStatus / scheme / summary) that
+// context (entryId / subscriptionId / exact result / scheme / summary) that
 // only exists at stream completion, so it belongs to `subscriptions.close`,
 // which already composites it (channel state + registry close + run wake).
 // Only streaming schemes wake a worker, and always via close; synchronous entry
@@ -186,10 +186,11 @@ export interface SubscriptionCaps {
     // forget or mis-order. (plurnk-service#226.)
     notifyChunk(channel: string, chunk: string, mimetype?: string): Promise<void>;
 
-    // Settle the subscription: set channel state (closed/errored), close the
-    // registry row, and fire the worker wake ("stream concluded" + summary).
-    // `outcome` carries the scheme's summary (exec: exit-code + byte-counts).
-    close(reason: "done" | "error" | "cancelled", outcome?: string): Promise<void>;
+    // Settle the subscription: validate and persist the exact universal
+    // operation result, set channel state, and fire the worker wake ("stream
+    // concluded" + summary). The summary is presentation; it never substitutes
+    // for the structured terminal result.
+    close(result: SchemeResult, summary?: string): Promise<void>;
 }
 
 // The force-cancel hook a streaming scheme hands to `open`. The engine's

@@ -99,18 +99,21 @@ test("mutation round-trip against a file db: CREATE, INSERT (changes), SELECT (r
     assert.deepEqual(JSON.parse(select.out!), [{ id: 1, name: "alice" }]);
 });
 
-test("SQL error → sqlite_error telemetry, errored channel, 500", async () => {
+test("SQL error → durable Problem, errored channel, 500", async () => {
     const { result, states, events } = await run("SELECT * FROM does_not_exist");
     assert.equal(result.status, 500);
-    assert.equal(events[0].source, "exec:sqlite");
-    assert.equal(events[0].kind, "sqlite_error");
+    assert.equal(result.problem?.type, "https://problems.plurnk.dev/executor/sqlite/sqlite-error");
+    assert.match(result.problem?.detail ?? "", /does_not_exist/);
+    assert.equal(events.length, 0);
     assert.equal(states.at(-1), "errored");
 });
 
 test("syntax error → sqlite_error, 500", async () => {
     const { result, events } = await run("SELEKT oops");
     assert.equal(result.status, 500);
-    assert.equal(events[0].kind, "sqlite_error");
+    assert.equal(result.problem?.type, "https://problems.plurnk.dev/executor/sqlite/sqlite-error");
+    assert.match(result.problem?.detail ?? "", /near "SELEKT"/);
+    assert.equal(events.length, 0);
 });
 
 // #493 — SQLite's prepare compiles only the FIRST statement; a sqlite3-CLI-style
@@ -119,9 +122,10 @@ test("syntax error → sqlite_error, 500", async () => {
 test("multi-statement script → sqlite_multi_statement, 400, nothing truncated silently", async () => {
     const { result, events, states } = await run("CREATE TABLE t(x); INSERT INTO t VALUES(1)");
     assert.equal(result.status, 400);
-    assert.equal(events[0].kind, "sqlite_multi_statement");
-    assert.match(String(events[0].message), /one SQL statement per op/);
-    assert.match(String(events[0].message), /INSERT INTO t VALUES\(1\)/);
+    assert.equal(result.problem?.type, "https://problems.plurnk.dev/executor/sqlite/sqlite-multi-statement");
+    assert.match(result.problem?.detail ?? "", /one SQL statement per op/);
+    assert.match(result.problem?.detail ?? "", /INSERT INTO t VALUES\(1\)/);
+    assert.equal(events.length, 0);
     assert.equal(states.at(-1), "errored");
 });
 

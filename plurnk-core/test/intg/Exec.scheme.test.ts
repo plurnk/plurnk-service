@@ -207,8 +207,8 @@ test("directory (target) + empty body → 400 — a directory has nothing to run
 
 // applyResolution returns 200/"started" immediately; the spawn runs async.
 // The dispatch outcome on the log entry is "started" — the SPAWN's exit
-// info (exit code, abort) lives on the subscription row's close_status
-// and on the channel state transitions.
+// result lives intact on the subscription row's close_result; close_status is
+// its constrained relational projection and channels carry lifecycle state.
 
 test("EXEC[sh]: clean exit → channels at state=closed, stdout captured, subscription closed at 200", async () => {
     await withWorkspace(async (ctx) => {
@@ -239,10 +239,11 @@ test("EXEC[sh]: clean exit → channels at state=closed, stdout captured, subscr
         assert.equal(stdout?.content, "marker\n");
         assert.equal(stdout?.state, "closed");
 
-        const sub = await ctx.db.test_get_subscription_by_entry.get<{ close_status: number | null }>({
+        const sub = await ctx.db.test_get_subscription_by_entry.get<{ close_status: number | null; close_result: string | null }>({
             worker_id: ctx.workerId, entry_id: entryRow.id,
         });
         assert.equal(sub?.close_status, 200, "spawn's actual exit-0 lands on subscription.close_status");
+        assert.deepEqual(JSON.parse(sub?.close_result ?? "null"), { status: 200, exitCode: 0 });
     });
 });
 
@@ -273,10 +274,20 @@ test("EXEC[sh]: non-zero exit → channels=errored, stderr captured, subscriptio
         assert.equal(stderr?.content, "oops\n");
         assert.equal(stderr?.state, "errored");
 
-        const sub = await ctx.db.test_get_subscription_by_entry.get<{ close_status: number | null }>({
+        const sub = await ctx.db.test_get_subscription_by_entry.get<{ close_status: number | null; close_result: string | null }>({
             worker_id: ctx.workerId, entry_id: entryRow.id,
         });
         assert.equal(sub?.close_status, 500, "non-zero exit → subscription closed at 500");
+        const terminal = JSON.parse(sub?.close_result ?? "null") as {
+            status?: number;
+            exitCode?: number;
+            problem?: { type?: string; status?: number; detail?: string };
+        };
+        assert.equal(terminal.status, 500);
+        assert.equal(terminal.exitCode, 7);
+        assert.equal(terminal.problem?.status, 500);
+        assert.equal(terminal.problem?.type, "https://problems.plurnk.dev/executor/subprocess/nonzero-exit");
+        assert.equal(terminal.problem?.detail, "'sh' exited with code 7.");
     });
 });
 

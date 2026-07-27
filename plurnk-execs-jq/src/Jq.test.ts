@@ -104,10 +104,11 @@ test("env: honors a scoped env; vars the consumer dropped read as null (#8)", { 
     assert.equal(JSON.parse(dropped.out!), null);
 });
 
-test("a jq program error → jq_error telemetry, errored channel, 500", { skip: !HAS_JQ }, async () => {
+test("a jq program error → durable Problem, errored channel, 500", { skip: !HAS_JQ }, async () => {
     const { result, events, states } = await run("this is not valid jq");
     assert.equal(result.status, 500);
-    assert.equal(events[0].source, "exec:jq");
-    assert.equal(events[0].kind, "jq_error");
+    assert.equal(result.problem?.type, "https://problems.plurnk.dev/executor/jq/jq-error");
+    assert.match(result.problem?.detail ?? "", /compile error|syntax error/i);
+    assert.equal(events.length, 0);
     assert.equal(states.at(-1), "errored");
 });

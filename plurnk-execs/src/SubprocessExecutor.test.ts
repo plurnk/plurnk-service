@@ -153,10 +153,12 @@ test("sh: stdout streamed, channels closed, exit 0", async () => {
     assert.equal(events.length, 0);
 });
 
-test("sh: nonzero exit → status 500, errored channels, no telemetry (program result, not framework failure)", async () => {
+test("sh: nonzero exit → durable Problem result, errored channels, no telemetry", async () => {
     const { result, states, events } = await exec("sh", "echo oops 1>&2; exit 3");
     assert.equal(result.status, 500);
     assert.equal(result.exitCode, 3);
+    assert.equal(result.problem?.type, "https://problems.plurnk.dev/executor/subprocess/nonzero-exit");
+    assert.equal(result.problem?.detail, "'sh' exited with code 3.");
     assert.deepEqual(states, [
         { channel: "stdout", state: "errored" },
         { channel: "stderr", state: "errored" },
@@ -169,12 +171,12 @@ test("sh: stderr captured into the stderr channel", async () => {
     assert.equal(out.stderr, "to-err\n");
 });
 
-test("spawn failure on a nonexistent binary emits spawn_failed telemetry", async () => {
+test("spawn failure returns a durable Problem instead of transient telemetry", async () => {
     const { result, states, events } = await exec("definitely-not-a-real-binary-xyz", "noop");
     assert.equal(result.status, 500);
-    assert.equal(events.length, 1);
-    assert.equal(events[0].source, "exec:definitely-not-a-real-binary-xyz");
-    assert.equal(events[0].kind, "spawn_failed");
+    assert.equal(result.problem?.type, "https://problems.plurnk.dev/executor/subprocess/spawn-failed");
+    assert.match(result.problem?.detail ?? "", /Could not start 'definitely-not-a-real-binary-xyz'/);
+    assert.equal(events.length, 0);
     assert.equal(states.at(-1)?.state, "errored");
 });
 
@@ -184,6 +186,7 @@ test("abort mid-run → status 499", async () => {
     controller.abort();
     const { result, states } = await promise;
     assert.equal(result.status, 499);
+    assert.equal(result.problem?.type, "https://problems.plurnk.dev/executor/subprocess/cancelled");
     assert.equal(states.at(-1)?.state, "errored");
 });
 
