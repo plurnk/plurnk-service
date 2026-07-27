@@ -90,6 +90,27 @@ A mutating operation may pause as a proposal. Client-managed approval resumes
 the paused loop with an explicit decision. Loop automatic mode resolves eligible
 operations inside the daemon. These are separate paths with separate tests.
 
+## Results, failures, and observation
+
+Every dispatched operation produces one validated result. A status below 400
+is a success without a problem. A status from 400 through 599 carries RFC 9457
+Problem Details; its `type` is stable, its `detail` explains the occurrence,
+and its `instance` is the committed `log:///` coordinate. The failed operation
+row is durable product truth and is rendered, queried, folded, and digested like
+every other log row.
+
+Plugins classify their own failures. Core validates the result and attaches the
+durable occurrence; it does not infer a missing problem from a status or accept
+legacy string-error shapes. Proposal application follows the same rule: an
+apply failure preserves the applying component's status and Problem Details
+instead of being relabelled as a review rejection.
+
+Telemetry is observation, not control or truth. Notices may describe progress
+or non-fatal degradation to clients and operators. OpenTelemetry exports spans,
+metrics, and logs from the same execution, but neither notice delivery nor an
+observability exporter may alter scheduling, recovery, persisted results, or
+what the model is told.
+
 ## Lifecycle topology
 
 The durable history and the process that advances it are deliberately separate.

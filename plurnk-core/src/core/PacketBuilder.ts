@@ -3,6 +3,7 @@ import type { Db } from "./Db.ts";
 import type SchemeRegistry from "./SchemeRegistry.ts";
 import type ExecutorRegistry from "./ExecutorRegistry.ts";
 import type TelemetryChannel from "./TelemetryChannel.ts";
+import type ProblemLog from "./ProblemLog.ts";
 import type { GitStatus } from "./git-state.ts";
 import { renderAddress, promptLoopPrefix } from "./plurnk-uri.ts";
 import { rulerCount } from "./token-ruler.ts";
@@ -86,21 +87,24 @@ export default class PacketBuilder {
     #db: Db;
     #schemes: SchemeRegistry;
     #telemetry: TelemetryChannel;
+    #problems: ProblemLog;
     // Boot-discovered runtime executors, late-injected on Engine after daemon
     // start() — read through a thunk so the post-construction set is visible.
     #executors: () => ExecutorRegistry | undefined;
     // §tokenomics-window-partition — the partition is PER-ALIAS (#352), resolved per provider in
     // #partitionFor and cached by alias; no boot-time global read.
 
-    constructor({ db, schemes, telemetry, executors }: {
+    constructor({ db, schemes, telemetry, problems, executors }: {
         db: Db;
         schemes: SchemeRegistry;
         telemetry: TelemetryChannel;
+        problems: ProblemLog;
         executors: () => ExecutorRegistry | undefined;
     }) {
         this.#db = db;
         this.#schemes = schemes;
         this.#telemetry = telemetry;
+        this.#problems = problems;
         this.#executors = executors;
         // #507 — the envelope rides the provider; construction only runs the retired-knob shed
         // so a stale operator .env fails at BOOT, not first use.
@@ -563,7 +567,18 @@ export default class PacketBuilder {
         // turn late. The row is grinder-exempt, so it stacks into a visible recurrence trail. It
         // sits at the turn's reserved running sequence (mintSequence) so it never collides with the
         // post-generate dispatch rows. §telemetry-uniform-error-channel, §grinder-overflow-error-row
-        await this.#telemetry.mintEngineError("budget_overflow", { workerId, loopId, turnId, sequence: mintSequence });
+        await this.#problems.mint({
+            workerId,
+            loopId,
+            turnId,
+            sequence: mintSequence,
+            origin: "plurnk",
+            source: "rail",
+            owner: "engine:grinder",
+            code: "budget-overflow",
+            status: 413,
+            detail: "Budget Overflow: newest log items automatically FOLDed — a retrieval larger than Tokens Free arrives folded; FOLD older items first, then fetch within the room made",
+        });
         await this.#db.engine_grinder_fold_newest_turn.run({ loop_id: loopId, turn_id: turnId });
         const current = await rebuild();
         return { packet: current, fit: measure(current) <= ceiling, struck: true };

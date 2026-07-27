@@ -265,7 +265,7 @@ test("scoped READ fails clearly when no readable response has been materialized"
             ctx,
         );
         assert.equal(result.status, 409);
-        assert.match(JSON.stringify(result.error), /READ the URL without <scope> first/);
+        assert.match(result.problem?.detail ?? "", /READ the URL without <scope> first/);
     });
     assert.equal(fetched, false);
     assert.equal(inspect().opened, null);
@@ -358,7 +358,7 @@ test("READ SSE: an oversized incomplete event fails the remote stream", async ()
         await withFetch(mockFetch(200, "OK", ["data: this event never terminates"], { "content-type": "text/event-stream" }), async () => {
             const result = await new Http().read(readStmt(urlTarget("http://example.com/sse", "/sse")), ctx);
             assert.equal(result.status, 502);
-            assert.match(result.error?.message ?? "", /max buffer size of 8/);
+            assert.match(result.problem?.detail ?? "", /max buffer size of 8/);
         });
         assert.equal(inspect().closed?.reason, "error");
     } finally {
@@ -399,11 +399,11 @@ test("SEND[200]: an HTML response is NOT rendered (POST can't be a navigation)",
     assert.equal(body, "<html>body</html>"); // streamed raw, not rendered
 });
 
-test("READ: non-url target → 400 with a scheme:http TelemetryEvent", async () => {
+test("READ: non-url target → 400 with RFC 9457 Problem Details", async () => {
     const { ctx } = makeCtx();
     const r = await new Http().read(readStmt(null), ctx);
     assert.equal(r.status, 400);
-    assert.equal(r.error?.source, "scheme:http");
+    assert.equal(r.problem?.type, "https://problems.plurnk.dev/scheme/http/bad-target");
 });
 
 test("READ: empty response body closes done without body chunks", async () => {
@@ -422,7 +422,7 @@ test("READ: network failure → close error + 502", async () => {
     await withFetch(async () => { throw new Error("ECONNREFUSED"); }, async () => {
         const r = await new Http().read(readStmt(urlTarget("http://example.com/x", "/x")), ctx);
         assert.equal(r.status, 502);
-        assert.equal(r.error?.source, "scheme:http");
+        assert.equal(r.problem?.type, "https://problems.plurnk.dev/scheme/http/fetch-failed");
     });
     assert.equal(inspect().closed?.reason, "error");
 });
@@ -461,7 +461,7 @@ test("SEND with an uninterpreted status → 501", async () => {
     const { ctx } = makeCtx();
     const r = await new Http().send(sendStmt(418, urlTarget("http://example.com/x", "/x")), ctx);
     assert.equal(r.status, 501);
-    assert.equal(r.error?.source, "scheme:http");
+    assert.equal(r.problem?.type, "https://problems.plurnk.dev/scheme/http/unsupported-send");
 });
 
 // ── request headers + method verbs (grammar#46) ───────────────────────────
@@ -511,7 +511,7 @@ test("EDIT: a <L> line marker is rejected — http PUT replaces the whole resour
     const { ctx } = makeCtx();
     const r = await new Http().edit(editStmt(urlTarget("https://api.x/thing/42", "/thing/42"), "x", { marks: [1] } as NonNullable<EditStatement["lineMarker"]>), ctx);
     assert.equal(r.status, 400);
-    assert.equal(r.error?.kind, "no_line_edit");
+    assert.equal(r.problem?.type, "https://problems.plurnk.dev/scheme/http/no-line-edit");
 });
 
 test("KILL → DELETE (method mapping); distinct from SEND[410] cache drop", async () => {
@@ -759,7 +759,7 @@ test("force-cancel via the SubscriptionHandle aborts the fetch → 499", async (
     await withFetch(hangThenAbort as typeof fetch, async () => {
         const r = await new Http().read(readStmt(urlTarget("http://example.com/x", "/x")), ctx);
         assert.equal(r.status, 499);
-        assert.equal(r.error?.kind, "aborted");
+        assert.equal(r.problem?.type, "https://problems.plurnk.dev/scheme/http/aborted");
     });
     assert.equal(inspect().closed?.reason, "cancelled");
     assert.equal(inspect().closed?.outcome, "aborted");

@@ -97,7 +97,7 @@ test("the per-turn cap 429s the overflow search; a failed spawn never poisons th
         assert.ok((await dispatchSearch(engine, ids, "q3", 3)).status < 400);
         const fourth = await dispatchSearch(engine, ids, "q4", 4);
         assert.equal(fourth.status, 429, "the fourth DISTINCT search this turn is flood-controlled");
-        assert.match(String(fourth.error), /limit/i, "with a legible steer");
+        assert.match(fourth.problem?.detail ?? "", /limit/i, "with a legible steer");
     } finally { await settle(db, workspaceId).catch(() => {}); await db.close(); }
 });
 

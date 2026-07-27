@@ -25,8 +25,9 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { CoreSchemeAdapterBase } from "../core/CoreSchemeServices.ts";
 import type { CoreSchemeCallContext } from "../core/CoreSchemeServices.ts";
+import Results, { type SchemeResultBase } from "../core/results.ts";
 
-type ExecResult = { status: number; body?: string; attrs?: object; error?: string };
+type ExecResult = SchemeResultBase & { body?: string; attrs?: object };
 
 interface ExecAttrs {
     runtime: string;        // "" (default shell), "sh", "bash", "node", "python", etc.
@@ -170,7 +171,7 @@ export default class Exec extends CoreSchemeAdapterBase {
     // is no auto-escalation here. The full #203 status matrix: 200 killed (in-flight) · 410
     // killed-earlier (a prior abort closed the stream 499) · 304 already-exited (closed
     // with any other terminal status) · 404 unknown (no subscription for that coordinate).
-    async kill(pathname: string, signal: number | null, ctx: CoreSchemeCallContext, scheme = "exec"): Promise<{ status: number; error?: string }> {
+    async kill(pathname: string, signal: number | null, ctx: CoreSchemeCallContext, scheme = "exec"): Promise<SchemeResultBase> {
         const core = this.coreContext(ctx);
         for (const entry of this.#activeAborts.values()) {
             if (entry.workerId === core.workerId && entry.pathname === pathname) {
@@ -183,8 +184,8 @@ export default class Exec extends CoreSchemeAdapterBase {
         // The error answers in the model's OWN runtime-tag address (sh:///…), never the retired
         // internal `exec` scheme (#527, {§fs-answer-in-canon}) — the model KILLs what it addressed.
         const terminal = await ChannelWrite.execTerminalStatus(core.db, { workspaceId: core.workspaceId, workerId: core.workerId, pathname });
-        if (terminal === null) return { status: 404, error: `no active stream at ${scheme}://${pathname}` };
-        if (terminal === 499) return { status: 410, error: `${scheme}://${pathname} was killed earlier` };
+        if (terminal === null) return Results.failure("scheme:exec", "stream-not-found", 404, `No active stream exists at ${scheme}://${pathname}.`);
+        if (terminal === 499) return Results.failure("scheme:exec", "stream-already-killed", 410, `${scheme}://${pathname} was killed earlier.`);
         return { status: 304 };
     }
 
@@ -219,7 +220,7 @@ export default class Exec extends CoreSchemeAdapterBase {
         // script) or a #462 FILE target (run it, no stdin). Empty body with a directory target (nothing
         // to run) or no target at all → 400.
         if (command.length === 0 && schemeTarget === null && routedTarget === null) {
-            return { status: 400, error: "EXEC requires a command body (or a scheme target to run)" };
+            return Results.failure("scheme:exec", "command-required", 400, "EXEC requires a command body or a scheme target to run.") as ExecResult;
         }
 
         const requested = typeof statement.signal === "string" ? statement.signal : "";
@@ -233,20 +234,22 @@ export default class Exec extends CoreSchemeAdapterBase {
         if (resolved === undefined) {
             const available = core.executors.availableRuntimes()
                 .filter((tag) => workspaceExecs === null || Policy.isEnabled(tag, workspaceExecs));
-            return {
-                status: 501,
-                error: `\`${runtime}\` is not a registered executable tool. Use a registered tag, or run complete shell commands with bare EXEC or EXEC[sh]. available to this workspace: ${available.join(", ") || "(none)"}`,
-            };
+            return Results.failure(
+                "scheme:exec",
+                "runtime-not-registered",
+                501,
+                `\`${runtime}\` is not a registered executable tool. Use a registered tag, or run complete shell commands with bare EXEC or EXEC[sh]. Available to this workspace: ${available.join(", ") || "(none)"}.`,
+            ) as ExecResult;
         }
         // #328 — per-workspace client policy narrows the boot-registered set (subtractive). A tag the
         // workspace's client layer disables is ABSENT for this workspace — refused like an unavailable
         // runtime. Bare EXEC resolves to sh before this gate, so disabling sh also disables the default.
         if (workspaceExecs !== null && !Policy.isEnabled(runtime, workspaceExecs)) {
-            return { status: 501, error: `\`${runtime}\` is disabled for this workspace by client policy (PLURNK_EXECS_*)` };
+            return Results.failure("scheme:exec", "runtime-disabled", 501, `\`${runtime}\` is disabled for this workspace by client policy (PLURNK_EXECS_*).`) as ExecResult;
         }
         if (!resolved.available) {
             const why = resolved.detail === undefined ? "" : `: ${resolved.detail}`;
-            return { status: 501, error: `\`${runtime}\` is unavailable${why}` };
+            return Results.failure("scheme:exec", "runtime-unavailable", 501, `\`${runtime}\` is unavailable${why}.`) as ExecResult;
         }
         // The (target) slot the executor receives — its DATA SOURCE / program (jq input, sqlite db, or a
         // subprocess program run with the body as stdin; #15). A #462 directory target routed to cwd above
@@ -286,7 +289,7 @@ export default class Exec extends CoreSchemeAdapterBase {
     async applyResolution(
         args: { attrs: object; body?: string },
         ctx: CoreSchemeCallContext,
-    ): Promise<{ status: number; outcome?: string; body?: string; error?: string }> {
+    ): Promise<SchemeResultBase & { outcome?: string; body?: string }> {
         const core = this.coreContext(ctx);
         const attrs = args.attrs as Partial<ExecAttrs>;
         let command = typeof attrs.command === "string" ? attrs.command : "";
@@ -295,7 +298,9 @@ export default class Exec extends CoreSchemeAdapterBase {
         const cwd = (typeof attrs.cwd === "string" && attrs.cwd.length > 0) ? attrs.cwd : null;
         let target = (typeof attrs.target === "string" && attrs.target.length > 0) ? attrs.target : null;
         if (typeof pathname !== "string" || pathname.length === 0) {
-            return { status: 500, outcome: "missing_pathname" };
+            return Results.failure("scheme:exec", "stream-path-missing", 500, "The accepted EXEC proposal is missing its stream pathname.", {
+                outcome: "missing_pathname",
+            });
         }
 
         // #201 — resolve a scheme-URI target to content (executors stay scheme-blind).
@@ -306,12 +311,24 @@ export default class Exec extends CoreSchemeAdapterBase {
         if (attrs.schemeTarget !== undefined) {
             const { scheme, pathname: tPath, fragment } = attrs.schemeTarget;
             const read = await EntryCrud.readEntry(tPath, core, scheme);
-            if (read.entry === null) return { status: 404, outcome: "scheme_target_not_found" };
+            if (read.entry === null) {
+                return Results.failure("scheme:exec", "scheme-target-not-found", 404, read.problem?.detail ?? `No entry exists at ${scheme}://${tPath}.`, {
+                    outcome: "scheme_target_not_found",
+                });
+            }
             const channels = read.entry.channels;
             const channelName = fragment ?? (channels.body !== undefined ? "body" : Object.keys(channels)[0]);
             const content = channelName === undefined ? undefined : channels[channelName]?.content;
             // §channel-selection-unknown-channel-400 sibling fact — the miss names what exists.
-            if (content === undefined) return { status: 404, outcome: "scheme_target_channel_not_found", error: `no channel #${channelName ?? fragment} at ${scheme}:///${tPath.replace(/^\//, "")}; channels: ${Object.keys(channels).join(", ")}` };
+            if (content === undefined) {
+                return Results.failure(
+                    "scheme:exec",
+                    "scheme-target-channel-not-found",
+                    404,
+                    `No channel #${channelName ?? fragment} exists at ${scheme}:///${tPath.replace(/^\//, "")}; channels: ${Object.keys(channels).join(", ")}.`,
+                    { outcome: "scheme_target_channel_not_found" },
+                );
+            }
             if (command.length === 0) {
                 command = content;
             } else {
@@ -325,16 +342,26 @@ export default class Exec extends CoreSchemeAdapterBase {
         // positional, transient exec per the owner ruling). Empty body with no target of any kind
         // remains the contradiction.
         if (command.length === 0 && target === null) {
-            return { status: 500, outcome: "missing_command" };
+            return Results.failure("scheme:exec", "command-missing", 500, "The accepted EXEC proposal has neither a command nor a target.", {
+                outcome: "missing_command",
+            });
         }
 
         // Resolve the runtime's executor from the boot registry, then seed
         // channels from its declared topology (Q1(b) in plurnk-service#174 —
         // executor declares, scheme honors). Each executor declares its own
         // shape (subprocess → stdout/stderr; search → results; etc.).
-        if (core.executors === undefined) return { status: 500, outcome: "no_executor_registry" };
+        if (core.executors === undefined) {
+            return Results.failure("scheme:exec", "executor-registry-missing", 500, "The executor registry is unavailable.", {
+                outcome: "no_executor_registry",
+            });
+        }
         const resolved = core.executors.entry(runtime);
-        if (resolved === undefined) return { status: 500, outcome: "no_executor" };
+        if (resolved === undefined) {
+            return Results.failure("scheme:exec", "executor-missing", 500, `The '${runtime}' executor disappeared after proposal.`, {
+                outcome: "no_executor",
+            });
+        }
         // #485 — the per-tool effect (execs Effect: read/host/pure) rides the hold predicate so a
         // suffixed PLURNK_SERVICE_EXEC_HOLD entry (`github:read`) can hold one tool-class and not another.
         const effect = resolved.executor.effect(target, command);
@@ -350,7 +377,11 @@ export default class Exec extends CoreSchemeAdapterBase {
         // §exec — the stream entry's scheme IS the runtime tag (sh/node), so it addresses by
         // tag authority (sh:///l/t/s). The engine registers each runtime tag → this handler.
         const { entryId } = await EntryCrud.writeEntry(pathname, seed, core, runtime, core.workerId);
-        if (entryId === null) return { status: 500, outcome: "entry_write_failed" };
+        if (entryId === null) {
+            return Results.failure("scheme:exec", "stream-entry-write-failed", 500, `The ${runtime} stream entry could not be created.`, {
+                outcome: "entry_write_failed",
+            });
+        }
 
         const subscriptionId = await ChannelWrite.openSubscription(core.db, {
             workerId: core.workerId, entryId, scheme: runtime,
@@ -616,14 +647,22 @@ export default class Exec extends CoreSchemeAdapterBase {
     async read(statement: ReadStatement, ctx: CoreSchemeCallContext): Promise<ReadResult> {
         const core = this.coreContext(ctx);
         const owner = await resolveStreamStatement(statement, core);
-        if (owner === null) return { status: 404, content: null, mimetype: null, channel: null };
+        if (owner === null) {
+            return Results.failure("scheme:exec", "stream-not-found", 404, "No visible stream exists at the requested address.", {
+                content: null, mimetype: null, channel: null,
+            }) as ReadResult;
+        }
         return EntryOps.readWorkspaceEntry(owner.statement, core, Exec.manifest, owner.ownerId);
     }
 
     async find(statement: FindStatement, ctx: CoreSchemeCallContext): Promise<FindResult> {
         const core = this.coreContext(ctx);
         const owner = await resolveStreamStatement(statement, core);
-        if (owner === null) return { status: 404, content: null, mimetype: null, results: [], itemsTokenTotal: 0, pathnames: [], matches: [] };
+        if (owner === null) {
+            return Results.failure("scheme:exec", "stream-not-found", 404, "No visible stream exists at the requested address.", {
+                content: null, mimetype: null, results: [], itemsTokenTotal: 0, pathnames: [], matches: [],
+            }) as FindResult;
+        }
         return EntryFind.findWorkspaceEntries(owner.statement, core, Exec.manifest, owner.ownerId);
     }
 

@@ -56,48 +56,50 @@ test("isErrorStatus marks 4xx/5xx and only those", () => {
     assert.equal(Results.isErrorStatus(500), true);
 });
 
-test("schemeError namespaces source as scheme:<name>", () => {
-    const ev = Results.error("known", "dispatch_failure", "entry not found");
-    assert.equal(ev.source, "scheme:known");
-    assert.equal(ev.kind, "dispatch_failure");
-    assert.equal(ev.level, "error");
-    assert.equal(ev.message, "entry not found");
+test("problem mints a stable RFC 9457 type and title", () => {
+    const problem = Results.problem("scheme:known", "entry-not-found", 404, "No entry exists at known:///missing.");
+    assert.equal(problem.type, "https://problems.plurnk.dev/scheme/known/entry-not-found");
+    assert.equal(problem.title, "Entry not found");
+    assert.equal(problem.status, 404);
+    assert.equal(problem.detail, "No entry exists at known:///missing.");
 });
 
-test("schemeError omits absent message and position (no undefined keys)", () => {
-    const ev = Results.error("exec", "validation_failure");
-    assert.equal(ev.source, "scheme:exec");
-    assert.equal(ev.kind, "validation_failure");
-    assert.equal("message" in ev, false);
-    assert.equal("position" in ev, false);
+test("failure carries plugin metadata beside one problem", () => {
+    const result = Results.failure(
+        "scheme:known",
+        "entry-not-found",
+        404,
+        "No entry exists at known:///missing.",
+        { shape: "entry", entryId: null, channel: "body" },
+        { availableChannels: ["body"] },
+    ) as EntryResult;
+    assert.equal(result.status, 404);
+    assert.equal(result.problem?.status, result.status);
+    assert.deepEqual(result.problem?.availableChannels, ["body"]);
+    assert.equal("error" in result, false);
 });
 
-test("schemeError carries an explicit null message through", () => {
-    const ev = Results.error("file", "strike", null);
-    assert.equal("message" in ev, true);
-    assert.equal(ev.message, null);
+test("assert rejects a bare failure and a mismatched problem status", () => {
+    assert.throws(
+        () => Results.assert({ status: 404 }),
+        /invalid operation result/,
+    );
+    assert.throws(
+        () => Results.assert({
+            status: 404,
+            problem: Results.problem("scheme:known", "entry-not-found", 409, "Missing."),
+        }),
+        /does not match/,
+    );
 });
 
-test("schemeError attaches a log-coordinate position", () => {
-    const ev = Results.error("known", "dispatch_failure", "boom", Results.logCoordinate("log://3/1/0", "EDIT"));
-    assert.deepEqual(ev.position, { type: "log-coordinate", coordinate: "log://3/1/0", op: "EDIT" });
+test("attachInstance adds the durable operation coordinate", () => {
+    const result = Results.failure("scheme:file", "entry-not-found", 404, "Missing.");
+    Results.attachInstance(result, "log:///5/2/1/READ");
+    assert.equal(result.problem?.instance, "log:///5/2/1/READ");
 });
 
-test("logCoordinate omits op when absent", () => {
-    const pos = Results.logCoordinate("log://1/2/3");
-    assert.deepEqual(pos, { type: "log-coordinate", coordinate: "log://1/2/3" });
-    assert.equal("op" in pos, false);
-});
-
-test("an error result carries a TelemetryEvent error envelope", () => {
-    const result: EntryResult = {
-        shape: "entry",
-        status: 404,
-        entryId: null,
-        channel: "body",
-        error: Results.error("known", "dispatch_failure", "entry not found", Results.logCoordinate("log://5/2/1", "READ")),
-    };
-    assert.equal(Results.isErrorStatus(result.status), true);
-    assert.equal(result.error?.source, "scheme:known");
-    assert.equal(result.error?.position?.type, "log-coordinate");
+test("problem identifiers fail hard instead of minting ambiguous types", () => {
+    assert.throws(() => Results.problem("Scheme:Known", "entry-not-found", 404, "Missing."), /problem owner/);
+    assert.throws(() => Results.problem("scheme:known", "Entry_Not_Found", 404, "Missing."), /problem code/);
 });

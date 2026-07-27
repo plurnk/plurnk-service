@@ -24,7 +24,6 @@ export interface EntryEditResult extends SchemeResult {
     readonly entryId: number | null;
     readonly channel: string | null;
     readonly editReceipt?: object | null;
-    readonly error?: string;
 }
 
 export interface EntryReadResult extends SchemeResult {
@@ -34,7 +33,6 @@ export interface EntryReadResult extends SchemeResult {
     readonly startLine?: number | null;
     readonly matches?: number | null;
     readonly reason?: string;
-    readonly error?: string;
     readonly awaitWorker?: string;
 }
 
@@ -61,7 +59,6 @@ export interface EntryFindResult extends SchemeResult {
     readonly pathnames: ReadonlyArray<string>;
     readonly matches: ReadonlyArray<EntryMatch>;
     readonly overflow?: number;
-    readonly error?: string;
 }
 
 export interface EntryOperationCaps {
@@ -75,11 +72,20 @@ export interface EntryOperationCaps {
 // Direct storage over the scheme's own namespace plus the standard PLURNK
 // entry-op implementation. A scheme may use these semantics or implement an
 // op itself.
+export interface EntryStorageReadResult extends SchemeResult {
+    readonly entry: EntryData | null;
+}
+
+export interface EntryStorageWriteResult extends SchemeResult {
+    readonly created: boolean;
+    readonly entryId: number | null;
+}
+
 export interface EntryCaps {
     readonly operations: EntryOperationCaps;
-    read(pathname: string, owner?: EntryOwner): Promise<{ status: number; entry: EntryData | null }>;
-    write(pathname: string, entry: EntryData, owner?: EntryOwner): Promise<{ status: number; created: boolean; entryId: number | null }>;
-    delete(pathname: string, owner?: EntryOwner): Promise<{ status: number }>;
+    read(pathname: string, owner?: EntryOwner): Promise<EntryStorageReadResult>;
+    write(pathname: string, entry: EntryData, owner?: EntryOwner): Promise<EntryStorageWriteResult>;
+    delete(pathname: string, owner?: EntryOwner): Promise<SchemeResult>;
 }
 
 // ── channels ─────────────────────────────────────────────────────────────
@@ -89,9 +95,9 @@ export interface EntryCaps {
 // drives the static/active/closed/errored lifecycle the model reads between
 // turns. Wraps `ChannelWrite`.
 export interface ChannelCaps {
-    append(pathname: string, channel: string, content: string): Promise<{ status: number }>;
-    replace(pathname: string, channel: string, content: string): Promise<{ status: number }>;
-    setState(pathname: string, channel: string, state: ChannelState): Promise<{ status: number }>;
+    append(pathname: string, channel: string, content: string): Promise<SchemeResult>;
+    replace(pathname: string, channel: string, content: string): Promise<SchemeResult>;
+    setState(pathname: string, channel: string, state: ChannelState): Promise<SchemeResult>;
 }
 
 // NOTE: there is no `visibility` capability. Entry-level SHOW/HIDE no longer
@@ -104,10 +110,14 @@ export interface ChannelCaps {
 // ── tags ─────────────────────────────────────────────────────────────────
 // Entry-tag add/remove/list. `add`/`remove` are additive/subtractive sets
 // (service SPEC: tags apply additively). Wraps `entry_tags`.
+export interface TagListResult extends SchemeResult {
+    readonly tags: ReadonlyArray<string>;
+}
+
 export interface TagCaps {
-    add(pathname: string, tags: ReadonlyArray<string>): Promise<{ status: number }>;
-    remove(pathname: string, tags: ReadonlyArray<string>): Promise<{ status: number }>;
-    list(pathname: string): Promise<{ status: number; tags: ReadonlyArray<string> }>;
+    add(pathname: string, tags: ReadonlyArray<string>): Promise<SchemeResult>;
+    remove(pathname: string, tags: ReadonlyArray<string>): Promise<SchemeResult>;
+    list(pathname: string): Promise<TagListResult>;
 }
 
 // ── notify ───────────────────────────────────────────────────────────────
@@ -224,8 +234,7 @@ export interface ProposalApplyRequest {
     readonly body?: string;
 }
 
-export interface ProposalApplyResult {
-    readonly status: number;
+export interface ProposalApplyResult extends SchemeResult {
     readonly outcome?: string;
     readonly body?: string;
     readonly result?: object;

@@ -78,7 +78,7 @@ That's the whole contract: declare, `implements SchemeHandler`, manifest with se
 
 - Manifest/flags: `SchemeManifest` (incl. `example` / `documentation` / `glyph` self-doc), `SchemeFlagAffinity`, `WriterTier`, `LoopFlags`, `DEFAULT_LOOP_FLAGS`.
 - Behavior contract: `SchemeHandler` + optional `PacketSectionTransformer` (`PacketSection`); the re-exported scheme-facing grammar types (`PlurnkStatement` + per-op statements + `ParsedPath` / `LocalPath` / `UrlPath`).
-- Results: universal `SchemeResult` plus optional `EntryResult` / `ProposalResult` / `PassthroughResult` authoring shapes, `SchemeResultBase`, and `TelemetryEvent`.
+- Results: universal `SchemeResult` plus RFC 9457 `ProblemDetails`, optional `EntryResult` / `ProposalResult` / `PassthroughResult` authoring shapes, and `SchemeResultBase`.
 - Capability ctx: `SchemeCtx` and its entry, channel, tag, notification, projection, and subscription domains. Entry schemes can reuse typed standard operations with semantic commons/worker ownership.
 
 ### Helpers (`export default class`, static methods)
@@ -88,7 +88,7 @@ That's the whole contract: declare, `implements SchemeHandler`, manifest with se
 - `Slicer.lines` / `.linesRaw` / `.jsonItems` / `.lineMarkerEdit` / `.jsonItemEdit` — `<L>` slicing + structural EDIT.
 - `PathMimetype.resolve(pathname, default, mimetypes)` — path-extension mimetype resolver.
 - `Matcher.matchAgainstContent(body, content, mimetype, mimetypes, baseLine?)` — body-matcher dispatch over `Mimetypes.query` (glob/regex/jsonpath/xpath).
-- `Results.error` / `.logCoordinate` / `.isEntry` / `.isProposal` / `.isPassthrough` / `.isErrorStatus` — result builders + guards.
+- `Results.problem` / `.failure` / `.assert` / `.attachInstance` / `.isEntry` / `.isProposal` / `.isPassthrough` / `.isErrorStatus` — RFC 9457 result builders, validator, durable-occurrence attachment, and guards.
 - `SchemeDiscovery.discover({ cwd? })` — scope-agnostic `node_modules` scan for `plurnk.kind:"scheme"` packages (trust-gated, fail-hard on prefix collision); returns descriptors for the consumer to register (SPEC §6).
 
 `SchemeCtx` is the stable semantic API for trusted in-process schemes, not a

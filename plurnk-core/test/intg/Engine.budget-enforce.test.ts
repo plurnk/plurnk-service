@@ -10,6 +10,7 @@ import { Mock } from "@plurnk/plurnk-providers";
 import type { MockResponse } from "@plurnk/plurnk-providers";
 import type { PlurnkStatement, SendStatement } from "@plurnk/plurnk-grammar";
 import type { Db } from "../../src/core/Db.ts";
+import ProblemLog from "../../src/core/ProblemLog.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, seedEntryWithChannel } from "./_helpers.ts";
 
 const sendStmt = (status: number, body: string): SendStatement => ({
@@ -248,10 +249,10 @@ test("a huge ENGINE-WRITTEN row on the current turn is part of the newest bounda
         });
         const { default: PacketBuilder } = await import("../../src/core/PacketBuilder.ts");
         const { default: TelemetryChannel } = await import("../../src/core/TelemetryChannel.ts");
-        const telemetry = new TelemetryChannel({ db });
+        const telemetry = new TelemetryChannel();
         // #507 — one builder; the ceiling pins on the PROVIDER (window − reserves): a wide probe
         // measures the open packet, then a provider pinned just under it forces the stage-2 fold.
-        const builder = new PacketBuilder({ db, schemes: new SchemeRegistry(), telemetry, executors: () => undefined });
+        const builder = new PacketBuilder({ db, schemes: new SchemeRegistry(), telemetry, problems: new ProblemLog(db), executors: () => undefined });
         const wideProbe = mockAt(999_998, [], 1_000_000);
         const args = { initialMessages: MESSAGES, requirements: "", workspaceId, workerId, loopId, currentTurnSeq: 2, provider: wideProbe, gitStatus: null };
         const open = await builder.buildRequestPacket(args);
@@ -277,8 +278,8 @@ test("the ceiling is the real window partition (window − reserves), no calibra
     try {
         const { default: PacketBuilder } = await import("../../src/core/PacketBuilder.ts");
         const { default: TelemetryChannel } = await import("../../src/core/TelemetryChannel.ts");
-        const telemetry = new TelemetryChannel({ db });
-        const b = new PacketBuilder({ db, schemes: new SchemeRegistry(), telemetry, executors: () => undefined });
+        const telemetry = new TelemetryChannel();
+        const b = new PacketBuilder({ db, schemes: new SchemeRegistry(), telemetry, problems: new ProblemLog(db), executors: () => undefined });
         // #507 — the provider window drives; reserves 1+1 (parseReserve floor) → ceiling 9998.
         // No ratio: the model-facing measure is the chars/2 ruler, and comparing ruler-weight to
         // this real-token ceiling is the conservative bias (§tokenomics-agnostic-ruler).
@@ -324,9 +325,9 @@ test("a finish=length turn's parse errors are led by the CAUSE — truncation, n
         await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 1 });
         const errs = await db.test_error_rows_for_run.all<{ rx: string }>({ worker_id: workerId });
         assert.ok(errs.length >= 2, "the truncation row AND the parse artifact both recorded");
-        const first = JSON.parse(errs[0]!.rx) as { kind?: string; message?: string };
-        assert.equal(first.kind, "output_truncated", "the CAUSE leads");
-        assert.match(first.message ?? "", /cut mid-op — the parse errors below are truncation artifacts/, "the cause is stated as FACT — the tail parse errors are artifacts, no remedy menu");
+        const first = JSON.parse(errs[0]!.rx) as { problem?: { type?: string; detail?: string } };
+        assert.equal(first.problem?.type, "https://problems.plurnk.dev/engine/generation/output-truncated", "the CAUSE leads");
+        assert.match(first.problem?.detail ?? "", /cut mid-op — the parse errors below are truncation artifacts/, "the cause is stated as FACT — the tail parse errors are artifacts, no remedy menu");
         assert.match(errs.map((e) => e.rx).join(" "), /never closed/, "the parse artifacts stay — the record never hides");
     } finally { await db.close(); }
 });
@@ -345,10 +346,10 @@ test("a finish=length turn that emitted NOTHING — reasoning ran away — is le
         await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 1 });
         const errs = await db.test_error_rows_for_run.all<{ rx: string }>({ worker_id: workerId });
         assert.ok(errs.length >= 2, "the truncation row AND the empty-emission parse artifact both recorded — the record never hides");
-        const first = JSON.parse(errs[0]!.rx) as { kind?: string; message?: string };
-        assert.equal(first.kind, "output_truncated", "the CAUSE leads");
-        assert.match(first.message ?? "", /nothing was emitted before the pool was consumed/, "the empty-emission cause is stated — the model emitted zero ops, so 'emit fewer' would be a lie");
-        assert.doesNotMatch(first.message ?? "", /cut mid-op|emit fewer ops/, "no mid-op framing — there was no emission to cut");
+        const first = JSON.parse(errs[0]!.rx) as { problem?: { type?: string; detail?: string } };
+        assert.equal(first.problem?.type, "https://problems.plurnk.dev/engine/generation/output-truncated", "the CAUSE leads");
+        assert.match(first.problem?.detail ?? "", /nothing was emitted before the pool was consumed/, "the empty-emission cause is stated — the model emitted zero ops, so 'emit fewer' would be a lie");
+        assert.doesNotMatch(first.problem?.detail ?? "", /cut mid-op|emit fewer ops/, "no mid-op framing — there was no emission to cut");
         assert.match(errs.map((e) => e.rx).join(" "), /a turn must begin with/, "the red-herring parse artifact stays — the record never hides; the 413 reframes it, never suppresses it");
     } finally { await db.close(); }
 });
@@ -361,18 +362,18 @@ test("SAFETY resolves PER ALIAS — the suffix wins over the bare fallback (#352
     try {
         const { default: PacketBuilder } = await import("../../src/core/PacketBuilder.ts");
         const { default: TelemetryChannel } = await import("../../src/core/TelemetryChannel.ts");
-        const telemetry = new TelemetryChannel({ db });
+        const telemetry = new TelemetryChannel();
         const keys = ["PLURNK_MODEL", "PLURNK_MODEL_rig", "PLURNK_SERVICE_SAFETY", "PLURNK_SERVICE_SAFETY_rig"];
         const prev = keys.map((k) => process.env[k]);
         try {
             process.env.PLURNK_SERVICE_SAFETY = "1024";
             delete process.env.PLURNK_MODEL; delete process.env.PLURNK_MODEL_rig; delete process.env.PLURNK_SERVICE_SAFETY_rig;
-            const bare = new PacketBuilder({ db, schemes: new SchemeRegistry(), telemetry, executors: () => undefined });
+            const bare = new PacketBuilder({ db, schemes: new SchemeRegistry(), telemetry, problems: new ProblemLog(db), executors: () => undefined });
             const p1 = mockAt(8192 - 2, [], 8192); // rr=1, cr=1
             assert.equal(bare.promptBudgetFor(p1), 8192 - 1 - 1 - 1024, "no alias → the bare SAFETY margin applies");
             process.env.PLURNK_MODEL = "rig"; process.env.PLURNK_MODEL_rig = "openai/local.gguf";
             process.env.PLURNK_SERVICE_SAFETY_rig = "64";
-            const rig = new PacketBuilder({ db, schemes: new SchemeRegistry(), telemetry, executors: () => undefined });
+            const rig = new PacketBuilder({ db, schemes: new SchemeRegistry(), telemetry, problems: new ProblemLog(db), executors: () => undefined });
             const p2 = mockAt(8192 - 2, [], 8192);
             assert.equal(rig.promptBudgetFor(p2), 8192 - 1 - 1 - 64, "the active alias's suffixed SAFETY wins over bare");
         } finally {
@@ -386,7 +387,7 @@ test("virtual PROMPT_BUDGET resolves per alias without changing the provider env
     try {
         const { default: PacketBuilder } = await import("../../src/core/PacketBuilder.ts");
         const { default: TelemetryChannel } = await import("../../src/core/TelemetryChannel.ts");
-        const telemetry = new TelemetryChannel({ db });
+        const telemetry = new TelemetryChannel();
         const keys = ["PLURNK_MODEL", "PLURNK_MODEL_rig", "PLURNK_SERVICE_PROMPT_BUDGET", "PLURNK_SERVICE_PROMPT_BUDGET_rig", "PLURNK_SERVICE_SAFETY"];
         const prev = keys.map((key) => process.env[key]);
         try {
@@ -396,14 +397,14 @@ test("virtual PROMPT_BUDGET resolves per alias without changing the provider env
             delete process.env.PLURNK_MODEL_rig;
             delete process.env.PLURNK_SERVICE_PROMPT_BUDGET_rig;
             const provider = mockAt(8192 - 2, [], 8192);
-            const bare = new PacketBuilder({ db, schemes: new SchemeRegistry(), telemetry, executors: () => undefined });
+            const bare = new PacketBuilder({ db, schemes: new SchemeRegistry(), telemetry, problems: new ProblemLog(db), executors: () => undefined });
             assert.equal(bare.promptBudgetFor(provider), 7000);
             assert.equal(bare.maxTokensFor(provider), 2);
 
             process.env.PLURNK_MODEL = "rig";
             process.env.PLURNK_MODEL_rig = "openai/local.gguf";
             process.env.PLURNK_SERVICE_PROMPT_BUDGET_rig = "4000";
-            const rig = new PacketBuilder({ db, schemes: new SchemeRegistry(), telemetry, executors: () => undefined });
+            const rig = new PacketBuilder({ db, schemes: new SchemeRegistry(), telemetry, problems: new ProblemLog(db), executors: () => undefined });
             assert.equal(rig.promptBudgetFor(provider), 4000);
             assert.equal(rig.maxTokensFor(provider), 2, "virtual pressure never changes provider generation");
         } finally {
@@ -434,7 +435,10 @@ test("the FIRST hard overflow is a RECOVERY TURN — steer minted, generate runs
         assert.equal(result.reason, "budget_overflow");
         assert.equal(mock.remaining, 2, "generate ran EXACTLY once — the recovery turn happened; the second overflow skipped the LLM");
         const errs = await db.test_error_rows_for_run.all<{ rx: string }>({ worker_id: workerId });
-        const steer = errs.map((e) => JSON.parse(e.rx) as { kind?: string; message?: string }).find((e) => e.kind === "budget_overflow" && (e.message ?? "").includes("recovery turn"));
+        const steer = errs
+            .map((e) => JSON.parse(e.rx) as { problem?: { type?: string; detail?: string } })
+            .find((e) => e.problem?.type === "https://problems.plurnk.dev/engine/grinder/budget-overflow"
+                && (e.problem.detail ?? "").includes("recovery turn"));
         assert.ok(steer, "the recovery steer was minted — over-budget, the remedy (KILL/FOLD history), and the consequence, stated");
     } finally { await db.close(); }
 });

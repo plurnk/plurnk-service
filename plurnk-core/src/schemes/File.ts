@@ -16,6 +16,7 @@ import EntryCrud from "./_entry-crud.ts";
 import type { ReadEntryResult, EntryData, WriteEntryResult, DeleteEntryResult } from "./_entry-crud.ts";
 import { CoreSchemeAdapterBase } from "../core/CoreSchemeServices.ts";
 import type { CoreSchemeCallContext } from "../core/CoreSchemeServices.ts";
+import Results, { type SchemeResultBase } from "../core/results.ts";
 
 // Resolved + §membership-change-gated-sync disk-write target, or the error status to return.
 type WriteTarget =
@@ -24,9 +25,9 @@ type WriteTarget =
 import { LineMarkerOps, MimetypeBinary, editReceipt, editReceiptUnit, editedSpan, projectEditReceipt } from "../content/index.ts";
 import type { EditBatchReceipt } from "../content/index.ts";
 
-type EditResult = { status: number; body?: string; attrs?: object; editReceipt?: EditBatchReceipt; error?: string };
+type EditResult = SchemeResultBase & { body?: string; attrs?: object; editReceipt?: EditBatchReceipt };
 type ApplyArgs = { attrs: { path?: string; canonical?: string; patched?: string; editReceipt?: EditBatchReceipt; span?: string; deletePath?: string; baseSig?: string | null; existed?: boolean; [k: string]: unknown }; body?: string };
-type ApplyResult = { status: number; outcome?: string; body?: string; result?: object };
+type ApplyResult = SchemeResultBase & { outcome?: string; body?: string; result?: object };
 
 // Workspace root for file ops is sourced from `workspaces.project_root`,
 // supplied by the client at workspace.create (headless is forever; issue
@@ -223,21 +224,26 @@ export default class File extends CoreSchemeAdapterBase {
     // content. Engine writes the proposed log entry, pauses dispatch, and
     // calls applyResolution() (below) after the proposal accepts.
     async editBatch(statements: readonly EditStatement[], ctx: CoreSchemeCallContext): Promise<EditResult> {
+        const failure = (
+            code: string,
+            status: number,
+            detail: string,
+        ): EditResult => Results.failure("scheme:file", code, status, detail) as EditResult;
         const statement = statements[0];
-        if (statement === undefined) return { status: 400, error: "EDIT batch is empty" };
+        if (statement === undefined) return failure("edit-empty", 400, "EDIT batch is empty.");
         const core = this.coreContext(ctx);
-        if (statement.target === null) return { status: 400, error: "EDIT requires a path" };
+        if (statement.target === null) return failure("edit-target-required", 400, "EDIT requires a path.");
         const pathname = statement.target.kind === "regex" ? statement.target.raw
             : decodePathParens(statement.target.kind === "url" ? statement.target.pathname : statement.target.raw); // #239 item 4
         const target = await this.#resolveWriteTarget(pathname, core);
-        if (!target.ok) return { status: target.status, error: target.error };
+        if (!target.ok) return failure("write-target-refused", target.status, target.error);
         const { canonical, rel, fileExists, original, mimetype, baseSig, admittedBy } = target;
         for (const candidate of statements.slice(1)) {
-            if (candidate.target === null) return { status: 400, error: "EDIT batch spans multiple resources" };
+            if (candidate.target === null) return failure("edit-batch-mismatch", 400, "EDIT batch spans multiple resources.");
             const candidatePathname = candidate.target.kind === "regex" ? candidate.target.raw
                 : decodePathParens(candidate.target.kind === "url" ? candidate.target.pathname : candidate.target.raw);
             const candidateTarget = await this.#resolveWriteTarget(candidatePathname, core);
-            if (!candidateTarget.ok || candidateTarget.rel !== rel) return { status: 400, error: "EDIT batch spans multiple resources" };
+            if (!candidateTarget.ok || candidateTarget.rel !== rel) return failure("edit-batch-mismatch", 400, "EDIT batch spans multiple resources.");
         }
 
         // `<L>` line marker dispatches on file mimetype: JSON →
@@ -252,15 +258,15 @@ export default class File extends CoreSchemeAdapterBase {
         // Refusing the omission converts a silent accident into a loud, immediate one.
         let patched: string;
         if (fileExists) {
-            if (statements.some(({ lineMarker }) => lineMarker === null)) return { status: 400, error: "EDIT of an existing file requires a line marker — use <1,-1> to replace the whole file deliberately" };
+            if (statements.some(({ lineMarker }) => lineMarker === null)) return failure("line-marker-required", 400, "EDIT of an existing file requires a line marker — use <1,-1> to replace the whole file deliberately.");
             const edits = statements.map((candidate) => ({ marker: candidate.lineMarker!, body: candidate.body ?? "" }));
             const result = MimetypeBinary.isJsonMimetype(mimetype)
                 ? LineMarkerOps.applyJsonItemEditBatch(original, edits)
                 : LineMarkerOps.applyLineMarkerEditBatch(original, edits);
-            if (result.status !== 200) return { status: result.status, error: result.error };
+            if (result.status !== 200) return failure("edit-range-invalid", result.status, result.error ?? "The requested edit range is invalid.");
             patched = result.result ?? "";
         } else {
-            if (statements.length !== 1) return { status: 409, error: "creation cannot coexist with another EDIT" };
+            if (statements.length !== 1) return failure("creation-batch-conflict", 409, "Creation cannot coexist with another EDIT.");
             patched = statement.body ?? "";
         }
 
@@ -294,9 +300,13 @@ export default class File extends CoreSchemeAdapterBase {
     async writeEntry(pathname: string, entry: EntryData, ctx: CoreSchemeCallContext): Promise<WriteEntryResult> {
         const core = this.coreContext(ctx);
         const bodyChannel = entry.channels.body;
-        if (bodyChannel === undefined) return { status: 400, created: false, entryId: null };
+        if (bodyChannel === undefined) {
+            return Results.failure("scheme:file", "body-channel-required", 400, "A file write requires a body channel.", { created: false, entryId: null }) as WriteEntryResult;
+        }
         const target = await this.#resolveWriteTarget(pathname, core);
-        if (!target.ok) return { status: target.status, created: false, entryId: null };
+        if (!target.ok) {
+            return Results.failure("scheme:file", "write-target-refused", target.status, target.error, { created: false, entryId: null }) as WriteEntryResult;
+        }
         const { canonical, rel, fileExists, original, baseSig, admittedBy } = target;
         const patched = bodyChannel.content;
         const patch = createPatch(rel, original, patched, "current", "proposed");
@@ -319,11 +329,20 @@ export default class File extends CoreSchemeAdapterBase {
         // failure surfaces as 500, never a silent noop; ENOENT ⇒ file already gone, still deregister.
         if (typeof attrs.deletePath === "string") {
             const root = await loadWorkspaceRoot(core.db, core.workspaceId);
-            if (root === null) return { status: 500, outcome: "no project_root" };
+            if (root === null) {
+                return Results.failure("scheme:file", "project-root-missing", 500, "The accepted file deletion has no workspace project root.", {
+                    outcome: "no_project_root",
+                }) as ApplyResult;
+            }
             try {
                 await rm(join(root, attrs.deletePath));
             } catch (err) {
-                if ((err as NodeJS.ErrnoException).code !== "ENOENT") return { status: 500, outcome: "delete_failed", body: err instanceof Error ? err.message : String(err) };
+                if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
+                    const detail = err instanceof Error ? err.message : String(err);
+                    return Results.failure("scheme:file", "delete-failed", 500, detail, {
+                        outcome: "delete_failed",
+                    }) as ApplyResult;
+                }
             }
             await EntryCrud.deleteEntry(attrs.deletePath, core, "file");
             return { status: 200 };
@@ -332,13 +351,19 @@ export default class File extends CoreSchemeAdapterBase {
         const relPath = attrs.path;
         const patched = body ?? attrs.patched;
         if (typeof canonical !== "string" || canonical.length === 0) {
-            return { status: 500, outcome: "applyResolution: missing attrs.canonical" };
+            return Results.failure("scheme:file", "canonical-path-missing", 500, "The accepted file proposal is missing attrs.canonical.", {
+                outcome: "canonical_path_missing",
+            }) as ApplyResult;
         }
         if (typeof relPath !== "string" || relPath.length === 0) {
-            return { status: 500, outcome: "applyResolution: missing attrs.path" };
+            return Results.failure("scheme:file", "relative-path-missing", 500, "The accepted file proposal is missing attrs.path.", {
+                outcome: "relative_path_missing",
+            }) as ApplyResult;
         }
         if (typeof patched !== "string") {
-            return { status: 500, outcome: "applyResolution: missing patched content" };
+            return Results.failure("scheme:file", "patched-content-missing", 500, "The accepted file proposal is missing patched content.", {
+                outcome: "patched_content_missing",
+            }) as ApplyResult;
         }
         // CAS — the write-side twin of #materializeMember's read-gate (synced_sig === sig). The
         // proposal was computed against the snapshot (body + baseSig); if disk drifted out-of-band
@@ -359,7 +384,10 @@ export default class File extends CoreSchemeAdapterBase {
         // assumed an absent path, so any file present now is the conflict.
         const conflict = existed ? (baseSig !== null && currentSig !== baseSig) : (currentSig !== null);
         if (conflict) {
-            return { status: 409, outcome: `write_conflict: ${relPath} changed on disk since the proposal (expected ${existed ? baseSig : "absent"}, found ${currentSig ?? "absent"}) — re-read and re-propose` };
+            const detail = `${relPath} changed on disk since the proposal (expected ${existed ? baseSig : "absent"}, found ${currentSig ?? "absent"}) — re-read and re-propose.`;
+            return Results.failure("scheme:file", "write-conflict", 409, detail, {
+                outcome: "write_conflict",
+            }) as ApplyResult;
         }
         let receipt = attrs.editReceipt;
         if (body !== undefined && body !== attrs.patched) {
@@ -383,11 +411,13 @@ export default class File extends CoreSchemeAdapterBase {
             await mkdir(dirname(canonical), { recursive: true });
             await writeFile(canonical, patched, "utf8");
         } catch (err) {
-            return {
-                status: 500,
-                outcome: "write_failed",
-                body: err instanceof Error ? err.message : String(err),
-            };
+            return Results.failure(
+                "scheme:file",
+                "write-failed",
+                500,
+                err instanceof Error ? err.message : String(err),
+                { outcome: "write_failed" },
+            ) as ApplyResult;
         }
         // Register the file as an entry so it appears in the manifest
         // under file:///<relPath> and is READ-able. mimetype is best-effort
@@ -414,16 +444,15 @@ export default class File extends CoreSchemeAdapterBase {
                 await core.db.crud_set_synced_sig.run({ entry_id: entryId, synced_sig: `${landed.mtimeMs}:${landed.size}` });
             }
         } catch (err) {
-            // Disk write succeeded; entry registration failed. Surface
-            // the write as 200 (file is on disk) but log the failure —
-            // the manifest just won't reflect it until next time.
-            // (Could harden to roll back the file write; for v0,
-            // disk-truth-of-record wins.)
-            return {
-                status: 200,
-                outcome: "materialize_failed",
-                body: err instanceof Error ? err.message : String(err),
-            };
+            // Disk truth changed but the addressable entry did not. This is a
+            // partial failure, never a successful operation result.
+            return Results.failure(
+                "scheme:file",
+                "materialization-failed",
+                500,
+                `The file was written to disk but could not be registered: ${err instanceof Error ? err.message : String(err)}`,
+                { outcome: "materialize_failed" },
+            ) as ApplyResult;
         }
         if (receipt === undefined) return { status: 200, body: attrs.span };
         return { status: 200, result: { receipt: projectEditReceipt(receipt, 0), editReceipt: receipt } };
@@ -436,11 +465,11 @@ export default class File extends CoreSchemeAdapterBase {
     async deleteEntry(pathname: string, ctx: CoreSchemeCallContext): Promise<DeleteEntryResult> {
         const core = this.coreContext(ctx);
         const root = await loadWorkspaceRoot(core.db, core.workspaceId);
-        if (root === null) return { status: 400 };
+        if (root === null) return Results.failure("scheme:file", "project-root-required", 400, "File deletion requires a workspace project root.") as DeleteEntryResult;
         const rel = Namespace.canonicalize(pathname, root);
-        if (rel === null) return { status: 404 };
+        if (rel === null) return Results.failure("scheme:file", "entry-not-found", 404, `No file entry exists at ${pathname}.`) as DeleteEntryResult;
         const member = await core.db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: core.workspaceId, owner_id: await Owner.commonsId(core.db, core.workspaceId), scheme: "file", pathname: rel });
-        if (member === undefined) return { status: 404 };
+        if (member === undefined) return Results.failure("scheme:file", "entry-not-found", 404, `No file entry exists at ${rel}.`) as DeleteEntryResult;
         return { status: 202, attrs: { deletePath: rel } };
     }
 }

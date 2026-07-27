@@ -1,0 +1,37 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "https://schemas.plurnk.dev/v0/ProblemDetails.json",
+    "title": "ProblemDetails",
+    "description": "PLURNK operation failure using RFC 9457 Problem Details. Extension members are permitted so an owning boundary can add structured recovery facts without inventing a second error envelope.",
+    "type": "object",
+    "required": ["type", "title", "status", "detail"],
+    "additionalProperties": true,
+    "properties": {
+        "type": {
+            "type": "string",
+            "pattern": "^[a-zA-Z][a-zA-Z0-9+.-]*:",
+            "description": "Absolute URI identifying the stable problem class."
+        },
+        "title": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Short, stable summary for this problem type."
+        },
+        "status": {
+            "type": "integer",
+            "minimum": 400,
+            "maximum": 599,
+            "description": "Operation status. It must equal the containing result status."
+        },
+        "detail": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Specific, actionable explanation of this occurrence."
+        },
+        "instance": {
+            "type": "string",
+            "pattern": "^[a-zA-Z][a-zA-Z0-9+.-]*:",
+            "description": "Absolute URI identifying the failed durable operation, normally its log URI. Core adds it at persistence when a plugin cannot know the durable coordinate."
+        }
+    }
+}

@@ -31,13 +31,14 @@ export type { RuntimeDecl } from "./OutputScheme.ts";
 export { default as DefaultRead } from "./DefaultRead.ts";
 export type { ReadResolution } from "./DefaultRead.ts";
 export { default as Results } from "./Results.ts";
+export { InvalidOperationResultError } from "./Results.ts";
 export type {
     EntryResult,
     PassthroughResult,
     ProposalResult,
+    ProblemDetails,
     SchemeResult,
     SchemeResultBase,
-    TelemetryEvent,
 } from "./Results.ts";
 
 // ── Capability ctx — DB-free authoring surface for siblings (keystone PR-2,
@@ -54,6 +55,8 @@ export type {
     EntryOperationCaps,
     EntryOwner,
     EntryReadResult,
+    EntryStorageReadResult,
+    EntryStorageWriteResult,
     ProjectionCaps,
     NotifyCaps,
     ProposalApplyRequest,
@@ -63,6 +66,7 @@ export type {
     SubscriptionCaps,
     SubscriptionHandle,
     TagCaps,
+    TagListResult,
 } from "./ctx.ts";
 
 // ── Behavior contract + the scheme-facing grammar types ──────────────────────

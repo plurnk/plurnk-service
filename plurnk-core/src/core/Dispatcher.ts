@@ -25,6 +25,8 @@ import EntryOps from "../schemes/_entry-ops.ts";
 import WorkspaceSettings from "./workspace-settings.ts";
 import type LiveSubscriptions from "./LiveSubscriptions.ts";
 import LoopLifecycle from "./LoopLifecycle.ts";
+import Results from "./results.ts";
+import { InvalidOperationResultError, type SchemeResult } from "@plurnk/plurnk-schemes";
 
 // SPEC §scheme-surface: writer must be in target scheme's manifest.writableBy.
 // OPEN/FOLD/READ/FIND are not gated — they curate the log or read, never mutating an entry.
@@ -49,7 +51,7 @@ export type DispatchContext = {
     turnParseErrors?: number;
 };
 
-export type DispatchResult = { status: number; attrs?: object; [key: string]: unknown };
+export type DispatchResult = SchemeResult;
 
 import type { SchemeCtx, SchemeHandler } from "@plurnk/plurnk-schemes";
 type SchemeMethod = (statement: PlurnkStatement, ctx: SchemeCtx) => Promise<DispatchResult>;
@@ -71,6 +73,25 @@ interface SchemeWithCrud {
 // engine-owned op orchestrations (COPY/MOVE/KILL/SEND/READ-fanout), scheme
 // routing, the durable log write, and the proposal pause.
 export default class Dispatcher {
+    static #failure(
+        code: string,
+        status: number,
+        detail: string,
+        fields: Readonly<Record<string, unknown>> = {},
+        extensions: Readonly<Record<string, unknown>> = {},
+    ): DispatchResult {
+        return Results.failure("engine:dispatcher", code, status, detail, fields, extensions);
+    }
+
+    static #statusResult(
+        status: number,
+        code: string,
+        detail: string,
+        fields: Readonly<Record<string, unknown>> = {},
+    ): DispatchResult {
+        return status >= 400 ? Dispatcher.#failure(code, status, detail, fields) : { ...fields, status };
+    }
+
     #db: Db;
     #schemes: SchemeRegistry;
     #mimetypes: Mimetypes;
@@ -231,19 +252,24 @@ export default class Dispatcher {
             if (denial !== null) {
                 initial = denial;
             } else if (schemeName === null) {
-                initial = { status: 400 };
+                initial = Dispatcher.#failure("target-required", 400, "EDIT requires a target scheme.");
             } else {
                 const handler = this.#schemes.get(schemeName) as SchemeHandler | undefined;
                 const method = handler?.editBatch;
                 const manifest = this.#schemes.manifestFor(schemeName);
                 if (typeof method !== "function" || manifest === undefined) {
-                    initial = { status: 501 };
+                    initial = Dispatcher.#failure("operation-not-implemented", 501, `Scheme '${schemeName}' does not implement EDIT batches.`);
                 } else {
                     try {
                         const addressedScheme = first.target?.kind === "url" ? first.target.scheme : schemeName;
-                        initial = await method.call(handler, group, new SchemeCtxImpl(schemeCtx, addressedScheme ?? schemeName, manifest, this.#liveSubscriptions));
+                        initial = Results.assert(await method.call(handler, group, new SchemeCtxImpl(schemeCtx, addressedScheme ?? schemeName, manifest, this.#liveSubscriptions)));
                     } catch (err) {
-                        initial = { status: 500, error: err instanceof Error ? err.message : String(err) };
+                        if (err instanceof InvalidOperationResultError) throw err;
+                        initial = Dispatcher.#failure(
+                            "scheme-handler-threw",
+                            500,
+                            `Scheme '${schemeName}' EDIT failed: ${err instanceof Error ? err.message : String(err)}`,
+                        );
                     }
                 }
             }
@@ -295,7 +321,7 @@ export default class Dispatcher {
                 if (statement.op === "EDIT") {
                     const prepared = this.#preparedEdits.get(statement);
                     if (prepared === undefined) {
-                        result = { status: 500, error: "EDIT reached dispatch without a prepared resource batch" };
+                        result = Dispatcher.#failure("edit-batch-not-prepared", 500, "EDIT reached dispatch without a prepared resource batch.");
                     } else {
                         const settled = prepared.first ? prepared.initial : await prepared.settled;
                         const aggregate = settled.editReceipt ?? prepared.initial.editReceipt;
@@ -346,10 +372,12 @@ export default class Dispatcher {
                     result = await this.#run(schemeNameOf(statement.target), statement, schemeCtx); // §op-methods-op-dispatch
                 }
             } catch (err) { // a scheme exception becomes the op's 500 outcome — §scheme-surface-exception-500
-                result = {
-                    status: 500,
-                    error: err instanceof Error ? err.message : String(err),
-                };
+                if (err instanceof InvalidOperationResultError) throw err;
+                result = Dispatcher.#failure(
+                    "scheme-handler-threw",
+                    500,
+                    err instanceof Error ? err.message : String(err),
+                );
             }
         }
         // §fold-open-meta-operations — OPEN/FOLD are render directives, not actions. They ARE
@@ -411,14 +439,13 @@ export default class Dispatcher {
             this.#proposals.notifyPending(event);
             const resolution = await resolutionPromise;
             // Run the scheme's applyResolution hook on accept (writes the
-            // file, spawns the process, etc.). If applyResolution returns a
-            // 4xx/5xx or throws, the resolution is downgraded to a reject
-            // with the failure outcome — engine treats it like a client
-            // rejection.
+            // file, spawns the process, etc.). Its operation result is
+            // preserved: an apply failure keeps its original status and
+            // Problem Details instead of masquerading as a client rejection.
             const effective = await this.#proposals.workerApply(statement, result, resolution, { workspaceId, workerId, loopId, turnId });
             // MOVE into a proposed dest: the deferred source-delete fires ONLY now,
             // after the dest write landed (accept). On reject the source survives.
-            if (effective.decision === "accept") {
+            if (effective.resolution.decision === "accept" && (effective.applied?.status ?? 200) < 400) {
                 const moveSource = (result.attrs as { moveSource?: { scheme: string; pathname: string } } | undefined)?.moveSource;
                 if (moveSource !== undefined) {
                     const srcHandler = this.#schemes.get(moveSource.scheme) as (SchemeWithCrud & { applyResolution?: (a: { attrs: object }, c: SchemeCtx) => Promise<{ status: number }> }) | undefined;
@@ -539,7 +566,7 @@ export default class Dispatcher {
         const command = ("body" in statement && typeof statement.body === "string") ? statement.body : "";
         const verdict = this.#searchGate?.check(loopId, turnId, runtime, command) ?? { verdict: "pass" as const };
         if (verdict.verdict === "capped") {
-            return { status: 429, error: `Per-turn search limit reached (${verdict.cap}).` };
+            return Dispatcher.#failure("search-limit-reached", 429, `Per-turn search limit reached (${verdict.cap}).`);
         }
         if (verdict.verdict === "duplicate") {
             // {§stream-owner-scoped} — the prior ranked digest is the CALLER's own stream entry.
@@ -547,7 +574,12 @@ export default class Dispatcher {
             const raw = prior.entry?.channels["#results"]?.content ?? "";
             let results: unknown = raw;
             try { results = JSON.parse(raw); } catch { /* non-JSON results serve verbatim */ }
-            return { status: 409, results };
+            return Dispatcher.#failure(
+                "duplicate-search",
+                409,
+                "This search already ran in the current loop; the prior results are attached.",
+                { results },
+            );
         }
         return this.#run("exec", statement, ctx);
     }
@@ -559,7 +591,7 @@ export default class Dispatcher {
         const manifest = (handler.constructor as { manifest?: SchemeManifest }).manifest;
         if (manifest === undefined) return null;
         if (manifest.writableBy.includes(origin)) return null;
-        return { status: 403, error: `writer '${origin}' is not in writableBy for scheme '${schemeName}'` }; // §scheme-surface-writableby-403
+        return Dispatcher.#failure("writer-forbidden", 403, `Writer '${origin}' is not in writableBy for scheme '${schemeName}'.`); // §scheme-surface-writableby-403
     }
 
     // Per-loop flag gating. Schemes self-declare their flag affinity in
@@ -590,7 +622,7 @@ export default class Dispatcher {
             else if (statement.op === "COPY") writesFilesystem = isFile(statement.body === null ? null : parsePath(statement.body));
             else if (statement.op === "MOVE") writesFilesystem = isFile(statement.target) || isFile(statement.body);
             if (writesFilesystem) {
-                return { status: 403, error: `'${statement.op}' cannot change the filesystem in an ask-mode loop — ask is read-only (no side-effecting ops). Answer or advise the user directly; an act-mode loop is required to edit files.` };
+                return Dispatcher.#failure("ask-mode-read-only", 403, `'${statement.op}' cannot change the filesystem in an ask-mode loop — ask is read-only. Answer or advise the user directly; an act-mode loop is required to edit files.`);
             }
         }
 
@@ -607,7 +639,7 @@ export default class Dispatcher {
             const scheme = schemeNameOf(target);
             if (scheme === null) return null;
             if (active.has(scheme)) return null;
-            return { status: 403, error: `'${scheme}' is unavailable: ${restriction}. Do NOT retry it — it is unavailable, not failing; answer or advise the user directly (an act-mode loop is required to use it).` };
+            return Dispatcher.#failure("scheme-unavailable", 403, `'${scheme}' is unavailable: ${restriction}. Do not retry it; answer or advise the user directly.`);
         };
 
         if (this.#isWorkerControl(statement)) return check(statement.target); // body is a spawn/fork task, not a dst path
@@ -637,12 +669,12 @@ export default class Dispatcher {
     // intent, so the model never conflates the target slot with the body (grammar#52).
     async #handleWorkerControl(statement: PlurnkStatement, ctx: PlurnkSchemeContext): Promise<DispatchResult> {
         const target = statement.target;
-        if (target === null) return { status: 400, error: `${statement.op} requires a worker target (${statement.op}(worker://<name>))` };
+        if (target === null) return Dispatcher.#failure("worker-target-required", 400, `${statement.op} requires a worker target (${statement.op}(worker://<name>)).`);
         const name = target.kind === "url" ? (target.hostname ?? "") : ""; // §worker-scheme — run is the AUTHORITY (worker://<name>), not the path
-        if (name === "") return { status: 400, error: `${statement.op} requires a worker name (worker://<name>)` };
-        if (name === "self") return { status: 400, error: `'self' is the current run — ${statement.op} names a NEW run (worker://<name>)` };
+        if (name === "") return Dispatcher.#failure("worker-name-required", 400, `${statement.op} requires a worker name (worker://<name>).`);
+        if (name === "self") return Dispatcher.#failure("worker-name-reserved", 400, `'self' is the current run — ${statement.op} names a new run (worker://<name>).`);
         // {§entry-owner} — 'commons'/'plurnk' are the reserved owner rows, '~' the self-sigil; no spawn takes them.
-        if (Owner.RESERVED.has(name)) return { status: 400, error: `'${name}' is a reserved worker name` };
+        if (Owner.RESERVED.has(name)) return Dispatcher.#failure("worker-name-reserved", 400, `'${name}' is a reserved worker name.`);
         if (ctx.injectWorker === undefined) throw new Error("run control: injectWorker capability absent");
         const denied = await WorkerCap.deny(this.#db, ctx.workspaceId);
         if (denied !== null) return denied;
@@ -656,7 +688,7 @@ export default class Dispatcher {
         // A name is frozen per worker but reclaimable across time (§machine-processes-worker-origin): a LIVE
         // sister holding it is a 409 (legible, never a raw UNIQUE 500); a free/terminated name reclaims.
         const live = await this.#db.worker_live_by_name.get<{ id: number }>({ workspace_id: ctx.workspaceId, name });
-        if (live !== undefined) return { status: 409, error: `worker '${name}' is already running` };
+        if (live !== undefined) return Dispatcher.#failure("worker-already-running", 409, `Worker '${name}' is already running.`);
 
         if (statement.op === "FORK") {
             // Branch the current worker's log into a named sister.
@@ -679,8 +711,8 @@ export default class Dispatcher {
         // COPY is entry-copy only — run control (spawn/fork) moved to the FORK/WORK verbs
         // (grammar 0.74.55). COPY's body is a dest path (grammar §COPY); an unparseable dest → 400.
         const dstPath = statement.body === null ? null : parsePath(statement.body);
-        if (srcPath === null) return { status: 400, error: "COPY requires source path" };
-        if (dstPath === null) return { status: 400, error: "COPY destination must be a parseable path in the body slot" };
+        if (srcPath === null) return Dispatcher.#failure("copy-source-required", 400, "COPY requires a source path.");
+        if (dstPath === null) return Dispatcher.#failure("copy-destination-invalid", 400, "COPY destination must be a parseable path in the body slot.");
         return await this.#copyOrchestration({ statement, srcPath, dstPath, ctx });
     }
 
@@ -688,14 +720,14 @@ export default class Dispatcher {
         if (statement.op !== "MOVE") throw new Error("unreachable");
         const srcPath = statement.target;
         const dstPath = statement.body;
-        if (srcPath === null) return { status: 400, error: "MOVE requires source path" };
+        if (srcPath === null) return Dispatcher.#failure("move-source-required", 400, "MOVE requires a source path.");
         // MOVE is relocation only — deletion is KILL's job (§move, §move-dev-null-not-special). The /dev/null
         // and null-body delete-by-MOVE back-compat is retired: no silent debt.
-        if (dstPath === null) return { status: 400, error: "MOVE requires a destination; use KILL to delete" }; // §move-null-body-400
+        if (dstPath === null) return Dispatcher.#failure("move-destination-required", 400, "MOVE requires a destination; use KILL to delete."); // §move-null-body-400
 
         const srcSchemeName = schemeNameOf(srcPath);
-        if (srcSchemeName === null) return { status: 400, error: "MOVE source must be a URL path with a scheme" };
-        if (!this.#schemes.has(srcSchemeName)) return { status: 501 };
+        if (srcSchemeName === null) return Dispatcher.#failure("move-source-scheme-required", 400, "MOVE source must be a URL path with a scheme.");
+        if (!this.#schemes.has(srcSchemeName)) return Dispatcher.#failure("scheme-not-found", 501, `MOVE source scheme '${srcSchemeName}' is not registered.`);
 
         // Relocation: COPY then DELETE source (§move-relocation-deletes-source).
         const copyResult = await this.#copyOrchestration({ statement, srcPath, dstPath, ctx });
@@ -709,7 +741,7 @@ export default class Dispatcher {
             return { ...copyResult, attrs: { ...(copyResult.attrs as Record<string, unknown>), moveSource: { scheme: srcSchemeName, pathname: srcPathname } } };
         }
         const delResult = await this.#deleteEntry(srcSchemeName, srcPathname, ctx);
-        if (delResult.status >= 400) return { status: delResult.status };
+        if (delResult.status >= 400) return Dispatcher.#failure("move-source-delete-failed", delResult.status, `MOVE copied the destination but could not delete the source ${srcSchemeName}://${srcPathname}.`);
         return copyResult;
     }
 
@@ -725,21 +757,23 @@ export default class Dispatcher {
     async #handleKill(statement: PlurnkStatement, ctx: PlurnkSchemeContext): Promise<DispatchResult> {
         if (statement.op !== "KILL") throw new Error("unreachable");
         const path = statement.target;
-        if (path === null) return { status: 400, error: "KILL requires a target path" };
+        if (path === null) return Dispatcher.#failure("kill-target-required", 400, "KILL requires a target path.");
         const schemeName = schemeNameOf(path);
-        if (schemeName === null) return { status: 400, error: "KILL target must be a URL path with a scheme" };
+        if (schemeName === null) return Dispatcher.#failure("kill-target-scheme-required", 400, "KILL target must be a URL path with a scheme.");
         // KILL on log:/// erases the log row(s) — the model's DB-storage curation lever
         // (plurnk.md:36, :98), routed to Log.kill below via the killable.kill path. The old
         // "append-only" 405 forbade what the grammar requires; FOLD only collapses the render.
         // Process-KILL: any scheme whose handler exposes kill() aborts a live stream — the
         // exec handler, registered as "exec" + under every runtime tag (sh/node), so a tag-
         // addressed stream (sh:///l/t/s) routes here, not to deleteEntry. §exec
-        const killable = this.#schemes.get(schemeName) as { kill?: (pathname: string, signal: number | null, ctx: SchemeCtx, scheme?: string) => Promise<{ status: number; error?: string }> } | undefined;
+        const killable = this.#schemes.get(schemeName) as { kill?: (pathname: string, signal: number | null, ctx: SchemeCtx, scheme?: string) => Promise<SchemeResult> } | undefined;
         if (killable !== undefined && typeof killable.kill === "function") {
             // Pass the model's OWN scheme so a stream-KILL error answers in the runtime tag the
             // model addressed (sh:///…), not the internal `exec` ({§fs-answer-in-canon}).
             const handlerCtx = this.#handlerContext(schemeName, ctx);
-            return handlerCtx === null ? { status: 501 } : await killable.kill(pathnameFromPath(path), statement.signal, handlerCtx, schemeName);
+            return handlerCtx === null
+                ? Dispatcher.#failure("scheme-context-unavailable", 501, `No context is available for scheme '${schemeName}'.`)
+                : await killable.kill(pathnameFromPath(path), statement.signal, handlerCtx, schemeName);
         }
         if (schemeName === "worker") {
             // Entry-path present → KILL a worker-scope scratch ENTRY (delete it), self-only —
@@ -747,18 +781,20 @@ export default class Dispatcher {
             // entry; only the path-ABSENT form (worker://<name>) terminates the run-as-actor. §worker-scheme
             const entryPath = path.kind === "url" ? (path.pathname ?? "") : "";
             if (entryPath !== "" && entryPath !== "/") {
-                const workerHandler = this.#schemes.get("worker") as { killEntry: (s: PlurnkStatement, c: SchemeCtx) => Promise<{ status: number; error?: string }> };
+                const workerHandler = this.#schemes.get("worker") as { killEntry: (s: PlurnkStatement, c: SchemeCtx) => Promise<SchemeResult> };
                 const handlerCtx = this.#handlerContext("worker", ctx);
-                return handlerCtx === null ? { status: 501 } : await workerHandler.killEntry(statement, handlerCtx);
+                return handlerCtx === null
+                    ? Dispatcher.#failure("scheme-context-unavailable", 501, "No context is available for scheme 'worker'.")
+                    : await workerHandler.killEntry(statement, handlerCtx);
             }
             // Terminate an addressed worker's structured scope. `worker://self` = self.
             // An idle worker is a no-op 200; a missing worker is 404.
             const name = path.kind === "url" ? (path.hostname ?? "") : ""; // §worker-scheme — the worker is the AUTHORITY
-            if (name === "") return { status: 400, error: "worker:// kill requires a worker name or ~ (worker://<name>)" };
+            if (name === "") return Dispatcher.#failure("worker-name-required", 400, "worker:// KILL requires a worker name or ~ (worker://<name>).");
             let workerId = ctx.workerId;
             if (name !== "~") {
                 const row = await this.#db.worker_resolve_by_name.get<{ id: number }>({ workspace_id: ctx.workspaceId, name });
-                if (row === undefined) return { status: 404, error: `worker://${name} not found in this workspace` };
+                if (row === undefined) return Dispatcher.#failure("worker-not-found", 404, `worker://${name} was not found in this workspace.`);
                 workerId = row.id;
             }
             if (this.#cancelWorker === undefined) throw new Error("run kill: cancelWorker capability absent");
@@ -767,11 +803,10 @@ export default class Dispatcher {
             await this.#cancelWorker(workerId, "killed via worker:// KILL");
             return { status: 200 };
         }
-        if (!this.#schemes.has(schemeName)) return { status: 501 };
+        if (!this.#schemes.has(schemeName)) return Dispatcher.#failure("scheme-not-found", 501, `Scheme '${schemeName}' is not registered.`);
         // A host-effecting delete (file) returns 202 to PROPOSE — pass its attrs through so the proposal
         // carries the delete target to review (§isProposal fires on 202). Plurnk-internal deletes execute inline.
-        const delResult = await this.#deleteEntry(schemeName, pathnameFromPath(path), ctx);
-        return delResult.attrs !== undefined ? { status: delResult.status, attrs: delResult.attrs } : { status: delResult.status };
+        return this.#deleteEntry(schemeName, pathnameFromPath(path), ctx);
     }
 
     // Multi-file READ fan-out (SPEC §matcher-result — "the companion to FIND's survey"). A glob
@@ -863,10 +898,13 @@ export default class Dispatcher {
         if (overflow !== null) {
             const findRowId = await this.#writeLog({ statement: { ...statement, op: "FIND" } as PlurnkStatement, result: found, workspaceId: ctx.workspaceId, workerId, loopId, turnId, sequence, origin });
             onDispatch?.(findRowId);
-            const result: DispatchResult = {
-                status: 413,
-                error: `${overflow} matches exceed the READ materialization budget — narrow the target or matcher.`,
-            };
+            const result = Dispatcher.#failure(
+                "read-materialization-too-large",
+                413,
+                `${overflow} matches exceed the READ materialization budget — narrow the target or matcher.`,
+                {},
+                { matches: overflow },
+            );
             const readRowId = await this.#writeLog({ statement, result, workspaceId: ctx.workspaceId, workerId, loopId, turnId, sequence: sequence + 1, origin });
             onDispatch?.(readRowId);
             return { ...result, rowsWritten: 2 };
@@ -874,7 +912,7 @@ export default class Dispatcher {
         // Find-less scheme, a matcher/scope error, or zero matches → a single row carrying the
         // status, exactly like a non-fanned READ. The model sees the empty/failed result, not silence.
         if (found.status !== 200 || matches.length === 0) {
-            const result: DispatchResult = { status: found.status === 200 ? 204 : found.status };
+            const result: DispatchResult = found.status === 200 ? { status: 204 } : found;
             const id = await this.#writeLog({ statement, result, workspaceId: ctx.workspaceId, workerId, loopId, turnId, sequence, origin });
             onDispatch?.(id);
             return { ...result, rowsWritten: 1 };
@@ -928,7 +966,13 @@ export default class Dispatcher {
     static #sliceMatch(whole: DispatchResult, span: { lineStart: number; lineEnd: number } | null): DispatchResult {
         if (whole.status !== 200 || span === null) return whole;
         const sliced = LineMarkerOps.sliceLines(typeof whole.content === "string" ? whole.content : "", { marks: [span.lineStart, span.lineEnd] });
-        if (sliced.status !== 200) return { status: sliced.status, error: sliced.error };
+        if (sliced.status !== 200) {
+            return Dispatcher.#failure(
+                "read-range-invalid",
+                sliced.status,
+                sliced.error ?? "The requested source range is not satisfiable.",
+            );
+        }
         return { status: 200, content: sliced.text ?? "", mimetype: "text/markdown", startLine: sliced.startLine ?? span.lineStart };
     }
 
@@ -980,24 +1024,26 @@ export default class Dispatcher {
     }): Promise<DispatchResult> {
         const srcSchemeName = schemeNameOf(srcPath);
         const dstSchemeName = schemeNameOf(dstPath);
-        if (srcSchemeName === null || dstSchemeName === null) return { status: 400, error: "COPY/MOVE require URL paths with schemes" };
+        if (srcSchemeName === null || dstSchemeName === null) return Dispatcher.#failure("copy-scheme-required", 400, "COPY and MOVE require URL paths with schemes.");
         // {§worker-authority-carving} — the entry-copy seam is pathname-keyed; on worker:// it
         // addresses the COMMONS. A space's content moves via READ + EDIT, not COPY.
         for (const p of [srcPath, dstPath]) {
             if (p.kind === "url" && p.scheme === "worker" && (p.hostname ?? "") !== "") {
-                return { status: 400, error: "COPY/MOVE address the commons (worker:///…); a space's content moves via READ + EDIT" };
+                return Dispatcher.#failure("worker-copy-address-invalid", 400, "COPY and MOVE address the commons (worker:///…); a worker space's content moves via READ and EDIT.");
             }
         }
 
         const srcHandler = this.#schemes.get(srcSchemeName);
         const dstHandler = this.#schemes.get(dstSchemeName);
-        if (srcHandler === undefined || dstHandler === undefined) return { status: 501 };
+        if (srcHandler === undefined || dstHandler === undefined) {
+            return Dispatcher.#failure("scheme-not-found", 501, `COPY/MOVE requires registered source '${srcSchemeName}' and destination '${dstSchemeName}' schemes.`);
+        }
 
         const srcPathname = pathnameFromPath(srcPath);
         const dstPathname = pathnameFromPath(dstPath);
 
         const srcResult = await this.#readEntry(srcSchemeName, srcPathname, ctx);
-        if (srcResult.status !== 200 || srcResult.entry === null) return { status: 404, error: `COPY/MOVE source not found: ${srcSchemeName}://${srcPathname}` };  // §copy-missing-source-404 §move-missing-source-404
+        if (srcResult.status !== 200 || srcResult.entry === null) return Dispatcher.#failure("copy-source-not-found", 404, `COPY/MOVE source not found: ${srcSchemeName}://${srcPathname}.`);  // §copy-missing-source-404 §move-missing-source-404
         const entry = srcResult.entry;
 
         // Destination read — the conflict/no-op verdict is deferred until the
@@ -1011,7 +1057,7 @@ export default class Dispatcher {
         for (const [channelName, channelData] of Object.entries(entry.channels)) {
             const expectedMimetype = dstChannels[channelName];
             if (expectedMimetype !== undefined && expectedMimetype !== channelData.mimetype) {
-                return { status: 415, error: `mimetype mismatch on channel '${channelName}': ${channelData.mimetype} vs ${expectedMimetype}` }; // cross-mimetype COPY/MOVE → 415, never coerce — §channel-mimetype-cross-mimetype-415
+                return Dispatcher.#failure("mimetype-mismatch", 415, `Mimetype mismatch on channel '${channelName}': ${channelData.mimetype} vs ${expectedMimetype}.`); // cross-mimetype COPY/MOVE → 415, never coerce — §channel-mimetype-cross-mimetype-415
             }
         }
 
@@ -1025,10 +1071,10 @@ export default class Dispatcher {
             const sliced: typeof entry.channels = {};
             for (const [channelName, channelData] of Object.entries(entry.channels)) {
                 if (MimetypeBinary.isBinaryMimetype(channelData.mimetype)) {
-                    return { status: 415, error: `cannot slice <L> on binary channel '${channelName}' (${channelData.mimetype})` };
+                    return Dispatcher.#failure("binary-range-unsupported", 415, `Cannot slice <L> on binary channel '${channelName}' (${channelData.mimetype}).`);
                 }
                 const r = LineMarkerOps.sliceLinesRaw(channelData.content ?? "", lineMarker);
-                if (r.status !== 200) return { status: r.status, error: r.error };
+                if (r.status !== 200) return Dispatcher.#failure("copy-range-invalid", r.status, r.error ?? "The requested COPY/MOVE range is not satisfiable.");
                 sliced[channelName] = { ...channelData, content: r.text ?? "" };
             }
             channels = sliced;
@@ -1051,13 +1097,16 @@ export default class Dispatcher {
                 && writeNames.every((n, i) => n === dstNames[i] && (channels[n]?.content ?? "") === (dstChannels[n]?.content ?? ""));
             const sameTags = [...tags].sort().join("") === [...dstExisting.entry.tags].sort().join("");
             if (sameContent && sameTags) return { status: 304 };  // identical → §copy-noop-304
-            return { status: 409, error: `COPY/MOVE destination exists: ${dstSchemeName}://${dstPathname}` };  // §copy-conflict-409
+            return Dispatcher.#failure("copy-destination-exists", 409, `COPY/MOVE destination exists: ${dstSchemeName}://${dstPathname}.`);  // §copy-conflict-409
         }
 
         const writeResult = await this.#writeEntry(dstSchemeName, dstPathname, { channels, tags }, ctx);
         // A file dest returns 202 (disk write → §membership review): propagate the
         // proposal so dispatch runs the gate + routes applyResolution to the dest.
         if (writeResult.status === 202) return { status: 202, attrs: writeResult.attrs, body: writeResult.body };
+        if (writeResult.status >= 400) {
+            return Dispatcher.#failure("copy-destination-write-failed", writeResult.status, `COPY/MOVE could not write ${dstSchemeName}://${dstPathname}.`);
+        }
         return { status: writeResult.status, entryId: writeResult.entryId, created: writeResult.created };
     }
 
@@ -1121,7 +1170,7 @@ export default class Dispatcher {
         if (statement.op !== "SEND") throw new Error("unreachable");
         const { workerId, loopId, turnId } = ctx;
         const status = statement.signal;
-        if (status === null) return { status: 400 };
+        if (status === null) return Dispatcher.#failure("send-status-required", 400, "SEND requires a numeric status.");
         const raw = statement.body === null ? "" : typeof statement.body === "string" ? statement.body : statement.body.raw;
 
         // [102]<T> — waiting is a mode of CONTINUING (grammar 0.75.0, the terminal redesign): park
@@ -1138,7 +1187,7 @@ export default class Dispatcher {
         const joinArmed = this.#joinTargets.delete(loopId);
         if (status === 102 && statement.lineMarker === null && joinArmed) {
             if (!await this.#lifecycle.park(loopId, raw.length > 0 ? raw : "parked — awaiting a worker's result (blocking collect)")) {
-                return { status: await this.#lifecycle.status(loopId) };
+                return Dispatcher.#statusResult(await this.#lifecycle.status(loopId), "loop-already-terminal", "The loop was already terminal when SEND attempted to park it.");
             }
             this.#parkDeadlines.set(loopId, -1); // indefinite: the bounded child's terminal is the wake edge
             return { status: 102, attrs: { parked: -1, join: true } };
@@ -1155,7 +1204,7 @@ export default class Dispatcher {
             const seconds = typeof marks === "number" ? marks : -1; // bare 202 / absent T = indefinite, bounded by the join
             if (await this.#hasLiveWork(workerId)) {
                 if (!await this.#lifecycle.park(loopId, raw.length > 0 ? raw : "waiting on live work")) {
-                    return { status: await this.#lifecycle.status(loopId) };
+                    return Dispatcher.#statusResult(await this.#lifecycle.status(loopId), "loop-already-terminal", "The loop was already terminal when SEND attempted to wait.");
                 }
                 this.#parkDeadlines.set(loopId, seconds);
                 return { status: 202, attrs: { waiting: seconds } };
@@ -1186,7 +1235,7 @@ export default class Dispatcher {
         // Disabled → refused with a self-decide steer, never a park into the void.
         if (status === 300) {
             if (!(await WorkspaceSettings.questionsEnabled(this.#db, ctx.workspaceId))) {
-                return { status: 409, error: "Operator asks ([300]) are not enabled in this environment — no one is watching to answer. Decide yourself and proceed: SEND[102] to continue, or [200] to conclude." };
+                return Dispatcher.#failure("operator-questions-disabled", 409, "Operator asks ([300]) are not enabled in this environment — no one is watching to answer. Decide yourself and proceed with SEND[102], or conclude with SEND[200].");
             }
             // Owner ruling (#346): the question rides the SAME proposal system as file edits and
             // MCP auths — stop the world. Returning 202 here routes through the proposal seam
@@ -1212,7 +1261,7 @@ export default class Dispatcher {
             const failedRows = await this.#db.engine_turn_failures.all<{ id: number }>({ turn_id: turnId });
             const failCount = failedRows.length + (ctx.turnParseErrors ?? 0);
             if (failCount > 0) {
-                return { status: 409, error: `Termination attempted despite ${failCount} failed operation(s) this turn. The errors land in your log next turn — weigh them, then conclude (or SEND[499] to abandon).` };
+                return Dispatcher.#failure("unobserved-failures", 409, `Termination attempted despite ${failCount} failed operation(s) this turn. The failures land in your log next turn — weigh them, then conclude or SEND[499] to abandon.`);
             }
             const pending = await this.#pendingSet(workerId, turnId);
             if (pending.length > 0) {
@@ -1230,22 +1279,35 @@ export default class Dispatcher {
                     // FORCE an additional turn — not blame, physics), and prescribes the concluding
                     // emission's legal SHAPE (PLAN + SEND[200] only — no room for the justify-READ
                     // that re-armed this gate four times while she held the correct answer).
-                    return { status: 409, error: "Last turn both performed retrieval operations and attempted to terminate. Retrieval operations force an additional turn to receive results for review and reaction. To conclude, only use PLAN and SEND[200] operations.", attrs: { retrievalOnly: true } };
+                    return Dispatcher.#failure(
+                        "retrieval-results-unobserved",
+                        409,
+                        "Last turn both performed retrieval operations and attempted to terminate. Retrieval operations force an additional turn to receive results for review and reaction. To conclude, only use PLAN and SEND[200] operations.",
+                        { attrs: { retrievalOnly: true } },
+                    );
                 }
-                return { status: 409, error: `Attempted [200] termination in a turn that performs retrieval or has surviving work: ${pending.join("; ")}. KILL what you no longer need; SEND[102] (or [102]<seconds>) to receive the rest; then conclude.` };
+                return Dispatcher.#failure("work-remains", 409, `Attempted [200] termination while work remains: ${pending.join("; ")}. KILL what you no longer need; SEND[102] to receive the rest; then conclude.`);
             }
             const finished = await this.#lifecycle.finish(loopId, 200, raw === "" ? null : raw);
-            return { status: finished ? 200 : await this.#lifecycle.status(loopId) };
+            return Dispatcher.#statusResult(
+                finished ? 200 : await this.#lifecycle.status(loopId),
+                "loop-already-terminal",
+                "The loop was already terminal when SEND attempted to conclude it.",
+            );
         }
         if (status === 499) {
             const finished = await this.#lifecycle.finish(loopId, 499, raw === "" ? null : raw);
-            if (!finished) return { status: await this.#lifecycle.status(loopId) };
+            if (!finished) return Dispatcher.#statusResult(await this.#lifecycle.status(loopId), "loop-already-terminal", "The loop was already terminal when SEND attempted to abandon it.");
             await this.#cancelDescendants?.(workerId, raw === "" ? "parent abandoned its scope" : raw);
-            return { status: 499 };
+            return Dispatcher.#failure("scope-abandoned", 499, raw === "" ? "The worker abandoned its scope." : raw);
         }
         // Every other signal — 102 bare, 202 (retired as a terminal; now ordinary mid-comms), 1xx —
         // is a plain broadcast row: no loop transition.
-        return { status };
+        return Dispatcher.#statusResult(
+            status,
+            "send-broadcast-failed",
+            raw === "" ? `SEND broadcast reported status ${status}.` : raw,
+        );
     }
 
     async #run(
@@ -1253,7 +1315,7 @@ export default class Dispatcher {
         statement: PlurnkStatement,
         ctx: PlurnkSchemeContext,
     ): Promise<DispatchResult> {
-        if (schemeName === null) return { status: 400 };
+        if (schemeName === null) return Dispatcher.#failure("target-scheme-required", 400, `${statement.op} requires a target scheme.`);
         if (statement.op === "SEND" && statement.signal === 499 && statement.target?.kind === "url") {
             const entry = await this.#db.crud_find_workspace_entry.get<{ id: number }>({
                 workspace_id: ctx.workspaceId,
@@ -1270,26 +1332,28 @@ export default class Dispatcher {
                     const cancelled = await this.#liveSubscriptions.cancel(subscription.id);
                     return cancelled
                         ? { status: 200 }
-                        : { status: 500, error: `subscription ${subscription.id} is durable but has no live cancellation handle` };
+                        : Dispatcher.#failure("subscription-handle-missing", 500, `Subscription ${subscription.id} is durable but has no live cancellation handle.`);
                 }
             }
         }
         const handler = this.#schemes.get(schemeName) as Partial<Record<keyof SchemeHandler, SchemeMethod>> | undefined;
-        if (handler === undefined) return { status: 501 };
+        if (handler === undefined) return Dispatcher.#failure("scheme-not-found", 501, `Scheme '${schemeName}' is not registered.`);
         const methodName = statement.op.toLowerCase() as keyof SchemeHandler;
         const method = handler[methodName];
         const addressedScheme = statement.target?.kind === "url" ? statement.target.scheme : null;
         const manifest = this.#schemes.manifestFor(schemeName);
         if (manifest === undefined) throw new Error(`scheme '${schemeName}' has no manifest`);
         const schemeCtx = new SchemeCtxImpl(ctx, addressedScheme ?? schemeName, manifest, this.#liveSubscriptions);
-        if (typeof method === "function") return method.call(handler, statement, schemeCtx);
-        if (statement.op !== "FIND" || manifest.category !== "data") return { status: 501 };
+        if (typeof method === "function") return Results.assert(await method.call(handler, statement, schemeCtx));
+        if (statement.op !== "FIND" || manifest.category !== "data") {
+            return Dispatcher.#failure("operation-not-implemented", 501, `Scheme '${schemeName}' does not implement ${statement.op}.`);
+        }
         const prepareFind = handler.prepareFind;
         if (typeof prepareFind === "function") {
             const prepared = await prepareFind.call(handler, statement, schemeCtx);
-            if (prepared.status >= 300) return prepared;
+            if (prepared.status >= 300) return Results.assert(prepared);
         }
-        return schemeCtx.entries.operations.find(statement);
+        return Results.assert(await schemeCtx.entries.operations.find(statement));
     }
 
     // A status-202 result is a reviewable PROPOSAL (a side-effecting op — EDIT/EXEC/
@@ -1326,6 +1390,20 @@ export default class Dispatcher {
         let attrsObj: Record<string, unknown> = (result.attrs !== undefined && result.attrs !== null)
             ? { ...(result.attrs as Record<string, unknown>) }
             : {};
+        const seqs = statement.op === "EXEC" || result.problem !== undefined
+            ? await this.#db.engine_loop_turn_seqs.get<{ loop_seq: number; turn_seq: number }>({
+                loop_id: loopId,
+                turn_id: turnId,
+            })
+            : undefined;
+        if ((statement.op === "EXEC" || result.problem !== undefined) && seqs === undefined) {
+            throw new Error(`Dispatcher.#writeLog: loop_turn_seqs returned no row for loop=${loopId} turn=${turnId}`);
+        }
+        if (result.problem !== undefined && seqs !== undefined) {
+            Results.attachInstance(result, `log:///${seqs.loop_seq}/${seqs.turn_seq}/${sequence}/${statement.op}`);
+        } else {
+            Results.assert(result);
+        }
         // EXEC produces a stream entry addressed by RUNTIME TAG as authority (§exec): it lives
         // at <runtime>:///<loop_seq>/<turn_seq>/<sequence> (e.g. sh:///1/1/2). That address is a
         // SEPARATE `stream` link in attrs — NOT an overload of `target`, which stays faithful to
@@ -1334,10 +1412,7 @@ export default class Dispatcher {
         // Runtime comes from statement.signal (EXEC's runtime slot), resolvable for failed execs
         // too; empty/absent = the default shell.
         if (statement.op === "EXEC") {
-            const seqs = await this.#db.engine_loop_turn_seqs.get<{ loop_seq: number; turn_seq: number }>({
-                loop_id: loopId, turn_id: turnId,
-            });
-            if (seqs === undefined) throw new Error(`Dispatcher.#writeLog: loop_turn_seqs returned no row for loop=${loopId} turn=${turnId}`);
+            if (seqs === undefined) throw new Error("Dispatcher.#writeLog: EXEC coordinate was not resolved");
             const runtime = (typeof statement.signal === "string" && statement.signal.length > 0) ? statement.signal : "sh";
             const coordPathname = `/${seqs.loop_seq}/${seqs.turn_seq}/${sequence}`;
             attrsObj.pathname = coordPathname;

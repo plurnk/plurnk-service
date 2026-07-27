@@ -1,0 +1,42 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "https://schemas.plurnk.dev/v0/OperationResult.json",
+    "title": "OperationResult",
+    "description": "Universal PLURNK operation result. Scheme-owned metadata is open, but failures always carry one RFC 9457 Problem Details object and never a parallel error field.",
+    "type": "object",
+    "required": ["status"],
+    "additionalProperties": true,
+    "properties": {
+        "status": {
+            "type": "integer",
+            "minimum": 100,
+            "maximum": 599
+        },
+        "problem": {
+            "$ref": "https://schemas.plurnk.dev/v0/ProblemDetails.json"
+        },
+        "error": false
+    },
+    "oneOf": [
+        {
+            "properties": {
+                "status": {
+                    "minimum": 100,
+                    "maximum": 399
+                }
+            },
+            "not": {
+                "required": ["problem"]
+            }
+        },
+        {
+            "required": ["problem"],
+            "properties": {
+                "status": {
+                    "minimum": 400,
+                    "maximum": 599
+                }
+            }
+        }
+    ]
+}

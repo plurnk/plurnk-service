@@ -143,12 +143,12 @@ export default class Digest {
         const state = le.state !== "resolved" ? ` state=${le.state}` : "";
         const outcome = le.outcome !== null ? ` outcome=${le.outcome}` : "";
         const fail = le.status_rx >= 400 ? " ✗" : "";
-        // For non-2xx outcomes, surface the error string (or body) from rx so
+        // For failed outcomes, surface the Problem Details explanation from rx so
         // the waterfall explains WHY each failure happened without opening packets.
         let errLine = "";
         if (le.status_rx >= 400) {
-            const rx = Digest.#parseJson(le.rx, {}) as { error?: unknown; body?: unknown };
-            const msg = rx.error ?? rx.body ?? null;
+            const rx = Digest.#parseJson(le.rx, {}) as { problem?: { detail?: unknown } };
+            const msg = rx.problem?.detail ?? null;
             if (typeof msg === "string" && msg.length > 0) {
                 errLine = `\n    → ${Digest.#summarize(msg, 140)}`;
             }

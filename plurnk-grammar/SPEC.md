@@ -756,7 +756,42 @@ Exit codes: `0` for a clean parse (no error items, no `unparsedTail`),
 `1` otherwise. `PlurnkParseError` instances serialize via their
 `toJSON()` method to `{ line, column, source, severity, message }`.
 
-## 13. Error Format
+## 13. Operation results and failures
+
+`OperationResult.json` is the shared result envelope for every dispatched
+operation:
+
+```typescript
+type OperationResult =
+    | { status: number; problem?: never; [field: string]: unknown }
+    | { status: number; problem: ProblemDetails; [field: string]: unknown };
+```
+
+The first branch accepts statuses 100–399. The second accepts statuses 400–599
+and requires RFC 9457 Problem Details:
+
+```typescript
+interface ProblemDetails {
+    type: string;       // stable absolute problem-type URI
+    title: string;
+    status: number;     // identical to OperationResult.status
+    detail: string;     // occurrence-specific explanation
+    instance?: string;  // durable occurrence URI, attached by the host
+    [extension: string]: unknown;
+}
+```
+
+The legacy top-level `error` member is forbidden. Producers own `type`, `title`,
+`status`, `detail`, and any domain extensions. The host validates the complete
+result, rejects an inconsistent status pair, and attaches `instance` when it
+commits the occurrence. A malformed result is a producer contract violation,
+not another model-facing failure to synthesize.
+
+`TelemetryEvent` is a notice envelope, not an operation-failure envelope. It
+may report progress or a non-fatal degradation, but it does not replace the
+durable failed result.
+
+## 14. Parse error format
 
 `PlurnkParseError` is a JSON-serializable Error subclass:
 

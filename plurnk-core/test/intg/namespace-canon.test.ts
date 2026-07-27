@@ -157,14 +157,14 @@ test("pins 6+8: facts distinguish wrong-address / occupancy / empty-survey by th
         // ENOENT on a READ miss carries the resolved name in wire canon.
         const miss = await file.read(readStmt("/no/such.md"), ctx);
         assert.equal(miss.status, 404);
-        assert.equal((miss as { error?: string }).error, "no entry at no/such.md", "the READ miss states its fact — resolved form, wire canon");
+        assert.equal(miss.problem?.detail, "No entry exists at no/such.md.", "the READ miss states its fact — resolved form, wire canon");
 
         // The green-lie pin: FIND over an unresolvable EXACT path is ENOENT with its fact, never 200-empty.
         const findMissStmt = { op: "FIND", suffix: "", signal: null, lineMarker: null, position: { line: 1, column: 1 },
             target: { kind: "local", raw: "no/such.md" }, body: null } as never;
         const findMiss = await file.find(findMissStmt, ctx);
         assert.equal(findMiss.status, 404, "FIND over nothing never certifies empty (run59's launcher)");
-        assert.equal((findMiss as { error?: string }).error, "no entry at no/such.md");
+        assert.equal(findMiss.problem?.detail, "No entry exists at no/such.md.");
 
         // A FOLDER scope with zero matches stays the blessed orienting empty survey.
         const surveyStmt = { op: "FIND", suffix: "", signal: null, lineMarker: null, position: { line: 1, column: 1 },
@@ -176,7 +176,7 @@ test("pins 6+8: facts distinguish wrong-address / occupancy / empty-survey by th
         await writeFile(join(root, "occupied.md"), "hidden\n");
         const clobber = await file.edit(editStmt("occupied.md", "x\n"), ctx);
         assert.equal(clobber.status, 403);
-        assert.equal((clobber as { error?: string }).error, "a file exists at occupied.md", "occupancy leaks; content stays dark — distinguishable from ENOENT by the string");
+        assert.equal(clobber.problem?.detail, "a file exists at occupied.md", "occupancy leaks; content stays dark — distinguishable from ENOENT by the string");
     } finally { await db.close(); await rm(root, { recursive: true, force: true }); }
 });
 

@@ -148,7 +148,7 @@ test("bare EXEC resolves to sh and respects the workspace's sh policy gate", asy
             workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
         });
         assert.equal(result.status, 501, "sh disabled → bare EXEC is refused, not proposed or spawned");
-        assert.match(String(result.error), /`sh` is disabled/);
+        assert.match(result.problem?.detail ?? "", /`sh` is disabled/);
         await exec.idle();
     } finally { await db.close(); }
 });

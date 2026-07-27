@@ -72,7 +72,9 @@ Channel publication follows the manifest contract: a fragmentless READ publishes
 | Non-url target | 400 (`kind: bad_target`) |
 | Uninterpreted SEND status | 501 (`kind: unsupported_send`) |
 
-Error results carry a `scheme:http` `TelemetryEvent` (via `Results.error`).
+Error results carry RFC 9457 Problem Details with a stable `scheme:http`
+problem type (via `Results.failure`). The daemon attaches the durable log URI
+as `instance`; malformed results fail the universal scheme-result boundary.
 
 ## §5 Dependencies
 

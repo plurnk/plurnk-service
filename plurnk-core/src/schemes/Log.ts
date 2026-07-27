@@ -6,8 +6,9 @@ import Matcher from "../content/matcher.ts";
 import type { FindResult, MatchItem, Match } from "./_entry-find.ts";
 import { CoreSchemeAdapterBase } from "../core/CoreSchemeServices.ts";
 import type { CoreSchemeCallContext } from "../core/CoreSchemeServices.ts";
+import Results, { type SchemeResultBase } from "../core/results.ts";
 
-type OpenFoldResult = { status: number; matched?: number; error?: string };
+type OpenFoldResult = SchemeResultBase & { matched?: number };
 
 // log:///<loop_seq>/<turn_seq>/<sequence>[/<op>] — the trailing /op segment
 // is wire-rendering self-documentation derived from the row's `op` field;
@@ -96,16 +97,23 @@ export default class Log extends CoreSchemeAdapterBase {
     async read(statement: ReadStatement, ctx: CoreSchemeCallContext): Promise<SchemeReadResult> {
         const core = this.coreContext(ctx);
         const { db, workerId } = core;
-        if (statement.target === null) return { status: 400, content: null, mimetype: null };
+        const failure = (code: string, status: number, detail: string): SchemeReadResult => Results.failure(
+            "scheme:log",
+            code,
+            status,
+            detail,
+            { content: null, mimetype: null },
+        ) as SchemeReadResult;
+        if (statement.target === null) return failure("read-target-required", 400, "READ requires a log coordinate.");
         // READ is exact — one coordinate, one row. Tag recall is OPEN[tag]/FIND[tag]'s job (§log-region-tagging),
         // not a filter on a single-row read.
         if (Array.isArray(statement.signal) && statement.signal.length > 0) {
-            return { status: 404, content: null, mimetype: null };
+            return failure("tagged-coordinate-not-found", 404, "The exact log row does not carry every requested tag.");
         }
 
         const pathname = (statement.target.kind === "url" ? statement.target.pathname : statement.target.raw).replace(/^\//, "");
         const coord = parseCoordinate(pathname);
-        if (coord === null) return { status: 400, content: null, mimetype: null };
+        if (coord === null) return failure("coordinate-malformed", 400, `Malformed log coordinate '${pathname}'.`);
 
         const row = await db.log_read_by_coordinate.get<{
             op: string;
@@ -116,17 +124,27 @@ export default class Log extends CoreSchemeAdapterBase {
             mimetype_rx: string;
         }>({ worker_id: workerId, loop_seq: coord.loopSeq, turn_seq: coord.turnSeq, sequence: coord.sequence });
 
-        if (row === undefined) return { status: 404, content: null, mimetype: null };
+        if (row === undefined) return failure("entry-not-found", 404, `No log entry exists at log:///${pathname}.`);
 
         const { content: underlyingContent, mimetype: underlyingMimetype } = rxProjection(row.rx);
 
-        return ReadResolve.resolve({
+        const resolved = await ReadResolve.resolve({
             content: underlyingContent,
             mimetype: underlyingMimetype,
             lineMarker: statement.lineMarker,
             body: statement.body,
             mimetypes: core.mimetypes,
         });
+        if (resolved.status >= 400) {
+            return Results.failure(
+                "scheme:log",
+                resolved.status === 416 ? "range-not-satisfiable" : "read-resolution-failed",
+                resolved.status,
+                resolved.content ?? `READ could not resolve the requested log content (status ${resolved.status}).`,
+                { ...resolved },
+            ) as SchemeReadResult;
+        }
+        return { ...resolved };
     }
 
     // §log-uniform-query — FIND over the worker's log rows, on the SAME source-agnostic primitive
@@ -138,13 +156,26 @@ export default class Log extends CoreSchemeAdapterBase {
     async find(statement: FindStatement, ctx: CoreSchemeCallContext): Promise<FindResult> {
         const core = this.coreContext(ctx);
         const { db, workerId, mimetypes } = core;
-        const empty = (status: number): FindResult => ({ status, content: null, mimetype: null, results: [], itemsTokenTotal: 0, pathnames: [], matches: [] });
-        if (statement.target === null) return empty(400);
-        if (statement.body !== null && (statement.body.dialect === "semantic" || statement.body.dialect === "graph")) return empty(501);
+        const empty = (status: number, detail?: string): FindResult => {
+            const fields = { content: null, mimetype: null, results: [], itemsTokenTotal: 0, pathnames: [], matches: [] };
+            return status >= 400
+                ? Results.failure(
+                    "scheme:log",
+                    status === 416 ? "range-not-satisfiable" : status === 501 ? "matcher-not-implemented" : "find-failed",
+                    status,
+                    detail ?? `FIND could not resolve the requested log selection (status ${status}).`,
+                    fields,
+                ) as FindResult
+                : { status, ...fields };
+        };
+        if (statement.target === null) return empty(400, "FIND requires a log target.");
+        if (statement.body !== null && (statement.body.dialect === "semantic" || statement.body.dialect === "graph")) {
+            return empty(501, `The '${statement.body.dialect}' matcher is not implemented for log entries.`);
+        }
 
         const pathname = (statement.target.kind === "url" ? statement.target.pathname : statement.target.raw).replace(/^\//, "");
         const glob = coordinateGlob(pathname);
-        if (glob === null) return empty(400);
+        if (glob === null) return empty(400, `Malformed log target '${pathname}'.`);
         // §log-region-tagging — a tag signal AND-filters the candidates (§find-tag-filter-and-semantics):
         // a row survives only if it carries EVERY listed tag. No signal → the plain coordinate scope.
         const tags = Array.isArray(statement.signal) ? statement.signal : [];
@@ -159,9 +190,9 @@ export default class Log extends CoreSchemeAdapterBase {
         if (statement.body === null) {
             matches = projected.map((c) => ({ pathname: c.key, span: null }));
         } else {
-            if (mimetypes === undefined) return empty(501);
+            if (mimetypes === undefined) return empty(501, "Content matching requires the mimetypes capability.");
             const r = await Matcher.matchCandidates(statement.body, projected, mimetypes);
-            if (r.status !== 200) return empty(r.status);
+            if (r.status !== 200) return empty(r.status, `The log matcher failed with status ${r.status}.`);
             matches = r.matches.map((m) => ({
                 pathname: m.key,
                 span: m.span === null ? null : {
@@ -174,7 +205,7 @@ export default class Log extends CoreSchemeAdapterBase {
         }
         if (statement.lineMarker !== null) {
             const page = paginate(matches, LineMarkerOps.firstLast(statement.lineMarker));
-            if (page.status !== 200) return empty(page.status);
+            if (page.status !== 200) return empty(page.status, "The requested log result range is not satisfiable.");
             matches = page.items ?? [];
         }
         if (matches.length === 0) return empty(204);
@@ -289,16 +320,32 @@ export default class Log extends CoreSchemeAdapterBase {
         if (expanded === 1 && signal.length > 0) {
             const rt = await this.#resolveByTags(statement, signal, ctx);
             if (rt.status === 204) return { status: 204, matched: 0 };
-            if (rt.status !== 200) return { status: rt.status, ...(rt.error !== undefined ? { error: rt.error } : {}) };
+            if (rt.status !== 200) {
+                return Results.failure(
+                    "scheme:log",
+                    rt.status === 416 ? "range-not-satisfiable" : "open-failed",
+                    rt.status,
+                    rt.error ?? `OPEN could not resolve the requested log selection (status ${rt.status}).`,
+                ) as OpenFoldResult;
+            }
             for (const id of rt.ids) await ctx.db.log_set_expanded_by_id.run({ id, expanded: 1 });
             return { status: 200, matched: rt.ids.length };
         }
 
-        if (statement.target === null) return { status: 400 };
+        if (statement.target === null) {
+            return Results.failure("scheme:log", "target-required", 400, `${expanded === 1 ? "OPEN" : "FOLD"} requires a log target.`) as OpenFoldResult;
+        }
         const pathname = (statement.target.kind === "url" ? statement.target.pathname : statement.target.raw).replace(/^\//, "");
         const r = await this.#resolveIds(pathname, statement.lineMarker, ctx);
         if (r.status === 204) return { status: 204, matched: 0 };
-        if (r.status !== 200) return { status: r.status, ...(r.error !== undefined ? { error: r.error } : {}) };
+        if (r.status !== 200) {
+            return Results.failure(
+                "scheme:log",
+                r.status === 416 ? "range-not-satisfiable" : r.status === 404 ? "entry-not-found" : "curation-failed",
+                r.status,
+                r.error ?? `${expanded === 1 ? "OPEN" : "FOLD"} could not resolve the requested log selection (status ${r.status}).`,
+            ) as OpenFoldResult;
+        }
         let ids = r.ids;
         // §prompt-fold-illegal (#382, owner) — the task frame stays visible: the CURRENT loop's
         // foisted preview READ (prompt target, origin plurnk, op READ) refuses FOLD (run43: a weak
@@ -315,7 +362,9 @@ export default class Log extends CoreSchemeAdapterBase {
             }
             if (previewIds.size > 0) {
                 ids = r.ids.filter((id) => !previewIds.has(id));
-                if (ids.length === 0) return { status: 403, error: "Illegal attempt to FOLD the task preview. Use KILL if you want it removed." };
+                if (ids.length === 0) {
+                    return Results.failure("scheme:log", "task-preview-fold-forbidden", 403, "Illegal attempt to FOLD the task preview. Use KILL if you want it removed.") as OpenFoldResult;
+                }
             }
         }
         for (const id of ids) await ctx.db.log_set_expanded_by_id.run({ id, expanded });
@@ -332,10 +381,18 @@ export default class Log extends CoreSchemeAdapterBase {
     // the only way to shed accumulated log rows in a long workspace (FOLD only collapses the
     // render; the row persists). Same resolution as OPEN/FOLD, DELETE instead of flip. KILL
     // carries no <L> result slot, so no pagination — a concrete coordinate or a path-glob.
-    async kill(pathname: string, _signal: number | null, ctx: CoreSchemeCallContext): Promise<{ status: number; error?: string }> {
+    async kill(pathname: string, _signal: number | null, ctx: CoreSchemeCallContext): Promise<SchemeResultBase> {
         const core = this.coreContext(ctx);
         const r = await this.#resolveIds(pathname.replace(/^\//, ""), null, core);
-        if (r.status !== 200) return { status: r.status };
+        if (r.status === 204) return { status: 204 };
+        if (r.status !== 200) {
+            return Results.failure(
+                "scheme:log",
+                r.status === 404 ? "entry-not-found" : "kill-failed",
+                r.status,
+                r.error ?? `KILL could not resolve the requested log selection (status ${r.status}).`,
+            );
+        }
         for (const id of r.ids) await core.db.log_delete_by_id.run({ id });
         return { status: 200 };
     }

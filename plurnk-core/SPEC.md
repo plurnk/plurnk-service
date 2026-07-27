@@ -1441,12 +1441,14 @@ The wire projection (`PacketWire.renderSlot`) groups sections by slot into the s
 
 ### §telemetry user.telemetry — model-facing runtime telemetry
 
-The model's runtime alert surface, with two sources by lifetime:
+The model's runtime alert surface has two distinct kinds of information:
 
-- **Errors are LOG ITEMS.** A model FAILURE — a parse failure (an actionless `op='error'` row) or an action that returned `status_rx ≥ 400` — is a durable `log_entries` row. It folds, kills, and budgets like any log entry (§open-fold), so the model recalls or curates its own mistakes and the grinder's prior-turn rollback can reclaim them — ONE budget surface, the log. The `errors` section is a derived POINTER INDEX over the recent `status_rx ≥ 400` rows (status + `log:///<coord>`), aiming the model at them; it holds no bodies and no fold/budget state of its own. Durable: an error persists until the model folds or kills it, not "cleared once seen."
-- **Engine NOTICES are telemetry.** Ephemeral events the engine emits while steering or narrating — a provider's `grammar_unenforced`, a `max_commands_exceeded` truncation, a `budget_overflow` fold, the premature-terminate/idle steers. Transient: they appear on the turn AFTER the event and drain once seen (`packet.telemetryErrors` is their only home). They are NOT the model's failures.
+- **Failures are log items.** A parse failure (an actionless `op='error'` row), a failed action, and an engine-rail failure are durable `log_entries` rows whose `rx` is an RFC 9457 operation result. They fold, kill, and budget like every other row. The `errors` section is a derived pointer index over recent `status_rx ≥ 400` rows; it owns no bodies or failure state.
+- **Notices are transient observations.** Progress and non-fatal diagnostics such as `turn_awaiting_model`, `embed_progress`, and `grammar_unenforced` may appear once in the packet and broadcast live. They neither substitute for a failure result nor influence scheduling or recovery.
 
-The `log` section is the durable audit; the `errors` section surfaces both — the error pointers (durable, in the log) and the notices (ephemeral).
+The `log` is durable product truth. The `errors` section points at its failures
+and may also display a transient diagnostic notice; the two retain distinct
+contracts and lifetimes.
 
 **Grammar contract:**
 
@@ -1456,8 +1458,8 @@ The `log` section is the durable audit; the `errors` section surfaces both — t
 **Plurnk-service rendering:**
 
 - `budget` per §tokenomics: turn-weight and heaviest-entries tables with `tokenCeiling`/`tokenUsage`/`tokensFree`.
-- **One uniform error channel.** EVERY failure — a failed action, an actionless parse failure, and every engine-rail failure (budget overflow, max-commands, the idle/premature steers) — is an `op='error'` `log_entries` row with `status_rx ≥ 400`. No per-category handling, no bespoke ephemeral relationship. The `errors` section is a derived index over those rows (the current turn and the immediately-prior one): one terse `<status> log:///<coord>` link per row, nothing else. The term and full detail live on the foldable row, READ via the link. {§telemetry-uniform-error-channel} **The pointer rule: every ≥400 line points at a record that states its why.** A model-op failure is the MODEL'S OWN op result — the op row carries its failure message on its META LINE (`"error":"…"` — packet-wire renders it folded or open, {§log-row-self-explains}), and the errors line is a terse pointer at that row. No separate item is minted for op failures (the retired action_failure mint dressed op results as `source:"engine"` faults with empty messages — the jumbo model chased a phantom "engine run 400 error" for ten turns). Actionless failures (parse errors, truncation, rails) still mint `op='error'` items — no op row exists to self-explain. Ops MUST populate real failure messages (`rx.error`/`reason`); a bare `{status:400}` is a contract wart. Genuine engine-internal faults CRASH (fail-hard) and never mint model-facing rows.
-- **Terse rows.** An error row's body is a status code and the canonical term — `Budget Overflow`, `Max Commands Exceeded`, `Idle Turn`, `Premature Termination` — never prose, hints, or advice. The packet (requirements, grammar) teaches recovery; the row names the fault. Letting the model infer what to do from the fact (and the log) beats handing it instructions it will second-guess.
+- **One uniform error channel.** EVERY failure — a failed action, an actionless parse failure, and every engine-rail failure (budget overflow, max-commands, the idle/premature steers) — is a `log_entries` row with `status_rx ≥ 400` and an RFC 9457 Problem Details operation result in `rx`. No per-category handling, no bespoke ephemeral relationship. The `errors` section is a derived index over those rows (the current turn and the immediately-prior one): one terse `<status> log:///<coord>` link per row, nothing else. The problem detail lives on the foldable row, READ via the link. {§telemetry-uniform-error-channel} **The pointer rule: every ≥400 line points at a record that states its why.** A model-op failure is the model's own op result; its Problem Details `instance` is that row's `log:///` URI and packet-wire renders `problem.detail` on its meta line whether folded or open ({§log-row-self-explains}). No separate item is minted for op failures. Actionless failures (parse errors, truncation, rails) mint `op='error'` items with the same result contract because no authored op row exists. A bare failure status, a top-level string `error`, or mismatched result/problem statuses violate the producer contract and fail hard. Genuine engine-internal faults crash and never mint model-facing rows.
+- **Self-explaining rows.** A problem `title` names the stable class; its `detail` states the specific occurrence and any directly actionable recovery fact. General workflow teaching stays in the packet rather than being duplicated into every failure.
 - **Notices** — the few events that are NOT log rows (a provider's `grammar_unenforced`, which points at the model's own emission via a content-offset) render one terse line under `## Errors` by their typed `position`, never a JSON dump. The notice buffer drains on read — each appears on exactly one packet. {§telemetry-drain-on-read}
 - **Gamification policy (rummy precedent, plugins/error/error.js).** The model sees errors that **happened** — its actions failed, its emission didn't parse, its ops were truncated, it overflowed the window. The model does NOT see the engine's accounting *about* errors: strike streaks, cycle detection, sudden-death thresholds, no-ops bookkeeping. Surfacing internal state creates a gamification surface where the model optimizes for engine metrics (manufacturing a clean turn to reset the strike counter, e.g.) instead of the task. Engine bookkeeping drives abandonment silently; the model just sees its actual failures.
 
@@ -1465,11 +1467,11 @@ The `log` section is the durable audit; the `errors` section surfaces both — t
 
 | failure | row | status |
 |---|---|---|
-| parse failure | `op='error'`, origin `model`, source `grammar`; body = parser message + content-offset `line:col` | 400 |
-| action failure | the failed op's own row (the scheme set `status_rx ≥ 400`); body = the scheme's error | 4xx/5xx |
-| budget overflow | `op='error'`, origin `plurnk`, source `rail`; body = `Budget Overflow: newest log items automatically FOLDed` | 413 |
-| max commands exceeded | `op='error'`, origin `plurnk`, source `rail`; body = `Max Commands Exceeded` | 429 |
-| idle turn / premature termination | `op='error'`, origin `plurnk`, source `rail`; body = `Idle Turn` / `Premature Termination` | 409 |
+| parse failure | `op='error'`, origin `model`, source `grammar`; Problem Details includes parser detail and content-offset `line:col` | 400 |
+| action failure | the failed op's own row; the owning scheme supplies Problem Details | 4xx/5xx |
+| budget overflow | `op='error'`, source `rail` or `engine`; `engine/grinder/budget-overflow` Problem Details | 413 |
+| max commands exceeded | `op='error'`, origin `plurnk`, source `rail`; `engine/rail/max-commands-exceeded` Problem Details | 429 |
+| idle turn | `op='error'`, origin `plurnk`, source `rail`; `engine/rail/idle-turn` Problem Details | 409 |
 
 | notice `kind` | Source | Position |
 |---|---|---|
@@ -1479,7 +1481,7 @@ The `log` section is the durable audit; the `errors` section surfaces both — t
 
 **Severity on the wire (`level`, required — grammar 0.74.29+).** Every `TelemetryEvent` carries `level: "error" | "warn" | "info"`, set by the **producer** at the emit site — severity is meaning the producer owns, not something the client re-derives by pattern-matching the open `kind` vocabulary. Service mappings: every error log row is `error` (an error is an error); a forwarded `grammar_unenforced` carries the producer's own level (defaulted to `warn` only when the producer predates the field); `embed_progress` is `info`, a progress note that never reaches the errors section. Clients color straight off `level`. {§telemetry-event-level}
 
-Strike accounting, cycle detection, sudden-death thresholds, and no-ops bookkeeping stay engine-internal — they drive abandonment silently per the gamification policy. EVERY error — a failed action, an actionless parse failure, and every engine-rail failure (budget overflow, max-commands, the idle/premature steers) — is a LOG ITEM (`log:///<coord>`, `op='error'`, `status_rx ≥ 400`), foldable and re-OPENable, with its terse term on the row. The `errors` section surfaces a derived pointer to each. There is **no bespoke `error://` scheme** and no ephemeral per-category error buffer: errors live in the log, addressable + curatable like any row — not a separate namespace, not a drain-on-read side channel. {§telemetry-no-error-scheme}
+Strike accounting, cycle detection, sudden-death thresholds, and no-ops bookkeeping stay engine-internal — they drive abandonment silently per the gamification policy. EVERY failure — a failed action, an actionless parse failure, and every engine-rail failure — is a LOG ITEM (`log:///<coord>`, `status_rx ≥ 400`) with Problem Details, foldable and re-OPENable. The `errors` section surfaces a derived pointer to each. There is **no bespoke `error://` scheme** and no ephemeral per-category failure buffer: failures live in the log, addressable and curatable like any row. {§telemetry-no-error-scheme}
 
 **Client surface.** Engine NOTICES broadcast live via the `telemetry/event` WS notification — same envelope as the model's drained copy (`{ source, kind, level, message?, position?, …kind-specific }` per the grammar's `TelemetryEvent` schema), the moment they land, scoped to the loop's workspace (a `grammar_unenforced` snippet in a debug panel, a workspace timeline). ERRORS do not broadcast on this surface: they are log rows, and the client reads them the same way the model curates them — `log.read` / the `log/entry` notification, the durable log. {§telemetry-telemetry-event-notify}
 

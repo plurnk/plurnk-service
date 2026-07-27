@@ -10,12 +10,15 @@ import type {
     EntryOperationCaps,
     EntryOwner,
     EntryReadResult,
+    EntryStorageReadResult,
+    EntryStorageWriteResult,
     FindStatement,
     ReadStatement,
     SchemeManifest,
     SchemeResult,
     SendStatement,
 } from "@plurnk/plurnk-schemes";
+import { Results } from "@plurnk/plurnk-schemes";
 import type { PlurnkSchemeContext } from "../scheme-types.ts";
 import EntryCrud from "../../schemes/_entry-crud.ts";
 import EntryFind from "../../schemes/_entry-find.ts";
@@ -48,33 +51,50 @@ export default class DbEntryCaps implements EntryCaps {
         return owner === "worker" ? this.#ctx.workerId : undefined;
     }
 
+    #result<T extends { status: number; error?: string }>(
+        operation: string,
+        result: T,
+    ): Omit<T, "error"> & SchemeResult {
+        const { error, ...fields } = result;
+        if (result.status >= 400) {
+            return Results.failure(
+                `scheme:${this.#scheme}`,
+                `${operation}-failed`,
+                result.status,
+                error ?? `${operation.toUpperCase()} failed in scheme '${this.#scheme}' with status ${result.status}.`,
+                fields,
+            ) as Omit<T, "error"> & SchemeResult;
+        }
+        return Results.assert(fields as Omit<T, "error"> & SchemeResult);
+    }
+
     async #editBatch(statements: readonly EditStatement[], owner?: EntryOwner): Promise<EntryEditResult> {
-        return { ...await EntryOps.editWorkspaceEntryBatch(statements, this.#ctx, this.#manifest, this.#ownerId(owner)) };
+        return this.#result("edit", await EntryOps.editWorkspaceEntryBatch(statements, this.#ctx, this.#manifest, this.#ownerId(owner))) as EntryEditResult;
     }
 
     async #read(statement: ReadStatement, owner?: EntryOwner): Promise<EntryReadResult> {
-        return { ...await EntryOps.readWorkspaceEntry(statement, this.#ctx, this.#manifest, this.#ownerId(owner)) };
+        return this.#result("read", await EntryOps.readWorkspaceEntry(statement, this.#ctx, this.#manifest, this.#ownerId(owner))) as EntryReadResult;
     }
 
     async #find(statement: FindStatement, owner?: EntryOwner): Promise<EntryFindResult> {
-        return { ...await EntryFind.findWorkspaceEntries(statement, this.#ctx, this.#manifest, this.#ownerId(owner)) };
+        return this.#result("find", await EntryFind.findWorkspaceEntries(statement, this.#ctx, this.#manifest, this.#ownerId(owner))) as EntryFindResult;
     }
 
     async #send(statement: SendStatement, owner?: EntryOwner): Promise<SchemeResult> {
-        return EntrySend.sendToWorkspaceEntry(statement, this.#ctx, this.#scheme, this.#ownerId(owner));
+        return this.#result("send", await EntrySend.sendToWorkspaceEntry(statement, this.#ctx, this.#scheme, this.#ownerId(owner)));
     }
 
-    async read(pathname: string, owner?: EntryOwner): Promise<{ status: number; entry: EntryData | null }> {
+    async read(pathname: string, owner?: EntryOwner): Promise<EntryStorageReadResult> {
         return EntryCrud.readEntry(pathname, this.#ctx, this.#scheme, this.#ownerId(owner));
     }
 
-    async write(pathname: string, entry: EntryData, owner?: EntryOwner): Promise<{ status: number; created: boolean; entryId: number | null }> {
+    async write(pathname: string, entry: EntryData, owner?: EntryOwner): Promise<EntryStorageWriteResult> {
         // schemes' EntryData carries `tags` as ReadonlyArray; EntryCrud writes a
         // mutable array — copy at the boundary.
         return EntryCrud.writeEntry(pathname, { channels: entry.channels, tags: [...entry.tags] }, this.#ctx, this.#scheme, this.#ownerId(owner));
     }
 
-    async delete(pathname: string, owner?: EntryOwner): Promise<{ status: number }> {
+    async delete(pathname: string, owner?: EntryOwner): Promise<SchemeResult> {
         return EntryCrud.deleteEntry(pathname, this.#ctx, this.#scheme, this.#ownerId(owner));
     }
 }

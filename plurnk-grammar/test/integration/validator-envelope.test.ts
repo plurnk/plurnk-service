@@ -270,3 +270,51 @@ test("Validator: PlurnkParseError.toTelemetryEvent() validates", async () => {
     assert.equal(ev.kind, "parse_error:lexer");
     assert.deepEqual(ev.position, { type: "content-offset", line: 5, column: 12 });
 });
+
+// RFC 9457 operation failures
+
+test("Validator: ProblemDetails accepts a typed operation failure", () => {
+    const problem = {
+        type: "https://problems.plurnk.dev/schemes/file/not-found",
+        title: "Not found",
+        status: 404,
+        detail: "No file exists at file:///missing.md.",
+        instance: "log:///1/2/3/READ",
+    };
+    const { valid, errors } = Validator.validateProblemDetails(problem);
+    assert.equal(valid, true, JSON.stringify(errors));
+});
+
+test("Validator: ProblemDetails requires actionable RFC 9457 fields", () => {
+    assert.equal(Validator.validateProblemDetails({ status: 404 }).valid, false);
+    assert.equal(Validator.validateProblemDetails({
+        type: "not-an-absolute-uri",
+        title: "Not found",
+        status: 404,
+        detail: "Missing.",
+    }).valid, false);
+});
+
+test("Validator: OperationResult discriminates success from failure", () => {
+    assert.equal(Validator.validateOperationResult({ status: 200, content: "ok" }).valid, true);
+    assert.equal(Validator.validateOperationResult({
+        status: 404,
+        problem: {
+            type: "https://problems.plurnk.dev/schemes/file/not-found",
+            title: "Not found",
+            status: 404,
+            detail: "Missing.",
+        },
+    }).valid, true);
+    assert.equal(Validator.validateOperationResult({ status: 404 }).valid, false);
+    assert.equal(Validator.validateOperationResult({
+        status: 200,
+        problem: {
+            type: "https://problems.plurnk.dev/internal/contradiction",
+            title: "Contradiction",
+            status: 500,
+            detail: "A success cannot carry a problem.",
+        },
+    }).valid, false);
+    assert.equal(Validator.validateOperationResult({ status: 404, error: "legacy" }).valid, false);
+});

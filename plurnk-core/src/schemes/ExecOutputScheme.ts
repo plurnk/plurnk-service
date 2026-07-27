@@ -8,6 +8,7 @@ import EntryFind, { type FindResult } from "./_entry-find.ts";
 import EntryCrud, { type ReadEntryResult } from "./_entry-crud.ts";
 import { CoreSchemeAdapterBase } from "../core/CoreSchemeServices.ts";
 import type { CoreSchemeCallContext } from "../core/CoreSchemeServices.ts";
+import Results, { type SchemeResultBase } from "../core/results.ts";
 
 // #240 — an executor IS a scheme; its output lives at <tag>://. Each discovered
 // executor registers this face under its runtime tag, so READ/FIND <tag>://<coord>
@@ -36,14 +37,22 @@ export default class ExecOutputScheme extends CoreSchemeAdapterBase {
     async read(statement: ReadStatement, ctx: CoreSchemeCallContext): Promise<ReadResult> {
         const core = this.coreContext(ctx);
         const owner = await resolveStreamStatement(statement, core);
-        if (owner === null) return { status: 404, content: null, mimetype: null, channel: null };
+        if (owner === null) {
+            return Results.failure(`scheme:${this.#executor.manifest.name}`, "stream-not-found", 404, "No visible stream exists at the requested address.", {
+                content: null, mimetype: null, channel: null,
+            }) as ReadResult;
+        }
         return EntryOps.readWorkspaceEntry(owner.statement, core, this.#executor.manifest, owner.ownerId);
     }
 
     async find(statement: FindStatement, ctx: CoreSchemeCallContext): Promise<FindResult> {
         const core = this.coreContext(ctx);
         const owner = await resolveStreamStatement(statement, core);
-        if (owner === null) return { status: 404, content: null, mimetype: null, results: [], itemsTokenTotal: 0, pathnames: [], matches: [] };
+        if (owner === null) {
+            return Results.failure(`scheme:${this.#executor.manifest.name}`, "stream-not-found", 404, "No visible stream exists at the requested address.", {
+                content: null, mimetype: null, results: [], itemsTokenTotal: 0, pathnames: [], matches: [],
+            }) as FindResult;
+        }
         return EntryFind.findWorkspaceEntries(owner.statement, core, this.#executor.manifest, owner.ownerId);
     }
 
@@ -57,7 +66,7 @@ export default class ExecOutputScheme extends CoreSchemeAdapterBase {
 
     // Process-KILL by coordinate — the spawn-abort state (#activeAborts) lives on the
     // one Exec handler, so the per-tag face delegates to it.
-    async kill(pathname: string, signal: number | null, ctx: CoreSchemeCallContext): Promise<{ status: number; error?: string }> {
+    async kill(pathname: string, signal: number | null, ctx: CoreSchemeCallContext): Promise<SchemeResultBase> {
         return this.#exec.kill(pathname, signal, ctx);
     }
 }

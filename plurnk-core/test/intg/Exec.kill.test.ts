@@ -108,10 +108,10 @@ test("a stream KILL error answers in the model's runtime-tag scheme, never the i
         // retired-internal exec (#527). run11: the model KILLed sh:/// and got exec:// back.
         const notRunning = await exec.kill("/3/1/4", null, ctx as never, "sh");
         assert.equal(notRunning.status, 404);
-        assert.match(notRunning.error ?? "", /sh:\/\/\/3\/1\/4/, "error names the model's own sh:/// address");
-        assert.doesNotMatch(notRunning.error ?? "", /exec:\/\//, "never leaks the internal exec:// scheme");
+        assert.match(notRunning.problem?.detail ?? "", /sh:\/\/\/3\/1\/4/, "error names the model's own sh:/// address");
+        assert.doesNotMatch(notRunning.problem?.detail ?? "", /exec:\/\//, "never leaks the internal exec:// scheme");
         // The default (other internal callers) stays exec — no behavior change off the model path.
         const bare = await exec.kill("/3/1/4", null, ctx as never);
-        assert.match(bare.error ?? "", /exec:\/\//, "the default scheme is unchanged for non-model callers");
+        assert.match(bare.problem?.detail ?? "", /exec:\/\//, "the default scheme is unchanged for non-model callers");
     } finally { await db.close(); }
 });

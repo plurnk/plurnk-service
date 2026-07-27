@@ -36,9 +36,13 @@ test("DbChannelCaps: append grows, replace swaps + re-tokenizes, setState transi
         assert.equal(meta?.state, "closed");
 
         // absent entry / channel → 404
-        assert.equal((await channels.append("/missing.md", "body", "x")).status, 404);
-        assert.equal((await channels.replace("/doc.md", "nope", "x")).status, 404);
-        assert.equal((await channels.setState("/doc.md", "nope", "closed")).status, 404);
+        const missingEntry = await channels.append("/missing.md", "body", "x");
+        assert.equal(missingEntry.status, 404);
+        assert.equal(missingEntry.problem?.type, "https://problems.plurnk.dev/scheme/known/entry-not-found");
+        const missingReplace = await channels.replace("/doc.md", "nope", "x");
+        assert.equal(missingReplace.problem?.type, "https://problems.plurnk.dev/scheme/known/channel-not-found");
+        const missingState = await channels.setState("/doc.md", "nope", "closed");
+        assert.equal(missingState.problem?.type, "https://problems.plurnk.dev/scheme/known/channel-not-found");
     } finally { await db.close(); }
 });
 
@@ -63,8 +67,12 @@ test("DbTagCaps: add dedupes (INSERT OR IGNORE), list is sorted, remove drops na
         assert.deepEqual([...(await tags.list("/x.md")).tags], ["alpha", "keep"]);
 
         // absent entry → 404
-        assert.equal((await tags.add("/missing.md", ["z"])).status, 404);
-        assert.equal((await tags.list("/missing.md")).status, 404);
-        assert.equal((await tags.remove("/missing.md", ["z"])).status, 404);
+        const missingAdd = await tags.add("/missing.md", ["z"]);
+        assert.equal(missingAdd.problem?.type, "https://problems.plurnk.dev/scheme/known/entry-not-found");
+        const missingList = await tags.list("/missing.md");
+        assert.equal(missingList.problem?.type, "https://problems.plurnk.dev/scheme/known/entry-not-found");
+        assert.deepEqual(missingList.tags, []);
+        const missingRemove = await tags.remove("/missing.md", ["z"]);
+        assert.equal(missingRemove.problem?.type, "https://problems.plurnk.dev/scheme/known/entry-not-found");
     } finally { await db.close(); }
 });

@@ -37,7 +37,8 @@ import PacketWire from "./packet-wire.ts";
 
 // The engine's collaborators — each owns one machine; Engine owns the loop/turn
 // lifecycle and wires them together as the public facade.
-import TelemetryChannel, { type EngineErrorKind } from "./TelemetryChannel.ts";
+import TelemetryChannel from "./TelemetryChannel.ts";
+import ProblemLog from "./ProblemLog.ts";
 import StrikeRail from "./StrikeRail.ts";
 import PacketBuilder, { type ChatMessage, type PacketAssistant } from "./PacketBuilder.ts";
 import ProposalLifecycle from "./ProposalLifecycle.ts";
@@ -59,6 +60,20 @@ export type WorkspaceDerivationStatus = {
 };
 
 const DEFAULT_MAX_STRIKES = 3;
+
+const ENGINE_PROBLEMS = Object.freeze({
+    max_commands_exceeded: {
+        status: 429,
+        code: "max-commands-exceeded",
+        detail: "Max Commands Exceeded",
+    },
+    idle_turn: {
+        status: 409,
+        code: "idle-turn",
+        detail: "Illegal idle turn - a [102] turn performs at least one operation. Conclude with [200] or wait with [202].",
+    },
+} as const);
+type EngineProblemKind = keyof typeof ENGINE_PROBLEMS;
 
 // The foisted prompt EDIT/READ target — prompt:///<loop>/<N>, self-only ({§prompt-self-only}):
 // the owner rides the owner_id column, the address carries only the loop coordinate.
@@ -180,6 +195,7 @@ export default class Engine {
     // thunks where the value is late-injected — executors, loop signals)
     // and fronts their public surface.
     #telemetry: TelemetryChannel;
+    #problems: ProblemLog;
     #strikes: StrikeRail;
     // §grinder-hard-413-recovery — loops granted their ONE over-ceiling recovery turn. Cleared on a
     // fitting turn (the model curated; a LATER overflow earns a fresh recovery) and at loop cleanup.
@@ -344,7 +360,8 @@ export default class Engine {
 
         const executors = (): ExecutorRegistry | undefined => this.#executors;
         const loopSignal = (loopId: number): AbortSignal | undefined => this.#loopAborts.get(loopId)?.signal;
-        this.#telemetry = new TelemetryChannel({ db, notify: telemetryEventNotify });
+        this.#telemetry = new TelemetryChannel({ notify: telemetryEventNotify });
+        this.#problems = new ProblemLog(db);
         schemes.bindCore({
             db,
             mimetypes: this.#mimetypes,
@@ -358,7 +375,13 @@ export default class Engine {
             liveSubscriptions: this.#liveSubscriptions,
         });
         this.#strikes = new StrikeRail();
-        this.#packets = new PacketBuilder({ db, schemes, telemetry: this.#telemetry, executors });
+        this.#packets = new PacketBuilder({
+            db,
+            schemes,
+            telemetry: this.#telemetry,
+            problems: this.#problems,
+            executors,
+        });
         this.#proposals = new ProposalLifecycle({
             db, schemes, telemetry: this.#telemetry,
             streamEventNotify, wakeWorkerNotify,
@@ -1065,19 +1088,20 @@ export default class Engine {
                 : this.#packets.exactPacketTokens(requestPacket, provider) <= provider.contextWindow - (this.#packets.maxTokensFor(provider) ?? 0);
             if (physicallySendable && !this.#hardOverflowRecovery.has(loopId)) {
                 this.#hardOverflowRecovery.add(loopId);
-                await this.#db.engine_insert_log_entry.get({
-                    worker_id: workerId, loop_id: loopId, turn_id: turnId, sequence: nextActionIndex++,
-                    origin: "model", source: "engine", op: "error", suffix: "", signal: null,
-                    scheme: null, username: null, password: null, hostname: null, port: null,
-                    pathname: null, params: null, fragment: null, lineMarker: null,
-                    tx: "", mimetype_tx: "text/plain",
-                    rx: JSON.stringify({ status: 413, kind: "budget_overflow", message: "the packet exceeds the budget even after the newest turn folded — this is your ONE recovery turn: KILL or FOLD history items now (the budget table lists the heaviest) to reclaim room; a second consecutive overflow terminates the loop" }),
-                    mimetype_rx: "application/json", status_rx: 413, tokens: 0, state: "failed", outcome: "budget_overflow",
-                    attrs: "{}",
+                await this.#problems.mint({
+                    workerId,
+                    loopId,
+                    turnId,
+                    sequence: nextActionIndex++,
+                    origin: "model",
+                    source: "engine",
+                    owner: "engine:grinder",
+                    code: "budget-overflow",
+                    status: 413,
+                    detail: "The packet exceeds the budget even after the newest turn folded — this is your ONE recovery turn: KILL or FOLD history items now (the budget table lists the heaviest) to reclaim room; a second consecutive overflow terminates the loop.",
                 });
                 // Rebuild so the recovery-steer row just minted renders in THIS packet's log +
                 // errors sections (the same re-derive contract the soft grind uses).
-                nextActionIndex += 1;
                 requestPacket = await this.#packets.buildRequestPacket({
                     initialMessages: messages, requirements, workspaceId, workerId, loopId,
                     currentTurnSeq: seq, provider, gitStatus,
@@ -1233,7 +1257,7 @@ export default class Engine {
         let steerStruck = false;
         // Engine errors raised this turn, minted as op='error' log rows after dispatch (they share the
         // post-dispatch sequence counter). §telemetry-uniform-error-channel
-        const pendingEngineErrors: EngineErrorKind[] = [];
+        const pendingEngineErrors: EngineProblemKind[] = [];
 
         // Terminal adjudication moved to the DISPATCHER (§send-premature-terminate, the unified
         // pending set): the terminal SEND is judged AT ITS OWN DISPATCH — after the emission's
@@ -1388,7 +1412,21 @@ export default class Engine {
         let errSeq = rowSeq;
         // max_commands_exceeded IS model-facing: dropped ops the model emitted that didn't run.
         if (droppedCount > 0) pendingEngineErrors.push("max_commands_exceeded");
-        for (const kind of pendingEngineErrors) await this.#telemetry.mintEngineError(kind, { workerId, loopId, turnId, sequence: errSeq++ });
+        for (const kind of pendingEngineErrors) {
+            const problem = ENGINE_PROBLEMS[kind];
+            await this.#problems.mint({
+                workerId,
+                loopId,
+                turnId,
+                sequence: errSeq++,
+                origin: "plurnk",
+                source: "rail",
+                owner: "engine:rail",
+                code: problem.code,
+                status: problem.status,
+                detail: problem.detail,
+            });
+        }
         // §log-row-self-explains (Q2, owner-clarified) — a model-op failure is the MODEL'S OWN op
         // result: the op row carries its failure message on its meta line (packet-wire), and the
         // errors section points at the row. No separate minted item (the retired action_failure
@@ -1408,32 +1446,37 @@ export default class Engine {
             const message = truncatedEmpty
                 ? `output truncated at the completion cap (${cap} tokens): nothing was emitted before the pool was consumed — the parse error below is an artifact of the empty emission, not a malformed turn`
                 : `output truncated at the completion cap (${cap} tokens): the emission was cut mid-op — the parse errors below are truncation artifacts`;
-            await this.#db.engine_insert_log_entry.get({
-                worker_id: workerId, loop_id: loopId, turn_id: turnId, sequence: errSeq++,
-                origin: "model", source: "engine", op: "error", suffix: "", signal: null,
-                scheme: null, username: null, password: null, hostname: null, port: null,
-                pathname: null, params: null, fragment: null, lineMarker: null,
-                tx: "", mimetype_tx: "text/plain",
-                rx: JSON.stringify({ status: 413, kind: "output_truncated", message }),
-                mimetype_rx: "application/json", status_rx: 413, tokens: 0, state: "failed", outcome: "output_truncated",
-                attrs: "{}",
+            await this.#problems.mint({
+                workerId,
+                loopId,
+                turnId,
+                sequence: errSeq++,
+                origin: "model",
+                source: "engine",
+                owner: "engine:generation",
+                code: "output-truncated",
+                status: 413,
+                detail: message,
             });
         }
         // Parse errors carry the parser message + a content-offset line:col (a ContentOffset position),
         // resolved against the model's folded mirror row (§model-entry) — origin 'model', not engine.
         for (const { message, line, column, source } of parseErrors ?? []) {
-            await this.#db.engine_insert_log_entry.get({
-                worker_id: workerId, loop_id: loopId, turn_id: turnId, sequence: errSeq++,
-                origin: "model", source: "grammar", op: "error", suffix: "", signal: null,
-                scheme: null, username: null, password: null, hostname: null, port: null,
-                pathname: null, params: null, fragment: null, lineMarker: null,
-                tx: "", mimetype_tx: "text/plain",
-                // The error carries the parser message + a content-offset `line:col`; the model READs
-                // its own folded mirror row (§model-entry) at the cited lines, so no snippet is
-                // embedded. The derived errors-section pointer stays minimal (status + coordinate).
-                rx: JSON.stringify({ message, position: { type: "content-offset", line, column }, parserSource: source }),
-                mimetype_rx: "application/json",
-                status_rx: 400, tokens: 0, state: "resolved", outcome: null, attrs: "{}",
+            await this.#problems.mint({
+                workerId,
+                loopId,
+                turnId,
+                sequence: errSeq++,
+                origin: "model",
+                source: "grammar",
+                owner: "grammar:parser",
+                code: "parse-error",
+                status: 400,
+                detail: message,
+                extensions: {
+                    position: { type: "content-offset", line, column },
+                    parserSource: source,
+                },
             });
         }
 

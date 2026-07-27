@@ -535,6 +535,12 @@ export default class Http implements SchemeHandler {
     }
 
     static #bad(status: number, scheme: string, kind: string, message: string): PassthroughResult {
-        return { shape: "passthrough", status, error: Results.error(scheme, kind, message) };
+        return Results.failure(
+            `scheme:${scheme}`,
+            kind.replaceAll("_", "-"),
+            status,
+            message,
+            { shape: "passthrough" },
+        ) as PassthroughResult;
     }
 }

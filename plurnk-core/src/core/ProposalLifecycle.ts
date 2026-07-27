@@ -11,6 +11,7 @@ import { schemeNameOf } from "./plurnk-uri.ts";
 import SchemeCtxImpl from "./caps/SchemeCtxImpl.ts";
 import type LiveSubscriptions from "./LiveSubscriptions.ts";
 import type { SchemeCtx } from "@plurnk/plurnk-schemes";
+import Results from "./results.ts";
 
 // Proposal lifecycle types. A scheme returns DispatchResult{status:202,attrs}
 // to propose; dispatch writes a state='proposed' log entry, registers a waiter
@@ -36,6 +37,11 @@ export interface ProposalResolution {
 interface ProposalWaiter {
     resolve: (resolution: ProposalResolution) => void;
     timeoutHandle: ReturnType<typeof setTimeout> | null;
+}
+
+export interface ProposalSettlement {
+    resolution: ProposalResolution;
+    applied?: DispatchResult;
 }
 
 // External observers of pending-proposal events. workspaceId is included so
@@ -197,9 +203,9 @@ export default class ProposalLifecycle {
         originalResult: DispatchResult,
         resolution: ProposalResolution,
         ids: { workspaceId: number; workerId: number; loopId: number; turnId: number },
-    ): Promise<ProposalResolution> {
+    ): Promise<ProposalSettlement> {
         const { workspaceId, workerId, loopId, turnId } = ids;
-        if (resolution.decision !== "accept") return resolution;
+        if (resolution.decision !== "accept") return { resolution };
         // EXEC routes to the exec scheme regardless of target (cwd, not
         // a scheme address). All other ops resolve their handler from
         // statement.target's scheme.
@@ -208,11 +214,11 @@ export default class ProposalLifecycle {
         const schemeName = statement.op === "EXEC" ? "exec"
             : (statement.op === "COPY" || statement.op === "MOVE") ? schemeNameOf(statement.body as ParsedPath | null)
             : schemeNameOf(statement.target);
-        if (schemeName === null) return resolution;
+        if (schemeName === null) return { resolution };
         const handler = this.#schemes.get(schemeName) as
             | { applyResolution?: (args: { attrs: object; body?: string }, ctx: SchemeCtx) => Promise<{ status: number; outcome?: string; body?: string; result?: object }> }
             | undefined;
-        if (handler === undefined || typeof handler.applyResolution !== "function") return resolution;
+        if (handler === undefined || typeof handler.applyResolution !== "function") return { resolution };
         try {
             // Build a ctx for the scheme's applyResolution. The proposal
             // was raised inside a specific (workspace, run, loop, turn);
@@ -234,12 +240,14 @@ export default class ProposalLifecycle {
             };
             const manifest = this.#schemes.manifestFor(schemeName);
             if (manifest === undefined) throw new Error(`scheme '${schemeName}' has no manifest`);
-            const applyResult = await handler.applyResolution(request, new SchemeCtxImpl(applyCtx, schemeName, manifest, this.#liveSubscriptions));
+            const applyResult = Results.assert(await handler.applyResolution(request, new SchemeCtxImpl(applyCtx, schemeName, manifest, this.#liveSubscriptions)));
             if (applyResult.status >= 400) {
                 return {
-                    decision: "reject",
-                    outcome: applyResult.outcome ?? "apply_failed",
-                    body: applyResult.body,
+                    resolution: {
+                        ...resolution,
+                        outcome: typeof applyResult.outcome === "string" ? applyResult.outcome : "apply_failed",
+                    },
+                    applied: applyResult,
                 };
             }
             // Propagate applyResolution.outcome onto the accepted resolution
@@ -251,20 +259,29 @@ export default class ProposalLifecycle {
                 ? { ...resolution, outcome: applyResult.outcome }
                 : resolution;
             return {
-                ...withOutcome,
-                ...(applyResult.body !== undefined ? { body: applyResult.body } : {}),
-                ...(applyResult.result !== undefined ? { result: applyResult.result } : {}),
+                resolution: {
+                    ...withOutcome,
+                    ...(applyResult.body !== undefined ? { body: applyResult.body as string } : {}),
+                    ...(applyResult.result !== undefined ? { result: applyResult.result as object } : {}),
+                },
+                applied: applyResult,
             };
         } catch (err) {
             return {
-                decision: "reject",
-                outcome: "apply_threw",
-                body: err instanceof Error ? err.message : String(err),
+                resolution: { ...resolution, outcome: "apply_threw" },
+                applied: Results.failure(
+                    `scheme:${schemeName}`,
+                    "proposal-apply-threw",
+                    500,
+                    err instanceof Error ? err.message : String(err),
+                    { outcome: "apply_threw" },
+                ),
             };
         }
     }
 
-    async applyResolution(logEntryId: number, resolution: ProposalResolution): Promise<DispatchResult> {
+    async applyResolution(logEntryId: number, settlement: ProposalSettlement): Promise<DispatchResult> {
+        const { resolution, applied } = settlement;
         // Map decision → terminal state + HTTP-aligned status:
         //   accept  → state='resolved', status=200
         //   reject  → state='failed',   status=400, outcome='rejected' (default) §proposal-reject-fails
@@ -273,30 +290,50 @@ export default class ProposalLifecycle {
         // veto filters (Phase E.2 proposal.accepting) can specify a more
         // precise outcome string like 'policy_veto' or 'timeout'.
         const decision = resolution.decision;
-        const state = decision === "accept" ? "resolved"
+        const appliedFailed = applied !== undefined && applied.status >= 400;
+        const state = appliedFailed ? "failed"
+            : decision === "accept" ? "resolved"
             : decision === "reject" ? "failed"
             : "cancelled";
-        const status = decision === "accept" ? 200
+        const status = appliedFailed ? applied.status
+            : decision === "accept" ? 200
             : decision === "reject" ? 400
             : 499;
         const defaultOutcome = decision === "accept" ? null
             : decision === "reject" ? "rejected"
             : "loop_aborted";
-        const outcome = resolution.outcome ?? defaultOutcome;
-        // rx is the model-facing operation result. Status always. Body is normally dropped —
-        // the propose preview was an input echo — EXCEPT an inline auto-run (read/pure) carries
-        // its worker output AS the body, the "what happened" the model needs this turn. A non-accept
-        // carries the outcome TOKEN as its terse error (write_failed / rejected / timeout — one
-        // word, never prose): a bare {"status":400} left the model blind to a mechanically failed
-        // apply and parking on a phantom worker (the fan-out digest).
-        const rx = (decision === "accept" && (resolution.body !== undefined || resolution.result !== undefined))
-            ? JSON.stringify({ status, ...(resolution.body !== undefined ? { body: resolution.body } : {}), ...(resolution.result ?? {}) })
-            : decision === "accept"
-                ? JSON.stringify({ status })
-                : JSON.stringify({ status, error: outcome });
+        const appliedOutcome = applied !== undefined && typeof applied.outcome === "string" ? applied.outcome : null;
+        const outcome = resolution.outcome ?? appliedOutcome ?? defaultOutcome;
+        let result: DispatchResult;
+        if (appliedFailed) {
+            result = applied;
+        } else if (decision === "accept") {
+            result = Results.assert({
+                status,
+                ...(resolution.body !== undefined ? { body: resolution.body } : {}),
+                ...(resolution.result ?? {}),
+                ...(outcome !== null ? { outcome } : {}),
+            });
+        } else {
+            const code = decision === "reject" ? "rejected" : "cancelled";
+            const action = decision === "reject" ? "rejected" : "cancelled";
+            const detail = `The proposal was ${action}${outcome === null ? "." : ` (${outcome}).`}`;
+            result = Results.failure("proposal", code, status, detail, {
+                ...(outcome !== null ? { outcome } : {}),
+            });
+        }
+        const coordinate = await this.#db.engine_log_entry_coordinate.get<{
+            loop_seq: number;
+            turn_seq: number;
+            sequence: number;
+            op: string;
+        }>({ id: logEntryId });
+        if (coordinate === undefined) throw new Error(`ProposalLifecycle.applyResolution: log entry ${logEntryId} has no coordinate`);
+        Results.attachInstance(result, `log:///${coordinate.loop_seq}/${coordinate.turn_seq}/${coordinate.sequence}/${coordinate.op}`);
+        const rx = JSON.stringify(result);
         await this.#db.engine_resolve_log_entry.run({
             id: logEntryId, state, outcome, status_rx: status, rx,
         });
-        return { status, outcome, body: resolution.body, ...(resolution.result ?? {}) };
+        return result;
     }
 }

@@ -354,7 +354,8 @@ test("Engine.dispatch: a writer outside writableBy is rejected 403 without invok
             sequence: 1, origin: "plugin",
         });
         assert.equal(result.status, 403);
-        assert.match((result as unknown as { error: string }).error, /writer 'plugin'.*'worker'/);
+        assert.equal(result.problem?.type, "https://problems.plurnk.dev/engine/dispatcher/writer-forbidden");
+        assert.equal(result.problem?.detail, "Writer 'plugin' is not in writableBy for scheme 'worker'.");
         // 403 still writes a log row
         const log = await db.test_first_log_entry_for_turn.get<{ status_rx: number; scheme: string }>({ turn_id: env.turnId });
         assert.equal(log?.status_rx, 403);
@@ -466,14 +467,14 @@ test("Engine.dispatch: scheme handler that throws → action-entry at status 500
             sequence: 1, origin: "model",
         });
         assert.equal(result.status, 500);
-        assert.match((result as unknown as { error: string }).error, /scheme handler deliberately threw/);
+        assert.match(result.problem?.detail ?? "", /scheme handler deliberately threw/);
         // action-entry preserved at status 500 with error in rx
         const log = await db.test_first_log_entry_for_turn.get<{ status_rx: number; rx: string; scheme: string }>({ turn_id: env.turnId });
         assert.equal(log?.status_rx, 500);
         assert.equal(log?.scheme, "boom");
         const rx = JSON.parse(log?.rx ?? "{}");
         assert.equal(rx.status, 500);
-        assert.match(rx.error, /scheme handler deliberately threw/);
+        assert.match(rx.problem.detail, /scheme handler deliberately threw/);
     } finally { await db.close(); }
 });
 
@@ -498,7 +499,8 @@ test("Engine.dispatch: non-Error throw (string) → action-entry at 500 with str
             sequence: 1, origin: "model",
         });
         assert.equal(result.status, 500);
-        assert.equal((result as unknown as { error: string }).error, "raw string thrown");
+        assert.equal(result.problem?.type, "https://problems.plurnk.dev/engine/dispatcher/scheme-handler-threw");
+        assert.equal(result.problem?.detail, "Scheme 'boomstr' EDIT failed: raw string thrown");
     } finally { await db.close(); }
 });
 

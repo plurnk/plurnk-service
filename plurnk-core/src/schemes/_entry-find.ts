@@ -25,6 +25,7 @@ import EntryCrud from "./_entry-crud.ts";
 import EntryManifest, { type CatalogEntry } from "./_entry-manifest.ts";
 import Owner from "../core/Owner.ts";
 import EntrySemantic from "./_entry-semantic.ts";
+import Results, { type SchemeResultBase } from "../core/results.ts";
 
 // A FIND match: an entry and the (file, span) where the matcher hit — ONE per match, so a
 // file with N matches yields N items. span === null for a body-less FIND (the whole entry). #286
@@ -40,8 +41,7 @@ export interface Match { pathname: string; span: MatchSpan | null; path?: string
 // A FIND result row: the entry's catalog row plus the span it matched at (absent for body-less).
 export type MatchItem = CatalogEntry & { matchSpan?: MatchSpan; matchPath?: string };
 
-export interface FindResult {
-    status: number;
+export interface FindResult extends SchemeResultBase {
     content: string | null;
     mimetype: string | null;
     results: MatchItem[];     // one per match (catalog row + span); body-less → one per entry, no span
@@ -99,7 +99,7 @@ export default class EntryFind {
         ctx: PlurnkSchemeContext,
         manifest: SchemeManifest,
         explicitOwnerId?: number,
-    ): Promise<{ status: number; matches: SourceMatch[] }> {
+    ): Promise<{ status: number; matches: SourceMatch[]; error?: string }> {
         if (statement.target === null) return { status: 400, matches: [] };
         // Scope by the manifest's persisted entries.scheme (storedScheme; absent →
         // name). File persists under the reserved 'file' scheme ({§entry-identity-no-null}).
@@ -117,7 +117,7 @@ export default class EntryFind {
                 owner_id: explicitOwnerId ?? await Owner.commonsId(ctx.db, ctx.workspaceId),
                 scheme, pathname: scopePathname,
             });
-            if (exact === undefined) return { status: 404, matches: [], error: `no entry at ${EntryManifest.toPath(scheme, scopePathname)}` } as { status: number; matches: Match[] };
+            if (exact === undefined) return { status: 404, matches: [], error: `No entry exists at ${EntryManifest.toPath(scheme, scopePathname)}.` };
         }
         // The target's GLOB scope. A FOLDER (trailing slash, incl. the scheme root `/`) expands to
         // its contents — append `*`; a bare ENTRY path stays exact (one entry); an explicit glob
@@ -269,7 +269,16 @@ export default class EntryFind {
     // that catalog, rendered as a JSON array (application/json). §find-result-catalog-rows
     static async findWorkspaceEntries(statement: FindStatement, ctx: PlurnkSchemeContext, manifest: SchemeManifest, explicitOwnerId?: number): Promise<FindResult> {
         const match = await EntryFind.#matchPathnames(statement, ctx, manifest, explicitOwnerId);
-        if (match.status !== 200) return { status: match.status, content: null, mimetype: null, results: [], itemsTokenTotal: 0, pathnames: [], matches: [], ...((match as { error?: string }).error !== undefined ? { error: (match as { error?: string }).error } : {}) }; // {§fs-errno} — the ENOENT fact rides through
+        if (match.status !== 200) {
+            const detail = match.error ?? `FIND could not resolve the requested selection (status ${match.status}).`;
+            return Results.failure(
+                `scheme:${manifest.name}`,
+                match.status === 404 ? "entry-not-found" : match.status === 416 ? "range-not-satisfiable" : "find-failed",
+                match.status,
+                detail,
+                { content: null, mimetype: null, results: [], itemsTokenTotal: 0, pathnames: [], matches: [] },
+            ) as FindResult;
+        }
         const readableMatches = await EntryFind.#addReadableRows(match.matches, ctx, manifest, explicitOwnerId);
         const scheme = EntryCrud.identityScheme(manifest);
         // The catalog row is keyed by its addressable path; align each match to its row through

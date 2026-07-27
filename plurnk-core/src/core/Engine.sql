@@ -444,6 +444,19 @@ UPDATE log_entries
  WHERE id = $id
    AND state = 'proposed';
 
+-- PREP: engine_log_entry_coordinate
+-- Resolve a durable operation occurrence after a proposal settles so a
+-- Problem Details instance names the same model-facing log URI as every
+-- immediately failed operation.
+SELECT l.sequence AS loop_seq,
+       t.sequence AS turn_seq,
+       le.sequence AS sequence,
+       le.op AS op
+  FROM log_entries le
+  JOIN turns t ON t.id = le.turn_id
+  JOIN loops l ON l.id = le.loop_id
+ WHERE le.id = $id;
+
 -- PREP: engine_turn_retrievals
 -- §send-premature-terminate — the pending set's retrieval leg: THIS turn's READ/FIND/OPEN rows,
 -- whose results the model cannot have seen (they fold back next packet). A [200] over them is

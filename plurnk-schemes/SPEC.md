@@ -110,7 +110,7 @@ The entry CRUD primitives (`readEntry`/`writeEntry`/`deleteEntry`) are not handl
 - Behavior contract: `SchemeHandler` (§2). Scheme-facing grammar types re-exported here so siblings pin only this package: `PlurnkStatement` + the per-op statement types (`ReadStatement`, `FindStatement`, `OpenStatement`, `FoldStatement`, `EditStatement`, `CopyStatement`, `MoveStatement`, `SendStatement`, `ExecStatement`, `WorkStatement`, `ForkStatement`, `KillStatement`, `PlanStatement`) and path types (`ParsedPath` = `LocalPath` | `UrlPath` | `RegexPath`).
 - Discovery: `SchemeDiscovery` (behavior class) with `SchemeInfo` / `SchemeDiscoveryResult` / `DiscoverOptions` (§6).
 - Executor-scheme (RFC schemes#20 — "an executor is a scheme"): `OutputScheme.manifestFromRuntime(decl)` derives a read-only-output `SchemeManifest` from an executor's `RuntimeDecl` (zero scheme-authoring); `DefaultRead.read(content, mimetype, statement, mimetypes)` → `ReadResolution` is the free `<L>`/matcher read over produced output (reuses `Slicer`/`Matcher`); `Summarize.summarize(content, mimetype)` → `OrientIndex` is the structural-only EXEC-receipt index (no content — universal-receipt containment). A per-tag executor-scheme supplies its manifest via instance `get manifest()` (§2 `SchemeHandler.manifest?`).
-- Results: `SchemeResult` is the universal `{ status, ...schemeMetadata }` contract. `EntryResult`, `ProposalResult`, and `PassthroughResult` are optional conventional shapes, not engine routing discriminators. Their `error` is a grammar `TelemetryEvent`, present iff `status >= 400`. Guards inspect those optional shapes; proposal routing itself is engine-owned and follows status plus operation semantics.
+- Results: `SchemeResult` is the universal operation-result contract. Statuses below 400 carry no `problem`; statuses 400–599 require RFC 9457 `ProblemDetails`, and the legacy `error` member is forbidden. `EntryResult`, `ProposalResult`, and `PassthroughResult` are optional conventional shapes, not engine routing discriminators. Guards inspect those optional shapes; proposal routing itself is engine-owned and follows status plus operation semantics.
 - Capability ctx (see §3.bis): `SchemeCtx` and its domain capabilities. Entry authors additionally receive `EntryOperationCaps`, semantic `EntryOwner`, and typed standard-operation results. `editBatch` receives every same-turn EDIT for one canonical resource and channel; it validates against one snapshot and commits one revision or none. There is no sequential single-EDIT fallback.
 
 Behavior ships as `export default class` (one class per file, static methods) — the ecosystem class paradigm. Type-only modules, the barrel, and the frozen `DEFAULT_LOOP_FLAGS` constant are the only non-class files.
@@ -143,8 +143,17 @@ Behavior ships as `export default class` (one class per file, static methods) �
 
 - `Results.isEntry` / `Results.isProposal` / `Results.isPassthrough` — guards for the optional conventional result shapes.
 - `Results.isErrorStatus(status)` — `status >= 400`.
-- `Results.error(scheme, kind, message?, position?)` — build a scheme-sourced `TelemetryEvent` (`source: "scheme:<name>"`).
-- `Results.logCoordinate(coordinate, op?)` — build a `LogCoordinate` position.
+- `Results.problem(owner, code, status, detail, extensions?)` — build and validate RFC 9457 Problem Details with a stable `https://problems.plurnk.dev/<owner>/<code>` type.
+- `Results.failure(owner, code, status, detail, fields?, extensions?)` — build and validate a failed operation result.
+- `Results.assert(result)` — validate the complete success/failure discrimination and reject malformed plugin output.
+- `Results.attachInstance(result, uri)` — attach the durable occurrence URI to a failed result.
+
+A handler owns its failure classification and explanation. The daemon owns the
+durable `instance`, because only it knows the committed log coordinate. A
+malformed handler result is a plugin contract violation and fails hard; the
+consumer does not invent a fallback error or reinterpret arbitrary fields.
+The same discrimination applies to every `SchemeCtx` capability result:
+entries, channels, and tags never return a bare failure status.
 
 ### Matcher dispatch — `Matcher` {§matcher-dispatch}
 
@@ -188,7 +197,7 @@ collaborators separately at construction or binding time; consumers must not
 decorate `SchemeCtx` with database handles, registries, tokenizers, notifier
 callbacks, or other private service state.
 
-**Proposals are not a capability.** A side-effecting scheme proposes by *returning* a `ProposalResult` (status 202); the engine owns the resolution lifecycle. On acceptance it calls the handler's optional `applyResolution({ attrs, body }, ctx)` hook. `attrs` is the payload returned by the proposing operation and `body` is the resolver-approved body, when present. The hook returns `{ status, outcome?, body? }`: a status below 400 completes the accept; a failure rejects it with the returned outcome.
+**Proposals are not a capability.** A side-effecting scheme proposes by *returning* a `ProposalResult` (status 202); the engine owns the resolution lifecycle. On acceptance it calls the handler's optional `applyResolution({ attrs, body }, ctx)` hook. `attrs` is the payload returned by the proposing operation and `body` is the resolver-approved body, when present. The hook returns a `SchemeResult`: a status below 400 completes the accept; a failure preserves the applying scheme's Problem Details as the proposal's final result.
 
 ## §4 What's NOT in this repo
 

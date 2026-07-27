@@ -62,7 +62,7 @@ test("ask mode refuses EVERY filesystem write — EDIT/COPY-dest/MOVE/KILL on th
         // A bare path is the `file` scheme (the on-disk workspace). EDIT writes it → refused.
         const edit = await disp(editStmt(localPath("brief.md"), "hello"));
         assert.equal(edit.status, 403, "EDIT to the filesystem is refused in ask mode");
-        assert.match(String(edit.error), /read-only|side-effecting/, "the refusal names the read-only contract");
+        assert.match(edit.problem?.detail ?? "", /read-only|side-effecting/, "the refusal names the read-only contract");
         // COPY into the workspace — the DEST is the write → refused.
         const copy = await disp(copyStmt(urlPath("worker", "note"), localPath("copied.md")));
         assert.equal(copy.status, 403, "COPY writing the filesystem is refused");
@@ -84,8 +84,8 @@ test("flag gate active: mode=ask rejects side-effecting scheme with 403", async 
         assert.equal(r.status, 403);
         // #367 — the steer NAMES ask mode and says DO NOT RETRY, so the model changes course
         // instead of re-emitting into the StrikeRail's 508.
-        assert.match(String(r.error), /ask-mode/, "the 403 names the ask-mode restriction");
-        assert.match(String(r.error), /Do NOT retry|answer or advise/, "the steer directs a course change, not a repeat");
+        assert.match(r.problem?.detail ?? "", /ask-mode/, "the 403 names the ask-mode restriction");
+        assert.match(r.problem?.detail ?? "", /Do NOT retry|answer or advise/, "the steer directs a course change, not a repeat");
     } finally { await db.close(); }
 });
 

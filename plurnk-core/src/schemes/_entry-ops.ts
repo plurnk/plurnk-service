@@ -9,6 +9,7 @@ import Owner from "../core/Owner.ts";
 import EntryManifest from "./_entry-manifest.ts";
 import { LineMarkerOps, MimetypeBinary, PathMimetype, ReadResolve, editReceipt, editReceiptUnit } from "../content/index.ts";
 import type { EditBatchReceipt } from "../content/index.ts";
+import Results, { type SchemeResultBase } from "../core/results.ts";
 
 // Shared static-method helpers for workspace-scope entry-bearing schemes
 // (Known, Unknown, Skill). Each scheme passes its manifest; helpers
@@ -17,7 +18,7 @@ import type { EditBatchReceipt } from "../content/index.ts";
 
 // The model sees an EDIT effect receipt: revision identity, extent changes,
 // source→result range mappings, and bounded join context (§edit-result-render).
-export type EditResult = { status: number; entryId: number | null; channel: string | null; editReceipt?: EditBatchReceipt | null; error?: string };
+export type EditResult = SchemeResultBase & { entryId: number | null; channel: string | null; editReceipt?: EditBatchReceipt | null };
 // startLine = 1-indexed position the content starts at in the original
 // source. Lets the render layer prefix N: correctly for both full
 // reads (start=1) and <L> slices (start=N). Null when not line-relevant
@@ -27,8 +28,8 @@ export type EditResult = { status: number; entryId: number | null; channel: stri
 // distinguishes "0 matches" from "empty content."
 // reason — surfaced on 203 dialect-fallback so the model sees why the
 // structured parse failed and got raw content instead.
-export type ReadResult = { status: number; content: string | null; mimetype: string | null; channel: string | null; startLine?: number | null; matches?: number | null; reason?: string; error?: string; awaitWorker?: string };
-export type OpenFoldResult = { status: number };
+export type ReadResult = SchemeResultBase & { content: string | null; mimetype: string | null; channel: string | null; startLine?: number | null; matches?: number | null; reason?: string; awaitWorker?: string };
+export type OpenFoldResult = SchemeResultBase;
 
 export default class EntryOps {
     static #pathnameOf(statement: { target: EditStatement["target"] }): string {
@@ -77,9 +78,15 @@ export default class EntryOps {
     }
 
     static async editWorkspaceEntryBatch(statements: readonly EditStatement[], ctx: PlurnkSchemeContext, manifest: SchemeManifest, explicitOwnerId?: number): Promise<EditResult> {
+        const failure = (
+            code: string,
+            status: number,
+            detail: string,
+            fields: Readonly<Record<string, unknown>>,
+        ): EditResult => Results.failure(`scheme:${manifest.name}`, code, status, detail, fields) as EditResult;
         const statement = statements[0];
-        if (statement === undefined) return { status: 400, entryId: null, channel: null, error: "EDIT batch is empty" };
-        if (statement.target === null) return { status: 400, entryId: null, channel: null };
+        if (statement === undefined) return failure("edit-empty", 400, "EDIT batch is empty.", { entryId: null, channel: null });
+        if (statement.target === null) return failure("edit-target-required", 400, "EDIT requires a target path.", { entryId: null, channel: null });
 
         const { db, workspaceId } = ctx;
         const { name: scheme, channels, defaultChannel } = manifest;
@@ -87,12 +94,12 @@ export default class EntryOps {
         const fragment = EntryOps.#fragmentOf(statement);
         const pathname = EntryOps.#pathnameOf(statement);
         const targetChannel = EntryOps.#resolveChannel(fragment, channels, defaultChannel);
-        if (targetChannel === null) return { status: 400, entryId: null, channel: null, error: EntryOps.#channelMissFact(fragment, scheme, pathname, channels, defaultChannel) };
+        if (targetChannel === null) return failure("channel-not-found", 400, EntryOps.#channelMissFact(fragment, scheme, pathname, channels, defaultChannel), { entryId: null, channel: null });
         for (const candidate of statements.slice(1)) {
             if (candidate.target === null
                 || EntryOps.#pathnameOf(candidate) !== pathname
                 || EntryOps.#fragmentOf(candidate) !== fragment) {
-                return { status: 400, entryId: null, channel: targetChannel, error: "EDIT batch spans multiple resources or channels" };
+                return failure("edit-batch-mismatch", 400, "EDIT batch spans multiple resources or channels.", { entryId: null, channel: targetChannel });
             }
         }
 
@@ -101,7 +108,7 @@ export default class EntryOps {
 
         // Non-default channel write requires the entry to exist (§channel-selection-fragment-on-nonexistent-404).
         if (existing === undefined && fragment !== null) {
-            return { status: 404, entryId: null, channel: targetChannel };
+            return failure("entry-not-found", 404, `No entry exists at ${EntryManifest.toPath(scheme, pathname)}.`, { entryId: null, channel: targetChannel });
         }
 
         // Effective mimetype for this entry. Per plurnk-grammar 0.14.0:
@@ -115,11 +122,11 @@ export default class EntryOps {
         if (existing !== undefined) {
             const channel = await db.ops_read_channel.get<{ mimetype: string }>({ ...{ workspace_id: workspaceId, scheme, pathname, channel: targetChannel }, owner_id: ownerId });
             if (channel !== undefined && MimetypeBinary.isBinaryMimetype(channel.mimetype)) {
-                return { status: 415, entryId: existing.id, channel: targetChannel };
+                return failure("binary-edit-unsupported", 415, `The #${targetChannel} channel is binary and cannot be edited.`, { entryId: existing.id, channel: targetChannel });
             }
         }
         if (MimetypeBinary.isBinaryMimetype(effectiveMimetype)) {
-            return { status: 415, entryId: existing?.id ?? null, channel: targetChannel };
+            return failure("binary-edit-unsupported", 415, `The #${targetChannel} channel is binary and cannot be edited.`, { entryId: existing?.id ?? null, channel: targetChannel });
         }
 
         // Read current content unconditionally for diff generation (M.12 —
@@ -139,7 +146,7 @@ export default class EntryOps {
         // deliberate full rewrite (`<1,-1>` states that intent explicitly).
         let newContent: string;
         if (existing !== undefined && statements.some(({ lineMarker }) => lineMarker === null)) {
-            return { status: 400, entryId: existing.id, channel: targetChannel, error: "EDIT of an existing entry requires a line marker — use <1,-1> to replace the whole entry deliberately" };
+            return failure("line-marker-required", 400, "EDIT of an existing entry requires a line marker — use <1,-1> to replace the whole entry deliberately.", { entryId: existing.id, channel: targetChannel });
         }
         if (existing !== undefined) {
             const edits = statements.map((candidate) => ({
@@ -149,11 +156,11 @@ export default class EntryOps {
             const result = MimetypeBinary.isJsonMimetype(effectiveMimetype)
                 ? LineMarkerOps.applyJsonItemEditBatch(originalContent, edits)
                 : LineMarkerOps.applyLineMarkerEditBatch(originalContent, edits);
-            if (result.status !== 200) return { status: result.status, entryId: existing.id, channel: targetChannel, error: result.error };
+            if (result.status !== 200) return failure("edit-range-invalid", result.status, result.error ?? "The requested edit range is invalid.", { entryId: existing.id, channel: targetChannel });
             newContent = result.result ?? "";
         } else {
             if (statements.length !== 1) {
-                return { status: 409, entryId: null, channel: targetChannel, error: "creation cannot coexist with another EDIT" };
+                return failure("creation-batch-conflict", 409, "Creation cannot coexist with another EDIT.", { entryId: null, channel: targetChannel });
             }
             newContent = statement.body ?? "";
         }
@@ -216,19 +223,25 @@ export default class EntryOps {
     // Scope-aware entry delete — the KILL counterpart of editWorkspaceEntry. Resolves the
     // entry via the scope's crud_find variant (so a worker-scope row is found, not just
     // workspace), then deletes by id (channels/tags CASCADE). 404 when the entry is absent.
-    static async deleteWorkspaceEntry(statement: { target: EditStatement["target"] }, ctx: PlurnkSchemeContext, manifest: SchemeManifest, explicitOwnerId?: number): Promise<{ status: number }> {
-        if (statement.target === null) return { status: 400 };
+    static async deleteWorkspaceEntry(statement: { target: EditStatement["target"] }, ctx: PlurnkSchemeContext, manifest: SchemeManifest, explicitOwnerId?: number): Promise<SchemeResultBase> {
+        if (statement.target === null) return Results.failure(`scheme:${manifest.name}`, "delete-target-required", 400, "KILL requires a target path.");
         const { db, workspaceId } = ctx;
         const pathname = EntryOps.#pathnameOf(statement);
         const ownerId = await EntryOps.#ownerOf(explicitOwnerId, ctx);
         const existing = await db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: workspaceId, owner_id: ownerId, scheme: manifest.name, pathname });
-        if (existing === undefined) return { status: 404 };
+        if (existing === undefined) return Results.failure(`scheme:${manifest.name}`, "entry-not-found", 404, `No entry exists at ${EntryManifest.toPath(manifest.name, pathname)}.`);
         await db.crud_delete_entry.run({ entry_id: existing.id });
         return { status: 200 };
     }
 
     static async readWorkspaceEntry(statement: ReadStatement, ctx: PlurnkSchemeContext, manifest: SchemeManifest, explicitOwnerId?: number): Promise<ReadResult> {
-        if (statement.target === null) return { status: 400, content: null, mimetype: null, channel: null };
+        const failure = (
+            code: string,
+            status: number,
+            detail: string,
+            fields: Readonly<Record<string, unknown>>,
+        ): ReadResult => Results.failure(`scheme:${manifest.name}`, code, status, detail, fields) as ReadResult;
+        if (statement.target === null) return failure("read-target-required", 400, "READ requires a target path.", { content: null, mimetype: null, channel: null });
 
         const { db, workspaceId } = ctx;
         const { channels, defaultChannel } = manifest;
@@ -239,7 +252,7 @@ export default class EntryOps {
         const fragment = EntryOps.#fragmentOf(statement);
         const pathname = EntryOps.#pathnameOf(statement);
         const targetChannel = EntryOps.#resolveChannel(fragment, channels, defaultChannel);
-        if (targetChannel === null) return { status: 400, content: null, mimetype: null, channel: null, error: EntryOps.#channelMissFact(fragment, scheme, pathname, channels, defaultChannel) };
+        if (targetChannel === null) return failure("channel-not-found", 400, EntryOps.#channelMissFact(fragment, scheme, pathname, channels, defaultChannel), { content: null, mimetype: null, channel: null });
 
         const ownerId = await EntryOps.#ownerOf(explicitOwnerId, ctx);
         // An xpath is a question about the DOM — a fragmentless xpath READ routes to the raw `html`
@@ -252,21 +265,21 @@ export default class EntryOps {
         const row = await db.ops_read_channel.get<{ content: string; mimetype: string }>({ ...{ workspace_id: workspaceId, scheme, pathname, channel: readChannel }, owner_id: ownerId });
         // §read-read-404 + {§fs-errno} — ENOENT carries its fact, the RESOLVED name in wire
         // canon: the model distinguishes wrong-address from wrong-range by the strings alone.
-        if (row === undefined) return { status: 404, content: null, mimetype: null, channel: targetChannel, error: `no entry at ${EntryManifest.toPath(scheme, pathname)}` };
+        if (row === undefined) return failure("entry-not-found", 404, `No entry exists at ${EntryManifest.toPath(scheme, pathname)}.`, { content: null, mimetype: null, channel: targetChannel });
 
         if (MimetypeBinary.isBinaryMimetype(row.mimetype)) {
-            return { status: 415, content: null, mimetype: row.mimetype, channel: targetChannel };
+            return failure("binary-read-unsupported", 415, `The #${targetChannel} channel is binary and cannot be rendered.`, { content: null, mimetype: row.mimetype, channel: targetChannel });
         }
 
         // `[tag]` filter: entry must have ALL requested tags. Mismatch = 404
         // (entry doesn't match the tag-scoped READ).
         if (Array.isArray(statement.signal) && statement.signal.length > 0) {
             const entry = await db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: workspaceId, owner_id: ownerId, scheme, pathname });
-            if (entry === undefined) return { status: 404, content: null, mimetype: null, channel: targetChannel };
+            if (entry === undefined) return failure("entry-not-found", 404, `No entry exists at ${EntryManifest.toPath(scheme, pathname)}.`, { content: null, mimetype: null, channel: targetChannel });
             const tagRows = await db.crud_read_tags.all<{ tag: string }>({ entry_id: entry.id });
             const have = new Set(tagRows.map((r) => r.tag));
             for (const want of statement.signal) {
-                if (!have.has(want)) return { status: 404, content: null, mimetype: null, channel: targetChannel };
+                if (!have.has(want)) return failure("tag-not-found", 404, `The entry does not carry the required '${want}' tag.`, { content: null, mimetype: null, channel: targetChannel });
             }
         }
 
@@ -277,6 +290,15 @@ export default class EntryOps {
             body: statement.body,
             mimetypes: ctx.mimetypes,
         });
+        if (r.status >= 400) {
+            const detail = r.content ?? `READ could not resolve the requested content (status ${r.status}).`;
+            return failure(
+                r.status === 416 ? "range-not-satisfiable" : "read-resolution-failed",
+                r.status,
+                detail,
+                { ...r, content: r.content, channel: readChannel },
+            );
+        }
         return { ...r, channel: readChannel }; // READ returns the resolved channel's content + mimetype — §read-read-content
     }
 }

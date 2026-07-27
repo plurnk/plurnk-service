@@ -177,7 +177,7 @@ test("file.edit: an unchanged file is a 304 no-op and never becomes a proposal",
     });
 });
 
-test("file.edit: rejection leaves file untouched; the rx carries the outcome as its terse error token", async () => {
+test("file.edit: rejection leaves file untouched; the rx carries a durable Problem Details result", async () => {
     await withWorkspaceRoot(async (root, ctx) => {
         const target = "untouched.txt";
         // pre-existing file must be a member to be editable (SPEC §membership edit gate)
@@ -200,7 +200,20 @@ test("file.edit: rejection leaves file untouched; the rx carries the outcome as 
         // The model-facing rx carries the one-word why — a mute {"status":400} reads as a
         // phantom failure the model can't act on (the fan-out dead-park).
         const row = await ctx.db.test_get_log_entry_by_id.get<{ rx: string }>({ id: logEntryId });
-        assert.deepEqual(JSON.parse(row?.rx ?? "{}"), { status: 400, error: "reviewer_said_no" }, "rx = status + terse outcome token, nothing more");
+        const rx = JSON.parse(row?.rx ?? "{}") as {
+            status?: number;
+            outcome?: string;
+            problem?: { type?: string; status?: number; detail?: string; instance?: string };
+        };
+        assert.equal(rx.status, 400);
+        assert.equal(rx.outcome, "reviewer_said_no");
+        assert.deepEqual(rx.problem, {
+            type: "https://problems.plurnk.dev/proposal/rejected",
+            title: "Rejected",
+            status: 400,
+            detail: "The proposal was rejected (reviewer_said_no).",
+            instance: "log:///1/1/1/EDIT",
+        });
     });
 });
 
@@ -289,7 +302,7 @@ test("a markerless EDIT of an EXISTING file is refused, never a silent full repl
             loopId: ctx.loopId, turnId: ctx.turnId, sequence: 1, origin: "model",
         });
         assert.equal(result.status, 400, "no marker on an existing file is refused outright — never a proposal, never a silent replace");
-        assert.match(String(result.error), /requires a line marker.*<1,-1>/, "the refusal names the law and the escape hatch");
+        assert.match(result.problem?.detail ?? "", /requires a line marker.*<1,-1>/, "the refusal names the law and the escape hatch");
         const onDisk = await readFile(join(root, target), "utf8");
         assert.equal(onDisk, original, "disk is untouched — the refusal happens before any proposal, let alone any write");
     });

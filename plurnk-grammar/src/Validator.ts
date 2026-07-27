@@ -11,6 +11,8 @@ import providerDeclarationSchema from "../schema/ProviderDeclaration.json" with 
 import plurnkStatementSchema from "../schema/PlurnkStatement.json" with { type: "json" };
 import clientStatementSchema from "../schema/ClientStatement.json" with { type: "json" };
 import telemetryEventSchema from "../schema/TelemetryEvent.json" with { type: "json" };
+import problemDetailsSchema from "../schema/ProblemDetails.json" with { type: "json" };
+import operationResultSchema from "../schema/OperationResult.json" with { type: "json" };
 
 export type ValidationResult = { valid: boolean; errors: OutputUnit[] };
 
@@ -33,6 +35,8 @@ export default class Validator {
         [plurnkStatementSchema, positionSchema, lineMarkerSchema, paramsSchema, parsedPathSchema, matcherBodySchema, sendBodySchema],
     );
     static #telemetryEvent = new CfValidator(telemetryEventSchema as Schema, "2020-12");
+    static #problemDetails = new CfValidator(problemDetailsSchema as Schema, "2020-12");
+    static #operationResult = Validator.#buildWithRefs(operationResultSchema, [problemDetailsSchema]);
 
     static #buildWithRefs(mainSchema: unknown, refSchemas: unknown[]): CfValidator {
         const validator = new CfValidator(mainSchema as Schema, "2020-12");
@@ -57,6 +61,8 @@ export default class Validator {
     static validatePlurnkStatement(obj: unknown): ValidationResult { return Validator.#run(Validator.#plurnkStatement, obj); }
     static validateClientStatement(obj: unknown): ValidationResult { return Validator.#run(Validator.#clientStatement, obj); }
     static validateTelemetryEvent(obj: unknown): ValidationResult { return Validator.#run(Validator.#telemetryEvent, obj); }
+    static validateProblemDetails(obj: unknown): ValidationResult { return Validator.#run(Validator.#problemDetails, obj); }
+    static validateOperationResult(obj: unknown): ValidationResult { return Validator.#run(Validator.#operationResult, obj); }
 
     static #run(validator: CfValidator, obj: unknown): ValidationResult {
         const result = validator.validate(obj);

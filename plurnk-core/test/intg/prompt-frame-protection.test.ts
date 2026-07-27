@@ -35,7 +35,7 @@ test("a FOLD of the prompt auto-READ is refused with the KILL steer (#382)", asy
         // the prompt auto-READ is at coordinate 1/1/3 (foist EDIT=2, READ=3)
         const r = await engine.dispatch({ statement: foldStmt(urlLog("log:///1/1/3/READ")), workspaceId, workerId, loopId, turnId: curationTurn, sequence: 1, origin: "model" });
         assert.equal(r.status, 403, "folding the task preview is illegal");
-        assert.match(String(r.error), /FOLD the task preview.*KILL/s, "the steer names KILL as the deliberate path");
+        assert.match(r.problem?.detail ?? "", /FOLD the task preview.*KILL/s, "the steer names KILL as the deliberate path");
         // the prompt row stays expanded — the frame survives
         const exp = await db.test_prompt_expanded.get<{ expanded: number }>({});
         assert.equal(exp?.expanded, 1, "the prompt auto-READ is still open after the refused fold");

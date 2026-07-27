@@ -21,6 +21,7 @@ import type {
     EntryData,
     ChannelState,
 } from "./ctx.ts";
+import Results from "./Results.ts";
 
 // ── a minimal in-memory conformant implementation ─────────────────────────
 // Backs `entries`/`channels` with a Map so the assertions are real, not
@@ -33,17 +34,35 @@ const makeCtx = () => {
     const chunks: Array<{ channel: string; chunk: string; mimetype?: string }> = [];
     let woken = 0;
     let closed: { reason: string; outcome?: string } | null = null;
+    const failure = <T extends Readonly<Record<string, unknown>> = Record<never, never>>(
+        code: string,
+        status: number,
+        detail: string,
+        fields: T = {} as T,
+    ) => Results.failure("scheme:test", code, status, detail, fields) as ReturnType<typeof Results.failure> & T;
 
     const entries: EntryCaps = {
         operations: {
-            async editBatch() { return { status: 501, entryId: null, channel: null }; },
-            async read() { return { status: 501, content: null, mimetype: null, channel: null }; },
-            async find() { return { status: 501, content: null, mimetype: null, results: [], itemsTokenTotal: 0, pathnames: [], matches: [] }; },
-            async send() { return { status: 501 }; },
+            async editBatch() {
+                return failure("operation-not-implemented", 501, "EDIT is not implemented.", { entryId: null, channel: null });
+            },
+            async read() {
+                return failure("operation-not-implemented", 501, "READ is not implemented.", { content: null, mimetype: null, channel: null });
+            },
+            async find() {
+                return failure("operation-not-implemented", 501, "FIND is not implemented.", {
+                    content: null, mimetype: null, results: [], itemsTokenTotal: 0, pathnames: [], matches: [],
+                });
+            },
+            async send() {
+                return failure("operation-not-implemented", 501, "SEND is not implemented.");
+            },
         },
         async read(pathname) {
             const entry = store.get(pathname) ?? null;
-            return { status: entry ? 200 : 404, entry };
+            return entry === null
+                ? failure("entry-not-found", 404, `No entry exists at ${pathname}.`, { entry: null })
+                : Results.assert({ status: 200, entry });
         },
         async write(pathname, entry) {
             const created = !store.has(pathname);
@@ -51,14 +70,16 @@ const makeCtx = () => {
             return { status: created ? 201 : 200, created, entryId: 1 };
         },
         async delete(pathname) {
-            return { status: store.delete(pathname) ? 200 : 404 };
+            return store.delete(pathname)
+                ? Results.assert({ status: 200 })
+                : failure("entry-not-found", 404, `No entry exists at ${pathname}.`);
         },
     };
 
     const channels: ChannelCaps = {
         async append(pathname, channel, content) {
             const e = store.get(pathname);
-            if (!e) return { status: 404 };
+            if (!e) return failure("entry-not-found", 404, `No entry exists at ${pathname}.`);
             const prev = e.channels[channel];
             store.set(pathname, {
                 ...e,
@@ -68,7 +89,7 @@ const makeCtx = () => {
         },
         async replace(pathname, channel, content) {
             const e = store.get(pathname);
-            if (!e) return { status: 404 };
+            if (!e) return failure("entry-not-found", 404, `No entry exists at ${pathname}.`);
             store.set(pathname, { ...e, channels: { ...e.channels, [channel]: { content, mimetype: e.channels[channel]?.mimetype ?? "text/markdown" } } });
             return { status: 200 };
         },
@@ -78,9 +99,21 @@ const makeCtx = () => {
     };
 
     const tags: TagCaps = {
-        async add(pathname) { return { status: store.has(pathname) ? 200 : 404 }; },
-        async remove(pathname) { return { status: store.has(pathname) ? 200 : 404 }; },
-        async list(pathname) { return { status: store.has(pathname) ? 200 : 404, tags: store.get(pathname)?.tags ?? [] }; },
+        async add(pathname) {
+            return store.has(pathname)
+                ? Results.assert({ status: 200 })
+                : failure("entry-not-found", 404, `No entry exists at ${pathname}.`);
+        },
+        async remove(pathname) {
+            return store.has(pathname)
+                ? Results.assert({ status: 200 })
+                : failure("entry-not-found", 404, `No entry exists at ${pathname}.`);
+        },
+        async list(pathname) {
+            return store.has(pathname)
+                ? Results.assert({ status: 200, tags: store.get(pathname)?.tags ?? [] })
+                : failure("entry-not-found", 404, `No entry exists at ${pathname}.`, { tags: [] });
+        },
     };
 
     const notify: NotifyCaps = {

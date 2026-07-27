@@ -216,8 +216,8 @@ test("an unregistered executable tag fails without shell reinterpretation", asyn
             workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
         });
         assert.equal(result.status, 501);
-        assert.match(String(result.error), /not a registered executable tool/);
-        assert.match(String(result.error), /bare EXEC or EXEC\[sh\]/);
+        assert.match(result.problem?.detail ?? "", /not a registered executable tool/);
+        assert.match(result.problem?.detail ?? "", /bare EXEC or EXEC\[sh\]/);
         const entryRow = await db.test_get_entry_by_pathname_scheme.get<{ id: number }>({ scheme: "sh", pathname: "/1/1/1" });
         assert.equal(entryRow, undefined, "an unknown tag never spawns or creates a shell stream");
     } finally { await db.close(); }

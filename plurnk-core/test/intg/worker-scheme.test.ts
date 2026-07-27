@@ -181,7 +181,7 @@ test("WORK-spawning a name a LIVE sister holds is refused 409 — legible, never
             workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
         });
         assert.equal(result.status, 409, "a live name-collision is a legible 409, not a 500");
-        assert.match(String((result as { error?: string }).error ?? ""), /worker.*already running|already running/, "the message names the live run");
+        assert.match(result.problem?.detail ?? "", /worker.*already running|already running/, "the message names the live run");
         assert.equal(calls.length, 0, "no inject on a refused spawn");
     } finally { await db.close(); }
 });
@@ -258,7 +258,7 @@ test("EDIT on the bare worker entity is rejected — WORK spawns, not EDIT (400,
             workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
         });
         assert.equal(result.status, 400, "EDIT on the worker entity is rejected");
-        assert.match(String((result as { error?: string }).error ?? ""), /COPY\(worker:\/\/|not editable/, "the rejection steers to COPY");
+        assert.match(result.problem?.detail ?? "", /COPY\(worker:\/\/|not editable/, "the rejection steers to COPY");
         assert.equal(calls.length, 0, "no inject on a rejected EDIT");
         const worker = await db.worker_resolve_by_name.get<{ id: number }>({ workspace_id: workspaceId, name: "worker" });
         assert.equal(worker, undefined, "no worker is created by a rejected EDIT");

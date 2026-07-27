@@ -8,11 +8,9 @@ import { decodePathParens } from "../core/path-decode.ts";
 import type { PlurnkSchemeContext } from "../core/scheme-types.ts";
 import EntryCrud from "./_entry-crud.ts";
 import ChannelWrite from "../core/ChannelWrite.ts";
+import Results, { type SchemeResult } from "../core/results.ts";
 
-export interface SendResult {
-    status: number;
-    [key: string]: unknown;
-}
+export interface SendResult extends SchemeResult {}
 
 export default class EntrySend {
     static #pathnameOf(statement: SendStatement): string | null {
@@ -29,26 +27,34 @@ export default class EntrySend {
     }
 
     static async sendToWorkspaceEntry(statement: SendStatement, ctx: PlurnkSchemeContext, scheme: string, explicitOwnerId?: number): Promise<SendResult> {
-        if (statement.target === null) return { status: 400, error: "directed SEND requires a path" };
+        const failure = (
+            code: string,
+            status: number,
+            detail: string,
+            fields: Readonly<Record<string, unknown>> = {},
+        ): SendResult => Results.failure(`scheme:${scheme}`, code, status, detail, fields);
+        if (statement.target === null) return failure("target-required", 400, "Directed SEND requires a path.");
 
         const status = statement.signal;
-        if (status === null) return { status: 400, error: "SEND requires a numeric status code" };
+        if (status === null) return failure("status-required", 400, "SEND requires a numeric status code.");
 
         // SEND[410] Gone — delete the targeted resource (SPEC §send-dispatch). With a
         // #fragment, deletes just that channel; without, deletes the whole entry.
         if (status === 410) {
             const pathname = EntrySend.#pathnameOf(statement);
-            if (pathname === null) return { status: 400 };
+            if (pathname === null) return failure("target-required", 400, "SEND[410] requires a path.");
             const fragment = EntrySend.#fragmentOf(statement);
             if (fragment !== null) {
                 const { db, workspaceId } = ctx;
                 const entry = await db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: workspaceId, owner_id: explicitOwnerId ?? await Owner.commonsId(db, workspaceId), scheme, pathname });
-                if (entry === undefined) return { status: 404 };
+                if (entry === undefined) return failure("entry-not-found", 404, "No entry exists at the requested path.");
                 const deleted = await db.crud_delete_channel.get<{ name: string }>({ entry_id: entry.id, name: fragment });
-                return { status: deleted === undefined ? 404 : 200 };
+                return deleted === undefined
+                    ? failure("channel-not-found", 404, `No channel named #${fragment} exists at the requested path.`)
+                    : { status: 200 };
             }
             const result = await EntryCrud.deleteEntry(pathname, ctx, scheme, explicitOwnerId);
-            return { status: result.status };
+            return result;
         }
 
         // SEND[499] Client Closed Request — cancel active subscription (SPEC §send-dispatch, §stream-control).
@@ -57,15 +63,15 @@ export default class EntrySend {
         // findActiveSubscription, then call their teardown using the stored handle.
         if (status === 499) {
             const pathname = EntrySend.#pathnameOf(statement);
-            if (pathname === null) return { status: 400 };
+            if (pathname === null) return failure("target-required", 400, "SEND[499] requires a path.");
             const { db, workspaceId, workerId } = ctx;
             const entry = await db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: workspaceId, owner_id: explicitOwnerId ?? await Owner.commonsId(db, workspaceId), scheme, pathname });
-            if (entry === undefined) return { status: 404, error: "no entry at path" };
+            if (entry === undefined) return failure("entry-not-found", 404, "No entry exists at the requested path.");
             const subscription = await ChannelWrite.findActiveSubscription(db, { workerId, entryId: entry.id });
-            if (subscription === null) return { status: 404, error: "no active subscription to cancel" };
-            return { status: 501, error: `entry scheme does not own subscription cancellation; subscription owned by scheme '${subscription.scheme}'` };
+            if (subscription === null) return failure("subscription-not-found", 404, "No active subscription exists at the requested path.");
+            return failure("subscription-owned-elsewhere", 501, `The '${subscription.scheme}' scheme owns this subscription cancellation.`);
         }
 
-        return { status: 501, error: `entry scheme does not interpret SEND status ${status}` }; // §send-dispatch-entry-schemes-501-on-non-410
+        return failure("status-not-implemented", 501, `The entry scheme does not interpret SEND status ${status}.`); // §send-dispatch-entry-schemes-501-on-non-410
     }
 }

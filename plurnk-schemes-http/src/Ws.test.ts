@@ -135,7 +135,7 @@ test("READ: an SSRF target is refused (403) and never connects", async () => {
     const { ctx } = makeCtx();
     const r = await new Ws(() => { connected = true; return fakeSocket(); }).read(readStmt(wss("ws://127.0.0.1/x", "/x")), ctx);
     assert.equal(r.status, 403);
-    assert.equal(r.error?.kind, "ssrf_blocked");
+    assert.equal(r.problem?.type, "https://problems.plurnk.dev/scheme/wss/ssrf-blocked");
     assert.equal(connected, false);
 });
 
@@ -161,7 +161,7 @@ test("SEND[200]: no open socket → 409 (READ opens the connection SEND rides)",
     const { ctx } = makeCtx();
     const r = await new Ws(() => fakeSocket()).send(sendStmt(200, wss(PUB, "/feed"), "x"), ctx);
     assert.equal(r.status, 409);
-    assert.equal(r.error?.kind, "no_open_socket");
+    assert.equal(r.problem?.type, "https://problems.plurnk.dev/scheme/wss/no-open-socket");
 });
 
 test("SEND[499]: scheme-level no-op 200 (engine routes teardown to the handle)", async () => {
@@ -193,7 +193,7 @@ test("KILL: no open socket → 404", async () => {
     const { ctx } = makeCtx();
     const r = await new Ws(() => fakeSocket()).kill(killStmt(wss(PUB, "/feed")), ctx);
     assert.equal(r.status, 404);
-    assert.equal(r.error?.kind, "no_open_socket");
+    assert.equal(r.problem?.type, "https://problems.plurnk.dev/scheme/wss/no-open-socket");
 });
 
 test("cancel: the composed abort signal closes the socket", async () => {

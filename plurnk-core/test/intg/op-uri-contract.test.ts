@@ -100,7 +100,7 @@ test("contract: EDIT(bare path) resolves the canonical-stored member and propose
         // {§edit-marker-required-on-existing} — notes.md already exists; <1,-1> states the rewrite.
         const stmt = parseOp<EditStatement>("<<EDIT(notes.md)<1,-1>:the codename is dragon:EDIT", "EDIT");
         const result = await new File().edit(stmt, ctx);
-        assert.equal(result.status, 202, `EDIT canonicalizes the bare path → proposal; got ${result.status} ${"error" in result ? result.error : ""}`);
+        assert.equal(result.status, 202, `EDIT canonicalizes the bare path → proposal; got ${result.status} ${result.problem?.detail ?? ""}`);
     });
 });
 

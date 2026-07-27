@@ -5,6 +5,7 @@
 import { contentHash } from "../core/content-hash.ts";
 import type { PlurnkSchemeContext } from "../core/scheme-types.ts";
 import Owner from "../core/Owner.ts";
+import Results, { type SchemeResultBase } from "../core/results.ts";
 
 export type ChannelState = "static" | "active" | "closed" | "errored";
 
@@ -14,13 +15,11 @@ export interface EntryData {
     tags: string[];
 }
 
-export interface ReadEntryResult {
-    status: number;
+export interface ReadEntryResult extends SchemeResultBase {
     entry: EntryData | null;
 }
 
-export interface WriteEntryResult {
-    status: number;
+export interface WriteEntryResult extends SchemeResultBase {
     created: boolean;
     entryId: number | null;
     // 202 proposal: a write INTO file:/// is a disk write under §membership review —
@@ -30,8 +29,7 @@ export interface WriteEntryResult {
     attrs?: object;
 }
 
-export interface DeleteEntryResult {
-    status: number;
+export interface DeleteEntryResult extends SchemeResultBase {
     // A host-effecting delete (file) returns 202 to PROPOSE for review; attrs carry the target so
     // applyResolution can unlink on accept. Plurnk-internal deletes (known://) execute inline (200).
     attrs?: object;
@@ -49,7 +47,15 @@ export default class EntryCrud {
         const { db, workspaceId } = ctx;
         const owner_id = ownerId ?? await Owner.commonsId(db, workspaceId);
         const entry = await db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: workspaceId, owner_id, scheme, pathname });
-        if (entry === undefined) return { status: 404, entry: null };
+        if (entry === undefined) {
+            return Results.failure(
+                `scheme:${scheme}`,
+                "entry-not-found",
+                404,
+                `No entry exists at ${scheme}://${pathname}.`,
+                { entry: null },
+            ) as ReadEntryResult;
+        }
 
         const channelRows = await db.crud_read_channels.all<{ name: string; content: string; mimetype: string }>({ entry_id: entry.id });
         const channels: EntryData["channels"] = {};
@@ -105,7 +111,14 @@ export default class EntryCrud {
         const { db, workspaceId } = ctx;
         const owner_id = ownerId ?? await Owner.commonsId(db, workspaceId);
         const existing = await db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: workspaceId, owner_id, scheme, pathname });
-        if (existing === undefined) return { status: 404 };
+        if (existing === undefined) {
+            return Results.failure(
+                `scheme:${scheme}`,
+                "entry-not-found",
+                404,
+                `No entry exists at ${scheme}://${pathname}.`,
+            ) as DeleteEntryResult;
+        }
         await db.crud_delete_entry.run({ entry_id: existing.id });
         // CASCADE on entry_channels, entry_tags per FK constraints.
         return { status: 200 };

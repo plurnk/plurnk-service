@@ -4,6 +4,7 @@ import Engine from "../../src/core/Engine.ts";
 import PacketBuilder from "../../src/core/PacketBuilder.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import TelemetryChannel from "../../src/core/TelemetryChannel.ts";
+import ProblemLog from "../../src/core/ProblemLog.ts";
 import { Mock } from "@plurnk/plurnk-providers";
 import type { MockResponse } from "@plurnk/plurnk-providers";
 import type { PlurnkStatement, SendStatement } from "@plurnk/plurnk-grammar";
@@ -93,7 +94,13 @@ test("a virtual prompt budget tightens the gauge and grinder without changing pr
         process.env.PLURNK_SERVICE_SAFETY = "1024";
         process.env.PLURNK_SERVICE_PROMPT_BUDGET = "128000";
         const schemes = new SchemeRegistry();
-        const packets = new PacketBuilder({ db, schemes, telemetry: new TelemetryChannel({ db }), executors: () => undefined });
+        const packets = new PacketBuilder({
+            db,
+            schemes,
+            telemetry: new TelemetryChannel(),
+            problems: new ProblemLog(db),
+            executors: () => undefined,
+        });
         const provider = new Mock({ contextWindow: 1_048_575, responses: [] });
         const budget = packets.promptBudgetFor(provider);
         assert.equal(budget, 128_000);

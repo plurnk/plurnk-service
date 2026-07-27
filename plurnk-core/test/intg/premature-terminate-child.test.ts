@@ -276,7 +276,7 @@ test("one idle-grace turn after a retrieval-409 — obeying the steer never stri
             if ((await db.test_get_loop_status.get<{ status: number }>({ id: loopId }))?.status === 500) break;
         }
         const errRows = await db.test_error_rows_for_run.all<{ rx: string }>({ worker_id: workerId });
-        const idleStrikes = errRows.filter((r) => /idle_turn/.test(r.rx)).length;
+        const idleStrikes = errRows.filter((r) => /engine\/rail\/idle-turn/.test(r.rx)).length;
         assert.ok(idleStrikes >= 1, "later idles still strike — the rail is intact");
         const graceCovered = 5 - 1 - idleStrikes; // turns minus the refused turn minus struck idles
         assert.ok(graceCovered >= 1, `exactly one idle rode the grace (struck ${idleStrikes} of 4 idles)`);
@@ -301,7 +301,7 @@ test("a parse-emptied turn is FAILED RETRIEVAL, not idle — the root 400 speaks
         await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
         const errRows = await db.test_error_rows_for_run.all<{ rx: string }>({ worker_id: workerId });
         assert.ok(errRows.length > 0, "the malformed FIND minted its parse-error row (the root cause, recorded)");
-        assert.ok(errRows.every((r) => !/idle_turn|Illegal idle/.test(r.rx)), "no idle-409 stacked on the root error — one accident, one error");
+        assert.ok(errRows.every((r) => !/engine\/rail\/idle-turn|Illegal idle/.test(r.rx)), "no idle-409 stacked on the root error — one accident, one error");
     } finally { await db.close(); }
 });
 
@@ -309,8 +309,8 @@ test("a FAILED op row carries its failure message on its META LINE — the recor
     // The wildcard specimen: the refused SEND's rx held the steer, the row folded, and the model
     // theorized 'SEND[409] probably means bad request?' for 201s. The jumbo specimen: a minted
     // message-less item read as an "engine error" and bred a 10-turn phantom hunt. The rule now:
-    // the op row IS the model's op result and self-explains — its meta line carries rx.error, so
-    // the message renders in EVERY packet; the errors section is a terse pointer at the row.
+    // the op row IS the model's op result and self-explains — packet-wire projects its
+    // Problem Details detail onto every meta line; the errors section is a terse pointer.
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `steer-meta-${crypto.randomUUID()}`);

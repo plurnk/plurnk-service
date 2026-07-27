@@ -11,6 +11,7 @@ import Owner from "../core/Owner.ts";
 import type { EditStatement, ReadStatement, SendStatement, FindStatement, KillStatement, ParsedPath } from "@plurnk/plurnk-grammar";
 import { CoreSchemeAdapterBase } from "../core/CoreSchemeServices.ts";
 import type { CoreSchemeCallContext } from "../core/CoreSchemeServices.ts";
+import Results, { type SchemeResultBase } from "../core/results.ts";
 
 // A loop cancelled outside the worker names that act as state before preserving the
 // model's last words. NULL terminated_by = the model's own terminal, including an
@@ -85,65 +86,91 @@ export default class Worker extends CoreSchemeAdapterBase {
         return { ...statement, target: { ...t, hostname: null } };
     }
 
-    async editBatch(statements: readonly EditStatement[], ctx: CoreSchemeCallContext): Promise<EditResult & { error?: string }> {
+    async editBatch(statements: readonly EditStatement[], ctx: CoreSchemeCallContext): Promise<EditResult> {
+        const failure = (code: string, status: number, detail: string): EditResult => Results.failure(
+            "scheme:worker",
+            code,
+            status,
+            detail,
+            { entryId: null, channel: null },
+        ) as EditResult;
         const statement = statements[0];
-        if (statement === undefined) return { status: 400, entryId: null, channel: null, error: "EDIT batch is empty" };
+        if (statement === undefined) return failure("edit-empty", 400, "EDIT batch is empty.");
         const core = this.coreContext(ctx);
         const authority = Worker.#authority(statement.target);
-        if (authority === null) return { status: 400, entryId: null, channel: null, error: "worker:// requires a worker target" };
+        if (authority === null) return failure("worker-target-required", 400, "worker:// requires a worker target.");
         const entryPath = Worker.#entryPath(statement.target);
 
         // The worker ENTITY (path-absent worker://<name>) is not EDITable — EDIT is entry only
         // (grammar 0.74.55): WORK(worker://<name>) spawns a worker; FORK(worker://<name>) forks a branch.
-        if (entryPath === "") return { status: 400, entryId: null, channel: null, error: "worker:// entity is not editable — WORK(worker://<name>) to spawn a worker, FORK(worker://<name>) to fork a branch" };
+        if (entryPath === "") return failure("worker-entity-not-editable", 400, "worker:// entity is not editable — WORK(worker://<name>) to spawn a worker, FORK(worker://<name>) to fork a branch.");
 
         const resolved = await Worker.#resolveAuthority(authority, core);
-        if (resolved === null) return { status: 404, entryId: null, channel: null, error: `worker://${authority} not found` };
-        if (!resolved.writable) return { status: 403, entryId: null, channel: null, error: "a named worker's space is read-only — write to worker:///... (the commons) or worker://~/... (your own)" };
+        if (resolved === null) return failure("worker-not-found", 404, `worker://${authority} not found.`);
+        if (!resolved.writable) return failure("worker-space-read-only", 403, "A named worker's space is read-only — write to worker:///... (the commons) or worker://~/... (your own).");
         if (statements.some((candidate) => Worker.#authority(candidate.target) !== authority)) {
-            return { status: 400, entryId: null, channel: null, error: "EDIT batch spans multiple worker spaces" };
+            return failure("edit-batch-mismatch", 400, "EDIT batch spans multiple worker spaces.");
         }
         return EntryOps.editWorkspaceEntryBatch(statements.map((candidate) => Worker.#stripAuthority(candidate)), core, Worker.manifest, resolved.ownerId);
     }
 
-    async edit(statement: EditStatement, ctx: CoreSchemeCallContext): Promise<EditResult & { error?: string }> {
+    async edit(statement: EditStatement, ctx: CoreSchemeCallContext): Promise<EditResult> {
         return this.editBatch([statement], ctx);
     }
 
     // KILL an ENTRY (path present). Same write-scoping as EDIT: self + commons only. The
     // path-ABSENT KILL form is worker cancellation, handled in Dispatcher.#handleKill.
-    async killEntry(statement: KillStatement, ctx: CoreSchemeCallContext): Promise<{ status: number; error?: string }> {
+    async killEntry(statement: KillStatement, ctx: CoreSchemeCallContext): Promise<SchemeResultBase> {
         const core = this.coreContext(ctx);
         const authority = Worker.#authority(statement.target);
-        if (authority === null) return { status: 400, error: "worker:// requires a worker target" };
+        if (authority === null) return Results.failure("scheme:worker", "worker-target-required", 400, "worker:// requires a worker target.");
         const resolved = await Worker.#resolveAuthority(authority, core);
-        if (resolved === null) return { status: 404, error: `worker://${authority} not found` };
-        if (!resolved.writable) return { status: 403, error: "a named worker's space is read-only — KILL entries in worker:///... (the commons) or worker://~/... (your own)" };
+        if (resolved === null) return Results.failure("scheme:worker", "worker-not-found", 404, `worker://${authority} not found.`);
+        if (!resolved.writable) return Results.failure("scheme:worker", "worker-space-read-only", 403, "A named worker's space is read-only — KILL entries in worker:///... (the commons) or worker://~/... (your own).");
         return EntryOps.deleteWorkspaceEntry(Worker.#stripAuthority(statement), core, Worker.manifest, resolved.ownerId);
     }
 
     async read(statement: ReadStatement, ctx: CoreSchemeCallContext): Promise<ReadResult> {
+        const failure = (
+            code: string,
+            status: number,
+            detail: string,
+            fields: Readonly<Record<string, unknown>> = {},
+        ): ReadResult => Results.failure(
+            "scheme:worker",
+            code,
+            status,
+            detail,
+            { content: null, mimetype: null, channel: null, ...fields },
+        ) as ReadResult;
         const core = this.coreContext(ctx);
         const authority = Worker.#authority(statement.target);
-        if (authority === null) return { status: 400, content: null, mimetype: null, channel: null };
+        if (authority === null) return failure("worker-target-required", 400, "READ requires a worker:// target.");
         const entryPath = Worker.#entryPath(statement.target);
         // Path-absent READ(worker://<name>) COLLECTS the worker's deliverable (§worker-scheme-collect, pull side):
         // its latest loop's terminal message — the SEND[200] result, or an abandonment reason. A worker
         // still running hasn't delivered yet → 425 steers the model to park until it does (the
         // same deliverable the wake/collect-delta will push). The pull complements the push; neither is lost.
         if (entryPath === "") {
-            if (authority === "" || authority === "~") return { status: 400, content: null, mimetype: null, channel: null }; // collect names a WORKER
+            if (authority === "" || authority === "~") return failure("named-worker-required", 400, "A worker deliverable READ requires a named worker."); // collect names a WORKER
             const row = await core.db.worker_deliverable_by_name.get<{ status: number; terminal_message: string | null; terminated_by: string | null }>({ workspace_id: core.workspaceId, name: authority });
-            if (row === undefined) return { status: 404, content: `worker://${authority} not found in this workspace`, mimetype: "text/markdown", channel: null };
+            if (row === undefined) return failure("worker-not-found", 404, `worker://${authority} not found in this workspace.`);
             // §join-blocking-collect (#354) — a still-running worker is a BLOCKING JOIN: the READ
             // arms the join (awaitWorker), and the turn's bare SEND[102] parks until the worker delivers.
             // The model doesn't drive the park — the engine does (a blocking read() hiding the scheduler).
-            if (!Worker.#TERMINAL_LOOP.has(row.status)) return { status: 425, content: `[ worker '${authority}' is still running — parking this turn until it delivers its result ]`, mimetype: "text/markdown", channel: null, awaitWorker: authority };
+            if (!Worker.#TERMINAL_LOOP.has(row.status)) {
+                const detail = `Worker '${authority}' is still running; park this turn until it delivers its result.`;
+                return failure("worker-still-running", 425, detail, {
+                    content: `[ ${detail} ]`,
+                    mimetype: "text/markdown",
+                    awaitWorker: authority,
+                });
+            }
             return { status: 200, content: markTerminal(row.terminated_by, row.terminal_message) ?? `[ worker '${authority}' concluded with no deliverable (status ${row.status}) ]`, mimetype: "text/markdown", channel: null };
         }
         // Path-present: an entry read — commons / own / ancestry-gated named space.
         const resolved = await Worker.#resolveAuthority(authority, core);
-        if (resolved === null) return { status: 404, content: null, mimetype: null, channel: null };
+        if (resolved === null) return failure("worker-not-found", 404, `worker://${authority} not found.`);
         return EntryOps.readWorkspaceEntry(Worker.#stripAuthority(statement), core, Worker.manifest, resolved.ownerId);
     }
 
@@ -159,9 +186,17 @@ export default class Worker extends CoreSchemeAdapterBase {
             return EntryFind.findWorkspaceEntries(statement, core, Worker.manifest, await Owner.commonsId(core.db, core.workspaceId));
         }
         const authority = Worker.#authority(statement.target);
-        if (authority === null) return { status: 400, content: null, mimetype: null, results: [], itemsTokenTotal: 0, pathnames: [], matches: [] };
+        if (authority === null) {
+            return Results.failure("scheme:worker", "worker-target-required", 400, "FIND requires a worker:// target.", {
+                content: null, mimetype: null, results: [], itemsTokenTotal: 0, pathnames: [], matches: [],
+            }) as FindResult;
+        }
         const resolved = await Worker.#resolveAuthority(authority, core);
-        if (resolved === null) return { status: 404, content: null, mimetype: null, results: [], itemsTokenTotal: 0, pathnames: [], matches: [] };
+        if (resolved === null) {
+            return Results.failure("scheme:worker", "worker-not-found", 404, `worker://${authority} not found.`, {
+                content: null, mimetype: null, results: [], itemsTokenTotal: 0, pathnames: [], matches: [],
+            }) as FindResult;
+        }
         const found = await EntryFind.findWorkspaceEntries(Worker.#stripAuthority(statement), core, Worker.manifest, resolved.ownerId);
         // The catalog renders the empty-authority form; a non-empty queried authority re-applies —
         // in results AND the serialized content the packet renders — so every path the model sees
@@ -187,24 +222,24 @@ export default class Worker extends CoreSchemeAdapterBase {
         return EntryCrud.deleteEntry(pathname, this.coreContext(ctx), Worker.manifest.name);
     }
 
-    async send(statement: SendStatement, ctx: CoreSchemeCallContext): Promise<{ status: number; error?: string }> {
+    async send(statement: SendStatement, ctx: CoreSchemeCallContext): Promise<SchemeResultBase> {
         const core = this.coreContext(ctx);
         const authority = Worker.#authority(statement.target);
-        if (authority === null) return { status: 400, error: "worker:// irc requires a worker (worker://<name>)" };
+        if (authority === null) return Results.failure("scheme:worker", "worker-target-required", 400, "worker:// irc requires a worker (worker://<name>).");
         // An ENTRY-path SEND is the entry-SEND law (410 deletes, 499 cancels, else 501) on the
         // resolved principal; write-scoping holds — a named space takes no 410.
         if (Worker.#entryPath(statement.target) !== "") {
             const resolved = await Worker.#resolveAuthority(authority, core);
-            if (resolved === null) return { status: 404, error: `worker://${authority} not found` };
-            if (!resolved.writable && statement.signal === 410) return { status: 403, error: "a named worker's space is read-only" };
+            if (resolved === null) return Results.failure("scheme:worker", "worker-not-found", 404, `worker://${authority} not found.`);
+            if (!resolved.writable && statement.signal === 410) return Results.failure("scheme:worker", "worker-space-read-only", 403, "A named worker's space is read-only.");
             return EntrySend.sendToWorkspaceEntry(Worker.#stripAuthority(statement), core, Worker.manifest.name, resolved.ownerId);
         }
-        if (authority === "") return { status: 400, error: "worker:// irc requires a worker (worker://<name>)" };
+        if (authority === "") return Results.failure("scheme:worker", "named-worker-required", 400, "worker:// irc requires a worker (worker://<name>).");
         if (core.injectWorker === undefined) throw new Error("run.send: injectWorker capability absent");
         let workerId = core.workerId;
         if (authority !== "~") {
             const row = await core.db.worker_resolve_by_name.get<{ id: number }>({ workspace_id: core.workspaceId, name: authority });
-            if (row === undefined) return { status: 404, error: `worker://${authority} not found in this workspace` };
+            if (row === undefined) return Results.failure("scheme:worker", "worker-not-found", 404, `worker://${authority} not found in this workspace.`);
             workerId = row.id;
         }
         const body = statement.body;

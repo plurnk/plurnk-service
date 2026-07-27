@@ -271,7 +271,7 @@ test("recursive-descent jsonpath over a deep code-entry parse tree matches — n
             { ...readStmt(urlPath("worker", "/util.ts")), body: { dialect: "jsonpath", raw: "$..*" } as MatcherBody },
             makeSchemeCtx({ db, workspaceId, mimetypes }),
         );
-        assert.notEqual(matched.status, 400, `depth cap resurfaced as a model-blamed 400: ${(matched as { error?: string }).error ?? ""}`);
+        assert.notEqual(matched.status, 400, `depth cap resurfaced as a model-blamed 400: ${matched.problem?.detail ?? ""}`);
         assert.equal(matched.status, 200, "recursive descent over the full parse tree succeeds");
         assert.ok(typeof matched.content === "string" && matched.content.includes("greet"), "matches carry real tree content (positive presence)");
     } finally { await db.close(); }

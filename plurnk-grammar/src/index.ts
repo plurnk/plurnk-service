@@ -50,6 +50,8 @@ export type {
     PlanStatement,
     PlurnkOp,
     PlurnkStatement,
+    ProblemDetails,
+    OperationResult,
     Position,
     ReadStatement,
     RegexPath,

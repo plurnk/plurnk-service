@@ -404,8 +404,8 @@ export default class PacketWire {
             // chasing a phantom "engine error" off a message-less item. The row IS the model's op
             // result — it states its own why; the errors section stays a terse pointer at it.
             if (typeof e.status === "number" && e.status >= 400 && rx !== null && typeof rx === "object") {
-                const why = (rx as { error?: unknown; reason?: unknown; message?: unknown });
-                const text = typeof why.error === "string" ? why.error : typeof why.reason === "string" ? why.reason : typeof why.message === "string" ? why.message : null;
+                const problem = (rx as { problem?: { detail?: unknown } }).problem;
+                const text = typeof problem?.detail === "string" ? problem.detail : null;
                 if (text !== null && text.length > 0) meta.error = text;
             }
 

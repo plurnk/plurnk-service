@@ -200,6 +200,12 @@ export default class Ws implements SchemeHandler {
     }
 
     static #bad(status: number, kind: string, message: string): PassthroughResult {
-        return { shape: "passthrough", status, error: Results.error("wss", kind, message) };
+        return Results.failure(
+            "scheme:wss",
+            kind.replaceAll("_", "-"),
+            status,
+            message,
+            { shape: "passthrough" },
+        ) as PassthroughResult;
     }
 }

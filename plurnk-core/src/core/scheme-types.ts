@@ -7,8 +7,9 @@ import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import type ExecutorRegistry from "./ExecutorRegistry.ts";
 import type { StreamEventNotify, WakeWorkerNotify, InjectWorkerNotify } from "./ChannelWrite.ts";
 import type { WriterTier } from "./types.ts";
-import type { TelemetryEvent } from "./results.ts";
+import type { TelemetryEvent } from "@plurnk/plurnk-grammar";
 import type { PacketSection } from "./packet-wire.ts";
+import type { SchemeResultBase } from "./results.ts";
 
 // Re-export framework types so existing imports of `scheme-types.ts`
 // keep working without callers needing to know the new origin.
@@ -21,13 +22,10 @@ export type {
 export { DEFAULT_LOOP_FLAGS } from "./types.ts";
 
 // Shared read-result shape for the core-owned read schemes (Log/File); de-dups the
-// per-scheme local copies. `error`/`reason` are optional — set by schemes that
-// surface a not-found / denial; matchers fill startLine/matches.
-export type SchemeReadResult = {
-    status: number;
+// per-scheme local copies. Problems carry failures; matchers fill startLine/matches.
+export type SchemeReadResult = SchemeResultBase & {
     content: string | null;
     mimetype: string | null;
-    error?: string;
     reason?: string;
     startLine?: number | null;
     matches?: number | null;
