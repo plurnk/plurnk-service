@@ -22,8 +22,10 @@ const run = (command, args, cwd) => {
     if (result.status !== 0) process.exit(result.status ?? 1);
 };
 
-run("npm", ["run", "build"], root);
-run("npm", ["run", "build"], clientRoot);
+if (process.env.PLURNK_CANDIDATE_SKIP_BUILD !== "1") {
+    run("npm", ["run", "build"], root);
+    run("npm", ["run", "build"], clientRoot);
+}
 
 const daemon = spawn(
     process.execPath,

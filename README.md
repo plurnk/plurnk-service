@@ -76,8 +76,9 @@ PLURNK_CANDIDATE_MODEL=<configured-alias> npm run candidate -- <client arguments
 
 By default the launcher expects the client checkout at `../repo/plurnk`. Set
 `PLURNK_CLIENT_CHECKOUT` to use another checkout. It builds both projects,
-creates a temporary database, reports their provenance, and removes the
-temporary state on exit.
+creates an isolated database, reports their provenance, and preserves a digest
+under `PLURNK_BENCHMARKS`. Repeated experiment harnesses may build both
+checkouts once, then set `PLURNK_CANDIDATE_SKIP_BUILD=1` for the frozen build.
 
 ## Packages
 
