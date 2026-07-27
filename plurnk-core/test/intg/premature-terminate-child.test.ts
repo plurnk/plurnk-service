@@ -10,7 +10,7 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { Mock } from "@plurnk/plurnk-providers";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, seedEntryWithChannel, DEFAULT_MIMETYPES } from "./_helpers.ts";
 import type { ParsedPath } from "@plurnk/plurnk-grammar";
-import { sendStmt, readStmt } from "./_dsl.ts";
+import { execStmt, sendStmt, readStmt } from "./_dsl.ts";
 
 const knownPath = (pathname: string): ParsedPath => ({
     kind: "url", raw: `worker:///${pathname}`, scheme: "worker",
@@ -131,6 +131,43 @@ test("a legacy [102]<-1> join on an idle run completes immediately", async () =>
         assert.equal(loopStatus, 200, "the already-drained join completes terminally");
         const row = await db.test_send_rows_for_run.all<{ status_rx: number }>({ worker_id: workerId });
         assert.ok(row.some((r) => r.status_rx === 200), "the SEND records successful completion");
+    } finally { await db.close(); }
+});
+
+test("SEND[202] cannot complete an empty join over a same-turn failed operation", async () => {
+    const db = await openMigrated();
+    try {
+        const workspaceId = await insertWorkspace(db, `join-failure-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const loopId = await insertLoop(db, workerId, 1, "wait");
+        const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
+        const result = await engine.runTurn({
+            provider: new Mock({
+                contextWindow: 100000,
+                responses: [{
+                    assistant: {
+                        content: "",
+                        reasoning: null,
+                        ops: [
+                            execStmt("unregistered-runtime", "build"),
+                            sendStmt(202, null, "awaiting the build"),
+                        ],
+                    },
+                }],
+            }),
+            workspaceId,
+            workerId,
+            loopId,
+            messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }],
+        });
+
+        assert.equal(result.status, 102, "the failed operation remains unobserved, so the turn continues");
+        assert.equal(result.steerStruck, true, "the false completion attempt is struck");
+        const loopStatus = (await db.test_get_loop_status.get<{ status: number }>({ id: loopId }))?.status;
+        assert.equal(loopStatus, 102, "the loop never records a false successful terminal");
+        const rows = await db.test_log_sequencees_by_turn.all<{ status_rx: number; op: string }>({ turn_id: result.turnId });
+        assert.ok((rows.find((row) => row.op === "EXEC")?.status_rx ?? 0) >= 400, "the original operation failure is preserved");
+        assert.equal(rows.find((row) => row.op === "SEND")?.status_rx, 409, "the empty-join completion is explicitly refused");
     } finally { await db.close(); }
 });
 

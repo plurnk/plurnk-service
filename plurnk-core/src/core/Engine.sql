@@ -512,8 +512,9 @@ LIMIT 1;
 
 -- PREP: engine_turn_failures
 -- §send-200-failed-ops — THIS turn's failed op results (the model's own ops, status >= 400), whose
--- errors the model cannot have seen (they land next packet). A [200] over them concludes blind
--- past a failure — refused 409; [499] abandons regardless (declaring failure IS weighing it).
+-- errors the model cannot have seen (they land next packet). A [200] or already-drained [202] over
+-- them concludes blind past a failure — refused 409; [499] abandons regardless (declaring failure
+-- IS weighing it).
 -- op='error' rows are EXCLUDED: the error CHANNEL is already-surfaced signal (the grinder's
 -- overflow row mints pre-packet — the recovery turn SAW it; §grinder-hard-413-recovery's
 -- concluding-is-legitimate stands), and the current emission's parse errors ride the threaded

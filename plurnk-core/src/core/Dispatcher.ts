@@ -1114,8 +1114,9 @@ export default class Dispatcher {
     // (post-batch: the emission's earlier ops already executed, so a same-turn KILL+[200] repairs in
     // ONE turn, and a same-turn WORK+[200] is caught — the spawn is live by the time the SEND lands).
     // pending = open streams ∪ live children ∪ THIS turn's retrievals (READ/FIND/OPEN, results unseen
-    // until next packet). One rule, one steer, one repair family: nothing pending may be silently
-    // discarded; 499 discards BY STATED INTENT and is never gated.
+    // until next packet). Failed operations are the separate next-packet leg shared by explicit
+    // completion and empty-join completion. Nothing pending may be silently discarded; 499 discards
+    // BY STATED INTENT and is never gated.
     async #pendingSet(workerId: number, turnId: number): Promise<string[]> {
         const pending: string[] = [];
         const openSubs = await this.#db.find_open_subscriptions_for_worker.all<{ id: number }>({ worker_id: workerId });
@@ -1153,6 +1154,23 @@ export default class Dispatcher {
             streamTerminations: streamTermination !== undefined,
             childTerminations: childTermination !== undefined,
         };
+    }
+
+    // A failed operation is also an unobserved result: it does not enter the
+    // model's Log until the next packet. Both explicit completion and an
+    // already-drained join must cross that observation boundary before they
+    // can honestly finish the loop.
+    async #unobservedFailureCount(turnId: number, turnParseErrors = 0): Promise<number> {
+        const failedRows = await this.#db.engine_turn_failures.all<{ id: number }>({ turn_id: turnId });
+        return failedRows.length + turnParseErrors;
+    }
+
+    static #unobservedFailures(failCount: number): DispatchResult {
+        return Dispatcher.#failure(
+            "unobserved-failures",
+            409,
+            `Completion attempted despite ${failCount} failed operation(s) this turn. The failures land in your log next turn — weigh them, then conclude or SEND[499] to abandon.`,
+        );
     }
 
     // J — a live obligation to WAIT on: a spawned child or an open stream (NOT retrievals, which land
@@ -1224,6 +1242,8 @@ export default class Dispatcher {
             if (observations.retrievals || observations.streamTerminations || observations.childTerminations) {
                 return { status: 102 };
             }
+            const failCount = await this.#unobservedFailureCount(turnId, ctx.turnParseErrors ?? 0);
+            if (failCount > 0) return Dispatcher.#unobservedFailures(failCount);
             // The joined set is already drained. Awaiting an empty task group completes
             // immediately; it never parks and needs no corrective model turn.
             const finished = await this.#lifecycle.finish(
@@ -1269,11 +1289,8 @@ export default class Dispatcher {
             // packet, so concluding over them is concluding blind. Refused 409; next turn, the
             // errors in-log and weighed, [200] stands. [499] below is never gated — declaring
             // failure IS weighing it.
-            const failedRows = await this.#db.engine_turn_failures.all<{ id: number }>({ turn_id: turnId });
-            const failCount = failedRows.length + (ctx.turnParseErrors ?? 0);
-            if (failCount > 0) {
-                return Dispatcher.#failure("unobserved-failures", 409, `Termination attempted despite ${failCount} failed operation(s) this turn. The failures land in your log next turn — weigh them, then conclude or SEND[499] to abandon.`);
-            }
+            const failCount = await this.#unobservedFailureCount(turnId, ctx.turnParseErrors ?? 0);
+            if (failCount > 0) return Dispatcher.#unobservedFailures(failCount);
             const pending = await this.#pendingSet(workerId, turnId);
             if (pending.length > 0) {
                 // Kind-specific steer (owner wording, xpath/topo forensics): retrievals-only is
