@@ -135,6 +135,25 @@ test("Log.read: lineMarker <1> on a JSON rx returns first item by insertion orde
     } finally { db.close(); }
 });
 
+test("Log.read: a range miss carries the exact JSON-item extent", async () => {
+    const { db, engine, workspaceId, workerId, loopId, turnId } = await setup();
+    try {
+        await engine.dispatch({ statement: editStmt("/x", "v"), workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model" });
+        const stmt: ReadStatement = { ...readStmt(urlPath("log", "/1/1/1")), lineMarker: { marks: [99] } };
+        const r = await new Log().read(stmt, makeSchemeCtx({ db, workerId }));
+        assert.equal(r.status, 416);
+        assert.equal(r.content, null);
+        const range = r.problem?.range as {
+            unit?: string;
+            requested?: { first?: number };
+            available?: { total?: number };
+        };
+        assert.equal(range.unit, "item");
+        assert.equal(range.requested?.first, 99);
+        assert.ok(Number(range.available?.total) > 0);
+    } finally { db.close(); }
+});
+
 test("Log.read: regex body matcher on rx returns N:\\t<value> rows", async () => {
     const { db, engine, workspaceId, workerId, loopId, turnId } = await setup();
     try {

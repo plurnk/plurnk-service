@@ -12,7 +12,7 @@
 -- $channel: default-channel name whose content the body matcher runs against
 -- $scope_pathname: pathname-prefix glob (e.g., "foo/*") or NULL for no prefix
 -- $tags: JSON string of tag list (e.g., '["a","b"]'); '[]' or NULL for no tag filter
-SELECT e.id AS entry_id, e.pathname, ec.content, ec.mimetype
+SELECT e.id AS entry_id, e.pathname, e.deep_hash, ec.content, ec.mimetype
 FROM entries e
 JOIN entry_channels ec ON ec.entry_id = e.id AND ec.name = $channel
 WHERE e.workspace_id = $workspace_id
@@ -34,7 +34,7 @@ ORDER BY e.pathname;
 -- Relation matchers need the same target/tag candidate set without loading every
 -- candidate body across the SQL boundary. The ranker joins these identities to
 -- derivations and performs exhaustive ranking within the selected set.
-SELECT e.id AS entry_id, e.pathname
+SELECT e.id AS entry_id, e.pathname, e.deep_hash
 FROM entries e
 WHERE e.workspace_id = $workspace_id
   AND e.owner_id = $owner_id
@@ -50,3 +50,13 @@ WHERE e.workspace_id = $workspace_id
     )
   )
 ORDER BY e.pathname;
+
+-- PREP: find_workspace_derivation_candidates
+-- Graph relations resolve their source definitions across the complete
+-- workspace, while the caller's target/tag candidate set still constrains
+-- which addresses may be returned. Only the universal address→artifact pair
+-- crosses this boundary.
+SELECT (e.scheme || ':' || e.id) AS key, e.deep_hash
+FROM entries e
+WHERE e.workspace_id = $workspace_id
+ORDER BY e.id;

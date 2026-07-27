@@ -24,8 +24,15 @@ interface NormalizedMarker {
     end: number;
 }
 
-export interface SliceResult { status: number; text?: string; startLine?: number; error?: string }
-export interface JsonSliceResult { status: number; body?: string; error?: string }
+export type RangeUnit = "line" | "item" | "result";
+export interface RangeExtent {
+    readonly unit: RangeUnit;
+    readonly requested: { readonly first: number; readonly last: number | null };
+    readonly available: { readonly first: number | null; readonly last: number | null; readonly total: number };
+}
+export interface SliceResult { status: number; text?: string; startLine?: number; error?: string; range?: RangeExtent }
+export interface JsonSliceResult { status: number; body?: string; error?: string; range?: RangeExtent }
+export interface PageResult<T> { status: number; items?: T[]; error?: string; range?: RangeExtent }
 export interface EditResult { status: number; result?: string; error?: string }
 export interface BatchEdit {
     readonly marker: LineMarker;
@@ -33,6 +40,21 @@ export interface BatchEdit {
 }
 
 export default class Slicer {
+    static #extent(marker: LineMarker, total: number, unit: RangeUnit): RangeExtent {
+        return {
+            unit,
+            requested: {
+                first: marker.marks[0],
+                last: marker.marks.length > 1 ? marker.marks[1] : null,
+            },
+            available: {
+                first: total === 0 ? null : 1,
+                last: total === 0 ? null : total,
+                total,
+            },
+        };
+    }
+
     static #splitLines(content: string): { lines: string[]; trailingNewline: boolean } {
         const trailingNewline = content.endsWith("\n");
         if (content === "") return { lines: [], trailingNewline: false };
@@ -92,7 +114,11 @@ export default class Slicer {
     static lines(content: string, marker: LineMarker): SliceResult {
         const { lines } = Slicer.#splitLines(content);
         const norm = Slicer.#normalize(marker, lines.length);
-        if ("error" in norm) return { status: 416, error: norm.error };
+        if ("error" in norm) return {
+            status: 416,
+            error: norm.error,
+            range: Slicer.#extent(marker, lines.length, "line"),
+        };
         if (norm.kind !== "range") return { status: 200, text: "", startLine: undefined };
         const selected = lines.slice(norm.start - 1, norm.end);
         return { status: 200, text: selected.join("\n"), startLine: norm.start };
@@ -131,22 +157,69 @@ export default class Slicer {
         if (last === null) {
             if (first === 0 || first === -1) return { status: 200, body: "[]" };
             if (first > 0 && first <= total) return { status: 200, body: JSON.stringify([items[first - 1]], null, 2) };
-            return { status: 416, error: `item ${first} out of range (1..${total})` };
+            return {
+                status: 416,
+                error: `item ${first} out of range (1..${total})`,
+                range: Slicer.#extent(marker, total, "item"),
+            };
         }
         // Whole-content `<1,-1>` is valid on an empty item list — it selects
         // the entire, empty range (mirrors #normalize's empty-content rule).
         if (total === 0) {
             if ((first === 0 || first === 1) && last === -1) return { status: 200, body: "[]" };
-            return { status: 416, error: `range ${first},${last} out of range (no items)` };
+            return {
+                status: 416,
+                error: `range ${first},${last} out of range (no items)`,
+                range: Slicer.#extent(marker, total, "item"),
+            };
         }
         let n = first;
         let m = last;
         if (n === 0) n = 1;
         if (m === -1) m = total;
-        if (n < 1 || n > total) return { status: 416, error: `range start ${first} out of range (1..${total})` };
-        if (m < 1 || m > total) return { status: 416, error: `range end ${last} out of range (1..${total})` };
-        if (n > m) return { status: 416, error: `range start ${first} > end ${last}` };
+        if (n < 1 || n > total) return {
+            status: 416,
+            error: `range start ${first} out of range (1..${total})`,
+            range: Slicer.#extent(marker, total, "item"),
+        };
+        if (m < 1 || m > total) return {
+            status: 416,
+            error: `range end ${last} out of range (1..${total})`,
+            range: Slicer.#extent(marker, total, "item"),
+        };
+        if (n > m) return {
+            status: 416,
+            error: `range start ${first} > end ${last}`,
+            range: Slicer.#extent(marker, total, "item"),
+        };
         return { status: 200, body: JSON.stringify(items.slice(n - 1, m), null, 2) };
+    }
+
+    // `<L>` over an ordered result set uses the same positional contract as
+    // READ slicing. The returned extent lets a scheme put exact recovery facts
+    // in RFC 9457 Problem Details instead of emitting a bare 416.
+    static page<T>(items: readonly T[], marker: LineMarker): PageResult<T> {
+        const total = items.length;
+        const extent = Slicer.#extent(marker, total, "result");
+        const { first, last } = extent.requested;
+        if (!Number.isInteger(first) || (last !== null && !Number.isInteger(last))) {
+            return { status: 416, error: `result range requires integer positions (available 1..${total})`, range: extent };
+        }
+        if (last === null) {
+            if (first === 0 || first === -1) return { status: 200, items: [] };
+            if (first > 0 && first <= total) return { status: 200, items: [items[first - 1]] };
+            return { status: 416, error: `result ${first} out of range (1..${total})`, range: extent };
+        }
+        if (total === 0) {
+            if ((first === 0 || first === 1) && last === -1) return { status: 200, items: [] };
+            return { status: 416, error: `result range ${first},${last} out of range (no results)`, range: extent };
+        }
+        const n = first === 0 ? 1 : first;
+        const m = last === -1 ? total : last;
+        if (n < 1 || n > total) return { status: 416, error: `result range start ${first} out of range (1..${total})`, range: extent };
+        if (m < 1 || m > total) return { status: 416, error: `result range end ${last} out of range (1..${total})`, range: extent };
+        if (n > m) return { status: 416, error: `result range start ${first} > end ${last}`, range: extent };
+        return { status: 200, items: items.slice(n - 1, m) };
     }
 
     // Structural `<L>` EDIT for JSON sources (plurnk-grammar 0.13.0/0.14.0).

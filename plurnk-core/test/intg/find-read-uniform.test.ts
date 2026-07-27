@@ -5,7 +5,7 @@
 //
 // These exercise the real dispatch path (engine.dispatch → #handleReadFanout / scheme.find),
 // not the scheme methods in isolation — that's where per-match fan-out lives. Real Mimetypes so
-// jsonpath/xpath/semantic resolve; maintainDerivations so @graph + embeddings are indexed.
+// jsonpath/xpath/semantic resolve; SearchIndex.maintain makes @graph + embeddings query-ready.
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -15,7 +15,7 @@ import { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Worker from "../../src/schemes/Worker.ts";
-import EntryManifest from "../../src/schemes/_entry-manifest.ts";
+import SearchIndex from "../../src/schemes/_search-index.ts";
 import type { Db } from "../../src/core/Db.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, makeSchemeCtx } from "./_helpers.ts";
 
@@ -124,7 +124,7 @@ test("[#286] ~semantic READ honors FIND — the ranked chunks come back as rows 
     try {
         await seedRaw(ctx, "db.md", "the database connection failed with a timeout error");
         await seedRaw(ctx, "cake.md", "preheat the oven and frost the birthday cake");
-        await EntryManifest.maintainDerivations(makeSchemeCtx({ db, ...ids, mimetypes }));
+        await SearchIndex.maintain(makeSchemeCtx({ db, ...ids, mimetypes }));
         const { result, rows } = await dispatchRows(db, engine, ids, parseOp<ReadStatement>("<<READ(worker:///**)<3>:~database connection error:READ", "READ"));
         assert.equal(result.status, 200);
         assert.equal(rows.length, 2, "top-3 exhaustively ranks the two-document corpus");
@@ -147,7 +147,7 @@ test("[#286] @graph READ honors FIND — references come back as rows, one per o
     try {
         await seedRaw(ctx, "a.ts", "export function foo() {}\n");
         await seedRaw(ctx, "b.ts", "import { foo } from \"./a\";\nfoo();\nfoo();\n");
-        await EntryManifest.maintainDerivations(makeSchemeCtx({ db, ...ids, mimetypes }));
+        await SearchIndex.maintain(makeSchemeCtx({ db, ...ids, mimetypes }));
         const { result, rows } = await dispatchRows(db, engine, ids, parseOp<ReadStatement>("<<READ(worker:///**):@<foo:READ", "READ"));
         assert.equal(result.status, 200);
         assert.ok((result.rowsWritten ?? 0) >= 1, "@graph READ fans out the referencing occurrences");
@@ -160,7 +160,7 @@ test("[#286] @graph FIND emits per-occurrence items carrying spans (uniform with
     try {
         await seedRaw(ctx, "a.ts", "export function foo() {}\n");
         await seedRaw(ctx, "b.ts", "import { foo } from \"./a\";\nfoo();\nfoo();\n");
-        await EntryManifest.maintainDerivations(makeSchemeCtx({ db, workspaceId, workerId, loopId, turnId, mimetypes }));
+        await SearchIndex.maintain(makeSchemeCtx({ db, workspaceId, workerId, loopId, turnId, mimetypes }));
         const r = await new Worker().find(parseOp<FindStatement>("<<FIND(worker:///**):@<foo:FIND", "FIND"), makeSchemeCtx({ db, workspaceId, workerId, mimetypes }));
         assert.equal(r.status, 200);
         assert.ok(r.results.length >= 1, "@graph FIND returns the referencing entries' occurrences");

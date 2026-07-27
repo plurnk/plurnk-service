@@ -291,7 +291,7 @@ SELECT scheme, pathname FROM entries WHERE workspace_id = $workspace_id ORDER BY
 SELECT COUNT(*) AS n FROM log_entries WHERE worker_id = $worker_id AND origin = $origin;
 
 -- PREP: test_fts_search
-SELECT e.pathname FROM entry_fts f
+SELECT e.pathname FROM derivation_fts f
 JOIN derivations d ON d.id = f.rowid
 JOIN entries e ON e.deep_hash = d.deep_hash
 WHERE f.content MATCH $query AND e.workspace_id = $workspace_id
@@ -343,7 +343,7 @@ SELECT pathname, deep_hash FROM entries WHERE workspace_id = $workspace_id AND s
 -- PREP: test_artifact_counts
 SELECT count(DISTINCT d.id) AS artifacts, count(ee.derivation_id) AS vectors
 FROM derivations d
-LEFT JOIN entry_embeddings ee ON ee.derivation_id = d.id
+LEFT JOIN derivation_embeddings ee ON ee.derivation_id = d.id
 WHERE d.deep_hash = $deep_hash AND d.state = 'complete';
 
 -- PREP: test_derivation_interruption_state
@@ -360,7 +360,7 @@ SELECT id, scheme, pathname FROM entries WHERE pathname = $pathname;
 SELECT count(*) AS n
 FROM entries e
 JOIN derivations d ON d.deep_hash = e.deep_hash
-JOIN entry_embeddings ee ON ee.derivation_id = d.id
+JOIN derivation_embeddings ee ON ee.derivation_id = d.id
 WHERE e.id = $entry_id;
 
 -- PREP: test_derivation_for_entry
@@ -380,7 +380,7 @@ SELECT attrs FROM log_entries WHERE turn_id = $turn_id AND op = $op ORDER BY id 
 
 -- PREP: test_embedding_insertion_order
 SELECT e.pathname, min(ee.rowid) AS first_rowid
-FROM entry_embeddings ee
+FROM derivation_embeddings ee
 JOIN derivations d ON d.id = ee.derivation_id
 JOIN entries e ON e.deep_hash = d.deep_hash
 GROUP BY e.pathname;
@@ -390,11 +390,6 @@ SELECT pathname, source, tokens, attrs FROM log_entries WHERE worker_id = $worke
 
 -- PREP: test_count_entries_by_scheme
 SELECT count(*) AS n FROM entries WHERE scheme = $scheme;
-
--- PREP: test_count_model_https_default_reads
-SELECT count(*) AS n
-FROM log_entries
-WHERE origin = 'model' AND op = 'READ' AND scheme = 'https' AND fragment IS NULL;
 
 -- PREP: test_subscription_published_channel
 SELECT published_channel FROM subscriptions WHERE id = $id;
@@ -460,7 +455,7 @@ SELECT attributes FROM entries WHERE workspace_id = $workspace_id AND scheme = $
 -- PREP: test_embeddings_for_entry
 SELECT ee.vector FROM entries e
 JOIN derivations d ON d.deep_hash = e.deep_hash
-JOIN entry_embeddings ee ON ee.derivation_id = d.id
+JOIN derivation_embeddings ee ON ee.derivation_id = d.id
 WHERE e.id = $entry_id ORDER BY ee.chunk_seq;
 
 -- PREP: test_seed_channel_hashed
@@ -487,6 +482,21 @@ SELECT id FROM workers WHERE workspace_id = $workspace_id ORDER BY id LIMIT 1;
 
 -- PREP: test_last_log_row
 SELECT pathname, tx FROM log_entries WHERE loop_id = $loop_id ORDER BY id DESC LIMIT 1;
+
+-- PREP: test_entry_deep_hash_by_path
+SELECT deep_hash
+FROM entries
+WHERE workspace_id = $workspace_id
+  AND scheme = $scheme
+  AND pathname = $pathname
+LIMIT 1;
+
+-- PREP: test_log_deep_hash_by_turn_sequence
+SELECT deep_hash
+FROM log_entries
+WHERE turn_id = $turn_id
+  AND sequence = $sequence
+LIMIT 1;
 
 -- PREP: test_set_origin
 UPDATE entries SET membership_origin = $membership_origin WHERE workspace_id = $workspace_id AND pathname = $pathname;

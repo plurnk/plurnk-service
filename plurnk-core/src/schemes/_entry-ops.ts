@@ -195,9 +195,8 @@ export default class EntryOps {
 
         if (ctx.tokenize === undefined) throw new Error("editWorkspaceEntry: ctx.tokenize is required for token accounting");
         await db.ops_upsert_channel.run({ entry_id: entryId, name: targetChannel, content: newContent, mimetype: effectiveMimetype, tokens: ctx.tokenize(newContent) }); // EDIT writes exactly the one resolved channel — §per-entry-channels-edit-writes-only-body
-        // NB: NO @graph derivation here — a scheme write resolves the mimetype
-        // label but never invokes the mimetypes handler (§mimetype). The symbol index is
-        // built engine-side at manifest-add (EntryManifest.buildManifestBody).
+        // Search derivation is not a write concern. SearchIndex attaches the
+        // updated readable projection before the next model execution.
 
         // Tags apply additively — each signal tag is written, never replacing existing ones. §edit-tags-additive
         for (const candidate of statements) {
@@ -240,7 +239,8 @@ export default class EntryOps {
             status: number,
             detail: string,
             fields: Readonly<Record<string, unknown>>,
-        ): ReadResult => Results.failure(`scheme:${manifest.name}`, code, status, detail, fields) as ReadResult;
+            extensions: Readonly<Record<string, unknown>> = {},
+        ): ReadResult => Results.failure(`scheme:${manifest.name}`, code, status, detail, fields, extensions) as ReadResult;
         if (statement.target === null) return failure("read-target-required", 400, "READ requires a target path.", { content: null, mimetype: null, channel: null });
 
         const { db, workspaceId } = ctx;
@@ -291,12 +291,13 @@ export default class EntryOps {
             mimetypes: ctx.mimetypes,
         });
         if (r.status >= 400) {
-            const detail = r.content ?? `READ could not resolve the requested content (status ${r.status}).`;
+            const detail = r.reason ?? `READ could not resolve the requested content (status ${r.status}).`;
             return failure(
                 r.status === 416 ? "range-not-satisfiable" : "read-resolution-failed",
                 r.status,
                 detail,
-                { ...r, content: r.content, channel: readChannel },
+                { content: null, mimetype: r.mimetype, channel: readChannel },
+                r.range === undefined ? {} : { range: r.range },
             );
         }
         return { ...r, channel: readChannel }; // READ returns the resolved channel's content + mimetype — §read-read-content

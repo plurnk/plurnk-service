@@ -194,6 +194,12 @@ test("File.read: lineMarker out of range returns 416", async () => {
         await addMember(ctx, "f.txt");
         const r = await new File().read(readStmt(urlPath("file", "/f.txt"), { lineMarker: { marks: [99] } }), ctx);
         assert.equal(r.status, 416);
+        assert.deepEqual(r.problem?.range, {
+            unit: "line",
+            requested: { first: 99, last: null },
+            available: { first: 1, last: 2, total: 2 },
+        });
+        assert.equal(r.content, null);
     });
 });
 
@@ -326,8 +332,11 @@ test("a write that grows a file — the newly-valid tail READs 200, the over-EOF
         assert.equal(after.content, "l6");
 
         // And an over-EOF read now names the POST-write count, distinguishable per {§fs-errno}.
+        // A trailing newline is a terminator, not a ninth addressable line; the
+        // advertised extent and the slicer's actual address space are identical.
         const over = await new File().read(readStmt(urlPath("file", "/grow.txt"), { lineMarker: { marks: [99] } }), ctx);
         assert.equal(over.status, 416);
-        assert.match(over.content ?? "", /entry has 9 lines/, "the range fact carries the FRESH post-write count (9 = 8 lines + trailing newline, the counter convention) — not the stale pre-growth 4");
+        const range = over.problem?.range as { available?: { total?: number } };
+        assert.equal(range.available?.total, 8, "the range fact carries the FRESH post-write count — not the stale pre-growth count");
     });
 });

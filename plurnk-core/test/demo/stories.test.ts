@@ -20,7 +20,7 @@
 //   - Outcome assertions only: file content, response text. Not op shapes.
 
 import test from "node:test";
-import { cannedWeb, CANNED_QUOTE, CANNED_SAVINGS, CANNED_VERSION } from "./_web-fixture.ts";
+import { cannedWeb } from "./_web-fixture.ts";
 import type { WebFetch } from "../../src/schemes/Exec.ts";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
@@ -50,9 +50,9 @@ interface StoryResult {
     dump: () => Promise<void>;
 }
 
-const assertRetrievedWebBody = async (story: StoryResult): Promise<void> => {
-    const reads = await story.db.test_count_model_https_default_reads.get<{ n: number }>();
-    assert.ok((reads?.n ?? 0) > 0, "the model READ a materialized HTTPS entry without channel knowledge — discovery alone is not retrieval");
+const assertMaterializedWebPage = async (story: StoryResult): Promise<void> => {
+    const pages = await story.db.test_count_entries_by_scheme.get<{ n: number }>({ scheme: "https" });
+    assert.ok((pages?.n ?? 0) > 0, "the search flow materialized a primary web page");
 };
 
 const runStory = async (opts: StoryOpts): Promise<StoryResult> => {
@@ -160,18 +160,22 @@ test("story: answer a question with a web search (canned gate — #530)", { time
     try {
         const story = await runStory({
             label: "web-search",
-            prompt: "Search the web for the latest stable Node.js version, retrieve the authoritative page, and tell me in one sentence.",
+            prompt: "Search the web for the latest stable Node.js version. From the authoritative release page, report both the version and its primary-source evidence code in one sentence.",
             maxTurns: 8,
             fetchWeb: web.fetchWeb,
         });
         try {
             const searchEntries = await story.db.test_count_entries_by_scheme.get<{ n: number }>({ scheme: "search" });
-            const ok = story.finalStatus === 200 && (searchEntries?.n ?? 0) > 0 && story.lastContent.includes(CANNED_VERSION);
+            const ok = story.finalStatus === 200
+                && (searchEntries?.n ?? 0) > 0
+                && story.lastContent.includes(web.facts.version)
+                && story.lastContent.includes(web.evidence.node);
             if (!ok) await story.dump();
             assert.ok((searchEntries?.n ?? 0) > 0, "a search results entry exists — the model actually reached for the tool");
-            await assertRetrievedWebBody(story);
+            await assertMaterializedWebPage(story);
             assert.equal(story.finalStatus, 200);
-            assert.ok(story.lastContent.includes(CANNED_VERSION), `the answer carries the CANNED version ${CANNED_VERSION} — retrieved, not recalled; got: ${story.lastContent.slice(0, 200)}`);
+            assert.ok(story.lastContent.includes(web.facts.version), `the answer carries the page's version ${web.facts.version}; got: ${story.lastContent.slice(0, 200)}`);
+            assert.ok(story.lastContent.includes(web.evidence.node), `the answer carries the run-unique primary-page sentinel ${web.evidence.node}; got: ${story.lastContent.slice(0, 200)}`);
         } finally { await story.cleanup(); }
     } finally {
         if (prevSearx === undefined) delete process.env.PLURNK_EXECS_SEARCH_SEARXNG_URL; else process.env.PLURNK_EXECS_SEARCH_SEARXNG_URL = prevSearx;
@@ -186,18 +190,20 @@ test("story: search, retrieve, and report a measured claim from a page (canned)"
     try {
         const story = await runStory({
             label: "web-research-claim",
-            prompt: "Search the web for Project Aurora's inference report. By how much did it reduce inference cost?",
+            prompt: "Search the web for Project Aurora's inference report. By how much did it reduce inference cost, and what primary-source evidence code does the report print?",
             maxTurns: 8,
             fetchWeb: web.fetchWeb,
         });
         try {
             const pages = await story.db.test_count_entries_by_scheme.get<{ n: number }>({ scheme: "https" });
-            const ok = story.finalStatus === 200 && story.lastContent.toLowerCase().includes(CANNED_SAVINGS);
+            const ok = story.finalStatus === 200
+                && story.lastContent.toLowerCase().includes(web.facts.savings)
+                && story.lastContent.includes(web.evidence.aurora);
             if (!ok) await story.dump();
-            assert.ok((pages?.n ?? 0) > 0, "search materialized retrievable web pages");
-            await assertRetrievedWebBody(story);
+            assert.ok((pages?.n ?? 0) > 0, "search materialized a primary web page");
             assert.equal(story.finalStatus, 200);
             assert.match(story.lastContent, /37\s*(?:percent|%)/i);
+            assert.ok(story.lastContent.includes(web.evidence.aurora), `the answer carries the run-unique primary-page sentinel ${web.evidence.aurora}; got: ${story.lastContent.slice(0, 200)}`);
         } finally { await story.cleanup(); }
     } finally {
         if (previous === undefined) delete process.env.PLURNK_EXECS_SEARCH_SEARXNG_URL; else process.env.PLURNK_EXECS_SEARCH_SEARXNG_URL = previous;
@@ -212,18 +218,21 @@ test("story: search and recover an exact statement from a transcript page (canne
     try {
         const story = await runStory({
             label: "web-transcript-quote",
-            prompt: "Search the web for Secretary Rowan's recent AI infrastructure interview. What did Rowan say was the bottleneck?",
+            prompt: "Search the web for Secretary Rowan's recent AI infrastructure interview. What exactly did Rowan say was the bottleneck, and what primary-source evidence code does the transcript print?",
             maxTurns: 8,
             fetchWeb: web.fetchWeb,
         });
         try {
             const searchEntries = await story.db.test_count_entries_by_scheme.get<{ n: number }>({ scheme: "search" });
-            const ok = story.finalStatus === 200 && story.lastContent.toLowerCase().includes(CANNED_QUOTE);
+            const ok = story.finalStatus === 200
+                && story.lastContent.toLowerCase().includes(web.facts.quote)
+                && story.lastContent.includes(web.evidence.rowan);
             if (!ok) await story.dump();
             assert.ok((searchEntries?.n ?? 0) > 0, "the model used web search rather than answering from fixture files");
-            await assertRetrievedWebBody(story);
+            await assertMaterializedWebPage(story);
             assert.equal(story.finalStatus, 200);
             assert.match(story.lastContent, /power,\s*not demand/i);
+            assert.ok(story.lastContent.includes(web.evidence.rowan), `the answer carries the run-unique primary-page sentinel ${web.evidence.rowan}; got: ${story.lastContent.slice(0, 200)}`);
         } finally { await story.cleanup(); }
     } finally {
         if (previous === undefined) delete process.env.PLURNK_EXECS_SEARCH_SEARXNG_URL; else process.env.PLURNK_EXECS_SEARCH_SEARXNG_URL = previous;
@@ -262,7 +271,7 @@ test("story: retrieve and summarize a live web page", { timeout: TIMEOUT }, asyn
     try {
         const ok = story.finalStatus === 200 && story.lastContent.trim().length > 20;
         if (!ok) await story.dump();
-        await assertRetrievedWebBody(story);
+        await assertMaterializedWebPage(story);
         assert.equal(story.finalStatus, 200);
         assert.ok(story.lastContent.trim().length > 20, `the answer contains a substantive summary; got: ${story.lastContent.slice(0, 200)}`);
     } finally { await story.cleanup(); }

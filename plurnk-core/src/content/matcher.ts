@@ -82,8 +82,8 @@ export default class Matcher {
         mimetypes: Mimetypes,
         baseLine: number = 1,
     ): Promise<MatchResult> {
-        // Invariant (#286): ~semantic and @graph resolve to (file, span) items via FIND
-        // (rankSemantic / EntryGraph) — never the content matcher. A matcher READ fans out through
+        // Invariant (#286): ~semantic and @graph resolve to (resource, span) items via FIND
+        // (the persistent search index) — never the content matcher. A matcher READ fans out through
         // FIND, and the per-match read carries the span with no body. So matchAgainstContent only
         // ever sees content dialects; reaching here with a relation dialect is a routing bug, not a
         // user error — fail hard rather than silently mis-handle.
@@ -144,7 +144,65 @@ export default class Matcher {
         }
         return { status: 200, matches };
     }
+
+    // Project source-line findings into the row coordinates a scoped READ
+    // accepts for each candidate's mimetype. This is source-agnostic: entries,
+    // log projections, and future data schemes use the same conversion.
+    static async addReadableRows(
+        matches: readonly CandidateMatch[],
+        candidates: ReadonlyArray<{ key: string; content: string; mimetype: string }>,
+        mimetypes: Mimetypes,
+    ): Promise<ReadableCandidateMatch[]> {
+        const byKey = new Map(candidates.map((candidate) => [candidate.key, candidate] as const));
+        const grouped = new Map<string, number[]>();
+        for (let index = 0; index < matches.length; index += 1) {
+            const match = matches[index];
+            if (match.span === null) continue;
+            const indices = grouped.get(match.key) ?? [];
+            indices.push(index);
+            grouped.set(match.key, indices);
+        }
+        const resolved: ReadableCandidateMatch[] = matches.map((match) => ({ ...match, span: null }));
+        for (const [key, indices] of grouped) {
+            const candidate = byKey.get(key);
+            if (candidate === undefined) throw new Error(`Matcher.addReadableRows: matched candidate ${key} has no readable projection`);
+            const rows = await mimetypes.rowsForLines(
+                { content: candidate.content, hint: candidate.mimetype },
+                indices.map((index) => ({
+                    line: matches[index].span!.lineStart,
+                    endLine: matches[index].span!.lineEnd,
+                })),
+            );
+            if (rows.length !== indices.length) {
+                throw new Error(`Matcher.addReadableRows: ${key} returned ${rows.length} rows for ${indices.length} spans`);
+            }
+            for (let offset = 0; offset < indices.length; offset += 1) {
+                const index = indices[offset];
+                const match = matches[index];
+                const readable = rows[offset];
+                resolved[index] = {
+                    ...match,
+                    span: {
+                        ...match.span!,
+                        rowStart: readable.row,
+                        rowEnd: readable.endRow,
+                    },
+                };
+            }
+        }
+        return resolved;
+    }
 }
 
 // One content-matcher hit, keyed by the caller's identity (pathname for entries, coordinate for log).
 export interface CandidateMatch { key: string; span: { lineStart: number; lineEnd: number } | null; path?: string; }
+export interface ReadableCandidateMatch {
+    key: string;
+    span: {
+        lineStart: number;
+        lineEnd: number;
+        rowStart: number;
+        rowEnd: number;
+    } | null;
+    path?: string;
+}

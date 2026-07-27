@@ -267,17 +267,17 @@ export default class PlurnkParser {
         return { items, unparsedTail };
     }
 
-    // Op-shaped text inside a PLAN body (#502, the run113 class): PLAN owns no suffix, so the
-    // op-quoting device does not exist for it - `<<OP` inside a plan has no sanctioned reading
-    // and is almost always an omitted `:PLAN` whose body swallowed the turn's ops to the NEXT
-    // plan's closer, silently (run113: PLAN=1, SEND=1, the essential EXEC vanished, zero
-    // errors). The GBNF rail makes this unsampleable (planBodyRules); this is the ingest-side
-    // twin for unrailed paths. A WARNING - the parse succeeded; the steer makes it visible.
+    // Op-shaped text inside an UNSUFFIXED PLAN body (#502, the run113 class) is almost
+    // always an omitted `:PLAN` whose body swallowed the turn's ops to the next closer.
+    // A suffixed PLAN deliberately invokes the universal body-quoting contract and must
+    // not receive this advisory. The narrow GBNF rail keeps PLAN unsuffixed and excludes
+    // `<<` from its body; this is the ingest-side warning for unrailed emissions.
     static #flagOpsInPlanBody(items: ParseItem<any>[]): void {
         const additions: { at: number; item: ParseItem<any> }[] = [];
         const opener = new RegExp(`<<(${PLURNK_OPS.join("|")})\\b`);
         items.forEach((item, idx) => {
             if (item.kind !== "statement" || item.statement.op !== "PLAN") return;
+            if (item.statement.suffix.length > 0) return;
             const body: string = (item.statement as any).body ?? "";
             const m = opener.exec(body);
             if (!m) return;

@@ -129,11 +129,17 @@ Behavior ships as `export default class` (one class per file, static methods) �
 
 ### `<L>` slicing — `Slicer`
 
-- `Slicer.lines(content, marker)` — line-navigable slice. Returns `{ status, text?, startLine?, error? }`.
+- `Slicer.lines(content, marker)` — line-navigable slice. Returns `{ status, text?, startLine?, error?, range? }`.
 - `Slicer.linesRaw(content, marker)` — same shape; no `N:\t` prefix.
-- `Slicer.jsonItems(content, marker)` — JSON-source item slice. Returns `{ status, body?, error? }`.
+- `Slicer.jsonItems(content, marker)` — JSON-source item slice. Returns `{ status, body?, error?, range? }`.
+- `Slicer.page(items, marker)` — ordered result pagination under the same positional rules. Returns `{ status, items?, error?, range? }`.
 - `Slicer.lineMarkerEdit(content, marker, body)` — line-navigable EDIT.
 - `Slicer.jsonItemEdit(content, marker, body)` — structural JSON EDIT.
+
+Every 416 carries `range: { unit, requested: { first, last }, available:
+{ first, last, total } }`. Empty sources use `null` available endpoints and
+`total: 0`. A consumer puts this object in the RFC 9457 Problem extensions so
+the caller can recover from the actual extent without parsing prose.
 
 ### Path-extension mimetype — `PathMimetype`
 

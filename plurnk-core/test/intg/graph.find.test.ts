@@ -9,7 +9,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import type { EditStatement, FindStatement, LineMarker, MatcherBody, UrlPath } from "@plurnk/plurnk-grammar";
 import Worker from "../../src/schemes/Worker.ts";
-import EntryManifest from "../../src/schemes/_entry-manifest.ts";
+import SearchIndex from "../../src/schemes/_search-index.ts";
 import { openMigrated, insertWorkspace, insertWorker, makeSchemeCtx, DEFAULT_MIMETYPES } from "./_helpers.ts";
 
 const url = (pathname: string): UrlPath => ({
@@ -49,12 +49,31 @@ const seed = async () => {
     }
     // @graph derives at manifest-add (engine-side, §mimetype) — building the manifest
     // walks every entry and populates the symbol index from its content.
-    await EntryManifest.maintainDerivations(makeSchemeCtx({ db, workspaceId, workerId }));
+    await SearchIndex.maintain(makeSchemeCtx({ db, workspaceId, workerId }));
     return { db, workspaceId, workerId };
 };
 
 const find = (db: import("../../src/core/Db.ts").Db, workspaceId: number, workerId: number, raw: string) =>
     new Worker().find(findStmt(url(""), graph(raw)), makeSchemeCtx({ db, workspaceId, workerId, loopId: 0, turnId: 0 }));
+
+test("[#640-graph-readiness] graph FIND reports an incomplete persistent index instead of silently dropping entries", async () => {
+    const db = await openMigrated();
+    try {
+        const workspaceId = await insertWorkspace(db, `graph-readiness-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const ctx = makeSchemeCtx({ db, workspaceId, workerId });
+        await new Worker().edit(editStmt(url("pending.ts"), "export function pending() {}\n"), ctx);
+
+        const result = await find(db, workspaceId, workerId, "@pending");
+
+        assert.equal(result.status, 503);
+        assert.deepEqual(result.problem?.search, {
+            state: "incomplete",
+            indexed: 0,
+            total: 1,
+        });
+    } finally { db.close(); }
+});
 
 test("[#186-graph-referrers] @<foo finds entries that REFERENCE foo (not the definer)", async () => {
     const { db, workspaceId, workerId } = await seed();
@@ -97,7 +116,7 @@ test("[#186-graph-rederive] editing foo's referrer away drops it from @<foo", as
     try {
         // b.ts no longer references foo — re-deriving its rows must remove the edge.
         await new Worker().edit(editStmt(url("b.ts"), "export const x = 1;\n", fullReplace), makeSchemeCtx({ db, workspaceId, workerId }));
-        await EntryManifest.maintainDerivations(makeSchemeCtx({ db, workspaceId, workerId }));  // re-derive at manifest-add
+        await SearchIndex.maintain(makeSchemeCtx({ db, workspaceId, workerId }));  // re-derive at manifest-add
         const r = await find(db, workspaceId, workerId, "@<foo");
         assert.equal(r.status, 200);
         assert.deepEqual([...new Set(r.results.map((f) => f.path))], []);
@@ -123,13 +142,13 @@ test("[#186-graph-gate] manifest-add re-derives only on content change (the deep
         } as unknown as typeof DEFAULT_MIMETYPES;
         const gctx = { ...ctx, mimetypes: counting };
 
-        await EntryManifest.maintainDerivations(gctx);
+        await SearchIndex.maintain(gctx);
         assert.equal(parses, 1, "first sight: content unseen → derive");
-        await EntryManifest.maintainDerivations(gctx);
+        await SearchIndex.maintain(gctx);
         assert.equal(parses, 1, "unchanged: deep_hash matches → skip the parse");
 
         await new Worker().edit(editStmt(url("a.ts"), "export function bar() {}\n", fullReplace), ctx);
-        await EntryManifest.maintainDerivations(gctx);
+        await SearchIndex.maintain(gctx);
         assert.equal(parses, 2, "content changed → re-derive");
     } finally { db.close(); }
 });

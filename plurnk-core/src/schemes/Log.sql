@@ -45,7 +45,7 @@ DELETE FROM log_entries WHERE id = $id;
 -- fields Log's rx projection renders (FIND must match exactly what READ shows). Coordinate-ordered.
 SELECT
     (l.sequence || '/' || t.sequence || '/' || le.sequence || '/' || le.op) AS coordinate,
-    le.op, le.rx, le.mimetype_rx, le.tokens
+    le.op, le.rx, le.mimetype_rx, le.tokens, le.deep_hash
 FROM log_entries le
 JOIN turns t ON t.id = le.turn_id
 JOIN loops l ON l.id = t.loop_id
@@ -85,7 +85,7 @@ ORDER BY l.sequence, t.sequence, le.sequence;
 -- §log-region-tagging — FIND[tag](log): log_find_candidates PLUS the same ALL-tags AND filter.
 SELECT
     (l.sequence || '/' || t.sequence || '/' || le.sequence || '/' || le.op) AS coordinate,
-    le.op, le.rx, le.mimetype_rx, le.tokens
+    le.op, le.rx, le.mimetype_rx, le.tokens, le.deep_hash
 FROM log_entries le
 JOIN turns t ON t.id = le.turn_id
 JOIN loops l ON l.id = t.loop_id
@@ -98,3 +98,23 @@ WHERE l.worker_id = $worker_id
       HAVING COUNT(DISTINCT tag) = json_array_length($tags)
   )
 ORDER BY l.sequence, t.sequence, le.sequence;
+
+-- PREP: log_derivation_rows
+-- Every log row in a workspace, with its stable model-facing coordinate and
+-- current derivation attachment. The TypeScript projection resolves rx to the
+-- exact body/mimetype READ and FIND expose before hashing or deriving it.
+SELECT
+    le.id,
+    (l.sequence || '/' || t.sequence || '/' || le.sequence || '/' || le.op) AS coordinate,
+    le.rx,
+    le.mimetype_rx,
+    le.deep_hash
+FROM log_entries le
+JOIN workers w ON w.id = le.worker_id
+JOIN turns t ON t.id = le.turn_id
+JOIN loops l ON l.id = t.loop_id
+WHERE w.workspace_id = $workspace_id
+ORDER BY le.id;
+
+-- PREP: log_set_deep_hash
+UPDATE log_entries SET deep_hash = $deep_hash WHERE id = $log_entry_id;

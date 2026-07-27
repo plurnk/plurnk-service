@@ -193,9 +193,14 @@ export default class ChannelWrite {
     // subscription for that coordinate (unknown exec).
     static async execTerminalStatus(
         db: Db,
-        { workspaceId, workerId, pathname }: { workspaceId: number; workerId: number; pathname: string },
+        { workspaceId, workerId, scheme, pathname }: { workspaceId: number; workerId: number; scheme: string; pathname: string },
     ): Promise<number | null> {
-        const row = await ChannelWrite.#execTerminalStmt(db).get<{ close_status: number }>({ workspace_id: workspaceId, worker_id: workerId, pathname });
+        const row = await ChannelWrite.#execTerminalStmt(db).get<{ close_status: number }>({
+            workspace_id: workspaceId,
+            worker_id: workerId,
+            scheme,
+            pathname,
+        });
         return row?.close_status ?? null;
     }
 

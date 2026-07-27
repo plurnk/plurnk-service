@@ -11,6 +11,7 @@ import type { EditStatement, MatcherBody, ParsedPath, ReadStatement, UrlPath } f
 import Engine from "../../src/core/Engine.ts";
 import Log from "../../src/schemes/Log.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
+import SearchIndex from "../../src/schemes/_search-index.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, makeSchemeCtx, DEFAULT_MIMETYPES } from "./_helpers.ts";
 import { urlPath, findStmt } from "./_dsl.ts";
 
@@ -66,6 +67,48 @@ test("a body-less FIND(log:///1/1) lists the turn's rows — the hierarchy is th
     } finally { await db.close(); }
 });
 
+test("FIND pagination misses carry the exact result extent", async () => {
+    const { db, workerId } = await setup();
+    try {
+        const statement = {
+            ...findStmt(urlPath("log", "/1/1")),
+            lineMarker: { marks: [9] as [number] },
+        };
+        const r = await new Log().find(statement, makeSchemeCtx({ db, workerId, mimetypes: DEFAULT_MIMETYPES }));
+        assert.equal(r.status, 416);
+        assert.deepEqual(r.problem?.range, {
+            unit: "result",
+            requested: { first: 9, last: null },
+            available: { first: 1, last: 3, total: 3 },
+        });
+    } finally { await db.close(); }
+});
+
+test("log FIND maps source lines to the structured rows a scoped READ accepts", async () => {
+    const { db, engine, workspaceId, workerId, loopId, turnId } = await setup();
+    try {
+        await engine.dispatch({
+            statement: editStmt("/data.json", '{\n  "first": 1,\n  "second": 2\n}'),
+            workspaceId, workerId, loopId, turnId, sequence: 4, origin: "model",
+        });
+        await engine.dispatch({
+            statement: readStmt(urlPath("worker", "/data.json")),
+            workspaceId, workerId, loopId, turnId, sequence: 5, origin: "model",
+        });
+        const result = await new Log().find(
+            findStmt(urlPath("log", "/1/1/5/READ"), { dialect: "jsonpath", raw: "$.second" } as MatcherBody),
+            makeSchemeCtx({ db, workerId, mimetypes: DEFAULT_MIMETYPES }),
+        );
+        assert.equal(result.status, 200);
+        assert.deepEqual(result.results[0]?.matchSpan, {
+            lineStart: 3,
+            lineEnd: 3,
+            rowStart: 2,
+            rowEnd: 2,
+        });
+    } finally { await db.close(); }
+});
+
 test("READ(log:///**):#pattern# fans out — FIND locates, per-row READs deliver, uniform with entries", async () => {
     const { db, engine, workspaceId, workerId, loopId, turnId } = await setup();
     try {
@@ -80,7 +123,7 @@ test("READ(log:///**):#pattern# fans out — FIND locates, per-row READs deliver
     } finally { await db.close(); }
 });
 
-test("zero content matches → 204; ~semantic → 501 until the pump embeds log rows (S5)", async () => {
+test("zero content matches → 204; an unwarmed relation query fails with structured index state", async () => {
     const { db, workerId } = await setup();
     try {
         const none = await new Log().find(
@@ -92,6 +135,64 @@ test("zero content matches → 204; ~semantic → 501 until the pump embeds log 
             findStmt(urlPath("log", "/**"), { dialect: "semantic", raw: "~engine" } as MatcherBody),
             makeSchemeCtx({ db, workerId, mimetypes: DEFAULT_MIMETYPES }),
         );
-        assert.equal(sem.status, 501, "~query on log is an HONEST 501 until log rows are embedded — never a silent wrong answer");
+        assert.equal(sem.status, 503, "an advertised matcher is unavailable only while its persistent index is incomplete");
+        assert.deepEqual(sem.problem?.search, { state: "incomplete", indexed: 0, total: 3 });
+    } finally { await db.close(); }
+});
+
+test("semantic and graph FIND over logs use the same persistent derivations as entries", async () => {
+    const { db, engine, workspaceId, workerId, loopId, turnId } = await setup();
+    try {
+        await engine.dispatch({
+            statement: editStmt("/source.ts", "export function helper() { return 1; }\nexport function caller() { return helper(); }"),
+            workspaceId,
+            workerId,
+            loopId,
+            turnId,
+            sequence: 4,
+            origin: "model",
+        });
+        await engine.dispatch({
+            statement: readStmt(urlPath("worker", "/source.ts")),
+            workspaceId,
+            workerId,
+            loopId,
+            turnId,
+            sequence: 5,
+            origin: "model",
+        });
+        await SearchIndex.maintain(makeSchemeCtx({ db, workspaceId, workerId, mimetypes: DEFAULT_MIMETYPES }));
+
+        const entryAttachment = await db.test_entry_deep_hash_by_path.get<{ deep_hash: string | null }>({
+            workspace_id: workspaceId,
+            scheme: "worker",
+            pathname: "/notes.md",
+        });
+        const logAttachment = await db.test_log_deep_hash_by_turn_sequence.get<{ deep_hash: string | null }>({
+            turn_id: turnId,
+            sequence: 2,
+        });
+        assert.ok(entryAttachment?.deep_hash);
+        assert.equal(
+            logAttachment?.deep_hash,
+            entryAttachment.deep_hash,
+            "identical entry and log READ projections attach the same immutable derivation artifact",
+        );
+
+        const semantic = await new Log().find(
+            findStmt(urlPath("log", "/**"), { dialect: "semantic", raw: "engine hums" } as MatcherBody),
+            makeSchemeCtx({ db, workspaceId, workerId, mimetypes: DEFAULT_MIMETYPES }),
+        );
+        assert.equal(semantic.status, 200);
+        assert.ok(semantic.results.some(({ path }) => path.includes("/1/1/2/READ")),
+            "semantic rank returns the log address whose READ projection carries the phrase");
+
+        const graph = await new Log().find(
+            findStmt(urlPath("log", "/**"), { dialect: "graph", raw: "@<helper" } as MatcherBody),
+            makeSchemeCtx({ db, workspaceId, workerId, mimetypes: DEFAULT_MIMETYPES }),
+        );
+        assert.equal(graph.status, 200);
+        assert.ok(graph.results.some(({ path }) => path.includes("/1/1/5/READ")),
+            "graph relation returns the log address whose readable code projection references helper");
     } finally { await db.close(); }
 });

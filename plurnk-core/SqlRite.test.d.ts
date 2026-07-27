@@ -79,6 +79,7 @@ export class SqlRiteSync {
 	crud_stamp_origin: SqlRiteSyncPreparedStatements;
 	find_workspace_entry_candidates: SqlRiteSyncPreparedStatements;
 	find_workspace_entry_candidate_ids: SqlRiteSyncPreparedStatements;
+	find_workspace_derivation_candidates: SqlRiteSyncPreparedStatements;
 	graph_delete_defs: SqlRiteSyncPreparedStatements;
 	graph_delete_refs: SqlRiteSyncPreparedStatements;
 	graph_insert_def: SqlRiteSyncPreparedStatements;
@@ -88,9 +89,9 @@ export class SqlRiteSync {
 	derivation_get: SqlRiteSyncPreparedStatements;
 	derivation_create: SqlRiteSyncPreparedStatements;
 	derivation_complete: SqlRiteSyncPreparedStatements;
-	graph_referrers: SqlRiteSyncPreparedStatements;
-	graph_def_pathnames_by_name: SqlRiteSyncPreparedStatements;
-	graph_resolve_def: SqlRiteSyncPreparedStatements;
+	graph_referrers_candidates: SqlRiteSyncPreparedStatements;
+	graph_defs_candidates: SqlRiteSyncPreparedStatements;
+	graph_resolve_def_candidates: SqlRiteSyncPreparedStatements;
 	graph_refs_from_source: SqlRiteSyncPreparedStatements;
 	graph_set_deep_hash: SqlRiteSyncPreparedStatements;
 	ops_upsert_channel: SqlRiteSyncPreparedStatements;
@@ -99,9 +100,9 @@ export class SqlRiteSync {
 	fts_insert: SqlRiteSyncPreparedStatements;
 	embedding_set: SqlRiteSyncPreparedStatements;
 	embedding_delete: SqlRiteSyncPreparedStatements;
-	semantic_rank: SqlRiteSyncPreparedStatements;
-	semantic_rank_threshold: SqlRiteSyncPreparedStatements;
-	semantic_rank_fts: SqlRiteSyncPreparedStatements;
+	semantic_rank_candidates: SqlRiteSyncPreparedStatements;
+	semantic_rank_candidates_threshold: SqlRiteSyncPreparedStatements;
+	semantic_rank_candidates_fts: SqlRiteSyncPreparedStatements;
 	channel_meta: SqlRiteSyncPreparedStatements;
 	append_to_channel: SqlRiteSyncPreparedStatements;
 	set_channel_state: SqlRiteSyncPreparedStatements;
@@ -231,6 +232,8 @@ export class SqlRiteSync {
 	log_write_tag: SqlRiteSyncPreparedStatements;
 	log_match_coordinates_tagged: SqlRiteSyncPreparedStatements;
 	log_find_candidates_tagged: SqlRiteSyncPreparedStatements;
+	log_derivation_rows: SqlRiteSyncPreparedStatements;
+	log_set_deep_hash: SqlRiteSyncPreparedStatements;
 	log_entry_by_id: SqlRiteSyncPreparedStatements;
 	lifecycle_park_loop: SqlRiteSyncPreparedStatements;
 	lifecycle_wake_loop: SqlRiteSyncPreparedStatements;
@@ -351,7 +354,6 @@ export class SqlRiteSync {
 	test_embedding_insertion_order: SqlRiteSyncPreparedStatements;
 	test_log_entries_by_run_op: SqlRiteSyncPreparedStatements;
 	test_count_entries_by_scheme: SqlRiteSyncPreparedStatements;
-	test_count_model_https_default_reads: SqlRiteSyncPreparedStatements;
 	test_subscription_published_channel: SqlRiteSyncPreparedStatements;
 	test_log_entries_by_run_op_signal: SqlRiteSyncPreparedStatements;
 	test_log_entries_by_run_op_full: SqlRiteSyncPreparedStatements;
@@ -378,6 +380,8 @@ export class SqlRiteSync {
 	test_file_pathnames: SqlRiteSyncPreparedStatements;
 	test_first_worker_for_ws: SqlRiteSyncPreparedStatements;
 	test_last_log_row: SqlRiteSyncPreparedStatements;
+	test_entry_deep_hash_by_path: SqlRiteSyncPreparedStatements;
+	test_log_deep_hash_by_turn_sequence: SqlRiteSyncPreparedStatements;
 	test_set_origin: SqlRiteSyncPreparedStatements;
 	test_count_rows_for_pathname: SqlRiteSyncPreparedStatements;
 	test_get_origin: SqlRiteSyncPreparedStatements;
@@ -547,6 +551,7 @@ export default class SqlRite {
 	crud_stamp_origin: SqlRitePreparedStatements;
 	find_workspace_entry_candidates: SqlRitePreparedStatements;
 	find_workspace_entry_candidate_ids: SqlRitePreparedStatements;
+	find_workspace_derivation_candidates: SqlRitePreparedStatements;
 	graph_delete_defs: SqlRitePreparedStatements;
 	graph_delete_refs: SqlRitePreparedStatements;
 	graph_insert_def: SqlRitePreparedStatements;
@@ -556,9 +561,9 @@ export default class SqlRite {
 	derivation_get: SqlRitePreparedStatements;
 	derivation_create: SqlRitePreparedStatements;
 	derivation_complete: SqlRitePreparedStatements;
-	graph_referrers: SqlRitePreparedStatements;
-	graph_def_pathnames_by_name: SqlRitePreparedStatements;
-	graph_resolve_def: SqlRitePreparedStatements;
+	graph_referrers_candidates: SqlRitePreparedStatements;
+	graph_defs_candidates: SqlRitePreparedStatements;
+	graph_resolve_def_candidates: SqlRitePreparedStatements;
 	graph_refs_from_source: SqlRitePreparedStatements;
 	graph_set_deep_hash: SqlRitePreparedStatements;
 	ops_upsert_channel: SqlRitePreparedStatements;
@@ -567,9 +572,9 @@ export default class SqlRite {
 	fts_insert: SqlRitePreparedStatements;
 	embedding_set: SqlRitePreparedStatements;
 	embedding_delete: SqlRitePreparedStatements;
-	semantic_rank: SqlRitePreparedStatements;
-	semantic_rank_threshold: SqlRitePreparedStatements;
-	semantic_rank_fts: SqlRitePreparedStatements;
+	semantic_rank_candidates: SqlRitePreparedStatements;
+	semantic_rank_candidates_threshold: SqlRitePreparedStatements;
+	semantic_rank_candidates_fts: SqlRitePreparedStatements;
 	channel_meta: SqlRitePreparedStatements;
 	append_to_channel: SqlRitePreparedStatements;
 	set_channel_state: SqlRitePreparedStatements;
@@ -699,6 +704,8 @@ export default class SqlRite {
 	log_write_tag: SqlRitePreparedStatements;
 	log_match_coordinates_tagged: SqlRitePreparedStatements;
 	log_find_candidates_tagged: SqlRitePreparedStatements;
+	log_derivation_rows: SqlRitePreparedStatements;
+	log_set_deep_hash: SqlRitePreparedStatements;
 	log_entry_by_id: SqlRitePreparedStatements;
 	lifecycle_park_loop: SqlRitePreparedStatements;
 	lifecycle_wake_loop: SqlRitePreparedStatements;
@@ -819,7 +826,6 @@ export default class SqlRite {
 	test_embedding_insertion_order: SqlRitePreparedStatements;
 	test_log_entries_by_run_op: SqlRitePreparedStatements;
 	test_count_entries_by_scheme: SqlRitePreparedStatements;
-	test_count_model_https_default_reads: SqlRitePreparedStatements;
 	test_subscription_published_channel: SqlRitePreparedStatements;
 	test_log_entries_by_run_op_signal: SqlRitePreparedStatements;
 	test_log_entries_by_run_op_full: SqlRitePreparedStatements;
@@ -846,6 +852,8 @@ export default class SqlRite {
 	test_file_pathnames: SqlRitePreparedStatements;
 	test_first_worker_for_ws: SqlRitePreparedStatements;
 	test_last_log_row: SqlRitePreparedStatements;
+	test_entry_deep_hash_by_path: SqlRitePreparedStatements;
+	test_log_deep_hash_by_turn_sequence: SqlRitePreparedStatements;
 	test_set_origin: SqlRitePreparedStatements;
 	test_count_rows_for_pathname: SqlRitePreparedStatements;
 	test_get_origin: SqlRitePreparedStatements;

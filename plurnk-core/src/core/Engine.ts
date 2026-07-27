@@ -11,7 +11,7 @@ import { Mimetypes, emptyRegistry } from "@plurnk/plurnk-mimetypes";
 import type { Db } from "./Db.ts";
 import type { EntryData } from "../schemes/_entry-crud.ts";
 import EntryCrud from "../schemes/_entry-crud.ts";
-import EntryManifest from "../schemes/_entry-manifest.ts";
+import SearchIndex from "../schemes/_search-index.ts";
 import { markTerminal } from "../schemes/Worker.ts";
 import GitMembership, { type FsDivergence } from "./git-membership.ts";
 import GitState from "./git-state.ts";
@@ -266,7 +266,7 @@ export default class Engine {
                 });
                 try {
                     if (shouldMaterialize) await GitMembership.indexGitMembership(current);
-                    await EntryManifest.maintainDerivations({
+                    await SearchIndex.maintain({
                         ...current,
                         pushNotice: (notice) => {
                             if (notice.kind === "embed_progress"
@@ -882,9 +882,9 @@ export default class Engine {
             }
         }
 
-        // The per-turn derivation pump (_entry-manifest.maintainDerivations) — refreshes
-        // every entry's deep channels (symbols/refs/embeddings/FTS, deep_hash-gated) so the
-        // catalog and FIND read current data. NOT an action: no log entry, no sequence slot,
+        // The persistent search-index pass (_search-index.maintain) attaches
+        // every readable entry/log projection to complete graph/FTS/vector derivations.
+        // NOT an action: no log entry, no sequence slot,
         // not dispatched. There is no plurnk:///manifest.json entry — the catalog is served
         // on demand by FIND(scheme:///**), foisted into the worker's first turn below.
         // #312 — the turn's token gauge: the ACTIVE provider's tokenizer identity + exact counter

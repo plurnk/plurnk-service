@@ -3,10 +3,16 @@ import { LineMarkerOps } from "../content/index.ts";
 import type { SchemeManifest, PlurnkSchemeContext, SchemeReadResult } from "../core/scheme-types.ts";
 import { ReadResolve } from "../content/index.ts";
 import Matcher from "../content/matcher.ts";
+import type { CandidateMatch } from "../content/matcher.ts";
 import type { FindResult, MatchItem, Match } from "./_entry-find.ts";
 import { CoreSchemeAdapterBase } from "../core/CoreSchemeServices.ts";
 import type { CoreSchemeCallContext } from "../core/CoreSchemeServices.ts";
 import Results, { type SchemeResultBase } from "../core/results.ts";
+import type { RangeExtent } from "@plurnk/plurnk-schemes";
+import LogProjectionResolver from "./_log-projection.ts";
+import EntrySemantic from "./_entry-semantic.ts";
+import EntryGraph from "./_entry-graph.ts";
+import { resolveSearchCandidates } from "./_search-candidate.ts";
 
 type OpenFoldResult = SchemeResultBase & { matched?: number };
 
@@ -22,22 +28,6 @@ const COORDINATE = /^(\d+)\/(\d+)\/(\d+)(?:\/([A-Za-z]+))?$/;
 // `1/2` turn 1/2's rows, `1/2/3` the one row. A full coordinate is always 3 parts, so a 1- or 2-part
 // path is unambiguously a prefix — the trailing slash is OPTIONAL (`log:///1/2` ≡ `log:///1/2/`).
 const PARTIAL_COORDINATE = /^\d+(?:\/\d+)?\/?$/;
-
-// The ONE content projection of a stored rx — what READ shows and therefore what FIND matches
-// (§find-source-agnostic: the matcher must see exactly the content the model can retrieve).
-// rx.content (with its own mimetype) when the op produced a body; the rx itself as compact JSON
-// otherwise (EDIT/SEND acks — inspectable, matchable); the raw string if the rx isn't JSON.
-const rxProjection = (rawRx: string): { content: string; mimetype: string } => {
-    try {
-        const rx = JSON.parse(rawRx) as { content?: unknown; mimetype?: unknown };
-        if (typeof rx.content === "string") {
-            return { content: rx.content, mimetype: typeof rx.mimetype === "string" ? rx.mimetype : "text/plain" };
-        }
-        return { content: JSON.stringify(rx), mimetype: "application/json" };
-    } catch {
-        return { content: rawRx, mimetype: "text/plain" };
-    }
-};
 
 // A log target pathname → the coordinate GLOB it scopes (§log-coordinate-hierarchy): a partial
 // coordinate (`1`, `1/2`, with or without slash) is a prefix over its descendants; a trailing
@@ -58,22 +48,6 @@ const parseCoordinate = (pathname: string): { loopSeq: number; turnSeq: number; 
         turnSeq: Number(match[2]),
         sequence: Number(match[3]),
     };
-};
-
-// <L> over a matched row set (mirrors EntryFind.#paginate): <N> picks the Nth,
-// <N,M> the range; 0→1, -1→last; out-of-range → 416.
-const paginate = <T>(items: T[], marker: { first: number; last: number | null }): { status: number; items?: T[] } => {
-    const total = items.length;
-    const { first, last } = marker;
-    if (last === null) {
-        if (first === 0 || first === -1) return { status: 200, items: [] };
-        if (first > 0 && first <= total) return { status: 200, items: [items[first - 1]] };
-        return { status: 416 };
-    }
-    const n = first === 0 ? 1 : first;
-    const m = last === -1 ? total : last;
-    if (n < 1 || n > total || m < 1 || m > total || n > m) return { status: 416 };
-    return { status: 200, items: items.slice(n - 1, m) };
 };
 
 export default class Log extends CoreSchemeAdapterBase {
@@ -97,12 +71,18 @@ export default class Log extends CoreSchemeAdapterBase {
     async read(statement: ReadStatement, ctx: CoreSchemeCallContext): Promise<SchemeReadResult> {
         const core = this.coreContext(ctx);
         const { db, workerId } = core;
-        const failure = (code: string, status: number, detail: string): SchemeReadResult => Results.failure(
+        const failure = (
+            code: string,
+            status: number,
+            detail: string,
+            extensions: Readonly<Record<string, unknown>> = {},
+        ): SchemeReadResult => Results.failure(
             "scheme:log",
             code,
             status,
             detail,
             { content: null, mimetype: null },
+            extensions,
         ) as SchemeReadResult;
         if (statement.target === null) return failure("read-target-required", 400, "READ requires a log coordinate.");
         // READ is exact — one coordinate, one row. Tag recall is OPEN[tag]/FIND[tag]'s job (§log-region-tagging),
@@ -126,7 +106,7 @@ export default class Log extends CoreSchemeAdapterBase {
 
         if (row === undefined) return failure("entry-not-found", 404, `No log entry exists at log:///${pathname}.`);
 
-        const { content: underlyingContent, mimetype: underlyingMimetype } = rxProjection(row.rx);
+        const { content: underlyingContent, mimetype: underlyingMimetype } = LogProjectionResolver.resolve(row.rx);
 
         const resolved = await ReadResolve.resolve({
             content: underlyingContent,
@@ -136,27 +116,28 @@ export default class Log extends CoreSchemeAdapterBase {
             mimetypes: core.mimetypes,
         });
         if (resolved.status >= 400) {
-            return Results.failure(
-                "scheme:log",
+            return failure(
                 resolved.status === 416 ? "range-not-satisfiable" : "read-resolution-failed",
                 resolved.status,
-                resolved.content ?? `READ could not resolve the requested log content (status ${resolved.status}).`,
-                { ...resolved },
-            ) as SchemeReadResult;
+                resolved.reason ?? `READ could not resolve the requested log content (status ${resolved.status}).`,
+                resolved.range === undefined ? {} : { range: resolved.range },
+            );
         }
         return { ...resolved };
     }
 
     // §log-uniform-query — FIND over the worker's log rows, on the SAME source-agnostic primitive
     // every entry scheme runs (Matcher.matchCandidates, §find-source-agnostic): candidates are the
-    // coordinate-scoped rows projected exactly as READ shows them (rxProjection), so every content
+    // coordinate-scoped rows projected exactly as READ shows them (LogProjectionResolver), so every content
     // dialect works on log BY CONSTRUCTION and FIND(log)→READ(coordinate) composes like any scheme.
-    // ~semantic stays 501 until the pump embeds log rows (epic S5); @graph is 501 (log rows carry
-    // no symbol channels — an honest absence, not an exception).
     async find(statement: FindStatement, ctx: CoreSchemeCallContext): Promise<FindResult> {
         const core = this.coreContext(ctx);
         const { db, workerId, mimetypes } = core;
-        const empty = (status: number, detail?: string): FindResult => {
+        const empty = (
+            status: number,
+            detail?: string,
+            extensions: Readonly<Record<string, unknown>> = {},
+        ): FindResult => {
             const fields = { content: null, mimetype: null, results: [], itemsTokenTotal: 0, pathnames: [], matches: [] };
             return status >= 400
                 ? Results.failure(
@@ -165,13 +146,11 @@ export default class Log extends CoreSchemeAdapterBase {
                     status,
                     detail ?? `FIND could not resolve the requested log selection (status ${status}).`,
                     fields,
+                    extensions,
                 ) as FindResult
                 : { status, ...fields };
         };
         if (statement.target === null) return empty(400, "FIND requires a log target.");
-        if (statement.body !== null && (statement.body.dialect === "semantic" || statement.body.dialect === "graph")) {
-            return empty(501, `The '${statement.body.dialect}' matcher is not implemented for log entries.`);
-        }
 
         const pathname = (statement.target.kind === "url" ? statement.target.pathname : statement.target.raw).replace(/^\//, "");
         const glob = coordinateGlob(pathname);
@@ -179,34 +158,98 @@ export default class Log extends CoreSchemeAdapterBase {
         // §log-region-tagging — a tag signal AND-filters the candidates (§find-tag-filter-and-semantics):
         // a row survives only if it carries EVERY listed tag. No signal → the plain coordinate scope.
         const tags = Array.isArray(statement.signal) ? statement.signal : [];
-        type Candidate = { coordinate: string; op: string; rx: string; mimetype_rx: string; tokens: number };
+        type Candidate = { coordinate: string; op: string; rx: string; mimetype_rx: string; tokens: number; deep_hash: string | null };
         const rows = tags.length > 0
             ? await db.log_find_candidates_tagged.all<Candidate>({ worker_id: workerId, glob, tags: JSON.stringify(tags) })
             : await db.log_find_candidates.all<Candidate>({ worker_id: workerId, glob });
         const byCoord = new Map(rows.map((r) => [r.coordinate, r] as const));
-        const projected = rows.map((r) => ({ key: r.coordinate, ...rxProjection(r.rx) }));
+        const projected = rows.map((r) => ({ key: r.coordinate, ...LogProjectionResolver.resolve(r.rx) }));
 
-        let matches: Match[];
-        if (statement.body === null) {
-            matches = projected.map((c) => ({ pathname: c.key, span: null }));
+        let sourceMatches: CandidateMatch[];
+        if (statement.body?.dialect === "semantic") {
+            if (mimetypes === undefined) return empty(501, "Semantic matching requires the mimetypes capability.");
+            const candidateSet = resolveSearchCandidates(
+                rows.map(({ coordinate, deep_hash }) => ({ key: coordinate, deepHash: deep_hash })),
+            );
+            if (candidateSet.state === "incomplete") return empty(
+                503,
+                `The persistent search index covers ${candidateSet.indexed} of ${candidateSet.total} selected log results.`,
+                { search: candidateSet },
+            );
+            const marker = statement.lineMarker ?? { marks: [EntrySemantic.defaultTopK()] as [number] };
+            const ranked = await EntrySemantic.rankCandidates(
+                db,
+                candidateSet.candidates,
+                mimetypes,
+                statement.body.raw,
+                LineMarkerOps.firstLast(marker),
+            );
+            if (ranked.status !== 200) return empty(ranked.status, `The log semantic matcher failed with status ${ranked.status}.`);
+            sourceMatches = ranked.results.map(({ key, lineStart, lineEnd }) => ({
+                key,
+                span: { lineStart, lineEnd },
+            }));
+        } else if (statement.body?.dialect === "graph") {
+            const candidateSet = resolveSearchCandidates(
+                rows.map(({ coordinate, deep_hash }) => ({ key: coordinate, deepHash: deep_hash })),
+            );
+            if (candidateSet.state === "incomplete") return empty(
+                503,
+                `The persistent search index covers ${candidateSet.indexed} of ${candidateSet.total} selected log results.`,
+                { search: candidateSet },
+            );
+            const universeRows = await db.log_find_candidates.all<Candidate>({ worker_id: workerId, glob: "*" });
+            const universe = resolveSearchCandidates(
+                universeRows.map(({ coordinate, deep_hash }) => ({ key: coordinate, deepHash: deep_hash })),
+            );
+            if (universe.state === "incomplete") return empty(
+                503,
+                `The persistent search index covers ${universe.indexed} of ${universe.total} log results in the relationship universe.`,
+                { search: universe },
+            );
+            const graph = await EntryGraph.matchCandidates(
+                db,
+                universe.candidates,
+                candidateSet.candidates,
+                statement.body.raw,
+            );
+            if (graph.status !== 200) return empty(graph.status, `The log graph matcher failed with status ${graph.status}.`);
+            sourceMatches = graph.matches.map(({ key, lineStart, lineEnd }) => ({
+                key,
+                span: { lineStart, lineEnd },
+            }));
+        } else if (statement.body === null) {
+            sourceMatches = projected.map(({ key }) => ({ key, span: null }));
         } else {
             if (mimetypes === undefined) return empty(501, "Content matching requires the mimetypes capability.");
             const r = await Matcher.matchCandidates(statement.body, projected, mimetypes);
             if (r.status !== 200) return empty(r.status, `The log matcher failed with status ${r.status}.`);
-            matches = r.matches.map((m) => ({
-                pathname: m.key,
-                span: m.span === null ? null : {
-                    ...m.span,
-                    rowStart: m.span.lineStart,
-                    rowEnd: m.span.lineEnd,
-                },
-                ...(m.path !== undefined ? { path: m.path } : {}),
-            }));
+            sourceMatches = r.matches;
         }
-        if (statement.lineMarker !== null) {
-            const page = paginate(matches, LineMarkerOps.firstLast(statement.lineMarker));
-            if (page.status !== 200) return empty(page.status, "The requested log result range is not satisfiable.");
-            matches = page.items ?? [];
+        if (statement.lineMarker !== null && statement.body?.dialect !== "semantic") {
+            const page = LineMarkerOps.page(sourceMatches, statement.lineMarker);
+            if (page.status !== 200) return empty(
+                page.status,
+                page.error ?? "The requested log result range is not satisfiable.",
+                page.range === undefined ? {} : { range: page.range },
+            );
+            sourceMatches = page.items ?? [];
+        }
+        let matches: Match[];
+        if (sourceMatches.some(({ span }) => span !== null)) {
+            if (mimetypes === undefined) return empty(501, "Readable match coordinates require the mimetypes capability.");
+            const readable = await Matcher.addReadableRows(sourceMatches, projected, mimetypes);
+            matches = readable.map(({ key, span, path }) => ({
+                pathname: key,
+                span,
+                ...(path === undefined ? {} : { path }),
+            }));
+        } else {
+            matches = sourceMatches.map(({ key, path }) => ({
+                pathname: key,
+                span: null,
+                ...(path === undefined ? {} : { path }),
+            }));
         }
         if (matches.length === 0) return empty(204);
         // §find-count-not-contents is source-agnostic. Log used the shared
@@ -240,7 +283,7 @@ export default class Log extends CoreSchemeAdapterBase {
             const row = byCoord.get(m.pathname);
             if (row === undefined) continue;
             const path = `log:///${m.pathname}`;
-            const proj = rxProjection(row.rx);
+            const proj = LogProjectionResolver.resolve(row.rx);
             const item: MatchItem = {
                 path,
                 channels: { [path]: { mimetype: proj.mimetype, tokens: row.tokens, lines: proj.content.length === 0 ? 0 : proj.content.split("\n").length } },
@@ -266,7 +309,7 @@ export default class Log extends CoreSchemeAdapterBase {
     // Resolve a log:/// target — a concrete coordinate, or a path-glob optionally paginated
     // by <L> (OPEN/FOLD only) — to the matched row ids. The ONE resolution OPEN/FOLD and
     // KILL share: fold flips `expanded` on the ids, kill deletes them.
-    async #resolveIds(pathname: string, lineMarker: OpenStatement["lineMarker"], ctx: PlurnkSchemeContext): Promise<{ status: number; ids: number[]; error?: string }> {
+    async #resolveIds(pathname: string, lineMarker: OpenStatement["lineMarker"], ctx: PlurnkSchemeContext): Promise<{ status: number; ids: number[]; error?: string; range?: RangeExtent }> {
         const { db, workerId } = ctx;
         const coord = parseCoordinate(pathname);
         if (coord !== null && lineMarker === null) {
@@ -283,8 +326,13 @@ export default class Log extends CoreSchemeAdapterBase {
         if (matched.length === 0) return { status: 204, ids: [] };
         let selected = matched;
         if (lineMarker !== null) {
-            const page = paginate(matched, LineMarkerOps.firstLast(lineMarker));
-            if (page.status !== 200) return { status: page.status, ids: [] };
+            const page = LineMarkerOps.page(matched, lineMarker);
+            if (page.status !== 200) return {
+                status: page.status,
+                ids: [],
+                error: page.error,
+                range: page.range,
+            };
             selected = page.items ?? [];
         }
         if (selected.length === 0) return { status: 404, ids: [] };
@@ -295,7 +343,7 @@ export default class Log extends CoreSchemeAdapterBase {
     // whole run when targetless — a bare OPEN[tag] recalls the entire tagged working-set),
     // AND-filtered to rows carrying EVERY listed tag. Zero matches is a no-op success (204), mirroring
     // #resolveIds — recalling a name that tags nothing steers nothing.
-    async #resolveByTags(statement: OpenStatement | FoldStatement, tags: string[], ctx: PlurnkSchemeContext): Promise<{ status: number; ids: number[]; error?: string }> {
+    async #resolveByTags(statement: OpenStatement | FoldStatement, tags: string[], ctx: PlurnkSchemeContext): Promise<{ status: number; ids: number[]; error?: string; range?: RangeExtent }> {
         const { db, workerId } = ctx;
         const pathname = statement.target === null ? "" : (statement.target.kind === "url" ? statement.target.pathname : statement.target.raw).replace(/^\//, "");
         const glob = coordinateGlob(pathname);
@@ -304,8 +352,13 @@ export default class Log extends CoreSchemeAdapterBase {
         if (matched.length === 0) return { status: 204, ids: [] };
         let selected = matched;
         if (statement.lineMarker !== null) {
-            const page = paginate(matched, LineMarkerOps.firstLast(statement.lineMarker));
-            if (page.status !== 200) return { status: page.status, ids: [] };
+            const page = LineMarkerOps.page(matched, statement.lineMarker);
+            if (page.status !== 200) return {
+                status: page.status,
+                ids: [],
+                error: page.error,
+                range: page.range,
+            };
             selected = page.items ?? [];
         }
         if (selected.length === 0) return { status: 404, ids: [] };
@@ -326,6 +379,8 @@ export default class Log extends CoreSchemeAdapterBase {
                     rt.status === 416 ? "range-not-satisfiable" : "open-failed",
                     rt.status,
                     rt.error ?? `OPEN could not resolve the requested log selection (status ${rt.status}).`,
+                    {},
+                    rt.range === undefined ? {} : { range: rt.range },
                 ) as OpenFoldResult;
             }
             for (const id of rt.ids) await ctx.db.log_set_expanded_by_id.run({ id, expanded: 1 });
@@ -344,6 +399,8 @@ export default class Log extends CoreSchemeAdapterBase {
                 r.status === 416 ? "range-not-satisfiable" : r.status === 404 ? "entry-not-found" : "curation-failed",
                 r.status,
                 r.error ?? `${expanded === 1 ? "OPEN" : "FOLD"} could not resolve the requested log selection (status ${r.status}).`,
+                {},
+                r.range === undefined ? {} : { range: r.range },
             ) as OpenFoldResult;
         }
         let ids = r.ids;

@@ -20,6 +20,7 @@ YOU MUST ONLY use the Plurnk OPs (PLAN|FIND|READ|EDIT|COPY|MOVE|OPEN|FOLD|EXEC|W
 ```
 
 The closer echoes the op's name: a WORK op closes with `:WORK`, never with a delimiter of your invention.
+If any body contains its own closer as text, suffix the outer op: `<<OP1:quoted :OP:OP1`.
 
 ### OPs
 
@@ -64,7 +65,6 @@ Below is every op's form — a reference catalog, not a turn (a turn opens with 
 - **FIND** (retrieval) — returns a JSON array of matches. Each object carries its path and per-channel mimetype, tokens, and lines. READ a hit's path to view it.
 - **READ** (retrieval) — returns lines of matching content, each prefixed with its line number.
 - **EDIT** — only for creating or modifying files and entries; never edit log items. It replaces the selected `<row,row>` with literal body content, never patterns. Without `<scope>`, it creates an absent entry; an existing entry requires current rows.
-- **EDIT nesting** — add a single-digit (or label) suffix when nesting ops, as in `EDIT1 … :EDIT:EDIT1`.
 - **OPEN** (retrieval) — reveals a folded log item's body at the cost of its `tokens` (`display` goes `folded` to `open`). A `display: none` item has no body to reveal.
 - **FOLD** — hides an open log item's body to reclaim context (`display` goes `open` to `folded`). Its `tokens` field shows what an OPEN costs.
 - **EXEC** — produces a `<runtime>:///<loop>/<turn>/<item>` output stream on the next turn. You can then FIND, READ, or KILL it; append a channel such as `#stderr` when needed.

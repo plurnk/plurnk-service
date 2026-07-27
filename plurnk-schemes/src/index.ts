@@ -18,7 +18,15 @@ export { DEFAULT_LOOP_FLAGS } from "./types.ts";
 export { default as SchemeResolver } from "./SchemeResolver.ts";
 export { default as MimetypeClassifier, TEXT_PRIMITIVE_MIMETYPE } from "./MimetypeClassifier.ts";
 export { default as Slicer } from "./Slicer.ts";
-export type { BatchEdit, EditResult as LineEditResult, JsonSliceResult, SliceResult } from "./Slicer.ts";
+export type {
+    BatchEdit,
+    EditResult as LineEditResult,
+    JsonSliceResult,
+    PageResult,
+    RangeExtent,
+    RangeUnit,
+    SliceResult,
+} from "./Slicer.ts";
 export { default as PathMimetype } from "./PathMimetype.ts";
 export { default as Matcher } from "./Matcher.ts";
 export type { MatchResult } from "./Matcher.ts";

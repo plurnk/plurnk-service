@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 import type { FindStatement, MatcherBody, UrlPath } from "@plurnk/plurnk-grammar";
 import File from "../../src/schemes/File.ts";
 import EntryCrud from "../../src/schemes/_entry-crud.ts";
-import EntryManifest from "../../src/schemes/_entry-manifest.ts";
+import SearchIndex from "../../src/schemes/_search-index.ts";
 import { openMigrated, insertWorkspace, insertWorker, makeSchemeCtx } from "./_helpers.ts";
 
 const fileUrl = (pathname: string): UrlPath => ({
@@ -41,7 +41,7 @@ const seed = async () => {
         await EntryCrud.writeEntry(`${pathname}`, { channels: { body: { content, mimetype: "text/typescript" } }, tags: [] }, ctx, "file");
     }
     // @graph derives at manifest-add (§mimetype) — build the manifest to populate the index.
-    await EntryManifest.maintainDerivations(ctx);
+    await SearchIndex.maintain(ctx);
     return { db, workspaceId, workerId };
 };
 

@@ -74,6 +74,38 @@ test("ex 31 — nested EDIT via suffix discipline", () => {
     assert.equal(statementsOf(input).length, 1);
 });
 
+test("[#640] suffix-delimiter nesting is one parser contract for every protocol operation body", async (t) => {
+    const forms: ReadonlyArray<readonly [string, string]> = [
+        ["FIND", "(worker:///x)"],
+        ["READ", "(worker:///x)"],
+        ["EDIT", "(worker:///x)"],
+        ["COPY", "(worker:///x)"],
+        ["MOVE", "(worker:///x)"],
+        ["OPEN", "(log:///1)"],
+        ["FOLD", "(log:///1)"],
+        ["SEND", "[400]"],
+        ["EXEC", "[sh]"],
+        ["WORK", "(worker://child)"],
+        ["FORK", "(worker://child)"],
+        ["KILL", "(worker:///x)"],
+        ["PLAN", ""],
+    ];
+    for (const [op, slots] of forms) {
+        await t.test(op, () => {
+            const nested = `<<${op}:inner:${op}`;
+            const result = PlurnkParser.parseStatements(`<<${op}1${slots}:quoted ${nested}:${op}1`);
+            assert.equal(result.unparsedTail, undefined);
+            assert.equal(result.items.filter((item) => item.kind === "error").length, 0);
+            const item = result.items.find((candidate) => candidate.kind === "statement");
+            if (item?.kind !== "statement") assert.fail(`expected ${op} statement`);
+            assert.equal(item.statement.op, op);
+            assert.equal(item.statement.suffix, "1");
+            const body = JSON.stringify(item.statement.body);
+            assert.ok(body.includes(nested), `${op} body lost its nested operation`);
+        });
+    }
+});
+
 // -------------------------------------------------------------------------
 // Multi-statement parses
 // -------------------------------------------------------------------------

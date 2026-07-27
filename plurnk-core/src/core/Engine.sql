@@ -87,10 +87,21 @@ ORDER BY et.entry_id, et.tag;
 -- {§entry-owner} — one principal's entries (catalogRowsFor source for an owner-scoped FIND/foist):
 -- the commons, a worker's own space, or a named space — exactly one owner's rows, its perspective.
 SELECT e.id AS entry_id, e.scheme, e.pathname, ec.name AS channel, ec.content, ec.mimetype, ec.tokens AS tokens, e.deep_hash,
-    CAST(unixepoch('now') - unixepoch(s.opened_at) AS INTEGER) AS seconds
+    s.id AS subscription_id,
+    CASE WHEN s.closed_at IS NULL
+        THEN CAST(unixepoch('now') - unixepoch(s.opened_at) AS INTEGER)
+        ELSE NULL
+    END AS seconds,
+    s.close_status
 FROM entries e
 JOIN entry_channels ec ON ec.entry_id = e.id
-LEFT JOIN subscriptions s ON s.entry_id = e.id AND s.closed_at IS NULL
+LEFT JOIN subscriptions s ON s.id = (
+    SELECT latest.id
+    FROM subscriptions latest
+    WHERE latest.entry_id = e.id
+    ORDER BY latest.id DESC
+    LIMIT 1
+)
 WHERE e.workspace_id = $workspace_id AND e.owner_id = $owner_id
 ORDER BY e.updated_at ASC, e.id ASC, ec.name;
 
@@ -168,16 +179,27 @@ WHERE id = $id;
 
 -- PREP: engine_list_workspace_entries
 -- Every entry of a workspace — all schemes, all channels — the source behind the entry
--- catalog (catalogRowsFor / FIND) and the per-turn derivation pump (maintainDerivations).
+-- catalog (catalogRowsFor / FIND) and the persistent search-index pass.
 -- Workspace-scoped (persists across runs); FOLD doesn't drop from the catalog.
--- `seconds` is the live age of an active stream: now − the open subscription's
--- opened_at (closed_at IS NULL). NULL for static entries. unixepoch parses the
--- stored '...%fZ' timestamp directly; re-evaluated every render like tokens.
+-- The latest subscription carries stream lifecycle into the catalog. `seconds`
+-- is the live age of an open stream; close_status is the exact terminal status
+-- of a closed one. Entries with no subscription remain ordinary static entries.
 SELECT e.id AS entry_id, e.scheme, e.pathname, ec.name AS channel, ec.content, ec.mimetype, ec.tokens AS tokens, e.deep_hash,
-    CAST(unixepoch('now') - unixepoch(s.opened_at) AS INTEGER) AS seconds
+    s.id AS subscription_id,
+    CASE WHEN s.closed_at IS NULL
+        THEN CAST(unixepoch('now') - unixepoch(s.opened_at) AS INTEGER)
+        ELSE NULL
+    END AS seconds,
+    s.close_status
 FROM entries e
 JOIN entry_channels ec ON ec.entry_id = e.id
-LEFT JOIN subscriptions s ON s.entry_id = e.id AND s.closed_at IS NULL
+LEFT JOIN subscriptions s ON s.id = (
+    SELECT latest.id
+    FROM subscriptions latest
+    WHERE latest.entry_id = e.id
+    ORDER BY latest.id DESC
+    LIMIT 1
+)
 -- entries are workspace-scoped, shared across runs — §machine-processes-one-filesystem
 WHERE e.workspace_id = $workspace_id
 -- User Note 5 — mtime-ascending: dormant entries hold the stable prompt-cache prefix; churn clusters at the tail.
@@ -440,7 +462,8 @@ UPDATE log_entries
    SET state = $state,
        outcome = $outcome,
        status_rx = $status_rx,
-       rx = $rx
+       rx = $rx,
+       deep_hash = NULL
  WHERE id = $id
    AND state = 'proposed';
 

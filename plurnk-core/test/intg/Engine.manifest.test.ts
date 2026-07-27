@@ -9,8 +9,10 @@ import assert from "node:assert/strict";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import EntryManifest from "../../src/schemes/_entry-manifest.ts";
+import type { CatalogEntry } from "../../src/schemes/_entry-manifest.ts";
 import ChannelWrite from "../../src/core/ChannelWrite.ts";
 import { Mock } from "@plurnk/plurnk-providers";
+import { Results } from "@plurnk/plurnk-schemes";
 import type { PlurnkStatement } from "@plurnk/plurnk-grammar";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, seedEntryWithChannel, makeSchemeCtx, DEFAULT_MIMETYPES } from "./_helpers.ts";
 
@@ -29,7 +31,7 @@ test("the catalog is the complete, unranked directory — every entry, no `shown
         await seedEntryWithChannel(db, { workspaceId, workerId, scheme: "worker", pathname: "/france/capital", channel: "body", content: "Paris", mimetype: "text/markdown" });
         await seedEntryWithChannel(db, { workspaceId, workerId, scheme: "worker", pathname: "/germany/capital", channel: "body", content: "Berlin\nis the capital", mimetype: "text/markdown" });
 
-        // A real turn runs the derivation pump (maintainDerivations); the catalog is the
+        // A real turn maintains the search index; the catalog is the
         // read-only render FIND serves — there is no manifest.json entry.
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const provider = new Mock({ contextWindow: 100000, responses: [emptyTurn] });
@@ -113,25 +115,49 @@ test("a JSON entry large enough to tile builds through the live embedder — the
     } finally { await db.close(); }
 });
 
-test("[#21] manifest stamps live seconds= on an active stream, absent for static entries", async () => {
+test("[§stream-catalog-lifecycle] catalog distinguishes active, closed, killed, failed, and static entries", async () => {
     const db = await openMigrated();
     try {
-        const workspaceId = await insertWorkspace(db, `manifest-secs-${crypto.randomUUID()}`);
+        const workspaceId = await insertWorkspace(db, `manifest-stream-state-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
 
-        // A static entry (no subscription) + an exec entry with an open stream.
         await seedEntryWithChannel(db, { workspaceId, workerId, scheme: "worker", pathname: "/static/note", channel: "body", content: "x", mimetype: "text/markdown" });
-        const execId = await seedEntryWithChannel(db, { workspaceId, workerId, scheme: "sh", pathname: "/1/1/1", channel: "stdout", content: "running...", mimetype: "text/stream" });
-        await ChannelWrite.openSubscription(db, { workerId, entryId: execId, scheme: "sh", handle: "sh: sleep 30" });
+        const seedStream = async (pathname: string, result?: ReturnType<typeof Results.failure> | { status: number }): Promise<void> => {
+            const entryId = await seedEntryWithChannel(db, {
+                workspaceId,
+                workerId,
+                scheme: "sh",
+                pathname,
+                channel: "stdout",
+                content: result === undefined ? "running..." : "",
+                mimetype: "text/stream",
+            });
+            const subscriptionId = await ChannelWrite.openSubscription(db, {
+                workerId,
+                entryId,
+                scheme: "sh",
+                handle: `sh: ${pathname}`,
+            });
+            if (result !== undefined) await ChannelWrite.closeSubscription(db, { subscriptionId, result });
+        };
+        await seedStream("/1/1/1");
+        await seedStream("/1/1/2", { status: 200 });
+        await seedStream("/1/1/3", Results.failure("executor:sh", "killed", 499, "killed"));
+        await seedStream("/1/1/4", Results.failure("executor:sh", "failed", 503, "failed"));
 
-        const catalog = await EntryManifest.catalogRowsFor(makeSchemeCtx({ db, workspaceId })) as Array<{ path: string; seconds?: number; channels: object }>;
-
-        const stream = catalog.find((e) => e.path === "sh:///1/1/1");
+        const catalog = await EntryManifest.catalogRowsFor(makeSchemeCtx({ db, workspaceId })) as CatalogEntry[];
+        const active = catalog.find((e) => e.path === "sh:///1/1/1");
+        const closed = catalog.find((e) => e.path === "sh:///1/1/2");
+        const killed = catalog.find((e) => e.path === "sh:///1/1/3");
+        const failed = catalog.find((e) => e.path === "sh:///1/1/4");
         const stat = catalog.find((e) => e.path === "worker:///static/note");
-        assert.ok(stream !== undefined && stat !== undefined, "both entries listed");
-        assert.equal(typeof stream.seconds, "number", "active stream carries a live seconds= clock");
-        assert.ok((stream.seconds ?? -1) >= 0, "seconds is non-negative elapsed");
-        assert.equal(stat.seconds, undefined, "a static entry has no seconds (no open subscription)");
+        assert.ok(active !== undefined && closed !== undefined && killed !== undefined && failed !== undefined && stat !== undefined);
+        assert.equal(active.stream?.state, "active");
+        assert.equal(typeof (active.stream?.state === "active" ? active.stream.seconds : undefined), "number");
+        assert.deepEqual(closed.stream, { state: "closed", status: 200 });
+        assert.deepEqual(killed.stream, { state: "killed", status: 499 });
+        assert.deepEqual(failed.stream, { state: "failed", status: 503 });
+        assert.equal(stat.stream, undefined, "an entry with no subscription is not presented as a stream");
     } finally { await db.close(); }
 });
 

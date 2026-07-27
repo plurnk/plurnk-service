@@ -75,7 +75,7 @@ FROM entries e
 JOIN subscriptions s ON s.entry_id = e.id
 WHERE e.workspace_id = $workspace_id
   AND s.worker_id = $worker_id
-  AND e.scheme = 'exec' AND e.pathname = $pathname
+  AND e.scheme = $scheme AND e.pathname = $pathname
   AND s.closed_at IS NOT NULL
 ORDER BY s.closed_at DESC
 LIMIT 1;

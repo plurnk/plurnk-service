@@ -4,7 +4,7 @@
 // every pending entry is fully derived exactly once, without a global tail barrier.
 import test from "node:test";
 import assert from "node:assert/strict";
-import EntryManifest from "../../src/schemes/_entry-manifest.ts";
+import SearchIndex from "../../src/schemes/_search-index.ts";
 import { openMigrated, insertWorkspace, insertWorker, seedEntryWithChannel, makeSchemeCtx, DEFAULT_MIMETYPES } from "./_helpers.ts";
 
 const runPump = async (concurrency: string): Promise<{ stamped: number; maxActive: number }> => {
@@ -33,7 +33,7 @@ const runPump = async (concurrency: string): Promise<{ stamped: number; maxActiv
         // A mix: distinct contents + a triplet of identical content (the dedup case).
         for (let i = 0; i < 8; i++) await seedEntryWithChannel(db, { workspaceId, workerId, scheme: "worker", pathname: `/u${i}`, channel: "body", content: `distinct entry number ${i}`, mimetype: "text/markdown" });
         for (let i = 0; i < 3; i++) await seedEntryWithChannel(db, { workspaceId, workerId, scheme: "worker", pathname: `/dup${i}`, channel: "body", content: "identical shared body across three entries", mimetype: "text/markdown" });
-        await EntryManifest.maintainDerivations(makeSchemeCtx({ db, workspaceId, workerId, mimetypes }));
+        await SearchIndex.maintain(makeSchemeCtx({ db, workspaceId, workerId, mimetypes }));
         // Every body entry has a stamped deep_hash — fully derived exactly once.
         const stamped = await db.test_count_stamped_deep_hash.get<{ n: number }>({ workspace_id: workspaceId });
         return { stamped: stamped?.n ?? 0, maxActive };
@@ -93,7 +93,7 @@ test("a completed representative releases its duplicates while an unrelated repr
 
         let twoCompleted!: () => void;
         const reachedTwo = new Promise<void>((accept) => { twoCompleted = accept; });
-        const pump = EntryManifest.maintainDerivations(makeSchemeCtx({
+        const pump = SearchIndex.maintain(makeSchemeCtx({
             db,
             workspaceId,
             workerId,

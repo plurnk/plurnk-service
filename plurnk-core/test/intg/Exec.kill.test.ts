@@ -9,7 +9,9 @@ import type { ExecStatement, KillStatement } from "@plurnk/plurnk-grammar";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Exec from "../../src/schemes/Exec.ts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, testExecutors } from "./_helpers.ts";
+import ChannelWrite from "../../src/core/ChannelWrite.ts";
+import { Results } from "@plurnk/plurnk-schemes";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, seedEntryWithChannel, testExecutors } from "./_helpers.ts";
 
 const execStmt = (command: string): ExecStatement => ({
     op: "EXEC", suffix: "", signal: null, target: null,
@@ -113,5 +115,45 @@ test("a stream KILL error answers in the model's runtime-tag scheme, never the i
         // The default (other internal callers) stays exec — no behavior change off the model path.
         const bare = await exec.kill("/3/1/4", null, ctx as never);
         assert.match(bare.problem?.detail ?? "", /exec:\/\//, "the default scheme is unchanged for non-model callers");
+    } finally { await db.close(); }
+});
+
+test("KILL rejects streams whose terminal state is already durable", async () => {
+    const db = await openMigrated();
+    try {
+        const workspaceId = await insertWorkspace(db, `exec-kill-terminal-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const ctx = { db, workspaceId, workerId, loopId: 0, turnId: 0, writer: "model" as const, signal: undefined, mimetypes: undefined, tokenize: (t: string) => t.length };
+        const exec = new Exec();
+        const close = async (pathname: string, result: { status: number; problem?: never } | ReturnType<typeof Results.failure>): Promise<void> => {
+            const entryId = await seedEntryWithChannel(db, {
+                workspaceId,
+                workerId,
+                scheme: "sh",
+                pathname,
+                channel: "stdout",
+                content: "",
+                mimetype: "text/stream",
+            });
+            const subscriptionId = await ChannelWrite.openSubscription(db, {
+                workerId,
+                entryId,
+                scheme: "sh",
+                handle: `sh: ${pathname}`,
+            });
+            await ChannelWrite.closeSubscription(db, { subscriptionId, result });
+        };
+
+        await close("/3/1/1", { status: 200 });
+        const closed = await exec.kill("/3/1/1", null, ctx as never, "sh");
+        assert.equal(closed.status, 409);
+        assert.equal(closed.problem?.type, "https://problems.plurnk.dev/scheme/exec/stream-already-terminal");
+        assert.equal(closed.problem?.terminalStatus, 200);
+        assert.match(closed.problem?.detail ?? "", /already concluded with status 200/);
+
+        await close("/3/1/2", Results.failure("executor:sh", "killed", 499, "killed"));
+        const killed = await exec.kill("/3/1/2", null, ctx as never, "sh");
+        assert.equal(killed.status, 410);
+        assert.equal(killed.problem?.type, "https://problems.plurnk.dev/scheme/exec/stream-already-killed");
     } finally { await db.close(); }
 });

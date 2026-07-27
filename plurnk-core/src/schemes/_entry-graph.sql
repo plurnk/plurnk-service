@@ -1,5 +1,5 @@
 -- @graph (plurnk-service#186) — symbol_defs/refs population + @< / @> / @
--- resolution. Populated delete-then-insert per entry at EntryCrud.writeEntry;
+-- resolution. Populated delete-then-insert per readable derivation by SearchIndex;
 -- queried by the FIND `graph` dialect via EntryGraph. Traversal is kind-agnostic
 -- (every ref is an edge; `kind` is edge metadata, never filtered here). 1-hop —
 -- the grammar's `@<sym` surface is single-hop; WITH RECURSIVE the day it grows one.
@@ -47,34 +47,48 @@ UPDATE derivations
 SET state = 'complete', disposition = $disposition, reason = $reason
 WHERE id = $derivation_id;
 
--- PREP: graph_referrers
--- @<sym — entries (scheme-scoped) that reference sym, with each reference's line
+-- PREP: graph_referrers_candidates
+-- @<sym — candidate resources that reference sym, with each reference's line
 -- (#286: a matcher resolves to (file, span) — one item per reference occurrence).
-SELECT DISTINCT e.pathname, r.line AS line, r.line AS end_line
+WITH candidates AS (
+    SELECT json_extract(value, '$.key') AS key,
+           json_extract(value, '$.deepHash') AS deep_hash
+    FROM json_each($candidates)
+)
+SELECT DISTINCT c.key, r.line AS line, r.line AS end_line
 FROM symbol_refs r
 JOIN derivations d ON d.id = r.derivation_id
-JOIN entries e ON e.deep_hash = d.deep_hash
-WHERE e.workspace_id = $workspace_id AND e.scheme = $scheme AND r.name = $name
-ORDER BY e.pathname, r.line;
+JOIN candidates c ON c.deep_hash = d.deep_hash
+WHERE r.name = $name
+ORDER BY c.key, r.line;
 
--- PREP: graph_def_pathnames_by_name
--- Resolve a name → the defining entries' pathnames + def span (scheme-scoped). Serves
+-- PREP: graph_defs_candidates
+-- Resolve a name → the defining candidate keys + def span. Serves
 -- @>'s target resolution and @'s neighborhood def lookup. end_line falls back to line
 -- when a def has no end (#286: the symbol's line..end_line is its (file, span)).
-SELECT DISTINCT e.pathname, d.line AS line, COALESCE(d.end_line, d.line) AS end_line
+WITH candidates AS (
+    SELECT json_extract(value, '$.key') AS key,
+           json_extract(value, '$.deepHash') AS deep_hash
+    FROM json_each($candidates)
+)
+SELECT DISTINCT c.key, d.line AS line, COALESCE(d.end_line, d.line) AS end_line
 FROM symbol_defs d
 JOIN derivations x ON x.id = d.derivation_id
-JOIN entries e ON e.deep_hash = x.deep_hash
-WHERE e.workspace_id = $workspace_id AND e.scheme = $scheme AND d.name = $name
-ORDER BY e.pathname, d.line;
+JOIN candidates c ON c.deep_hash = x.deep_hash
+WHERE d.name = $name
+ORDER BY c.key, d.line;
 
--- PREP: graph_resolve_def
--- sym → its def(s): (entry_id, container) to compose the qualified path for @>.
+-- PREP: graph_resolve_def_candidates
+-- sym → its definition artifacts in the caller's relationship universe.
+WITH candidates AS (
+    SELECT json_extract(value, '$.deepHash') AS deep_hash
+    FROM json_each($candidates)
+)
 SELECT DISTINCT d.derivation_id, d.container
 FROM symbol_defs d
 JOIN derivations x ON x.id = d.derivation_id
-JOIN entries e ON e.deep_hash = x.deep_hash
-WHERE e.workspace_id = $workspace_id AND d.name = $name;
+JOIN candidates c ON c.deep_hash = x.deep_hash
+WHERE d.name = $name;
 
 -- PREP: graph_refs_from_source
 -- @>sym step — the target names sym's def references (its own ref rows, keyed

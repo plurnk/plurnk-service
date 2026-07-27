@@ -170,8 +170,8 @@ export default class Exec extends CoreSchemeAdapterBase {
     // the model's signal — KILL[code] → exactly that signal once (KILL[9] = SIGKILL), a
     // bare KILL → the executor's SIGHUP default. The model owns escalation, so there
     // is no auto-escalation here. The full #203 status matrix: 200 killed (in-flight) · 410
-    // killed-earlier (a prior abort closed the stream 499) · 304 already-exited (closed
-    // with any other terminal status) · 404 unknown (no subscription for that coordinate).
+    // killed-earlier (a prior abort closed the stream 499) · 409 already-terminal
+    // (closed with any other terminal status) · 404 unknown.
     async kill(pathname: string, signal: number | null, ctx: CoreSchemeCallContext, scheme = "exec"): Promise<SchemeResultBase> {
         const core = this.coreContext(ctx);
         for (const entry of this.#activeAborts.values()) {
@@ -184,10 +184,22 @@ export default class Exec extends CoreSchemeAdapterBase {
         // caller's own subscription (coordinates duplicate across workers, {§stream-owner-scoped}).
         // The error answers in the model's OWN runtime-tag address (sh:///…), never the retired
         // internal `exec` scheme (#527, {§fs-answer-in-canon}) — the model KILLs what it addressed.
-        const terminal = await ChannelWrite.execTerminalStatus(core.db, { workspaceId: core.workspaceId, workerId: core.workerId, pathname });
-        if (terminal === null) return Results.failure("scheme:exec", "stream-not-found", 404, `No active stream exists at ${scheme}://${pathname}.`);
+        const terminal = await ChannelWrite.execTerminalStatus(core.db, {
+            workspaceId: core.workspaceId,
+            workerId: core.workerId,
+            scheme,
+            pathname,
+        });
+        if (terminal === null) return Results.failure("scheme:exec", "stream-not-found", 404, `No stream exists at ${scheme}://${pathname}.`);
         if (terminal === 499) return Results.failure("scheme:exec", "stream-already-killed", 410, `${scheme}://${pathname} was killed earlier.`);
-        return { status: 304 };
+        return Results.failure(
+            "scheme:exec",
+            "stream-already-terminal",
+            409,
+            `${scheme}://${pathname} already concluded with status ${terminal}.`,
+            {},
+            { terminalStatus: terminal },
+        );
     }
 
     // EXEC op handler — the actual model-facing entry point per plurnk.md.

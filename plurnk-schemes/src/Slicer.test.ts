@@ -262,6 +262,11 @@ test("sliceJsonItems: <-1> sentinel returns empty array", () => {
 test("sliceJsonItems: out-of-range returns 416", () => {
     const r = Slicer.jsonItems('["a","b"]', { marks: [99] });
     assert.equal(r.status, 416);
+    assert.deepEqual(r.range, {
+        unit: "item",
+        requested: { first: 99, last: null },
+        available: { first: 1, last: 2, total: 2 },
+    });
 });
 
 test("sliceJsonItems: malformed JSON returns 400", () => {
@@ -272,6 +277,29 @@ test("sliceJsonItems: malformed JSON returns 400", () => {
 test("sliceJsonItems: range start > end returns 416", () => {
     const r = Slicer.jsonItems('["a","b","c"]', { marks: [3, 2] });
     assert.equal(r.status, 416);
+});
+
+test("page: result misses expose the requested and available extent", () => {
+    const r = Slicer.page(["a", "b", "c"], { marks: [4, -1] });
+    assert.equal(r.status, 416);
+    assert.deepEqual(r.range, {
+        unit: "result",
+        requested: { first: 4, last: -1 },
+        available: { first: 1, last: 3, total: 3 },
+    });
+    assert.match(r.error ?? "", /1\.\.3/);
+});
+
+test("page: fractional result positions fail instead of being floored", () => {
+    const r = Slicer.page(["a", "b"], { marks: [0.5] });
+    assert.equal(r.status, 416);
+    assert.equal(r.range?.requested.first, 0.5);
+});
+
+test("page: whole-range selection over an empty result set succeeds", () => {
+    assert.deepEqual(Slicer.page([], { marks: [1, -1] }), { status: 200, items: [] });
+    assert.deepEqual(Slicer.page([], { marks: [0, -1] }), { status: 200, items: [] });
+    assert.equal(Slicer.page([], { marks: [1, 3] }).status, 416);
 });
 
 test("sliceJsonItems: object insertion order preserved", () => {

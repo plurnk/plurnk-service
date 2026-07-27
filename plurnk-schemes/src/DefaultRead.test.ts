@@ -29,6 +29,16 @@ test("DefaultRead: <2.5> insert-point selects no content for READ (sentinel)", a
     assert.equal(r.body, "");
 });
 
+test("DefaultRead: failed slices preserve the structured source extent", async () => {
+    const r = await DefaultRead.read("a\nb", "text/plain", stmt({ lineMarker: { marks: [9] } }), mimetypes);
+    assert.equal(r.status, 416);
+    assert.deepEqual(r.range, {
+        unit: "line",
+        requested: { first: 9, last: null },
+        available: { first: 1, last: 2, total: 2 },
+    });
+});
+
 test("DefaultRead: matcher body routes through Matcher (jsonpath dispatch)", async () => {
     const body: MatcherBody = { dialect: "jsonpath", raw: "$.name" };
     const whole = '{"name":"x","age":3}';

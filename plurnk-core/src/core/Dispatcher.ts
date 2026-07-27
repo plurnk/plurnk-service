@@ -753,7 +753,7 @@ export default class Dispatcher {
     // annotation with no runtime meaning; it survives into the log row's tx for
     // free via the statement serialization. Status: 200 killed · 404 unknown ·
     // 405 log:/// (append-only) · 403 writableBy (the #checkWritable gate, KILL ∈
-    // MUTATING_OPS) · 200/410/304/404 exec (killed / killed-earlier / exited / unknown) · 501 no-kill/delete scheme.
+    // MUTATING_OPS) · 200/410/409/404 exec (killed / killed-earlier / terminal / unknown) · 501 no-kill/delete scheme.
     async #handleKill(statement: PlurnkStatement, ctx: PlurnkSchemeContext): Promise<DispatchResult> {
         if (statement.op !== "KILL") throw new Error("unreachable");
         const path = statement.target;
@@ -812,7 +812,7 @@ export default class Dispatcher {
     // Multi-file READ fan-out (SPEC §matcher-result — "the companion to FIND's survey"). A glob
     // READ target resolves to MANY files; READ returns one log row per file that matches, each
     // holding that file's matching lines. The matched SET is exactly FIND's survey (which files
-    // + where — matchLines), so we reuse the scheme's own find, then READ each matched file. One
+    // + where — matchSpan), so we reuse the scheme's own find, then READ each matched file. One
     // model command, N log rows — each row addresses its concrete file, so it folds/kills/re-READs
     // on its own. The running sequence counter in runTurn advances by rowsWritten.
     // A READ fans out (honors FIND) when it resolves to more than the single exact entry: a glob

@@ -117,8 +117,8 @@ test("malformed matcher expression → 400 (model-facing, not a 500)", async () 
 });
 
 test("relation dialects (~semantic / @graph) never reach the content matcher — they resolve through FIND (#286)", async () => {
-    // Invariant: ~semantic ranks via rankSemantic and @graph resolves via EntryGraph, each to
-    // (file, span) items; neither is a content matcher. Reaching matchAgainstContent with one is a
+    // Invariant: both relation dialects resolve through the persistent search index to
+    // (resource, span) items; neither is a content matcher. Reaching matchAgainstContent with one is a
     // routing bug → fail hard, not a silent 501/400.
     const stub = stubQuery(async () => { throw new Error("query must not be called for a relation dialect"); });
     await assert.rejects(Matcher.matchAgainstContent({ dialect: "semantic", raw: "~query" } as MatcherBody, "x", "text/markdown", stub), /content-only/);

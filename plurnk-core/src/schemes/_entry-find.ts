@@ -2,8 +2,8 @@
 // FIND resolves to the scheme's CATALOG ROWS — the very rows the manifest catalogs —
 // filtered to the statement's matches. A matcher (glob/regex/jsonpath/xpath/~semantic/
 // @graph) decides WHICH entries appear. A CONTENT matcher also stamps each row with
-// `matchLines` — the source line(s) where it hit (plurnk.md:31: FIND returns the matching
-// rows with the match lines in the metadata; the line CONTENT is a READ). The result is a
+// `matchSpan` — the source and readable coordinates where it hit (plurnk.md:31: FIND returns
+// matching rows with compact coordinates; the content itself remains a READ). The result is a
 // JSON array of catalog rows: the per-scheme slice of the catalog (§find-result-catalog-rows).
 //
 // Slot semantics (plurnk.md §"Body matcher dispatch (FIND, READ, OPEN, FOLD)"):
@@ -26,6 +26,8 @@ import EntryManifest, { type CatalogEntry } from "./_entry-manifest.ts";
 import Owner from "../core/Owner.ts";
 import EntrySemantic from "./_entry-semantic.ts";
 import Results, { type SchemeResultBase } from "../core/results.ts";
+import type { RangeExtent } from "@plurnk/plurnk-schemes";
+import { resolveSearchCandidates } from "./_search-candidate.ts";
 
 // A FIND match: an entry and the (file, span) where the matcher hit — ONE per match, so a
 // file with N matches yields N items. span === null for a body-less FIND (the whole entry). #286
@@ -59,27 +61,6 @@ export default class EntryFind {
         return decodePathParens(path.kind === "url" ? path.pathname : path.raw); // #239 item 4
     }
 
-    static #paginate<T>(items: T[], marker: { first: number; last: number | null }): { status: number; items?: T[] } {
-        const total = items.length;
-        const { first, last } = marker;
-        // #209 — a fractional marker is a semantic similarity threshold; on a
-        // non-semantic (paginated) result it's nonsense → 416, never floored.
-        if (!Number.isInteger(first) || (last !== null && !Number.isInteger(last))) return { status: 416 };
-        if (last === null) {
-            if (first === 0 || first === -1) return { status: 200, items: [] };
-            if (first > 0 && first <= total) return { status: 200, items: [items[first - 1]] };
-            return { status: 416 };
-        }
-        let n = first;
-        let m = last;
-        if (n === 0) n = 1;
-        if (m === -1) m = total;
-        if (n < 1 || n > total) return { status: 416 };
-        if (m < 1 || m > total) return { status: 416 };
-        if (n > m) return { status: 416 };
-        return { status: 200, items: items.slice(n - 1, m) };
-    }
-
     static #unique(xs: string[]): string[] {
         const seen = new Set<string>();
         const out: string[] = [];
@@ -99,7 +80,13 @@ export default class EntryFind {
         ctx: PlurnkSchemeContext,
         manifest: SchemeManifest,
         explicitOwnerId?: number,
-    ): Promise<{ status: number; matches: SourceMatch[]; error?: string }> {
+    ): Promise<{
+        status: number;
+        matches: SourceMatch[];
+        error?: string;
+        range?: RangeExtent;
+        extensions?: Readonly<Record<string, unknown>>;
+    }> {
         if (statement.target === null) return { status: 400, matches: [] };
         // Scope by the manifest's persisted entries.scheme (storedScheme; absent →
         // name). File persists under the reserved 'file' scheme ({§entry-identity-no-null}).
@@ -135,7 +122,7 @@ export default class EntryFind {
         // Candidates are workspace-scoped — a FIND never reaches across workspaces (§find-scoped-isolation)
         // — and owner-keyed ({§entry-owner}): an owner-carved face passes its resolved owner; every
         // other scheme draws from the commons.
-        type Candidate = { entry_id: number; pathname: string; content?: string; mimetype?: string };
+        type Candidate = { entry_id: number; pathname: string; deep_hash: string | null; content?: string; mimetype?: string };
         const semantic = statement.body?.dialect === "semantic";
         let candidates = await db[semantic ? "find_workspace_entry_candidate_ids" : "find_workspace_entry_candidates"].all<Candidate>({
             workspace_id: workspaceId,
@@ -168,27 +155,62 @@ export default class EntryFind {
             const marker = statement.lineMarker === null
                 ? { first: EntrySemantic.defaultTopK(), last: null }
                 : LineMarkerOps.firstLast(statement.lineMarker);
-            const ranked = await EntrySemantic.rankSemantic(
+            const candidateSet = resolveSearchCandidates(
+                candidates.map(({ pathname, deep_hash }) => ({ key: pathname, deepHash: deep_hash })),
+            );
+            if (candidateSet.state === "incomplete") return {
+                status: 503,
+                matches: [],
+                error: `The persistent search index covers ${candidateSet.indexed} of ${candidateSet.total} selected entries.`,
+                extensions: { search: candidateSet },
+            };
+            const ranked = await EntrySemantic.rankCandidates(
                 ctx.db,
-                ctx.workspaceId,
-                scheme,
-                candidates.map(({ entry_id }) => entry_id),
+                candidateSet.candidates,
                 mimetypes,
                 statement.body.raw,
                 marker,
             );
             if (ranked.status !== 200) return { status: ranked.status, matches: [] };
-            matches = ranked.results.map((x) => ({ pathname: x.pathname, span: { lineStart: x.lineStart, lineEnd: x.lineEnd } }));
+            matches = ranked.results.map((x) => ({ pathname: x.key, span: { lineStart: x.lineStart, lineEnd: x.lineEnd } }));
         } else if (statement.body === null) {
             matches = candidates.map((c) => ({ pathname: c.pathname, span: null }));
         } else if (statement.body.dialect === "graph") {
             // @graph (plurnk-service#186): body is `@<sym` / `@>sym` / `@sym`. EntryGraph resolves
             // the relation across (workspace, scheme), each as a (file, span); intersect with the
             // in-scope candidates (target glob + tags) for the final set.
-            const inScope = new Set(candidates.map((c) => c.pathname));
-            const graph = await EntryGraph.match(ctx.db, ctx.workspaceId, scheme, statement.body.raw);
+            const scopedCandidates = resolveSearchCandidates(
+                candidates.map(({ pathname, deep_hash }) => ({ key: pathname, deepHash: deep_hash })),
+            );
+            if (scopedCandidates.state === "incomplete") return {
+                status: 503,
+                matches: [],
+                error: `The persistent search index covers ${scopedCandidates.indexed} of ${scopedCandidates.total} selected entries.`,
+                extensions: { search: scopedCandidates },
+            };
+            const universeRows = await ctx.db.find_workspace_derivation_candidates.all<{ key: string; deep_hash: string | null }>({
+                workspace_id: ctx.workspaceId,
+            });
+            const universe = resolveSearchCandidates(
+                universeRows.map(({ key, deep_hash }) => ({ key, deepHash: deep_hash })),
+            );
+            if (universe.state === "incomplete") return {
+                status: 503,
+                matches: [],
+                error: `The persistent search index covers ${universe.indexed} of ${universe.total} entries in the relationship universe.`,
+                extensions: { search: universe },
+            };
+            const graph = await EntryGraph.matchCandidates(
+                ctx.db,
+                universe.candidates,
+                scopedCandidates.candidates,
+                statement.body.raw,
+            );
             if (graph.status !== 200) return { status: graph.status, matches: [] };
-            matches = graph.matches.filter((m) => inScope.has(m.pathname)).map((m) => ({ pathname: m.pathname, span: { lineStart: m.lineStart, lineEnd: m.lineEnd } }));
+            matches = graph.matches.map((m) => ({
+                pathname: m.key,
+                span: { lineStart: m.lineStart, lineEnd: m.lineEnd },
+            }));
         } else {
             const { mimetypes } = ctx;
             if (mimetypes === undefined) throw new Error("EntryFind.#matchPathnames: body matcher requires the mimetypes capability in ctx");
@@ -203,8 +225,13 @@ export default class EntryFind {
         }
 
         if (statement.lineMarker !== null && statement.body?.dialect !== "semantic") {
-            const page = EntryFind.#paginate(matches, LineMarkerOps.firstLast(statement.lineMarker));
-            if (page.status !== 200) return { status: page.status, matches: [] };
+            const page = LineMarkerOps.page(matches, statement.lineMarker);
+            if (page.status !== 200) return {
+                status: page.status,
+                matches: [],
+                error: page.error,
+                range: page.range,
+            };
             matches = page.items ?? [];
         }
         return { status: 200, matches };
@@ -220,16 +247,8 @@ export default class EntryFind {
         if (ctx.mimetypes === undefined) throw new Error("EntryFind.#addReadableRows: matched entries require the mimetypes capability");
         const scheme = EntryCrud.identityScheme(manifest);
         const ownerId = explicitOwnerId ?? await Owner.commonsId(ctx.db, ctx.workspaceId);
-        const grouped = new Map<string, number[]>();
-        for (let index = 0; index < matches.length; index += 1) {
-            const match = matches[index];
-            if (match.span === null) continue;
-            const indices = grouped.get(match.pathname) ?? [];
-            indices.push(index);
-            grouped.set(match.pathname, indices);
-        }
-        const resolved: Match[] = matches.map((match) => ({ ...match, span: null }));
-        for (const [pathname, indices] of grouped) {
+        const candidates: Array<{ key: string; content: string; mimetype: string }> = [];
+        for (const pathname of new Set(matches.filter(({ span }) => span !== null).map(({ pathname }) => pathname))) {
             const row = await ctx.db.ops_read_channel.get<{ content: string; mimetype: string }>({
                 workspace_id: ctx.workspaceId,
                 owner_id: ownerId,
@@ -238,34 +257,19 @@ export default class EntryFind {
                 channel: manifest.defaultChannel,
             });
             if (row === undefined) throw new Error(`EntryFind.#addReadableRows: matched entry ${pathname} has no default channel`);
-            const rows = await ctx.mimetypes!.rowsForLines(
-                { content: row.content, hint: row.mimetype },
-                indices.map((index) => ({
-                    line: matches[index].span!.lineStart,
-                    endLine: matches[index].span!.lineEnd,
-                })),
-            );
-            if (rows.length !== indices.length) throw new Error(`EntryFind.#addReadableRows: ${pathname} returned ${rows.length} rows for ${indices.length} spans`);
-            for (let offset = 0; offset < indices.length; offset += 1) {
-                const index = indices[offset];
-                const match = matches[index];
-                const readable = rows[offset];
-                resolved[index] = {
-                    ...match,
-                    span: {
-                        ...match.span!,
-                        rowStart: readable.row,
-                        rowEnd: readable.endRow,
-                    },
-                };
-            }
+            candidates.push({ key: pathname, ...row });
         }
-        return resolved;
+        const resolved = await Matcher.addReadableRows(
+            matches.map(({ pathname, ...match }) => ({ key: pathname, ...match })),
+            candidates,
+            ctx.mimetypes,
+        );
+        return resolved.map(({ key, ...match }) => ({ pathname: key, ...match }));
     }
 
     // FIND result = the scheme's catalog rows, filtered to the matched entries and kept in
     // match order. A catalog row is exactly what the manifest catalogs (path + per-channel
-    // {mimetype, tokens, lines}, tags, seconds) — FIND is the filtered, navigable slice of
+    // {mimetype, tokens, lines}, tags, stream lifecycle) — FIND is the filtered, navigable slice of
     // that catalog, rendered as a JSON array (application/json). §find-result-catalog-rows
     static async findWorkspaceEntries(statement: FindStatement, ctx: PlurnkSchemeContext, manifest: SchemeManifest, explicitOwnerId?: number): Promise<FindResult> {
         const match = await EntryFind.#matchPathnames(statement, ctx, manifest, explicitOwnerId);
@@ -277,6 +281,10 @@ export default class EntryFind {
                 match.status,
                 detail,
                 { content: null, mimetype: null, results: [], itemsTokenTotal: 0, pathnames: [], matches: [] },
+                {
+                    ...(match.range === undefined ? {} : { range: match.range }),
+                    ...match.extensions,
+                },
             ) as FindResult;
         }
         const readableMatches = await EntryFind.#addReadableRows(match.matches, ctx, manifest, explicitOwnerId);

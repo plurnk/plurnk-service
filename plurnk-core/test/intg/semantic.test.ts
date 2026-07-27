@@ -11,7 +11,7 @@ import type { EditStatement, FindStatement, MatcherBody, UrlPath } from "@plurnk
 import { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import Worker from "../../src/schemes/Worker.ts";
 import EntryCrud from "../../src/schemes/_entry-crud.ts";
-import EntryManifest from "../../src/schemes/_entry-manifest.ts";
+import SearchIndex from "../../src/schemes/_search-index.ts";
 import { openMigrated, insertWorkspace, insertWorker, makeSchemeCtx } from "./_helpers.ts";
 
 // This suite asserts REAL vector ranking, so it re-enables the embedder the fast lane turns off
@@ -50,7 +50,7 @@ test("[#186-semantic-e2e] ~query ranks by REAL semantic similarity (full pipelin
         await new Worker().edit(editStmt(url("db.md"), "the database connection failed with a timeout error"), ctx);
         await new Worker().edit(editStmt(url("sql.md"), "sql server connection could not be established"), ctx);
         await new Worker().edit(editStmt(url("cake.md"), "preheat the oven and frost the birthday cake"), ctx);
-        await EntryManifest.maintainDerivations(ctx);  // real embeddings stored via mimetypes-embeddings
+        await SearchIndex.maintain(ctx);  // real embeddings stored via mimetypes-embeddings
 
         const r = await new Worker().find(semanticStmt(url(""), "database connection error", 2), makeSchemeCtx({ db, workspaceId, workerId, loopId: 0, turnId: 0, mimetypes }));
         assert.equal(r.status, 200);
@@ -74,7 +74,7 @@ test("[#272] the derivation pump emits throttled embed_progress notices for a mu
 
         type Tel = { source?: string; kind?: string; message?: string; pathname?: string; completed?: number; total?: number };
         const events: Tel[] = [];
-        await EntryManifest.maintainDerivations(makeSchemeCtx({ db, workspaceId, workerId, mimetypes, pushNotice: (e) => events.push(e as Tel) }));
+        await SearchIndex.maintain(makeSchemeCtx({ db, workspaceId, workerId, mimetypes, pushNotice: (e) => events.push(e as Tel) }));
 
         const progress = events.filter((e) => e.source === "engine:derivation" && e.kind === "embed_progress");
         assert.ok(progress.length > 0, "a 3-entry corpus pass emits progress notices (the ingest is visible, not frozen)");
@@ -86,7 +86,7 @@ test("[#272] the derivation pump emits throttled embed_progress notices for a mu
         // threshold → silent, so steady-state turns carry no per-turn progress noise.
         const events2: Tel[] = [];
         await new Worker().edit(editStmt(url("d.md"), "a single new entry changed this turn"), seed);
-        await EntryManifest.maintainDerivations(makeSchemeCtx({ db, workspaceId, workerId, mimetypes, pushNotice: (e) => events2.push(e as Tel) }));
+        await SearchIndex.maintain(makeSchemeCtx({ db, workspaceId, workerId, mimetypes, pushNotice: (e) => events2.push(e as Tel) }));
         assert.equal(events2.filter((e) => e.kind === "embed_progress").length, 0, "a single-entry pass stays silent");
     } finally { db.close(); }
 });
@@ -102,7 +102,7 @@ test("[#209-semantic-threshold] ~query <0.x> form-dispatches to a similarity thr
         await new Worker().edit(editStmt(url("db.md"), "the database connection failed with a timeout error"), ctx);
         await new Worker().edit(editStmt(url("sql.md"), "sql server connection could not be established"), ctx);
         await new Worker().edit(editStmt(url("cake.md"), "preheat the oven and frost the birthday cake"), ctx);
-        await EntryManifest.maintainDerivations(ctx);
+        await SearchIndex.maintain(ctx);
         const findCtx = (): ReturnType<typeof makeSchemeCtx> => makeSchemeCtx({ db, workspaceId, workerId, loopId: 0, turnId: 0, mimetypes });
 
         // A low floor admits every positively related vector. Exhaustive cosine
@@ -153,7 +153,7 @@ test("[#47] PLURNK_MIMETYPES_SEARCH_EXCLUDE applies to project files, not arbitr
             tags: [],
         }, ctx, "https");
         await new Worker().edit(editStmt(url("notes.md"), "the database connection failed with a timeout"), ctx);
-        await EntryManifest.maintainDerivations(ctx);
+        await SearchIndex.maintain(ctx);
         const lock = await db.test_entries_by_pathname.get<{ id: number }>({ pathname: "/repo/dist/index.json" });
         const notes = await db.test_entries_by_pathname.get<{ id: number }>({ pathname: "/notes.md" });
         const fixture = await db.test_entries_by_pathname.get<{ id: number }>({ pathname: "/example.com/dist/index.json" });
@@ -170,7 +170,7 @@ test("[#47] PLURNK_MIMETYPES_SEARCH_EXCLUDE applies to project files, not arbitr
         assert.equal(disposition?.reason, "*/dist/*");
         assert.equal(includedDisposition?.disposition, "vector", "identical bytes at a non-file resource path remain searchable");
         // stamped: a second pass derives nothing (no eternal re-attempt of the suppressed entry)
-        await EntryManifest.maintainDerivations(ctx);
+        await SearchIndex.maintain(ctx);
         const lockVecs2 = await db.test_count_embeddings.get<{ n: number }>({ entry_id: lock?.id ?? -1 });
         assert.equal(lockVecs2?.n, 0, "still zero after a second pump pass — classified once, skipped");
     } finally {
@@ -194,7 +194,7 @@ test("[#337] the pump derives smallest-first — a fat outlier never clogs the c
         await new Worker().edit(editStmt(url("whale.md"), whale), ctx);       // written FIRST, biggest
         await new Worker().edit(editStmt(url("minnow-a.md"), "a tiny note about apples"), ctx);
         await new Worker().edit(editStmt(url("minnow-b.md"), "a tiny note about lemons"), ctx);
-        await EntryManifest.maintainDerivations(ctx);
+        await SearchIndex.maintain(ctx);
         const order = await db.test_embedding_insertion_order.all<{ pathname: string; first_rowid: number }>({});
         const byPath = new Map(order.map((o) => [o.pathname, o.first_rowid]));
         const whaleFirst = byPath.get("/whale.md") ?? -1;

@@ -26,7 +26,7 @@ import assert from "node:assert/strict";
 import type { EditStatement, FindStatement, LineMarker, MatcherBody, ReadStatement, UrlPath } from "@plurnk/plurnk-grammar";
 import { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import Worker from "../../src/schemes/Worker.ts";
-import EntryManifest from "../../src/schemes/_entry-manifest.ts";
+import SearchIndex from "../../src/schemes/_search-index.ts";
 import { openMigrated, insertWorkspace, insertWorker, makeSchemeCtx } from "./_helpers.ts";
 
 // One plurnk.md example (FIND ~query RAG) asserts REAL vector ranking — re-enable the embedder the
@@ -234,7 +234,7 @@ test("[plurnk.md-ex-FIND-rag] FIND ~query selects entries by semantic similarity
         const ctx = makeSchemeCtx({ db, workspaceId, workerId, mimetypes });
         await new Worker().edit(editStmt(url("a"), "the french revolution and the storming of the bastille"), ctx);
         await new Worker().edit(editStmt(url("b"), "a recipe for chocolate cake"), ctx);
-        await EntryManifest.maintainDerivations(ctx);  // store real embeddings via the plugin
+        await SearchIndex.maintain(ctx);  // store real embeddings via the plugin
         const r = await new Worker().find(findStmt(url(""), { dialect: "semantic", raw: "french revolutionary history" }), makeSchemeCtx({ db, workspaceId, workerId, loopId: 0, turnId: 0, mimetypes }));
         assert.equal(r.status, 200);
         assert.equal(r.results[0]?.path, "worker:///a", "markerless semantic FIND ranks the closest document first");

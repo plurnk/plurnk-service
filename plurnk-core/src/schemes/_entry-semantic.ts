@@ -9,6 +9,7 @@ import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
 // from the contract method itself so this stays the REAL type, never a local fiction.
 type EmbedderInfo = NonNullable<Awaited<ReturnType<Mimetypes["embedderInfo"]>>>;
 import EntryChunk from "./_entry-chunk.ts";
+import type { SearchCandidate } from "./_search-candidate.ts";
 
 export default class EntrySemantic {
     static defaultTopK(): number {
@@ -184,20 +185,30 @@ export default class EntrySemantic {
     // every vector in scope, top-K. Each result carries its best-matching
     // chunk's line span (the Finding extent). No embedder → the top-K <K> form degrades to an
     // FTS-only keyword rank (whole-entry findings); the <0.x> threshold form stays 501.
-    static async rankSemantic(db: Db, workspaceId: number, scheme: string | null, entryIds: readonly number[], mimetypes: Mimetypes, queryText: string, marker: { first: number; last: number | null }): Promise<{ status: number; results: Array<{ pathname: string; lineStart: number; lineEnd: number }> }> {
+    static async rankCandidates(
+        db: Db,
+        candidates: readonly SearchCandidate[],
+        mimetypes: Mimetypes,
+        queryText: string,
+        marker: { first: number; last: number | null },
+    ): Promise<{ status: number; results: Array<{ key: string; lineStart: number; lineEnd: number }> }> {
         // #209 — the result marker form-dispatches: integer <K> → top-K rank;
         // decimal <0.x> → a similarity threshold (minimum cosine in (0,1)), with
         // <0.x,N> capping the threshold set at N (else unbounded). A fractional
         // value outside (0,1) is a nonsense result-marker → 416, never coerced.
         const { first, last } = marker;
-        const toResult = (x: { pathname: string; line_start: number; line_end: number }) => ({ pathname: x.pathname, lineStart: x.line_start, lineEnd: x.line_end });
-        if (entryIds.length === 0) return { status: 200, results: [] };
-        const entry_ids = JSON.stringify(entryIds);
+        const toResult = (x: { key: string; line_start: number; line_end: number }) => ({
+            key: x.key,
+            lineStart: x.line_start,
+            lineEnd: x.line_end,
+        });
+        if (candidates.length === 0) return { status: 200, results: [] };
+        const serializedCandidates = JSON.stringify(candidates);
 
         // The query embedding honors the SAME gate as the corpus (#embedderInfo /
         // PLURNK_SERVICE_EMBED_DISABLE): with the embeddings package installed but disabled,
         // calling process() directly would compute a query vector and rank it against
-        // an empty entry_embeddings — every ~query silently []. Disabled → the honest
+        // an empty derivation_embeddings — every ~query silently []. Disabled → the honest
         // FTS keyword fallback, same as no embedder at all.
         const info = await EntrySemantic.#embedderInfo(mimetypes);
         const r = info === null
@@ -210,21 +221,30 @@ export default class EntrySemantic {
             if (!Number.isInteger(first)) return { status: 501, results: [] };
             const ftsQuery = EntrySemantic.ftsQueryFor(queryText);
             if (ftsQuery.length === 0) return { status: 200, results: [] };
-            const rows = await db.semantic_rank_fts.all<{ pathname: string; line_start: number; line_end: number }>({
-                fts_query: ftsQuery, workspace_id: workspaceId, scheme, entry_ids, k: first,
+            const rows = await db.semantic_rank_candidates_fts.all<{ key: string; line_start: number; line_end: number }>({
+                fts_query: ftsQuery,
+                candidates: serializedCandidates,
+                k: first,
             });
             return { status: 200, results: rows.map(toResult) };
         }
         if (Number.isInteger(first)) {
-            const rows = await db.semantic_rank.all<{ pathname: string; line_start: number; line_end: number }>({
-                workspace_id: workspaceId, scheme, entry_ids, query_vector: r.embedding, embedding_model: r.embeddingModel, k: first,
+            const rows = await db.semantic_rank_candidates.all<{ key: string; line_start: number; line_end: number }>({
+                candidates: serializedCandidates,
+                query_vector: r.embedding,
+                embedding_model: r.embeddingModel,
+                k: first,
             });
             return { status: 200, results: rows.map(toResult) };
         }
         if (first <= 0 || first >= 1) return { status: 416, results: [] };
         const cap = (last !== null && Number.isInteger(last) && last > 0) ? last : -1;
-        const rows = await db.semantic_rank_threshold.all<{ pathname: string; line_start: number; line_end: number }>({
-            workspace_id: workspaceId, scheme, entry_ids, query_vector: r.embedding, embedding_model: r.embeddingModel, threshold: first, cap,
+        const rows = await db.semantic_rank_candidates_threshold.all<{ key: string; line_start: number; line_end: number }>({
+            candidates: serializedCandidates,
+            query_vector: r.embedding,
+            embedding_model: r.embeddingModel,
+            threshold: first,
+            cap,
         });
         return { status: 200, results: rows.map(toResult) };
     }

@@ -510,7 +510,7 @@ export default class Digest {
         let workerRollupRows = (db.digest_worker_rollups as SyncPrep<WorkerRollupRow>).all();
         let opMixRows = (db.digest_worker_op_mix as SyncPrep<OpMixRow>).all();
         // The semantic-state analytic (owner ask), feature-detected per table: a HISTORICAL
-        // specimen may predate token_counts/entry_embeddings — an old db is a fact to read,
+        // specimen may predate token_counts/derivation_embeddings — an old db is a fact to read,
         // not a contract violation. Absent tables read as -1. node:sqlite directly (SqlRite's
         // eager prepare would refuse the whole open over one missing optional table).
         const probe = new DatabaseSync(dbPath, { readOnly: true });
@@ -540,8 +540,8 @@ export default class Digest {
             unfinished: semanticStateAvailable ? one(`SELECT count(*) n ${body} WHERE e.deep_hash IS NULL`) : -1,
             derivation_artifacts_complete: semanticStateAvailable && has("derivations") ? one("SELECT count(*) n FROM derivations WHERE state='complete'") : -1,
             derivation_artifacts_building: semanticStateAvailable && has("derivations") ? one("SELECT count(*) n FROM derivations WHERE state='building'") : -1,
-            chunk_rows: has("entry_embeddings") ? one("SELECT count(*) n FROM entry_embeddings") : -1,
-            models: has("entry_embeddings") ? one("SELECT count(DISTINCT embedding_model) n FROM entry_embeddings") : -1,
+            chunk_rows: has("derivation_embeddings") ? one("SELECT count(*) n FROM derivation_embeddings") : -1,
+            models: has("derivation_embeddings") ? one("SELECT count(DISTINCT embedding_model) n FROM derivation_embeddings") : -1,
             token_derivations: has("token_counts") ? one("SELECT count(*) n FROM token_counts") : -1,
         };
         probe.close();

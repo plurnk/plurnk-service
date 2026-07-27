@@ -6,9 +6,8 @@ import assert from "node:assert/strict";
 import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import type { EditStatement, UrlPath } from "@plurnk/plurnk-grammar";
 import Worker from "../../src/schemes/Worker.ts";
-import EntryManifest from "../../src/schemes/_entry-manifest.ts";
+import SearchIndex from "../../src/schemes/_search-index.ts";
 import EntrySemantic from "../../src/schemes/_entry-semantic.ts";
-import Owner from "../../src/core/Owner.ts";
 import { openMigrated, insertWorkspace, insertWorker, makeSchemeCtx } from "./_helpers.ts";
 
 process.env.PLURNK_SERVICE_EMBED_DISABLE = "0";
@@ -45,7 +44,7 @@ test("identical entries attach one complete semantic artifact and both remain ad
         const body = "shared semantic artifact";
         await new Worker().edit(edit("a.md", body), writeCtx);
         await new Worker().edit(edit("b.md", body), writeCtx);
-        await EntryManifest.maintainDerivations(deriveCtx);
+        await SearchIndex.maintain(deriveCtx);
 
         const rows = await db.test_entries_with_hash_by_scheme_prefix.all<{ pathname: string; deep_hash: string }>({
             workspace_id: workspaceId, scheme: "worker", prefix: "/%",
@@ -57,18 +56,14 @@ test("identical entries attach one complete semantic artifact and both remain ad
         assert.deepEqual(artifacts, { artifacts: 1, vectors: 1 }, "one complete artifact owns one vector set");
         assert.equal(embeddedTexts, 1, "the shared content embeds exactly once");
 
-        const entryIds = await Promise.all(["/a.md", "/b.md"].map(async (pathname) => {
-            const entry = await db.crud_find_workspace_entry.get<{ id: number }>({
-                workspace_id: workspaceId,
-                owner_id: await Owner.commonsId(db, workspaceId),
-                scheme: "worker",
-                pathname,
-            });
-            assert.ok(entry);
-            return entry.id;
-        }));
-        const ranked = await EntrySemantic.rankSemantic(db, workspaceId, "worker", entryIds, mimetypes, "shared artifact", { first: 10, last: null });
-        assert.deepEqual(ranked.results.map((r) => r.pathname).sort(), ["/a.md", "/b.md"],
+        const ranked = await EntrySemantic.rankCandidates(
+            db,
+            rows.map(({ pathname, deep_hash }) => ({ key: pathname, deepHash: deep_hash })),
+            mimetypes,
+            "shared artifact",
+            { first: 10, last: null },
+        );
+        assert.deepEqual(ranked.results.map((r) => r.key).sort(), ["/a.md", "/b.md"],
             "artifact sharing never collapses the independently addressable entries");
     } finally {
         await db.close();

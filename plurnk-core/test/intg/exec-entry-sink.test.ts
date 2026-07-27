@@ -12,7 +12,7 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import type { WebFetch } from "../../src/schemes/Exec.ts";
 import PacketWire from "../../src/core/packet-wire.ts";
 import EntryCrud from "../../src/schemes/_entry-crud.ts";
-import EntryManifest from "../../src/schemes/_entry-manifest.ts";
+import SearchIndex from "../../src/schemes/_search-index.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, testExecutors, DEFAULT_MIMETYPES, quiesceExecs, makeSchemeCtx } from "./_helpers.ts";
 
 const execStmt = (runtime: string, body: string): ExecStatement => ({
@@ -229,7 +229,7 @@ test("an exact HTTPS semantic READ cannot leak or retarget a match from another 
             channels: { body: { content: "preheat the oven and frost the birthday cake", mimetype: "text/markdown" } },
             tags: [],
         }, ctx, "https");
-        await EntryManifest.maintainDerivations(ctx);
+        await SearchIndex.maintain(ctx);
 
         const queried = await engine.dispatch({
             statement: parseOne("<<READ(https://example.org/turkeys):~birthday cake:READ") as ReadStatement,
