@@ -267,9 +267,8 @@ test("providers.list returns parsed aliases with active marker", async () => {
                 assert.equal(gemma?.model, "macher.gguf");
                 assert.equal(gemma?.active, true);
                 assert.equal(opus?.active, false);
-                // #263/#345 — the active alias carries the EFFECTIVE prompt budget (window minus the
-                // partition reserves — one denominator meaning on every surface, never the raw KV);
-                // an inactive alias is null (provider not instantiated) so the client omits the gauge.
+                // #263/#345 — the active alias carries the enforced prompt budget; an inactive
+                // alias is null (provider not instantiated), so the client omits the gauge.
                 const budget = 8192 - Number(process.env.PLURNK_PROVIDERS_REASONING_RESERVE) - Number(process.env.PLURNK_PROVIDERS_COMPLETION_RESERVE) - Number(process.env.PLURNK_SERVICE_SAFETY);
                 assert.equal(gemma?.promptBudget, budget, "active alias carries the effective prompt budget, not the raw window");
                 assert.equal(opus?.promptBudget, null, "inactive alias has no window → null");

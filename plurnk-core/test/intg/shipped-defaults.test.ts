@@ -44,8 +44,8 @@ test("the template ships no double policy, no active model, ONLY service-owned k
     const SERVICE_OWNED = /^(PLURNK_SERVICE_|PLURNK_HOST$|PLURNK_PORT$|PLURNK_QUESTIONS$|PLURNK_PLUGINS_)/;
     const foreign = [...env.keys()].filter((k) => !SERVICE_OWNED.test(k));
     assert.deepEqual(foreign, [], `the template declares only service-owned knobs; foreign: ${foreign.join(", ")}`);
-    // §tokenomics-window-partition (#507) — the envelope is provider-owned; core ships ONE
-    // partition knob: SAFETY, the ruler's packing margin, a positive int.
+    // Provider physics ship elsewhere. Core's only active default is SAFETY;
+    // virtual PROMPT_BUDGET is optional and therefore absent from the parsed floor.
     const safety = Number(env.get("PLURNK_SERVICE_SAFETY"));
     assert.ok(Number.isFinite(safety) && safety > 0, "SAFETY ships as a positive int — core's one partition knob");
     // #352 — the bare partition is cloud-generous: 163840 − 16384 − 49152 − 1024 = 97280 prompt

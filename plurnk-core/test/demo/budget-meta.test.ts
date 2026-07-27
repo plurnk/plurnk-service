@@ -1,5 +1,5 @@
 // Budget as a META-SCENARIO (owner's design): the storyline demos, re-run under a
-// tight partition CONTEXT_WINDOW. Budget pressure is a DIMENSION atop a real scenario,
+// tight virtual PROMPT_BUDGET. Budget pressure is a DIMENSION atop a real scenario,
 // not a bespoke fixture — if the same task still completes when the model must curate
 // to fit the window, the grinder works end-to-end with a real model. The intg layer
 // (budget-stories.test.ts) pins the exact mechanics; this pins the behavior, the way
@@ -23,14 +23,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Db } from "../../src/core/Db.ts";
 import { hermeticGitEnv } from "../../src/core/git-env.ts";
-import { liveWorkspace, liveLoop, pinAliasPartition } from "../_live-harness.ts";
+import { liveWorkspace, liveLoop, pinAliasBudget } from "../_live-harness.ts";
 import { measureFloor } from "./_floor-probe.ts";
 import { seedDemoFixture } from "./_fixture.ts";
 
 const TIMEOUT = 480_000; // 8 minutes — matches the storyline timeout.
 const REASONING_RESERVE = 1;
 const COMPLETION_RESERVE = 8192;
-const RESERVED_TOKENS = REASONING_RESERVE + COMPLETION_RESERVE;
 // Ceilings are FLOOR-RELATIVE: each worker probes its own fixture's true turn-1 floor (a
 // zero-cost pre-generate hard-413, _floor-probe.ts) and pins ceiling = floor × factor —
 // teaching growth re-calibrates the pin instead of breaking it. TIGHT keeps the small
@@ -53,10 +52,10 @@ interface BudgetRun {
 const runUnderBudget = async (opts: { label: string; prompt: string; factor?: number; projectRoot?: string; cleanupRoot?: () => Promise<void> }): Promise<BudgetRun> => {
     const fixture = opts.projectRoot === undefined ? await seedDemoFixture(opts.label) : null;
     const root = opts.projectRoot ?? fixture!.workspace;
-    const restoreReserves = pinAliasPartition({ REASONING: String(REASONING_RESERVE), COMPLETION: String(COMPLETION_RESERVE), SAFETY: "0" });
-    const floor = await measureFloor({ label: opts.label, projectRoot: root, prompt: opts.prompt, reservedTokens: RESERVED_TOKENS });
+    const restoreReserves = pinAliasBudget({ REASONING: String(REASONING_RESERVE), COMPLETION: String(COMPLETION_RESERVE), SAFETY: "0" });
+    const floor = await measureFloor({ label: opts.label, projectRoot: root, prompt: opts.prompt });
     const ceiling = Math.round(floor * (opts.factor ?? TIGHT_FACTOR));
-    const restore = pinAliasPartition({ CONTEXT_WINDOW: String(ceiling + RESERVED_TOKENS) });
+    const restore = pinAliasBudget({ PROMPT_BUDGET: String(ceiling) });
     try {
         const s = await liveWorkspace({ name: `demo-budget-${opts.label}-${crypto.randomUUID()}`, projectRoot: root });
         const { finalStatus, turnIds, lastContent } = await liveLoop(s, 2, { prompt: opts.prompt }, { timeoutMs: TIMEOUT });

@@ -42,6 +42,14 @@ const readPartitionIntFrom = (env: NodeJS.ProcessEnv, name: string, min: number)
     return n;
 };
 
+const readOptionalPositiveIntFrom = (env: NodeJS.ProcessEnv, name: string): number | null => {
+    const raw = env[name];
+    if (raw === undefined || raw.length === 0) return null;
+    const n = Number(raw);
+    if (!Number.isInteger(n) || n <= 0) throw new Error(`${name} must be a positive integer; got ${raw}`);
+    return n;
+};
+
 export type ChatMessage = { role: "system" | "user" | "assistant"; content: string };
 
 // packet.assistant shape per plurnk-grammar 0.6.0 Packet.json. Wire-level
@@ -96,20 +104,18 @@ export default class PacketBuilder {
         this.#executors = executors;
         // #507 — the envelope rides the provider; construction only runs the retired-knob shed
         // so a stale operator .env fails at BOOT, not first use.
-        this.#safetyFor(resolveActiveAlias(process.env)?.alias ?? "");
+        const bootAlias = resolveActiveAlias(process.env)?.alias ?? "";
+        this.#safetyFor(bootAlias);
+        this.#promptBudgetCapFor(bootAlias);
     }
 
-    // #352 — the generation envelope is PER-ALIAS: gemma keeps its measured llama-server policy
-    // envelope (n_predict honored to the context wall — the cap MUST bound it, providers#10);
-    // cloud aliases get a generous default and the backend self-clamps to its true output limit.
+    // #352 — provider generation settings and core packet policy both resolve per alias.
     // scopeEnvToAlias resolves PLURNK_SERVICE_*_<alias> over the bare fallback with providers' own
     // battle-tested suffix parser. Cached per alias; the boot-global case falls back to the active
     // alias when a provider carries no side-table entry (a test Mock).
-    // #507 (owner-ruled full migration): the generation envelope is PROVIDER-owned — the window
-    // and both reserves ride the Provider surface (contextWindow/reasoningReserve/completionReserve,
-    // ingested or PLURNK_PROVIDERS_*-pinned in the provider tier). Core keeps ONE knob: SAFETY,
-    // the ruler's own packing margin — a service fact, not a model fact.
-    static #KNOBS = ["PLURNK_SERVICE_SAFETY"] as const;
+    // Provider context and response reserves remain provider-owned. Core owns only its virtual
+    // prompt budget and the ruler's packing-safety margin.
+    static #KNOBS = ["PLURNK_SERVICE_PROMPT_BUDGET", "PLURNK_SERVICE_SAFETY"] as const;
     #shedChecked = false;
 
     #safetyFor(alias: string): number {
@@ -131,11 +137,9 @@ export default class PacketBuilder {
         return readPartitionIntFrom(view, "PLURNK_SERVICE_SAFETY", 0);
     }
 
-    // #421 — §tokenomics-window-unpollable-deliberate: provider.contextWindow null (env/probe/catalog
-    // all missed, provider-tier pins included) is genuinely-unknown — nobody chose an envelope. The
-    // budget/ceiling short-circuit to NO-CAP rather than substitute a stand-in the operator never chose.
-    #isUnboundedWindow(provider: Provider): boolean {
-        return provider.contextWindow === null;
+    #promptBudgetCapFor(alias: string): number | null {
+        const view = scopeEnvToAlias(process.env, alias, PacketBuilder.#KNOBS);
+        return readOptionalPositiveIntFrom(view, "PLURNK_SERVICE_PROMPT_BUDGET");
     }
 
     #partitionFor(provider: Provider): { reasoning: number | null; completion: number | null; safety: number } {
@@ -152,17 +156,11 @@ export default class PacketBuilder {
         return reasoning + completion;
     }
 
-    // §tokenomics-window-partition — the prompt ceiling
-    // is DERIVED, never set: the provider's effective context window (the lower
-    // of its natural window and any operator cap) minus the reserves, divided by the loop's observed real/measured
-    // token ratio (usage.prompt is ground truth; a heuristic ruler shipped a 65k-real packet into
-    // a 49k window, #311). A fractional ceiling also budgeted the prompt against the window and
-    // FORGOT the response lives there too. Reserves exceeding the window is a configuration
-    // contradiction — fail hard. ratio floors at 1: an overcounting ruler never expands the budget.
-    // #274/#312 follow-up (owner): the CLIENT-facing gauge denominator — the prompt budget the
-    // packet actually lives under (effective window minus the partition reserves), in REAL token
-    // space (usage.prompt, the numerator, is real; the calibration ratio maps measured→real and
-    // has no business here). The raw n_ctx overstates usable room by the reserve total.
+    // §tokenomics-window-partition — the natural prompt ceiling is the provider's
+    // effective context window minus its response reserves and the service's ruler
+    // safety. An optional service prompt budget may only tighten that result. It is
+    // model-facing grinder policy, never provider physics or a generation setting.
+    // The client-facing gauge, grinder ceiling, and persisted promptBudget use this one value.
     promptBudgetFor(provider: Provider): number | null {
         return this.ceilingFor(provider); // ONE derivation — the gauge denominator IS the grinder ceiling
     }
@@ -173,17 +171,20 @@ export default class PacketBuilder {
     // bias — the model curates against less room than it has and never overflows for typical
     // content; the exact provider count guards the pathological tail at the materialization gate.
     ceilingFor(provider: Provider): number | null {
-        if (this.#isUnboundedWindow(provider) || provider.contextWindow === null) return null; // #421 — no cap: the gauge headline is omitted
+        const alias = ProviderInstantiate.aliasOf(provider) ?? resolveActiveAlias(process.env)?.alias ?? "";
+        const operatorCap = this.#promptBudgetCapFor(alias);
+        // Unknown provider physics stays unknown; an explicit virtual ceiling still bounds
+        // PLURNK's packet without pretending to describe the backend.
+        if (provider.contextWindow === null) return operatorCap;
         const { reasoning, completion, safety } = this.#partitionFor(provider);
-        if (reasoning === null || completion === null) return null; // #421 — unknown reserves, no ceiling
+        if (reasoning === null || completion === null) return operatorCap;
         const naturalBudget = provider.contextWindow - reasoning - completion - safety;
         if (naturalBudget <= 0) {
-            const alias = ProviderInstantiate.aliasOf(provider) ?? resolveActiveAlias(process.env)?.alias ?? "";
             // #507 — post-migration this contradiction has ONE cause: pinned absolute reserves
             // exceeding the window the provider detected (percent reserves derive and cannot contradict).
             throw new Error(`window partition contradiction for alias '${alias}': window ${provider.contextWindow} <= reserves ${reasoning}+${completion}+${safety}. Pinned PLURNK_PROVIDERS_{REASONING,COMPLETION}_RESERVE absolutes exceed the detected window — repin them under it, or use percent reserves, which derive from the window.`);
         }
-        return naturalBudget;
+        return operatorCap === null ? naturalBudget : Math.min(operatorCap, naturalBudget);
     }
 
     // Assemble the request half of the spec'd packet (Packet.json system

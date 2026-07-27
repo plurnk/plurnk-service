@@ -1,10 +1,10 @@
 // Extreme-budget demo — designed to FAIL until the model is taught to curate.
-// The partition CONTEXT_WINDOW is pinned so promptBudget sits just above the fixed sysprompt floor
+// The virtual PROMPT_BUDGET is pinned so it sits just above the fixed sysprompt floor
 // (plurnk.md ~1313t + persona/requirements), so a couple of file READs push
 // the assembled packet past the wall. With no curation the log accumulates and
 // `peak` blows the ceiling; staying under means the model HID earlier reads as
-// it worked. The test deliberately caps the effective window around a measured
-// packet floor, so the scenario exercises the real partition and curation rail.
+// it worked. The test deliberately caps the model-facing budget around a measured
+// packet floor, so the scenario exercises the curation rail without changing provider physics.
 // Run + digest (bin/digest.ts) to analyze the failure together.
 //
 // Driven through the REAL prod loop (loop.run via the daemon). The ceiling is a
@@ -14,7 +14,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { liveWorkspace, liveLoop, pinAliasPartition } from "../_live-harness.ts";
+import { liveWorkspace, liveLoop, pinAliasBudget } from "../_live-harness.ts";
 import { measureFloor } from "./_floor-probe.ts";
 import { seedDemoFixture } from "./_fixture.ts";
 
@@ -42,18 +42,17 @@ const GRIND_FACTOR = 1.6;
 const NO_CURATION_FACTOR = 1.45;
 const REASONING_RESERVE = 1;
 const COMPLETION_RESERVE = 8192;
-const RESERVED_TOKENS = REASONING_RESERVE + COMPLETION_RESERVE;
 
 test("demo: budget grind — under a pinned ceiling, the model must curate to keep assembled context under budget", async () => {
     const fixture = await seedDemoFixture("budget");
     const userPromptText = "Brief me on this project — its codename, the database host it connects to, and the one outstanding TODO in the app code.";
-    // Pin the absolute envelope before both phases. Each effective window is part of the
-    // provider configuration, so the floor probe and story construct their own capped handle.
-    const restoreReserves = pinAliasPartition({ REASONING: String(REASONING_RESERVE), COMPLETION: String(COMPLETION_RESERVE), SAFETY: "0" });
-    const floor = await measureFloor({ label: "grind", projectRoot: fixture.workspace, prompt: userPromptText, reservedTokens: RESERVED_TOKENS });
+    // Pin the absolute response envelope before both phases; the virtual prompt budgets below
+    // alter only the model-facing gauge and grinder.
+    const restoreReserves = pinAliasBudget({ REASONING: String(REASONING_RESERVE), COMPLETION: String(COMPLETION_RESERVE), SAFETY: "0" });
+    const floor = await measureFloor({ label: "grind", projectRoot: fixture.workspace, prompt: userPromptText });
     const CEILING = Math.round(floor * GRIND_FACTOR);
     const NO_CURATION = Math.round(floor * NO_CURATION_FACTOR);
-    const restore = pinAliasPartition({ CONTEXT_WINDOW: String(CEILING + RESERVED_TOKENS) });
+    const restore = pinAliasBudget({ PROMPT_BUDGET: String(CEILING) });
     try {
         const s = await liveWorkspace({ name: `demo-budget-${crypto.randomUUID()}`, projectRoot: fixture.workspace });
         try {

@@ -1,7 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import Engine from "../../src/core/Engine.ts";
+import PacketBuilder from "../../src/core/PacketBuilder.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
+import TelemetryChannel from "../../src/core/TelemetryChannel.ts";
 import { Mock } from "@plurnk/plurnk-providers";
 import type { MockResponse } from "@plurnk/plurnk-providers";
 import type { PlurnkStatement, SendStatement } from "@plurnk/plurnk-grammar";
@@ -77,13 +79,10 @@ test("Engine.runTurn: budget readout — partition-derived ceiling, free reconci
     } finally { await db.close(); }
 });
 
-test("core consumes the provider's effective window without reinterpreting provider configuration", async () => {
-    // Provider construction owns the operator cap and reserve derivation. A hand-built Provider
-    // already exposes its effective envelope; ambient provider knobs cannot make core silently
-    // repartition that handle a second time.
+test("a virtual prompt budget tightens the gauge and grinder without changing provider physics or generation", async () => {
     const db = await openMigrated();
     const prev = {
-        cap: process.env.PLURNK_PROVIDERS_CONTEXT_WINDOW,
+        cap: process.env.PLURNK_SERVICE_PROMPT_BUDGET,
         rr: process.env.PLURNK_PROVIDERS_REASONING_RESERVE,
         cr: process.env.PLURNK_PROVIDERS_COMPLETION_RESERVE,
         safety: process.env.PLURNK_SERVICE_SAFETY,
@@ -91,19 +90,49 @@ test("core consumes the provider's effective window without reinterpreting provi
     try {
         process.env.PLURNK_PROVIDERS_REASONING_RESERVE = "4915";
         process.env.PLURNK_PROVIDERS_COMPLETION_RESERVE = "12288";
-        process.env.PLURNK_PROVIDERS_CONTEXT_WINDOW = "32000";
         process.env.PLURNK_SERVICE_SAFETY = "1024";
-        const engine = new Engine({ db, schemes: new SchemeRegistry() });
-        const provider = new Mock({ contextWindow: 49152, responses: [] });
-        const budget = engine.promptBudgetFor(provider);
-        assert.equal(budget, 49152 - 4915 - 12288 - 1024);
-        assert.equal(provider.reasoningReserve, 4915, "the reasoning reserve stays task-natural under the cap");
-        assert.equal(provider.completionReserve, 12288, "the completion reserve remains provider-owned");
+        process.env.PLURNK_SERVICE_PROMPT_BUDGET = "128000";
+        const schemes = new SchemeRegistry();
+        const packets = new PacketBuilder({ db, schemes, telemetry: new TelemetryChannel({ db }), executors: () => undefined });
+        const provider = new Mock({ contextWindow: 1_048_575, responses: [] });
+        const budget = packets.promptBudgetFor(provider);
+        assert.equal(budget, 128_000);
+        assert.equal(provider.contextWindow, 1_048_575, "virtual pressure does not rewrite physical context");
+        assert.equal(provider.reasoningReserve, 4915, "virtual pressure does not rewrite reasoning settings");
+        assert.equal(provider.completionReserve, 12288, "virtual pressure does not rewrite completion settings");
+        assert.equal(packets.maxTokensFor(provider), 4915 + 12288, "virtual pressure does not rewrite maxTokens");
+
+        process.env.PLURNK_SERVICE_PROMPT_BUDGET = "2000000";
+        assert.equal(
+            packets.promptBudgetFor(provider),
+            1_048_575 - 4915 - 12288 - 1024,
+            "a virtual cap cannot widen the natural physical prompt budget",
+        );
+
+        const unknown = new Mock({ contextWindow: null, responses: [] });
+        process.env.PLURNK_SERVICE_PROMPT_BUDGET = "64000";
+        assert.equal(packets.promptBudgetFor(unknown), 64_000, "virtual pressure remains usable when provider physics are unknown");
     } finally {
-        for (const [k, v] of [["PLURNK_PROVIDERS_CONTEXT_WINDOW", prev.cap], ["PLURNK_PROVIDERS_REASONING_RESERVE", prev.rr], ["PLURNK_PROVIDERS_COMPLETION_RESERVE", prev.cr]] as const) {
+        for (const [k, v] of [["PLURNK_SERVICE_PROMPT_BUDGET", prev.cap], ["PLURNK_PROVIDERS_REASONING_RESERVE", prev.rr], ["PLURNK_PROVIDERS_COMPLETION_RESERVE", prev.cr]] as const) {
             if (v === undefined) delete process.env[k]; else process.env[k] = v;
         }
         if (prev.safety === undefined) delete process.env.PLURNK_SERVICE_SAFETY; else process.env.PLURNK_SERVICE_SAFETY = prev.safety;
+        await db.close();
+    }
+});
+
+test("a malformed virtual prompt budget fails at construction", async () => {
+    const previous = process.env.PLURNK_SERVICE_PROMPT_BUDGET;
+    const db = await openMigrated();
+    try {
+        process.env.PLURNK_SERVICE_PROMPT_BUDGET = "12.5";
+        assert.throws(
+            () => new Engine({ db, schemes: new SchemeRegistry() }),
+            /PLURNK_SERVICE_PROMPT_BUDGET must be a positive integer/,
+        );
+    } finally {
+        if (previous === undefined) delete process.env.PLURNK_SERVICE_PROMPT_BUDGET;
+        else process.env.PLURNK_SERVICE_PROMPT_BUDGET = previous;
         await db.close();
     }
 });

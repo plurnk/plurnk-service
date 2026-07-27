@@ -166,20 +166,15 @@ export const lastRx = async (db: Db, modelWorkerId: number, op: string): Promise
     return row?.rx ?? "";
 };
 
-// Pin the window partition for the demo/live tier's ACTIVE alias. A real model carries its window
-// as PLURNK_SERVICE_*_<alias> knobs in .env, and those SUFFIX knobs win over bare PLURNK_SERVICE_*
-// via scopeEnvToAlias — so a ceiling-pinning test that sets bare vars is silently overridden by the
-// model's real window (the budget-grind/-meta/floor-probe regression: turboderp's 35840 leaked
-// past a tight pin). Setting the ACTIVE alias's suffix wins over its own .env knobs; alias-agnostic,
-// so it holds when the demo model pivots (turboderp ↔ gbuild). Returns a restore fn.
-export const pinAliasPartition = (part: { CONTEXT_WINDOW?: string; REASONING?: string; COMPLETION?: string; SAFETY?: string }): (() => void) => {
+// Pin budget-related test configuration for the ACTIVE alias. The suffix wins
+// over ambient operator settings and remains alias-agnostic when the demo model pivots.
+export const pinAliasBudget = (part: { PROMPT_BUDGET?: string; REASONING?: string; COMPLETION?: string; SAFETY?: string }): (() => void) => {
     const alias = resolveActiveAlias(process.env)?.alias ?? "";
-    // CONTEXT_WINDOW is the provider's effective total-window cap; the reserves are provider-tier
-    // ABSOLUTES (positive — a zero reserve is unspellable by design, pin "1" for a nil slice);
-    // SAFETY stays core's. Pin only what a story needs:
-    // promptBudget = effective window − reasoning − completion − safety.
+    // PROMPT_BUDGET is virtual model-facing/grinder policy; it never changes provider physics
+    // or response settings. The reserves are provider-tier ABSOLUTES (positive — a zero reserve
+    // is unspellable by design, pin "1" for a nil slice); SAFETY stays core's.
     const entries: Array<readonly [string, string]> = ([
-        [`PLURNK_PROVIDERS_CONTEXT_WINDOW_${alias}`, part.CONTEXT_WINDOW],
+        [`PLURNK_SERVICE_PROMPT_BUDGET_${alias}`, part.PROMPT_BUDGET],
         [`PLURNK_PROVIDERS_REASONING_RESERVE_${alias}`, part.REASONING],
         [`PLURNK_PROVIDERS_COMPLETION_RESERVE_${alias}`, part.COMPLETION],
         [`PLURNK_SERVICE_SAFETY_${alias}`, part.SAFETY],

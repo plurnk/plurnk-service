@@ -17,8 +17,8 @@ export default class ProviderInstantiate {
     // env is process-stable for these fields.
     static #instances = new Map<string, Promise<Provider>>();
     static #registeredInstances = new Map<string, Provider>();
-    // #352 — provider handle → the alias name that produced it, so the service scopes its OWN
-    // per-alias partition knobs (PLURNK_SERVICE_*_<alias>) by the provider it's building a packet
+    // #352 — provider handle → the alias name that produced it, so the service scopes its own
+    // per-alias packet-policy knobs by the provider it's building a packet
     // for. Service-owned metadata about handles WE created; never a provider-contract field.
     static #aliasByProvider = new WeakMap<Provider, string>();
 

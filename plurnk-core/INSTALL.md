@@ -37,12 +37,11 @@ A bare flag is a signal: more than one component depends on it. A prefixed one i
 
 These are relationships *between* flags. Set them as a unit.
 
-- **The window partition is exact.** Providers expose
-  `effectiveWindow = min(PLURNK_PROVIDERS_CONTEXT_WINDOW, detected/catalog window)`;
-  `promptBudget = effectiveWindow − reasoningReserve − completionReserve − safety`.
-  `reasoningReserve + completionReserve` is the per-call generation envelope.
-  Percentage reserves derive from the effective window, while contradictory
-  absolute reserves fail hard.
+- **Provider capacity and PLURNK pressure are separate.** Providers report
+  physical context and response capacity. Core derives the natural input
+  budget from those facts. Optional `PLURNK_SERVICE_PROMPT_BUDGET_<alias>`
+  only tightens the model-facing gauge and grinder; it is never sent to the
+  provider and never changes generation settings.
 - **Reasoning capacity stays coupled on llama-server.**
   `PLURNK_PROVIDERS_REASONING_BUDGET_<alias>` and
   `PLURNK_PROVIDERS_REASONING_RESERVE_<alias>` must agree with the serving
@@ -77,9 +76,10 @@ Each mirrors a `# --- section ---` in the floor; consult the floor for exact def
 - **Providers** — the portable provider knobs and defaults are defined by
   `@plurnk/plurnk-providers/.env.defaults`; any provider knob may take an alias
   suffix that wins over the bare fallback.
-- **The window partition** —
+- **Provider capacity and prompt budget** —
   `PLURNK_PROVIDERS_CONTEXT_WINDOW`/`_REASONING_RESERVE`/`_COMPLETION_RESERVE`
-  plus `PLURNK_SERVICE_SAFETY` (see Couplings).
+  describe provider capacity. `PLURNK_SERVICE_PROMPT_BUDGET` applies optional
+  virtual pressure; `PLURNK_SERVICE_SAFETY` is the packing margin.
 - **Plugins** — bare `PLURNK_PLUGINS_TRUSTED_ONLY` (0/unset = load all installed; a value = `@plurnk/*` plus an allowlist).
 - **Semantic search** — `PLURNK_SERVICE_SEMANTIC_TOP_K` (markerless result count), `_SEMANTIC_CHUNK_TOKENS`/`_CHUNK_OVERLAP` (service-side chunking), `PLURNK_SERVICE_EMBED_DISABLE` (FTS-only), `PLURNK_MIMETYPES_EMBED_WORKERS` (the embedder's pool — mimetypes-owned).
 - **Schemes: http** — `PLURNK_SCHEMES_HTTP_FETCH_TIMEOUT`/`_SALVAGE_MIN_BODY_CHARS`/`_IDLE_TIMEOUT` (required on the HTML render path), optional Playwright/Chromium knobs.

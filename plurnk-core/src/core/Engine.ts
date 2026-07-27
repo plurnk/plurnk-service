@@ -439,9 +439,7 @@ export default class Engine {
     // turn, §tokenomics). Surfaced on loop.run + loop/terminated so clients render real
     // token/cost numbers. costUsd is the stored USD unit.
     // #345 — the client-facing budget denominator, ONE meaning on every surface: the prompt
-    // budget the packet actually lives under (effective window minus the partition reserves),
-    // the same number loop-usage stores per turn. providers.list advertised the raw KV and the
-    // client's gauge rendered a window the model can never fill.
+    // budget the packet actually lives under, including optional virtual pressure.
     // #522 — the PRIMARY worker of a turn's lineage: the no-parent root reached by walking
     // parent_worker_id up. A no-parent worker is its OWN primary (stamped on the primary's own
     // turns). Supplied on the first-party metadata channel alongside Worker-Id; the endpoint routes
@@ -1091,7 +1089,7 @@ export default class Engine {
             await this.#db.engine_close_turn.run({
                 id: turnId, status: 413, packet: JSON.stringify(hardPacket),
                 usage_prompt: 0, usage_completion: 0, usage_reasoning: 0, usage_cached: 0, usage_cost_usd: 0,
-                usage_prompt_budget: this.#packets.promptBudgetFor(provider), // #274 — the PROMPT BUDGET (window − reserves), even on a hard-413 turn: the gauge denominator the packet actually lives under
+                usage_prompt_budget: this.#packets.promptBudgetFor(provider), // #274 — the enforced model-facing budget, even on a hard-413 turn
                 finish_reason: "budget_hard_stop", model: provider.model, meta: "{}",
             });
             return { turnId, status: 413, statuses: [], fingerprint: "", budgetStruck: enforced.struck, budgetHardStop: true, steerStruck: false };
@@ -1102,13 +1100,9 @@ export default class Engine {
             this.#hardOverflowRecovery.delete(loopId);
         }
         const modelMessages = PacketWire.packetToWireMessages(requestPacket) as ChatMessage[];
-        // No decode cap. Our budget governs the TRANSMISSION packet (the grinder folds
-        // the input under the ceiling); the model's decode — reasoning + emission — is
-        // out of band, owned by the provider's own context window. Deriving a maxTokens
-        // from our budget conflated the two and guillotined a reasoning model's
-        // out-of-band reasoning as the packet filled (`ceiling - packet` → near-zero
-        // decode → finish=length mid-reasoning → no emission → strike spiral). The
-        // provider enforces its physical wall on its own.
+        // Packet pressure and provider generation are independent. The grinder governs
+        // only the request packet; maxTokens comes only from the provider envelope and
+        // never shrinks as the virtual prompt budget fills.
         let response: ProviderResponse;
         let railGrammar: string | undefined;
         // #249 — plugin attribution tags onto the per-turn generate() wire. Value is the
@@ -1306,7 +1300,7 @@ export default class Engine {
             usage_reasoning: usage.reasoning,
             usage_cached: usage.cached,
             usage_cost_usd: provider.calculateCost(usage), // §provider-surface-calculate-cost
-            usage_prompt_budget: this.#packets.promptBudgetFor(provider), // #274 — the PROMPT BUDGET (window − reserves): the raw n_ctx overstated usable room by the reserve total
+            usage_prompt_budget: this.#packets.promptBudgetFor(provider), // #274 — the enforced model-facing prompt budget
             finish_reason: finishReason,
             model,
             // #252 — opaque provider→client metadata passthrough (for example, the

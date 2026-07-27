@@ -354,9 +354,8 @@ test("a finish=length turn that emitted NOTHING — reasoning ran away — is le
 });
 
 test("SAFETY resolves PER ALIAS — the suffix wins over the bare fallback (#352, #507)", async () => {
-    // #507 — the envelope (window + reserves) is provider-owned and its per-alias resolution is
-    // the provider tier's (tested there). Core's per-alias surface is ONE knob: SAFETY, the ruler's
-    // packing margin. Driven through the REAL alias resolution: a Mock carries no provider→alias
+    // Provider capacity resolves in the provider tier. Core's safety margin also resolves per
+    // alias. Driven through the REAL alias resolution: a Mock carries no provider→alias
     // side-table entry, so #partitionFor falls back to resolveActiveAlias(process.env).alias.
     const db = await openMigrated();
     try {
@@ -380,6 +379,42 @@ test("SAFETY resolves PER ALIAS — the suffix wins over the bare fallback (#352
             keys.forEach((k, i) => { if (prev[i] === undefined) delete process.env[k]; else process.env[k] = prev[i]; });
         }
     } finally { await db.close(); }
+});
+
+test("virtual PROMPT_BUDGET resolves per alias without changing the provider envelope", async () => {
+    const db = await openMigrated();
+    try {
+        const { default: PacketBuilder } = await import("../../src/core/PacketBuilder.ts");
+        const { default: TelemetryChannel } = await import("../../src/core/TelemetryChannel.ts");
+        const telemetry = new TelemetryChannel({ db });
+        const keys = ["PLURNK_MODEL", "PLURNK_MODEL_rig", "PLURNK_SERVICE_PROMPT_BUDGET", "PLURNK_SERVICE_PROMPT_BUDGET_rig", "PLURNK_SERVICE_SAFETY"];
+        const prev = keys.map((key) => process.env[key]);
+        try {
+            process.env.PLURNK_SERVICE_SAFETY = "0";
+            process.env.PLURNK_SERVICE_PROMPT_BUDGET = "7000";
+            delete process.env.PLURNK_MODEL;
+            delete process.env.PLURNK_MODEL_rig;
+            delete process.env.PLURNK_SERVICE_PROMPT_BUDGET_rig;
+            const provider = mockAt(8192 - 2, [], 8192);
+            const bare = new PacketBuilder({ db, schemes: new SchemeRegistry(), telemetry, executors: () => undefined });
+            assert.equal(bare.promptBudgetFor(provider), 7000);
+            assert.equal(bare.maxTokensFor(provider), 2);
+
+            process.env.PLURNK_MODEL = "rig";
+            process.env.PLURNK_MODEL_rig = "openai/local.gguf";
+            process.env.PLURNK_SERVICE_PROMPT_BUDGET_rig = "4000";
+            const rig = new PacketBuilder({ db, schemes: new SchemeRegistry(), telemetry, executors: () => undefined });
+            assert.equal(rig.promptBudgetFor(provider), 4000);
+            assert.equal(rig.maxTokensFor(provider), 2, "virtual pressure never changes provider generation");
+        } finally {
+            keys.forEach((key, i) => {
+                if (prev[i] === undefined) delete process.env[key];
+                else process.env[key] = prev[i];
+            });
+        }
+    } finally {
+        await db.close();
+    }
 });
 
 test("the FIRST hard overflow is a RECOVERY TURN — steer minted, generate runs, strike counted; the SECOND terminates 413", async () => {

@@ -130,7 +130,7 @@ test("#472 contextWindowFromEnv: reads the new name, sheds CONTEXT_SIZE hard, nu
     );
 });
 
-test("scopeEnvToAlias: a caller-supplied knob list scopes CONSUMER vars (service window partition)", async () => {
+test("scopeEnvToAlias: a caller-supplied knob list scopes consumer-owned vars", async () => {
     const { scopeEnvToAlias } = await import("./env.ts");
     const SERVICE_KNOBS = ["PLURNK_SERVICE_MAX_TURNS", "PLURNK_SERVICE_LOOP_TIMEOUT", "PLURNK_SERVICE_EXEC_HOLD_MS", "PLURNK_SERVICE_SAFETY"];
     const env = {

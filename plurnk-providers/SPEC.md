@@ -48,12 +48,11 @@ unless the operator pins `PLURNK_PROVIDERS_CONTEXT_WINDOW`. A local probe
 failure degrades to `null` and emits one warning because a transient probe
 failure must not make a usable local endpoint unbootable.
 
-`contextWindow` is the effective total window. An operator value is a hard
+`contextWindow` is provider physics. An operator value is a hard physical
 ceiling: the provider reports `min(configured, detected/cataloged)`. When no
-natural value is knowable, the explicit value declares the window. Percentage
-reasoning and completion reserves derive from this effective window; an
-operator cap therefore constrains the complete request-plus-generation
-envelope rather than only the prompt.
+natural value is knowable, the explicit value declares the window. This knob
+never carries model-facing prompt policy or grinder pressure; those belong to
+the consumer.
 
 `countTokens` is synchronous and non-negative. The common fallback is a
 conservative chars/2 ruler and is announced once. `tokenize` exists only when

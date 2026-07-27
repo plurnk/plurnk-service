@@ -431,8 +431,8 @@ export default class Daemon {
                 const isActive = active !== null && active.alias === a.alias;
                 return {
                     alias: a.alias, provider: a.provider, model: a.model, active: isActive,
-                    // promptBudget = the EFFECTIVE prompt budget (window minus reserves, #345; named honestly #481) — the same
-                    // denominator loop-usage reports; known for the active alias, null elsewhere.
+                    // The same effective model-facing budget loop usage reports, including
+                    // optional virtual pressure; known for the active alias, null elsewhere.
                     promptBudget: isActive && this.#provider !== null ? this.#engine.promptBudgetFor(this.#provider) : null,
                 };
             }),
