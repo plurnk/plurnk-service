@@ -179,7 +179,11 @@ test("the turn-0 exemplar mirrors the REAL foisted survey — dynamic, not a sta
                 // DSL and framed PLAN → SEND. Not a frozen print: feed-as-turn-0, show-in-turn-1 are one act.
                 assert.match(content, /^<<PLAN:Initialize:PLAN/, "opens with the reasoning move");
                 assert.match(content, /<<FIND\(worker:\/\/\/\*\*\)::FIND/, "the real foisted survey, rendered back to DSL");
-                assert.match(content, /<<SEND\[102\]:Initialized:SEND$/, "closes with the progress signal");
+                assert.match(
+                    content,
+                    /<<SEND\[102\]:Next, address the prompt from the initialized context\.:SEND$/,
+                    "closes by stating the next action",
+                );
             } finally { ws.close(); }
         });
     } finally {
