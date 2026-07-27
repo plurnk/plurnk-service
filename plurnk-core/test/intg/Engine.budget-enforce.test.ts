@@ -11,7 +11,7 @@ import type { MockResponse } from "@plurnk/plurnk-providers";
 import type { PlurnkStatement, SendStatement } from "@plurnk/plurnk-grammar";
 import type { Db } from "../../src/core/Db.ts";
 import ProblemLog from "../../src/core/ProblemLog.ts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, seedEntryWithChannel } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, packetSection, seedEntryWithChannel } from "./_helpers.ts";
 
 const sendStmt = (status: number, body: string): SendStatement => ({
     op: "SEND", suffix: "", signal: status, target: null,
@@ -161,7 +161,7 @@ test("a DECLINED recovery abandons at 413 (budget_overflow) — the terminal tha
         // Sendable within the 4096 window, over the TINY policy ceiling: recovery turn granted;
         // the model continues without curing it; the second hard overflow is the abort.
         const result = await engine.runLoop({ provider: mockAt(TINY, [response([sendStmt(102, "carrying on")]), response([sendStmt(102, "carrying on")])]), workspaceId, workerId, loopId, messages: MESSAGES, maxTurns: 5 });
-        assert.equal(result.finalStatus, 413, "hard-stop abandons the loop at 413 Content Too Large");
+        assert.equal(result.result.status, 413, "hard-stop abandons the loop at 413 Content Too Large");
         assert.equal(result.reason, "budget_overflow", "abandonment reason is the budget, not a strike or max-turns");
     } finally { await db.close(); }
 });
@@ -174,7 +174,7 @@ test("a recovery turn that CONCLUDES is a legitimate 200 — finishing IS a way 
         const restore = pinSafety(4092); // budget = 4096−2−4092 = TINY; sendable to 4094
         try {
             const result = await engine.runLoop({ provider: mockAt(4094, okSends(1)), workspaceId, workerId, loopId, messages: MESSAGES, maxTurns: 5 });
-            assert.equal(result.finalStatus, 200, "the told model wrapped up — over-policy but done beats dead");
+            assert.equal(result.result.status, 200, "the told model wrapped up — over-policy but done beats dead");
         } finally { restore(); }
     } finally { await db.close(); }
 });
@@ -217,11 +217,10 @@ test("overflow is a terse op='error' log row (413) surfaced THIS turn as a LogCo
         await engine.runTurn({ provider: wideP, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 1 });
         const t2 = await engine.runTurn({ provider: tinyP, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 2 });
         const row = await db.test_get_packet.get<{ packet: string }>({ id: t2.turnId });
-        const packet = JSON.parse(row!.packet) as { telemetryErrors: Array<Record<string, unknown>> };
-        const evt = packet.telemetryErrors.find((e) => (e.position as { type?: string } | undefined)?.type === "log-coordinate" && e.status === 413);
-        assert.ok(evt, "the overflow surfaced THIS turn as a 413 LogCoordinate pointer");
-        assert.equal(evt!.folded, undefined, "no by-scheme 'folded' JSON — terseness");
-        assert.equal(evt!.layer, undefined, "no mechanism vocabulary — no 'layer'");
+        const packet = JSON.parse(row!.packet);
+        const errors = packetSection(packet, "errors");
+        assert.match(errors, /^\* 413 log:\/\/\/.+\/error$/m, "the overflow surfaced THIS turn as a 413 LogCoordinate pointer");
+        assert.doesNotMatch(errors, /folded|layer/, "no by-scheme mechanism vocabulary — terseness");
     } finally { await db.close(); }
 });
 
@@ -248,11 +247,9 @@ test("a huge ENGINE-WRITTEN row on the current turn is part of the newest bounda
             status_rx: 200, tokens: 0, state: "resolved", outcome: null, attrs: "{}",
         });
         const { default: PacketBuilder } = await import("../../src/core/PacketBuilder.ts");
-        const { default: TelemetryChannel } = await import("../../src/core/TelemetryChannel.ts");
-        const telemetry = new TelemetryChannel();
         // #507 — one builder; the ceiling pins on the PROVIDER (window − reserves): a wide probe
         // measures the open packet, then a provider pinned just under it forces the stage-2 fold.
-        const builder = new PacketBuilder({ db, schemes: new SchemeRegistry(), telemetry, problems: new ProblemLog(db), executors: () => undefined });
+        const builder = new PacketBuilder({ db, schemes: new SchemeRegistry(), problems: new ProblemLog(db), executors: () => undefined });
         const wideProbe = mockAt(999_998, [], 1_000_000);
         const args = { initialMessages: MESSAGES, requirements: "", workspaceId, workerId, loopId, currentTurnSeq: 2, provider: wideProbe, gitStatus: null };
         const open = await builder.buildRequestPacket(args);
@@ -277,9 +274,7 @@ test("the ceiling is the real window partition (window − reserves), no calibra
     const db = await openMigrated();
     try {
         const { default: PacketBuilder } = await import("../../src/core/PacketBuilder.ts");
-        const { default: TelemetryChannel } = await import("../../src/core/TelemetryChannel.ts");
-        const telemetry = new TelemetryChannel();
-        const b = new PacketBuilder({ db, schemes: new SchemeRegistry(), telemetry, problems: new ProblemLog(db), executors: () => undefined });
+        const b = new PacketBuilder({ db, schemes: new SchemeRegistry(), problems: new ProblemLog(db), executors: () => undefined });
         // #507 — the provider window drives; reserves 1+1 (parseReserve floor) → ceiling 9998.
         // No ratio: the model-facing measure is the chars/2 ruler, and comparing ruler-weight to
         // this real-token ceiling is the conservative bias (§tokenomics-agnostic-ruler).
@@ -301,8 +296,8 @@ test("the 413 row states the pressure law — fold history first, fetch within t
         await engine.runTurn({ provider: wideP, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 1 });
         const t2 = await engine.runTurn({ provider: tinyP, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 2 });
         const row = await db.test_get_packet.get<{ packet: string }>({ id: t2.turnId });
-        const packet = JSON.parse(row!.packet) as { telemetryErrors: Array<{ status?: number }> };
-        assert.ok(packet.telemetryErrors.find((e) => e.status === 413), "the overflow pointer surfaced (terse LogCoordinate)");
+        const packet = JSON.parse(row!.packet);
+        assert.match(packetSection(packet, "errors"), /^\* 413 log:\/\/\/.+\/error$/m, "the overflow pointer surfaced (terse LogCoordinate)");
         // The text lives in the error ROW the pointer names — what the model actually reads.
         const errRow = await db.test_error_rows_for_run.all<{ rx: string }>({ worker_id: workerId });
         const text = errRow.map((r) => r.rx).join(" ");
@@ -361,19 +356,17 @@ test("SAFETY resolves PER ALIAS — the suffix wins over the bare fallback (#352
     const db = await openMigrated();
     try {
         const { default: PacketBuilder } = await import("../../src/core/PacketBuilder.ts");
-        const { default: TelemetryChannel } = await import("../../src/core/TelemetryChannel.ts");
-        const telemetry = new TelemetryChannel();
         const keys = ["PLURNK_MODEL", "PLURNK_MODEL_rig", "PLURNK_SERVICE_SAFETY", "PLURNK_SERVICE_SAFETY_rig"];
         const prev = keys.map((k) => process.env[k]);
         try {
             process.env.PLURNK_SERVICE_SAFETY = "1024";
             delete process.env.PLURNK_MODEL; delete process.env.PLURNK_MODEL_rig; delete process.env.PLURNK_SERVICE_SAFETY_rig;
-            const bare = new PacketBuilder({ db, schemes: new SchemeRegistry(), telemetry, problems: new ProblemLog(db), executors: () => undefined });
+            const bare = new PacketBuilder({ db, schemes: new SchemeRegistry(), problems: new ProblemLog(db), executors: () => undefined });
             const p1 = mockAt(8192 - 2, [], 8192); // rr=1, cr=1
             assert.equal(bare.promptBudgetFor(p1), 8192 - 1 - 1 - 1024, "no alias → the bare SAFETY margin applies");
             process.env.PLURNK_MODEL = "rig"; process.env.PLURNK_MODEL_rig = "openai/local.gguf";
             process.env.PLURNK_SERVICE_SAFETY_rig = "64";
-            const rig = new PacketBuilder({ db, schemes: new SchemeRegistry(), telemetry, problems: new ProblemLog(db), executors: () => undefined });
+            const rig = new PacketBuilder({ db, schemes: new SchemeRegistry(), problems: new ProblemLog(db), executors: () => undefined });
             const p2 = mockAt(8192 - 2, [], 8192);
             assert.equal(rig.promptBudgetFor(p2), 8192 - 1 - 1 - 64, "the active alias's suffixed SAFETY wins over bare");
         } finally {
@@ -386,8 +379,6 @@ test("virtual PROMPT_BUDGET resolves per alias without changing the provider env
     const db = await openMigrated();
     try {
         const { default: PacketBuilder } = await import("../../src/core/PacketBuilder.ts");
-        const { default: TelemetryChannel } = await import("../../src/core/TelemetryChannel.ts");
-        const telemetry = new TelemetryChannel();
         const keys = ["PLURNK_MODEL", "PLURNK_MODEL_rig", "PLURNK_SERVICE_PROMPT_BUDGET", "PLURNK_SERVICE_PROMPT_BUDGET_rig", "PLURNK_SERVICE_SAFETY"];
         const prev = keys.map((key) => process.env[key]);
         try {
@@ -397,14 +388,14 @@ test("virtual PROMPT_BUDGET resolves per alias without changing the provider env
             delete process.env.PLURNK_MODEL_rig;
             delete process.env.PLURNK_SERVICE_PROMPT_BUDGET_rig;
             const provider = mockAt(8192 - 2, [], 8192);
-            const bare = new PacketBuilder({ db, schemes: new SchemeRegistry(), telemetry, problems: new ProblemLog(db), executors: () => undefined });
+            const bare = new PacketBuilder({ db, schemes: new SchemeRegistry(), problems: new ProblemLog(db), executors: () => undefined });
             assert.equal(bare.promptBudgetFor(provider), 7000);
             assert.equal(bare.maxTokensFor(provider), 2);
 
             process.env.PLURNK_MODEL = "rig";
             process.env.PLURNK_MODEL_rig = "openai/local.gguf";
             process.env.PLURNK_SERVICE_PROMPT_BUDGET_rig = "4000";
-            const rig = new PacketBuilder({ db, schemes: new SchemeRegistry(), telemetry, problems: new ProblemLog(db), executors: () => undefined });
+            const rig = new PacketBuilder({ db, schemes: new SchemeRegistry(), problems: new ProblemLog(db), executors: () => undefined });
             assert.equal(rig.promptBudgetFor(provider), 4000);
             assert.equal(rig.maxTokensFor(provider), 2, "virtual pressure never changes provider generation");
         } finally {
@@ -431,7 +422,7 @@ test("the FIRST hard overflow is a RECOVERY TURN — steer minted, generate runs
         const mock = mockAt(199_998, [response([sendStmt(102, "still working")]), response([sendStmt(102, "still working")]), response([sendStmt(102, "still working")])], 200_000);
         let result: Awaited<ReturnType<Engine["runLoop"]>>;
         try { result = await engine.runLoop({ provider: mock, workspaceId, workerId, loopId, messages: MESSAGES, maxTurns: 5 }); } finally { restore(); }
-        assert.equal(result.finalStatus, 413, "still terminates 413 — the model was told and (structurally) could not comply");
+        assert.equal(result.result.status, 413, "still terminates 413 — the model was told and (structurally) could not comply");
         assert.equal(result.reason, "budget_overflow");
         assert.equal(mock.remaining, 2, "generate ran EXACTLY once — the recovery turn happened; the second overflow skipped the LLM");
         const errs = await db.test_error_rows_for_run.all<{ rx: string }>({ worker_id: workerId });
@@ -452,7 +443,7 @@ test("physically unsendable → 413 IMMEDIATELY, no recovery generate — physic
         // the packet cannot reach the model at all, and physics does not negotiate.
         const mock = mockAt(TINY, okSends(3), 4);
         const result = await engine.runLoop({ provider: mock, workspaceId, workerId, loopId, messages: MESSAGES, maxTurns: 5 });
-        assert.equal(result.finalStatus, 413);
+        assert.equal(result.result.status, 413);
         assert.equal(mock.remaining, 3, "generate never ran — an unsendable packet earns no recovery turn");
     } finally { await db.close(); }
 });

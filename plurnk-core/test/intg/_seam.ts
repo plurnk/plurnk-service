@@ -11,6 +11,7 @@ import type { PlurnkStatement } from "@plurnk/plurnk-grammar";
 import Dsl from "./dsl.ts";
 import type Daemon from "../../src/server/Daemon.ts";
 import type { ClientEnvelope } from "../../src/server/envelope.ts";
+import { OperationFailureError } from "../../src/core/results.ts";
 
 type Listener = (data: string) => void;
 
@@ -58,6 +59,10 @@ export default class SeamSocket {
             (result) => { if (!this.#closed) this.#emit("message", JSON.stringify({ jsonrpc: "2.0", id, result })); },
             (err: unknown) => {
                 if (this.#closed) return;
+                if (err instanceof OperationFailureError) {
+                    this.#emit("message", JSON.stringify({ jsonrpc: "2.0", id, result: err.result }));
+                    return;
+                }
                 const message = err instanceof Error ? err.message : String(err);
                 this.#emit("message", JSON.stringify({ jsonrpc: "2.0", id, error: { code: -32603, message } }));
             },
@@ -97,22 +102,15 @@ export default class SeamSocket {
                 const s = this.#attached();
                 if (typeof p.prompt !== "string" || p.prompt.length === 0) throw new Error("loop.run requires non-empty params.prompt");
                 if (s.modelWorkerId === null) s.modelWorkerId = await daemon.ensureModelWorker(s.workspaceId);
-                let run;
-                try {
-                    run = await daemon.runLoop({
-                        workspaceId: s.workspaceId, workerId: s.modelWorkerId, prompt: p.prompt,
-                        ...(p.maxTurns !== undefined ? { maxTurns: p.maxTurns as number } : {}),
-                        ...(p.flags !== undefined ? { flags: p.flags as { auto?: boolean } } : {}),
-                        ...(p.openPaths !== undefined ? { openPaths: p.openPaths as string[] } : {}),
-                        ...(p.alias !== undefined ? { alias: p.alias as string } : {}),
-                        ...(p.model !== undefined ? { model: p.model as string } : {}),
-                    });
-                } catch (err) {
-                    // no-provider is a 501 RESULT (the client acts on status), never an error envelope.
-                    if (err instanceof Error && /no provider configured/.test(err.message)) return { status: 501, error: err.message };
-                    throw err;
-                }
-                return { ...run, modelWorkerId: s.modelWorkerId, finalStatus: 100, hitMaxTurns: false, turnIds: [] };
+                const run = await daemon.runLoop({
+                    workspaceId: s.workspaceId, workerId: s.modelWorkerId, prompt: p.prompt,
+                    ...(p.maxTurns !== undefined ? { maxTurns: p.maxTurns as number } : {}),
+                    ...(p.flags !== undefined ? { flags: p.flags as { auto?: boolean } } : {}),
+                    ...(p.openPaths !== undefined ? { openPaths: p.openPaths as string[] } : {}),
+                    ...(p.alias !== undefined ? { alias: p.alias as string } : {}),
+                    ...(p.model !== undefined ? { model: p.model as string } : {}),
+                });
+                return { ...run, modelWorkerId: s.modelWorkerId };
             }
             case "loop.inject": {
                 // inject speaks to an EXISTING model worker; the seam's runLoop injects into a live
@@ -127,7 +125,7 @@ export default class SeamSocket {
                     ...(p.alias !== undefined ? { alias: p.alias as string } : {}),
                     ...(p.model !== undefined ? { model: p.model as string } : {}),
                 });
-                return { ...run, modelWorkerId: s.modelWorkerId, finalStatus: 100 };
+                return { ...run, modelWorkerId: s.modelWorkerId };
             }
             case "loop.cancel": {
                 const s = this.#attached();

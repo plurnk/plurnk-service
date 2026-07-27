@@ -252,7 +252,7 @@ test("Engine.runTurn: zero-ops turn completes at status 422; failure is recorded
     } finally { await db.close(); }
 });
 
-test("Engine.runTurn: empty-ops turn does NOT surface telemetry — gamification policy", async () => {
+test("Engine.runTurn: empty-ops turn does not leak strike bookkeeping as a notice", async () => {
     // Per SPEC §telemetry gamification policy: zero ops is the model's emission
     // choice, not an error to report. Engine still treats it as a struck
     // turn internally (strike accounting), but no model-facing telemetry.
@@ -268,11 +268,9 @@ test("Engine.runTurn: empty-ops turn does NOT surface telemetry — gamification
         await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
         const t2 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
         const row = await db.test_get_packet.get<{ packet: string }>({ id: t2.turnId });
-        const packet = JSON.parse(row?.packet ?? "{}") as {
-            telemetryErrors: Array<{ kind: string }>;
-        };
-        assert.equal(packet.telemetryErrors.filter((e) => e.kind === "no_ops").length, 0);
-        assert.equal(packet.telemetryErrors.filter((e) => e.kind === "strike").length, 0);
+        const packet = JSON.parse(row?.packet ?? "{}");
+        const notices = packetSection(packet, "notices");
+        assert.doesNotMatch(notices, /no_ops|strike/);
     } finally { await db.close(); }
 });
 
@@ -282,7 +280,7 @@ test("Engine.runTurn: empty-ops turn does NOT surface telemetry — gamification
 // Cap dispatches at the configured limit; overflow ops are silently dropped
 // (no per-op log rows, to keep forensics from drowning in identical refusals)
 // and a single max_commands_exceeded telemetry entry tells the model next turn.
-test("Engine.runTurn: PLURNK_SERVICE_MAX_COMMANDS caps dispatched ops; overflow drops + telemetry signals", async () => {
+test("Engine.runTurn: PLURNK_SERVICE_MAX_COMMANDS caps dispatched ops; overflow drops + a durable failure pointer", async () => {
     const original = process.env.PLURNK_SERVICE_MAX_COMMANDS;
     process.env.PLURNK_SERVICE_MAX_COMMANDS = "3";
     try {
@@ -317,13 +315,11 @@ test("Engine.runTurn: PLURNK_SERVICE_MAX_COMMANDS caps dispatched ops; overflow 
             // surfaced via its derived LogCoordinate pointer. The emitted/dropped counts live on the row.
             const t2 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
             const row = await db.test_get_packet.get<{ packet: string }>({ id: t2.turnId });
-            const packet = JSON.parse(row?.packet ?? "{}") as {
-                telemetryErrors: Array<{ status?: number; position?: { type?: string } }>;
-            };
-            const capErrors = packet.telemetryErrors.filter((e) => e.status === 429 && e.position?.type === "log-coordinate");
+            const packet = JSON.parse(row?.packet ?? "{}");
+            const capErrors = packetSection(packet, "errors").split("\n")
+                .filter((line) => /^\* 429 log:\/\/\/.+\/error$/.test(line));
             assert.equal(capErrors.length, 1, "exactly one Max Commands Exceeded (429) error pointer from turn 1");
-            // `cap` field removed — engine bookkeeping per gamification policy.
-            assert.equal((capErrors[0] as { cap?: number }).cap, undefined);
+            assert.doesNotMatch(capErrors[0]!, /cap/, "engine bookkeeping does not leak into the pointer");
         } finally { await db.close(); }
     } finally {
         if (original === undefined) delete process.env.PLURNK_SERVICE_MAX_COMMANDS;
@@ -360,8 +356,8 @@ test("Engine.runTurn: PLURNK_SERVICE_MAX_COMMANDS=-1 (default) leaves the op cei
             // Next packet carries NO max_commands_exceeded — the ceiling never engaged.
             const t2 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
             const row = await db.test_get_packet.get<{ packet: string }>({ id: t2.turnId });
-            const packet = JSON.parse(row?.packet ?? "{}") as { telemetryErrors: Array<{ status?: number }> };
-            assert.equal(packet.telemetryErrors.filter((e) => e.status === 429).length, 0, "no Max Commands Exceeded when off");
+            const packet = JSON.parse(row?.packet ?? "{}");
+            assert.doesNotMatch(packetSection(packet, "errors"), /^\* 429 /m, "no Max Commands Exceeded when off");
         } finally { await db.close(); }
     } finally {
         if (original === undefined) delete process.env.PLURNK_SERVICE_MAX_COMMANDS;
@@ -383,7 +379,7 @@ test("Engine.runLoop: hitting maxTurns terminates the loop at 429 (max_turns)", 
         const result = await engine.runLoop({ provider, workspaceId, workerId, loopId, messages: [], maxTurns: 3 });
         assert.equal(result.hitMaxTurns, true);
         assert.equal(result.reason, "max_turns");
-        assert.equal(result.finalStatus, 429, "the turn ceiling terminates the loop at 429 Too Many Requests [§loop-terminals]");
+        assert.equal(result.result.status, 429, "the turn ceiling terminates the loop at 429 Too Many Requests [§loop-terminals]");
     } finally { await db.close(); }
 });
 
@@ -405,10 +401,8 @@ test("Engine.runLoop: sudden_death is engine-internal — NOT surfaced to model"
 
         const turnHadSuddenDeath = await Promise.all(result.turnIds.map(async (id) => {
             const row = await db.test_get_packet.get<{ packet: string }>({ id });
-            const packet = JSON.parse(row?.packet ?? "{}") as {
-                telemetryErrors: Array<{ kind: string }>;
-            };
-            return packet.telemetryErrors.some((e) => e.kind === "sudden_death");
+            const packet = JSON.parse(row?.packet ?? "{}");
+            return packetSection(packet, "notices").includes("sudden_death");
         }));
         // Zero turns should carry sudden_death telemetry under gamification policy.
         assert.deepEqual(turnHadSuddenDeath, [false, false, false, false, false]);
@@ -436,7 +430,7 @@ test("Engine.runLoop: three consecutive hard failures abandon at 500 with strike
         const result = await engine.runLoop({
             provider, workspaceId, workerId, loopId, messages: [], maxTurns: 10, maxStrikes: 3,
         });
-        assert.equal(result.finalStatus, 500, "distinct hard failures abandon at 500 Internal Server Error");
+        assert.equal(result.result.status, 500, "distinct hard failures abandon at 500 Internal Server Error");
         assert.equal(result.reason, "strike_threshold");
         assert.equal(result.hitMaxTurns, false);
         assert.equal(result.turnIds.length, 3, "abandoned on the 3rd consecutive struck turn");
@@ -470,7 +464,7 @@ test("Engine.runLoop: soft failures (404) do NOT accumulate strikes", async () =
         const result = await engine.runLoop({
             provider, workspaceId, workerId, loopId, messages: [], maxTurns: 10, maxStrikes: 2,
         });
-        assert.equal(result.finalStatus, 200);
+        assert.equal(result.result.status, 200);
         assert.equal(result.reason, "external");
         assert.equal(result.turnIds.length, 5); // 4 soft-404 read turns (SEND[102]) + 1 clean terminal
     } finally { await db.close(); }
@@ -504,7 +498,7 @@ test("Engine.runLoop: clean turn between hard failures resets the streak", async
         const result = await engine.runLoop({
             provider, workspaceId, workerId, loopId, messages: [], maxTurns: 10, maxStrikes: 2,
         });
-        assert.equal(result.finalStatus, 500, "distinct hard failures → 500");
+        assert.equal(result.result.status, 500, "distinct hard failures → 500");
         assert.equal(result.reason, "strike_threshold");
         assert.equal(result.turnIds.length, 4, "clean turn 2 reset streak; abandon fired on turn 4");
     } finally { await db.close(); }
@@ -521,7 +515,7 @@ test("Engine.runLoop: no_ops turn counts as a hard strike", async () => {
         const result = await engine.runLoop({
             provider, workspaceId, workerId, loopId, messages: [], maxTurns: 10, maxStrikes: 2,
         });
-        assert.equal(result.finalStatus, 500, "no-op strikes (no cycle) → 500");
+        assert.equal(result.result.status, 500, "no-op strikes (no cycle) → 500");
         assert.equal(result.reason, "strike_threshold");
         assert.equal(result.turnIds.length, 2);
     } finally { await db.close(); }
@@ -550,14 +544,14 @@ test("Engine.runLoop: strike is engine-internal — model sees action_failure bu
         const result = await engine.runLoop({
             provider, workspaceId, workerId, loopId, messages: [], maxTurns: 10, maxStrikes: 5,
         });
-        assert.equal(result.finalStatus, 200);
+        assert.equal(result.result.status, 200);
         const t2 = await db.test_get_packet.get<{ packet: string }>({ id: result.turnIds[1] });
-        const t2packet = JSON.parse(t2?.packet ?? "{}") as { telemetryErrors: Array<{ status?: number; position?: { type?: string } }> };
-        const errors = t2packet.telemetryErrors;
+        const t2packet = JSON.parse(t2?.packet ?? "{}");
+        const errors = packetSection(t2packet, "errors");
         // The 403 action failure DOES surface (a real error that happened) as a LogCoordinate pointer.
-        assert.ok(errors.find((e) => e.status === 403 && e.position?.type === "log-coordinate"), "the 403 action failure surfaces as a log-coordinate pointer");
+        assert.match(errors, /^\* 403 log:\/\/\/.+\/EDIT$/m, "the 403 action failure surfaces as a log-coordinate pointer");
         // The strike count does NOT — every surfaced error is a real log-row failure; gamification never leaks.
-        assert.ok(errors.every((e) => e.position?.type === "log-coordinate"), "strike accounting stays engine-internal — only real failures reach the packet");
+        assert.doesNotMatch(packetSection(t2packet, "notices"), /strike/, "strike accounting stays engine-internal");
     } finally { await db.close(); }
 });
 
@@ -577,7 +571,7 @@ test("Engine.runLoop: 3 identical period-1 turns trip cycle → strikes accumula
         const result = await engine.runLoop({
             provider, workspaceId, workerId, loopId, messages: [], maxTurns: 20, maxStrikes: 3, minCycles: 3, maxCyclePeriod: 4,
         });
-        assert.equal(result.finalStatus, 508, "cycle-driven strike → 508 Loop Detected");
+        assert.equal(result.result.status, 508, "cycle-driven strike → 508 Loop Detected");
         assert.equal(result.reason, "strike_threshold");
         assert.equal(result.turnIds.length, 5, "cycle fires on turn 3; 3 consecutive cycle strikes (3, 4, 5) abandon");
     } finally { await db.close(); }
@@ -600,7 +594,7 @@ test("Engine.runLoop: varied per-turn fingerprints don't trip cycle detection", 
         const result = await engine.runLoop({
             provider, workspaceId, workerId, loopId, messages: [], maxTurns: 10, maxStrikes: 2, minCycles: 3, maxCyclePeriod: 4,
         });
-        assert.equal(result.finalStatus, 200);
+        assert.equal(result.result.status, 200);
         assert.equal(result.turnIds.length, 5);
     } finally { await db.close(); }
 });
@@ -629,7 +623,7 @@ test("Engine.runLoop: period-2 alternating cycle detected after 6 turns", async 
         const result = await engine.runLoop({
             provider, workspaceId, workerId, loopId, messages: [], maxTurns: 20, maxStrikes: 2, minCycles: 3, maxCyclePeriod: 4,
         });
-        assert.equal(result.finalStatus, 508, "period-2 cycle-driven strike → 508 Loop Detected");
+        assert.equal(result.result.status, 508, "period-2 cycle-driven strike → 508 Loop Detected");
         assert.equal(result.reason, "strike_threshold");
         assert.ok(result.turnIds.length >= 6 && result.turnIds.length <= 8, `period-2 cycle abandons in the 7th-8th turn (got ${result.turnIds.length})`);
     } finally { await db.close(); }
@@ -650,13 +644,10 @@ test("Engine.runLoop: cycle detection is internal — bumps turnErrors, NO model
             provider, workspaceId, workerId, loopId, messages: [], maxTurns: 20, maxStrikes: 10, minCycles: 3, maxCyclePeriod: 4,
         });
         const t4 = await db.test_get_packet.get<{ packet: string }>({ id: result.turnIds[3] });
-        const packet = JSON.parse(t4?.packet ?? "{}") as {
-            telemetryErrors: Array<{ kind: string }>;
-        };
+        const packet = JSON.parse(t4?.packet ?? "{}");
         // None of the engine-bookkeeping kinds surface.
         for (const kind of ["cycle", "strike", "sudden_death", "no_ops"]) {
-            assert.equal(packet.telemetryErrors.find((e) => e.kind === kind), undefined,
-                `${kind} is engine bookkeeping per gamification policy`);
+            assert.equal(packetSection(packet, "notices").includes(kind), false, `${kind} is engine bookkeeping per gamification policy`);
         }
     } finally { await db.close(); }
 });
@@ -680,20 +671,16 @@ test("Engine.runLoop: sudden_death never surfaces to model", async () => {
         const result = await engine.runLoop({
             provider, workspaceId, workerId, loopId, messages: [], maxTurns: 5, maxStrikes: 2,
         });
-        assert.equal(result.finalStatus, 200);
+        assert.equal(result.result.status, 200);
         for (const id of result.turnIds) {
             const row = await db.test_get_packet.get<{ packet: string }>({ id });
-            const packet = JSON.parse(row?.packet ?? "{}") as {
-                telemetryErrors: Array<{ kind: string }>;
-            };
-            assert.equal(packet.telemetryErrors.filter((e) => e.kind === "sudden_death").length, 0);
+            const packet = JSON.parse(row?.packet ?? "{}");
+            assert.equal(packetSection(packet, "notices").includes("sudden_death"), false);
         }
     } finally { await db.close(); }
 });
 
-test("Engine.runTurn: telemetry buffer drains — failure shows once, then clears", async () => {
-    // Use action_failure (a model-facing kind) to verify drain semantics:
-    // it surfaces on the next packet, then is gone on the one after.
+test("Engine.runTurn: the durable failure projection shows once, then ages out", async () => {
     const { db, engine, workspaceId, workerId, loopId } = await setup();
     try {
         const denied = (): EditStatement => ({
@@ -714,10 +701,10 @@ test("Engine.runTurn: telemetry buffer drains — failure shows once, then clear
         const t3 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
         const get403s = async (turnId: number): Promise<number[]> => {
             const row = await db.test_get_packet.get<{ packet: string }>({ id: turnId });
-            const packet = JSON.parse(row?.packet ?? "{}") as {
-                telemetryErrors: Array<{ status?: number; position?: { type?: string } }>;
-            };
-            return packet.telemetryErrors.filter((e) => e.position?.type === "log-coordinate" && e.status === 403).map((e) => e.status!);
+            const packet = JSON.parse(row?.packet ?? "{}");
+            return packetSection(packet, "errors").split("\n")
+                .filter((line) => /^\* 403 log:\/\/\//.test(line))
+                .map(() => 403);
         };
         // The errors section is a recency window (current + immediately-prior turn), so a failure
         // surfaces once and ages out — same observable as the old drain, now log-derived.
@@ -871,10 +858,10 @@ test("Engine.runTurn: packet.system.log JSON rx body is parsed (mimetype_rx=appl
     } finally { await db.close(); }
 });
 
-// SPEC §telemetry — action-bound failures mirror into next packet's telemetry.errors[].
+// Action-bound failures project into the next packet's Errors section.
 // Task #49.
 
-test("Engine.runTurn: telemetry.errors empty on first turn", async () => {
+test("Engine.runTurn: Errors is empty on a clean first turn", async () => {
     const { db, engine, workspaceId, workerId, loopId } = await setup();
     try {
         const provider = new Mock({
@@ -883,12 +870,12 @@ test("Engine.runTurn: telemetry.errors empty on first turn", async () => {
         });
         const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
         const row = await db.test_get_packet.get<{ packet: string }>({ id: result.turnId });
-        const packet = JSON.parse(row?.packet ?? "{}") as { telemetryErrors: object[] };
-        assert.deepEqual(packet.telemetryErrors, []);
+        const packet = JSON.parse(row?.packet ?? "{}");
+        assert.equal(packetSection(packet, "errors"), "");
     } finally { await db.close(); }
 });
 
-test("Engine.runTurn: previous-turn 403 (writableBy denial) surfaces in next packet's telemetry.errors[]", async () => {
+test("Engine.runTurn: previous-turn 403 surfaces in the next packet's Errors section", async () => {
     const { db, engine, workspaceId, workerId, loopId } = await setup();
     try {
         // Model attempts to EDIT sealed:/// — denied 403 (writableBy=['plurnk']).
@@ -907,22 +894,16 @@ test("Engine.runTurn: previous-turn 403 (writableBy denial) surfaces in next pac
         await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
         const t2 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
         const row = await db.test_get_packet.get<{ packet: string }>({ id: t2.turnId });
-        const packet = JSON.parse(row?.packet ?? "{}") as {
-            telemetryErrors: Array<{ status: number; position: { type: string; coordinate: string } }>;
-        };
-        assert.equal(packet.telemetryErrors.length, 1, "1 failure mirrored from turn 1");
-        const [err] = packet.telemetryErrors;
-        assert.equal(err.position.type, "log-coordinate", "a LogCoordinate pointer, not a JSON blob");
+        const packet = JSON.parse(row?.packet ?? "{}");
         // §log-row-self-explains: the pointer targets the OP ROW — the row carries its own
         // failure message on its meta line, so the pointer leads to a record that states its why.
         // Turn-as-container, 1-based: model exemplar 1/1/1, prompt EDIT 1/1/2, auto-READ 1/1/3;
         // the model's denied EDIT is 1/1/4.
-        assert.equal(err.position.coordinate, "1/1/4/EDIT", "the pointer targets the failing op row itself");
-        assert.equal(err.status, 403);
+        assert.equal(packetSection(packet, "errors"), "* 403 log:///1/1/4/EDIT", "the pointer targets the failing op row itself");
     } finally { await db.close(); }
 });
 
-test("Engine.runTurn: telemetry.errors only includes IMMEDIATELY previous turn (not older)", async () => {
+test("Engine.runTurn: Errors includes only the immediately previous turn", async () => {
     const { db, engine, workspaceId, workerId, loopId } = await setup();
     try {
         const denied: EditStatement = {
@@ -942,8 +923,8 @@ test("Engine.runTurn: telemetry.errors only includes IMMEDIATELY previous turn (
         await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });   // t2: clean
         const t3 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
         const row = await db.test_get_packet.get<{ packet: string }>({ id: t3.turnId });
-        const packet = JSON.parse(row?.packet ?? "{}") as { telemetryErrors: object[] };
-        assert.deepEqual(packet.telemetryErrors, [], "t3 mirrors t2 only (clean); t1's failure stays in log:///, off-screen");
+        const packet = JSON.parse(row?.packet ?? "{}");
+        assert.equal(packetSection(packet, "errors"), "", "t3 mirrors t2 only (clean); t1's failure stays in log:///, off-screen");
     } finally { await db.close(); }
 });
 

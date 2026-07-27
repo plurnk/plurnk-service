@@ -1,7 +1,8 @@
 import test from "node:test";
 import { strict as assert } from "node:assert";
 import { APICallError } from "ai";
-import { ProviderError, classifyProviderError, toProviderError, providerSource } from "./telemetry.ts";
+import { ProviderError, classifyProviderError, toProviderError } from "./errors.ts";
+import { providerSource } from "./notices.ts";
 
 const apiError = (statusCode: number, responseBody = "body") => new APICallError({
     message: `request failed (${statusCode})`,
@@ -11,7 +12,6 @@ const apiError = (statusCode: number, responseBody = "body") => new APICallError
     responseBody,
 });
 
-// Schema pattern for TelemetryEvent.source (from grammar's TelemetryEvent.json).
 const SOURCE_PATTERN = /^[a-z]+(:[a-z][a-z0-9-]*)?$/;
 
 test("providerSource produces a schema-valid colon-namespaced source", () => {
@@ -45,12 +45,17 @@ test("classifyProviderError treats non-HTTP errors as network_failure", () => {
     assert.equal(classifyProviderError(timeout).kind, "network_failure");
 });
 
-test("ProviderError.toTelemetryEvent emits the canonical envelope", () => {
+test("ProviderError carries a validated RFC 9457 Problem Details object", () => {
     const e = new ProviderError("provider:openai", "rate_limit", "OpenAI 429 - slow down", { status: 429 });
-    const ev = e.toTelemetryEvent();
-    assert.deepEqual(ev, { source: "provider:openai", kind: "rate_limit", message: "OpenAI 429 - slow down", position: null });
-    assert.match(ev.source, SOURCE_PATTERN);
-    assert.ok(e instanceof Error);   // still catchable as a plain Error
+    assert.deepEqual(e.problem, {
+        type: "https://problems.plurnk.dev/provider/openai/rate-limit",
+        title: "Rate limit",
+        status: 429,
+        detail: "OpenAI 429 - slow down",
+        providerKind: "rate_limit",
+    });
+    assert.match(e.source, SOURCE_PATTERN);
+    assert.ok(e instanceof Error);
     assert.equal(e.status, 429);
 });
 

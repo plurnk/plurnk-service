@@ -5,6 +5,23 @@ import type {
 
 export type { EntryResult, ProblemDetails, ProposalResult, PassthroughResult, SchemeResult, SchemeResultBase };
 
+export class OperationFailureError extends Error {
+    readonly result: SchemeResult & { readonly problem: ProblemDetails };
+
+    constructor(result: SchemeResult, options: { cause?: unknown } = {}) {
+        const checked = _Results.assert(result);
+        if (!_Results.isErrorStatus(checked.status) || checked.problem === undefined) {
+            throw new TypeError("OperationFailureError requires a failed operation result");
+        }
+        super(
+            checked.problem.detail,
+            options.cause !== undefined ? { cause: options.cause } : undefined,
+        );
+        this.name = "OperationFailureError";
+        this.result = checked as SchemeResult & { readonly problem: ProblemDetails };
+    }
+}
+
 export default class Results {
     static isEntryResult(r: SchemeResult): r is EntryResult { return _Results.isEntry(r); }
     static isProposalResult(r: SchemeResult): r is ProposalResult { return _Results.isProposal(r); }

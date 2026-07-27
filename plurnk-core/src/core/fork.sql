@@ -21,13 +21,25 @@ RETURNING id;
 SELECT COUNT(*) AS n FROM workers WHERE parent_worker_id = $parent_worker_id AND name LIKE $name_prefix;
 
 -- PREP: fork_get_loops
-SELECT id, sequence, status, prompt, flags
+SELECT id, sequence, status, prompt, flags, terminal_result
 FROM loops WHERE worker_id = $worker_id ORDER BY id;
 
 -- PREP: fork_insert_loop
-INSERT INTO loops (worker_id, sequence, status, prompt, flags)
-VALUES ($worker_id, $sequence, $status, $prompt, $flags)
+INSERT INTO loops (worker_id, sequence, status, prompt, flags, terminal_result)
+VALUES ($worker_id, $sequence, $status, $prompt, $flags, $terminal_result)
 RETURNING id;
+
+-- PREP: fork_reidentify_loop_result
+-- A forked loop is a new durable resource. Success results need no instance;
+-- failure results identify the branch loop rather than the source row.
+UPDATE loops
+SET terminal_result = json_set(
+    terminal_result,
+    '$.problem.instance',
+    'loop:///' || id
+)
+WHERE id = $loop_id
+  AND json_type(terminal_result, '$.problem') = 'object';
 
 -- PREP: fork_get_turns
 -- All turns across the worker's loops, in order — loop_id is remapped by the caller.

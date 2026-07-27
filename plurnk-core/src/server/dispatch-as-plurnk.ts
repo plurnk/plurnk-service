@@ -11,6 +11,7 @@ import type { Db } from "../core/Db.ts";
 import type Engine from "../core/Engine.ts";
 import Envelope from "./envelope.ts";
 import ClientTurn from "./clientTurn.ts";
+import Results, { OperationFailureError } from "../core/results.ts";
 
 export default class DispatchAsPlurnk {
     static async dispatch(engine: Engine, db: Db, workspaceId: number, statements: PlurnkStatement[]): Promise<void> {
@@ -26,13 +27,21 @@ export default class DispatchAsPlurnk {
                     sequence: sequence++, origin: "plurnk",
                 });
                 if (result.status >= 400) {
-                    throw new Error(`plurnk actor ${statement.op} failed with status ${result.status}`);
+                    throw new OperationFailureError(result);
                 }
             }
-            await Envelope.closeClientLoop(db, loopId, 200);
+            await Envelope.closeClientLoop(db, loopId, { status: 200 });
         } catch (cause) {
+            const failure = cause instanceof OperationFailureError
+                ? cause.result
+                : Results.failure(
+                    "daemon:plurnk-actor",
+                    "dispatch-threw",
+                    500,
+                    `The plurnk actor dispatch threw: ${cause instanceof Error ? cause.message : String(cause)}`,
+                );
             try {
-                await Envelope.closeClientLoop(db, loopId, 499);
+                await Envelope.closeClientLoop(db, loopId, failure);
             } catch (closeCause) {
                 throw new AggregateError(
                     [cause, closeCause],

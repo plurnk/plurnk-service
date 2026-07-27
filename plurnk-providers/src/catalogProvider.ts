@@ -14,7 +14,7 @@ import {
 } from "./env.ts";
 import AiSdkProvider, { type ReasoningStyle } from "./AiSdkProvider.ts";
 import { configuredProviderInfo, createSdkModel } from "./sdkModels.ts";
-import { providerSource } from "./telemetry.ts";
+import { providerSource } from "./notices.ts";
 import type { Provider, ProviderUsage } from "./types.ts";
 import { calculateCostUsd } from "./usage.ts";
 import { emitWarningOnce } from "./warnings.ts";

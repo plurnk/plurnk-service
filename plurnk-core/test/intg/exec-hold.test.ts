@@ -78,7 +78,7 @@ test("a HOLD runtime pauses the cycle — turn 2 assembles AFTER the stream conc
     process.env.PLURNK_SERVICE_EXEC_HOLD = "holdstub1";
     try {
         const { result, elapsed, streams } = await driveLoop(800, 0);
-        assert.equal(result.finalStatus, 200);
+        assert.equal(result.result.status, 200);
         assert.ok(elapsed >= 800, `the cycle paused for the stream (elapsed ${elapsed}ms >= 800ms)`);
         assert.ok(!/holdstub1/.test(streams), "turn 2's packet lists NO live holdstub stream — it woke to a finished world");
     } finally {
@@ -93,7 +93,7 @@ test("a runtime OUTSIDE the hold set keeps the standard cycle — turn 2 sees th
         // The standard cycle: T2 assembles IMMEDIATELY (stream live), continues; T3 concludes
         // after the stream finished — the pending set never falsely blocks a concluded world.
         const { result, streams } = await driveLoop(1200, 1);
-        assert.equal(result.finalStatus, 200);
+        assert.equal(result.result.status, 200);
         assert.ok(/holdstub2/.test(streams), "turn 2's packet LISTS the live stream — no hold applied outside the set");
     } finally {
         if (prevHold === undefined) delete process.env.PLURNK_SERVICE_EXEC_HOLD; else process.env.PLURNK_SERVICE_EXEC_HOLD = prevHold;

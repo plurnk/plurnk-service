@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
 import { rpcCall, subscribeNotifications, flush, connect, withDaemon, makeMockResponse, runLoopToTerminal, waitFor } from "./_rpc.ts";
+import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 
 test("loop.run accepts immediately (100); the loop's outcome arrives via loop/terminated", async () => {
     const dsl = "<<EDIT(worker:///france/capital):Paris:EDIT\n<<SEND[200]:Paris is the capital.:SEND";
@@ -12,10 +13,10 @@ test("loop.run accepts immediately (100); the loop's outcome arrives via loop/te
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "loop-test" });
             // loop.run accepts and returns immediately (100 + loopId); the terminal outcome —
-            // finalStatus, turnIds, usage — rides loop/terminated, surfaced here by the helper.
+            // result, turnIds, usage — rides loop/terminated, surfaced here by the helper.
             const result = await runLoopToTerminal(ws, 2, { prompt: "what is the capital of france?" });
             assert.equal(result.accepted, 100, "loop.run returns immediately — accepted, not the terminal");
-            assert.equal(result.finalStatus, 200);
+            assert.equal(result.result.status, 200);
             assert.equal(result.hitMaxTurns, false);
             assert.equal(result.turnIds?.length, 1);
             // #197 — loop/terminated carries usage summed over the loop's turns.
@@ -163,18 +164,17 @@ test("loop.run fires loop/terminated notification on completion", async () => {
             await rpcCall(ws, 1, "workspace.create", { name: "term-test" });
             // loop.run returns immediately (100 accepted); the loop's outcome rides loop/terminated.
             const accept = await rpcCall(ws, 2, "loop.run", { prompt: "test" });
-            const ack = accept.result as { loopId: number; finalStatus: number; turnIds: number[] };
-            assert.equal(ack.finalStatus, 100, "loop.run accepts immediately, not the terminal");
-            assert.deepEqual(ack.turnIds, [], "the 100-ack carries turnIds — always present, never absent (#266)");
+            const ack = accept.result as { loopId: number; status: number };
+            assert.equal(ack.status, 100, "loop.run accepts immediately, not the terminal");
             const captured = await waitFor(
-                () => terminated() as Array<{ workerId: number; loopId: number; finalStatus: number; hitMaxTurns: boolean; usage: { promptTokens: number; completionTokens: number; costUsd: number } }>,
+                () => terminated() as Array<{ workerId: number; loopId: number; result: { status: number }; hitMaxTurns: boolean; usage: { promptTokens: number; completionTokens: number; costUsd: number } }>,
                 (ts) => ts.length >= 1,
             );
             assert.equal(captured.length, 1);
             const params = captured[0];
             assert.ok(params.workerId > 0, "terminal carries its owning workerId with the loopId");
             assert.equal(params.loopId, ack.loopId, "terminal coordinate matches the acknowledged loop");
-            assert.equal(params.finalStatus, 200);
+            assert.equal(params.result.status, 200);
             assert.equal(params.hitMaxTurns, false);
             // #197 — loop/terminated carries the loop's usage totals.
             assert.equal(params.usage.completionTokens, 50);
@@ -199,30 +199,40 @@ test("loop.run still fires loop/terminated when the loop throws — no client ha
         const ws = await connect(addr);
         try {
             const terminated = subscribeNotifications(ws, "loop/terminated");
-            const telemetry = subscribeNotifications(ws, "telemetry/event");
             await rpcCall(ws, 1, "workspace.create", { name: "errored-loop" });
             const accept = await rpcCall(ws, 2, "loop.run", { prompt: "go", maxTurns: 5 });
-            assert.equal((accept.result as { finalStatus: number }).finalStatus, 100, "loop.run accepts immediately (100)");
+            assert.equal((accept.result as { status: number }).status, 100, "loop.run accepts immediately (100)");
 
             const captured = await waitFor(
-                () => terminated() as Array<{ finalStatus: number; turnIds: number[]; hitMaxTurns: boolean; loopId: number }>,
+                () => terminated() as Array<{ result: { status: number }; turnIds: number[]; hitMaxTurns: boolean; loopId: number }>,
                 (ts) => ts.length >= 1,
             );
             assert.equal(captured.length, 1, "the errored loop fired loop/terminated — the client is not left hanging (#265)");
-            assert.equal(captured[0].finalStatus, 500, "a genuine loop error terminates at 500 (failed) — distinct from an abort's 499");
-            assert.deepEqual(captured[0].turnIds, [], "turnIds is always present — [] at the error boundary, never absent (#266)");
+            assert.equal(captured[0].result.status, 502, "the exact provider-boundary status reaches the client");
+            assert.ok(captured[0].turnIds.length > 0, "every durable turn completed before the failure is accounted for");
             assert.equal(captured[0].hitMaxTurns, false);
-            // #311 (§tokenomics-agnostic-ruler) — the failure is first-class on BOTH
-            // surfaces: the broadcast carries the cause and the loop row is terminal 500, never a
-            // contentless corpse over a still-live 102 row.
-            const msg = (captured[0] as { message?: string }).message;
-            assert.ok(typeof msg === "string" && msg.length > 0, "loop/terminated carries the error message");
+            const exact = captured[0].result as { status: number; problem?: { detail?: string; instance?: string } };
+            assert.match(exact.problem?.detail ?? "", /Mock provider exhausted/);
+            assert.match(exact.problem?.instance ?? "", /^log:\/\/\//, "the failure identifies its durable operation");
             const loopRow = await _db.test_get_loop_status.get<{ status: number }>({ id: (captured[0] as { loopId: number }).loopId });
-            assert.equal(loopRow?.status, 500, "the loop ROW is terminal 500 — a dead loop never reads as live");
-            // #506 — the WHY reaches ALL THREE forensic channels, never one: the daemon log carries
-            // the stack, and an error-level telemetry event fires (run54 had zero of either).
-            const telemErr = (telemetry() as Array<{ event?: { kind?: string; level?: string } }>).find((e) => e.event?.kind === "loop_error");
-            assert.ok(telemErr?.event?.level === "error", "an error-level telemetry event named the death");
+            assert.equal(loopRow?.status, 500, "the compact scheduler projection is terminal, never a live 102");
+            assert.deepEqual(
+                await new LoopLifecycle(_db).result((captured[0] as { loopId: number }).loopId),
+                captured[0].result,
+                "the durable loop result and emitted product result are identical",
+            );
+            const turns = await _db.test_list_turns_in_loop.all<{
+                status: number;
+                packet: string;
+            }>({ loop_id: captured[0].loopId });
+            const failedTurn = turns.at(-1);
+            assert.equal(failedTurn?.status, 502, "the attempted provider turn is closed with the exact failure status");
+            const failedPacket = JSON.parse(failedTurn?.packet ?? "{}") as {
+                sections?: unknown;
+                assistant?: unknown;
+            };
+            assert.ok(Array.isArray(failedPacket.sections), "the exact request packet survives forensics");
+            assert.equal(failedPacket.assistant, undefined, "no empty assistant response is fabricated");
         } finally { ws.close(); }
     });
     console.error = realErr;
@@ -235,8 +245,10 @@ test("loop.run without provider returns 501", async () => {
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "no-provider" });
             const response = await rpcCall(ws, 2, "loop.run", { prompt: "anything" });
-            const result = response.result as { status: number; error?: string };
+            const result = response.result as { status: number; problem?: { type?: string; detail?: string } };
             assert.equal(result.status, 501);
+            assert.equal(result.problem?.type, "https://problems.plurnk.dev/daemon/provider/not-configured");
+            assert.equal(result.problem?.detail, "No provider is configured for this loop.");
         } finally { ws.close(); }
     });
 });
@@ -269,7 +281,7 @@ test("loop.run respects maxTurns cap when model emits non-terminal statuses repe
             const result = await runLoopToTerminal(ws, 2, { prompt: "iterate", maxTurns: 3 });
             assert.equal(result.accepted, 100, "loop.run accepts immediately");
             assert.equal(result.hitMaxTurns, true);
-            assert.equal(result.finalStatus, 429, "max_turns exhausts the turn ceiling → 429");
+            assert.equal(result.result.status, 429, "max_turns exhausts the turn ceiling → 429");
             assert.equal(result.turnIds?.length, 3);
         } finally { ws.close(); }
     });
@@ -309,8 +321,8 @@ test("a throwing seam subscriber never kills the loop — the transport's failur
             const terminated = subscribeNotifications(ws, "loop/terminated");
             await rpcCall(ws, 1, "workspace.create", { name: "sub-throws" });
             await rpcCall(ws, 2, "loop.run", { prompt: "go", flags: { auto: true } });
-            const t = await waitFor(() => terminated() as Array<{ finalStatus: number }>, (ts) => ts.length >= 1, { timeoutMs: 8000 });
-            assert.equal(t[0].finalStatus, 200, "the loop concluded normally through a burst of throwing broadcasts");
+            const t = await waitFor(() => terminated() as Array<{ result: { status: number } }>, (ts) => ts.length >= 1, { timeoutMs: 8000 });
+            assert.equal(t[0].result.status, 200, "the loop concluded normally through a burst of throwing broadcasts");
         } finally { ws.close(); }
     });
     console.error = realErr;

@@ -69,9 +69,9 @@ const envelope = async (db: Db): Promise<{ workspaceId: number; workerId: number
     const loopId = await insertLoop(db, workerId, 1, "go");
     return { workspaceId, workerId, loopId };
 };
-const packetOf = async (db: Db, turnId: number): Promise<{ tokens: number; assistant: { ops: unknown[] }; telemetryErrors: Array<Record<string, unknown>>; packet: object }> => {
+const packetOf = async (db: Db, turnId: number): Promise<{ tokens: number; assistant: { ops: unknown[] }; packet: object }> => {
     const row = await db.test_get_packet.get<{ packet: string }>({ id: turnId });
-    const packet = JSON.parse(row!.packet) as { tokens: number; assistant: { ops: unknown[] }; telemetryErrors: Array<Record<string, unknown>> };
+    const packet = JSON.parse(row!.packet) as { tokens: number; assistant: { ops: unknown[] } };
     return { ...packet, packet };
 };
 const budgetHeadline = (packet: object): { ceiling: number; usage: number; percent: number; free: number } => {
@@ -298,11 +298,9 @@ test("budget: the overflow error surfaces on the fold-to-fit recovery turn (same
         await wide.runTurn({ provider, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 1 });
         const tightP = mockCeiling(Math.floor((floor + expanded) / 2), okSends(2));
         const t2 = await wide.runTurn({ provider: tightP, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 2 }); // folds → mints + surfaces the overflow error
-        const evt = (await packetOf(db, t2.turnId)).telemetryErrors.find(
-            (e) => (e.position as { type?: string } | undefined)?.type === "log-coordinate" && e.status === 413,
-        );
-        assert.ok(evt, "the overflow surfaced THIS turn as a 413 log-coordinate pointer");
-        assert.equal(evt!.folded, undefined, "terse — no by-scheme JSON facts");
+        const errors = packetSection((await packetOf(db, t2.turnId)).packet, "errors");
+        assert.match(errors, /^\* 413 log:\/\/\/.+\/error$/m, "the overflow surfaced THIS turn as a 413 log-coordinate pointer");
+        assert.doesNotMatch(errors, /folded/, "terse — no by-scheme facts");
     } finally { await db.close(); }
 });
 

@@ -1,7 +1,7 @@
 import test, { mock } from "node:test";
 import { strict as assert } from "node:assert";
 import AiSdkProvider, { effortFromBudget } from "./AiSdkProvider.ts";
-import { ProviderError } from "./telemetry.ts";
+import { ProviderError } from "./errors.ts";
 
 // Build a fake fetch returning a one-chunk SSE stream, capturing the request
 // so tests can assert what the spine sent on the wire.
@@ -569,8 +569,8 @@ test("#488 channel-escape detector: billed completion tokens vastly beyond visib
     ]);
     const res = await p.generate({ workerId: "r", messages: [], grammar: 'root ::= "x"' });
     assert.equal(res.meta?.railsVerdict, "accept"); // the visible fragment conforms...
-    const escape = res.telemetry?.find((e) => e.message?.includes("escaped the grammar") === true);
-    assert.ok(escape, "escape telemetry attached");
+    const escape = res.notices?.find((e) => e.message.includes("escaped the grammar"));
+    assert.ok(escape, "escape notice attached");
     assert.equal(escape!.kind, "grammar_unenforced");
     assert.match(escape!.message ?? "", /5000 completion tokens billed/);
 });
@@ -583,7 +583,7 @@ test("#488 loud state absent on grammarless calls; no escape event without a tra
     ]);
     const res = await p.generate({ workerId: "r", messages: [] }); // no grammar arg
     assert.equal(res.meta?.railsAttached, undefined);
-    assert.equal(res.telemetry, undefined);
+    assert.equal(res.notices, undefined);
 });
 
 test("reasoningStyle 'template' always emits enable_thinking mirroring budget != 0 — explicit false, never omitted", async () => {
@@ -641,7 +641,7 @@ test("grammar transport 'none' (default): the grammar is never sent — no silen
 });
 
 // — grammar conformance OBSERVATION (SPEC §10.14, §13): a completed exchange always
-//   returns; bytes flow; a non-accept verdict rides response.telemetry —
+//   returns; bytes flow; a non-accept verdict rides response.notices —
 
 const grammarProvider = () => new AiSdkProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, grammarStyle: "llamacpp", source: "provider:test" });
 const streamingContent = (content: string) => installFetch([{ choices: [{ delta: { content }, finish_reason: "stop" }] }]);
@@ -658,8 +658,8 @@ test("observation: REJECTED output still returns — bytes present, verdict atta
     streamingContent("no");
     const res = await p.generate({ workerId: "r", messages: [], grammar: 'root ::= "ok"' });
     assert.equal(res.assistant.content, "no"); // bytes ALWAYS flow
-    assert.equal(res.telemetry?.length, 1);
-    const ev = res.telemetry![0];
+    assert.equal(res.notices?.length, 1);
+    const ev = res.notices![0];
     assert.equal(ev.kind, "grammar_unenforced");
     assert.equal(ev.source, "provider:test");
     assert.match(String(ev.message), /grammar not enforced: output rejected .* at code point 0/);
@@ -671,16 +671,16 @@ test("observation: an incomplete (valid prefix, never terminated) also returns w
     streamingContent("ok");
     const res = await p.generate({ workerId: "r", messages: [], grammar: 'root ::= "ok" "!"' });
     assert.equal(res.assistant.content, "ok");
-    assert.equal(res.telemetry?.length, 1);
-    assert.match(String(res.telemetry![0].message), /incomplete match .* never terminated/);
-    assert.equal(res.telemetry![0].position, 2);
+    assert.equal(res.notices?.length, 1);
+    assert.match(res.notices![0].message, /incomplete match .* never terminated/);
+    assert.equal(res.notices![0].position, 2);
 });
 
-test("observation: conforming output attaches NO telemetry", async () => {
+test("observation: conforming output attaches no notice", async () => {
     const p = grammarProvider();
     streamingContent("ok");
     const res = await p.generate({ workerId: "r", messages: [], grammar: 'root ::= "ok"' });
-    assert.equal(res.telemetry, undefined);
+    assert.equal(res.notices, undefined);
 });
 
 test("observation: empty content under a non-empty grammar returns with the verdict (the 'content never arrives' leak, observed)", async () => {
@@ -688,7 +688,7 @@ test("observation: empty content under a non-empty grammar returns with the verd
     installFetch([{ choices: [{ delta: {}, finish_reason: "stop" }] }]); // no content delta → ""
     const res = await p.generate({ workerId: "r", messages: [], grammar: 'root ::= "ok"' });
     assert.equal(res.assistant.content, "");
-    assert.equal(res.telemetry?.[0].kind, "grammar_unenforced");
+    assert.equal(res.notices?.[0].kind, "grammar_unenforced");
 });
 
 test("enforcement: when no grammar is sent (grammarStyle 'none'), output is NOT validated — no wire fields, no error (SPEC )", async () => {
@@ -713,7 +713,7 @@ test("enforcement: a grammar our validator can't parse is a NON-FATAL verify gap
 
 // — PLURNK_PROVIDERS_GBNF_DEBUG: run unconstrained, then verify the free output against the grammar —
 
-test("gbnfDebug: the grammar is NOT transported; conforming free output passes through with NO telemetry", async () => {
+test("gbnfDebug: the grammar is NOT transported; conforming free output passes through with no notice", async () => {
     const p = new AiSdkProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, grammarStyle: "llamacpp", gbnfDebug: true, source: "provider:test" });
     const calls = installFetch([{ choices: [{ delta: { content: "ok" }, finish_reason: "stop" }] }]);
     const res = await p.generate({ workerId: "r", messages: [], grammar: 'root ::= "ok"' });
@@ -721,19 +721,19 @@ test("gbnfDebug: the grammar is NOT transported; conforming free output passes t
     assert.equal("grammar" in body, false);            // grammar never sent — model ran unconstrained
     assert.equal(body.repeat_penalty, 1.15);           // #426: penalty rides even rail-off - unconstrained decode needs it MORE
     assert.equal(res.assistant.content, "ok");         // free output happens to conform → returned
-    assert.equal("telemetry" in res, false);           // conforming → no event
+    assert.equal(res.notices, undefined);              // conforming → no notice
 });
 
-test("gbnfDebug: a conflict does NOT throw — it returns the bytes plus a grammar_unenforced telemetry event with the divergence position (#24)", async () => {
+test("gbnfDebug: a conflict does NOT throw — it returns the bytes plus a grammar_unenforced notice with the divergence position (#24)", async () => {
     const p = new AiSdkProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, grammarStyle: "llamacpp", gbnfDebug: true, source: "provider:test" });
     const calls = installFetch([{ choices: [{ delta: { reasoning_content: "let me think about ok", content: "xon-conforming output" }, finish_reason: "stop" }] }]);
     const res = await p.generate({ workerId: "r", messages: [], grammar: 'root ::= "ok"' });
     // The model's bytes survive — not discarded by a throw (the empty-turn cascade root cause).
     assert.equal(res.assistant.content, "xon-conforming output");
     assert.equal(res.assistant.reasoning, "let me think about ok");
-    // Non-fatal telemetry carries the divergence so the consumer can self-correct.
-    assert.equal(res.telemetry?.length, 1);
-    const [event] = res.telemetry ?? [];
+    // The non-fatal notice carries the divergence so the consumer can self-correct.
+    assert.equal(res.notices?.length, 1);
+    const [event] = res.notices ?? [];
     assert.equal(event.source, "provider:test");
     assert.equal(event.kind, "grammar_unenforced");
     assert.equal(event.position, 0);                   // 'x' rejected at code point 0
@@ -877,11 +877,11 @@ test("slot affinity: a worker past the LRU window (slotCount*8) loses its pin; r
 });
 
 test("streaming:false: a non-ok response rejects as a classified ProviderError (covers the non-streamed transport)", async () => {
-    const { ProviderError } = await import("./telemetry.ts");
+    const { ProviderError } = await import("./errors.ts");
     const p = new AiSdkProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, streaming: false, source: "provider:test" });
     mock.method(globalThis, "fetch", async () => new Response("boom", { status: 500 }));
     await assert.rejects(() => p.generate({ workerId: "r", messages: [] }), (err: unknown) => {
-        assert.ok(err instanceof ProviderError);
+        assert.ok(err instanceof ProviderError, `expected ProviderError, got ${String(err)}`);
         assert.equal(err.kind, "network_failure"); // ≥500 → network_failure
         assert.equal(err.status, 500);
         return true;
@@ -904,15 +904,17 @@ test("messages pass through verbatim — the provider injects no turn (PLAN live
     assert.equal(res.assistant.content, "out"); // content returned verbatim
 });
 
-test("generate wraps an HTTP failure as a ProviderError carrying a TelemetryEvent", async () => {
-    const { ProviderError } = await import("./telemetry.ts");
+test("generate wraps an HTTP failure as a ProviderError carrying Problem Details", async () => {
+    const { ProviderError } = await import("./errors.ts");
     const p = new AiSdkProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, source: "provider:test" });
     mock.method(globalThis, "fetch", async () => new Response("rate limited", { status: 429 }));
     await assert.rejects(() => p.generate({ workerId: "r", messages: [] }), (err: unknown) => {
-        assert.ok(err instanceof ProviderError);
+        assert.ok(err instanceof ProviderError, `expected ProviderError, got ${String(err)}`);
         assert.equal(err.kind, "rate_limit");
         assert.equal(err.status, 429);
-        assert.deepEqual(err.toTelemetryEvent(), { source: "provider:test", kind: "rate_limit", message: err.message, position: null });
+        assert.equal(err.problem.status, 429);
+        assert.equal(err.problem.detail, err.message);
+        assert.equal(err.problem.type, "https://problems.plurnk.dev/provider/test/rate-limit");
         return true;
     });
 });
@@ -1021,7 +1023,7 @@ test("#559: a zero stream-idle timeout permits a slow inter-chunk pause", async 
 });
 
 test("retry: exhausting the budget surfaces the classified ProviderError", async () => {
-    const { ProviderError } = await import("./telemetry.ts");
+    const { ProviderError } = await import("./errors.ts");
     const calls = installFetchScript([{ status: 429, retryAfter: 0 }]); // always rate-limited
     const p = new AiSdkProvider({ ...retryCfg, retryAttempts: 2 });
     await assert.rejects(

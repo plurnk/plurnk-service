@@ -149,10 +149,14 @@ export default class Translator {
         if (n.usage.meta !== undefined && n.usage.meta !== null && Object.keys(n.usage.meta).length > 0) {
             events.push({ type: EventType.RAW, event: n.usage.meta, source: "provider" });
         }
-        if (n.finalStatus === 200) {
+        if (n.result.status === 200) {
             events.push({ type: EventType.RUN_FINISHED, threadId: this.#threadId, runId: this.#runId, outcome: { type: "success" } });
         } else {
-            events.push({ type: EventType.RUN_ERROR, message: `loop terminated ${n.finalStatus}${n.hitMaxTurns ? " (maxTurns)" : ""}`, code: String(n.finalStatus) });
+            events.push({
+                type: EventType.RUN_ERROR,
+                message: n.result.problem?.detail ?? `loop terminated ${n.result.status}`,
+                code: n.result.problem?.type ?? String(n.result.status),
+            });
         }
         return events;
     }

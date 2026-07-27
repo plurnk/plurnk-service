@@ -38,11 +38,17 @@ test("cancelling a LIVE loop writes the provenanced 499 row — who/why on the r
             assert.equal(row!.terminal_message, "operator redirected the task", "the client's reason is the abandonment message");
             // The broadcast carries the same why.
             const notes = await waitFor(
-                () => terminated() as Array<{ finalStatus: number; message?: string }>,
-                (ns) => ns.some((n) => n.finalStatus === 499),
+                () => terminated() as Array<{ result: { status: number; problem?: { detail?: string } } }>,
+                (ns) => ns.some((n) => n.result.status === 499),
             );
-            assert.ok(notes.some((n) => n.finalStatus === 499 && n.message === "operator redirected the task"),
-                "loop/terminated carries the cancel's message");
+            assert.ok(notes.some((n) => n.result.status === 499 && n.result.problem?.detail === "operator redirected the task"),
+                "loop/terminated carries the cancel's exact Problem detail");
+            const worker = await db.test_get_worker_id_by_loop.get<{ worker_id: number }>({ loop_id: row!.id });
+            assert.deepEqual(
+                await db.test_error_rows_for_run.all({ worker_id: worker!.worker_id }),
+                [],
+                "lifecycle cancellation never fabricates a provider failure",
+            );
         } finally { ws.close(); }
     });
 });
@@ -114,9 +120,9 @@ test("external cancellation terminalizes the complete durable subtree and emits 
             }
 
             const notes = await waitFor(
-                () => terminated() as Array<{ loopId: number; finalStatus: number; turnIds: number[] }>,
+                () => terminated() as Array<{ loopId: number; result: { status: number }; turnIds: number[] }>,
                 (events) => [rootLoop, childLoop, grandchildLoop].every((id) =>
-                    events.some((event) => event.loopId === id && event.finalStatus === 499)),
+                    events.some((event) => event.loopId === id && event.result.status === 499)),
             );
             assert.deepEqual(
                 new Map(notes.map(({ loopId, turnIds }) => [loopId, turnIds])),

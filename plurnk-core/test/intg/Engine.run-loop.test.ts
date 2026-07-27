@@ -2,10 +2,11 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import type { EditStatement, PlurnkStatement, SendStatement, UrlPath } from "@plurnk/plurnk-grammar";
 import Engine from "../../src/core/Engine.ts";
+import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { Mock } from "@plurnk/plurnk-providers";
 import type { MockResponse } from "@plurnk/plurnk-providers";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, seedEntryWithChannel } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop, packetSection, seedEntryWithChannel } from "./_helpers.ts";
 
 const urlPath = (scheme: string, pathname: string): UrlPath => ({
     kind: "url", raw: `${scheme}://${pathname}`, scheme,
@@ -54,7 +55,7 @@ test("Engine.runLoop: three-turn loop terminating on SEND[200]", async () => {
             messages: [{ role: "user", content: "do three steps" }],
         });
         assert.equal(result.turnIds.length, 3);
-        assert.equal(result.finalStatus, 200);
+        assert.equal(result.result.status, 200);
         assert.equal(result.hitMaxTurns, false);
 
         const entryCount = (await db.test_count_entries.get<{ n: number }>())?.n;
@@ -80,7 +81,7 @@ test("Engine.runLoop: maxTurns hit — force-terminate with 429 and hitMaxTurns 
             messages: [{ role: "user", content: "never terminate" }],
         });
         assert.equal(result.turnIds.length, 3);
-        assert.equal(result.finalStatus, 429, "max_turns → 429 Too Many Requests");
+        assert.equal(result.result.status, 429, "max_turns → 429 Too Many Requests");
         assert.equal(result.hitMaxTurns, true);
         const loopStatus = (await db.test_get_loop_status.get<{ status: number }>({ id: loopId }))?.status;
         assert.equal(loopStatus, 429);
@@ -111,7 +112,7 @@ test("maxTurns=-1 disables the turn terminator — loop ends on SEND, not a cap"
             messages: [{ role: "user", content: "run until I say done" }],
         });
         assert.equal(result.turnIds.length, 5, "ran all five turns — no turn cap");
-        assert.equal(result.finalStatus, 200);
+        assert.equal(result.result.status, 200);
         assert.equal(result.hitMaxTurns, false);
     } finally { await db.close(); }
 });
@@ -124,15 +125,15 @@ test("Engine.runLoop: idle turn (102, no work op) steers and strikes — spins o
         // the engine's 500, never its own 499.
         const provider = new Mock({ contextWindow: 100000, responses: Array.from({ length: 5 }, () => response([sendStmt(102, "idling")])) });
         const result = await engine.runLoop({ provider, workspaceId, workerId, loopId, maxTurns: 10, maxStrikes: 2, messages: [] });
-        assert.equal(result.finalStatus, 500, "idle spin-out is the engine ruling failure, not the model's 499");
+        assert.equal(result.result.status, 500, "idle spin-out is the engine ruling failure, not the model's 499");
         assert.equal(result.turnIds.length, 2, "struck out at maxStrikes:2, well before maxTurns:10");
         // The idle steer is a terse op='error' log row (409 Idle Turn) — its derived LogCoordinate
         // pointer reaches the model; the guidance lives in the packet, not the row.
         let steered = false;
         for (const id of result.turnIds) {
             const row = await db.test_get_packet.get<{ packet: string }>({ id });
-            const packet = JSON.parse(row?.packet ?? "{}") as { telemetryErrors?: Array<{ status?: number; position?: { type?: string } }> };
-            if (packet.telemetryErrors?.some((e) => e.status === 409 && e.position?.type === "log-coordinate")) steered = true;
+            const packet = JSON.parse(row?.packet ?? "{}");
+            if (/^\* 409 log:\/\/\/.+\/error$/m.test(packetSection(packet, "errors"))) steered = true;
         }
         assert.ok(steered, "the idle steer surfaced as a terse 409 log-coordinate error pointer");
     } finally { await db.close(); }
@@ -150,26 +151,26 @@ test("Engine.runLoop: premature terminate (200 over a live stream) downgrades to
         ] });
         const result = await engine.runLoop({ provider, workspaceId, workerId, loopId, messages: [] });
         assert.equal(result.turnIds.length, 2, "the premature 200 was downgraded, not honored — the loop ran on");
-        assert.equal(result.finalStatus, 499, "the loop ended on the model's 499, never the premature 200");
+        assert.equal(result.result.status, 499, "the loop ended on the model's 499, never the premature 200");
         // The premature steer is a terse op='error' log row (409 Premature Termination); its derived
         // LogCoordinate pointer reaches the model on the next packet — the guidance lives in the packet.
         const row = await db.test_get_packet.get<{ packet: string }>({ id: result.turnIds[1] });
-        const packet = JSON.parse(row?.packet ?? "{}") as { telemetryErrors?: Array<{ status?: number; position?: { type?: string } }> };
-        assert.ok(packet.telemetryErrors?.some((e) => e.status === 409 && e.position?.type === "log-coordinate"), "the premature steer surfaced as a terse 409 log-coordinate error pointer");
+        const packet = JSON.parse(row?.packet ?? "{}");
+        assert.match(packetSection(packet, "errors"), /^\* 409 log:\/\/\/.+\/SEND$/m, "the premature SEND failure surfaced as a terse log-coordinate pointer");
     } finally { await db.close(); }
 });
 
 test("Engine.runLoop: terminates immediately if loop.status is already non-102", async () => {
     const { db, engine, workspaceId, workerId, loopId } = await setup();
     try {
-        await db.test_set_loop_status.run({ status: 200, id: loopId });
+        await new LoopLifecycle(db).finish(loopId, { status: 200 });
         const provider = new Mock({ contextWindow: 100000, responses: [response([sendStmt(200, "")])] });
         const result = await engine.runLoop({
             provider, workspaceId, workerId, loopId,
             messages: [],
         });
         assert.deepEqual(result.turnIds, []);
-        assert.equal(result.finalStatus, 200);
+        assert.equal(result.result.status, 200);
         assert.equal(result.hitMaxTurns, false);
         assert.equal(provider.remaining, 1, "provider untouched");
     } finally { await db.close(); }
@@ -187,7 +188,7 @@ test("Engine.runLoop: 499 model-emitted termination", async () => {
             messages: [{ role: "user", content: "may abort" }],
         });
         assert.equal(result.turnIds.length, 2);
-        assert.equal(result.finalStatus, 499);
+        assert.equal(result.result.status, 499);
         assert.equal(result.hitMaxTurns, false);
     } finally { await db.close(); }
 });
@@ -254,12 +255,9 @@ test("Engine.runLoop: turn sequence numbers monotonic", async () => {
     } finally { await db.close(); }
 });
 
-test("a strike-threshold abandonment NAMES ITSELF — a legible error telemetry event fires, never a silent 500 (run60/#555)", async () => {
+test("a strike-threshold abandonment names itself in its exact terminal Problem", async () => {
     const db = await openMigrated();
-    // Capture the live telemetry fan-out — the strike terminal returns a clean finalStatus
-    // (no throw), so the drain's loop_error catch never sees it; the self-naming must ride here.
-    const events: Array<{ loopId: number; event: { source?: string; kind?: string; level?: string; message?: string } }> = [];
-    const engine = new Engine({ db, schemes: new SchemeRegistry(), telemetryEventNotify: (_ws, e) => events.push(e as never) });
+    const engine = new Engine({ db, schemes: new SchemeRegistry() });
     try {
         const workspaceId = await insertWorkspace(db, `ws-strike-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
@@ -267,21 +265,17 @@ test("a strike-threshold abandonment NAMES ITSELF — a legible error telemetry 
         // Idle turns strike out to the engine's 500 (the run60 shape: repeated failed/no-op turns).
         const provider = new Mock({ contextWindow: 100000, responses: Array.from({ length: 5 }, () => response([sendStmt(102, "idling")])) });
         const result = await engine.runLoop({ provider, workspaceId, workerId, loopId, maxTurns: 10, maxStrikes: 2, messages: [] });
-        assert.equal(result.finalStatus, 500, "struck out to the engine's 500");
+        assert.equal(result.result.status, 500, "struck out to the engine's 500");
 
-        const named = events.find((e) => e.event.kind === "strike_threshold");
-        assert.ok(named, `the abandonment emitted a legible event — got: ${JSON.stringify(events.map((e) => e.event.kind))}`);
-        assert.equal(named!.event.level, "error", "it is error-level (the channel bench greps)");
-        assert.equal(named!.loopId, loopId, "the event is attributed to the struck loop");
-        assert.match(named!.event.message ?? "", /strike threshold crossed/, "the message names the abandonment reason");
-        assert.match(named!.event.message ?? "", /500|repeated failed or no-op/, "and the failure class");
+        assert.equal(result.result.problem?.type, "https://problems.plurnk.dev/engine/rails/strike-threshold");
+        assert.match(result.result.problem?.detail ?? "", /strike threshold was crossed/i);
+        assert.equal(result.result.problem?.instance, `loop:///${loopId}`);
     } finally { await db.close(); }
 });
 
-test("the FULL terminal enumeration names itself — max_turns included; no deliberate terminal is silent (#555 complete)", async () => {
+test("the full terminal enumeration names itself — max_turns included", async () => {
     const db = await openMigrated();
-    const events: Array<{ loopId: number; event: { kind?: string; level?: string } }> = [];
-    const engine = new Engine({ db, schemes: new SchemeRegistry(), telemetryEventNotify: (_ws, e) => events.push(e as never) });
+    const engine = new Engine({ db, schemes: new SchemeRegistry() });
     try {
         const workspaceId = await insertWorkspace(db, `ws-terminals-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
@@ -289,9 +283,9 @@ test("the FULL terminal enumeration names itself — max_turns included; no deli
         // A model that works forever (non-terminal SENDs) runs into the configured ceiling.
         const provider = new Mock({ contextWindow: 100000, responses: Array.from({ length: 4 }, () => response([sendStmt(102, "working")])) });
         const result = await engine.runLoop({ provider, workspaceId, workerId, loopId, maxTurns: 2, maxStrikes: 99, messages: [] });
-        assert.equal(result.finalStatus, 429);
-        const named = events.find((e) => e.event.kind === "max_turns");
-        assert.ok(named, `the ceiling names itself on the telemetry channel — got: ${JSON.stringify(events.map((e) => e.event.kind))}`);
-        assert.equal(named!.event.level, "warn", "an expected bound is warn-level, not error");
+        assert.equal(result.result.status, 429);
+        assert.equal(result.result.problem?.type, "https://problems.plurnk.dev/engine/rails/max-turns");
+        assert.match(result.result.problem?.detail ?? "", /turn ceiling/i);
+        assert.equal(result.result.problem?.instance, `loop:///${loopId}`);
     } finally { await db.close(); }
 });

@@ -34,8 +34,8 @@ test("a child worker concluding wakes a parent parked at 202", async () => {
             assert.equal(turnIds?.length, 2, "the terminal event accounts for the complete durable loop across park/resume");
             await flush();
             // Both runs concluded 200 — the worker's terminal and the parent's resumed terminal.
-            const concluded = (terminated() as Array<{ finalStatus: number }>).filter((t) => t.finalStatus === 200);
-            assert.ok(concluded.length >= 2, `parent + child both conclude 200; saw ${JSON.stringify((terminated() as Array<{ finalStatus: number }>).map((t) => t.finalStatus))}`);
+            const concluded = (terminated() as Array<{ result: { status: number } }>).filter((t) => t.result.status === 200);
+            assert.ok(concluded.length >= 2, `parent + child both conclude 200; saw ${JSON.stringify((terminated() as Array<{ result: { status: number } }>).map((t) => t.result.status))}`);
         } finally { ws.close(); }
     });
 });
@@ -91,7 +91,7 @@ test("an empty failed child stream is observed by the child before its terminal 
             });
             assert.equal(finalStatus, 200);
             await flush();
-            const statuses = (terminated() as Array<{ finalStatus: number }>).map(({ finalStatus: status }) => status);
+            const statuses = (terminated() as Array<{ result: { status: number } }>).map(({ result }) => result.status);
             assert.ok(statuses.includes(499), `the child concluded with its observed stream failure; got ${JSON.stringify(statuses)}`);
             assert.equal(mock.remaining, 0, "all four causal turns ran: parent park, child exec, child terminal, parent terminal");
         } finally { ws.close(); }
@@ -213,9 +213,9 @@ test("an idle join completes immediately through the real loop", async () => {
             await rpcCall(ws, 1, "workspace.create", { name: "idle-concludes" });
             const terminated = subscribeNotifications(ws, "loop/terminated");
             await rpcCall(ws, 2, "loop.run", { prompt: "nothing to do", flags: { auto: true } });
-            const t = await waitFor(() => terminated() as Array<{ finalStatus: number }>, (items) => items.length > 0, { timeoutMs: 8000 });
+            const t = await waitFor(() => terminated() as Array<{ result: { status: number }; loopId?: number }>, (items) => items.length > 0, { timeoutMs: 8000 });
             assert.equal(t.length, 1, "the run concluded — one loop/terminated, no held-open 202");
-            assert.equal(t[0].finalStatus, 200, "the already-drained join is the model's successful terminal");
+            assert.equal(t[0].result.status, 200, "the already-drained join is the model's successful terminal");
             const rows = await db.test_log_entries_by_loop.all<{ op: string; status_rx: number }>({ loop_id: (t[0] as { loopId?: number }).loopId ?? 1 });
             assert.ok(rows.some((r) => r.op === "SEND" && r.status_rx === 200), "the join records successful completion");
         } finally { ws.close(); }
@@ -284,11 +284,11 @@ test("a wake re-queue (100) mid-drain is re-claimed and continued — never retu
             const loopId = (accept.result as { loopId: number }).loopId;
             // The parent's loop is re-queued in place by the child-wake, then continues to its own terminal.
             const seen = await waitFor(
-                () => terminated() as Array<{ loopId: number; finalStatus: number }>,
+                () => terminated() as Array<{ loopId: number; result: { status: number } }>,
                 (ts) => ts.some((t) => t.loopId === loopId),
                 { timeoutMs: 8000 },
             );
-            const finals = seen.filter((t) => t.loopId === loopId).map((t) => t.finalStatus);
+            const finals = seen.filter((t) => t.loopId === loopId).map((t) => t.result.status);
             assert.deepEqual(finals, [200], `exactly one terminal broadcast for the parent, 200 — never a queued 100; got ${JSON.stringify(finals)}`);
         } finally { ws.close(); }
     });

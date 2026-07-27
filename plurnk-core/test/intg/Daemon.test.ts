@@ -417,7 +417,7 @@ test("the client-interface seam — runLoop drives a loop end to end on the daem
                 (ts) => ts.length > 0,
                 { timeoutMs: 8000 },
             );
-            assert.equal((terminals[0].params as { finalStatus?: number }).finalStatus, 200, "the loop runLoop started ran to conclusion (200) — driven and observed through the seam, no socket");
+            assert.equal((terminals[0].params as { result: { status: number } }).result.status, 200, "the loop runLoop started ran to conclusion (200) — driven and observed through the seam, no socket");
 
             // The marquee first-turn feature holds on the seam path: workspace creation materialized
             // the teaching docs before the model loop, so FIND(worker://plurnk/docs/**) finds them.
@@ -430,7 +430,7 @@ test("the client-interface seam — runLoop drives a loop end to end on the daem
                 (ts) => ts.length > 0,
                 { timeoutMs: 8000 },
             );
-            assert.equal((secondTerminals[0].params as { finalStatus?: number }).finalStatus, 200, "reattaching to the workspace runs normally");
+            assert.equal((secondTerminals[0].params as { result: { status: number } }).result.status, 200, "reattaching to the workspace runs normally");
 
             const afterTwoLoops = await publicationRows();
             assert.equal(afterTwoLoops.length, publishedCount, "model loops never repeat workspace documentation publication");

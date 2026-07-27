@@ -5,7 +5,8 @@ SELECT sql FROM sqlite_master WHERE name = 'loops';
 INSERT INTO loops (worker_id, sequence, prompt) VALUES ($worker_id, $sequence, $prompt);
 
 -- PREP: test_loops_insert_with_status
-INSERT INTO loops (worker_id, sequence, status, prompt) VALUES ($worker_id, $sequence, $status, $prompt);
+INSERT INTO loops (worker_id, sequence, status, prompt, terminal_result)
+VALUES ($worker_id, $sequence, $status, $prompt, $terminal_result);
 
 -- PREP: test_loops_insert_with_version
 INSERT INTO loops (worker_id, sequence, version, prompt) VALUES ($worker_id, $sequence, $version, $prompt);

@@ -19,7 +19,10 @@ test("provider source does not import the service or database", () => {
 test("provider source does not import the PLURNK parser", () => {
     for (const file of sourceFiles()) {
         const source = readFileSync(join(root, file), "utf8");
-        assert.ok(!/from\s+["']@plurnk\/plurnk-grammar/.test(source), `${file} imports the parser`);
+        assert.ok(
+            !/from\s+["']@plurnk\/plurnk-grammar["']/.test(source),
+            `${file} imports the parser rather than the runtime-neutral contracts entrypoint`,
+        );
     }
 });
 
@@ -28,8 +31,9 @@ test("#608: the OpenAI-compatible entrypoint excludes Node-owned provider machin
         "AiSdkProvider.ts",
         "aiSdkTransport.ts",
         "env.ts",
+        "errors.ts",
+        "notices.ts",
         "openai.ts",
-        "telemetry.ts",
         "types.ts",
         "usage.ts",
         "warnings.ts",

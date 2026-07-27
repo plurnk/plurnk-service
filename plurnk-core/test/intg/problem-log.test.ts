@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { Validator } from "@plurnk/plurnk-grammar";
 import ProblemLog from "../../src/core/ProblemLog.ts";
+import Results from "../../src/core/results.ts";
 import { insertLoop, insertTurn, insertWorker, insertWorkspace, openMigrated } from "./_helpers.ts";
 
 test("ProblemLog persists one self-identifying RFC 9457 operation failure", async () => {
@@ -11,18 +12,21 @@ test("ProblemLog persists one self-identifying RFC 9457 operation failure", asyn
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 3, "test");
         const turnId = await insertTurn(db, loopId, 4, 102);
-        const minted = await new ProblemLog(db).mint({
+        const minted = await new ProblemLog(db).record({
             workerId,
             loopId,
             turnId,
             sequence: 5,
             origin: "plurnk",
             source: "rail",
-            owner: "engine:rail",
-            code: "test-failure",
-            status: 409,
-            detail: "The test contract failed.",
-            extensions: { retryable: false },
+            result: Results.failure(
+                "engine:rail",
+                "test-failure",
+                409,
+                "The test contract failed.",
+                {},
+                { retryable: false },
+            ),
         });
 
         assert.equal(Validator.validateOperationResult(minted.result).valid, true);

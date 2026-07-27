@@ -308,52 +308,38 @@ test("largest never advertises a FOLD the law refuses or the state already pulle
     assert.ok(byTurn.every((t) => t.tokens > 0));
 });
 
-test("telemetry render: a content-offset error → a single meta line carrying line:col, no snippet fence", () => {
-    const user = {
-        prompt: "P",
-        telemetry: {
-            budget: "",
-            errors: [{
-                source: "grammar",
-                kind: "parse_error",
-                message: "invalid xpath: Unexpected character :",
-                position: { type: "content-offset", line: 1, column: 0 },
-                parserSource: "visitor",
-            }],
-        },
-    };
-    const out = PacketWire.renderErrors(user.telemetry.errors);
-    // A content-offset error renders one terse `<kind> <line>:<col>` line — no JSON dump, no snippet
+test("notice render: a content-offset observation → a single meta line carrying line:col, no snippet fence", () => {
+    const notices = [{
+        source: "provider:test",
+        kind: "grammar_unenforced",
+        level: "warn",
+        message: "output diverged from the grammar",
+        position: { type: "content-offset", line: 1, column: 0 },
+    }];
+    const out = PacketWire.renderNotices(notices);
+    // A content-offset notice renders one terse `<kind> <line>:<col>` line — no JSON dump, no snippet
     // fence. The model resolves the line against its own emission (the born-OPEN model row, §model-entry).
-    assert.match(out, /^\* parse_error 1:0$/m);
+    assert.match(out, /^\* grammar_unenforced 1:0$/m);
     assert.doesNotMatch(out, /\{"/, "no JSON dump");
     assert.doesNotMatch(out, /error:\/\//, "no snippet fence");
 });
 
-test("telemetry render: a log-coordinate error → a terse <status> log:/// link, no JSON", () => {
-    const user = {
-        prompt: "P",
-        telemetry: {
-            budget: "",
-            // The uniform-channel shape: a 4xx/5xx log row surfaced as a LogCoordinate-positioned event.
-            errors: [{ source: "engine:rail", kind: "log_error", level: "error", status: 403, position: { type: "log-coordinate", coordinate: "1/1/2/EDIT" } }],
-        },
-    };
-    const out = PacketWire.renderErrors(user.telemetry.errors);
+test("a durable failure pointer renders as a terse <status> log:/// link, no JSON", () => {
+    const out = PacketWire.renderFailurePointers([{ status: 403, coordinate: "1/1/2/EDIT" }]);
     assert.match(out, /^\* 403 log:\/\/\/1\/1\/2\/EDIT$/m);
     assert.doesNotMatch(out, /\{"/, "no JSON dump — the row holds the detail, the section a link");
 });
 
-test("heterogeneous failures render through ONE channel — uniform <status> log:/// links, no per-kind shape", () => {
+test("heterogeneous failures render as uniform durable pointers, no per-kind shape", () => {
     // A parse failure (400), an action failure (403), a budget overflow (413): three categories, one
     // channel. Each is a LogCoordinate-positioned event rendered as the same terse link — the section
     // never restates the term or carries per-kind JSON. The detail lives on each row, READ via the link.
     const errors = [
-        { source: "engine:rail", kind: "log_error", level: "error", status: 400, position: { type: "log-coordinate", coordinate: "1/2/3/error" } },
-        { source: "engine:rail", kind: "log_error", level: "error", status: 403, position: { type: "log-coordinate", coordinate: "1/2/5/EDIT" } },
-        { source: "engine:rail", kind: "log_error", level: "error", status: 413, position: { type: "log-coordinate", coordinate: "1/3/1/error" } },
+        { status: 400, coordinate: "1/2/3/error" },
+        { status: 403, coordinate: "1/2/5/EDIT" },
+        { status: 413, coordinate: "1/3/1/error" },
     ];
-    const out = PacketWire.renderErrors(errors);
+    const out = PacketWire.renderFailurePointers(errors);
     assert.equal(out, "* 400 log:///1/2/3/error\n* 403 log:///1/2/5/EDIT\n* 413 log:///1/3/1/error");
     assert.doesNotMatch(out, /\{"/, "no JSON — every category is the same terse link");
 });
@@ -364,7 +350,7 @@ test("requirements renders LAST in the user slot, under its own header", () => {
     const out = PacketWire.renderSlot([
         { name: "prompt", slot: "user", header: "Plurnk Service Active User Prompts", content: "Reply with just the number.", tokens: 0 },
         { name: "budget", slot: "user", header: "Plurnk Service Budget", content: "5000 free", tokens: 0 },
-        { name: "errors", slot: "user", header: "Plurnk Service Errors", content: PacketWire.renderErrors([{ kind: "no_ops", coordinate: "1/1/1" }]), tokens: 0 },
+        { name: "errors", slot: "user", header: "Plurnk Service Errors", content: PacketWire.renderFailurePointers([{ status: 409, coordinate: "1/1/1/error" }]), tokens: 0 },
         { name: "requirements", slot: "user", header: "Plurnk Service Requirements", content: "Conclude the loop with <<SEND[200]:answer:SEND", tokens: 0 },
     ], "user");
     // §requirements: requirements is the contract that must win conflicts with the

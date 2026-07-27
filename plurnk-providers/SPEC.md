@@ -74,7 +74,7 @@ fabricated rate.
 
 It returns the model's raw content and reasoning, normalized usage, normalized
 finish reason, model identity, opaque evidence, optional metadata, and optional
-telemetry. The provider transports and observes model output; it never retries,
+notices. The provider transports and observes model output; it never retries,
 discards, or repairs an otherwise completed exchange because PLURNK grammar did
 not accept it.
 
@@ -241,9 +241,11 @@ backend.
 
 ## §9 Failures, retries, and cancellation
 
-Provider failures normalize to `ProviderError` with source, kind, status where
-available, and the original cause. A caught failure is surfaced or deliberately
-preserved; it is never converted into an empty model turn.
+Provider failures normalize to `ProviderError`. Its public contract is an RFC
+9457 Problem Details object with an exact status, stable type, occurrence
+detail, and provider-kind extension; the original error remains its cause.
+A caught failure is surfaced or deliberately preserved; it is never converted
+into an empty model turn or reduced to a message plus a generic status.
 
 The AI SDK owns attempt scheduling. `PLURNK_PROVIDERS_RETRY_ATTEMPTS` is the
 maximum retry count. Caller cancellation spans the operation. Total and
@@ -260,7 +262,7 @@ The consumer chooses whether to supply a grammar. The provider never creates or
 rewrites one.
 
 When transported, output is validated locally after completion. Divergence
-attaches `grammar_unenforced` telemetry with its position; the bytes still
+attaches a `grammar_unenforced` notice with its position; the bytes still
 return. `PLURNK_PROVIDERS_GBNF_DEBUG` validates but withholds the grammar and
 compares the unconstrained result for diagnostics.
 

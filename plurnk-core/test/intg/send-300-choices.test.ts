@@ -110,9 +110,9 @@ test("e2e: the ask stops the world via loop/proposal; loop.resolve's body IS the
             assert.deepEqual(ask.attrs?.choices, ["production", "staging"], "the chooser payload rides the proposal the client already renders");
             // The operator answers through the EXISTING resolve path — the accept body is the answer.
             await rpcCall(ws, 3, "loop.resolve", { logEntryId: ask.logEntryId, decision: "accept", body: "staging" });
-            await waitFor(() => terminated() as Array<{ finalStatus: number }>, (items) => items.some((t) => t.finalStatus === 200), { timeoutMs: 20_000 });
+            await waitFor(() => terminated() as Array<{ result: { status: number } }>, (items) => items.some((t) => t.result.status === 200), { timeoutMs: 20_000 });
             await flush();
-            const done = (terminated() as Array<{ finalStatus: number }>).find((t) => t.finalStatus === 200);
+            const done = (terminated() as Array<{ result: { status: number } }>).find((t) => t.result.status === 200);
             assert.ok(done !== undefined, "the ask→answer→continue→conclude cycle completed at 200");
         } finally { ws.close(); }
     });
@@ -237,7 +237,7 @@ test("a reconnecting client DISCOVERS the stopped world — the pending question
                 assert.deepEqual(result.proposals[0]!.attrs.choices, ["production", "staging"]);
                 await rpcCall(ws2, 3, "loop.resolve", { logEntryId: result.proposals[0]!.logEntryId, decision: "accept", body: "staging" });
             } finally { ws2.close(); }
-            await waitFor(() => terminated() as Array<{ finalStatus: number }>, (items) => items.some((t) => t.finalStatus === 200), { timeoutMs: 20_000 });
+            await waitFor(() => terminated() as Array<{ result: { status: number } }>, (items) => items.some((t) => t.result.status === 200), { timeoutMs: 20_000 });
             await flush();
             const after = await rpcCall(ws, 9, "proposal.list", {});
             assert.equal((after.result as { proposals: unknown[] }).proposals.length, 0, "resolved — the list empties");

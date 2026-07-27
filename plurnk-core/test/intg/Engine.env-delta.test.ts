@@ -15,6 +15,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import Engine from "../../src/core/Engine.ts";
 import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
+import Results from "../../src/core/results.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { Mock } from "@plurnk/plurnk-providers";
 import type { MockResponse } from "@plurnk/plurnk-providers";
@@ -140,7 +141,7 @@ test("exactly two cross-worker channels — state via the env-delta, a message v
         );
 
         // VOICE DOOR — *message*: an inject delivers a directed message onto A's own loop's next turn.
-        await db.test_set_loop_status.run({ id: loopA, status: 102 }); // A is the active loop
+        await db.test_set_loop_status.run({ id: loopA, status: 102, terminal_result: null }); // A is the active loop
         const injected = await eng.inject(workerA, "a directed message for A");
         assert.notEqual(injected, null, "voice door: the inject found A's loop and delivered");
         assert.equal(injected!.loopId, loopA, "the message landed on A's loop — directed, not ambient");
@@ -214,8 +215,17 @@ test("a sibling's loop-termination surfaces — a 2xx deliverable born OPEN + aw
 
         // worker SENDs[200] its result (its deliverable); grinder is abandoned (budget).
         const lifecycle = new LoopLifecycle(db);
-        assert.equal(await lifecycle.finish(workerLoop, 200, "the answer is 42"), true);
-        assert.equal(await lifecycle.finish(grinderLoop, 413, "budget_overflow"), true);
+        assert.deepEqual(
+            await lifecycle.finish(workerLoop, { status: 200 }, { message: "the answer is 42" }),
+            { status: 200 },
+        );
+        assert.equal(
+            (await lifecycle.finish(
+                grinderLoop,
+                Results.failure("engine:budget", "budget-overflow", 413, "budget_overflow"),
+            ))?.status,
+            413,
+        );
 
         // A's turn 2 pulls both terminations from the shared log: the 2xx deliverable born open, the abandonment folded.
         await eng.runTurn({ provider, workspaceId, workerId: workerA, loopId: loopA, messages: MESSAGES, turnNumber: 2 });

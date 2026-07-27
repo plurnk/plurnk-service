@@ -1,8 +1,7 @@
-import type { PlurnkStatement } from "@plurnk/plurnk-grammar";
+import type { PlurnkStatement, TelemetryEvent } from "@plurnk/plurnk-grammar";
 import type { Db } from "./Db.ts";
 import type SchemeRegistry from "./SchemeRegistry.ts";
 import type ExecutorRegistry from "./ExecutorRegistry.ts";
-import type TelemetryChannel from "./TelemetryChannel.ts";
 import type ProblemLog from "./ProblemLog.ts";
 import type { GitStatus } from "./git-state.ts";
 import { renderAddress, promptLoopPrefix } from "./plurnk-uri.ts";
@@ -25,6 +24,7 @@ import PacketWire, { type PacketSection } from "./packet-wire.ts";
 import type { Provider } from "@plurnk/plurnk-providers";
 import { scopeEnvToAlias, resolveActiveAlias } from "@plurnk/plurnk-providers";
 import ProviderInstantiate from "./ProviderInstantiate.ts";
+import Results from "./results.ts";
 
 // Substituted into the budget readout after the assembled packet is measured
 // (the figure depends on the packet's own rendered size — chicken/egg).
@@ -71,13 +71,6 @@ export type PacketAssistant = {
 export type RequestPacket = {
     tokens: number;
     sections: PacketSection[];
-    // The turn's structured telemetry events (parse errors, budget_overflow,
-    // strikes, …) — the engine's alert record, ALSO stored on the completed
-    // packet (packet.telemetryErrors). The buffer is ephemeral (drains on read),
-    // so the packet is their only persistent home; the `errors` SECTION is their
-    // rendered, model-facing view. The grinder threads them through its rebuild
-    // so a destructive re-drain can't swallow them.
-    telemetryErrors: object[];
 };
 
 // Packet assembly (SPEC §packet-assembly) + the budget grinder (§grinder):
@@ -86,7 +79,6 @@ export default class PacketBuilder {
 
     #db: Db;
     #schemes: SchemeRegistry;
-    #telemetry: TelemetryChannel;
     #problems: ProblemLog;
     // Boot-discovered runtime executors, late-injected on Engine after daemon
     // start() — read through a thunk so the post-construction set is visible.
@@ -94,16 +86,14 @@ export default class PacketBuilder {
     // §tokenomics-window-partition — the partition is PER-ALIAS (#352), resolved per provider in
     // #partitionFor and cached by alias; no boot-time global read.
 
-    constructor({ db, schemes, telemetry, problems, executors }: {
+    constructor({ db, schemes, problems, executors }: {
         db: Db;
         schemes: SchemeRegistry;
-        telemetry: TelemetryChannel;
         problems: ProblemLog;
         executors: () => ExecutorRegistry | undefined;
     }) {
         this.#db = db;
         this.#schemes = schemes;
-        this.#telemetry = telemetry;
         this.#problems = problems;
         this.#executors = executors;
         // #507 — the envelope rides the provider; construction only runs the retired-knob shed
@@ -196,7 +186,7 @@ export default class PacketBuilder {
     // completed with assistant + assistantRaw after the model responds, so
     // the stored packet and the wire payload share one source of truth.
     async buildRequestPacket({
-        initialMessages, requirements, workspaceId, workerId, loopId, currentTurnSeq, provider, gitStatus, telemetryErrors: presetTelemetry,
+        initialMessages, requirements, workspaceId, workerId, loopId, currentTurnSeq, provider, gitStatus, notices = [],
     }: {
         initialMessages: ChatMessage[];
         // Optional requirements override. Empty in practice — callers don't thread it;
@@ -204,13 +194,13 @@ export default class PacketBuilder {
         requirements: string;
         gitStatus: GitStatus | null;
         workspaceId: number; workerId: number; loopId: number;
-        // DB-level turn sequence for "look at the previous turn" queries
-        // (e.g. telemetry errors).
+        // DB-level turn sequence for "look at the previous turn" queries.
         currentTurnSeq: number;
         provider: Provider;
-        // Pre-drained telemetry — the grinder passes the first build's errors
-        // through its rebuilds so a destructive re-drain can't swallow them.
-        telemetryErrors?: object[];
+        // Model-facing observations queued by the engine before this packet
+        // build. Operation failures never ride this path; they derive from the
+        // durable log below.
+        notices?: readonly TelemetryEvent[];
     }): Promise<RequestPacket> {
         const byRole = (role: ChatMessage["role"]): string =>
             initialMessages.filter((m) => m.role === role).map((m) => m.content).join("\n\n");
@@ -245,7 +235,7 @@ export default class PacketBuilder {
         // is mandated unconditionally by plurnk.md §Imperatives (grammar 0.70 requires every turn to
         // lead with PLAN), so the service injects no separate plan directive either.
         const log = await this.#buildLog(workerId);
-        const telemetryErrors = presetTelemetry ?? await this.buildTelemetryErrors(loopId, currentTurnSeq);
+        const failures = await this.buildFailurePointers(loopId, currentTurnSeq);
         const countTokens = rulerCount; // §tokenomics-agnostic-ruler — the ONE model-facing ruler (chars/2), not the provider
         // #367 — the capability sheet must reflect the LOOP MODE, not just workspace-enablement: an
         // ask-mode loop advertises only what its dispatch gate (resolveForLoop) will accept, so the
@@ -307,7 +297,8 @@ export default class PacketBuilder {
             // pointers (the path is the actionable address the model READs/OPENs/KILLs), never advice. §child-orientation
             { name: "child-streams", slot: "user", header: "Child Streams", content: PacketWire.renderChildPointers(childStreams), tokens: 0 },
             { name: "child-workers", slot: "user", header: "Active Child Workers", content: PacketWire.renderChildPointers(childWorkers), tokens: 0 },
-            { name: "errors", slot: "user", header: "Errors", content: PacketWire.renderErrors(telemetryErrors), tokens: 0 },
+            { name: "errors", slot: "user", header: "Errors", content: PacketWire.renderFailurePointers(failures), tokens: 0 },
+            { name: "notices", slot: "user", header: "Notices", content: PacketWire.renderNotices(notices), tokens: 0 },
             { name: "git", slot: "user", header: "Git Status", content: PacketWire.renderGit(gitStatus), tokens: 0 },
             // budget — LAW (a hard ceiling the model must obey).
             { name: "budget", slot: "user", header: "Budget", content: budgetReadout, tokens: 0 },
@@ -362,7 +353,7 @@ export default class PacketBuilder {
         // substitution — the placeholder/number length delta is negligible).
         for (const s of sections) s.tokens = countTokens(PacketWire.renderSection(s));
         const packetTokens = countTokens(PacketWire.renderSlot(sections, "system")) + countTokens(PacketWire.renderSlot(sections, "user"));
-        return { tokens: packetTokens, sections, telemetryErrors };
+        return { tokens: packetTokens, sections };
     }
 
     // Budget readout body, rendered into the `## Plurnk Service Budget` section.
@@ -567,17 +558,19 @@ export default class PacketBuilder {
         // turn late. The row is grinder-exempt, so it stacks into a visible recurrence trail. It
         // sits at the turn's reserved running sequence (mintSequence) so it never collides with the
         // post-generate dispatch rows. §telemetry-uniform-error-channel, §grinder-overflow-error-row
-        await this.#problems.mint({
+        await this.#problems.record({
             workerId,
             loopId,
             turnId,
             sequence: mintSequence,
             origin: "plurnk",
             source: "rail",
-            owner: "engine:grinder",
-            code: "budget-overflow",
-            status: 413,
-            detail: "Budget Overflow: newest log items automatically FOLDed — a retrieval larger than Tokens Free arrives folded; FOLD older items first, then fetch within the room made",
+            result: Results.failure(
+                "engine:grinder",
+                "budget-overflow",
+                413,
+                "Budget Overflow: newest log items automatically FOLDed — a retrieval larger than Tokens Free arrives folded; FOLD older items first, then fetch within the room made",
+            ),
         });
         await this.#db.engine_grinder_fold_newest_turn.run({ loop_id: loopId, turn_id: turnId });
         const current = await rebuild();
@@ -600,35 +593,26 @@ export default class PacketBuilder {
         return {
             tokens: requestPacket.tokens + assistantTokens,
             sections: requestPacket.sections,
-            telemetryErrors: requestPacket.telemetryErrors,
             assistant,
             assistantRaw,
         };
     }
 
-    // SPEC §telemetry: model-facing alert surface.
-    // Two sources, merged on each packet build:
-    //   1. Previous-turn action-bound failures (status_rx >= 400 on log_entries).
-    //   2. Engine-buffered actionless failures (no_send, parse, watchdog, rails).
-    // Buffer drains on read — each error appears in exactly one packet.
-    async buildTelemetryErrors(loopId: number, currentTurnSeq: number): Promise<object[]> {
-        // The uniform error channel (§telemetry-uniform-error-channel): every 4xx/5xx log row
-        // becomes a LogCoordinate-positioned TelemetryEvent — a terse pointer; the model READs the
-        // row for its term + detail. Buffer events that point at the model's own emission keep their
-        // ContentOffset position. info-level notices (progress) are not errors and never surface here.
+    // Every prior-turn operation failure is durable before packet assembly.
+    // The model-facing Errors section is only a terse projection of those rows;
+    // it never reconstructs failure truth from an in-memory event.
+    async buildFailurePointers(loopId: number, currentTurnSeq: number): Promise<Array<{
+        status: number;
+        coordinate: string;
+    }>> {
         const rows = await this.#db.engine_render_telemetry_errors.all<{
             op: string; sequence: number; status_rx: number;
             turn_seq: number; loop_seq: number;
         }>({ loop_id: loopId, current_turn_seq: currentTurnSeq });
-        const logErrors = rows.map((r) => ({
-            source: "engine:rail",
-            kind: "log_error",
-            level: "error",
+        return rows.map((r) => ({
             status: r.status_rx,
-            position: { type: "log-coordinate", coordinate: `${r.loop_seq}/${r.turn_seq}/${r.sequence}/${r.op}` },
+            coordinate: `${r.loop_seq}/${r.turn_seq}/${r.sequence}/${r.op}`,
         }));
-        const bufferEvents = this.#telemetry.drain(loopId).filter((e) => (e as { level?: string }).level !== "info");
-        return [...bufferEvents, ...logErrors];
     }
 
     // SPEC §packet the log section — chronological action-entries for the loop.

@@ -39,8 +39,10 @@ export { parseRequiredInt, parseOptionalInt, parseRequiredFloat, parseOptionalFl
 export type { Reasoning, ReasoningMode, ReserveSpec } from "./env.ts";
 export { normalizeUsage, calculateCostUsd } from "./usage.ts";
 export type { RawUsage, TokenRates } from "./usage.ts";
-export { ProviderError, classifyProviderError, toProviderError, providerSource } from "./telemetry.ts";
-export type { TelemetryEvent, ProviderTelemetryKind } from "./telemetry.ts";
+export { ProviderError, classifyProviderError, toProviderError } from "./errors.ts";
+export { providerSource } from "./notices.ts";
+export type { ProviderErrorKind } from "./errors.ts";
+export type { ProviderNotice, ProviderNoticeKind } from "./notices.ts";
 
 export { default as Mock } from "./Mock.ts";
 export type { MockAssistant, MockResponse, MockReturnedAssistant } from "./Mock.ts";

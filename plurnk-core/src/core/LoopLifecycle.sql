@@ -18,12 +18,13 @@ RETURNING id;
 UPDATE loops
 SET status = $status,
     terminal_message = $message,
+    terminal_result = $result,
     terminated_by = $terminated_by
 WHERE id = $loop_id AND status IN (100, 102, 202)
-RETURNING id;
+RETURNING terminal_result;
 
 -- PREP: lifecycle_loop_status
-SELECT status FROM loops WHERE id = $loop_id;
+SELECT status, terminal_result FROM loops WHERE id = $loop_id;
 
 -- PREP: lifecycle_loop_turns
 SELECT id FROM turns WHERE loop_id = $loop_id ORDER BY sequence, id;
@@ -52,9 +53,14 @@ WITH RECURSIVE tree(id) AS (
 UPDATE loops
 SET status = 499,
     terminal_message = $message,
+    terminal_result = json_set(
+        $result,
+        '$.problem.instance',
+        'loop:///' || id
+    ),
     terminated_by = 'cancel'
 WHERE worker_id IN (
     SELECT id FROM tree WHERE $include_root = 1 OR id <> $worker_id
 )
   AND status IN (100, 102, 202)
-RETURNING id AS loop_id, worker_id;
+RETURNING id AS loop_id, worker_id, terminal_result;

@@ -16,6 +16,11 @@
             "types": "./dist/src/index.d.ts",
             "default": "./dist/src/index.js"
         },
+        "./contracts": {
+            "plurnk-dev": "./src/contracts.ts",
+            "types": "./dist/src/contracts.d.ts",
+            "default": "./dist/src/contracts.js"
+        },
         "./package.json": "./package.json",
         "./plurnk.gbnf": "./dist/plurnk.gbnf",
         "./schema/*.json": {

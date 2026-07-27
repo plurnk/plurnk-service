@@ -41,7 +41,7 @@ test("auto rejects an EDIT to a file that diverged on disk this turn — no sile
                 await rpcCall(ws, 1, "workspace.create", { name: "clobber", projectRoot: root });
                 // loop 1 — first sight materializes doc.md = V1 (no divergence).
                 const first = await runLoopToTerminal(ws, 2, { prompt: "look", flags: { auto: true } });
-                assert.equal(first.finalStatus, 200, "the materialization loop completed before the anti-clobber exercise");
+                assert.equal(first.result.status, 200, "the materialization loop completed before the anti-clobber exercise");
 
                 // The file changes out-of-band between turns.
                 await writeFile(join(root, "doc.md"), "V2 ambient change\n");
@@ -49,7 +49,7 @@ test("auto rejects an EDIT to a file that diverged on disk this turn — no sile
                 // loop 2 — pre-turn detects the V1→V2 divergence; the auto model EDITs based
                 // on its stale (V1) view. The anti-clobber must reject the EDIT, not apply it.
                 const second = await runLoopToTerminal(ws, 3, { prompt: "edit it", flags: { auto: true } });
-                assert.equal(second.finalStatus, 200, "the stale EDIT was exercised and the model concluded normally");
+                assert.equal(second.result.status, 200, "the stale EDIT was exercised and the model concluded normally");
 
                 const onDisk = await readFile(join(root, "doc.md"), "utf8");
                 assert.match(onDisk, /V2 ambient change/, "the ambient on-disk change survives — the stale auto EDIT was rejected, never written");

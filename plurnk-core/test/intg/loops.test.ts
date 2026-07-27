@@ -8,6 +8,21 @@ const seedWorker = async (db: Db, label: string): Promise<number> => {
     return insertWorker(db, workspaceId);
 };
 
+const terminalResult = (status: number, sequence: number): string | null => {
+    if ([100, 102, 202].includes(status)) return null;
+    if (status < 400) return JSON.stringify({ status });
+    return JSON.stringify({
+        status,
+        problem: {
+            type: "https://problems.plurnk.dev/test/fixture/terminal",
+            title: "Test terminal",
+            status,
+            detail: "The test fixture made this loop terminal.",
+            instance: `loop:///fixture/${sequence}`,
+        },
+    });
+};
+
 test("loops: table is STRICT", async () => {
     const db = await openMigrated();
     try {
@@ -40,7 +55,13 @@ test("loops: status enum — 102, 200, 413, 429, 499, 500, 508 all accepted", as
         // 508 runaway). 102 = running. (100 queued is covered in the next test.)
         const valid = [102, 200, 413, 429, 499, 500, 508];
         for (const [i, status] of valid.entries()) {
-            await db.test_loops_insert_with_status.run({ worker_id: workerId, sequence: i + 1, status, prompt: "x" });
+            await db.test_loops_insert_with_status.run({
+                worker_id: workerId,
+                sequence: i + 1,
+                status,
+                prompt: "x",
+                terminal_result: terminalResult(status, i + 1),
+            });
         }
         const rows = await db.test_loops_statuses_by_run.all<{ status: number }>({ worker_id: workerId });
         assert.deepEqual(rows.map((r) => r.status), valid);
@@ -54,7 +75,13 @@ test("loops: status enum accepts 100 (queued) — drain prerequisite", async () 
     const db = await openMigrated();
     try {
         const workerId = await seedWorker(db, "ws-loops-queued");
-        await db.test_loops_insert_with_status.run({ worker_id: workerId, sequence: 1, status: 100, prompt: "queued" });
+        await db.test_loops_insert_with_status.run({
+            worker_id: workerId,
+            sequence: 1,
+            status: 100,
+            prompt: "queued",
+            terminal_result: null,
+        });
         const rows = await db.test_loops_statuses_by_run.all<{ status: number }>({ worker_id: workerId });
         assert.deepEqual(rows.map((r) => r.status), [100]);
     } finally { await db.close(); }
@@ -67,7 +94,13 @@ test("loops: status enum rejects non-enum values (e.g. 201, 300, 0, -1)", async 
         // 201/300 are valid HTTP but not loop statuses; 0/-1 are out of range.
         for (const bad of [201, 300, 0, -1]) {
             await assert.rejects(
-                () => db.test_loops_insert_with_status.run({ worker_id: workerId, sequence: 1, status: bad, prompt: "x" }),
+                () => db.test_loops_insert_with_status.run({
+                    worker_id: workerId,
+                    sequence: 1,
+                    status: bad,
+                    prompt: "x",
+                    terminal_result: terminalResult(bad, 1),
+                }),
                 /CHECK constraint failed/,
                 `status ${bad} should be rejected`,
             );

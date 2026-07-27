@@ -3,7 +3,7 @@
 // certifies the one client surface. Used by every Daemon.* and SEND[*] integration test.
 
 import { PlurnkParser } from "@plurnk/plurnk-grammar";
-import type { PlurnkStatement } from "@plurnk/plurnk-grammar";
+import type { OperationResult, PlurnkStatement } from "@plurnk/plurnk-grammar";
 import Daemon from "../../src/server/Daemon.ts";
 import SeamSocket from "./_seam.ts";
 import type { MockResponse, Provider } from "@plurnk/plurnk-providers";
@@ -104,6 +104,7 @@ export const runLoopToTerminal = async (
     { timeoutMs = 8000 }: { timeoutMs?: number } = {},
 ): Promise<{
     loopId: number; finalStatus: number; accepted: number; action?: string; modelWorkerId?: number;
+    result: OperationResult;
     hitMaxTurns?: boolean; turnIds?: number[]; usage?: { promptTokens: number; completionTokens: number; costUsd: number };
 }> => {
     const terminated = subscribeNotifications(ws, "loop/terminated");
@@ -111,17 +112,17 @@ export const runLoopToTerminal = async (
     if (run.error !== undefined) {
         throw new Error(`loop.run RPC failed (${run.error.code}): ${run.error.message}`);
     }
-    const { loopId, finalStatus: accepted, action, modelWorkerId } = run.result as { loopId: number; finalStatus: number; action?: string; modelWorkerId?: number };
+    const { loopId, status: accepted, action, modelWorkerId } = run.result as OperationResult & { loopId: number; action?: string; modelWorkerId?: number };
     const seen = await waitFor(
         () => terminated() as Array<{ loopId: number }>,
         (ts) => ts.some((t) => t.loopId === loopId),
         { timeoutMs },
     );
     const term = seen.find((t) => t.loopId === loopId) as {
-        loopId: number; finalStatus: number; hitMaxTurns?: boolean; turnIds?: number[];
+        loopId: number; result: OperationResult; hitMaxTurns?: boolean; turnIds?: number[];
         usage?: { promptTokens: number; completionTokens: number; costUsd: number };
     };
-    return { ...term, accepted, action, modelWorkerId };
+    return { ...term, finalStatus: term.result.status, accepted, action, modelWorkerId };
 };
 
 export const connect = (addr: DaemonAddr): Promise<SeamSocket> =>

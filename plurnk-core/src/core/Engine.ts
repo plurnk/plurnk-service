@@ -34,7 +34,7 @@ import { setTimeout as delay } from "node:timers/promises";
 // drift between wire and digest possible.
 // Format: markdown (user pick over rummy's XML alternative, 2026-05-22).
 import PacketWire from "./packet-wire.ts";
-import Results, { type SchemeResult } from "./results.ts";
+import Results, { OperationFailureError, type SchemeResult } from "./results.ts";
 
 // The engine's collaborators — each owns one machine; Engine owns the loop/turn
 // lifecycle and wires them together as the public facade.
@@ -379,7 +379,6 @@ export default class Engine {
         this.#packets = new PacketBuilder({
             db,
             schemes,
-            telemetry: this.#telemetry,
             problems: this.#problems,
             executors,
         });
@@ -533,7 +532,7 @@ export default class Engine {
         origin?: WriterTier;
         signal?: AbortSignal;
         onDispatch?: (logEntryId: number) => void;
-    }): Promise<{ turnIds: number[]; finalStatus: number; hitMaxTurns: boolean; reason: "max_turns" | "strike_threshold" | "budget_overflow" | "loop_timeout" | "external" | null }> {
+    }): Promise<{ turnIds: number[]; result: SchemeResult; hitMaxTurns: boolean; reason: "max_turns" | "strike_threshold" | "budget_overflow" | "loop_timeout" | "external" | null }> {
         // A 202 park suspends this durable loop and a later wake re-enters runLoop.
         // Its ceiling therefore counts every prior turn, not merely this process-local
         // execution segment.
@@ -556,16 +555,17 @@ export default class Engine {
         const wall = setTimeout(() => loopAbort.abort(LOOP_TIMEOUT_REASON), readLoopTimeoutMs());
         wall.unref();
         const timedOut = (): boolean => loopAbort.signal.aborted && loopAbort.signal.reason === LOOP_TIMEOUT_REASON;
-        const ruleTimeout = async (): Promise<{ turnIds: number[]; finalStatus: number; hitMaxTurns: boolean; reason: "loop_timeout" }> => {
-            // {§loop-terminals} — EVERY abandonment names itself (#555; the full terminal
-            // enumeration, not the two first found): live fan-out before cleanup wipes the buffer.
-            this.#telemetry.push(workspaceId, loopId, {
-                source: "engine:rails", kind: "loop_timeout", level: "error",
-                message: `loop abandoned 504: the loop wall expired after ${turnIds.length} turns`,
-            });
-            await this.#lifecycle.finish(loopId, 504, "loop_timeout");
+        const ruleTimeout = async (): Promise<{ turnIds: number[]; result: SchemeResult; hitMaxTurns: boolean; reason: "loop_timeout" }> => {
+            const failure = Results.failure(
+                "engine:rails",
+                "loop-timeout",
+                504,
+                `The loop wall expired after ${turnIds.length} turns.`,
+            );
+            const result = await this.#lifecycle.finish(loopId, failure);
+            if (result === null) throw new Error(`loop ${loopId} became terminal before timeout settlement`);
             cleanup("forceful", "loop_timeout");
-            return { turnIds, finalStatus: 504, hitMaxTurns: false, reason: "loop_timeout" };
+            return { turnIds, result, hitMaxTurns: false, reason: "loop_timeout" };
         };
 
         // Cleanup splits by termination kind:
@@ -600,7 +600,7 @@ export default class Engine {
                 // check, §worker-lifecycle-wake-requeue-not-terminal). The wake's intent is KEEP
                 // RUNNING: re-claim atomically and continue — the injected prompt is already
                 // this loop's next turn. Returning it as "external" broadcast a QUEUED loop
-                // as loop/terminated {finalStatus: 100} — the delegation-flags flake.
+                // as a terminal result with status 100 — the delegation-flags flake.
                 await this.#db.engine_reclaim_queued_loop.run({ loop_id: loopId });
                 continue; // claimed (or a racer flipped it first — the re-read decides)
             }
@@ -609,21 +609,27 @@ export default class Engine {
                 // contract (E.4). Every other terminal, 200 included, reaps: "done"
                 // must not leak running execs. Trust the code's declared intent.
                 cleanup(row.status === 202 ? "graceful" : "forceful", `loop_terminal_${row.status}`);
-                return { turnIds, finalStatus: row.status, hitMaxTurns: false, reason: "external" };
+                if (row.status === 202) {
+                    return { turnIds, result: { status: 202 }, hitMaxTurns: false, reason: "external" };
+                }
+                const result = await this.#lifecycle.result(loopId);
+                if (result === null) {
+                    throw new Error(`terminal loop ${loopId} status ${row.status} has no operation result`);
+                }
+                return { turnIds, result, hitMaxTurns: false, reason: "external" };
             }
 
             if (maxTurns >= 0 && turnIds.length >= maxTurns) {
-                // §loop-terminals — the turn ceiling is exhausted: 429 Too Many Requests
-                // (kin to the soft sudden-death 429 warnings that precede it).
-                // {§loop-terminals} — even the EXPECTED ceiling names itself (warn, not error:
-                // the client configured maxTurns; hitting it is a bound, not a malfunction).
-                this.#telemetry.push(workspaceId, loopId, {
-                    source: "engine:rails", kind: "max_turns", level: "warn",
-                    message: `loop ended 429: the configured turn ceiling (${maxTurns}) is exhausted`,
-                });
-                await this.#lifecycle.finish(loopId, 429, "max_turns");
+                const failure = Results.failure(
+                    "engine:rails",
+                    "max-turns",
+                    429,
+                    `The configured turn ceiling (${maxTurns}) is exhausted.`,
+                );
+                const result = await this.#lifecycle.finish(loopId, failure);
+                if (result === null) throw new Error(`loop ${loopId} became terminal before max-turn settlement`);
                 cleanup("forceful", "max_turns");
-                return { turnIds, finalStatus: 429, hitMaxTurns: true, reason: "max_turns" };
+                return { turnIds, result, hitMaxTurns: true, reason: "max_turns" };
             }
 
             // PLURNK_SERVICE_EXEC_WAIT_MS — a post-EXEC breath: if a spawn from the prior turn
@@ -668,15 +674,16 @@ export default class Engine {
 
             // SPEC §grinder: budget hard-stop — packet won't fit even collapsed → abandon.
             if (turn.budgetHardStop) {
-                // §loop-terminals — the packet won't fit even collapsed: 413 Content Too Large.
-                // Same silent-terminal class as strike_threshold ({§loop-terminals}, #555): name it.
-                this.#telemetry.push(workspaceId, loopId, {
-                    source: "engine:rails", kind: "budget_overflow", level: "error",
-                    message: `loop abandoned 413: the packet exceeds the budget even after the newest turn folded — unrecoverable overflow after ${turnIds.length} turns`,
-                });
-                await this.#lifecycle.finish(loopId, 413, "budget_overflow");
+                const failure = Results.failure(
+                    "engine:rails",
+                    "budget-overflow",
+                    413,
+                    `The packet exceeds the budget even after the newest turn folded; overflow remained unrecoverable after ${turnIds.length} turns.`,
+                );
+                const result = await this.#lifecycle.finish(loopId, failure);
+                if (result === null) throw new Error(`loop ${loopId} became terminal before budget settlement`);
                 cleanup("forceful", "budget_overflow");
-                return { turnIds, finalStatus: 413, hitMaxTurns: false, reason: "budget_overflow" };
+                return { turnIds, result, hitMaxTurns: false, reason: "budget_overflow" };
             }
 
             // Rails #38/#39 — per-turn strike accounting (cycle detection, the
@@ -695,19 +702,18 @@ export default class Engine {
                 // (508 Loop Detected); a failure/no-op strike is the model failing (500
                 // Internal Server Error). The straw that crossed the threshold picks it.
                 const status = verdict.cycleDetected ? 508 : 500;
-                // {§loop-terminals} — the abandonment NAMES ITSELF (#506 promise; run60/#555): a
-                // deliberate strike terminal returns a clean finalStatus, so the drain's loop_error
-                // catch never sees it and the death would be silent on every channel. Emit a legible
-                // error event — live fan-out fires here, BEFORE cleanup deletes the loop's buffer.
-                this.#telemetry.push(workspaceId, loopId, {
-                    source: "engine:rails", kind: "strike_threshold", level: "error",
-                    message: verdict.cycleDetected
-                        ? `loop abandoned ${status}: strike threshold crossed after ${turnIds.length} turns — the model was spinning in place (cycle detected)`
-                        : `loop abandoned ${status}: strike threshold crossed after ${turnIds.length} turns — repeated failed or no-op turns`,
-                });
-                await this.#lifecycle.finish(loopId, status, "strike_threshold");
+                const failure = Results.failure(
+                    "engine:rails",
+                    "strike-threshold",
+                    status,
+                    verdict.cycleDetected
+                        ? `The strike threshold was crossed after ${turnIds.length} turns because the model was spinning in place.`
+                        : `The strike threshold was crossed after ${turnIds.length} turns because turns repeatedly failed or performed no operation.`,
+                );
+                const result = await this.#lifecycle.finish(loopId, failure);
+                if (result === null) throw new Error(`loop ${loopId} became terminal before strike settlement`);
                 cleanup("forceful", "strike_threshold");
-                return { turnIds, finalStatus: status, hitMaxTurns: false, reason: "strike_threshold" };
+                return { turnIds, result, hitMaxTurns: false, reason: "strike_threshold" };
             }
 
             // Sudden-death threshold is engine-internal — abandonment
@@ -1049,13 +1055,17 @@ export default class Engine {
         // (a service-side `git status` shell-out) and threaded into the budget
         // rebuild too so it isn't re-shelled on overflow.
         const gitStatus = await GitState.status(this.#db, workspaceId, this.#loopAborts.get(loopId)?.signal);
+        // Notices are non-terminal observations, never operation-failure truth.
+        // Drain once and thread the same set through every grinder rebuild.
+        const notices = this.#telemetry.drain(loopId)
+            .filter((event) => (event as { level?: string }).level !== "info") as TelemetryEvent[];
 
         // Build the spec'd packet (Packet.json) request half. The log build
         // queries log_entries scoped to the worker — the prompt entry just
         // written (if turn 1) is part of that query result.
         let requestPacket = await this.#packets.buildRequestPacket({
             initialMessages: messages, requirements, workspaceId, workerId, loopId,
-            currentTurnSeq: seq, provider, gitStatus,
+            currentTurnSeq: seq, provider, gitStatus, notices,
         });
         // SPEC §grinder — budget grinder, pre-LLM: reclaim window on actual overflow.
         const enforced = await this.#packets.enforceBudget({
@@ -1063,12 +1073,11 @@ export default class Engine {
             // The overflow error row is minted at the turn's running sequence (nextActionIndex), pre-generate;
             // runTurn advances the counter past it below so the post-generate dispatch rows never collide.
             mintSequence: nextActionIndex,
-            // No preset telemetry — the rebuild RE-DERIVES the errors section from log≥400 so the
-            // overflow row just minted surfaces THIS turn (§grinder-overflow-error-row). Safe: the
-            // ephemeral buffer is empty pre-generate (events drain on the next turn's build).
+            // Rebuilds re-derive durable errors and retain the one drained notice
+            // set; neither path can duplicate or swallow a product failure.
             rebuild: () => this.#packets.buildRequestPacket({
                 initialMessages: messages, requirements, workspaceId, workerId, loopId,
-                currentTurnSeq: seq, provider, gitStatus,
+                currentTurnSeq: seq, provider, gitStatus, notices,
             }),
         });
         if (enforced.struck) nextActionIndex += 1; // the budget-overflow error row consumed a sequence
@@ -1089,23 +1098,25 @@ export default class Engine {
                 : this.#packets.exactPacketTokens(requestPacket, provider) <= provider.contextWindow - (this.#packets.maxTokensFor(provider) ?? 0);
             if (physicallySendable && !this.#hardOverflowRecovery.has(loopId)) {
                 this.#hardOverflowRecovery.add(loopId);
-                await this.#problems.mint({
+                await this.#problems.record({
                     workerId,
                     loopId,
                     turnId,
                     sequence: nextActionIndex++,
                     origin: "model",
                     source: "engine",
-                    owner: "engine:grinder",
-                    code: "budget-overflow",
-                    status: 413,
-                    detail: "The packet exceeds the budget even after the newest turn folded — this is your ONE recovery turn: KILL or FOLD history items now (the budget table lists the heaviest) to reclaim room; a second consecutive overflow terminates the loop.",
+                    result: Results.failure(
+                        "engine:grinder",
+                        "budget-overflow",
+                        413,
+                        "The packet exceeds the budget even after the newest turn folded — this is your ONE recovery turn: KILL or FOLD history items now (the budget table lists the heaviest) to reclaim room; a second consecutive overflow terminates the loop.",
+                    ),
                 });
                 // Rebuild so the recovery-steer row just minted renders in THIS packet's log +
                 // errors sections (the same re-derive contract the soft grind uses).
                 requestPacket = await this.#packets.buildRequestPacket({
                     initialMessages: messages, requirements, workspaceId, workerId, loopId,
-                    currentTurnSeq: seq, provider, gitStatus,
+                    currentTurnSeq: seq, provider, gitStatus, notices,
                 });
             } else {
             // Hard 413: physically unsendable, or the model already declined its recovery turn.
@@ -1130,6 +1141,7 @@ export default class Engine {
         // never shrinks as the virtual prompt budget fills.
         let response: ProviderResponse;
         let railGrammar: string | undefined;
+        const providerSignal = this.#loopAborts.get(loopId)?.signal ?? signal;
         // #249 — plugin attribution tags onto the per-turn generate() wire. Value is the
         // active-plugin set (placeholder); real per-turn grounding is deferred.
         const attributions = [...new Set([...this.#schemes.attributions(), ...(this.#executors?.attributions() ?? [])])].toSorted();
@@ -1155,23 +1167,74 @@ export default class Engine {
             // coordinate, not the DB id) resolves the same way the prompt-slot path does (§log coords).
             const loopSeq = (await this.#db.engine_loop_sequence.get<{ sequence: number }>({ loop_id: loopId }))?.sequence ?? loopId;
             railGrammar = await this.#grammarConstraint(provider);
-            response = await provider.generate({ messages: modelMessages, workerId: String(workerId), primaryWorkerId: String(await this.resolveWorkerPrimary(workerId)), signal: this.#loopAborts.get(loopId)?.signal ?? signal, grammar: railGrammar, maxTokens: this.#packets.maxTokensFor(provider) ?? undefined, strikes: this.#strikes.streak(loopId), attributions: attributions.length > 0 ? attributions : undefined, client: client ?? undefined, workspaceId: String(workspaceId), loop: loopSeq, turn: seq }); // strikes: first-party routing signal, 0 sent explicitly (#313) // §provider-surface-generate §provider-guarantees-single-call §provider-guarantees-signal-wired §attribution-plurnk-namespace-reserved §client-telemetry
+            response = await provider.generate({ messages: modelMessages, workerId: String(workerId), primaryWorkerId: String(await this.resolveWorkerPrimary(workerId)), signal: providerSignal, grammar: railGrammar, maxTokens: this.#packets.maxTokensFor(provider) ?? undefined, strikes: this.#strikes.streak(loopId), attributions: attributions.length > 0 ? attributions : undefined, client: client ?? undefined, workspaceId: String(workspaceId), loop: loopSeq, turn: seq }); // strikes: first-party routing signal, 0 sent explicitly (#313) // §provider-surface-generate §provider-guarantees-single-call §provider-guarantees-signal-wired §attribution-plurnk-namespace-reserved §client-telemetry
             if (!signal?.aborted) this.#telemetry.push(workspaceId, loopId, { source: "engine:turn", kind: "turn_generated", level: "info", message: "parsing model response" });
         } catch (err) {
             // §turn-never-blank — a ProviderError is an INFRASTRUCTURE failure (auth, network
-            // beyond retries, rate limit): no completed exchange exists, so no turn exists —
-            // telemetry the cause and DIE legibly (the drain writes the loop terminal 500 with
-            // the message). Grammar conformance never arrives here: providers 0.32 retired the
+            // beyond retries, rate limit): no completed exchange exists. Persist its exact
+            // RFC 9457 result before propagating it to the drain. Grammar conformance never
+            // arrives here: providers 0.32 retired the
             // constrained-path throw — a completed exchange ALWAYS returns, bytes in assistant,
-            // the conformance verdict riding response.telemetry as an OBSERVATION (the engine's
+            // the conformance verdict riding response.notices as an OBSERVATION (the engine's
             // ANTLR parse is the judge; the provider transports and observes, never adjudicates).
             // The old fallback fabricated an empty emission here and laundered a provider
             // adjudication into a model-behavior 422 — a state the system otherwise forbids,
             // a record that lied, and days of forensics pointed at the wrong suspect.
-            if (err instanceof ProviderError) {
-                this.#telemetry.push(workspaceId, loopId, { source: "provider", kind: err.kind, message: err.message, level: "error" });
+            // Cancellation is lifecycle truth, not a provider failure. Close the
+            // attempted turn without inventing an assistant response, then let
+            // runLoop/Daemon settle the exact 504/499 loop result.
+            if (providerSignal?.aborted) {
+                await this.#db.engine_close_turn.run({
+                    id: turnId,
+                    status: providerSignal.reason === LOOP_TIMEOUT_REASON ? 504 : 499,
+                    packet: JSON.stringify(requestPacket),
+                    usage_prompt: 0,
+                    usage_completion: 0,
+                    usage_reasoning: 0,
+                    usage_cached: 0,
+                    usage_cost_usd: 0,
+                    usage_prompt_budget: this.#packets.promptBudgetFor(provider),
+                    finish_reason: null,
+                    model: provider.model,
+                    meta: "{}",
+                });
+                throw err;
             }
-            throw err;
+            const failure = err instanceof ProviderError
+                ? { status: err.problem.status, problem: err.problem }
+                : Results.failure(
+                    "engine:provider",
+                    "provider-threw",
+                    502,
+                    `The provider threw outside its failure contract: ${err instanceof Error ? err.message : String(err)}`,
+                );
+            const recorded = await this.#problems.record({
+                workerId,
+                loopId,
+                turnId,
+                sequence: nextActionIndex,
+                origin: "plurnk",
+                source: "provider",
+                result: failure,
+            });
+            // The provider call was attempted, but no completed exchange exists.
+            // Persist the exact request half and failure status; omitting assistant
+            // is materially different from fabricating an empty model turn.
+            await this.#db.engine_close_turn.run({
+                id: turnId,
+                status: recorded.result.status,
+                packet: JSON.stringify(requestPacket),
+                usage_prompt: 0,
+                usage_completion: 0,
+                usage_reasoning: 0,
+                usage_cached: 0,
+                usage_cost_usd: 0,
+                usage_prompt_budget: this.#packets.promptBudgetFor(provider),
+                finish_reason: null,
+                model: provider.model,
+                meta: "{}",
+            });
+            throw new OperationFailureError(recorded.result, { cause: err });
         }
 
         // Engine splits wire-level response: emission (content, reasoning,
@@ -1197,13 +1260,13 @@ export default class Engine {
         // emission records an actionless `error` row below, after the turn's dispatched ops are
         // sequenced (see the parse-error log write past the dispatch loop). The errors section
         // derives a pointer to it from log≥400, uniform with action_failure.
-        // providers#24 / #275: non-fatal provider telemetry on a SUCCESSFUL turn. In GBNF-filter
+        // providers#24 / #275: non-fatal provider notices on a SUCCESSFUL turn. In GBNF-filter
         // mode the provider no longer THROWS grammar_unenforced — it returns the model's bytes
         // (here, packetAssistant.content) and attaches the conflict as a telemetry event carrying
         // the divergence code-point position. Forward each event with a content-offset `line:col`;
         // the model resolves it against its own emission — READ the folded `model` mirror row at the
         // cited lines (§model-entry) — not an embedded snippet that would duplicate the emission.
-        for (const event of response.telemetry ?? []) {
+        for (const event of response.notices ?? []) {
             const located = typeof event.position === "number"
                 ? this.#offsetToLineColumn(packetAssistant.content, event.position)
                 : null;
@@ -1211,7 +1274,7 @@ export default class Engine {
                 source: event.source,
                 kind: event.kind,
                 message: event.message ?? "",
-                level: (event as { level?: TelemetryEvent["level"] }).level ?? "warn", // forward the producer's severity; default for a producer predating the field
+                level: event.level,
                 ...(located !== null
                     ? { position: { type: "content-offset", line: located.line, column: located.column } }
                     : {}),
@@ -1226,7 +1289,7 @@ export default class Engine {
             try { verdict = validateGbnf(railGrammar, packetAssistant.content); }
             catch (cause) { Engine.#warnRailVerdictGapOnce((cause as Error).message); }
             railKeys = { railsAttached: "client", railsVerdict: verdict?.status ?? "unverifiable" };
-            const providerGraded = (response.telemetry ?? []).some((e) => e.kind === "grammar_unenforced");
+            const providerGraded = (response.notices ?? []).some((e) => e.kind === "grammar_unenforced");
             if (verdict !== null && verdict.status !== "accept" && !providerGraded) {
                 const located = this.#offsetToLineColumn(packetAssistant.content, verdict.pos);
                 this.#telemetry.push(workspaceId, loopId, {
@@ -1415,17 +1478,19 @@ export default class Engine {
         if (droppedCount > 0) pendingEngineErrors.push("max_commands_exceeded");
         for (const kind of pendingEngineErrors) {
             const problem = ENGINE_PROBLEMS[kind];
-            await this.#problems.mint({
+            await this.#problems.record({
                 workerId,
                 loopId,
                 turnId,
                 sequence: errSeq++,
                 origin: "plurnk",
                 source: "rail",
-                owner: "engine:rail",
-                code: problem.code,
-                status: problem.status,
-                detail: problem.detail,
+                result: Results.failure(
+                    "engine:rail",
+                    problem.code,
+                    problem.status,
+                    problem.detail,
+                ),
             });
         }
         // §log-row-self-explains (Q2, owner-clarified) — a model-op failure is the MODEL'S OWN op
@@ -1447,37 +1512,42 @@ export default class Engine {
             const message = truncatedEmpty
                 ? `output truncated at the completion cap (${cap} tokens): nothing was emitted before the pool was consumed — the parse error below is an artifact of the empty emission, not a malformed turn`
                 : `output truncated at the completion cap (${cap} tokens): the emission was cut mid-op — the parse errors below are truncation artifacts`;
-            await this.#problems.mint({
+            await this.#problems.record({
                 workerId,
                 loopId,
                 turnId,
                 sequence: errSeq++,
                 origin: "model",
                 source: "engine",
-                owner: "engine:generation",
-                code: "output-truncated",
-                status: 413,
-                detail: message,
+                result: Results.failure(
+                    "engine:generation",
+                    "output-truncated",
+                    413,
+                    message,
+                ),
             });
         }
         // Parse errors carry the parser message + a content-offset line:col (a ContentOffset position),
         // resolved against the model's folded mirror row (§model-entry) — origin 'model', not engine.
         for (const { message, line, column, source } of parseErrors ?? []) {
-            await this.#problems.mint({
+            await this.#problems.record({
                 workerId,
                 loopId,
                 turnId,
                 sequence: errSeq++,
                 origin: "model",
                 source: "grammar",
-                owner: "grammar:parser",
-                code: "parse-error",
-                status: 400,
-                detail: message,
-                extensions: {
-                    position: { type: "content-offset", line, column },
-                    parserSource: source,
-                },
+                result: Results.failure(
+                    "grammar:parser",
+                    "parse-error",
+                    400,
+                    message,
+                    {},
+                    {
+                        position: { type: "content-offset", line, column },
+                        parserSource: source,
+                    },
+                ),
             });
         }
 

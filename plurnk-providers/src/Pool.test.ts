@@ -1,7 +1,7 @@
 import test from "node:test";
 import { strict as assert } from "node:assert";
 import Pool from "./Pool.ts";
-import { ProviderError } from "./telemetry.ts";
+import { ProviderError } from "./errors.ts";
 import type { Provider, ProviderResponse } from "./types.ts";
 import { resetEmittedWarnings } from "./warnings.ts";
 

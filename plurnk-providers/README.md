@@ -60,7 +60,7 @@ It may use any npm scope. Its package manifest declares the PLURNK name:
 The default export is an AI SDK provider with
 `languageModel(modelId)`. PLURNK adapts that language model into its own
 contract, so plugins do not reproduce retries, usage normalization, envelopes,
-or telemetry.
+notices, or RFC 9457 failure normalization.
 
 Discovery is scope-agnostic and rejects duplicate names.
 `PLURNK_PLUGINS_TRUSTED_ONLY` restricts third-party discovery.

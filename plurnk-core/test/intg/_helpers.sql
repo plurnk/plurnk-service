@@ -124,7 +124,7 @@ SELECT packet FROM turns WHERE id = $id;
 SELECT status FROM turns WHERE id = $id;
 
 -- PREP: test_list_turns_in_loop
-SELECT id, sequence FROM turns WHERE loop_id = $loop_id ORDER BY sequence;
+SELECT id, sequence, status, packet FROM turns WHERE loop_id = $loop_id ORDER BY sequence;
 
 -- PREP: test_log_entries_by_turn
 SELECT sequence, status_rx, pathname, scheme, fragment, op, origin, signal, rx
@@ -186,7 +186,10 @@ SELECT pathname FROM entries WHERE id = $id;
 SELECT * FROM log_entries WHERE turn_id = $turn_id ORDER BY sequence LIMIT 1;
 
 -- PREP: test_set_loop_status
-UPDATE loops SET status = $status WHERE id = $id;
+UPDATE loops
+SET status = $status,
+    terminal_result = $terminal_result
+WHERE id = $id;
 
 -- PREP: test_set_session_project_root
 -- Sets workspaces.project_root for File-scheme intg tests. F.1 added the
@@ -426,7 +429,7 @@ SELECT COUNT(*) n FROM log_entries WHERE op = $op;
 -- PREP: test_terminate_loop_after_turn
 -- The fan-out race fixture: mark a loop terminal with terminated_at strictly AFTER the given
 -- turn's timestamp (+2s), with a deliverable — a child concluding during the parent's generation.
-UPDATE loops SET status = 200, terminated_at = strftime('%Y-%m-%dT%H:%M:%fZ', (SELECT timestamp FROM turns WHERE id = $turn_id), '+2 seconds'), terminal_message = 'the value is 42'
+UPDATE loops SET status = 200, terminal_result = json_object('status', 200), terminated_at = strftime('%Y-%m-%dT%H:%M:%fZ', (SELECT timestamp FROM turns WHERE id = $turn_id), '+2 seconds'), terminal_message = 'the value is 42'
 WHERE id = $loop_id;
 
 -- PREP: test_probe_raw

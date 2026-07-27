@@ -81,8 +81,8 @@ test("#598: an async wake resumes with the loop's durable provider, never the bo
                     "a conflicting provider request against the parked loop fails loudly");
 
                 await waitFor(
-                    () => terminated() as Array<{ loopId: number; finalStatus: number }>,
-                    (events) => events.some((event) => event.loopId === loopId && event.finalStatus === 200),
+                    () => terminated() as Array<{ loopId: number; result: { status: number } }>,
+                    (events) => events.some((event) => event.loopId === loopId && event.result.status === 200),
                     { timeoutMs: 6000 },
                 );
                 assert.equal(selected.remaining, 0, "provider B generated both the initial and resumed turns");
@@ -136,14 +136,14 @@ test("#598: a parked loop retains its provider across daemon restart", async () 
         first = undefined;
 
         second = new Daemon({ db, provider: boot });
-        const terminated: Array<{ loopId: number; finalStatus: number }> = [];
+        const terminated: Array<{ loopId: number; result: { status: number } }> = [];
         second.subscribeToEvents((_workspaceId, method, params) => {
-            if (method === "loop/terminated") terminated.push(params as { loopId: number; finalStatus: number });
+            if (method === "loop/terminated") terminated.push(params as { loopId: number; result: { status: number } });
         });
         await second.start();
         await waitFor(
             () => terminated,
-            (events) => events.some((event) => event.loopId === started.loopId && event.finalStatus === 200),
+            (events) => events.some((event) => event.loopId === started.loopId && event.result.status === 200),
             { timeoutMs: 6000 },
         );
         const loops = await db.test_list_loops_all.all<{ id: number; worker_id: number }>({});
@@ -191,7 +191,7 @@ test("wake-on-completion: a slept (202) loop resumes IN PLACE — no new loop, n
             // true terminal all arrive via events. §worker-lifecycle-wake-liveness.
             const firstWorker = await rpcCall(ws, 2, "loop.run", { prompt: "kick off exec then park", flags: { auto: true } });
             const parkedLoop = (firstWorker.result as { loopId: number }).loopId;
-            assert.equal((firstWorker.result as { finalStatus: number }).finalStatus, 100, "loop.run returns immediately (100 accepted) — never a fake 200/202 standing in for the loop's real outcome");
+            assert.equal((firstWorker.result as { status: number }).status, 100, "loop.run returns immediately (100 accepted) — never a fake 200/202 standing in for the loop's real outcome");
 
             // echo hi is fast; the conclusion fires after the loop sleeps; the daemon
             // RESUMES the same loop; that resumed turn terminates it. Event-driven —
@@ -199,10 +199,10 @@ test("wake-on-completion: a slept (202) loop resumes IN PLACE — no new loop, n
             // timeout if the slept loop is ever stranded (the lost-loop hang), instead
             // of a fixed sleep that hides it under load.
             await waitFor(
-                () => terminatedEvents() as Array<{ loopId: number; finalStatus: number }>,
+                () => terminatedEvents() as Array<{ loopId: number; result: { status: number } }>,
                 (ts) => {
                     const wake = (concludedEvents() as Array<{ scheme: string; wakeLoopId?: number }>).find((c) => c.scheme === "sh");
-                    return wake?.wakeLoopId !== undefined && ts.some((t) => t.loopId === wake.wakeLoopId && t.finalStatus === 200);
+                    return wake?.wakeLoopId !== undefined && ts.some((t) => t.loopId === wake.wakeLoopId && t.result.status === 200);
                 },
                 { timeoutMs: 6000 },
             );
@@ -232,8 +232,8 @@ test("wake-on-completion: a slept (202) loop resumes IN PLACE — no new loop, n
 
             // The loop's TRUE outcome arrives via loop/terminated — the resumed loop ends 200,
             // never through loop.worker's (already-returned) result.
-            const terminated = terminatedEvents() as Array<{ loopId: number; finalStatus: number }>;
-            assert.ok(terminated.some((t) => t.loopId === parkedLoop && t.finalStatus === 200),
+            const terminated = terminatedEvents() as Array<{ loopId: number; result: { status: number } }>;
+            assert.ok(terminated.some((t) => t.loopId === parkedLoop && t.result.status === 200),
                 "the resumed loop's 200 terminal arrives via events, not loop.worker's return");
         } finally { ws.close(); }
     });
@@ -262,13 +262,13 @@ test("wake-on-completion preserves the durable loop's cumulative maxTurns ceilin
 
             const seen = await waitFor(
                 () => terminatedEvents() as Array<{
-                    loopId: number; finalStatus: number; hitMaxTurns: boolean; turnIds: number[];
+                    loopId: number; result: { status: number }; hitMaxTurns: boolean; turnIds: number[];
                 }>,
                 (events) => events.some((event) => event.loopId === loopId),
                 { timeoutMs: 6000 },
             );
             const terminal = seen.find((event) => event.loopId === loopId);
-            assert.equal(terminal?.finalStatus, 429);
+            assert.equal(terminal?.result.status, 429);
             assert.equal(terminal?.hitMaxTurns, true);
             assert.equal(terminal?.turnIds.length, 1, "the pre-park turn counts against the same durable ceiling");
             assert.equal(mock.remaining, 1, "resume terminates before asking the provider for a second turn");
@@ -342,10 +342,10 @@ test("wake-on-completion: streaming spawn outlives loop — wake summary reports
 
             const startedAt = Date.now();
             const firstResp = await rpcCall(ws, 2, "loop.run", { prompt: "stream while I leave", flags: { auto: true } });
-            const firstResult = firstResp.result as { loopId: number; finalStatus: number };
+            const firstResult = firstResp.result as { loopId: number; status: number };
             const parkedLoop = firstResult.loopId;
             const firstElapsed = Date.now() - startedAt;
-            assert.equal(firstResult.finalStatus, 100, "loop.run returns immediately (100 accepted); the spawn's late conclusion resumes the loop");
+            assert.equal(firstResult.status, 100, "loop.run returns immediately (100 accepted); the spawn's late conclusion resumes the loop");
             // loop.run accepts immediately — it returns well before the spawn's ~2.5s.
             // The resume path handles the spawn's late conclusion, not a blocking loop.run.
             assert.ok(firstElapsed < 1500,

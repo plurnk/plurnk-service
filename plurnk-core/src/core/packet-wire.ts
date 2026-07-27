@@ -51,7 +51,12 @@ interface LogEntryView {
     source?: unknown;
     attrs?: unknown;
 }
-interface TelemetryError { position?: { line?: unknown }; [key: string]: unknown }
+interface FailurePointer { status?: unknown; coordinate?: unknown }
+interface NoticeEvent {
+    kind?: unknown;
+    message?: unknown;
+    position?: { type?: unknown; line?: unknown; column?: unknown } | null;
+}
 // One packet section: a named, slotted, ordered unit of rendered content. The
 // stored section holds RENDERED markdown + a measured `tokens` weight — exactly
 // what the digest re-parses and what the model saw. `slot` is the prompt-cache
@@ -93,13 +98,31 @@ export default class PacketWire {
     }
 
 
-    // The errors section content: the structured telemetry events rendered to
-    // meta lines (+ snippet blocks). "" when empty (the section is omitted). The
-    // events are ALSO kept structured on the packet (packet.telemetryErrors) —
-    // ephemeral (the buffer drains on read), so the packet is their only home.
-    static renderErrors(errors: unknown): string {
-        const events = Array.isArray(errors) ? (errors as TelemetryError[]) : [];
-        return events.length > 0 ? PacketWire.#renderTelemetryErrors(events) : "";
+    // Durable operation failures render as terse pointers to the log rows that
+    // own their exact RFC 9457 results.
+    static renderFailurePointers(failures: unknown): string {
+        const rows = Array.isArray(failures) ? failures as FailurePointer[] : [];
+        return rows
+            .filter((row) => typeof row.status === "number" && typeof row.coordinate === "string")
+            .map((row) => `* ${row.status} log:///${row.coordinate}`)
+            .join("\n");
+    }
+
+    // Non-terminal model-facing observations are deliberately separate from
+    // operation failures. Content offsets point into the prior model emission;
+    // a factual message is retained when no position exists.
+    static renderNotices(notices: unknown): string {
+        const events = Array.isArray(notices) ? notices as NoticeEvent[] : [];
+        return events.map((event) => {
+            const kind = typeof event.kind === "string" ? event.kind : "notice";
+            const position = event.position;
+            if (position?.type === "content-offset") {
+                return `* ${kind} ${String(position.line)}:${String(position.column)}`;
+            }
+            return typeof event.message === "string" && event.message.length > 0
+                ? `* ${kind}: ${event.message}`
+                : `* ${kind}`;
+        }).join("\n");
     }
 
     // The Child Streams / Child Runs sections (§child-orientation) — the OPPOSITE of advice: terse
@@ -610,18 +633,4 @@ export default class PacketWire {
         return `branch \`${git.branch}\`${sync} — ${git.staged} staged, ${git.unstaged} unstaged, ${git.untracked} untracked`;
     }
 
-    static #renderTelemetryErrors(errors: TelemetryError[]): string {
-        // Uniform projection off the formal TelemetryEvent envelope (grammar TelemetryEvent.json):
-        // render each error by its typed `position`, never by sniffing `kind`. A LogCoordinate is a
-        // terse `<status> log:///<coord>` link to the row (the row holds the term + detail); a
-        // ContentOffset points the model at the line in its own born-OPEN emission (§model-entry).
-        // No JSON dump — the packet teaches, the row carries the body.
-        return errors.map((e) => {
-            const ev = e as { kind?: string; status?: number; position?: { type?: string; coordinate?: string; line?: number; column?: number } };
-            const pos = ev.position;
-            if (pos?.type === "log-coordinate") return `* ${ev.status ?? ""} log:///${pos.coordinate}`.replace(/ +/g, " ");
-            if (pos?.type === "content-offset") return `* ${ev.kind ?? "error"} ${pos.line}:${pos.column}`;
-            return `* ${ev.kind ?? "error"}`;
-        }).join("\n");
-    }
 }

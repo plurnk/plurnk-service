@@ -45,7 +45,7 @@ One daemon notification in, zero-or-more AG-UI events out (`Translator`, pure):
 | `log/entry` op=model (mirror) | a correlated `REASONING_START` / `REASONING_ENCRYPTED_VALUE`* / `REASONING_END` span when the reasoning-item `attrs.reasoning` is present (see §agui-sealed-reasoning); otherwise nothing — forensic |
 | `log/entry` origin≠model | `CUSTOM plurnk.ambient` (foists, deltas, narrations) |
 | `loop/proposal` | `TOOL_CALL_START/ARGS/END`, then `RUN_FINISHED` with an interrupt outcome |
-| `loop/terminated` | `STATE_DELTA` (budget) + `CUSTOM plurnk.terminated` + `RAW` (the provider's native completion frame, `source: provider`, §475) + `RUN_FINISHED` (200) or `RUN_ERROR` (else) |
+| `loop/terminated` | `STATE_DELTA` (budget) + `CUSTOM plurnk.terminated` + `RAW` (the provider's native completion frame, `source: provider`, §475) + `RUN_FINISHED` (`result.status === 200`) or `RUN_ERROR` (otherwise, from the exact RFC 9457 Problem Details) |
 | `telemetry/event` | `CUSTOM plurnk.telemetry` |
 | `stream/event` + `stream/concluded` | `CUSTOM plurnk.stream` + `ACTIVITY_SNAPSHOT` (the standard background-activity channel: `activityType` = the scheme, replace-snapshot, §475). A conclusion preserves its exact universal `result`, including RFC 9457 Problem Details; AG-UI does not reconstruct failure from a status or summary. |
 | `loop/quiesced` | `CUSTOM plurnk.quiesced` |
@@ -135,6 +135,9 @@ using its own render router. Terminal control does not fan. A message run binds
 to the exact `loopId` returned by `loop.run`; a proposal-resume run binds to the
 pending proposal's persisted `loopId` before resolving it. Only that loop's
 `loop/terminated` event may emit `plurnk.terminated` and close the SSE.
+The custom event preserves the daemon's exact universal `result`; failures use
+the Problem `type` as the AG-UI error code and `detail` as its message. The
+module never reconstructs a failure from a status, summary, or exception text.
 Proposal tool calls and interrupt outcomes route only to the proposal's owning
 worker; interrupting sibling runs would violate AG-UI run identity. Terminations
 that race ahead of the `loop.run` acknowledgement are held until

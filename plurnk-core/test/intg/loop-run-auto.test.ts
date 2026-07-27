@@ -123,7 +123,7 @@ test("loop.run with flags.auto=true: in-tree auto listener resolves proposal", a
             const result = await runLoopToTerminal(ws, 2, {
                 prompt: "trigger proposal", flags: { auto: true },
             });
-            assert.equal(result.finalStatus, 200, "loop completes without external resolution (not maxed — that'd be 429)");
+            assert.equal(result.result.status, 200, "loop completes without external resolution (not maxed — that'd be 429)");
 
             // The proposed entry should have transitioned out of 'proposed'.
             const rows = await db.test_log_entries_by_loop.all<{

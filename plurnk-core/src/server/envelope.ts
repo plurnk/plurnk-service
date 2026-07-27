@@ -9,6 +9,8 @@
 import type { Db } from "../core/Db.ts";
 import GitMembership from "../core/git-membership.ts";
 import Owner from "../core/Owner.ts";
+import Results, { type SchemeResult } from "../core/results.ts";
+import LoopLifecycle from "../core/LoopLifecycle.ts";
 
 export interface WorkspaceRow {
     id: number;
@@ -192,8 +194,17 @@ export default class Envelope {
         return rows.map((r) => r.prompt);
     }
 
-    static async closeClientLoop(db: Db, loopId: number, status: 200 | 499): Promise<void> {
-        await db.envelope_close_client_loop.run({ status, loop_id: loopId });
+    static async closeClientLoop(db: Db, loopId: number, result: SchemeResult): Promise<void> {
+        const exact = structuredClone(Results.assert(result));
+        if (exact.problem !== undefined && exact.problem.instance === undefined) {
+            Results.attachInstance(exact, `loop:///${loopId}`);
+        }
+        await db.envelope_close_client_loop.run({
+            status: LoopLifecycle.projectStatus(exact.status),
+            result: JSON.stringify(exact),
+            message: exact.problem?.detail ?? null,
+            loop_id: loopId,
+        });
     }
 
     static async listWorkspaces(db: Db): Promise<WorkspaceRow[]> {

@@ -52,7 +52,7 @@ test("loop.run flags.noProposals=true: in-tree listener auto-rejects — model s
             const result = await runLoopToTerminal(ws, 2, {
                 prompt: "trigger proposal", flags: { noProposals: true },
             });
-            assert.equal(result.finalStatus, 200, "loop concludes on the SECOND [200], the rejection weighed (§send-200-failed-ops)");
+            assert.equal(result.result.status, 200, "loop concludes on the SECOND [200], the rejection weighed (§send-200-failed-ops)");
 
             const rows = await db.test_log_entries_by_loop.all<{ op: string; status_rx: number; scheme: string }>({ loop_id: result.loopId });
             const edit = rows.find((r) => r.op === "EDIT" && r.scheme === "proposing-test");

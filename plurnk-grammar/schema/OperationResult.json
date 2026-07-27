@@ -21,6 +21,7 @@
         {
             "properties": {
                 "status": {
+                    "type": "integer",
                     "minimum": 100,
                     "maximum": 399
                 }
@@ -33,6 +34,7 @@
             "required": ["problem"],
             "properties": {
                 "status": {
+                    "type": "integer",
                     "minimum": 400,
                     "maximum": 599
                 }

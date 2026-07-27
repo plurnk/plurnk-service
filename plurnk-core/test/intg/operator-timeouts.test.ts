@@ -32,10 +32,21 @@ test("the wall rules a legible 504 loop_timeout terminal", async () => {
         // Continue turns forever — only the wall ends this loop.
         const provider = new Mock({ contextWindow: 100000, responses: Array.from({ length: 50 }, (_, i) => ({ assistant: { content: "", reasoning: null, ops: [editStmt(localPath(`/w${i}`), "x"), sendStmt(102)] } })) });
         const result = await engine.runLoop({ provider, workspaceId, workerId, loopId, messages: [], maxTurns: 50 });
-        assert.equal(result.finalStatus, 504, "the wall's terminal is 504, never an outside kill");
+        assert.equal(result.result.status, 504, "the wall's terminal is 504, never an outside kill");
         assert.equal(result.reason, "loop_timeout");
         const loopStatus = (await db.test_get_loop_status.get<{ status: number }>({ id: loopId }))?.status;
         assert.equal(loopStatus, 504, "the loop row carries the wall terminal");
+        const turns = await db.test_list_turns_in_loop.all<{ status: number; packet: string }>({ loop_id: loopId });
+        const attempted = turns.at(-1);
+        assert.equal(attempted?.status, 504, "an interrupted provider attempt closes with the wall's exact status");
+        const packet = JSON.parse(attempted?.packet ?? "{}") as { sections?: unknown; assistant?: unknown };
+        assert.ok(Array.isArray(packet.sections), "the interrupted attempt retains its exact request packet");
+        assert.equal(packet.assistant, undefined, "the timeout never fabricates an assistant response");
+        assert.deepEqual(
+            await db.test_error_rows_for_run.all({ worker_id: workerId }),
+            [],
+            "the lifecycle timeout never fabricates a provider failure",
+        );
     } finally {
         delete process.env.PLURNK_SERVICE_LOOP_TIMEOUT;
         await db.close();
@@ -51,6 +62,6 @@ test("the default wall never intrudes — a short loop concludes 200 untouched",
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(200, null, "done")] } }] });
         const result = await engine.runLoop({ provider, workspaceId, workerId, loopId, messages: [] });
-        assert.equal(result.finalStatus, 200, "the 24h default is invisible to a normal loop");
+        assert.equal(result.result.status, 200, "the 24h default is invisible to a normal loop");
     } finally { await db.close(); }
 });

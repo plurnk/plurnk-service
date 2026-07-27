@@ -74,7 +74,11 @@ test("engine.inject: returns null when no loop is currently active (status=102)"
 
         // Also returns null when a loop exists but it's terminal.
         const closedLoop = await insertLoop(db, workerId, 1, "done");
-        await db.test_set_loop_status.run({ id: closedLoop, status: 200 });
+        await db.test_set_loop_status.run({
+            id: closedLoop,
+            status: 200,
+            terminal_result: JSON.stringify({ status: 200 }),
+        });
         const result2 = await engine.inject(workerId, "still orphan");
         assert.equal(result2, null, "loop at status=200 doesn't count as active");
     } finally { await db.close(); }

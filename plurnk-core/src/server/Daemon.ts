@@ -18,7 +18,7 @@ import type { Provider, ProviderAlias } from "@plurnk/plurnk-providers";
 // (workspace/created), {workspaceId} = workspace-scoped. "this" retired with the per-connection leg.
 export type NotifyTarget = "all" | { workspaceId: number };
 // One drained loop's terminal shape — the drain's return currency.
-export interface DrainLoopResult { loopId: number; finalStatus: number; hitMaxTurns: boolean; turnIds: number[]; action?: string; usage?: { promptTokens: number; completionTokens: number; costUsd: number } }
+export interface DrainLoopResult { loopId: number; result: SchemeResult; hitMaxTurns: boolean; turnIds: number[]; action?: string; usage?: { promptTokens: number; completionTokens: number; costUsd: number } }
 import type { PlurnkStatement } from "@plurnk/plurnk-grammar";
 import LogEntry from "./logEntry.ts";
 import type { LogEntryWire } from "./logEntry.ts";
@@ -41,7 +41,17 @@ import Auto from "./auto.ts";
 import NoProposals from "./noProposals.ts";
 import { DEFAULT_LOOP_FLAGS } from "../core/scheme-types.ts";
 import type { LoopFlags } from "../core/types.ts";
+import Results, { OperationFailureError, type SchemeResult } from "../core/results.ts";
 
+const clientActionFailure = (error: unknown): SchemeResult =>
+    error instanceof OperationFailureError
+        ? error.result
+        : Results.failure(
+            "daemon:client",
+            "action-threw",
+            500,
+            `The client action threw: ${error instanceof Error ? error.message : String(error)}`,
+        );
 
 // A stopped-world proposal a transport module renders as a TOOL_CALL (#355 seam read). The raw
 // `state='proposed'` row shape (§proposal-list); the module reshapes it at its edge.
@@ -229,14 +239,21 @@ export default class Daemon {
     // the provider and the law-file system prompt are core's and stay inside. Returns immediately — the
     // loop runs async and its outcome arrives on the event source (loop/terminated). `cancelDrain` (public)
     // is the cancel hook. Both funnel through the unified `inject`, which owns the drain lifecycle.
-    async runLoop(args: { workspaceId: number; workerId: number; prompt: string; maxTurns?: number; flags?: Partial<LoopFlags>; openPaths?: string[]; alias?: string; model?: string }): Promise<{ action: "injected_next_turn" | "enqueued_new_loop"; loopId: number; turnSeq?: number }> {
+    async runLoop(args: { workspaceId: number; workerId: number; prompt: string; maxTurns?: number; flags?: Partial<LoopFlags>; openPaths?: string[]; alias?: string; model?: string }): Promise<SchemeResult & { action: "injected_next_turn" | "enqueued_new_loop"; loopId: number; turnSeq?: number }> {
         const flags = ClientInput.normalizeLoopFlags("loop.run", args.flags) as Partial<LoopFlags> | undefined;
         // #414 — per-loop model selection: a client sends its alias/model on every loop, so a
         // switch takes effect turn-to-turn. `model` (client-resolved <provider>/<model>, #90) wins
         // over `alias`; neither → the boot default. Instantiation is cached, so ping-ponging
         // between two models is cheap, and an unresolvable alias/model fails loud here.
         const selection = await this.#resolveLoopProvider(args.alias, args.model);
-        if (selection === null) throw new Error("runLoop: no provider configured");
+        if (selection === null) {
+            throw new OperationFailureError(Results.failure(
+                "daemon:provider",
+                "not-configured",
+                501,
+                "No provider is configured for this loop.",
+            ));
+        }
         const systemPrompt = await readFile(Paths.instructionsSystem, "utf8");
         // §machine-processes — the model NEVER runs in a client-origin run (its packets would carry
         // client op.* rows). The module resolves the model worker via ensureModelWorker and passes it (or a
@@ -257,7 +274,7 @@ export default class Daemon {
             providerSpec: selection,
             systemPrompt,
         });
-        return { action, loopId, ...(turnSeq !== undefined ? { turnSeq } : {}) };
+        return { status: 100, action, loopId, ...(turnSeq !== undefined ? { turnSeq } : {}) };
     }
 
     // #414 — resolve a per-loop model override to a Provider (cached instances). `model`
@@ -335,10 +352,10 @@ export default class Daemon {
         const clientLoopId = await Envelope.ensureClientLoop(this.#db, workerId);
         try {
             const result = await this.#dispatchClientStatement({ workspaceId, workerId, loopId: clientLoopId, statement });
-            await Envelope.closeClientLoop(this.#db, clientLoopId, 200);
+            await Envelope.closeClientLoop(this.#db, clientLoopId, { status: 200 });
             return result;
         } catch (error) {
-            await Envelope.closeClientLoop(this.#db, clientLoopId, 499);
+            await Envelope.closeClientLoop(this.#db, clientLoopId, clientActionFailure(error));
             throw error;
         }
     }
@@ -356,10 +373,10 @@ export default class Daemon {
             for (const statement of statements) {
                 results.push(await this.#dispatchClientStatement({ workspaceId, workerId, loopId: clientLoopId, statement }));
             }
-            await Envelope.closeClientLoop(this.#db, clientLoopId, 200);
+            await Envelope.closeClientLoop(this.#db, clientLoopId, { status: 200 });
             return results;
         } catch (error) {
-            await Envelope.closeClientLoop(this.#db, clientLoopId, 499);
+            await Envelope.closeClientLoop(this.#db, clientLoopId, clientActionFailure(error));
             throw error;
         }
     }
@@ -390,10 +407,10 @@ export default class Daemon {
         const clientLoopId = await Envelope.ensureClientLoop(this.#db, workerId);
         try {
             const result = await this.#engine.look({ statement, workspaceId, workerId, loopId: clientLoopId }) as { status: number; [key: string]: unknown };
-            await Envelope.closeClientLoop(this.#db, clientLoopId, 200);
+            await Envelope.closeClientLoop(this.#db, clientLoopId, { status: 200 });
             return result;
         } catch (error) {
-            await Envelope.closeClientLoop(this.#db, clientLoopId, 499);
+            await Envelope.closeClientLoop(this.#db, clientLoopId, clientActionFailure(error));
             throw error;
         }
     }
@@ -939,7 +956,7 @@ export default class Daemon {
                         onDispatch,
                         signal: controller.signal,
                     });
-                    if (result.finalStatus === 202) {
+                    if (result.result.status === 202) {
                         // The loop SLEPT (parked via [102]<T>/<-1>) — suspended, not terminated. Leave it at 202
                         // (resumable); no loop/terminated, no orphan-reconcile. A stream conclusion
                         // (#handleWakeWorker) re-queues it; and if it holds a polled stream, a poll timer
@@ -983,7 +1000,7 @@ export default class Daemon {
                     this.#broadcast({ workspaceId }, "loop/terminated", {
                         workerId,
                         loopId: loopRow.id,
-                        finalStatus: result.finalStatus,
+                        result: result.result,
                         hitMaxTurns: result.hitMaxTurns,
                         turnIds,
                         usage,
@@ -992,7 +1009,7 @@ export default class Daemon {
                     const loopResult: DrainLoopResult = {
                         loopId: loopRow.id,
                         turnIds,
-                        finalStatus: result.finalStatus,
+                        result: result.result,
                         hitMaxTurns: result.hitMaxTurns,
                         usage,
                     };
@@ -1021,26 +1038,38 @@ export default class Daemon {
                         // the broadcast carries the same message. The abort reason is the client's
                         // loop.cancel reason (cancelDrain threads it through scope.abort).
                         const message = String(controller.signal.reason ?? "user_cancelled").slice(0, 500);
-                        const cancelled = await this.#lifecycle.finish(currentLoopId, 499, message, "cancel");
-                        if (cancelled) {
+                        const cancelled = await this.#lifecycle.finish(
+                            currentLoopId,
+                            Results.failure("lifecycle:cancel", "loop-cancelled", 499, message),
+                            { terminatedBy: "cancel" },
+                        );
+                        if (cancelled !== null) {
                             this.#broadcast({ workspaceId }, "loop/terminated", {
                                 workerId,
                                 loopId: currentLoopId,
-                                finalStatus: 499,
+                                result: cancelled,
                                 hitMaxTurns: false,
                                 turnIds: await this.#lifecycle.turnIds(currentLoopId),
                                 usage,
-                                message,
                             });
                         }
                     }
                     if (!firstSettled) {
                         firstSettled = true;
-                        resolveFirst({ loopId: currentLoopId ?? 0, turnIds: [], finalStatus: 499, hitMaxTurns: false, usage });
+                        resolveFirst({
+                            loopId: currentLoopId ?? 0,
+                            turnIds: [],
+                            result: currentLoopId === null
+                                ? Results.failure("lifecycle:cancel", "loop-cancelled", 499, String(controller.signal.reason ?? "user_cancelled"))
+                                : await this.#lifecycle.result(currentLoopId)
+                                    ?? Results.failure("lifecycle:cancel", "loop-cancelled", 499, String(controller.signal.reason ?? "user_cancelled")),
+                            hitMaxTurns: false,
+                            usage,
+                        });
                     }
                 } else {
                     // #265 — a genuine (non-abort) loop error must still reach the client. loop.run only
-                    // acked finalStatus:100, so loop/terminated is the sole outcome channel; the rejection
+                    // acknowledged queueing, so loop/terminated is the sole outcome channel; the rejection
                     // alone reaches no one (firstLoopPromise/drainPromise are .catch()'d). Broadcast 500
                     // (failed) — distinct from an abort's 499 — for every error, not just the pre-first one.
                     // #506 — the WHY must reach every forensic channel, not one. The old handler
@@ -1050,17 +1079,27 @@ export default class Daemon {
                     // or the row-write itself is what failed, so a death is never traceless again.
                     console.error(`drain error (workspace ${workspaceId}, worker ${workerId}, loop ${currentLoopId ?? "?"}):`, err);
                     if (currentLoopId !== null) {
-                        this.notifyTelemetryEvent(workspaceId, { loopId: currentLoopId, event: { source: "daemon:drain", kind: "loop_error", level: "error", message: err instanceof Error ? err.message : String(err) } });
-                        // #311 — the failure must be first-class on BOTH surfaces: the loop row goes
-                        // terminal 500 carrying the cause (a dead loop must never read as live 102 —
-                        // the premature-terminate gate counts live loops), and the broadcast carries
-                        // the same message so a backend 400 (context overflow, auth, …) reaches the
-                        // client as text, never a contentless 500.
-                        const message = (err instanceof Error ? err.message : String(err)).slice(0, 500);
-                        await this.#lifecycle.finish(currentLoopId, 500, message);
+                        const failure = err instanceof OperationFailureError
+                            ? err.result
+                            : Results.failure(
+                                "daemon:drain",
+                                "loop-threw",
+                                500,
+                                (err instanceof Error ? err.message : String(err)).slice(0, 500),
+                            );
+                        const settled = await this.#lifecycle.finish(currentLoopId, failure)
+                            ?? await this.#lifecycle.result(currentLoopId);
+                        if (settled === null) {
+                            throw new Error(`drain could not settle loop ${currentLoopId}`, { cause: err });
+                        }
                         const usage = await this.#engine.loopUsage(currentLoopId);
                         this.#broadcast({ workspaceId }, "loop/terminated", {
-                            workerId, loopId: currentLoopId, finalStatus: 500, hitMaxTurns: false, turnIds: [], usage, message,
+                            workerId,
+                            loopId: currentLoopId,
+                            result: settled,
+                            hitMaxTurns: false,
+                            turnIds: await this.#lifecycle.turnIds(currentLoopId),
+                            usage,
                         });
                     }
                     if (!firstSettled) {
@@ -1182,18 +1221,17 @@ export default class Daemon {
             if (scope !== undefined && !scope.signal.aborted) scope.abort(reason);
         }
         await Promise.all(cancelled.workerIds.map(async (targetWorkerId) => this.#reapWorkerStreams(targetWorkerId)));
-        for (const { loopId, workerId: targetWorkerId } of cancelled.loops) {
+        for (const { loopId, workerId: targetWorkerId, result } of cancelled.loops) {
             const row = await this.#db.drain_get_worker_workspace.get<{ workspace_id: number }>({ worker_id: targetWorkerId });
             if (row === undefined) continue;
             const usage = await this.#engine.loopUsage(loopId);
             this.#broadcast({ workspaceId: row.workspace_id }, "loop/terminated", {
                 workerId: targetWorkerId,
                 loopId,
-                finalStatus: 499,
+                result,
                 hitMaxTurns: false,
                 turnIds: await this.#lifecycle.turnIds(loopId),
                 usage,
-                message: reason.slice(0, 500),
             });
         }
     }

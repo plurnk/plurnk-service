@@ -199,6 +199,7 @@ export class SqlRiteSync {
 	fork_count_branches: SqlRiteSyncPreparedStatements;
 	fork_get_loops: SqlRiteSyncPreparedStatements;
 	fork_insert_loop: SqlRiteSyncPreparedStatements;
+	fork_reidentify_loop_result: SqlRiteSyncPreparedStatements;
 	fork_get_turns: SqlRiteSyncPreparedStatements;
 	fork_insert_turn: SqlRiteSyncPreparedStatements;
 	fork_get_log_entries: SqlRiteSyncPreparedStatements;
@@ -407,6 +408,7 @@ export default class SqlRite {
 	fork_count_branches: SqlRitePreparedStatements;
 	fork_get_loops: SqlRitePreparedStatements;
 	fork_insert_loop: SqlRitePreparedStatements;
+	fork_reidentify_loop_result: SqlRitePreparedStatements;
 	fork_get_turns: SqlRitePreparedStatements;
 	fork_insert_turn: SqlRitePreparedStatements;
 	fork_get_log_entries: SqlRitePreparedStatements;

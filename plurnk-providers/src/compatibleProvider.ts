@@ -11,7 +11,7 @@ import {
     promptCacheKeyFromEnv,
     reasoningFromEnv,
 } from "./env.ts";
-import { providerSource } from "./telemetry.ts";
+import { providerSource } from "./notices.ts";
 import type { Provider } from "./types.ts";
 import { emitWarningOnce } from "./warnings.ts";
 

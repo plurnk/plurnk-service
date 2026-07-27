@@ -21,7 +21,7 @@ test("loop.run: enqueues + drains + returns first loop's result", async () => {
             const result = await runLoopToTerminal(ws, 2, { prompt: "say hello" });
             assert.equal(result.accepted, 100, "loop.run accepts immediately");
             assert.equal(result.action, "enqueued_new_loop");
-            assert.equal(result.finalStatus, 200);
+            assert.equal(result.result.status, 200);
             assert.equal(result.hitMaxTurns, false);
             assert.equal(result.turnIds?.length, 1);
         } finally { ws.close(); }
@@ -85,7 +85,7 @@ test("loop.cancel terminates a backgrounded exec; the stream concludes 499", asy
             // above (and loop/terminated), not loop.worker's return.
             const loopResp = await loopPromise;
             assert.equal(loopResp.error, undefined, "loop.run accepted and resolved; cancel never rejects it (#204)");
-            assert.equal((loopResp.result as { finalStatus: number }).finalStatus, 100, "loop.run returned the 100 accept, not the terminal");
+            assert.equal((loopResp.result as { status: number }).status, 100, "loop.run returned the 100 accept, not the terminal");
         } finally { ws.close(); }
     });
 });
@@ -140,7 +140,7 @@ test("loop.run: post-cancel, a fresh loop.run starts a new drain", async () => {
 
             await rpcCall(ws, 3, "loop.cancel", {});
             const firstResp = await firstPromise;
-            assert.equal((firstResp.result as { finalStatus: number }).finalStatus, 100,
+            assert.equal((firstResp.result as { status: number }).status, 100,
                 "loop.run accepted (100); the cancelled loop's terminal arrives via events");
             // Wait for the cancelled first loop to actually terminate (499 via loop/terminated)
             // so the worker is genuinely idle before the second loop.run.
@@ -151,7 +151,7 @@ test("loop.run: post-cancel, a fresh loop.run starts a new drain", async () => {
             // Post-cancel, a fresh loop.run starts a NEW drain (enqueued_new_loop) and completes.
             const second = await runLoopToTerminal(ws, 4, { prompt: "second" });
             assert.equal(second.action, "enqueued_new_loop");
-            assert.equal(second.finalStatus, 200);
+            assert.equal(second.result.status, 200);
         } finally { ws.close(); }
     });
 });
@@ -206,11 +206,11 @@ test("loop.run while a loop is live: second call injects into its next-turn slot
             // Exactly one loop ran for the worker: the second call injected, it did not spin up a
             // parallel drain. Wait for the single termination (loop.run no longer blocks to it).
             const ended = await waitFor(
-                () => terminated() as Array<{ loopId: number; finalStatus: number }>,
+                () => terminated() as Array<{ loopId: number; result: { status: number } }>,
                 (t) => t.length >= 1, { timeoutMs: 5000 },
             );
             assert.equal(ended.length, 1, "exactly one loop terminated — no parallel drain");
-            assert.equal(ended[0].finalStatus, 200, "loop 1 ends cleanly after consuming the injected prompt");
+            assert.equal(ended[0].result.status, 200, "loop 1 ends cleanly after consuming the injected prompt");
         } finally { ws.close(); }
     });
 });
@@ -256,12 +256,12 @@ test("loop ends before consuming an injected prompt → reconciled into a fresh 
 
             // The orphaned prompt is reconciled into a second loop that runs.
             const ts = await waitFor(
-                () => terminated() as Array<{ loopId: number; finalStatus: number }>,
+                () => terminated() as Array<{ loopId: number; result: { status: number } }>,
                 (t) => t.length >= 2,
                 { timeoutMs: 5000 },
             );
             assert.equal(ts.length, 2, "the orphaned wake was reconciled into a second loop (would be 1 if lost)");
-            const statuses = ts.map((t) => t.finalStatus).toSorted((a, b) => a - b);
+            const statuses = ts.map((t) => t.result.status).toSorted((a, b) => a - b);
             assert.deepEqual(statuses, [200, 499], "loop 1 abandoned (499, over the rejected EXEC); the reconciled loop concluded 200");
         } finally { ws.close(); }
     });

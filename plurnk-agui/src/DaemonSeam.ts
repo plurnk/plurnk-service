@@ -30,7 +30,7 @@ export interface PendingProposal {
 // The grammar owns the protocol: the statement handed to dispatchAsClient IS
 // @plurnk/plurnk-grammar's PlurnkStatement (parsed at the module's edge). Type-only
 // import — erased at compile, so the published package stays zero-runtime-deps.
-import type { PlurnkStatement } from "@plurnk/plurnk-grammar";
+import type { OperationResult, PlurnkStatement } from "@plurnk/plurnk-grammar";
 export type { PlurnkStatement };
 
 // A journal entry as the daemon ships it (readLog / the log/entry event carry this).
@@ -51,7 +51,7 @@ export interface DaemonSeam {
     ensureModelWorker(workspaceId: number): Promise<number>;
     // Loop-control — drive/steer a loop on the MODEL run (runLoop refuses a client-origin
     // run loudly). Returns immediately; the outcome arrives on the event source.
-    runLoop(args: { workspaceId: number; workerId: number; prompt: string; maxTurns?: number; flags?: { auto?: boolean }; openPaths?: string[]; alias?: string; model?: string }): Promise<{ action: "injected_next_turn" | "enqueued_new_loop"; loopId: number; turnSeq?: number }>;
+    runLoop(args: { workspaceId: number; workerId: number; prompt: string; maxTurns?: number; flags?: { auto?: boolean }; openPaths?: string[]; alias?: string; model?: string }): Promise<OperationResult & { action: "injected_next_turn" | "enqueued_new_loop"; loopId: number; turnSeq?: number }>;
     // Loop-control — cancel a worker's active drain. Returns whether a drain was cancelled.
     cancelDrain(workerId: number, reason?: string): boolean;
     // One client action journals all of its parsed statements in one internal segment.

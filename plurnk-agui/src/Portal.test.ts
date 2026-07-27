@@ -19,7 +19,7 @@ const mockSeam = (pending: PendingProposal[] = []) => {
         subscribeToEvents: (h) => { handlers.add(h); return () => { handlers.delete(h); }; },
         pendingProposals: async () => pending,
         resolveProposal: (logEntryId, resolution) => { resolves.push({ logEntryId, resolution }); },
-        runLoop: async (a) => { workers.push({ workspaceId: a.workspaceId, prompt: a.prompt }); return { action: "enqueued_new_loop" as const, loopId: 77 }; },
+        runLoop: async (a) => { workers.push({ workspaceId: a.workspaceId, prompt: a.prompt }); return { status: 100, action: "enqueued_new_loop" as const, loopId: 77 }; },
         cancelDrain: (workerId) => { cancelled = workerId; return true; },
         dispatchClientAction: async ({ statements }) => statements.map(() => ({ status: 200 })),
         readLog: async () => [],
@@ -49,13 +49,25 @@ test("a worker without pending interrupts drives the loop, then live events fan 
     // conclude this AG-UI run.
     seen.length = 0;
     m.fire(3, "loop/terminated", {
-        loopId: 88, finalStatus: 499, hitMaxTurns: false, turnIds: [],
+        loopId: 88,
+        result: {
+            status: 499,
+            problem: {
+                type: "https://problems.plurnk.dev/lifecycle/cancel/loop-cancelled",
+                title: "Loop cancelled",
+                status: 499,
+                detail: "The foreign loop was cancelled.",
+                instance: "loop:///88",
+            },
+        },
+        hitMaxTurns: false,
+        turnIds: [],
         usage: { promptTokens: 0, completionTokens: 0, costUsd: 0, contextTokens: 0, promptBudget: 1000, meta: {} },
     });
     assert.equal(seen.length, 0, "a foreign loop terminal cannot end this run");
 
     m.fire(3, "loop/terminated", {
-        loopId: 77, finalStatus: 200, hitMaxTurns: false, turnIds: [1],
+        loopId: 77, result: { status: 200 }, hitMaxTurns: false, turnIds: [1],
         usage: { promptTokens: 1, completionTokens: 1, costUsd: 0, contextTokens: 2, promptBudget: 1000, meta: {} },
     });
     assert.ok(seen.some((e) => e.type === "RUN_FINISHED"), "the bound loop terminal ends this run");
@@ -69,7 +81,7 @@ test("a worker without pending interrupts drives the loop, then live events fan 
 
 test("a terminal arriving before the loop acknowledgement settles only its matching run", async () => {
     const m = mockSeam();
-    let acknowledge!: (value: { action: "enqueued_new_loop"; loopId: number }) => void;
+    let acknowledge!: (value: { status: number; action: "enqueued_new_loop"; loopId: number }) => void;
     m.seam.runLoop = async () => new Promise((resolve) => { acknowledge = resolve; });
     const seen: AguiEvent[] = [];
     const portal = new Portal(m.seam);
@@ -80,14 +92,14 @@ test("a terminal arriving before the loop acknowledgement settles only its match
     await Promise.resolve();
 
     const termination = (loopId: number) => ({
-        loopId, finalStatus: 200, hitMaxTurns: false, turnIds: [],
+        loopId, result: { status: 200 }, hitMaxTurns: false, turnIds: [],
         usage: { promptTokens: 0, completionTokens: 0, costUsd: 0, contextTokens: 0, promptBudget: 1000, meta: {} },
     });
     m.fire(3, "loop/terminated", termination(88));
     m.fire(3, "loop/terminated", termination(77));
     assert.equal(seen.length, 0, "pre-ack terminals are buffered, never guessed");
 
-    acknowledge({ action: "enqueued_new_loop", loopId: 77 });
+    acknowledge({ status: 100, action: "enqueued_new_loop", loopId: 77 });
     assert.deepEqual(await running, { loopId: 77 });
     assert.equal(seen.filter((event) => event.type === "RUN_FINISHED").length, 1, "only the acknowledged loop settles the run");
     portal.stop();

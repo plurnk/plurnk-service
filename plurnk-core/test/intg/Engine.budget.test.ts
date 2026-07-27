@@ -3,7 +3,6 @@ import assert from "node:assert/strict";
 import Engine from "../../src/core/Engine.ts";
 import PacketBuilder from "../../src/core/PacketBuilder.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import TelemetryChannel from "../../src/core/TelemetryChannel.ts";
 import ProblemLog from "../../src/core/ProblemLog.ts";
 import { Mock } from "@plurnk/plurnk-providers";
 import type { MockResponse } from "@plurnk/plurnk-providers";
@@ -97,7 +96,6 @@ test("a virtual prompt budget tightens the gauge and grinder without changing pr
         const packets = new PacketBuilder({
             db,
             schemes,
-            telemetry: new TelemetryChannel(),
             problems: new ProblemLog(db),
             executors: () => undefined,
         });

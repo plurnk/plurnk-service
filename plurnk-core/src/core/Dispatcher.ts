@@ -351,7 +351,7 @@ export default class Dispatcher {
                         }
                     }
                 } else if (statement.op === "SEND" && statement.target === null) {
-                    result = await this.#handleSendBroadcast(statement, { workspaceId, workerId, loopId, turnId, turnParseErrors });
+                    result = await this.#handleSendBroadcast(statement, { workspaceId, workerId, loopId, turnId, sequence, turnParseErrors });
                 } else if (statement.op === "FORK" || statement.op === "WORK") {
                     result = await this.#handleWorkerControl(statement, schemeCtx);
                 } else if (statement.op === "COPY") {
@@ -1166,7 +1166,14 @@ export default class Dispatcher {
         return liveChild !== undefined;
     }
 
-    async #handleSendBroadcast(statement: PlurnkStatement, ctx: { workspaceId: number; workerId: number; loopId: number; turnId: number; turnParseErrors?: number }): Promise<DispatchResult> {
+    async #handleSendBroadcast(statement: PlurnkStatement, ctx: {
+        workspaceId: number;
+        workerId: number;
+        loopId: number;
+        turnId: number;
+        sequence: number;
+        turnParseErrors?: number;
+    }): Promise<DispatchResult> {
         if (statement.op !== "SEND") throw new Error("unreachable");
         const { workerId, loopId, turnId } = ctx;
         const status = statement.signal;
@@ -1219,9 +1226,13 @@ export default class Dispatcher {
             }
             // The joined set is already drained. Awaiting an empty task group completes
             // immediately; it never parks and needs no corrective model turn.
-            const finished = await this.#lifecycle.finish(loopId, 200, raw === "" ? null : raw);
+            const finished = await this.#lifecycle.finish(
+                loopId,
+                { status: 200 },
+                { message: raw === "" ? null : raw },
+            );
             return {
-                status: finished ? 200 : await this.#lifecycle.status(loopId),
+                status: finished !== null ? 200 : await this.#lifecycle.status(loopId),
                 attrs: { joined: true, pending: 0 },
             };
         }
@@ -1288,18 +1299,38 @@ export default class Dispatcher {
                 }
                 return Dispatcher.#failure("work-remains", 409, `Attempted [200] termination while work remains: ${pending.join("; ")}. KILL what you no longer need; SEND[102] to receive the rest; then conclude.`);
             }
-            const finished = await this.#lifecycle.finish(loopId, 200, raw === "" ? null : raw);
+            const finished = await this.#lifecycle.finish(
+                loopId,
+                { status: 200 },
+                { message: raw === "" ? null : raw },
+            );
             return Dispatcher.#statusResult(
-                finished ? 200 : await this.#lifecycle.status(loopId),
+                finished !== null ? 200 : await this.#lifecycle.status(loopId),
                 "loop-already-terminal",
                 "The loop was already terminal when SEND attempted to conclude it.",
             );
         }
         if (status === 499) {
-            const finished = await this.#lifecycle.finish(loopId, 499, raw === "" ? null : raw);
-            if (!finished) return Dispatcher.#statusResult(await this.#lifecycle.status(loopId), "loop-already-terminal", "The loop was already terminal when SEND attempted to abandon it.");
+            const failure = Dispatcher.#failure(
+                "scope-abandoned",
+                499,
+                raw === "" ? "The worker abandoned its scope." : raw,
+            );
+            const seqs = await this.#db.engine_loop_turn_seqs.get<{ loop_seq: number; turn_seq: number }>({
+                loop_id: loopId,
+                turn_id: turnId,
+            });
+            if (seqs === undefined) {
+                throw new Error(`SEND[499]: no coordinate for loop=${loopId} turn=${turnId}`);
+            }
+            Results.attachInstance(
+                failure,
+                `log:///${seqs.loop_seq}/${seqs.turn_seq}/${ctx.sequence}/SEND`,
+            );
+            const finished = await this.#lifecycle.finish(loopId, failure);
+            if (finished === null) return Dispatcher.#statusResult(await this.#lifecycle.status(loopId), "loop-already-terminal", "The loop was already terminal when SEND attempted to abandon it.");
             await this.#cancelDescendants?.(workerId, raw === "" ? "parent abandoned its scope" : raw);
-            return Dispatcher.#failure("scope-abandoned", 499, raw === "" ? "The worker abandoned its scope." : raw);
+            return failure;
         }
         // Every other signal — 102 bare, 202 (retired as a terminal; now ordinary mid-comms), 1xx —
         // is a plain broadcast row: no loop transition.

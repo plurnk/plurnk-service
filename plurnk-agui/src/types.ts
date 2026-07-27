@@ -7,6 +7,7 @@
 
 export { EventType } from "@ag-ui/core";
 export type { AGUIEvent as AguiEvent, RunAgentInput } from "@ag-ui/core";
+import type { OperationResult } from "@plurnk/plurnk-grammar/contracts";
 
 // The daemon wire — the slice of the plurnk JSON-RPC protocol this bridge consumes.
 // The daemon owns these shapes; the module consumes them from the in-process seam.
@@ -47,7 +48,7 @@ export interface ProposalNotification {
 export interface TerminatedNotification {
     workerId: number;
     loopId: number;
-    finalStatus: number;
+    result: OperationResult;
     hitMaxTurns: boolean;
     turnIds: number[];   // on the wire (Daemon.ts broadcast) — the turn count for a client's json record
     usage: {

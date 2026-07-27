@@ -2,7 +2,7 @@
 // content unparsed (consumer parses via @plurnk/plurnk-grammar), reasoning
 // is the wire-reported CoT only.
 
-import type { TelemetryEvent } from "./telemetry.ts";
+import type { ProviderNotice } from "./notices.ts";
 import type { LanguageModel } from "ai";
 
 export interface ChatMessage {
@@ -83,13 +83,13 @@ export interface ProviderResponse {
     // when PLURNK_PROVIDERS_RAWBODY is on — off by default so serving turns never
     // carry it. Absent otherwise.
     readonly rawBody?: unknown;
-    // Observations attached to a COMPLETED exchange (#24, SPEC §13). The model's
-    // bytes always flow through `assistant`; these events annotate them. Today: a
-    // `grammar_unenforced` event whenever the output diverges from the grammar —
+    // Notices attached to a COMPLETED exchange (#24, SPEC §13). The model's
+    // bytes always flow through `assistant`; these observations annotate them.
+    // Today: a `grammar_unenforced` notice whenever output diverges from the grammar —
     // transported OR withheld (filter mode) — carrying the divergence `position`.
     // The provider never adjudicates conformance; discard/retry/escalate/
-    // self-correct is consumer policy. Absent when the turn produced no telemetry.
-    readonly telemetry?: readonly TelemetryEvent[];
+    // self-correct is consumer policy. Absent when the turn produced no notice.
+    readonly notices?: readonly ProviderNotice[];
 }
 
 export interface Provider {

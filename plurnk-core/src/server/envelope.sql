@@ -68,7 +68,11 @@ VALUES ($worker_id, COALESCE((SELECT MAX(sequence) FROM loops WHERE worker_id = 
 RETURNING id;
 
 -- PREP: envelope_close_client_loop
-UPDATE loops SET status = $status WHERE id = $loop_id AND status = 102;
+UPDATE loops
+SET status = $status,
+    terminal_result = $result,
+    terminal_message = $message
+WHERE id = $loop_id AND status = 102;
 
 -- PREP: envelope_list_workspaces
 SELECT id, name, project_root, created_at, cost_usd

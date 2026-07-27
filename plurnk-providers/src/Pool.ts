@@ -1,5 +1,5 @@
 import type { Provider, ProviderResponse, ProviderUsage, ChatMessage } from "./types.ts";
-import { ProviderError, type ProviderTelemetryKind } from "./telemetry.ts";
+import { ProviderError, type ProviderErrorKind } from "./errors.ts";
 import { emitWarningOnce } from "./warnings.ts";
 
 // A backend-AVAILABILITY failure: the sub-provider already exhausted its OWN
@@ -7,7 +7,7 @@ import { emitWarningOnce } from "./warnings.ts";
 // backend is pointless - a sibling may still serve, so the pool overflows to it.
 // Auth/quota/content kinds are deliberately absent: a peer backend fails them
 // identically, and failing over would only multiply the damage (and the spend).
-const OVERFLOW_KINDS: ReadonlySet<ProviderTelemetryKind> = new Set(["network_failure", "rate_limit"]);
+const OVERFLOW_KINDS: ReadonlySet<ProviderErrorKind> = new Set(["network_failure", "rate_limit"]);
 
 // Pool - fronts N INTERCHANGEABLE backends as one Provider. This is CAPACITY, not
 // blend: the mechanism (round-robin across workers, sticky within a worker for

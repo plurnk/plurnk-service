@@ -3,19 +3,15 @@ import type { Db } from "./Db.ts";
 import Results, { type SchemeResult } from "./results.ts";
 import type { WriterTier } from "./scheme-types.ts";
 
-export interface MintProblem {
+export interface RecordProblem {
     readonly workerId: number;
     readonly loopId: number;
     readonly turnId: number;
     readonly sequence: number;
     readonly origin: WriterTier;
     readonly source: string;
-    readonly owner: string;
-    readonly code: string;
-    readonly status: number;
-    readonly detail: string;
+    readonly result: SchemeResult;
     readonly outcome?: string | null;
-    readonly extensions?: Readonly<Record<string, unknown>>;
 }
 
 export interface MintedProblem {
@@ -32,7 +28,7 @@ export default class ProblemLog {
         this.#db = db;
     }
 
-    async mint(input: MintProblem): Promise<MintedProblem> {
+    async record(input: RecordProblem): Promise<MintedProblem> {
         const coordinate = await this.#db.engine_loop_turn_seqs.get<{
             loop_seq: number;
             turn_seq: number;
@@ -41,22 +37,19 @@ export default class ProblemLog {
             turn_id: input.turnId,
         });
         if (coordinate === undefined) {
-            throw new Error(`ProblemLog.mint: no coordinate for loop=${input.loopId} turn=${input.turnId}`);
+            throw new Error(`ProblemLog.record: no coordinate for loop=${input.loopId} turn=${input.turnId}`);
         }
 
-        const result = Results.failure(
-            input.owner,
-            input.code,
-            input.status,
-            input.detail,
-            {},
-            input.extensions,
-        ) as SchemeResult & { readonly problem: ProblemDetails };
+        const result = structuredClone(Results.assert(input.result));
+        if (!Results.isErrorStatus(result.status) || result.problem === undefined) {
+            throw new TypeError("ProblemLog.record requires a failed operation result");
+        }
+        const failure = result as SchemeResult & { readonly problem: ProblemDetails };
         Results.attachInstance(
-            result,
+            failure,
             `log:///${coordinate.loop_seq}/${coordinate.turn_seq}/${input.sequence}/error`,
         );
-        const rx = JSON.stringify(result);
+        const rx = JSON.stringify(failure);
         const row = await this.#db.engine_insert_log_entry.get<{ id: number }>({
             worker_id: input.workerId,
             loop_id: input.loopId,
@@ -80,13 +73,13 @@ export default class ProblemLog {
             mimetype_tx: "text/plain",
             rx,
             mimetype_rx: "application/json",
-            status_rx: input.status,
+            status_rx: failure.status,
             tokens: 0,
             state: "failed",
-            outcome: input.outcome ?? input.code,
+            outcome: input.outcome ?? failure.problem.type,
             attrs: "{}",
         });
-        if (row === undefined) throw new Error("ProblemLog.mint: INSERT ... RETURNING produced no row");
-        return { id: row.id, result };
+        if (row === undefined) throw new Error("ProblemLog.record: INSERT ... RETURNING produced no row");
+        return { id: row.id, result: failure };
     }
 }

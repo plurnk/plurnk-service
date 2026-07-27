@@ -68,7 +68,11 @@ test("the 409 liveness gate and the Child Runs orientation AGREE — never refus
         // while the orientation showed nothing (latest loop terminal) — refused for an invisible child →
         // strike-out. The latest-loop gate now matches the orientation: both clear, in lockstep.
         const ownLatest = await insertLoop(db, child, 2, "own work"); // seq 2 — the actual work loop
-        await db.test_set_loop_status.run({ id: ownLatest, status: 200 }); // it concluded
+        await db.test_set_loop_status.run({
+            id: ownLatest,
+            status: 200,
+            terminal_result: JSON.stringify({ status: 200 }),
+        }); // it concluded
         assert.equal(await gate(), false, "concluded child: gate clears (the inherited seq-1 @ 102 is not the latest loop)");
         assert.equal(await orientCount(), 0, "concluded child: orientation empty too — gate and orientation never contradict");
     } finally { await db.close(); }

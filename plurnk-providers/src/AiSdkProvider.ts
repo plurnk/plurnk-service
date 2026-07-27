@@ -10,7 +10,8 @@ import type { ChatMessage, FinishReason, Provider, ProviderResponse, ProviderUsa
 import type { Reasoning, ReserveSpec } from "./env.ts";
 import { executeAiSdkModel, executeOpenAICompatible } from "./aiSdkTransport.ts";
 import type { LanguageModel } from "ai";
-import { toProviderError, ProviderError, type TelemetryEvent } from "./telemetry.ts";
+import { toProviderError, ProviderError } from "./errors.ts";
+import type { ProviderNotice } from "./notices.ts";
 import { validateGbnf, type Verdict } from "@plurnk/gbnf";
 import { emitWarningOnce } from "./warnings.ts";
 
@@ -45,7 +46,7 @@ export type AiSdkProviderConfig = {
     reasoningStyle?: ReasoningStyle;          // default "none"
     countTokens?: (text: string) => number;   // default chars/2 upper-bound heuristic
     calculateCost?: (usage: ProviderUsage) => number; // default () => 0
-    source?: string;                           // telemetry source, e.g. "provider:openai"; default "provider"
+    source?: string;                           // notice/problem source, e.g. "provider:openai"; default "provider"
     grammarStyle?: GrammarStyle;               // how a GBNF grammar is carried; default "none" (not sent)
     // #518: send the OpenAI-standard `prompt_cache_key` set to workerId, so a
     // serverless backend with REPLICA-LOCAL prompt caching (fireworks, verified)
@@ -654,17 +655,17 @@ export default class AiSdkProvider implements Provider {
         // Grammar conformance (§13): bytes always flow; the verdict is an
         // observation. Same check whether the grammar was transported
         // (sendGrammar) or withheld (PLURNK_PROVIDERS_GBNF_DEBUG filter mode) — a
-        // non-accept verdict attaches a grammar_unenforced telemetry event
+        // non-accept verdict attaches a grammar_unenforced notice
         // (message + divergence position) and the response returns normally.
         // Discard/retry/escalate/self-correct is the consumer's policy.
-        let telemetry: TelemetryEvent[] | undefined;
+        let notices: ProviderNotice[] | undefined;
         let railsMeta: Record<string, unknown> | undefined;
         const usage = raw.usage;
         const observedGrammar = sendGrammar ?? (wantGrammar && this.#gbnfDebug ? grammar : undefined);
         if (observedGrammar !== undefined) {
             const verdict = this.#grammarVerdict(observedGrammar, raw.content);
             if (verdict !== null && verdict.status !== "accept") {
-                telemetry = [{ source: this.#source, kind: "grammar_unenforced", message: describeUnenforced(verdict), position: verdict.pos }];
+                notices = [{ source: this.#source, kind: "grammar_unenforced", level: "warn", message: describeUnenforced(verdict), position: verdict.pos }];
             }
             // #488 per-request loud state: rail attachment + conformance verdict
             // ride `meta` into the consumer's turn row, so a drill reads rail
@@ -679,9 +680,10 @@ export default class AiSdkProvider implements Provider {
             // exceeding visible-plus-slack is real vanishing, not estimator noise.
             const visible = this.#countTokens(raw.content) + this.#countTokens(raw.reasoning);
             if (sendGrammar !== undefined && usage.completion > visible + 64) {
-                (telemetry ??= []).push({
+                (notices ??= []).push({
                     source: this.#source,
                     kind: "grammar_unenforced",
+                    level: "warn",
                     message: `decode escaped the grammar: ${usage.completion} completion tokens billed but only ~${visible} visible across content+reasoning — the balance ran unconstrained in a discarded reasoning channel`,
                     position: [...raw.content].length,
                 });
@@ -710,7 +712,7 @@ export default class AiSdkProvider implements Provider {
             assistantRaw: raw,
             ...(raw.rawBody !== undefined ? { rawBody: raw.rawBody } : {}),
             ...(meta !== undefined ? { meta } : {}),
-            ...(telemetry !== undefined ? { telemetry } : {}),
+            ...(notices !== undefined ? { notices } : {}),
         };
     }
 }

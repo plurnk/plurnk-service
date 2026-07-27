@@ -68,7 +68,11 @@ test("a CONCLUDED child carrying an inherited non-terminal loop does NOT block t
         const childWorker = await insertWorker(db, workspaceId, parentWorker);
         await insertLoop(db, childWorker, 1, "inherited");                       // seq 1 — frozen at 102 (inherited history)
         const ownLoop = await insertLoop(db, childWorker, 2, "own work");        // seq 2 — the child's actual loop
-        await db.test_set_loop_status.run({ id: ownLoop, status: 200 }); // it concluded
+        await db.test_set_loop_status.run({
+            id: ownLoop,
+            status: 200,
+            terminal_result: JSON.stringify({ status: 200 }),
+        }); // it concluded
 
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const result = await engine.runTurn({
@@ -168,8 +172,8 @@ test("a model that won't stop premature-200ing with a live child STRIKES OUT (50
         // before the plain strike threshold (500) — defense in depth. Either way the model is terminated
         // and never gets a false 200. The robustness guarantee: a confused model can't falsely complete
         // (no 200 terminal) and can't hang (it terminates), it just abandons via the rails.
-        assert.ok([500, 508].includes(result.finalStatus), `premature-200 spammer abandons via the rails (500 strike / 508 cycle); got ${result.finalStatus}`);
-        assert.notEqual(result.finalStatus, 200, "a model declaring done with work running NEVER gets a false 200");
+        assert.ok([500, 508].includes(result.result.status), `premature-200 spammer abandons via the rails (500 strike / 508 cycle); got ${result.result.status}`);
+        assert.notEqual(result.result.status, 200, "a model declaring done with work running NEVER gets a false 200");
     } finally { await db.close(); }
 });
 

@@ -38,12 +38,33 @@ export default class Fork {
         // is clamped to terminal (200). Otherwise a fork taken while the parent's loop is mid-flight (102)
         // would carry a frozen-live loop no drain ever advances, falsely marking the branch forever-live
         // to any liveness check (§worker-scheme-fork, the premature-terminate gate §send-premature-terminate).
-        const loops = await db.fork_get_loops.all<{ id: number; sequence: number; status: number; prompt: string; flags: string }>({ worker_id: parentWorkerId });
+        const loops = await db.fork_get_loops.all<{
+            id: number;
+            sequence: number;
+            status: number;
+            prompt: string;
+            flags: string;
+            terminal_result: string | null;
+        }>({ worker_id: parentWorkerId });
         const loopMap = new Map<number, number>();
         for (const l of loops) {
             const status = Fork.#TERMINAL_LOOP.has(l.status) ? l.status : 200;
-            const nl = await db.fork_insert_loop.get<{ id: number }>({ worker_id: branchWorkerId, sequence: l.sequence, status, prompt: l.prompt, flags: l.flags });
+            const terminalResult = Fork.#TERMINAL_LOOP.has(l.status)
+                ? l.terminal_result
+                : JSON.stringify({ status: 200 });
+            if (terminalResult === null) {
+                throw new Error(`fork: terminal source loop ${l.id} has no durable result`);
+            }
+            const nl = await db.fork_insert_loop.get<{ id: number }>({
+                worker_id: branchWorkerId,
+                sequence: l.sequence,
+                status,
+                prompt: l.prompt,
+                flags: l.flags,
+                terminal_result: terminalResult,
+            });
             if (nl === undefined) throw new Error("fork: loop insert returned no row");
+            await db.fork_reidentify_loop_result.run({ loop_id: nl.id });
             loopMap.set(l.id, nl.id);
         }
 

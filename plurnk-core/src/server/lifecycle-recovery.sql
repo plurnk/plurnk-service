@@ -7,7 +7,17 @@
 -- replaying its provider turn could duplicate effects whose commit boundary is unknown.
 UPDATE loops
 SET status = 500,
-    terminal_message = 'daemon restarted while this loop was active'
+    terminal_message = 'The daemon restarted while this loop was active; its process-local owner no longer exists.',
+    terminal_result = json_object(
+        'status', 500,
+        'problem', json_object(
+            'type', 'https://problems.plurnk.dev/lifecycle/recovery/owner-vanished',
+            'title', 'Owner vanished',
+            'status', 500,
+            'detail', 'The daemon restarted while this loop was active; its process-local owner no longer exists.',
+            'instance', 'loop:///' || id
+        )
+    )
 WHERE status = 102;
 
 -- PREP: recovery_error_orphan_subscription_channels

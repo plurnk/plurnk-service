@@ -198,7 +198,11 @@ test("a TERMINATED sister's name is reclaimed — spawn succeeds, newest wins", 
         // A sister 'worker' that already TERMINATED (its loop crossed into 200) — its name is spent.
         const dead = await insertWorker(db, workspaceId, null, "worker");
         const deadLoop = await insertLoop(db, dead, 1, "done");
-        await db.test_set_loop_status.run({ id: deadLoop, status: 200 });
+        await db.test_set_loop_status.run({
+            id: deadLoop,
+            status: 200,
+            terminal_result: JSON.stringify({ status: 200 }),
+        });
 
         const result = await engine.dispatch({
             statement: spawnedWorker("worker", "fresh work"),
@@ -234,7 +238,10 @@ test("READ(worker://name) collects the deliverable — message done, 425 running
         assert.match(String(running.content), /still running|SEND\[202\]/, "the 425 steers the model to hibernate and await");
 
         // It concludes 200 with a deliverable → READing the worker yields the deliverable (the pull side of collect).
-        assert.equal(await new LoopLifecycle(db).finish(wLoop, 200, "postgres"), true);
+        assert.deepEqual(
+            await new LoopLifecycle(db).finish(wLoop, { status: 200 }, { message: "postgres" }),
+            { status: 200 },
+        );
         const done = await run.read(readStmt(workerPath("worker-db")), ctx);
         assert.equal(done.status, 200, "a concluded worker's READ succeeds");
         assert.equal(done.content, "postgres", "the deliverable (terminal message) is collected by READing the worker itself — no scratch-path guessing");

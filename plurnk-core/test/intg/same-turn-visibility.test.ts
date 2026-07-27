@@ -42,7 +42,7 @@ test("MODE batches same-resource EDITs against one snapshot before an authored-e
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "mode-batch" });
             const result = await runLoopToTerminal(ws, 2, { prompt: "go", flags: { auto: true } });
-            assert.equal(result.finalStatus, 200);
+            assert.equal(result.result.status, 200);
             const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; rx: string }>({ loop_id: result.loopId });
             const reads = rows.filter((row) => row.op === "READ" && row.origin === "model");
             assert.equal(reads.length, 1);
@@ -76,7 +76,7 @@ test("MODE rejects an overlapping resource batch without applying either EDIT (#
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "mode-atomic-failure" });
             const result = await runLoopToTerminal(ws, 2, { prompt: "go", flags: { auto: true } });
-            assert.equal(result.finalStatus, 200);
+            assert.equal(result.result.status, 200);
             const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; rx: string }>({ loop_id: result.loopId });
             const failedEdits = rows.filter((row) => row.op === "EDIT" && row.origin === "model"
                 && (JSON.parse(row.rx) as { status?: number }).status === 409);
