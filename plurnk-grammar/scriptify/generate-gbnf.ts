@@ -1,10 +1,9 @@
 // Generates dist/plurnk.gbnf — a llama.cpp grammar (GBNF) for constrained sampling.
 //
-// Three-layer subset invariant: dictated generation (this GBNF) ⊂ prescribed canon
-// (plurnk.md) ⊂ permitted parse (ANTLR). The GBNF enumerates suffixes (ε, 1..9)
-// because the HEREDOC close-tag match is not context-free; bodies are encoded as
-// complement automata over each close literal ("any text not containing :OPsuffix")
-// so llama.cpp parse stacks stay deterministic.
+// This is a pragmatic generation filter, not a second parser contract. Keeping sampled
+// output parseable is a goal balanced against rail size and sampling efficiency, not an
+// invariant. Bodies use complement automata over each close literal ("any text not
+// containing :OPsuffix") so llama.cpp parse stacks stay deterministic.
 //
 // The rule model is exported for the integration tests (corpus derivability +
 // seeded fuzz against PlurnkParser); the file write only happens when run as a script.

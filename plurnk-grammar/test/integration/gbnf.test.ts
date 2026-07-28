@@ -1,15 +1,15 @@
 /**
- * GBNF contract tests. Two directions:
+ * GBNF compatibility tests. Two directions:
  *
- * Corpus — every plurnk.md example must be derivable from the GBNF model
- * (dictated generation ⊂ prescribed canon). README examples are NOT corpus:
+ * Corpus - every plurnk.md example currently supported by the rail must be derivable.
+ * README examples are not corpus:
  * they document the permissive parse layer (word suffixes, dash ranges).
  *
- * Fuzz — seeded random derivations from the model must parse via PlurnkParser
- * with zero errors (L(GBNF) ⊂ L(ANTLR)).
+ * Fuzz - seeded random derivations from the current model must parse cleanly.
  *
- * The recognizer and sampler below operate on the generator's exported rule
- * model, not on the serialized .gbnf text.
+ * These pin today's deliberately compatible rail. Parse compatibility is a goal
+ * balanced against rail size and sampling efficiency, not an invariant. The
+ * recognizer and sampler operate on the exported rule model, not serialized GBNF.
  */
 
 import test from "node:test";
@@ -717,7 +717,7 @@ test("GBNF: inter-op separator is WS{0,7} — none, mixed, up to 7; 8+ rejected"
     assert.equal(derives("root-turn", lead + "<<READ(worker:///x)::READ prose <<SEND[102]:done:SEND"), false);
 });
 
-test("GBNF: glued output round-trips through the parser (subset invariant)", () => {
+test("GBNF: glued output round-trips through the parser", () => {
     const turn = "<<READ(worker:///x)::READ<<EDIT(worker:///y):z:EDIT<<SEND[200]:done:SEND";
     const result = PlurnkParser.parseStatements(turn);
     const errors = result.items.filter((item) => item.kind === "error");
@@ -728,7 +728,7 @@ test("GBNF: glued output round-trips through the parser (subset invariant)", () 
 });
 
 // -------------------------------------------------------------------------
-// Fuzz: L(GBNF) ⊂ L(ANTLR)
+// Compatibility fuzz for the current rail.
 // -------------------------------------------------------------------------
 
 test("GBNF: 100 seeded random turn batches parse cleanly and end in SEND", () => {
