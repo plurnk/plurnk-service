@@ -46,11 +46,6 @@ test("PlurnkStatement: COPY with raw string body (destination)", () => {
     assert.equal(r!.valid, true, JSON.stringify(r!.errors));
 });
 
-test("PlurnkStatement: COPY with raw string body (worker-fork prompt)", () => {
-    const r = validateRoundTrip("<<COPY(worker://.):Re-derive the capital from a primary source.:COPY");
-    assert.equal(r!.valid, true, JSON.stringify(r!.errors));
-});
-
 test("PlurnkStatement: MOVE with path body", () => {
     const r = validateRoundTrip("<<MOVE(known://draft):known://final:MOVE");
     assert.equal(r!.valid, true, JSON.stringify(r!.errors));
@@ -104,6 +99,14 @@ test("PlurnkStatement: KILL with bare target", () => {
 test("PlurnkStatement: KILL with signal and annotation body", () => {
     const r = validateRoundTrip("<<KILL[9](sh:///3/1/2):runaway; no output for 4 turns:KILL");
     assert.equal(r!.valid, true, JSON.stringify(r!.errors));
+});
+
+test("PlurnkStatement: WORK and FORK require prompt bodies", () => {
+    for (const op of ["WORK", "FORK"]) {
+        const missing = baseFields(op);
+        assert.equal(Validator.validatePlurnkStatement(missing).valid, false);
+        assert.equal(Validator.validatePlurnkStatement({ ...missing, body: "Do the assigned work" }).valid, true);
+    }
 });
 
 // -------------------------------------------------------------------------
@@ -192,7 +195,7 @@ test("PlurnkStatement: COPY body is a raw string, not a ParsedPath", () => {
     assert.equal(valid, false);
 });
 
-test("PlurnkStatement: COPY body accepts a raw string (destination or prompt)", () => {
+test("PlurnkStatement: COPY destination body accepts a raw string", () => {
     const stmt = { ...baseFields("COPY"), body: "known://archive/draft" };
     const { valid, errors } = Validator.validatePlurnkStatement(stmt);
     assert.equal(valid, true, JSON.stringify(errors));

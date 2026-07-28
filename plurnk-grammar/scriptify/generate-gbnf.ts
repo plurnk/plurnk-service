@@ -86,12 +86,11 @@ const bodyRules = (model: GModel, name: string, close: string, singleLine = fals
     }
 };
 
-// Non-empty body: `${name}-b0` minus its entry epsilon, so the body MUST consume ≥1 char
-// before the close. The two non-ε transitions of state 0 (`:` → b1, any-other → b0) then
-// hand off to the normal automaton, which keeps its epsilon — so the body can still end
-// after that first char. Used for PLAN (no blank statement of intent) and the terminal
-// SEND (a turn must not terminate empty-handed) — a structural quality floor for training
-// data. Whitespace-only bodies still pass (≥1 char, not ≥1 non-WS); that residual is a
+// Non-empty body: `${name}-b0` minus its entry epsilon, so the body MUST consume at least
+// one char before the close. The two non-epsilon transitions of state 0 (`:` -> b1,
+// any-other -> b0) then hand off to the normal automaton, which keeps its epsilon, so the
+// body can still end after that first char. Used where an empty body has no meaning: PLAN,
+// terminal SEND, WORK, and FORK. Whitespace-only bodies still pass; that residual is a
 // post-gen sieve's job, not the grammar's.
 const bodyRulesNonEmpty = (model: GModel, name: string, close: string): void => {
     const alts: GRule = [];
@@ -318,9 +317,12 @@ export const buildModel = (): GModel => {
                 // Signal (unix signal number) is wired but untaught — canon shows bare KILL.
                 opEntries.push({ literal: open, tails: [[opt(ref("kill-sig")), ref("target"), ...body]] });
             } else if (op === "WORK" || op === "FORK") {
-                // Delegation verbs — optional single Git branch ref in the signal/tag slot,
-                // target (the worker://<name>) REQUIRED, then task/hint body. No line slot.
-                opEntries.push({ literal: open, tails: [[opt(ref("branch")), ref("target"), ...body]] });
+                // Delegation verbs: optional single Git branch ref in the signal/tag slot,
+                // required worker target, then a non-empty prompt. The extra entry rule
+                // reuses the existing body automaton; it adds no second automaton family.
+                bodyRulesNonEmpty(model, name, close);
+                const bodyNE = [lit(":"), ref(`${name}-b0ne`), lit(close)];
+                opEntries.push({ literal: open, tails: [[opt(ref("branch")), ref("target"), ...bodyNE]] });
             } else {
                 // Tag-CSV ops (FIND/READ/EDIT/COPY/MOVE/OPEN/FOLD) share one shape. The former
                 // READ/FIND retrieval routing (the READ->200 rail, 0.74.47-0.74.58) is DELETED

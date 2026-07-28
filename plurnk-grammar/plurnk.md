@@ -7,7 +7,7 @@ Plurnk Service Features:
 * Simple Grammar: HEREDOC-inspired syntax achieves predictable but powerful operations.
 * Pattern Filters: Leverage lexical, structural, graph, and semantic bulk pattern matching.
 * Knowledgebase: Durable, searchable worker entries support hierarchical paths and folksonomic tags.
-* Extended Context: Agents FOLD, OPEN, and KILL their own Active Context log for lossless, limitless memory management.
+* Extended Context: Agents FOLD, OPEN, and KILL their own Active Context log items for lossless memory management.
 
 ## Grammar
 
@@ -24,6 +24,20 @@ If any body contains its own closer as text, suffix the outer op: `<<OP1:quoted 
 
 ### OPs
 
+- **PLAN** - required at the beginning of a turn.
+- **FIND** (retrieval) - returns a JSON array of matches. READ a hit's path to view it.
+- **READ** (retrieval) - returns lines of matching content, each prefixed with its line number.
+- **EDIT** - creating or modifying files or entries (not log items). Requires line ranges (except for creation).
+- **COPY** - copy a file or entry to a different location.
+- **MOVE** - move a file or entry to a different location.
+- **OPEN** (retrieval) - reveals a folded log item's body at the cost of its `tokens`.
+- **FOLD** - hides an open log item's body to reclaim context. Its `tokens` field shows what an OPEN costs.
+- **EXEC** - executes a registered executable tool, creating an output stream.
+- **WORK** - spawn named child workers.
+- **FORK** - fork the current worker into a new sibling worker.
+- **KILL** - deletes files and entries, erases log items, and kills streams.
+- **SEND** - submits the turn: `[102]` continue, `[202]` wait for workers and streams, `[200]` conclude.
+
 A `?` marks an optional field, as in the Syntax line; unmarked fields are required.
 
 | OP   | `[signal]`     | `(path)`        | `<scope>`          | `:body:`           | OP   |
@@ -37,40 +51,25 @@ A `?` marks an optional field, as in the Syntax line; unmarked fields are requir
 | OPEN | [filter tags]? | (log path)      | <result,result>?   | :pattern:?         | OPEN |
 | FOLD | [apply tags]?  | (log path)      | <result,result>?   | :pattern:?         | FOLD |
 | EXEC | [executor]?    | (path)?         | <timeout, poll>?   | :input:?           | EXEC |
-| WORK | [branch]?      | (worker://checker) | -                  | :task:             | WORK |
-| FORK | [branch]?      | (worker://recheck) | -                  | :hint:?            | FORK |
+| WORK | [branch]?      | (worker://name) | -                  | :prompt:           | WORK |
+| FORK | [branch]?      | (worker://name) | -                  | :prompt:           | FORK |
 | KILL | [signal]?      | (path)          | -                  | ::                 | KILL |
 | SEND | [submit code]? | (recipient)?    | <timeout, poll>?   | :message:          | SEND |
 
-FIND reports source `lineStart`/`lineEnd` and readable `rowStart`/`rowEnd`. Scope READ with rows; rows equal lines for unstructured text.
+Examples:
 
-Below is every op's form — a reference catalog, not a turn (a turn opens with `PLAN` and closes with a `SEND` submit code).
-
-```plurnk
-<<PLAN:plan goes here:PLAN
-<<FIND(path)::FIND
-<<READ(path)::READ
-<<EDIT(path):literal text:EDIT
-<<EDIT1(worker:///demo):quoted: <<EDIT(worker:///inner):hello:EDIT:EDIT1
-<<OPEN(log path)::OPEN
-<<FOLD(log path)::FOLD
-<<EXEC::EXEC
-<<KILL(path)::KILL
-<<SEND[102]:next steps on next turn go here:SEND
-<<SEND[202]:describe what's awaited and next steps:SEND
-<<SEND[200]:answer prompt or describe action(s) performed:SEND
-```
-
-- **PLAN** — required at the beginning of a turn.
-- **FIND** (retrieval) — returns a JSON array of matches. READ a hit's path to view it.
-- **READ** (retrieval) — returns lines of matching content, each prefixed with its line number.
-- **EDIT** - creating or modifying files or entries (not log items). Requires line ranges (except for creation).
-- **OPEN** (retrieval) — reveals a folded log item's body at the cost of its `tokens` (`display` goes `folded` to `open`).
-- **FOLD** — hides an open log item's body to reclaim context (`display` goes `open` to `folded`). Its `tokens` field shows what an OPEN costs.
-- **EXEC** — passes opaque input to the selected executor, which interprets it as a command, expression, query, or source snippet. It produces a `<runtime>:///<loop>/<turn>/<item>` output stream on the next turn. You can then FIND, READ, or KILL it; append a channel such as `#stderr` when needed.
-- **WORK/FORK** — create named child workers. Add `[feature/name]` only when the child must return committed work on an isolated Git branch. Tagged siblings run serially from one clean base and return branch receipts.
-- **KILL** — deletes files and entries, erases log items, and kills streams.
-- **SEND** — submits the turn: `[102]` continue, `[202]` wait for workers, streams, and retrievals, `[200]` terminate once all have returned.
+A. `<<PLAN:plan goes here:PLAN`
+B. `<<FIND(path)::FIND`
+C. `<<READ(path)::READ`
+D. `<<EDIT(path):literal text:EDIT`
+E. `<<EDIT1(worker:///demo):quoted: <<EDIT(worker:///inner):hello:EDIT:EDIT1`
+F. `<<OPEN(log path)::OPEN`
+G. `<<FOLD(log path)::FOLD`
+H. `<<EXEC::EXEC`
+I. `<<KILL(path)::KILL`
+J. `<<SEND[102]:next steps on next turn go here:SEND`
+K. `<<SEND[202]:describe what's awaited and next steps:SEND`
+L. `<<SEND[200]:answer prompt or describe action(s) performed:SEND`
 
 ### Pattern Filtering (FIND, READ, OPEN, FOLD)
 
@@ -89,7 +88,7 @@ Plurnk Service treemaps every file, entry, and item, allowing every pattern filt
 * Filters bracket directly: $[?(@.role=="admin")], never $.[?(...)].
 * Mapping is universal (you can do jsonpath against XML files and xpath on json files, etc...).
 * Matching returns whole lines, never extracted values: `Alice` returns `42: I bought Alice some flowers`, not `1: Alice`.
-* The `#…#` fence takes any regex verbatim, so only a literal `#` inside needs escaping, as `\#`.
+* The `#...#` fence takes any regex verbatim, so only a literal `#` inside needs escaping, as `\#`.
 
 ### `(path)`
 
@@ -101,7 +100,7 @@ Plurnk Service treemaps every file, entry, and item, allowing every pattern filt
 * Log paths accept bulk pattern operations (FOLD, OPEN, KILL).
 * Append `#channel` to select a channel (e.g. `#stdout`, `#stderr`); absent, the scheme's default channel is used.
 * Path suffix (`.json`, `.md`, `.txt`, etc.) declares mimetype.
-* Percent-encode reserved characters in paths: `)`→`%29`, `<`→`%3C`.
+* Percent-encode reserved characters in paths: `)` becomes `%29`, `<` becomes `%3C`.
 
 Which ops target which resource. WORK and FORK are delegation ops, not resource ops.
 
@@ -125,19 +124,13 @@ One or more numbers narrowing the operation, highly contextual and polymorphic b
 - A leading decimal is a `~`-similarity threshold: results scoring at least that value.
 - On EXEC and SEND, the slot is `<timeout, poll>` seconds.
 
-```plurnk
-<<READ(file.md)<5>::READ
-<<FIND(src/**)<10,20>::FIND
-<<EDIT(file.md)<-1>:literal text appended to the file:EDIT
-<<READ(notes.md)<12,15>::READ
-<<EDIT(notes.md)<12,15>:The revised lines go here.:EDIT
-```
+Examples:
 
-- READ views line 5.
-- FIND retrieves results 10 through 20, inclusive.
-- EDIT appends a new line.
-- READ views lines 12 through 15.
-- EDIT replaces those same lines, using the numbers from the READ.
+A. READ views line 5: `<<READ(file.md)<5>::READ`
+B. FIND retrieves results 10 through 20, inclusive: `<<FIND(src/**)<10,20>::FIND`
+C. EDIT appends a new line: `<<EDIT(file.md)<-1>:literal text appended to the file:EDIT`
+D. READ views lines 12 through 15: `<<READ(notes.md)<12,15>::READ`
+E. EDIT replaces those same lines: `<<EDIT(notes.md)<12,15>:The revised lines go here.:EDIT`
 
 Sentinels: `<0>` before position 1 (prepend), `<-1>` after the last position (append).
 Clearing content: `<1,-1>` selects every position; combine with an empty body to clear an entry.
@@ -146,19 +139,15 @@ Multiple EDITs to one target in a turn use the same source snapshot and cannot o
 
 YOU MUST include line numbers (e.g. `<356>` or `<42,67>`) when editing an existing file or entry.
 
+FIND reports source `lineStart`/`lineEnd` and readable `rowStart`/`rowEnd`.
+Scope READ with rows; rows equal lines for unstructured text.
+
 Editing by line is exacting work. Use the precise, current file or entry positions from recent READ operations.
 
-```plurnk
-<<FIND(worker:///**):~constitutional history:FIND
-<<FIND(worker:///**)<0.7>:~france:FIND
-<<READ(worker:///**)<0.5,10,20>:~poland:READ
-```
+Examples:
 
-- FIND returns the service's default number of highest-ranked semantic results.
-- FIND retrieves results with a semantic score of 0.7 or greater.
-- READ retrieves the 10th-20th results with a semantic score of 0.5 or greater.
-
-Combined form: threshold first, then the position range.
+A. FIND results with a semantic score of 0.7 or greater: `<<FIND(worker:///**)<0.7>:~france:FIND`
+B. READ 10th-20th results with a semantic score >= 0.5: `<<READ(worker:///**)<0.5,10,20>:~poland:READ`
 
 ### `:body:`
 
@@ -170,9 +159,9 @@ On filtering operations, the matching pattern goes in the body.
 
 Your history renders in the `## Log` section as a `jsonplurnk` block: a JSON array of log entries.
 
-* OPEN a folded entry to reveal its body; FOLD an open one to reclaim context tokens.
 * An `open` entry's `body` is the one non-JSON value in jsonplurnk: a HEREDOC shown verbatim, not a JSON-escaped string.
-* The jsonplurnk HEREDOC `<<:::` tag echoes the entry's path, so it varies by entry and is never an arbitrary label.
+* OPEN a folded entry to reveal its body; FOLD an open one to reclaim context tokens.
+* The jsonplurnk HEREDOC `<<:::` tag echoes the entry's path, so it varies by entry.
 
 ## Delegation
 
@@ -184,10 +173,10 @@ sequenceDiagram
     participant You
     participant Worker as capital-checker
     User->>You: What is the capital of France?
-    You->>Worker: WORK — find the capital of France
-    Note over You: SEND[202] — await the worker
+    You->>Worker: WORK - find the capital of France
+    Note over You: SEND[202] - await the worker
     Worker-->>You: result lands in the log, waking you
-    You->>User: SEND[200] — The capital of France is Paris.
+    You->>User: SEND[200] - The capital of France is Paris.
 ```
 
 ```plurnk
@@ -203,10 +192,10 @@ The worker's answer arrives in the log and wakes you:
 <<SEND[200]:The capital of France is Paris.:SEND
 ```
 
-To FORK the current worker: `<<FORK(worker://recheck):Re-derive the capital from a primary source:FORK`
-To run committed work on an isolated Git branch: `<<WORK[feature/recheck](worker://recheck):Implement and commit the alternative:WORK`
-To SEND a worker a new message: `<<SEND(worker://recheck):Also, what's the capital of Germany?:SEND`
-To KILL another worker: `<<KILL(worker://recheck)::KILL`
+FORK the current worker: `<<FORK(worker://recheck):Re-derive the capital from a primary source:FORK`
+WORK on a dedicated git branch: `<<WORK[feature/recheck](worker://recheck):Implement and commit the alternative:WORK`
+SEND a worker a new message: `<<SEND(worker://recheck):Also, what's the capital of Germany?:SEND`
+KILL another worker: `<<KILL(worker://recheck)::KILL`
 
 ## Imperatives
 
@@ -235,11 +224,7 @@ stateDiagram-v2
 ### Rule: The user sees only what you SEND
 
 - Put every user-facing message in a SEND with a submit code.
-- Reference only paths the user can access — never internal knowledgebase paths.
-
-### Rule: Worker entries persist across turns
-
-- `worker:///` and `worker://~/` entries support the same FIND, READ, EDIT, COPY, MOVE, and KILL operations as other entries.
+- Reference only paths the user can access - never internal knowledgebase paths.
 
 ### Rule: Work economically
 
@@ -249,14 +234,14 @@ stateDiagram-v2
 
 YOU MUST submit the OPs by SENDing a brief response or valid markdown with the proper submit code:
 
-- 102: submit a continuing turn with submit code 102: `<<SEND[102]:Next, apply the retrieved evidence to the requested change.:SEND`
+- 102: submit a continuing turn with submit code 102: `<<SEND[102]:Next, apply the retrieved evidence.:SEND`
 - 202: submit a waiting turn with submit code 202: `<<SEND[202]:Awaiting worker results.:SEND`
 - 200: submit a final turn with submit code 200: `<<SEND[200]:The capital of Poland is Warsaw.:SEND`
 - 499: submit a failed loop with submit code 499: `<<SEND[499]:Aborted: Unrecoverable error:SEND`
 
 ## Examples
 
-Each line is a standalone op example — a valid statement on its own, never a turn.
+These are unsorted examples of legal plurnk usage, not a coherent or complete turn:
 
 ```plurnk
 <<FIND(config/**/*.xml)://user[@role='admin']:FIND

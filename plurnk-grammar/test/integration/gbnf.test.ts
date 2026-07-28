@@ -541,13 +541,15 @@ test("GBNF: EXEC accepts an optional <timeout,poll> line slot (canonical signal,
     assert.equal(derives("op-statement", "<<EXEC(sh:///x)<60,5>:cmd:EXEC"), true);         // slotless executor
 });
 
-test("GBNF: WORK/FORK accept one optional branch ref before the required worker target", () => {
+test("GBNF: WORK/FORK require a worker target and non-empty prompt", () => {
     // WORK spawns a fresh named worker; FORK branches the current run into a named child.
     assert.equal(derives("op-statement", "<<WORK(worker://worker-db):resolve the db field:WORK"), true);
     assert.equal(derives("op-statement", "<<FORK(worker://recheck):re-derive from a primary source:FORK"), true);
     // The rail REQUIRES the target — a nameless worker/branch can't be addressed.
     assert.equal(derives("op-statement", "<<WORK:do a thing:WORK"), false);
     assert.equal(derives("op-statement", "<<FORK:do a thing:FORK"), false);
+    assert.equal(derives("op-statement", "<<WORK(worker://w)::WORK"), false);
+    assert.equal(derives("op-statement", "<<FORK(worker://w)::FORK"), false);
     assert.equal(derives("op-statement", "<<WORK[feature/x](worker://w):t:WORK"), true);
     assert.equal(derives("op-statement", "<<FORK[fix/issue-642](worker://w):t:FORK"), true);
     assert.equal(derives("op-statement", "<<WORK[a,b](worker://w):t:WORK"), false);

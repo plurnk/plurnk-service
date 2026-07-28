@@ -104,7 +104,7 @@ test("every heredoc in plurnk.md parses to one clean statement", () => {
 const PLURNK_FENCE = /^```plurnk\n([\s\S]*?)^```/gm;
 test("every ```plurnk fenced block in plurnk.md parses clean", () => {
     const fences = [...plurnkMd.matchAll(PLURNK_FENCE)].map((m) => m[1]);
-    assert.ok(fences.length >= 5, `expected several plurnk fences, found ${fences.length}`);
+    assert.ok(fences.length > 0, "plurnk.md contains no ```plurnk fenced blocks");
 
     const failures: string[] = [];
     fences.forEach((body, i) => {

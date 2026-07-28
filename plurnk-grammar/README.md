@@ -19,9 +19,9 @@ const result = PlurnkParser.parse(input);
 // result.unparsedTail?: { from, reason }
 ```
 
-Discriminate on `item.kind`. For `statement` items, narrow on `statement.op` (one of `FIND READ EDIT COPY MOVE OPEN FOLD SEND EXEC KILL PLAN`) to access per-OP typed fields. Full API: [SPEC.md §12](SPEC.md#12-public-api).
+Discriminate on `item.kind`. For `statement` items, narrow on `statement.op` (one of `FIND READ EDIT COPY MOVE OPEN FOLD SEND EXEC WORK FORK KILL PLAN`) to access per-OP typed fields. Full API: [SPEC.md §12](SPEC.md#12-public-api).
 
-`parsePath(raw)` is a top-level helper that decomposes a path/URI string into a `ParsedPath` (the same decomposition applied to `(target)` slots). Reach for it to resolve a **COPY destination**: COPY's body is an opaque string — a destination URI for an entry copy, a prompt for a worker fork (`worker://`) — so the consumer interprets it by scheme and calls `parsePath` for the destination case. (MOVE destinations arrive pre-parsed; COPY's don't, because its body is polymorphic.)
+`parsePath(raw)` is a top-level helper that decomposes a path/URI string into a `ParsedPath` (the same decomposition applied to `(target)` slots). Reach for it to resolve a **COPY destination**: COPY's destination body remains an opaque string until the consumer calls `parsePath`. MOVE destinations arrive pre-parsed.
 
 ## cli
 
@@ -40,7 +40,7 @@ Exit `0` on clean parse, `1` on any error or unparsed tail.
 
 | slot     | shape                                              |
 |----------|----------------------------------------------------|
-| `OP`     | `FIND READ EDIT COPY MOVE OPEN FOLD SEND EXEC KILL PLAN` |
+| `OP`     | `FIND READ EDIT COPY MOVE OPEN FOLD SEND EXEC WORK FORK KILL PLAN` |
 | `suffix` | `[A-Za-z0-9_]*` glued to `OP`; used for nesting    |
 | `[…]`    | optional CSV; per-OP semantics                     |
 | `(…)`    | optional URI                                       |
@@ -52,16 +52,18 @@ Exit `0` on clean parse, `1` on any error or unparsed tail.
 | FIND | tag filter       | matcher               | result-set range   |
 | READ | tag filter       | matcher               | per-entry lines    |
 | EDIT | tags             | content (empty=clear) | entry lines        |
-| COPY | tags-to-apply    | destination URI / fork prompt | entry lines        |
+| COPY | tags-to-apply    | destination URI       | entry lines        |
 | MOVE | tags-to-apply    | destination URI       | entry lines        |
 | OPEN | tag filter       | matcher               | result-set range   |
 | FOLD | tag filter       | matcher               | result-set range   |
 | SEND | HTTP status int  | payload (JSON conv.)  | n/a                |
 | EXEC | executor         | executor-specific input | n/a              |
+| WORK | optional Git branch | required prompt    | n/a                |
+| FORK | optional Git branch | required prompt    | n/a                |
 | KILL | unix signal int  | annotation (opaque)   | n/a                |
 | PLAN | tags             | reasoning text        | n/a                |
 
-Matcher body dialect by leading char: `//` xpath · `#…#flags` regex · `$` jsonpath · `~` semantic · `@` graph · else glob. A body that fails its prefix-indicated dialect falls back to glob.
+Matcher body dialect by leading char: `//` xpath, `#...#flags` regex, `$` jsonpath, `~` semantic, `@` graph, else glob. A leading symbol commits its dialect; invalid syntax is reported.
 
 Path scheme detection: a leading `#` → path-name regex (`#pattern#flags`); else `[a-z][a-z0-9+.-]*://` → URL (fully decomposed); else local (raw). Bare paths default to `file://` at runtime.
 

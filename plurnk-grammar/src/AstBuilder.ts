@@ -217,9 +217,8 @@ export default class AstBuilder {
     static #buildCopy(ctx: CopyStatementContext): CopyStatement {
         const position = AstBuilder.#positionOf(ctx);
         const slots = AstBuilder.#extractTagSlots(ctx.tagOpModifiers(), position);
-        // COPY's body is opaque: a destination path for entry copies, a prompt for
-        // worker forks. The scheme handler interprets it — the parser stays out of it
-        // (unlike MOVE, whose body is always a genuine destination path).
+        // COPY's destination remains opaque until the consumer resolves it. Unlike
+        // MOVE, whose body is always a parsed path, COPY preserves the exact spelling.
         return {
             op: "COPY",
             suffix: AstBuilder.#splitSuffix(ctx.OPEN_COPY().getText(), "COPY"),
@@ -303,7 +302,7 @@ export default class AstBuilder {
             suffix: AstBuilder.#splitSuffix(ctx.OPEN_WORK().getText(), "WORK"),
             ...slots,
             lineMarker: null,
-            body: AstBuilder.#bodyTextOf(ctx),
+            body: AstBuilder.#requiredBodyTextOf(ctx),
             position,
         };
     }
@@ -316,7 +315,7 @@ export default class AstBuilder {
             suffix: AstBuilder.#splitSuffix(ctx.OPEN_FORK().getText(), "FORK"),
             ...slots,
             lineMarker: null,
-            body: AstBuilder.#bodyTextOf(ctx),
+            body: AstBuilder.#requiredBodyTextOf(ctx),
             position,
         };
     }
@@ -419,6 +418,12 @@ export default class AstBuilder {
     static #bodyTextOf(ctx: { body(): { getText(): string } | null }): string | null {
         const bodyCtx = ctx.body();
         return bodyCtx ? bodyCtx.getText() : null;
+    }
+
+    static #requiredBodyTextOf(ctx: { body(): { getText(): string } | null }): string {
+        const body = AstBuilder.#bodyTextOf(ctx);
+        if (body === null) throw new Error("ANTLR invariant: required body is absent");
+        return body;
     }
 
     static #splitSuffix(openTagText: string, op: PlurnkOp | ClientOp): string {

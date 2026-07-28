@@ -110,11 +110,11 @@ sendStatement : OPEN_SEND termModifiers COLON? body? CLOSE_TAG ;
 midSend       : OPEN_SEND midModifiers? COLON? body? CLOSE_TAG ;
 execStatement : OPEN_EXEC execModifiers? COLON? body? CLOSE_TAG ;
 
-// Delegation verbs — an optional single branch ref in the signal/tag slot, target
-// (the worker://<name>), and body (task/hint). No line marker. Target is optional
+// Delegation verbs - an optional single branch ref in the signal/tag slot, target
+// (the worker://<name>), and required prompt body. No line marker. Target is optional
 // here (forgiving parser); canon and the GBNF rail require it.
-workStatement : OPEN_WORK branchModifiers? COLON? body? CLOSE_TAG ;
-forkStatement : OPEN_FORK branchModifiers? COLON? body? CLOSE_TAG ;
+workStatement : OPEN_WORK branchModifiers? COLON body CLOSE_TAG ;
+forkStatement : OPEN_FORK branchModifiers? COLON body CLOSE_TAG ;
 killStatement : OPEN_KILL intOpModifiers? COLON? body? CLOSE_TAG ;
 
 // PLAN — reasoning recorded to the log. Canonical form is slotless; tag-op

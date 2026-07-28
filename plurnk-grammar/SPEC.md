@@ -123,7 +123,7 @@ All other restrictions are runtime concerns, not grammar concerns.
 | SEND   | submit code (single integer; see §9) | optional (recipient) | message payload (JSON by convention for structured responses) | `<timeout, poll>` — the wait park on a terminal `[202]` (see §7, §9) |
 | EXEC   | registered executable tool (single string; `sh` default) | optional (cwd) | executor-specific input | `<timeout, poll>` — spawn lifetime cap + poll cadence |
 | WORK   | optional Git branch ref (single string) | required `worker://` target naming the fresh worker | task prompt for the worker's first loop | none (parses as null) |
-| FORK   | optional Git branch ref (single string) | required `worker://` target naming the context branch | optional hint for the context-inheriting worker | none (parses as null) |
+| FORK   | optional Git branch ref (single string) | required `worker://` target naming the context branch | prompt for the context-inheriting worker | none (parses as null) |
 | KILL   | unix signal (single integer; taught in canon, e.g. `KILL[9]`) | required | opaque annotation (logged, no runtime meaning) | not applicable |
 | PLAN   | tag filter (CSV; parse-side, canon is slotless) | optional (parse-side; canon is slotless) | reasoning text (recorded to the log; no other effect) | parse-side only |
 
@@ -717,11 +717,11 @@ interface SendStatement extends StatementBase<number> { op: "SEND"; body: SendBo
 interface ExecStatement extends StatementBase<string> { op: "EXEC"; body: string | null; }
 
 // WORK — spawn a fresh worker. Target names the child (required, worker://);
-// signal optionally names its Git branch; no scope. Body is the task prompt.
-interface WorkStatement extends StatementBase<string> { op: "WORK"; body: string | null; }
+// signal optionally names its Git branch; no scope. Body is the required task prompt.
+interface WorkStatement extends StatementBase<string> { op: "WORK"; body: string; }
 // FORK — branch the current worker, inheriting context. Same shape as WORK;
-// signal optionally names its Git branch; body is an optional hint.
-interface ForkStatement extends StatementBase<string> { op: "FORK"; body: string | null; }
+// signal optionally names its Git branch; body is the required prompt.
+interface ForkStatement extends StatementBase<string> { op: "FORK"; body: string; }
 
 // KILL — signal is a unix signal number; body is an opaque annotation. Raw.
 interface KillStatement extends StatementBase<number> { op: "KILL"; body: string | null; }

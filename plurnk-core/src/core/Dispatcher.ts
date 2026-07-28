@@ -1,5 +1,5 @@
 import { parsePath } from "@plurnk/plurnk-grammar";
-import type { PlurnkStatement, ParsedPath, LineMarker, PlurnkOp, ReadStatement, EditStatement } from "@plurnk/plurnk-grammar";
+import type { PlurnkStatement, ParsedPath, LineMarker, PlurnkOp, ReadStatement, EditStatement, WorkStatement, ForkStatement } from "@plurnk/plurnk-grammar";
 import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import type { Db } from "./Db.ts";
 import Owner from "./Owner.ts";
@@ -675,7 +675,7 @@ export default class Dispatcher {
     // (worker://<name>) and carry its seed task in the body. WORK spawns a fresh worker; FORK branches
     // the current worker's log into a named sister. Replaces the COPY(worker://) overload — one verb, one
     // intent, so the model never conflates the target slot with the body (grammar#52).
-    async #handleWorkerControl(statement: PlurnkStatement, ctx: PlurnkSchemeContext): Promise<DispatchResult> {
+    async #handleWorkerControl(statement: WorkStatement | ForkStatement, ctx: PlurnkSchemeContext): Promise<DispatchResult> {
         const target = statement.target;
         if (target === null) return Dispatcher.#failure("worker-target-required", 400, `${statement.op} requires a worker target (${statement.op}(worker://<name>)).`);
         const name = target.kind === "url" ? (target.hostname ?? "") : ""; // §worker-scheme — run is the AUTHORITY (worker://<name>), not the path
@@ -686,7 +686,7 @@ export default class Dispatcher {
         if (ctx.injectWorker === undefined) throw new Error("run control: injectWorker capability absent");
         const denied = await WorkerCap.deny(this.#db, ctx.workspaceId);
         if (denied !== null) return denied;
-        const prompt = typeof statement.body === "string" ? statement.body : "";
+        const prompt = statement.body;
 
         // §worker-delegation-inherits-flags — authority flows down the delegation edge: the child's live
         // loop runs with ITS DELEGATOR'S flags. A flagless (non-auto) child's every side-effecting op

@@ -12,11 +12,9 @@ export { default as RecordingListener } from "./RecordingListener.ts";
  * applies to every `(target)` slot. The top-level helper to reach for; no need to
  * touch AstBuilder.
  *
- * Primary use: resolving a COPY destination. COPY's body is an opaque string — a
- * destination URI for an entry copy, a prompt for a worker fork (`worker://`) — so the
- * scheme handler interprets it, then calls this for the destination case. MOVE
- * destinations arrive pre-parsed (its body is always a path); COPY's does not,
- * because its body is polymorphic. See SPEC §4 (COPY) and §12.
+ * Primary use: resolving a COPY destination. COPY's destination body remains an
+ * opaque string until the consumer calls this helper. MOVE destinations arrive
+ * pre-parsed because their body is always a path. See SPEC section 4 (COPY) and 12.
  */
 export const parsePath = (raw: string) => AstBuilder.parsePath(raw);
 export { default as Validator } from "./Validator.ts";

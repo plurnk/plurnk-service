@@ -68,6 +68,14 @@ test("body containing internal colons (predicate falsifies)", () => {
     assert.equal(statementsOf("<<EDIT(p):key:value:more:stuff:EDIT").length, 1);
 });
 
+test("WORK and FORK require a non-empty prompt body", () => {
+    for (const op of ["WORK", "FORK"]) {
+        assert.ok(errorsOf(`<<${op}(worker://child):${op}`).length > 0);
+        assert.ok(errorsOf(`<<${op}(worker://child)::${op}`).length > 0);
+        assert.equal(statementsOf(`<<${op}(worker://child):Do the assigned work:${op}`).length, 1);
+    }
+});
+
 // {§suffix-discipline} {§close-tag-match}
 test("ex 31 — nested EDIT via suffix discipline", () => {
     const input = "<<EDITouter(known://demo):quoted: <<EDIT(known://inner):hello world:EDIT:EDITouter";
@@ -1142,18 +1150,11 @@ test("MatcherBody: valid xpath still dispatches xpath even after disambiguation"
     assert.equal(b.raw, "//h1/text()");
 });
 
-test("COPY body is an opaque raw string (scheme interprets — dest or fork prompt)", () => {
+test("COPY destination body remains an opaque raw string", () => {
     const result = PlurnkParser.parseStatements("<<COPY(known://draft):known://archive/2026-05-14/draft:COPY");
     const item = result.items[0];
     if (item.kind !== "statement" || item.statement.op !== "COPY") return;
     assert.equal(item.statement.body, "known://archive/2026-05-14/draft");
-});
-
-test("COPY body carries a worker-fork prompt verbatim", () => {
-    const result = PlurnkParser.parseStatements("<<COPY(worker://.):Re-derive the capital from a primary source.:COPY");
-    const item = result.items[0];
-    if (item.kind !== "statement" || item.statement.op !== "COPY") return;
-    assert.equal(item.statement.body, "Re-derive the capital from a primary source.");
 });
 
 test("parsePath export resolves a COPY destination into the same ParsedPath as a (target) slot", () => {
