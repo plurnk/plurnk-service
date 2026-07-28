@@ -10,6 +10,6 @@ test("a migrated DB is stamped with the current schema version", async () => {
     const db = await openMigrated();
     try {
         const row = await db.test_schema_version.get<{ v: number }>({});
-        assert.equal(row?.v, 10, "PRAGMA user_version carries the current migration stamp (v10: universal log derivations) — external consumers gate on it");
+        assert.equal(row?.v, 11, "PRAGMA user_version carries the current migration stamp (v11: serialized branch batches) — external consumers gate on it");
     } finally { await db.close(); }
 });

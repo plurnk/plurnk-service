@@ -524,12 +524,11 @@ CREATE INDEX IF NOT EXISTS subscriptions_opened_at ON subscriptions (opened_at);
 -- SPEC §membership constraint overlay — the client's supersede over git membership.
 -- Per (workspace, effect, glob/target): `pick` (members git misses, resolved by a
 -- targeted client-dictated scan), `hide` (drop git-tracked matches), `view` (member
--- for read; File.edit rejects the write), `repo` (declare a git repo whose ls-files
--- join membership, path-prefixed). git-absent, `pick` rows are the sole substrate
+-- for read; File.edit rejects the write). git-absent, `pick` rows are the sole substrate
 -- source. Composed at membership resolution; node:path.matchesGlob.
 CREATE TABLE IF NOT EXISTS workspace_constraints (
     workspace_id INTEGER NOT NULL,
-    effect     TEXT    NOT NULL CHECK (effect IN ('pick', 'hide', 'view', 'repo')),
+    effect     TEXT    NOT NULL CHECK (effect IN ('pick', 'hide', 'view')),
     glob       TEXT    NOT NULL,
     PRIMARY KEY (workspace_id, effect, glob),
     FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE

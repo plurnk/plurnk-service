@@ -19,7 +19,7 @@ import WorkspaceSettings from "./workspace-settings.ts";
 import type { WriterTier, PlurnkSchemeContext } from "./scheme-types.ts";
 import type ExecutorRegistry from "./ExecutorRegistry.ts";
 import type { RegistryEntry } from "./ExecutorRegistry.ts";
-import type { StreamEventNotify, NoticeNotify, WakeWorkerNotify, InjectWorkerNotify, CancelWorkerNotify, CancelDescendantsNotify } from "./ChannelWrite.ts";
+import type { StreamEventNotify, NoticeNotify, WakeWorkerNotify, InjectWorkerNotify, BranchWorkerNotify, BranchCompletionGate, CancelWorkerNotify, CancelDescendantsNotify } from "./ChannelWrite.ts";
 import { editedSpan } from "../content/index.ts";
 import { promptPathname, promptLoopPrefix } from "./plurnk-uri.ts";
 import { rulerCount } from "./token-ruler.ts";
@@ -35,6 +35,7 @@ import { setTimeout as delay } from "node:timers/promises";
 // Format: markdown (user pick over rummy's XML alternative, 2026-05-22).
 import PacketWire from "./packet-wire.ts";
 import Results, { OperationFailureError, type SchemeResult } from "./results.ts";
+import BranchReceipt from "./BranchReceipt.ts";
 
 // The engine's collaborators — each owns one machine; Engine owns the loop/turn
 // lifecycle and wires them together as the public facade.
@@ -59,6 +60,13 @@ export type WorkspaceDerivationStatus = {
     message: string;
     level: "info" | "error";
 };
+export type AcquireWorkspaceTurn = (workspaceId: number, workerId: number) => Promise<() => void>;
+export type WorkspaceTurnCompleted = (args: {
+    workspaceId: number;
+    workerId: number;
+    loopId: number;
+    turnId: number;
+}) => Promise<void>;
 
 const DEFAULT_MAX_STRIKES = 3;
 
@@ -316,8 +324,14 @@ export default class Engine {
         await Promise.all([...this.#workspaceWarms.values()].map((state) => state.promise));
     }
 
+    async drainWorkspaceDerivations(workspaceId: number): Promise<void> {
+        await this.#workspaceWarms.get(workspaceId)?.promise;
+    }
+
     #streamEventNotify: StreamEventNotify | undefined;
     #wakeWorkerNotify: WakeWorkerNotify | undefined;
+    readonly #acquireWorkspaceTurn: AcquireWorkspaceTurn;
+    readonly #workspaceTurnCompleted: WorkspaceTurnCompleted | undefined;
 
     // Cached plurnk GBNF — read once on the first constrained generate (#189).
     #gbnfCache = new Map<string, string>();  // variant name -> GBNF text (per-alias selection, #353)
@@ -331,15 +345,19 @@ export default class Engine {
         process.stderr.write(`plurnk-engine: rail verdict unavailable — the configured grammar did not parse in @plurnk/gbnf (${message})\n`);
     }
 
-    constructor({ db, schemes, mimetypes, streamEventNotify, wakeWorkerNotify, injectWorker, cancelWorker, cancelDescendants, noticeNotify, tokenize }: {
+    constructor({ db, schemes, mimetypes, streamEventNotify, wakeWorkerNotify, injectWorker, branchWorker, branchCompletionGate, cancelWorker, cancelDescendants, acquireWorkspaceTurn, workspaceTurnCompleted, noticeNotify, tokenize }: {
         db: Db;
         schemes: SchemeRegistry;
         mimetypes?: Mimetypes;
         streamEventNotify?: StreamEventNotify;
         wakeWorkerNotify?: WakeWorkerNotify;
         injectWorker?: InjectWorkerNotify;
+        branchWorker?: BranchWorkerNotify;
+        branchCompletionGate?: BranchCompletionGate;
         cancelWorker?: CancelWorkerNotify;
         cancelDescendants?: CancelDescendantsNotify;
+        acquireWorkspaceTurn?: AcquireWorkspaceTurn;
+        workspaceTurnCompleted?: WorkspaceTurnCompleted;
         noticeNotify?: NoticeNotify;
         tokenize?: (text: string) => number;
     }) {
@@ -348,6 +366,8 @@ export default class Engine {
         this.#schemes = schemes;
         this.#streamEventNotify = streamEventNotify;
         this.#wakeWorkerNotify = wakeWorkerNotify;
+        this.#acquireWorkspaceTurn = acquireWorkspaceTurn ?? (async () => () => {});
+        this.#workspaceTurnCompleted = workspaceTurnCompleted;
         // Default to empty discovery — standalone Engine construction (in
         // tests) gets no handlers, and content flows through the framework's
         // raw-content fitContent fallback. Daemon-managed Engine receives a
@@ -394,7 +414,7 @@ export default class Engine {
             tokenize: this.#tokenize,
             notices: this.#notices, proposals: this.#proposals,
             executors, loopSignal,
-            streamEventNotify, wakeWorkerNotify, injectWorker, cancelWorker, cancelDescendants,
+            streamEventNotify, wakeWorkerNotify, injectWorker, branchWorker, branchCompletionGate, cancelWorker, cancelDescendants,
             parkDeadlines: this.parkDeadlines,
             joinTargets: this.joinTargets,
             liveSubscriptions: this.#liveSubscriptions,
@@ -660,16 +680,25 @@ export default class Engine {
             }
 
             let turn;
+            const releaseWorkspace = await this.#acquireWorkspaceTurn(workspaceId, workerId);
             try {
                 turn = await this.runTurn({
                     provider, messages, requirements, workspaceId, workerId, loopId, origin, signal, onDispatch,
                     turnNumber: turnIds.length + 1, maxTurns,
+                });
+                await this.#workspaceTurnCompleted?.({
+                    workspaceId,
+                    workerId,
+                    loopId,
+                    turnId: turn.turnId,
                 });
             } catch (err) {
                 // The wall fired mid-turn — the abort tore the turn down (generate rides the loop
                 // signal); rule the legible 504, never a generic drain error.
                 if (timedOut()) return await ruleTimeout();
                 throw err;
+            } finally {
+                releaseWorkspace();
             }
             turnIds.push(turn.turnId);
 
@@ -1703,10 +1732,11 @@ export default class Engine {
             worker_id: number; worker_name: string; status: number; prompt: string; terminal_message: string | null; terminated_by: string | null;
         }>({ workspace_id: workspaceId, worker_id: workerId, since });
         for (const t of terms) {
+            const deliverable = markTerminal(t.terminated_by, t.terminal_message) ?? `loop "${t.prompt}" ended (${t.status})`;
             await this.#db.engine_insert_loop_termination_delta.run({
                 worker_id: workerId, loop_id: loopId, turn_id: turnId, sequence: fromSequence + written,
                 source: String(t.worker_id), pathname: `/${t.worker_name}`,
-                rx: markTerminal(t.terminated_by, t.terminal_message) ?? `loop "${t.prompt}" ended (${t.status})`,
+                rx: BranchReceipt.append(deliverable, await BranchReceipt.render(this.#db, t.worker_id)),
                 status: t.status,
             });
             written++;

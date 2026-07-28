@@ -42,6 +42,8 @@ import NoProposals from "./noProposals.ts";
 import { DEFAULT_LOOP_FLAGS } from "../core/scheme-types.ts";
 import type { LoopFlags } from "../core/types.ts";
 import Results, { OperationFailureError, type SchemeResult } from "../core/results.ts";
+import WorkspaceGate from "../core/WorkspaceGate.ts";
+import BranchBatches from "./BranchBatches.ts";
 
 const clientActionFailure = (error: unknown): SchemeResult =>
     error instanceof OperationFailureError
@@ -86,6 +88,8 @@ type ChannelRow = { name: string } & ChannelShape;
 export default class Daemon {
     #db: Db;
     #engine: Engine;
+    #workspaceGate: WorkspaceGate;
+    #branchBatches: BranchBatches;
     #lifecycle: LoopLifecycle;
     #schemes: SchemeRegistry;
     #mimetypes: Mimetypes;
@@ -157,6 +161,53 @@ export default class Daemon {
         if (this.#provider !== null && bootSpec !== null) {
             ProviderInstantiate.registerInstance(this.#provider, bootSpec);
         }
+        this.#workspaceGate = new WorkspaceGate(async (workerId, rootWorkerId) => {
+            const row = await this.#db.branch_batch_worker_lineage.get<{ member: number }>({
+                worker_id: workerId,
+                root_worker_id: rootWorkerId,
+            });
+            return row !== undefined;
+        });
+        this.#branchBatches = new BranchBatches(db, this.#workspaceGate, {
+            settleWorkspace: async (workspaceId) => this.#engine.drainWorkspaceDerivations(workspaceId),
+            createChild: async ({ workspaceId, parentWorkerId, op, name, prompt, flags, origin }) => {
+                const providerSpec = resolveActiveAlias();
+                if (providerSpec === null) throw new Error("Branch worker: active provider has no resolvable alias");
+                const workerId = op === "FORK"
+                    ? await Fork.fork(this.#db, parentWorkerId, name)
+                    : (await this.#db.fork_insert_worker.get<{ id: number }>({
+                        workspace_id: workspaceId,
+                        name,
+                        parent_worker_id: parentWorkerId,
+                        origin,
+                    }))?.id;
+                if (workerId === undefined) throw new Error("Branch worker insert returned no row");
+                const loopId = await this.#enqueueFreshLoop({
+                    workerId,
+                    prompt,
+                    providerSpec,
+                    flags,
+                });
+                return { workerId, loopId };
+            },
+            startChild: async (workspaceId, workerId, loopId) => {
+                const systemPrompt = await readFile(Paths.instructionsSystem, "utf8");
+                const started = await this.#ensureDrain({ workspaceId, workerId, systemPrompt });
+                if (started === null) throw new Error(`Branch worker ${workerId} already has a live drain`);
+                const result = await started.firstLoopPromise;
+                if (result.loopId !== loopId) {
+                    throw new Error(`Branch worker ${workerId} drained loop ${result.loopId}, expected ${loopId}`);
+                }
+                return result.result;
+            },
+            wakeParent: async (workspaceId, workerId) => {
+                const systemPrompt = await readFile(Paths.instructionsSystem, "utf8");
+                await this.#wakeParkedWorker(workspaceId, workerId, systemPrompt, false);
+            },
+            notify: (workspaceId, payload) => {
+                this.#broadcast({ workspaceId }, "workspace/branch-batch", payload);
+            },
+        });
         this.#engine = new Engine({
             db, schemes: this.#schemes, mimetypes: this.#mimetypes,
             // §tokenomics-agnostic-ruler — the ONE model-facing token ruler (chars/2), NOT the
@@ -179,6 +230,10 @@ export default class Daemon {
                 const { action, loopId } = await this.inject({ workspaceId, workerId, prompt, providerSpec, systemPrompt, ...(flags === undefined ? {} : { flags }) });
                 return { action, loopId };
             },
+            branchWorker: async (args) => this.#branchBatches.enqueue(args),
+            branchCompletionGate: async (workerId) => this.#branchBatches.completionGate(workerId),
+            acquireWorkspaceTurn: async (workspaceId, workerId) => this.#workspaceGate.acquireTurn(workspaceId, workerId),
+            workspaceTurnCompleted: async ({ turnId }) => this.#branchBatches.sealTurn(turnId),
             // worker:// KILL (terminate) — cancel the addressed worker subtree and
             // tear down its held streams before the operation completes.
             cancelWorker: async (workerId, reason) => this.#cancelWorkerTree(workerId, reason),
@@ -383,17 +438,23 @@ export default class Daemon {
 
     async #dispatchClientStatement(args: { workspaceId: number; workerId: number; loopId: number; statement: PlurnkStatement }): Promise<{ status: number; [key: string]: unknown }> {
         const { workspaceId, workerId, loopId, statement } = args;
-        const turnId = await ClientTurn.insertClientTurn(this.#db, loopId);
-        const entryIds: number[] = [];
-        const result = await this.#engine.dispatch({
-            statement, workspaceId, workerId, loopId, turnId, sequence: 1,
-            origin: "client", onDispatch: (logEntryId: number) => { entryIds.push(logEntryId); },
-        });
-        for (const logEntryId of entryIds) {
-            const entry = await LogEntry.fetchLogEntry(this.#db, logEntryId);
-            this.#broadcast({ workspaceId }, "log/entry", { entry });
+        const release = await this.#workspaceGate.acquireTurn(workspaceId, workerId);
+        try {
+            const turnId = await ClientTurn.insertClientTurn(this.#db, loopId);
+            const entryIds: number[] = [];
+            const result = await this.#engine.dispatch({
+                statement, workspaceId, workerId, loopId, turnId, sequence: 1,
+                origin: "client", onDispatch: (logEntryId: number) => { entryIds.push(logEntryId); },
+            });
+            await this.#branchBatches.sealTurn(turnId);
+            for (const logEntryId of entryIds) {
+                const entry = await LogEntry.fetchLogEntry(this.#db, logEntryId);
+                this.#broadcast({ workspaceId }, "log/entry", { entry });
+            }
+            return result as { status: number; [key: string]: unknown };
+        } finally {
+            release();
         }
-        return result as { status: number; [key: string]: unknown };
     }
 
     // op.look (#283/#358) — the pure READ-projection query on the seam: resolve a READ through the
@@ -404,6 +465,7 @@ export default class Daemon {
     // client lifecycle. It creates no turn or log row. Engine.look enforces READ-only.
     async look(args: { workspaceId: number; workerId: number; statement: PlurnkStatement }): Promise<{ status: number; [key: string]: unknown }> {
         const { workspaceId, workerId, statement } = args;
+        const release = await this.#workspaceGate.acquireTurn(workspaceId, workerId);
         const clientLoopId = await Envelope.ensureClientLoop(this.#db, workerId);
         try {
             const result = await this.#engine.look({ statement, workspaceId, workerId, loopId: clientLoopId }) as { status: number; [key: string]: unknown };
@@ -412,6 +474,8 @@ export default class Daemon {
         } catch (error) {
             await Envelope.closeClientLoop(this.#db, clientLoopId, clientActionFailure(error));
             throw error;
+        } finally {
+            release();
         }
     }
 
@@ -459,7 +523,14 @@ export default class Daemon {
     listWorkspaces() { return Envelope.listWorkspaces(this.#db); }
     listWorkers(workspaceId: number) { return Envelope.listWorkersForWorkspace(this.#db, workspaceId); }
     listPrompts(workspaceId: number, limit: number = 100) { return Envelope.listPromptsForWorkspace(this.#db, workspaceId, limit); }
-    listMembers(workspaceId: number) { return GitMembership.resolveMembershipEffects(this.#db, workspaceId, undefined); }
+    async listMembers(workspaceId: number) {
+        const release = await this.#workspaceGate.acquireTurn(workspaceId, 0);
+        try {
+            return await GitMembership.resolveMembershipEffects(this.#db, workspaceId, undefined);
+        } finally {
+            release();
+        }
+    }
     listConstraints(workspaceId: number) {
         return this.#db.crud_list_workspace_constraints.all<{ effect: string; glob: string }>({ workspace_id: workspaceId });
     }
@@ -505,53 +576,60 @@ export default class Daemon {
     }
 
     async constrain(workspaceId: number, effect: string, glob: string): Promise<{ effect: string; glob: string }> {
-        ClientInput.assertConstraint("workspace.constrain", effect, glob);
-        // Headless is FOREVER (owner ruling, 2026-07-11, matching the client SPEC): a workspace is
-        // born with its workspace pointer or never has one — so a 'repo' constraint on a headless
-        // workspace can never resolve. Refuse legibly instead of recording a forever-pending lie.
-        if (effect === "repo") {
-            const s = await this.#db.envelope_get_workspace.get<{ project_root: string | null }>({ id: workspaceId });
-            if (s?.project_root == null) throw new Error("workspace.constrain: this workspace is headless — and headless is forever (a workspace pointer is set at workspace.create or never). A 'repo' overlay needs a workspace created with projectRoot.");
+        const release = await this.#workspaceGate.acquireTurn(workspaceId, 0);
+        try {
+            ClientInput.assertConstraint("workspace.constrain", effect, glob);
+            await this.#db.crud_insert_workspace_constraint.run({ workspace_id: workspaceId, effect, glob });
+            await GitMembership.resolveGitMembership(this.#db, workspaceId, undefined);
+            // Members may have just landed — begin warming now, but return the constraint response
+            // immediately so prompts do not wait for the complete derivation corpus.
+            void this.#engine.warmWorkspaceDerivations(workspaceId).catch(() => {});
+            return { effect, glob };
+        } finally {
+            release();
         }
-        await this.#db.crud_insert_workspace_constraint.run({ workspace_id: workspaceId, effect, glob });
-        await GitMembership.resolveGitMembership(this.#db, workspaceId, undefined);
-        // Members may have just landed — begin warming now, but return the constraint response
-        // immediately. Awaiting the whole corpus here kept `/repo **` at the head of the client's
-        // command queue, so prompts appeared accepted while no turn could start until 100%.
-        void this.#engine.warmWorkspaceDerivations(workspaceId).catch(() => {});
-        return { effect, glob };
     }
 
     async unconstrain(workspaceId: number, effect: string, glob: string): Promise<{ effect: string; glob: string }> {
-        ClientInput.assertConstraint("workspace.unconstrain", effect, glob);
-        await this.#db.crud_delete_workspace_constraint.run({ workspace_id: workspaceId, effect, glob });
-        await GitMembership.resolveGitMembership(this.#db, workspaceId, undefined);
-        void this.#engine.warmWorkspaceDerivations(workspaceId).catch(() => {});
-        return { effect, glob };
+        const release = await this.#workspaceGate.acquireTurn(workspaceId, 0);
+        try {
+            ClientInput.assertConstraint("workspace.unconstrain", effect, glob);
+            await this.#db.crud_delete_workspace_constraint.run({ workspace_id: workspaceId, effect, glob });
+            await GitMembership.resolveGitMembership(this.#db, workspaceId, undefined);
+            void this.#engine.warmWorkspaceDerivations(workspaceId).catch(() => {});
+            return { effect, glob };
+        } finally {
+            release();
+        }
     }
 
     // The entry-shape hook (#355) — one entry's channels + tags + metadata at a path. With channel+offset,
     // returns just that channel's content sliced from the offset: the incremental streaming read (#192,
     // the delta leaves storage, not the whole channel). The module renders growing output by re-polling.
     async readEntry(args: { workspaceId: number; target: string; channel?: string; offset?: number }): Promise<{ status: number; entry: EntryShape | null }> {
-        const m = args.target.match(/^([a-z][a-z0-9+.-]*):\/\/(.*)$/);
-        if (m === null) throw new Error(`readEntry: target must be URL-shaped (scheme://pathname); got: ${args.target}`);
-        if (args.offset !== undefined && args.channel === undefined) throw new Error("readEntry: offset requires channel (which channel to slice)");
-        const scheme = m[1];
-        const pathname = m[2].split("#")[0];
-        const row = await this.#db.entry_read_lookup.get<{ id: number; scope: string; workspace_id: number; scheme: string; pathname: string }>({ workspace_id: args.workspaceId, scheme, pathname });
-        if (row === undefined) return { status: 404, entry: null };
-        let channelRows: ChannelRow[];
-        if (args.channel === undefined) {
-            channelRows = await this.#db.entry_read_channels.all<ChannelRow>({ entry_id: row.id });
-        } else {
-            const r = await this.#db.entry_read_channel_slice.get<ChannelRow>({ entry_id: row.id, channel: args.channel, offset: args.offset ?? 0 });
-            channelRows = r === undefined ? [] : [r];
+        const release = await this.#workspaceGate.acquireTurn(args.workspaceId, 0);
+        try {
+            const m = args.target.match(/^([a-z][a-z0-9+.-]*):\/\/(.*)$/);
+            if (m === null) throw new Error(`readEntry: target must be URL-shaped (scheme://pathname); got: ${args.target}`);
+            if (args.offset !== undefined && args.channel === undefined) throw new Error("readEntry: offset requires channel (which channel to slice)");
+            const scheme = m[1];
+            const pathname = m[2].split("#")[0];
+            const row = await this.#db.entry_read_lookup.get<{ id: number; scope: string; workspace_id: number; scheme: string; pathname: string }>({ workspace_id: args.workspaceId, scheme, pathname });
+            if (row === undefined) return { status: 404, entry: null };
+            let channelRows: ChannelRow[];
+            if (args.channel === undefined) {
+                channelRows = await this.#db.entry_read_channels.all<ChannelRow>({ entry_id: row.id });
+            } else {
+                const r = await this.#db.entry_read_channel_slice.get<ChannelRow>({ entry_id: row.id, channel: args.channel, offset: args.offset ?? 0 });
+                channelRows = r === undefined ? [] : [r];
+            }
+            const channels: EntryShape["channels"] = {};
+            for (const c of channelRows) channels[c.name] = { content: c.content, contentLength: c.contentLength, mimetype: c.mimetype, tokens: c.tokens, state: c.state };
+            const tagRows = await this.#db.crud_read_tags.all<{ tag: string }>({ entry_id: row.id });
+            return { status: 200, entry: { id: row.id, scope: row.scope, workspaceId: row.workspace_id, scheme: row.scheme, pathname: row.pathname, channels, tags: tagRows.map((t) => t.tag) } };
+        } finally {
+            release();
         }
-        const channels: EntryShape["channels"] = {};
-        for (const c of channelRows) channels[c.name] = { content: c.content, contentLength: c.contentLength, mimetype: c.mimetype, tokens: c.tokens, state: c.state };
-        const tagRows = await this.#db.crud_read_tags.all<{ tag: string }>({ entry_id: row.id });
-        return { status: 200, entry: { id: row.id, scope: row.scope, workspaceId: row.workspace_id, scheme: row.scheme, pathname: row.pathname, channels, tags: tagRows.map((t) => t.tag) } };
     }
 
     // The fork hook (#355) — branch a worker's log into a new worker in the same workspace (#228), sharing the
@@ -663,6 +741,7 @@ export default class Daemon {
         await this.#db.recovery_error_orphan_subscription_channels.run({});
         await this.#db.recovery_fail_orphan_subscriptions.run({});
         await this.#db.recovery_resume_unblocked_parks.run({});
+        await this.#branchBatches.recover();
 
         const systemPrompt = await readFile(Paths.instructionsSystem, "utf8");
         const queued = await this.#db.recovery_queued_workers.all<{
@@ -711,6 +790,7 @@ export default class Daemon {
         // that will never arrive once clients are gone — allSettled(drains) below would deadlock
         // the stop forever (a daemon with a pending HITL proposal could not shut down).
         this.#engine.cancelAllProposals("daemon_stopping");
+        this.#branchBatches.beginStop();
         for (const scope of this.#workerAborts.values()) { if (!scope.signal.aborted) scope.abort("daemon_stopping"); }
         for (const t of this.#pollTimers.values()) clearTimeout(t); // drop pending hibernation poll-wakes
         this.#pollBackoff.clear();
@@ -720,6 +800,7 @@ export default class Daemon {
         // exits the worker under load. Symmetric with the poll-wakes above; both must be reaped.
         for (const t of this.#parkTimers.values()) clearTimeout(t);
         this.#parkTimers.clear();
+        await this.#branchBatches.idle();
         const drainPromises = [...this.#activeDrains.values()].map((d) => d.promise);
         await Promise.allSettled(drainPromises);
         await this.#drainStreamingSchemes();
@@ -829,29 +910,14 @@ export default class Daemon {
             }
         }
 
-        // Enqueue a fresh loop. Persist flags on the row.
-        const seqRow = await this.#db.loop_run_next_sequence.get<{ next: number }>({ worker_id: workerId });
-        if (seqRow === undefined) throw new Error("inject: next-sequence query returned no row");
-        const loopRow = await this.#db.drain_enqueue_loop.get<{ id: number }>({
-            worker_id: workerId, sequence: seqRow.next, prompt,
-            provider_spec: JSON.stringify(args.providerSpec),
-            max_turns: args.maxTurns ?? Number(process.env.PLURNK_SERVICE_MAX_TURNS ?? "50"),
+        const loopId = await this.#enqueueFreshLoop({
+            workerId,
+            prompt,
+            providerSpec: args.providerSpec,
+            maxTurns: args.maxTurns,
+            flags: args.flags,
+            openPaths: args.openPaths,
         });
-        if (loopRow === undefined) throw new Error("inject: loop enqueue returned no row");
-        const loopId = loopRow.id;
-
-        if (args.flags !== undefined) {
-            const merged = { ...DEFAULT_LOOP_FLAGS, ...args.flags };
-            await this.#db.engine_set_loop_flags.run({
-                loop_id: loopId, flags: JSON.stringify(merged),
-            });
-        }
-        // #260 — persist client-passed @file paths before the drain claims the loop, so turn 0 foists them.
-        if (args.openPaths !== undefined && args.openPaths.length > 0) {
-            await this.#db.engine_set_loop_open_paths.run({
-                loop_id: loopId, open_paths: JSON.stringify(args.openPaths),
-            });
-        }
 
         // Guarantee a drain claims the loop we just enqueued. #ensureDrain runs its
         // check-and-start UNDER the per-worker drain lock (§worker-lifecycle-single-drain),
@@ -864,6 +930,41 @@ export default class Daemon {
             workspaceId, workerId, systemPrompt: args.systemPrompt,
         });
         return { action: "enqueued_new_loop", loopId, ...(started ?? {}) };
+    }
+
+    async #enqueueFreshLoop(args: {
+        workerId: number;
+        prompt: string;
+        providerSpec: ProviderAlias;
+        maxTurns?: number;
+        flags?: Partial<LoopFlags>;
+        openPaths?: string[];
+    }): Promise<number> {
+        const seqRow = await this.#db.loop_run_next_sequence.get<{ next: number }>({
+            worker_id: args.workerId,
+        });
+        if (seqRow === undefined) throw new Error("enqueueFreshLoop: next-sequence query returned no row");
+        const loopRow = await this.#db.drain_enqueue_loop.get<{ id: number }>({
+            worker_id: args.workerId,
+            sequence: seqRow.next,
+            prompt: args.prompt,
+            provider_spec: JSON.stringify(args.providerSpec),
+            max_turns: args.maxTurns ?? Number(process.env.PLURNK_SERVICE_MAX_TURNS ?? "50"),
+        });
+        if (loopRow === undefined) throw new Error("enqueueFreshLoop: loop enqueue returned no row");
+        if (args.flags !== undefined) {
+            await this.#db.engine_set_loop_flags.run({
+                loop_id: loopRow.id,
+                flags: JSON.stringify({ ...DEFAULT_LOOP_FLAGS, ...args.flags }),
+            });
+        }
+        if (args.openPaths !== undefined && args.openPaths.length > 0) {
+            await this.#db.engine_set_loop_open_paths.run({
+                loop_id: loopRow.id,
+                open_paths: JSON.stringify(args.openPaths),
+            });
+        }
+        return loopRow.id;
     }
 
     /**
@@ -1421,7 +1522,7 @@ export default class Daemon {
      *  wake payload. The shared wake primitive: a poll cadence (§exec-poll), a watched stream concluding,
      *  or a child worker finishing (§run-lifecycle topology join) all call this. A no-op if the worker was
      *  cancelled or isn't actually parked (no slept loop) — so calling it speculatively is safe. */
-    async #wakeParkedWorker(workspaceId: number, workerId: number, systemPrompt: string): Promise<void> {
+    async #wakeParkedWorker(workspaceId: number, workerId: number, systemPrompt: string, oweIfActive = true): Promise<void> {
         const scope = this.#workerAborts.get(workerId);
         if (scope?.signal.aborted === true && !this.#activeDrains.has(workerId)) return; // cancelled — no resurrection
         const slept = await this.#db.drain_find_slept_loop.get<{ id: number }>({ worker_id: workerId });
@@ -1430,7 +1531,7 @@ export default class Daemon {
             // conclusion that fired this wake arrived before the 202 committed (the conclude-before-park
             // race). OWE the wake: the drain honors it at park so a worker-run hibernation never deadlocks.
             // (No active drain → already concluded/running; nothing to wake.)
-            if (this.#activeDrains.has(workerId)) this.#owedWakes.add(workerId);
+            if (oweIfActive && this.#activeDrains.has(workerId)) this.#owedWakes.add(workerId);
             return;
         }
         await this.#lifecycle.wake(slept.id);

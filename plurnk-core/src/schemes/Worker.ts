@@ -12,6 +12,7 @@ import type { EditStatement, ReadStatement, SendStatement, FindStatement, KillSt
 import { CoreSchemeAdapterBase } from "../core/CoreSchemeServices.ts";
 import type { CoreSchemeCallContext } from "../core/CoreSchemeServices.ts";
 import Results, { type SchemeResultBase } from "../core/results.ts";
+import BranchReceipt from "../core/BranchReceipt.ts";
 
 // A loop cancelled outside the worker names that act as state before preserving the
 // model's last words. NULL terminated_by = the model's own terminal, including an
@@ -153,7 +154,7 @@ export default class Worker extends CoreSchemeAdapterBase {
         // same deliverable the wake/collect-delta will push). The pull complements the push; neither is lost.
         if (entryPath === "") {
             if (authority === "" || authority === "~") return failure("named-worker-required", 400, "A worker deliverable READ requires a named worker."); // collect names a WORKER
-            const row = await core.db.worker_deliverable_by_name.get<{ status: number; terminal_message: string | null; terminated_by: string | null }>({ workspace_id: core.workspaceId, name: authority });
+            const row = await core.db.worker_deliverable_by_name.get<{ worker_id: number; status: number; terminal_message: string | null; terminated_by: string | null }>({ workspace_id: core.workspaceId, name: authority });
             if (row === undefined) return failure("worker-not-found", 404, `worker://${authority} not found in this workspace.`);
             // §join-blocking-collect (#354) — a still-running worker is a BLOCKING JOIN: the READ
             // arms the join (awaitWorker), and the turn's bare SEND[102] parks until the worker delivers.
@@ -166,7 +167,14 @@ export default class Worker extends CoreSchemeAdapterBase {
                     awaitWorker: authority,
                 });
             }
-            return { status: 200, content: markTerminal(row.terminated_by, row.terminal_message) ?? `[ worker '${authority}' concluded with no deliverable (status ${row.status}) ]`, mimetype: "text/markdown", channel: null };
+            const deliverable = markTerminal(row.terminated_by, row.terminal_message)
+                ?? `[ worker '${authority}' concluded with no deliverable (status ${row.status}) ]`;
+            return {
+                status: 200,
+                content: BranchReceipt.append(deliverable, await BranchReceipt.render(core.db, row.worker_id)),
+                mimetype: "text/markdown",
+                channel: null,
+            };
         }
         // Path-present: an entry read — commons / own / ancestry-gated named space.
         const resolved = await Worker.#resolveAuthority(authority, core);

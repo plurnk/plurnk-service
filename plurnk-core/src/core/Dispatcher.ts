@@ -16,7 +16,7 @@ import { decodePathParens } from "./path-decode.ts";
 import Namespace from "./namespace.ts";
 import type { SchemeManifest, WriterTier, PlurnkSchemeContext, LoopFlags } from "./scheme-types.ts";
 import { DEFAULT_LOOP_FLAGS } from "./scheme-types.ts";
-import ChannelWrite, { type StreamEventNotify, type WakeWorkerNotify, type InjectWorkerNotify, type CancelWorkerNotify, type CancelDescendantsNotify } from "./ChannelWrite.ts";
+import ChannelWrite, { type StreamEventNotify, type WakeWorkerNotify, type InjectWorkerNotify, type BranchWorkerNotify, type BranchCompletionGate, type CancelWorkerNotify, type CancelDescendantsNotify } from "./ChannelWrite.ts";
 import { LineMarkerOps, MimetypeBinary } from "../content/index.ts";
 import SchemeCtxImpl from "./caps/SchemeCtxImpl.ts";
 import EntryCrud from "../schemes/_entry-crud.ts";
@@ -26,6 +26,7 @@ import WorkspaceSettings from "./workspace-settings.ts";
 import type LiveSubscriptions from "./LiveSubscriptions.ts";
 import LoopLifecycle from "./LoopLifecycle.ts";
 import Results from "./results.ts";
+import { OperationFailureError } from "./results.ts";
 import { InvalidOperationResultError, type SchemeResult } from "@plurnk/plurnk-schemes";
 
 // SPEC §scheme-surface: writer must be in target scheme's manifest.writableBy.
@@ -105,6 +106,8 @@ export default class Dispatcher {
     #streamEventNotify: StreamEventNotify | undefined;
     #wakeWorkerNotify: WakeWorkerNotify | undefined;
     #injectWorker: InjectWorkerNotify | undefined;
+    #branchWorker: BranchWorkerNotify | undefined;
+    #branchCompletionGate: BranchCompletionGate | undefined;
     #cancelWorker: CancelWorkerNotify | undefined;
     #cancelDescendants: CancelDescendantsNotify | undefined;
     // §send-premature-terminate/SEND[202]<T> — the engine-owned park-deadline registry (loopId → seconds;
@@ -118,7 +121,7 @@ export default class Dispatcher {
     #lifecycle: LoopLifecycle;
     #preparedEdits = new WeakMap<EditStatement, PreparedEdit>();
 
-    constructor({ db, schemes, mimetypes, tokenize, notices, proposals, executors, loopSignal, streamEventNotify, wakeWorkerNotify, injectWorker, cancelWorker, cancelDescendants, searchGate, parkDeadlines, joinTargets, liveSubscriptions }: {
+    constructor({ db, schemes, mimetypes, tokenize, notices, proposals, executors, loopSignal, streamEventNotify, wakeWorkerNotify, injectWorker, branchWorker, branchCompletionGate, cancelWorker, cancelDescendants, searchGate, parkDeadlines, joinTargets, liveSubscriptions }: {
         db: Db;
         schemes: SchemeRegistry;
         mimetypes: Mimetypes;
@@ -130,6 +133,8 @@ export default class Dispatcher {
         streamEventNotify?: StreamEventNotify;
         wakeWorkerNotify?: WakeWorkerNotify;
         injectWorker?: InjectWorkerNotify;
+        branchWorker?: BranchWorkerNotify;
+        branchCompletionGate?: BranchCompletionGate;
         cancelWorker?: CancelWorkerNotify;
         cancelDescendants?: CancelDescendantsNotify;
         parkDeadlines?: Map<number, number>;
@@ -148,6 +153,8 @@ export default class Dispatcher {
         this.#streamEventNotify = streamEventNotify;
         this.#wakeWorkerNotify = wakeWorkerNotify;
         this.#injectWorker = injectWorker;
+        this.#branchWorker = branchWorker;
+        this.#branchCompletionGate = branchCompletionGate;
         this.#cancelWorker = cancelWorker;
         this.#cancelDescendants = cancelDescendants;
         this.#parkDeadlines = parkDeadlines ?? new Map();
@@ -373,11 +380,13 @@ export default class Dispatcher {
                 }
             } catch (err) { // a scheme exception becomes the op's 500 outcome — §scheme-surface-exception-500
                 if (err instanceof InvalidOperationResultError) throw err;
-                result = Dispatcher.#failure(
-                    "scheme-handler-threw",
-                    500,
-                    err instanceof Error ? err.message : String(err),
-                );
+                result = err instanceof OperationFailureError
+                    ? err.result
+                    : Dispatcher.#failure(
+                        "scheme-handler-threw",
+                        500,
+                        err instanceof Error ? err.message : String(err),
+                    );
             }
         }
         // §fold-open-meta-operations — OPEN/FOLD are render directives, not actions. They ARE
@@ -688,6 +697,27 @@ export default class Dispatcher {
         // sister holding it is a 409 (legible, never a raw UNIQUE 500); a free/terminated name reclaims.
         const live = await this.#db.worker_live_by_name.get<{ id: number }>({ workspace_id: ctx.workspaceId, name });
         if (live !== undefined) return Dispatcher.#failure("worker-already-running", 409, `Worker '${name}' is already running.`);
+
+        if (typeof statement.signal === "string") {
+            if (this.#branchWorker === undefined) throw new Error("branch run control: branchWorker capability absent");
+            const child = await this.#branchWorker({
+                workspaceId: ctx.workspaceId,
+                parentWorkerId: ctx.workerId,
+                parentLoopId: ctx.loopId,
+                parentTurnId: ctx.turnId,
+                op: statement.op as "WORK" | "FORK",
+                name,
+                branch: statement.signal,
+                prompt,
+                flags,
+                origin: ctx.writer,
+            });
+            return {
+                status: 200,
+                body: name,
+                attrs: { branch: statement.signal, workerId: child.workerId, loopId: child.loopId },
+            };
+        }
 
         if (statement.op === "FORK") {
             // Branch the current worker's log into a named sister.
@@ -1243,6 +1273,8 @@ export default class Dispatcher {
             }
             const failCount = await this.#unobservedFailureCount(turnId, ctx.turnParseErrors ?? 0);
             if (failCount > 0) return Dispatcher.#unobservedFailures(failCount);
+            const branchDenial = await this.#branchCompletionGate?.(workerId) ?? null;
+            if (branchDenial !== null) return branchDenial;
             // The joined set is already drained. Awaiting an empty task group completes
             // immediately; it never parks and needs no corrective model turn.
             const finished = await this.#lifecycle.finish(
@@ -1315,6 +1347,8 @@ export default class Dispatcher {
                 }
                 return Dispatcher.#failure("work-remains", 409, `Attempted [200] termination while work remains: ${pending.join("; ")}. KILL what you no longer need; SEND[102] to receive the rest; then conclude.`);
             }
+            const branchDenial = await this.#branchCompletionGate?.(workerId) ?? null;
+            if (branchDenial !== null) return branchDenial;
             const finished = await this.#lifecycle.finish(
                 loopId,
                 { status: 200 },
@@ -1327,6 +1361,8 @@ export default class Dispatcher {
             );
         }
         if (status === 499) {
+            const branchDenial = await this.#branchCompletionGate?.(workerId) ?? null;
+            if (branchDenial !== null) return branchDenial;
             const failure = Dispatcher.#failure(
                 "scope-abandoned",
                 499,

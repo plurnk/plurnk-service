@@ -26,7 +26,7 @@
 // measures ~8x native (~130ms at 20k files), so a large-repo host can buy the hot path back.
 
 import { execFile } from "node:child_process";
-import { hermeticGitEnv } from "./git-env.ts";
+import { gitOutputMaxBytes, hermeticGitEnv } from "./git-env.ts";
 import GitIso from "./git-iso.ts";
 import { promisify } from "node:util";
 import { readFile, glob, stat } from "node:fs/promises";
@@ -85,12 +85,11 @@ export default class GitMembership {
 
     // Tracked files of one repo, workspace-relative — GitIso.trackedFiles (walk STAGE, blob
     // entries only) or `git ls-files --stage -z` under the native flag. Either way gitlinks
-    // are filtered: a submodule (mode 160000, a commit pointer — a directory on disk, not a
-    // file) is a separate declared repo, never a member of its superproject. Empty → [].
+    // are filtered: a submodule is a repository boundary, not a file member. Empty → [].
     static async #gitTrackedFiles(root: string, signal: AbortSignal | undefined, cache: object): Promise<string[]> {
         if (!nativeGit()) return GitIso.trackedFiles(root, cache);
         // NUL-delimited so paths with spaces/newlines survive.
-        const { stdout } = await GitMembership.#execFileP("git", ["ls-files", "--stage", "-z"], { cwd: root, signal, maxBuffer: 64 * 1024 * 1024, env: hermeticGitEnv() });
+        const { stdout } = await GitMembership.#execFileP("git", ["ls-files", "--stage", "-z"], { cwd: root, signal, maxBuffer: gitOutputMaxBytes(), env: hermeticGitEnv() });
         const files: string[] = [];
         for (const entry of stdout.split("\0")) {
             if (entry.length === 0) continue;
@@ -108,14 +107,11 @@ export default class GitMembership {
     // member the moment it exists — no git-stage required — while `.gitignore` still filters it.
     static async #gitUntrackedFiles(root: string, signal: AbortSignal | undefined, cache: object): Promise<string[]> {
         if (!nativeGit()) return GitIso.untrackedFiles(root, cache);
-        const { stdout } = await GitMembership.#execFileP("git", ["ls-files", "--others", "--exclude-standard", "-z"], { cwd: root, signal, maxBuffer: 64 * 1024 * 1024, env: hermeticGitEnv() });
+        const { stdout } = await GitMembership.#execFileP("git", ["ls-files", "--others", "--exclude-standard", "-z"], { cwd: root, signal, maxBuffer: gitOutputMaxBytes(), env: hermeticGitEnv() });
         return stdout.split("\0").filter((e) => e.length > 0);
     }
 
-    // Resolve a declared repo folder to its git toplevel (the repo root containing it), or
-    // null if it isn't inside a git tree. GitIso.repoToplevel (findRoot) or `rev-parse
-    // --show-toplevel` under the native flag — both handle plain repos, linked worktrees
-    // (`.git` is a gitdir: file), and submodules alike.
+    // Resolve a directory to the containing Git repository, or null when absent.
     static async #repoToplevel(dir: string, signal: AbortSignal | undefined): Promise<string | null> {
         if (!nativeGit()) return GitIso.repoToplevel(dir);
         try {
@@ -126,65 +122,26 @@ export default class GitMembership {
         }
     }
 
-    // The forest (SPEC §membership, §membership-forest): union every declared repo's MEMBERS —
-    // tracked files PLUS untracked-but-not-ignored ones (§membership-auto-add) — each
-    // path-prefixed by the repo's location relative to the workspace root (empty prefix when
-    // the repo IS the root). Repos that don't resolve are skipped.
-    static async #forestMembers(root: string, repoDirs: string[], signal: AbortSignal | undefined): Promise<string[]> {
-        // Resolve every declared entry to its git toplevel, deduped: a glob (`*`) and an
-        // explicit declaration can name the same repo, and resolving one repo twice is
-        // wasted git work. {§membership-forest}
-        const repoRoots = new Set<string>();
-        for (const dir of repoDirs) {
-            for (const candidate of await GitMembership.#expandRepoDirs(root, dir, signal)) {
-                const repoRoot = await GitMembership.#repoToplevel(resolve(root, candidate), signal);
-                if (repoRoot !== null) repoRoots.add(repoRoot);
-            }
-        }
+    // A workspace owns exactly the repository containing project_root. Packages and
+    // projects inside that repository share its Git state; unrelated repositories
+    // belong to unrelated workspaces.
+    static async projectRepository(db: Db, workspaceId: number, signal?: AbortSignal): Promise<string | null> {
+        const root = await GitMembership.#loadWorkspaceRoot(db, workspaceId);
+        if (root === null || process.env.PLURNK_SERVICE_GIT_ALLOWED !== "1") return null;
+        if ((await WorkspaceSettings.read(db, workspaceId)).git === false) return null;
+        return GitMembership.#repoToplevel(root, signal);
+    }
+
+    static async #projectMembers(root: string, repoRoot: string, signal: AbortSignal | undefined): Promise<string[]> {
         const members = new Set<string>();
-        // One iso-git cache per PASS: pack/index parses are reused across this resolve's repos
-        // and reads, then discarded — never carried across turns, so a rewritten index or
-        // repacked store can't serve stale.
         const cache = {};
-        for (const repoRoot of repoRoots) {
-            // project_root is no boundary — only the relative-address base. EVERY member is
-            // addressed relative to the root, a repo outside it included (a `..`-prefixed
-            // path) — so the universal `join(root, pathname)` disk-resolver works unchanged;
-            // an absolute pathname would nest UNDER root and never materialize. {§membership-overlay-repo}
-            const prefix = relative(root, repoRoot);
-            const tracked = await GitMembership.#gitTrackedFiles(repoRoot, signal, cache);
-            const untracked = await GitMembership.#gitUntrackedFiles(repoRoot, signal, cache);
-            for (const f of [...tracked, ...untracked]) {
-                members.add(join(prefix, f));
-            }
+        const prefix = relative(root, repoRoot);
+        const tracked = await GitMembership.#gitTrackedFiles(repoRoot, signal, cache);
+        const untracked = await GitMembership.#gitUntrackedFiles(repoRoot, signal, cache);
+        for (const file of [...tracked, ...untracked]) {
+            members.add(join(prefix, file));
         }
         return [...members];
-    }
-
-    // A declared repo entry → the candidate directories it names. A literal path (no glob
-    // magic) passes through untouched — preserving the "declare a repo ANYWHERE, including
-    // OUTSIDE the root via `..` or an absolute path" contract that glob can't address upward.
-    // A glob pattern is directory-expanded under the root via node:fs glob — `*` matches each
-    // immediate child (one level), `**` recurses — dropping file matches, since only a
-    // directory can be a repo; #repoToplevel then filters the non-git matches. {§membership-overlay-repo}
-    static async #expandRepoDirs(root: string, dir: string, signal: AbortSignal | undefined): Promise<string[]> {
-        if (!GitMembership.#isGlobPattern(dir)) return [dir];
-        const dirs: string[] = [];
-        for await (const rel of glob(dir, { cwd: root })) {
-            if (signal?.aborted) return dirs;
-            try {
-                if ((await stat(resolve(root, rel))).isDirectory()) dirs.push(rel);
-            } catch {
-                // raced away between glob and stat — not a candidate
-            }
-        }
-        return dirs;
-    }
-
-    // Does this declared repo entry carry glob magic (directory-expand it), or is it a
-    // literal path (declared as-is)? The metacharacters node:fs glob honors.
-    static #isGlobPattern(s: string): boolean {
-        return /[*?[\]{}]/.test(s);
     }
 
     // Detect a tracked file's mimetype (mirrors File.detectFileMimetype): route
@@ -216,18 +173,22 @@ export default class GitMembership {
         const pickGlobs = constraints.filter((c) => c.effect === "pick").map((c) => c.glob);
         const viewGlobs = constraints.filter((c) => c.effect === "view").map((c) => c.glob);
 
-        // git substrate — the union of the workspace's DECLARED repos' MEMBERS: tracked files
-        // plus untracked-but-not-ignored ones (§membership-auto-add). PLURNK_SERVICE_GIT_ALLOWED=0 is
-        // the hard ceiling (deny all git membership); PLURNK_SERVICE_GIT_AUTO=1 declares project_root
-        // as an implicit repo. Empty when git is denied or no declared repo resolves, so
-        // `pick` is then the sole source. No early-return on non-git.
-        const repoDirs = constraints.filter((c) => c.effect === "repo").map((c) => c.glob); // a declared repo's ls-files join membership, path-prefixed — §membership-overlay-repo
-        if (process.env.PLURNK_SERVICE_GIT_AUTO === "1") repoDirs.push(root); // ALLOWED ceiling gates the AUTO default — §membership-git-flags
+        // The repository containing project_root is the sole Git substrate.
+        // PLURNK_SERVICE_GIT_ALLOWED=0 is the hard service ceiling and
+        // PLURNK_SERVICE_GIT_AUTO=0 disables automatic Git membership.
         // #232 — git:false is a workspace-level tighten of the env ALLOWED ceiling (env AND workspace).
         const workspaceGit = (await WorkspaceSettings.read(db, workspaceId)).git;
-        const gitMembers = process.env.PLURNK_SERVICE_GIT_ALLOWED === "1" && workspaceGit !== false
-            ? await GitMembership.#forestMembers(root, repoDirs, signal)
-            : [];
+        let gitMembers: string[] = [];
+        if (
+            process.env.PLURNK_SERVICE_GIT_ALLOWED === "1"
+            && process.env.PLURNK_SERVICE_GIT_AUTO === "1"
+            && workspaceGit !== false
+        ) {
+            const repository = await GitMembership.#repoToplevel(root, signal);
+            if (repository !== null) {
+                gitMembers = await GitMembership.#projectMembers(root, repository, signal);
+            }
+        }
 
         // `pick` overlay — a targeted, client-dictated scan for untracked matches
         // (node:fs glob over the client's pattern, never a blind walk).

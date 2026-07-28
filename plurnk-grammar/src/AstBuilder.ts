@@ -42,6 +42,7 @@ import type {
     KillStatementContext,
     WorkStatementContext,
     ForkStatementContext,
+    BranchModifiersContext,
     LookStatementContext,
     MoveStatementContext,
     ReadStatementContext,
@@ -58,6 +59,7 @@ import {
     SendStatementContext,
     TargetContext,
     TagSignalContext,
+    BranchSignalContext,
 } from "./generated/plurnkParser.ts";
 import { plurnkLexer } from "./generated/plurnkLexer.ts";
 import PlurnkParseError from "./PlurnkParseError.ts";
@@ -295,11 +297,11 @@ export default class AstBuilder {
 
     static #buildWork(ctx: WorkStatementContext): WorkStatement {
         const position = AstBuilder.#positionOf(ctx);
+        const slots = AstBuilder.#extractBranchSlots(ctx.branchModifiers(), position);
         return {
             op: "WORK",
             suffix: AstBuilder.#splitSuffix(ctx.OPEN_WORK().getText(), "WORK"),
-            signal: null,
-            target: AstBuilder.#targetFromCtx(AstBuilder.#findFirst(ctx, TargetContext), position),
+            ...slots,
             lineMarker: null,
             body: AstBuilder.#bodyTextOf(ctx),
             position,
@@ -308,14 +310,25 @@ export default class AstBuilder {
 
     static #buildFork(ctx: ForkStatementContext): ForkStatement {
         const position = AstBuilder.#positionOf(ctx);
+        const slots = AstBuilder.#extractBranchSlots(ctx.branchModifiers(), position);
         return {
             op: "FORK",
             suffix: AstBuilder.#splitSuffix(ctx.OPEN_FORK().getText(), "FORK"),
-            signal: null,
-            target: AstBuilder.#targetFromCtx(AstBuilder.#findFirst(ctx, TargetContext), position),
+            ...slots,
             lineMarker: null,
             body: AstBuilder.#bodyTextOf(ctx),
             position,
+        };
+    }
+
+    static #extractBranchSlots(ctx: BranchModifiersContext | null, pos: Position): {
+        signal: string | null;
+        target: ParsedPath | null;
+    } {
+        const signal = AstBuilder.#findFirst(ctx, BranchSignalContext)?.TAG()?.getText() ?? null;
+        return {
+            signal,
+            target: AstBuilder.#targetFromCtx(AstBuilder.#findFirst(ctx, TargetContext), pos),
         };
     }
 

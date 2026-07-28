@@ -3,7 +3,7 @@
 // only the socket path got them). Messages are the client-facing contract; tests assert them.
 import { isAbsolute } from "node:path";
 
-const CONSTRAINT_EFFECTS: ReadonlySet<string> = new Set(["pick", "hide", "view", "repo"]);
+const CONSTRAINT_EFFECTS: ReadonlySet<string> = new Set(["pick", "hide", "view"]);
 
 export default class ClientInput {
     // A workspace pin must be an absolute path (or null = headless) — a relative root would
@@ -20,7 +20,7 @@ export default class ClientInput {
 
     static assertConstraint(context: string, effect: unknown, glob: unknown): void {
         if (typeof effect !== "string" || !CONSTRAINT_EFFECTS.has(effect)) {
-            throw new Error(`${context}: effect must be one of pick | hide | view | repo`);
+            throw new Error(`${context}: effect must be one of pick | hide | view`);
         }
         if (typeof glob !== "string" || glob.length === 0) {
             throw new Error(`${context}: glob must be a non-empty string`);
@@ -33,7 +33,7 @@ export default class ClientInput {
         return raw.map((c, i) => {
             const e = c as { effect?: unknown; glob?: unknown };
             if (typeof e.effect !== "string" || !CONSTRAINT_EFFECTS.has(e.effect)) {
-                throw new Error(`workspace.create: constraints[${i}].effect must be one of pick | hide | view | repo`);
+                throw new Error(`workspace.create: constraints[${i}].effect must be one of pick | hide | view`);
             }
             if (typeof e.glob !== "string" || e.glob.length === 0) {
                 throw new Error(`workspace.create: constraints[${i}].glob must be a non-empty string`);

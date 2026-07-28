@@ -541,21 +541,22 @@ test("GBNF: EXEC accepts an optional <timeout,poll> line slot (canonical signal,
     assert.equal(derives("op-statement", "<<EXEC(sh:///x)<60,5>:cmd:EXEC"), true);         // slotless executor
 });
 
-test("GBNF: WORK/FORK are delegation ops — target (worker://name) REQUIRED, body, no signal slot", () => {
+test("GBNF: WORK/FORK accept one optional branch ref before the required worker target", () => {
     // WORK spawns a fresh named worker; FORK branches the current run into a named child.
     assert.equal(derives("op-statement", "<<WORK(worker://worker-db):resolve the db field:WORK"), true);
     assert.equal(derives("op-statement", "<<FORK(worker://recheck):re-derive from a primary source:FORK"), true);
     // The rail REQUIRES the target — a nameless worker/branch can't be addressed.
     assert.equal(derives("op-statement", "<<WORK:do a thing:WORK"), false);
     assert.equal(derives("op-statement", "<<FORK:do a thing:FORK"), false);
-    // No signal slot — a [tag]/[int] on WORK/FORK is not sampleable.
-    assert.equal(derives("op-statement", "<<WORK[x](worker://w):t:WORK"), false);
+    assert.equal(derives("op-statement", "<<WORK[feature/x](worker://w):t:WORK"), true);
+    assert.equal(derives("op-statement", "<<FORK[fix/issue-642](worker://w):t:FORK"), true);
+    assert.equal(derives("op-statement", "<<WORK[a,b](worker://w):t:WORK"), false);
     // They derive as mid-ops before the terminal SEND.
     assert.equal(derives("root-turn", "<<PLAN:p:PLAN\n<<WORK(worker://w):task:WORK\n<<SEND[102]:spawned:SEND"), true);
     assert.equal(derives("root-turn", "<<PLAN:p:PLAN\n<<FORK(worker://r):retry:FORK\n<<SEND[102]:forked:SEND"), true);
 });
 
-test("parse: WORK/FORK build the right AST — op, worker:// target, opaque body, null signal + lineMarker", () => {
+test("parse: WORK/FORK build the right AST, including a slash-bearing branch signal", () => {
     const one = (s: string) => {
         const r = PlurnkParser.parseStatements(s);
         const item = r.items.find((i) => i.kind === "statement");
@@ -568,9 +569,9 @@ test("parse: WORK/FORK build the right AST — op, worker:// target, opaque body
     assert.equal(w.lineMarker, null);
     assert.equal(w.body, "Find the capital of France");
     assert.ok(w.target !== null && JSON.stringify(w.target).includes("capital-checker"));
-    const f = one("<<FORK(worker://recheck):Re-derive the capital:FORK");
+    const f = one("<<FORK[feature/recheck](worker://recheck):Re-derive the capital:FORK");
     assert.equal(f.op, "FORK");
-    assert.equal(f.signal, null);
+    assert.equal(f.signal, "feature/recheck");
     assert.equal(f.lineMarker, null);
     assert.equal(f.body, "Re-derive the capital");
 });

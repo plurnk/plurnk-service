@@ -320,7 +320,7 @@ export default class Module {
         const methods: Record<string, true> = {};
         for (const k of ["ping", "discover", "providers.list", "workspace.list", "workspace.create", "workspace.attach", "auth.authorize", "auth.authorize.poll", ...Module.#WORLD_SCOPED]) methods[k] = true;
         const notifications: Record<string, true> = {};
-        for (const n of ["log/entry", "loop/terminated", "loop/proposal", "notice/event", "stream/event", "stream/concluded"]) notifications[n] = true;
+        for (const n of ["log/entry", "loop/terminated", "loop/proposal", "notice/event", "stream/event", "stream/concluded", "workspace/branch-batch"]) notifications[n] = true;
         return { methods, notifications };
     }
 

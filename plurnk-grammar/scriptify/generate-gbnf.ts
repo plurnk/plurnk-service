@@ -50,6 +50,7 @@ const SUFFIXES = ["", "1", "2"] as const;
 const DIGIT = cls([R("0", "9")]);
 const WS = cls(C(" \t\r\n")); // one whitespace char; `star(WS)` is the strict/plan inter-op separator
 const TAG_CHAR = cls([R("A", "Z"), R("a", "z"), R("0", "9"), ...C("_.-")]);
+const BRANCH_CHAR = cls([R("A", "Z"), R("a", "z"), R("0", "9"), ...C("_.-/")]);
 // The lexer's executor IDENT requires a letter/underscore head; canon dictates lowercase.
 const EXEC_HEAD = cls([R("a", "z")]);
 const EXEC_TAIL = cls([R("a", "z"), R("0", "9"), ...C("_-")]);
@@ -317,10 +318,9 @@ export const buildModel = (): GModel => {
                 // Signal (unix signal number) is wired but untaught — canon shows bare KILL.
                 opEntries.push({ literal: open, tails: [[opt(ref("kill-sig")), ref("target"), ...body]] });
             } else if (op === "WORK" || op === "FORK") {
-                // Delegation verbs — target (the worker://<name>) REQUIRED plus the task/hint body;
-                // no signal, no line slot. The child's name lives in the target (a nameless
-                // worker/branch can't be addressed), so the rail requires it.
-                opEntries.push({ literal: open, tails: [[ref("target"), ...body]] });
+                // Delegation verbs — optional single Git branch ref in the signal/tag slot,
+                // target (the worker://<name>) REQUIRED, then task/hint body. No line slot.
+                opEntries.push({ literal: open, tails: [[opt(ref("branch")), ref("target"), ...body]] });
             } else {
                 // Tag-CSV ops (FIND/READ/EDIT/COPY/MOVE/OPEN/FOLD) share one shape. The former
                 // READ/FIND retrieval routing (the READ->200 rail, 0.74.47-0.74.58) is DELETED
@@ -453,6 +453,7 @@ export const buildModel = (): GModel => {
     model.set("status-mid-3", [[lit("0"), cls([R("1", "9")])], [cls([R("1", "9")]), DIGIT]]);              // forbid 300
     model.set("status-mid-4", [[lit("9"), cls([R("0", "8")])], [cls([R("0", "8")]), DIGIT]]);              // forbid 499
     model.set("tags", [[lit("["), ref("tag"), star(ref("tag-rest")), lit("]")]]);
+    model.set("branch", [[lit("["), plus(BRANCH_CHAR), lit("]")]]);
     model.set("tag", [[plus(TAG_CHAR)]]);
     model.set("tag-rest", [[lit(","), ref("tag")]]);
     // Target — two alternatives, both `(`-`)`-delimited slots:

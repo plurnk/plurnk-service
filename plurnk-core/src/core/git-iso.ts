@@ -79,8 +79,8 @@ export default class GitIso {
     }
 
     // Tracked files, workspace-relative — parity with `git ls-files --stage -z` + the gitlink
-    // filter: only blob entries (files + symlinks) are members; a `commit` entry is a submodule
-    // boundary (a separate declared repo) and a `tree` is walk hierarchy, never a file.
+    // filter: only blob entries (files + symlinks) are members; a `commit` entry is a
+    // submodule boundary and a `tree` is walk hierarchy, never a file.
     static async trackedFiles(root: string, cache: object): Promise<string[]> {
         return GitIso.#read(root, "reading tracked files", async () =>
             (await GitIso.#stageEntries(root, cache)).blobs);
@@ -128,7 +128,7 @@ export default class GitIso {
             for (const entry of await readdir(join(root, rel), { withFileTypes: true })) {
                 if (entry.name === ".git") continue;
                 const r = rel.length > 0 ? `${rel}/${entry.name}` : entry.name;
-                if (boundaries.has(r)) continue;  // submodule — a separate declared repo
+                if (boundaries.has(r)) continue;  // submodule repository boundary
                 const isDir = entry.isDirectory();
                 if (ignored(r, isDir)) continue;  // pruned: ignored dirs are never descended
                 if (isDir) {

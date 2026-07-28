@@ -21,3 +21,11 @@ export const hermeticGitEnv = (): NodeJS.ProcessEnv => ({
     GIT_CONFIG_GLOBAL: "/dev/null",
     GIT_CONFIG_SYSTEM: "/dev/null",
 });
+
+export const gitOutputMaxBytes = (): number => {
+    const value = Number(process.env.PLURNK_SERVICE_GIT_OUTPUT_MAX_BYTES);
+    if (!Number.isSafeInteger(value) || value < 1) {
+        throw new Error("PLURNK_SERVICE_GIT_OUTPUT_MAX_BYTES must be a positive safe integer");
+    }
+    return value;
+};

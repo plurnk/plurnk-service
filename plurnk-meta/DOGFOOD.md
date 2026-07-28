@@ -1,8 +1,8 @@
 # Metaproject agentic-readiness gate
 
 This is an opt-in milestone qualification for using PLURNK to develop the complete
-PLURNK metaproject. It is intentionally expensive: a fresh run semantically
-prepares the complete repository forest before asking a floor model to orient
+PLURNK primary monorepo. It is intentionally expensive: a fresh run semantically
+prepares the complete monorepo before asking a floor model to orient
 itself through the outside client. Run it when the focused package, integration,
 demo, live-model, and modest-candidate paths are already healthy—not as a routine
 debugging loop or ordinary release gate.
@@ -22,7 +22,7 @@ This gate does not replace the evidence ladder that qualifies it:
    enough to test seriously.
 4. The separate bench lane runs real third-party agentic benchmarks and preserves
    their digest, reasoning, and requiem evidence.
-5. Only after those layers are healthy does this full-forest run ask whether
+5. Only after those layers are healthy does this full-monorepo run ask whether
    PLURNK is ready to develop PLURNK itself.
 
 The gate belongs to `plurnk-meta` because it crosses family ownership: canonical service installation, optional-provider assembly, the outside client, project membership, AG-UI, proposal review, model routing, persistence, and forensic digestion.
@@ -32,7 +32,7 @@ The gate belongs to `plurnk-meta` because it crosses family ownership: canonical
 - A clean canonical `plurnk-service` checkout with its gate green.
 - The outside `plurnk` client checkout built from its repository head.
 - Every default-installed optional provider resolvable from the daemon.
-- A project root containing its automatic root `AGENTS.md` and manually declared repository forest.
+- A project root inside the primary monorepo, with its automatic root `AGENTS.md`.
 - One inexpensive capable model alias and, optionally, one local smoke-test alias.
 
 Missing preconditions are RED outcomes. The runner never silently skips a phase.
@@ -42,7 +42,7 @@ Missing preconditions are RED outcomes. The runner never silently skips a phase.
 One run must prove all of the following through production client and AG-UI surfaces:
 
 1. **Clean bootstrap.** Start from a new database, boot the canonical daemon, and create a user-named workspace.
-2. **Membership.** Apply the equivalent of `/repo **`; `FIND **` succeeds and the canonical `plurnk-service/AGENTS.md` is readable.
+2. **Membership.** Automatic Git membership completes; `FIND **` succeeds and the canonical `plurnk-service/AGENTS.md` is readable.
 3. **Automatic doctrine.** The project-root `AGENTS.md` appears in the model system packet without an explicit pick.
 4. **Client YOLO (`--yolo`).** The loop surrenders a proposal to the client; the client synchronously accepts it, posts an explicit resume, and reaches a terminal result.
 5. **Loop auto (`--auto`).** Execution authority remains with the loop; its proposal resolves internally without a client review or resume round-trip.

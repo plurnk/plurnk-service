@@ -3,8 +3,7 @@
 //   The built core passes: git-substrate membership (§membership-git-membership), the
 //   membership-bound edit (§membership-edit-membership-gate), the pick/hide/view overlay
 //   (§membership-overlay-pick / -hide / -view), and the divergence signal
-//   (§membership-emi-divergence-signal). The forest, the repo verb, change-gated sync,
-//   and the git flags are the deferral ledger at the foot of this section.
+//   (§membership-emi-divergence-signal).
 
 import test from "node:test";
 import Owner from "../../src/core/Owner.ts";
@@ -12,9 +11,9 @@ import { hermeticGitEnv } from "../../src/core/git-env.ts";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { mkdtemp, mkdir, rm, writeFile, readFile } from "node:fs/promises";
+import { mkdtemp, rm, writeFile, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, relative } from "node:path";
+import { join } from "node:path";
 import type { PlurnkStatement, SendStatement, ReadStatement, EditStatement, LineMarker, ParsedPath, UrlPath } from "@plurnk/plurnk-grammar";
 import { Mock } from "@plurnk/plurnk-providers";
 import Engine from "../../src/core/Engine.ts";
@@ -366,114 +365,6 @@ test("out-of-band change to a member surfaces as a system delta-EDIT", async () 
 // Each asserts a promised-but-unbuilt behavior and is EXPECTED TO FAIL until the
 // feature lands — `{ todo }`, so the assertion RUNS (the coverage) and reports a
 // known not-yet-passing, never a false green. Don't weaken to a real pass.
-
-// A workspace rooted at a NON-git parent holding `repos` (each {dir, file} a committed
-// one-file git repo). Mirrors withGitWorkspace's workspace wiring.
-const seedForest = async (db: Db, repos: Array<{ dir: string; file: string }>): Promise<{ parent: string; ctx: PlurnkSchemeContext }> => {
-    const parent = await mkdtemp(join(tmpdir(), "plurnk-forest-"));
-    for (const { dir, file } of repos) {
-        const r = join(parent, dir);
-        await mkdir(r, { recursive: true });
-        await execFileP("git", ["init", "-q"], { cwd: r, env: hermeticGitEnv() });
-        await execFileP("git", ["config", "user.email", "fixture@plurnk.invalid"], { cwd: r, env: hermeticGitEnv() });
-        await execFileP("git", ["config", "user.name", "t"], { cwd: r, env: hermeticGitEnv() });
-        await writeFile(join(r, file), "# member\n");
-        await execFileP("git", ["add", file], { cwd: r, env: hermeticGitEnv() });
-        await execFileP("git", ["-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null", "commit", "--no-verify", "-q", "-m", "seed"], { cwd: r, env: hermeticGitEnv() });
-    }
-    const workspaceId = await insertWorkspace(db, `forest-${crypto.randomUUID()}`);
-    await rootWorkspace(db, workspaceId, parent);
-    const workerId = await insertWorker(db, workspaceId);
-    const loopId = await insertLoop(db, workerId, 1);
-    const turnId = await insertTurn(db, loopId, 1, 102);
-    const ctx: PlurnkSchemeContext = {
-        db, workspaceId, workerId, loopId, turnId,
-        writer: "model", signal: undefined, mimetypes: DEFAULT_MIMETYPES,
-        tokenize: (t: string) => Math.ceil(t.length / 4),
-    };
-    return { parent, ctx };
-};
-
-test("membership unions a workspace's declared repos under a non-git root", async () => {
-    const db = await openMigrated();
-    try {
-        const { parent, ctx } = await seedForest(db, [{ dir: "alpha", file: "a.md" }, { dir: "beta", file: "b.md" }]);
-        try {
-            await db.crud_insert_workspace_constraint.run({ workspace_id: ctx.workspaceId, effect: "repo", glob: join(parent, "alpha") });
-            await db.crud_insert_workspace_constraint.run({ workspace_id: ctx.workspaceId, effect: "repo", glob: join(parent, "beta") });
-            await GitMembership.resolveGitMembership(db, ctx.workspaceId, undefined);
-            const a = await db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: ctx.workspaceId, owner_id: await Owner.commonsId(db, ctx.workspaceId), scheme: "file", pathname: "alpha/a.md" });
-            const b = await db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: ctx.workspaceId, owner_id: await Owner.commonsId(db, ctx.workspaceId), scheme: "file", pathname: "beta/b.md" });
-            assert.notEqual(a, undefined, "the first declared repo contributes its ls-files, path-prefixed");
-            assert.notEqual(b, undefined, "the second declared repo contributes too — membership is their union");
-        } finally { await rm(parent, { recursive: true, force: true }); }
-    } finally { await db.close(); }
-});
-
-test("a `repo` declaration admits that repo's ls-files as members", async () => {
-    const db = await openMigrated();
-    try {
-        const { parent, ctx } = await seedForest(db, [{ dir: "lib", file: "x.md" }]);
-        try {
-            await db.crud_insert_workspace_constraint.run({ workspace_id: ctx.workspaceId, effect: "repo", glob: join(parent, "lib") });
-            await GitMembership.resolveGitMembership(db, ctx.workspaceId, undefined);
-            const member = await db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: ctx.workspaceId, owner_id: await Owner.commonsId(db, ctx.workspaceId), scheme: "file", pathname: "lib/x.md" });
-            assert.notEqual(member, undefined, "a repo declaration admits the repo's tracked files");
-        } finally { await rm(parent, { recursive: true, force: true }); }
-    } finally { await db.close(); }
-});
-
-test("a `repo` declared OUTSIDE the project root manifests at a relative (..) address whose content resolves to disk", async () => {
-    const db = await openMigrated();
-    const external = await mkdtemp(join(tmpdir(), "plurnk-ext-"));
-    try {
-        const { parent, ctx } = await seedForest(db, []); // a bare non-git project home
-        try {
-            // A git repo entirely outside the project home (a sibling temp dir).
-            await execFileP("git", ["init", "-q"], { cwd: external, env: hermeticGitEnv() });
-            await execFileP("git", ["config", "user.email", "fixture@plurnk.invalid"], { cwd: external, env: hermeticGitEnv() });
-            await execFileP("git", ["config", "user.name", "t"], { cwd: external, env: hermeticGitEnv() });
-            await writeFile(join(external, "ext.md"), "# external repo, outside the home\n");
-            await execFileP("git", ["add", "ext.md"], { cwd: external, env: hermeticGitEnv() });
-            await execFileP("git", ["-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null", "commit", "--no-verify", "-q", "-m", "seed"], { cwd: external, env: hermeticGitEnv() });
-
-            await db.crud_insert_workspace_constraint.run({ workspace_id: ctx.workspaceId, effect: "repo", glob: external });
-            await GitMembership.indexGitMembership(ctx); // registers AND materializes (an absolute key would never materialize)
-
-            // The member is addressed RELATIVE to the project root — a `..`-prefix, never absolute.
-            const pathname = join(relative(parent, external), "ext.md"); // bare mount key ({§fs-canonical-name})
-            assert.match(pathname, /^\.\.\//, "the outside-root member's address is a relative ..-path in bare canon ({§fs-canonical-name})");
-            const entry = await db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: ctx.workspaceId, owner_id: await Owner.commonsId(db, ctx.workspaceId), scheme: "file", pathname });
-            assert.notEqual(entry, undefined, "the outside-root member registers at its relative address");
-            // The decisive check the absolute version never made: its CONTENT materialized — proof
-            // join(project_root, "../..") resolved to the real disk file (an absolute key would nest under root).
-            const body = await db.ops_read_channel.get<{ content: string }>({ workspace_id: ctx.workspaceId, owner_id: await Owner.commonsId(db, ctx.workspaceId), scheme: "file", pathname, channel: "body" });
-            assert.match(body?.content ?? "", /external repo/, "the outside-root member's content materialized — the relative address resolved to its real disk file");
-        } finally { await rm(parent, { recursive: true, force: true }); }
-    } finally { await rm(external, { recursive: true, force: true }); await db.close(); }
-});
-
-test("a `repo *` glob declares every immediate child repo, skipping non-git dirs", async () => {
-    const db = await openMigrated();
-    try {
-        const { parent, ctx } = await seedForest(db, [{ dir: "alpha", file: "a.md" }, { dir: "beta", file: "b.md" }]);
-        try {
-            // A plain (non-git) sibling the `*` glob also matches — #repoToplevel must drop it.
-            await mkdir(join(parent, "notrepo"), { recursive: true });
-            await writeFile(join(parent, "notrepo", "loose.md"), "# not a repo\n");
-
-            await db.crud_insert_workspace_constraint.run({ workspace_id: ctx.workspaceId, effect: "repo", glob: "*" });
-            await GitMembership.resolveGitMembership(db, ctx.workspaceId, undefined);
-
-            const a = await db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: ctx.workspaceId, owner_id: await Owner.commonsId(db, ctx.workspaceId), scheme: "file", pathname: "alpha/a.md" });
-            const b = await db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: ctx.workspaceId, owner_id: await Owner.commonsId(db, ctx.workspaceId), scheme: "file", pathname: "beta/b.md" });
-            const loose = await db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: ctx.workspaceId, owner_id: await Owner.commonsId(db, ctx.workspaceId), scheme: "file", pathname: "notrepo/loose.md" });
-            assert.notEqual(a, undefined, "`repo *` expands to the first immediate child repo");
-            assert.notEqual(b, undefined, "`repo *` expands to the second immediate child repo — every child unioned from one glob");
-            assert.equal(loose, undefined, "a non-git child the glob matched is skipped — #repoToplevel drops it");
-        } finally { await rm(parent, { recursive: true, force: true }); }
-    } finally { await db.close(); }
-});
 
 test("a member unchanged on disk is not re-tokenized on the next pass", async () => {
     await withGitWorkspace(async (_root, ctx) => {

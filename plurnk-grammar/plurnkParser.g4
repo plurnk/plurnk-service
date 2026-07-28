@@ -110,11 +110,11 @@ sendStatement : OPEN_SEND termModifiers COLON? body? CLOSE_TAG ;
 midSend       : OPEN_SEND midModifiers? COLON? body? CLOSE_TAG ;
 execStatement : OPEN_EXEC execModifiers? COLON? body? CLOSE_TAG ;
 
-// Delegation verbs — target (the worker://<name>) + body (task/hint), no signal, no line marker.
-// WORK spawns a fresh named worker; FORK branches the current run into a named child. Target is
-// optional here (forgiving parser); canon and the GBNF rail require it.
-workStatement : OPEN_WORK target? COLON? body? CLOSE_TAG ;
-forkStatement : OPEN_FORK target? COLON? body? CLOSE_TAG ;
+// Delegation verbs — an optional single branch ref in the signal/tag slot, target
+// (the worker://<name>), and body (task/hint). No line marker. Target is optional
+// here (forgiving parser); canon and the GBNF rail require it.
+workStatement : OPEN_WORK branchModifiers? COLON? body? CLOSE_TAG ;
+forkStatement : OPEN_FORK branchModifiers? COLON? body? CLOSE_TAG ;
 killStatement : OPEN_KILL intOpModifiers? COLON? body? CLOSE_TAG ;
 
 // PLAN — reasoning recorded to the log. Canonical form is slotless; tag-op
@@ -138,6 +138,11 @@ tagOpModifiers
 intOpModifiers
     : intSignal target?
     | target intSignal?
+    ;
+
+branchModifiers
+    : branchSignal target?
+    | target branchSignal?
     ;
 
 // Terminal SEND: a disposition signal is REQUIRED — a turn ends on a disposition code.
@@ -164,6 +169,7 @@ execModifiers
 
 // Signal productions — permissive where the interpretation is deterministic.
 tagSignal   : LBRACKET (TAG | COMMA)* RBRACKET ;
+branchSignal: LBRACKET TAG RBRACKET ;
 intSignal   : LBRACKET (INT | DISPOSITION)? RBRACKET ;   // KILL: permissive (a unix signal may be a disposition number)
 midSignal   : LBRACKET INT? RBRACKET ;                   // mid-comms SEND: a plain integer code (or empty), never a DISPOSITION
 dispSignal  : LBRACKET DISPOSITION RBRACKET ;            // terminal SEND: a disposition code

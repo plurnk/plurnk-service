@@ -37,8 +37,8 @@ A `?` marks an optional field, as in the Syntax line; unmarked fields are requir
 | OPEN | [filter tags]? | (log path)      | <result,result>?   | :pattern:?         | OPEN |
 | FOLD | [apply tags]?  | (log path)      | <result,result>?   | :pattern:?         | FOLD |
 | EXEC | [executor]?    | (path)?         | <timeout, poll>?   | :code:?            | EXEC |
-| WORK | -              | (worker://checker) | -                  | :task:             | WORK |
-| FORK | -              | (worker://recheck) | -                  | :hint:?            | FORK |
+| WORK | [branch]?      | (worker://checker) | -                  | :task:             | WORK |
+| FORK | [branch]?      | (worker://recheck) | -                  | :hint:?            | FORK |
 | KILL | [signal]?      | (path)          | -                  | ::                 | KILL |
 | SEND | [submit code]? | (recipient)?    | <timeout, poll>?   | :message:          | SEND |
 
@@ -68,6 +68,7 @@ Below is every op's form — a reference catalog, not a turn (a turn opens with 
 - **OPEN** (retrieval) — reveals a folded log item's body at the cost of its `tokens` (`display` goes `folded` to `open`). A `display: none` item has no body to reveal.
 - **FOLD** — hides an open log item's body to reclaim context (`display` goes `open` to `folded`). Its `tokens` field shows what an OPEN costs.
 - **EXEC** — produces a `<runtime>:///<loop>/<turn>/<item>` output stream on the next turn. You can then FIND, READ, or KILL it; append a channel such as `#stderr` when needed.
+- **WORK/FORK** — create named child workers. Add `[feature/name]` only when the child must return committed work on an isolated Git branch. Tagged siblings run serially from one clean base and return branch receipts.
 - **KILL** — deletes files and entries, erases log items, and kills streams.
 - **SEND** — submits the turn: `[102]` continue, `[202]` wait for workers, streams, and retrievals, `[200]` terminate once all have returned.
 
@@ -204,6 +205,7 @@ The worker's answer arrives in the log and wakes you:
 ```
 
 To FORK the current worker: `<<FORK(worker://recheck):Re-derive the capital from a primary source:FORK`
+To run committed work on an isolated Git branch: `<<WORK[feature/recheck](worker://recheck):Implement and commit the alternative:WORK`
 To SEND a worker a new message: `<<SEND(worker://recheck):Also, what's the capital of Germany?:SEND`
 To KILL another worker: `<<KILL(worker://recheck)::KILL`
 

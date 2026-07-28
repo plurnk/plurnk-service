@@ -122,8 +122,8 @@ All other restrictions are runtime concerns, not grammar concerns.
 | FOLD   | tag filter (CSV)  | required | optional pattern matcher | result-set pagination |
 | SEND   | submit code (single integer; see §9) | optional (recipient) | message payload (JSON by convention for structured responses) | `<timeout, poll>` — the wait park on a terminal `[202]` (see §7, §9) |
 | EXEC   | registered executable tool (single string; `sh` default) | optional (cwd) | command or code snippet | `<timeout, poll>` — spawn lifetime cap + poll cadence |
-| WORK   | none (parses as null) | required `worker://` target naming the fresh worker | task prompt for the worker's first loop | none (parses as null) |
-| FORK   | none (parses as null) | required `worker://` target naming the branch | optional hint for the context-inheriting branch | none (parses as null) |
+| WORK   | optional Git branch ref (single string) | required `worker://` target naming the fresh worker | task prompt for the worker's first loop | none (parses as null) |
+| FORK   | optional Git branch ref (single string) | required `worker://` target naming the context branch | optional hint for the context-inheriting worker | none (parses as null) |
 | KILL   | unix signal (single integer; taught in canon, e.g. `KILL[9]`) | required | opaque annotation (logged, no runtime meaning) | not applicable |
 | PLAN   | tag filter (CSV; parse-side, canon is slotless) | optional (parse-side; canon is slotless) | reasoning text (recorded to the log; no other effect) | parse-side only |
 
@@ -155,8 +155,8 @@ EDIT line-marker semantics (single source of authority):
 | FOLD | status; list of log items folded |
 | SEND | status; recipient ack if applicable |
 | EXEC | output stream channels (`#stdout`, `#stderr`), arriving on later turns |
-| WORK | spawn ack; the workers concurrently and its deliverable arrives as a log delta on conclusion |
-| FORK | spawn ack; the branch runs concurrently, inheriting the parent's context |
+| WORK | spawn ack; untagged workers run concurrently, while `[branch]` workers enter the service's serialized Git batch; the deliverable arrives as a log delta |
+| FORK | spawn ack; inherits the parent's context; untagged runs concurrently, while `[branch]` enters the serialized Git batch |
 | KILL | status; killed path |
 | PLAN | status; logged |
 
@@ -717,11 +717,11 @@ interface SendStatement extends StatementBase<number> { op: "SEND"; body: SendBo
 interface ExecStatement extends StatementBase<string> { op: "EXEC"; body: string | null; }
 
 // WORK — spawn a fresh worker. Target names the child (required, worker://);
-// no signal, no scope (both parse as null). Body is the worker's task prompt.
-interface WorkStatement extends StatementBase<never> { op: "WORK"; body: string | null; }
+// signal optionally names its Git branch; no scope. Body is the task prompt.
+interface WorkStatement extends StatementBase<string> { op: "WORK"; body: string | null; }
 // FORK — branch the current worker, inheriting context. Same shape as WORK;
-// body is an optional hint for the branch.
-interface ForkStatement extends StatementBase<never> { op: "FORK"; body: string | null; }
+// signal optionally names its Git branch; body is an optional hint.
+interface ForkStatement extends StatementBase<string> { op: "FORK"; body: string | null; }
 
 // KILL — signal is a unix signal number; body is an opaque annotation. Raw.
 interface KillStatement extends StatementBase<number> { op: "KILL"; body: string | null; }

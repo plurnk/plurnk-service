@@ -8,7 +8,7 @@
 // callback the daemon wires in.
 
 import type { Db } from "./Db.ts";
-import type { LoopFlags } from "./types.ts";
+import type { LoopFlags, WriterTier } from "./types.ts";
 import { Results, type SchemeResult } from "@plurnk/plurnk-schemes";
 import type { Notice } from "@plurnk/plurnk-grammar";
 import { renderAddress } from "./plurnk-uri.ts";
@@ -80,6 +80,28 @@ export type InjectWorkerNotify = (args: {
     // (a parked loop keeps its own flags).
     flags?: LoopFlags;
 }) => Promise<{ action: "injected_next_turn" | "enqueued_new_loop"; loopId: number }>;
+
+// A branch-tagged WORK/FORK is not an ordinary concurrent spawn. The daemon
+// collects every tagged child emitted by one parent turn into a durable,
+// serialized Git branch batch and starts those loops only after the turn seals.
+export type BranchWorkerNotify = (args: {
+    workspaceId: number;
+    parentWorkerId: number;
+    parentLoopId: number;
+    parentTurnId: number;
+    op: "WORK" | "FORK";
+    name: string;
+    branch: string;
+    prompt: string;
+    flags: LoopFlags;
+    origin: WriterTier;
+}) => Promise<{ workerId: number; loopId: number }>;
+
+// Branch children may conclude only after restoring the transaction invariant:
+// every declared checkout remains on the assigned branch and is clean. A
+// returned failure is logged as the SEND outcome, leaving the loop alive to
+// repair and commit.
+export type BranchCompletionGate = (workerId: number) => Promise<SchemeResult | null>;
 
 // Abort a worker's in-flight work by id — the worker:// op family's KILL primitive
 // (terminate). The daemon wires this to Daemon.cancelDrain: aborts the worker's

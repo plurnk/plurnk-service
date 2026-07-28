@@ -35,6 +35,22 @@ test("notice → plurnk.notice custom; loop/proposal deferred to ProposalHitl", 
     assert.deepEqual(r.route("loop/proposal", { logEntryId: 42 }), [], "the router yields proposals to ProposalHitl");
 });
 
+test("branch-batch lifecycle remains a full-fidelity family custom event", () => {
+    const payload = {
+        workspaceId: 3,
+        batchId: 7,
+        state: "running",
+        branch: "feature/example",
+        completed: 1,
+        total: 3,
+    };
+    assert.deepEqual(router().route("workspace/branch-batch", payload), [{
+        type: "CUSTOM",
+        name: "plurnk.branch_batch",
+        value: payload,
+    }]);
+});
+
 test("stream events serve the standard ACTIVITY channel AND plurnk.stream (complete-support)", () => {
     const r = router();
     const ev = r.route("stream/event", { entryId: 9, target: "search:///1/1/9", scheme: "search", state: "active" });
