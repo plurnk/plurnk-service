@@ -113,13 +113,6 @@ JOIN entries e ON e.id = et.entry_id
 WHERE e.workspace_id = $workspace_id AND e.owner_id = $owner_id
 ORDER BY et.entry_id, et.tag;
 
--- PREP: engine_worker_scratch_count
--- §worker-scheme — distinct entry count owned by the building worker, to decide whether the
--- turn-0 catalog foists a FIND(worker://~/**) (a worker with no private space foists nothing).
-SELECT COUNT(DISTINCT e.id) AS entries
-FROM entries e
-WHERE e.workspace_id = $workspace_id AND e.owner_id = $owner_id;
-
 -- PREP: engine_next_turn_sequence
 SELECT COALESCE(MAX(sequence), 0) + 1 AS next FROM turns WHERE loop_id = $loop_id;
 

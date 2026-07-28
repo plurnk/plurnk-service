@@ -997,10 +997,10 @@ export default class Engine {
         await this.#queueWorkspaceWarm(systemCtx, true, false);
 
         // Turn-0 catalog preview (PLURNK_SERVICE_FILES_ITEMS, §actor-boundary-catalog-preview):
-        // one FIND(scheme:///**) per scheme that holds entries, foisted into the worker's first
-        // model turn so it opens with its catalog (the per-scheme arrays that replaced the
-        // single manifest.json). -1 → each scheme's whole catalog; N → its first N rows
-        // (clamped to the scheme's count so FIND's strict <L> never 416s); off by default.
+        // FIND surveys foisted into the worker's first model turn so it opens with its catalog
+        // (the per-scheme arrays that replaced the single manifest.json). The project, commons,
+        // own space, and kernel docs surveys execute even when empty: zero results are orientation.
+        // -1 → the whole catalog; N → the first N file rows; off by default.
         if (seq === 1) {
             // #231 — a workspace's client-chosen filesItems REPLACES the env default outright.
             const { filesItems: workspaceMI } = await WorkspaceSettings.read(this.#db, workspaceId);
@@ -1010,14 +1010,10 @@ export default class Engine {
                 // one row per scheme that has entries (scheme=null → file). log:// is absent —
                 // it lives in log_entries, not the catalog (present-mode, the # Log section).
                 const catalogSchemes = await this.#db.engine_scheme_catalog_summary.all<{ scheme: string | null; entries: number }>({ workspace_id: workspaceId });
-                // known:/// + unknown:/// + file ALWAYS foist, even at zero entries — else the
-                // model burns a turn running the FIND itself, assuming the catalog is merely
-                // being withheld. An empty FIND(**) is orienting, not noise (owner): it tells
-                // the model NOT to look there. Other schemes keep the with-entries default.
+                // Entry-bearing plugin schemes foist alongside the four structural surveys below.
                 const foistSchemes = [...catalogSchemes].filter((c) => c.scheme !== "prompt" && c.scheme !== "worker");
-                // The COMMONS (worker:///**) + the file tree always foist — even at zero entries the
-                // empty survey is orienting ("don't look here"), per the #527 re-home of the old
-                // known/unknown always-foist role onto the shared blackboard.
+                // Commons + project files always foist. An empty result establishes that the
+                // surface exists and currently contains nothing.
                 foistSchemes.push({ scheme: "worker", entries: catalogSchemes.find((c) => c.scheme === "worker")?.entries ?? 0 });
                 if (!foistSchemes.some((c) => c.scheme === "file")) foistSchemes.push({ scheme: "file", entries: 0 }); // {§entry-identity-no-null} — file rows persist under the reserved scheme now; a null key would double-foist the tree
                 for (const { scheme, entries } of foistSchemes) {
@@ -1027,8 +1023,9 @@ export default class Engine {
                     // tree is external and arbitrarily large. Every other scheme — known/unknown
                     // (memory), run (scratch), plurnk (docs) — foists FULL, never truncated: a partial
                     // view of the model's own memory reads as withheld. file at -1, or any non-file
-                    // scheme → no cap. (file in this loop always has entries>0, so no degenerate <1,0>.)
-                    const cap = isFile && filesItems > 0 ? Math.min(filesItems, entries) : null;
+                    // scheme → no cap. An empty file survey has no range: `<1,0>` would turn
+                    // useful zero-result orientation into an invalid marker.
+                    const cap = isFile && filesItems > 0 && entries > 0 ? Math.min(filesItems, entries) : null;
                     // The file survey foists as the BARE relative glob — the path shape plurnk.md
                     // teaches (`src/**`, `**/notes.md`; bare = project-relative) — so the turn-0
                     // exemplar and the log rows the model reads never train a leading-slash or
@@ -1067,21 +1064,17 @@ export default class Engine {
                 await this.dispatch({ statement: kernelDocsFind, workspaceId, workerId, loopId, turnId, sequence: nextActionIndex, origin: "plurnk", onDispatch });
                 nextActionIndex++;
                 turnZeroMoves.push("<<FIND(worker://plurnk/docs/**)::FIND");
-                // §worker-scheme — Manifest(run) = workspace-scope ∪ THIS worker's worker-scope. Foist the
-                // building worker's OWN scratch (worker://self/**, uncapped — a worker needs the full view to
-                // manage its private workspace) so it's catalogued in ITS perspective alone; other
-                // runs reach it only via explicit FIND(worker://<name>/**). A worker with no scratch foists nothing.
-                const scratch = (await this.#db.engine_worker_scratch_count.get<{ entries: number }>({ workspace_id: workspaceId, owner_id: workerId }))?.entries ?? 0;
-                if (scratch > 0) {
-                    const runFind: FindStatement = {
-                        op: "FIND", suffix: "", signal: null,
-                        target: { kind: "url", raw: "worker://~/**", scheme: "worker", username: null, password: null, hostname: "~", port: null, pathname: "/**", params: {}, fragment: null },
-                        body: null, lineMarker: null, position: { line: 1, column: 1 },
-                    };
-                    await this.dispatch({ statement: runFind, workspaceId, workerId, loopId, turnId, sequence: nextActionIndex, origin: "plurnk", onDispatch });
-                    nextActionIndex++;
-                    turnZeroMoves.push("<<FIND(worker://~/**)::FIND");  // §model-entry — the own-space survey, into the turn-0 echo
-                }
+                // §worker-scheme — the building worker's own scratch is uncapped and catalogued
+                // in its perspective alone. It always executes: an empty private space is useful
+                // orientation, not grounds to hide the surface.
+                const ownFind: FindStatement = {
+                    op: "FIND", suffix: "", signal: null,
+                    target: { kind: "url", raw: "worker://~/**", scheme: "worker", username: null, password: null, hostname: "~", port: null, pathname: "/**", params: {}, fragment: null },
+                    body: null, lineMarker: null, position: { line: 1, column: 1 },
+                };
+                await this.dispatch({ statement: ownFind, workspaceId, workerId, loopId, turnId, sequence: nextActionIndex, origin: "plurnk", onDispatch });
+                nextActionIndex++;
+                turnZeroMoves.push("<<FIND(worker://~/**)::FIND");  // §model-entry — the own-space survey, into the turn-0 echo
             }
             // #260 — foist a turn-0 READ of each client-passed @file path so its content sits in front
             // of the model. Daemon owns the workspace → a normal file:/// member READ; a missing or

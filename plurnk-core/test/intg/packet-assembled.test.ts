@@ -103,6 +103,31 @@ test("assembled packet: the docs foist — FIND(worker://plurnk/docs/**) surface
     }
 });
 
+test("assembled packet: the kernel docs FIND executes successfully when no docs are materialized", async () => {
+    const prev = process.env.PLURNK_SERVICE_FILES_ITEMS;
+    process.env.PLURNK_SERVICE_FILES_ITEMS = "2";
+    const db = await openMigrated();
+    try {
+        const workspaceId = await insertWorkspace(db, `pkt-empty-docs-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const loopId = await insertLoop(db, workerId, 1, "go");
+        const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
+        const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(200)] } }] });
+        await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
+
+        const rows = await db.test_log_entries_by_loop.all<{ op: string; scheme: string | null; hostname: string | null; pathname: string; status_rx: number; rx: string }>({ loop_id: loopId });
+        const docs = rows.find((row) => row.op === "FIND" && row.scheme === "worker" && row.hostname === "plurnk" && row.pathname === "/docs/**");
+        assert.ok(docs !== undefined, "the kernel docs FIND executes without relying on materialized docs");
+        assert.equal(docs.status_rx, 200, "an empty kernel docs survey succeeds");
+        const result = JSON.parse(docs.rx) as { content?: string; results?: unknown[] };
+        const items = result.results ?? (result.content !== undefined ? JSON.parse(result.content) as unknown[] : []);
+        assert.deepEqual(items, [], "the empty kernel docs survey preserves its zero-result response");
+    } finally {
+        await db.close();
+        if (prev === undefined) delete process.env.PLURNK_SERVICE_FILES_ITEMS; else process.env.PLURNK_SERVICE_FILES_ITEMS = prev;
+    }
+});
+
 test("assembled packet: PLURNK_SERVICE_POLICY + PLURNK_SERVICE_PROJECT render as privileged system-slot policy sections", async () => {
     const priorPolicy = process.env.PLURNK_SERVICE_POLICY;
     const priorProject = process.env.PLURNK_SERVICE_PROJECT;

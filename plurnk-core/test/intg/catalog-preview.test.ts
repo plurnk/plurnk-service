@@ -11,7 +11,7 @@ import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
 import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal } from "./_rpc.ts";
 
-type LogRow = { op: string; pathname: string; scheme: string; status_rx: number; rx: string };
+type LogRow = { op: string; pathname: string; scheme: string | null; hostname: string | null; status_rx: number; rx: string };
 const mock = () => new Mock({ contextWindow: 8192, responses: [makeMockResponse("<<SEND[200]:done:SEND", 50)] });
 
 test("PLURNK_SERVICE_FILES_ITEMS foists the catalog at turn 0 — memory FULL, the files cap never truncates it (none when off)", async () => {
@@ -191,19 +191,37 @@ test("the turn-0 exemplar mirrors the REAL foisted survey — dynamic, not a sta
     }
 });
 
-test("an EMPTY workspace still foists the bare FIND(**) — 'nothing here' is orienting, not noise (owner)", async () => {
+test("an empty workspace executes all four orienting FINDs and preserves empty-surface results", async () => {
     const prev = process.env.PLURNK_SERVICE_FILES_ITEMS;
     try {
-        process.env.PLURNK_SERVICE_FILES_ITEMS = "-1";
+        process.env.PLURNK_SERVICE_FILES_ITEMS = "2";
         await withDaemon(mock(), async (db, _daemon, addr) => {
             const ws = await connect(addr);
             try {
                 await rpcCall(ws, 1, "workspace.create", { name: "empty-ws-find" }); // headless: zero tracked files
                 const resp = await runLoopToTerminal(ws, 2, { prompt: "go" });
-                const { loopId } = resp as { loopId: number };
+                const { loopId, modelWorkerId } = resp as { loopId: number; modelWorkerId: number };
                 const rows = await db.test_log_entries_by_loop.all<LogRow>({ loop_id: loopId });
-                const bare = rows.find((r) => r.op === "FIND" && r.scheme === null && r.pathname === "**");
-                assert.ok(bare !== undefined, "the bare FIND(**) foists even with zero tracked files — the model is TOLD not to look there");
+                const finds = rows.filter((r) => r.op === "FIND");
+                const orientations = [
+                    ["project files", finds.find((r) => r.scheme === null && r.pathname === "**"), true],
+                    ["workspace commons", finds.find((r) => r.scheme === "worker" && r.hostname === null && r.pathname === "/**"), true],
+                    ["own space", finds.find((r) => r.scheme === "worker" && r.hostname === "~" && r.pathname === "/**"), true],
+                    ["kernel docs", finds.find((r) => r.scheme === "worker" && r.hostname === "plurnk" && r.pathname === "/docs/**"), false],
+                ] as const;
+                for (const [name, row, expectEmpty] of orientations) {
+                    assert.ok(row !== undefined, `${name} FIND executes even when empty`);
+                    assert.equal(row.status_rx, 200, `${name} empty FIND is a successful survey`);
+                    const result = JSON.parse(row.rx) as { content?: string; results?: unknown[] };
+                    const items = result.results ?? (result.content !== undefined ? JSON.parse(result.content) as unknown[] : []);
+                    if (expectEmpty) assert.deepEqual(items, [], `${name} preserves the informative zero-result response`);
+                }
+                const exemplar = await db.log_read_by_coordinate.get<{ rx: string }>({ worker_id: modelWorkerId, loop_seq: 1, turn_seq: 1, sequence: 1 });
+                const content = (JSON.parse(exemplar!.rx) as { content: string }).content;
+                assert.match(content, /<<FIND\(\*\*\)::FIND/, "the empty project survey does not synthesize an invalid <1,0> range");
+                assert.match(content, /<<FIND\(worker:\/\/\/\*\*\)::FIND/, "the exemplar includes workspace commons");
+                assert.match(content, /<<FIND\(worker:\/\/~\/\*\*\)::FIND/, "the exemplar includes own space");
+                assert.match(content, /<<FIND\(worker:\/\/plurnk\/docs\/\*\*\)::FIND/, "the exemplar includes kernel docs");
             } finally { ws.close(); }
         });
     } finally { if (prev === undefined) delete process.env.PLURNK_SERVICE_FILES_ITEMS; else process.env.PLURNK_SERVICE_FILES_ITEMS = prev; }
