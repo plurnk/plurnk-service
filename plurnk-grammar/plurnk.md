@@ -278,7 +278,7 @@ These are unsorted examples of legal plurnk usage, not a coherent or complete tu
 <<EDIT(worker://~/research.md)<1>:Paris is the capital and largest city of France.:EDIT
 <<EDIT(worker:///countries/france/capital.md)<-1>:[Wikipedia: Paris](https://en.wikipedia.org/wiki/Paris):EDIT
 <<EDIT(worker:///countries/france/capital.md)<1,-1>::EDIT
-<<EDIT(worker:///users.json)<0>:{"name":"Eve"}:EDIT
+<<EDIT(worker:///notes.md)<0>:# Notes:EDIT
 <<EDIT[tutorial,training,scripts](example.sh):echo "Maximize your Active Context signal/noise ratio." > advice.txt:EDIT
 <<COPY[archive,2026-05-14](worker:///draft.md):worker:///archive/2026-05-14/draft.md:COPY
 <<MOVE[final](worker:///draft/answer.md):worker:///final/answer.md:MOVE
