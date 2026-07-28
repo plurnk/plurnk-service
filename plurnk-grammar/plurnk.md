@@ -94,13 +94,18 @@ Plurnk Service treemaps every file, entry, and item, allowing every pattern filt
 
 * The universal resource path is formatted as a URI for everything but file paths (bare, project-relative).
 * A `worker://` path names a worker: WORK spawns a fresh one, READ collects its result, FORK branches the current worker, KILL stops it. A path beneath it, like `worker://checker/notes.md`, is an entry in that worker's namespace.
-* The `worker://` authority is the owner: `~` is you (`worker://~/draft`), empty is the shared commons (`worker:///notes`), a name is another worker (`worker://checker/`).
 * Log item paths are nested (`log:///1/2/3` is loop/turn/item).
 * An optional `/OP` suffix such as `/READ` labels the same log item.
 * Log paths accept bulk pattern operations (FOLD, OPEN, KILL).
 * Append `#channel` to select a channel (e.g. `#stdout`, `#stderr`); absent, the scheme's default channel is used.
 * Path suffix (`.json`, `.md`, `.txt`, etc.) declares mimetype.
 * Percent-encode reserved characters in paths: `)` becomes `%29`, `<` becomes `%3C`.
+
+Examples:
+
+A. Workspace entry: `<<READ(worker:///notes.md)::READ`
+B. Local worker entry: `<<READ(worker://~/notes.md)::READ`
+C. Other worker entry: `<<READ(worker://other-worker/notes.md)::READ`
 
 Which ops target which resource. WORK and FORK are delegation ops, not resource ops.
 
