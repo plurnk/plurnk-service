@@ -7,7 +7,7 @@ Plurnk Service Features:
 * Simple Grammar: HEREDOC-inspired syntax achieves predictable but powerful operations.
 * Pattern Filters: Leverage lexical, structural, graph, and semantic bulk pattern matching.
 * Knowledgebase: Durable, searchable worker entries support hierarchical paths and folksonomic tags.
-* Extended Context: Agents FOLD, OPEN, and KILL their own Active Context log items for lossless memory management.
+* Extended Context: Agents FOLD and OPEN log bodies for lossless context management, or KILL log items to erase them.
 
 ## Grammar
 
@@ -26,9 +26,9 @@ If any body contains its own closer as text, suffix the outer op: `<<OP1:quoted 
 
 - **PLAN** - required at the beginning of a turn.
 - **FIND** (retrieval) - returns a JSON array of matches. READ a hit's path to view it.
-- **READ** (retrieval) - returns lines of matching content, each prefixed with its line number.
+- **READ** (retrieval) - returns readable content. Line-oriented content is prefixed with source line numbers.
 - **EDIT** - creates or modifies files or entries (not log items). Requires line ranges (except for creation).
-- **COPY** - copies a file or entry to a different location.
+- **COPY** - copies a readable file, entry, or stream to a file or entry.
 - **MOVE** - moves a file or entry to a different location.
 - **OPEN** (retrieval) - reveals a folded log item's body at the cost of its `tokens`.
 - **FOLD** - hides an open log item's body to reclaim context. Its `tokens` field shows what an OPEN costs.
@@ -80,7 +80,7 @@ Plurnk Service treemaps every file, entry, and item, allowing every pattern filt
 | `#`    | regex    | #pattern#[igmsu]*              | ECMAScript       |
 | `//`   | xpath    | //selector                     | XPath 1.0        |
 | `$`    | jsonpath | $.field, $[?(@.role=="admin")] | RFC 9535         |
-| `~`    | semantic | ~phrase                        | keyword + cosine |
+| `~`    | semantic | ~phrase                        | cosine / keyword fallback |
 | `@`    | graph    | @<symbol, @>symbol, @symbol    | symbol index     |
 | none   | glob     | pattern                        | shell glob       |
 
@@ -98,8 +98,8 @@ Plurnk Service treemaps every file, entry, and item, allowing every pattern filt
 * An optional `/OP` suffix such as `/READ` labels the same log item.
 * Log paths accept bulk pattern operations (FOLD, OPEN, KILL).
 * Append `#channel` to select a channel (e.g. `#stdout`, `#stderr`); absent, the scheme's default channel is used.
-* Path suffix (`.json`, `.md`, `.txt`, etc.) declares mimetype.
-* Percent-encode reserved characters in paths: `)` becomes `%29`, `<` becomes `%3C`.
+* On file and entry resources, a path suffix (`.json`, `.md`, `.txt`, etc.) declares mimetype.
+* Percent-encode reserved characters in paths: `(` becomes `%28`, `)` becomes `%29`, `<` becomes `%3C`.
 
 Examples:
 
@@ -114,19 +114,21 @@ Which ops target which resource. WORK and FORK are delegation ops, not resource 
 | FIND | yes  | yes   | yes    | yes |
 | READ | yes  | yes   | yes    | yes |
 | EDIT | yes  | yes   | no     | no  |
-| COPY | yes  | yes   | yes    | yes |
+| COPY | yes  | yes   | yes    | no  |
 | MOVE | yes  | yes   | no     | no  |
 | OPEN | no   | no    | no     | yes |
 | FOLD | no   | no    | no     | yes |
-| EXEC | yes  | yes   | no     | no  |
+| EXEC | yes  | no    | no     | no  |
 | KILL | yes  | yes   | yes    | yes |
 
 ### `<scope>`
 
-One or more numbers narrowing the operation, highly contextual and polymorphic by operation. The number's shape decides its meaning:
+One or more numbers narrowing the operation, highly contextual and polymorphic by operation. Their meaning depends on the operation and the numbers' shapes:
 
-- An integer is a position: a line on plain files, a result index on structured files, entries, and items.
-- A leading decimal is a `~`-similarity threshold: results scoring at least that value.
+- On FIND, OPEN, and FOLD, integers select result positions.
+- On READ and EDIT, integers select readable content positions.
+- On COPY and MOVE, integers select source lines.
+- On semantic FIND and READ, a leading decimal is a `~`-similarity threshold: results scoring at least that value.
 - On EXEC and SEND, the slot is `<timeout, poll>` seconds.
 
 Examples:
@@ -137,14 +139,14 @@ C. EDIT appends a new line: `<<EDIT(file.md)<-1>:literal text appended to the fi
 D. READ views lines 12 through 15: `<<READ(notes.md)<12,15>::READ`
 E. EDIT replaces those same lines: `<<EDIT(notes.md)<12,15>:The revised lines go here.:EDIT`
 
-Sentinels: `<0>` before position 1 (prepend), `<-1>` after the last position (append).
+For EDIT, sentinels `<0>` and `<-1>` insert before position 1 and after the last position.
 Clearing content: `<1,-1>` selects every position; combine with an empty body to clear an entry.
 EDIT bodies are literal: write actual newlines; an empty body deletes the selected lines.
 Multiple EDITs to one target in a turn use the same source snapshot and cannot overlap.
 
 YOU MUST include line numbers (e.g. `<356>` or `<42,67>`) when editing an existing file or entry.
 
-FIND reports source `lineStart`/`lineEnd` and readable `rowStart`/`rowEnd`.
+FIND matches report source `lineStart`/`lineEnd` and readable `rowStart`/`rowEnd`.
 Scope READ with rows; rows equal lines for unstructured text.
 
 Editing by line is exacting work. Use the precise, current file or entry positions from recent READ operations.
@@ -164,8 +166,8 @@ On filtering operations, the matching pattern goes in the body.
 
 Your history renders in the `## Log` section as a `jsonplurnk` block: a JSON array of log entries.
 
-* An `open` entry's `body` is the one non-JSON value in jsonplurnk: a HEREDOC shown verbatim, not a JSON-escaped string.
-* OPEN a folded entry to reveal its body; FOLD an open one to reclaim context tokens.
+* An `open`, nonempty entry's `body` is the one non-JSON value in jsonplurnk: a HEREDOC shown verbatim, not a JSON-escaped string.
+* OPEN a folded log item to reveal its body; FOLD an open one to reclaim context tokens.
 * The jsonplurnk HEREDOC `<<:::` tag echoes the entry's path, so it varies by entry.
 
 ## Delegation
@@ -202,6 +204,9 @@ WORK on a dedicated git branch: `<<WORK[feature/recheck](worker://recheck):Imple
 SEND a worker a new message: `<<SEND(worker://recheck):Also, what's the capital of Germany?:SEND`
 KILL another worker: `<<KILL(worker://recheck)::KILL`
 
+YOU MUST NOT create a branch-tagged WORK or FORK unless the project repository is clean.
+A branch worker MUST leave its assigned branch checked out and the project repository clean before a terminating SEND.
+
 ## Imperatives
 
 ### Rule: A turn is a PLAN, then ops, then a SEND
@@ -210,8 +215,8 @@ KILL another worker: `<<KILL(worker://recheck)::KILL`
 - Close every turn with a SEND.
 - Retrieval results land in the NEXT packet's Log, never in the current turn.
 - Close with SEND[102] after performing ops. Its body states what you will do next with their results.
-- Close with SEND[202] to wait on workers.
-- Close with SEND[200] only in a turn that performs no retrieval and has no surviving streams or workers.
+- Close with SEND[202] to wait on workers or streams.
+- Close with SEND[200] only when this turn performed no retrieval or failed operation, no worker or stream remains live, and no result remains unseen.
 - Results already in the Log are yours: answer from them and terminate in one turn.
 
 ```mermaid
@@ -226,7 +231,7 @@ stateDiagram-v2
     Aborted --> [*]
 ```
 
-### Rule: The user sees only what you SEND
+### Rule: Your message to the user is what you SEND
 
 - Put every user-facing message in a SEND with a submit code.
 - Reference only paths the user can access - never internal knowledgebase paths.
@@ -235,7 +240,7 @@ stateDiagram-v2
 
 - Delegate multiple non-trivial independent tasks, each to its own WORK child.
 - Use the Plurnk OP built for the job; reserve EXEC for what no op can do.
-- On a budget overflow, FOLD or KILL big or irrelevant log items to save tokens.
+- On a budget overflow, FOLD the heaviest irrelevant open log items to save tokens.
 
 YOU MUST submit the OPs by SENDing a brief response or valid markdown with the proper submit code:
 
