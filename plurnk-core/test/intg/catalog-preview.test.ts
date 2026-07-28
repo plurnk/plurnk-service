@@ -1,7 +1,7 @@
 // PLURNK_SERVICE_FILES_ITEMS — turn-0 catalog preview foist (§actor-boundary). A plurnk-origin
-// FIND(scheme:///**) is foisted into the model's turn 0 per scheme: memory/scratch/docs always
-// FULL, the first-N cap applies ONLY to the file list (-1 = all full, N = file list first-N with
-// memory full, 0/unset = off). The catalog is FIND-served (no manifest.json entry).
+// FIND(scheme:///*) is foisted into the model's turn 0 for folder-capable schemes: direct
+// entries plus complete `dir/**` summaries. Kernel docs remain recursively enumerated. The
+// first-N cap applies only to file rows; 0/unset turns the preview off.
 //
 // NOTE: sets a process-global env var. node --test isolates each file in its own
 // process, so this doesn't leak across files; the on/off cases run sequentially.
@@ -14,11 +14,11 @@ import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal } fro
 type LogRow = { op: string; pathname: string; scheme: string | null; hostname: string | null; status_rx: number; rx: string };
 const mock = () => new Mock({ contextWindow: 8192, responses: [makeMockResponse("<<SEND[200]:done:SEND", 50)] });
 
-test("PLURNK_SERVICE_FILES_ITEMS foists the catalog at turn 0 — memory FULL, the files cap never truncates it (none when off)", async () => {
+test("PLURNK_SERVICE_FILES_ITEMS foists complete shallow catalogs; the files cap never truncates memory (none when off)", async () => {
     const prev = process.env.PLURNK_SERVICE_FILES_ITEMS;
     try {
         // ON with a cap: =2 → the catalog is foisted at turn 0 (200). The cap is FILES-only; the
-        // model's memory (known) foists FULL — all 3 entries, never truncated to the first 2 (#286).
+        // model memory is not governed by the file cap — all 3 root entries remain visible.
         process.env.PLURNK_SERVICE_FILES_ITEMS = "2";
         await withDaemon(mock(), async (db, _daemon, addr) => {
             const ws = await connect(addr);
@@ -30,12 +30,12 @@ test("PLURNK_SERVICE_FILES_ITEMS foists the catalog at turn 0 — memory FULL, t
                 const resp = await runLoopToTerminal(ws, 5, { prompt: "go" });
                 const { loopId } = resp as { loopId: number };
                 const rows = await db.test_log_entries_by_loop.all<LogRow>({ loop_id: loopId });
-                const cf = rows.find((r) => r.op === "FIND" && r.scheme === "worker" && r.pathname === "/**");
-                assert.ok(cf !== undefined, "turn 0 foists a FIND(worker:///**) catalog preview when set");
+                const cf = rows.find((r) => r.op === "FIND" && r.scheme === "worker" && r.hostname === null && r.pathname === "/*");
+                assert.ok(cf !== undefined, "turn 0 foists a FIND(worker:///*) catalog preview when set");
                 assert.equal(cf!.status_rx, 200, "the catalog FIND returns the scheme's rows (200)");
                 const parsed = JSON.parse(cf!.rx) as { content?: string; results?: unknown[] };
                 const items = parsed.results ?? (parsed.content !== undefined ? JSON.parse(parsed.content) as unknown[] : []);
-                assert.equal(items.length, 3, "memory (known) foists FULL even at PLURNK_SERVICE_FILES_ITEMS=2 — the files cap never truncates the model's own memory");
+                assert.equal(items.length, 3, "the file cap never truncates the model's own memory map");
             } finally { ws.close(); }
         });
 
@@ -149,7 +149,7 @@ test("[#269] turn-0 run-once foists fire on the worker's first loop only, not ev
                 const r2 = await runLoopToTerminal(ws, 4, { prompt: "second" });
                 const catalogFind = async (loopId: number) => {
                     const rows = await db.test_log_entries_by_loop.all<LogRow>({ loop_id: loopId });
-                    return rows.find((r) => r.op === "FIND" && r.scheme === "worker" && r.pathname === "/**");
+                    return rows.find((r) => r.op === "FIND" && r.scheme === "worker" && r.hostname === null && r.pathname === "/*");
                 };
                 assert.ok((await catalogFind((r1 as { loopId: number }).loopId)) !== undefined, "worker's first loop foists the catalog preview");
                 assert.equal(await catalogFind((r2 as { loopId: number }).loopId), undefined, "the second loop does NOT re-foist it — it's already in the worker's log (#269)");
@@ -163,22 +163,29 @@ test("[#269] turn-0 run-once foists fire on the worker's first loop only, not ev
 test("the turn-0 exemplar mirrors the REAL foisted survey — dynamic, not a static print", async () => {
     const prev = process.env.PLURNK_SERVICE_FILES_ITEMS;
     try {
-        process.env.PLURNK_SERVICE_FILES_ITEMS = "-1"; // foist the full per-scheme catalog at turn 0
+        process.env.PLURNK_SERVICE_FILES_ITEMS = "-1"; // foist the complete per-scheme map at turn 0
         await withDaemon(mock(), async (db, _daemon, addr) => {
             const ws = await connect(addr);
             try {
                 await rpcCall(ws, 1, "workspace.create", { name: "turn0-exemplar" });
                 await rpcCall(ws, 2, "op.edit", { target: "worker:///a.md", content: "alpha" });
-                const resp = await runLoopToTerminal(ws, 3, { prompt: "go" });
-                const { modelWorkerId } = resp as { modelWorkerId: number };
+                await rpcCall(ws, 3, "op.edit", { target: "worker:///nested/b.md", content: "bravo" });
+                const resp = await runLoopToTerminal(ws, 4, { prompt: "go" });
+                const { loopId, modelWorkerId } = resp as { loopId: number; modelWorkerId: number };
+                const rows = await db.test_log_entries_by_loop.all<LogRow>({ loop_id: loopId });
+                const commons = rows.find((candidate) => candidate.op === "FIND" && candidate.scheme === "worker" && candidate.hostname === null && candidate.pathname === "/*");
+                assert.ok(commons !== undefined);
+                const map = JSON.parse((JSON.parse(commons.rx) as { content: string }).content) as Array<{ path: string; items?: number; tokens?: number }>;
+                assert.deepEqual(map.map((item) => item.path), ["worker:///a.md", "worker:///nested/**"]);
+                assert.equal(map[1]?.items, 1, "the automatic shallow map retains the nested subtree as a complete aggregate");
                 // The worker's first turn opens with the turn-0 `model` exemplar at 1/1/1, born OPEN.
                 const row = await db.log_read_by_coordinate.get<{ op: string; rx: string }>({ worker_id: modelWorkerId, loop_seq: 1, turn_seq: 1, sequence: 1 });
                 assert.equal(row?.op, "model", "the worker's first turn opens with the turn-0 model exemplar");
                 const content = (JSON.parse(row!.rx) as { content: string }).content;
-                // Dynamic — it carries the FIND the foist ACTUALLY dispatched (worker:///**), rendered to
+                // Dynamic - it carries the FIND the foist ACTUALLY dispatched (worker:///*), rendered to
                 // DSL and framed PLAN → SEND. Not a frozen print: feed-as-turn-0, show-in-turn-1 are one act.
                 assert.match(content, /^<<PLAN:Initialize:PLAN/, "opens with the reasoning move");
-                assert.match(content, /<<FIND\(worker:\/\/\/\*\*\)::FIND/, "the real foisted survey, rendered back to DSL");
+                assert.match(content, /<<FIND\(worker:\/\/\/\*\)::FIND/, "the real shallow survey, rendered back to DSL");
                 assert.match(
                     content,
                     /<<SEND\[102\]:Next, address the prompt from the initialized context\.:SEND$/,
@@ -204,9 +211,9 @@ test("an empty workspace executes all four orienting FINDs and preserves empty-s
                 const rows = await db.test_log_entries_by_loop.all<LogRow>({ loop_id: loopId });
                 const finds = rows.filter((r) => r.op === "FIND");
                 const orientations = [
-                    ["project files", finds.find((r) => r.scheme === null && r.pathname === "**"), true],
-                    ["workspace commons", finds.find((r) => r.scheme === "worker" && r.hostname === null && r.pathname === "/**"), true],
-                    ["own space", finds.find((r) => r.scheme === "worker" && r.hostname === "~" && r.pathname === "/**"), true],
+                    ["project files", finds.find((r) => r.scheme === null && r.pathname === "*"), true],
+                    ["workspace commons", finds.find((r) => r.scheme === "worker" && r.hostname === null && r.pathname === "/*"), true],
+                    ["own space", finds.find((r) => r.scheme === "worker" && r.hostname === "~" && r.pathname === "/*"), true],
                     ["kernel docs", finds.find((r) => r.scheme === "worker" && r.hostname === "plurnk" && r.pathname === "/docs/**"), false],
                 ] as const;
                 for (const [name, row, expectEmpty] of orientations) {
@@ -218,9 +225,9 @@ test("an empty workspace executes all four orienting FINDs and preserves empty-s
                 }
                 const exemplar = await db.log_read_by_coordinate.get<{ rx: string }>({ worker_id: modelWorkerId, loop_seq: 1, turn_seq: 1, sequence: 1 });
                 const content = (JSON.parse(exemplar!.rx) as { content: string }).content;
-                assert.match(content, /<<FIND\(\*\*\)::FIND/, "the empty project survey does not synthesize an invalid <1,0> range");
-                assert.match(content, /<<FIND\(worker:\/\/\/\*\*\)::FIND/, "the exemplar includes workspace commons");
-                assert.match(content, /<<FIND\(worker:\/\/~\/\*\*\)::FIND/, "the exemplar includes own space");
+                assert.match(content, /<<FIND\(\*\)::FIND/, "the empty project survey does not synthesize an invalid <1,0> range");
+                assert.match(content, /<<FIND\(worker:\/\/\/\*\)::FIND/, "the exemplar includes workspace commons");
+                assert.match(content, /<<FIND\(worker:\/\/~\/\*\)::FIND/, "the exemplar includes own space");
                 assert.match(content, /<<FIND\(worker:\/\/plurnk\/docs\/\*\*\)::FIND/, "the exemplar includes kernel docs");
             } finally { ws.close(); }
         });

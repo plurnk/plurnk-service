@@ -17,16 +17,19 @@ JOIN loops l ON l.id = t.loop_id
 WHERE l.worker_id = $worker_id AND l.sequence = $loop_seq AND t.sequence = $turn_seq AND le.sequence = $sequence;
 
 -- PREP: log_match_coordinates
--- Resolve a log:/// path-glob to the matching rows within the worker, coordinate-ordered.
--- The rendered `loop/turn/seq/op` is GLOB-matched against the target (SQLite GLOB:
--- `*` spans any chars incl '/', so `**/READ` ≈ `*/READ`). Drives glob/paginated
--- OPEN/FOLD — the model's primary log-curation move, e.g. FOLD(log:///**/READ)<1>.
-SELECT le.id
+-- Return the literal-prefix candidate superset for a log path-glob. TypeScript
+-- applies the authoritative shell-glob match so `*` remains segment-local and
+-- `**` crosses coordinate segments.
+SELECT le.id, (l.sequence || '/' || t.sequence || '/' || le.sequence || '/' || le.op) AS coordinate
 FROM log_entries le
 JOIN turns t ON t.id = le.turn_id
 JOIN loops l ON l.id = t.loop_id
 WHERE l.worker_id = $worker_id
-  AND (l.sequence || '/' || t.sequence || '/' || le.sequence || '/' || le.op) GLOB $glob
+  AND ($scope_prefix IS NULL OR substr(
+      (l.sequence || '/' || t.sequence || '/' || le.sequence || '/' || le.op),
+      1,
+      length($scope_prefix)
+  ) = $scope_prefix)
 ORDER BY l.sequence, t.sequence, le.sequence;
 
 -- PREP: log_set_expanded_by_id
@@ -41,7 +44,7 @@ DELETE FROM log_entries WHERE id = $id;
 
 -- PREP: log_find_candidates
 -- §find-source-agnostic ÷ §log-coordinate-hierarchy — the worker's log rows as FIND candidates,
--- coordinate-glob-scoped (the same GLOB semantics log_match_coordinates curates by), each with the
+-- coordinate-prefix-scoped (the same candidate semantics log_match_coordinates curates by), each with the
 -- fields Log's rx projection renders (FIND must match exactly what READ shows). Coordinate-ordered.
 SELECT
     (l.sequence || '/' || t.sequence || '/' || le.sequence || '/' || le.op) AS coordinate,
@@ -50,7 +53,11 @@ FROM log_entries le
 JOIN turns t ON t.id = le.turn_id
 JOIN loops l ON l.id = t.loop_id
 WHERE l.worker_id = $worker_id
-  AND (l.sequence || '/' || t.sequence || '/' || le.sequence || '/' || le.op) GLOB $glob
+  AND ($scope_prefix IS NULL OR substr(
+      (l.sequence || '/' || t.sequence || '/' || le.sequence || '/' || le.op),
+      1,
+      length($scope_prefix)
+  ) = $scope_prefix)
 ORDER BY l.sequence, t.sequence, le.sequence;
 
 -- PREP: log_write_tag
@@ -62,12 +69,16 @@ INSERT OR IGNORE INTO log_tags (log_entry_id, tag) VALUES ($log_entry_id, $tag);
 -- §log-region-tagging — OPEN[tag]'s resolution: log_match_coordinates PLUS an ALL-tags AND filter
 -- (§find-tag-filter-and-semantics), so OPEN[tag] recalls only rows carrying EVERY listed tag. A
 -- targetless OPEN[tag] rides glob '*' (the whole run).
-SELECT le.id
+SELECT le.id, (l.sequence || '/' || t.sequence || '/' || le.sequence || '/' || le.op) AS coordinate
 FROM log_entries le
 JOIN turns t ON t.id = le.turn_id
 JOIN loops l ON l.id = t.loop_id
 WHERE l.worker_id = $worker_id
-  AND (l.sequence || '/' || t.sequence || '/' || le.sequence || '/' || le.op) GLOB $glob
+  AND ($scope_prefix IS NULL OR substr(
+      (l.sequence || '/' || t.sequence || '/' || le.sequence || '/' || le.op),
+      1,
+      length($scope_prefix)
+  ) = $scope_prefix)
   AND le.id IN (
       SELECT log_entry_id FROM log_tags
       WHERE tag IN (SELECT value FROM json_each($tags))
@@ -85,7 +96,11 @@ FROM log_entries le
 JOIN turns t ON t.id = le.turn_id
 JOIN loops l ON l.id = t.loop_id
 WHERE l.worker_id = $worker_id
-  AND (l.sequence || '/' || t.sequence || '/' || le.sequence || '/' || le.op) GLOB $glob
+  AND ($scope_prefix IS NULL OR substr(
+      (l.sequence || '/' || t.sequence || '/' || le.sequence || '/' || le.op),
+      1,
+      length($scope_prefix)
+  ) = $scope_prefix)
   AND le.id IN (
       SELECT log_entry_id FROM log_tags
       WHERE tag IN (SELECT value FROM json_each($tags))

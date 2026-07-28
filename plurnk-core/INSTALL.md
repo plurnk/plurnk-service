@@ -72,7 +72,7 @@ Each mirrors a `# --- section ---` in the floor; consult the floor for exact def
 - **Model aliases** — bare `PLURNK_MODEL` selects the active provider; `PLURNK_MODEL_<alias>` defines one; `PLURNK_BASEURL_<alias>` overrides its endpoint. The front door — keep these bare and short.
 - **Loop control / Engine rails** — `PLURNK_SERVICE_MAX_TURNS` (−1 = uncapped), `_MAX_COMMANDS`, `_MAX_STRIKES`, `_MIN_CYCLES`, `_MAX_CYCLE_PERIOD`, `_RPC_TIMEOUT`, `_LOOP_TIMEOUT`, `_PROPOSAL_TIMEOUT_MS`, `_EXEC_WAIT_MS`, `_EXEC_KILL_GRACE_MS`, `_SESSION_RUNS_MAX_ACTIVE`. Guardrails; the shipped values are sane.
 - **Git** — `PLURNK_SERVICE_GIT_ALLOWED` (0 = hard sandbox lockout), `_GIT_AUTO`.
-- **Packet / reference docs** — `PLURNK_SERVICE_FILES_ITEMS` (turn-1 file catalog cap), `_PROMPT_PREVIEW_CHARS`, `_EDIT_RECEIPT_REVISION_CHARS`, `_BRANCH_RECEIPT_REVISION_CHARS`, `_DOCS_EXCLUDE`, `_PACKET_INJECT` (operator markdown section), `_POLICY`/`_PROJECT`/`_REQUIREMENTS` (policy + footer overrides; unset = the seeded/packaged defaults), `_MD_<alias>` (inject a markdown doc as a turn-0 entry).
+- **Packet / reference docs** — `PLURNK_SERVICE_FILES_ITEMS` (turn-1 shallow file-map cap), `_PROMPT_PREVIEW_CHARS`, `_EDIT_RECEIPT_REVISION_CHARS`, `_BRANCH_RECEIPT_REVISION_CHARS`, `_DOCS_EXCLUDE`, `_PACKET_INJECT` (operator markdown section), `_POLICY`/`_PROJECT`/`_REQUIREMENTS` (policy + footer overrides; unset = the seeded/packaged defaults), `_MD_<alias>` (inject a markdown doc as a turn-0 entry).
 - **Providers** — the portable provider knobs and defaults are defined by
   `@plurnk/plurnk-providers/.env.defaults`; any provider knob may take an alias
   suffix that wins over the bare fallback.

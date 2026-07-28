@@ -53,6 +53,7 @@ test("Known.find returns the scheme's catalog rows (JSON), filtered to matches",
         assert.deepEqual(r.results.map((row) => row.path), ["worker:///a", "worker:///b", "worker:///c"]);
         assert.deepEqual(JSON.parse(r.content!), r.results, "content is the JSON serialization of the catalog rows");
         const [first] = r.results;
+        assert.ok(first !== undefined && first.channels !== undefined);
         assert.equal(first.path, "worker:///a");
         assert.deepEqual(Object.keys(first.channels), ["worker:///a"], "the default channel keys by the bare entry path");
         assert.equal(typeof first.channels["worker:///a"].mimetype, "string");
@@ -71,6 +72,93 @@ test("Known.find with scope prefix filters to that subtree", async () => {
         const r = await new Worker().find(findStmt(url("plan/")), makeSchemeCtx({ db, workspaceId, workerId, loopId: 0, turnId: 0 }));
         assert.equal(r.status, 200);
         assert.deepEqual([...new Set(r.results.map((f) => f.path))], ["worker:///plan/step1", "worker:///plan/step2"]);
+    } finally { db.close(); }
+});
+
+test("a single-star path glob lists one level with actionable recursive folder summaries", async () => {
+    const { db, workspaceId, workerId } = await setup();
+    try {
+        await seedEntries(db, workspaceId, workerId, [
+            [".env.defaults", "defaults"],
+            [".github/workflows/ci.yml", "workflow"],
+            ["README.md", "root"],
+            ["src/.hidden.ts", "hidden child"],
+            ["src/index.ts", "direct child"],
+            ["src/lib/deep.ts", "nested child"],
+            ["docs/guide.md", "guide"],
+        ]);
+        const worker = new Worker();
+        const ctx = makeSchemeCtx({ db, workspaceId, workerId, loopId: 0, turnId: 0 });
+
+        const root = await worker.find(findStmt(url("*")), ctx);
+        assert.equal(root.status, 200);
+        assert.deepEqual(root.results.map((item) => item.path), [
+            "worker:///.env.defaults",
+            "worker:///.github/**",
+            "worker:///docs/**",
+            "worker:///README.md",
+            "worker:///src/**",
+        ]);
+        const src = root.results.find((item) => item.path === "worker:///src/**");
+        assert.ok(src !== undefined && "items" in src, "the directory is a scope summary, not a fake entry");
+        assert.equal(src.items, 3, "the summary counts every descendant recursively, including dot entries");
+        assert.ok((src.tokens ?? 0) > 0, "the summary reports the recursive subtree's READ weight");
+        assert.deepEqual(root.matches.map((match) => match.pathname), ["/.env.defaults", "/README.md"], "folder summaries never become hidden READ fan-out matches");
+
+        const drilled = await worker.find(findStmt(url("src/*")), ctx);
+        assert.deepEqual(drilled.results.map((item) => item.path), [
+            "worker:///src/.hidden.ts",
+            "worker:///src/index.ts",
+            "worker:///src/lib/**",
+        ]);
+
+        const dotDrill = await worker.find(findStmt(url(".github/**")), ctx);
+        assert.deepEqual(dotDrill.results.map((item) => item.path), ["worker:///.github/workflows/ci.yml"]);
+
+        const recursive = await worker.find(findStmt(url("**")), ctx);
+        assert.deepEqual(recursive.results.map((item) => item.path), [
+            "worker:///.env.defaults",
+            "worker:///.github/workflows/ci.yml",
+            "worker:///README.md",
+            "worker:///docs/guide.md",
+            "worker:///src/.hidden.ts",
+            "worker:///src/index.ts",
+            "worker:///src/lib/deep.ts",
+        ], "double-star remains the complete recursive entry listing, dot entries included and without summary noise");
+    } finally { db.close(); }
+});
+
+test("path globs use shell segment semantics and support native brace patterns", async () => {
+    const { db, workspaceId, workerId } = await setup();
+    try {
+        await seedEntries(db, workspaceId, workerId, [
+            ["root.ts", "root"],
+            ["src/direct.ts", "direct"],
+            ["src/nested/deep.ts", "deep"],
+            ["src/nested/deep.go", "go"],
+        ]);
+        const worker = new Worker();
+        const ctx = makeSchemeCtx({ db, workspaceId, workerId, loopId: 0, turnId: 0 });
+
+        const oneLevel = await worker.find(findStmt(url("src/*.ts")), ctx);
+        assert.deepEqual(oneLevel.results.map((item) => item.path), ["worker:///src/direct.ts"], "`*` never crosses `/`");
+
+        const question = await worker.find(findStmt(url("src/nested/deep.?s")), ctx);
+        assert.deepEqual(question.results.map((item) => item.path), ["worker:///src/nested/deep.ts"], "`?` matches one non-separator character");
+
+        const recursive = await worker.find(findStmt(url("src/**/*.ts")), ctx);
+        assert.deepEqual(recursive.results.map((item) => item.path), [
+            "worker:///src/direct.ts",
+            "worker:///src/nested/deep.ts",
+        ], "`**` crosses directories");
+
+        const braces = await worker.find(findStmt(url("**/*.{go,ts}")), ctx);
+        assert.deepEqual(braces.results.map((item) => item.path), [
+            "worker:///root.ts",
+            "worker:///src/direct.ts",
+            "worker:///src/nested/deep.go",
+            "worker:///src/nested/deep.ts",
+        ], "shell brace patterns are resolved by the native path matcher, not SQLite GLOB");
     } finally { db.close(); }
 });
 

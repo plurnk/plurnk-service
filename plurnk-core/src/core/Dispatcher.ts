@@ -21,6 +21,7 @@ import { LineMarkerOps, MimetypeBinary } from "../content/index.ts";
 import SchemeCtxImpl from "./caps/SchemeCtxImpl.ts";
 import EntryCrud from "../schemes/_entry-crud.ts";
 import EntryFind from "../schemes/_entry-find.ts";
+import { hasPathGlob } from "../schemes/_path-scope.ts";
 import EntryOps from "../schemes/_entry-ops.ts";
 import WorkspaceSettings from "./workspace-settings.ts";
 import type LiveSubscriptions from "./LiveSubscriptions.ts";
@@ -844,7 +845,7 @@ export default class Dispatcher {
         if ("body" in statement && (statement as ReadStatement).body !== null) return true;  // a matcher → per-match fan-out
         const t = statement.target;
         const p = t === null ? "" : (t.kind === "url" ? t.pathname : t.raw);
-        if (p.includes("*")) return true;
+        if (hasPathGlob(p)) return true;
         const schemeName = schemeNameOf(t);
         return p.endsWith("/") && schemeName !== null && this.#schemes.manifestFor(schemeName)?.folderScopes === true;
     }

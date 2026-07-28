@@ -397,7 +397,7 @@ test("empty requirements section emits no header", () => {
 });
 
 test("log render: FIND@200 renders its result catalog, not just the echoed query", () => {
-    // The turn-0 foisted FIND(scheme:///**) is how a worker's opening catalog reaches
+    // The turn-0 foisted FIND catalog map is how a worker's opening catalog reaches
     // the packet. If the renderer only re-emits the query statement (the regression),
     // the model is shown its own question and zero entries.
     const catalog = '[\n  {\n    "path": "plurnk://prompt/1/1",\n    "channels": {\n      "plurnk://prompt/1/1": { "mimetype": "text/markdown", "tokens": 20, "lines": 1 }\n    }\n  }\n]';

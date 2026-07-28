@@ -63,7 +63,29 @@ test("a body-less FIND(log:///1/1) lists the turn's rows — the hierarchy is th
         assert.equal(r.status, 200);
         assert.equal(r.results.length, 3, "the turn's three rows, catalog-shaped");
         assert.ok(r.results.every((x) => /^log:\/\/\/1\/1\/\d+\//.test(x.path)), "each item keyed log:///loop/turn/seq/OP");
-        assert.ok(r.results.every((x) => Object.values(x.channels)[0]!.tokens >= 0), "each carries {mimetype, tokens, lines} — the model budgets its READs");
+        assert.ok(r.results.every((x) => x.channels !== undefined && Object.values(x.channels)[0]!.tokens >= 0), "each carries {mimetype, tokens, lines} — the model budgets its READs");
+    } finally { await db.close(); }
+});
+
+test("a single-star log FIND maps one coordinate level without crossing separators", async () => {
+    const { db, workerId } = await setup();
+    try {
+        const log = new Log();
+        const ctx = makeSchemeCtx({ db, workerId, mimetypes: DEFAULT_MIMETYPES });
+
+        const root = await log.find(findStmt(urlPath("log", "/*")), ctx);
+        assert.equal(root.status, 200);
+        assert.deepEqual(root.results.map((item) => item.path), ["log:///1/**"]);
+        const loop = root.results[0];
+        assert.ok(loop !== undefined && loop.items === 3 && (loop.tokens ?? 0) >= 0, "the loop scope summarizes its recursive rows");
+        assert.deepEqual(root.matches, [], "the summary is navigation metadata, not a hidden row match");
+
+        const segmented = await log.find(findStmt(urlPath("log", "/*/*/*/*")), ctx);
+        assert.equal(segmented.results.length, 3, "one star per coordinate segment reaches the rows");
+        assert.ok(segmented.results.every((item) => /^log:\/\/\/1\/1\/\d+\//.test(item.path)));
+
+        const recursive = await log.find(findStmt(urlPath("log", "/**")), ctx);
+        assert.equal(recursive.results.length, 3, "double-star remains the direct recursive row listing");
     } finally { await db.close(); }
 });
 

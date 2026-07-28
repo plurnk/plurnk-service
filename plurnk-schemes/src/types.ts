@@ -33,7 +33,7 @@ export interface SchemeManifest {
     readonly writableBy: ReadonlyArray<WriterTier>;
     readonly volatile: boolean;
     readonly modelVisible: boolean;
-    // A trailing slash on READ denotes a collection scope only when declared.
+    // A trailing slash on FIND or READ denotes a collection scope only when declared.
     // Explicit globs and matcher bodies remain queries everywhere. Absent/false
     // means `/` is ordinary resource syntax and dispatches directly.
     readonly folderScopes?: boolean;

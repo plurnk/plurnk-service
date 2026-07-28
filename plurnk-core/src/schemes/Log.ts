@@ -4,7 +4,7 @@ import type { SchemeManifest, PlurnkSchemeContext, SchemeReadResult } from "../c
 import { ReadResolve } from "../content/index.ts";
 import Matcher from "../content/matcher.ts";
 import type { CandidateMatch } from "../content/matcher.ts";
-import type { FindResult, MatchItem, Match } from "./_entry-find.ts";
+import type { FindResult, MatchItem, Match, CatalogScope, CatalogMatch } from "./_entry-find.ts";
 import { CoreSchemeAdapterBase } from "../core/CoreSchemeServices.ts";
 import type { CoreSchemeCallContext } from "../core/CoreSchemeServices.ts";
 import Results, { type SchemeResultBase } from "../core/results.ts";
@@ -13,6 +13,7 @@ import LogProjectionResolver from "./_log-projection.ts";
 import EntrySemantic from "./_entry-semantic.ts";
 import EntryGraph from "./_entry-graph.ts";
 import { resolveSearchCandidates } from "./_search-candidate.ts";
+import { hasPathGlob, pathFolderSummaries, pathScope, pathScopeMatches } from "./_path-scope.ts";
 
 type OpenFoldResult = SchemeResultBase & { matched?: number };
 
@@ -33,10 +34,10 @@ const PARTIAL_COORDINATE = /^\d+(?:\/\d+)?\/?$/;
 // coordinate (`1`, `1/2`, with or without slash) is a prefix over its descendants; a trailing
 // slash is the folder idiom; a full coordinate/glob passes through. null = malformed.
 const coordinateGlob = (pathname: string): string | null => {
-    if (pathname === "" ) return "*";
-    if (pathname.endsWith("/")) return `${pathname}*`;
-    if (PARTIAL_COORDINATE.test(pathname)) return `${pathname}/*`;
-    if (parseCoordinate(pathname) !== null || pathname.includes("*")) return pathname;
+    if (pathname === "" ) return "**";
+    if (pathname.endsWith("/")) return `${pathname}**`;
+    if (PARTIAL_COORDINATE.test(pathname)) return `${pathname}/**`;
+    if (parseCoordinate(pathname) !== null || hasPathGlob(pathname)) return pathname;
     return null;
 };
 
@@ -155,13 +156,18 @@ export default class Log extends CoreSchemeAdapterBase {
         const pathname = (statement.target.kind === "url" ? statement.target.pathname : statement.target.raw).replace(/^\//, "");
         const glob = coordinateGlob(pathname);
         if (glob === null) return empty(400, `Malformed log target '${pathname}'.`);
+        const scope = pathScope(glob, false);
         // §log-region-tagging — a tag signal AND-filters the candidates (§find-tag-filter-and-semantics):
         // a row survives only if it carries EVERY listed tag. No signal → the plain coordinate scope.
         const tags = Array.isArray(statement.signal) ? statement.signal : [];
         type Candidate = { coordinate: string; op: string; rx: string; mimetype_rx: string; tokens: number; deep_hash: string | null };
-        const rows = tags.length > 0
-            ? await db.log_find_candidates_tagged.all<Candidate>({ worker_id: workerId, glob, tags: JSON.stringify(tags) })
-            : await db.log_find_candidates.all<Candidate>({ worker_id: workerId, glob });
+        const candidateRows = tags.length > 0
+            ? await db.log_find_candidates_tagged.all<Candidate>({ worker_id: workerId, scope_prefix: scope.candidatePrefix, tags: JSON.stringify(tags) })
+            : await db.log_find_candidates.all<Candidate>({ worker_id: workerId, scope_prefix: scope.candidatePrefix });
+        let rows: Candidate[];
+        try { rows = candidateRows.filter((row) => pathScopeMatches(scope, row.coordinate)); }
+        catch { return empty(400, `Malformed log glob '${glob}'.`); }
+        const candidateByCoord = new Map(candidateRows.map((row) => [row.coordinate, row] as const));
         const byCoord = new Map(rows.map((r) => [r.coordinate, r] as const));
         const projected = rows.map((r) => ({ key: r.coordinate, ...LogProjectionResolver.resolve(r.rx) }));
 
@@ -198,7 +204,7 @@ export default class Log extends CoreSchemeAdapterBase {
                 `The persistent search index covers ${candidateSet.indexed} of ${candidateSet.total} selected log results.`,
                 { search: candidateSet },
             );
-            const universeRows = await db.log_find_candidates.all<Candidate>({ worker_id: workerId, glob: "*" });
+            const universeRows = await db.log_find_candidates.all<Candidate>({ worker_id: workerId, scope_prefix: null });
             const universe = resolveSearchCandidates(
                 universeRows.map(({ coordinate, deep_hash }) => ({ key: coordinate, deepHash: deep_hash })),
             );
@@ -226,7 +232,10 @@ export default class Log extends CoreSchemeAdapterBase {
             if (r.status !== 200) return empty(r.status, `The log matcher failed with status ${r.status}.`);
             sourceMatches = r.matches;
         }
-        if (statement.lineMarker !== null && statement.body?.dialect !== "semantic") {
+        const folderSummaries = statement.body === null
+            ? pathFolderSummaries(scope, candidateRows.map((row) => row.coordinate))
+            : [];
+        if (statement.lineMarker !== null && statement.body?.dialect !== "semantic" && folderSummaries.length === 0) {
             const page = LineMarkerOps.page(sourceMatches, statement.lineMarker);
             if (page.status !== 200) return empty(
                 page.status,
@@ -251,31 +260,10 @@ export default class Log extends CoreSchemeAdapterBase {
                 ...(path === undefined ? {} : { path }),
             }));
         }
-        if (matches.length === 0) return empty(204);
-        // §find-count-not-contents is source-agnostic. Log used the shared
-        // matcher but skipped its cardinality gate, allowing one matcher over a
-        // large READ projection to retain and later fan out tens of thousands
-        // of rows. Count-forward here before catalog materialization.
-        const budget = Number.parseInt(process.env.PLURNK_SERVICE_FIND_MAX_MATCHES ?? "0", 10);
-        if (budget > 0 && matches.length > budget) {
-            const unique = new Set(matches.map((m) => m.pathname));
-            const itemsTokenTotal = [...unique].reduce((sum, pathname) => sum + (byCoord.get(pathname)?.tokens ?? 0), 0);
-            return {
-                status: 200,
-                content: `${matches.length} entries match, exceeding the render budget (${budget}) — not enumerated.`,
-                mimetype: "text/markdown",
-                results: [],
-                itemsTokenTotal,
-                pathnames: [],
-                matches: [],
-                overflow: matches.length,
-            };
-        }
-
         // The result rows mirror the catalog-row shape (§find-result-catalog-rows): one item per
         // match, keyed by the row's self-documenting path, carrying {mimetype, tokens, lines} so
         // the model budgets its READs — uniform with every scheme's FIND.
-        const results: MatchItem[] = [];
+        let results: MatchItem[] = [];
         const seenPath: string[] = [];
         const seen = new Set<string>();
         let itemsTokenTotal = 0;
@@ -284,12 +272,58 @@ export default class Log extends CoreSchemeAdapterBase {
             if (row === undefined) continue;
             const path = `log:///${m.pathname}`;
             const proj = LogProjectionResolver.resolve(row.rx);
-            const item: MatchItem = {
+            const item: CatalogMatch = {
                 path,
                 channels: { [path]: { mimetype: proj.mimetype, tokens: row.tokens, lines: proj.content.length === 0 ? 0 : proj.content.split("\n").length } },
-            } as MatchItem;
+            };
             results.push(m.span !== null ? { ...item, matchSpan: m.span, ...(m.path !== undefined ? { matchPath: m.path } : {}) } : item);
             if (!seen.has(m.pathname)) { seen.add(m.pathname); seenPath.push(m.pathname); itemsTokenTotal += row.tokens; }
+        }
+        for (const folder of folderSummaries) {
+            const members = folder.pathnames.map((coordinate) => candidateByCoord.get(coordinate)).filter((row): row is Candidate => row !== undefined);
+            const item: CatalogScope = {
+                path: `log:///${folder.selector}`,
+                items: members.length,
+                tokens: members.reduce((sum, row) => sum + row.tokens, 0),
+            };
+            results.push(item);
+            itemsTokenTotal += item.tokens;
+        }
+        if (folderSummaries.length > 0) {
+            results.sort((a, b) => a.path.localeCompare(b.path));
+            if (statement.lineMarker !== null) {
+                const page = LineMarkerOps.page(results, statement.lineMarker);
+                if (page.status !== 200) return empty(
+                    page.status,
+                    page.error ?? "The requested log result range is not satisfiable.",
+                    page.range === undefined ? {} : { range: page.range },
+                );
+                results = page.items ?? [];
+                const retained = new Set(results.filter((item) => item.items === undefined).map((item) => item.path.replace(/^log:\/\/\//, "").replace(/^\//, "")));
+                matches = matches.filter((match) => retained.has(match.pathname));
+                seenPath.splice(0, seenPath.length, ...matches.map((match) => match.pathname).filter((coordinate, i, all) => all.indexOf(coordinate) === i));
+                itemsTokenTotal = results.reduce((sum, item) => sum + (item.items === undefined
+                    ? Object.values(item.channels).reduce((channelSum, channel) => channelSum + channel.tokens, 0)
+                    : item.tokens ?? 0), 0);
+            }
+        }
+        if (results.length === 0) return empty(204);
+        // §find-count-not-contents is source-agnostic. Count the rendered
+        // catalog items; a shallow map's folder summaries replace, rather than
+        // conceal, their descendants.
+        const budget = Number.parseInt(process.env.PLURNK_SERVICE_FIND_MAX_MATCHES ?? "0", 10);
+        if (budget > 0 && results.length > budget) {
+            const noun = results.some((item) => item.items !== undefined) ? "catalog items" : "entries";
+            return {
+                status: 200,
+                content: `${results.length} ${noun} match, exceeding the render budget (${budget}) — not enumerated.`,
+                mimetype: "text/markdown",
+                results: [],
+                itemsTokenTotal,
+                pathnames: [],
+                matches: [],
+                overflow: results.length,
+            };
         }
         // matches[].pathname is the fan-out's retarget key — `/loop/turn/seq/OP` re-parses as a
         // coordinate (the /OP suffix is accepted), so READ(log://)<matcher> fan-out delivers rows.
@@ -319,7 +353,11 @@ export default class Log extends CoreSchemeAdapterBase {
         // §log-coordinate-hierarchy — one resolution for every consumer (curation here, find below).
         const glob = coordinateGlob(pathname);
         if (glob === null) return { status: 400, ids: [], error: `malformed log target '${pathname}' — a coordinate (1/2/3), a prefix (1 or 1/2), or a glob (**/READ)` };
-        const matched = await db.log_match_coordinates.all<{ id: number }>({ worker_id: workerId, glob });
+        const scope = pathScope(glob, false);
+        const candidates = await db.log_match_coordinates.all<{ id: number; coordinate: string }>({ worker_id: workerId, scope_prefix: scope.candidatePrefix });
+        let matched: Array<{ id: number; coordinate: string }>;
+        try { matched = candidates.filter((row) => pathScopeMatches(scope, row.coordinate)); }
+        catch { return { status: 400, ids: [], error: `malformed log glob '${glob}'` }; }
         // Zero matches on a well-formed glob is a NO-OP SUCCESS, not an error (owner ruling): a
         // curation sweep that found nothing to curate steers nothing — 204 keeps it out of the
         // errors surface (>= 400), and the rx carries matched: 0, clearly shown.
@@ -348,7 +386,15 @@ export default class Log extends CoreSchemeAdapterBase {
         const pathname = statement.target === null ? "" : (statement.target.kind === "url" ? statement.target.pathname : statement.target.raw).replace(/^\//, "");
         const glob = coordinateGlob(pathname);
         if (glob === null) return { status: 400, ids: [], error: `malformed log target '${pathname}' — a coordinate (1/2/3), a prefix (1 or 1/2), or a glob (**/READ)` };
-        const matched = await db.log_match_coordinates_tagged.all<{ id: number }>({ worker_id: workerId, glob, tags: JSON.stringify(tags) });
+        const scope = pathScope(glob, false);
+        const candidates = await db.log_match_coordinates_tagged.all<{ id: number; coordinate: string }>({
+            worker_id: workerId,
+            scope_prefix: scope.candidatePrefix,
+            tags: JSON.stringify(tags),
+        });
+        let matched: Array<{ id: number; coordinate: string }>;
+        try { matched = candidates.filter((row) => pathScopeMatches(scope, row.coordinate)); }
+        catch { return { status: 400, ids: [], error: `malformed log glob '${glob}'` }; }
         if (matched.length === 0) return { status: 204, ids: [] };
         let selected = matched;
         if (statement.lineMarker !== null) {

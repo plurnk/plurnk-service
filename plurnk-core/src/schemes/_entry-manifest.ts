@@ -1,5 +1,6 @@
 // The entry catalog (§packet-catalog) — the complete, unranked directory of every
-// entry the workspace holds, served by FIND(scheme:///**), one per-scheme array.
+// entry the workspace holds. FIND(**) serves it recursively; FIND(*) projects
+// it as a one-level map in _entry-find.
 // Each item carries its address, optional stream lifecycle and tags, and addressable
 // channels. Search indexing is owned separately by SearchIndex.
 

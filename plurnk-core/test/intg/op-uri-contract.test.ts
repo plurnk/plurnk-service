@@ -163,9 +163,8 @@ test("contract: a jsonpath READ returns the LINE where the path resolves", async
     });
 });
 
-// CELL [FIND × file scheme glob] — the tracked-file list. This is what the turn-0 catalog
-// preview foists (FIND(file:///**)); confirm it lists every member, and that the bare FIND(**)
-// (no scheme → file) is the same view. #287
+// CELL [FIND × file scheme glob] — the recursive tracked-file list. Confirm the explicit
+// file URI and bare project-relative form expose the same view. #287
 test("contract: FIND(file:///**) and bare FIND(**) both list every tracked member", async () => {
     await withWorkspaceRoot(async (root, ctx) => {
         await writeFile(join(root, "a.md"), "alpha");
@@ -181,5 +180,38 @@ test("contract: FIND(file:///**) and bare FIND(**) both list every tracked membe
             assert.match(paths, /a\.md/, `${dsl} includes a.md`);
             assert.match(paths, /b\.md/, `${dsl} includes docs/b.md`);
         }
+    });
+});
+
+test("contract: bare FIND(*) is a shallow project map; FIND(**) is recursive", async () => {
+    await withWorkspaceRoot(async (root, ctx) => {
+        await writeFile(join(root, ".env.defaults"), "defaults");
+        await mkdir(join(root, ".github"), { recursive: true });
+        await writeFile(join(root, ".github/settings.yml"), "settings");
+        await writeFile(join(root, "README.md"), "root");
+        await mkdir(join(root, "src", "nested"), { recursive: true });
+        await writeFile(join(root, "src/index.ts"), "direct");
+        await writeFile(join(root, "src/nested/deep.ts"), "deep");
+        for (const path of [".env.defaults", ".github/settings.yml", "README.md", "src/index.ts", "src/nested/deep.ts"]) await addMember(ctx, path);
+
+        const shallow = await new File().find(parseOp<FindStatement>("<<FIND(*)::FIND", "FIND"), ctx);
+        assert.deepEqual(shallow.results.map((item) => item.path), [".env.defaults", ".github/**", "README.md", "src/**"]);
+        const scope = shallow.results.find((item) => item.path === "src/**");
+        assert.ok(scope !== undefined && "items" in scope);
+        assert.equal(scope.items, 2);
+
+        const recursive = await new File().find(parseOp<FindStatement>("<<FIND(**)::FIND", "FIND"), ctx);
+        assert.deepEqual(recursive.results.map((item) => item.path), [".env.defaults", ".github/settings.yml", "README.md", "src/index.ts", "src/nested/deep.ts"]);
+    });
+});
+
+test("contract: the explicit file-scheme root is a recursive collection scope", async () => {
+    await withWorkspaceRoot(async (root, ctx) => {
+        await mkdir(join(root, "src"), { recursive: true });
+        await writeFile(join(root, "src/a.ts"), "a");
+        await addMember(ctx, "src/a.ts");
+
+        const rootScope = await new File().find(parseOp<FindStatement>("<<FIND(file:///)::FIND", "FIND"), ctx);
+        assert.deepEqual(rootScope.results.map((item) => item.path), ["src/a.ts"]);
     });
 });

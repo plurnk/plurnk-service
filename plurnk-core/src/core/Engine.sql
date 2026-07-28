@@ -243,11 +243,17 @@ WHERE e.workspace_id = $workspace_id
 ORDER BY e.updated_at ASC, e.id ASC, ec.name;
 
 -- PREP: engine_scheme_catalog_summary
--- Per-scheme entry tally (distinct count; scheme=null → file). Sources the turn-0 per-scheme
--- foist so the model sees which schemes hold content without running FIND(known://**) itself;
--- the foist FIND carries each scheme's live token weight.
+-- Per-scheme entry tally plus one-level catalog-row count (direct entries and
+-- distinct first-segment `dir/**` summaries). The engine uses the latter to
+-- encode a valid first-N file preview range without guessing how many rows the
+-- shallow projection will produce.
 SELECT e.scheme AS scheme,
-    COUNT(DISTINCT e.id) AS entries
+    COUNT(DISTINCT e.id) AS entries,
+    COUNT(DISTINCT CASE
+        WHEN instr(ltrim(e.pathname, '/'), '/') = 0
+            THEN 'entry:' || ltrim(e.pathname, '/')
+        ELSE 'scope:' || substr(ltrim(e.pathname, '/'), 1, instr(ltrim(e.pathname, '/'), '/'))
+    END) AS shallow_items
 FROM entries e
 JOIN entry_channels ec ON ec.entry_id = e.id
 WHERE e.workspace_id = $workspace_id

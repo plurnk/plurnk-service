@@ -468,7 +468,7 @@ export default class PacketWire {
                 // Content-bearing READ/FIND results render independently of status. In particular,
                 // a terminal stream failure carries both its Problem Details and captured output;
                 // suppressing the output leaves the model with an exit code but no diagnostic.
-                // The turn-0 foisted FIND(scheme:///**) and ordinary successful retrievals use the
+                // Turn-0 catalog FINDs and ordinary successful retrievals use the
                 // same branch. #renderContentBody applies the line-number convention
                 // (§render-rule-line-navigable-prefix / §render-rule-tree-navigable-verbatim).
                 const mimetype = typeof rx.mimetype === "string" ? rx.mimetype : "text/plain";

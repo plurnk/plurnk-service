@@ -67,6 +67,18 @@ const dispatchRows = async (
 
 // --- READ honors FIND: one row per match, the span's content, every dialect -----------------
 
+test("READ recognizes shell character-class paths as fan-out globs, not only patterns containing `*`", async () => {
+    const { db, engine, ctx, ...ids } = await setup();
+    try {
+        await seedRaw(ctx, "a1.md", "one");
+        await seedRaw(ctx, "a2.md", "two");
+        await seedRaw(ctx, "nested/a3.md", "three");
+        const { result, rows } = await dispatchRows(db, engine, ids, parseOp<ReadStatement>("<<READ(worker:///a[12].md)::READ", "READ"));
+        assert.equal(result.rowsWritten, 3, "the FIND summary plus two direct matches");
+        assert.deepEqual(rows.map((row) => row.content), ["one", "two"], "the character class selects both direct entries");
+    } finally { await db.close(); }
+});
+
 test("[#286] glob READ — multiple matches in ONE file fan out to multiple rows (per-match, not per-file)", async () => {
     const { db, engine, ctx, ...ids } = await setup();
     try {

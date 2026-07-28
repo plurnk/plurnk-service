@@ -183,6 +183,22 @@ test("FOLD(log:///**/READ)<1> folds the first matching READ row — glob + pagin
     } finally { await db.close(); }
 });
 
+test("log curation honors segment-local `*` and recursive `**`", async () => {
+    const { db, workspaceId, workerId, loopId, turnId } = await setup();
+    try {
+        const log = new Log();
+        const ctx = makeSchemeCtx({ db, workspaceId, workerId, loopId, turnId, writer: "model" });
+
+        const shallow = await log.fold(foldStmt(urlPath("log", "/*")), ctx);
+        assert.equal(shallow.status, 204, "no row lives directly at the log root");
+        assert.equal(await getExpanded(db, workerId), 1, "`*` does not cross coordinate separators");
+
+        const recursive = await log.fold(foldStmt(urlPath("log", "/**")), ctx);
+        assert.equal(recursive.status, 200);
+        assert.equal(await getExpanded(db, workerId), 0, "`**` reaches recursive log rows");
+    } finally { await db.close(); }
+});
+
 test("KILL(log:///1/1/1) erases the log row — the model's DB-storage curation lever (plurnk.md:36)", async () => {
     const { db, workspaceId, workerId, loopId, turnId } = await setup();
     try {

@@ -28,6 +28,7 @@ import EntrySemantic from "./_entry-semantic.ts";
 import Results, { type SchemeResultBase } from "../core/results.ts";
 import type { RangeExtent } from "@plurnk/plurnk-schemes";
 import { resolveSearchCandidates } from "./_search-candidate.ts";
+import { pathFolderSummaries, pathScope, pathScopeMatches, type PathScope } from "./_path-scope.ts";
 
 // A FIND match: an entry and the (file, span) where the matcher hit — ONE per match, so a
 // file with N matches yields N items. span === null for a body-less FIND (the whole entry). #286
@@ -41,7 +42,16 @@ interface SourceSpan { lineStart: number; lineEnd: number; }
 interface SourceMatch { pathname: string; span: SourceSpan | null; path?: string; }
 export interface Match { pathname: string; span: MatchSpan | null; path?: string; }
 // A FIND result row: the entry's catalog row plus the span it matched at (absent for body-less).
-export type MatchItem = CatalogEntry & { matchSpan?: MatchSpan; matchPath?: string };
+export type CatalogScope = {
+    path: string;
+    items: number;
+    tokens: number;
+    channels?: never;
+    matchSpan?: undefined;
+    matchPath?: undefined;
+};
+export type CatalogMatch = CatalogEntry & { matchSpan?: MatchSpan; matchPath?: string; items?: never; tokens?: never };
+export type MatchItem = CatalogMatch | CatalogScope;
 
 export interface FindResult extends SchemeResultBase {
     content: string | null;
@@ -85,6 +95,8 @@ export default class EntryFind {
     ): Promise<{
         status: number;
         matches: SourceMatch[];
+        scope?: PathScope;
+        candidatePathnames?: string[];
         error?: string;
         range?: RangeExtent;
         extensions?: Readonly<Record<string, unknown>>;
@@ -94,29 +106,26 @@ export default class EntryFind {
         // name). File persists under the reserved 'file' scheme ({§entry-identity-no-null}).
         const scheme = EntryCrud.identityScheme(manifest);
         const scopePathname = EntryFind.#scopePathnameOf(statement);
+        const scope = statement.target.kind === "regex" || scopePathname === null
+            ? null
+            : pathScope(scopePathname, manifest.folderScopes === true);
         // {§fs-errno} — the green-lie pin (#545): a FIND whose target is an EXACT path (no glob,
         // no folder scope) that resolves to NO entry is ENOENT with its fact — certifying empty
         // over nothing taught run59's model that a real function did not exist. A glob/folder
         // scope with zero matches stays the blessed orienting empty (§render-rule, owner: an
         // empty survey says "don't look here").
-        if (statement.target.kind !== "regex" && scopePathname !== null && scopePathname.length > 0
-            && !scopePathname.includes("*") && !scopePathname.endsWith("/")) {
+        if (scope?.kind === "exact" && scope.pathname.length > 0) {
             const exact = await ctx.db.crud_find_workspace_entry.get<{ id: number }>({
                 workspace_id: ctx.workspaceId,
                 owner_id: explicitOwnerId ?? await Owner.commonsId(ctx.db, ctx.workspaceId),
-                scheme, pathname: scopePathname,
+                scheme, pathname: scope.pathname,
             });
-            if (exact === undefined) return { status: 404, matches: [], error: `No entry exists at ${EntryManifest.toPath(scheme, scopePathname)}.` };
+            if (exact === undefined) return { status: 404, matches: [], error: `No entry exists at ${EntryManifest.toPath(scheme, scope.pathname)}.` };
         }
-        // The target's GLOB scope. A FOLDER (trailing slash, incl. the scheme root `/`) expands to
-        // its contents — append `*`; a bare ENTRY path stays exact (one entry); an explicit glob
-        // passes through literally. The `*` is folderhood, not a blanket prefix — so FIND(README.md)
-        // is the one entry, uniform with READ's target contract (#286). grammar 0.46 regex-in-path:
-        // a `#pattern#flags` target filters by regex over the pathname (below), no scope glob.
-        // §find-scope-prefix-filter
-        const scopeGlob = statement.target.kind === "regex" || scopePathname === null || scopePathname.length === 0
-            ? null
-            : (scopePathname.endsWith("/") ? `${scopePathname}*` : scopePathname);
+        // SQL receives only the literal prefix and returns a safe superset. Node's
+        // path matcher owns the shell-glob truth below: unlike SQLite GLOB, `*`
+        // cannot cross `/`, while `**` can. A declared folder scope remains a
+        // recursive prefix independent of glob syntax. §find-scope-prefix-filter
         const tags = Array.isArray(statement.signal) ? statement.signal : []; // tag filter, AND semantics — §find-tag-filter-and-semantics
         const tagsParam = tags.length > 0 ? JSON.stringify(tags) : "[]";
 
@@ -131,9 +140,12 @@ export default class EntryFind {
             owner_id: explicitOwnerId ?? await Owner.commonsId(db, workspaceId),
             scheme,
             ...(semantic ? {} : { channel: manifest.defaultChannel }),
-            scope_pathname: scopeGlob,
+            scope_prefix: scope?.candidatePrefix ?? null,
             tags: tagsParam,
         });
+        const candidatePathnames = statement.body === null && scope?.kind === "glob" && scope.shallowPrefix !== null
+            ? candidates.map((candidate) => candidate.pathname)
+            : undefined;
 
         // grammar 0.46 regex-in-path — a `#pattern#flags` target narrows candidates by regex
         // over their pathname (in TS; SQLite has no regex). Malformed pattern → 400, parallel
@@ -143,6 +155,12 @@ export default class EntryFind {
             try { re = new RegExp(statement.target.pattern, statement.target.flags || undefined); }
             catch { return { status: 400, matches: [] }; }
             candidates = candidates.filter((c) => re.test(c.pathname));
+        } else if (scope !== null) {
+            try {
+                candidates = candidates.filter((c) => pathScopeMatches(scope, c.pathname));
+            } catch {
+                return { status: 400, matches: [], error: `Malformed path glob '${scopePathname ?? ""}'.` };
+            }
         }
 
         // Every dialect resolves to (file, span) items — one per match (#286). A body-less FIND
@@ -226,7 +244,7 @@ export default class EntryFind {
             matches = r.matches.map((m) => ({ pathname: m.key, span: m.span, ...(m.path !== undefined ? { path: m.path } : {}) }));
         }
 
-        if (statement.lineMarker !== null && statement.body?.dialect !== "semantic") {
+        if (statement.lineMarker !== null && statement.body?.dialect !== "semantic" && candidatePathnames === undefined) {
             const page = LineMarkerOps.page(matches, statement.lineMarker);
             if (page.status !== 200) return {
                 status: page.status,
@@ -236,7 +254,7 @@ export default class EntryFind {
             };
             matches = page.items ?? [];
         }
-        return { status: 200, matches };
+        return { status: 200, matches, ...(scope === null ? {} : { scope }), ...(candidatePathnames === undefined ? {} : { candidatePathnames }) };
     }
 
     static async #addReadableRows(
@@ -298,7 +316,7 @@ export default class EntryFind {
         // {§entry-owner} — the alignment draws from the SAME owner the candidates matched, so a
         // match never pairs with a coordinate-twin sibling's catalog metadata.
         const byPath = new Map((await EntryManifest.catalogRowsFor(ctx, scheme, explicitOwnerId ?? await Owner.commonsId(ctx.db, ctx.workspaceId))).map((r) => [r.path, r] as const));
-        const results: MatchItem[] = [];
+        let results: MatchItem[] = [];
         const matches: Match[] = [];
         const seenPath = new Set<string>();
         let itemsTokenTotal = 0;  // content weight summed per UNIQUE entry (items repeat a file across its matches)
@@ -318,6 +336,60 @@ export default class EntryFind {
                 itemsTokenTotal += Object.values(row.channels).reduce((s, c) => s + c.tokens, 0);
             }
         }
+        // A terminal single-star catalog is a one-level map. Keep real entries
+        // at that level and collapse deeper descendants into exact, actionable
+        // `dir/**` scopes. The summaries are navigation metadata, not hidden
+        // matches: READ(*) still fans out only over the direct real entries.
+        if (statement.body === null && match.scope !== undefined && match.candidatePathnames !== undefined) {
+            for (const folder of pathFolderSummaries(match.scope, match.candidatePathnames)) {
+                let tokens = 0;
+                let items = 0;
+                for (const pathname of folder.pathnames) {
+                    const row = byPath.get(EntryManifest.toPath(scheme, pathname));
+                    if (row === undefined) continue;
+                    items++;
+                    tokens += Object.values(row.channels).reduce((sum, channel) => sum + channel.tokens, 0);
+                }
+                if (items > 0) {
+                    results.push({ path: EntryManifest.toPath(scheme, folder.selector), items, tokens });
+                    itemsTokenTotal += tokens;
+                }
+            }
+            results.sort((a, b) => a.path.localeCompare(b.path));
+
+            // `<L>` pages the catalog the model actually sees, folder summaries
+            // included. Only retained real-entry rows remain fan-out matches.
+            if (statement.lineMarker !== null) {
+                const page = LineMarkerOps.page(results, statement.lineMarker);
+                if (page.status !== 200) {
+                    return Results.failure(
+                        `scheme:${manifest.name}`,
+                        "range-not-satisfiable",
+                        page.status,
+                        page.error ?? "The requested FIND result range is not satisfiable.",
+                        { content: null, mimetype: null, results: [], itemsTokenTotal: 0, pathnames: [], matches: [] },
+                        page.range === undefined ? {} : { range: page.range },
+                    ) as FindResult;
+                }
+                results = page.items ?? [];
+                const retained = new Set(results.filter((item) => item.items === undefined).map((item) => item.path));
+                for (let i = matches.length - 1; i >= 0; i--) {
+                    if (!retained.has(EntryManifest.toPath(scheme, matches[i].pathname))) matches.splice(i, 1);
+                }
+                seenPath.clear();
+                for (const item of results) {
+                    if (item.items === undefined) {
+                        const matched = matches.find((candidate) => EntryManifest.toPath(scheme, candidate.pathname) === item.path);
+                        if (matched !== undefined) seenPath.add(matched.pathname);
+                    }
+                }
+                itemsTokenTotal = results.reduce((sum, item) => sum + (
+                    item.items === undefined
+                        ? Object.values(item.channels).reduce((channelSum, channel) => channelSum + channel.tokens, 0)
+                        : item.tokens ?? 0
+                ), 0);
+            }
+        }
         // §find-count-not-contents (#418) — a repo-scale FIND(**) over a 19k-entry workspace can't
         // enumerate: materializing every match overflows the window (a clean grind should not be a
         // crash-and-recover). Over the render budget, the result is a COUNT + narrow steer instead
@@ -327,7 +399,8 @@ export default class EntryFind {
         // (reader-declared); 0/unset = no gate (small workspaces enumerate as before).
         const budget = Number.parseInt(process.env.PLURNK_SERVICE_FIND_MAX_MATCHES ?? "0", 10);
         if (budget > 0 && results.length > budget) {
-            const steer = `${results.length} entries match, exceeding the render budget (${budget}) — not enumerated.`;
+            const noun = results.some((item) => item.items !== undefined) ? "catalog items" : "entries";
+            const steer = `${results.length} ${noun} match, exceeding the render budget (${budget}) — not enumerated.`;
             // Count-forward means COUNT ONLY. Retaining the enumerated arrays behind a
             // terse rendered steer defeated the contract twice: callers could still fan
             // every hidden match into work, and the full objects stayed resident. The

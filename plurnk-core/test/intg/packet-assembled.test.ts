@@ -21,13 +21,16 @@ const getPacket = async (db: Awaited<ReturnType<typeof openMigrated>>, turnId: n
 
 test("assembled packet: the turn-0 catalog foist renders its entries into the log", async () => {
     const prev = process.env.PLURNK_SERVICE_FILES_ITEMS;
-    process.env.PLURNK_SERVICE_FILES_ITEMS = "-1"; // foist the full per-scheme catalog at turn 0
+    process.env.PLURNK_SERVICE_FILES_ITEMS = "-1"; // foist complete shallow maps at turn 0
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `pkt-backbone-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1, "what do I have?"); // worker's first loop → foist fires (#269)
         await seedEntryWithChannel(db, { workspaceId, workerId, scheme: "worker", pathname: "/note.md", channel: "body", content: "the answer is 42", mimetype: "text/markdown" });
+        await seedEntryWithChannel(db, { workspaceId, workerId, scheme: "worker", pathname: "/nested/deep.md", channel: "body", content: "nested", mimetype: "text/markdown" });
+        await seedEntryWithChannel(db, { workspaceId, workerId, scheme: "worker", pathname: "/.env.defaults", channel: "body", content: "KNOB=1", mimetype: "text/plain" });
+        await seedEntryWithChannel(db, { workspaceId, workerId, scheme: "worker", pathname: "/.github/settings.yml", channel: "body", content: "setting: true", mimetype: "text/yaml" });
 
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(200)] } }] });
@@ -35,10 +38,14 @@ test("assembled packet: the turn-0 catalog foist renders its entries into the lo
         const packet = await getPacket(db, result.turnId);
         const log = packetSection(packet, "log");
 
-        // THE REGRESSION GUARD: the foisted FIND(worker:///**) renders its RESULT into the
+        // THE REGRESSION GUARD: the foisted FIND(worker:///*) renders its RESULT into the
         // log (§render-rule-find-renders-result) — the model SEES the catalog rows, not just
         // its own echoed query. The invisible-catalog bug rendered only `<<FIND(...)::FIND`.
-        assert.match(log, /worker:\/\/\/note\.md/, "the foisted catalog FIND renders the entry into the packet's log");
+        assert.match(log, /worker:\/\/\/note\.md/, "the foisted catalog FIND renders a direct entry into the packet's log");
+        assert.match(log, /worker:\/\/\/\.env\.defaults/, "the complete one-level map includes direct dot entries");
+        assert.match(log, /"path":"worker:\/\/\/\.github\/\*\*","items":1,"tokens":\d+/, "a dot directory renders as an actionable recursive summary");
+        assert.match(log, /"path":"worker:\/\/\/nested\/\*\*","items":1,"tokens":\d+/, "a directory renders as an actionable recursive summary");
+        assert.doesNotMatch(log, /worker:\/\/\/nested\/deep\.md/, "the opening map does not dump a summarized descendant");
         assert.match(log, /"op":"FIND"/, "the catalog foist appears as a FIND op in the log");
         assert.match(
             log,

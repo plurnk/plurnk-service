@@ -10,7 +10,9 @@
 
 -- PREP: find_workspace_entry_candidates
 -- $channel: default-channel name whose content the body matcher runs against
--- $scope_pathname: pathname-prefix glob (e.g., "foo/*") or NULL for no prefix
+-- $scope_prefix: the literal pathname prefix before any glob syntax, or NULL
+-- for no prefix. TypeScript applies the authoritative shell-glob match; this
+-- query supplies only a safe candidate superset.
 -- $tags: JSON string of tag list (e.g., '["a","b"]'); '[]' or NULL for no tag filter
 SELECT e.id AS entry_id, e.pathname, e.deep_hash, ec.content, ec.mimetype
 FROM entries e
@@ -18,7 +20,7 @@ JOIN entry_channels ec ON ec.entry_id = e.id AND ec.name = $channel
 WHERE e.workspace_id = $workspace_id
   AND e.owner_id = $owner_id
   AND e.scheme = $scheme
-  AND ($scope_pathname IS NULL OR e.pathname GLOB $scope_pathname)
+  AND ($scope_prefix IS NULL OR substr(e.pathname, 1, length($scope_prefix)) = $scope_prefix)
   AND (
     json_array_length(COALESCE($tags, '[]')) = 0
     OR e.id IN (
@@ -39,7 +41,7 @@ FROM entries e
 WHERE e.workspace_id = $workspace_id
   AND e.owner_id = $owner_id
   AND e.scheme = $scheme
-  AND ($scope_pathname IS NULL OR e.pathname GLOB $scope_pathname)
+  AND ($scope_prefix IS NULL OR substr(e.pathname, 1, length($scope_prefix)) = $scope_prefix)
   AND (
     json_array_length(COALESCE($tags, '[]')) = 0
     OR e.id IN (
