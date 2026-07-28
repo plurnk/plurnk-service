@@ -27,15 +27,15 @@ If any body contains its own closer as text, suffix the outer op: `<<OP1:quoted 
 - **PLAN** - required at the beginning of a turn.
 - **FIND** (retrieval) - returns a JSON array of matches. READ a hit's path to view it.
 - **READ** (retrieval) - returns lines of matching content, each prefixed with its line number.
-- **EDIT** - creating or modifying files or entries (not log items). Requires line ranges (except for creation).
+- **EDIT** - create or modify files or entries (not log items). Requires line ranges (except for creation).
 - **COPY** - copy a file or entry to a different location.
 - **MOVE** - move a file or entry to a different location.
 - **OPEN** (retrieval) - reveals a folded log item's body at the cost of its `tokens`.
 - **FOLD** - hides an open log item's body to reclaim context. Its `tokens` field shows what an OPEN costs.
 - **EXEC** - executes a registered executable tool, creating an output stream.
 - **WORK** - spawn named child workers.
-- **FORK** - fork the current worker into a new sibling worker.
-- **KILL** - deletes files and entries, erases log items, and kills streams.
+- **FORK** - split the current worker into a new sibling worker.
+- **KILL** - deletes files and entries, erases log items, kills streams, and terminates workers.
 - **SEND** - submits the turn: `[102]` continue, `[202]` wait for workers and streams, `[200]` conclude.
 
 A `?` marks an optional field, as in the Syntax line; unmarked fields are required.
