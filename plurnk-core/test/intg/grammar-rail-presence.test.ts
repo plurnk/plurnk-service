@@ -132,7 +132,9 @@ test("local GBNF path: the engine stamps client attachment + its own verdict (#5
         const { workspaceId, workerId, loopId } = await envelope(db);
 
         // accept — the emission is a complete sentence of the contract grammar.
-        const accept = Object.assign(new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "OK", reasoning: null } }] }), { constrainsOutput: true }) as unknown as Provider;
+        const acceptedContent = "<<PLAN::PLAN\n<<SEND[200]:ok:SEND";
+        await writeFile(gbnfPath, `root ::= ${JSON.stringify(acceptedContent)}\n`);
+        const accept = Object.assign(new Mock({ contextWindow: 100000, responses: [{ assistant: { content: acceptedContent, reasoning: null } }] }), { constrainsOutput: true }) as unknown as Provider;
         ProviderInstantiate.registerAlias(accept, "verdictbox");
         const t1 = await engine.runTurn({ provider: accept, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 1 });
         const meta1 = JSON.parse((await db.test_get_turn_meta.get<{ meta: string }>({ id: t1.turnId }))!.meta) as Record<string, unknown>;

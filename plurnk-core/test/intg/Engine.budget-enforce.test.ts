@@ -306,49 +306,6 @@ test("the 413 row states the pressure law — fold history first, fetch within t
     } finally { await db.close(); }
 });
 
-test("a finish=length turn's parse errors are led by the CAUSE — truncation, not syntax (run29)", async () => {
-    const db = await openMigrated();
-    try {
-        const { workspaceId, workerId, loopId } = await envelope(db);
-        const engine = plainEngine(db);
-        // A truncated emission: an unterminated FIND (the guillotine's signature) + finish=length.
-        const provider = new Mock({ contextWindow: 100000, responses: [{
-            // No pre-parsed ops: the engine parses the (guillotined) content itself; finishReason
-            // rides the assistant per the Mock contract.
-            assistant: { content: "<<PLAN:big turn:PLAN\n<<FIND(SPEC.md):#grinder", reasoning: null, finishReason: "length", usage: { prompt: 10, completion: 12281, reasoning: 0, cached: 0, total: 12291 } },
-        } as never] });
-        await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 1 });
-        const errs = await db.test_error_rows_for_run.all<{ rx: string }>({ worker_id: workerId });
-        assert.ok(errs.length >= 2, "the truncation row AND the parse artifact both recorded");
-        const first = JSON.parse(errs[0]!.rx) as { problem?: { type?: string; detail?: string } };
-        assert.equal(first.problem?.type, "https://problems.plurnk.dev/engine/generation/output-truncated", "the CAUSE leads");
-        assert.match(first.problem?.detail ?? "", /cut mid-op — the parse errors below are truncation artifacts/, "the cause is stated as FACT — the tail parse errors are artifacts, no remedy menu");
-        assert.match(errs.map((e) => e.rx).join(" "), /never closed/, "the parse artifacts stay — the record never hides");
-    } finally { await db.close(); }
-});
-
-test("a finish=length turn that emitted NOTHING — reasoning ran away — is led by the empty-emission cause, not a syntax lie (run52)", async () => {
-    const db = await openMigrated();
-    try {
-        const { workspaceId, workerId, loopId } = await envelope(db);
-        const engine = plainEngine(db);
-        // The runaway-reasoning shape (run52 T33/T71): the whole decode pool went to reasoning, content
-        // EMPTY, guillotined at the cap. The parser sees empty content → "must begin with PLAN" — a red
-        // herring the model must NOT read as a structure mistake; the 413 leads and frames it.
-        const provider = new Mock({ contextWindow: 100000, responses: [{
-            assistant: { content: "", reasoning: "ran away reasoning for the whole pool", finishReason: "length", usage: { prompt: 10, completion: 65536, reasoning: 0, cached: 0, total: 65546 } },
-        } as never] });
-        await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 1 });
-        const errs = await db.test_error_rows_for_run.all<{ rx: string }>({ worker_id: workerId });
-        assert.ok(errs.length >= 2, "the truncation row AND the empty-emission parse artifact both recorded — the record never hides");
-        const first = JSON.parse(errs[0]!.rx) as { problem?: { type?: string; detail?: string } };
-        assert.equal(first.problem?.type, "https://problems.plurnk.dev/engine/generation/output-truncated", "the CAUSE leads");
-        assert.match(first.problem?.detail ?? "", /nothing was emitted before the pool was consumed/, "the empty-emission cause is stated — the model emitted zero ops, so 'emit fewer' would be a lie");
-        assert.doesNotMatch(first.problem?.detail ?? "", /cut mid-op|emit fewer ops/, "no mid-op framing — there was no emission to cut");
-        assert.match(errs.map((e) => e.rx).join(" "), /a turn must begin with/, "the red-herring parse artifact stays — the record never hides; the 413 reframes it, never suppresses it");
-    } finally { await db.close(); }
-});
-
 test("SAFETY resolves PER ALIAS — the suffix wins over the bare fallback (#352, #507)", async () => {
     // Provider capacity resolves in the provider tier. Core's safety margin also resolves per
     // alias. Driven through the REAL alias resolution: a Mock carries no provider→alias

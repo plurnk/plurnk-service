@@ -6,13 +6,17 @@ import { join } from "node:path";
 import test from "node:test";
 import { promisify } from "node:util";
 import { Mock } from "@plurnk/plurnk-providers";
+import Engine from "../../src/core/Engine.ts";
 import { hermeticGitEnv } from "../../src/core/git-env.ts";
 import GitBranch from "../../src/core/GitBranch.ts";
 import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
+import Results from "../../src/core/results.ts";
+import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import WorkspaceGate from "../../src/core/WorkspaceGate.ts";
 import BranchBatches from "../../src/server/BranchBatches.ts";
 import BranchReceipt from "../../src/core/BranchReceipt.ts";
 import {
+    DEFAULT_MIMETYPES,
     insertLoop,
     insertTurn,
     insertWorker,
@@ -21,6 +25,7 @@ import {
     rootWorkspace,
     seedEntryWithChannel,
 } from "./_helpers.ts";
+import { sendStmt } from "./_dsl.ts";
 import { connect, makeMockResponse, rpcCall, runLoopToTerminal, withDaemon } from "./_rpc.ts";
 
 const execFileP = promisify(execFile);
@@ -103,6 +108,7 @@ test("a branch batch freezes one base, runs children serially, and restores the 
                     await writeFile(join(root, "one.txt"), "one\n");
                     const refused = await batches.completionGate(workerId);
                     assert.equal(refused?.status, 409);
+                    assert.match(refused?.problem?.type ?? "", /branch-work-uncommitted$/);
                     await git(root, ["add", "one.txt"]);
                     await git(root, [
                         "-c", "user.name=Plurnk Test",
@@ -111,6 +117,13 @@ test("a branch batch freezes one base, runs children serially, and restores the 
                         "-c", "core.hooksPath=/dev/null",
                         "commit", "--no-verify", "--quiet", "-m", "test: branch one",
                     ]);
+                }
+                if (branch === "feature/two") {
+                    await GitBranch.switch(root, original.ref ?? original.commit);
+                    const refused = await batches.completionGate(workerId);
+                    assert.equal(refused?.status, 409);
+                    assert.match(refused?.problem?.type ?? "", /branch-checkout-changed$/);
+                    await GitBranch.switch(root, branch);
                 }
                 assert.equal(await batches.completionGate(workerId), null);
                 const result = branch === "feature/failure" ? { status: 500 } : { status: 200 };
@@ -277,6 +290,132 @@ test("tagged sibling workers execute through the complete daemon topology", asyn
         else process.env.PLURNK_SERVICE_GIT_AUTO = priorAuto;
         if (priorNative === undefined) delete process.env.PLURNK_SERVICE_GIT_NATIVE;
         else process.env.PLURNK_SERVICE_GIT_NATIVE = priorNative;
+    }
+});
+
+test("branch completion gates every terminal SEND and accepts the retry after cleanup", async (t) => {
+    for (const specimen of [
+        { signal: 200, terminal: 200, name: "conclude" },
+        { signal: 499, terminal: 499, name: "abandon" },
+        { signal: 202, terminal: 200, name: "drained join" },
+    ] as const) {
+        await t.test(specimen.name, async () => {
+            const db = await openMigrated();
+            try {
+                const workspaceId = await insertWorkspace(db, `branch-send-${specimen.signal}-${crypto.randomUUID()}`);
+                const workerId = await insertWorker(db, workspaceId);
+                const loopId = await insertLoop(db, workerId, 1, "branch work");
+                let blocked = true;
+                let gateCalls = 0;
+                const engine = new Engine({
+                    db,
+                    schemes: new SchemeRegistry(),
+                    mimetypes: DEFAULT_MIMETYPES,
+                    branchCompletionGate: async () => {
+                        gateCalls++;
+                        return blocked
+                            ? Results.failure(
+                                "lifecycle:branch",
+                                "branch-work-uncommitted",
+                                409,
+                                "Commit or deliberately discard the branch work, then conclude again.",
+                            )
+                            : null;
+                    },
+                });
+                const run = () => engine.runTurn({
+                    provider: new Mock({
+                        contextWindow: 100000,
+                        responses: [{
+                            assistant: {
+                                content: "",
+                                reasoning: null,
+                                ops: [sendStmt(specimen.signal, null, specimen.name)],
+                            },
+                        }],
+                    }),
+                    workspaceId,
+                    workerId,
+                    loopId,
+                    messages: [{ role: "system", content: "SD" }, { role: "user", content: "finish" }],
+                });
+
+                const refused = await run();
+                assert.equal(refused.status, 102, "a denied terminal leaves the loop available to repair");
+                assert.equal(gateCalls, 1);
+                const refusedRows = await db.test_log_sequencees_by_turn.all<{
+                    status_rx: number;
+                    op: string;
+                }>({ turn_id: refused.turnId });
+                assert.equal(
+                    refusedRows.find(({ op }) => op === "SEND")?.status_rx,
+                    409,
+                    "the emitted terminal is durably recorded as refused",
+                );
+
+                blocked = false;
+                const accepted = await run();
+                assert.equal(accepted.status, specimen.terminal);
+                assert.equal(gateCalls, 2, "the repaired retry passes through the gate again");
+                assert.equal(
+                    (await db.test_get_loop_status.get<{ status: number }>({ id: loopId }))?.status,
+                    specimen.terminal,
+                );
+            } finally {
+                await db.close();
+            }
+        });
+    }
+});
+
+test("SEND[202] does not check branch completion while joined work is still live", async () => {
+    const db = await openMigrated();
+    try {
+        const workspaceId = await insertWorkspace(db, `branch-live-join-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const loopId = await insertLoop(db, workerId, 1, "branch work");
+        const childId = await insertWorker(db, workspaceId, workerId, "cleanup");
+        await insertLoop(db, childId, 1, "cleanup still running");
+        let gateCalls = 0;
+        const engine = new Engine({
+            db,
+            schemes: new SchemeRegistry(),
+            mimetypes: DEFAULT_MIMETYPES,
+            branchCompletionGate: async () => {
+                gateCalls++;
+                return Results.failure(
+                    "lifecycle:branch",
+                    "branch-work-uncommitted",
+                    409,
+                    "The branch is not ready to return.",
+                );
+            },
+        });
+        const result = await engine.runTurn({
+            provider: new Mock({
+                contextWindow: 100000,
+                responses: [{
+                    assistant: {
+                        content: "",
+                        reasoning: null,
+                        ops: [sendStmt(202, null, "waiting for cleanup")],
+                    },
+                }],
+            }),
+            workspaceId,
+            workerId,
+            loopId,
+            messages: [{ role: "system", content: "SD" }, { role: "user", content: "finish" }],
+        });
+
+        assert.equal(result.status, 202, "live work parks the loop");
+        assert.equal(gateCalls, 0, "branch completion is not judged until the join drains");
+        assert.equal(
+            (await db.test_get_loop_status.get<{ status: number }>({ id: loopId }))?.status,
+            202,
+        );
+    } finally {
+        await db.close();
     }
 });
 

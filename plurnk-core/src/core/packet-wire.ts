@@ -561,19 +561,16 @@ export default class PacketWire {
                     if (arrival.cut) body += `\n… arrival preview — the full deliverable is ${e.rx.split("\n").length} lines: READ worker://${(e.target && typeof e.target === "object" && "pathname" in e.target ? String((e.target as { pathname?: string }).pathname ?? "") : "").replace(/^\//, "")}`;
                 }
             } else if (op === "error") {
-                // §operation-results — a parse-error row is a LOG ITEM; its body is the parser message, which
-                // carries the content-offset `line:col`. The model resolves that line against its own
-                // emission — READ the folded `model` mirror row (§model-entry) — so no snippet is embedded.
-                // Foldable like any body; the errors section keeps only a pointer (status + coordinate).
+                // §operation-results — an actionless engine-rail failure is a LOG ITEM.
+                // Foldable like any body; the errors section keeps only a pointer.
                 const detail = (rx !== null && typeof rx === "object" ? rx : {}) as { message?: unknown };
                 if (typeof detail.message === "string" && detail.message.length > 0) {
                     body = PacketWire.#wrapHeredocBody(path ?? `log:///${coordinate}`, detail.message);
                 }
             } else if (op === "model") {
-                // §model-entry — the model's own verbatim emission, mirrored back so it sees exactly
-                // what it produced. Line-numbered like all content (the parser reports errors by line,
-                // so the model can reason about its own syntax error). Folded by default → just the
-                // meta line until OPENed; the turn-0 exemplar is born open (the worked example).
+                // §model-entry — the model's own admitted emission, mirrored back verbatim.
+                // Folded by default → just the meta line until OPENed; the turn-0 exemplar
+                // is born open (the worked example).
                 if (rx !== null && typeof rx === "object" && typeof rx.content === "string" && rx.content.length > 0) {
                     const mimetype = typeof rx.mimetype === "string" ? rx.mimetype : "text/vnd.plurnk";
                     body = PacketWire.#renderContentBody(path ?? `log:///${coordinate}`, rx.content, mimetype);

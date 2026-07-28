@@ -46,6 +46,14 @@ SELECT id, loop_id, sequence, status,
        finish_reason, model, packet
 FROM turns WHERE id = $id;
 
+-- PREP: test_turn_attempts
+SELECT sequence, accepted, response, parse_errors,
+       usage_prompt, usage_completion, usage_reasoning, usage_cached, usage_cost_usd,
+       finish_reason, model
+FROM turn_attempts
+WHERE turn_id = $turn_id
+ORDER BY sequence;
+
 -- PREP: test_get_log_entry_by_id
 SELECT id, status_rx, state, outcome, attrs, rx
 FROM log_entries WHERE id = $id;

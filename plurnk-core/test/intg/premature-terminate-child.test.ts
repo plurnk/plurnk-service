@@ -325,28 +325,6 @@ test("one idle-grace turn after a retrieval-409 — obeying the steer never stri
     } finally { await db.close(); }
 });
 
-test("a parse-emptied turn is FAILED RETRIEVAL, not idle — the root 400 speaks alone, no idle-409 stacked (#467)", async () => {
-    // run65's shape: PLAN + a malformed FIND + SEND[102]. The FIND dies at the parser, leaving the
-    // turn op-less AFTER the fact — the old rail then called it idle (factually wrong from the
-    // model's seat: it performed an op; the op died) and minted a second error row for one accident.
-    // Owner criterion: op attempts that errored → the root error alone; idle only for truly idle.
-    const db = await openMigrated();
-    try {
-        const workspaceId = await insertWorkspace(db, `pe-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1, "go");
-        const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-        const provider = new Mock({ contextWindow: 100000, responses: [
-            // RAW content (no pre-parsed ops) so the real parser judges it: the FIND is malformed.
-            { assistant: { content: "<<PLAN:check the doc:PLAN\n<<FIND(((broken:FIND\n<<SEND[102]:fetching:SEND", reasoning: null } },
-        ] });
-        await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
-        const errRows = await db.test_error_rows_for_run.all<{ rx: string }>({ worker_id: workerId });
-        assert.ok(errRows.length > 0, "the malformed FIND minted its parse-error row (the root cause, recorded)");
-        assert.ok(errRows.every((r) => !/engine\/rail\/idle-turn|Illegal idle/.test(r.rx)), "no idle-409 stacked on the root error — one accident, one error");
-    } finally { await db.close(); }
-});
-
 test("a FAILED op row carries its failure message on its META LINE — the record states its why, folded or open", async () => {
     // The wildcard specimen: the refused SEND's rx held the steer, the row folded, and the model
     // theorized 'SEND[409] probably means bad request?' for 201s. The jumbo specimen: a minted

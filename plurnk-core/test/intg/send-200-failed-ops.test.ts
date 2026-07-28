@@ -1,7 +1,7 @@
 // §send-200-failed-ops (#363, owner ruling) — a worker must not conclude 200 over a failed op.
-// A turn's failures (op results >= 400, this emission's parse errors) are UNSEEN until the next
-// packet; a same-turn SEND[200] is refused 409 (weigh, then conclude), SEND[499] is never gated,
-// and the gate judges only the current turn (no re-arm on its own refusal).
+// A turn's failed operation results are UNSEEN until the next packet; a same-turn
+// SEND[200] is refused 409 (weigh, then conclude), SEND[499] is never gated,
+// and the gate judges only the current turn. Invalid emissions never dispatch.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
@@ -27,34 +27,6 @@ test("a failed op + SEND[200] same turn → 409; the NEXT turn's [200] concludes
             const sends = (rows ?? []).filter((r) => r.op === "SEND" && r.origin === "model");
             assert.equal(sends[0]?.status_rx, 409, "the first [200] was refused over the unseen failure");
             assert.match(sends[0]?.rx ?? "", /failed operation/, "the refusal names the failure, not a generic error");
-        } finally { ws.close(); }
-    });
-});
-
-test("this emission's PARSE errors gate the same-turn [200] (they mint as rows only after dispatch)", async () => {
-    // makeMockResponse pre-parses (ops:) and the engine SKIPS parsing pre-parsed responses — so
-    // the parse-error leg needs a CONTENT-ONLY response the engine parses for real. An unclosed
-    // body (the truncation shape) yields an unparsedTail parse error while the terminal SEND
-    // still parses; the count is threaded pre-dispatch — the [200] must not conclude past it.
-    const rawResponse = (content: string) => ({
-        assistant: { content, reasoning: null, usage: { prompt: 0, completion: 10, reasoning: 0, cached: 0, total: 10 } },
-        assistantRaw: null,
-    });
-    const mock = new Mock({ contextWindow: 16384, responses: [
-        rawResponse("<<PLAN:do the thing:PLAN\n<<SEND[200]:done:SEND\n<<EDIT(worker:///notes.md):opened but never closed"),
-        rawResponse("<<PLAN:the op was malformed — concluding having seen the error:PLAN\n<<SEND[200]:done:SEND"),
-    ] });
-    await withDaemon(mock, async (db, _daemon, addr) => {
-        const ws = await connect(addr);
-        try {
-            await rpcCall(ws, 1, "workspace.create", { name: "parsegate" });
-            const { finalStatus, turnIds = [] } = await runLoopToTerminal(ws, 2, { prompt: "go", flags: { auto: true } });
-            assert.equal(finalStatus, 200);
-            assert.ok(turnIds.length >= 2, "the parse error forced a weigh turn before concluding");
-            await flush();
-            const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; status_rx: number }>({ loop_id: 2 });
-            const sends = (rows ?? []).filter((r) => r.op === "SEND" && r.origin === "model");
-            assert.equal(sends[0]?.status_rx, 409, "the emission with a parse error cannot conclude 200");
         } finally { ws.close(); }
     });
 });

@@ -1,11 +1,6 @@
 // SPEC contract coverage for the user-packet notices + prompt-foist
 // surface (§packet / §operation-results). One test per contract tag. Every assertion is
 // against real DB artifacts and the real wire render — no stand-ins.
-//
-// Parse errors are driven END-TO-END: the Mock response supplies `content`
-// WITHOUT pre-parsed `ops`, forcing Engine.#splitResponse to run the real
-// PlurnkParser, which yields a genuine parse failure with a real content-offset
-// position the model resolves against its own emission (the born-OPEN model row).
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -28,12 +23,11 @@ const opsResponse = (ops: PlurnkStatement[]): MockResponse => ({
     assistantRaw: null,
 });
 
-// Response from raw content WITHOUT ops — forces the engine to run the real
-// PlurnkParser, so a malformed emission produces a genuine parse_error.
+// Response from raw content WITHOUT ops - forces the engine to run the real
+// PlurnkParser rather than Mock's trusted pre-parsed seam.
 const contentResponse = (content: string): MockResponse => ({
     assistant: {
-        // grammar 0.70: turns lead with PLAN (the Engine re-parses this content to
-        // surface the genuine parse_error in the embedded op, now on line 2).
+        // Turns lead with PLAN; the Engine re-parses the supplied content.
         content: content.startsWith("<<PLAN") ? content : `<<PLAN::PLAN\n${content}`,
         reasoning: null,
         usage: { prompt: 0, completion: 0, reasoning: 0, cached: 0, total: 0 },
@@ -43,20 +37,15 @@ const contentResponse = (content: string): MockResponse => ({
 
 // A no-op draining turn — its only job is to RUN so the model's NEXT packet drains the
 // notices buffer on read. These tests assert the drain, never a dispatch; the former
-// bare-statement op builders (no PLAN lead) silently parsed to [] anyway — same effect,
-// now explicit (and parseDsl no longer hides that parse error — see _rpc.ts).
+// bare-statement op builders (no PLAN lead) silently parsed to [] anyway - same effect,
+// now explicit.
 const drainTurn = opsResponse([]);
-
-// Actionless malformation: a SEND with a non-integer signal — the lexer
-// rejects 'x' in the signal slot at 1:7. (The former `//`-xpath trigger now
-// degrades to glob in grammar 0.20.0, so it no longer errors.)
-const BROKEN_STMT = "<<SEND[x]:y:SEND";
 
 // An engine NOTICE provider (providers#24 filter mode): returns the model's bytes + a non-fatal
 // `grammar_unenforced` Notice at a code-point divergence. A Notice is ephemeral,
 // drain-on-read, and broadcast — distinct from a durable failure log item.
 // `extraDrains` clean turns follow so the buffer can be observed draining.
-const NOTICE_CONTENT = "<<PLAN:reasoning:PLAN\n<<SEND[103]:noted:SEND"; // 'N' of SEND on line 2 = code point 26
+const NOTICE_CONTENT = "<<PLAN:reasoning:PLAN\n<<SEND[200]:noted:SEND"; // 'N' of SEND on line 2 = code point 26
 const NOTICE_POS = 26; // → content-offset line 2, column 4
 const noticeProvider = (extraDrains: number) => {
     const provider = new Mock({ contextWindow: 100000, responses: Array.from({ length: extraDrains }, () => drainTurn) });
@@ -201,7 +190,7 @@ test("#275 / providers#24 — filter-mode grammar_unenforced does NOT throw: the
         // divergence position — it does NOT throw. The engine must persist the bytes (no empty
         // turn, the old cascade root cause) AND drain the event with a content-offset line:col the
         // model resolves against its own (born-OPEN) emission.
-        const FREE = "<<PLAN:reasoning:PLAN\n<<SEND[103]:noted:SEND"; // 'N' of SEND on line 2 is code point 26
+        const FREE = "<<PLAN:reasoning:PLAN\n<<SEND[102]:noted:SEND"; // 'N' of SEND on line 2 is code point 26
         const provider = new Mock({ contextWindow: 100000, responses: [drainTurn] }); // turn 2 drains
         const realGenerate = provider.generate.bind(provider);
         let did = false;
@@ -336,72 +325,6 @@ test("a parser warning remains an advisory — valid statements complete and no 
             [],
             "an advisory cannot become durable failure truth",
         );
-    } finally { await db.close(); }
-});
-
-test("an actionless parse failure is a LOG ITEM (op='error', status 400) — queryable + foldable, not a bespoke error:// scheme", async () => {
-    const { db, engine, workspaceId, workerId, loopId } = await setup();
-    try {
-        const provider = new Mock({
-            contextWindow: 100000,
-            responses: [
-                contentResponse(BROKEN_STMT),                 // actionless failure (no op dispatched)
-                drainTurn,
-            ],
-        });
-        await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
-
-        // The failure is a DURABLE log row — op='error', status_rx 400, actionless (no target).
-        // It folds/kills/recalls like any log entry (§operation-results), so the
-        // grinder's prior-turn rollback can reclaim it: one budget surface, the log.
-        const rows = await db.test_log_entries_by_loop.all<{ op: string; status_rx: number; scheme: string | null }>({ loop_id: loopId });
-        const errRow = rows.find((r) => r.op === "error" && r.status_rx === 400);
-        assert.ok(errRow !== undefined, "parse failure recorded as a log:///…/error item (status 400), not ephemeral notices");
-        assert.equal(errRow!.scheme, null, "an error row is actionless — no target scheme");
-
-        // No `error://` SCHEME namespace — errors live in the LOG (log:///), not a bespoke scheme.
-        const errorScheme = await db.test_count_entries_by_session_scheme.get<{ n: number }>({
-            workspace_id: workspaceId, scheme: "error",
-        });
-        assert.equal(errorScheme?.n ?? 0, 0, "no error:// scheme entries — errors are log items, queried via log:///");
-
-        // The errors section derives a LogCoordinate POINTER (status + coordinate) to the log item.
-        const t2 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
-        const p2 = await getPacket(db, t2.turnId);
-        assert.ok(
-            /^\* 400 log:\/\/\/.+\/error$/m.test(packetSection(p2, "errors")),
-            "errors section surfaces a derived LogCoordinate pointer to the error log item",
-        );
-    } finally { await db.close(); }
-});
-
-// §model-entry — the per-turn `model` echo (origin=model, distinct from the born-OPEN turn-0
-// exemplar at origin=plurnk) is ALWAYS born FOLDED (auto-OPEN on error is retired; the model READs its
-// malformed emission, line-numbered, to fix it) and FOLDED on a clean turn (budget-neutral).
-test("the model echo is ALWAYS born FOLDED — errored and clean turns alike (the model READs it when it cares)", async () => {
-    const { db, engine, workspaceId, workerId, loopId } = await setup();
-    try {
-        const provider = new Mock({
-            contextWindow: 100000,
-            responses: [
-                contentResponse(BROKEN_STMT),                  // turn 1: genuine parse error
-                contentResponse("<<SEND[200]:done:SEND"),      // turn 2: clean emission
-            ],
-        });
-        const t1 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
-        const t2 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
-
-        const echo = async (turnId: number) =>
-            (await db.test_log_entries_by_loop.all<{ op: string; origin: string; expanded: number; turn_id: number }>({ loop_id: loopId }))
-                .find((r) => r.turn_id === turnId && r.op === "model" && r.origin === "model");
-
-        const e1 = await echo(t1.turnId);
-        assert.ok(e1 !== undefined, "the parse-error turn mirrors a model echo");
-        assert.equal(e1!.expanded, 0, "born FOLDED even on the erred turn — auto-OPEN is retired; the model READs the cited lines");
-
-        const e2 = await echo(t2.turnId);
-        assert.ok(e2 !== undefined, "the clean turn mirrors a model echo");
-        assert.equal(e2!.expanded, 0, "born FOLDED — budget-neutral until the model OPENs it");
     } finally { await db.close(); }
 });
 

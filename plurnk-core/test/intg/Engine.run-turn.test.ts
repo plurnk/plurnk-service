@@ -36,8 +36,7 @@ const planStmt = (body: string): PlanStatement => ({
     lineMarker: null, body, position: { line: 1, column: 1 },
 });
 
-// A response with content but NO pre-parsed ops, so the engine runs the parser
-// (the only path that yields free-text items → synthesized SEND[103]).
+// A response with content but NO pre-parsed ops, so the engine runs the parser.
 const contentResp = (content: string, completion: number): MockResponse => ({
     assistant: {
         // grammar 0.70: turns lead with PLAN (the Engine re-parses this content).
@@ -632,8 +631,7 @@ test("Engine.runLoop: period-2 alternating cycle detected after 6 turns", async 
 test("Engine.runLoop: cycle detection is internal — bumps turnErrors, NO model-facing notice", async () => {
     // Per rummy precedent (plugins/error/error.js) AND gamification
     // policy: cycle, strike, sudden_death are all engine bookkeeping.
-    // Model sees errors that happened (parse_error, action_failure),
-    // not the engine's accounting about them.
+    // Model sees admitted operation failures, not the engine's accounting.
     const { db, engine, workspaceId, workerId, loopId } = await setup();
     try {
         const provider = new Mock({
@@ -931,9 +929,8 @@ test("Engine.runTurn: Errors includes only the immediately previous turn", async
 test("Engine.runTurn: free text before an op is tolerated — the trailing op still parses (grammar 0.74.9)", async () => {
     const { db, engine, workspaceId, workerId, loopId } = await setup();
     try {
-        // grammar 0.74.9 recovers free text before a statement (#free-text-capture is back):
-        // the prose is captured and the SEND[200] after it STILL parses + dispatches, so the
-        // turn terminates at 200 — reversing 0.70's strict "prose breaks the op → 422".
+        // The parser tolerates free text before a statement. The prose is
+        // non-executable, while the SEND[200] after it still parses and dispatches.
         const provider = new Mock({
             contextWindow: 100000,
             responses: [contentResp("Just thinking out loud here.\n<<SEND[200]:done:SEND", 10)],
@@ -942,8 +939,8 @@ test("Engine.runTurn: free text before an op is tolerated — the trailing op st
             provider, workspaceId, workerId, loopId,
             messages: [{ role: "system", content: "sys" }, { role: "user", content: "go" }],
         });
-        assert.deepEqual(result.statuses, [200, 200], "the prose is captured AND the SEND after it parses + dispatches");
-        assert.equal(result.status, 200, "the SEND terminates the turn — free text no longer breaks the op");
+        assert.deepEqual(result.statuses, [200, 200], "PLAN and the SEND after the prose parse and dispatch");
+        assert.equal(result.status, 200, "the SEND terminates the turn; free text does not break the op");
     } finally { await db.close(); }
 });
 
@@ -963,52 +960,5 @@ test("Engine.runTurn: PLAN dispatches as an ordinary log op — passed through, 
         // The PLAN body is a real log row (passed to the client), NOT swallowed into reasoning.
         const ops = await db.test_log_entries_by_loop.all<{ op: string }>({ loop_id: loopId });
         assert.ok(ops.some((o) => o.op === "PLAN"), "PLAN is logged as an op, not hoisted to reasoning");
-    } finally { await db.close(); }
-});
-
-test("Engine.runTurn: a prose-only turn strikes as no-ops (422) — free text dropped, not synthesized (free-text-capture retired)", async () => {
-    const { db, engine, workspaceId, workerId, loopId } = await setup();
-    try {
-        const provider = new Mock({
-            contextWindow: 100000,
-            responses: [contentResp("Just rambling, taking no action at all.", 8)],
-        });
-        const result = await engine.runTurn({
-            provider, workspaceId, workerId, loopId,
-            messages: [{ role: "system", content: "sys" }, { role: "user", content: "go" }],
-        });
-        assert.deepEqual(result.statuses, [200], "only the PLAN dispatched; the prose is dropped (no synthesized op)");
-        assert.equal(result.status, 422, "no terminal SEND — a PLAN-only turn strikes 422");
-    } finally { await db.close(); }
-});
-
-test("a truncated emission (finish=length + parse errors) dispatches NOTHING (#566)", async () => {
-    const { db, engine, workspaceId, workerId, loopId } = await setup();
-    try {
-        // The run42 shape: the provider guillotined the emission at the completion cap. It has a
-        // FIND and then an EDIT cut mid-body (never closed) — the parser yields the FIND op PLUS a
-        // "never closed" error, and there's no terminal SEND. A severed frame, not a flubbed op.
-        const truncated: MockResponse = {
-            assistant: {
-                content: "<<PLAN::PLAN\n<<FIND(worker:///**)::FIND\n<<EDIT(worker:///scratch):this body was cut off mid-emissi",
-                reasoning: null,
-                finishReason: "length",
-                usage: { prompt: 10, completion: 17000, reasoning: 0, cached: 0, total: 17010 },
-            },
-        };
-        const result = await engine.runTurn({
-            provider: new Mock({ contextWindow: 100000, responses: [truncated] }),
-            workspaceId, workerId, loopId,
-            messages: [{ role: "system", content: "sys" }, { role: "user", content: "go" }],
-        });
-        // No op the MODEL emitted dispatched — the FIND and EDIT are refused wholesale.
-        const rows = await db.test_ops_by_turn.all<{ op: string; origin: string; status_rx: number }>({ turn_id: result.turnId });
-        const modelDispatched = rows.filter((r) => r.origin === "model" && r.op !== "model" && r.op !== "error");
-        assert.deepEqual(modelDispatched, [], `a broken packet dispatches nothing; got ${JSON.stringify(modelDispatched)}`);
-        // But the turn still RECORDS through the existing error channel: the output_truncated 413
-        // and the folded model mirror — so the model sees why and re-emits next turn.
-        assert.ok(rows.some((r) => r.op === "error" && r.status_rx === 413), "the output_truncated 413 is recorded");
-        assert.ok(rows.some((r) => r.op === "model"), "the verbatim emission is mirrored (folded) for the model to re-read");
-        assert.equal(result.status, 422, "a no-valid-ops turn strikes 422");
     } finally { await db.close(); }
 });

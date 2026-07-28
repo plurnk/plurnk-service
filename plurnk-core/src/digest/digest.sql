@@ -20,6 +20,13 @@ SELECT id, loop_id, sequence, status, packet,
        finish_reason, model, meta, timestamp
 FROM turns ORDER BY loop_id, sequence;
 
+-- PREP: digest_turn_attempts
+SELECT id, turn_id, sequence, accepted, response, parse_errors,
+       usage_prompt, usage_completion, usage_reasoning, usage_cached, usage_cost_usd,
+       finish_reason, model, timestamp
+FROM turn_attempts
+ORDER BY turn_id, sequence;
+
 -- PREP: digest_log_entries
 SELECT id, worker_id, loop_id, turn_id, sequence, at, origin,
        op, suffix, signal,

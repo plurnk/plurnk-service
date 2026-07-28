@@ -42,9 +42,6 @@ export type DispatchContext = {
     sequence: number;
     origin: WriterTier;
     onDispatch?: (logEntryId: number) => void;
-    // §send-200-failed-ops — this emission's parse-error count, threaded from runTurn (parse errors
-    // mint AFTER dispatch, so the terminal gate can't see them as rows). Absent off-run.
-    turnParseErrors?: number;
 };
 
 export type DispatchResult = SchemeResult;
@@ -301,7 +298,7 @@ export default class Dispatcher {
     }
 
     async #dispatchOne(context: DispatchContext): Promise<DispatchResult> {
-        const { statement, workspaceId, workerId, loopId, turnId, sequence, origin, onDispatch, turnParseErrors } = context;
+        const { statement, workspaceId, workerId, loopId, turnId, sequence, origin, onDispatch } = context;
         const schemeCtx = this.#buildSchemeCtx({ workspaceId, workerId, loopId, turnId, origin });
         let result: DispatchResult;
         let denial = this.#checkWritable(statement, origin);
@@ -353,7 +350,7 @@ export default class Dispatcher {
                         }
                     }
                 } else if (statement.op === "SEND" && statement.target === null) {
-                    result = await this.#handleSendBroadcast(statement, { workspaceId, workerId, loopId, turnId, sequence, turnParseErrors });
+                    result = await this.#handleSendBroadcast(statement, { workspaceId, workerId, loopId, turnId, sequence });
                 } else if (statement.op === "FORK" || statement.op === "WORK") {
                     result = await this.#handleWorkerControl(statement, schemeCtx);
                 } else if (statement.op === "COPY") {
@@ -1000,8 +997,8 @@ export default class Dispatcher {
         return { status: 200, content: sliced.text ?? "", mimetype: "text/markdown", startLine: sliced.startLine ?? span.lineStart };
     }
 
-    // §model-entry — mirror a verbatim model emission back as an actionless `model` log row, so
-    // the model can finally SEE its own prior output (and reason through its own syntax errors).
+    // §model-entry — mirror an admitted model emission back as an actionless `model` log row, so
+    // the model can inspect and curate its own prior behavior.
     // Born FOLDED by default (budget-neutral until OPENed); the turn-0 exemplar passes folded:false
     // (born open — the one worked example the model orients on, thinning the grammar). text/vnd.plurnk.
     async writeModelEntry({ verbatim, workerId, loopId, turnId, sequence, folded, origin = "model", reasoningItems }: {
@@ -1184,9 +1181,9 @@ export default class Dispatcher {
     // model's Log until the next packet. Both explicit completion and an
     // already-drained join must cross that observation boundary before they
     // can honestly finish the loop.
-    async #unobservedFailureCount(turnId: number, turnParseErrors = 0): Promise<number> {
+    async #unobservedFailureCount(turnId: number): Promise<number> {
         const failedRows = await this.#db.engine_turn_failures.all<{ id: number }>({ turn_id: turnId });
-        return failedRows.length + turnParseErrors;
+        return failedRows.length;
     }
 
     static #unobservedFailures(failCount: number): DispatchResult {
@@ -1214,7 +1211,6 @@ export default class Dispatcher {
         loopId: number;
         turnId: number;
         sequence: number;
-        turnParseErrors?: number;
     }): Promise<DispatchResult> {
         if (statement.op !== "SEND") throw new Error("unreachable");
         const { workerId, loopId, turnId } = ctx;
@@ -1266,7 +1262,7 @@ export default class Dispatcher {
             if (observations.retrievals || observations.streamTerminations || observations.childTerminations) {
                 return { status: 102 };
             }
-            const failCount = await this.#unobservedFailureCount(turnId, ctx.turnParseErrors ?? 0);
+            const failCount = await this.#unobservedFailureCount(turnId);
             if (failCount > 0) return Dispatcher.#unobservedFailures(failCount);
             const branchDenial = await this.#branchCompletionGate?.(workerId) ?? null;
             if (branchDenial !== null) return branchDenial;
@@ -1309,13 +1305,10 @@ export default class Dispatcher {
         // attempt faithfully (status_rx=409, never erased); the loop stays a continue; the strike
         // couples in runTurn. [499] abandons and cancels the descendant scope.
         if (status === 200) {
-            // §send-200-failed-ops (#363, owner ruling: never 200 over a failed op) — the failure
-            // twin of the pending set: this turn's failed op results (and this emission's parse
-            // errors, threaded — they mint as rows only after dispatch) are UNSEEN until the next
-            // packet, so concluding over them is concluding blind. Refused 409; next turn, the
-            // errors in-log and weighed, [200] stands. [499] below is never gated — declaring
-            // failure IS weighing it.
-            const failCount = await this.#unobservedFailureCount(turnId, ctx.turnParseErrors ?? 0);
+            // §send-200-failed-ops (#363, owner ruling: never 200 over a failed op) — this turn's
+            // failed operation results are UNSEEN until the next packet, so concluding over them
+            // is concluding blind. Invalid syntax never reaches dispatch at all.
+            const failCount = await this.#unobservedFailureCount(turnId);
             if (failCount > 0) return Dispatcher.#unobservedFailures(failCount);
             const pending = await this.#pendingSet(workerId, turnId);
             if (pending.length > 0) {

@@ -355,7 +355,7 @@ test("a durable failure pointer renders as a terse <status> log:/// link, no JSO
 });
 
 test("heterogeneous failures render as uniform durable pointers, no per-kind shape", () => {
-    // A parse failure (400), an action failure (403), a budget overflow (413): three categories, one
+    // A dispatch refusal (400), an action failure (403), a budget overflow (413): three categories, one
     // channel. Each is a LogCoordinate-positioned event rendered as the same terse link — the section
     // never restates the term or carries per-kind JSON. The detail lives on each row, READ via the link.
     const errors = [

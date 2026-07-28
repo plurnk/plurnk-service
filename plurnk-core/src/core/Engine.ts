@@ -139,6 +139,26 @@ type TurnCallMetadata = {
     model: string;
 };
 
+type SplitProviderResponse = {
+    packetAssistant: PacketAssistant;
+    callMetadata: TurnCallMetadata;
+    parseErrors: ParseErrorInfo[];
+    parseNotices: Notice[];
+    emissionValid: boolean;
+};
+
+type EngineTurnResult = {
+    turnId: number;
+    status: number;
+    statuses: number[];
+    fingerprint: string;
+    budgetStruck: boolean;
+    budgetHardStop: boolean;
+    steerStruck: boolean;
+    emissionAttempts: number;
+    emissionExhausted: boolean;
+};
+
 // Default turn.status when ops were emitted but no SEND. Model is implicitly
 // continuing; loop.status stays 102 either way (only SEND broadcast advances
 // loop terminal). No strike, no notices.
@@ -158,6 +178,15 @@ const readPositiveInt = (envVar: string, fallback: number): number => {
     const n = Number.parseInt(raw, 10);
     if (!Number.isFinite(n) || n < 1) return fallback;
     return n;
+};
+
+const readEmissionAttempts = (): number => {
+    const raw = process.env.PLURNK_SERVICE_EMISSION_ATTEMPTS;
+    const value = Number.parseInt(raw ?? "", 10);
+    if (!Number.isInteger(value) || value < 1) {
+        throw new Error(`PLURNK_SERVICE_EMISSION_ATTEMPTS must be a positive integer; got ${raw}`);
+    }
+    return value;
 };
 
 // §operator-config-loop-timeout — the loop's wall-clock budget (PLURNK_SERVICE_LOOP_TIMEOUT).
@@ -553,7 +582,7 @@ export default class Engine {
         origin?: WriterTier;
         signal?: AbortSignal;
         onDispatch?: (logEntryId: number) => void;
-    }): Promise<{ turnIds: number[]; result: SchemeResult; hitMaxTurns: boolean; reason: "max_turns" | "strike_threshold" | "budget_overflow" | "loop_timeout" | "external" | null }> {
+    }): Promise<{ turnIds: number[]; result: SchemeResult; hitMaxTurns: boolean; reason: "max_turns" | "strike_threshold" | "budget_overflow" | "invalid_emission" | "loop_timeout" | "external" | null }> {
         // A 202 park suspends this durable loop and a later wake re-enters runLoop.
         // Its ceiling therefore counts every prior turn, not merely this process-local
         // execution segment.
@@ -702,6 +731,22 @@ export default class Engine {
             }
             turnIds.push(turn.turnId);
 
+            // Invalid provider emissions are retried beneath this turn and never
+            // reach the strike rail. Exhausting that inner attempt budget is a
+            // terminal generation failure, not one of the engine's three strikes.
+            if (turn.emissionExhausted) {
+                const failure = Results.failure(
+                    "engine:generation",
+                    "invalid-emission-exhausted",
+                    500,
+                    `The model failed to emit a valid PLAN...SEND turn in ${turn.emissionAttempts} attempts.`,
+                );
+                const result = await this.#lifecycle.finish(loopId, failure);
+                if (result === null) throw new Error(`loop ${loopId} became terminal before invalid-emission settlement`);
+                cleanup("forceful", "invalid_emission");
+                return { turnIds, result, hitMaxTurns: false, reason: "invalid_emission" };
+            }
+
             // SPEC §grinder: budget hard-stop — packet won't fit even collapsed → abandon.
             if (turn.budgetHardStop) {
                 const failure = Results.failure(
@@ -772,7 +817,7 @@ export default class Engine {
         // are augmented with the durable state (index/log/notices).
         turnNumber?: number;
         maxTurns?: number;
-    }): Promise<{ turnId: number; status: number; statuses: number[]; fingerprint: string; budgetStruck: boolean; budgetHardStop: boolean; steerStruck: boolean }> {
+    }): Promise<EngineTurnResult> {
         // === Turn-as-container model ===
         //
         // Turn rows are created at runTurn OPEN (status=102, placeholder
@@ -1158,7 +1203,17 @@ export default class Engine {
                 usage_prompt_budget: this.#packets.promptBudgetFor(provider), // #274 — the enforced model-facing budget, even on a hard-413 turn
                 finish_reason: "budget_hard_stop", model: provider.model, meta: "{}",
             });
-            return { turnId, status: 413, statuses: [], fingerprint: "", budgetStruck: enforced.struck, budgetHardStop: true, steerStruck: false };
+            return {
+                turnId,
+                status: 413,
+                statuses: [],
+                fingerprint: "",
+                budgetStruck: enforced.struck,
+                budgetHardStop: true,
+                steerStruck: false,
+                emissionAttempts: 0,
+                emissionExhausted: false,
+            };
             }
         } else {
             // A fitting turn clears the recovery grant — the model curated; a later overflow
@@ -1169,8 +1224,13 @@ export default class Engine {
         // Packet pressure and provider generation are independent. The grinder governs
         // only the request packet; maxTokens comes only from the provider envelope and
         // never shrinks as the virtual prompt budget fills.
-        let response: ProviderResponse;
+        let response: ProviderResponse | undefined;
+        let splitResponse: SplitProviderResponse | undefined;
         let railGrammar: string | undefined;
+        let emissionAttempts = 0;
+        const usage = { prompt: 0, completion: 0, reasoning: 0, cached: 0 };
+        let usageCostUsd = 0;
+        let providerCallInFlight = false;
         const providerSignal = this.#loopAborts.get(loopId)?.signal ?? signal;
         // #249 — plugin attribution tags onto the per-turn generate() wire. Value is the
         // active-plugin set (placeholder); real per-turn grounding is deferred.
@@ -1187,19 +1247,62 @@ export default class Engine {
             // ops are about to land. Base notice/event channel (the embed_progress precedent, §tokenomics
             // clients already render it unconditionally); the abort guard keeps a cancelled loop silent.
             if (!signal?.aborted) this.#notices.push(workspaceId, loopId, { source: "engine:turn", kind: "turn_awaiting_model", level: "info", message: "awaiting model response" });
-            // generate rides the LOOP signal (already chained from the caller's), so a loop-level
-            // abort — the §operator-config-loop-timeout wall — cancels a stuck provider call, not
-            // just the schemes. Bare runTurn (no runLoop) has no loop entry → the caller's signal.
-            // #391 — the turn COORDINATE (workspace + loop-seq/turn-seq of the turn being generated)
-            // rides as first-party metadata (Plurnk-Workspace-Id/Loop/Turn) so the endpoint flywheel keys
-            // on an AUTHORITATIVE hierarchy, not a scraped context-log approximation. The daemon owns
-            // the value; providers stamps the header (same split as Worker-Id, #26). loopSeq (the 1-based
-            // coordinate, not the DB id) resolves the same way the prompt-slot path does (§log coords).
             const loopSeq = (await this.#db.engine_loop_sequence.get<{ sequence: number }>({ loop_id: loopId }))?.sequence ?? loopId;
             railGrammar = await this.#grammarConstraint(provider);
-            response = await provider.generate({ messages: modelMessages, workerId: String(workerId), primaryWorkerId: String(await this.resolveWorkerPrimary(workerId)), signal: providerSignal, grammar: railGrammar, maxTokens: this.#packets.maxTokensFor(provider) ?? undefined, strikes: this.#strikes.streak(loopId), attributions: attributions.length > 0 ? attributions : undefined, client: client ?? undefined, workspaceId: String(workspaceId), loop: loopSeq, turn: seq }); // strikes: first-party routing signal, 0 sent explicitly (#313) // §provider-surface-generate §provider-guarantees-single-call §provider-guarantees-signal-wired §attribution-plurnk-namespace-reserved §client-metadata
+            const primaryWorkerId = String(await this.resolveWorkerPrimary(workerId));
+            const attemptLimit = readEmissionAttempts();
+            const maxTokens = this.#packets.maxTokensFor(provider) ?? undefined;
+            const strikeStreak = this.#strikes.streak(loopId);
+            for (let attempt = 1; attempt <= attemptLimit; attempt++) {
+                // Every attempt carries the exact same packet, coordinates, limits, and
+                // engine-strike state. No failed emission is appended to messages and no
+                // new engine turn opens between calls.
+                providerCallInFlight = true;
+                response = await provider.generate({
+                    messages: modelMessages,
+                    workerId: String(workerId),
+                    primaryWorkerId,
+                    signal: providerSignal,
+                    grammar: railGrammar,
+                    maxTokens,
+                    strikes: strikeStreak,
+                    attributions: attributions.length > 0 ? attributions : undefined,
+                    client: client ?? undefined,
+                    workspaceId: String(workspaceId),
+                    loop: loopSeq,
+                    turn: seq,
+                }); // §provider-surface-generate §provider-guarantees-signal-wired §provider-guarantees-serial-attempts §attribution-plurnk-namespace-reserved §client-metadata
+                providerCallInFlight = false;
+                emissionAttempts = attempt;
+                splitResponse = this.#splitResponse(response);
+                const attemptUsage = splitResponse.callMetadata.usage;
+                usage.prompt += attemptUsage.prompt;
+                usage.completion += attemptUsage.completion;
+                usage.reasoning += attemptUsage.reasoning;
+                usage.cached += attemptUsage.cached;
+                const attemptCost = provider.calculateCost(attemptUsage);
+                usageCostUsd += attemptCost;
+                await this.#db.engine_record_turn_attempt.run({
+                    turn_id: turnId,
+                    sequence: attempt,
+                    accepted: splitResponse.emissionValid ? 1 : 0,
+                    response: JSON.stringify(response),
+                    parse_errors: JSON.stringify(splitResponse.parseErrors),
+                    usage_prompt: attemptUsage.prompt,
+                    usage_completion: attemptUsage.completion,
+                    usage_reasoning: attemptUsage.reasoning,
+                    usage_cached: attemptUsage.cached,
+                    usage_cost_usd: attemptCost,
+                    finish_reason: splitResponse.callMetadata.finishReason,
+                    model: splitResponse.callMetadata.model,
+                });
+                if (splitResponse.emissionValid) break;
+            }
             if (!signal?.aborted) this.#notices.push(workspaceId, loopId, { source: "engine:turn", kind: "turn_generated", level: "info", message: "parsing model response" });
         } catch (err) {
+            // This handler owns only provider-call failures. Parser, cost, SQL,
+            // and engine-contract failures retain their original source.
+            if (!providerCallInFlight) throw err;
             // §turn-never-blank — a ProviderError is an INFRASTRUCTURE failure (auth, network
             // beyond retries, rate limit): no completed exchange exists. Persist its exact
             // RFC 9457 result before propagating it to the drain. Grammar conformance never
@@ -1218,15 +1321,15 @@ export default class Engine {
                     id: turnId,
                     status: providerSignal.reason === LOOP_TIMEOUT_REASON ? 504 : 499,
                     packet: JSON.stringify(requestPacket),
-                    usage_prompt: 0,
-                    usage_completion: 0,
-                    usage_reasoning: 0,
-                    usage_cached: 0,
-                    usage_cost_usd: 0,
+                    usage_prompt: usage.prompt,
+                    usage_completion: usage.completion,
+                    usage_reasoning: usage.reasoning,
+                    usage_cached: usage.cached,
+                    usage_cost_usd: usageCostUsd,
                     usage_prompt_budget: this.#packets.promptBudgetFor(provider),
-                    finish_reason: null,
-                    model: provider.model,
-                    meta: "{}",
+                    finish_reason: splitResponse?.callMetadata.finishReason ?? null,
+                    model: splitResponse?.callMetadata.model ?? provider.model,
+                    meta: JSON.stringify(response?.meta ?? {}),
                 });
                 throw err;
             }
@@ -1254,46 +1357,60 @@ export default class Engine {
                 id: turnId,
                 status: recorded.result.status,
                 packet: JSON.stringify(requestPacket),
-                usage_prompt: 0,
-                usage_completion: 0,
-                usage_reasoning: 0,
-                usage_cached: 0,
-                usage_cost_usd: 0,
+                usage_prompt: usage.prompt,
+                usage_completion: usage.completion,
+                usage_reasoning: usage.reasoning,
+                usage_cached: usage.cached,
+                usage_cost_usd: usageCostUsd,
                 usage_prompt_budget: this.#packets.promptBudgetFor(provider),
-                finish_reason: null,
-                model: provider.model,
-                meta: "{}",
+                finish_reason: splitResponse?.callMetadata.finishReason ?? null,
+                model: splitResponse?.callMetadata.model ?? provider.model,
+                meta: JSON.stringify(response?.meta ?? {}),
             });
             throw new OperationFailureError(recorded.result, { cause: err });
+        }
+
+        if (response === undefined || splitResponse === undefined) {
+            throw new Error("provider attempt loop completed without a response");
+        }
+        if (!splitResponse.emissionValid) {
+            await this.#db.engine_close_turn.run({
+                id: turnId,
+                status: 500,
+                packet: JSON.stringify(requestPacket),
+                usage_prompt: usage.prompt,
+                usage_completion: usage.completion,
+                usage_reasoning: usage.reasoning,
+                usage_cached: usage.cached,
+                usage_cost_usd: usageCostUsd,
+                usage_prompt_budget: this.#packets.promptBudgetFor(provider),
+                finish_reason: splitResponse.callMetadata.finishReason,
+                model: splitResponse.callMetadata.model,
+                meta: JSON.stringify(response.meta ?? {}),
+            });
+            return {
+                turnId,
+                status: 500,
+                statuses: [],
+                fingerprint: "",
+                budgetStruck: enforced.struck,
+                budgetHardStop: false,
+                steerStruck: false,
+                emissionAttempts,
+                emissionExhausted: true,
+            };
         }
 
         // Engine splits wire-level response: emission (content, reasoning,
         // parsed ops) → packet.assistant per Packet.json assistant section;
         // call-metadata (usage, finishReason, model) → Turn columns per
         // Turn.json. Mixing the two on packet.assistant was the wrong layer.
-        const { packetAssistant, callMetadata, parseErrors, parseNotices } = this.#splitResponse(response); // raw assistant content is opaque — split, never interpreted — §provider-guarantees-assistantraw-opaque
+        const { packetAssistant, callMetadata, parseNotices } = splitResponse; // raw assistant content is opaque — split, never interpreted — §provider-guarantees-assistantraw-opaque
         for (const notice of parseNotices) {
             this.#notices.push(workspaceId, loopId, notice);
         }
 
-        // Surface parse errors to the model's NEXT packet so it can self-
-        // correct. Without this, malformed emissions (e.g. a READ matcher
-        // body starting with `//` being interpreted as xpath) silently
-        // drop, the model sees zero ops dispatched, strike-rail fires,
-        // model has no feedback on WHY its emission didn't take effect.
-        //
-        // Envelope per @plurnk/plurnk-grammar 0.17.0 Notice:
-        //   { source, kind, message, position: { type: "content-offset", line, column } }
-        // Plus a `snippet` field (additionalProperties) carrying ±N lines
-        // of the assistant's own content around the error line. Without
-        // the snippet, the model sees "invalid xpath at 1:0" but can't
-        // connect that to what IT wrote — and tends to regenerate the
-        // same broken emission. See edit-todo demo for the canonical case.
-        // Parse errors are LOG ITEMS now (§operation-results — one budget surface): each failed-to-parse
-        // emission records an actionless `error` row below, after the turn's dispatched ops are
-        // sequenced (see the parse-error log write past the dispatch loop). The errors section
-        // derives a pointer to it from log≥400, uniform with action_failure.
-        // providers#24 / #275: non-fatal provider notices on a SUCCESSFUL turn. In GBNF-filter
+        // providers#24 / #275: non-fatal provider notices on an accepted turn. In GBNF-filter
         // mode the provider no longer THROWS grammar_unenforced — it returns the model's bytes
         // (here, packetAssistant.content) and attaches a Notice carrying the
         // divergence code-point position. Forward each Notice with a content-offset `line:col`;
@@ -1337,12 +1454,9 @@ export default class Engine {
             }
         }
         const opsCount = packetAssistant.ops.length;
-        // PLAN (reasoning) and informational SEND[103] are no-ops, not actions: both are
-        // excluded from the real-op count so a PLAN-only or prose-only turn still strikes
-        // as no-ops, and the terminal scan ignores 1xx so they never set turnStatus.
-        const realOpsCount = packetAssistant.ops.filter(
-            (op) => op.op !== "PLAN" && !(op.op === "SEND" && op.signal === 103 && op.target === null),
-        ).length;
+        // PLAN is orientation, not an action. Every admitted SEND is a
+        // disposition, so only PLAN is excluded from the real-op count.
+        const realOpsCount = packetAssistant.ops.filter((op) => op.op !== "PLAN").length;
         const sendOp = packetAssistant.ops.findLast(
             (op): op is PlurnkStatement & { op: "SEND"; signal: number } =>
                 op.op === "SEND" && typeof op.signal === "number" && op.signal >= 200,
@@ -1361,40 +1475,17 @@ export default class Engine {
         // earlier ops executed — so a same-turn KILL+[200] repairs in one turn and a same-turn
         // WORK+[200] is caught. A refused terminal (409) strikes via the dispatch-loop check below.
 
-        // Rail #41 (revised): the per-turn requirement is "emit at least one op," not "emit a terminal
-        // SEND." SEND is purely a signal verb; many turns pass without one. An empty op list strikes.
-        // Provisional here — a terminal REFUSED at dispatch (the pending-set 409, only knowable
-        // post-dispatch) demotes the turn back to a continue below: the SEND's signal stays on the
-        // row (the un-erased record), but the loop never went terminal, so the turn didn't either.
-        // §broken-packet-no-dispatch (#566) — a BROKEN PACKET is structurally incomplete: the
-        // provider GUILLOTINED the emission at the completion cap (finish=length) and it failed the
-        // parse (empty, or cut mid-op). Its parsed "ops" are a severed frame — garbage (run42: an
-        // unclosed `<<PLAN` swallowed a 57k-char runaway into one bogus status-200 PLAN). Nothing
-        // dispatches and the turn is a NO-OPS strike, so a repeated runaway can't spin as a 102
-        // "continue". The turn still records — the folded `model` mirror + the output_truncated 413 +
-        // the parse-error rows — so the model sees WHY next turn and re-emits through the existing
-        // error channel (no same-turn re-generate). A "flubbed op" is DIFFERENT: a well-framed turn
-        // (finish=stop) whose single op erred dispatches its valid ops and steers on the bad one (the
-        // recovery rail); only a severed FRAME is refused wholesale. The formal framing-vs-op-local
-        // error split is grammar's to tag.
-        const brokenPacket = callMetadata.finishReason === "length"
-            && (packetAssistant.content.trim().length === 0 || (parseErrors?.length ?? 0) > 0);
-        let turnStatus = brokenPacket
-            ? TURN_STATUS_NO_OPS
-            : sendOp !== undefined
+        // The production parser admitted a complete PLAN...SEND frame before this point.
+        // Pre-parsed Mock fixtures remain a trusted test-only escape hatch, so the legacy
+        // implicit/no-op statuses stay defined for those fixtures.
+        let turnStatus = sendOp !== undefined
             ? sendOp.signal
             : realOpsCount === 0 ? TURN_STATUS_NO_OPS : TURN_STATUS_IMPLICIT_CONTINUE;
 
         // Idle turn: an implicit-continue (102) that did no WORK — its ops are only PLAN/SEND, no mid op.
         // The model continued with nothing to do. (Skipped when premature already steered this turn.)
-        // #467 (owner criterion) — a turn whose op ATTEMPTS died at the parser is a FAILED-RETRIEVAL
-        // turn, not an idle one: the model performed an op; the op died. The root parse-400 speaks
-        // alone; stacking the idle-409 on it calls the turn something it factually wasn't (run65's
-        // one malformed FIND minted two error rows for one accident). A dispatched-but-failed op is
-        // already a mid op, so only the parse-emptied class needs the deference. GBNF makes the
-        // emitted-idle shape unemittable (grammar SPEC, no-idle-102); this 409 stays the truly-idle backstop.
         const midOpsCount = packetAssistant.ops.filter((op) => op.op !== "PLAN" && op.op !== "SEND").length;
-        if (!steerStruck && turnStatus === TURN_STATUS_IMPLICIT_CONTINUE && midOpsCount === 0 && parseErrors.length === 0) {
+        if (!steerStruck && turnStatus === TURN_STATUS_IMPLICIT_CONTINUE && midOpsCount === 0) {
             // One grace turn after a retrieval-only 409 (admins specimen): the refusal steer says
             // "continuing in order to receive results" — a model that obediently waits one bare
             // [102] turn is following OUR advice, and the idle rail was executing it for that.
@@ -1411,7 +1502,6 @@ export default class Engine {
 
         // Close the turn with the final packet, status, and usage stats.
         const packet = this.#packets.completePacket(requestPacket, packetAssistant, response.assistantRaw, provider);
-        const { usage, finishReason, model } = callMetadata;
         await this.#db.engine_close_turn.run({
             id: turnId,
             status: turnStatus,
@@ -1420,10 +1510,10 @@ export default class Engine {
             usage_completion: usage.completion,
             usage_reasoning: usage.reasoning,
             usage_cached: usage.cached,
-            usage_cost_usd: provider.calculateCost(usage), // §provider-surface-calculate-cost
+            usage_cost_usd: usageCostUsd,
             usage_prompt_budget: this.#packets.promptBudgetFor(provider), // #274 — the enforced model-facing prompt budget
-            finish_reason: finishReason,
-            model,
+            finish_reason: callMetadata.finishReason,
+            model: callMetadata.model,
             // #252 — opaque provider→client metadata passthrough (for example, the
             // provider normalized), plus the ONE service-authored carve-out: the engine's rail
             // keys ({§rail-truth-engine-verdict}) merge over provider observations.
@@ -1444,10 +1534,8 @@ export default class Engine {
         // actions — they always dispatch and never count against the cap. maxCommands
         // bounds real actions only; maxCommands:0 still admits a plan and a conclusion
         // (the PLAN/SEND ops, zero actions), which is its only coherent meaning.
-        // §broken-packet-no-dispatch (#566) — the severed frame dispatches NOTHING (rationale +
-        // status handling at the brokenPacket definition above).
         let realCommands = 0;
-        const admittedOps = brokenPacket ? [] : packetAssistant.ops.filter(
+        const admittedOps = packetAssistant.ops.filter(
             (op) =>
                 op.op === "PLAN"
                 || (op.op === "SEND" && typeof op.signal === "number" && op.signal >= 200)
@@ -1459,12 +1547,9 @@ export default class Engine {
             {
                 workspaceId, workerId, loopId, turnId,
                 origin, onDispatch,
-                turnParseErrors: parseErrors?.length ?? 0,
             },
         );
-        // A broken packet's ops aren't max_commands drops — they're refused wholesale, and the
-        // output_truncated 413 already tells the model why; don't also mint max_commands_exceeded.
-        const droppedCount = brokenPacket ? 0 : opsCount - opsToDispatch.length;
+        const droppedCount = opsCount - opsToDispatch.length;
         const statuses: number[] = [];
         // Running counter — a multi-file READ writes N rows from one statement (rowsWritten),
         // so the next op's sequence picks up after them. Collapses to nextActionIndex+i when
@@ -1475,9 +1560,6 @@ export default class Engine {
                 statement, workspaceId, workerId, loopId, turnId,
                 sequence: rowSeq,
                 origin, onDispatch,
-                // §send-200-failed-ops — parse errors mint as rows AFTER this loop; the terminal
-                // gate needs them NOW, so the count rides the dispatch context.
-                turnParseErrors: parseErrors?.length ?? 0,
             });
             statuses.push(result.status);
             // A refused terminal (the pending-set 409) demotes the turn to a continue: the loop
@@ -1492,20 +1574,32 @@ export default class Engine {
                 if ((result.attrs as { retrievalOnly?: boolean } | undefined)?.retrievalOnly !== true) steerStruck = true;
                 else this.#retrievalRefusalGrace.add(loopId); // the steer says "continuing to receive" — the NEXT turn's obedient wait must not idle-strike
                 turnStatus = TURN_STATUS_IMPLICIT_CONTINUE;
-                await this.#db.engine_demote_turn_status.run({ id: turnId, status: turnStatus });
+                await this.#db.engine_reconcile_turn_status.run({ id: turnId, status: turnStatus });
             }
             // A [300] question resolves through the proposal system (#346) — whatever the
             // resolution (answer/reject/timeout), the LOOP continues to the turn where the model
             // reads it; the turn record is a continue, never a 300 terminal.
             if (statement === sendOp && sendOp.signal === 300 && result.status !== 409) {
                 turnStatus = TURN_STATUS_IMPLICIT_CONTINUE;
-                await this.#db.engine_demote_turn_status.run({ id: turnId, status: turnStatus });
+                await this.#db.engine_reconcile_turn_status.run({ id: turnId, status: turnStatus });
+            }
+            // A broadcast [202] is a conditional wait, not an unconditional turn status:
+            // live work parks at 202; completed-but-unobserved work continues at 102; an
+            // empty join completes at 200. Persist and return the dispatcher's actual ruling.
+            if (
+                statement === sendOp
+                && result.status !== 409
+                && sendOp.target === null
+                && sendOp.signal === 202
+                && result.status !== 202
+            ) {
+                turnStatus = result.status;
+                await this.#db.engine_reconcile_turn_status.run({ id: turnId, status: turnStatus });
             }
             rowSeq += (result.rowsWritten as number | undefined) ?? 1;
         }
-        // §operation-result-uniform-error-channel — every engine + parse failure mints as an op='error'
-        // log row at the turn's next free sequence (after every dispatched row, incl. a multi-file
-        // READ's fan-out). One channel: the errors section derives a LogCoordinate pointer from log≥400.
+        // Engine rail failures mint as op='error' log rows at the turn's next
+        // free sequence. Syntax failures never reach this accepted-turn path.
         let errSeq = rowSeq;
         // max_commands_exceeded IS model-facing: dropped ops the model emitted that didn't run.
         if (droppedCount > 0) pendingEngineErrors.push("max_commands_exceeded");
@@ -1532,66 +1626,11 @@ export default class Engine {
         // mint dressed op results as source:"engine" faults — the jumbo model chased a phantom
         // "engine run 400 error" off a message-less item). Genuine engine-internal faults CRASH
         // (fail-hard, §turn-never-blank) and never mint model-facing rows.
-        // §tokenomics-output-truncated — packet honesty at the completion cap: a finish=length turn was
-        // GUILLOTINED at the decode pool, and this actionless row MINTS to LEAD the artifact rows it
-        // explains (the cause must lead, or the model fixes syntax forever). Two shapes, honestly
-        // distinguished: content cut MID-OP (a valid prefix dispatched; the parse errors are the
-        // severed tail) vs the pool consumed with NOTHING emitted (reasoning ran away — the parse
-        // 'must begin with PLAN' is an artifact of the empty emission, not a malformed turn). The parse
-        // rows below STAY (the record never hides); the 413 leads and frames them for what they are.
-        const truncatedEmpty = finishReason === "length" && packetAssistant.content.trim().length === 0;
-        if (finishReason === "length" && (truncatedEmpty || (parseErrors?.length ?? 0) > 0)) {
-            const cap = this.#packets.maxTokensFor(provider);
-            const message = truncatedEmpty
-                ? `output truncated at the completion cap (${cap} tokens): nothing was emitted before the pool was consumed — the parse error below is an artifact of the empty emission, not a malformed turn`
-                : `output truncated at the completion cap (${cap} tokens): the emission was cut mid-op — the parse errors below are truncation artifacts`;
-            await this.#problems.record({
-                workerId,
-                loopId,
-                turnId,
-                sequence: errSeq++,
-                origin: "model",
-                source: "engine",
-                result: Results.failure(
-                    "engine:generation",
-                    "output-truncated",
-                    413,
-                    message,
-                ),
-            });
-        }
-        // Parse errors carry the parser message + a content-offset line:col (a ContentOffset position),
-        // resolved against the model's folded mirror row (§model-entry) — origin 'model', not engine.
-        for (const { message, line, column, source } of parseErrors ?? []) {
-            await this.#problems.record({
-                workerId,
-                loopId,
-                turnId,
-                sequence: errSeq++,
-                origin: "model",
-                source: "grammar",
-                result: Results.failure(
-                    "grammar:parser",
-                    "parse-error",
-                    400,
-                    message,
-                    {},
-                    {
-                        position: { type: "content-offset", line, column },
-                        parserSource: source,
-                    },
-                ),
-            });
-        }
-
         // §model-entry — mirror this turn's verbatim emission back as a `model` row, so the NEXT
         // packet shows the model exactly what it last produced. ALWAYS born FOLDED — the old
         // born-OPEN-on-error auto-trigger was conditional helpfulness that bred its own hazards
         // (a 24k-char ramble mirrored open re-injects itself into the next packet: cost,
-        // contamination, pressure feedback). An error's line:col resolves the same way anything
-        // else does: the model that cares READs the folded row at the lines it wants — and can
-        // introspect any prior emission of its own the same way. Empty emissions (a struck/
-        // silent turn) write nothing — no prior output to mirror.
+        // contamination, pressure feedback).
         const sealed = (response.assistant as { reasoningEncrypted?: ReadonlyArray<{ id: string | null; subtype: string; encrypted: ReadonlyArray<{ data: string; format: string | null }> }> }).reasoningEncrypted;
         // #482 — relay the FULL item ARRAY verbatim (agui projects one correlated span per item), so a
         // multi-id turn serves N entities, not a collapsed first. Providers already expose the array.
@@ -1605,7 +1644,17 @@ export default class Engine {
         // struck turn; the model just sees an empty packet next turn.
         // Per SPEC §operation-results gamification policy.
 
-        return { turnId, status: turnStatus, statuses, fingerprint: StrikeRail.fingerprintTurn(packetAssistant.ops), budgetStruck: enforced.struck, budgetHardStop: false, steerStruck };
+        return {
+            turnId,
+            status: turnStatus,
+            statuses,
+            fingerprint: StrikeRail.fingerprintTurn(packetAssistant.ops),
+            budgetStruck: enforced.struck,
+            budgetHardStop: false,
+            steerStruck,
+            emissionAttempts,
+            emissionExhausted: false,
+        };
     }
 
     // Split the wire-level ProviderResponse into the two destinations:
@@ -1619,12 +1668,7 @@ export default class Engine {
     // its assistant payload to skip the parse roundtrip. The wire Provider
     // contract has no `ops` field; only Mock exposes one. Real providers
     // always take the parse path because their `assistant.ops` is undefined.
-    #splitResponse(response: ProviderResponse): {
-        packetAssistant: PacketAssistant;
-        callMetadata: TurnCallMetadata;
-        parseErrors: ParseErrorInfo[];
-        parseNotices: Notice[];
-    } {
+    #splitResponse(response: ProviderResponse): SplitProviderResponse {
         const { assistant } = response;
         const preParsedOps = (assistant as { ops?: PlurnkStatement[] }).ops;
         const ops: PlurnkStatement[] = [];
@@ -1634,9 +1678,7 @@ export default class Engine {
         // #free-text-capture synthesis of SEND[103] log ops was retired as tech debt
         // (grammar 0.70 forbids free text between ops, so a prose-only turn strikes 422).
         // Full PlurnkParseError context (line/column/source) is preserved
-        // here so runTurn can build Notice envelopes per the
-        // grammar 0.17.0 protocol — model needs position info to locate
-        // its own offending content on the next turn.
+        // on rejected attempt evidence. Warnings remain admissible Notices.
         const parseErrors: ParseErrorInfo[] = [];
         const parseNotices: Notice[] = [];
         if (preParsedOps !== undefined) {
@@ -1676,9 +1718,8 @@ export default class Engine {
             // The grammar also reports an `unparsedTail` when input ends
             // mid-statement (a body opened but never closed): its `reason`
             // names the op AND the fix ("…never closed — add `:READ`"), where
-            // the item-level error only says "expected close tag" for a tag the
-            // model thinks it already wrote. Surface it — phenomenal messages
-            // the model can self-correct from are the whole point of the DSL.
+            // the item-level error only says "expected close tag". Preserve the
+            // more precise diagnosis with the rejected forensic attempt.
             const tail = parsed.unparsedTail;
             if (tail !== undefined) {
                 parseErrors.push({ message: tail.reason, line: tail.from.line, column: tail.from.column, source: "grammar" });
@@ -1690,6 +1731,10 @@ export default class Engine {
             callMetadata: { usage: assistant.usage, finishReason: assistant.finishReason, model: assistant.model },
             parseErrors,
             parseNotices,
+            // The ANTLR model-turn parser is authoritative. Warnings remain
+            // admissible; any hard error or unparsed tail was collected above
+            // into parseErrors. Pre-parsed ops are Mock's trusted test seam.
+            emissionValid: preParsedOps !== undefined || parseErrors.length === 0,
         };
     }
 

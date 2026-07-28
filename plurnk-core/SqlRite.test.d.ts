@@ -139,6 +139,7 @@ export class SqlRiteSync {
 	digest_workers: SqlRiteSyncPreparedStatements;
 	digest_loops: SqlRiteSyncPreparedStatements;
 	digest_turns: SqlRiteSyncPreparedStatements;
+	digest_turn_attempts: SqlRiteSyncPreparedStatements;
 	digest_log_entries: SqlRiteSyncPreparedStatements;
 	digest_worker_rollups: SqlRiteSyncPreparedStatements;
 	digest_worker_op_mix: SqlRiteSyncPreparedStatements;
@@ -179,6 +180,7 @@ export class SqlRiteSync {
 	engine_loop_turn_seqs: SqlRiteSyncPreparedStatements;
 	engine_open_turn: SqlRiteSyncPreparedStatements;
 	engine_close_turn: SqlRiteSyncPreparedStatements;
+	engine_record_turn_attempt: SqlRiteSyncPreparedStatements;
 	engine_list_workspace_entries: SqlRiteSyncPreparedStatements;
 	engine_scheme_catalog_summary: SqlRiteSyncPreparedStatements;
 	engine_worker_prior_turn_time: SqlRiteSyncPreparedStatements;
@@ -202,7 +204,7 @@ export class SqlRiteSync {
 	engine_turn_retrievals: SqlRiteSyncPreparedStatements;
 	engine_worker_has_undelivered_stream_term: SqlRiteSyncPreparedStatements;
 	engine_turn_failures: SqlRiteSyncPreparedStatements;
-	engine_demote_turn_status: SqlRiteSyncPreparedStatements;
+	engine_reconcile_turn_status: SqlRiteSyncPreparedStatements;
 	engine_loop_sequence: SqlRiteSyncPreparedStatements;
 	engine_worker_lineage_root: SqlRiteSyncPreparedStatements;
 	engine_worker_has_undelivered_child_term: SqlRiteSyncPreparedStatements;
@@ -290,6 +292,7 @@ export class SqlRiteSync {
 	test_get_log_expanded: SqlRiteSyncPreparedStatements;
 	test_get_loop_status: SqlRiteSyncPreparedStatements;
 	test_get_turn: SqlRiteSyncPreparedStatements;
+	test_turn_attempts: SqlRiteSyncPreparedStatements;
 	test_get_log_entry_by_id: SqlRiteSyncPreparedStatements;
 	test_get_session_cost: SqlRiteSyncPreparedStatements;
 	test_get_run_cost: SqlRiteSyncPreparedStatements;
@@ -403,6 +406,8 @@ export class SqlRiteSync {
 	test_set_origin: SqlRiteSyncPreparedStatements;
 	test_count_rows_for_pathname: SqlRiteSyncPreparedStatements;
 	test_get_origin: SqlRiteSyncPreparedStatements;
+	test_context_insert_turn: SqlRiteSyncPreparedStatements;
+	test_context_insert_attempt: SqlRiteSyncPreparedStatements;
 	test_cost_insert_turn: SqlRiteSyncPreparedStatements;
 	test_cost_run: SqlRiteSyncPreparedStatements;
 	test_cost_session: SqlRiteSyncPreparedStatements;
@@ -629,6 +634,7 @@ export default class SqlRite {
 	digest_workers: SqlRitePreparedStatements;
 	digest_loops: SqlRitePreparedStatements;
 	digest_turns: SqlRitePreparedStatements;
+	digest_turn_attempts: SqlRitePreparedStatements;
 	digest_log_entries: SqlRitePreparedStatements;
 	digest_worker_rollups: SqlRitePreparedStatements;
 	digest_worker_op_mix: SqlRitePreparedStatements;
@@ -669,6 +675,7 @@ export default class SqlRite {
 	engine_loop_turn_seqs: SqlRitePreparedStatements;
 	engine_open_turn: SqlRitePreparedStatements;
 	engine_close_turn: SqlRitePreparedStatements;
+	engine_record_turn_attempt: SqlRitePreparedStatements;
 	engine_list_workspace_entries: SqlRitePreparedStatements;
 	engine_scheme_catalog_summary: SqlRitePreparedStatements;
 	engine_worker_prior_turn_time: SqlRitePreparedStatements;
@@ -692,7 +699,7 @@ export default class SqlRite {
 	engine_turn_retrievals: SqlRitePreparedStatements;
 	engine_worker_has_undelivered_stream_term: SqlRitePreparedStatements;
 	engine_turn_failures: SqlRitePreparedStatements;
-	engine_demote_turn_status: SqlRitePreparedStatements;
+	engine_reconcile_turn_status: SqlRitePreparedStatements;
 	engine_loop_sequence: SqlRitePreparedStatements;
 	engine_worker_lineage_root: SqlRitePreparedStatements;
 	engine_worker_has_undelivered_child_term: SqlRitePreparedStatements;
@@ -780,6 +787,7 @@ export default class SqlRite {
 	test_get_log_expanded: SqlRitePreparedStatements;
 	test_get_loop_status: SqlRitePreparedStatements;
 	test_get_turn: SqlRitePreparedStatements;
+	test_turn_attempts: SqlRitePreparedStatements;
 	test_get_log_entry_by_id: SqlRitePreparedStatements;
 	test_get_session_cost: SqlRitePreparedStatements;
 	test_get_run_cost: SqlRitePreparedStatements;
@@ -893,6 +901,8 @@ export default class SqlRite {
 	test_set_origin: SqlRitePreparedStatements;
 	test_count_rows_for_pathname: SqlRitePreparedStatements;
 	test_get_origin: SqlRitePreparedStatements;
+	test_context_insert_turn: SqlRitePreparedStatements;
+	test_context_insert_attempt: SqlRitePreparedStatements;
 	test_cost_insert_turn: SqlRitePreparedStatements;
 	test_cost_run: SqlRitePreparedStatements;
 	test_cost_session: SqlRitePreparedStatements;

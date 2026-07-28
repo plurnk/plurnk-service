@@ -17,6 +17,12 @@
 //   test/digest/packetNNN.user.md         Same for the user message.
 //   test/digest/packetNNN.assistant.md     Model emission (content string).
 //   test/digest/packetNNN.assistantRaw.json  Opaque provider response.
+//   test/digest/packetNNN.attemptNNN.rejected.assistant.md
+//                                          Rejected provider emission.
+//   test/digest/packetNNN.attemptNNN.rejected.response.json
+//                                          Full rejected provider response.
+//   test/digest/packetNNN.attemptNNN.rejected.parse-errors.json
+//                                          Admission errors for that attempt.
 //
 // packet files are byte-identical to what Engine emits, because Engine and
 // digest both project through PacketWire (one renderer, no drift).
@@ -56,6 +62,13 @@ interface TurnRow {
     finish_reason: string | null; model: string | null;
     meta: string | null;  // #498 — provider passthrough (timings, railsAttached/railsVerdict); digest consumers need rail truth
 }
+interface TurnAttemptRow {
+    id: number; turn_id: number; sequence: number; accepted: number;
+    response: string; parse_errors: string;
+    usage_prompt: number; usage_completion: number; usage_reasoning: number;
+    usage_cached: number; usage_cost_usd: number;
+    finish_reason: string | null; model: string; timestamp: string;
+}
 interface LogRow {
     id: number; worker_id: number; loop_id: number; turn_id: number; sequence: number;
     origin: string; attrs: string;
@@ -79,10 +92,12 @@ interface DigestModel {
     workers: WorkerRow[];
     loops: LoopRow[];
     turns: TurnRow[];
+    turnAttempts: TurnAttemptRow[];
     logEntries: LogRow[];
     workersByWorkspace: Map<number, WorkerRow[]>;
     loopsByWorker: Map<number, LoopRow[]>;
     turnsByLoop: Map<number, TurnRow[]>;
+    attemptsByTurn: Map<number, TurnAttemptRow[]>;
     logEntriesByTurn: Map<number, LogRow[]>;
     loopsById: Map<number, LoopRow>;
     workersById: Map<number, WorkerRow>;
@@ -227,8 +242,15 @@ export default class Digest {
         const model = turn.model ?? "—";
         const errs = (m.logEntriesByTurn.get(turn.id) ?? []).filter((le) => le.status_rx >= 400).length;
         const errBadge = errs > 0 ? `  ⚠ errs=${errs}` : "";
-        const head = `T${turn.sequence}: status=${turn.status} finish=${finishReason}${rails} model=${model} ${tokens}${cost}${errBadge}`;
-        const summary = content.length > 0 ? `  ↳ emission: ${Digest.#summarize(content, 100)}` : `  ↳ emission: (empty)`;
+        const attempts = m.attemptsByTurn.get(turn.id) ?? [];
+        const rejected = attempts.filter((attempt) => attempt.accepted === 0).length;
+        const attemptBadge = rejected > 0 ? `  ⚠ rejected-emissions=${rejected}/${attempts.length}` : "";
+        const head = `T${turn.sequence}: status=${turn.status} finish=${finishReason}${rails} model=${model} ${tokens}${cost}${errBadge}${attemptBadge}`;
+        const summary = content.length > 0
+            ? `  ↳ emission: ${Digest.#summarize(content, 100)}`
+            : rejected > 0
+            ? `  ↳ emission: (none accepted)`
+            : `  ↳ emission: (empty)`;
         const reasoningLine = reasoning && reasoning.length > 0
             ? `  ↳ reasoning: ${Digest.#summarize(reasoning, 100)}`
             : null;
@@ -256,7 +278,8 @@ export default class Digest {
         lines.push(`# plurnk-service digest`);
         lines.push("");
         lines.push(`DB: ${m.dbPath}`);
-        lines.push(`Workspaces: ${m.workspaces.length}  Runs: ${m.workers.length}  Loops: ${m.loops.length}  Turns: ${m.turns.length}  Log entries: ${m.logEntries.length}`);
+        const rejectedAttempts = m.turnAttempts.filter((attempt) => attempt.accepted === 0).length;
+        lines.push(`Workspaces: ${m.workspaces.length}  Runs: ${m.workers.length}  Loops: ${m.loops.length}  Turns: ${m.turns.length}  Provider attempts: ${m.turnAttempts.length} (${rejectedAttempts} rejected)  Log entries: ${m.logEntries.length}`);
         lines.push(`Semantic:  body=${m.embeddings.body_entries} attached=${m.embeddings.derivation_complete} (vector=${m.embeddings.vector_complete} lexical=${m.embeddings.lexical} excluded=${m.embeddings.excluded} nonsemantic=${m.embeddings.nonsemantic} failed=${m.embeddings.failed}) unattached=${m.embeddings.unfinished} artifacts=${m.embeddings.derivation_artifacts_complete} complete/${m.embeddings.derivation_artifacts_building} building chunks=${m.embeddings.chunk_rows} models=${m.embeddings.models} token-derivations=${m.embeddings.token_derivations}`);
         if (m.embeddings.dispositions.length > 0) {
             lines.push("Semantic dispositions:");
@@ -365,6 +388,26 @@ export default class Digest {
                 writeFileSync(join(m.digestDir, file), body);
                 written.push(file);
             }
+            for (const attempt of m.attemptsByTurn.get(t.id) ?? []) {
+                if (attempt.accepted === 1) continue;
+                const response = Digest.#parseJson(attempt.response, {}) as {
+                    assistant?: { content?: unknown };
+                };
+                const attemptPadded = String(attempt.sequence).padStart(3, "0");
+                const prefix = `packet${padded}.attempt${attemptPadded}.rejected`;
+                const attemptFiles: Array<[string, string]> = [
+                    [
+                        `${prefix}.assistant.md`,
+                        typeof response.assistant?.content === "string" ? response.assistant.content : "",
+                    ],
+                    [`${prefix}.response.json`, JSON.stringify(response, null, 2)],
+                    [`${prefix}.parse-errors.json`, JSON.stringify(Digest.#parseJson(attempt.parse_errors, []), null, 2)],
+                ];
+                for (const [file, body] of attemptFiles) {
+                    writeFileSync(join(m.digestDir, file), body);
+                    written.push(file);
+                }
+            }
         });
         return written;
     }
@@ -388,6 +431,21 @@ export default class Digest {
                 // #498 — the raw provider meta (timings + railsAttached/railsVerdict): rail truth for
                 // aggregate tooling, and the speculative-decode stats the #488 fingerprint needed.
                 meta: Digest.#parseJson(t.meta ?? "null", null),
+            })),
+            turn_attempts: m.turnAttempts.map((attempt) => ({
+                id: attempt.id,
+                turn_id: attempt.turn_id,
+                sequence: attempt.sequence,
+                accepted: attempt.accepted === 1,
+                parse_errors: Digest.#parseJson(attempt.parse_errors, []),
+                usage_prompt: attempt.usage_prompt,
+                usage_completion: attempt.usage_completion,
+                usage_reasoning: attempt.usage_reasoning,
+                usage_cached: attempt.usage_cached,
+                usage_cost_usd: attempt.usage_cost_usd,
+                finish_reason: attempt.finish_reason,
+                model: attempt.model,
+                timestamp: attempt.timestamp,
             })),
             log_entries: m.logEntries.map((le) => ({
                 id: le.id, worker_id: le.worker_id, loop_id: le.loop_id,
@@ -506,6 +564,7 @@ export default class Digest {
         let workers = (db.digest_workers as SyncPrep<WorkerRow>).all();
         let loops = (db.digest_loops as SyncPrep<LoopRow>).all();
         let turns = (db.digest_turns as SyncPrep<TurnRow>).all();
+        let turnAttempts = (db.digest_turn_attempts as SyncPrep<TurnAttemptRow>).all();
         let logEntries = (db.digest_log_entries as SyncPrep<LogRow>).all();
         let workerRollupRows = (db.digest_worker_rollups as SyncPrep<WorkerRollupRow>).all();
         let opMixRows = (db.digest_worker_op_mix as SyncPrep<OpMixRow>).all();
@@ -560,6 +619,7 @@ export default class Digest {
             const keptLoopIds = new Set(loops.map((l) => l.id));
             turns = turns.filter((t) => keptLoopIds.has(t.loop_id));
             const keptTurnIds = new Set(turns.map((t) => t.id));
+            turnAttempts = turnAttempts.filter((attempt) => keptTurnIds.has(attempt.turn_id));
             logEntries = logEntries.filter((le) => keptTurnIds.has(le.turn_id));
             workerRollupRows = workerRollupRows.filter((r) => keptWorkerIds.has(r.worker_id));
             opMixRows = opMixRows.filter((o) => keptWorkerIds.has(o.worker_id));
@@ -576,6 +636,12 @@ export default class Digest {
         for (const l of loops) { const arr = loopsByWorker.get(l.worker_id) ?? []; arr.push(l); loopsByWorker.set(l.worker_id, arr); }
         const turnsByLoop = new Map<number, TurnRow[]>();
         for (const t of turns) { const arr = turnsByLoop.get(t.loop_id) ?? []; arr.push(t); turnsByLoop.set(t.loop_id, arr); }
+        const attemptsByTurn = new Map<number, TurnAttemptRow[]>();
+        for (const attempt of turnAttempts) {
+            const arr = attemptsByTurn.get(attempt.turn_id) ?? [];
+            arr.push(attempt);
+            attemptsByTurn.set(attempt.turn_id, arr);
+        }
         const logEntriesByTurn = new Map<number, LogRow[]>();
         for (const le of logEntries) { const arr = logEntriesByTurn.get(le.turn_id) ?? []; arr.push(le); logEntriesByTurn.set(le.turn_id, arr); }
         const loopsById = new Map(loops.map((l) => [l.id, l]));
@@ -585,8 +651,8 @@ export default class Digest {
         for (const o of opMixRows) { const arr = opMixByWorker.get(o.worker_id) ?? []; arr.push(o); opMixByWorker.set(o.worker_id, arr); }
 
         const m: DigestModel = {
-            dbPath, digestDir, workspaces, workers, loops, turns, logEntries,
-            workersByWorkspace, loopsByWorker, turnsByLoop, logEntriesByTurn, loopsById, workersById,
+            dbPath, digestDir, workspaces, workers, loops, turns, turnAttempts, logEntries,
+            workersByWorkspace, loopsByWorker, turnsByLoop, attemptsByTurn, logEntriesByTurn, loopsById, workersById,
             workerRollups, opMixByWorker, embeddings,
         };
 
@@ -598,6 +664,6 @@ export default class Digest {
 
         console.log(`digest: wrote ${digestDir}/{digest.md,digest.json,reasoning.md} + ${packetFiles.length} packet section files (${packetIds.join(", ") || "none"})`);
         console.log(`  source: ${dbPath}`);
-        console.log(`  workspaces=${workspaces.length} workers=${workers.length} loops=${loops.length} turns=${turns.length} log_entries=${logEntries.length}`);
+        console.log(`  workspaces=${workspaces.length} workers=${workers.length} loops=${loops.length} turns=${turns.length} turn_attempts=${turnAttempts.length} log_entries=${logEntries.length}`);
     }
 }

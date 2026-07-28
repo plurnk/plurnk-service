@@ -444,7 +444,7 @@ export default class Exec extends CoreSchemeAdapterBase {
     // onto plurnk-service's storage primitives (appendToChannel,
     // setChannelState, ctx.pushNotice). Per plurnk-service#174 Q3,
     // executor Notices flow through the same engine path as
-    // grammar parse_errors — emit → buffer → next packet + live notify.
+    // grammar parse advisories: emit, buffer, next packet, and live notify.
     //
     // write() and setState() callbacks must run in emission order:
     // appendToChannel reads channel state AFTER the append commits, so

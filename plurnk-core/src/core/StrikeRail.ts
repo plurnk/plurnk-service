@@ -71,8 +71,8 @@ const fingerprintOp = (stmt: PlurnkStatement): string => {
 // Rails #38 (strikes) + #39 (cycle detection): the per-loop failure-streak
 // accounting that decides abandonment. Strike accounting is engine-internal
 // bookkeeping. Per rummy precedent (plugins/error/error.js#verdict) and SPEC
-// §operation-results policy: model sees errors that happened (parse_error,
-// action_failure), never the engine's accounting about them (strike counts,
+// §operation-results policy: model sees failures from admitted operations and
+// engine rails, never the engine's accounting about them (strike counts,
 // cycle detection, sudden-death threshold). Surfacing internal state to the
 // model creates a gamification surface — model optimizes for engine metrics
 // rather than task progress.

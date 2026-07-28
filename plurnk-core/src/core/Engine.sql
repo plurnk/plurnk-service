@@ -126,12 +126,24 @@ SELECT COALESCE(MAX(sequence), 0) + 1 AS next FROM turns WHERE loop_id = $loop_i
 -- PREP: engine_loop_usage
 -- Per-loop usage totals — SUM the loop's turns (§tokenomics stores usage per turn).
 -- Surfaced on loop.run + loop/terminated (#197). `context` is the LAST turn's prompt tokens — the
--- honest window-occupancy numerator (#263), distinct from the summed `prompt` (which overcounts a
--- context that grows across turns).
+-- latest provider attempt's honest window-occupancy numerator (#263), distinct from the summed
+-- `prompt` (which includes every billed retry and overcounts a context that grows across turns).
 SELECT COALESCE(SUM(usage_prompt), 0)     AS prompt,
        COALESCE(SUM(usage_completion), 0) AS completion,
        COALESCE(SUM(usage_cost_usd), 0)  AS cost_usd,
-       (SELECT usage_prompt FROM turns WHERE loop_id = $loop_id ORDER BY sequence DESC LIMIT 1) AS context,
+       (
+           SELECT a.usage_prompt
+           FROM turn_attempts a
+           WHERE a.turn_id = (
+               SELECT latest.id
+               FROM turns latest
+               WHERE latest.loop_id = $loop_id
+               ORDER BY latest.sequence DESC
+               LIMIT 1
+           )
+           ORDER BY a.sequence DESC
+           LIMIT 1
+       ) AS context,
        -- #274 — the LAST turn's model window (denominator), so numerator + denominator come from
        -- the same loop/model; NULL when the provider reports no window.
        (SELECT usage_prompt_budget FROM turns WHERE loop_id = $loop_id ORDER BY sequence DESC LIMIT 1) AS context_size,
@@ -176,6 +188,38 @@ UPDATE turns SET
     model = $model,
     meta = $meta
 WHERE id = $id;
+
+-- PREP: engine_record_turn_attempt
+-- One completed provider exchange beneath a turn. Rejected emissions remain
+-- operator-visible forensic evidence but never become log rows or packet history.
+INSERT INTO turn_attempts (
+    turn_id,
+    sequence,
+    accepted,
+    response,
+    parse_errors,
+    usage_prompt,
+    usage_completion,
+    usage_reasoning,
+    usage_cached,
+    usage_cost_usd,
+    finish_reason,
+    model
+)
+VALUES (
+    $turn_id,
+    $sequence,
+    $accepted,
+    $response,
+    $parse_errors,
+    $usage_prompt,
+    $usage_completion,
+    $usage_reasoning,
+    $usage_cached,
+    $usage_cost_usd,
+    $finish_reason,
+    $model
+);
 
 -- PREP: engine_list_workspace_entries
 -- Every entry of a workspace — all schemes, all channels — the source behind the entry
@@ -517,16 +561,14 @@ LIMIT 1;
 -- IS weighing it).
 -- op='error' rows are EXCLUDED: the error CHANNEL is already-surfaced signal (the grinder's
 -- overflow row mints pre-packet — the recovery turn SAW it; §grinder-hard-413-recovery's
--- concluding-is-legitimate stands), and the current emission's parse errors ride the threaded
--- count instead (they mint as rows only after dispatch).
+-- concluding-is-legitimate stands). Invalid emissions never reach turn dispatch.
 SELECT id FROM log_entries
 WHERE turn_id = $turn_id AND origin = 'model' AND status_rx >= 400 AND op != 'error';
 
--- PREP: engine_demote_turn_status
--- §send-premature-terminate — a terminal REFUSED at dispatch (the pending-set 409) demotes the
--- turn to a continue AFTER the close already persisted the provisional status (the close writes
--- packet+usage as soon as the model responds; ops dispatch after). The record must match the
--- truth the return value carries: the loop never went terminal, so the turn didn't either.
+-- PREP: engine_reconcile_turn_status
+-- A SEND's signal is only provisional until dispatch adjudicates live obligations and failures.
+-- The close writes packet+usage before ops dispatch, so reconcile the persisted turn whenever
+-- dispatch changes that disposition (for example refused 200 -> 102 or drained 202 -> 200).
 UPDATE turns SET status = $status WHERE id = $id;
 
 
