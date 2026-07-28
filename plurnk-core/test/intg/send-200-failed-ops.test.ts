@@ -1,7 +1,8 @@
 // §send-200-failed-ops (#363, owner ruling) — a worker must not conclude 200 over a failed op.
 // A turn's failed operation results are UNSEEN until the next packet; a same-turn
 // SEND[200] is refused 409 (weigh, then conclude), SEND[499] is never gated,
-// and the gate judges only the current turn. Invalid emissions never dispatch.
+// and the gate judges only the current turn. Untrustworthy frames never dispatch;
+// bounded syntax failures enter this same failed-operation gate.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";

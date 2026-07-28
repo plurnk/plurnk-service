@@ -558,11 +558,16 @@ LIMIT 1;
 -- errors the model cannot have seen (they land next packet). A [200] or already-drained [202] over
 -- them concludes blind past a failure — refused 409; [499] abandons regardless (declaring failure
 -- IS weighing it).
--- op='error' rows are EXCLUDED: the error CHANNEL is already-surfaced signal (the grinder's
--- overflow row mints pre-packet — the recovery turn SAW it; §grinder-hard-413-recovery's
--- concluding-is-legitimate stands). Invalid emissions never reach turn dispatch.
+-- Actionless engine errors are excluded: the grinder's overflow row mints pre-packet, so the
+-- recovery turn already saw it (§grinder-hard-413-recovery). A model-authored statement that
+-- failed grammar parsing is different: source='grammar' records a bounded operation failure
+-- from the accepted emission, unseen until the next packet, so it gates completion like every
+-- other failed model operation.
 SELECT id FROM log_entries
-WHERE turn_id = $turn_id AND origin = 'model' AND status_rx >= 400 AND op != 'error';
+WHERE turn_id = $turn_id
+  AND origin = 'model'
+  AND status_rx >= 400
+  AND (op != 'error' OR source = 'grammar');
 
 -- PREP: engine_reconcile_turn_status
 -- A SEND's signal is only provisional until dispatch adjudicates live obligations and failures.

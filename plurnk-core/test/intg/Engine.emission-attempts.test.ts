@@ -175,6 +175,178 @@ test("finish=length is forensic evidence: an incomplete frame retries wholesale 
     }
 });
 
+test("a bounded malformed operation is admitted once and becomes a model-visible failed result", async () => {
+    const { db, workspaceId, workerId, loopId, engine } = await setup();
+    try {
+        const malformed = [
+            "<<PLAN:inspect relevant modules:PLAN",
+            "<<FIND(ast/**|lexer/**|parser/**|stdlib/**|util/**):#module|#require|#load|#cache#i:FIND",
+            "<<SEND[102]:inspect the results next:SEND",
+        ].join("\n");
+        const provider = new AttemptWitness({
+            contextWindow: 100_000,
+            responses: [
+                invalid(malformed),
+                invalid("<<PLAN:weigh the failed operation:PLAN\n<<SEND[499]:the matcher was malformed:SEND"),
+            ],
+        });
+
+        const failed = await engine.runTurn({
+            provider,
+            workspaceId,
+            workerId,
+            loopId,
+            messages: [{ role: "user", content: "inspect the code" }],
+        });
+
+        assert.equal(failed.status, 102);
+        assert.equal(failed.emissionAttempts, 1, "a trustworthy frame is not blindly resampled");
+        assert.equal(failed.emissionExhausted, false);
+        assert.ok(failed.statuses.includes(400), "the malformed FIND becomes a failed operation");
+        const attempts = await db.test_turn_attempts.all<{
+            accepted: number;
+            parse_errors: string;
+        }>({ turn_id: failed.turnId });
+        assert.deepEqual(attempts.map(({ accepted }) => accepted), [1]);
+        assert.equal(JSON.parse(attempts[0]!.parse_errors).length, 1, "accepted attempts retain their parse evidence");
+
+        const rows = await db.test_log_entries_by_turn.all<{
+            sequence: number;
+            status_rx: number;
+            op: string;
+            origin: string;
+            rx: string;
+        }>({ turn_id: failed.turnId });
+        const authored = rows.filter(({ origin, op }) =>
+            origin === "model" && (op === "PLAN" || op === "error" || op === "SEND"));
+        assert.deepEqual(
+            authored.map(({ op, status_rx }) => ({ op, status_rx })),
+            [
+                { op: "PLAN", status_rx: 200 },
+                { op: "error", status_rx: 400 },
+                { op: "SEND", status_rx: 102 },
+            ],
+            "the recovered failure is committed before the turn disposition",
+        );
+        const syntaxFailure = JSON.parse(authored[1]!.rx) as {
+            problem?: { type?: string; detail?: string; line?: number; source?: string };
+        };
+        assert.equal(
+            syntaxFailure.problem?.type,
+            "https://problems.plurnk.dev/grammar/parser/invalid-operation-syntax",
+        );
+        assert.match(syntaxFailure.problem?.detail ?? "", /not a valid `#pattern#flags` regex/);
+        assert.equal(syntaxFailure.problem?.line, 2);
+        assert.equal(syntaxFailure.problem?.source, "visitor");
+
+        const recovery = await engine.runTurn({
+            provider,
+            workspaceId,
+            workerId,
+            loopId,
+            messages: [{ role: "user", content: "inspect the code" }],
+        });
+        const packetRow = await db.test_get_packet.get<{ packet: string }>({ id: recovery.turnId });
+        const packet = JSON.parse(packetRow?.packet ?? "{}");
+        assert.match(packetSection(packet, "errors"), /400 log:\/\/\/.*\/error/);
+        assert.match(
+            packetSection(packet, "log"),
+            /not a valid `#pattern#flags` regex/,
+            "the next turn receives the parser's actionable diagnostic",
+        );
+    } finally {
+        await db.close();
+    }
+});
+
+test("a bounded malformed operation prevents same-turn completion until the model observes it", async () => {
+    const { db, workspaceId, workerId, loopId, engine } = await setup();
+    try {
+        const provider = new AttemptWitness({
+            contextWindow: 100_000,
+            responses: [
+                invalid([
+                    "<<PLAN:search and conclude:PLAN",
+                    "<<FIND(**):#unterminated[:FIND",
+                    "<<SEND[200]:done:SEND",
+                ].join("\n")),
+            ],
+        });
+
+        const result = await engine.runTurn({
+            provider,
+            workspaceId,
+            workerId,
+            loopId,
+            messages: [{ role: "user", content: "search" }],
+        });
+
+        assert.equal(result.emissionAttempts, 1);
+        assert.equal(result.status, 102, "the refused SEND keeps the turn non-terminal");
+        assert.ok(result.statuses.includes(400), "the syntax failure participates in strike accounting");
+        assert.ok(result.statuses.includes(409), "SEND[200] refuses to conclude past the unseen failure");
+        const rows = await db.test_log_entries_by_turn.all<{
+            sequence: number;
+            status_rx: number;
+            op: string;
+            origin: string;
+        }>({ turn_id: result.turnId });
+        const authored = rows.filter(({ origin, op }) =>
+            origin === "model" && (op === "PLAN" || op === "error" || op === "SEND"));
+        assert.deepEqual(
+            authored.map(({ op, status_rx }) => ({ op, status_rx })),
+            [
+                { op: "PLAN", status_rx: 200 },
+                { op: "error", status_rx: 400 },
+                { op: "SEND", status_rx: 409 },
+            ],
+        );
+    } finally {
+        await db.close();
+    }
+});
+
+test("a hard parse error outside the PLAN...SEND frame retries wholesale", async () => {
+    const { db, workspaceId, workerId, loopId, engine } = await setup();
+    try {
+        const provider = new AttemptWitness({
+            contextWindow: 100_000,
+            responses: [
+                invalid([
+                    "<<PLAN:conclude too early:PLAN",
+                    "<<SEND[200]:done:SEND",
+                    "<<EDIT(worker:///must-not-exist):value:EDIT",
+                ].join("\n")),
+                valid("accepted retry"),
+            ],
+        });
+
+        const result = await engine.runTurn({
+            provider,
+            workspaceId,
+            workerId,
+            loopId,
+            messages: [{ role: "user", content: "do the task" }],
+        });
+
+        assert.equal(result.status, 200);
+        assert.equal(result.emissionAttempts, 2);
+        const attempts = await db.test_turn_attempts.all<{ accepted: number }>({ turn_id: result.turnId });
+        assert.deepEqual(attempts.map(({ accepted }) => accepted), [0, 1]);
+        const rows = await db.test_log_entries_by_turn.all<{
+            op: string;
+            origin: string;
+        }>({ turn_id: result.turnId });
+        assert.equal(
+            rows.filter(({ op, origin }) => op === "EDIT" && origin === "model").length,
+            0,
+            "no parsed prefix or trailing operation from the untrustworthy frame dispatches",
+        );
+    } finally {
+        await db.close();
+    }
+});
+
 test("three invalid emissions fail the run below the strike rail", async () => {
     const { db, workspaceId, workerId, loopId, engine } = await setup();
     try {

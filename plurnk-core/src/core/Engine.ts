@@ -6,6 +6,11 @@ import type { PlurnkStatement, EditStatement, ReadStatement, UrlPath, FindStatem
 // Notice envelopes (per @plurnk/plurnk-grammar 0.17.0 protocol)
 // before being pushed to the loop's notices buffer.
 type ParseErrorInfo = { message: string; line: number; column: number; source: string };
+const TERMINAL_SEND_SIGNALS = new Set([102, 200, 202, 300, 499]);
+const comparePosition = (
+    a: { line: number; column: number },
+    b: { line: number; column: number },
+): number => a.line - b.line || a.column - b.column;
 import type SchemeRegistry from "./SchemeRegistry.ts";
 import { Mimetypes, emptyRegistry } from "@plurnk/plurnk-mimetypes";
 import type { Db } from "./Db.ts";
@@ -143,6 +148,7 @@ type SplitProviderResponse = {
     packetAssistant: PacketAssistant;
     callMetadata: TurnCallMetadata;
     parseErrors: ParseErrorInfo[];
+    recoverableParseErrors: ParseErrorInfo[];
     parseNotices: Notice[];
     emissionValid: boolean;
 };
@@ -1401,7 +1407,12 @@ export default class Engine {
         // parsed ops) → packet.assistant per Packet.json assistant section;
         // call-metadata (usage, finishReason, model) → Turn columns per
         // Turn.json. Mixing the two on packet.assistant was the wrong layer.
-        const { packetAssistant, callMetadata, parseNotices } = splitResponse; // raw assistant content is opaque — split, never interpreted — §provider-guarantees-assistantraw-opaque
+        const {
+            packetAssistant,
+            callMetadata,
+            parseNotices,
+            recoverableParseErrors,
+        } = splitResponse; // raw assistant content is opaque — split, never interpreted — §provider-guarantees-assistantraw-opaque
         for (const notice of parseNotices) {
             this.#notices.push(workspaceId, loopId, notice);
         }
@@ -1480,7 +1491,8 @@ export default class Engine {
 
         // Idle turn: an implicit-continue (102) that did no WORK — its ops are only PLAN/SEND, no mid op.
         // The model continued with nothing to do. (Skipped when premature already steered this turn.)
-        const midOpsCount = packetAssistant.ops.filter((op) => op.op !== "PLAN" && op.op !== "SEND").length;
+        const midOpsCount = packetAssistant.ops.filter((op) => op.op !== "PLAN" && op.op !== "SEND").length
+            + recoverableParseErrors.length;
         if (!steerStruck && turnStatus === TURN_STATUS_IMPLICIT_CONTINUE && midOpsCount === 0) {
             // One grace turn after a retrieval-only 409 (admins specimen): the refusal steer says
             // "continuing in order to receive results" — a model that obediently waits one bare
@@ -1551,7 +1563,43 @@ export default class Engine {
         // so the next op's sequence picks up after them. Collapses to nextActionIndex+i when
         // every op writes one row (the common case).
         let rowSeq = nextActionIndex;
+        let parseErrorsRecorded = false;
+        const recordRecoverableParseErrors = async (): Promise<void> => {
+            if (parseErrorsRecorded) return;
+            parseErrorsRecorded = true;
+            for (const error of recoverableParseErrors) {
+                const recorded = await this.#problems.record({
+                    workerId,
+                    loopId,
+                    turnId,
+                    sequence: rowSeq++,
+                    origin: "model",
+                    source: "grammar",
+                    result: Results.failure(
+                        "grammar:parser",
+                        "invalid-operation-syntax",
+                        400,
+                        error.message,
+                        {},
+                        {
+                            line: error.line,
+                            column: error.column,
+                            source: error.source,
+                        },
+                    ),
+                });
+                statuses.push(recorded.result.status);
+                onDispatch?.(recorded.id);
+            }
+        };
         for (const statement of opsToDispatch) {
+            if (
+                statement.op === "SEND"
+                && typeof statement.signal === "number"
+                && TERMINAL_SEND_SIGNALS.has(statement.signal)
+            ) {
+                await recordRecoverableParseErrors();
+            }
             const result = await this.#dispatcher.dispatch({
                 statement, workspaceId, workerId, loopId, turnId,
                 sequence: rowSeq,
@@ -1594,8 +1642,10 @@ export default class Engine {
             }
             rowSeq += (result.rowsWritten as number | undefined) ?? 1;
         }
+        await recordRecoverableParseErrors();
         // Engine rail failures mint as op='error' log rows at the turn's next
-        // free sequence. Syntax failures never reach this accepted-turn path.
+        // free sequence. Bounded syntax failures were recorded in their
+        // authored turn before its terminal disposition.
         let errSeq = rowSeq;
         // max_commands_exceeded IS model-facing: dropped ops the model emitted that didn't run.
         if (droppedCount > 0) pendingEngineErrors.push("max_commands_exceeded");
@@ -1676,6 +1726,7 @@ export default class Engine {
         // Full PlurnkParseError context (line/column/source) is preserved
         // on rejected attempt evidence. Warnings remain admissible Notices.
         const parseErrors: ParseErrorInfo[] = [];
+        let hasUnparsedTail = false;
         const parseNotices: Notice[] = [];
         if (preParsedOps !== undefined) {
             ops.push(...preParsedOps);
@@ -1718,19 +1769,44 @@ export default class Engine {
             // more precise diagnosis with the rejected forensic attempt.
             const tail = parsed.unparsedTail;
             if (tail !== undefined) {
+                hasUnparsedTail = true;
                 parseErrors.push({ message: tail.reason, line: tail.from.line, column: tail.from.column, source: "grammar" });
             }
         }
+        const plan = ops[0]?.op === "PLAN" ? ops[0] : undefined;
+        const finalOp = ops.at(-1);
+        const terminalSend = finalOp?.op === "SEND"
+            && typeof finalOp.signal === "number"
+            && TERMINAL_SEND_SIGNALS.has(finalOp.signal)
+            ? finalOp
+            : undefined;
+        const recoverableParseErrors = plan !== undefined && terminalSend !== undefined && !hasUnparsedTail
+            ? parseErrors.filter(
+                (error) =>
+                    comparePosition(error, plan.position) > 0
+                    && comparePosition(error, terminalSend.position) < 0,
+            ).toSorted(comparePosition)
+            : [];
+        const emissionValid = preParsedOps !== undefined
+            || (
+                plan !== undefined
+                && terminalSend !== undefined
+                && !hasUnparsedTail
+                && recoverableParseErrors.length === parseErrors.length
+            );
         const reasoning = assistant.reasoning ?? null;
         return {
             packetAssistant: { content: assistant.content, ops, reasoning },
             callMetadata: { usage: assistant.usage, finishReason: assistant.finishReason, model: assistant.model },
             parseErrors,
+            recoverableParseErrors: emissionValid ? recoverableParseErrors : [],
             parseNotices,
-            // The ANTLR model-turn parser is authoritative. Warnings remain
-            // admissible; any hard error or unparsed tail was collected above
-            // into parseErrors. Pre-parsed ops are Mock's trusted test seam.
-            emissionValid: preParsedOps !== undefined || parseErrors.length === 0,
+            // The ANTLR model-turn parser is authoritative. A trustworthy
+            // PLAN...SEND frame admits bounded interior statement failures so
+            // they become durable operation results. Missing boundaries,
+            // errors outside the frame, and an unparsed tail reject wholesale.
+            // Pre-parsed ops are Mock's trusted test seam.
+            emissionValid,
         };
     }
 

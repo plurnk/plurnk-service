@@ -1308,7 +1308,8 @@ export default class Dispatcher {
         if (status === 200) {
             // §send-200-failed-ops (#363, owner ruling: never 200 over a failed op) — this turn's
             // failed operation results are UNSEEN until the next packet, so concluding over them
-            // is concluding blind. Invalid syntax never reaches dispatch at all.
+            // is concluding blind. Bounded syntax failures enter the same gate as model-origin
+            // grammar error rows; boundary-destroying emissions never reach dispatch.
             const failCount = await this.#unobservedFailureCount(turnId);
             if (failCount > 0) return Dispatcher.#unobservedFailures(failCount);
             const pending = await this.#pendingSet(workerId, turnId);
