@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { PlurnkParser } from "@plurnk/plurnk-grammar";
+import Http from "@plurnk/plurnk-schemes-http";
 import type {
     FindStatement,
     SchemeCtx,
@@ -78,6 +79,94 @@ test("data schemes inherit standard FIND after their optional preparation hook",
         assert.match(String(result.content), /prepared:\/\/\/fact\.md/);
         assert.match(String(result.content), /"matchSpan"/);
     } finally {
+        await db.close();
+    }
+});
+
+test("exact URL FIND acquires live HTTP resources, reuses them, and rejects dead URLs", async () => {
+    const db = await openMigrated();
+    const schemes = new SchemeRegistry();
+    const http = new Http();
+    schemes.register("http", http);
+    const engine = new Engine({ db, schemes, mimetypes: DEFAULT_MIMETYPES });
+    const originalFetch = globalThis.fetch;
+    const requests: string[] = [];
+    const url = "https://93.184.216.34/igor-smirnov";
+    const deadUrl = "https://93.184.216.34/missing";
+    globalThis.fetch = (async (input: string | URL | Request) => {
+        const requested = String(input);
+        requests.push(requested);
+        if (requested === deadUrl) return new Response("missing", { status: 404 });
+        return new Response("Zhannetta Nikolaevna Lotnik was his spouse.", {
+            status: 200,
+            headers: { "content-type": "text/plain" },
+        });
+    }) as typeof fetch;
+    try {
+        const workspaceId = await insertWorkspace(db, `universal-find-http-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const loopId = await insertLoop(db, workerId, 1);
+        const turnId = await insertTurn(db, loopId, 1, 102);
+        const result = await engine.dispatch({
+            statement: parseFind(`<<FIND(${url}):#Zhannetta#:FIND`),
+            workspaceId,
+            workerId,
+            loopId,
+            turnId,
+            sequence: 1,
+            origin: "model",
+        });
+
+        assert.equal(result.status, 200);
+        assert.deepEqual(requests, [url]);
+        assert.match(String(result.content), new RegExp(url.replaceAll(".", "\\.")));
+        assert.match(String(result.content), /"matchSpan"/);
+        assert.doesNotMatch(String(result.content), /Zhannetta Nikolaevna Lotnik was his spouse/);
+
+        const reused = await engine.dispatch({
+            statement: parseFind(`<<FIND(${url})::FIND`),
+            workspaceId,
+            workerId,
+            loopId,
+            turnId,
+            sequence: 2,
+            origin: "model",
+        });
+        assert.equal(reused.status, 200);
+        assert.deepEqual(requests, [url]);
+        assert.match(String(reused.content), new RegExp(url.replaceAll(".", "\\.")));
+        assert.doesNotMatch(String(reused.content), /Zhannetta Nikolaevna Lotnik was his spouse/);
+
+        const surveyed = await engine.dispatch({
+            statement: parseFind("<<FIND(https://93.184.216.34/*):#spouse#:FIND"),
+            workspaceId,
+            workerId,
+            loopId,
+            turnId,
+            sequence: 3,
+            origin: "model",
+        });
+        assert.equal(surveyed.status, 200);
+        assert.deepEqual(requests, [url]);
+        assert.match(String(surveyed.content), new RegExp(url.replaceAll(".", "\\.")));
+        assert.match(String(surveyed.content), /"matchSpan"/);
+        assert.doesNotMatch(String(surveyed.content), /Zhannetta Nikolaevna Lotnik was his spouse/);
+
+        const dead = await engine.dispatch({
+            statement: parseFind(`<<FIND(${deadUrl})::FIND`),
+            workspaceId,
+            workerId,
+            loopId,
+            turnId,
+            sequence: 4,
+            origin: "model",
+        });
+        assert.equal(dead.status, 404);
+        assert.equal(dead.problem?.type, "https://problems.plurnk.dev/scheme/http/not-materialized");
+        assert.deepEqual(requests, [url, deadUrl]);
+    } finally {
+        globalThis.fetch = originalFetch;
+        await http.close();
         await db.close();
     }
 });

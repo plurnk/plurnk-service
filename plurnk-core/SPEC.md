@@ -577,7 +577,9 @@ Engine → scheme guarantees:
 - `ctx` is fresh per call. No mutation across calls.
 - FIND on a `category: "data"` scheme with no custom `find()` invokes its
   optional `prepareFind()` and then the standard entry FIND. Preparation owns
-  discovery/materialization only; query semantics remain universal.
+  discovery/materialization only; query semantics remain universal. The
+  prepared write and the query resolve through one canonical entry identity,
+  including a URI authority folded into its storage pathname.
 - `ctx.writer` reflects the actual writer at this dispatch.
 - `manifest.writableBy` checked BEFORE invocation; engine returns 403 directly on exclusion. {§scheme-surface-writableby-403}
 - `ctx.signal` is wired to the worker's AbortController (§provider-guarantees-signal-wired).
@@ -829,6 +831,10 @@ Log history preserved — `log_entries` stores path tuple as text, not FK to `en
 AST: `{ op: "FIND", target (scope), body: MatcherBody | null (predicate), signal: tags | null, lineMarker? }`.
 
 - Filters entries within scope. A **bare** path is the exact entry; an explicit **glob** expands to a scope; `#regex#` filters by pathname. A trailing slash is a folder scope only for a scheme whose manifest declares `folderScopes: true`; otherwise it is ordinary resource syntax and READ dispatches it directly. This is an explicit plugin contract, never inferred from URL punctuation: new schemes cannot accidentally turn a root resource into unbounded fan-out. For declared folder schemes the same target contract governs FIND and READ — bare = the entry, folder/glob = a scope (#286). {§find-scope-prefix-filter}
+- An exact target resolves to the same canonical `(scheme, pathname)` identity
+  as READ, entry CRUD, and any preceding `prepareFind()`. URI authorities are
+  identity-bearing: `https://example.com/page` queries
+  `(https, /example.com/page)`, never `(https, /page)`.
 - `body` matcher operates on entry content (glob/regex/jsonpath/xpath), per grammar plurnk.md §"Body matcher dispatch"; the path-glob lives in the (target), not the body. {§find-glob-filter-on-content}
 - Every matcher operates only over the candidate set selected by `(target)` and `[tags]`; relation matchers do not bypass that selection. Semantic ranking is exhaustive within that candidate set, then applies its result policy—never rank the wider corpus and discard out-of-scope hits afterward, which changes top-K meaning and leaks entries across an exact target. A semantic matcher with no `<scope>` returns the configured `PLURNK_SERVICE_SEMANTIC_TOP_K` highest-ranked results. An integer scope overrides that count; a leading decimal is a minimum cosine-similarity threshold, optionally followed by a result cap. The ordinary FIND render budget remains independent of semantic ranking. {§find-semantic-default-top-k}
 - `signal` is a tag filter; entries match if they have ALL listed tags. {§find-tag-filter-and-semantics}

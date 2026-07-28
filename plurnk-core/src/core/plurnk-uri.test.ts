@@ -5,7 +5,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { parsePath } from "@plurnk/plurnk-grammar";
-import { foldAuthorityIntoPath, renderAddress, schemeNameOf } from "./plurnk-uri.ts";
+import { entryPathnameOf, foldAuthorityIntoPath, renderAddress, schemeNameOf } from "./plurnk-uri.ts";
 
 test("foldAuthorityIntoPath folds a namespace authority into the canonical path", () => {
     assert.equal(foldAuthorityIntoPath("docs", "/x.md"), "/docs/x.md");
@@ -13,6 +13,18 @@ test("foldAuthorityIntoPath folds a namespace authority into the canonical path"
     // no authority → unchanged (empty-authority schemes are a no-op)
     assert.equal(foldAuthorityIntoPath(null, "/manifest.json"), "/manifest.json");
     assert.equal(foldAuthorityIntoPath(null, "/docs/x.md"), "/docs/x.md");
+});
+
+test("entryPathnameOf preserves namespace and network authorities in canonical storage identity", () => {
+    const known = parsePath("known://docs/fact.md");
+    const wikipedia = parsePath("https://en.wikipedia.org/wiki/Igor_Smirnov_%28politician%29");
+    assert.ok(known);
+    assert.ok(wikipedia);
+    assert.equal(entryPathnameOf(known), "/docs/fact.md");
+    assert.equal(
+        entryPathnameOf(wikipedia),
+        "/en.wikipedia.org/wiki/Igor_Smirnov_(politician)",
+    );
 });
 
 test("renderAddress promotes a multi-segment plurnk path to authority form", () => {

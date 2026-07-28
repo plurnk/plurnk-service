@@ -113,6 +113,7 @@ export default class Http implements SchemeHandler {
         const target = statement.target;
         if (target === null || target.kind !== "url") return { shape: "passthrough", status: 200 };
         const pathname = Http.#pathname(target);
+        if (pathname.includes("*")) return { shape: "passthrough", status: 200 };
         const prior = await ctx.entries.read(pathname);
         if (prior.entry !== null) return { shape: "passthrough", status: 200 };
         const fetched = await this.#webFetcher.fetch(Http.#urlFrom(target), { signal: ctx.signal });

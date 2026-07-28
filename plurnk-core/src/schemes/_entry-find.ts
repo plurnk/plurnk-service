@@ -19,7 +19,7 @@ import type { FindStatement } from "@plurnk/plurnk-grammar";
 import { LineMarkerOps } from "../content/index.ts";
 import type { PlurnkSchemeContext, SchemeManifest } from "../core/scheme-types.ts";
 import Matcher from "../content/matcher.ts";
-import { decodePathParens } from "../core/path-decode.ts";
+import { entryPathnameOf } from "../core/plurnk-uri.ts";
 import EntryGraph from "./_entry-graph.ts";
 import EntryCrud from "./_entry-crud.ts";
 import EntryManifest, { type CatalogEntry } from "./_entry-manifest.ts";
@@ -57,8 +57,10 @@ export default class EntryFind {
     static #scopePathnameOf(statement: FindStatement): string | null {
         const path = statement.target;
         if (path === null) return null;
-        if (path.kind === "regex") return path.raw; // regex source — parens are syntax, never encoded
-        return decodePathParens(path.kind === "url" ? path.pathname : path.raw); // #239 item 4
+        // FIND addresses the same canonical entry identity as READ and direct
+        // CRUD. Both namespace authorities and network hosts are part of that
+        // identity and must survive the exact-entry lookup.
+        return entryPathnameOf(path);
     }
 
     static #unique(xs: string[]): string[] {

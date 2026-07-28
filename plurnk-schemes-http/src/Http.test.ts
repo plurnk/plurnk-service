@@ -188,10 +188,16 @@ test("prepareFind materializes an exact URL through the guarded readable path", 
     assert.equal(inspect().wrote?.entry.channels.body?.mimetype, "application/json");
 });
 
-test("prepareFind leaves non-exact discovery to the shared entry query", async () => {
+test("prepareFind leaves absent and glob discovery to the shared entry query", async () => {
     const { ctx, inspect } = makeCtx();
-    const prepared = await new Http(fakeBrowser("unused")).prepareFind(findStmt(null), ctx);
-    assert.equal(prepared.status, 200);
+    const http = new Http(fakeBrowser("unused"));
+    const absent = await http.prepareFind(findStmt(null), ctx);
+    assert.equal(absent.status, 200);
+    const glob = await http.prepareFind(
+        findStmt(urlTarget("https://example.com/docs/*", "/docs/*")),
+        ctx,
+    );
+    assert.equal(glob.status, 200);
     assert.equal(inspect().wrote, null);
 });
 

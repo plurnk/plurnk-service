@@ -41,7 +41,9 @@ materializes a missing entry through the guarded `WebFetcher` byte/render path;
 the consumer then applies its standard catalog, matcher, span, weight,
 pagination, and status semantics. Glob and regex scopes survey
 already-materialized web entries because a pattern cannot discover the remote
-web. FIND returns metadata and match coordinates; READ returns content.
+web. The prepared and queried identities both retain protocol and host, so a
+successful acquisition cannot miss its own entry during the standard query.
+FIND returns JSON metadata and match coordinates; READ returns content.
 
 Results use the `passthrough` family (read-only / network shape) — http entries are coordinate/URL-addressed, not entry-CRUD-backed.
 
@@ -66,6 +68,9 @@ Channel publication follows the manifest contract: a fragmentless READ publishes
 
 | Outcome | status |
 |---|---|
+| Exact FIND, live or already materialized URL | 200 standard FIND result |
+| Exact FIND, dead/unmaterializable URL | 404 (`kind: not_materialized`) |
+| Exact FIND, no readable projection | 422 (`kind: no_readable_projection`) |
 | Stream opened (READ / SEND[200] success) | 102 |
 | SEND[410] delete | as `ctx.entries.delete` returns |
 | SEND[499] cancel | 200 (engine already routed teardown to the handle) |

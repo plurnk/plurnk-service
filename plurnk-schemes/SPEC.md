@@ -91,9 +91,11 @@ discovery/materialization seam invoked before the consumer's standard FIND
 when a data scheme has no custom `find()`. Stored schemes omit it. Acquisition
 schemes use it to make an exact requested resource into an ordinary entry,
 then receive the same catalog, matcher, span, weight, pagination, and status
-semantics as every other entry-bearing scheme. A custom `find()` replaces the
-whole operation only where the scheme owns genuinely different candidate
-semantics.
+semantics as every other entry-bearing scheme. The consumer resolves the
+standard query through the same canonical entry identity used by
+`ctx.entries`: a URL authority remains part of that identity and cannot be
+dropped between preparation and lookup. A custom `find()` replaces the whole
+operation only where the scheme owns genuinely different candidate semantics.
 
 A sibling does `export default class X implements SchemeHandler` (with `static manifest: SchemeManifest`) and gets compile-time signature checking. Every registered handler exposes either that static manifest or an instance `manifest` for dynamically derived identities; `Manifest.of` validates the complete resolved declaration and its registration name before the handler becomes dispatchable. The op set is exactly grammar's `PlurnkStatement` dispatch union and moves with the framework's grammar bump (0.74.57 added `work?`/`fork?`; `LOOK`/`BUFF` are grammar `ClientStatement` ops, client-facing and never dispatched to a scheme, so they're intentionally absent here). **The statement + path types (`ReadStatement`, `SendStatement`, `UrlPath`, …) are re-exported from this barrel**, so a sibling depends on and peers (`^1`) ONLY `@plurnk/plurnk-schemes` — grammar rides underneath as the framework's transitive dep (§3).
 

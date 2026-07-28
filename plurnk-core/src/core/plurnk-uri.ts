@@ -8,12 +8,12 @@
 //            first segment to the authority slot; a single-segment singleton (manifest.json,
 //            an alias doc) stays empty-authority root. Non-plurnk schemes are untouched.
 //
-// A web host (http://en.wikipedia.org/…) is NOT a namespace and never folds — callers that
-// see other schemes gate the fold on scheme === "plurnk"; the entry layer only ever sees
-// empty-authority schemes, so it folds unconditionally (a no-op there).
+// Network hosts are not plurnk namespaces, but storage has no separate authority
+// column. They therefore use the same mechanical fold while retaining their
+// addressed protocol as the scheme identity.
 
 import type { ParsedPath } from "@plurnk/plurnk-grammar";
-import { encodePathParens } from "./path-decode.ts";
+import { decodePathParens, encodePathParens } from "./path-decode.ts";
 
 // Bare paths default to the file scheme per plurnk.md (grammar sysprompt):
 // "Bare paths (no scheme) default to local relative project file paths."
@@ -33,6 +33,14 @@ export function schemeNameOf(path: ParsedPath | null): string | null {
 
 export function foldAuthorityIntoPath(hostname: string | null, pathname: string): string {
     return hostname ? `/${hostname}${pathname}` : pathname;
+}
+
+export function entryPathnameOf(path: ParsedPath): string {
+    if (path.kind === "regex") return path.raw;
+    const pathname = path.kind === "url"
+        ? foldAuthorityIntoPath(path.hostname, path.pathname)
+        : path.raw;
+    return decodePathParens(pathname);
 }
 
 // {§prompt-self-only} — the prompt address is prompt:///<loopSeq>/<turnSeq>: the OWNER rides the

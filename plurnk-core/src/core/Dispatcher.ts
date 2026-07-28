@@ -9,7 +9,7 @@ import type NoticeChannel from "./NoticeChannel.ts";
 import type ProposalLifecycle from "./ProposalLifecycle.ts";
 import type { ProposalPendingEvent } from "./ProposalLifecycle.ts";
 import type { EntryData, ReadEntryResult, WriteEntryResult, DeleteEntryResult } from "../schemes/_entry-crud.ts";
-import { foldAuthorityIntoPath, schemeNameOf } from "./plurnk-uri.ts";
+import { entryPathnameOf, foldAuthorityIntoPath, schemeNameOf } from "./plurnk-uri.ts";
 import Fork from "./fork.ts";
 import WorkerCap from "./worker-cap.ts";
 import { decodePathParens } from "./path-decode.ts";
@@ -32,11 +32,6 @@ import { InvalidOperationResultError, type SchemeResult } from "@plurnk/plurnk-s
 // SPEC §scheme-surface: writer must be in target scheme's manifest.writableBy.
 // OPEN/FOLD/READ/FIND are not gated — they curate the log or read, never mutating an entry.
 const MUTATING_OPS: ReadonlySet<PlurnkOp> = new Set(["EDIT", "SEND", "COPY", "MOVE", "EXEC", "KILL", "FORK", "WORK"]);
-
-const pathnameFromPath = (path: ParsedPath): string => {
-    if (path.kind === "regex") return path.raw; // regex source — parens are syntax, never encoded
-    return decodePathParens(path.kind === "url" ? path.pathname : path.raw); // #239 item 4
-};
 
 export type DispatchContext = {
     statement: PlurnkStatement;
@@ -761,7 +756,7 @@ export default class Dispatcher {
         // Relocation: COPY then DELETE source (§move-relocation-deletes-source).
         const copyResult = await this.#copyOrchestration({ statement, srcPath, dstPath, ctx });
         if (copyResult.status >= 400) return copyResult;
-        const srcPathname = pathnameFromPath(srcPath);
+        const srcPathname = entryPathnameOf(srcPath);
         // If the dest write is a pending proposal (file dest → §membership review), the
         // source-delete MUST wait until the dest actually lands — a rejected
         // proposal would otherwise lose the source. Thread it into the resolution:
@@ -802,7 +797,7 @@ export default class Dispatcher {
             const handlerCtx = this.#handlerContext(schemeName, ctx);
             return handlerCtx === null
                 ? Dispatcher.#failure("scheme-context-unavailable", 501, `No context is available for scheme '${schemeName}'.`)
-                : await killable.kill(pathnameFromPath(path), statement.signal, handlerCtx, schemeName);
+                : await killable.kill(entryPathnameOf(path), statement.signal, handlerCtx, schemeName);
         }
         if (schemeName === "worker") {
             // Entry-path present → KILL a worker-scope scratch ENTRY (delete it), self-only —
@@ -835,7 +830,7 @@ export default class Dispatcher {
         if (!this.#schemes.has(schemeName)) return Dispatcher.#failure("scheme-not-found", 501, `Scheme '${schemeName}' is not registered.`);
         // A host-effecting delete (file) returns 202 to PROPOSE — pass its attrs through so the proposal
         // carries the delete target to review (§isProposal fires on 202). Plurnk-internal deletes execute inline.
-        return this.#deleteEntry(schemeName, pathnameFromPath(path), ctx);
+        return this.#deleteEntry(schemeName, entryPathnameOf(path), ctx);
     }
 
     // Multi-file READ fan-out (SPEC §matcher-result — "the companion to FIND's survey"). A glob
@@ -1068,8 +1063,8 @@ export default class Dispatcher {
             return Dispatcher.#failure("scheme-not-found", 501, `COPY/MOVE requires registered source '${srcSchemeName}' and destination '${dstSchemeName}' schemes.`);
         }
 
-        const srcPathname = pathnameFromPath(srcPath);
-        const dstPathname = pathnameFromPath(dstPath);
+        const srcPathname = entryPathnameOf(srcPath);
+        const dstPathname = entryPathnameOf(dstPath);
 
         const srcResult = await this.#readEntry(srcSchemeName, srcPathname, ctx);
         if (srcResult.status !== 200 || srcResult.entry === null) return Dispatcher.#failure("copy-source-not-found", 404, `COPY/MOVE source not found: ${srcSchemeName}://${srcPathname}.`);  // §copy-missing-source-404 §move-missing-source-404
@@ -1404,7 +1399,7 @@ export default class Dispatcher {
                 workspace_id: ctx.workspaceId,
                 owner_id: await Owner.commonsId(this.#db, ctx.workspaceId),
                 scheme: schemeName,
-                pathname: pathnameFromPath(statement.target),
+                pathname: entryPathnameOf(statement.target),
             });
             if (entry !== undefined) {
                 const subscription = await ChannelWrite.findActiveSubscription(this.#db, {

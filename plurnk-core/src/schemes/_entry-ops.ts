@@ -2,8 +2,7 @@ import EntrySemantic from "./_entry-semantic.ts";
 import EntryCrud from "./_entry-crud.ts";
 import type { EditStatement, ReadStatement } from "@plurnk/plurnk-grammar";
 import type { Db } from "../core/Db.ts";
-import { decodePathParens } from "../core/path-decode.ts";
-import { foldAuthorityIntoPath } from "../core/plurnk-uri.ts";
+import { entryPathnameOf } from "../core/plurnk-uri.ts";
 import type { PlurnkSchemeContext, SchemeManifest } from "../core/scheme-types.ts";
 import Owner from "../core/Owner.ts";
 import EntryManifest from "./_entry-manifest.ts";
@@ -35,13 +34,9 @@ export default class EntryOps {
     static #pathnameOf(statement: { target: EditStatement["target"] }): string {
         const t = statement.target;
         if (t === null) throw new Error("unreachable");
-        if (t.kind === "regex") return t.raw; // regex source — parens are syntax, never encoded
-        // Namespace-as-authority: fold a plurnk://docs/x.md authority back into the storage
-        // path (/docs/x.md) so it keys identically to the empty-authority form. #239 item 4
-        // ({§stream-owner-scoped} streams never reach this fold: their face resolves the authority
-        // to the owner and hands the statement over authority-stripped.)
-        if (t.kind === "url") return decodePathParens(foldAuthorityIntoPath(t.hostname, t.pathname));
-        return decodePathParens(t.raw);
+        // Owner-carved schemes strip their authority before reaching the shared
+        // entry layer; every remaining authority is part of entry identity.
+        return entryPathnameOf(t);
     }
 
     static #fragmentOf(statement: { target: EditStatement["target"] }): string | null {

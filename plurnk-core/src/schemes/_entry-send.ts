@@ -4,7 +4,7 @@
 
 import type { SendStatement } from "@plurnk/plurnk-grammar";
 import Owner from "../core/Owner.ts";
-import { decodePathParens } from "../core/path-decode.ts";
+import { entryPathnameOf } from "../core/plurnk-uri.ts";
 import type { PlurnkSchemeContext } from "../core/scheme-types.ts";
 import EntryCrud from "./_entry-crud.ts";
 import ChannelWrite from "../core/ChannelWrite.ts";
@@ -16,8 +16,7 @@ export default class EntrySend {
     static #pathnameOf(statement: SendStatement): string | null {
         const path = statement.target;
         if (path === null) return null;
-        if (path.kind === "regex") return path.raw; // regex source — parens are syntax, never encoded
-        return decodePathParens(path.kind === "url" ? path.pathname : path.raw); // #239 item 4
+        return entryPathnameOf(path);
     }
 
     static #fragmentOf(statement: SendStatement): string | null {
