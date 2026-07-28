@@ -7,7 +7,10 @@ const root = resolve(import.meta.dirname, "..");
 const clientRoot = resolve(process.env.PLURNK_CLIENT_CHECKOUT ?? resolve(root, "..", "plurnk"));
 const benchmarks = resolve(process.env.PLURNK_BENCHMARKS ?? resolve(root, "..", "..", "benchmarks"));
 mkdirSync(benchmarks, { recursive: true });
-const stateDir = mkdtempSync(resolve(benchmarks, "candidate-"));
+const stateDir = process.env.PLURNK_CANDIDATE_DIR === undefined
+    ? mkdtempSync(resolve(benchmarks, "candidate-"))
+    : resolve(process.env.PLURNK_CANDIDATE_DIR);
+mkdirSync(stateDir, { recursive: true });
 const dbPath = resolve(stateDir, "plurnk.db");
 const candidateModel = resolveCandidateModel(process.env);
 const candidateEnv = {
