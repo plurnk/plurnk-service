@@ -24,7 +24,7 @@ export const markTerminal = (terminatedBy: string | null, message: string | null
 
 // worker:// — THE knowledgebase scheme (#527) plus inter-worker CONTROL (irc=SEND; WORK/FORK are
 // Dispatcher.#handleWorkerControl). The authority names the OWNER ({§worker-authority-carving}):
-//   worker:///plan.md          — the COMMONS, the shared blackboard, the encouraged default
+//   worker:///notes.md         — the COMMONS, a shared blackboard
 //   worker://~/draft.md        — the calling worker's own private space
 //   worker://<name>/result.md  — a named worker's space, ancestry-gated read (owner + ancestors)
 //   worker://plurnk/docs/x.md  — the kernel's published surface, world-readable
@@ -44,7 +44,7 @@ export default class Worker extends CoreSchemeAdapterBase {
         volatile: false,
         modelVisible: true,
         folderScopes: true,
-        example: "<<EDIT(worker:///plan.md):- [ ] investigate the timeout:EDIT",
+        example: "<<EDIT(worker:///notes.md):Investigation notes.:EDIT",
     };
 
     // The authority from a worker:// target — "" for the empty (commons) form; null when the

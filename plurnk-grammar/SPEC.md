@@ -121,7 +121,7 @@ All other restrictions are runtime concerns, not grammar concerns.
 | OPEN   | tag filter (CSV)  | required | optional pattern matcher | result-set pagination |
 | FOLD   | tag filter (CSV)  | required | optional pattern matcher | result-set pagination |
 | SEND   | submit code (single integer; see §9) | optional (recipient) | message payload (JSON by convention for structured responses) | `<timeout, poll>` — the wait park on a terminal `[202]` (see §7, §9) |
-| EXEC   | registered executable tool (single string; `sh` default) | optional (cwd) | command or code snippet | `<timeout, poll>` — spawn lifetime cap + poll cadence |
+| EXEC   | registered executable tool (single string; `sh` default) | optional (cwd) | executor-specific input | `<timeout, poll>` — spawn lifetime cap + poll cadence |
 | WORK   | optional Git branch ref (single string) | required `worker://` target naming the fresh worker | task prompt for the worker's first loop | none (parses as null) |
 | FORK   | optional Git branch ref (single string) | required `worker://` target naming the context branch | optional hint for the context-inheriting worker | none (parses as null) |
 | KILL   | unix signal (single integer; taught in canon, e.g. `KILL[9]`) | required | opaque annotation (logged, no runtime meaning) | not applicable |
@@ -713,7 +713,7 @@ interface CopyStatement extends StatementBase<string[]> { op: "COPY"; body: stri
 // SEND — body is raw + best-effort JSON.
 interface SendStatement extends StatementBase<number> { op: "SEND"; body: SendBody | null; }
 
-// EXEC — body is a command or code snippet. Raw.
+// EXEC — body is executor-specific input. Raw.
 interface ExecStatement extends StatementBase<string> { op: "EXEC"; body: string | null; }
 
 // WORK — spawn a fresh worker. Target names the child (required, worker://);

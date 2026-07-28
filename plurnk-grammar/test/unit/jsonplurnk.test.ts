@@ -11,7 +11,7 @@ const SAMPLE = `[
 1:\tImprove ABS module loading so \`require()\` remains deterministic
 :::prompt:///2/1
 },
-{"op":"FIND","path":"log:///1/1/6/FIND","status":200,"target":"worker:///**","items":0,"tokens":0,"display":"none"}
+{"op":"FIND","path":"log:///1/1/6/FIND","status":200,"target":"worker:///**","items":0,"tokens":0,"display":"none","body":""}
 ]`;
 
 test("jsonplurnk: the ratified sample strips to valid JSON (the magnum-opus shape)", () => {
@@ -19,6 +19,7 @@ test("jsonplurnk: the ratified sample strips to valid JSON (the magnum-opus shap
     assert.equal(parsed.length, 3);
     assert.equal(parsed[0].display, "folded");
     assert.equal(parsed[2].display, "none");
+    assert.equal(parsed[2].body, "");
     assert.equal(parsed[1].op, "READ");
     assert.match(parsed[1].body, /Improve ABS module loading/);
 });
@@ -33,7 +34,7 @@ test("jsonplurnk: the open body recovers verbatim, trailing newline included", (
 test("jsonplurnk: a no-body block is already valid JSON and passes through untouched", () => {
     const block = `[
 {"op":"model","path":"log:///1/1/1/model","status":200,"tokens":109,"display":"folded"},
-{"op":"FIND","path":"log:///1/1/2/FIND","status":200,"items":0,"tokens":0,"display":"none"}
+{"op":"FIND","path":"log:///1/1/2/FIND","status":200,"items":0,"tokens":0,"display":"none","body":""}
 ]`;
     assert.equal(Jsonplurnk.strip(block), block);
     assert.equal((Jsonplurnk.parse(block) as any[]).length, 2);

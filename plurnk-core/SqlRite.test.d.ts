@@ -247,7 +247,6 @@ export class SqlRiteSync {
 	log_set_expanded_by_id: SqlRiteSyncPreparedStatements;
 	log_delete_by_id: SqlRiteSyncPreparedStatements;
 	log_find_candidates: SqlRiteSyncPreparedStatements;
-	log_row_target: SqlRiteSyncPreparedStatements;
 	log_write_tag: SqlRiteSyncPreparedStatements;
 	log_match_coordinates_tagged: SqlRiteSyncPreparedStatements;
 	log_find_candidates_tagged: SqlRiteSyncPreparedStatements;
@@ -738,7 +737,6 @@ export default class SqlRite {
 	log_set_expanded_by_id: SqlRitePreparedStatements;
 	log_delete_by_id: SqlRitePreparedStatements;
 	log_find_candidates: SqlRitePreparedStatements;
-	log_row_target: SqlRitePreparedStatements;
 	log_write_tag: SqlRitePreparedStatements;
 	log_match_coordinates_tagged: SqlRitePreparedStatements;
 	log_find_candidates_tagged: SqlRitePreparedStatements;

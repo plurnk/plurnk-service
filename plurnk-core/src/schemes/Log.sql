@@ -53,11 +53,6 @@ WHERE l.worker_id = $worker_id
   AND (l.sequence || '/' || t.sequence || '/' || le.sequence || '/' || le.op) GLOB $glob
 ORDER BY l.sequence, t.sequence, le.sequence;
 
--- PREP: log_row_target
--- #382 §prompt-fold-illegal — the fields that identify the CURRENT loop's foisted preview READ
--- (target scheme 'prompt', origin 'plurnk', op 'READ'), the one row a FOLD must never hide.
-SELECT scheme, pathname, origin, op, loop_id FROM log_entries WHERE id = $id;
-
 -- PREP: log_write_tag
 -- §log-region-tagging — FOLD is the log's write-op (EDIT can't reach engine-written rows). FOLD[tag]
 -- stamps a tag on the folded rows, additively (§edit-tags-additive) — re-tagging is a no-op.

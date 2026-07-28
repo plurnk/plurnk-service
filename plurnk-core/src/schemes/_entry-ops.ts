@@ -166,7 +166,7 @@ export default class EntryOps {
         }
 
         // 304 no-op (SPEC §edit): an existing entry whose write would change nothing —
-        // identical content and no new tag. Mirrors OPEN/FOLD's 304 on no-op; hands the
+        // identical content and no new tag. Mirrors OPEN/FOLD's idempotence; hands the
         // model a "you already did this" signal instead of a phantom 200 it can't
         // distinguish from a real update.
         if (existing !== undefined && newContent === originalContent) {

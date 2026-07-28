@@ -6,7 +6,7 @@ Plurnk Service Features:
 
 * Simple Grammar: HEREDOC-inspired syntax achieves predictable but powerful operations.
 * Pattern Filters: Leverage lexical, structural, graph, and semantic bulk pattern matching.
-* Knowledgebase: Use taxonomical trees and folksonomic tags to distill piles of data into the shared worker:/// knowledgebase.
+* Knowledgebase: Durable, searchable worker entries support hierarchical paths and folksonomic tags.
 * Extended Context: Agents FOLD, OPEN, and KILL their own Active Context log for lossless, limitless memory management.
 
 ## Grammar
@@ -36,7 +36,7 @@ A `?` marks an optional field, as in the Syntax line; unmarked fields are requir
 | MOVE | [apply tags]?  | (path)          | <row,row>?         | :destination path: | MOVE |
 | OPEN | [filter tags]? | (log path)      | <result,result>?   | :pattern:?         | OPEN |
 | FOLD | [apply tags]?  | (log path)      | <result,result>?   | :pattern:?         | FOLD |
-| EXEC | [executor]?    | (path)?         | <timeout, poll>?   | :code:?            | EXEC |
+| EXEC | [executor]?    | (path)?         | <timeout, poll>?   | :input:?           | EXEC |
 | WORK | [branch]?      | (worker://checker) | -                  | :task:             | WORK |
 | FORK | [branch]?      | (worker://recheck) | -                  | :hint:?            | FORK |
 | KILL | [signal]?      | (path)          | -                  | ::                 | KILL |
@@ -56,18 +56,18 @@ Below is every op's form — a reference catalog, not a turn (a turn opens with 
 <<FOLD(log path)::FOLD
 <<EXEC::EXEC
 <<KILL(path)::KILL
-<<SEND[102]:doing:SEND
-<<SEND[202]:standing by:SEND
-<<SEND[200]:done:SEND
+<<SEND[102]:next steps on next turn go here:SEND
+<<SEND[202]:describe what's awaited and next steps:SEND
+<<SEND[200]:answer prompt or describe action(s) performed:SEND
 ```
 
 - **PLAN** — required at the beginning of a turn.
-- **FIND** (retrieval) — returns a JSON array of matches. Each object carries its path and per-channel mimetype, tokens, and lines. READ a hit's path to view it.
+- **FIND** (retrieval) — returns a JSON array of matches. READ a hit's path to view it.
 - **READ** (retrieval) — returns lines of matching content, each prefixed with its line number.
-- **EDIT** — only for creating or modifying files and entries; never edit log items. It replaces the selected `<row,row>` with literal body content, never patterns. Without `<scope>`, it creates an absent entry; an existing entry requires current rows.
-- **OPEN** (retrieval) — reveals a folded log item's body at the cost of its `tokens` (`display` goes `folded` to `open`). A `display: none` item has no body to reveal.
+- **EDIT** - creating or modifying files or entries (not log items). Requires line ranges (except for creation).
+- **OPEN** (retrieval) — reveals a folded log item's body at the cost of its `tokens` (`display` goes `folded` to `open`).
 - **FOLD** — hides an open log item's body to reclaim context (`display` goes `open` to `folded`). Its `tokens` field shows what an OPEN costs.
-- **EXEC** — produces a `<runtime>:///<loop>/<turn>/<item>` output stream on the next turn. You can then FIND, READ, or KILL it; append a channel such as `#stderr` when needed.
+- **EXEC** — passes opaque input to the selected executor, which interprets it as a command, expression, query, or source snippet. It produces a `<runtime>:///<loop>/<turn>/<item>` output stream on the next turn. You can then FIND, READ, or KILL it; append a channel such as `#stderr` when needed.
 - **WORK/FORK** — create named child workers. Add `[feature/name]` only when the child must return committed work on an isolated Git branch. Tagged siblings run serially from one clean base and return branch receipts.
 - **KILL** — deletes files and entries, erases log items, and kills streams.
 - **SEND** — submits the turn: `[102]` continue, `[202]` wait for workers, streams, and retrievals, `[200]` terminate once all have returned.
@@ -170,7 +170,6 @@ On filtering operations, the matching pattern goes in the body.
 
 Your history renders in the `## Log` section as a `jsonplurnk` block: a JSON array of log entries.
 
-* `display` is either `none` (no body), `folded` (body hidden), or `open` (body shown).
 * OPEN a folded entry to reveal its body; FOLD an open one to reclaim context tokens.
 * An `open` entry's `body` is the one non-JSON value in jsonplurnk: a HEREDOC shown verbatim, not a JSON-escaped string.
 * The jsonplurnk HEREDOC `<<:::` tag echoes the entry's path, so it varies by entry and is never an arbitrary label.
@@ -238,10 +237,9 @@ stateDiagram-v2
 - Put every user-facing message in a SEND with a submit code.
 - Reference only paths the user can access — never internal knowledgebase paths.
 
-### Rule: The knowledgebase is your memory across turns
+### Rule: Worker entries persist across turns
 
-- Distill open questions and source information into taxonomized, tagged worker:/// entries.
-- Break non-trivial tasks into checklisted steps, saved across turns.
+- `worker:///` and `worker://~/` entries support the same FIND, READ, EDIT, COPY, MOVE, and KILL operations as other entries.
 
 ### Rule: Work economically
 
@@ -281,8 +279,8 @@ Each line is a standalone op example — a valid statement on its own, never a t
 <<READ(https://en.wikipedia.org/wiki/Paris)<426,465>::READ
 <<EDIT[philosophy,existentialism](worker:///philosophy/existentialism/meaning.md):The meaning of life is 42:EDIT
 <<EDIT[france,geography](worker:///countries/france/capital.md):What is the capital of France?:EDIT
-<<EDIT[plan,france,task](worker://~/plan.md):- [ ] Decompose prompt into unknowns:EDIT
-<<EDIT(worker://~/plan.md)<2>:- [x] Discover capital of France:EDIT
+<<EDIT[research,france](worker://~/research.md):Paris is the capital of France.:EDIT
+<<EDIT(worker://~/research.md)<1>:Paris is the capital and largest city of France.:EDIT
 <<EDIT(worker:///countries/france/capital.md)<-1>:[Wikipedia: Paris](https://en.wikipedia.org/wiki/Paris):EDIT
 <<EDIT(worker:///countries/france/capital.md)<1,-1>::EDIT
 <<EDIT(worker:///users.json)<0>:{"name":"Eve"}:EDIT
@@ -291,7 +289,7 @@ Each line is a standalone op example — a valid statement on its own, never a t
 <<MOVE[final](worker:///draft/answer.md):worker:///final/answer.md:MOVE
 <<OPEN(log:///**)<1,10>::OPEN
 <<FOLD(log:///**)<101,200>::FOLD
-<<SEND(worker://capital-checker):{"hint":"worker:/// entries are your persistent memory"}:SEND
+<<SEND(worker://capital-checker):{"question":"Which source supports the France entry?"}:SEND
 <<KILL(worker:///draft.md)::KILL
 <<KILL(obsolete/file.md)::KILL
 <<KILL(sh:///3/1/2)::KILL

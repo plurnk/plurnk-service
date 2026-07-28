@@ -191,10 +191,6 @@ export default class PacketWire {
         const logEntries: LogEntryView[] = Array.isArray(entries) ? (entries as LogEntryView[]) : [];
         const logBody = logEntries.length > 0 ? PacketWire.renderLog(logEntries, countTokens) : "";
         const HEAVIEST_COUNT = 5;
-        const currentLoop = logEntries.reduce((max, e) => {
-            const l = typeof e.coordinate === "string" ? Number(e.coordinate.split("/")[0]) : NaN;
-            return Number.isFinite(l) && l > max ? l : max;
-        }, 0);
         const byTurn = new Map<string, number>();
         const perEntry: Array<{ path: string; tokens: number }> = [];
         for (const e of logEntries) {
@@ -203,9 +199,8 @@ export default class PacketWire {
             // the packet; the heaviest list carries the row's BODY weight — the FOLD unit, the SAME
             // number the row's own `tokens` shows, so the budget and the log can never disagree
             // about one row. A row ranks ONLY when a FOLD would actually reclaim it: a bodyless
-            // row has nothing to fold, an already-folded row is already reclaimed (its price is
-            // an OPEN's cost), and the current loop's foisted preview is refused (§prompt-fold-
-            // illegal) — listing any of these sells the model a lever that 403s or no-ops.
+            // row has nothing to fold, and an already-folded row is already reclaimed (its price
+            // is an OPEN's cost) — listing either sells the model a lever that no-ops.
             const bodyPrice: number[] = [];
             const weight = countTokens(PacketWire.#renderLogEntries([e], countTokens, bodyPrice));
             const coordinate = typeof e.coordinate === "string" ? e.coordinate : null;
@@ -217,9 +212,7 @@ export default class PacketWire {
                 byTurn.set(turn, (byTurn.get(turn) ?? 0) + weight);
             }
             const path = PacketWire.#entryPath(coordinate, op);
-            const isPreview = e.target?.scheme === "prompt" && e.origin === "plurnk" && op === "READ"
-                && coordinate !== null && Number(coordinate.split("/")[0]) === currentLoop;
-            const foldable = e.folded !== true && !isPreview;
+            const foldable = e.folded !== true;
             if (path !== null && foldable && (bodyPrice[0] ?? 0) > 0) perEntry.push({ path, tokens: bodyPrice[0] });
         }
         return {
@@ -602,13 +595,13 @@ export default class PacketWire {
                 if (navigable > 0) meta.lines = navigable;
             }
 
-            // §jsonplurnk — the `display` field (grammar-ratified name #437) replaces the old -/+/*
-            // glyph: `none` (no body, nothing to OPEN), `folded` (body exists, hidden — OPEN to expand),
-            // `open` (body shown). `display:none` mirrors CSS the model knows; `folded`/`open` echo the
-            // FOLD/OPEN ops. The one deviation from valid JSON: an OPEN row appends its heredoc body as a
-            // raw `body` value (unescaped, delimited by its <<:::tag … :::tag fence). §jsonplurnk
+            // §jsonplurnk — `display` describes the three body states: `none` carries an explicit
+            // empty JSON string, `folded` withholds an existing body, and `open` appends that body as
+            // the format's one non-JSON value (a raw, tagged heredoc). The explicit empty body keeps
+            // every state self-describing; OPEN/FOLD remain friendly no-ops on `none`.
             const display = body.length === 0 ? "none" : e.folded === true ? "folded" : "open";
             meta.display = display;
+            if (display === "none") meta.body = "";
             const obj = PacketWire.#canonicalJson(meta);
             return display === "open" ? obj.replace(/\}$/, `,"body":\n${body}\n}`) : obj;
         }).join(",\n");

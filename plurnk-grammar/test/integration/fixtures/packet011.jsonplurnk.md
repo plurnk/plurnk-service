@@ -1,6 +1,6 @@
 ## Plurnk Service Log
 
-Note: jsonplurnk is otherwise-valid JSON in which each `body` value, when present, is a HEREDOC-style `<<:::tag … :::tag` block.
+Note: jsonplurnk is otherwise-valid JSON; an open nonempty `body` is a HEREDOC-style `<<:::tag … :::tag` block.
 
 ```jsonplurnk
 [
@@ -24,14 +24,14 @@ Note: jsonplurnk is otherwise-valid JSON in which each `body` value, when presen
 },
 {"display":"folded","items":326,"itemsTokenTotal":3753876,"op":"FIND","origin":"plurnk","path":"log:///1/1/4/FIND","status":200,"target":"**","tokens":25106},
 {"display":"folded","items":8,"itemsTokenTotal":5235,"op":"FIND","origin":"plurnk","path":"log:///1/1/5/FIND","status":200,"target":"plurnk://docs/**","tokens":516},
-{"display":"none","items":0,"itemsTokenTotal":0,"op":"FIND","origin":"plurnk","path":"log:///1/1/6/FIND","status":200,"target":"known:///**","tokens":0},
-{"display":"none","items":0,"itemsTokenTotal":0,"op":"FIND","origin":"plurnk","path":"log:///1/1/7/FIND","status":200,"target":"unknown:///**","tokens":0},
+{"body":"","display":"none","items":0,"itemsTokenTotal":0,"op":"FIND","origin":"plurnk","path":"log:///1/1/6/FIND","status":200,"target":"known:///**","tokens":0},
+{"body":"","display":"none","items":0,"itemsTokenTotal":0,"op":"FIND","origin":"plurnk","path":"log:///1/1/7/FIND","status":200,"target":"unknown:///**","tokens":0},
 {"display":"folded","lines":1,"op":"PLAN","origin":"model","path":"log:///1/1/8/PLAN","status":200,"tokens":86},
 {"display":"folded","items":3,"itemsTokenTotal":35752,"matcher":"#func.*require|require_cache_info|module|resolve#i","op":"FIND","origin":"model","path":"log:///1/1/9/FIND","status":200,"target":"evaluator/functions.go","tokens":282},
 {"display":"folded","items":2,"itemsTokenTotal":20318,"matcher":"#module|require|resolve#i","op":"FIND","origin":"model","path":"log:///1/1/10/FIND","status":200,"target":"evaluator/evaluator.go","tokens":196},
-{"display":"none","items":0,"itemsTokenTotal":0,"matcher":"#flag|module|path#i","op":"FIND","origin":"model","path":"log:///1/1/11/FIND","status":200,"target":"main.go","tokens":0},
-{"display":"none","items":0,"itemsTokenTotal":0,"matcher":"#flag|module|path#i","op":"FIND","origin":"model","path":"log:///1/1/12/FIND","status":200,"target":"runner/runner.go","tokens":0},
-{"display":"none","items":0,"itemsTokenTotal":0,"matcher":"#cache|module#i","op":"FIND","origin":"model","path":"log:///1/1/13/FIND","status":200,"target":"object/environment.go","tokens":0},
+{"body":"","display":"none","items":0,"itemsTokenTotal":0,"matcher":"#flag|module|path#i","op":"FIND","origin":"model","path":"log:///1/1/11/FIND","status":200,"target":"main.go","tokens":0},
+{"body":"","display":"none","items":0,"itemsTokenTotal":0,"matcher":"#flag|module|path#i","op":"FIND","origin":"model","path":"log:///1/1/12/FIND","status":200,"target":"runner/runner.go","tokens":0},
+{"body":"","display":"none","items":0,"itemsTokenTotal":0,"matcher":"#cache|module#i","op":"FIND","origin":"model","path":"log:///1/1/13/FIND","status":200,"target":"object/environment.go","tokens":0},
 {"display":"folded","lines":1,"op":"SEND","origin":"model","path":"log:///1/1/14/SEND","status":102,"tokens":47},
 {"display":"folded","lines":7,"op":"model","origin":"model","path":"log:///1/1/15/model","status":200,"tokens":280},
 {"display":"folded","lines":1,"op":"PLAN","origin":"model","path":"log:///1/2/1/PLAN","status":200,"tokens":67},
@@ -163,7 +163,7 @@ Note: jsonplurnk is otherwise-valid JSON in which each `body` value, when presen
 {"display":"folded","lines":1,"op":"PLAN","origin":"model","path":"log:///1/5/1/PLAN","status":200,"tokens":123},
 {"display":"folded","lines":16,"op":"READ","origin":"model","path":"log:///1/5/12/READ","status":200,"target":"evaluator/functions.go","tokens":249},
 {"display":"folded","lines":50,"op":"READ","origin":"model","path":"log:///1/5/13/READ","status":200,"target":"object/environment.go","tokens":685},
-{"display":"none","op":"READ","origin":"model","path":"log:///1/5/14/READ","status":416,"target":"runner/runner.go","tokens":0},
+{"body":"","display":"none","op":"READ","origin":"model","path":"log:///1/5/14/READ","status":416,"target":"runner/runner.go","tokens":0},
 {"display":"folded","lines":1,"op":"SEND","origin":"model","path":"log:///1/5/15/SEND","status":102,"tokens":59},
 {"display":"folded","lines":15,"op":"model","origin":"model","path":"log:///1/5/16/model","status":200,"tokens":396},
 {"display":"open","lines":1,"op":"PLAN","origin":"model","path":"log:///1/6/1/PLAN","status":200,"tokens":215,"body":
@@ -172,7 +172,7 @@ Note: jsonplurnk is otherwise-valid JSON in which each `body` value, when presen
 :::log:///1/6/1/PLAN
 },
 {"display":"folded","lines":59,"op":"READ","origin":"model","path":"log:///1/6/3/READ","status":200,"target":"evaluator/functions.go","tokens":944},
-{"display":"none","op":"READ","origin":"model","path":"log:///1/6/4/READ","status":416,"target":"object/environment.go","tokens":0},
+{"body":"","display":"none","op":"READ","origin":"model","path":"log:///1/6/4/READ","status":416,"target":"object/environment.go","tokens":0},
 {"display":"folded","lines":39,"op":"READ","origin":"model","path":"log:///1/6/5/READ","status":200,"target":"main.go","tokens":435},
 {"display":"folded","lines":36,"op":"READ","origin":"model","path":"log:///1/6/6/READ","status":200,"target":"runner/runner.go","tokens":581},
 {"display":"folded","lines":1576,"op":"READ","origin":"model","path":"log:///1/6/7/READ","status":200,"target":"evaluator/evaluator.go","tokens":24519},
@@ -216,8 +216,8 @@ Note: jsonplurnk is otherwise-valid JSON in which each `body` value, when presen
 1:	1. FOLD old log items (turns 1-5) to free budget. 2. READ main.go for CLI flag handling and evaluator.go for function registration. 3. Implement deterministic caching, ABS_MODULE_PATH, bare module resolution, cache stats, and CLI flags in evaluator/functions.go and object/environment.go. 4. Add require_cache_info function. 5. Test with existing examples.
 :::log:///1/9/1/PLAN
 },
-{"display":"none","op":"READ","origin":"model","path":"log:///1/9/7/READ","status":416,"target":"main.go","tokens":0},
-{"display":"none","items":0,"itemsTokenTotal":0,"matcher":"#registerBuiltin|registerFunction|builtins#i","op":"FIND","origin":"model","path":"log:///1/9/8/FIND","status":200,"target":"evaluator/evaluator.go","tokens":0},
+{"body":"","display":"none","op":"READ","origin":"model","path":"log:///1/9/7/READ","status":416,"target":"main.go","tokens":0},
+{"body":"","display":"none","items":0,"itemsTokenTotal":0,"matcher":"#registerBuiltin|registerFunction|builtins#i","op":"FIND","origin":"model","path":"log:///1/9/8/FIND","status":200,"target":"evaluator/evaluator.go","tokens":0},
 {"display":"folded","lines":50,"op":"READ","origin":"model","path":"log:///1/9/9/READ","status":200,"target":"evaluator/evaluator.go","tokens":710},
 {"display":"open","lines":1,"op":"SEND","origin":"model","path":"log:///1/9/10/SEND","status":102,"tokens":72,"body":
 <<:::log:///1/9/10/SEND

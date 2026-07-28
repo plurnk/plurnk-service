@@ -1,6 +1,5 @@
-// #382 — the task frame (the current loop's foisted preview READ) stays visible; every other
-// prompt-target row is ordinary curatable memory. The run43 lesson: a weak model in a
-// housekeeping turn folded its own task auto-READ and lost the plot.
+// Prompt frames are ordinary curatable log memory. The automatic grinder preserves the current
+// frame, but an explicit OPEN/FOLD request follows the universal log-curation state machine.
 import test from "node:test";
 import assert from "node:assert/strict";
 import Engine from "../../src/core/Engine.ts";
@@ -28,17 +27,16 @@ async function seedPromptWorker(db: Awaited<ReturnType<typeof openMigrated>>) {
     return { workspaceId, workerId, loopId, engine, curationTurn };
 }
 
-test("a FOLD of the prompt auto-READ is refused with the KILL steer (#382)", async () => {
+test("an explicit FOLD of the prompt auto-READ is ordinary curation", async () => {
     const db = await openMigrated();
     try {
         const { workspaceId, workerId, loopId, engine, curationTurn } = await seedPromptWorker(db);
         // the prompt auto-READ is at coordinate 1/1/3 (foist EDIT=2, READ=3)
         const r = await engine.dispatch({ statement: foldStmt(urlLog("log:///1/1/3/READ")), workspaceId, workerId, loopId, turnId: curationTurn, sequence: 1, origin: "model" });
-        assert.equal(r.status, 403, "folding the task preview is illegal");
-        assert.match(r.problem?.detail ?? "", /FOLD the task preview.*KILL/s, "the steer names KILL as the deliberate path");
-        // the prompt row stays expanded — the frame survives
+        assert.equal(r.status, 200, "the valid prompt log row folds like every other open row");
+        assert.equal((r as { matched?: number }).matched, 1);
         const exp = await db.test_prompt_expanded.get<{ expanded: number }>({});
-        assert.equal(exp?.expanded, 1, "the prompt auto-READ is still open after the refused fold");
+        assert.equal(exp?.expanded, 0, "the explicit curation request is honored");
     } finally { await db.close(); }
 });
 
@@ -57,7 +55,7 @@ test("the EDIT foist is ordinary memory — OPEN then fold-back is legal curatio
     } finally { await db.close(); }
 });
 
-test("a prior loop's preview is ordinary memory — the refusal binds only the current frame", async () => {
+test("prior and current loop previews share the same explicit curation contract", async () => {
     const db = await openMigrated();
     try {
         const { workspaceId, workerId, engine } = await seedPromptWorker(db);
@@ -73,7 +71,7 @@ test("a prior loop's preview is ordinary memory — the refusal binds only the c
         assert.equal((stale as { matched?: number }).matched, 1, "the fold matched the stale preview row — not a vacuous zero-match 200");
         // loop 2's foist has no turn-0 exemplar ahead of it: EDIT=2/1/1, preview READ=2/1/2
         const current = await engine.dispatch({ statement: foldStmt(urlLog("log:///2/1/2/READ")), workspaceId, workerId, loopId: loop2, turnId: curationTurn, sequence: 2, origin: "model" });
-        assert.equal(current.status, 403, "the CURRENT loop's preview still refuses");
+        assert.equal(current.status, 200, "the current preview folds under the same valid-entry contract");
     } finally { await db.close(); }
 });
 

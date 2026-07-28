@@ -57,7 +57,7 @@ Exit `0` on clean parse, `1` on any error or unparsed tail.
 | OPEN | tag filter       | matcher               | result-set range   |
 | FOLD | tag filter       | matcher               | result-set range   |
 | SEND | HTTP status int  | payload (JSON conv.)  | n/a                |
-| EXEC | executor         | command or code       | n/a                |
+| EXEC | executor         | executor-specific input | n/a              |
 | KILL | unix signal int  | annotation (opaque)   | n/a                |
 | PLAN | tags             | reasoning text        | n/a                |
 

@@ -85,6 +85,31 @@ test("OPEN(log:///1/1/1) flips expanded back to 1", async () => {
     } finally { await db.close(); }
 });
 
+test("OPEN/FOLD are friendly visibility no-ops on valid bodyless entries", async () => {
+    const { db, workspaceId, workerId, loopId, turnId } = await setup();
+    try {
+        const log = new Log();
+        const ctx = makeSchemeCtx({ db, workspaceId, workerId, loopId, turnId, writer: "model" });
+        const target = urlPath("log", "/1/1/1");
+
+        const alreadyOpen = await log.open(openStmt(target), ctx);
+        assert.equal(alreadyOpen.status, 200);
+        assert.equal(alreadyOpen.matched, 1);
+        assert.equal(await getExpanded(db, workerId), 1);
+
+        await log.fold(foldStmt(target), ctx);
+        const alreadyFolded = await log.fold(foldStmt(target), ctx);
+        assert.equal(alreadyFolded.status, 200);
+        assert.equal(alreadyFolded.matched, 1);
+        assert.equal(await getExpanded(db, workerId), 0);
+
+        const foldedBodyless = await log.open(openStmt(target), ctx);
+        assert.equal(foldedBodyless.status, 200);
+        assert.equal(foldedBodyless.matched, 1);
+        assert.equal(await getExpanded(db, workerId), 1);
+    } finally { await db.close(); }
+});
+
 test("FOLD on nonexistent coordinate returns 404", async () => {
     const { db, workspaceId, workerId, loopId, turnId } = await setup();
     try {

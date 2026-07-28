@@ -11,7 +11,7 @@ const tok = (s: string): number => Math.ceil(s.length / 4);
 // defaultChannel, the heredoc fence is path-only (no `#channel` suffix).
 // The absence of a suffix IS the addressing of the default channel.
 
-test("log entry: a no-body row renders as a jsonplurnk object with display:none — path is log URI, target is action operand", () => {
+test("log entry: a no-body row renders explicit display:none and body:\"\" — path is log URI, target is action operand", () => {
     const system = {
         system_definition: "SD",
         index: [],
@@ -25,7 +25,7 @@ test("log entry: a no-body row renders as a jsonplurnk object with display:none 
         }],
     };
     const out = PacketWire.renderLog(system.log, tok);
-    assert.match(out, /\{"display":"none","op":"EDIT","origin":"model","path":"log:\/\/\/1\/1\/1\/EDIT","status":200,"target":"out\.txt","tokens":0\}/, "jsonplurnk object; display:none (no body); path = log URI identity; target = action operand; tokens:0");
+    assert.match(out, /\{"body":"","display":"none","op":"EDIT","origin":"model","path":"log:\/\/\/1\/1\/1\/EDIT","status":200,"target":"out\.txt","tokens":0\}/, "jsonplurnk object; display:none carries body:\"\"; path = log URI identity; target = action operand; tokens:0");
 });
 
 test("a folded-authority web URL renders https://host/... — never https:///host (#370 class, run42 sweep)", () => {
@@ -307,14 +307,12 @@ test("measureLogBudget: log subtotals (entries, tokens, byTurn, largest) from th
     assert.equal(two.largest[0].tokens, rowTokens, "largest carries the SAME number the row's own meta shows");
 });
 
-test("largest never advertises a FOLD the law refuses or the state already pulled", () => {
+test("largest advertises every open bodied row and omits states already reclaimed", () => {
     const tk = (s: string) => s.length;
     const entries = [
-        // A PRIOR loop's foisted preview: open, bodied, and ordinary memory now (the refusal
-        // binds only the current frame, §prompt-fold-illegal) — it RANKS.
+        // A prior loop's foisted preview: open, bodied, ordinary memory — it RANKS.
         { coordinate: "1/1/3", op: "READ", origin: "plurnk", status: 200, target: { scheme: "prompt", pathname: "/1/1" }, rx: { status: 200, content: "the old task readback ".repeat(40), mimetype: "text/plain" } },
-        // The CURRENT loop's foist EDIT (born folded) and preview READ: the EDIT is excluded as
-        // already-folded, the preview as the one row whose FOLD the law refuses.
+        // The current loop's foist EDIT is excluded as already-folded; its open preview READ ranks.
         { coordinate: "2/1/2", op: "EDIT", origin: "plurnk", status: 201, target: { scheme: "prompt", pathname: "/2/1" }, folded: true, rx: { status: 201, content: "the whole task body ".repeat(50), mimetype: "text/plain" } },
         { coordinate: "2/1/3", op: "READ", origin: "plurnk", status: 200, target: { scheme: "prompt", pathname: "/2/1" }, rx: { status: 200, content: "the task readback ".repeat(40), mimetype: "text/plain" } },
         // The model's own deeper prompt READ: fold-legal curation — it RANKS.
@@ -327,8 +325,8 @@ test("largest never advertises a FOLD the law refuses or the state already pulle
     const { largest, byTurn } = PacketWire.measureLogBudget(entries, tk);
     assert.deepEqual(
         largest.map((e) => e.path).toSorted(),
-        ["log:///1/1/3/READ", "log:///2/2/2/READ", "log:///2/2/6/READ"],
-        "exactly the open, fold-legal rows rank — the list shares §prompt-fold-illegal's predicate",
+        ["log:///1/1/3/READ", "log:///2/1/3/READ", "log:///2/2/2/READ", "log:///2/2/6/READ"],
+        "every open bodied row ranks; only bodyless and already-folded rows are absent",
     );
     // The excluded rows still weigh on the TURN rollup — room taken is room taken; only the
     // FOLD-target advertisement is withheld.
@@ -467,6 +465,8 @@ test("the Log renders as a fenced jsonplurnk array that strips to valid JSON —
     const strict = m![2].replace(/"body":\n<<:::(.+)\n[\s\S]*?\n:::\1\n\}/g, '"body":""}');
     const arr = JSON.parse(strict) as Array<{ display: string; body?: string }>;
     assert.deepEqual(arr.map((e) => e.display), ["none", "folded", "open"], "the three display states render explicitly — no glyph legend");
+    assert.equal(arr[0].body, "", "display:none carries an explicit empty JSON body");
+    assert.ok(!("body" in arr[1]), "display:folded withholds its body");
     assert.equal(arr[2].body, "", "the open row's heredoc body — the one deviation — strips to a string, recovering valid JSON");
 });
 

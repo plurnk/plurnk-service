@@ -403,31 +403,10 @@ export default class Log extends CoreSchemeAdapterBase {
                 r.range === undefined ? {} : { range: r.range },
             ) as OpenFoldResult;
         }
-        let ids = r.ids;
-        // §prompt-fold-illegal (#382, owner) — the task frame stays visible: the CURRENT loop's
-        // foisted preview READ (prompt target, origin plurnk, op READ) refuses FOLD (run43: a weak
-        // model folded its own task in a housekeeping turn and lost the plot). Every other
-        // prompt-target row — the born-folded EDIT foist, the model's own deeper prompt READs,
-        // prior loops' previews — is ordinary curatable memory; KILL still DELETES deliberately.
-        // A glob sweep silently spares the preview and folds the rest; an explicit fold whose
-        // whole target IS the preview gets the steer.
-        if (expanded === 0) {
-            const previewIds = new Set<number>();
-            for (const id of r.ids) {
-                const row = await ctx.db.log_row_target.get<{ scheme: string | null; origin: string | null; op: string | null; loop_id: number | null }>({ id });
-                if (row?.scheme === "prompt" && row.origin === "plurnk" && row.op === "READ" && row.loop_id === ctx.loopId) previewIds.add(id);
-            }
-            if (previewIds.size > 0) {
-                ids = r.ids.filter((id) => !previewIds.has(id));
-                if (ids.length === 0) {
-                    return Results.failure("scheme:log", "task-preview-fold-forbidden", 403, "Illegal attempt to FOLD the task preview. Use KILL if you want it removed.") as OpenFoldResult;
-                }
-            }
-        }
+        const ids = r.ids;
         for (const id of ids) await ctx.db.log_set_expanded_by_id.run({ id, expanded });
         // §log-region-tagging — FOLD[tag] is the log's write-op: stamp the tags on the folded rows,
-        // additively (§edit-tags-additive). Only the rows actually folded are tagged (a preview spared
-        // above is neither folded nor tagged). OPEN with a signal never reaches here.
+        // additively (§edit-tags-additive). OPEN with a signal never reaches here.
         if (expanded === 0 && signal.length > 0) {
             for (const id of ids) for (const tag of signal) await ctx.db.log_write_tag.run({ log_entry_id: id, tag });
         }

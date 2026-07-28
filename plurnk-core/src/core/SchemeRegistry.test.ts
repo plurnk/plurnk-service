@@ -114,7 +114,7 @@ test("teach()/docs(): PLURNK_SERVICE_DOCS_EXCLUDE drops the oneliner + the doc; 
         process.env.PLURNK_SERVICE_DOCS_EXCLUDE = "log,nonsuch";
         const teaching = registry.teach();
         assert.doesNotMatch(teaching, /log:\/\/\//, "an excluded scheme contributes no oneliner");
-        assert.match(teaching, /worker:\/\/\/plan\.md/, "a non-excluded scheme still teaches (stray 'nonsuch' is inert)");
+        assert.match(teaching, /worker:\/\/\/notes\.md/, "a non-excluded scheme still teaches (stray 'nonsuch' is inert)");
         assert.equal(registry.docs().find((d) => d.name === "log"), undefined, "an excluded scheme materializes no doc");
         assert.ok(registry.docs().find((d) => d.name === "worker"), "a non-excluded scheme still materializes its doc");
 

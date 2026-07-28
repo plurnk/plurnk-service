@@ -180,7 +180,7 @@ test("Engine.runTurn: packet stores system + user content from messages (no loop
         // the definition; the prompt-foist fallback is the assertion's real subject.
         const definition = packetSection(packet, "definition");
         assert.ok(definition.startsWith("system prompt body"), "system message body leads the definition section");
-        assert.match(packetSection(packet, "schemes"), /<<EDIT\(worker:\/\/\/plan\.md\)/, "the scheme directory is its own section now, not appended to the definition");
+        assert.match(packetSection(packet, "schemes"), /<<EDIT\(worker:\/\/\/notes\.md\)/, "the scheme directory is its own section now, not appended to the definition");
         assert.equal(packetSection(packet, "prompt"), "first user msg\n\nsecond user msg");
         assert.ok(packet.assistant !== null);
     } finally { await db.close(); }
