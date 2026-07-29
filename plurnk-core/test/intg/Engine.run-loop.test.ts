@@ -176,6 +176,38 @@ test("Engine.runLoop: terminates immediately if loop.status is already non-102",
     } finally { await db.close(); }
 });
 
+test("Engine.runLoop: a durable 202 park outranks a later abort observation", async () => {
+    const { db, engine, workspaceId, workerId, loopId } = await setup();
+    try {
+        await db.test_set_loop_status.run({
+            id: loopId,
+            status: 202,
+            terminal_result: null,
+        });
+        const controller = new AbortController();
+        controller.abort("daemon_stopping");
+        const provider = new Mock({ contextWindow: 100000, responses: [] });
+
+        const result = await engine.runLoop({
+            provider,
+            workspaceId,
+            workerId,
+            loopId,
+            messages: [],
+            signal: controller.signal,
+        });
+
+        assert.equal(result.result.status, 202);
+        assert.equal(result.reason, "external");
+        assert.deepEqual(result.turnIds, []);
+        assert.equal(
+            (await db.test_get_loop_status.get<{ status: number }>({ id: loopId }))?.status,
+            202,
+            "shutdown cannot launder a committed park into cancellation",
+        );
+    } finally { await db.close(); }
+});
+
 test("Engine.runLoop: 499 model-emitted termination", async () => {
     const { db, engine, workspaceId, workerId, loopId } = await setup();
     try {

@@ -653,10 +653,6 @@ export default class Engine {
         };
 
         while (true) {
-            // The wall fired between turns — rule 504 before anything else reads the loop.
-            if (timedOut()) return await ruleTimeout();
-            signal?.throwIfAborted();
-
             const row = await this.#db.engine_loop_status.get<{ status: number }>({ loop_id: loopId });
             if (row === undefined) throw new Error(`Engine.runLoop: loop ${loopId} not found`);
             if (row.status === 100) {
@@ -683,6 +679,13 @@ export default class Engine {
                 }
                 return { turnIds, result, hitMaxTurns: false, reason: "external" };
             }
+
+            // Durable disposition outranks a later process-local cancellation observation.
+            // SEND may commit 202 immediately before daemon shutdown aborts this drain; reading
+            // the abort first launders that lawful park into 499 under load. Only a still-running
+            // 102 loop can be cancelled or time out at this boundary.
+            if (timedOut()) return await ruleTimeout();
+            signal?.throwIfAborted();
 
             if (maxTurns >= 0 && turnIds.length >= maxTurns) {
                 const failure = Results.failure(
