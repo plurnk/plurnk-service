@@ -6,6 +6,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
+import { OperationFailureError } from "../../src/core/results.ts";
 import type { EditStatement } from "@plurnk/plurnk-grammar";
 import Engine from "../../src/core/Engine.ts";
 import type { ProposalResolution } from "../../src/core/Engine.ts";
@@ -180,10 +181,13 @@ test("proposal: resolveProposal for unknown id throws", () => {
     return openMigrated().then(async (db) => {
         try {
             const ctx = await setupEngine(db);
-            assert.throws(
-                () => ctx.engine.resolveProposal(99999, { decision: "accept" }),
-                /no pending proposal for log_entry 99999/,
-            );
+            assert.throws(() => ctx.engine.resolveProposal(99999, { decision: "accept" }), (error) => {
+                assert.ok(error instanceof OperationFailureError);
+                assert.equal(error.result.problem.type, "https://problems.plurnk.dev/proposal/resolution/proposal-not-pending");
+                assert.equal(error.result.problem.logEntryId, 99999);
+                assert.equal(error.result.problem.recovery, "Refresh pending proposals before resolving one.");
+                return true;
+            });
         } finally { await db.close(); }
     });
 });

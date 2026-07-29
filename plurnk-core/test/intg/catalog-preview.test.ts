@@ -9,7 +9,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
-import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal } from "./_rpc.ts";
+import { rpcCall, rpcProblem, connect, withDaemon, makeMockResponse, runLoopToTerminal } from "./_rpc.ts";
 
 type LogRow = { op: string; pathname: string; scheme: string | null; hostname: string | null; status_rx: number; rx: string };
 const mock = () => new Mock({ contextWindow: 8192, responses: [makeMockResponse("<<SEND[200]:done:SEND", 50)] });
@@ -122,11 +122,14 @@ test("workspace.create rejects malformed settings — fail hard, no silent accep
         const ws = await connect(addr);
         try {
             const badMI = await rpcCall(ws, 1, "workspace.create", { name: "bad-mi", settings: { filesItems: 1.5 } });
-            assert.ok(badMI.error, "a non-integer filesItems is a JSON-RPC error, not a silent accept");
-            assert.match(badMI.error!.message, /filesItems must be an integer/);
+            const filesProblem = rpcProblem(badMI);
+            assert.equal(filesProblem.type, "https://problems.plurnk.dev/daemon/input/setting-invalid");
+            assert.equal(filesProblem.field, "settings.filesItems");
             const badAlias = await rpcCall(ws, 2, "workspace.create", { name: "bad-alias", settings: { mdDocs: [{ alias: "has/slash", content: "x" }] } });
-            assert.ok(badAlias.error, "a malformed mdDocs alias is a JSON-RPC error");
-            assert.match(badAlias.error!.message, /alias must be/);
+            const aliasProblem = rpcProblem(badAlias);
+            assert.equal(aliasProblem.type, "https://problems.plurnk.dev/daemon/input/setting-invalid");
+            assert.equal(aliasProblem.field, "settings.mdDocs[0].alias");
+            assert.match(aliasProblem.recovery ?? "", /letters, digits/);
         } finally { ws.close(); }
     });
 });

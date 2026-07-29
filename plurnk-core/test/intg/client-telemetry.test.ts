@@ -7,7 +7,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
-import { connect, withDaemon, rpcCall, makeMockResponse, runLoopToTerminal } from "./_rpc.ts";
+import { connect, withDaemon, rpcCall, rpcProblem, makeMockResponse, runLoopToTerminal } from "./_rpc.ts";
 
 // Run a loop against a provider whose generate() is shadowed to capture the `client` arg, with the
 // workspace created carrying settings.client = clientId (or no client setting when null).
@@ -46,8 +46,10 @@ test("#249 — workspace.create refuses an empty client id", async () => {
         const ws = await connect(addr);
         try {
             const r = await rpcCall(ws, 1, "workspace.create", { name: "bad-client", settings: { client: "" } });
-            assert.ok(r.error, "an empty client id is refused");
-            assert.match(r.error!.message, /client must be a non-empty string/);
+            const problem = rpcProblem(r);
+            assert.equal(problem.type, "https://problems.plurnk.dev/daemon/input/setting-invalid");
+            assert.equal(problem.field, "settings.client");
+            assert.equal(problem.recovery, "Provide the client identifier.");
         } finally { ws.close(); }
     });
 });

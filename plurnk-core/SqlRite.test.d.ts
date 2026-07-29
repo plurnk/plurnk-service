@@ -158,7 +158,6 @@ export class SqlRiteSync {
 	drain_loop_provider_spec: SqlRiteSyncPreparedStatements;
 	drain_worker_min_poll: SqlRiteSyncPreparedStatements;
 	worker_parent_id: SqlRiteSyncPreparedStatements;
-	drain_active_loop_flags: SqlRiteSyncPreparedStatements;
 	engine_loop_status: SqlRiteSyncPreparedStatements;
 	engine_worker_has_live_child: SqlRiteSyncPreparedStatements;
 	engine_count_active_loops_for_worker: SqlRiteSyncPreparedStatements;
@@ -652,7 +651,6 @@ export default class SqlRite {
 	drain_loop_provider_spec: SqlRitePreparedStatements;
 	drain_worker_min_poll: SqlRitePreparedStatements;
 	worker_parent_id: SqlRitePreparedStatements;
-	drain_active_loop_flags: SqlRitePreparedStatements;
 	engine_loop_status: SqlRitePreparedStatements;
 	engine_worker_has_live_child: SqlRitePreparedStatements;
 	engine_count_active_loops_for_worker: SqlRitePreparedStatements;

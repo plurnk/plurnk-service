@@ -15,12 +15,21 @@ export default class WorkerCap {
         const cap = raw === undefined || raw.length === 0 ? -1 : Number.parseInt(raw, 10);
         if (!Number.isFinite(cap) || cap < 0) return null; // no cap
         const row = await db.worker_count_active.get<{ n: number }>({ workspace_id: workspaceId });
-        if ((row?.n ?? 0) >= cap) {
+        const activeWorkers = row?.n ?? 0;
+        if (activeWorkers >= cap) {
             return Results.failure(
                 "engine:worker",
                 "active-worker-limit-reached",
                 508,
-                `Workspace active-worker ceiling reached (PLURNK_SERVICE_WORKSPACE_WORKERS_MAX_ACTIVE=${cap}).`,
+                `The workspace has ${activeWorkers} active workers, reaching its limit of ${cap}.`,
+                {},
+                {
+                    activeWorkers,
+                    maximumActiveWorkers: cap,
+                    stage: "worker-admission",
+                    recovery: "Wait for an active worker to finish or KILL one before creating another.",
+                    retryable: false,
+                },
             );
         }
         return null;

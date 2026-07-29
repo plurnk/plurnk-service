@@ -5,21 +5,23 @@
 import test from "node:test";
 import { strict as assert } from "node:assert";
 import Ws from "./Ws.ts";
-import type {
-    SchemeCtx,
-    UrlPath,
-    ReadStatement,
-    SendStatement,
-    KillStatement,
-    EntryCaps,
-    ChannelCaps,
-    TagCaps,
-    NotifyCaps,
-    ProjectionCaps,
-    SubscriptionCaps,
+import {
+    Results,
+    type SchemeCtx,
+    type UrlPath,
+    type ReadStatement,
+    type SendStatement,
+    type KillStatement,
+    type EntryCaps,
+    type EntryStorageWriteResult,
+    type ChannelCaps,
+    type TagCaps,
+    type NotifyCaps,
+    type ProjectionCaps,
+    type SubscriptionCaps,
 } from "@plurnk/plurnk-schemes";
 
-const PUB = "wss://93.184.216.34/feed"; // public IP literal — skips DNS
+const PUB = "wss://93.184.216.34/feed"; // public IP literal - skips DNS
 
 interface SocketEvent { data?: unknown; code?: number; reason?: string; message?: string }
 const fakeSocket = () => {
@@ -37,7 +39,13 @@ const fakeSocket = () => {
     };
 };
 
-const makeCtx = () => {
+interface CtxOverrides {
+    readonly write?: EntryCaps["write"];
+    readonly notifyChunk?: SubscriptionCaps["notifyChunk"];
+    readonly close?: SubscriptionCaps["close"];
+}
+
+const makeCtx = (overrides: CtxOverrides = {}) => {
     const chunks: Array<{ channel: string; chunk: string; mimetype?: string }> = [];
     let opened: { pathname: string } | null = null;
     let closed: { result: Parameters<SubscriptionCaps["close"]>[0]; summary?: string } | null = null;
@@ -51,8 +59,20 @@ const makeCtx = () => {
             async find() { return { status: 501, content: null, mimetype: null, results: [], itemsTokenTotal: 0, pathnames: [], matches: [] }; },
             async send() { return { status: 501 }; },
         },
-        async read() { return { status: 404, entry: null }; },
-        async write(pathname) { wrote = pathname; return { status: 201, created: true, entryId: 1 }; },
+        async read() {
+            return Results.failure(
+                "scheme:test",
+                "entry-not-found",
+                404,
+                "No entry exists.",
+                { entry: null },
+            ) as Awaited<ReturnType<EntryCaps["read"]>>;
+        },
+        async write(pathname, entry, owner) {
+            wrote = pathname;
+            return overrides.write?.(pathname, entry, owner)
+                ?? { status: 201, created: true, entryId: 1 };
+        },
         async delete() { return { status: 200 }; },
     };
     const channels: ChannelCaps = {
@@ -69,8 +89,14 @@ const makeCtx = () => {
     const projection: ProjectionCaps = { async readable(content) { return { content, mimetype: "text/markdown" }; } };
     const subscriptions: SubscriptionCaps = {
         async open(pathname) { opened = { pathname }; return localAbort.signal; },
-        async notifyChunk(channel, chunk, mimetype) { chunks.push({ channel, chunk, mimetype }); },
-        async close(result, summary) { closed = { result, summary }; },
+        async notifyChunk(channel, chunk, mimetype) {
+            chunks.push({ channel, chunk, mimetype });
+            await overrides.notifyChunk?.(channel, chunk, mimetype);
+        },
+        async close(result, summary) {
+            closed = { result, summary };
+            await overrides.close?.(result, summary);
+        },
     };
     const ctx: SchemeCtx = {
         workspaceId: 1, workerId: 1, loopId: 1, turnId: 1, writer: "model", signal: undefined,
@@ -90,7 +116,7 @@ const killStmt = (target: UrlPath): KillStatement => ({ op: "KILL", suffix: "KIL
 
 const flush = () => new Promise((r) => setImmediate(r));
 
-test("manifest: wss scheme — messages channel, 🔌, requiresWeb, network-volatile", () => {
+test("manifest: wss scheme - messages channel, plug glyph, requiresWeb, network-volatile", () => {
     assert.equal(Ws.manifest.name, "wss");
     assert.equal(Ws.manifest.defaultChannel, "messages");
     assert.deepEqual(Object.keys(Ws.manifest.channels), ["messages"]);
@@ -143,8 +169,31 @@ test("READ: a connect throw settles error (502), not an unhandled throw", async 
     const { ctx, inspect } = makeCtx();
     const r = await new Ws(() => { throw new Error("handshake refused"); }).read(readStmt(wss(PUB, "/feed")), ctx);
     assert.equal(r.status, 502);
+    assert.equal(r.problem?.detail, `The WebSocket connection to ${PUB} failed.`);
+    assert.equal(r.problem?.stage, "connection");
+    assert.equal(r.problem?.retryable, true);
     assert.equal(inspect().closed?.result.status, 502);
     assert.equal(inspect().closed?.result.problem?.type, "https://problems.plurnk.dev/scheme/wss/connect-failed");
+});
+
+test("READ preserves an exact seed-write failure without connecting", async () => {
+    const failure = Results.failure(
+        "scheme:test",
+        "storage-read-only",
+        503,
+        "The entry store is read-only.",
+        { created: false, entryId: null },
+        { stage: "storage", retryable: false },
+    ) as EntryStorageWriteResult;
+    let connected = false;
+    const { ctx, inspect } = makeCtx({ write: async () => failure });
+    const result = await new Ws(() => {
+        connected = true;
+        return fakeSocket();
+    }).read(readStmt(wss(PUB, "/feed")), ctx);
+    assert.deepEqual(result, { ...failure, shape: "passthrough" });
+    assert.equal(connected, false);
+    assert.equal(inspect().opened, null);
 });
 
 test("SEND[200]: pushes the body onto the open socket a prior READ opened", async () => {
@@ -163,6 +212,23 @@ test("SEND[200]: no open socket → 409 (READ opens the connection SEND rides)",
     const r = await new Ws(() => fakeSocket()).send(sendStmt(200, wss(PUB, "/feed"), "x"), ctx);
     assert.equal(r.status, 409);
     assert.equal(r.problem?.type, "https://problems.plurnk.dev/scheme/wss/no-open-socket");
+    assert.equal(r.problem?.recovery, "READ the WebSocket URL before sending a message.");
+});
+
+test("SEND[200]: a socket send throw becomes a structured transport failure", async () => {
+    const sock = fakeSocket();
+    const ws = new Ws(() => ({
+        ...sock,
+        send() { throw new Error("raw socket failure"); },
+    }));
+    const { ctx } = makeCtx();
+    void ws.read(readStmt(wss(PUB, "/feed")), ctx);
+    await flush();
+    const result = await ws.send(sendStmt(200, wss(PUB, "/feed"), "ping"), ctx);
+    assert.equal(result.status, 502);
+    assert.equal(result.problem?.type, "https://problems.plurnk.dev/scheme/wss/send-failed");
+    assert.equal(result.problem?.detail, "The WebSocket message could not be sent.");
+    assert.equal(result.problem?.stage, "transfer");
 });
 
 test("SEND[499]: scheme-level no-op 200 (engine routes teardown to the handle)", async () => {
@@ -175,6 +241,9 @@ test("SEND: an uninterpreted code → 501", async () => {
     const { ctx } = makeCtx();
     const r = await new Ws(() => fakeSocket()).send(sendStmt(200 + 3, wss(PUB, "/feed"), "x"), ctx);
     assert.equal(r.status, 501);
+    assert.equal(r.problem?.type, "https://problems.plurnk.dev/scheme/wss/send-status-unsupported");
+    assert.equal(r.problem?.requestedStatus, 203);
+    assert.equal(r.problem?.stage, "dispatch");
 });
 
 test("KILL: closes the open socket and settles the READ", async () => {
@@ -195,6 +264,47 @@ test("KILL: no open socket → 404", async () => {
     const r = await new Ws(() => fakeSocket()).kill(killStmt(wss(PUB, "/feed")), ctx);
     assert.equal(r.status, 404);
     assert.equal(r.problem?.type, "https://problems.plurnk.dev/scheme/wss/no-open-socket");
+});
+
+test("KILL: a socket close throw becomes a structured transport failure", async () => {
+    const sock = fakeSocket();
+    const ws = new Ws(() => ({
+        ...sock,
+        close() { throw new Error("raw socket failure"); },
+    }));
+    const { ctx } = makeCtx();
+    void ws.read(readStmt(wss(PUB, "/feed")), ctx);
+    await flush();
+    const result = await ws.kill(killStmt(wss(PUB, "/feed")), ctx);
+    assert.equal(result.status, 502);
+    assert.equal(result.problem?.type, "https://problems.plurnk.dev/scheme/wss/close-failed");
+    assert.equal(result.problem?.detail, "The WebSocket connection could not be closed.");
+});
+
+test("READ: message persistence failure settles with a structured problem", async () => {
+    const sock = fakeSocket();
+    const { ctx, inspect } = makeCtx({
+        notifyChunk: async () => { throw new Error("raw persistence failure"); },
+    });
+    const read = new Ws(() => sock).read(readStmt(wss(PUB, "/feed")), ctx);
+    await flush();
+    sock.emit("message", { data: "hello" });
+    const result = await read;
+    assert.equal(result.status, 500);
+    assert.equal(result.problem?.type, "https://problems.plurnk.dev/scheme/wss/message-persistence-failed");
+    assert.equal(result.problem?.stage, "persistence");
+    assert.equal(inspect().closed?.result.problem, result.problem);
+});
+
+test("READ: subscription close rejection rejects instead of hanging", async () => {
+    const sock = fakeSocket();
+    const { ctx } = makeCtx({
+        close: async () => { throw new Error("subscription close failed"); },
+    });
+    const read = new Ws(() => sock).read(readStmt(wss(PUB, "/feed")), ctx);
+    await flush();
+    sock.close(1000);
+    await assert.rejects(read, /subscription close failed/);
 });
 
 test("cancel: the composed abort signal closes the socket", async () => {

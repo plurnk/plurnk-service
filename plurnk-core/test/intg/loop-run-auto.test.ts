@@ -11,7 +11,7 @@ import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
 import type { EditStatement } from "@plurnk/plurnk-grammar";
 import type { SchemeManifest } from "../../src/core/scheme-types.ts";
-import { rpcCall, subscribeNotifications, flush, connect, withDaemon, makeMockResponse, runLoopToTerminal, waitFor } from "./_rpc.ts";
+import { rpcCall, rpcProblem, subscribeNotifications, flush, connect, withDaemon, makeMockResponse, runLoopToTerminal, waitFor } from "./_rpc.ts";
 
 // Minimal scheme that always proposes — same shape as the one in
 // Engine.proposal-lifecycle.test.ts. Lets us trigger the lifecycle from a
@@ -210,8 +210,10 @@ test("loop.run rejects non-boolean flags.auto", async () => {
             const response = await rpcCall(ws, 2, "loop.run", {
                 prompt: "test", flags: { auto: "not-a-boolean" },
             });
-            assert.equal(response.error?.code, -32603);
-            assert.match(response.error?.message ?? "", /flags\.auto must be a boolean/);
+            const problem = rpcProblem(response);
+            assert.equal(problem.type, "https://problems.plurnk.dev/daemon/input/loop-flag-invalid");
+            assert.equal(problem.field, "flags.auto");
+            assert.equal(problem.retryable, false);
         } finally { ws.close(); }
     });
 });
@@ -224,8 +226,10 @@ test("loop.run rejects unknown flags rather than silently ignoring policy", asyn
             const response = await rpcCall(ws, 2, "loop.run", {
                 prompt: "test", flags: { automatic: true },
             });
-            assert.equal(response.error?.code, -32603);
-            assert.match(response.error?.message ?? "", /flags\.automatic is not supported/);
+            const problem = rpcProblem(response);
+            assert.equal(problem.type, "https://problems.plurnk.dev/daemon/input/loop-flag-not-supported");
+            assert.equal(problem.field, "flags.automatic");
+            assert.deepEqual(problem.allowedFlags, ["auto", "noProposals", "noWeb", "noInteraction", "mode"]);
         } finally { ws.close(); }
     });
 });
@@ -238,8 +242,9 @@ test("loop.run rejects non-object flags", async () => {
             const response = await rpcCall(ws, 2, "loop.run", {
                 prompt: "test", flags: "auto",
             });
-            assert.equal(response.error?.code, -32603);
-            assert.match(response.error?.message ?? "", /flags must be an object/);
+            const problem = rpcProblem(response);
+            assert.equal(problem.type, "https://problems.plurnk.dev/daemon/input/loop-flags-invalid");
+            assert.equal(problem.field, "flags");
         } finally { ws.close(); }
     });
 });

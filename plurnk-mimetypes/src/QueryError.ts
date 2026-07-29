@@ -39,8 +39,9 @@ export class InvalidExpressionError extends Error {
 }
 
 // Thrown when the content can't be parsed for the requested dialect (e.g.
-// broken JSON when running jsonpath against application/json). Consumer maps
-// to 422.
+// broken JSON when running jsonpath against application/json). The standard
+// scheme adapter returns a 203 raw-content fallback; other consumers own their
+// operation-boundary policy.
 export class QueryParseFailureError extends Error {
     readonly mimetype: string;
 

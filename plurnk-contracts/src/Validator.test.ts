@@ -73,6 +73,8 @@ test("ProblemDetails accepts an RFC 9457 occurrence with factual extensions", ()
         stage: "matcher",
         matched: 0,
         requested: [30, 100],
+        recovery: "Correct or remove the matcher.",
+        retryable: false,
     };
     assert.equal(Validator.validateProblemDetails(problem).valid, true);
     assert.equal(Validator.assertProblemDetails(problem), problem);
@@ -118,6 +120,13 @@ test("ProblemDetails rejects missing fields and non-absolute type URIs", () => {
         () => Validator.assertProblemDetails({ status: 404 } as never),
         InvalidProblemDetailsError,
     );
+    assert.equal(Validator.validateProblemDetails({
+        type: "https://problems.plurnk.dev/scheme/file/not-found",
+        title: "Not found",
+        status: 404,
+        detail: "Missing.",
+        recovery: "",
+    }).valid, false);
 });
 
 test("OperationResult discriminates successes and RFC 9457 failures", () => {

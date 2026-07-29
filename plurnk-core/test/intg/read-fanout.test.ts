@@ -398,7 +398,12 @@ test("an over-budget matcher READ writes one bounded 413 and zero deliveries", a
             sequence: 1,
         });
         assert.deepEqual([row?.op, row?.status_rx], ["READ", 413]);
-        assert.match(row?.rx ?? "", /3 resources exceed.*narrow/i);
+        const problem = (JSON.parse(row!.rx) as { problem?: Record<string, unknown> }).problem;
+        assert.equal(problem?.type, "https://problems.plurnk.dev/engine/dispatcher/read-materialization-too-large");
+        assert.equal(problem?.resources, 3);
+        assert.equal(problem?.maximumResources, 2);
+        assert.equal(problem?.recovery, "Narrow the target or matcher.");
+        assert.equal(problem?.retryable, false);
     } finally {
         if (prev === undefined) delete process.env.PLURNK_SERVICE_FIND_MAX_MATCHES; else process.env.PLURNK_SERVICE_FIND_MAX_MATCHES = prev;
         await db.close();

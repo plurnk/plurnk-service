@@ -5,7 +5,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { rpcCall, subscribeNotifications, flush, connect, withDaemon } from "./_rpc.ts";
+import { rpcCall, rpcProblem, subscribeNotifications, flush, connect, withDaemon } from "./_rpc.ts";
 
 test("workspace.create with projectRoot round-trips and persists the column", async () => {
     await withDaemon(null, async (db, _daemon, addr) => {
@@ -45,8 +45,10 @@ test("workspace.create rejects non-absolute projectRoot", async () => {
             const response = await rpcCall(ws, 1, "workspace.create", {
                 name: "bad-root", projectRoot: "relative/path",
             });
-            assert.equal(response.error?.code, -32603);
-            assert.match(response.error?.message ?? "", /must be an absolute path/);
+            const problem = rpcProblem(response);
+            assert.equal(problem.type, "https://problems.plurnk.dev/daemon/input/project-root-not-absolute");
+            assert.equal(problem.value, "relative/path");
+            assert.equal(problem.recovery, "Provide an absolute project path.");
         } finally { ws.close(); }
     });
 });

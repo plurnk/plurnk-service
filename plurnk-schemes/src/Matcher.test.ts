@@ -146,7 +146,10 @@ test("matcher: UnsupportedDialectError → 415", async () => {
     });
     const r = await Matcher.matchAgainstContent(regexBody, "x", "image/png", mts);
     assert.equal(r.status, 415);
-    assert.ok((r.problem?.detail ?? "").length > 0);
+    assert.equal(r.problem?.detail, "The regex matcher is not supported for image/png.");
+    assert.equal(r.problem?.mimetype, "image/png");
+    assert.equal(r.problem?.dialect, "regex");
+    assert.equal(r.problem?.recovery, "Use a matcher supported by the resource mimetype.");
 });
 
 test("matcher: InvalidExpressionError → 400", async () => {
@@ -157,6 +160,10 @@ test("matcher: InvalidExpressionError → 400", async () => {
     });
     const r = await Matcher.matchAgainstContent(regexBody, "x", "text/markdown", mts);
     assert.equal(r.status, 400);
+    assert.equal(r.problem?.detail, "The regex matcher expression is invalid.");
+    assert.equal(r.problem?.dialect, "regex");
+    assert.equal(r.problem?.recovery, "Correct or remove the matcher.");
+    assert.equal("expression" in (r.problem ?? {}), false);
 });
 
 test("matcher: QueryParseFailureError → 203 fallback with raw content + reason", async () => {

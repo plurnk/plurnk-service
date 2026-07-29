@@ -8,6 +8,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
+import Results from "../../src/core/results.ts";
 import type { Executor } from "../../src/core/ExecutorRegistry.ts";
 import type Exec from "../../src/schemes/Exec.ts";
 import type { WakeWorkerPayload } from "../../src/core/ChannelWrite.ts";
@@ -57,6 +58,34 @@ test("a rejecting driver still concludes its stream with an exact Problem, never
     } finally { await db.close(); }
 });
 
+test("a status-only executor failure is replaced by an exact contract-violation Problem", async () => {
+    const { db, engine, workspaceId, workerId, loopId, turnId, tag, wakes } = await wire(async () => ({
+        status: 500,
+        exitCode: 1,
+    }));
+    try {
+        const started = await engine.dispatch({
+            statement: execStmt(tag, "go"),
+            workspaceId,
+            workerId,
+            loopId,
+            turnId,
+            sequence: 1,
+            origin: "model",
+        });
+        assert.equal(started.status, 200);
+        const concluded = await waitFor(() => wakes, (events) => events.length > 0, { timeoutMs: 4000 });
+        assert.equal(concluded[0].result.status, 500);
+        assert.equal(
+            concluded[0].result.problem?.type,
+            "https://problems.plurnk.dev/scheme/exec/executor-invalid-result",
+        );
+        assert.equal(concluded[0].result.problem?.stage, "result-validation");
+        assert.equal(concluded[0].result.problem?.runtime, tag);
+        assert.equal(concluded[0].result.problem?.retryable, false);
+    } finally { await db.close(); }
+});
+
 test("a driver resolving 200 under abort is replaced by a 499 Problem — service truth outranks the claim", async () => {
     const { db, engine, schemes, workspaceId, workerId, loopId, turnId, tag, wakes } = await wire((args) => new Promise((res) => {
         // The 0.3.3-class liar: hangs until aborted, then claims success.
@@ -84,7 +113,16 @@ for (const specimen of [
     test(`a completed but unobserved ${specimen.label} keeps a same-turn wait alive for its next-packet terminal observation`, async () => {
         const { db, engine, workspaceId, workerId, loopId, turnId, tag, wakes } = await wire(async (args) => {
             if (specimen.content !== "") args.write("results", specimen.content);
-            return { status: specimen.status, exitCode: specimen.status === 200 ? 0 : 1 };
+            return specimen.status === 200
+                ? { status: 200, exitCode: 0 }
+                : Results.failure(
+                    "executor:honesty",
+                    "expected-failure",
+                    500,
+                    "The executor reported the test failure.",
+                    { exitCode: 1 },
+                    { runtime: tag, retryable: false },
+                );
         });
         try {
             const started = await engine.dispatch({

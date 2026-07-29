@@ -63,8 +63,12 @@ test("structured cancellation atomically claims the unresolved descendant tree",
         assert.equal(await status(siblingLoop), 102, "unowned siblings are untouched");
         for (const loop of cancelled.loops) {
             assert.equal(loop.result.status, 499);
+            assert.equal(loop.result.problem?.type, "https://problems.plurnk.dev/lifecycle/cancel/scope-cancelled");
             assert.equal(loop.result.problem?.instance, `loop:///${loop.loopId}`);
-            assert.equal(loop.result.problem?.detail, "scope abandoned");
+            assert.equal(loop.result.problem?.detail, "The worker scope was cancelled: scope abandoned.");
+            assert.equal(loop.result.problem?.reason, "scope abandoned");
+            assert.equal(loop.result.problem?.stage, "loop");
+            assert.equal(loop.result.problem?.retryable, false);
         }
     } finally {
         await db.close();

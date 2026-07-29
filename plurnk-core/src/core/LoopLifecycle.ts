@@ -1,5 +1,6 @@
 import type { Db } from "./Db.ts";
 import Results, { type SchemeResult } from "./results.ts";
+import ErrorDetail from "./ErrorDetail.ts";
 
 export interface CancelledLoop {
     loopId: number;
@@ -92,10 +93,11 @@ export default class LoopLifecycle {
     }
 
     async cancelTree(workerId: number, reason: string, includeRoot: boolean): Promise<CancelledTree> {
+        const boundedReason = ErrorDetail.preview(reason) || "no reason was supplied";
         const params = {
             worker_id: workerId,
             include_root: includeRoot ? 1 : 0,
-            message: reason.slice(0, 500),
+            message: boundedReason,
         };
         const workers = await this.#db.lifecycle_worker_tree.all<{ worker_id: number }>({
             worker_id: params.worker_id,
@@ -105,7 +107,13 @@ export default class LoopLifecycle {
             "lifecycle:cancel",
             "scope-cancelled",
             499,
-            reason.slice(0, 500),
+            `The worker scope was cancelled: ${boundedReason}.`,
+            {},
+            {
+                reason: boundedReason,
+                stage: "loop",
+                retryable: false,
+            },
         );
         const loops = await this.#db.lifecycle_cancel_worker_tree.all<{
             loop_id: number;

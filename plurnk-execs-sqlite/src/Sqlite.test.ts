@@ -4,6 +4,7 @@ import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import Sqlite from "./Sqlite.ts";
+import { ERROR_DETAIL_LIMIT } from "@plurnk/plurnk-execs";
 import type { ExecArgs, ExecResult, Notice } from "@plurnk/plurnk-execs";
 
 interface Capture {
@@ -30,8 +31,16 @@ const run = async (command: string, target: string | null = null, cwd: string | 
 
 // Unique temp db path per use; cleaned up after each test.
 let dbPath: string | null = null;
+const originalErrorPreview = process.env[ERROR_DETAIL_LIMIT];
 const tempDb = (): string => (dbPath = join(tmpdir(), `execs-sqlite-${process.hrtime.bigint()}.db`));
-afterEach(async () => { if (dbPath) { await rm(dbPath, { force: true }); dbPath = null; } });
+afterEach(async () => {
+    if (dbPath) {
+        await rm(dbPath, { force: true });
+        dbPath = null;
+    }
+    if (originalErrorPreview === undefined) delete process.env[ERROR_DETAIL_LIMIT];
+    else process.env[ERROR_DETAIL_LIMIT] = originalErrorPreview;
+});
 
 test("manifest declares the sqlite runtime tag", async () => {
     const pkg = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf-8"));
@@ -99,20 +108,22 @@ test("mutation round-trip against a file db: CREATE, INSERT (changes), SELECT (r
     assert.deepEqual(JSON.parse(select.out!), [{ id: 1, name: "alice" }]);
 });
 
-test("SQL error → durable Problem, errored channel, 500", async () => {
+test("invalid SQL reference -> durable prepare Problem, errored channel, 400", async () => {
     const { result, states, events } = await run("SELECT * FROM does_not_exist");
-    assert.equal(result.status, 500);
-    assert.equal(result.problem?.type, "https://problems.plurnk.dev/executor/sqlite/sqlite-error");
+    assert.equal(result.status, 400);
+    assert.equal(result.problem?.type, "https://problems.plurnk.dev/executor/sqlite/sqlite-invalid-statement");
     assert.match(result.problem?.detail ?? "", /does_not_exist/);
+    assert.equal(result.problem?.recovery, "Correct the SQL statement.");
     assert.equal(events.length, 0);
     assert.equal(states.at(-1), "errored");
 });
 
-test("syntax error → sqlite_error, 500", async () => {
+test("syntax error -> sqlite_invalid_statement, 400", async () => {
     const { result, events } = await run("SELEKT oops");
-    assert.equal(result.status, 500);
-    assert.equal(result.problem?.type, "https://problems.plurnk.dev/executor/sqlite/sqlite-error");
+    assert.equal(result.status, 400);
+    assert.equal(result.problem?.type, "https://problems.plurnk.dev/executor/sqlite/sqlite-invalid-statement");
     assert.match(result.problem?.detail ?? "", /near "SELEKT"/);
+    assert.equal(result.problem?.recovery, "Correct the SQL statement.");
     assert.equal(events.length, 0);
 });
 
@@ -123,10 +134,29 @@ test("multi-statement script → sqlite_multi_statement, 400, nothing truncated 
     const { result, events, states } = await run("CREATE TABLE t(x); INSERT INTO t VALUES(1)");
     assert.equal(result.status, 400);
     assert.equal(result.problem?.type, "https://problems.plurnk.dev/executor/sqlite/sqlite-multi-statement");
-    assert.match(result.problem?.detail ?? "", /one SQL statement per op/);
-    assert.match(result.problem?.detail ?? "", /INSERT INTO t VALUES\(1\)/);
+    assert.match(result.problem?.detail ?? "", /exactly one statement/);
+    assert.equal(result.problem?.rejectedTail, "INSERT INTO t VALUES(1)");
+    assert.equal(result.problem?.recovery, "Run each SQL statement in a separate operation.");
     assert.equal(events.length, 0);
     assert.equal(states.at(-1), "errored");
+});
+
+test("the configured error preview bounds rejected SQL facts", async () => {
+    process.env[ERROR_DETAIL_LIMIT] = "6";
+    const { result } = await run("SELECT 1; SECOND LONG STATEMENT");
+
+    assert.equal(result.status, 400);
+    assert.equal(result.problem?.rejectedTail, "SECOND...");
+});
+
+test("an invalid error preview is an exact configuration Problem", async () => {
+    process.env[ERROR_DETAIL_LIMIT] = "-2";
+    const { result } = await run("SELECT 1");
+
+    assert.equal(result.status, 500);
+    assert.equal(result.problem?.type, "https://problems.plurnk.dev/executor/sqlite/invalid-configuration");
+    assert.equal(result.problem?.configuration, ERROR_DETAIL_LIMIT);
+    assert.equal(result.problem?.stage, "configuration");
 });
 
 test("a trailing semicolon and trailing comments are NOT a second statement", async () => {

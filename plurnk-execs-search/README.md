@@ -36,6 +36,7 @@ Every tunable is an **optional env override** — no code default hides a magic 
 | `PLURNK_EXECS_SEARCH_TIMEOUT` | no | the consumer's signal is the deadline (SPEC §2.5); this is an extra ceiling (ms) |
 | `PLURNK_EXECS_SEARCH_SAFESEARCH` | no | instance default — `0` / `1` / `2` |
 | `PLURNK_EXECS_SEARCH_SNIPPET` | no | snippet unbounded (else max chars per result snippet) |
+| `PLURNK_EXECS_SEARCH_QUERY_PREVIEW` | no | `.env.defaults` sets 120 characters in error facts |
 | `PLURNK_EXECS_SEARCH_RAW` | no | digest mode; truthy → verbatim SearXNG payload, prefetch skipped (debug) |
 
 The page-fetch knobs (per-page timeout, redirect hops) moved to the consumer with the fetch — the executor no longer fetches result pages (SPEC §2.6, ruling #5); schemes-http owns the prefetch and its `PLURNK_SCHEMES_HTTP_*` knobs.

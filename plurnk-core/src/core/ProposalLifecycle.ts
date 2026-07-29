@@ -4,6 +4,7 @@ import type SchemeRegistry from "./SchemeRegistry.ts";
 import type ExecutorRegistry from "./ExecutorRegistry.ts";
 import type NoticeChannel from "./NoticeChannel.ts";
 import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
+import { InvalidOperationResultError } from "@plurnk/plurnk-contracts";
 import type { StreamEventNotify, WakeWorkerNotify } from "./ChannelWrite.ts";
 import type { PlurnkSchemeContext, LoopFlags } from "./scheme-types.ts";
 import type { DispatchResult } from "./Dispatcher.ts";
@@ -11,7 +12,7 @@ import { schemeNameOf } from "./plurnk-uri.ts";
 import SchemeCtxImpl from "./caps/SchemeCtxImpl.ts";
 import type LiveSubscriptions from "./LiveSubscriptions.ts";
 import type { SchemeCtx } from "@plurnk/plurnk-schemes";
-import Results from "./results.ts";
+import Results, { OperationFailureError } from "./results.ts";
 
 // Proposal lifecycle types. A scheme returns DispatchResult{status:202,attrs}
 // to propose; dispatch writes a state='proposed' log entry, registers a waiter
@@ -141,7 +142,19 @@ export default class ProposalLifecycle {
     resolve(logEntryId: number, resolution: ProposalResolution): void {
         const waiter = this.#pending.get(logEntryId);
         if (waiter === undefined) {
-            throw new Error(`Engine.resolveProposal: no pending proposal for log_entry ${logEntryId}`);
+            throw new OperationFailureError(Results.failure(
+                "proposal:resolution",
+                "proposal-not-pending",
+                409,
+                `Proposal ${logEntryId} is not pending.`,
+                {},
+                {
+                    logEntryId,
+                    stage: "proposal-resolution",
+                    recovery: "Refresh pending proposals before resolving one.",
+                    retryable: false,
+                },
+            ));
         }
         if (waiter.timeoutHandle !== null) clearTimeout(waiter.timeoutHandle);
         this.#pending.delete(logEntryId);
@@ -267,14 +280,19 @@ export default class ProposalLifecycle {
                 applied: applyResult,
             };
         } catch (err) {
+            console.error(`Proposal application failed for scheme '${schemeName}':`, err);
             return {
                 resolution: { ...resolution, outcome: "apply_threw" },
                 applied: Results.failure(
                     `scheme:${schemeName}`,
                     "proposal-apply-threw",
                     500,
-                    err instanceof Error ? err.message : String(err),
+                    `Scheme '${schemeName}' failed outside its proposal application contract.`,
                     { outcome: "apply_threw" },
+                    {
+                        stage: "proposal-application",
+                        retryable: false,
+                    },
                 ),
             };
         }
@@ -304,6 +322,14 @@ export default class ProposalLifecycle {
             : "loop_aborted";
         const appliedOutcome = applied !== undefined && typeof applied.outcome === "string" ? applied.outcome : null;
         const outcome = resolution.outcome ?? appliedOutcome ?? defaultOutcome;
+        const projected = resolution.result ?? {};
+        for (const reserved of ["status", "problem", "error"]) {
+            if (Object.hasOwn(projected, reserved)) {
+                throw new InvalidOperationResultError(
+                    `Proposal result fields cannot override reserved operation result field '${reserved}'.`,
+                );
+            }
+        }
         let result: DispatchResult;
         if (appliedFailed) {
             result = applied;
@@ -311,7 +337,7 @@ export default class ProposalLifecycle {
             result = Results.assert({
                 status,
                 ...(resolution.body !== undefined ? { body: resolution.body } : {}),
-                ...(resolution.result ?? {}),
+                ...projected,
                 ...(outcome !== null ? { outcome } : {}),
             });
         } else {
@@ -320,6 +346,9 @@ export default class ProposalLifecycle {
             const detail = `The proposal was ${action}${outcome === null ? "." : ` (${outcome}).`}`;
             result = Results.failure("proposal", code, status, detail, {
                 ...(outcome !== null ? { outcome } : {}),
+            }, {
+                stage: "proposal-settlement",
+                retryable: false,
             });
         }
         const coordinate = await this.#db.engine_log_entry_coordinate.get<{

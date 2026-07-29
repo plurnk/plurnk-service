@@ -31,9 +31,23 @@ optional until a durable host can attach the occurrence URI.
 - `instance` identifies the durable occurrence.
 - Extensions carry factual domain context or enforced constraints.
 
-Recovery prose is appropriate only when the producer can state a generally
-valid response. Exact measurements remain factual even when no universal
-recovery amount exists.
+### Model-facing language
+
+The durable Problem on a failed log row is also the model-facing error. Its
+fields follow one writing contract:
+
+| field | rule |
+|---|---|
+| `title` | Stable problem class, with no occurrence data or instruction. |
+| `detail` | State the failed subject, observed fact, and violated constraint as tersely as the cause permits. Do not infer motives, blame the model, restate the status, or expose an implementation accident as the cause. |
+| `stage` | Name the stable failed stage only when neighboring stages imply different recovery. |
+| factual extensions | Preserve operands the producer already knows, such as a requested range, available extent, allowed operations, or token deficit. |
+| `recovery` | State one generally valid next action. Omit it when recovery depends on facts the producer does not know. |
+| `retryable` | Use `true` only when the producer recommends automatically retrying the identical request. Use `false` when caller input or operator state must change, or replay could violate intent. Omit it when the producer cannot know. |
+
+`detail` is failure truth; `recovery` is not a second explanation. Recovery
+does not repeat general syntax or packet teaching. Exact measurements remain
+factual even when no universal recovery amount exists.
 
 `Problems.create(owner, code, status, detail, extensions?, options?)` derives
 the stable title from `code` by default. A type whose established title is not

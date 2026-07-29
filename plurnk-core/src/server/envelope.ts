@@ -9,8 +9,18 @@
 import type { Db } from "../core/Db.ts";
 import GitMembership from "../core/git-membership.ts";
 import Owner from "../core/Owner.ts";
-import Results, { type SchemeResult } from "../core/results.ts";
+import Results, { OperationFailureError, type SchemeResult } from "../core/results.ts";
 import LoopLifecycle from "../core/LoopLifecycle.ts";
+
+const envelopeFailure = (
+    owner: string,
+    code: string,
+    status: number,
+    detail: string,
+    extensions: Readonly<Record<string, unknown>> = {},
+): OperationFailureError => new OperationFailureError(
+    Results.failure(owner, code, status, detail, {}, extensions),
+);
 
 export interface WorkspaceRow {
     id: number;
@@ -76,7 +86,19 @@ export default class Envelope {
         const name = opts.name ?? Envelope.#tsName(opts.prefix ?? "workspace");
         const projectRoot = opts.projectRoot ?? null;
         const workspace = await db.envelope_insert_workspace.get<{ id: number; name: string; project_root: string | null }>({ name, project_root: projectRoot, settings: opts.settings ?? "{}" });
-        if (workspace === undefined) throw new Error("createClientEnvelope: workspace insert returned no row");
+        if (workspace === undefined) {
+            throw envelopeFailure(
+                "daemon:workspace",
+                "name-conflict",
+                409,
+                `Workspace name '${name}' is already in use.`,
+                {
+                    name,
+                    recovery: "Choose another workspace name or attach to the existing workspace.",
+                    retryable: false,
+                },
+            );
+        }
         // SPEC §membership D4 — establish git-ls-files membership at workspace setup so
         // tracked files are members before the first op. No-op when projectRoot is
         // null (headless) or not a git working tree.
@@ -100,17 +122,59 @@ export default class Envelope {
     // `workerId` and `workerName` are alternatives — passing both throws (use one).
     static async #resolveWorker(db: Db, workspaceId: number, opts: { workerId?: number; workerName?: string }): Promise<{ id: number; name: string }> {
         if (opts.workerId !== undefined && opts.workerName !== undefined) {
-            throw new Error("attachToWorkspace: pass workerId OR workerName, not both");
+            throw envelopeFailure(
+                "daemon:worker",
+                "worker-selector-conflict",
+                400,
+                "Workspace attachment received both a worker ID and worker name.",
+                {
+                    workerId: opts.workerId,
+                    workerName: opts.workerName,
+                    recovery: "Select the worker by either ID or name.",
+                    retryable: false,
+                },
+            );
         }
         if (opts.workerId !== undefined) {
             const existing = await db.envelope_get_worker_by_id.get<{ id: number; name: string; workspace_id: number }>({ id: opts.workerId });
-            if (existing === undefined) throw new Error(`run ${opts.workerId} not found`);
-            if (existing.workspace_id !== workspaceId) throw new Error(`run ${opts.workerId} belongs to workspace ${existing.workspace_id}, not ${workspaceId}`);
+            if (existing === undefined) {
+                throw envelopeFailure(
+                    "daemon:worker",
+                    "worker-not-found",
+                    404,
+                    `Worker ${opts.workerId} does not exist.`,
+                    { workerId: opts.workerId },
+                );
+            }
+            if (existing.workspace_id !== workspaceId) {
+                throw envelopeFailure(
+                    "daemon:worker",
+                    "workspace-mismatch",
+                    409,
+                    `Worker ${opts.workerId} does not belong to workspace ${workspaceId}.`,
+                    {
+                        workerId: opts.workerId,
+                        workspaceId,
+                        actualWorkspaceId: existing.workspace_id,
+                        retryable: false,
+                    },
+                );
+            }
             return { id: existing.id, name: existing.name };
         }
         if (opts.workerName !== undefined) {
             if (Envelope.RESERVED_RUN_NAMES.has(opts.workerName.toLowerCase())) {
-                throw new Error(`worker name "${opts.workerName}" is reserved for a non-client actor`);
+                throw envelopeFailure(
+                    "daemon:worker",
+                    "name-reserved",
+                    409,
+                    `Worker name '${opts.workerName}' is reserved.`,
+                    {
+                        name: opts.workerName,
+                        recovery: "Choose another worker name.",
+                        retryable: false,
+                    },
+                );
             }
             const existing = await db.envelope_get_worker_by_name.get<{ id: number; name: string }>({ workspace_id: workspaceId, name: opts.workerName });
             if (existing !== undefined) return existing;
@@ -125,7 +189,15 @@ export default class Envelope {
 
     static async attachToWorkspace(db: Db, workspaceId: number, opts: { workerId?: number; workerName?: string } = {}): Promise<ClientEnvelope> {
         const workspace = await db.envelope_get_workspace.get<{ id: number; name: string; project_root: string | null }>({ id: workspaceId });
-        if (workspace === undefined) throw new Error(`workspace ${workspaceId} not found`);
+        if (workspace === undefined) {
+            throw envelopeFailure(
+                "daemon:workspace",
+                "workspace-not-found",
+                404,
+                `Workspace ${workspaceId} does not exist.`,
+                { workspaceId },
+            );
+        }
         const run = await Envelope.#resolveWorker(db, workspace.id, opts);
         return {
             workspaceId: workspace.id, workspaceName: workspace.name,
@@ -152,7 +224,15 @@ export default class Envelope {
     // conversations about one curated workspace): a named, empty-log, model-origin ROOT run.
     // Distinct from ensureModelWorker (the stable default conversation) and forkWorker (copies history).
     static async createModelWorker(db: Db, workspaceId: number, name?: string): Promise<{ id: number; name: string }> {
-        if (name !== undefined && Owner.RESERVED.has(name.toLowerCase())) throw new Error(`worker name "${name}" is reserved`);
+        if (name !== undefined && Owner.RESERVED.has(name.toLowerCase())) {
+            throw envelopeFailure(
+                "daemon:worker",
+                "name-reserved",
+                409,
+                `Worker name '${name}' is reserved.`,
+                { name, recovery: "Choose another worker name.", retryable: false },
+            );
+        }
         const run = await db.envelope_insert_worker.get<{ id: number; name: string }>({ workspace_id: workspaceId, name: name ?? await Envelope.mintWorkerName(db, workspaceId, "model"), origin: "model" });
         if (run === undefined) throw new Error("createModelWorker: run insert returned no row");
         return run;
@@ -216,7 +296,30 @@ export default class Envelope {
     // the real guard against collision (the handler pre-checks for a clean error).
     static async updateWorkspaceName(db: Db, workspaceId: number, name: string): Promise<string> {
         const row = await db.envelope_set_workspace_name.get<{ id: number; name: string }>({ id: workspaceId, name });
-        if (row === undefined) throw new Error(`workspace ${workspaceId} not found`);
+        if (row === undefined) {
+            const workspace = await db.envelope_get_workspace.get<{ id: number }>({ id: workspaceId });
+            if (workspace !== undefined) {
+                throw envelopeFailure(
+                    "daemon:workspace",
+                    "name-conflict",
+                    409,
+                    `Workspace name '${name}' is already in use.`,
+                    {
+                        workspaceId,
+                        name,
+                        recovery: "Choose another workspace name.",
+                        retryable: false,
+                    },
+                );
+            }
+            throw envelopeFailure(
+                "daemon:workspace",
+                "workspace-not-found",
+                404,
+                `Workspace ${workspaceId} does not exist.`,
+                { workspaceId },
+            );
+        }
         return row.name;
     }
 }

@@ -11,7 +11,7 @@ import type { PlurnkStatement } from "@plurnk/plurnk-grammar";
 import Dsl from "./dsl.ts";
 import type Daemon from "../../src/server/Daemon.ts";
 import type { ClientEnvelope } from "../../src/server/envelope.ts";
-import { OperationFailureError } from "../../src/core/results.ts";
+import Results, { OperationFailureError } from "../../src/core/results.ts";
 
 type Listener = (data: string) => void;
 
@@ -87,7 +87,7 @@ export default class SeamSocket {
                 const envelope = await daemon.createWorkspace({
                     name: p.name as string | undefined,
                     projectRoot: (p.projectRoot as string | null | undefined) ?? null,
-                    settings: p.settings as string | undefined,
+                    settings: p.settings as string | object | undefined,
                     constraints: p.constraints as Array<{ effect: string; glob: string }> | undefined,
                 });
                 this.#workspace = envelope;
@@ -100,10 +100,9 @@ export default class SeamSocket {
             }
             case "loop.run": {
                 const s = this.#attached();
-                if (typeof p.prompt !== "string" || p.prompt.length === 0) throw new Error("loop.run requires non-empty params.prompt");
                 if (s.modelWorkerId === null) s.modelWorkerId = await daemon.ensureModelWorker(s.workspaceId);
                 const run = await daemon.runLoop({
-                    workspaceId: s.workspaceId, workerId: s.modelWorkerId, prompt: p.prompt,
+                    workspaceId: s.workspaceId, workerId: s.modelWorkerId, prompt: p.prompt as string,
                     ...(p.maxTurns !== undefined ? { maxTurns: p.maxTurns as number } : {}),
                     ...(p.flags !== undefined ? { flags: p.flags as { auto?: boolean } } : {}),
                     ...(p.openPaths !== undefined ? { openPaths: p.openPaths as string[] } : {}),
@@ -116,8 +115,20 @@ export default class SeamSocket {
                 // inject speaks to an EXISTING model worker; the seam's runLoop injects into a live
                 // drain identically (daemon.inject under both) — refusing only the run-start.
                 const s = this.#attached();
-                if (typeof p.prompt !== "string" || p.prompt.length === 0) throw new Error("loop.inject requires non-empty params.prompt");
-                if (s.modelWorkerId === null) throw new Error("loop.inject: no model worker to inject into — start one with loop.run");
+                if (s.modelWorkerId === null) {
+                    throw new OperationFailureError(Results.failure(
+                        "daemon:worker",
+                        "model-worker-required",
+                        409,
+                        "No model worker exists for prompt injection.",
+                        {},
+                        {
+                            stage: "loop-injection",
+                            recovery: "Start a loop before injecting a prompt.",
+                            retryable: false,
+                        },
+                    ));
+                }
                 const run = await daemon.runLoop({
                     workspaceId: s.workspaceId, workerId: s.modelWorkerId, prompt: p.prompt as string,
                     ...(p.maxTurns !== undefined ? { maxTurns: p.maxTurns as number } : {}),
@@ -182,7 +193,20 @@ export default class SeamSocket {
                 // fork branches an EXISTING model worker — no worker yet is a caller error, never an implicit create.
                 const s = this.#attached();
                 const workerId = (p.workerId as number | undefined) ?? s.modelWorkerId;
-                if (workerId === null || workerId === undefined) throw new Error("run.fork: no model worker to fork — loop.run first");
+                if (workerId === null || workerId === undefined) {
+                    throw new OperationFailureError(Results.failure(
+                        "daemon:worker",
+                        "model-worker-required",
+                        409,
+                        "No model worker exists to fork.",
+                        {},
+                        {
+                            stage: "worker-fork",
+                            recovery: "Start a loop before forking its worker.",
+                            retryable: false,
+                        },
+                    ));
+                }
                 return daemon.forkWorker({ workspaceId: s.workspaceId, workerId, name: p.name as string | undefined });
             }
             case "workspace.rename": {
@@ -192,11 +216,8 @@ export default class SeamSocket {
             case "workspace.list": return { workspaces: await daemon.listWorkspaces() };
             case "workspace.workers": { const sid = ((p.workspaceId ?? p.id) as number | undefined) ?? this.#attached().workspaceId; return { workers: await daemon.listWorkers(sid) }; }
             case "workspace.prompts": {
-                if (p.limit !== undefined && (typeof p.limit !== "number" || !Number.isInteger(p.limit) || p.limit < 1)) {
-                    throw new Error("workspace.prompts: limit must be a positive integer");
-                }
                 const sid = ((p.workspaceId ?? p.id) as number | undefined) ?? this.#attached().workspaceId;
-                return { prompts: await daemon.listPrompts(sid, (p.limit as number | undefined) ?? 100) };
+                return { prompts: await daemon.listPrompts(sid, p.limit as number | undefined) };
             }
             case "workspace.members": { const s = this.#attached(); return { members: await daemon.listMembers(s.workspaceId) }; }
             case "workspace.constraints": { const s = this.#attached(); return { constraints: await daemon.listConstraints(s.workspaceId) }; }
@@ -214,7 +235,23 @@ export default class SeamSocket {
                 const { statements, errors } = Dsl.parseAllStatements(p.text as string);
                 const results: Array<{ status: number; [k: string]: unknown }> = [];
                 for (const statement of statements) results.push(await daemon.dispatchAsClient({ workspaceId: s.workspaceId, workerId: s.workerId, statement }));
-                for (const e of errors) results.push({ status: 400, error: e.message, position: { type: "content-offset", line: e.line, column: e.column } });
+                for (const e of errors) {
+                    results.push(Results.failure(
+                        "daemon:input",
+                        "parse-failed",
+                        400,
+                        e.message,
+                        {},
+                        {
+                            context: "op.parse",
+                            stage: "parsing",
+                            line: e.line,
+                            column: e.column,
+                            recovery: "Correct the statement at the reported position.",
+                            retryable: false,
+                        },
+                    ));
+                }
                 return { results };
             }
             case "op.dispatch": {

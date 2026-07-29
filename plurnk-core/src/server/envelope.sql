@@ -3,6 +3,7 @@
 -- PREP: envelope_insert_workspace
 INSERT INTO workspaces (name, project_root, settings)
 VALUES ($name, $project_root, $settings)
+ON CONFLICT(name) DO NOTHING
 RETURNING id, name, project_root;
 
 -- PREP: envelope_get_workspace
@@ -17,7 +18,12 @@ SELECT id FROM workspaces WHERE name = $name;
 -- Used by workspace.rename. The workspace name is a MUTABLE handle (vs a worker's
 -- immutable name, §machine-processes). Returns the updated row to refresh the
 -- caller's ClientEnvelope copy.
-UPDATE workspaces SET name = $name WHERE id = $id
+UPDATE workspaces SET name = $name
+WHERE id = $id
+  AND NOT EXISTS (
+    SELECT 1 FROM workspaces AS other
+    WHERE other.name = $name AND other.id <> $id
+  )
 RETURNING id, name;
 
 -- PREP: envelope_insert_worker
@@ -65,7 +71,7 @@ LIMIT $limit;
 -- multiple client connections attaching to the same run get distinct loops.
 INSERT INTO loops (worker_id, sequence, status, prompt)
 VALUES ($worker_id, COALESCE((SELECT MAX(sequence) FROM loops WHERE worker_id = $worker_id), 0) + 1, 102, '')
-RETURNING id;
+RETURNING id, sequence;
 
 -- PREP: envelope_close_client_loop
 UPDATE loops

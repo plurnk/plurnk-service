@@ -234,6 +234,29 @@ test("Known.find with regex matcher filters by CONTENT", async () => {
     } finally { db.close(); }
 });
 
+test("Known.find preserves an invalid matcher's parser cause and recovery facts", async () => {
+    const { db, workspaceId, workerId } = await setup();
+    try {
+        await seedEntries(db, workspaceId, workerId, [["a.json", "{\"answer\":42}"]]);
+        const r = await new Worker().find(
+            findStmt(url(""), { dialect: "jsonpath", raw: "$.[" }),
+            makeSchemeCtx({ db, workspaceId, workerId, loopId: 0, turnId: 0 }),
+        );
+        assert.equal(r.status, 400);
+        assert.equal(r.problem?.stage, "matcher");
+        assert.equal(r.problem?.dialect, "jsonpath");
+        assert.equal(r.problem?.recovery, "Correct or remove the matcher.");
+        assert.equal(r.problem?.retryable, false);
+        assert.doesNotMatch(
+            r.problem?.detail ?? "",
+            /could not resolve the requested selection/,
+            "the parser's actual cause survives the FIND boundary",
+        );
+    } finally {
+        db.close();
+    }
+});
+
 test("Known.find regex honors flags — case-insensitive (i) on content", async () => {
     const { db, workspaceId, workerId } = await setup();
     try {
@@ -302,6 +325,40 @@ test("Known.find with no matches returns 200 with empty results", async () => {
         assert.equal(r.status, 200);
         assert.deepEqual([...new Set(r.results.map((f) => f.path))], []);
         assert.equal(r.content, "[]", "no matches → an empty JSON array");
+    } finally { db.close(); }
+});
+
+test("Known.find names a zero-match selection before rejecting its requested range", async () => {
+    const { db, workspaceId, workerId } = await setup();
+    try {
+        await seedEntries(db, workspaceId, workerId, [["a", "alpha"], ["b", "beta"]]);
+        const statement: FindStatement = {
+            ...findStmt(url(""), glob("nope*")),
+            lineMarker: { marks: [30, 100] },
+        };
+        const result = await new Worker().find(
+            statement,
+            makeSchemeCtx({ db, workspaceId, workerId, loopId: 0, turnId: 0 }),
+        );
+        assert.equal(result.status, 416);
+        assert.equal(result.problem?.type, "https://problems.plurnk.dev/scheme/worker/selection-range-unavailable");
+        assert.equal(result.problem?.stage, "selection");
+        assert.equal(result.problem?.dialect, "glob");
+        assert.equal(result.problem?.matchedResources, 0);
+        assert.deepEqual(result.problem?.range, {
+            unit: "result",
+            requested: { first: 30, last: 100 },
+            available: { first: null, last: null, total: 0 },
+        });
+        assert.equal(
+            result.problem?.detail,
+            "The glob matcher selected 0 resources; <30,100> cannot select from an empty result set.",
+        );
+        assert.equal(
+            result.problem?.recovery,
+            "Correct or remove the matcher before choosing a range.",
+        );
+        assert.equal(result.problem?.retryable, false);
     } finally { db.close(); }
 });
 

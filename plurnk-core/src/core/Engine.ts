@@ -81,12 +81,12 @@ const ENGINE_PROBLEMS = Object.freeze({
     max_commands_exceeded: {
         status: 429,
         code: "max-commands-exceeded",
-        detail: "Max Commands Exceeded",
+        detail: "Later operations were not executed because the turn exceeded its operation limit.",
     },
     idle_turn: {
         status: 409,
         code: "idle-turn",
-        detail: "Illegal idle turn - a [102] turn performs at least one operation. Conclude with [200] or wait with [202].",
+        detail: "SEND[102] was emitted without an operation to continue from.",
     },
 } as const);
 type EngineProblemKind = keyof typeof ENGINE_PROBLEMS;
@@ -619,7 +619,13 @@ export default class Engine {
                 "engine:rails",
                 "loop-timeout",
                 504,
-                `The loop wall expired after ${turnIds.length} turns.`,
+                `The loop exceeded its wall-clock deadline after ${turnIds.length} turns.`,
+                {},
+                {
+                    turns: turnIds.length,
+                    stage: "loop",
+                    retryable: false,
+                },
             );
             const result = await this.#lifecycle.finish(loopId, failure);
             if (result === null) throw new Error(`loop ${loopId} became terminal before timeout settlement`);
@@ -684,6 +690,12 @@ export default class Engine {
                     "max-turns",
                     429,
                     `The configured turn ceiling (${maxTurns}) is exhausted.`,
+                    {},
+                    {
+                        maximumTurns: maxTurns,
+                        stage: "loop",
+                        retryable: false,
+                    },
                 );
                 const result = await this.#lifecycle.finish(loopId, failure);
                 if (result === null) throw new Error(`loop ${loopId} became terminal before max-turn settlement`);
@@ -748,7 +760,13 @@ export default class Engine {
                     "engine:generation",
                     "invalid-emission-exhausted",
                     500,
-                    `The model failed to emit a valid PLAN...SEND turn in ${turn.emissionAttempts} attempts.`,
+                    `No valid PLAN...SEND turn was received after ${turn.emissionAttempts} emission attempts.`,
+                    {},
+                    {
+                        attempts: turn.emissionAttempts,
+                        stage: "emission-validation",
+                        retryable: false,
+                    },
                 );
                 const result = await this.#lifecycle.finish(loopId, failure);
                 if (result === null) throw new Error(`loop ${loopId} became terminal before invalid-emission settlement`);
@@ -793,8 +811,14 @@ export default class Engine {
                     "strike-threshold",
                     status,
                     verdict.cycleDetected
-                        ? `The strike threshold was crossed after ${turnIds.length} turns because the model was spinning in place.`
-                        : `The strike threshold was crossed after ${turnIds.length} turns because turns repeatedly failed or performed no operation.`,
+                        ? `The loop reached its strike threshold after ${turnIds.length} turns because its operation pattern repeated.`
+                        : `The loop reached its strike threshold after ${turnIds.length} turns because turns repeatedly failed or performed no operation.`,
+                    {},
+                    {
+                        turns: turnIds.length,
+                        stage: "loop",
+                        retryable: false,
+                    },
                 );
                 const result = await this.#lifecycle.finish(loopId, failure);
                 if (result === null) throw new Error(`loop ${loopId} became terminal before strike settlement`);
@@ -1367,12 +1391,20 @@ export default class Engine {
             }
             const failure = err instanceof ProviderError
                 ? { status: err.problem.status, problem: err.problem }
-                : Results.failure(
-                    "engine:provider",
-                    "provider-threw",
-                    502,
-                    `The provider threw outside its failure contract: ${err instanceof Error ? err.message : String(err)}`,
-                );
+                : (() => {
+                    console.error("Provider failed outside its Problem Details contract:", err);
+                    return Results.failure(
+                        "engine:provider",
+                        "provider-contract-violation",
+                        502,
+                        "The provider failed without returning its required Problem Details.",
+                        {},
+                        {
+                            stage: "provider-request",
+                            retryable: false,
+                        },
+                    );
+                })();
             const recorded = await this.#problems.record({
                 workerId,
                 loopId,
@@ -1624,6 +1656,9 @@ export default class Engine {
                             line: error.line,
                             column: error.column,
                             source: error.source,
+                            stage: "parse",
+                            recovery: "Correct the operation syntax.",
+                            retryable: false,
                         },
                     ),
                 });
@@ -1691,6 +1726,19 @@ export default class Engine {
         if (droppedCount > 0) pendingEngineErrors.push("max_commands_exceeded");
         for (const kind of pendingEngineErrors) {
             const problem = ENGINE_PROBLEMS[kind];
+            const extensions = kind === "max_commands_exceeded"
+                ? {
+                    operationLimit: maxCommands,
+                    omittedOperations: droppedCount,
+                    stage: "dispatch-admission",
+                    recovery: "Continue with no more than the configured operation limit.",
+                    retryable: false,
+                }
+                : {
+                    stage: "turn",
+                    recovery: "Perform an operation before continuing with SEND[102].",
+                    retryable: false,
+                };
             await this.#problems.record({
                 workerId,
                 loopId,
@@ -1703,6 +1751,8 @@ export default class Engine {
                     problem.code,
                     problem.status,
                     problem.detail,
+                    {},
+                    extensions,
                 ),
             });
         }
@@ -1982,7 +2032,7 @@ export default class Engine {
                         worker_id: workerId, loop_id: loopId, turn_id: turnId, sequence,
                         scheme: ch.runtime, pathname: ch.coord, fragment: visibleFragment,
                         rx: JSON.stringify(await terminalResult({
-                            content: `[ stream closed (${ch.close_status ?? 200}) — ${pointer} ]`,
+                            content: `[ stream closed (${ch.close_status ?? 200}) - ${pointer} ]`,
                             mimetype: "text/stream",
                         }, sequence)),
                         status: terminal?.status ?? 200,

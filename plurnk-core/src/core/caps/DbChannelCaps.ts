@@ -17,38 +17,48 @@ export default class DbChannelCaps implements ChannelCaps {
         this.#scheme = scheme;
     }
 
-    #failure(code: string, detail: string): SchemeResult {
-        return Results.failure(`scheme:${this.#scheme ?? "entry"}`, code, 404, detail);
+    #failure(code: string, detail: string, pathname: string, channel?: string): SchemeResult {
+        return Results.failure(
+            `scheme:${this.#scheme ?? "entry"}`,
+            code,
+            404,
+            detail,
+            {},
+            {
+                target: `${this.#scheme ?? "entry"}://${pathname}`,
+                ...(channel === undefined ? {} : { channel }),
+            },
+        );
     }
 
     async append(pathname: string, channel: string, content: string): Promise<SchemeResult> {
         const entryId = await CapsResolve.entryId(this.#ctx, this.#scheme, pathname);
-        if (entryId === null) return this.#failure("entry-not-found", `No entry exists at ${this.#scheme ?? "entry"}://${pathname}.`);
+        if (entryId === null) return this.#failure("entry-not-found", `No entry exists at ${this.#scheme ?? "entry"}://${pathname}.`, pathname);
         const r = await this.#ctx.db.append_to_channel.run({ chunk: content, entry_id: entryId, channel });
         return r.changes > 0
             ? Results.assert({ status: 200 })
-            : this.#failure("channel-not-found", `Entry ${this.#scheme ?? "entry"}://${pathname} has no '${channel}' channel.`);
+            : this.#failure("channel-not-found", `Entry ${this.#scheme ?? "entry"}://${pathname} has no '${channel}' channel.`, pathname, channel);
     }
 
     async replace(pathname: string, channel: string, content: string): Promise<SchemeResult> {
         const { tokenize } = this.#ctx;
         if (tokenize === undefined) throw new Error("DbChannelCaps.replace: ctx.tokenize is required for token accounting");
         const entryId = await CapsResolve.entryId(this.#ctx, this.#scheme, pathname);
-        if (entryId === null) return this.#failure("entry-not-found", `No entry exists at ${this.#scheme ?? "entry"}://${pathname}.`);
+        if (entryId === null) return this.#failure("entry-not-found", `No entry exists at ${this.#scheme ?? "entry"}://${pathname}.`, pathname);
         const r = await this.#ctx.db.replace_channel_content.run({
             content, tokens: tokenize(content), entry_id: entryId, channel,
         });
         return r.changes > 0
             ? Results.assert({ status: 200 })
-            : this.#failure("channel-not-found", `Entry ${this.#scheme ?? "entry"}://${pathname} has no '${channel}' channel.`);
+            : this.#failure("channel-not-found", `Entry ${this.#scheme ?? "entry"}://${pathname} has no '${channel}' channel.`, pathname, channel);
     }
 
     async setState(pathname: string, channel: string, state: ChannelState): Promise<SchemeResult> {
         const entryId = await CapsResolve.entryId(this.#ctx, this.#scheme, pathname);
-        if (entryId === null) return this.#failure("entry-not-found", `No entry exists at ${this.#scheme ?? "entry"}://${pathname}.`);
+        if (entryId === null) return this.#failure("entry-not-found", `No entry exists at ${this.#scheme ?? "entry"}://${pathname}.`, pathname);
         const r = await this.#ctx.db.set_channel_state.run({ state, entry_id: entryId, channel });
         return r.changes > 0
             ? Results.assert({ status: 200 })
-            : this.#failure("channel-not-found", `Entry ${this.#scheme ?? "entry"}://${pathname} has no '${channel}' channel.`);
+            : this.#failure("channel-not-found", `Entry ${this.#scheme ?? "entry"}://${pathname} has no '${channel}' channel.`, pathname, channel);
     }
 }

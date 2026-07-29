@@ -59,6 +59,8 @@ test("Engine.copy missing source returns 404", async () => {
     try {
         const r = await dispatch(engine, { workspaceId, workerId, loopId, turnId }, copyStmt(urlPath("worker", "/nope"), urlPath("worker", "/elsewhere")));
         assert.equal(r.status, 404);
+        assert.equal(r.problem?.type, "https://problems.plurnk.dev/scheme/worker/entry-not-found");
+        assert.equal(r.problem?.target, "worker:///nope");
     } finally { await db.close(); }
 });
 

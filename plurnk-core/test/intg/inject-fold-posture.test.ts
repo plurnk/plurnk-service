@@ -5,7 +5,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
-import { rpcCall, connect, withDaemon, makeMockResponse, subscribeNotifications, waitFor, runLoopToTerminal } from "./_rpc.ts";
+import { rpcCall, rpcProblem, connect, withDaemon, makeMockResponse, subscribeNotifications, waitFor, runLoopToTerminal } from "./_rpc.ts";
 
 const heldLoopMock = () => new Mock({ contextWindow: 16384, responses: [
     // A non-auto EXEC proposal holds loop 1 live (paused at the review) while injects arrive.
@@ -24,9 +24,10 @@ test("inject with flags DIFFERING from the live loop's is refused — never a si
             await waitFor(() => proposals(), (p) => p.length >= 1, { timeoutMs: 10_000 });
             // Loop 1 is live (held at the proposal). An ask-mode prompt must not fold in as act.
             const conflicted = await rpcCall(ws, 3, "loop.run", { prompt: "? what is the plan", flags: { mode: "ask" } });
-            assert.ok(conflicted.error, "the posture-changing fold is refused");
-            assert.match(conflicted.error!.message, /flags are loop-scoped/, "the refusal names the contract");
-            assert.match(conflicted.error!.message, /loop\.cancel|without flags/, "the refusal names the remedy");
+            const problem = rpcProblem(conflicted);
+            assert.equal(problem.type, "https://problems.plurnk.dev/daemon/loop/loop-flags-conflict");
+            assert.deepEqual(problem.conflicts, ["mode: \"act\" -> \"ask\""]);
+            assert.match(problem.recovery ?? "", /Cancel.*or omit flags/);
         } finally { ws.close(); }
     });
 });
@@ -64,8 +65,11 @@ test("inject cannot silently replace a live loop's durable maxTurns ceiling", as
             assert.equal((matching.result as { action: string }).action, "injected_next_turn");
 
             const conflicted = await rpcCall(ws, 4, "loop.run", { prompt: "different ceiling", maxTurns: 6 });
-            assert.ok(conflicted.error, "the ceiling-changing fold is refused");
-            assert.match(conflicted.error!.message, /maxTurns is loop-scoped and immutable/);
+            const problem = rpcProblem(conflicted);
+            assert.equal(problem.type, "https://problems.plurnk.dev/daemon/loop/turn-ceiling-conflict");
+            assert.equal(problem.selectedMaximumTurns, 5);
+            assert.equal(problem.requestedMaximumTurns, 6);
+            assert.match(problem.recovery ?? "", /Cancel or conclude/);
         } finally {
             ws.close();
         }

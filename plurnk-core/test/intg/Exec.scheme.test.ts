@@ -10,10 +10,11 @@ import type { ExecStatement } from "@plurnk/plurnk-grammar";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Exec from "../../src/schemes/Exec.ts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, testExecutors, seedEntryWithChannel, rootWorkspace } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, testExecutors, seedEntryWithChannel, rootWorkspace, makeSchemeCtx } from "./_helpers.ts";
 import { mkdtemp, writeFile, mkdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { InvalidOperationResultError } from "@plurnk/plurnk-schemes";
 
 const execStmt = (runtime: string | null, cwd: string | null, body: string): ExecStatement => ({
     op: "EXEC", suffix: "", signal: runtime,
@@ -57,6 +58,25 @@ test("EXEC: empty body → 400 (no command)", async () => {
             loopId: ctx.loopId, turnId: ctx.turnId, sequence: 1, origin: "model",
         });
         assert.equal(result.status, 400);
+    });
+});
+
+test("Exec.applyResolution: malformed accepted proposal state remains an internal invariant", async () => {
+    await withWorkspace(async (ctx) => {
+        await assert.rejects(
+            ctx.exec.applyResolution(
+                { attrs: {} },
+                makeSchemeCtx({
+                    db: ctx.db,
+                    workspaceId: ctx.workspaceId,
+                    workerId: ctx.workerId,
+                    loopId: ctx.loopId,
+                    turnId: ctx.turnId,
+                    executors: await testExecutors(),
+                }),
+            ),
+            InvalidOperationResultError,
+        );
     });
 });
 

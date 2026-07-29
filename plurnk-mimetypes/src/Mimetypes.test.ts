@@ -6,6 +6,7 @@ import path from "node:path";
 import os from "node:os";
 import Mimetypes from "./Mimetypes.ts";
 import BaseHandler from "./BaseHandler.ts";
+import { UnsupportedDialectError } from "./QueryError.ts";
 import type {
     Discovery,
     HandlerInfo,
@@ -597,6 +598,47 @@ describe("Mimetypes — query", () => {
         await assert.rejects(
             async () => { await m.query({ path: "/nonexistent.txt" }, "/x/"); },
             /content unreadable/,
+        );
+    });
+
+    it("reports an unregistered mimetype as an unsupported dialect", async () => {
+        const m = new Mimetypes({ discovery: makeDiscovery([]) });
+        await assert.rejects(
+            async () => {
+                await m.query(
+                    { hint: "application/octet-stream", content: "" },
+                    { dialect: "regex", pattern: "needle" },
+                );
+            },
+            (error: unknown) => {
+                assert.ok(error instanceof UnsupportedDialectError);
+                assert.equal(error.mimetype, "application/octet-stream");
+                assert.equal(error.dialect, "regex");
+                return true;
+            },
+        );
+    });
+
+    it("keeps a registered handler load failure distinct from an unsupported dialect", async () => {
+        const m = new Mimetypes({
+            discovery: makeDiscovery([plainInfo]),
+            loader: async () => {
+                throw new Error("module not found");
+            },
+        });
+        await assert.rejects(
+            async () => {
+                await m.query(
+                    { hint: "text/plain", content: "needle" },
+                    { dialect: "regex", pattern: "needle" },
+                );
+            },
+            (error: unknown) => {
+                assert.ok(error instanceof ReferenceError);
+                assert.equal(error instanceof UnsupportedDialectError, false);
+                assert.match(error.message, /registered handler unavailable/);
+                return true;
+            },
         );
     });
 });

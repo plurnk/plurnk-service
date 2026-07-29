@@ -55,7 +55,18 @@ export default class Slicer {
         detail: string,
         range: RangeExtent,
     ): T {
-        return Slicer.#failure("range-not-satisfiable", 416, detail, { range }, { range });
+        return Slicer.#failure(
+            "range-not-satisfiable",
+            416,
+            detail,
+            { range },
+            {
+                range,
+                stage: "projection",
+                recovery: "Choose a range within the available extent.",
+                retryable: false,
+            },
+        );
     }
 
     static #extent(marker: LineMarker, total: number, unit: RangeUnit): RangeExtent {
@@ -96,10 +107,14 @@ export default class Slicer {
             if (!Number.isInteger(first)) {
                 const at = Math.floor(first);
                 if (first > 0 && at <= totalLines) return { kind: "insert-between", start: at, end: at };
-                return { error: `insert point ${first} out of range (0..${totalLines})` };
+                return { error: `Insert point ${first} is outside the available boundary range 0..${totalLines}.` };
             }
             if (first > 0 && first <= totalLines) return { kind: "range", start: first, end: first };
-            return { error: `line ${first} out of range (1..${totalLines})` };
+            return {
+                error: totalLines === 0
+                    ? `Line ${first} cannot select from empty content.`
+                    : `Line ${first} is outside the available line range 1..${totalLines}.`,
+            };
         }
         // Whole-content `<1,-1>` (and its `<0,-1>` alias) is valid even on
         // empty content — it selects the entire, possibly-empty range. Without
@@ -108,15 +123,15 @@ export default class Slicer {
         // full replacement for EDIT.
         if (totalLines === 0) {
             if ((first === 0 || first === 1) && last === -1) return { kind: "range", start: 1, end: 0 };
-            return { error: `range ${first},${last} out of range (content is empty)` };
+            return { error: `Range ${first},${last} cannot select from empty content.` };
         }
         let n = first;
         let m = last;
         if (n === 0) n = 1;
         if (m === -1) m = totalLines;
-        if (n < 1 || n > totalLines) return { error: `range start ${first} out of range (1..${totalLines})` };
-        if (m < 1 || m > totalLines) return { error: `range end ${last} out of range (1..${totalLines})` };
-        if (n > m) return { error: `range start ${first} > end ${last}` };
+        if (n < 1 || n > totalLines) return { error: `Range start ${first} is outside the available line range 1..${totalLines}.` };
+        if (m < 1 || m > totalLines) return { error: `Range end ${last} is outside the available line range 1..${totalLines}.` };
+        if (n > m) return { error: `Range start ${first} exceeds end ${last}.` };
         return { kind: "range", start: n, end: m };
     }
 
@@ -170,6 +185,12 @@ export default class Slicer {
                 "malformed-json",
                 400,
                 `Malformed JSON: ${err instanceof Error ? err.message : String(err)}`,
+                {},
+                {
+                    stage: "decode",
+                    recovery: "Correct the JSON content before using structural operations.",
+                    retryable: false,
+                },
             );
         }
         const items = Slicer.#jsonValueToItems(parsed);
@@ -341,6 +362,12 @@ export default class Slicer {
                     "invalid-edit-body",
                     400,
                     "An object source requires every body item to be a JSON object containing key-value pairs.",
+                    {},
+                    {
+                        stage: "mutation",
+                        recovery: "Provide JSON objects as the replacement items.",
+                        retryable: false,
+                    },
                 );
             }
             bodyEntries.push(...Object.entries(item as Record<string, unknown>));
@@ -402,6 +429,12 @@ export default class Slicer {
                 "invalid-edit-body",
                 400,
                 "A scalar source EDIT at <1> must produce zero or one item; implicit array promotion is forbidden.",
+                {},
+                {
+                    stage: "mutation",
+                    recovery: "Provide zero or one replacement item.",
+                    retryable: false,
+                },
             );
         }
         if (last === -1 && first === 1) {
@@ -412,12 +445,24 @@ export default class Slicer {
                 "invalid-edit-body",
                 400,
                 "A scalar source EDIT at <1,-1> must produce zero or one item; implicit array promotion is forbidden.",
+                {},
+                {
+                    stage: "mutation",
+                    recovery: "Provide zero or one replacement item.",
+                    retryable: false,
+                },
             );
         }
         return Slicer.#failure(
             "invalid-edit-range",
             400,
             "A scalar JSON source supports only <1> or <1,-1>; grow markers would require implicit array promotion.",
+            {},
+            {
+                stage: "mutation",
+                recovery: "Use <1> or <1,-1> to replace the scalar.",
+                retryable: false,
+            },
         );
     }
 
@@ -429,11 +474,27 @@ export default class Slicer {
                 "malformed-json-source",
                 400,
                 `Malformed JSON source: ${err instanceof Error ? err.message : String(err)}`,
+                {},
+                {
+                    stage: "decode",
+                    recovery: "Correct the stored JSON before using structural EDIT.",
+                    retryable: false,
+                },
             );
         }
         const bodyResult = Slicer.#itemsFromBody(body);
         if ("error" in bodyResult) {
-            return Slicer.#failure("malformed-json-body", 400, bodyResult.error);
+            return Slicer.#failure(
+                "malformed-json-body",
+                400,
+                bodyResult.error,
+                {},
+                {
+                    stage: "decode",
+                    recovery: "Provide a valid JSON body.",
+                    retryable: false,
+                },
+            );
         }
         const items = bodyResult.items;
         // Empty-body sentinel insertion is a no-op (model accidentally
@@ -497,34 +558,70 @@ export default class Slicer {
         return { status: 200, result };
     }
 
-    static #batchOrder(edits: readonly BatchEdit[], total: number): { edits?: BatchEdit[]; error?: string; status?: number } {
+    static #batchOrder(edits: readonly BatchEdit[], total: number): {
+        edits?: BatchEdit[];
+        error?: string;
+        status?: number;
+        range?: RangeExtent;
+        extensions?: Readonly<Record<string, unknown>>;
+    } {
         if (edits.length === 0) return { edits: [] };
         const regions: Array<{ edit: BatchEdit; start: number; end: number; insertion: boolean; whole: boolean }> = [];
         for (const edit of edits) {
             const norm = Slicer.#normalize(edit.marker, total);
-            if ("error" in norm) return { status: 416, error: norm.error };
+            if ("error" in norm) {
+                return {
+                    status: 416,
+                    error: norm.error,
+                    range: Slicer.#extent(edit.marker, total, "line"),
+                };
+            }
             const insertion = norm.kind !== "range";
             const whole = norm.kind === "range" && norm.start === 1 && norm.end === total;
             regions.push({ edit, start: norm.start, end: norm.end, insertion, whole });
         }
         if (regions.some(({ whole }) => whole) && regions.length > 1) {
-            return { status: 409, error: "whole-resource replacement cannot coexist with another EDIT" };
+            return {
+                status: 409,
+                error: "A whole-resource replacement cannot coexist with another EDIT.",
+                extensions: { editCount: regions.length },
+            };
         }
         for (let i = 0; i < regions.length; i += 1) {
             for (let j = i + 1; j < regions.length; j += 1) {
                 const a = regions[i];
                 const b = regions[j];
                 if (a.insertion && b.insertion && a.start === b.start) {
-                    return { status: 409, error: `multiple EDITs target insertion boundary ${a.start}` };
+                    return {
+                        status: 409,
+                        error: `Multiple EDITs target insertion boundary ${a.start}.`,
+                        extensions: { insertionBoundary: a.start },
+                    };
                 }
                 if (!a.insertion && !b.insertion && a.start <= b.end && b.start <= a.end) {
-                    return { status: 409, error: `EDIT ranges ${a.start},${a.end} and ${b.start},${b.end} overlap` };
+                    return {
+                        status: 409,
+                        error: `EDIT ranges ${a.start},${a.end} and ${b.start},${b.end} overlap.`,
+                        extensions: {
+                            conflictingRanges: [
+                                { first: a.start, last: a.end },
+                                { first: b.start, last: b.end },
+                            ],
+                        },
+                    };
                 }
                 if (a.insertion !== b.insertion) {
                     const insertionRegion = a.insertion ? a : b;
                     const rangeRegion = a.insertion ? b : a;
                     if (insertionRegion.start >= rangeRegion.start && insertionRegion.start < rangeRegion.end) {
-                        return { status: 409, error: `EDIT insertion boundary ${insertionRegion.start} falls inside range ${rangeRegion.start},${rangeRegion.end}` };
+                        return {
+                            status: 409,
+                            error: `EDIT insertion boundary ${insertionRegion.start} falls inside range ${rangeRegion.start},${rangeRegion.end}.`,
+                            extensions: {
+                                insertionBoundary: insertionRegion.start,
+                                conflictingRange: { first: rangeRegion.start, last: rangeRegion.end },
+                            },
+                        };
                     }
                 }
             }
@@ -545,6 +642,20 @@ export default class Slicer {
                 status === 416 ? "range-not-satisfiable" : "overlapping-edits",
                 status,
                 ordered.error,
+                ordered.range === undefined ? {} : { range: ordered.range },
+                status === 416
+                    ? {
+                        ...(ordered.range === undefined ? {} : { range: ordered.range }),
+                        stage: "projection",
+                        recovery: "Choose a range within the available extent.",
+                        retryable: false,
+                    }
+                    : {
+                        stage: "mutation",
+                        ...ordered.extensions,
+                        recovery: "Submit non-overlapping EDIT ranges.",
+                        retryable: false,
+                    },
             );
         }
         let result = content;
@@ -564,6 +675,12 @@ export default class Slicer {
                 "malformed-json-source",
                 400,
                 `Malformed JSON source: ${err instanceof Error ? err.message : String(err)}`,
+                {},
+                {
+                    stage: "decode",
+                    recovery: "Correct the stored JSON before using structural EDIT.",
+                    retryable: false,
+                },
             );
         }
         const total = Slicer.#jsonValueToItems(parsed).length;
@@ -574,6 +691,20 @@ export default class Slicer {
                 status === 416 ? "range-not-satisfiable" : "overlapping-edits",
                 status,
                 ordered.error,
+                ordered.range === undefined ? {} : { range: ordered.range },
+                status === 416
+                    ? {
+                        ...(ordered.range === undefined ? {} : { range: ordered.range }),
+                        stage: "projection",
+                        recovery: "Choose a range within the available extent.",
+                        retryable: false,
+                    }
+                    : {
+                        stage: "mutation",
+                        ...ordered.extensions,
+                        recovery: "Submit non-overlapping EDIT ranges.",
+                        retryable: false,
+                    },
             );
         }
         let result = content;

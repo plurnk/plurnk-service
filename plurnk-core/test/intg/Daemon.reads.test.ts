@@ -6,6 +6,7 @@ import type { Db } from "../../src/core/Db.ts";
 import SeamSocket from "./_seam.ts";
 import Daemon from "../../src/server/Daemon.ts";
 import { openMigrated } from "./_helpers.ts";
+import { rpcProblem } from "./_rpc.ts";
 
 interface RpcResponse {
     jsonrpc: "2.0";
@@ -85,8 +86,10 @@ test("entry.read channel+offset returns the incremental slice + full contentLeng
 
             // offset without channel is a contract violation (which channel to slice?).
             const bad = await rpcCall(ws, 7, "entry.read", { target: "worker:///doc", offset: 3 });
-            assert.ok(bad.error !== undefined, "offset without channel errors");
-            assert.match(bad.error!.message, /offset requires channel/);
+            const problem = rpcProblem(bad);
+            assert.equal(problem.type, "https://problems.plurnk.dev/daemon/entry/offset-channel-required");
+            assert.equal(problem.offset, 3);
+            assert.equal(problem.recovery, "Select the channel to read from the offset.");
         } finally { ws.close(); }
     });
 });
@@ -110,8 +113,10 @@ test("entry.read requires URL-shaped path", async () => {
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "shape-test" });
             const r = await rpcCall(ws, 2, "entry.read", { target: "not-a-url" });
-            assert.equal(r.error?.code, -32603);
-            assert.match(r.error?.message ?? "", /URL-shaped/);
+            const problem = rpcProblem(r);
+            assert.equal(problem.type, "https://problems.plurnk.dev/daemon/entry/target-invalid");
+            assert.equal(problem.target, "not-a-url");
+            assert.equal(problem.recovery, "Use a scheme://path target.");
         } finally { ws.close(); }
     });
 });
@@ -258,4 +263,3 @@ test("log.read is workspace-scoped — doesn't see other workspaces' logs", asyn
         } finally { wsA.close(); wsB.close(); }
     });
 });
-

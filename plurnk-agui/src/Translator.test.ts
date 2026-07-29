@@ -146,6 +146,22 @@ test("a failed termination preserves its Problem and maps it to RUN_ERROR", () =
     assert.equal(error?.message, problem.detail);
 });
 
+test("a failed termination without a Problem is rejected instead of synthesized from status", () => {
+    const tr = t();
+    const term: TerminatedNotification = {
+        workerId: 2,
+        loopId: 1,
+        result: { status: 502 },
+        hitMaxTurns: false,
+        turnIds: [],
+        usage: { promptTokens: 0, completionTokens: 0, costUsd: 0, contextTokens: 0, promptBudget: null, meta: {} },
+    };
+    assert.throws(
+        () => tr.terminated(term),
+        /invalid operation result/,
+    );
+});
+
 test("a FOREIGN worker's rows never enter the core stream — plurnk.row/ambient only", () => {
     const tr = new Translator({ threadId: "th", runId: "r", modelWorkerId: 2 });
     const own = tr.logEntry({ entry: { id: 1, op: "PLAN", origin: "model", turn_id: 1, tx: JSON.stringify({ body: "mine" }), ...( { worker_id: 2 } as object) } as never });

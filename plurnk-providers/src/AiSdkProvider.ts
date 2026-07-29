@@ -111,6 +111,10 @@ export type AiSdkProviderConfig = {
     // (PLURNK_PROVIDERS_RETRY_ATTEMPTS, a non-negative int): 0 = surface the
     // first failure; N = up to N retries on a transient error (§4, #18).
     retryAttempts: number;
+    // Maximum characters retained from an upstream diagnostic in the public
+    // ProviderError Problem. Standard factories supply the env-owned value;
+    // direct construction may omit it to preserve the complete diagnostic.
+    errorDetailLimit?: number;
     // Data-capture knobs (#36), OFF by default — the flag IS the isolation, so a
     // serving turn requests nothing and carries nothing. `topLogprobs`: when a
     // non-negative int, request `logprobs:true, top_logprobs:<n>` and surface the
@@ -224,6 +228,7 @@ export default class AiSdkProvider implements Provider {
     #supportsSlotPinning: boolean;
     #slotCount: number | null;
     #retryAttempts: number;
+    #errorDetailLimit: number | undefined;
     #topLogprobs: number | null;
     #reasoningReserve: ReserveSpec | undefined;
     #completionReserve: ReserveSpec | undefined;
@@ -265,6 +270,7 @@ export default class AiSdkProvider implements Provider {
         this.#dryAllowedLength = config.dryAllowedLength;
         this.#repeatLastN = config.repeatLastN;
         this.#retryAttempts = config.retryAttempts;
+        this.#errorDetailLimit = config.errorDetailLimit;
         this.#reasoningStyle = config.reasoningStyle ?? "none";
         this.#countTokens = config.countTokens ?? heuristicTokens;
         this.#calculateCost = config.calculateCost ?? (() => 0);
@@ -637,7 +643,7 @@ export default class AiSdkProvider implements Provider {
                 });
         } catch (err) {
             if (signal?.aborted) throw err;
-            const pe = toProviderError(err, this.#source);
+            const pe = toProviderError(err, this.#source, this.#errorDetailLimit);
             if ((pe.status === 401 || pe.status === 403) && this.#hasApiKey && this.#apiKeyRejectedMessage !== undefined) {
                 throw new ProviderError(this.#source, "unauthorized", this.#apiKeyRejectedMessage, { status: pe.status, cause: err });
             }

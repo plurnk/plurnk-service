@@ -265,7 +265,10 @@ test("EDIT on the bare worker entity is rejected — WORK spawns, not EDIT (400,
             workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
         });
         assert.equal(result.status, 400, "EDIT on the worker entity is rejected");
-        assert.match(result.problem?.detail ?? "", /COPY\(worker:\/\/|not editable/, "the rejection steers to COPY");
+        assert.equal(result.problem?.type, "https://problems.plurnk.dev/scheme/worker/worker-entity-not-editable");
+        assert.equal(result.problem?.detail, "A worker entity is not an editable entry.");
+        assert.equal(result.problem?.recovery, "Use WORK or FORK to create a worker.");
+        assert.equal(result.problem?.retryable, false);
         assert.equal(calls.length, 0, "no inject on a rejected EDIT");
         const worker = await db.worker_resolve_by_name.get<{ id: number }>({ workspace_id: workspaceId, name: "worker" });
         assert.equal(worker, undefined, "no worker is created by a rejected EDIT");

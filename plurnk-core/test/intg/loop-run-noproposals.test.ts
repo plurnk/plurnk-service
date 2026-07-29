@@ -11,7 +11,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
 import type { SchemeManifest } from "../../src/core/scheme-types.ts";
-import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal } from "./_rpc.ts";
+import { rpcCall, rpcProblem, connect, withDaemon, makeMockResponse, runLoopToTerminal } from "./_rpc.ts";
 
 // Minimal always-proposing scheme (mirrors loop-run-auto.test.ts). Returns
 // 202 so the proposal lifecycle fires from a full Daemon RPC roundtrip.
@@ -71,8 +71,10 @@ test("loop.run rejects non-boolean flags.noProposals", async () => {
             const response = await rpcCall(ws, 2, "loop.run", {
                 prompt: "test", flags: { noProposals: "nope" },
             });
-            assert.equal(response.error?.code, -32603);
-            assert.match(response.error?.message ?? "", /flags\.noProposals must be a boolean/);
+            const problem = rpcProblem(response);
+            assert.equal(problem.type, "https://problems.plurnk.dev/daemon/input/loop-flag-invalid");
+            assert.equal(problem.field, "flags.noProposals");
+            assert.equal(problem.retryable, false);
         } finally { ws.close(); }
     });
 });

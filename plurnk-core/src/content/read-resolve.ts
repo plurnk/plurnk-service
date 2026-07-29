@@ -39,7 +39,14 @@ export default class ReadResolve {
         // Match the complete resource once. The body is a resource predicate;
         // its locations explain the selection but never replace READ content.
         if (body !== null) {
-            if (mimetypes === undefined) return { status: 500, content: null, mimetype };
+            if (mimetypes === undefined) {
+                return {
+                    status: 501,
+                    content: null,
+                    mimetype,
+                    reason: "Content matching is unavailable because no mimetypes capability is installed.",
+                };
+            }
             const matched = await Matcher.matchAgainstContent(body, content, mimetype, mimetypes);
             if (matched.status === 204) return { status: 204, content: "", mimetype, startLine: null, matches: [] };
             if (matched.status === 203) {
@@ -48,7 +55,16 @@ export default class ReadResolve {
                     ...(matched.reason === undefined ? {} : { reason: matched.reason }),
                 };
             } else if (matched.status !== 200) {
-                return { status: matched.status, content: null, mimetype };
+                if (matched.problem === undefined) {
+                    throw new Error(`ReadResolve: matcher returned status ${matched.status} without Problem Details`);
+                }
+                return {
+                    status: matched.status,
+                    problem: matched.problem,
+                    content: null,
+                    mimetype,
+                    reason: matched.problem.detail,
+                };
             } else {
                 selectedMatches = matched.matches ?? [];
             }
@@ -68,7 +84,9 @@ export default class ReadResolve {
                     reason: sliced.problem?.detail,
                     range: sliced.range,
                 };
-                if (sliced.status !== 200) return { status: sliced.status, content: null, mimetype };
+                if (sliced.status !== 200) {
+                    throw new Error(`ReadResolve: JSON slicing returned unexpected status ${sliced.status}`);
+                }
                 workingContent = sliced.body ?? "[]";
                 workingStart = null;
                 workingMimetypeForSlice = "application/json";
@@ -82,7 +100,9 @@ export default class ReadResolve {
                     reason: sliced.problem?.detail,
                     range: sliced.range,
                 };
-                if (sliced.status !== 200) return { status: sliced.status, content: null, mimetype };
+                if (sliced.status !== 200) {
+                    throw new Error(`ReadResolve: line slicing returned unexpected status ${sliced.status}`);
+                }
                 workingContent = sliced.text ?? "";
                 workingStart = sliced.startLine ?? null;
             }

@@ -306,6 +306,7 @@ test("the 413 row reports the exact measured budget violation", async () => {
                     usage?: number;
                     ceiling?: number;
                     deficit?: number;
+                    retryable?: boolean;
                 };
             })
             .find((row) => row.problem?.type === "https://problems.plurnk.dev/engine/grinder/budget-overflow")
@@ -316,6 +317,7 @@ test("the 413 row reports the exact measured budget violation", async () => {
         assert.equal(overflow.ceiling, TINY);
         assert.ok((overflow.usage ?? 0) > TINY);
         assert.equal(overflow.deficit, (overflow.usage ?? 0) - TINY);
+        assert.equal(overflow.retryable, false);
         assert.equal(
             overflow.detail,
             `Token Usage ${(overflow.usage ?? 0).toLocaleString("en-US")} exceeds Token Ceiling ${TINY.toLocaleString("en-US")} by ${(overflow.deficit ?? 0).toLocaleString("en-US")}. No working room remains.`,
@@ -409,6 +411,8 @@ test("the FIRST hard overflow is a constrained RECOVERY TURN; the SECOND termina
                     ceiling?: number;
                     deficit?: number;
                     allowedOperations?: string[];
+                    recovery?: string;
+                    retryable?: boolean;
                 };
             })
             .find((e) => e.problem?.type === "https://problems.plurnk.dev/engine/grinder/budget-overflow"
@@ -417,6 +421,8 @@ test("the FIRST hard overflow is a constrained RECOVERY TURN; the SECOND termina
         assert.ok(recovery !== undefined, "the recovery occurrence carries its enforced operation constraint");
         assert.equal(recovery.title, "Prompt budget exceeded");
         assert.deepEqual(recovery.allowedOperations, ["PLAN", "FOLD", "KILL", "SEND"]);
+        assert.equal(recovery.recovery, "FOLD or KILL irrelevant log items before continuing work.");
+        assert.equal(recovery.retryable, false);
         assert.equal(recovery.ceiling, 8);
         assert.ok((recovery.usage ?? 0) > (recovery.ceiling ?? 0));
         assert.equal(recovery.deficit, (recovery.usage ?? 0) - (recovery.ceiling ?? 0));

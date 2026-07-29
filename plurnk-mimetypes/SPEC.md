@@ -422,10 +422,12 @@ This is the symmetric design promised in issue #10: jsonpath dispatches against 
 |---|---|
 | Detection returns null | `Mimetypes.query` throws `ReferenceError` |
 | Content unreadable | `Mimetypes.query` throws `ReferenceError` |
+| Resolved mimetype has no registered handler | `UnsupportedDialectError` -> consumer maps to 415 |
+| Registered handler cannot be loaded | `Mimetypes.query` throws `ReferenceError` |
 | Dialect unsupported for resolved mimetype | `UnsupportedDialectError` → consumer maps to 415 |
 | Body-glob (grammar #17) | glob-on-body returns line matches; no 415 |
 | Malformed expression | `InvalidExpressionError` → consumer maps to 400 |
-| Content can't be parsed for the dialect | `QueryParseFailureError` → consumer maps to 422 |
+| Content can't be parsed for the dialect | `QueryParseFailureError`; the standard scheme adapter returns a 203 raw-content fallback |
 | Zero matches | returns `[]` → consumer maps to 204 |
 
 ### 11.5 Notices and failures
@@ -438,10 +440,11 @@ set. Each names the relevant `plurnkPackage`; the array is absent on the happy
 path.
 
 Hard failures are not Notices. `UnsupportedDialectError`,
-`InvalidExpressionError`, `QueryParseFailureError`, and strict
-`GrammarNotInstalledError` remain typed exceptions. The consumer maps each at
-its operation boundary to the universal durable result and RFC 9457 Problem
-Details. This keeps one authority for failure status, detail, and recovery.
+`InvalidExpressionError`, and strict `GrammarNotInstalledError` remain typed
+exceptions. `QueryParseFailureError` is also typed, but the standard scheme
+adapter treats it as a successful 203 raw-content fallback rather than a
+Problem. Each consumer owns that operation-boundary policy. This keeps one
+authority for failure status, detail, and recovery.
 
 Notice sources use `mimetype:<normalized-type>`, with invalid runs normalized to
 `-`. `level` is required and producer-owned; these degradation Notices use

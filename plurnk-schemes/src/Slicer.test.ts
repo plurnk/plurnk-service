@@ -514,6 +514,10 @@ test("lineMarkerEditBatch rejects overlap without producing a partial result", (
     ]);
     assert.equal(r.status, 409);
     assert.match(r.problem?.detail ?? "", /overlap/i);
+    assert.deepEqual(r.problem?.conflictingRanges, [
+        { first: 2, last: 3 },
+        { first: 3, last: 4 },
+    ]);
     assert.equal(r.result, undefined);
 });
 
@@ -524,6 +528,20 @@ test("lineMarkerEditBatch rejects whole-resource replacement mixed with another 
     ]);
     assert.equal(r.status, 409);
     assert.match(r.problem?.detail ?? "", /whole-resource/);
+    assert.equal(r.problem?.editCount, 2);
+});
+
+test("lineMarkerEditBatch exposes the failed range and available extent", () => {
+    const r = Slicer.lineMarkerEditBatch("one\ntwo\n", [
+        { marker: { marks: [3] }, body: "three" },
+    ]);
+    assert.equal(r.status, 416);
+    assert.deepEqual(r.problem?.range, {
+        unit: "line",
+        requested: { first: 3, last: null },
+        available: { first: 1, last: 2, total: 2 },
+    });
+    assert.equal(r.problem?.recovery, "Choose a range within the available extent.");
 });
 
 test("jsonItemEditBatch preserves original item coordinates", () => {

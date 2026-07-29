@@ -45,7 +45,15 @@ test("resolve(): a complete standard resume resolves the exact worker proposal",
     const hitl = new ProposalHitl(m.seam, collect());
     assert.deepEqual(await hitl.resolve(3, [{ interruptId: "prop:42", status: "resolved", payload: { decision: "accept", body: "edited" } }]), { loopId: 7, workerId: 1 });
     assert.deepEqual(m.resolves[0], { logEntryId: 42, resolution: { decision: "accept", body: "edited" } });
-    await assert.rejects(hitl.resolve(3, [{ interruptId: "call_frontend_tool_9", status: "resolved", payload: {} }]), /unknown PLURNK interrupt/);
+    await assert.rejects(
+        hitl.resolve(3, [{ interruptId: "call_frontend_tool_9", status: "resolved", payload: {} }]),
+        (error: unknown) => {
+            const problem = (error as { problem?: { type?: string; recovery?: string } }).problem;
+            assert.equal(problem?.type, "https://problems.plurnk.dev/agui/proposal/interrupt-invalid");
+            assert.match(problem?.recovery ?? "", /pending tool calls/);
+            return true;
+        },
+    );
     assert.equal(m.resolves.length, 1, "the foreign tool-result issued no resolve");
 });
 
@@ -59,6 +67,41 @@ test("resurface(): a workspace's pending stopped-worlds come back as tool-calls"
     const starts = events.filter((e) => e.type === "TOOL_CALL_START") as Array<{ toolCallId: string; toolCallName: string }>;
     assert.deepEqual(starts.map((s) => s.toolCallId), ["prop:5", "prop:9"], "both pending proposals re-surfaced");
     assert.equal(starts[1].toolCallName, "request_user_input", "the [300] SEND re-surfaces as an input request");
+});
+
+test("proposal resume validation exposes exact Problems with the pending-set facts", async () => {
+    const pending: PendingProposal[] = [
+        { logEntryId: 5, workerId: 1, loopId: 7, turnId: 1, op: "EDIT", suffix: "", scheme: "file", pathname: "a", tx: "", attrs: null },
+        { logEntryId: 6, workerId: 1, loopId: 7, turnId: 1, op: "EDIT", suffix: "", scheme: "file", pathname: "b", tx: "", attrs: null },
+    ];
+    const hitl = new ProposalHitl(mockSeam(pending).seam, collect());
+    await assert.rejects(
+        hitl.resolve(3, [{ interruptId: "prop:5", status: "resolved", payload: { decision: "accept" } }]),
+        (error: unknown) => {
+            const problem = (error as { problem?: { type?: string; pendingProposalIds?: number[]; receivedProposalIds?: number[] } }).problem;
+            assert.equal(problem?.type, "https://problems.plurnk.dev/agui/proposal/proposal-set-incomplete");
+            assert.deepEqual(problem?.pendingProposalIds, [5, 6]);
+            assert.deepEqual(problem?.receivedProposalIds, [5]);
+            return true;
+        },
+    );
+    await assert.rejects(
+        hitl.resolve(3, [{ interruptId: "prop:99", status: "resolved", payload: { decision: "accept" } }]),
+        (error: unknown) => {
+            const problem = (error as { problem?: { type?: string; pendingProposalIds?: number[] } }).problem;
+            assert.equal(problem?.type, "https://problems.plurnk.dev/agui/proposal/proposal-not-pending");
+            assert.deepEqual(problem?.pendingProposalIds, [5, 6]);
+            return true;
+        },
+    );
+});
+
+test("resurface fails hard when durable proposal attrs are not a JSON object", async () => {
+    const pending: PendingProposal[] = [
+        { logEntryId: 5, workerId: 1, loopId: 1, turnId: 1, op: "EXEC", suffix: "", scheme: "sh", pathname: null, tx: "", attrs: "[]" },
+    ];
+    const hitl = new ProposalHitl(mockSeam(pending).seam, collect());
+    await assert.rejects(hitl.resurface(1), /Pending proposal 5 has invalid attrs JSON/);
 });
 
 test("a server-owned proposal (flags.auto / noProposals) emits NO tool-call — the worker must not terminate", () => {

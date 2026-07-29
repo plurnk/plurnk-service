@@ -5,7 +5,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
-import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal } from "./_rpc.ts";
+import { rpcCall, rpcProblem, connect, withDaemon, makeMockResponse, runLoopToTerminal } from "./_rpc.ts";
 
 const send = () => makeMockResponse("<<SEND[200]:ok:SEND", 50);
 
@@ -32,8 +32,10 @@ test("workspace.prompts returns the workspace's user prompts newest-first, cappe
 
             // Malformed limit fails hard — no silent default.
             const bad = await rpcCall(ws, 6, "workspace.prompts", { limit: 0 });
-            assert.ok(bad.error, "limit:0 is a JSON-RPC error");
-            assert.match(bad.error!.message, /limit must be a positive integer/);
+            const problem = rpcProblem(bad);
+            assert.equal(problem.type, "https://problems.plurnk.dev/daemon/input/limit-invalid");
+            assert.equal(problem.value, 0);
+            assert.equal(problem.recovery, "Use a positive integer limit.");
         } finally { ws.close(); }
     });
 });

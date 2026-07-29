@@ -66,7 +66,7 @@ export interface DaemonSeam {
     // Workspace lifecycle — establish the envelope a thread binds to. createWorkspace
     // returns the full envelope INCLUDING modelWorkerId (no lazy inference — the WS
     // bridge's adopt-first-model-row dance is dead).
-    createWorkspace(args: { name?: string; projectRoot?: string | null; settings?: string; constraints?: Array<{ effect: string; glob: string }> }): Promise<ClientEnvelope>;
+    createWorkspace(args: { name?: string; projectRoot?: string | null; settings?: string | object; constraints?: Array<{ effect: string; glob: string }> }): Promise<ClientEnvelope>;
     attachWorkspace(args: { workspaceId: number; workerId?: number; workerName?: string }): Promise<ClientEnvelope>;
     listWorkspaces(): Promise<Array<{ id: number; name: string }>>;
     listWorkers(workspaceId: number): Promise<Array<{ id: number; name: string }>>;
@@ -88,7 +88,7 @@ export interface DaemonSeam {
     // returns content, mints NO log row. Engine.look throws on a non-READ statement.
     look(args: { workspaceId: number; workerId: number; statement: PlurnkStatement }): Promise<{ status: number; [key: string]: unknown }>;
     // Entry shape/channel read + run branching.
-    readEntry(args: { workspaceId: number; target: string; channel?: string; offset?: number }): Promise<{ status: number; entry: unknown }>;
+    readEntry(args: { workspaceId: number; target: string; channel?: string; offset?: number }): Promise<OperationResult & { entry: unknown }>;
     forkWorker(args: { workspaceId: number; workerId: number; name?: string }): Promise<{ workerId: number; workerName: string | null; parentWorkerId: number }>;
     // The third door (svc#366): a named, empty-log, model-origin ROOT run — a fresh
     // conversation over the same world. ensureModelWorker = the stable default,

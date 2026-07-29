@@ -48,8 +48,12 @@ export default class BudgetOverflow {
                 `Token Usage ${formatTokens(measurement.usage)} exceeds Token Ceiling ${formatTokens(measurement.ceiling)} by ${formatTokens(measurement.deficit)}. No working room remains.`,
                 {
                     ...measurement,
+                    retryable: false,
                     ...(recovery
-                        ? { allowedOperations: [...BudgetOverflow.recoveryOperations] }
+                        ? {
+                            allowedOperations: [...BudgetOverflow.recoveryOperations],
+                            recovery: "FOLD or KILL irrelevant log items before continuing work.",
+                        }
                         : {}),
                 },
                 { title: "Prompt budget exceeded" },

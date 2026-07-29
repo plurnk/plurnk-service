@@ -268,7 +268,8 @@ test("a strike-threshold abandonment names itself in its exact terminal Problem"
         assert.equal(result.result.status, 500, "struck out to the engine's 500");
 
         assert.equal(result.result.problem?.type, "https://problems.plurnk.dev/engine/rails/strike-threshold");
-        assert.match(result.result.problem?.detail ?? "", /strike threshold was crossed/i);
+        assert.equal(result.result.problem?.turns, 2);
+        assert.equal(result.result.problem?.retryable, false);
         assert.equal(result.result.problem?.instance, `loop:///${loopId}`);
     } finally { await db.close(); }
 });

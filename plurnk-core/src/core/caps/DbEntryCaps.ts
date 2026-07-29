@@ -51,21 +51,11 @@ export default class DbEntryCaps implements EntryCaps {
         return owner === "worker" ? this.#ctx.workerId : undefined;
     }
 
-    #result<T extends { status: number; error?: string }>(
-        operation: string,
-        result: T,
-    ): Omit<T, "error"> & SchemeResult {
-        const { error, ...fields } = result;
-        if (result.status >= 400) {
-            return Results.failure(
-                `scheme:${this.#scheme}`,
-                `${operation}-failed`,
-                result.status,
-                error ?? `${operation.toUpperCase()} failed in scheme '${this.#scheme}' with status ${result.status}.`,
-                fields,
-            ) as Omit<T, "error"> & SchemeResult;
+    #result<T extends SchemeResult>(operation: string, result: T): T {
+        if (Results.isErrorStatus(result.status) && result.problem === undefined) {
+            throw new Error(`DbEntryCaps.${operation}: failed operation omitted Problem Details`);
         }
-        return Results.assert(fields as Omit<T, "error"> & SchemeResult);
+        return Results.assert(result);
     }
 
     async #editBatch(statements: readonly EditStatement[], owner?: EntryOwner): Promise<EntryEditResult> {

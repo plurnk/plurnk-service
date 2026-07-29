@@ -7,6 +7,7 @@ import { viableWindow } from "./_helpers.ts";
 import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
 import type { Executor } from "../../src/core/ExecutorRegistry.ts";
+import Results from "../../src/core/results.ts";
 import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal, subscribeNotifications, waitFor, waitForDb, flush } from "./_rpc.ts";
 
 test("a child worker concluding wakes a parent parked at 202", async () => {
@@ -77,7 +78,14 @@ test("an empty failed child stream is observed by the child before its terminal 
                 get channels() { return { results: { mimetype: "text/plain" } }; },
                 effect: () => "pure",
                 probe: async () => ({ available: true, detail: "fixture" }),
-                run: async () => ({ status: 500, exitCode: 1 }),
+                run: async () => Results.failure(
+                    "executor:emptyfail",
+                    "fixture-failed",
+                    500,
+                    "The empty failing stream fixture failed.",
+                    { exitCode: 1 },
+                    { stage: "execute", retryable: false },
+                ),
             } as unknown as Executor,
             availability: { available: true, detail: "fixture" },
         });

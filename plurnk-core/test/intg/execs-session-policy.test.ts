@@ -29,13 +29,19 @@ const runDisabled = async (execsPolicy: Record<string, string>, runtime: string)
 test("#328 per-tag kill: a workspace disabling sh refuses EXEC[sh] as absent (before executor resolution)", async () => {
     const r = await runDisabled({ PLURNK_EXECS_SH: "0" }, "sh");
     assert.equal(r.status, 501, "sh is disabled for this workspace by client policy");
-    assert.match(r.problem?.detail ?? "", /disabled for this workspace by client policy/);
+    assert.equal(r.problem?.type, "https://problems.plurnk.dev/scheme/exec/runtime-disabled");
+    assert.equal(r.problem?.requestedRuntime, "sh");
+    assert.equal(r.problem?.retryable, false);
+    assert.match(r.problem?.recovery as string, /enabled executable tool/);
 });
 
 test("#328 allowlist (case-insensitive key): ONLY=jq makes sh absent for the workspace", async () => {
     const r = await runDisabled({ PLURNK_EXECS_ONLY: "jq" }, "sh");
     assert.equal(r.status, 501, "sh is not in the allowlist → absent");
-    assert.match(r.problem?.detail ?? "", /disabled for this workspace by client policy/);
+    assert.equal(r.problem?.type, "https://problems.plurnk.dev/scheme/exec/runtime-disabled");
+    assert.equal(r.problem?.requestedRuntime, "sh");
+    assert.deepEqual(r.problem?.availableRuntimes, ["jq"]);
+    assert.equal(r.problem?.retryable, false);
 });
 
 test("#328 render filter: a workspace-disabled tag is absent from docEntries — never taught-then-refused", async () => {

@@ -1,4 +1,4 @@
-import { BaseExecutor, Results } from "@plurnk/plurnk-execs";
+import { BaseExecutor, ErrorDetail, Results } from "@plurnk/plurnk-execs";
 import type { ChannelDecl, Effect, ExecArgs, ExecResult, RuntimeAvailability } from "@plurnk/plurnk-execs";
 
 // Runtime tag → SearXNG `categories=` value. The flat tag set this sibling
@@ -20,7 +20,11 @@ const CATEGORY: Readonly<Record<string, string>> = Object.freeze({
     downloadable: "files",
 });
 
-const preview = (q: string): string => (q.length > 60 ? `${q.slice(0, 60)}…` : q);
+const preview = (query: string, maximum?: number): string => (
+    maximum !== undefined && query.length > maximum
+        ? `${query.slice(0, maximum)}...`
+        : query
+);
 
 // Deterministic query slug — the tag tying a search's prefetched entries
 // together. Full slugified query, no locally-invented length cap.
@@ -67,6 +71,15 @@ interface SearxngResult {
     publishedDate?: string;
 }
 
+const configuredInteger = (
+    raw: string | undefined,
+    minimum: number,
+): number | null | undefined => {
+    if (raw === undefined || raw === "") return undefined;
+    const value = Number(raw);
+    return Number.isSafeInteger(value) && value >= minimum ? value : null;
+};
+
 // Web search executor (the first non-subprocess runtime). Dispatches a query to
 // a configured SearXNG instance and writes a compact digest of its results
 // (title + url + snippet) to the `results` channel. Stateless: configuration
@@ -79,6 +92,7 @@ interface SearxngResult {
 //                                                 (SPEC §2.5) — this is an extra local ceiling
 //   PLURNK_EXECS_SEARCH_SAFESEARCH    (optional)  0|1|2
 //   PLURNK_EXECS_SEARCH_SNIPPET       (optional)  max chars per result snippet; unbounded if unset
+//   PLURNK_EXECS_SEARCH_QUERY_PREVIEW (optional)  max chars in error facts; unbounded if unset
 //   PLURNK_EXECS_SEARCH_RAW           (optional)  truthy → emit the verbatim SearXNG payload (debug;
 //                                                 skips the prefetch pass entirely)
 // No code default hides a magic number; suggested values ship in this package's
@@ -119,19 +133,74 @@ export default class Search extends BaseExecutor {
         if (category === undefined) throw new Error(`plurnk-execs-search received unclaimed runtime tag '${runtime}'`);
 
         const query = command.trim();
-        const fail = (kind: string, message: string, status = 500): ExecResult => {
+        const fail = (
+            kind: string,
+            message: string,
+            status = 500,
+            extensions: Readonly<Record<string, unknown>> = {},
+        ): ExecResult => {
             setState("results", "errored");
-            return Results.failure("executor:search", kind.replaceAll("_", "-"), status, message, {}, { runtime });
+            return Results.failure(
+                "executor:search",
+                kind,
+                status,
+                message,
+                {},
+                {
+                    runtime,
+                    stage: "search",
+                    ...extensions,
+                },
+            );
         };
+
+        const queryPreviewRaw = process.env.PLURNK_EXECS_SEARCH_QUERY_PREVIEW;
+        const queryPreviewMax = configuredInteger(queryPreviewRaw, 0);
+        const errorDetailLimit = ErrorDetail.configuredLimit();
+        if (errorDetailLimit === null) {
+            setState("results", "errored");
+            return ErrorDetail.invalidConfiguration("executor:search");
+        }
+        if (queryPreviewMax === null) {
+            return fail(
+                "invalid-configuration",
+                "PLURNK_EXECS_SEARCH_QUERY_PREVIEW must be a non-negative integer.",
+                500,
+                {
+                    stage: "configuration",
+                    configuration: "PLURNK_EXECS_SEARCH_QUERY_PREVIEW",
+                    retryable: false,
+                },
+            );
+        }
 
         // External bangs (`!!`) redirect to an upstream site instead of
         // returning JSON — incompatible with a results executor (SPEC §2.2).
         if (query.startsWith("!!")) {
-            return fail("external_bang_refused", `external bang refused: "${preview(query)}"`, 400);
+            return fail(
+                "external-bang-refused",
+                "Search cannot return ranked results for an external bang query.",
+                400,
+                {
+                    query: preview(query, queryPreviewMax),
+                    recovery: "Use a results-producing search query.",
+                    retryable: false,
+                },
+            );
         }
 
         const config = searxngConfig();
-        if (config === null) return fail("searxng_not_configured", "PLURNK_EXECS_SEARCH_SEARXNG_URL is not set to a valid URL");
+        if (config === null) {
+            return fail(
+                "searxng-not-configured",
+                "The SearXNG endpoint is not configured with a valid URL.",
+                501,
+                {
+                    configuration: "PLURNK_EXECS_SEARCH_SEARXNG_URL",
+                    retryable: false,
+                },
+            );
+        }
 
         // All tunables are optional env overrides — no code default hides a
         // magic number (suggested values live in the consumer's .env.example).
@@ -140,6 +209,27 @@ export default class Search extends BaseExecutor {
         const limitRaw = process.env.PLURNK_EXECS_SEARCH_LIMIT;
         const timeoutRaw = process.env.PLURNK_EXECS_SEARCH_TIMEOUT;
         const safesearch = process.env.PLURNK_EXECS_SEARCH_SAFESEARCH;
+        const snippetRaw = process.env.PLURNK_EXECS_SEARCH_SNIPPET;
+        const limit = configuredInteger(limitRaw, 0);
+        const timeoutMs = configuredInteger(timeoutRaw, 1);
+        const snippetMax = configuredInteger(snippetRaw, 0);
+        if (limit === null || timeoutMs === null || snippetMax === null) {
+            const invalidConfiguration = limit === null
+                ? "PLURNK_EXECS_SEARCH_LIMIT"
+                : timeoutMs === null
+                    ? "PLURNK_EXECS_SEARCH_TIMEOUT"
+                    : "PLURNK_EXECS_SEARCH_SNIPPET";
+            return fail(
+                "invalid-configuration",
+                `${invalidConfiguration} must be ${invalidConfiguration === "PLURNK_EXECS_SEARCH_TIMEOUT" ? "a positive" : "a non-negative"} integer.`,
+                500,
+                {
+                    stage: "configuration",
+                    configuration: invalidConfiguration,
+                    retryable: false,
+                },
+            );
+        }
 
         const url = new URL("/search", config.base);
         url.searchParams.set("q", query);
@@ -153,8 +243,7 @@ export default class Search extends BaseExecutor {
         // timeout adds a local ceiling on top of it.
         // A malformed TIMEOUT is the same throw-class: AbortSignal.timeout(NaN)
         // throws, so only arm the extra ceiling for a finite positive value.
-        const timeoutMs = Number(timeoutRaw);
-        const fetchSignal = timeoutRaw && Number.isFinite(timeoutMs) && timeoutMs > 0
+        const fetchSignal = timeoutMs !== undefined
             ? AbortSignal.any([signal, AbortSignal.timeout(timeoutMs)])
             : signal;
         let response: Response;
@@ -167,26 +256,98 @@ export default class Search extends BaseExecutor {
             // Caller cancellation is normal flow, not Notice-worthy.
             if (signal.aborted) {
                 setState("results", "errored");
-                return Results.failure("executor:search", "cancelled", 499, "Search execution was cancelled.", {}, { runtime });
+                return Results.failure(
+                    "executor:search",
+                    "cancelled",
+                    499,
+                    "Search execution was cancelled.",
+                    {},
+                    {
+                        runtime,
+                        stage: "search",
+                        retryable: false,
+                    },
+                );
             }
             const e = err as { name?: string; code?: string; cause?: { code?: string; message?: string } };
             if (e.name === "TimeoutError") {
-                return fail("searxng_timeout", `SearXNG timeout after ${timeoutRaw}ms — host=${url.host} query="${preview(query)}"`);
+                return fail(
+                    "searxng-timeout",
+                    `The SearXNG request exceeded its ${timeoutMs}-millisecond deadline.`,
+                    504,
+                    {
+                        host: url.host,
+                        query: preview(query, queryPreviewMax),
+                        timeoutMilliseconds: timeoutMs,
+                        retryable: true,
+                    },
+                );
             }
             // Node's fetch throws a bare "fetch failed" and tucks the real
             // reason under err.cause — surface it so logs say ENOTFOUND /
             // ECONNREFUSED / CERT_* rather than nothing actionable.
             const code = e.cause?.code ?? e.code ?? "UNKNOWN";
-            const detail = e.cause?.message ?? (err as Error).message;
-            return fail("searxng_unreachable", `SearXNG fetch failed [${code}] — ${detail}; host=${url.host} query="${preview(query)}"`);
+            const detail = ErrorDetail.preview(
+                e.cause?.message ?? (err as Error).message,
+                errorDetailLimit,
+            );
+            return fail(
+                "searxng-unreachable",
+                `The SearXNG endpoint at ${url.host} could not be reached: ${detail}.`,
+                502,
+                {
+                    host: url.host,
+                    query: preview(query, queryPreviewMax),
+                    upstreamCode: code,
+                    retryable: true,
+                },
+            );
         }
 
         if (!response.ok) {
-            return fail(`searxng_http_${response.status}`, `SearXNG ${response.status} ${response.statusText} — host=${url.host} query="${preview(query)}"`);
+            const statusText = response.statusText
+                ? ` ${ErrorDetail.preview(response.statusText, errorDetailLimit)}`
+                : "";
+            return fail(
+                "searxng-http-error",
+                `The SearXNG endpoint returned HTTP ${response.status}${statusText}.`,
+                502,
+                {
+                    host: url.host,
+                    query: preview(query, queryPreviewMax),
+                    upstreamStatus: response.status,
+                    retryable: response.status === 408 || response.status === 429 || response.status >= 500,
+                },
+            );
         }
 
-        const data = await response.json() as { results?: SearxngResult[] };
-        const capped = (data.results ?? []).slice(0, limitRaw ? Number(limitRaw) : undefined);
+        let data: { results?: SearxngResult[] };
+        try {
+            data = await response.json() as { results?: SearxngResult[] };
+        } catch (err) {
+            console.error(`SearXNG at ${url.host} returned invalid JSON:`, err);
+            return fail(
+                "searxng-invalid-response",
+                "The SearXNG endpoint returned a response that was not valid JSON.",
+                502,
+                {
+                    host: url.host,
+                    retryable: true,
+                },
+            );
+        }
+        if (data.results !== undefined && !Array.isArray(data.results)) {
+            return fail(
+                "searxng-invalid-response",
+                "The SearXNG response has a non-array results field.",
+                502,
+                {
+                    host: url.host,
+                    retryable: true,
+                },
+            );
+        }
+        const capped = (data.results ?? []).slice(0, limit ?? undefined);
 
         // Debug escape hatch: the verbatim SearXNG payload, no prefetch pass.
         if (process.env.PLURNK_EXECS_SEARCH_RAW) {
@@ -244,18 +405,28 @@ export default class Search extends BaseExecutor {
         if (entry && unique.length > 0) reportProgress("complete");
         if (signal.aborted) {
             setState("results", "errored");
-            return Results.failure("executor:search", "cancelled", 499, "Search execution was cancelled.", {}, { runtime });
+            return Results.failure(
+                "executor:search",
+                "cancelled",
+                499,
+                "Search execution was cancelled.",
+                {},
+                {
+                    runtime,
+                    stage: "search",
+                    retryable: false,
+                },
+            );
         }
         // Emit a model-consumable digest, not the raw upstream payload (#17): a
         // raw SearXNG result is ~10–20× its information content, and a wake that
         // folds the full response back into the prompt can exceed the budget
         // outright (a 68KB/query hard 413). Title + url + a snippet (optionally
         // bounded) — the OPEN chooser context; sizes ride the ambient entry rows.
-        const snippetMax = process.env.PLURNK_EXECS_SEARCH_SNIPPET;
         const results = unique.map(({ title, content, publishedDate }, i) => ({
             title,
             url: verdicts[i],
-            snippet: snippetMax && content ? content.slice(0, Number(snippetMax)) : content,
+            snippet: snippetMax !== undefined && content ? content.slice(0, snippetMax) : content,
             ...(publishedDate ? { publishedDate } : {}),
             ...(entry ? { materialized: verdicts[i] !== null } : {}),
         })).filter((result) => !entry || result.materialized);

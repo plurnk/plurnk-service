@@ -106,6 +106,35 @@ legacy string-error shapes. Proposal application follows the same rule: an
 apply failure preserves the applying component's status and Problem Details
 instead of being relabelled as a review rejection.
 
+```mermaid
+flowchart LR
+    P["Owning producer<br/>Problem + exact status"] --> V["Plugin or module boundary<br/>validate OperationResult"]
+    V --> D["Durable log or loop result<br/>attach instance URI"]
+    D --> M["Model packet and digest<br/>preserve exact Problem"]
+    D --> A["AG-UI custom/action result<br/>preserve exact Problem"]
+    A --> C["TUI, Neovim, and API clients<br/>render exact Problem"]
+    A -. "RUN_ERROR is a lossy<br/>standard projection" .-> C
+    V -. "invalid result or exception" .-> O["Consumer-owned contract-violation Problem"]
+```
+
+| boundary | rule |
+|---|---|
+| Scheme or executor -> core | The plugin returns a valid universal result. Core replaces an invalid result or exception with a core-owned contract-violation Problem and retains the complete cause in diagnostics. |
+| Provider -> loop | A `ProviderError` carries the provider-owned Problem. A rejected model emission remains attempt evidence rather than becoming an accepted failed operation. |
+| Proposal -> apply | The applying component's exact failure wins; review outcome does not relabel it. |
+| Subscription -> ambient read | The terminal result is stored unchanged and later receives the committed READ instance. |
+| Core -> AG-UI | Lossless custom and action-result surfaces preserve the Problem. Standard `RUN_ERROR` projects only its type and detail. |
+| Client, digest, or benchmark | Consumers validate and retain the Problem; they never reconstruct one from a status or display string. |
+
+The plugin families meet that contract at different owned seams:
+
+| plugin family | public failure seam | validation and coverage |
+|---|---|---|
+| Schemes | Every dispatched scheme method returns `OperationResult`. | The shared `Results` helper rejects missing, mismatched, and legacy Problems; core validates again before committing the row. |
+| Executors | An executor concludes its stream with `OperationResult`. | The exec scheme rejects status-only or malformed conclusions and records `executor-invalid-result`; thrown drivers record `executor-threw`. |
+| Providers | A provider rejection throws `ProviderError` carrying its Problem. | The loop validates the Problem before recording one terminal provider failure; rejected emissions remain separate attempt evidence. |
+| Mimetypes | Parse and query capabilities return their native typed values or throw typed query errors. | The consuming scheme maps supported query failures into `OperationResult` at the dispatch boundary. Unexpected exceptions remain internal failures rather than a second public envelope. |
+
 Telemetry is observation, not control or truth. Notices may describe progress
 or non-fatal degradation to clients and operators. OpenTelemetry exports spans,
 metrics, and logs from the same execution, but neither notice delivery nor an

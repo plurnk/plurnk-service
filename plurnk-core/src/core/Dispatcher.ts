@@ -88,7 +88,9 @@ export default class Dispatcher {
         detail: string,
         fields: Readonly<Record<string, unknown>> = {},
     ): DispatchResult {
-        return status >= 400 ? Dispatcher.#failure(code, status, detail, fields) : { ...fields, status };
+        return status >= 400
+            ? Dispatcher.#failure(code, status, detail, fields, { retryable: false })
+            : { ...fields, status };
     }
 
     #db: Db;
@@ -179,33 +181,80 @@ export default class Dispatcher {
     async #readEntry(scheme: string, pathname: string, ctx: PlurnkSchemeContext): Promise<ReadEntryResult> {
         const handler = this.#schemes.get(scheme) as SchemeWithCrud | undefined;
         const handlerCtx = this.#entryContext(scheme, ctx);
-        if (typeof handler?.readEntry === "function" && handlerCtx !== null) return handler.readEntry(pathname, handlerCtx);
+        if (typeof handler?.readEntry === "function" && handlerCtx !== null) {
+            return Results.assert(await handler.readEntry(pathname, handlerCtx)) as ReadEntryResult;
+        }
         const caps = handlerCtx?.entries;
-        if (caps === undefined) return { status: 501, entry: null };
-        const result = await caps.read(pathname, scheme === "prompt" ? "worker" : "commons");
-        return {
+        if (caps === undefined) {
+            return Dispatcher.#failure(
+                "entry-read-not-implemented",
+                501,
+                `The '${scheme}' scheme does not provide entry reads.`,
+                { entry: null },
+                {
+                    stage: "entry-read",
+                    scheme,
+                    target: `${scheme}://${pathname}`,
+                    retryable: false,
+                },
+            ) as ReadEntryResult;
+        }
+        const result = Results.assert(await caps.read(pathname, scheme === "prompt" ? "worker" : "commons"));
+        return Results.assert({
+            ...result,
             status: result.status,
             entry: result.entry === null
                 ? null
                 : { channels: { ...result.entry.channels }, tags: [...result.entry.tags] },
-        };
+        }) as ReadEntryResult;
     }
 
     async #writeEntry(scheme: string, pathname: string, entry: EntryData, ctx: PlurnkSchemeContext): Promise<WriteEntryResult> {
         const handler = this.#schemes.get(scheme) as SchemeWithCrud | undefined;
         const handlerCtx = this.#entryContext(scheme, ctx);
-        if (typeof handler?.writeEntry === "function" && handlerCtx !== null) return handler.writeEntry(pathname, entry, handlerCtx);
+        if (typeof handler?.writeEntry === "function" && handlerCtx !== null) {
+            return Results.assert(await handler.writeEntry(pathname, entry, handlerCtx)) as WriteEntryResult;
+        }
         const caps = handlerCtx?.entries;
-        if (caps === undefined) return { status: 501, created: false, entryId: null };
-        return caps.write(pathname, entry);
+        if (caps === undefined) {
+            return Dispatcher.#failure(
+                "entry-write-not-implemented",
+                501,
+                `The '${scheme}' scheme does not provide entry writes.`,
+                { created: false, entryId: null },
+                {
+                    stage: "entry-write",
+                    scheme,
+                    target: `${scheme}://${pathname}`,
+                    retryable: false,
+                },
+            ) as WriteEntryResult;
+        }
+        return Results.assert(await caps.write(pathname, entry)) as WriteEntryResult;
     }
 
     async #deleteEntry(scheme: string, pathname: string, ctx: PlurnkSchemeContext): Promise<DeleteEntryResult> {
         const handler = this.#schemes.get(scheme) as SchemeWithCrud | undefined;
         const handlerCtx = this.#entryContext(scheme, ctx);
-        if (typeof handler?.deleteEntry === "function" && handlerCtx !== null) return handler.deleteEntry(pathname, handlerCtx);
+        if (typeof handler?.deleteEntry === "function" && handlerCtx !== null) {
+            return Results.assert(await handler.deleteEntry(pathname, handlerCtx)) as DeleteEntryResult;
+        }
         const caps = handlerCtx?.entries;
-        return caps === undefined ? { status: 501 } : caps.delete(pathname);
+        if (caps === undefined) {
+            return Dispatcher.#failure(
+                "entry-delete-not-implemented",
+                501,
+                `The '${scheme}' scheme does not provide entry deletion.`,
+                {},
+                {
+                    stage: "entry-delete",
+                    scheme,
+                    target: `${scheme}://${pathname}`,
+                    retryable: false,
+                },
+            );
+        }
+        return Results.assert(await caps.delete(pathname));
     }
     async #workspaceRoot(workspaceId: number): Promise<string | null> {
         if (this.#rootCache.has(workspaceId)) return this.#rootCache.get(workspaceId) ?? null;
@@ -257,23 +306,46 @@ export default class Dispatcher {
             if (denial !== null) {
                 initial = denial;
             } else if (schemeName === null) {
-                initial = Dispatcher.#failure("target-required", 400, "EDIT requires a target scheme.");
+                initial = Dispatcher.#failure(
+                    "target-required",
+                    400,
+                    "EDIT requires a target scheme.",
+                    {},
+                    { retryable: false },
+                );
             } else {
                 const handler = this.#schemes.get(schemeName) as SchemeHandler | undefined;
                 const method = handler?.editBatch;
                 const manifest = this.#schemes.manifestFor(schemeName);
                 if (typeof method !== "function" || manifest === undefined) {
-                    initial = Dispatcher.#failure("operation-not-implemented", 501, `Scheme '${schemeName}' does not implement EDIT batches.`);
+                    initial = Dispatcher.#failure(
+                        "operation-not-implemented",
+                        501,
+                        `Scheme '${schemeName}' does not implement EDIT batches.`,
+                        {},
+                        {
+                            scheme: schemeName,
+                            operation: "EDIT",
+                            retryable: false,
+                        },
+                    );
                 } else {
                     try {
                         const addressedScheme = first.target?.kind === "url" ? first.target.scheme : schemeName;
                         initial = Results.assert(await method.call(handler, group, new SchemeCtxImpl(schemeCtx, addressedScheme ?? schemeName, manifest, this.#liveSubscriptions)));
                     } catch (err) {
                         if (err instanceof InvalidOperationResultError) throw err;
+                        console.error(`Scheme '${schemeName}' EDIT batch threw outside its operation result contract:`, err);
                         initial = Dispatcher.#failure(
                             "scheme-handler-threw",
                             500,
-                            `Scheme '${schemeName}' EDIT failed: ${err instanceof Error ? err.message : String(err)}`,
+                            `The '${schemeName}' scheme did not produce an EDIT result.`,
+                            {},
+                            {
+                                stage: "scheme-dispatch",
+                                scheme: schemeName,
+                                operation: "EDIT",
+                            },
                         );
                     }
                 }
@@ -322,11 +394,15 @@ export default class Dispatcher {
             ? Dispatcher.#failure(
                 "operation-not-allowed",
                 409,
-                `${statement.op} is not allowed because ${operationConstraint.detail}.`,
+                `${statement.op} was not executed because ${operationConstraint.detail}.`,
                 {},
                 {
                     constraint: operationConstraint.code,
                     allowedOperations: [...operationConstraint.allowedOperations],
+                    recovery: operationConstraint.code === "budget-recovery"
+                        ? "FOLD or KILL irrelevant log items before continuing work."
+                        : `Use one of the allowed operations: ${operationConstraint.allowedOperations.join(", ")}.`,
+                    retryable: false,
                 },
             )
             : null;
@@ -350,7 +426,7 @@ export default class Dispatcher {
                 if (statement.op === "EDIT") {
                     const prepared = this.#preparedEdits.get(statement);
                     if (prepared === undefined) {
-                        result = Dispatcher.#failure("edit-batch-not-prepared", 500, "EDIT reached dispatch without a prepared resource batch.");
+                        throw new InvalidOperationResultError("EDIT reached dispatch without a prepared resource batch.");
                     } else {
                         const settled = prepared.first ? prepared.initial : await prepared.settled;
                         const aggregate = settled.editReceipt ?? prepared.initial.editReceipt;
@@ -363,7 +439,9 @@ export default class Dispatcher {
                                 effects: readonly object[];
                             };
                             const effect = receipt.effects[prepared.index];
-                            if (effect === undefined) throw new Error(`EDIT receipt has no effect at index ${prepared.index}`);
+                            if (effect === undefined) {
+                                throw new InvalidOperationResultError(`EDIT receipt has no effect at index ${prepared.index}`);
+                            }
                             const { editReceipt: _editReceipt, ...withoutAggregate } = settled;
                             result = {
                                 ...withoutAggregate,
@@ -402,12 +480,20 @@ export default class Dispatcher {
                 }
             } catch (err) { // a scheme exception becomes the op's 500 outcome — §scheme-surface-exception-500
                 if (err instanceof InvalidOperationResultError) throw err;
+                const scheme = schemeNameOf(statement.target);
+                console.error(`Scheme '${scheme ?? "unknown"}' ${statement.op} threw outside its operation result contract:`, err);
                 result = err instanceof OperationFailureError
                     ? err.result
                     : Dispatcher.#failure(
                         "scheme-handler-threw",
                         500,
-                        err instanceof Error ? err.message : String(err),
+                        `The '${scheme ?? "unknown"}' scheme did not produce a ${statement.op} result.`,
+                        {},
+                        {
+                            stage: "scheme-dispatch",
+                            scheme,
+                            operation: statement.op,
+                        },
                     );
             }
         }
@@ -596,7 +682,18 @@ export default class Dispatcher {
         const command = ("body" in statement && typeof statement.body === "string") ? statement.body : "";
         const verdict = this.#searchGate?.check(loopId, turnId, runtime, command) ?? { verdict: "pass" as const };
         if (verdict.verdict === "capped") {
-            return Dispatcher.#failure("search-limit-reached", 429, `Per-turn search limit reached (${verdict.cap}).`);
+            return Dispatcher.#failure(
+                "search-limit-reached",
+                429,
+                `This turn already used its ${verdict.cap} permitted searches.`,
+                {},
+                {
+                    searchLimit: verdict.cap,
+                    stage: "search-admission",
+                    recovery: "Continue without another search in this turn.",
+                    retryable: false,
+                },
+            );
         }
         if (verdict.verdict === "duplicate") {
             // {§stream-owner-scoped} — the prior ranked digest is the CALLER's own stream entry.
@@ -609,6 +706,10 @@ export default class Dispatcher {
                 409,
                 "This search already ran in the current loop; the prior results are attached.",
                 { results },
+                {
+                    recovery: "Use the attached prior results.",
+                    retryable: false,
+                },
             );
         }
         return this.#run("exec", statement, ctx);
@@ -621,7 +722,18 @@ export default class Dispatcher {
         const manifest = this.#schemes.manifestFor(schemeName);
         if (manifest === undefined) throw new Error(`registered scheme '${schemeName}' has no manifest`);
         if (manifest.writableBy.includes(origin)) return null;
-        return Dispatcher.#failure("writer-forbidden", 403, `Writer '${origin}' is not in writableBy for scheme '${schemeName}'.`); // §scheme-surface-writableby-403
+        return Dispatcher.#failure(
+            "writer-forbidden",
+            403,
+            `Writer '${origin}' cannot modify scheme '${schemeName}'.`,
+            {},
+            {
+                writer: origin,
+                scheme: schemeName,
+                allowedWriters: [...manifest.writableBy],
+                retryable: false,
+            },
+        ); // §scheme-surface-writableby-403
     }
 
     // Per-loop flag gating. Schemes self-declare their flag affinity in
@@ -652,7 +764,18 @@ export default class Dispatcher {
             else if (statement.op === "COPY") writesFilesystem = isFile(statement.body === null ? null : parsePath(statement.body));
             else if (statement.op === "MOVE") writesFilesystem = isFile(statement.target) || isFile(statement.body);
             if (writesFilesystem) {
-                return Dispatcher.#failure("ask-mode-read-only", 403, `'${statement.op}' cannot change the filesystem in an ask-mode loop — ask is read-only. Answer or advise the user directly; an act-mode loop is required to edit files.`);
+                return Dispatcher.#failure(
+                    "ask-mode-read-only",
+                    403,
+                    `${statement.op} cannot change the filesystem in an ask-mode loop.`,
+                    {},
+                    {
+                        mode: flags.mode,
+                        operation: statement.op,
+                        recovery: "Answer or advise the user without changing the filesystem.",
+                        retryable: false,
+                    },
+                );
             }
         }
 
@@ -669,7 +792,17 @@ export default class Dispatcher {
             const scheme = schemeNameOf(target);
             if (scheme === null) return null;
             if (active.has(scheme)) return null;
-            return Dispatcher.#failure("scheme-unavailable", 403, `'${scheme}' is unavailable: ${restriction}. Do not retry it; answer or advise the user directly.`);
+            return Dispatcher.#failure(
+                "scheme-unavailable",
+                403,
+                `Scheme '${scheme}' is unavailable because ${restriction}.`,
+                {},
+                {
+                    scheme,
+                    recovery: "Answer or advise the user without using the unavailable scheme.",
+                    retryable: false,
+                },
+            );
         };
 
         if (this.#isWorkerControl(statement)) return check(statement.target); // body is a spawn/fork task, not a dst path
@@ -699,12 +832,44 @@ export default class Dispatcher {
     // intent, so the model never conflates the target slot with the body (grammar#52).
     async #handleWorkerControl(statement: WorkStatement | ForkStatement, ctx: PlurnkSchemeContext): Promise<DispatchResult> {
         const target = statement.target;
-        if (target === null) return Dispatcher.#failure("worker-target-required", 400, `${statement.op} requires a worker target (${statement.op}(worker://<name>)).`);
+        if (target === null) {
+            return Dispatcher.#failure(
+                "worker-target-required",
+                400,
+                `${statement.op} requires a worker target.`,
+                {},
+                { operation: statement.op, retryable: false },
+            );
+        }
         const name = target.kind === "url" ? (target.hostname ?? "") : ""; // §worker-scheme — run is the AUTHORITY (worker://<name>), not the path
-        if (name === "") return Dispatcher.#failure("worker-name-required", 400, `${statement.op} requires a worker name (worker://<name>).`);
-        if (name === "self") return Dispatcher.#failure("worker-name-reserved", 400, `'self' is the current run — ${statement.op} names a new run (worker://<name>).`);
+        if (name === "") {
+            return Dispatcher.#failure(
+                "worker-name-required",
+                400,
+                `${statement.op} requires a worker name.`,
+                {},
+                { operation: statement.op, retryable: false },
+            );
+        }
+        if (name === "self") {
+            return Dispatcher.#failure(
+                "worker-name-reserved",
+                400,
+                "Worker name 'self' is reserved for the current worker.",
+                {},
+                { operation: statement.op, worker: name, retryable: false },
+            );
+        }
         // {§entry-owner} — 'commons'/'plurnk' are the reserved owner rows, '~' the self-sigil; no spawn takes them.
-        if (Owner.RESERVED.has(name)) return Dispatcher.#failure("worker-name-reserved", 400, `'${name}' is a reserved worker name.`);
+        if (Owner.RESERVED.has(name)) {
+            return Dispatcher.#failure(
+                "worker-name-reserved",
+                400,
+                `Worker name '${name}' is reserved.`,
+                {},
+                { operation: statement.op, worker: name, retryable: false },
+            );
+        }
         if (ctx.injectWorker === undefined) throw new Error("run control: injectWorker capability absent");
         const denied = await WorkerCap.deny(this.#db, ctx.workspaceId);
         if (denied !== null) return denied;
@@ -718,7 +883,15 @@ export default class Dispatcher {
         // A name is frozen per worker but reclaimable across time (§machine-processes-worker-origin): a LIVE
         // sister holding it is a 409 (legible, never a raw UNIQUE 500); a free/terminated name reclaims.
         const live = await this.#db.worker_live_by_name.get<{ id: number }>({ workspace_id: ctx.workspaceId, name });
-        if (live !== undefined) return Dispatcher.#failure("worker-already-running", 409, `Worker '${name}' is already running.`);
+        if (live !== undefined) {
+            return Dispatcher.#failure(
+                "worker-already-running",
+                409,
+                `Worker '${name}' is already running.`,
+                {},
+                { worker: name, retryable: false },
+            );
+        }
 
         if (typeof statement.signal === "string") {
             if (this.#branchWorker === undefined) throw new Error("branch run control: branchWorker capability absent");
@@ -762,8 +935,18 @@ export default class Dispatcher {
         // COPY is entry-copy only — run control (spawn/fork) moved to the FORK/WORK verbs
         // (grammar 0.74.55). COPY's body is a dest path (grammar §COPY); an unparseable dest → 400.
         const dstPath = statement.body === null ? null : parsePath(statement.body);
-        if (srcPath === null) return Dispatcher.#failure("copy-source-required", 400, "COPY requires a source path.");
-        if (dstPath === null) return Dispatcher.#failure("copy-destination-invalid", 400, "COPY destination must be a parseable path in the body slot.");
+        if (srcPath === null) {
+            return Dispatcher.#failure("copy-source-required", 400, "COPY requires a source path.", {}, { retryable: false });
+        }
+        if (dstPath === null) {
+            return Dispatcher.#failure(
+                "copy-destination-invalid",
+                400,
+                "COPY requires a valid destination path.",
+                {},
+                { retryable: false },
+            );
+        }
         return await this.#copyOrchestration({ statement, srcPath, dstPath, ctx });
     }
 
@@ -771,18 +954,51 @@ export default class Dispatcher {
         if (statement.op !== "MOVE") throw new Error("unreachable");
         const srcPath = statement.target;
         const dstPath = statement.body;
-        if (srcPath === null) return Dispatcher.#failure("move-source-required", 400, "MOVE requires a source path.");
+        if (srcPath === null) {
+            return Dispatcher.#failure("move-source-required", 400, "MOVE requires a source path.", {}, { retryable: false });
+        }
         // MOVE is relocation only — deletion is KILL's job (§move, §move-dev-null-not-special). The /dev/null
         // and null-body delete-by-MOVE has no alternate meaning.
-        if (dstPath === null) return Dispatcher.#failure("move-destination-required", 400, "MOVE requires a destination; use KILL to delete."); // §move-null-body-400
+        if (dstPath === null) {
+            return Dispatcher.#failure(
+                "move-destination-required",
+                400,
+                "MOVE requires a destination.",
+                {},
+                {
+                    recovery: "Use KILL when the intended operation is deletion.",
+                    retryable: false,
+                },
+            );
+        } // §move-null-body-400
 
         const srcSchemeName = schemeNameOf(srcPath);
-        if (srcSchemeName === null) return Dispatcher.#failure("move-source-scheme-required", 400, "MOVE source must be a URL path with a scheme.");
-        if (!this.#schemes.has(srcSchemeName)) return Dispatcher.#failure("scheme-not-found", 501, `MOVE source scheme '${srcSchemeName}' is not registered.`);
+        if (srcSchemeName === null) {
+            return Dispatcher.#failure(
+                "move-source-scheme-required",
+                400,
+                "MOVE source requires a scheme.",
+                {},
+                { retryable: false },
+            );
+        }
+        if (!this.#schemes.has(srcSchemeName)) {
+            return Dispatcher.#failure(
+                "scheme-not-found",
+                501,
+                `MOVE source scheme '${srcSchemeName}' is not registered.`,
+                {},
+                { scheme: srcSchemeName, retryable: false },
+            );
+        }
 
         // Relocation: COPY then DELETE source (§move-relocation-deletes-source).
         const copyResult = await this.#copyOrchestration({ statement, srcPath, dstPath, ctx });
         if (copyResult.status >= 400) return copyResult;
+        const dstSchemeName = schemeNameOf(dstPath);
+        if (dstSchemeName === null) {
+            throw new InvalidOperationResultError("A successful MOVE copy has no destination scheme.");
+        }
         const srcPathname = entryPathnameOf(srcPath);
         // If the dest write is a pending proposal (file dest → §membership review), the
         // source-delete MUST wait until the dest actually lands — a rejected
@@ -792,7 +1008,21 @@ export default class Dispatcher {
             return { ...copyResult, attrs: { ...(copyResult.attrs as Record<string, unknown>), moveSource: { scheme: srcSchemeName, pathname: srcPathname } } };
         }
         const delResult = await this.#deleteEntry(srcSchemeName, srcPathname, ctx);
-        if (delResult.status >= 400) return Dispatcher.#failure("move-source-delete-failed", delResult.status, `MOVE copied the destination but could not delete the source ${srcSchemeName}://${srcPathname}.`);
+        if (delResult.status >= 400) {
+            const exact = Results.assert(delResult);
+            if (exact.problem === undefined) {
+                throw new InvalidOperationResultError("A failed MOVE source deletion has no Problem Details.");
+            }
+            return Results.assert({
+                ...exact,
+                problem: {
+                    ...exact.problem,
+                    operation: "MOVE",
+                    destinationWritten: true,
+                    destination: `${dstSchemeName}://${entryPathnameOf(dstPath)}`,
+                },
+            });
+        }
         return copyResult;
     }
 
@@ -808,9 +1038,19 @@ export default class Dispatcher {
     async #handleKill(statement: PlurnkStatement, ctx: PlurnkSchemeContext): Promise<DispatchResult> {
         if (statement.op !== "KILL") throw new Error("unreachable");
         const path = statement.target;
-        if (path === null) return Dispatcher.#failure("kill-target-required", 400, "KILL requires a target path.");
+        if (path === null) {
+            return Dispatcher.#failure("kill-target-required", 400, "KILL requires a target path.", {}, { retryable: false });
+        }
         const schemeName = schemeNameOf(path);
-        if (schemeName === null) return Dispatcher.#failure("kill-target-scheme-required", 400, "KILL target must be a URL path with a scheme.");
+        if (schemeName === null) {
+            return Dispatcher.#failure(
+                "kill-target-scheme-required",
+                400,
+                "KILL target requires a scheme.",
+                {},
+                { retryable: false },
+            );
+        }
         // KILL on log:/// erases the log row(s) — the model's DB-storage curation lever
         // (plurnk.md:36, :98), routed to Log.kill below via the killable.kill path. The old
         // "append-only" 405 forbade what the grammar requires; FOLD only collapses the render.
@@ -822,9 +1062,10 @@ export default class Dispatcher {
             // Pass the model's OWN scheme so a stream-KILL error answers in the runtime tag the
             // model addressed (sh:///…), not the internal `exec` ({§fs-answer-in-canon}).
             const handlerCtx = this.#handlerContext(schemeName, ctx);
-            return handlerCtx === null
-                ? Dispatcher.#failure("scheme-context-unavailable", 501, `No context is available for scheme '${schemeName}'.`)
-                : await killable.kill(entryPathnameOf(path), statement.signal, handlerCtx, schemeName);
+            if (handlerCtx === null) {
+                throw new InvalidOperationResultError(`Registered scheme '${schemeName}' has no dispatch context.`);
+            }
+            return await killable.kill(entryPathnameOf(path), statement.signal, handlerCtx, schemeName);
         }
         if (schemeName === "worker") {
             // Entry-path present → KILL a worker-scope scratch ENTRY (delete it), self-only —
@@ -834,18 +1075,35 @@ export default class Dispatcher {
             if (entryPath !== "" && entryPath !== "/") {
                 const workerHandler = this.#schemes.get("worker") as { killEntry: (s: PlurnkStatement, c: SchemeCtx) => Promise<SchemeResult> };
                 const handlerCtx = this.#handlerContext("worker", ctx);
-                return handlerCtx === null
-                    ? Dispatcher.#failure("scheme-context-unavailable", 501, "No context is available for scheme 'worker'.")
-                    : await workerHandler.killEntry(statement, handlerCtx);
+                if (handlerCtx === null) {
+                    throw new InvalidOperationResultError("Registered scheme 'worker' has no dispatch context.");
+                }
+                return await workerHandler.killEntry(statement, handlerCtx);
             }
             // Terminate an addressed worker's structured scope. `worker://self` = self.
             // An idle worker is a no-op 200; a missing worker is 404.
             const name = path.kind === "url" ? (path.hostname ?? "") : ""; // §worker-scheme — the worker is the AUTHORITY
-            if (name === "") return Dispatcher.#failure("worker-name-required", 400, "worker:// KILL requires a worker name or ~ (worker://<name>).");
+            if (name === "") {
+                return Dispatcher.#failure(
+                    "worker-name-required",
+                    400,
+                    "KILL requires a worker name.",
+                    {},
+                    { retryable: false },
+                );
+            }
             let workerId = ctx.workerId;
             if (name !== "~") {
                 const row = await this.#db.worker_resolve_by_name.get<{ id: number }>({ workspace_id: ctx.workspaceId, name });
-                if (row === undefined) return Dispatcher.#failure("worker-not-found", 404, `worker://${name} was not found in this workspace.`);
+                if (row === undefined) {
+                    return Dispatcher.#failure(
+                        "worker-not-found",
+                        404,
+                        `Worker '${name}' does not exist in this workspace.`,
+                        {},
+                        { worker: name, retryable: false },
+                    );
+                }
                 workerId = row.id;
             }
             if (this.#cancelWorker === undefined) throw new Error("run kill: cancelWorker capability absent");
@@ -854,7 +1112,15 @@ export default class Dispatcher {
             await this.#cancelWorker(workerId, "killed via worker:// KILL");
             return { status: 200 };
         }
-        if (!this.#schemes.has(schemeName)) return Dispatcher.#failure("scheme-not-found", 501, `Scheme '${schemeName}' is not registered.`);
+        if (!this.#schemes.has(schemeName)) {
+            return Dispatcher.#failure(
+                "scheme-not-found",
+                501,
+                `Scheme '${schemeName}' is not registered.`,
+                {},
+                { scheme: schemeName, retryable: false },
+            );
+        }
         // A host-effecting delete (file) returns 202 to PROPOSE — pass its attrs through so the proposal
         // carries the delete target to review (§isProposal fires on 202). Plurnk-internal deletes execute inline.
         return this.#deleteEntry(schemeName, entryPathnameOf(path), ctx);
@@ -973,12 +1239,19 @@ export default class Dispatcher {
         }> | undefined) ?? [];
         const overflow = typeof found.overflow === "number" ? found.overflow : null;
         if (overflow !== null) {
+            const overflowLimit = typeof found.overflowLimit === "number" ? found.overflowLimit : null;
             const result = Dispatcher.#failure(
                 "read-materialization-too-large",
                 413,
-                `${overflow} resources exceed the READ materialization budget - narrow the target or matcher.`,
+                `READ selected ${overflow} resources, exceeding the materialization limit${overflowLimit === null ? "" : ` of ${overflowLimit}`}.`,
                 {},
-                { resources: overflow },
+                {
+                    resources: overflow,
+                    ...(overflowLimit === null ? {} : { maximumResources: overflowLimit }),
+                    stage: "materialization",
+                    recovery: "Narrow the target or matcher.",
+                    retryable: false,
+                },
             );
             const readRowId = await this.#writeLog({ statement, result, workspaceId: ctx.workspaceId, workerId, loopId, turnId, sequence, origin });
             onDispatch?.(readRowId);
@@ -1070,32 +1343,65 @@ export default class Dispatcher {
     }): Promise<DispatchResult> {
         const srcSchemeName = schemeNameOf(srcPath);
         const dstSchemeName = schemeNameOf(dstPath);
-        if (srcSchemeName === null || dstSchemeName === null) return Dispatcher.#failure("copy-scheme-required", 400, "COPY and MOVE require URL paths with schemes.");
+        if (srcSchemeName === null || dstSchemeName === null) {
+            return Dispatcher.#failure(
+                "copy-scheme-required",
+                400,
+                "COPY and MOVE require source and destination schemes.",
+                {},
+                { retryable: false },
+            );
+        }
         // {§worker-authority-carving} — the entry-copy seam is pathname-keyed; on worker:// it
         // addresses the COMMONS. A space's content moves via READ + EDIT, not COPY.
         for (const p of [srcPath, dstPath]) {
             if (p.kind === "url" && p.scheme === "worker" && (p.hostname ?? "") !== "") {
-                return Dispatcher.#failure("worker-copy-address-invalid", 400, "COPY and MOVE address the commons (worker:///…); a worker space's content moves via READ and EDIT.");
+                return Dispatcher.#failure(
+                    "worker-copy-address-invalid",
+                    400,
+                    "COPY and MOVE do not address named worker spaces.",
+                    {},
+                    {
+                        recovery: "Move worker-space content with READ and EDIT.",
+                        retryable: false,
+                    },
+                );
             }
         }
 
         const srcHandler = this.#schemes.get(srcSchemeName);
         const dstHandler = this.#schemes.get(dstSchemeName);
         if (srcHandler === undefined || dstHandler === undefined) {
-            return Dispatcher.#failure("scheme-not-found", 501, `COPY/MOVE requires registered source '${srcSchemeName}' and destination '${dstSchemeName}' schemes.`);
+            return Dispatcher.#failure(
+                "scheme-not-found",
+                501,
+                "COPY or MOVE addressed an unregistered scheme.",
+                {},
+                {
+                    sourceScheme: srcSchemeName,
+                    destinationScheme: dstSchemeName,
+                    retryable: false,
+                },
+            );
         }
 
         const srcPathname = entryPathnameOf(srcPath);
         const dstPathname = entryPathnameOf(dstPath);
 
         const srcResult = await this.#readEntry(srcSchemeName, srcPathname, ctx);
-        if (srcResult.status !== 200 || srcResult.entry === null) return Dispatcher.#failure("copy-source-not-found", 404, `COPY/MOVE source not found: ${srcSchemeName}://${srcPathname}.`);  // §copy-missing-source-404 §move-missing-source-404
+        if (srcResult.status >= 400) return srcResult;
+        if (srcResult.status !== 200 || srcResult.entry === null) {
+            throw new InvalidOperationResultError(
+                `The '${srcSchemeName}' scheme returned status ${srcResult.status} without a source entry for COPY/MOVE.`,
+            );
+        }
         const entry = srcResult.entry;
 
         // Destination read — the conflict/no-op verdict is deferred until the
         // to-be-written content is known (after <L> slice + tag resolution below),
         // so an identical re-copy resolves to 304 instead of a phantom 409.
         const dstExisting = await this.#readEntry(dstSchemeName, dstPathname, ctx);
+        if (dstExisting.status >= 400 && dstExisting.status !== 404) return dstExisting;
 
         // Mimetype compatibility check against the destination scheme's manifest
         const dstManifest = (dstHandler.constructor as { manifest?: SchemeManifest }).manifest;
@@ -1103,7 +1409,18 @@ export default class Dispatcher {
         for (const [channelName, channelData] of Object.entries(entry.channels)) {
             const expectedMimetype = dstChannels[channelName];
             if (expectedMimetype !== undefined && expectedMimetype !== channelData.mimetype) {
-                return Dispatcher.#failure("mimetype-mismatch", 415, `Mimetype mismatch on channel '${channelName}': ${channelData.mimetype} vs ${expectedMimetype}.`); // cross-mimetype COPY/MOVE → 415, never coerce — §channel-mimetype-cross-mimetype-415
+                return Dispatcher.#failure(
+                    "mimetype-mismatch",
+                    415,
+                    `Channel '${channelName}' has mimetype '${channelData.mimetype}', but the destination requires '${expectedMimetype}'.`,
+                    {},
+                    {
+                        channel: channelName,
+                        sourceMimetype: channelData.mimetype,
+                        destinationMimetype: expectedMimetype,
+                        retryable: false,
+                    },
+                ); // cross-mimetype COPY/MOVE -> 415, never coerce - §channel-mimetype-cross-mimetype-415
             }
         }
 
@@ -1117,7 +1434,17 @@ export default class Dispatcher {
             const sliced: typeof entry.channels = {};
             for (const [channelName, channelData] of Object.entries(entry.channels)) {
                 if (MimetypeBinary.isBinaryMimetype(channelData.mimetype)) {
-                    return Dispatcher.#failure("binary-range-unsupported", 415, `Cannot slice <L> on binary channel '${channelName}' (${channelData.mimetype}).`);
+                    return Dispatcher.#failure(
+                        "binary-range-unsupported",
+                        415,
+                        `Channel '${channelName}' is binary and cannot be range-sliced.`,
+                        {},
+                        {
+                            channel: channelName,
+                            mimetype: channelData.mimetype,
+                            retryable: false,
+                        },
+                    );
                 }
                 const r = LineMarkerOps.sliceLinesRaw(channelData.content ?? "", lineMarker);
                 if (r.status !== 200) return Results.assert(r) as DispatchResult;
@@ -1143,16 +1470,23 @@ export default class Dispatcher {
                 && writeNames.every((n, i) => n === dstNames[i] && (channels[n]?.content ?? "") === (dstChannels[n]?.content ?? ""));
             const sameTags = [...tags].sort().join("") === [...dstExisting.entry.tags].sort().join("");
             if (sameContent && sameTags) return { status: 304 };  // identical → §copy-noop-304
-            return Dispatcher.#failure("copy-destination-exists", 409, `COPY/MOVE destination exists: ${dstSchemeName}://${dstPathname}.`);  // §copy-conflict-409
+            return Dispatcher.#failure(
+                "copy-destination-exists",
+                409,
+                `COPY or MOVE destination ${dstSchemeName}://${dstPathname} already exists with different content or tags.`,
+                {},
+                {
+                    destination: `${dstSchemeName}://${dstPathname}`,
+                    retryable: false,
+                },
+            );  // §copy-conflict-409
         }
 
         const writeResult = await this.#writeEntry(dstSchemeName, dstPathname, { channels, tags }, ctx);
         // A file dest returns 202 (disk write → §membership review): propagate the
         // proposal so dispatch runs the gate + routes applyResolution to the dest.
         if (writeResult.status === 202) return { status: 202, attrs: writeResult.attrs, body: writeResult.body };
-        if (writeResult.status >= 400) {
-            return Dispatcher.#failure("copy-destination-write-failed", writeResult.status, `COPY/MOVE could not write ${dstSchemeName}://${dstPathname}.`);
-        }
+        if (writeResult.status >= 400) return writeResult;
         return { status: writeResult.status, entryId: writeResult.entryId, created: writeResult.created };
     }
 
@@ -1215,7 +1549,14 @@ export default class Dispatcher {
         return Dispatcher.#failure(
             "unobserved-failures",
             409,
-            `Completion attempted despite ${failCount} failed operation(s) this turn. The failures land in your log next turn — weigh them, then conclude or SEND[499] to abandon.`,
+            `Completion was refused because ${failCount} failed operation(s) from this turn have not been observed.`,
+            {},
+            {
+                failures: failCount,
+                stage: "completion",
+                recovery: "Review the failed log items before concluding.",
+                retryable: false,
+            },
         );
     }
 
@@ -1240,14 +1581,33 @@ export default class Dispatcher {
         if (statement.op !== "SEND") throw new Error("unreachable");
         const { workerId, loopId, turnId } = ctx;
         const status = statement.signal;
-        if (status === null) return Dispatcher.#failure("send-status-required", 400, "SEND requires a numeric status.");
+        if (status === null) {
+            return Dispatcher.#failure(
+                "send-status-required",
+                400,
+                "SEND requires a numeric status.",
+                {},
+                { retryable: false },
+            );
+        }
         const raw = statement.body === null ? "" : typeof statement.body === "string" ? statement.body : statement.body.raw;
 
         // The park rides SEND[202] only (§park-202-only). A scoped SEND[102] is neither
         // a wait nor a meaningful continuation, so reject it instead of preserving the
         // retired dual spelling.
         if (status === 102 && statement.lineMarker !== null) {
-            return Dispatcher.#failure("send-scope-invalid", 400, "SEND[102] does not accept <scope>; use SEND[202]<timeout,poll> to wait.");
+            return Dispatcher.#failure(
+                "send-scope-invalid",
+                400,
+                "SEND[102] does not accept a scope.",
+                {},
+                {
+                    requestedStatus: 102,
+                    scope: statement.lineMarker,
+                    recovery: "Use SEND[202] with a scope to wait, or remove the scope to continue.",
+                    retryable: false,
+                },
+            );
         }
 
         // §join-blocking-collect (#354) — a READ(worker://running-child) this turn armed a join. A BARE
@@ -1313,7 +1673,16 @@ export default class Dispatcher {
         // Disabled → refused with a self-decide steer, never a park into the void.
         if (status === 300) {
             if (!(await WorkspaceSettings.questionsEnabled(this.#db, ctx.workspaceId))) {
-                return Dispatcher.#failure("operator-questions-disabled", 409, "Operator asks ([300]) are not enabled in this environment — no one is watching to answer. Decide yourself and proceed with SEND[102], or conclude with SEND[200].");
+                return Dispatcher.#failure(
+                    "operator-questions-disabled",
+                    409,
+                    "Operator questions are disabled in this workspace.",
+                    {},
+                    {
+                        recovery: "Decide from the available evidence and continue or conclude.",
+                        retryable: false,
+                    },
+                );
             }
             // Owner ruling (#346): the question rides the SAME proposal system as file edits and
             // MCP auths — stop the world. Returning 202 here routes through the proposal seam
@@ -1355,11 +1724,28 @@ export default class Dispatcher {
                     return Dispatcher.#failure(
                         "retrieval-results-unobserved",
                         409,
-                        "Last turn both performed retrieval operations and attempted to terminate. Retrieval operations force an additional turn to receive results for review and reaction. To conclude, only use PLAN and SEND[200] operations.",
+                        "Last turn both performed retrieval operations and attempted to terminate. Retrieval operations force an additional turn so their results can be reviewed.",
                         { attrs: { retrievalOnly: true } },
+                        {
+                            pending: [...pending],
+                            stage: "completion",
+                            recovery: "Review the results, then use only PLAN and SEND[200] to conclude.",
+                            retryable: false,
+                        },
                     );
                 }
-                return Dispatcher.#failure("work-remains", 409, `Attempted [200] termination while work remains: ${pending.join("; ")}. KILL what you no longer need; SEND[102] to receive the rest; then conclude.`);
+                return Dispatcher.#failure(
+                    "work-remains",
+                    409,
+                    `Completion was refused while work remains: ${pending.join("; ")}.`,
+                    {},
+                    {
+                        pending: [...pending],
+                        stage: "completion",
+                        recovery: "Resolve the listed pending work before concluding.",
+                        retryable: false,
+                    },
+                );
             }
             const branchDenial = await this.#branchCompletionGate?.(workerId) ?? null;
             if (branchDenial !== null) return branchDenial;
@@ -1412,7 +1798,15 @@ export default class Dispatcher {
         statement: PlurnkStatement,
         ctx: PlurnkSchemeContext,
     ): Promise<DispatchResult> {
-        if (schemeName === null) return Dispatcher.#failure("target-scheme-required", 400, `${statement.op} requires a target scheme.`);
+        if (schemeName === null) {
+            return Dispatcher.#failure(
+                "target-scheme-required",
+                400,
+                `${statement.op} requires a target scheme.`,
+                {},
+                { operation: statement.op, retryable: false },
+            );
+        }
         if (statement.op === "SEND" && statement.signal === 499 && statement.target?.kind === "url") {
             const entry = await this.#db.crud_find_workspace_entry.get<{ id: number }>({
                 workspace_id: ctx.workspaceId,
@@ -1427,14 +1821,25 @@ export default class Dispatcher {
                 });
                 if (subscription !== null && subscription.scheme === schemeName) {
                     const cancelled = await this.#liveSubscriptions.cancel(subscription.id);
-                    return cancelled
-                        ? { status: 200 }
-                        : Dispatcher.#failure("subscription-handle-missing", 500, `Subscription ${subscription.id} is durable but has no live cancellation handle.`);
+                    if (!cancelled) {
+                        throw new InvalidOperationResultError(
+                            `Subscription ${subscription.id} is durable but has no live cancellation handle.`,
+                        );
+                    }
+                    return { status: 200 };
                 }
             }
         }
         const handler = this.#schemes.get(schemeName) as Partial<Record<keyof SchemeHandler, SchemeMethod>> | undefined;
-        if (handler === undefined) return Dispatcher.#failure("scheme-not-found", 501, `Scheme '${schemeName}' is not registered.`);
+        if (handler === undefined) {
+            return Dispatcher.#failure(
+                "scheme-not-found",
+                501,
+                `Scheme '${schemeName}' is not registered.`,
+                {},
+                { scheme: schemeName, retryable: false },
+            );
+        }
         const methodName = statement.op.toLowerCase() as keyof SchemeHandler;
         const method = handler[methodName];
         const addressedScheme = statement.target?.kind === "url" ? statement.target.scheme : null;
@@ -1443,7 +1848,17 @@ export default class Dispatcher {
         const schemeCtx = new SchemeCtxImpl(ctx, addressedScheme ?? schemeName, manifest, this.#liveSubscriptions);
         if (typeof method === "function") return Results.assert(await method.call(handler, statement, schemeCtx));
         if (statement.op !== "FIND" || manifest.category !== "data") {
-            return Dispatcher.#failure("operation-not-implemented", 501, `Scheme '${schemeName}' does not implement ${statement.op}.`);
+            return Dispatcher.#failure(
+                "operation-not-implemented",
+                501,
+                `Scheme '${schemeName}' does not implement ${statement.op}.`,
+                {},
+                {
+                    scheme: schemeName,
+                    operation: statement.op,
+                    retryable: false,
+                },
+            );
         }
         const prepareFind = handler.prepareFind;
         if (typeof prepareFind === "function") {

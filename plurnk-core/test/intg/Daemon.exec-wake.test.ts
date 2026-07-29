@@ -13,7 +13,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Mock } from "@plurnk/plurnk-providers";
-import { rpcCall, subscribeNotifications, flush, connect, withDaemon, waitFor, waitForDb, runLoopToTerminal } from "./_rpc.ts";
+import { rpcCall, rpcProblem, subscribeNotifications, flush, connect, withDaemon, waitFor, waitForDb, runLoopToTerminal } from "./_rpc.ts";
 import ProviderInstantiate from "../../src/core/ProviderInstantiate.ts";
 import Daemon from "../../src/server/Daemon.ts";
 import { openMigrated } from "./_helpers.ts";
@@ -82,8 +82,11 @@ test("#598: an async wake resumes with the loop's durable provider, never the bo
                     model: "openai/mocktest",
                     flags: { auto: true },
                 });
-                assert.match(conflict.error?.message ?? "", /provider selection is frozen/,
-                    "a conflicting provider request against the parked loop fails loudly");
+                const problem = rpcProblem(conflict);
+                assert.equal(problem.type, "https://problems.plurnk.dev/daemon/provider/loop-provider-conflict");
+                assert.equal(problem.selectedAlias, "wakeb");
+                assert.equal(problem.requestedAlias, "mocktest");
+                assert.match(problem.recovery ?? "", /Cancel or conclude/);
 
                 await writeFile(releasePath, "");
                 await waitFor(

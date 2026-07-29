@@ -216,8 +216,10 @@ test("an unregistered executable tag fails without shell reinterpretation", asyn
             workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
         });
         assert.equal(result.status, 501);
-        assert.match(result.problem?.detail ?? "", /not a registered executable tool/);
-        assert.match(result.problem?.detail ?? "", /bare EXEC or EXEC\[sh\]/);
+        assert.equal(result.problem?.type, "https://problems.plurnk.dev/scheme/exec/runtime-not-registered");
+        assert.equal(result.problem?.requestedRuntime, "echo");
+        assert.ok(Array.isArray(result.problem?.availableRuntimes));
+        assert.match(result.problem?.recovery as string, /^Use bare EXEC for a shell command/);
         const entryRow = await db.test_get_entry_by_pathname_scheme.get<{ id: number }>({ scheme: "sh", pathname: "/1/1/1" });
         assert.equal(entryRow, undefined, "an unknown tag never spawns or creates a shell stream");
     } finally { await db.close(); }

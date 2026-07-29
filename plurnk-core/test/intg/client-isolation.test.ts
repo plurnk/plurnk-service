@@ -12,7 +12,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
-import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal } from "./_rpc.ts";
+import { rpcCall, rpcProblem, connect, withDaemon, makeMockResponse, runLoopToTerminal } from "./_rpc.ts";
 import { insertWorkspace, insertWorker } from "./_helpers.ts";
 
 test("a client op.* never enters the model's packet — the client writes to its own worker (#194)", async () => {
@@ -81,8 +81,10 @@ test("a connection reads the model worker by id — loop.run returns modelWorker
             const foreignWorkspace = await insertWorkspace(db, `foreign-${crypto.randomUUID()}`);
             const foreignWorker = await insertWorker(db, foreignWorkspace);
             const denied = await rpcCall(ws, 6, "log.read", { workerId: foreignWorker });
-            assert.ok(denied.error, "reading a worker outside the workspace is refused");
-            assert.match(denied.error!.message, /not in this workspace/, "the refusal names the ownership violation");
+            const problem = rpcProblem(denied);
+            assert.equal(problem.type, "https://problems.plurnk.dev/daemon/worker/workspace-mismatch");
+            assert.equal(problem.workerId, foreignWorker);
+            assert.equal(problem.actualWorkspaceId, foreignWorkspace);
         } finally { ws.close(); }
     });
 });

@@ -77,5 +77,17 @@ detail: string
  * Absolute URI identifying the failed durable operation, normally its log URI. Core adds it at persistence when a plugin cannot know the durable coordinate.
  */
 instance?: string
+/**
+ * Stable producer-owned stage at which the operation failed, when the operation has multiple independently recoverable stages.
+ */
+stage?: string
+/**
+ * One generally valid next action. It is omitted when recovery depends on facts the producer does not know.
+ */
+recovery?: string
+/**
+ * Whether the producer recommends automatically retrying the identical request.
+ */
+retryable?: boolean
 [k: string]: unknown
 }

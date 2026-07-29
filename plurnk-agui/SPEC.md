@@ -16,7 +16,7 @@ recompute them.
   concept is the workspace, selected by name, VERBATIM, via `forwardedProps.plurnk.workspace`
   (attach if it exists, create with exactly that name otherwise — no prefix, no forging). The
   workspace is REQUIRED: a worker has no existence without a world, so its absence is a contract
-  violation the module rejects (500) — never a workspace forged from the `threadId`. The
+  violation the module rejects (400) - never a workspace forged from the `threadId`. The
   `threadId` is the conversation over that world, and the name is the identity at
   BOTH levels: `threadId` == the workspace name binds the workspace's MODEL run (the default
   conversation, `ensureModelWorker` — origin identifies it, never a name parse); a DISTINCT
@@ -170,4 +170,8 @@ a question — that is the daemon's own rule; the module inherits it.
 
 Failures before SSE headers are sent use `application/problem+json` with exact
 RFC 9457 Problem Details. Once SSE has opened, `CUSTOM plurnk.problem` preserves
-that same object and `RUN_ERROR` maps it to the standard AG-UI fields.
+that same object and `RUN_ERROR` maps it to the standard AG-UI fields. The custom
+event and `plurnk.terminated.result.problem` are lossless; `RUN_ERROR.code` and
+`message` are the required standard projection, not a second failure object.
+Consumers preserve the exact Problem from the lossless surface and never
+reconstruct one from `RUN_ERROR`.

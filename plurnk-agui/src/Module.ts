@@ -20,7 +20,7 @@ import { authorize as mcpAuthorize, poll as mcpPoll } from "@plurnk/plurnk-execs
 import { EventType, type AguiEvent, type RunAgentInput } from "./types.ts";
 import { RunAgentInputSchema, type Interrupt } from "@ag-ui/core";
 import { logEntryIdFromToolCallId, proposalInterrupt } from "./AguiPlus.ts";
-import { Problems, type OperationResult, type ProblemDetails } from "@plurnk/plurnk-contracts";
+import { Problems, Validator, type OperationResult, type ProblemDetails } from "@plurnk/plurnk-contracts";
 
 export interface ModuleOptions {
     host: string;
@@ -34,19 +34,61 @@ const actionFailure = (
     code: string,
     detail: string,
     status: number = 400,
+    extensions: Readonly<Record<string, unknown>> = {},
 ): ActionOutcome => ({
     ok: false,
-    problem: Problems.create("agui:action", code, status, detail),
+    problem: Problems.create("agui:action", code, status, detail, {
+        stage: status < 500 ? "action-validation" : "action-execution",
+        retryable: false,
+        ...extensions,
+    }),
 });
-
-const errorDetail = (error: unknown): string =>
-    error instanceof Error ? error.message : String(error);
 
 const httpProblem = (
     code: string,
     status: number,
     detail: string,
-): ProblemDetails => Problems.create("agui:http", code, status, detail);
+    extensions: Readonly<Record<string, unknown>> = {},
+): ProblemDetails => Problems.create("agui:http", code, status, detail, extensions);
+
+class HttpProblemError extends Error {
+    readonly problem: ProblemDetails;
+
+    constructor(problem: ProblemDetails) {
+        super(problem.detail);
+        this.name = "HttpProblemError";
+        this.problem = problem;
+    }
+}
+
+const problemFromError = (error: unknown): ProblemDetails | null => {
+    if (error instanceof HttpProblemError) return error.problem;
+    if (typeof error !== "object" || error === null) return null;
+    const result = (error as { result?: unknown }).result;
+    if (result !== undefined) {
+        try {
+            return Validator.assertOperationResult(result as OperationResult).problem ?? null;
+        } catch {
+            return null;
+        }
+    }
+    const problem = (error as { problem?: unknown }).problem;
+    if (problem !== undefined) {
+        try {
+            return Validator.assertProblemDetails(problem as ProblemDetails);
+        } catch {
+            return null;
+        }
+    }
+    return null;
+};
+
+const operationOutcome = (result: OperationResult): ActionOutcome => {
+    const exact = Validator.assertOperationResult(result);
+    return exact.problem === undefined
+        ? { ok: true, result: exact }
+        : { ok: false, problem: exact.problem };
+};
 
 const writeHttpProblem = (res: ServerResponse, problem: ProblemDetails): void => {
     res.writeHead(problem.status, { "content-type": "application/problem+json" });
@@ -119,25 +161,47 @@ export default class Module {
             // The perimeter (§governance): bearer check before any body read.
             const token = this.#opts.token ?? "";
             if (token.length > 0 && req.headers.authorization !== `Bearer ${token}`) {
-                writeHttpProblem(res, httpProblem("bearer-token-required", 401, "A bearer token is required."));
+                writeHttpProblem(res, httpProblem(
+                    "bearer-token-required",
+                    401,
+                    "The request did not provide the required bearer token.",
+                    {
+                        stage: "authorization",
+                        recovery: "Provide the configured bearer token.",
+                        retryable: false,
+                    },
+                ));
                 return;
             }
             if (req.method === "POST" && (req.url === "/" || req.url === "/agui")) return await this.#run(req, res);
-            writeHttpProblem(res, httpProblem("route-not-found", 404, "POST / is the AG-UI run interface."));
+            writeHttpProblem(res, httpProblem("route-not-found", 404, "The requested HTTP route does not exist.", {
+                method: req.method ?? null,
+                path: req.url ?? null,
+                stage: "routing",
+                retryable: false,
+            }));
         } catch (err) {
-            const detail = errorDetail(err);
-            const problem = httpProblem("request-failed", 500, detail);
+            const exactProblem = problemFromError(err);
+            if (exactProblem === null) {
+                console.error("AG-UI request failed:", err);
+            }
+            const problem = exactProblem ?? httpProblem(
+                "request-failed",
+                500,
+                "The AG-UI request failed unexpectedly.",
+                {
+                    stage: "request",
+                    retryable: false,
+                },
+            );
             if (!res.headersSent) {
                 writeHttpProblem(res, problem);
                 return;
             }
             // Post-headers throw (svc#480): the SSE is already open, so a JSON body is
-            // invisible to the event parser — the stream reads as a silent death. Emit a
-            // legible terminal RUN_ERROR frame instead (501 for the no-model case), then end.
-            const mapped = /no provider configured|no model|unknown alias/i.test(detail)
-                ? httpProblem("provider-not-configured", 501, detail)
-                : problem;
-            for (const event of runErrorEvents(mapped)) {
+            // invisible to the event parser. Preserve a contract Problem exactly when
+            // one exists; unexpected exceptions become one generic boundary failure.
+            for (const event of runErrorEvents(problem)) {
                 res.write(`data: ${JSON.stringify(event)}\n\n`);
             }
             res.end();
@@ -155,7 +219,18 @@ export default class Module {
     // createConversationWorker).
     async #envelope(threadId: string, forwarded?: Record<string, unknown>): Promise<{ env: ClientEnvelope; reattached: boolean }> {
         const workspace = forwarded?.workspace;
-        if (typeof workspace !== "string" || workspace.length === 0) throw new Error("forwardedProps.plurnk.workspace (a workspace name) is required");
+        if (typeof workspace !== "string" || workspace.length === 0) {
+            throw new HttpProblemError(httpProblem(
+                "workspace-required",
+                400,
+                "forwardedProps.plurnk.workspace must name a workspace.",
+                {
+                    stage: "request-validation",
+                    recovery: "Provide a non-empty workspace name.",
+                    retryable: false,
+                },
+            ));
+        }
         const cached = this.#threads.get(threadId);
         if (cached !== undefined) return { env: cached, reattached: true };
         const known = (await this.#seam.listWorkspaces()).find((s) => s.name === workspace);
@@ -168,9 +243,15 @@ export default class Module {
             const opts = forwarded ?? {};
             env = await this.#seam.createWorkspace({
                 name: workspace,
-                ...(typeof opts.projectRoot === "string" ? { projectRoot: opts.projectRoot } : {}),
-                ...(Array.isArray(opts.constraints) ? { constraints: opts.constraints as Array<{ effect: string; glob: string }> } : {}),
-                ...(typeof opts.settings === "object" && opts.settings !== null ? { settings: JSON.stringify(opts.settings) } : {}),
+                ...(Object.hasOwn(opts, "projectRoot")
+                    ? { projectRoot: opts.projectRoot as string | null }
+                    : {}),
+                ...(Object.hasOwn(opts, "constraints")
+                    ? { constraints: opts.constraints as Array<{ effect: string; glob: string }> }
+                    : {}),
+                ...(Object.hasOwn(opts, "settings")
+                    ? { settings: opts.settings as string | object }
+                    : {}),
             });
         }
         this.#threads.set(threadId, env);
@@ -191,7 +272,31 @@ export default class Module {
     }
 
     async #run(req: IncomingMessage, res: ServerResponse): Promise<void> {
-        const input: RunAgentInput = RunAgentInputSchema.parse(JSON.parse(await Module.#body(req)));
+        let decoded: unknown;
+        try {
+            decoded = JSON.parse(await Module.#body(req));
+        } catch {
+            throw new HttpProblemError(httpProblem(
+                "invalid-json",
+                400,
+                "The request body is not valid JSON.",
+                { stage: "request-validation", retryable: false },
+            ));
+        }
+        const parsed = RunAgentInputSchema.safeParse(decoded);
+        if (!parsed.success) {
+            throw new HttpProblemError(httpProblem(
+                "invalid-run-input",
+                400,
+                "The request body does not satisfy the AG-UI RunAgentInput contract.",
+                {
+                    stage: "request-validation",
+                    issues: parsed.error.issues,
+                    retryable: false,
+                },
+            ));
+        }
+        const input: RunAgentInput = parsed.data;
         const forwarded = (input.forwardedProps as { plurnk?: Record<string, unknown> } | undefined)?.plurnk;
 
         // Control plane FIRST: a management action that doesn't live in a world (and an
@@ -199,6 +304,24 @@ export default class Module {
         // workspace. Only world-scoped actions and conversations reach #envelope below.
         const action = parseAction(input.forwardedProps);
         if (action !== null && !Module.#WORLD_SCOPED.has(action.kind)) return await this.#controlRun(action, input, res);
+
+        let prompt: string | null = null;
+        if (action === null && input.resume === undefined) {
+            const lastUser = [...input.messages].reverse().find((message) => message.role === "user");
+            if (lastUser === undefined || typeof lastUser.content !== "string" || lastUser.content.length === 0) {
+                throw new HttpProblemError(httpProblem(
+                    "user-message-required",
+                    400,
+                    "A new run requires a non-empty textual user message.",
+                    {
+                        stage: "request-validation",
+                        recovery: "Provide a non-empty user message.",
+                        retryable: false,
+                    },
+                ));
+            }
+            prompt = lastUser.content;
+        }
 
         const { env, reattached } = await this.#envelope(input.threadId, forwarded);
         const workspaceId = env.workspaceId;
@@ -278,7 +401,13 @@ export default class Module {
                 // bookkeeping arms BEFORE the finish decision (then stream/concluded,
                 // not a timer, releases any deferral).
                 .then(async (outcome) => { await new Promise((r) => setImmediate(r)); finishAction(outcome); })
-                .catch((err: unknown) => finishAction(actionFailure("action-failed", errorDetail(err), 500)));
+                .catch((err: unknown) => {
+                    console.error(`AG-UI action '${action.kind}' failed:`, err);
+                    const problem = problemFromError(err);
+                    finishAction(problem === null
+                        ? actionFailure("action-failed", "The action failed unexpectedly.", 500)
+                        : { ok: false, problem });
+                });
             res.on("close", () => {
                 if (finished) return;
                 this.#seam.cancelDrain(lifecycleWorkerId, "client_disconnected");
@@ -295,24 +424,32 @@ export default class Module {
             return;
         }
 
-        const lastUser = [...input.messages].reverse().find((m) => m.role === "user");
-        if (lastUser === undefined) throw new Error("RunAgentInput.messages must carry a user message");
-        if (typeof lastUser.content !== "string") throw new Error("PLURNK currently requires textual user message content");
-        if (lastUser.content.length === 0) throw new Error("RunAgentInput.messages must carry a non-empty user message");
+        if (prompt === null) throw new Error("conversation run reached dispatch without a validated prompt");
 
         if (reattached) {
             const history = await this.#seam.readLog({ workspaceId, workerId, limit: 1000 }).catch(() => null);
             if (history !== null) emit([...this.#threadRouterReplay(workspaceId, history)]);
         }
         await this.#portal.run(boundRun, {
-            workspaceId, workerId, prompt: lastUser.content,
-            ...(typeof forwarded?.maxTurns === "number" ? { maxTurns: forwarded.maxTurns } : this.#opts.maxTurns !== undefined ? { maxTurns: this.#opts.maxTurns } : {}),
-            ...(typeof forwarded?.flags === "object" && forwarded.flags !== null ? { flags: forwarded.flags as { auto?: boolean } } : {}),
+            workspaceId, workerId, prompt,
+            ...(forwarded !== undefined && Object.hasOwn(forwarded, "maxTurns")
+                ? { maxTurns: forwarded.maxTurns as number }
+                : this.#opts.maxTurns !== undefined ? { maxTurns: this.#opts.maxTurns } : {}),
+            ...(forwarded !== undefined && Object.hasOwn(forwarded, "flags")
+                ? { flags: forwarded.flags as { auto?: boolean } }
+                : {}),
+            ...(forwarded !== undefined && Object.hasOwn(forwarded, "openPaths")
+                ? { openPaths: forwarded.openPaths as string[] }
+                : {}),
             // #414 — per-loop model selection: the client sends alias+model on every loop
             // (model = client-resolved <provider>/<model>, #90); forward both, the daemon's
             // runLoop applies precedence (model wins) and resolves the provider per loop.
-            ...(typeof forwarded?.alias === "string" && forwarded.alias.length > 0 ? { alias: forwarded.alias } : {}),
-            ...(typeof forwarded?.model === "string" && forwarded.model.length > 0 ? { model: forwarded.model } : {}),
+            ...(forwarded !== undefined && Object.hasOwn(forwarded, "alias")
+                ? { alias: forwarded.alias as string }
+                : {}),
+            ...(forwarded !== undefined && Object.hasOwn(forwarded, "model")
+                ? { model: forwarded.model as string }
+                : {}),
         });
         // A dropped SSE on a LIVE run cancels the loop (hangup is the abort). A worker we
         // finished ourselves — terminal event or proposal-terminate — leaves the engine
@@ -327,10 +464,17 @@ export default class Module {
             // not enough — the heartbeat interval and the Portal binding are live, and a
             // throw that escapes past finish() leaks them forever (the drill-hang). emit()
             // writes the terminal frame AND finish()es on RUN_ERROR — one door out.
-            const detail = errorDetail(err);
-            const problem = /no provider configured|no model|unknown alias/i.test(detail)
-                ? httpProblem("provider-not-configured", 501, detail)
-                : httpProblem("run-failed", 500, detail);
+            const exactProblem = problemFromError(err);
+            if (exactProblem === null) console.error("AG-UI run failed:", err);
+            const problem = exactProblem ?? httpProblem(
+                "run-failed",
+                500,
+                "The run failed unexpectedly.",
+                {
+                    stage: "run",
+                    retryable: false,
+                },
+            );
             emit(runErrorEvents(problem));
         }
     }
@@ -343,7 +487,13 @@ export default class Module {
         const emit = (e: AguiEvent): void => { res.write(`data: ${JSON.stringify(e)}\n\n`); };
         emit({ type: EventType.RUN_STARTED, threadId: input.threadId, runId: input.runId });
         const outcome = await this.#action(action, null)
-            .catch((err: unknown): ActionOutcome => actionFailure("action-failed", errorDetail(err), 500));
+            .catch((err: unknown): ActionOutcome => {
+                console.error(`AG-UI action '${action.kind}' failed:`, err);
+                const problem = problemFromError(err);
+                return problem === null
+                    ? actionFailure("action-failed", "The action failed unexpectedly.", 500)
+                    : { ok: false, problem };
+            });
         emit(actionResult(action.kind, outcome));
         emit({ type: EventType.RUN_FINISHED, threadId: input.threadId, runId: input.runId, outcome: { type: "success" } });
         res.end();
@@ -376,16 +526,30 @@ export default class Module {
                 case "workspace.create": {
                     // The name IS the identity: an explicit name creates/attaches EXACTLY
                     // that workspace; no name = the daemon names it and the real name binds.
-                    if (typeof p.name === "string" && p.name.length > 0) {
+                    if (Object.hasOwn(p, "name") && (typeof p.name !== "string" || p.name.length === 0)) {
+                        return actionFailure(
+                            "invalid-action-parameters",
+                            "workspace.create name is not a non-empty string.",
+                            400,
+                            { field: "name", recovery: "Provide a non-empty workspace name or omit it." },
+                        );
+                    }
+                    if (typeof p.name === "string") {
                         // The name IS the world here — feed it as the workspace so #envelope
                         // creates/attaches exactly it (p carries no `workspace` of its own).
                         const { env: created } = await this.#envelope(p.name, { ...p, workspace: p.name });
                         return { ok: true, result: { id: created.workspaceId, name: created.workspaceName, workerId: created.workerId } };
                     }
                     const created = await this.#seam.createWorkspace({
-                        ...(typeof p.projectRoot === "string" ? { projectRoot: p.projectRoot } : {}),
-                        ...(Array.isArray(p.constraints) ? { constraints: p.constraints as Array<{ effect: string; glob: string }> } : {}),
-                        ...(typeof p.settings === "object" && p.settings !== null ? { settings: JSON.stringify(p.settings) } : {}),
+                        ...(Object.hasOwn(p, "projectRoot")
+                            ? { projectRoot: p.projectRoot as string | null }
+                            : {}),
+                        ...(Object.hasOwn(p, "constraints")
+                            ? { constraints: p.constraints as Array<{ effect: string; glob: string }> }
+                            : {}),
+                        ...(Object.hasOwn(p, "settings")
+                            ? { settings: p.settings as string | object }
+                            : {}),
                     });
                     this.#threads.set(created.workspaceName, created);
                     return { ok: true, result: { id: created.workspaceId, name: created.workspaceName, workerId: created.workerId } };
@@ -394,7 +558,17 @@ export default class Module {
                     // A REAL attach: rebind the thread map to the chosen workspace and hand
                     // back its envelope — the picker does what it says (the unwired kind +
                     // a nil-masking fallback produced the 2026-07-10 front-door disaster).
-                    if (typeof p.id !== "number") return actionFailure("invalid-action-parameters", "workspace.attach requires id.");
+                    if (typeof p.id !== "number") {
+                        return actionFailure(
+                            "invalid-action-parameters",
+                            "workspace.attach requires a numeric workspace id.",
+                            400,
+                            {
+                                field: "id",
+                                recovery: "Provide a workspace id returned by workspace.list.",
+                            },
+                        );
+                    }
                     const att = await this.#seam.attachWorkspace({ workspaceId: p.id, ...(typeof p.workerId === "number" ? { workerId: p.workerId } : {}) });
                     this.#threads.set(att.workspaceName, att);
                     return { ok: true, result: { id: att.workspaceId, name: att.workspaceName, workerId: att.workerId, modelWorkerId: att.modelWorkerId } };
@@ -402,68 +576,165 @@ export default class Module {
                 case "auth.authorize": {
                     // Stateless relay to the execs-mcp driver (settled: no auth seam — the
                     // driver owns its mechanics; the bearer overlays its own config registry).
-                    if (typeof p.target !== "string" || p.target.length === 0) return actionFailure("invalid-action-parameters", "auth.authorize requires target.");
+                    if (typeof p.target !== "string" || p.target.length === 0) {
+                        return actionFailure(
+                            "invalid-action-parameters",
+                            "auth.authorize requires an MCP server target.",
+                            400,
+                            { field: "target", recovery: "Provide a configured MCP server name." },
+                        );
+                    }
                     return { ok: true, result: await mcpAuthorize(p.target) };
                 }
                 case "auth.authorize.poll": {
-                    if (typeof p.target !== "string" || p.target.length === 0) return actionFailure("invalid-action-parameters", "auth.authorize.poll requires target.");
+                    if (typeof p.target !== "string" || p.target.length === 0) {
+                        return actionFailure(
+                            "invalid-action-parameters",
+                            "auth.authorize.poll requires an MCP server target.",
+                            400,
+                            { field: "target", recovery: "Provide the MCP server name used to start authorization." },
+                        );
+                    }
                     return { ok: true, result: await mcpPoll(p.target, { device: p.device as never }) };
                 }
             }
             // Below this line lives IN a world. An unknown kind is no worker at all; a
             // world-scoped kind with no bound workspace is a routing bug — both surface plainly.
-            if (!Module.#WORLD_SCOPED.has(a.kind)) return actionFailure("unknown-action", `Unknown action '${a.kind}'.`, 404);
+            if (!Module.#WORLD_SCOPED.has(a.kind)) {
+                return actionFailure(
+                    "unknown-action",
+                    `Action '${a.kind}' is not registered.`,
+                    404,
+                    {
+                        requestedAction: a.kind,
+                        recovery: "Use an action advertised by discover.",
+                    },
+                );
+            }
             if (env === null) throw new Error(`action '${a.kind}' operates within a workspace, but none is bound`);
             switch (a.kind) {
                 case "workspace.workers": return { ok: true, result: { workers: await this.#seam.listWorkers(typeof p.id === "number" ? p.id : env.workspaceId) } };
                 case "log.read": {
                     // Default run: the conversation (model worker); p.workerId pins another.
                     const readRun = typeof p.workerId === "number" ? p.workerId : convRun ?? await this.#seam.ensureModelWorker(env.workspaceId);
-                    const entries = await this.#seam.readLog({ workspaceId: env.workspaceId, workerId: readRun, ...(typeof p.limit === "number" ? { limit: p.limit } : {}), ...(typeof p.sinceId === "number" ? { sinceId: p.sinceId } : {}), ...(typeof p.loopId === "number" ? { loopId: p.loopId } : {}), ...(typeof p.turnId === "number" ? { turnId: p.turnId } : {}), ...(typeof p.loopSeq === "number" ? { loopSeq: p.loopSeq } : {}), ...(typeof p.turnSeq === "number" ? { turnSeq: p.turnSeq } : {}), ...(typeof p.sequence === "number" ? { sequence: p.sequence } : {}) });
+                    const entries = await this.#seam.readLog({
+                        workspaceId: env.workspaceId,
+                        workerId: readRun,
+                        ...(Object.hasOwn(p, "limit") ? { limit: p.limit as number } : {}),
+                        ...(Object.hasOwn(p, "sinceId") ? { sinceId: p.sinceId as number } : {}),
+                        ...(Object.hasOwn(p, "loopId") ? { loopId: p.loopId as number } : {}),
+                        ...(Object.hasOwn(p, "turnId") ? { turnId: p.turnId as number } : {}),
+                        ...(Object.hasOwn(p, "loopSeq") ? { loopSeq: p.loopSeq as number } : {}),
+                        ...(Object.hasOwn(p, "turnSeq") ? { turnSeq: p.turnSeq as number } : {}),
+                        ...(Object.hasOwn(p, "sequence") ? { sequence: p.sequence as number } : {}),
+                    });
                     return { ok: true, result: { entries } };
                 }
                 case "loop.inject": {
-                    if (typeof p.prompt !== "string" || p.prompt.length === 0) return actionFailure("invalid-action-parameters", "loop.inject requires prompt.");
+                    if (typeof p.prompt !== "string" || p.prompt.length === 0) {
+                        return actionFailure(
+                            "invalid-action-parameters",
+                            "loop.inject requires a non-empty prompt.",
+                            400,
+                            { field: "prompt", recovery: "Provide the prompt to inject." },
+                        );
+                    }
                     const ack = await this.#seam.runLoop({ workspaceId: env.workspaceId, workerId: convRun ?? await this.#seam.ensureModelWorker(env.workspaceId), prompt: p.prompt });
-                    return { ok: true, result: ack };
+                    return operationOutcome(ack);
                 }
                 // The stop button (TUI /stop + Ctrl-C, nvim :PlurnkStop): abort the model
                 // worker's active drain. Mirrors the SSE-hangup abort, addressable as a verb.
                 case "loop.cancel": return { ok: true, result: { cancelled: this.#seam.cancelDrain(convRun ?? await this.#seam.ensureModelWorker(env.workspaceId)) } };
-                case "workspace.prompts": return { ok: true, result: { prompts: await this.#seam.listPrompts(env.workspaceId, typeof p.limit === "number" ? p.limit : undefined) } };
+                case "workspace.prompts": return {
+                    ok: true,
+                    result: {
+                        prompts: await this.#seam.listPrompts(
+                            env.workspaceId,
+                            Object.hasOwn(p, "limit") ? p.limit as number : undefined,
+                        ),
+                    },
+                };
                 case "workspace.rename": {
-                    if (typeof p.name !== "string" || p.name.length === 0) return actionFailure("invalid-action-parameters", "workspace.rename requires name.");
+                    if (typeof p.name !== "string" || p.name.length === 0) {
+                        return actionFailure(
+                            "invalid-action-parameters",
+                            "workspace.rename requires a non-empty name.",
+                            400,
+                            { field: "name", recovery: "Provide the new workspace name." },
+                        );
+                    }
                     return { ok: true, result: await this.#seam.renameWorkspace(env.workspaceId, p.name) };
                 }
                 case "workspace.constrain": {
-                    if (typeof p.effect !== "string" || typeof p.glob !== "string") return actionFailure("invalid-action-parameters", "workspace.constrain requires effect and glob.");
+                    if (typeof p.effect !== "string" || typeof p.glob !== "string") {
+                        return actionFailure(
+                            "invalid-action-parameters",
+                            "workspace.constrain requires string effect and glob parameters.",
+                            400,
+                            { fields: ["effect", "glob"], recovery: "Provide both constraint parameters." },
+                        );
+                    }
                     return { ok: true, result: await this.#seam.constrain(env.workspaceId, p.effect, p.glob) };
                 }
                 case "workspace.unconstrain": {
-                    if (typeof p.effect !== "string" || typeof p.glob !== "string") return actionFailure("invalid-action-parameters", "workspace.unconstrain requires effect and glob.");
+                    if (typeof p.effect !== "string" || typeof p.glob !== "string") {
+                        return actionFailure(
+                            "invalid-action-parameters",
+                            "workspace.unconstrain requires string effect and glob parameters.",
+                            400,
+                            { fields: ["effect", "glob"], recovery: "Provide both constraint parameters." },
+                        );
+                    }
                     return { ok: true, result: await this.#seam.unconstrain(env.workspaceId, p.effect, p.glob) };
                 }
                 case "workspace.constraints": return { ok: true, result: { constraints: await this.#seam.listConstraints(env.workspaceId) } };
                 case "workspace.derivation": return { ok: true, result: { status: this.#seam.workspaceDerivationStatus(env.workspaceId) } };
                 case "entry.read": {
-                    if (typeof p.target !== "string") return actionFailure("invalid-action-parameters", "entry.read requires target.");
-                    return { ok: true, result: await this.#seam.readEntry({ workspaceId: env.workspaceId, target: p.target, ...(typeof p.channel === "string" ? { channel: p.channel } : {}), ...(typeof p.offset === "number" ? { offset: p.offset } : {}) }) };
+                    if (typeof p.target !== "string") {
+                        return actionFailure(
+                            "invalid-action-parameters",
+                            "entry.read requires a string target.",
+                            400,
+                            { field: "target", recovery: "Provide an entry URI." },
+                        );
+                    }
+                    return operationOutcome(await this.#seam.readEntry({
+                        workspaceId: env.workspaceId,
+                        target: p.target,
+                        ...(Object.hasOwn(p, "channel") ? { channel: p.channel as string } : {}),
+                        ...(Object.hasOwn(p, "offset") ? { offset: p.offset as number } : {}),
+                    }));
                 }
                 case "op.exec": {
                     // EXEC constructed structurally (no DSL text): the model-facing shape,
                     // proposal-gated by the engine like any client op.
-                    if (typeof p.command !== "string" || p.command.length === 0) return actionFailure("invalid-action-parameters", "op.exec requires command.");
+                    if (typeof p.command !== "string" || p.command.length === 0) {
+                        return actionFailure(
+                            "invalid-action-parameters",
+                            "op.exec requires a non-empty command.",
+                            400,
+                            { field: "command", recovery: "Provide the command to execute." },
+                        );
+                    }
                     const statement = { op: "EXEC", suffix: "", signal: null, target: null, lineMarker: null, body: p.command, position: { line: 1, col: 1 } } as unknown as PlurnkStatement;
                     // Client ops journal as client-origin turns in the CLIENT run (run-split:
                     // only LOOPS live in the model worker).
                     const [result] = await this.#seam.dispatchClientAction({ workspaceId: env.workspaceId, workerId: env.workerId, statements: [statement] });
-                    return { ok: true, result };
+                    if (result === undefined) throw new Error("op.exec dispatch returned no operation result");
+                    return operationOutcome(result);
                 }
                 case "op.parse": {
                     // Raw DSL parsed at the module's edge (the grammar is a family-internal
                     // runtime dep, operator-approved) → each statement dispatched; parse
                     // failures return as per-statement 400 results.
-                    if (typeof p.text !== "string" || p.text.length === 0) return actionFailure("invalid-action-parameters", "op.parse requires text.");
+                    if (typeof p.text !== "string" || p.text.length === 0) {
+                        return actionFailure(
+                            "invalid-action-parameters",
+                            "op.parse requires non-empty PLURNK text.",
+                            400,
+                            { field: "text", recovery: "Provide PLURNK statements to parse." },
+                        );
+                    }
                     const parsed = PlurnkParser.parseClient(p.text);
                     const results: Array<OperationResult | null> = [];
                     const statements: PlurnkStatement[] = [];
@@ -476,7 +747,13 @@ export default class Module {
                                     "parse-failed",
                                     400,
                                     String(item.error.message ?? item.error),
-                                    { line: item.error.line, column: item.error.column },
+                                    {
+                                        line: item.error.line,
+                                        column: item.error.column,
+                                        stage: "parsing",
+                                        recovery: "Correct the statement at the reported position.",
+                                        retryable: false,
+                                    },
                                 ),
                             });
                             continue;
@@ -498,18 +775,43 @@ export default class Module {
                 case "op.look": {
                     // Parse at the edge; LOOK is the wire spelling of the read-projection —
                     // rewrite to READ (Engine.look enforces READ-only).
-                    if (typeof p.text !== "string" || p.text.length === 0) return actionFailure("invalid-action-parameters", "op.look requires text.");
+                    if (typeof p.text !== "string" || p.text.length === 0) {
+                        return actionFailure(
+                            "invalid-action-parameters",
+                            "op.look requires non-empty PLURNK text.",
+                            400,
+                            { field: "text", recovery: "Provide one PLURNK statement to observe." },
+                        );
+                    }
                     const parsed = PlurnkParser.parseClient(p.text);
                     const item = parsed.items.find((i) => i.kind === "statement");
-                    if (item === undefined || item.kind !== "statement") return actionFailure("parse-failed", "op.look parsed no statement.");
+                    if (item === undefined || item.kind !== "statement") {
+                        return actionFailure(
+                            "parse-failed",
+                            "op.look did not contain a parseable statement.",
+                            400,
+                            { stage: "parsing", recovery: "Provide one valid PLURNK statement." },
+                        );
+                    }
                     const statement = { ...(item.statement as unknown as Record<string, unknown>), op: "READ" } as unknown as PlurnkStatement;
-                    return { ok: true, result: await this.#seam.look({ workspaceId: env.workspaceId, workerId: env.workerId, statement }) };
+                    return operationOutcome(await this.#seam.look({ workspaceId: env.workspaceId, workerId: env.workerId, statement }));
                 }
                 case "run.fork": return { ok: true, result: await this.#seam.forkWorker({ workspaceId: env.workspaceId, workerId: convRun ?? await this.#seam.ensureModelWorker(env.workspaceId), ...(typeof p.name === "string" ? { name: p.name } : {}) }) };
-                default: return actionFailure("unknown-action", `Unknown action '${a.kind}'.`, 404);
+                default: return actionFailure(
+                    "unknown-action",
+                    `Action '${a.kind}' is not registered.`,
+                    404,
+                    {
+                        requestedAction: a.kind,
+                        recovery: "Use an action advertised by discover.",
+                    },
+                );
             }
         } catch (err) {
-            return actionFailure("action-failed", errorDetail(err), 500);
+            const problem = problemFromError(err);
+            if (problem !== null) return { ok: false, problem };
+            console.error(`AG-UI action '${a.kind}' failed:`, err);
+            return actionFailure("action-failed", "The action failed unexpectedly.", 500);
         }
     }
 

@@ -130,3 +130,25 @@ test("applyResolution preserves an accepted scheme's failed result and durable o
     assert.equal(persisted?.outcome, "write_conflict");
     assert.deepEqual(JSON.parse(persisted!.rx), result);
 });
+
+test("applyResolution rejects projected fields that could override the operation result contract", async () => {
+    const lifecycle = new ProposalLifecycle({
+        db: {} as Db,
+        schemes: new SchemeRegistry(),
+        notices: { push() {} } as unknown as NoticeChannel,
+        tokenize: (text) => text.length,
+        executors: () => undefined,
+        loopSignal: () => undefined,
+        liveSubscriptions: new LiveSubscriptions(),
+    });
+
+    await assert.rejects(
+        lifecycle.applyResolution(41, {
+            resolution: {
+                decision: "accept",
+                result: { status: 500 },
+            },
+        }),
+        /cannot override reserved operation result field 'status'/,
+    );
+});

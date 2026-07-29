@@ -101,13 +101,22 @@ export default class Matcher {
             // sets each error subclass's `.name` to its class name.
             const name = err instanceof Error ? err.name : "";
             if (name === "UnsupportedDialectError" || err instanceof UnsupportedDialectError) {
+                const unsupportedMimetype = typeof (err as { mimetype?: unknown }).mimetype === "string"
+                    ? (err as { mimetype: string }).mimetype
+                    : mimetype;
                 return Results.failure(
                     "schemes:matcher",
                     "unsupported-dialect",
                     415,
-                    err instanceof Error ? err.message : String(err),
+                    `The ${body.dialect} matcher is not supported for ${unsupportedMimetype}.`,
                     {},
-                    { dialect: body.dialect },
+                    {
+                        stage: "matcher",
+                        dialect: body.dialect,
+                        mimetype: unsupportedMimetype,
+                        recovery: "Use a matcher supported by the resource mimetype.",
+                        retryable: false,
+                    },
                 );
             }
             if (name === "InvalidExpressionError" || err instanceof InvalidExpressionError) {
@@ -115,9 +124,14 @@ export default class Matcher {
                     "schemes:matcher",
                     "invalid-expression",
                     400,
-                    err instanceof Error ? err.message : String(err),
+                    `The ${body.dialect} matcher expression is invalid.`,
                     {},
-                    { dialect: body.dialect, expression: body.raw },
+                    {
+                        stage: "matcher",
+                        dialect: body.dialect,
+                        recovery: "Correct or remove the matcher.",
+                        retryable: false,
+                    },
                 );
             }
             if (name === "QueryParseFailureError" || err instanceof QueryParseFailureError) {

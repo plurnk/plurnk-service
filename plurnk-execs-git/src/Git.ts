@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import { isAbsolute, resolve } from "node:path";
 import git from "isomorphic-git";
-import { BaseExecutor, Results } from "@plurnk/plurnk-execs";
+import { BaseExecutor, ErrorDetail, Results } from "@plurnk/plurnk-execs";
 import type { ChannelDecl, ExecArgs, ExecResult, RuntimeAvailability } from "@plurnk/plurnk-execs";
 import { tokenizeArgv } from "./tokenizeArgv.ts";
 
@@ -32,22 +32,67 @@ export default class Git extends BaseExecutor {
             ? (cwd ?? process.cwd())
             : (isAbsolute(target) ? target : resolve(cwd ?? process.cwd(), target));
 
-        const fail = (kind: string, message: string, status = 500): ExecResult => {
+        const fail = (
+            kind: string,
+            message: string,
+            status = 500,
+            extensions: Readonly<Record<string, unknown>> = {},
+        ): ExecResult => {
             setState("results", "errored");
-            return Results.failure("executor:git", kind.replaceAll("_", "-"), status, message);
+            return Results.failure(
+                "executor:git",
+                kind,
+                status,
+                message,
+                {},
+                {
+                    stage: "git",
+                    directory: dir,
+                    ...extensions,
+                },
+            );
         };
         const ok = (result: unknown): ExecResult => {
             write("results", JSON.stringify(result));
             setState("results", "closed");
             return { status: 200 };
         };
+        const detailLimit = ErrorDetail.configuredLimit();
+        if (detailLimit === null) {
+            setState("results", "errored");
+            return ErrorDetail.invalidConfiguration("executor:git");
+        }
 
         if (signal.aborted) {
             setState("results", "errored");
-            return Results.failure("executor:git", "cancelled", 499, "Git execution was cancelled.");
+            return Results.failure(
+                "executor:git",
+                "cancelled",
+                499,
+                "Git execution was cancelled.",
+                {},
+                {
+                    stage: "git",
+                    directory: dir,
+                    retryable: false,
+                },
+            );
         }
 
-        const argv = tokenizeArgv(command.trim());
+        let argv: string[];
+        try {
+            argv = tokenizeArgv(command.trim());
+        } catch (err) {
+            return fail(
+                "git-bad-arguments",
+                `The git command arguments could not be parsed: ${ErrorDetail.preview(err, detailLimit)}.`,
+                400,
+                {
+                    recovery: "Correct the command quoting.",
+                    retryable: false,
+                },
+            );
+        }
         const [verb, ...args] = argv;
 
         try {
@@ -67,17 +112,48 @@ export default class Git extends BaseExecutor {
                     return ok({ branch: branch ?? "(detached)", changes });
                 }
                 case "add": {
-                    if (args.length === 0) return fail("git_bad_arguments", "add needs a path — `add .` stages everything", 400);
+                    if (args.length === 0) {
+                        return fail(
+                            "git-bad-arguments",
+                            "The add operation requires at least one path.",
+                            400,
+                            {
+                                operation: "add",
+                                recovery: "Provide the paths to stage.",
+                                retryable: false,
+                            },
+                        );
+                    }
                     for (const filepath of args) await git.add({ fs, dir, filepath });
                     return ok({ staged: args });
                 }
                 case "commit": {
                     const m = args.indexOf("-m");
                     const message = m !== -1 ? args[m + 1] : undefined;
-                    if (!message) return fail("git_bad_arguments", 'commit needs a message — `commit -m "why"`', 400);
+                    if (!message) {
+                        return fail(
+                            "git-bad-arguments",
+                            "The commit operation requires a message.",
+                            400,
+                            {
+                                operation: "commit",
+                                recovery: "Provide the message with -m.",
+                                retryable: false,
+                            },
+                        );
+                    }
                     const author = await authorFrom(dir);
                     if (author === null) {
-                        return fail("git_no_author", "no user.name/user.email in the repo config — `git config user.name …` (via sh) or ship them in .git/config");
+                        return fail(
+                            "git-no-author",
+                            "The repository has no configured commit author name and email.",
+                            500,
+                            {
+                                operation: "commit",
+                                recovery: "Configure user.name and user.email in the repository.",
+                                retryable: false,
+                            },
+                        );
                     }
                     const oid = await git.commit({ fs, dir, message, author });
                     return ok({ oid, message });
@@ -105,21 +181,61 @@ export default class Git extends BaseExecutor {
                     return ok({ created: args[0] });
                 }
                 case "checkout": {
-                    if (args.length === 0) return fail("git_bad_arguments", "checkout needs a ref — `checkout <branch|oid>`", 400);
+                    if (args.length === 0) {
+                        return fail(
+                            "git-bad-arguments",
+                            "The checkout operation requires a branch or object reference.",
+                            400,
+                            {
+                                operation: "checkout",
+                                recovery: "Provide the branch or object reference to check out.",
+                                retryable: false,
+                            },
+                        );
+                    }
                     await git.checkout({ fs, dir, ref: args[0] });
                     return ok({ checkedOut: args[0] });
                 }
                 default:
-                    return fail("git_unknown_op",
-                        `unknown op '${verb ?? ""}' — this in-process git speaks: init, status, add, commit, log, branch, checkout. Full git rides the shell: EXEC:git …:EXEC`,
-                        400);
+                    return fail(
+                        "git-unknown-op",
+                        `The in-process git executor does not implement '${verb ?? ""}'.`,
+                        400,
+                        {
+                            operation: verb ?? "",
+                            availableOperations: ["init", "status", "add", "commit", "log", "branch", "checkout"],
+                            recovery: "Use a supported operation or run native git through the shell.",
+                            retryable: false,
+                        },
+                    );
             }
         } catch (err) {
             if (signal.aborted) {
                 setState("results", "errored");
-                return Results.failure("executor:git", "cancelled", 499, "Git execution was cancelled.");
+                return Results.failure(
+                    "executor:git",
+                    "cancelled",
+                    499,
+                    "Git execution was cancelled.",
+                    {},
+                    {
+                        stage: "git",
+                        directory: dir,
+                        operation: verb ?? "",
+                        retryable: false,
+                    },
+                );
             }
-            return fail("git_error", `${verb}: ${(err as Error).message}`);
+            return fail(
+                "git-error",
+                `The in-process git '${verb ?? ""}' operation failed: ${ErrorDetail.preview(err, detailLimit)}.`,
+                500,
+                {
+                    operation: verb ?? "",
+                    recovery: "Run the operation with native git through the shell.",
+                    retryable: false,
+                },
+            );
         }
     }
 }

@@ -1,6 +1,6 @@
 import test from "node:test";
 import { strict as assert } from "node:assert";
-import { authorize, poll } from "./oauth.ts";
+import { authorize, poll, OAuthProblemError } from "./oauth.ts";
 import { install } from "./client.ts";
 import { serverConfig } from "./config.ts";
 
@@ -9,6 +9,16 @@ const AS = "https://auth.test";
 
 const json = (body: unknown, status = 200): Response =>
     new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
+
+const rejectedProblem = async (promise: Promise<unknown>): Promise<OAuthProblemError["problem"]> => {
+    try {
+        await promise;
+    } catch (error) {
+        assert.ok(error instanceof OAuthProblemError);
+        return error.problem;
+    }
+    assert.fail("Expected OAuth operation to reject.");
+};
 
 // AS metadata — `device` toggles the RFC 8628 `device_authorization_endpoint`,
 // which the SDK's `z.looseObject` schema preserves though it is untyped.
@@ -57,13 +67,14 @@ test("authorize: discovery + DCR + device-authorization request → verification
     }
 });
 
-test("authorize: an AS with no device_authorization_endpoint fails hard — no fallback (loopback retired)", async () => {
+test("authorize: an AS with no device_authorization_endpoint returns an exact public problem", async () => {
     process.env.PLURNK_EXECS_MCP_OASRV = RESOURCE;
     try {
-        await assert.rejects(
-            authorize("oasrv", { fetchFn: mockFetch({ device: false }) }),
-            /does not support the Device Authorization Grant/,
-        );
+        const problem = await rejectedProblem(authorize("oasrv", { fetchFn: mockFetch({ device: false }) }));
+        assert.equal(problem.type, "https://problems.plurnk.dev/executor/mcp/device-grant-unsupported");
+        assert.equal(problem.status, 501);
+        assert.equal(problem.stage, "discovery");
+        assert.equal(problem.retryable, false);
     } finally {
         delete process.env.PLURNK_EXECS_MCP_OASRV;
     }
@@ -97,16 +108,48 @@ test("poll: slow_down / access_denied / expired_token map to their terminal stat
     }
 });
 
-test("authorize: a stdio server is rejected — OAuth is http-only", async () => {
+test("authorize: a stdio server is rejected with an exact public problem", async () => {
     process.env.PLURNK_EXECS_MCP_STDIOSRV = "node server.mjs";
     try {
-        await assert.rejects(
-            authorize("stdiosrv", { fetchFn: mockFetch() }),
-            /not a configured http server/,
-        );
+        const problem = await rejectedProblem(authorize("stdiosrv", { fetchFn: mockFetch() }));
+        assert.equal(problem.type, "https://problems.plurnk.dev/executor/mcp/oauth-transport-unsupported");
+        assert.equal(problem.status, 400);
+        assert.equal(problem.stage, "configuration");
+        assert.equal(problem.retryable, false);
     } finally {
         delete process.env.PLURNK_EXECS_MCP_STDIOSRV;
     }
+});
+
+test("authorize: an invalid device response returns a causal public problem", async () => {
+    process.env.PLURNK_EXECS_MCP_OASRV = RESOURCE;
+    const fetchFn = mockFetch();
+    const invalid = (async (input: Parameters<typeof fetch>[0], init?: RequestInit): Promise<Response> => {
+        const url = input instanceof URL ? input.href : typeof input === "string" ? input : input.url;
+        if (url === `${AS}/device`) return json({ user_code: "missing-fields" });
+        return fetchFn(input, init);
+    }) as typeof fetch;
+    try {
+        const problem = await rejectedProblem(authorize("oasrv", { fetchFn: invalid }));
+        assert.equal(problem.type, "https://problems.plurnk.dev/executor/mcp/device-authorization-response-invalid");
+        assert.equal(problem.status, 502);
+        assert.equal(problem.stage, "authorization");
+        assert.equal(problem.retryable, false);
+    } finally {
+        delete process.env.PLURNK_EXECS_MCP_OASRV;
+    }
+});
+
+test("poll: incomplete device state returns an exact client-correctable problem", async () => {
+    const problem = await rejectedProblem(poll("oasrv", {
+        device: { deviceCode: "", clientId: "", tokenEndpoint: "" },
+        fetchFn: mockFetch(),
+    }));
+    assert.equal(problem.type, "https://problems.plurnk.dev/executor/mcp/device-state-invalid");
+    assert.equal(problem.status, 400);
+    assert.equal(problem.stage, "token-poll");
+    assert.equal(problem.retryable, false);
+    assert.match(problem.recovery ?? "", /Start a new authorization request/);
 });
 
 test("install: overlays the bearer onto an env server's headers and evicts the cached client (#1)", () => {

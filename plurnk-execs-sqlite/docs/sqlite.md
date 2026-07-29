@@ -15,5 +15,6 @@ The result shape is decided by the statement's columns, never by parsing the SQL
 - **Row-returning** (SELECT, RETURNING, PRAGMA) → an array of row objects.
 - **Mutation** (INSERT / UPDATE / DELETE / CREATE) → `{ changes, lastInsertRowid }`.
 
-Large integers come back stringified (JSON can't hold a bigint). A SQL or open
-error closes `results` as `errored` with status 500 and an RFC 9457 Problem.
+Large integers come back stringified (JSON cannot hold a bigint). Failures close
+`results` as `errored` with an RFC 9457 Problem: invalid authored SQL is 400, a
+missing database target is 404, and runtime/open failures are 500.

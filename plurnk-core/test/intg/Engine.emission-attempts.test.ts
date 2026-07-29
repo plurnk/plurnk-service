@@ -348,7 +348,10 @@ test("a hard parse error outside the PLAN...SEND frame retries wholesale", async
 });
 
 test("three invalid emissions fail the run below the strike rail", async () => {
-    const { db, workspaceId, workerId, loopId, engine } = await setup();
+    const dir = await mkdtemp(join(tmpdir(), "plurnk-invalid-emission-"));
+    const dbPath = join(dir, "plurnk.db");
+    const digestDir = join(dir, "digest");
+    const { db, workspaceId, workerId, loopId, engine } = await setup(dbPath);
     try {
         const provider = new AttemptWitness({
             contextWindow: 100_000,
@@ -370,7 +373,7 @@ test("three invalid emissions fail the run below the strike rail", async () => {
 
         assert.equal(result.reason, "invalid_emission");
         assert.equal(result.result.status, 500);
-        assert.match(result.result.problem?.detail ?? "", /valid PLAN\.\.\.SEND turn in 3 attempts/);
+        assert.equal(result.result.problem?.detail, "No valid PLAN...SEND turn was received after 3 emission attempts.");
         assert.equal(result.turnIds.length, 1);
         assert.equal(provider.packets.length, 3, "the inner attempt limit is independent of maxStrikes");
         assert.equal(new Set(provider.packets).size, 1);
@@ -384,8 +387,18 @@ test("three invalid emissions fail the run below the strike rail", async () => {
         const rows = await db.test_log_entries_by_turn.all<{ op: string }>({ turn_id: turnId });
         assert.equal(rows.filter((row) => row.op === "error").length, 0);
         assert.equal(rows.filter((row) => row.op === "model").length, 1, "no rejected emission is mirrored");
+        Digest.run({ dbPath, digestDir });
+        const digest = JSON.parse(await readFile(join(digestDir, "digest.json"), "utf8")) as {
+            loops: Array<{ result: unknown }>;
+        };
+        assert.deepEqual(
+            digest.loops[0]?.result,
+            result.result,
+            "the digest preserves the exact terminal generation Problem",
+        );
     } finally {
         await db.close();
+        await rm(dir, { recursive: true, force: true });
     }
 });
 

@@ -176,7 +176,11 @@ test("pins 6+8: facts distinguish wrong-address / occupancy / empty-survey by th
         await writeFile(join(root, "occupied.md"), "hidden\n");
         const clobber = await file.edit(editStmt("occupied.md", "x\n"), ctx);
         assert.equal(clobber.status, 403);
-        assert.equal(clobber.problem?.detail, "a file exists at occupied.md", "occupancy leaks; content stays dark — distinguishable from ENOENT by the string");
+        assert.equal(clobber.problem?.type, "https://problems.plurnk.dev/scheme/file/path-occupied-by-nonmember");
+        assert.equal(clobber.problem?.detail, "A non-member file already occupies 'occupied.md'.");
+        assert.equal(clobber.problem?.path, "occupied.md");
+        assert.equal(clobber.problem?.recovery, "Choose an unoccupied member path.");
+        assert.equal(clobber.problem?.retryable, false);
     } finally { await db.close(); await rm(root, { recursive: true, force: true }); }
 });
 

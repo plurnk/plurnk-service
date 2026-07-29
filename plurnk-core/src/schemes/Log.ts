@@ -7,7 +7,7 @@ import type { SourceCandidateMatch } from "../content/matcher.ts";
 import type { FindResult, MatchItem, Match, CatalogScope, CatalogMatch } from "./_entry-find.ts";
 import { CoreSchemeAdapterBase } from "../core/CoreSchemeServices.ts";
 import type { CoreSchemeCallContext } from "../core/CoreSchemeServices.ts";
-import Results, { type SchemeResultBase } from "../core/results.ts";
+import Results, { type ProblemDetails, type SchemeResultBase } from "../core/results.ts";
 import type { RangeExtent } from "@plurnk/plurnk-schemes";
 import LogProjectionResolver from "./_log-projection.ts";
 import EntrySemantic from "./_entry-semantic.ts";
@@ -85,16 +85,45 @@ export default class Log extends CoreSchemeAdapterBase {
             { content: null, mimetype: null },
             extensions,
         ) as SchemeReadResult;
-        if (statement.target === null) return failure("read-target-required", 400, "READ requires a log coordinate.");
+        if (statement.target === null) {
+            return failure(
+                "read-target-required",
+                400,
+                "READ requires a log coordinate.",
+                {
+                    recovery: "Provide one exact log coordinate.",
+                    retryable: false,
+                },
+            );
+        }
         // READ is exact — one coordinate, one row. Tag recall is OPEN[tag]/FIND[tag]'s job (§log-region-tagging),
         // not a filter on a single-row read.
         if (Array.isArray(statement.signal) && statement.signal.length > 0) {
-            return failure("tagged-coordinate-not-found", 404, "The exact log row does not carry every requested tag.");
+            return failure(
+                "tagged-coordinate-not-found",
+                404,
+                "The exact log row does not carry every requested tag.",
+                {
+                    recovery: "Remove the tag filter or use a log row carrying those tags.",
+                    retryable: false,
+                },
+            );
         }
 
         const pathname = (statement.target.kind === "url" ? statement.target.pathname : statement.target.raw).replace(/^\//, "");
         const coord = parseCoordinate(pathname);
-        if (coord === null) return failure("coordinate-malformed", 400, `Malformed log coordinate '${pathname}'.`);
+        if (coord === null) {
+            return failure(
+                "coordinate-malformed",
+                400,
+                `The log coordinate '${pathname}' is malformed.`,
+                {
+                    target: pathname,
+                    recovery: "Use one exact loop/turn/sequence coordinate.",
+                    retryable: false,
+                },
+            );
+        }
 
         const row = await db.log_read_by_coordinate.get<{
             op: string;
@@ -124,11 +153,30 @@ export default class Log extends CoreSchemeAdapterBase {
                     mimetype: null,
                 }) as SchemeReadResult;
             }
+            if (resolved.reason === undefined) {
+                throw new Error(`Log.read: ReadResolve returned status ${resolved.status} without Problem Details or a diagnostic`);
+            }
             return failure(
-                resolved.status === 416 ? "range-not-satisfiable" : "read-resolution-failed",
+                resolved.status === 416
+                    ? "range-not-satisfiable"
+                    : resolved.status === 501
+                        ? "matcher-unavailable"
+                        : "read-resolution-failed",
                 resolved.status,
-                resolved.reason ?? `READ could not resolve the requested log content (status ${resolved.status}).`,
-                resolved.range === undefined ? {} : { range: resolved.range },
+                resolved.reason,
+                {
+                    ...(resolved.range === undefined ? {} : { range: resolved.range, stage: "projection" }),
+                    ...(statement.body === null || resolved.status === 416
+                        ? {}
+                        : {
+                            stage: "matcher",
+                            dialect: statement.body.dialect,
+                            recovery: resolved.status === 501
+                                ? "Retry the READ without a content matcher."
+                                : "Correct or remove the matcher.",
+                            retryable: false,
+                        }),
+                },
             );
         }
         return { ...resolved };
@@ -147,22 +195,44 @@ export default class Log extends CoreSchemeAdapterBase {
             extensions: Readonly<Record<string, unknown>> = {},
         ): FindResult => {
             const fields = { content: null, mimetype: null, results: [], itemsTokenTotal: 0, pathnames: [], matches: [] };
+            if (status >= 400 && detail === undefined) {
+                throw new Error(`Log.find: selection returned status ${status} without Problem Details or a diagnostic`);
+            }
             return status >= 400
                 ? Results.failure(
                     "scheme:log",
                     status === 416 ? "range-not-satisfiable" : status === 501 ? "matcher-not-implemented" : "find-failed",
                     status,
-                    detail ?? `FIND could not resolve the requested log selection (status ${status}).`,
+                    detail!,
                     fields,
                     extensions,
                 ) as FindResult
                 : { status, ...fields };
         };
-        if (statement.target === null) return empty(400, "FIND requires a log target.");
+        if (statement.target === null) {
+            return empty(
+                400,
+                "FIND requires a log target.",
+                {
+                    recovery: "Provide a log coordinate, prefix, or glob.",
+                    retryable: false,
+                },
+            );
+        }
 
         const pathname = (statement.target.kind === "url" ? statement.target.pathname : statement.target.raw).replace(/^\//, "");
         const glob = coordinateGlob(pathname);
-        if (glob === null) return empty(400, `Malformed log target '${pathname}'.`);
+        if (glob === null) {
+            return empty(
+                400,
+                `The log target '${pathname}' is malformed.`,
+                {
+                    target: pathname,
+                    recovery: "Use a log coordinate, prefix, or glob.",
+                    retryable: false,
+                },
+            );
+        }
         const scope = pathScope(glob, false);
         // §log-region-tagging — a tag signal AND-filters the candidates (§find-tag-filter-and-semantics):
         // a row survives only if it carries EVERY listed tag. No signal → the plain coordinate scope.
@@ -173,21 +243,45 @@ export default class Log extends CoreSchemeAdapterBase {
             : await db.log_find_candidates.all<Candidate>({ worker_id: workerId, scope_prefix: scope.candidatePrefix });
         let rows: Candidate[];
         try { rows = candidateRows.filter((row) => pathScopeMatches(scope, row.coordinate)); }
-        catch { return empty(400, `Malformed log glob '${glob}'.`); }
+        catch {
+            return empty(
+                400,
+                `The log glob '${glob}' is malformed.`,
+                {
+                    target: glob,
+                    recovery: "Correct the log glob.",
+                    retryable: false,
+                },
+            );
+        }
         const candidateByCoord = new Map(candidateRows.map((row) => [row.coordinate, row] as const));
         const byCoord = new Map(rows.map((r) => [r.coordinate, r] as const));
         const projected = rows.map((r) => ({ key: r.coordinate, ...LogProjectionResolver.resolve(r.rx) }));
 
         let matches: Match[];
         if (statement.body?.dialect === "semantic") {
-            if (mimetypes === undefined) return empty(501, "Semantic matching requires the mimetypes capability.");
+            if (mimetypes === undefined) {
+                return empty(
+                    501,
+                    "Semantic search requires the mimetypes capability.",
+                    {
+                        stage: "semantic-search",
+                        retryable: false,
+                    },
+                );
+            }
             const candidateSet = resolveSearchCandidates(
                 rows.map(({ coordinate, deep_hash }) => ({ key: coordinate, deepHash: deep_hash })),
             );
             if (candidateSet.state === "incomplete") return empty(
                 503,
                 `The persistent search index covers ${candidateSet.indexed} of ${candidateSet.total} selected log results.`,
-                { search: candidateSet },
+                {
+                    search: candidateSet,
+                    stage: "search-index",
+                    recovery: "Wait for search indexing to complete before repeating the search.",
+                    retryable: false,
+                },
             );
             const marker = statement.lineMarker ?? { marks: [EntrySemantic.defaultTopK()] as [number] };
             const ranked = await EntrySemantic.rankCandidates(
@@ -197,7 +291,23 @@ export default class Log extends CoreSchemeAdapterBase {
                 statement.body.raw,
                 LineMarkerOps.firstLast(marker),
             );
-            if (ranked.status !== 200) return empty(ranked.status, `The log semantic matcher failed with status ${ranked.status}.`);
+            if (ranked.status !== 200) {
+                const { first: threshold } = LineMarkerOps.firstLast(marker);
+                return empty(
+                    ranked.status,
+                    ranked.status === 501
+                        ? "Similarity-threshold search requires an embedding provider."
+                        : "The requested similarity threshold is outside the supported range.",
+                    {
+                        stage: "semantic-search",
+                        threshold,
+                        recovery: ranked.status === 501
+                            ? "Use a top-k semantic search while embeddings are unavailable."
+                            : "Use a similarity threshold greater than zero and less than one.",
+                        retryable: false,
+                    },
+                );
+            }
             const sourceMatches = ranked.results.map(({ key, lineStart, lineEnd }): SourceCandidateMatch => ({
                 key,
                 span: { lineStart, lineEnd },
@@ -205,14 +315,29 @@ export default class Log extends CoreSchemeAdapterBase {
             const readable = await Matcher.addReadableRows(sourceMatches, projected, mimetypes);
             matches = readable.map(({ key, matches: ranges }) => ({ pathname: key, matches: ranges }));
         } else if (statement.body?.dialect === "graph") {
-            if (mimetypes === undefined) return empty(501, "Graph matching requires the mimetypes capability.");
+            if (mimetypes === undefined) {
+                return empty(
+                    501,
+                    "Graph matching requires the mimetypes capability.",
+                    {
+                        stage: "matcher",
+                        dialect: "graph",
+                        retryable: false,
+                    },
+                );
+            }
             const candidateSet = resolveSearchCandidates(
                 rows.map(({ coordinate, deep_hash }) => ({ key: coordinate, deepHash: deep_hash })),
             );
             if (candidateSet.state === "incomplete") return empty(
                 503,
                 `The persistent search index covers ${candidateSet.indexed} of ${candidateSet.total} selected log results.`,
-                { search: candidateSet },
+                {
+                    search: candidateSet,
+                    stage: "search-index",
+                    recovery: "Wait for search indexing to complete before repeating the search.",
+                    retryable: false,
+                },
             );
             const universeRows = await db.log_find_candidates.all<Candidate>({ worker_id: workerId, scope_prefix: null });
             const universe = resolveSearchCandidates(
@@ -221,7 +346,12 @@ export default class Log extends CoreSchemeAdapterBase {
             if (universe.state === "incomplete") return empty(
                 503,
                 `The persistent search index covers ${universe.indexed} of ${universe.total} log results in the relationship universe.`,
-                { search: universe },
+                {
+                    search: universe,
+                    stage: "search-index",
+                    recovery: "Wait for search indexing to complete before repeating the search.",
+                    retryable: false,
+                },
             );
             const graph = await EntryGraph.matchCandidates(
                 db,
@@ -229,7 +359,18 @@ export default class Log extends CoreSchemeAdapterBase {
                 candidateSet.candidates,
                 statement.body.raw,
             );
-            if (graph.status !== 200) return empty(graph.status, `The log graph matcher failed with status ${graph.status}.`);
+            if (graph.status !== 200) {
+                return empty(
+                    graph.status,
+                    `The graph matcher '${statement.body.raw}' is malformed.`,
+                    {
+                        stage: "matcher",
+                        dialect: "graph",
+                        recovery: "Correct or remove the matcher.",
+                        retryable: false,
+                    },
+                );
+            }
             const sourceMatches = graph.matches.map(({ key, lineStart, lineEnd }): SourceCandidateMatch => ({
                 key,
                 span: { lineStart, lineEnd },
@@ -239,9 +380,33 @@ export default class Log extends CoreSchemeAdapterBase {
         } else if (statement.body === null) {
             matches = projected.map(({ key }) => ({ pathname: key, matches: [] }));
         } else {
-            if (mimetypes === undefined) return empty(501, "Content matching requires the mimetypes capability.");
+            if (mimetypes === undefined) {
+                return empty(
+                    501,
+                    "Content matching requires the mimetypes capability.",
+                    {
+                        stage: "matcher",
+                        dialect: statement.body.dialect,
+                        retryable: false,
+                    },
+                );
+            }
             const r = await Matcher.matchCandidates(statement.body, projected, mimetypes);
-            if (r.status !== 200) return empty(r.status, `The log matcher failed with status ${r.status}.`);
+            if (r.status !== 200) {
+                if (r.problem === undefined) {
+                    throw new Error(`Log.find: matcher returned status ${r.status} without Problem Details`);
+                }
+                return Results.assert({
+                    status: r.status,
+                    problem: r.problem,
+                    content: null,
+                    mimetype: null,
+                    results: [],
+                    itemsTokenTotal: 0,
+                    pathnames: [],
+                    matches: [],
+                }) as FindResult;
+            }
             matches = r.matches.map(({ key, matches: ranges }) => ({ pathname: key, matches: ranges }));
         }
         const folderSummaries = statement.body === null
@@ -249,11 +414,19 @@ export default class Log extends CoreSchemeAdapterBase {
             : [];
         if (statement.lineMarker !== null && statement.body?.dialect !== "semantic" && folderSummaries.length === 0) {
             const page = LineMarkerOps.page(matches, statement.lineMarker);
-            if (page.status !== 200) return empty(
-                page.status,
-                page.problem?.detail ?? "The requested log result range is not satisfiable.",
-                page.range === undefined ? {} : { range: page.range },
-            );
+            if (page.status !== 200) {
+                if (page.problem === undefined) throw new Error("Log FIND pagination failed without Problem Details");
+                return Results.assert({
+                    status: page.status,
+                    problem: page.problem,
+                    content: null,
+                    mimetype: null,
+                    results: [],
+                    itemsTokenTotal: 0,
+                    pathnames: [],
+                    matches: [],
+                }) as FindResult;
+            }
             matches = page.items ?? [];
         }
         // The result rows mirror the catalog-row shape: one item per selected
@@ -288,11 +461,19 @@ export default class Log extends CoreSchemeAdapterBase {
             results.sort((a, b) => a.path.localeCompare(b.path));
             if (statement.lineMarker !== null) {
                 const page = LineMarkerOps.page(results, statement.lineMarker);
-                if (page.status !== 200) return empty(
-                    page.status,
-                    page.problem?.detail ?? "The requested log result range is not satisfiable.",
-                    page.range === undefined ? {} : { range: page.range },
-                );
+                if (page.status !== 200) {
+                    if (page.problem === undefined) throw new Error("Log FIND pagination failed without Problem Details");
+                    return Results.assert({
+                        status: page.status,
+                        problem: page.problem,
+                        content: null,
+                        mimetype: null,
+                        results: [],
+                        itemsTokenTotal: 0,
+                        pathnames: [],
+                        matches: [],
+                    }) as FindResult;
+                }
                 results = page.items ?? [];
                 const retained = new Set(results.filter((item) => item.items === undefined).map((item) => item.path.replace(/^log:\/\/\//, "").replace(/^\//, "")));
                 matches = matches.filter((match) => retained.has(match.pathname));
@@ -318,6 +499,7 @@ export default class Log extends CoreSchemeAdapterBase {
                 pathnames: [],
                 matches: [],
                 overflow: results.length,
+                overflowLimit: budget,
             };
         }
         // matches[].pathname is the fan-out's retarget key — `/loop/turn/seq/OP` re-parses as a
@@ -338,7 +520,7 @@ export default class Log extends CoreSchemeAdapterBase {
     // Resolve a log:/// target — a concrete coordinate, or a path-glob optionally paginated
     // by <L> (OPEN/FOLD only) — to the matched row ids. The ONE resolution OPEN/FOLD and
     // KILL share: fold flips `expanded` on the ids, kill deletes them.
-    async #resolveIds(pathname: string, lineMarker: OpenStatement["lineMarker"], ctx: PlurnkSchemeContext): Promise<{ status: number; ids: number[]; error?: string; range?: RangeExtent }> {
+    async #resolveIds(pathname: string, lineMarker: OpenStatement["lineMarker"], ctx: PlurnkSchemeContext): Promise<{ status: number; ids: number[]; error?: string; problem?: ProblemDetails; range?: RangeExtent }> {
         const { db, workerId } = ctx;
         const coord = parseCoordinate(pathname);
         if (coord !== null && lineMarker === null) {
@@ -347,12 +529,12 @@ export default class Log extends CoreSchemeAdapterBase {
         }
         // §log-coordinate-hierarchy — one resolution for every consumer (curation here, find below).
         const glob = coordinateGlob(pathname);
-        if (glob === null) return { status: 400, ids: [], error: `malformed log target '${pathname}' — a coordinate (1/2/3), a prefix (1 or 1/2), or a glob (**/READ)` };
+        if (glob === null) return { status: 400, ids: [], error: `The log target '${pathname}' is malformed.` };
         const scope = pathScope(glob, false);
         const candidates = await db.log_match_coordinates.all<{ id: number; coordinate: string }>({ worker_id: workerId, scope_prefix: scope.candidatePrefix });
         let matched: Array<{ id: number; coordinate: string }>;
         try { matched = candidates.filter((row) => pathScopeMatches(scope, row.coordinate)); }
-        catch { return { status: 400, ids: [], error: `malformed log glob '${glob}'` }; }
+        catch { return { status: 400, ids: [], error: `The log glob '${glob}' is malformed.` }; }
         // Zero matches on a well-formed glob is a NO-OP SUCCESS, not an error (owner ruling): a
         // curation sweep that found nothing to curate steers nothing — 204 keeps it out of the
         // errors surface (>= 400), and the rx carries matched: 0, clearly shown.
@@ -363,7 +545,7 @@ export default class Log extends CoreSchemeAdapterBase {
             if (page.status !== 200) return {
                 status: page.status,
                 ids: [],
-                error: page.problem?.detail,
+                problem: page.problem,
                 range: page.range,
             };
             selected = page.items ?? [];
@@ -376,11 +558,11 @@ export default class Log extends CoreSchemeAdapterBase {
     // whole run when targetless — a bare OPEN[tag] recalls the entire tagged working-set),
     // AND-filtered to rows carrying EVERY listed tag. Zero matches is a no-op success (204), mirroring
     // #resolveIds — recalling a name that tags nothing steers nothing.
-    async #resolveByTags(statement: OpenStatement | FoldStatement, tags: string[], ctx: PlurnkSchemeContext): Promise<{ status: number; ids: number[]; error?: string; range?: RangeExtent }> {
+    async #resolveByTags(statement: OpenStatement | FoldStatement, tags: string[], ctx: PlurnkSchemeContext): Promise<{ status: number; ids: number[]; error?: string; problem?: ProblemDetails; range?: RangeExtent }> {
         const { db, workerId } = ctx;
         const pathname = statement.target === null ? "" : (statement.target.kind === "url" ? statement.target.pathname : statement.target.raw).replace(/^\//, "");
         const glob = coordinateGlob(pathname);
-        if (glob === null) return { status: 400, ids: [], error: `malformed log target '${pathname}' — a coordinate (1/2/3), a prefix (1 or 1/2), or a glob (**/READ)` };
+        if (glob === null) return { status: 400, ids: [], error: `The log target '${pathname}' is malformed.` };
         const scope = pathScope(glob, false);
         const candidates = await db.log_match_coordinates_tagged.all<{ id: number; coordinate: string }>({
             worker_id: workerId,
@@ -389,7 +571,7 @@ export default class Log extends CoreSchemeAdapterBase {
         });
         let matched: Array<{ id: number; coordinate: string }>;
         try { matched = candidates.filter((row) => pathScopeMatches(scope, row.coordinate)); }
-        catch { return { status: 400, ids: [], error: `malformed log glob '${glob}'` }; }
+        catch { return { status: 400, ids: [], error: `The log glob '${glob}' is malformed.` }; }
         if (matched.length === 0) return { status: 204, ids: [] };
         let selected = matched;
         if (statement.lineMarker !== null) {
@@ -397,7 +579,7 @@ export default class Log extends CoreSchemeAdapterBase {
             if (page.status !== 200) return {
                 status: page.status,
                 ids: [],
-                error: page.problem?.detail,
+                problem: page.problem,
                 range: page.range,
             };
             selected = page.items ?? [];
@@ -415,13 +597,25 @@ export default class Log extends CoreSchemeAdapterBase {
             const rt = await this.#resolveByTags(statement, signal, ctx);
             if (rt.status === 204) return { status: 204, matched: 0 };
             if (rt.status !== 200) {
+                if (rt.problem !== undefined) {
+                    return Results.assert({ status: rt.status, problem: rt.problem }) as OpenFoldResult;
+                }
                 return Results.failure(
                     "scheme:log",
                     rt.status === 416 ? "range-not-satisfiable" : "open-failed",
                     rt.status,
-                    rt.error ?? `OPEN could not resolve the requested log selection (status ${rt.status}).`,
+                    rt.error ?? "No log entry matches the requested selection.",
                     {},
-                    rt.range === undefined ? {} : { range: rt.range },
+                    {
+                        target: statement.target?.raw ?? null,
+                        ...(rt.range === undefined ? {} : { range: rt.range }),
+                        ...(rt.status === 400
+                            ? {
+                                recovery: "Use a log coordinate, prefix, or glob.",
+                                retryable: false,
+                            }
+                            : {}),
+                    },
                 ) as OpenFoldResult;
             }
             for (const id of rt.ids) await ctx.db.log_set_expanded_by_id.run({ id, expanded: 1 });
@@ -429,19 +623,41 @@ export default class Log extends CoreSchemeAdapterBase {
         }
 
         if (statement.target === null) {
-            return Results.failure("scheme:log", "target-required", 400, `${expanded === 1 ? "OPEN" : "FOLD"} requires a log target.`) as OpenFoldResult;
+            return Results.failure(
+                "scheme:log",
+                "target-required",
+                400,
+                `${expanded === 1 ? "OPEN" : "FOLD"} requires a log target.`,
+                {},
+                {
+                    recovery: "Provide a log coordinate, prefix, or glob.",
+                    retryable: false,
+                },
+            ) as OpenFoldResult;
         }
         const pathname = (statement.target.kind === "url" ? statement.target.pathname : statement.target.raw).replace(/^\//, "");
         const r = await this.#resolveIds(pathname, statement.lineMarker, ctx);
         if (r.status === 204) return { status: 204, matched: 0 };
         if (r.status !== 200) {
+            if (r.problem !== undefined) {
+                return Results.assert({ status: r.status, problem: r.problem }) as OpenFoldResult;
+            }
             return Results.failure(
                 "scheme:log",
                 r.status === 416 ? "range-not-satisfiable" : r.status === 404 ? "entry-not-found" : "curation-failed",
                 r.status,
-                r.error ?? `${expanded === 1 ? "OPEN" : "FOLD"} could not resolve the requested log selection (status ${r.status}).`,
+                r.error ?? `No log entry matches '${pathname}'.`,
                 {},
-                r.range === undefined ? {} : { range: r.range },
+                {
+                    target: pathname,
+                    ...(r.range === undefined ? {} : { range: r.range }),
+                    ...(r.status === 400
+                        ? {
+                            recovery: "Use a log coordinate, prefix, or glob.",
+                            retryable: false,
+                        }
+                        : {}),
+                },
             ) as OpenFoldResult;
         }
         const ids = r.ids;
@@ -463,11 +679,22 @@ export default class Log extends CoreSchemeAdapterBase {
         const r = await this.#resolveIds(pathname.replace(/^\//, ""), null, core);
         if (r.status === 204) return { status: 204 };
         if (r.status !== 200) {
+            if (r.problem !== undefined) return Results.assert({ status: r.status, problem: r.problem });
             return Results.failure(
                 "scheme:log",
                 r.status === 404 ? "entry-not-found" : "kill-failed",
                 r.status,
-                r.error ?? `KILL could not resolve the requested log selection (status ${r.status}).`,
+                r.error ?? `No log entry matches '${pathname}'.`,
+                {},
+                {
+                    target: pathname,
+                    ...(r.status === 400
+                        ? {
+                            recovery: "Use a log coordinate, prefix, or glob.",
+                            retryable: false,
+                        }
+                        : {}),
+                },
             );
         }
         for (const id of r.ids) await core.db.log_delete_by_id.run({ id });

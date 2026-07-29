@@ -355,7 +355,9 @@ test("Engine.dispatch: a writer outside writableBy is rejected 403 without invok
         });
         assert.equal(result.status, 403);
         assert.equal(result.problem?.type, "https://problems.plurnk.dev/engine/dispatcher/writer-forbidden");
-        assert.equal(result.problem?.detail, "Writer 'plugin' is not in writableBy for scheme 'worker'.");
+        assert.equal(result.problem?.writer, "plugin");
+        assert.equal(result.problem?.scheme, "worker");
+        assert.deepEqual(result.problem?.allowedWriters, ["model", "client", "plurnk"]);
         // 403 still writes a log row
         const log = await db.test_first_log_entry_for_turn.get<{ status_rx: number; scheme: string }>({ turn_id: env.turnId });
         assert.equal(log?.status_rx, 403);
@@ -503,18 +505,23 @@ test("Engine.dispatch: scheme handler that throws → action-entry at status 500
             sequence: 1, origin: "model",
         });
         assert.equal(result.status, 500);
-        assert.match(result.problem?.detail ?? "", /scheme handler deliberately threw/);
+        assert.equal(result.problem?.detail, "The 'boom' scheme did not produce an EDIT result.");
+        assert.equal(result.problem?.stage, "scheme-dispatch");
+        assert.equal(result.problem?.scheme, "boom");
+        assert.equal(result.problem?.operation, "EDIT");
+        assert.doesNotMatch(JSON.stringify(result), /scheme handler deliberately threw/);
         // action-entry preserved at status 500 with error in rx
         const log = await db.test_first_log_entry_for_turn.get<{ status_rx: number; rx: string; scheme: string }>({ turn_id: env.turnId });
         assert.equal(log?.status_rx, 500);
         assert.equal(log?.scheme, "boom");
         const rx = JSON.parse(log?.rx ?? "{}");
         assert.equal(rx.status, 500);
-        assert.match(rx.problem.detail, /scheme handler deliberately threw/);
+        assert.equal(rx.problem.detail, "The 'boom' scheme did not produce an EDIT result.");
+        assert.doesNotMatch(log?.rx ?? "", /scheme handler deliberately threw/);
     } finally { await db.close(); }
 });
 
-test("Engine.dispatch: non-Error throw (string) → action-entry at 500 with stringified message", async () => {
+test("Engine.dispatch: non-Error throw becomes the same generic contract Problem", async () => {
     const db = await openMigrated();
     const env = await seedEnvelope(db, `ws-${crypto.randomUUID()}`);
     const schemes = new SchemeRegistry();
@@ -536,7 +543,8 @@ test("Engine.dispatch: non-Error throw (string) → action-entry at 500 with str
         });
         assert.equal(result.status, 500);
         assert.equal(result.problem?.type, "https://problems.plurnk.dev/engine/dispatcher/scheme-handler-threw");
-        assert.equal(result.problem?.detail, "Scheme 'boomstr' EDIT failed: raw string thrown");
+        assert.equal(result.problem?.detail, "The 'boomstr' scheme did not produce an EDIT result.");
+        assert.doesNotMatch(JSON.stringify(result), /raw string thrown/);
     } finally { await db.close(); }
 });
 

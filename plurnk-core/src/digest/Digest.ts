@@ -45,6 +45,11 @@ import PacketWire from "../core/packet-wire.ts";
 import { renderAddress } from "../core/plurnk-uri.ts";
 import ProviderInstantiate from "../core/ProviderInstantiate.ts";
 import type { ChatMessage, Provider } from "@plurnk/plurnk-providers";
+import {
+    Validator,
+    type OperationResult,
+    type ProblemDetails,
+} from "@plurnk/plurnk-contracts";
 
 // The requiem prompt (#requiem): the model's exit interview. Absolution up front — the system is
 // under test, not the model — so RLHF'd self-blame doesn't crowd out the system indictment. The
@@ -55,7 +60,17 @@ const REQUIEM_PROMPT = "This worker was a test of the Plurnk System. The system 
 // flags, tx, rx) arrive as strings, parsed on use.
 interface WorkspaceRow { id: number; name: string; cost_usd: number }
 interface WorkerRow { id: number; workspace_id: number; name: string; cost_usd: number }
-interface LoopRow { id: number; worker_id: number; sequence: number; status: number; prompt: string; flags: string; terminal_message: string | null; terminated_by: string | null }
+interface LoopRow {
+    id: number;
+    worker_id: number;
+    sequence: number;
+    status: number;
+    prompt: string;
+    flags: string;
+    terminal_message: string | null;
+    terminated_by: string | null;
+    terminal_result: string | null;
+}
 interface TurnRow {
     id: number; loop_id: number; sequence: number; status: number; packet: string;
     usage_prompt: number; usage_completion: number; usage_cached: number; usage_cost_usd: number;
@@ -144,6 +159,28 @@ export default class Digest {
         try { return JSON.parse(String(s)); } catch { return fallback; }
     }
 
+    static #operationResult(raw: unknown, subject: string): OperationResult {
+        try {
+            return Validator.assertOperationResult(Digest.#parseJson(raw) as OperationResult);
+        } catch (cause) {
+            throw new Error(`digest: ${subject} does not contain a valid operation result`, { cause });
+        }
+    }
+
+    static #rowProblem(row: LogRow): ProblemDetails {
+        const result = Digest.#operationResult(row.rx, `failed log entry ${row.id}`);
+        if (result.problem === undefined) {
+            throw new Error(`digest: failed log entry ${row.id} does not contain Problem Details`);
+        }
+        return result.problem;
+    }
+
+    static #terminalResult(loop: LoopRow): OperationResult | null {
+        return loop.terminal_result === null
+            ? null
+            : Digest.#operationResult(loop.terminal_result, `terminal loop ${loop.id}`);
+    }
+
     static #renderTarget(le: LogRow): string | null {
         if (le.pathname === null) return null;
         if (le.scheme === null) return le.pathname.replace(/^\//, "");
@@ -162,11 +199,7 @@ export default class Digest {
         // the waterfall explains WHY each failure happened without opening packets.
         let errLine = "";
         if (le.status_rx >= 400) {
-            const rx = Digest.#parseJson(le.rx, {}) as { problem?: { detail?: unknown } };
-            const msg = rx.problem?.detail ?? null;
-            if (typeof msg === "string" && msg.length > 0) {
-                errLine = `\n    → ${Digest.#summarize(msg, 140)}`;
-            }
+            errLine = `\n    -> ${Digest.#summarize(Digest.#rowProblem(le).detail, 140)}`;
         }
         return `  ← [${le.origin}] ${le.op}[${le.status_rx}] ${target}${state}${outcome}${fail}${errLine}`;
     }
@@ -422,6 +455,7 @@ export default class Digest {
                 id: l.id, worker_id: l.worker_id, sequence: l.sequence, status: l.status,
                 prompt: l.prompt, flags: Digest.#parseJson(l.flags, {}),
                 terminal_message: l.terminal_message, terminated_by: l.terminated_by,
+                result: Digest.#terminalResult(l),
             })),
             turns: m.turns.map((t) => ({
                 id: t.id, loop_id: t.loop_id, sequence: t.sequence, status: t.status,
@@ -452,6 +486,7 @@ export default class Digest {
                 turn_id: le.turn_id, sequence: le.sequence, origin: le.origin,
                 op: le.op, target: Digest.#renderTarget(le),
                 status_rx: le.status_rx, state: le.state, outcome: le.outcome,
+                ...(le.status_rx >= 400 ? { problem: Digest.#rowProblem(le) } : {}),
             })),
         }, null, 2);
     }

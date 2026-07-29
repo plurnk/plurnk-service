@@ -3,6 +3,7 @@ import {
     registerClient,
     type AuthorizationServerMetadata,
 } from "@modelcontextprotocol/client";
+import { Results, type ProblemDetails } from "@plurnk/plurnk-execs";
 import { serverConfig } from "./config.ts";
 
 // Device Authorization Grant (RFC 8628) OAuth for http MCP servers
@@ -45,10 +46,50 @@ export interface AuthDevice {
 
 export type PollStatus = "pending" | "slow_down" | "authorized" | "denied" | "expired";
 
+export class OAuthProblemError extends Error {
+    readonly problem: ProblemDetails;
+
+    constructor(
+        code: string,
+        status: number,
+        detail: string,
+        extensions: Readonly<Record<string, unknown>>,
+        options: { cause?: unknown } = {},
+    ) {
+        super(detail, options.cause === undefined ? undefined : { cause: options.cause });
+        this.name = "OAuthProblemError";
+        this.problem = Results.problem("executor:mcp", code, status, detail, extensions);
+    }
+}
+
+const oauthError = (
+    code: string,
+    status: number,
+    detail: string,
+    extensions: Readonly<Record<string, unknown>>,
+    cause?: unknown,
+): OAuthProblemError => new OAuthProblemError(
+    code,
+    status,
+    detail,
+    extensions,
+    cause === undefined ? {} : { cause },
+);
+
 const httpUrl = (server: string): string => {
     const cfg = serverConfig(server);
     if (cfg === null || cfg.transport !== "http" || cfg.url === undefined) {
-        throw new Error(`MCP server '${server}' is not a configured http server — OAuth applies only to http transports`);
+        throw oauthError(
+            "oauth-transport-unsupported",
+            400,
+            `MCP server '${server}' is not configured with an HTTP transport.`,
+            {
+                server,
+                stage: "configuration",
+                recovery: "Configure an HTTP MCP server before starting OAuth.",
+                retryable: false,
+            },
+        );
     }
     return cfg.url;
 };
@@ -78,35 +119,155 @@ export const authorize = async (
 }> => {
     const resource = httpUrl(server);
     const doFetch = fetchFn ?? fetch;
-    const { authorizationServerUrl, authorizationServerMetadata } = await discoverOAuthServerInfo(resource, { fetchFn });
+    let authorizationServerUrl: string;
+    let authorizationServerMetadata: AuthorizationServerMetadata | undefined;
+    try {
+        ({ authorizationServerUrl, authorizationServerMetadata } = await discoverOAuthServerInfo(resource, { fetchFn }));
+    } catch (cause) {
+        throw oauthError(
+            "oauth-discovery-failed",
+            502,
+            `OAuth metadata discovery failed for MCP server '${server}'.`,
+            {
+                server,
+                resource,
+                stage: "discovery",
+                retryable: true,
+            },
+            cause,
+        );
+    }
     // The SDK parses AS metadata with a passthrough (`z.looseObject`) schema, so
     // `device_authorization_endpoint` survives even though it is untyped.
     const metadata = authorizationServerMetadata as (AuthorizationServerMetadata & { device_authorization_endpoint?: string }) | undefined;
     if (!metadata || typeof metadata.device_authorization_endpoint !== "string") {
-        throw new Error(`MCP server '${server}' authorization server does not support the Device Authorization Grant (no device_authorization_endpoint, RFC 8628) — required for remote clients, no fallback`);
+        throw oauthError(
+            "device-grant-unsupported",
+            501,
+            `The authorization server for MCP server '${server}' does not advertise the RFC 8628 Device Authorization Grant.`,
+            {
+                server,
+                resource,
+                stage: "discovery",
+                retryable: false,
+            },
+        );
     }
-    const clientInformation = await registerClient(authorizationServerUrl, {
-        metadata: authorizationServerMetadata,
-        clientMetadata: CLIENT_METADATA,
-        fetchFn,
-    });
-    const res = await postForm(doFetch, metadata.device_authorization_endpoint, {
-        client_id: clientInformation.client_id,
-        resource,
-        ...(scope ? { scope } : {}),
-    });
-    if (!res.ok) throw new Error(`device authorization request failed for '${server}': ${res.status} ${await res.text()}`);
-    const body = await res.json() as {
+    if (typeof metadata.token_endpoint !== "string") {
+        throw oauthError(
+            "token-endpoint-missing",
+            502,
+            `The authorization server for MCP server '${server}' did not advertise a token endpoint.`,
+            {
+                server,
+                resource,
+                stage: "discovery",
+                retryable: false,
+            },
+        );
+    }
+    let clientInformation: Awaited<ReturnType<typeof registerClient>>;
+    try {
+        clientInformation = await registerClient(authorizationServerUrl, {
+            metadata: authorizationServerMetadata,
+            clientMetadata: CLIENT_METADATA,
+            fetchFn,
+        });
+    } catch (cause) {
+        throw oauthError(
+            "client-registration-failed",
+            502,
+            `OAuth client registration failed for MCP server '${server}'.`,
+            {
+                server,
+                resource,
+                stage: "registration",
+                retryable: false,
+            },
+            cause,
+        );
+    }
+    let res: Response;
+    try {
+        res = await postForm(doFetch, metadata.device_authorization_endpoint, {
+            client_id: clientInformation.client_id,
+            resource,
+            ...(scope ? { scope } : {}),
+        });
+    } catch (cause) {
+        throw oauthError(
+            "device-authorization-unreachable",
+            502,
+            `The device authorization endpoint for MCP server '${server}' could not be reached.`,
+            {
+                server,
+                resource,
+                stage: "authorization",
+                retryable: false,
+            },
+            cause,
+        );
+    }
+    if (!res.ok) {
+        throw oauthError(
+            "device-authorization-rejected",
+            502,
+            `The device authorization endpoint for MCP server '${server}' rejected the request.`,
+            {
+                server,
+                resource,
+                upstreamStatus: res.status,
+                stage: "authorization",
+                retryable: false,
+            },
+        );
+    }
+    let body: {
         device_code: string; user_code: string; verification_uri: string;
         verification_uri_complete?: string; expires_in: number; interval?: number;
     };
+    try {
+        body = await res.json() as typeof body;
+    } catch (cause) {
+        throw oauthError(
+            "device-authorization-response-invalid",
+            502,
+            `The device authorization endpoint for MCP server '${server}' returned invalid JSON.`,
+            {
+                server,
+                resource,
+                stage: "authorization",
+                retryable: false,
+            },
+            cause,
+        );
+    }
+    if (
+        typeof body.device_code !== "string"
+        || typeof body.user_code !== "string"
+        || typeof body.verification_uri !== "string"
+        || !Number.isFinite(body.expires_in)
+        || (body.interval !== undefined && !Number.isFinite(body.interval))
+    ) {
+        throw oauthError(
+            "device-authorization-response-invalid",
+            502,
+            `The device authorization endpoint for MCP server '${server}' returned an incomplete response.`,
+            {
+                server,
+                resource,
+                stage: "authorization",
+                retryable: false,
+            },
+        );
+    }
     return {
         verificationUri: body.verification_uri,
         ...(body.verification_uri_complete ? { verificationUriComplete: body.verification_uri_complete } : {}),
         userCode: body.user_code,
         interval: body.interval ?? 5,
         expiresIn: body.expires_in,
-        device: { deviceCode: body.device_code, clientId: clientInformation.client_id, tokenEndpoint: String(metadata.token_endpoint) },
+        device: { deviceCode: body.device_code, clientId: clientInformation.client_id, tokenEndpoint: metadata.token_endpoint },
     };
 };
 
@@ -119,13 +280,64 @@ export const poll = async (
     server: string,
     { device, fetchFn }: { device: AuthDevice; fetchFn?: FetchLike },
 ): Promise<{ status: PollStatus; headers?: Record<string, string> }> => {
+    if (
+        typeof device?.deviceCode !== "string"
+        || device.deviceCode.length === 0
+        || typeof device.clientId !== "string"
+        || device.clientId.length === 0
+        || typeof device.tokenEndpoint !== "string"
+        || device.tokenEndpoint.length === 0
+    ) {
+        throw oauthError(
+            "device-state-invalid",
+            400,
+            `The OAuth device state for MCP server '${server}' is incomplete.`,
+            {
+                server,
+                stage: "token-poll",
+                recovery: "Start a new authorization request and poll with its returned device state.",
+                retryable: false,
+            },
+        );
+    }
     const doFetch = fetchFn ?? fetch;
-    const res = await postForm(doFetch, device.tokenEndpoint, {
-        grant_type: DEVICE_GRANT,
-        device_code: device.deviceCode,
-        client_id: device.clientId,
-    });
-    const body = await res.json() as { access_token?: string; error?: string };
+    let res: Response;
+    try {
+        res = await postForm(doFetch, device.tokenEndpoint, {
+            grant_type: DEVICE_GRANT,
+            device_code: device.deviceCode,
+            client_id: device.clientId,
+        });
+    } catch (cause) {
+        throw oauthError(
+            "token-poll-unreachable",
+            502,
+            `The token endpoint for MCP server '${server}' could not be reached.`,
+            {
+                server,
+                stage: "token-poll",
+                retryable: true,
+            },
+            cause,
+        );
+    }
+    let body: { access_token?: string; error?: string };
+    try {
+        body = await res.json() as typeof body;
+    } catch (cause) {
+        throw oauthError(
+            "token-response-invalid",
+            502,
+            `The token endpoint for MCP server '${server}' returned invalid JSON.`,
+            {
+                server,
+                upstreamStatus: res.status,
+                stage: "token-poll",
+                retryable: true,
+            },
+            cause,
+        );
+    }
     if (res.ok && typeof body.access_token === "string") {
         return { status: "authorized", headers: { Authorization: `Bearer ${body.access_token}` } };
     }
@@ -134,6 +346,17 @@ export const poll = async (
         case "slow_down": return { status: "slow_down" };
         case "access_denied": return { status: "denied" };
         case "expired_token": return { status: "expired" };
-        default: throw new Error(`device token poll failed for '${server}': ${body.error ?? `HTTP ${res.status}`}`);
+        default: throw oauthError(
+            "token-request-rejected",
+            502,
+            `The token endpoint for MCP server '${server}' rejected the device request.`,
+            {
+                server,
+                upstreamError: body.error ?? null,
+                upstreamStatus: res.status,
+                stage: "token-poll",
+                retryable: res.status === 408 || res.status === 429 || res.status >= 500,
+            },
+        );
     }
 };

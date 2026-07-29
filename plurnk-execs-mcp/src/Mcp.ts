@@ -1,6 +1,6 @@
 import type { Client } from "@modelcontextprotocol/client";
-import { BaseExecutor, Results } from "@plurnk/plurnk-execs";
-import type { ChannelDecl, Effect, ExecArgs, ExecResult, RuntimeAvailability, RuntimeDecl } from "@plurnk/plurnk-execs";
+import { BaseExecutor, ErrorDetail, ERROR_DETAIL_LIMIT, Results } from "@plurnk/plurnk-execs";
+import type { ChannelDecl, Effect, ExecArgs, ExecResult, RuntimeAvailability, RuntimeDecl, SchemeResult } from "@plurnk/plurnk-execs";
 import { serverConfig, isInjected, installAllowed, registerServer, deregisterServer, parseTarget } from "./config.ts";
 import { connect, catalog, allTools, cacheHints, readOnlyHint, isAuthRequired, msg } from "./client.ts";
 import { runtimeDecl } from "./runtimes.ts";
@@ -25,6 +25,10 @@ export default class Mcp extends BaseExecutor {
     // A connection failure is settled unavailable so one dead server does not
     // fail boot.
     override async probe(): Promise<RuntimeAvailability> {
+        const detailLimit = ErrorDetail.configuredLimit();
+        if (detailLimit === null) {
+            return { available: false, detail: `${ERROR_DETAIL_LIMIT} must be set to a non-negative integer.` };
+        }
         const cfg = serverConfig(this.runtime);
         if (cfg === null) {
             return { available: false, detail: `MCP server '${this.runtime}' not configured (set PLURNK_EXECS_MCP_${this.runtime.toUpperCase()}=<url-or-command>)` };
@@ -38,7 +42,7 @@ export default class Mcp extends BaseExecutor {
             cacheHints(this.runtime, tools);
             return { available: true, detail: `${cfg.transport}: ${tools.length} tool${tools.length === 1 ? "" : "s"}` };
         } catch (err) {
-            return { available: false, detail: `MCP '${this.runtime}' unreachable: ${msg(err)}` };
+            return { available: false, detail: `MCP '${this.runtime}' unreachable: ${ErrorDetail.preview(msg(err), detailLimit)}` };
         }
     }
 
@@ -54,16 +58,49 @@ export default class Mcp extends BaseExecutor {
 
     async run({ runtime, command, target, signal, write, setState }: ExecArgs): Promise<ExecResult> {
         const cfg = serverConfig(runtime);
-        const fail = (kind: string, message: string, status = 500): ExecResult => {
+        const fail = (
+            kind: string,
+            message: string,
+            status = 500,
+            extensions: Readonly<Record<string, unknown>> = {},
+        ): ExecResult => {
             setState("results", "errored");
-            return Results.failure("executor:mcp", kind.replaceAll("_", "-"), status, message, {}, { runtime });
+            return Results.failure(
+                "executor:mcp",
+                kind,
+                status,
+                message,
+                {},
+                {
+                    runtime,
+                    stage: "mcp",
+                    ...extensions,
+                },
+            );
         };
-        if (cfg === null) return fail("mcp_not_configured", `MCP server '${runtime}' is not configured`);
+        const detailLimit = ErrorDetail.configuredLimit();
+        if (detailLimit === null) {
+            setState("results", "errored");
+            return ErrorDetail.invalidConfiguration("executor:mcp");
+        }
+        if (cfg === null) {
+            return fail(
+                "mcp-not-configured",
+                `MCP server '${runtime}' is not configured.`,
+                501,
+                { retryable: false },
+            );
+        }
         // Defense in depth behind the consumer's route gate (#240): a runtime-injected
         // server is honored only while PLURNK_EXECS_MCP_INSTALL permits added tooling. An
         // env-declared server is never gated (isInjected is false for it).
         if (isInjected(runtime) && !installAllowed()) {
-            return fail("mcp_install_disabled", `MCP server '${runtime}' was added at runtime but PLURNK_EXECS_MCP_INSTALL is off`, 501);
+            return fail(
+                "mcp-install-disabled",
+                `Runtime installation of MCP server '${runtime}' is disabled.`,
+                501,
+                { retryable: false },
+            );
         }
 
         let client: Client;
@@ -72,7 +109,18 @@ export default class Mcp extends BaseExecutor {
         } catch (err) {
             if (signal.aborted) {
                 setState("results", "errored");
-                return Results.failure("executor:mcp", "cancelled", 499, "MCP execution was cancelled.", {}, { runtime });
+                return Results.failure(
+                    "executor:mcp",
+                    "cancelled",
+                    499,
+                    "MCP execution was cancelled.",
+                    {},
+                    {
+                        runtime,
+                        stage: "connect",
+                        retryable: false,
+                    },
+                );
             }
             // An HTTP server that requires OAuth 401s the connect. The executor is
             // a PRODUCER — it can't run the interactive consent round-trip — so it
@@ -88,10 +136,21 @@ export default class Mcp extends BaseExecutor {
                     401,
                     `MCP server '${runtime}' requires authorization.`,
                     {},
-                    { runtime, resource: cfg.url },
+                    {
+                        runtime,
+                        resource: cfg.url,
+                        stage: "connect",
+                        recovery: "Authorize the MCP server before retrying.",
+                        retryable: false,
+                    },
                 );
             }
-            return fail("mcp_unreachable", `MCP '${runtime}' connect failed: ${msg(err)}`);
+            return fail(
+                "mcp-unreachable",
+                `MCP server '${runtime}' could not be reached: ${ErrorDetail.preview(msg(err), detailLimit)}.`,
+                502,
+                { stage: "connect", retryable: true },
+            );
         }
 
         const body = command.trim();
@@ -109,9 +168,25 @@ export default class Mcp extends BaseExecutor {
             } catch (err) {
                 if (signal.aborted) {
                     setState("results", "errored");
-                    return Results.failure("executor:mcp", "cancelled", 499, "MCP execution was cancelled.", {}, { runtime });
+                    return Results.failure(
+                        "executor:mcp",
+                        "cancelled",
+                        499,
+                        "MCP execution was cancelled.",
+                        {},
+                        {
+                            runtime,
+                            stage: "catalog",
+                            retryable: false,
+                        },
+                    );
                 }
-                return fail("mcp_list_failed", `catalog for '${runtime}' failed: ${msg(err)}`);
+                return fail(
+                    "mcp-list-failed",
+                    `MCP server '${runtime}' could not list its tools: ${ErrorDetail.preview(msg(err), detailLimit)}.`,
+                    502,
+                    { stage: "catalog", retryable: true },
+                );
             }
         }
 
@@ -121,7 +196,17 @@ export default class Mcp extends BaseExecutor {
             try {
                 toolArgs = JSON.parse(body);
             } catch (err) {
-                return fail("mcp_bad_arguments", `tool arguments for '${tool}' must be a JSON object: ${msg(err)}`, 400);
+                return fail(
+                    "mcp-bad-arguments",
+                    `Arguments for MCP tool '${tool}' are not valid JSON.`,
+                    400,
+                    {
+                        stage: "arguments",
+                        tool,
+                        recovery: "Provide one JSON object as the tool arguments.",
+                        retryable: false,
+                    },
+                );
             }
         }
 
@@ -139,15 +224,38 @@ export default class Mcp extends BaseExecutor {
                     500,
                     `MCP tool '${tool}' on '${runtime}' reported an error.`,
                     {},
-                    { runtime, tool },
+                    {
+                        runtime,
+                        tool,
+                        stage: "tool-call",
+                        recovery: "Inspect the results channel for the tool's error response.",
+                        retryable: false,
+                    },
                 )
                 : { status: 200 };
         } catch (err) {
             if (signal.aborted) {
                 setState("results", "errored");
-                return Results.failure("executor:mcp", "cancelled", 499, "MCP execution was cancelled.", {}, { runtime });
+                return Results.failure(
+                    "executor:mcp",
+                    "cancelled",
+                    499,
+                    "MCP execution was cancelled.",
+                    {},
+                    {
+                        runtime,
+                        tool,
+                        stage: "tool-call",
+                        retryable: false,
+                    },
+                );
             }
-            return fail("mcp_tool_error", `tool '${tool}' on '${runtime}' failed: ${msg(err)}`);
+            return fail(
+                "mcp-tool-error",
+                `MCP tool '${tool}' on '${runtime}' failed: ${ErrorDetail.preview(msg(err), detailLimit)}.`,
+                502,
+                { stage: "tool-call", tool },
+            );
         }
     }
 }
@@ -161,6 +269,10 @@ export interface HotloadRegistration {
     decl: RuntimeDecl;
     executor: BaseExecutor;
     availability: RuntimeAvailability;
+}
+
+export interface InstallServerResult extends SchemeResult {
+    detail?: string;
 }
 
 // Install an MCP server as a live EXEC[<name>] runtime (plurnk-execs-mcp#3 /
@@ -179,16 +291,44 @@ export const installServer = async (
         headers?: Record<string, string>;
         hotload: (reg: HotloadRegistration) => void | Promise<void>;
     },
-): Promise<{ status: number; detail: string }> => {
-    if (!installAllowed()) return { status: 501, detail: "runtime install disabled (PLURNK_EXECS_MCP_INSTALL is off)" };
+): Promise<InstallServerResult> => {
+    if (!installAllowed()) {
+        return Results.failure(
+            "executor:mcp",
+            "runtime-install-disabled",
+            501,
+            "Runtime MCP installation is disabled.",
+            {},
+            {
+                stage: "install-gate",
+                recovery: "Enable PLURNK_EXECS_MCP_INSTALL before installing an MCP server at runtime.",
+                retryable: false,
+            },
+        ) as InstallServerResult;
+    }
     registerServer(name, parseTarget(target, { headers }));
     const decl = runtimeDecl(name);
     const executor = new Mcp({ runtime: name, glyph: decl.glyph ?? "" });
     const availability = await executor.probe();
     if (!availability.available) {
         deregisterServer(name);
-        return { status: 502, detail: availability.detail ?? `MCP server '${name}' unreachable` };
+        return Results.failure(
+            "executor:mcp",
+            "runtime-server-unreachable",
+            502,
+            `MCP server '${name}' could not be reached during installation.`,
+            {},
+            {
+                server: name,
+                stage: "install-probe",
+                diagnostic: availability.detail ?? null,
+                retryable: true,
+            },
+        ) as InstallServerResult;
     }
     await hotload({ decl, executor, availability });
-    return { status: 200, detail: availability.detail ?? "installed" };
+    return Results.assert({
+        status: 200,
+        detail: availability.detail ?? "installed",
+    });
 };

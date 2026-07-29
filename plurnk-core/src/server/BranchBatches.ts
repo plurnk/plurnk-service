@@ -1,4 +1,5 @@
 import type { Db } from "../core/Db.ts";
+import ErrorDetail from "../core/ErrorDetail.ts";
 import GitBranch, { type GitSnapshot } from "../core/GitBranch.ts";
 import GitMembership from "../core/git-membership.ts";
 import LoopLifecycle from "../core/LoopLifecycle.ts";
@@ -88,6 +89,11 @@ export default class BranchBatches {
                 "branch-name-invalid",
                 400,
                 `Git rejected branch name '${args.branch}'.`,
+                {
+                    branch: args.branch,
+                    recovery: "Use a valid Git branch name.",
+                    retryable: false,
+                },
                 cause,
             );
         }
@@ -102,6 +108,10 @@ export default class BranchBatches {
                     "branch-workspace-has-no-repository",
                     409,
                     "A branch-tagged worker requires a Git repository containing the workspace project root.",
+                    {
+                        recovery: "Create the worker without a branch tag.",
+                        retryable: false,
+                    },
                 );
             }
             const active = (await this.#db.branch_batch_active.all<BatchRow>({}))
@@ -111,6 +121,12 @@ export default class BranchBatches {
                     "branch-batch-already-active",
                     409,
                     `Workspace ${args.workspaceId} already has branch batch ${active.id} in state '${active.state}'.`,
+                    {
+                        batchId: active.id,
+                        batchState: active.state,
+                        recovery: "Finish or abort the active branch batch before starting another.",
+                        retryable: false,
+                    },
                 );
             }
             batch = await this.#db.branch_batch_insert.get<{ id: number }>({
@@ -126,6 +142,12 @@ export default class BranchBatches {
                 "branch-batch-sealed",
                 409,
                 `Branch batch ${batch.id} is already '${batch.state}' and cannot accept another child.`,
+                {
+                    batchId: batch.id,
+                    batchState: batch.state,
+                    recovery: "Create the branch child in a new turn.",
+                    retryable: false,
+                },
             );
         }
 
@@ -135,6 +157,11 @@ export default class BranchBatches {
                 "branch-duplicate",
                 409,
                 `Branch '${args.branch}' already belongs to another child in this turn.`,
+                {
+                    branch: args.branch,
+                    recovery: "Use a distinct branch for each child in the turn.",
+                    retryable: false,
+                },
             );
         }
 
@@ -168,6 +195,12 @@ export default class BranchBatches {
                     "branch-batch-record-failed",
                     500,
                     "The branch worker was created but could not be attached to its durable batch.",
+                    {},
+                    {
+                        branch: args.branch,
+                        stage: "batch-registration",
+                        retryable: false,
+                    },
                 ),
             );
             throw cause;
@@ -215,7 +248,15 @@ export default class BranchBatches {
                 "lifecycle:branch",
                 "branch-checkout-changed",
                 409,
-                `Cannot return from branch '${active.branch}': the project repository is checked out at '${current ?? "detached HEAD"}'. Restore the assigned branch, commit the work, and conclude again.`,
+                `Branch '${active.branch}' cannot conclude while the project repository is checked out at '${current ?? "detached HEAD"}'.`,
+                {},
+                {
+                    branch: active.branch,
+                    currentBranch: current,
+                    stage: "branch-completion",
+                    recovery: "Restore the assigned branch, commit the work, and conclude again.",
+                    retryable: false,
+                },
             );
         }
         try {
@@ -225,7 +266,14 @@ export default class BranchBatches {
                 "lifecycle:branch",
                 "branch-work-uncommitted",
                 409,
-                `Cannot return from branch '${active.branch}': the project repository has uncommitted changes. Commit or deliberately discard them, then conclude again.`,
+                `Branch '${active.branch}' cannot conclude with uncommitted project changes.`,
+                {},
+                {
+                    branch: active.branch,
+                    stage: "branch-completion",
+                    recovery: "Commit or deliberately discard the changes before concluding again.",
+                    retryable: false,
+                },
             );
         }
         return null;
@@ -241,6 +289,12 @@ export default class BranchBatches {
                         "branch-parent-interrupted",
                         500,
                         "The daemon restarted before the parent turn sealed its branch batch.",
+                        {},
+                        {
+                            stage: "batch-sealing",
+                            recovery: "Create a new branch batch for the unfinished work.",
+                            retryable: false,
+                        },
                     ),
                 );
                 continue;
@@ -277,19 +331,62 @@ export default class BranchBatches {
                 workspace_id: workspaceId,
             });
             if ((open?.n ?? 0) !== 0) {
-                throw new Error(`The workspace still holds ${open?.n ?? 0} open stream subscription(s)`);
+                throw BranchBatches.#failure(
+                    "branch-streams-open",
+                    409,
+                    `The workspace has ${open?.n ?? 0} open stream subscription(s).`,
+                    {
+                        openSubscriptions: open?.n ?? 0,
+                        stage: "stream-settlement",
+                        recovery: "Close the active streams before creating a branch batch.",
+                        retryable: false,
+                    },
+                );
             }
             const items = await this.#db.branch_batch_items.all<ItemRow>({ batch_id: batchId });
             const repository = await GitMembership.projectRepository(this.#db, workspaceId);
             if (repository === null) {
-                throw new Error("The workspace project root is not inside an enabled Git repository");
+                throw BranchBatches.#failure(
+                    "branch-workspace-has-no-repository",
+                    409,
+                    "The workspace project root is not inside an enabled Git repository.",
+                    {
+                        stage: "git-preflight",
+                        recovery: "Create workers without branch tags in a workspace that has no project repository.",
+                        retryable: false,
+                    },
+                );
             }
-            await GitBranch.assertClean(repository);
+            try {
+                await GitBranch.assertClean(repository);
+            } catch (cause) {
+                throw BranchBatches.#failure(
+                    "branch-checkout-dirty",
+                    409,
+                    "The project repository has staged, unstaged, or nonignored untracked changes.",
+                    {
+                        stage: "git-preflight",
+                        recovery: "Commit or deliberately discard the project repository changes before creating a branch batch.",
+                        retryable: false,
+                    },
+                    cause,
+                );
+            }
             const snapshot = await GitBranch.snapshot(repository);
             for (const item of items) {
                 await GitBranch.validate(item.branch);
                 if (await GitBranch.branchExists(repository, item.branch)) {
-                    throw new Error(`Git branch '${item.branch}' already exists in the project repository`);
+                    throw BranchBatches.#failure(
+                        "branch-already-exists",
+                        409,
+                        `Git branch '${item.branch}' already exists in the project repository.`,
+                        {
+                            branch: item.branch,
+                            stage: "git-preflight",
+                            recovery: "Use a branch name that does not already exist.",
+                            retryable: false,
+                        },
+                    );
                 }
             }
             for (const item of items) {
@@ -334,12 +431,20 @@ export default class BranchBatches {
                     }, new AggregateError([cause, rollbackCause], "Branch preflight and rollback both failed"));
                     return;
                 }
-                const failure = Results.failure(
-                    "lifecycle:branch",
-                    "branch-batch-preflight-failed",
-                    409,
-                    `Branch batch ${batchId} could not start: ${cause instanceof Error ? cause.message : String(cause)}`,
-                );
+                const failure = cause instanceof OperationFailureError
+                    ? cause.result
+                    : Results.failure(
+                        "lifecycle:branch",
+                        "branch-batch-preflight-failed",
+                        500,
+                        `Branch batch ${batchId} failed during preflight.`,
+                        {},
+                        {
+                            batchId,
+                            stage: "git-preflight",
+                            retryable: false,
+                        },
+                    );
                 await this.#failBatch(batchId, failure);
                 this.#deps.notify(workspaceId, {
                     batchId,
@@ -370,6 +475,12 @@ export default class BranchBatches {
                     "branch-batch-stopped",
                     499,
                     "The daemon stopped before the remaining branch children started.",
+                    {},
+                    {
+                        batchId,
+                        stage: "branch-scheduling",
+                        retryable: false,
+                    },
                 );
                 await this.#failBatch(batchId, failure);
                 this.#deps.notify(workspaceId, {
@@ -400,12 +511,19 @@ export default class BranchBatches {
             try {
                 result = await this.#deps.startChild(workspaceId, item.worker_id, item.loop_id);
             } catch (cause) {
+                console.error(`Branch child '${item.branch}' failed outside its terminal result contract:`, cause);
                 result = await this.#lifecycle.result(item.loop_id)
                     ?? Results.failure(
                         "lifecycle:branch",
                         "branch-child-threw",
                         500,
-                        `Branch child '${item.branch}' failed: ${cause instanceof Error ? cause.message : String(cause)}`,
+                        `Branch child '${item.branch}' failed outside its terminal result contract.`,
+                        {},
+                        {
+                            branch: item.branch,
+                            stage: "child-run",
+                            retryable: false,
+                        },
                     );
             }
             exclusive.setRoot(null);
@@ -419,7 +537,14 @@ export default class BranchBatches {
                     "lifecycle:branch",
                     "branch-recovery-required",
                     500,
-                    `Branch '${item.branch}' returned with ambiguous Git state: ${cause instanceof Error ? cause.message : String(cause)}`,
+                    `Branch '${item.branch}' returned with ambiguous Git state: ${ErrorDetail.preview(cause)}`,
+                    {},
+                    {
+                        branch: item.branch,
+                        batchId,
+                        stage: "git-restoration",
+                        retryable: false,
+                    },
                 );
                 await this.#db.branch_batch_finish_item.run({
                     item_id: item.id,
@@ -515,6 +640,14 @@ export default class BranchBatches {
                     "branch-child-interrupted",
                     500,
                     `The daemon restarted while branch '${item.branch}' was active. Its committed tip was preserved.`,
+                    {},
+                    {
+                        branch: item.branch,
+                        batchId: batch.id,
+                        stage: "child-run",
+                        recovery: "Review the preserved branch tip before deciding how to continue.",
+                        retryable: false,
+                    },
                 );
                 await this.#db.branch_batch_finish_item.run({
                     item_id: item.id,
@@ -544,11 +677,18 @@ export default class BranchBatches {
     }
 
     async #requireRecovery(batch: BatchIdentity, cause: unknown): Promise<void> {
+        console.error(`Branch batch ${batch.id} requires operator recovery:`, cause);
         const failure = Results.failure(
             "lifecycle:branch",
             "branch-recovery-required",
             500,
-            `Branch batch ${batch.id} requires operator recovery: ${cause instanceof Error ? cause.message : String(cause)}`,
+            `Branch batch ${batch.id} requires operator recovery: ${ErrorDetail.preview(cause)}`,
+            {},
+            {
+                batchId: batch.id,
+                stage: "git-restoration",
+                retryable: false,
+            },
         );
         await this.#db.branch_batch_finish.run({
             batch_id: batch.id,
@@ -646,9 +786,15 @@ export default class BranchBatches {
         });
     }
 
-    static #failure(code: string, status: number, detail: string, cause?: unknown): OperationFailureError {
+    static #failure(
+        code: string,
+        status: number,
+        detail: string,
+        extensions: Readonly<Record<string, unknown>> = {},
+        cause?: unknown,
+    ): OperationFailureError {
         return new OperationFailureError(
-            Results.failure("lifecycle:branch", code, status, detail),
+            Results.failure("lifecycle:branch", code, status, detail, {}, extensions),
             cause === undefined ? {} : { cause },
         );
     }

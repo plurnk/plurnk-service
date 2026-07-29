@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import type { MatcherBody, ParsedPath, ReadStatement, UrlPath } from "@plurnk/plurnk-grammar";
+import type { FindStatement, MatcherBody, ParsedPath, ReadStatement, UrlPath } from "@plurnk/plurnk-grammar";
 import { PlurnkParser } from "@plurnk/plurnk-grammar";
 import type { Db } from "../../src/core/Db.ts";
 import type { PlurnkSchemeContext } from "../../src/core/scheme-types.ts";
@@ -32,6 +32,13 @@ const parseRead = (dsl: string): ReadStatement => {
         .find((i) => i.kind === "statement" && i.statement.op === "READ");
     if (found === undefined) throw new Error(`no READ parsed from: ${dsl}`);
     return (found as { kind: "statement"; statement: ReadStatement }).statement;
+};
+
+const parseFind = (dsl: string): FindStatement => {
+    const found = PlurnkParser.parse(`<<PLAN::PLAN\n${dsl}`).items
+        .find((i) => i.kind === "statement" && i.statement.op === "FIND");
+    if (found === undefined) throw new Error(`no FIND parsed from: ${dsl}`);
+    return (found as { kind: "statement"; statement: FindStatement }).statement;
 };
 
 // Materialize a file as a readable member — mirrors what the git-membership pass
@@ -221,6 +228,63 @@ test("File.read: matcher returns the selected resource plus match coordinates", 
     });
 });
 
+test("File.find: a binary member does not poison a body search across readable members", async () => {
+    await withWorkspaceRoot(async (root, ctx) => {
+        await writeFile(join(root, "readme.md"), "the needle is here\n");
+        await addMember(ctx, "readme.md");
+        await EntryCrud.writeEntry(
+            "blob.bin",
+            { channels: { body: { content: "", mimetype: "application/octet-stream" } }, tags: [] },
+            ctx,
+            "file",
+        );
+
+        const result = await new File().find(parseFind("<<FIND(**):/needle/:FIND"), ctx);
+        assert.equal(result.status, 200);
+        assert.deepEqual(result.results.map(({ path }) => path), ["readme.md"]);
+    });
+});
+
+test("File.read: an invalid matcher preserves the matcher Problem", async () => {
+    await withWorkspaceRoot(async (root, ctx) => {
+        await writeFile(join(root, "f.txt"), "alpha\nbeta\n");
+        await addMember(ctx, "f.txt");
+        const r = await new File().read(
+            readStmt(urlPath("file", "/f.txt"), {
+                body: { dialect: "regex", raw: "/[/", pattern: "[", flags: "" },
+            }),
+            ctx,
+        );
+        assert.equal(r.status, 400);
+        assert.equal(r.problem?.type, "https://problems.plurnk.dev/schemes/matcher/invalid-expression");
+        assert.equal(r.problem?.stage, "matcher");
+        assert.equal(r.problem?.dialect, "regex");
+        assert.equal(r.problem?.recovery, "Correct or remove the matcher.");
+        assert.equal(r.problem?.retryable, false);
+        assert.equal(r.content, null);
+    });
+});
+
+test("File.read: an invalid matcher exposes stable cause and recovery facts", async () => {
+    await withWorkspaceRoot(async (root, ctx) => {
+        await writeFile(join(root, "f.json"), "{\"answer\":42}\n");
+        await addMember(ctx, "f.json");
+        const r = await new File().read(
+            readStmt(urlPath("file", "/f.json"), {
+                body: { dialect: "jsonpath", raw: "$.[" },
+            }),
+            ctx,
+        );
+        assert.equal(r.status, 400);
+        assert.equal(r.problem?.stage, "matcher");
+        assert.equal(r.problem?.dialect, "jsonpath");
+        assert.equal(r.problem?.detail, "The jsonpath matcher expression is invalid.");
+        assert.equal(r.problem?.recovery, "Correct or remove the matcher.");
+        assert.equal(r.problem?.retryable, false);
+        assert.equal("expression" in (r.problem ?? {}), false);
+    });
+});
+
 test("File.read: matcher selects the full resource before <L> projects readable rows", async () => {
     await withWorkspaceRoot(async (root, ctx) => {
         await writeFile(join(root, "f.txt"), "alpha\nprojected\nfoo later\n");
@@ -241,6 +305,23 @@ test("File.read: matcher selects the full resource before <L> projects readable 
             rowStart: 3,
             rowEnd: 3,
         }]);
+    });
+});
+
+test("File.read: a zero-match selector returns 204 before range projection, never a misleading 416", async () => {
+    await withWorkspaceRoot(async (root, ctx) => {
+        await writeFile(join(root, "f.txt"), "alpha\nbeta\n");
+        await addMember(ctx, "f.txt");
+        const r = await new File().read(
+            readStmt(urlPath("file", "/f.txt"), {
+                lineMarker: { marks: [30, 100] },
+                body: { dialect: "regex", raw: "/EVALUATOR_FUNCTIONS/", pattern: "EVALUATOR_FUNCTIONS", flags: "" },
+            }),
+            ctx,
+        );
+        assert.equal(r.status, 204);
+        assert.equal(r.content, "");
+        assert.equal(r.problem, undefined, "a non-selected resource is not misreported as a range failure");
     });
 });
 

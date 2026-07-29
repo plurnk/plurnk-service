@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { BaseExecutor, Results } from "@plurnk/plurnk-execs";
+import { BaseExecutor, ErrorDetail, Results } from "@plurnk/plurnk-execs";
 import type { ChannelDecl, Effect, ExecArgs, ExecResult, RuntimeAvailability } from "@plurnk/plurnk-execs";
 
 // jq executor — shells the system `jq` binary (no third-party JSON-filter lib).
@@ -46,6 +46,11 @@ export default class Jq extends BaseExecutor {
     }
 
     async run({ command, cwd, target, env, signal, write, setState }: ExecArgs): Promise<ExecResult> {
+        const detailLimit = ErrorDetail.configuredLimit();
+        if (detailLimit === null) {
+            setState("results", "errored");
+            return ErrorDetail.invalidConfiguration("executor:jq");
+        }
         const program = command.trim() || ".";
         // target = the data-source file; spawn resolves a relative one against cwd
         // (the workspace) — plurnk-execs#15. Absent → -n, the program stands alone.
@@ -69,14 +74,45 @@ export default class Jq extends BaseExecutor {
             child.stderr?.on("data", (c: Buffer) => { err += c.toString("utf8"); });
             child.on("error", (e) => {
                 if ((e as NodeJS.ErrnoException).code === "ABORT_ERR") {
-                    finish(Results.failure("executor:jq", "cancelled", 499, "jq execution was cancelled."), "errored");
+                    finish(Results.failure(
+                        "executor:jq",
+                        "cancelled",
+                        499,
+                        "jq execution was cancelled.",
+                        {},
+                        {
+                            stage: "execution",
+                            retryable: false,
+                        },
+                    ), "errored");
                     return;
                 }
-                finish(Results.failure("executor:jq", "spawn-failed", 500, `Could not start jq: ${e.message}`), "errored");
+                finish(Results.failure(
+                    "executor:jq",
+                    "spawn-failed",
+                    500,
+                    `Could not start jq: ${ErrorDetail.preview(e, detailLimit)}`,
+                    {},
+                    {
+                        stage: "spawn",
+                        errorCode: (e as NodeJS.ErrnoException).code,
+                        retryable: false,
+                    },
+                ), "errored");
             });
             child.on("close", (code) => {
                 if (signal.aborted) {
-                    finish(Results.failure("executor:jq", "cancelled", 499, "jq execution was cancelled."), "errored");
+                    finish(Results.failure(
+                        "executor:jq",
+                        "cancelled",
+                        499,
+                        "jq execution was cancelled.",
+                        {},
+                        {
+                            stage: "execution",
+                            retryable: false,
+                        },
+                    ), "errored");
                     return;
                 }
                 if (code === 0) { finish({ status: 200 }, "closed"); return; }
@@ -84,8 +120,15 @@ export default class Jq extends BaseExecutor {
                     "executor:jq",
                     "jq-error",
                     500,
-                    err.trim() || `jq exited with code ${code ?? -1}.`,
+                    err.trim() === ""
+                        ? `jq exited with code ${code ?? -1}.`
+                        : ErrorDetail.preview(err.trim(), detailLimit),
                     { exitCode: code ?? -1 },
+                    {
+                        stage: "execution",
+                        recovery: "Correct the jq program or its input.",
+                        retryable: false,
+                    },
                 ), "errored");
             });
         });

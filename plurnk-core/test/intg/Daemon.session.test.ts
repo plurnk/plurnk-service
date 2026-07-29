@@ -7,6 +7,7 @@ import type { Db } from "../../src/core/Db.ts";
 import SeamSocket from "./_seam.ts";
 import Daemon from "../../src/server/Daemon.ts";
 import { openMigrated } from "./_helpers.ts";
+import { rpcProblem } from "./_rpc.ts";
 
 interface RpcResponse {
     jsonrpc: "2.0";
@@ -90,13 +91,15 @@ test("workspace.rename mutates the workspace name; rejects collision + empty (#2
 
             // Collision: rename the (now "rename-a") workspace to a name another workspace holds.
             const collide = await rpcCall(ws, 4, "workspace.rename", { name: "rename-b" });
-            assert.ok(collide.error, "renaming to a name another workspace holds is rejected");
-            assert.match(collide.error!.message, /already exists/);
+            const collisionProblem = rpcProblem(collide);
+            assert.equal(collisionProblem.type, "https://problems.plurnk.dev/daemon/workspace/name-conflict");
+            assert.equal(collisionProblem.name, "rename-b");
 
             // Empty name is a contract violation.
             const empty = await rpcCall(ws, 5, "workspace.rename", { name: "" });
-            assert.ok(empty.error, "empty name is rejected");
-            assert.match(empty.error!.message, /non-empty/);
+            const emptyProblem = rpcProblem(empty);
+            assert.equal(emptyProblem.type, "https://problems.plurnk.dev/daemon/input/name-invalid");
+            assert.equal(emptyProblem.field, "name");
 
             // Self-rename is a no-op, not a collision.
             const self = await rpcCall(ws, 6, "workspace.rename", { name: "rename-a" });

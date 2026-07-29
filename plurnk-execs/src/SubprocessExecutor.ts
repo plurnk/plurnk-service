@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 import { Results } from "@plurnk/plurnk-schemes";
 import BaseExecutor from "./BaseExecutor.ts";
+import ErrorDetail, { ERROR_DETAIL_LIMIT } from "./ErrorDetail.ts";
 import Runtime from "./runtime.ts";
 import type { ChannelDecl, Effect, ExecArgs, ExecResult, RuntimeAvailability, SpawnArgs } from "./types.ts";
 
@@ -49,6 +50,10 @@ export default class SubprocessExecutor extends BaseExecutor {
         const bin = this.binary;
         if (bin === null) return { available: true };
         if (signal?.aborted) return { available: false };
+        const detailLimit = ErrorDetail.configuredLimit();
+        if (detailLimit === null) {
+            return { available: false, detail: `${ERROR_DETAIL_LIMIT} must be set to a non-negative integer.` };
+        }
         // No internal deadline — the per-probe timeout is the consumer's (SPEC
         // §2.2), handed in as `signal`. We pass it to spawn so a resolved or
         // timed-out probe REAPS its child at once; no in-flight `--version` write
@@ -64,7 +69,7 @@ export default class SubprocessExecutor extends BaseExecutor {
                 ? { available: false }
                 : { available: false, detail: `${bin} not found on PATH` }));
             child.on("close", (code) => done(code === 0
-                ? { available: true, detail: out.trim().split("\n")[0] || undefined }
+                ? { available: true, detail: ErrorDetail.preview(out.trim().split("\n")[0], detailLimit) || undefined }
                 : { available: false, detail: `${bin} --version exited ${code}` }));
         });
     }
@@ -80,6 +85,12 @@ export default class SubprocessExecutor extends BaseExecutor {
     }
 
     run({ runtime, command, cwd, target, env, signal, write, setState }: ExecArgs): Promise<ExecResult> {
+        const detailLimit = ErrorDetail.configuredLimit();
+        if (detailLimit === null) {
+            setState("stdout", "errored");
+            setState("stderr", "errored");
+            return Promise.resolve(ErrorDetail.invalidConfiguration("executor:subprocess"));
+        }
         const { cmd, args, useShell, stdin } = this.spawnArgs(runtime, command, target);
         return new Promise<ExecResult>((resolve) => {
             // Already cancelled before we start — don't launch a doomed process.
@@ -92,7 +103,11 @@ export default class SubprocessExecutor extends BaseExecutor {
                     499,
                     `Execution of '${runtime}' was cancelled before it started.`,
                     { exitCode: -1 },
-                    { runtime },
+                    {
+                        runtime,
+                        stage: "execution",
+                        retryable: false,
+                    },
                 ));
                 return;
             }
@@ -170,9 +185,14 @@ export default class SubprocessExecutor extends BaseExecutor {
                     "executor:subprocess",
                     "spawn-failed",
                     500,
-                    `Could not start '${runtime}': ${err.message}`,
+                    `Could not start '${runtime}': ${ErrorDetail.preview(err, detailLimit)}`,
                     { exitCode: -1 },
-                    { runtime },
+                    {
+                        runtime,
+                        stage: "spawn",
+                        errorCode: (err as NodeJS.ErrnoException).code,
+                        retryable: false,
+                    },
                 ), "errored");
             });
 
@@ -184,7 +204,11 @@ export default class SubprocessExecutor extends BaseExecutor {
                         499,
                         `Execution of '${runtime}' was cancelled.`,
                         { exitCode: code ?? -1 },
-                        { runtime },
+                        {
+                            runtime,
+                            stage: "execution",
+                            retryable: false,
+                        },
                     ), "errored");
                     return;
                 }
@@ -197,7 +221,12 @@ export default class SubprocessExecutor extends BaseExecutor {
                         500,
                         `'${runtime}' exited with code ${code ?? -1}.`,
                         { exitCode: code ?? -1 },
-                        { runtime },
+                        {
+                            runtime,
+                            stage: "execution",
+                            recovery: "Inspect the stderr channel before correcting the command.",
+                            retryable: false,
+                        },
                     ), ok ? "closed" : "errored");
             });
         });

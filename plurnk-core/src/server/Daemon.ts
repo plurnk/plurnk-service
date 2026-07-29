@@ -45,16 +45,33 @@ import type { LoopFlags } from "../core/types.ts";
 import Results, { OperationFailureError, type SchemeResult } from "../core/results.ts";
 import WorkspaceGate from "../core/WorkspaceGate.ts";
 import BranchBatches from "./BranchBatches.ts";
+import ErrorDetail from "../core/ErrorDetail.ts";
 
-const clientActionFailure = (error: unknown): SchemeResult =>
-    error instanceof OperationFailureError
-        ? error.result
-        : Results.failure(
-            "daemon:client",
-            "action-threw",
-            500,
-            `The client action threw: ${error instanceof Error ? error.message : String(error)}`,
-        );
+const clientActionFailure = (error: unknown): SchemeResult => {
+    if (error instanceof OperationFailureError) return error.result;
+    console.error("Client action failed outside its operation result contract:", error);
+    return Results.failure(
+        "daemon:client",
+        "action-threw",
+        500,
+        "The client action failed outside its operation result contract.",
+        {},
+        {
+            stage: "client-action",
+            retryable: false,
+        },
+    );
+};
+
+const daemonFailure = (
+    owner: string,
+    code: string,
+    status: number,
+    detail: string,
+    extensions: Readonly<Record<string, unknown>> = {},
+): OperationFailureError => new OperationFailureError(
+    Results.failure(owner, code, status, detail, {}, extensions),
+);
 
 // A stopped-world proposal a transport module renders as a TOOL_CALL (#355 seam read). The raw
 // `state='proposed'` row shape (§proposal-list); the module reshapes it at its edge.
@@ -284,11 +301,14 @@ export default class Daemon {
     // gate, validation, and applyResolution stay core (Engine.resolveProposal); the seam is the read +
     // the resolve, never the mechanism. `resolveProposal` throws for an unknown/already-resolved id.
     async pendingProposals(workspaceId: number): Promise<PendingProposal[]> {
-        return this.#db.proposal_list_pending.all<PendingProposal>({ workspace_id: workspaceId });
+        const checkedWorkspaceId = ClientInput.assertId("proposal.list", "workspaceId", workspaceId);
+        return this.#db.proposal_list_pending.all<PendingProposal>({ workspace_id: checkedWorkspaceId });
     }
 
-    resolveProposal(logEntryId: number, resolution: ProposalResolution): void {
-        this.#engine.resolveProposal(logEntryId, resolution);
+    resolveProposal(logEntryId: number, resolution: Omit<ProposalResolution, "result">): void {
+        const checkedLogEntryId = ClientInput.assertId("proposal.resolve", "logEntryId", logEntryId);
+        const checkedResolution = ClientInput.assertProposalResolution("proposal.resolve", resolution);
+        this.#engine.resolveProposal(checkedLogEntryId, checkedResolution);
     }
 
     // The client-interface seam (#355) — drive/steer a loop. The module supplies only workspace/run/prompt;
@@ -296,36 +316,85 @@ export default class Daemon {
     // loop runs async and its outcome arrives on the event source (loop/terminated). `cancelDrain` (public)
     // is the cancel hook. Both funnel through the unified `inject`, which owns the drain lifecycle.
     async runLoop(args: { workspaceId: number; workerId: number; prompt: string; maxTurns?: number; flags?: Partial<LoopFlags>; openPaths?: string[]; alias?: string; model?: string }): Promise<SchemeResult & { action: "injected_next_turn" | "enqueued_new_loop"; loopId: number; turnSeq?: number }> {
+        const workspaceId = ClientInput.assertId("loop.run", "workspaceId", args.workspaceId);
+        const workerId = ClientInput.assertId("loop.run", "workerId", args.workerId);
+        const prompt = ClientInput.assertPrompt("loop.run", args.prompt);
+        const requestedMaxTurns = ClientInput.assertMaxTurns("loop.run", args.maxTurns);
+        const openPaths = ClientInput.assertOpenPaths("loop.run", args.openPaths);
+        const alias = ClientInput.assertOptionalSelector("loop.run", "alias", args.alias);
+        const model = ClientInput.assertOptionalSelector("loop.run", "model", args.model);
         const flags = ClientInput.normalizeLoopFlags("loop.run", args.flags) as Partial<LoopFlags> | undefined;
         // #414 — per-loop model selection: a client sends its alias/model on every loop, so a
         // switch takes effect turn-to-turn. `model` (client-resolved <provider>/<model>, #90) wins
         // over `alias`; neither → the boot default. Instantiation is cached, so ping-ponging
         // between two models is cheap, and an unresolvable alias/model fails loud here.
-        const selection = await this.#resolveLoopProvider(args.alias, args.model);
+        const selection = await this.#resolveLoopProvider(alias, model);
         if (selection === null) {
             throw new OperationFailureError(Results.failure(
                 "daemon:provider",
                 "not-configured",
                 501,
                 "No provider is configured for this loop.",
+                {},
+                {
+                    stage: "provider-selection",
+                    recovery: "Select a configured model provider.",
+                    retryable: false,
+                },
             ));
         }
         const systemPrompt = await readFile(Paths.instructionsSystem, "utf8");
         // §machine-processes — the model NEVER runs in a client-origin run (its packets would carry
         // client op.* rows). The module resolves the model worker via ensureModelWorker and passes it (or a
         // fork); a client worker here is a caller error, refused loudly rather than silently rehomed.
-        const target = await this.#db.envelope_get_worker_by_id.get<{ workspace_id: number; origin: string }>({ id: args.workerId });
-        if (target === undefined) throw new Error(`runLoop: run ${args.workerId} not found`);
-        if (target.origin === "client") throw new Error(`runLoop: run ${args.workerId} is a client worker — loops run in model workers (§machine-processes); resolve one with ensureModelWorker(workspaceId)`);
+        const target = await this.#db.envelope_get_worker_by_id.get<{ workspace_id: number; origin: string }>({ id: workerId });
+        if (target === undefined) {
+            throw daemonFailure(
+                "daemon:worker",
+                "worker-not-found",
+                404,
+                `Worker ${workerId} does not exist.`,
+                { workerId },
+            );
+        }
+        if (target.workspace_id !== workspaceId) {
+            throw daemonFailure(
+                "daemon:worker",
+                "workspace-mismatch",
+                409,
+                `Worker ${workerId} does not belong to workspace ${workspaceId}.`,
+                {
+                    workerId,
+                    workspaceId,
+                    actualWorkspaceId: target.workspace_id,
+                    retryable: false,
+                },
+            );
+        }
+        if (target.origin === "client") {
+            throw daemonFailure(
+                "daemon:worker",
+                "model-worker-required",
+                409,
+                `Worker ${workerId} is not a model worker.`,
+                {
+                    workerId,
+                    recovery: "Select or create a model worker for this loop.",
+                    retryable: false,
+                },
+            );
+        }
         // §operator-config-max-turns-ceiling — the operator ceiling clamps a per-call maxTurns; a
         // seam caller must not bypass operator policy (inject only DEFAULTS from env, never clamps).
         const ceiling = Number(process.env.PLURNK_SERVICE_MAX_TURNS ?? "-1");
-        const requested = args.maxTurns ?? ceiling;
+        const requested = requestedMaxTurns ?? ceiling;
         const maxTurns = ceiling < 0 ? requested : (requested < 0 ? ceiling : Math.min(requested, ceiling));
-        const { flags: _inputFlags, ...rest } = args;
         const { action, loopId, turnSeq } = await this.inject({
-            ...rest,
+            workspaceId,
+            workerId,
+            prompt,
             ...(flags !== undefined ? { flags } : {}),
+            ...(openPaths !== undefined ? { openPaths } : {}),
             maxTurns,
             providerSpec: selection,
             systemPrompt,
@@ -341,11 +410,37 @@ export default class Daemon {
         const requested = resolveLoopAlias(alias, model, parseAliasesFromEnv());
         if (requested === null && this.#provider === null) return null;
         const spec = requested ?? resolveActiveAlias();
-        if (spec === null) throw new Error("runLoop: boot provider has no resolvable alias");
+        if (spec === null) {
+            throw daemonFailure(
+                "daemon:provider",
+                "active-alias-unresolved",
+                500,
+                "The active provider has no resolvable alias.",
+                { stage: "provider-selection", retryable: false },
+            );
+        }
         // Resolve eagerly so loop.run fails before enqueue when the provider
         // cannot be constructed. The drain later retrieves this cached handle
         // from the loop's durable spec at the claim boundary.
-        await ProviderInstantiate.instantiateProvider(spec);
+        try {
+            await ProviderInstantiate.instantiateProvider(spec);
+        } catch (cause) {
+            if (cause instanceof OperationFailureError) throw cause;
+            console.error(`Provider alias '${spec.alias}' could not be instantiated:`, cause);
+            throw daemonFailure(
+                "daemon:provider",
+                "provider-unavailable",
+                503,
+                `Provider alias '${spec.alias}' is unavailable.`,
+                {
+                    alias: spec.alias,
+                    provider: spec.provider,
+                    model: spec.model,
+                    stage: "provider-selection",
+                    retryable: false,
+                },
+            );
+        }
         return spec;
     }
 
@@ -375,10 +470,21 @@ export default class Daemon {
     async #assertLoopProvider(loopId: number, requested: ProviderAlias): Promise<void> {
         const selected = await this.#providerSpecForLoop(loopId);
         if (JSON.stringify(selected) !== JSON.stringify(requested)) {
-            throw new Error(
-                `loop ${loopId}: provider selection is frozen at '${selected.alias}' (${selected.provider}/${selected.model}); `
-                + `requested '${requested.alias}' (${requested.provider}/${requested.model}). `
-                + "Cancel or conclude the loop before hot-swapping models.",
+            throw daemonFailure(
+                "daemon:provider",
+                "loop-provider-conflict",
+                409,
+                `Loop ${loopId} uses provider alias '${selected.alias}', not '${requested.alias}'.`,
+                {
+                    loopId,
+                    selectedAlias: selected.alias,
+                    selectedModel: `${selected.provider}/${selected.model}`,
+                    requestedAlias: requested.alias,
+                    requestedModel: `${requested.provider}/${requested.model}`,
+                    stage: "loop-injection",
+                    recovery: "Cancel or conclude the loop before selecting another provider.",
+                    retryable: false,
+                },
             );
         }
     }
@@ -388,14 +494,30 @@ export default class Daemon {
         const durable = await this.#db.drain_get_loop_max_turns.get<{ max_turns: number }>({ loop_id: loopId });
         if (durable === undefined) throw new Error(`inject: loop ${loopId} has no durable turn ceiling`);
         if (durable.max_turns !== requested) {
-            throw new Error(`inject: the prompt would fold into loop ${loopId} with maxTurns ${durable.max_turns}, not requested ${requested} — maxTurns is loop-scoped and immutable; cancel or conclude the loop before opening one with a different ceiling`);
+            throw daemonFailure(
+                "daemon:loop",
+                "turn-ceiling-conflict",
+                409,
+                `Loop ${loopId} has turn ceiling ${durable.max_turns}, not ${requested}.`,
+                {
+                    loopId,
+                    selectedMaximumTurns: durable.max_turns,
+                    requestedMaximumTurns: requested,
+                    stage: "loop-injection",
+                    recovery: "Cancel or conclude the loop before selecting another turn ceiling.",
+                    retryable: false,
+                },
+            );
         }
     }
 
     // §machine-processes — the workspace's model worker (created on first use), distinct from the client
     // run so the model's packets never carry client op.* rows. The module binds its threads to this.
     ensureModelWorker(workspaceId: number): Promise<number> {
-        return Envelope.ensureModelWorker(this.#db, workspaceId);
+        return Envelope.ensureModelWorker(
+            this.#db,
+            ClientInput.assertId("worker.ensure-model", "workspaceId", workspaceId),
+        );
     }
 
     // The op-dispatch hook (#355) — execute one parsed op on behalf of a client: journaled as a
@@ -404,7 +526,9 @@ export default class Daemon {
     // family (read/edit/copy/find/fold/look/move/open/send/exec); the module parses at its edge with the
     // grammar package and hands over the statement, then fans the emitted entry out to its own clients.
     async dispatchAsClient(args: { workspaceId: number; workerId: number; statement: PlurnkStatement }): Promise<{ status: number; [key: string]: unknown }> {
-        const { workspaceId, workerId, statement } = args;
+        const workspaceId = ClientInput.assertId("operation.dispatch", "workspaceId", args.workspaceId);
+        const workerId = ClientInput.assertId("operation.dispatch", "workerId", args.workerId);
+        const { statement } = args;
         const clientLoopId = await Envelope.ensureClientLoop(this.#db, workerId);
         try {
             const result = await this.#dispatchClientStatement({ workspaceId, workerId, loopId: clientLoopId, statement });
@@ -421,7 +545,9 @@ export default class Daemon {
     // keep this promise (and segment) open across interrupt/resume; settlement closes
     // it. The journal is durable evidence for the action, not a second client lifecycle.
     async dispatchClientAction(args: { workspaceId: number; workerId: number; statements: PlurnkStatement[] }): Promise<Array<{ status: number; [key: string]: unknown }>> {
-        const { workspaceId, workerId, statements } = args;
+        const workspaceId = ClientInput.assertId("operation.dispatch-batch", "workspaceId", args.workspaceId);
+        const workerId = ClientInput.assertId("operation.dispatch-batch", "workerId", args.workerId);
+        const { statements } = args;
         if (statements.length === 0) return [];
         const clientLoopId = await Envelope.ensureClientLoop(this.#db, workerId);
         try {
@@ -465,7 +591,9 @@ export default class Daemon {
     // required by plugin context and relative log:/// addresses without impersonating an active
     // client lifecycle. It creates no turn or log row. Engine.look enforces READ-only.
     async look(args: { workspaceId: number; workerId: number; statement: PlurnkStatement }): Promise<{ status: number; [key: string]: unknown }> {
-        const { workspaceId, workerId, statement } = args;
+        const workspaceId = ClientInput.assertId("operation.look", "workspaceId", args.workspaceId);
+        const workerId = ClientInput.assertId("operation.look", "workerId", args.workerId);
+        const { statement } = args;
         const release = await this.#workspaceGate.acquireTurn(workspaceId, workerId);
         const clientLoopId = await Envelope.ensureClientLoop(this.#db, workerId);
         try {
@@ -489,10 +617,72 @@ export default class Daemon {
         loopId?: number; turnId?: number; sinceId?: number; limit?: number;
         loopSeq?: number; turnSeq?: number; sequence?: number;
     }): Promise<LogEntryWire[]> {
-        const { workspaceId, workerId } = args;
+        const workspaceId = ClientInput.assertId("log.read", "workspaceId", args.workspaceId);
+        const workerId = ClientInput.assertId("log.read", "workerId", args.workerId);
         const target = await this.#db.envelope_get_worker_by_id.get<{ workspace_id: number }>({ id: workerId });
-        if (target === undefined) throw new Error(`run ${workerId} not found`);
-        if (target.workspace_id !== workspaceId) throw new Error(`run ${workerId} is not in this workspace (${workspaceId})`);
+        if (target === undefined) {
+            throw daemonFailure(
+                "daemon:worker",
+                "worker-not-found",
+                404,
+                `Worker ${workerId} does not exist.`,
+                { workerId },
+            );
+        }
+        if (target.workspace_id !== workspaceId) {
+            throw daemonFailure(
+                "daemon:worker",
+                "workspace-mismatch",
+                409,
+                `Worker ${workerId} does not belong to workspace ${workspaceId}.`,
+                {
+                    workerId,
+                    workspaceId,
+                    actualWorkspaceId: target.workspace_id,
+                    retryable: false,
+                },
+            );
+        }
+        const coordinateFields = {
+            loopId: args.loopId,
+            turnId: args.turnId,
+            sinceId: args.sinceId,
+            loopSeq: args.loopSeq,
+            turnSeq: args.turnSeq,
+            sequence: args.sequence,
+        };
+        for (const [field, value] of Object.entries(coordinateFields)) {
+            if (value !== undefined && (!Number.isSafeInteger(value) || value < 0)) {
+                throw daemonFailure(
+                    "daemon:log",
+                    "coordinate-invalid",
+                    400,
+                    `Log coordinate field '${field}' is not a non-negative safe integer.`,
+                    {
+                        field,
+                        value,
+                        stage: "log-read",
+                        recovery: "Use a non-negative integer coordinate.",
+                        retryable: false,
+                    },
+                );
+            }
+        }
+        if (args.limit !== undefined && (!Number.isSafeInteger(args.limit) || args.limit < 1)) {
+            throw daemonFailure(
+                "daemon:log",
+                "limit-invalid",
+                400,
+                `Log limit ${args.limit} is not a positive safe integer.`,
+                {
+                    field: "limit",
+                    value: args.limit,
+                    stage: "log-read",
+                    recovery: "Use a positive integer log limit.",
+                    retryable: false,
+                },
+            );
+        }
         const rows = await this.#db.log_read_recent_ids.all<{ id: number }>({
             worker_id: workerId,
             loop_id: args.loopId ?? null, turn_id: args.turnId ?? null, since_id: args.sinceId ?? null,
@@ -522,21 +712,34 @@ export default class Daemon {
     }
 
     listWorkspaces() { return Envelope.listWorkspaces(this.#db); }
-    listWorkers(workspaceId: number) { return Envelope.listWorkersForWorkspace(this.#db, workspaceId); }
-    listPrompts(workspaceId: number, limit: number = 100) { return Envelope.listPromptsForWorkspace(this.#db, workspaceId, limit); }
+    listWorkers(workspaceId: number) {
+        return Envelope.listWorkersForWorkspace(
+            this.#db,
+            ClientInput.assertId("workspace.workers", "workspaceId", workspaceId),
+        );
+    }
+    listPrompts(workspaceId: number, limit?: number) {
+        const checkedWorkspaceId = ClientInput.assertId("workspace.prompts", "workspaceId", workspaceId);
+        const checkedLimit = ClientInput.assertLimit("workspace.prompts", limit);
+        return Envelope.listPromptsForWorkspace(this.#db, checkedWorkspaceId, checkedLimit ?? 100);
+    }
     async listMembers(workspaceId: number) {
-        const release = await this.#workspaceGate.acquireTurn(workspaceId, 0);
+        const checkedWorkspaceId = ClientInput.assertId("workspace.members", "workspaceId", workspaceId);
+        const release = await this.#workspaceGate.acquireTurn(checkedWorkspaceId, 0);
         try {
-            return await GitMembership.resolveMembershipEffects(this.#db, workspaceId, undefined);
+            return await GitMembership.resolveMembershipEffects(this.#db, checkedWorkspaceId, undefined);
         } finally {
             release();
         }
     }
     listConstraints(workspaceId: number) {
-        return this.#db.crud_list_workspace_constraints.all<{ effect: string; glob: string }>({ workspace_id: workspaceId });
+        const checkedWorkspaceId = ClientInput.assertId("workspace.constraints", "workspaceId", workspaceId);
+        return this.#db.crud_list_workspace_constraints.all<{ effect: string; glob: string }>({ workspace_id: checkedWorkspaceId });
     }
     workspaceDerivationStatus(workspaceId: number) {
-        return this.#engine.workspaceDerivationStatus(workspaceId);
+        return this.#engine.workspaceDerivationStatus(
+            ClientInput.assertId("workspace.derivation", "workspaceId", workspaceId),
+        );
     }
 
     // Workspace lifecycle (#355): the module's workspace-management surface. Inputs arrive already validated
@@ -548,10 +751,11 @@ export default class Daemon {
         // The SEAM fail-hards on malformed client input (#364 — validation flushed out of the
         // retired WS handlers so every module inherits it): settings bag (#231/#232/#249/#328),
         // constraints (#200), absolute projectRoot.
+        const name = ClientInput.assertOptionalName("workspace.create", "name", args.name);
         const projectRoot = ClientInput.assertProjectRoot("workspace.create", args.projectRoot);
         const settings = ClientInput.parseSettings(args.settings);
         const constraints = ClientInput.parseConstraints(args.constraints);
-        const envelope = await Envelope.createClientEnvelope(this.#db, { name: args.name, projectRoot, settings });
+        const envelope = await Envelope.createClientEnvelope(this.#db, { name, projectRoot, settings });
         for (const { effect, glob } of constraints) {
             await this.#db.crud_insert_workspace_constraint.run({ workspace_id: envelope.workspaceId, effect, glob });
         }
@@ -564,27 +768,33 @@ export default class Daemon {
 
     async attachWorkspace(args: { workspaceId: number; workerId?: number; workerName?: string }): Promise<ClientEnvelope> {
         // attachToWorkspace owns the reserved-name + run-ownership invariants; the seam just delegates + warms.
-        const envelope = await Envelope.attachToWorkspace(this.#db, args.workspaceId, { workerId: args.workerId, workerName: args.workerName });
+        const workspaceId = ClientInput.assertId("workspace.attach", "workspaceId", args.workspaceId);
+        const workerId = args.workerId === undefined
+            ? undefined
+            : ClientInput.assertId("workspace.attach", "workerId", args.workerId);
+        const workerName = ClientInput.assertOptionalName("workspace.attach", "workerName", args.workerName);
+        const envelope = await Envelope.attachToWorkspace(this.#db, workspaceId, { workerId, workerName });
         void this.#engine.warmWorkspaceDerivations(envelope.workspaceId).catch(() => {});
         return envelope;
     }
 
     async renameWorkspace(workspaceId: number, name: string): Promise<{ id: number; name: string }> {
-        if (typeof name !== "string" || name.length === 0) throw new Error("workspace.rename: name must be a non-empty string"); // seam fail-hard (#364)
-        const taken = await this.#db.envelope_get_workspace_by_name.get<{ id: number }>({ name });
-        if (taken !== undefined && taken.id !== workspaceId) throw new Error(`a workspace named "${name}" already exists — pick another`);
-        return { id: workspaceId, name: await Envelope.updateWorkspaceName(this.#db, workspaceId, name) };
+        const checkedWorkspaceId = ClientInput.assertId("workspace.rename", "workspaceId", workspaceId);
+        const checkedName = ClientInput.assertOptionalName("workspace.rename", "name", name);
+        if (checkedName === undefined) throw new Error("ClientInput.assertOptionalName accepted a required name as undefined");
+        return { id: checkedWorkspaceId, name: await Envelope.updateWorkspaceName(this.#db, checkedWorkspaceId, checkedName) };
     }
 
     async constrain(workspaceId: number, effect: string, glob: string): Promise<{ effect: string; glob: string }> {
-        const release = await this.#workspaceGate.acquireTurn(workspaceId, 0);
+        const checkedWorkspaceId = ClientInput.assertId("workspace.constrain", "workspaceId", workspaceId);
+        const release = await this.#workspaceGate.acquireTurn(checkedWorkspaceId, 0);
         try {
             ClientInput.assertConstraint("workspace.constrain", effect, glob);
-            await this.#db.crud_insert_workspace_constraint.run({ workspace_id: workspaceId, effect, glob });
-            await GitMembership.resolveGitMembership(this.#db, workspaceId, undefined);
+            await this.#db.crud_insert_workspace_constraint.run({ workspace_id: checkedWorkspaceId, effect, glob });
+            await GitMembership.resolveGitMembership(this.#db, checkedWorkspaceId, undefined);
             // Members may have just landed — begin warming now, but return the constraint response
             // immediately so prompts do not wait for the complete derivation corpus.
-            void this.#engine.warmWorkspaceDerivations(workspaceId).catch(() => {});
+            void this.#engine.warmWorkspaceDerivations(checkedWorkspaceId).catch(() => {});
             return { effect, glob };
         } finally {
             release();
@@ -592,12 +802,13 @@ export default class Daemon {
     }
 
     async unconstrain(workspaceId: number, effect: string, glob: string): Promise<{ effect: string; glob: string }> {
-        const release = await this.#workspaceGate.acquireTurn(workspaceId, 0);
+        const checkedWorkspaceId = ClientInput.assertId("workspace.unconstrain", "workspaceId", workspaceId);
+        const release = await this.#workspaceGate.acquireTurn(checkedWorkspaceId, 0);
         try {
             ClientInput.assertConstraint("workspace.unconstrain", effect, glob);
-            await this.#db.crud_delete_workspace_constraint.run({ workspace_id: workspaceId, effect, glob });
-            await GitMembership.resolveGitMembership(this.#db, workspaceId, undefined);
-            void this.#engine.warmWorkspaceDerivations(workspaceId).catch(() => {});
+            await this.#db.crud_delete_workspace_constraint.run({ workspace_id: checkedWorkspaceId, effect, glob });
+            await GitMembership.resolveGitMembership(this.#db, checkedWorkspaceId, undefined);
+            void this.#engine.warmWorkspaceDerivations(checkedWorkspaceId).catch(() => {});
             return { effect, glob };
         } finally {
             release();
@@ -607,22 +818,111 @@ export default class Daemon {
     // The entry-shape hook (#355) — one entry's channels + tags + metadata at a path. With channel+offset,
     // returns just that channel's content sliced from the offset: the incremental streaming read (#192,
     // the delta leaves storage, not the whole channel). The module renders growing output by re-polling.
-    async readEntry(args: { workspaceId: number; target: string; channel?: string; offset?: number }): Promise<{ status: number; entry: EntryShape | null }> {
-        const release = await this.#workspaceGate.acquireTurn(args.workspaceId, 0);
+    async readEntry(args: { workspaceId: number; target: string; channel?: string; offset?: number }): Promise<SchemeResult & { entry: EntryShape | null }> {
+        const workspaceId = ClientInput.assertId("entry.read", "workspaceId", args.workspaceId);
+        if (typeof args.target !== "string" || args.target.length === 0) {
+            throw daemonFailure(
+                "daemon:input",
+                "target-invalid",
+                400,
+                "target is not a non-empty string.",
+                {
+                    context: "entry.read",
+                    field: "target",
+                    stage: "input-validation",
+                    recovery: "Provide an entry URI.",
+                    retryable: false,
+                },
+            );
+        }
+        const channel = ClientInput.assertOptionalChannel("entry.read", args.channel);
+        const release = await this.#workspaceGate.acquireTurn(workspaceId, 0);
         try {
             const m = args.target.match(/^([a-z][a-z0-9+.-]*):\/\/(.*)$/);
-            if (m === null) throw new Error(`readEntry: target must be URL-shaped (scheme://pathname); got: ${args.target}`);
-            if (args.offset !== undefined && args.channel === undefined) throw new Error("readEntry: offset requires channel (which channel to slice)");
+            if (m === null) {
+                return Results.failure(
+                    "daemon:entry",
+                    "target-invalid",
+                    400,
+                    `The entry target '${args.target}' is not URL-shaped.`,
+                    { entry: null },
+                    {
+                        target: args.target,
+                        stage: "entry-read",
+                        recovery: "Use a scheme://path target.",
+                        retryable: false,
+                    },
+                ) as SchemeResult & { entry: null };
+            }
+            if (args.offset !== undefined && channel === undefined) {
+                return Results.failure(
+                    "daemon:entry",
+                    "offset-channel-required",
+                    400,
+                    "An entry offset requires a channel.",
+                    { entry: null },
+                    {
+                        offset: args.offset,
+                        stage: "entry-read",
+                        recovery: "Select the channel to read from the offset.",
+                        retryable: false,
+                    },
+                ) as SchemeResult & { entry: null };
+            }
+            if (args.offset !== undefined && (!Number.isSafeInteger(args.offset) || args.offset < 0)) {
+                return Results.failure(
+                    "daemon:entry",
+                    "offset-invalid",
+                    400,
+                    `Entry offset ${args.offset} is not a non-negative safe integer.`,
+                    { entry: null },
+                    {
+                        offset: args.offset,
+                        stage: "entry-read",
+                        recovery: "Use a non-negative integer offset.",
+                        retryable: false,
+                    },
+                ) as SchemeResult & { entry: null };
+            }
             const scheme = m[1];
             const pathname = m[2].split("#")[0];
-            const row = await this.#db.entry_read_lookup.get<{ id: number; scope: string; workspace_id: number; scheme: string; pathname: string }>({ workspace_id: args.workspaceId, scheme, pathname });
-            if (row === undefined) return { status: 404, entry: null };
+            const row = await this.#db.entry_read_lookup.get<{ id: number; scope: string; workspace_id: number; scheme: string; pathname: string }>({ workspace_id: workspaceId, scheme, pathname });
+            if (row === undefined) {
+                return Results.failure(
+                    "daemon:entry",
+                    "entry-not-found",
+                    404,
+                    `No entry exists at ${scheme}://${pathname}.`,
+                    { entry: null },
+                    { target: `${scheme}://${pathname}` },
+                ) as SchemeResult & { entry: null };
+            }
             let channelRows: ChannelRow[];
-            if (args.channel === undefined) {
+            if (channel === undefined) {
                 channelRows = await this.#db.entry_read_channels.all<ChannelRow>({ entry_id: row.id });
             } else {
-                const r = await this.#db.entry_read_channel_slice.get<ChannelRow>({ entry_id: row.id, channel: args.channel, offset: args.offset ?? 0 });
-                channelRows = r === undefined ? [] : [r];
+                const r = await this.#db.entry_read_channel_slice.get<ChannelRow>({ entry_id: row.id, channel, offset: args.offset ?? 0 });
+                if (r === undefined) {
+                    const availableChannels = (await this.#db.entry_read_channels.all<ChannelRow>({ entry_id: row.id }))
+                        .map(({ name }) => name);
+                    return Results.failure(
+                        "daemon:entry",
+                        "channel-not-found",
+                        404,
+                        `Channel #${channel} does not exist at ${scheme}://${pathname}.`,
+                        { entry: null },
+                        {
+                            target: `${scheme}://${pathname}`,
+                            requestedChannel: channel,
+                            availableChannels,
+                            ...(availableChannels.length === 0
+                                ? {}
+                                : { recovery: `Use one of the available channels: ${availableChannels.map((channel) => `#${channel}`).join(", ")}.` }),
+                            retryable: false,
+                        },
+                    ) as SchemeResult & { entry: null };
+                }
+                channelRows = [r];
             }
             const channels: EntryShape["channels"] = {};
             for (const c of channelRows) channels[c.name] = { content: c.content, contentLength: c.contentLength, mimetype: c.mimetype, tokens: c.tokens, state: c.state };
@@ -641,14 +941,38 @@ export default class Daemon {
     // forkWorker the branching door (copies history); this is the fresh door — a named, empty-log,
     // model-origin root that runLoop accepts. New chat = new conversation, same workspace.
     async createConversationWorker(args: { workspaceId: number; name?: string }): Promise<{ workerId: number; workerName: string }> {
-        const { workspaceId, name } = args;
-        if (name !== undefined && (typeof name !== "string" || name.length === 0)) throw new Error("run.create: name must be a non-empty string");
+        const workspaceId = ClientInput.assertId("worker.create", "workspaceId", args.workspaceId);
+        const name = ClientInput.assertOptionalName("worker.create", "name", args.name);
         const workspace = await this.#db.envelope_get_workspace.get<{ id: number }>({ id: workspaceId });
-        if (workspace === undefined) throw new Error(`run.create: workspace ${workspaceId} not found`);
+        if (workspace === undefined) {
+            throw daemonFailure(
+                "daemon:workspace",
+                "workspace-not-found",
+                404,
+                `Workspace ${workspaceId} does not exist.`,
+                { workspaceId },
+            );
+        }
         if (name !== undefined) {
-            if (Envelope.RESERVED_RUN_NAMES.has(name.toLowerCase())) throw new Error(`run.create: name "${name}" is reserved for a non-client actor`);
+            if (Envelope.RESERVED_RUN_NAMES.has(name.toLowerCase())) {
+                throw daemonFailure(
+                    "daemon:worker",
+                    "name-reserved",
+                    409,
+                    `Worker name '${name}' is reserved.`,
+                    { name, recovery: "Choose another worker name.", retryable: false },
+                );
+            }
             const taken = await this.#db.envelope_get_worker_by_name.get<{ id: number }>({ workspace_id: workspaceId, name });
-            if (taken !== undefined) throw new Error(`run.create: a worker named "${name}" already exists — worker names are immutable, pick another`);
+            if (taken !== undefined) {
+                throw daemonFailure(
+                    "daemon:worker",
+                    "name-conflict",
+                    409,
+                    `Worker name '${name}' is already in use in workspace ${workspaceId}.`,
+                    { workspaceId, name, recovery: "Choose another worker name.", retryable: false },
+                );
+            }
         }
         const run = await Envelope.createModelWorker(this.#db, workspaceId, name);
         return { workerId: run.id, workerName: run.name };
@@ -656,15 +980,53 @@ export default class Daemon {
 
     // ownership check and the run-name namespace + uniqueness invariants (names are immutable — no rename).
     async forkWorker(args: { workspaceId: number; workerId: number; name?: string }): Promise<{ workerId: number; workerName: string | null; parentWorkerId: number }> {
-        if (args.name !== undefined && (typeof args.name !== "string" || args.name.length === 0)) throw new Error("run.fork: name must be a non-empty string"); // seam fail-hard (#364)
-        const { workspaceId, workerId, name } = args;
+        const workspaceId = ClientInput.assertId("worker.fork", "workspaceId", args.workspaceId);
+        const workerId = ClientInput.assertId("worker.fork", "workerId", args.workerId);
+        const name = ClientInput.assertOptionalName("worker.fork", "name", args.name);
         const owner = await this.#db.envelope_get_worker_by_id.get<{ workspace_id: number }>({ id: workerId });
-        if (owner === undefined) throw new Error(`forkWorker: run ${workerId} not found`);
-        if (owner.workspace_id !== workspaceId) throw new Error(`forkWorker: run ${workerId} is not in workspace ${workspaceId}`);
+        if (owner === undefined) {
+            throw daemonFailure(
+                "daemon:worker",
+                "worker-not-found",
+                404,
+                `Worker ${workerId} does not exist.`,
+                { workerId },
+            );
+        }
+        if (owner.workspace_id !== workspaceId) {
+            throw daemonFailure(
+                "daemon:worker",
+                "workspace-mismatch",
+                409,
+                `Worker ${workerId} does not belong to workspace ${workspaceId}.`,
+                {
+                    workerId,
+                    workspaceId,
+                    actualWorkspaceId: owner.workspace_id,
+                    retryable: false,
+                },
+            );
+        }
         if (name !== undefined) {
-            if (Envelope.RESERVED_RUN_NAMES.has(name.toLowerCase())) throw new Error(`forkWorker: name "${name}" is reserved for a non-client actor`);
+            if (Envelope.RESERVED_RUN_NAMES.has(name.toLowerCase())) {
+                throw daemonFailure(
+                    "daemon:worker",
+                    "name-reserved",
+                    409,
+                    `Worker name '${name}' is reserved.`,
+                    { name, recovery: "Choose another worker name.", retryable: false },
+                );
+            }
             const taken = await this.#db.envelope_get_worker_by_name.get<{ id: number }>({ workspace_id: workspaceId, name });
-            if (taken !== undefined) throw new Error(`forkWorker: a worker named "${name}" already exists — worker names are immutable, pick another`);
+            if (taken !== undefined) {
+                throw daemonFailure(
+                    "daemon:worker",
+                    "name-conflict",
+                    409,
+                    `Worker name '${name}' is already in use in workspace ${workspaceId}.`,
+                    { workspaceId, name, recovery: "Choose another worker name.", retryable: false },
+                );
+            }
         }
         const branchWorkerId = await Fork.fork(this.#db, workerId, name);
         const branch = await this.#db.envelope_get_worker_by_id.get<{ name: string }>({ id: branchWorkerId });
@@ -851,15 +1213,27 @@ export default class Daemon {
     // to: an inject carrying flags that DIFFER from the target loop's effective flags is refused
     // legibly (cancel the loop or omit the flags), never a silent posture discard. Identical or
     // absent flags fold clean.
-    async #assertFoldPosture(workerId: number, flags: Partial<LoopFlags> | undefined, loopId?: number): Promise<void> {
+    async #assertFoldPosture(workerId: number, flags: Partial<LoopFlags> | undefined, loopId: number): Promise<void> {
         if (flags === undefined || Object.keys(flags).length === 0) return;
-        const row = loopId !== undefined
-            ? await this.#db.engine_get_loop_flags.get<{ flags: string }>({ loop_id: loopId })
-            : await this.#db.drain_active_loop_flags.get<{ id: number; flags: string }>({ worker_id: workerId });
-        const effective: Record<string, unknown> = { ...DEFAULT_LOOP_FLAGS, ...JSON.parse(row?.flags ?? "{}") as object };
-        const conflicts = Object.entries(flags).filter(([k, v]) => v !== undefined && effective[k] !== v).map(([k, v]) => `${k}: ${JSON.stringify(effective[k])} → ${JSON.stringify(v)}`);
+        const row = await this.#db.engine_get_loop_flags.get<{ flags: string }>({ loop_id: loopId });
+        if (row === undefined) throw new Error(`Loop ${loopId} disappeared while checking its flags`);
+        const effective: Record<string, unknown> = { ...DEFAULT_LOOP_FLAGS, ...JSON.parse(row.flags) as object };
+        const conflicts = Object.entries(flags).filter(([k, v]) => v !== undefined && effective[k] !== v).map(([k, v]) => `${k}: ${JSON.stringify(effective[k])} -> ${JSON.stringify(v)}`);
         if (conflicts.length > 0) {
-            throw new Error(`inject: the prompt would fold into a live loop whose flags differ (${conflicts.join(", ")}) — flags are loop-scoped and never change mid-flight. Cancel the loop (loop.cancel) and re-run with the new flags, or send the prompt without flags to adopt the loop's posture.`);
+            throw daemonFailure(
+                "daemon:loop",
+                "loop-flags-conflict",
+                409,
+                "The requested loop flags differ from the active loop flags.",
+                {
+                    workerId,
+                    loopId,
+                    conflicts,
+                    stage: "loop-injection",
+                    recovery: "Cancel the active loop before changing flags, or omit flags to keep its current posture.",
+                    retryable: false,
+                },
+            );
         }
     }
 
@@ -879,9 +1253,9 @@ export default class Daemon {
         // engine.inject returns null when no loop is currently executing, so
         // we enqueue a fresh loop below and ensure a drain claims it.
         if (this.#activeDrains.has(workerId)) {
-            await this.#assertFoldPosture(workerId, args.flags); // #368 — a fold never silently discards intent
             const active = await this.#db.drain_current_loop_for_worker.get<{ id: number }>({ worker_id: workerId });
             if (active !== undefined) {
+                await this.#assertFoldPosture(workerId, args.flags, active.id); // #368 - compare with the exact durable loop
                 await this.#assertLoopProvider(active.id, args.providerSpec);
                 await this.#assertLoopMaxTurns(active.id, args.maxTurns);
             }
@@ -1132,16 +1506,28 @@ export default class Daemon {
                     const usage = currentLoopId === null
                         ? { promptTokens: 0, completionTokens: 0, costUsd: 0, contextTokens: 0, promptBudget: null, meta: {} }
                         : await this.#engine.loopUsage(currentLoopId);
+                    const message = ErrorDetail.preview(controller.signal.reason ?? "user_cancelled")
+                        || "no reason was supplied";
                     if (currentLoopId !== null) {
                         // #380 (owner ruling) — the cancel is allowed but provenanced: the ROW goes
                         // terminal 499 (a dead loop must never read as live 102, #311) carrying
                         // terminated_by='cancel' + the abort reason as the abandonment message, and
                         // the broadcast carries the same message. The abort reason is the client's
                         // loop.cancel reason (cancelDrain threads it through scope.abort).
-                        const message = String(controller.signal.reason ?? "user_cancelled").slice(0, 500);
                         const cancelled = await this.#lifecycle.finish(
                             currentLoopId,
-                            Results.failure("lifecycle:cancel", "loop-cancelled", 499, message),
+                            Results.failure(
+                                "lifecycle:cancel",
+                                "loop-cancelled",
+                                499,
+                                `The loop was cancelled: ${message}.`,
+                                {},
+                                {
+                                    reason: message,
+                                    stage: "loop",
+                                    retryable: false,
+                                },
+                            ),
                             { terminatedBy: "cancel" },
                         );
                         if (cancelled !== null) {
@@ -1161,9 +1547,31 @@ export default class Daemon {
                             loopId: currentLoopId ?? 0,
                             turnIds: [],
                             result: currentLoopId === null
-                                ? Results.failure("lifecycle:cancel", "loop-cancelled", 499, String(controller.signal.reason ?? "user_cancelled"))
+                                ? Results.failure(
+                                    "lifecycle:cancel",
+                                    "loop-cancelled",
+                                    499,
+                                    `The loop was cancelled: ${message}.`,
+                                    {},
+                                    {
+                                        reason: message,
+                                        stage: "loop",
+                                        retryable: false,
+                                    },
+                                )
                                 : await this.#lifecycle.result(currentLoopId)
-                                    ?? Results.failure("lifecycle:cancel", "loop-cancelled", 499, String(controller.signal.reason ?? "user_cancelled")),
+                                    ?? Results.failure(
+                                        "lifecycle:cancel",
+                                        "loop-cancelled",
+                                        499,
+                                        `The loop was cancelled: ${message}.`,
+                                        {},
+                                        {
+                                            reason: message,
+                                            stage: "loop",
+                                            retryable: false,
+                                        },
+                                    ),
                             hitMaxTurns: false,
                             usage,
                         });
@@ -1186,7 +1594,12 @@ export default class Daemon {
                                 "daemon:drain",
                                 "loop-threw",
                                 500,
-                                (err instanceof Error ? err.message : String(err)).slice(0, 500),
+                                "The loop failed outside its operation result contract.",
+                                {},
+                                {
+                                    stage: "loop",
+                                    retryable: false,
+                                },
                             );
                         const settled = await this.#lifecycle.finish(currentLoopId, failure)
                             ?? await this.#lifecycle.result(currentLoopId);

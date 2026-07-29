@@ -7,6 +7,7 @@ import assert from "node:assert/strict";
 import Module from "./Module.ts";
 import type { DaemonSeam, ProposalResolution } from "./DaemonSeam.ts";
 import type { AguiEvent } from "./types.ts";
+import { Problems } from "@plurnk/plurnk-contracts";
 
 const mockSeam = () => {
     const resolves: Array<{ logEntryId: number; resolution: ProposalResolution }> = [];
@@ -113,11 +114,88 @@ test("an action run executes via the seam: result custom + RUN_FINISHED, no loop
         assert.equal(ack.value.result.action, "injected_next_turn", "inject folds into the active drain via the unified runLoop");
         // an unknown kind errors honestly
         const bad = await post(mod.address().port, { threadId: "t1", workerId: "r3", forwardedProps: { plurnk: { workspace: "t1", action: { kind: "nope.nothing" } } } });
-        const err = bad.find((e) => e.type === "CUSTOM" && (e as { name: string }).name === "plurnk.action.result") as { value: { ok: boolean; problem: { type: string; detail: string } } };
+        const err = bad.find((e) => e.type === "CUSTOM" && (e as { name: string }).name === "plurnk.action.result") as {
+            value: {
+                ok: boolean;
+                problem: {
+                    type: string;
+                    detail: string;
+                    requestedAction: string;
+                    recovery: string;
+                    retryable: boolean;
+                };
+            };
+        };
         assert.equal(err.value.ok, false);
         assert.equal(err.value.problem.type, "https://problems.plurnk.dev/agui/action/unknown-action");
-        assert.match(err.value.problem.detail, /Unknown action 'nope\.nothing'/);
+        assert.equal(err.value.problem.detail, "Action 'nope.nothing' is not registered.");
+        assert.equal(err.value.problem.requestedAction, "nope.nothing");
+        assert.equal(err.value.problem.recovery, "Use an action advertised by discover.");
+        assert.equal(err.value.problem.retryable, false);
         assert.doesNotMatch(err.value.problem.detail, /seam surface/, "no internal jargon leaks to the client");
+    } finally { await mod.close(); }
+});
+
+test("an action failure preserves its originating Problem instead of rebuilding it at the client boundary", async () => {
+    const { seam } = mockSeam();
+    const problem = Problems.create(
+        "file:read",
+        "target-not-found",
+        404,
+        "No entry exists at the requested target.",
+        {
+            stage: "read",
+            target: "file:///missing.txt",
+            recovery: "Use FIND to select an available target.",
+            retryable: false,
+        },
+    );
+    seam.readEntry = async () => ({ status: problem.status, problem, entry: null });
+    const mod = await Module.init({ host: "127.0.0.1", port: 0 })(seam);
+    try {
+        const events = await post(mod.address().port, {
+            threadId: "action-problem",
+            runId: "action-problem-run",
+            forwardedProps: {
+                plurnk: {
+                    workspace: "action-problem",
+                    action: { kind: "entry.read", target: "file:///missing.txt" },
+                },
+            },
+        });
+        const result = events.find((event) => event.type === "CUSTOM"
+            && (event as { name?: string }).name === "plurnk.action.result") as {
+            value?: { ok?: boolean; problem?: typeof problem };
+        } | undefined;
+        assert.equal(result?.value?.ok, false);
+        assert.deepEqual(result?.value?.problem, problem);
+    } finally { await mod.close(); }
+});
+
+test("an unexpected action exception becomes one generic Problem without leaking its message", async () => {
+    const { seam } = mockSeam();
+    seam.readEntry = async () => { throw new Error("private adapter detail"); };
+    const mod = await Module.init({ host: "127.0.0.1", port: 0 })(seam);
+    try {
+        const events = await post(mod.address().port, {
+            threadId: "action-failure",
+            runId: "action-failure-run",
+            forwardedProps: {
+                plurnk: {
+                    workspace: "action-failure",
+                    action: { kind: "entry.read", target: "file:///missing.txt" },
+                },
+            },
+        });
+        const result = events.find((event) => event.type === "CUSTOM"
+            && (event as { name?: string }).name === "plurnk.action.result") as {
+            value?: { ok?: boolean; problem?: { type?: string; detail?: string; stage?: string } };
+        } | undefined;
+        assert.equal(result?.value?.ok, false);
+        assert.equal(result?.value?.problem?.type, "https://problems.plurnk.dev/agui/action/action-failed");
+        assert.equal(result?.value?.problem?.detail, "The action failed unexpectedly.");
+        assert.equal(result?.value?.problem?.stage, "action-execution");
+        assert.doesNotMatch(JSON.stringify(events), /private adapter detail/);
     } finally { await mod.close(); }
 });
 
@@ -264,7 +342,7 @@ test("SESSION=WORKSPACE, THREAD=CONVERSATION: the workspace prop selects the wor
     } finally { await mod.close(); }
 });
 
-test("NO workspace prop is a HARD ERROR (500) — a worker has no world to forge from the threadId", async () => {
+test("NO workspace prop is a 400 Problem - a worker has no world to forge from the threadId", async () => {
     let created = 0;
     const { seam } = mockSeam();
     seam.listWorkspaces = async () => [];
@@ -272,14 +350,60 @@ test("NO workspace prop is a HARD ERROR (500) — a worker has no world to forge
     const mod = await Module.init({ host: "127.0.0.1", port: 0 })(seam);
     try {
         const res = await fetch(`http://127.0.0.1:${mod.address().port}/`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(standardInput({ threadId: "solo", runId: "r1", messages: [{ role: "user", content: "hi" }] })) });
-        assert.equal(res.status, 500, "the missing workspace surfaces as an honest 500, not a fabricated 200");
+        assert.equal(res.status, 400, "the missing workspace is a request defect, not an internal failure");
         assert.equal(res.headers.get("content-type"), "application/problem+json");
-        const body = await res.json() as { type: string; status: number; detail: string };
-        assert.equal(body.type, "https://problems.plurnk.dev/agui/http/request-failed");
-        assert.equal(body.status, 500);
-        assert.match(body.detail, /forwardedProps\.plurnk\.workspace \(a workspace name\) is required/);
+        const body = await res.json() as { type: string; status: number; detail: string; stage: string; recovery: string; retryable: boolean };
+        assert.equal(body.type, "https://problems.plurnk.dev/agui/http/workspace-required");
+        assert.equal(body.status, 400);
+        assert.match(body.detail, /forwardedProps\.plurnk\.workspace must name a workspace/);
+        assert.equal(body.stage, "request-validation");
+        assert.equal(body.recovery, "Provide a non-empty workspace name.");
+        assert.equal(body.retryable, false);
         assert.doesNotMatch(body.detail, /world|existence/, "the error states the contract, never the machine-model philosophy");
         assert.equal(created, 0, "NO workspace was forged from the threadId");
+    } finally { await mod.close(); }
+});
+
+test("PLURNK-owned HTTP failures use application/problem+json with stable Problems", async () => {
+    const { seam } = mockSeam();
+    const mod = await Module.init({ host: "127.0.0.1", port: 0, token: "expected" })(seam);
+    const base = `http://127.0.0.1:${mod.address().port}`;
+    const problem = async (path: string, init: RequestInit): Promise<Record<string, unknown>> => {
+        const response = await fetch(`${base}${path}`, init);
+        assert.equal(response.headers.get("content-type"), "application/problem+json");
+        const body = await response.json() as Record<string, unknown>;
+        assert.equal(body.status, response.status);
+        return body;
+    };
+    try {
+        const unauthorized = await problem("/", { method: "POST", body: "{}" });
+        assert.equal(unauthorized.type, "https://problems.plurnk.dev/agui/http/bearer-token-required");
+        assert.equal(unauthorized.status, 401);
+        assert.equal(unauthorized.stage, "authorization");
+
+        const invalidJson = await problem("/", {
+            method: "POST",
+            headers: { authorization: "Bearer expected", "content-type": "application/json" },
+            body: "{",
+        });
+        assert.equal(invalidJson.type, "https://problems.plurnk.dev/agui/http/invalid-json");
+        assert.equal(invalidJson.status, 400);
+        assert.equal(invalidJson.stage, "request-validation");
+
+        const invalidInput = await problem("/", {
+            method: "POST",
+            headers: { authorization: "Bearer expected", "content-type": "application/json" },
+            body: "{}",
+        });
+        assert.equal(invalidInput.type, "https://problems.plurnk.dev/agui/http/invalid-run-input");
+        assert.ok(Array.isArray(invalidInput.issues));
+
+        const missingRoute = await problem("/missing", {
+            method: "GET",
+            headers: { authorization: "Bearer expected" },
+        });
+        assert.equal(missingRoute.type, "https://problems.plurnk.dev/agui/http/route-not-found");
+        assert.equal(missingRoute.path, "/missing");
     } finally { await mod.close(); }
 });
 
@@ -453,12 +577,26 @@ test("a message run forwards forwardedProps.plurnk alias+model into runLoop (#41
     } finally { await mod.close(); }
 });
 
-test("a post-headers runLoop throw becomes a legible RUN_ERROR frame, not a silent SSE death (svc#480)", async () => {
+test("a post-headers runLoop failure preserves its exact Problem in the terminal SSE frames", async () => {
     const { seam } = mockSeam();
     seam.listWorkspaces = async () => [{ id: 3, name: "w" }];
     seam.attachWorkspace = async () => ({ workspaceId: 3, workspaceName: "w", projectRoot: null, workerId: 10, workerName: "c", modelWorkerId: 20, clientLoopId: null });
     seam.ensureModelWorker = async () => 20;
-    seam.runLoop = async () => { throw new Error("runLoop: no provider configured"); };
+    const problem = Problems.create(
+        "daemon:provider",
+        "not-configured",
+        501,
+        "No model provider is configured for this run.",
+        {
+            stage: "provider-selection",
+            recovery: "Configure or select an available model provider.",
+            retryable: false,
+            alias: "missing",
+        },
+    );
+    seam.runLoop = async () => {
+        throw Object.assign(new Error(problem.detail), { result: { status: problem.status, problem } });
+    };
     const before = process.getActiveResourcesInfo().filter((r) => r === "Timeout").length;
     const mod = await Module.init({ host: "127.0.0.1", port: 0 })(seam);
     try {
@@ -467,24 +605,43 @@ test("a post-headers runLoop throw becomes a legible RUN_ERROR frame, not a sile
         const frames = (await res.text()).split("\n\n").filter((f) => f.startsWith("data: ")).map((f) => JSON.parse(f.slice(6)) as { type: string; message?: string; code?: string });
         const err = frames.find((e) => e.type === "RUN_ERROR");
         assert.ok(err !== undefined, "the throw surfaced as a RUN_ERROR frame, not a silent end");
-        assert.match(err.message ?? "", /no provider configured/);
-        assert.equal(
-            err.code,
-            "https://problems.plurnk.dev/agui/http/provider-not-configured",
-            "RUN_ERROR code carries the stable Problem type",
-        );
+        assert.equal(err.message, problem.detail);
+        assert.equal(err.code, problem.type, "RUN_ERROR code projects the exact Problem type");
         const exact = frames.find((event) => event.type === "CUSTOM"
             && (event as { name?: string }).name === "plurnk.problem") as {
-            value?: { type?: string; status?: number; detail?: string };
+            value?: typeof problem;
         } | undefined;
-        assert.equal(exact?.value?.type, err.code);
-        assert.equal(exact?.value?.status, 501);
-        assert.equal(exact?.value?.detail, err.message);
+        assert.deepEqual(exact?.value, problem, "the lossless custom event preserves every Problem field");
         // The leak pin: the error path must release the run's handles (heartbeat
         // interval, portal binding) — a survivor here wedges `node --test` (no
         // force-exit in the drill) forever.
         const timeouts = process.getActiveResourcesInfo().filter((r) => r === "Timeout").length;
         assert.equal(timeouts, before, "no timer survives the errored run");
+    } finally { await mod.close(); }
+});
+
+test("an unexpected post-headers runLoop exception becomes one generic Problem without leaking its message", async () => {
+    const { seam } = mockSeam();
+    seam.listWorkspaces = async () => [{ id: 3, name: "w" }];
+    seam.attachWorkspace = async () => ({ workspaceId: 3, workspaceName: "w", projectRoot: null, workerId: 10, workerName: "c", modelWorkerId: 20, clientLoopId: null });
+    seam.ensureModelWorker = async () => 20;
+    seam.runLoop = async () => { throw new Error("secret internal failure"); };
+    const mod = await Module.init({ host: "127.0.0.1", port: 0 })(seam);
+    try {
+        const events = await post(mod.address().port, {
+            threadId: "w",
+            runId: "r1",
+            messages: [{ role: "user", content: "hi" }],
+            forwardedProps: { plurnk: { workspace: "w" } },
+        });
+        const exact = events.find((event) => event.type === "CUSTOM"
+            && (event as { name?: string }).name === "plurnk.problem") as {
+            value?: { type?: string; detail?: string; stage?: string };
+        } | undefined;
+        assert.equal(exact?.value?.type, "https://problems.plurnk.dev/agui/http/run-failed");
+        assert.equal(exact?.value?.detail, "The run failed unexpectedly.");
+        assert.equal(exact?.value?.stage, "run");
+        assert.doesNotMatch(JSON.stringify(events), /secret internal failure/);
     } finally { await mod.close(); }
 });
 

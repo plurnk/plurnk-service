@@ -31,25 +31,65 @@ export default class EntrySend {
             status: number,
             detail: string,
             fields: Readonly<Record<string, unknown>> = {},
-        ): SendResult => Results.failure(`scheme:${scheme}`, code, status, detail, fields);
-        if (statement.target === null) return failure("target-required", 400, "Directed SEND requires a path.");
+            extensions: Readonly<Record<string, unknown>> = {},
+        ): SendResult => Results.failure(`scheme:${scheme}`, code, status, detail, fields, extensions);
+        if (statement.target === null) {
+            return failure(
+                "target-required",
+                400,
+                "Directed SEND requires a target path.",
+                {},
+                {
+                    recovery: "Provide the target path.",
+                    retryable: false,
+                },
+            );
+        }
 
         const status = statement.signal;
-        if (status === null) return failure("status-required", 400, "SEND requires a numeric status code.");
+        if (status === null) {
+            return failure(
+                "status-required",
+                400,
+                "SEND requires a numeric status code.",
+                {},
+                {
+                    recovery: "Provide a numeric SEND status.",
+                    retryable: false,
+                },
+            );
+        }
 
         // SEND[410] Gone — delete the targeted resource (SPEC §send-dispatch). With a
         // #fragment, deletes just that channel; without, deletes the whole entry.
         if (status === 410) {
             const pathname = EntrySend.#pathnameOf(statement);
-            if (pathname === null) return failure("target-required", 400, "SEND[410] requires a path.");
+            if (pathname === null) return failure("target-required", 400, "SEND[410] requires a target path.");
             const fragment = EntrySend.#fragmentOf(statement);
             if (fragment !== null) {
                 const { db, workspaceId } = ctx;
                 const entry = await db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: workspaceId, owner_id: explicitOwnerId ?? await Owner.commonsId(db, workspaceId), scheme, pathname });
-                if (entry === undefined) return failure("entry-not-found", 404, "No entry exists at the requested path.");
+                if (entry === undefined) {
+                    return failure(
+                        "entry-not-found",
+                        404,
+                        `No entry exists at ${scheme}://${pathname}.`,
+                        {},
+                        { target: `${scheme}://${pathname}` },
+                    );
+                }
                 const deleted = await db.crud_delete_channel.get<{ name: string }>({ entry_id: entry.id, name: fragment });
                 return deleted === undefined
-                    ? failure("channel-not-found", 404, `No channel named #${fragment} exists at the requested path.`)
+                    ? failure(
+                        "channel-not-found",
+                        404,
+                        `No channel named #${fragment} exists at ${scheme}://${pathname}.`,
+                        {},
+                        {
+                            target: `${scheme}://${pathname}`,
+                            channel: fragment,
+                        },
+                    )
                     : { status: 200 };
             }
             const result = await EntryCrud.deleteEntry(pathname, ctx, scheme, explicitOwnerId);
@@ -62,15 +102,50 @@ export default class EntrySend {
         // findActiveSubscription, then call their teardown using the stored handle.
         if (status === 499) {
             const pathname = EntrySend.#pathnameOf(statement);
-            if (pathname === null) return failure("target-required", 400, "SEND[499] requires a path.");
+            if (pathname === null) return failure("target-required", 400, "SEND[499] requires a target path.");
             const { db, workspaceId, workerId } = ctx;
             const entry = await db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: workspaceId, owner_id: explicitOwnerId ?? await Owner.commonsId(db, workspaceId), scheme, pathname });
-            if (entry === undefined) return failure("entry-not-found", 404, "No entry exists at the requested path.");
+            if (entry === undefined) {
+                return failure(
+                    "entry-not-found",
+                    404,
+                    `No entry exists at ${scheme}://${pathname}.`,
+                    {},
+                    { target: `${scheme}://${pathname}` },
+                );
+            }
             const subscription = await ChannelWrite.findActiveSubscription(db, { workerId, entryId: entry.id });
-            if (subscription === null) return failure("subscription-not-found", 404, "No active subscription exists at the requested path.");
-            return failure("subscription-owned-elsewhere", 501, `The '${subscription.scheme}' scheme owns this subscription cancellation.`);
+            if (subscription === null) {
+                return failure(
+                    "subscription-not-found",
+                    404,
+                    `No active subscription exists at ${scheme}://${pathname}.`,
+                    {},
+                    { target: `${scheme}://${pathname}` },
+                );
+            }
+            return failure(
+                "subscription-owned-elsewhere",
+                501,
+                `Scheme '${subscription.scheme}' owns cancellation for this subscription.`,
+                {},
+                {
+                    target: `${scheme}://${pathname}`,
+                    owningScheme: subscription.scheme,
+                    retryable: false,
+                },
+            );
         }
 
-        return failure("status-not-implemented", 501, `The entry scheme does not interpret SEND status ${status}.`); // §send-dispatch-entry-schemes-501-on-non-410
+        return failure(
+            "status-not-implemented",
+            501,
+            `The '${scheme}' entry scheme does not interpret SEND status ${status}.`,
+            {},
+            {
+                requestedStatus: status,
+                retryable: false,
+            },
+        ); // §send-dispatch-entry-schemes-501-on-non-410
     }
 }

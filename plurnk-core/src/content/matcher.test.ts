@@ -119,7 +119,11 @@ test("malformed matcher expression → 400 (model-facing, not a 500)", async () 
         { dialect: "xpath", raw: "//[" } as MatcherBody, "<root><a/></root>", "text/html",
         stubQuery(async () => { throw new InvalidExpressionError({ dialect: "xpath", expression: "//[" }); }));
     assert.equal(r.status, 400);
-    assert.ok((r.error ?? "").length > 0);
+    assert.equal(r.problem?.type, "https://problems.plurnk.dev/schemes/matcher/invalid-expression");
+    assert.equal(r.problem?.stage, "matcher");
+    assert.equal(r.problem?.dialect, "xpath");
+    assert.equal(r.problem?.recovery, "Correct or remove the matcher.");
+    assert.equal(r.problem?.retryable, false);
 });
 
 test("relation dialects (~semantic / @graph) never reach the content matcher — they resolve through FIND (#286)", async () => {

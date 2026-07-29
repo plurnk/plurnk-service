@@ -3,6 +3,7 @@ import Discover from "./discover.ts";
 // Framework surface
 export { default as BaseExecutor } from "./BaseExecutor.ts";
 export { default as SubprocessExecutor } from "./SubprocessExecutor.ts";
+export { default as ErrorDetail, ERROR_DETAIL_LIMIT } from "./ErrorDetail.ts";
 
 // Discovery (SPEC §3). The behavior lives on the `Discover` class; the
 // documented `discover()` entry is its `scan` static, re-exported here so the

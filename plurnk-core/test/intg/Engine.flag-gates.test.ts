@@ -62,7 +62,10 @@ test("ask mode refuses EVERY filesystem write — EDIT/COPY-dest/MOVE/KILL on th
         // A bare path is the `file` scheme (the on-disk workspace). EDIT writes it → refused.
         const edit = await disp(editStmt(localPath("brief.md"), "hello"));
         assert.equal(edit.status, 403, "EDIT to the filesystem is refused in ask mode");
-        assert.match(edit.problem?.detail ?? "", /read-only|side-effecting/, "the refusal names the read-only contract");
+        assert.equal(edit.problem?.type, "https://problems.plurnk.dev/engine/dispatcher/ask-mode-read-only");
+        assert.equal(edit.problem?.mode, "ask");
+        assert.equal(edit.problem?.operation, "EDIT");
+        assert.match(edit.problem?.recovery ?? "", /Answer or advise/);
         // COPY into the workspace — the DEST is the write → refused.
         const copy = await disp(copyStmt(urlPath("worker", "note"), localPath("copied.md")));
         assert.equal(copy.status, 403, "COPY writing the filesystem is refused");
@@ -82,10 +85,10 @@ test("flag gate active: mode=ask rejects side-effecting scheme with 403", async 
         const stmt = editStmt(urlPath("sideeffect-test", "x"), "body");
         const r = await engine.dispatch({ statement: stmt, workspaceId, workerId, loopId, turnId, sequence: 1, origin: "client" });
         assert.equal(r.status, 403);
-        // #367 — the steer NAMES ask mode and says DO NOT RETRY, so the model changes course
-        // instead of re-emitting into the StrikeRail's 508.
+        assert.equal(r.problem?.type, "https://problems.plurnk.dev/engine/dispatcher/scheme-unavailable");
         assert.match(r.problem?.detail ?? "", /ask-mode/, "the 403 names the ask-mode restriction");
-        assert.match(r.problem?.detail ?? "", /Do NOT retry|answer or advise/, "the steer directs a course change, not a repeat");
+        assert.equal(r.problem?.recovery, "Answer or advise the user without using the unavailable scheme.");
+        assert.equal(r.problem?.retryable, false);
     } finally { await db.close(); }
 });
 

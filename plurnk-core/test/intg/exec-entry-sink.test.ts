@@ -11,6 +11,7 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import type { WebFetch } from "../../src/schemes/Exec.ts";
 import PacketWire from "../../src/core/packet-wire.ts";
+import Results from "../../src/core/results.ts";
 import EntryCrud from "../../src/schemes/_entry-crud.ts";
 import SearchIndex from "../../src/schemes/_search-index.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, testExecutors, DEFAULT_MIMETYPES, quiesceExecs, makeSchemeCtx } from "./_helpers.ts";
@@ -31,7 +32,7 @@ const parseOne = (input: string): PlurnkStatement => {
     return item.statement;
 };
 
-const wire = async (opts?: { fetchWeb?: WebFetch; nullContent?: boolean; tag?: string; webScheme?: boolean; encodedPath?: boolean }) => {
+const wire = async (opts?: { fetchWeb?: WebFetch; nullContent?: boolean; tag?: string; webScheme?: boolean; encodedPath?: boolean; entryFailure?: boolean }) => {
     // testExecutors() is a module singleton, so each wire() must claim a DISTINCT runtime tag —
     // "one name, one owner" (#289) rejects a second hotload of the same tag onto the shared registry.
     const tag = opts?.tag ?? "stubsearch";
@@ -54,6 +55,20 @@ const wire = async (opts?: { fetchWeb?: WebFetch; nullContent?: boolean; tag?: s
             effect: () => "pure" as const,
             probe: async () => ({ available: true as const, detail: undefined }),
             run: async (args) => {
+                if (opts?.entryFailure) {
+                    let pruned = false;
+                    try {
+                        await args.entry?.("https://example.org/rejected", "rejected", {
+                            tags: ["rejected_query"],
+                            mimetype: "text/plain",
+                        });
+                    } catch {
+                        pruned = true;
+                    }
+                    args.write("results", JSON.stringify([{ pruned }]), "application/json");
+                    args.setState("results", "closed");
+                    return { status: 200, exitCode: 0 };
+                }
                 if (opts?.encodedPath) {
                     await args.entry?.("https://example.org/people_%28current%29", "heading\nspouse: Example Person\nfooter", { tags: ["people_query"], mimetype: "text/markdown" });
                     args.write("results", "[]", "application/json");
@@ -151,6 +166,74 @@ test("entry() materializes a tagged https entry (upsert UNIONS tags) and the plu
         const sig = await db.test_log_entries_by_run_op_signal.all<{ signal: string | null }>({ worker_id: plurnkWorker.id, op: "EDIT" });
         assert.ok(sig.some((r) => /turkeys_query/.test(r.signal ?? "")), "SIGNAL carries the tags — the same slot a model's EDIT[tags] uses, so renderers show them natively");
     } finally { await quiesceExecs(schemes); await schemes.close(); await db.close(); }
+});
+
+test("entry() preserves an exact failed write Problem on its durable narration row", async (t) => {
+    const { db, engine, schemes, workspaceId, workerId, loopId, turnId, tag } = await wire({
+        tag: "stubsearch-entry-failure",
+        entryFailure: true,
+    });
+    const writeEntry = EntryCrud.writeEntry.bind(EntryCrud);
+    t.mock.method(EntryCrud, "writeEntry", async (...args: Parameters<typeof EntryCrud.writeEntry>) => {
+        const [, , , scheme] = args;
+        return scheme === "https"
+            ? Results.failure(
+                "scheme:https",
+                "materialization-refused",
+                422,
+                "The fetched resource has no model-facing content.",
+                { created: false, entryId: null },
+                {
+                    stage: "materialization",
+                    target: "https://example.org/rejected",
+                    retryable: false,
+                },
+            ) as Awaited<ReturnType<typeof EntryCrud.writeEntry>>
+            : writeEntry(...args);
+    });
+    try {
+        const accepted = await engine.dispatch({
+            statement: execStmt(tag, "rejected"),
+            workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
+        });
+        assert.ok(accepted.status < 400);
+        await quiesceExecs(schemes);
+
+        const plurnkWorker = await db.envelope_get_worker_by_name.get<{ id: number }>({
+            workspace_id: workspaceId,
+            name: "plurnk",
+        });
+        assert.ok(plurnkWorker !== undefined);
+        const rows = await db.test_log_entries_by_run_op_full.all<{
+            pathname: string;
+            rx: string;
+            status_rx: number;
+        }>({ worker_id: plurnkWorker.id, op: "EDIT" });
+        const failure = rows.find((row) => row.pathname === "/example.org/rejected");
+        assert.ok(failure !== undefined, "the rejected materialization remains durable evidence");
+        assert.equal(failure.status_rx, 422);
+        const result = JSON.parse(failure.rx) as {
+            status: number;
+            problem: {
+                type: string;
+                detail: string;
+                instance?: string;
+                target?: string;
+            };
+        };
+        assert.equal(result.status, 422);
+        assert.equal(
+            result.problem.type,
+            "https://problems.plurnk.dev/scheme/https/materialization-refused",
+        );
+        assert.equal(result.problem.detail, "The fetched resource has no model-facing content.");
+        assert.equal(result.problem.target, "https://example.org/rejected");
+        assert.match(result.problem.instance ?? "", /^log:\/\/\/\d+\/\d+\/\d+\/EDIT$/);
+    } finally {
+        await quiesceExecs(schemes);
+        await schemes.close();
+        await db.close();
+    }
 });
 
 test("search-prefetched https content is matcher-queryable in place — no origin refetch, host identity preserved", async () => {

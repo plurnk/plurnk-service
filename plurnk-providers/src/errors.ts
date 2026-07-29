@@ -11,6 +11,14 @@ export type ProviderErrorKind =
     | "quota_exceeded"
     | "grammar_invalid";
 
+export interface ClassifiedProviderError {
+    kind: ProviderErrorKind;
+    message: string;
+    retryable?: boolean;
+    attempts?: number;
+    retryExhausted?: boolean;
+}
+
 const defaultStatus = (kind: ProviderErrorKind): number => {
     switch (kind) {
         case "unauthorized": return 401;
@@ -23,14 +31,42 @@ const defaultStatus = (kind: ProviderErrorKind): number => {
     }
 };
 
+const retryable = (kind: ProviderErrorKind): boolean => {
+    switch (kind) {
+        case "rate_limit":
+        case "network_failure":
+            return true;
+        case "invalid_response":
+        case "grammar_invalid":
+        case "model_refused":
+        case "unauthorized":
+        case "quota_exceeded":
+            return false;
+    }
+};
+
 const buildProblem = (
     source: string,
     kind: ProviderErrorKind,
     message: string,
     status: number,
+    extensions: Readonly<Record<string, unknown>>,
+    retryableOverride: boolean | undefined,
 ): ProblemDetails => {
-    return Problems.create(source, kind.replaceAll("_", "-"), status, message, {
+    const code: Record<ProviderErrorKind, string> = {
+        rate_limit: "rate-limit",
+        network_failure: "network-failure",
+        model_refused: "model-refused",
+        invalid_response: "invalid-response",
+        unauthorized: "unauthorized",
+        quota_exceeded: "quota-exceeded",
+        grammar_invalid: "grammar-invalid",
+    };
+    return Problems.create(source, code[kind], status, message, {
         providerKind: kind,
+        stage: "provider-request",
+        retryable: retryableOverride ?? retryable(kind),
+        ...extensions,
     });
 };
 
@@ -46,7 +82,12 @@ export class ProviderError extends Error {
         source: string,
         kind: ProviderErrorKind,
         message: string,
-        options: { status?: number | null; cause?: unknown } = {},
+        options: {
+            status?: number | null;
+            cause?: unknown;
+            retryable?: boolean;
+            extensions?: Readonly<Record<string, unknown>>;
+        } = {},
     ) {
         super(message, options.cause !== undefined ? { cause: options.cause } : undefined);
         this.name = "ProviderError";
@@ -56,7 +97,14 @@ export class ProviderError extends Error {
             && Number.isInteger(options.status) && options.status >= 400 && options.status <= 599
             ? options.status
             : defaultStatus(kind);
-        this.problem = buildProblem(this.source, kind, message, status);
+        this.problem = buildProblem(
+            this.source,
+            kind,
+            message,
+            status,
+            options.extensions ?? {},
+            options.retryable,
+        );
     }
 
     get status(): number {
@@ -73,13 +121,30 @@ const wireErrorType = (body: string): string | null => {
     }
 };
 
-export const classifyProviderError = (err: unknown): { kind: ProviderErrorKind; message: string } => {
-    if (RetryError.isInstance(err)) return classifyProviderError(err.lastError);
+const preview = (value: unknown, limit: number | undefined): string => {
+    const text = value instanceof Error ? value.message : String(value);
+    return limit !== undefined && text.length > limit
+        ? `${text.slice(0, limit)}...`
+        : text;
+};
+
+export const classifyProviderError = (
+    err: unknown,
+    detailLimit?: number,
+): ClassifiedProviderError => {
+    if (RetryError.isInstance(err)) {
+        return {
+            ...classifyProviderError(err.lastError, detailLimit),
+            retryable: false,
+            attempts: err.errors.length,
+            retryExhausted: err.reason === "maxRetriesExceeded",
+        };
+    }
     if (APICallError.isInstance(err)) {
         const status = err.statusCode ?? 0;
         const message = err.message.trim().length > 0
-            ? err.message
-            : `Provider request failed with status ${status}.`;
+            ? preview(err.message, detailLimit)
+            : "The provider request failed without a diagnostic message.";
         const body = err.responseBody ?? "";
         if (status === 401 || status === 403) return { kind: "unauthorized", message };
         if (status === 402) return { kind: "quota_exceeded", message };
@@ -94,20 +159,40 @@ export const classifyProviderError = (err: unknown): { kind: ProviderErrorKind; 
     if (wire?.type === "grammar_invalid") {
         return {
             kind: "grammar_invalid",
-            message: typeof wire.message === "string" ? wire.message : "grammar-invalid response",
+            message: typeof wire.message === "string"
+                ? preview(wire.message, detailLimit)
+                : "The provider rejected the response grammar.",
         };
     }
     const error = err as { message?: string };
     return {
         kind: "network_failure",
-        message: (error?.message ?? String(err)) || "request failed",
+        message: preview(
+            (error?.message ?? String(err)) || "The provider request failed.",
+            detailLimit,
+        ),
     };
 };
 
-export const toProviderError = (err: unknown, source: string): ProviderError => {
+export const toProviderError = (
+    err: unknown,
+    source: string,
+    detailLimit?: number,
+): ProviderError => {
     if (err instanceof ProviderError) return err;
     const underlying = RetryError.isInstance(err) ? err.lastError : err;
-    const { kind, message } = classifyProviderError(underlying);
+    const classified = classifyProviderError(err, detailLimit);
+    const { kind, message } = classified;
     const status = APICallError.isInstance(underlying) ? underlying.statusCode ?? null : null;
-    return new ProviderError(source, kind, message, { status, cause: err });
+    return new ProviderError(source, kind, message, {
+        status,
+        cause: err,
+        retryable: classified.retryable,
+        extensions: {
+            ...(classified.attempts === undefined ? {} : { attempts: classified.attempts }),
+            ...(classified.retryExhausted === undefined
+                ? {}
+                : { retryExhausted: classified.retryExhausted }),
+        },
+    });
 };

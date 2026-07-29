@@ -148,9 +148,3 @@ FROM subscriptions WHERE worker_id = $worker_id AND closed_at IS NULL;
 -- A worker's parent (worker:// spawn / fork set parent_worker_id, §lifecycle-terms). NULL = a root run.
 -- Used at drain-exit to wake a parent that parked awaiting this child (§run-lifecycle topology join).
 SELECT parent_worker_id FROM workers WHERE id = $worker_id;
-
--- PREP: drain_active_loop_flags
--- #368 — the LIVE loop's persisted flags for the fold-posture guard: an inject carrying flags
--- that differ from the loop it would fold into is refused, never a silent posture discard.
--- The worker's currently-executing loop is its most recent non-terminal one.
-SELECT id, flags FROM loops WHERE worker_id = $worker_id AND status IN (100, 102) ORDER BY sequence DESC LIMIT 1;

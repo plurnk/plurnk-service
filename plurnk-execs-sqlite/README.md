@@ -42,6 +42,11 @@ The query/mutation split is decided by the prepared statement's `columns()`,
 never by parsing the SQL. One statement per EXEC. Errors return RFC 9457
 Problems in the terminal operation result.
 
+## Configuration
+
+The framework's `PLURNK_EXECS_ERROR_DETAIL_LIMIT` bounds SQLite diagnostics and
+rejected SQL tails included in Problem facts.
+
 ## Availability & proposal gating
 
 `probe()` always reports available (`node:sqlite` is a builtin). `effect(target)` marks `:memory:` (and no target) as `pure` (auto-run) and a file-backed db as `host` (propose) — classified by the target only, never by inspecting the SQL.

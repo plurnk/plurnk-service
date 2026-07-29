@@ -17,7 +17,8 @@ import File from "../../src/schemes/File.ts";
 import EntryCrud from "../../src/schemes/_entry-crud.ts";
 import type { Db } from "../../src/core/Db.ts";
 import type { PlurnkSchemeContext } from "../../src/core/scheme-types.ts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn } from "./_helpers.ts";
+import { InvalidOperationResultError } from "@plurnk/plurnk-schemes";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, makeSchemeCtx } from "./_helpers.ts";
 
 // {§edit-marker-required-on-existing} (#571) — a marker is required on an EXISTING
 // file; `fullReplace` (marks:[1,-1]) states a deliberate whole-content rewrite
@@ -131,6 +132,24 @@ test("file.edit: writes file on accept via applyResolution", async () => {
     });
 });
 
+test("file.applyResolution: malformed accepted proposal state remains an internal invariant", async () => {
+    await withWorkspaceRoot(async (_root, ctx) => {
+        await assert.rejects(
+            new File().applyResolution(
+                { attrs: {} },
+                makeSchemeCtx({
+                    db: ctx.db,
+                    workspaceId: ctx.workspaceId,
+                    workerId: ctx.workerId,
+                    loopId: ctx.loopId,
+                    turnId: ctx.turnId,
+                }),
+            ),
+            InvalidOperationResultError,
+        );
+    });
+});
+
 test("file.edit: an unchanged file is a 304 no-op and never becomes a proposal", async () => {
     await withWorkspaceRoot(async (root, ctx) => {
         const target = "unchanged.txt";
@@ -203,7 +222,7 @@ test("file.edit: rejection leaves file untouched; the rx carries a durable Probl
         const rx = JSON.parse(row?.rx ?? "{}") as {
             status?: number;
             outcome?: string;
-            problem?: { type?: string; status?: number; detail?: string; instance?: string };
+            problem?: { type?: string; status?: number; detail?: string; instance?: string; stage?: string; retryable?: boolean };
         };
         assert.equal(rx.status, 400);
         assert.equal(rx.outcome, "reviewer_said_no");
@@ -213,6 +232,8 @@ test("file.edit: rejection leaves file untouched; the rx carries a durable Probl
             status: 400,
             detail: "The proposal was rejected (reviewer_said_no).",
             instance: "log:///1/1/1/EDIT",
+            stage: "proposal-settlement",
+            retryable: false,
         });
     });
 });
@@ -302,7 +323,9 @@ test("a markerless EDIT of an EXISTING file is refused, never a silent full repl
             loopId: ctx.loopId, turnId: ctx.turnId, sequence: 1, origin: "model",
         });
         assert.equal(result.status, 400, "no marker on an existing file is refused outright — never a proposal, never a silent replace");
-        assert.match(result.problem?.detail ?? "", /requires a line marker.*<1,-1>/, "the refusal names the law and the escape hatch");
+        assert.equal(result.problem?.type, "https://problems.plurnk.dev/scheme/file/line-marker-required");
+        assert.match(result.problem?.detail ?? "", /requires a line marker/);
+        assert.match(result.problem?.recovery ?? "", /<1,-1>/, "the recovery names the explicit whole-file form");
         const onDisk = await readFile(join(root, target), "utf8");
         assert.equal(onDisk, original, "disk is untouched — the refusal happens before any proposal, let alone any write");
     });

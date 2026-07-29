@@ -6,6 +6,7 @@ import type { ExecArgs, ExecResult, Notice } from "@plurnk/plurnk-execs";
 
 const origFetch = globalThis.fetch;
 const origUrl = process.env.PLURNK_EXECS_SEARCH_SEARXNG_URL;
+const origQueryPreview = process.env.PLURNK_EXECS_SEARCH_QUERY_PREVIEW;
 
 // Replace global fetch with a stub. The stub is typed loosely (it only needs to
 // satisfy the subset of Response that Search reads) and cast at the boundary.
@@ -61,6 +62,8 @@ afterEach(() => {
     globalThis.fetch = origFetch;
     if (origUrl === undefined) delete process.env.PLURNK_EXECS_SEARCH_SEARXNG_URL;
     else process.env.PLURNK_EXECS_SEARCH_SEARXNG_URL = origUrl;
+    if (origQueryPreview === undefined) delete process.env.PLURNK_EXECS_SEARCH_QUERY_PREVIEW;
+    else process.env.PLURNK_EXECS_SEARCH_QUERY_PREVIEW = origQueryPreview;
 });
 
 test("manifest declares the ten search tags", async () => {
@@ -119,13 +122,13 @@ test("probe: blank / whitespace / malformed URL or credentials read as unavailab
     }
 });
 
-test("run: a whitespace / malformed URL fails clean (500), never constructs a bad URL, never hangs (#3)", async () => {
+test("run: a whitespace / malformed URL fails clean (501), never constructs a bad URL, never hangs (#3)", async () => {
     let fetched = false;
     setFetch(async () => { fetched = true; return { ok: true, status: 200, json: async () => ({ results: [] }) }; });
     for (const v of ["   ", "not-a-url"]) {
         process.env.PLURNK_EXECS_SEARCH_SEARXNG_URL = v;
         const { result, events, states } = await invoke("search", "q");
-        assert.equal(result.status, 500, `"${v}" → clean 500, not an uncaught throw`);
+        assert.equal(result.status, 501, `"${v}" -> clean 501, not an uncaught throw`);
         assert.equal(result.problem?.type, "https://problems.plurnk.dev/executor/search/searxng-not-configured");
         assert.equal(events.length, 0);
         assert.equal(states.at(-1)?.state, "errored");
@@ -229,26 +232,33 @@ test("#596: a rejected entry() is scrubbed from the model-facing digest", async 
 });
 
 test("search acquisition emits bounded aggregate progress with no candidate URLs", async () => {
+    const originalLimit = process.env.PLURNK_EXECS_SEARCH_LIMIT;
+    process.env.PLURNK_EXECS_SEARCH_LIMIT = "25";
     const results = Array.from({ length: 25 }, (_, i) => ({
         title: `result ${i}`,
         url: `https://example${i}.test/page`,
     }));
-    routes(results);
-    const { events } = await invoke("search", "private query words", {
-        entry: async (path) => { if (path.includes("example3.")) throw new Error("dead"); return path; },
-    });
-    const progress = events.filter((event) => event.kind === "search_progress");
+    try {
+        routes(results);
+        const { events } = await invoke("search", "private query words", {
+            entry: async (path) => { if (path.includes("example3.")) throw new Error("dead"); return path; },
+        });
+        const progress = events.filter((event) => event.kind === "search_progress");
 
-    assert.ok(progress.length >= 2 && progress.length <= 12, "start + bounded milestones + terminal, never one event per result");
-    assert.deepEqual(
-        progress.map((event) => event.phase).filter((phase, i, phases) => i === 0 || i === phases.length - 1),
-        ["fetching", "complete"],
-    );
-    assert.equal(progress.at(-1)?.completed, 25);
-    assert.equal(progress.at(-1)?.materialized, 24);
-    assert.equal(progress.at(-1)?.rejected, 1);
-    assert.equal(progress.at(-1)?.percent, 100);
-    assert.ok(progress.every((notice) => !JSON.stringify(notice).includes("example3.test")), "notices never become a candidate URL ledger");
+        assert.ok(progress.length >= 2 && progress.length <= 12, "start + bounded milestones + terminal, never one event per result");
+        assert.deepEqual(
+            progress.map((event) => event.phase).filter((phase, i, phases) => i === 0 || i === phases.length - 1),
+            ["fetching", "complete"],
+        );
+        assert.equal(progress.at(-1)?.completed, 25);
+        assert.equal(progress.at(-1)?.materialized, 24);
+        assert.equal(progress.at(-1)?.rejected, 1);
+        assert.equal(progress.at(-1)?.percent, 100);
+        assert.ok(progress.every((notice) => !JSON.stringify(notice).includes("example3.test")), "notices never become a candidate URL ledger");
+    } finally {
+        if (originalLimit === undefined) delete process.env.PLURNK_EXECS_SEARCH_LIMIT;
+        else process.env.PLURNK_EXECS_SEARCH_LIMIT = originalLimit;
+    }
 });
 
 test("#596: every rejecting entry() leaves an empty model-facing digest", async () => {
@@ -375,13 +385,15 @@ test("ENGINES passes the operator's SearXNG engine selection through", async () 
     assert.equal(seen, "braveapi");
 });
 
-test("non-ok response → durable HTTP Problem, errored channel, status 500", async () => {
+test("non-ok response -> durable upstream HTTP Problem with retry facts", async () => {
     setFetch(async () => ({ ok: false, status: 502, statusText: "Bad Gateway", json: async () => ({}) }));
     const { result, states, events } = await invoke("news", "q");
 
-    assert.equal(result.status, 500);
-    assert.equal(result.problem?.type, "https://problems.plurnk.dev/executor/search/searxng-http-502");
-    assert.match(result.problem?.detail ?? "", /SearXNG 502 Bad Gateway/);
+    assert.equal(result.status, 502);
+    assert.equal(result.problem?.type, "https://problems.plurnk.dev/executor/search/searxng-http-error");
+    assert.match(result.problem?.detail ?? "", /HTTP 502 Bad Gateway/);
+    assert.equal(result.problem?.upstreamStatus, 502);
+    assert.equal(result.problem?.retryable, true);
     assert.equal(events.length, 0);
     assert.equal(states.at(-1)?.state, "errored");
 });
@@ -394,33 +406,37 @@ test("fetch failure → searxng_unreachable surfacing the cause code", async () 
     });
     const { result, events } = await invoke("search", "q");
 
-    assert.equal(result.status, 500);
+    assert.equal(result.status, 502);
     assert.equal(result.problem?.type, "https://problems.plurnk.dev/executor/search/searxng-unreachable");
-    assert.match(result.problem?.detail ?? "", /ENOTFOUND/);
+    assert.equal(result.problem?.upstreamCode, "ENOTFOUND");
+    assert.equal(result.problem?.retryable, true);
     assert.equal(events.length, 0);
 });
 
-test("timeout → searxng_timeout, errored channel, status 500", async () => {
+test("timeout -> searxng_timeout with its deadline and retryability", async () => {
     setFetch(async () => { throw Object.assign(new Error("timed out"), { name: "TimeoutError" }); });
     process.env.PLURNK_EXECS_SEARCH_TIMEOUT = "5";
     const { result, states, events } = await invoke("search", "q");
     delete process.env.PLURNK_EXECS_SEARCH_TIMEOUT;
 
-    assert.equal(result.status, 500);
+    assert.equal(result.status, 504);
     assert.equal(result.problem?.type, "https://problems.plurnk.dev/executor/search/searxng-timeout");
-    assert.match(result.problem?.detail ?? "", /timeout after 5ms/);
+    assert.equal(result.problem?.timeoutMilliseconds, 5);
+    assert.equal(result.problem?.retryable, true);
     assert.equal(events.length, 0);
     assert.equal(states.at(-1)?.state, "errored");
 });
 
-test("missing SEARXNG url → searxng_not_configured, status 500, no fetch", async () => {
+test("missing SEARXNG url -> searxng_not_configured, status 501, no fetch", async () => {
     delete process.env.PLURNK_EXECS_SEARCH_SEARXNG_URL;
     let called = false;
     setFetch(async () => { called = true; return { ok: true, status: 200, json: async () => ({ results: [] }) }; });
     const { result, events } = await invoke("search", "q");
 
-    assert.equal(result.status, 500);
+    assert.equal(result.status, 501);
     assert.equal(result.problem?.type, "https://problems.plurnk.dev/executor/search/searxng-not-configured");
+    assert.equal(result.problem?.configuration, "PLURNK_EXECS_SEARCH_SEARXNG_URL");
+    assert.equal(result.problem?.retryable, false);
     assert.equal(events.length, 0);
     assert.equal(called, false);
 });
@@ -432,9 +448,30 @@ test("external bang (!!) refused with status 400, no fetch", async () => {
 
     assert.equal(result.status, 400);
     assert.equal(result.problem?.type, "https://problems.plurnk.dev/executor/search/external-bang-refused");
-    assert.match(result.problem?.detail ?? "", /external bang refused/);
+    assert.match(result.problem?.detail ?? "", /external bang query/);
+    assert.equal(result.problem?.recovery, "Use a results-producing search query.");
+    assert.equal(result.problem?.retryable, false);
     assert.equal(events.length, 0);
     assert.equal(called, false);
+});
+
+test("error query facts use the configured preview bound", async () => {
+    process.env.PLURNK_EXECS_SEARCH_QUERY_PREVIEW = "5";
+    const { result } = await invoke("search", "!!abcdefghi");
+
+    assert.equal(result.status, 400);
+    assert.equal(result.problem?.query, "!!abc...");
+});
+
+test("an invalid error query preview bound is an exact configuration Problem", async () => {
+    process.env.PLURNK_EXECS_SEARCH_QUERY_PREVIEW = "not-an-integer";
+    const { result } = await invoke("search", "q");
+
+    assert.equal(result.status, 500);
+    assert.equal(result.problem?.type, "https://problems.plurnk.dev/executor/search/invalid-configuration");
+    assert.equal(result.problem?.configuration, "PLURNK_EXECS_SEARCH_QUERY_PREVIEW");
+    assert.equal(result.problem?.stage, "configuration");
+    assert.equal(result.problem?.retryable, false);
 });
 
 test("caller-aborted signal → status 499, no notices", async () => {

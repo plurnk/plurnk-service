@@ -170,6 +170,7 @@ entries, channels, and tags never return a bare failure status.
 - A match returns status 200 and `matches: MatchRange[]`. `MatchRange` is `{lineStart,lineEnd,rowStart,rowEnd,path?}`: source coordinates explain the finding, readable-row coordinates can drive a later scoped READ, and `path` preserves a structural query identity.
 - The matcher is a boolean resource selector. It does not replace content with matched values or choose a retrieval window. `DefaultRead` returns the complete selected resource unless the authored READ supplies `<L>`.
 - Empty results return 204 with `matches: []`; `UnsupportedDialectError` maps to 415; `InvalidExpressionError` maps to 400; `QueryParseFailureError` maps to 203 with raw content, text/markdown, and `reason`.
+- A multi-resource matcher omits candidates that return 415 when at least one candidate supports the dialect. If no candidate supports it, the matcher returns the first exact 415 Problem. An unreadable binary marker therefore cannot poison a repository-wide text search or masquerade as a match.
 
 ### §3.bis Capability ctx — the stable trusted-extension surface {§capability-ctx}
 

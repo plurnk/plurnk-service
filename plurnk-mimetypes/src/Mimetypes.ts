@@ -3,6 +3,7 @@ import { detect } from "./detect.ts";
 import { discover } from "./discover.ts";
 import { parseBodyMatcher, type ParsedBodyMatcher } from "./parseBodyMatcher.ts";
 import { projectJsonToXml } from "./projectJsonToXml.ts";
+import { UnsupportedDialectError } from "./QueryError.ts";
 import { isGrammarNotInstalled } from "./TreeSitterExtractor.ts";
 import BaseHandler from "./BaseHandler.ts";
 import Embeddings, { type EmbedBatchOptions, type EmbedderInfo } from "./Embeddings.ts";
@@ -380,13 +381,17 @@ export default class Mimetypes {
     // (classified by leading prefix via parseBodyMatcher) OR an already-parsed
     // ParsedBodyMatcher — the grammar owns the syntax, so a parsed body is
     // dispatched verbatim: no second parser, no drift (#42). Errors per §11.4:
-    // detection/content/handler missing → ReferenceError; dialect/expression/
-    // parse failures → typed QueryErrors; zero matches → [].
+    // detection/content missing or a registered handler failing to load ->
+    // ReferenceError; an unregistered mimetype or unsupported dialect ->
+    // UnsupportedDialectError; expression/parse failures -> typed QueryErrors;
+    // zero matches -> [].
     async query(input: ProcessInput, matcher: string | ParsedBodyMatcher): Promise<QueryMatch[]> {
         const mimetype = await this.detect(input);
         if (mimetype === null) {
             throw new ReferenceError("Mimetypes.query: no mimetype could be resolved for input");
         }
+        // String -> classify by leading prefix; parsed body -> dispatch verbatim.
+        const parsed = typeof matcher === "string" ? parseBodyMatcher(matcher) : matcher;
 
         const info = this.#discovery!.handlers.get(mimetype) ?? null;
         const isBinary = info?.binary ?? false;
@@ -398,11 +403,16 @@ export default class Mimetypes {
 
         const handler = await this.getHandler(mimetype);
         if (handler === null) {
-            throw new ReferenceError(`Mimetypes.query: no handler discovered for ${mimetype}`);
+            if (info === null) {
+                throw new UnsupportedDialectError({
+                    mimetype,
+                    dialect: parsed.dialect,
+                    reason: "no registered handler provides a readable projection",
+                });
+            }
+            throw new ReferenceError(`Mimetypes.query: registered handler unavailable for ${mimetype}`);
         }
 
-        // String → classify by leading prefix; parsed body → dispatch verbatim.
-        const parsed = typeof matcher === "string" ? parseBodyMatcher(matcher) : matcher;
         const matches = await handler.query(content, parsed.dialect, parsed.pattern, parsed.flags);
         return Promise.all(matches.map(async (match) => match.lines === undefined
             ? match

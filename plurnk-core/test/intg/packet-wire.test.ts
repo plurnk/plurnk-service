@@ -122,6 +122,10 @@ test("a failed content-bearing READ renders both its Problem and diagnostic body
                 title: "Nonzero exit",
                 status: 500,
                 detail: "'sh' exited with code 1.",
+                stage: "execution",
+                recovery: "Inspect stderr and correct the command.",
+                retryable: false,
+                exitCode: 1,
             },
             content: "main.go:17: undefined: os",
             mimetype: "text/stream",
@@ -131,6 +135,8 @@ test("a failed content-bearing READ renders both its Problem and diagnostic body
     }], tok);
 
     assert.match(out, /"problem":\{[^}]*"detail":"'sh' exited with code 1\."/);
+    assert.match(out, /"recovery":"Inspect stderr and correct the command\."/);
+    assert.match(out, /"exitCode":1/, "structured producer facts survive packet materialization");
     assert.doesNotMatch(out, /"error":/, "the packet does not flatten Problem Details into a legacy error string");
     assert.match(out, /"status":500/);
     assert.match(out, /"display":"open"/);

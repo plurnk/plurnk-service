@@ -1,6 +1,6 @@
 import { isAbsolute, resolve } from "node:path";
-import { DatabaseSync } from "node:sqlite";
-import { BaseExecutor, Results } from "@plurnk/plurnk-execs";
+import { DatabaseSync, type StatementSync } from "node:sqlite";
+import { BaseExecutor, ErrorDetail, Results } from "@plurnk/plurnk-execs";
 import type { ChannelDecl, Effect, ExecArgs, ExecResult, RuntimeAvailability } from "@plurnk/plurnk-execs";
 
 const MEMORY = ":memory:";
@@ -60,23 +60,76 @@ export default class Sqlite extends BaseExecutor {
         // must not still mutate the db.
         if (signal.aborted) {
             setState("results", "errored");
-            return Results.failure("executor:sqlite", "cancelled", 499, "SQLite execution was cancelled.");
+            return Results.failure(
+                "executor:sqlite",
+                "cancelled",
+                499,
+                "SQLite execution was cancelled.",
+                {},
+                {
+                    stage: "execution",
+                    retryable: false,
+                },
+            );
         }
         const path = dbPath(cwd, target);
         const sql = command.trim();
-        const fail = (kind: string, message: string, status = 500): ExecResult => {
+        const errorPreview = ErrorDetail.configuredLimit();
+        const fail = (
+            kind: string,
+            message: string,
+            status = 500,
+            extensions: Readonly<Record<string, unknown>> = {},
+        ): ExecResult => {
             setState("results", "errored");
-            return Results.failure("executor:sqlite", kind.replaceAll("_", "-"), status, message);
+            return Results.failure(
+                "executor:sqlite",
+                kind,
+                status,
+                message,
+                {},
+                {
+                    database: path,
+                    ...extensions,
+                },
+            );
         };
+        if (errorPreview === null) {
+            setState("results", "errored");
+            return ErrorDetail.invalidConfiguration("executor:sqlite");
+        }
 
         let db: DatabaseSync;
         try {
             db = new DatabaseSync(path);
         } catch (err) {
-            return fail("sqlite_open_failed", `cannot open database '${path}': ${(err as Error).message}`);
+            return fail(
+                "sqlite-open-failed",
+                `SQLite could not open '${path}': ${ErrorDetail.preview(err, errorPreview)}`,
+                500,
+                {
+                    stage: "open",
+                    recovery: "Use an accessible SQLite database target.",
+                },
+            );
+        }
+        let stmt: StatementSync;
+        try {
+            stmt = db.prepare(sql);
+        } catch (err) {
+            db.close();
+            return fail(
+                "sqlite-invalid-statement",
+                `SQLite could not prepare the statement: ${ErrorDetail.preview(err, errorPreview)}`,
+                400,
+                {
+                    stage: "prepare",
+                    recovery: "Correct the SQL statement.",
+                    retryable: false,
+                },
+            );
         }
         try {
-            const stmt = db.prepare(sql);
             // One statement per op is the contract (the results channel is one JSON
             // doc) — but SQLite's prepare compiles only the FIRST statement and
             // silently ignores the rest, so a sqlite3-CLI-style script would
@@ -85,9 +138,15 @@ export default class Sqlite extends BaseExecutor {
             // fail-hard, never truncate silently. Trailing whitespace/comments pass.
             const tail = stripComments(sql.slice(stmt.sourceSQL.length)).trim();
             if (tail !== "") {
-                return fail("sqlite_multi_statement",
-                    `one SQL statement per op — the tail '${tail.slice(0, 60)}' would be silently dropped; split into one op per statement`,
-                    400);
+                return fail("sqlite-multi-statement",
+                    "SQLite execution accepts exactly one statement, but the command contains a second statement.",
+                    400,
+                    {
+                        stage: "prepare",
+                        rejectedTail: ErrorDetail.preview(tail, errorPreview),
+                        recovery: "Run each SQL statement in a separate operation.",
+                        retryable: false,
+                    });
             }
             // Non-empty columns ⇒ a row-returning statement; empty ⇒ a mutation.
             const output: unknown = stmt.columns().length > 0 ? stmt.all() : stmt.run();
@@ -95,7 +154,14 @@ export default class Sqlite extends BaseExecutor {
             setState("results", "closed");
             return { status: 200 };
         } catch (err) {
-            return fail("sqlite_error", `${(err as Error).message}; db='${path}'`);
+            return fail(
+                "sqlite-error",
+                `SQLite could not execute the statement: ${ErrorDetail.preview(err, errorPreview)}`,
+                500,
+                {
+                    stage: "execution",
+                },
+            );
         } finally {
             db.close();
         }

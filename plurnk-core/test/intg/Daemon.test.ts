@@ -6,6 +6,8 @@ import Daemon from "../../src/server/Daemon.ts";
 import type { CoreSeam } from "../../src/server/Daemon.ts";
 import Dsl from "./dsl.ts";
 import type { Executor } from "../../src/core/ExecutorRegistry.ts";
+import { OperationFailureError } from "../../src/core/results.ts";
+import { Validator, type OperationResult, type ProblemDetails } from "@plurnk/plurnk-contracts";
 
 // A stand-in registration in the booth-window shape (execs-mcp installServer's hotload struct):
 // framework types only — decl + executor + the driver's probe result. The kernel wraps the
@@ -42,6 +44,22 @@ interface RpcResponse {
     result?: unknown;
     error?: { code: number; message: string; data?: unknown };
 }
+
+const rpcProblem = (response: RpcResponse): ProblemDetails => {
+    const result = Validator.assertOperationResult(response.result as OperationResult);
+    assert.ok(result.problem !== undefined);
+    return result.problem;
+};
+
+const rejectedProblem = async (run: () => Promise<unknown> | unknown): Promise<ProblemDetails> => {
+    try {
+        await run();
+    } catch (error) {
+        assert.ok(error instanceof OperationFailureError);
+        return error.result.problem;
+    }
+    assert.fail("Expected operation failure.");
+};
 
 test("Daemon: listenerless boot — the seam is live with no socket bound (#364)", async () => {
     await withDaemon(null, async (_db, daemon, _addr) => {
@@ -159,13 +177,15 @@ test("workspace.attach binds to existing workspace", async () => {
     });
 });
 
-test("workspace.attach to nonexistent workspace returns -32603", async () => {
+test("workspace.attach to nonexistent workspace returns an exact Problem", async () => {
     await withDaemon(null, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
             const response = await rpcCall(ws, 1, "workspace.attach", { id: 9999 });
-            assert.equal(response.error?.code, -32603);
-            assert.match(response.error?.message ?? "", /workspace 9999 not found/);
+            const problem = rpcProblem(response);
+            assert.equal(problem.type, "https://problems.plurnk.dev/daemon/workspace/workspace-not-found");
+            assert.equal(problem.status, 404);
+            assert.equal(problem.workspaceId, 9999);
         } finally { ws.close(); }
     });
 });
@@ -220,7 +240,7 @@ test("workspace.attach with workerId: reuses that specific run", async () => {
     });
 });
 
-test("workspace.attach with workerId belonging to different workspace returns -32603", async () => {
+test("workspace.attach with workerId belonging to different workspace returns an exact Problem", async () => {
     await withDaemon(null, async (db, _daemon, addr) => {
         const sA = await db.test_insert_workspace.get<{ id: number }>({ name: "sA" });
         const sB = await db.test_insert_workspace.get<{ id: number }>({ name: "sB" });
@@ -228,20 +248,26 @@ test("workspace.attach with workerId belonging to different workspace returns -3
         const ws = await connect(addr);
         try {
             const response = await rpcCall(ws, 1, "workspace.attach", { id: sB?.id, workerId: runInA?.id });
-            assert.equal(response.error?.code, -32603);
-            assert.match(response.error?.message ?? "", /belongs to workspace/);
+            const problem = rpcProblem(response);
+            assert.equal(problem.type, "https://problems.plurnk.dev/daemon/worker/workspace-mismatch");
+            assert.equal(problem.status, 409);
+            assert.equal(problem.workerId, runInA?.id);
+            assert.equal(problem.workspaceId, sB?.id);
+            assert.equal(problem.actualWorkspaceId, sA?.id);
         } finally { ws.close(); }
     });
 });
 
-test("workspace.attach with non-existent workerId returns -32603", async () => {
+test("workspace.attach with non-existent workerId returns an exact Problem", async () => {
     await withDaemon(null, async (db, _daemon, addr) => {
         const workspace = await db.test_insert_workspace.get<{ id: number }>({ name: "norun-test" });
         const ws = await connect(addr);
         try {
             const response = await rpcCall(ws, 1, "workspace.attach", { id: workspace?.id, workerId: 99999 });
-            assert.equal(response.error?.code, -32603);
-            assert.match(response.error?.message ?? "", /run 99999 not found/);
+            const problem = rpcProblem(response);
+            assert.equal(problem.type, "https://problems.plurnk.dev/daemon/worker/worker-not-found");
+            assert.equal(problem.status, 404);
+            assert.equal(problem.workerId, 99999);
         } finally { ws.close(); }
     });
 });
@@ -252,8 +278,12 @@ test("workspace.attach with both workerId and workerName rejects", async () => {
         const ws = await connect(addr);
         try {
             const response = await rpcCall(ws, 1, "workspace.attach", { id: workspace?.id, workerId: 1, workerName: "x" });
-            assert.equal(response.error?.code, -32603);
-            assert.match(response.error?.message ?? "", /workerId OR workerName, not both/);
+            const problem = rpcProblem(response);
+            assert.equal(problem.type, "https://problems.plurnk.dev/daemon/worker/worker-selector-conflict");
+            assert.equal(problem.status, 400);
+            assert.equal(problem.workerId, 1);
+            assert.equal(problem.workerName, "x");
+            assert.equal(problem.retryable, false);
         } finally { ws.close(); }
     });
 });
@@ -384,7 +414,10 @@ test("the client-interface seam — pendingProposals reads a workspace's stopped
         assert.equal(pending[0].loopId, loopId);
         // resolveProposal delegates to Engine.resolveProposal — an unknown id throws (no registered waiter),
         // proving the seam routes into the engine's proposal machinery, not a shadow implementation.
-        assert.throws(() => daemon.resolveProposal(999999, { decision: "accept" }), /no pending proposal/i, "resolveProposal delegates to the engine");
+        const problem = await rejectedProblem(() => daemon.resolveProposal(999999, { decision: "accept" }));
+        assert.equal(problem.type, "https://problems.plurnk.dev/proposal/resolution/proposal-not-pending");
+        assert.equal(problem.status, 409);
+        assert.equal(problem.logEntryId, 999999);
     });
 });
 
@@ -417,7 +450,14 @@ test("the client-interface seam — runLoop drives a loop end to end on the daem
             // §machine-processes — loops run in the MODEL run the seam resolves; a client worker is
             // refused loudly (the module's envelope workerId is the client worker — never the loop home).
             const clientWorker = (await db.test_get_run_by_session.get<{ id: number }>({ workspace_id: created.id }))!;
-            await assert.rejects(() => daemon.runLoop({ workspaceId: created.id, workerId: clientWorker.id, prompt: "go" }), /client worker/, "runLoop refuses a client-origin run");
+            const problem = await rejectedProblem(() => daemon.runLoop({
+                workspaceId: created.id,
+                workerId: clientWorker.id,
+                prompt: "go",
+            }));
+            assert.equal(problem.type, "https://problems.plurnk.dev/daemon/worker/model-worker-required");
+            assert.equal(problem.status, 409);
+            assert.equal(problem.workerId, clientWorker.id);
             const modelWorkerId = await daemon.ensureModelWorker(created.id);
             const res = await daemon.runLoop({ workspaceId: created.id, workerId: modelWorkerId, prompt: "go" });
             assert.equal(res.action, "enqueued_new_loop", "runLoop enqueued a fresh loop");
@@ -518,7 +558,13 @@ test("the client-interface seam — readLog returns a workspace's journal, owner
 
             const other = (await rpcCall(ws, 2, "workspace.create", { name: "seam-read-other" })).result as { id: number };
             const otherWorker = (await db.test_get_run_by_session.get<{ id: number }>({ workspace_id: other.id }))!;
-            await assert.rejects(() => daemon.readLog({ workspaceId: created.id, workerId: otherWorker.id }), /not in this workspace/, "readLog refuses a worker outside the workspace — core holds its own invariant");
+            const problem = await rejectedProblem(() => daemon.readLog({
+                workspaceId: created.id,
+                workerId: otherWorker.id,
+            }));
+            assert.equal(problem.type, "https://problems.plurnk.dev/daemon/worker/workspace-mismatch");
+            assert.equal(problem.status, 409);
+            assert.equal(problem.actualWorkspaceId, other.id);
         } finally { ws.close(); }
     });
 });
@@ -579,7 +625,11 @@ test("the client-interface seam — workspace lifecycle: create/attach/rename/se
         // mutation on the seam: the workspace pointer is set at workspace.create or never.)
         assert.equal((await daemon.renameWorkspace(env.workspaceId, "seam-life-2")).name, "seam-life-2");
         await daemon.createWorkspace({ name: "seam-life-other" });
-        await assert.rejects(() => daemon.renameWorkspace(env.workspaceId, "seam-life-other"), /already exists/, "renameWorkspace refuses a taken name");
+        const renameProblem = await rejectedProblem(() =>
+            daemon.renameWorkspace(env.workspaceId, "seam-life-other"));
+        assert.equal(renameProblem.type, "https://problems.plurnk.dev/daemon/workspace/name-conflict");
+        assert.equal(renameProblem.status, 409);
+        assert.equal(renameProblem.name, "seam-life-other");
 
         // constrain / unconstrain roundtrip on the overlay.
         await daemon.constrain(env.workspaceId, "pick", "vendored/x");
@@ -611,8 +661,14 @@ test("the client-interface seam — readEntry returns an entry's shape and the #
             assert.equal(sliced.channels[channel].contentLength, 11, "contentLength is the full length — the next poll resumes from there");
 
             // a missing entry is 404; an offset without a channel is refused.
-            assert.equal((await daemon.readEntry({ workspaceId: created.id, target: "worker:///nope" })).status, 404);
-            await assert.rejects(() => daemon.readEntry({ workspaceId: created.id, target: "worker:///x", offset: 3 }), /offset requires channel/);
+            const missing = await daemon.readEntry({ workspaceId: created.id, target: "worker:///nope" });
+            assert.equal(missing.status, 404);
+            assert.equal(missing.problem?.type, "https://problems.plurnk.dev/daemon/entry/entry-not-found");
+            assert.equal(missing.problem?.target, "worker:///nope");
+            const offset = await daemon.readEntry({ workspaceId: created.id, target: "worker:///x", offset: 3 });
+            assert.equal(offset.status, 400);
+            assert.equal(offset.problem?.type, "https://problems.plurnk.dev/daemon/entry/offset-channel-required");
+            assert.equal(offset.problem?.recovery, "Select the channel to read from the offset.");
         } finally { ws.close(); }
     });
 });
@@ -634,7 +690,13 @@ test("the client-interface seam — forkWorker branches a worker's log, ownershi
             await assert.rejects(() => daemon.forkWorker({ workspaceId: created.id, workerId: run.id, name: "plurnk" }), /reserved/);
             const other = (await rpcCall(ws, 2, "workspace.create", { name: "seam-fork-other" })).result as { id: number };
             const otherWorker = (await db.test_get_run_by_session.get<{ id: number }>({ workspace_id: other.id }))!;
-            await assert.rejects(() => daemon.forkWorker({ workspaceId: created.id, workerId: otherWorker.id }), /not in workspace/);
+            const problem = await rejectedProblem(() => daemon.forkWorker({
+                workspaceId: created.id,
+                workerId: otherWorker.id,
+            }));
+            assert.equal(problem.type, "https://problems.plurnk.dev/daemon/worker/workspace-mismatch");
+            assert.equal(problem.status, 409);
+            assert.equal(problem.actualWorkspaceId, other.id);
         } finally { ws.close(); }
     });
 });

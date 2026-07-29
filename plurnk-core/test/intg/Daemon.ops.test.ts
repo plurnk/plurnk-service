@@ -156,12 +156,18 @@ test("op.parse surfaces a parse failure as a 400 result with its line:col — no
             // A valid statement (line 1) + a malformed one (line 2: non-integer signal 'x').
             const text = `<<EDIT(worker:///a):alpha:EDIT\n<<SEND[x]:y:SEND`;
             const response = await rpcCall(ws, 2, "op.parse", { text });
-            const result = response.result as { results: Array<{ status: number; error?: string; position?: { type: string; line: number; column: number } }> };
+            const result = response.result as {
+                results: Array<{
+                    status: number;
+                    problem?: { type: string; line?: number; column?: number; recovery?: string };
+                }>;
+            };
             assert.ok(result.results.some((r) => r.status === 201), "the valid EDIT dispatched");
             const err = result.results.find((r) => r.status === 400);
             assert.ok(err !== undefined, "the parse failure surfaced as a 400 result, not silently dropped");
-            assert.equal(err!.position?.type, "content-offset");
-            assert.equal(err!.position?.line, 2, "the failure's line is in the caller's submitted text (PLAN-prefix de-offset)");
+            assert.equal(err!.problem?.type, "https://problems.plurnk.dev/daemon/input/parse-failed");
+            assert.equal(err!.problem?.line, 2, "the failure's line is in the caller's submitted text (PLAN-prefix de-offset)");
+            assert.equal(err!.problem?.recovery, "Correct the statement at the reported position.");
         } finally { ws.close(); }
     });
 });

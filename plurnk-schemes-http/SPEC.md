@@ -69,19 +69,22 @@ Channel publication follows the manifest contract: a fragmentless READ publishes
 | Outcome | status |
 |---|---|
 | Exact FIND, live or already materialized URL | 200 standard FIND result |
-| Exact FIND, dead/unmaterializable URL | 404 (`kind: not_materialized`) |
-| Exact FIND, no readable projection | 422 (`kind: no_readable_projection`) |
+| Exact FIND, dead/unmaterializable URL | 404 (`kind: not-materialized`) |
+| Exact FIND, no readable projection | 422 (`kind: no-readable-projection`) |
 | Stream opened (READ / SEND[200] success) | 102 |
 | SEND[410] delete | as `ctx.entries.delete` returns |
 | SEND[499] cancel | 200 (engine already routed teardown to the handle) |
-| Client-cancelled fetch | 499 (`kind: aborted`) |
-| Upstream / network failure | 502 (`kind: fetch_failed`) |
-| Non-url target | 400 (`kind: bad_target`) |
-| Uninterpreted SEND status | 501 (`kind: unsupported_send`) |
+| Client-cancelled fetch | 499 (`kind: cancelled`) |
+| Upstream / network failure | 502 (`kind: fetch-failed`) |
+| Non-url target | 400 (`kind: bad-target`) |
+| Uninterpreted SEND status | 501 (`kind: send-status-unsupported`) |
 
 Error results carry RFC 9457 Problem Details with a stable `scheme:http`
 problem type (via `Results.failure`). The daemon attaches the durable log URI
 as `instance`; malformed results fail the universal scheme-result boundary.
+Caught acquisition diagnostics are bounded in model-facing `detail` by
+`PLURNK_SCHEMES_HTTP_ERROR_DETAIL_LIMIT`; complete errors remain in daemon
+diagnostics.
 
 ## §5 Dependencies
 
@@ -99,7 +102,7 @@ The **render path** takes one runtime dependency, `playwright`, **lazy-imported*
 - **Render:** warm chromium (one per `Browser`), per-worker `BrowserContext` keyed on `ctx.workerId`, **mobile-emulated by default** (Pixel-5-class viewport + UA — responsive sites serve lighter layouts; `PLURNK_SCHEMES_HTTP_MOBILE=0` renders desktop), navigate with `waitUntil: "networkidle"` + a salvage path (timed-out-but-rendered pages with substantive body text), serialize the final DOM via `page.content()`.
 - **Body:** the consumer's configured mimetype family projects the serialized DOM. Its readable markdown is the decisive `body` used by READ, FIND, embeddings, weights, and the model; the faithful final DOM is archived under `html` for XPath and inspection. Direct READ and search prefetch therefore expose the same kind of model-facing content.
 - **Host rewrite (bounded, first-party):** {§host-rewrite} a GitHub `…/blob/…` URL is fetched as its `raw.githubusercontent.com` source (line-navigable, exact) — the blob page is a CSP-locked JS SPA and code wants source, not a rendered viewer. This is the ONLY host rewrite; Wikipedia was measured through the extractor and deliberately gets none (desktop already extracts the full clean article; rewrites regressed it — schemes-http#4).
-- **Config:** `.env.defaults` at the package root is the authoritative list (family-namespaced `PLURNK_SCHEMES_HTTP_*`), shipped in the tarball; the daemon assembles it into the boot floor set-if-unset (service SPEC §operator-config-env-defaults, schemes#31). Required numerics — `FETCH_TIMEOUT`, `SALVAGE_MIN_BODY_CHARS`, `IDLE_TIMEOUT`, `PLAYWRIGHT_TIMEOUT`, and `SSE_MAX_BUFFER_CHARS` — fail hard when unset (no in-code defaults). `PLAYWRIGHT_METHOD`, `PLAYWRIGHT_HEADLESS`, `PLAYWRIGHT_CHROMIUM_SANDBOX`, and `MOBILE` are floor-defaulted and required reads. `PLAYWRIGHT_ENDPOINT` belongs only to `connect`/`connectOverCDP`; `PLAYWRIGHT_CHANNEL` and `PLAYWRIGHT_EXECUTABLE_PATH` belong only to `launch` and are mutually exclusive. `CHROMIUM_HEAP_MB` remains an optional local-launch control.
+- **Config:** `.env.defaults` at the package root is the authoritative list (family-namespaced `PLURNK_SCHEMES_HTTP_*`), shipped in the tarball; the daemon assembles it into the boot floor set-if-unset (service SPEC §operator-config-env-defaults, schemes#31). Required numerics - `FETCH_TIMEOUT`, `SALVAGE_MIN_BODY_CHARS`, `IDLE_TIMEOUT`, `PLAYWRIGHT_TIMEOUT`, `SSE_MAX_BUFFER_CHARS`, and `ERROR_DETAIL_LIMIT` - fail hard when unset (no in-code defaults). `PLAYWRIGHT_METHOD`, `PLAYWRIGHT_HEADLESS`, `PLAYWRIGHT_CHROMIUM_SANDBOX`, and `MOBILE` are floor-defaulted and required reads. `PLAYWRIGHT_ENDPOINT` belongs only to `connect`/`connectOverCDP`; `PLAYWRIGHT_CHANNEL` and `PLAYWRIGHT_EXECUTABLE_PATH` belong only to `launch` and are mutually exclusive. `CHROMIUM_HEAP_MB` remains an optional local-launch control.
 - **Freshness (READ):** {§revalidation} one predicate (`#storedCopyServable`), two phases. Pre-fetch: a stored copy whose materialization stamp (`x-plurnk-fetched-at`, HEADER channel) is inside `PLURNK_SCHEMES_HTTP_TTL_MS` serves with zero round-trips — identical for model READs and lane-1 prefetch (#405). The shipped five-minute window makes a just-materialized search result immediately readable as an ordinary entry; `0` explicitly opts into revalidation on every read. The stamp resets only when the origin vouches (fetch or 304), never on a cache serve. Past the window a repeat READ recovers the prior fetch's validators from its own stored entry (`ETag`→`If-None-Match`, `Last-Modified`→`If-Modified-Since`) and revalidates. A `304` re-serves the stored body and **skips the render** — a first-class READ (the model sees an ordinary streaming result, never a cache status; `revalidated 304` rides the close summary). The TTL is the #333 milestone landed at that same one-predicate boundary (blessed by service#341; delivered per #405). `SEND[410]` drops the stored copy, forcing the next READ to full-fetch.
 - **Cancel:** the composed `AbortSignal` / SEND[499] handle aborts the render by closing the page (in-flight `goto` rejects promptly).
 

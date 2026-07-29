@@ -38,11 +38,21 @@ test("cancelling a LIVE loop writes the provenanced 499 row — who/why on the r
             assert.equal(row!.terminal_message, "operator redirected the task", "the client's reason is the abandonment message");
             // The broadcast carries the same why.
             const notes = await waitFor(
-                () => terminated() as Array<{ result: { status: number; problem?: { detail?: string } } }>,
+                () => terminated() as Array<{ result: { status: number; problem?: {
+                    type?: string;
+                    detail?: string;
+                    reason?: string;
+                    stage?: string;
+                    retryable?: boolean;
+                } } }>,
                 (ns) => ns.some((n) => n.result.status === 499),
             );
-            assert.ok(notes.some((n) => n.result.status === 499 && n.result.problem?.detail === "operator redirected the task"),
-                "loop/terminated carries the cancel's exact Problem detail");
+            const cancelled = notes.find((n) => n.result.status === 499);
+            assert.equal(cancelled?.result.problem?.type, "https://problems.plurnk.dev/lifecycle/cancel/scope-cancelled");
+            assert.equal(cancelled?.result.problem?.detail, "The worker scope was cancelled: operator redirected the task.");
+            assert.equal(cancelled?.result.problem?.reason, "operator redirected the task");
+            assert.equal(cancelled?.result.problem?.stage, "loop");
+            assert.equal(cancelled?.result.problem?.retryable, false);
             const worker = await db.test_get_worker_id_by_loop.get<{ worker_id: number }>({ loop_id: row!.id });
             assert.deepEqual(
                 await db.test_error_rows_for_run.all({ worker_id: worker!.worker_id }),

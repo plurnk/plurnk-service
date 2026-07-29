@@ -27,7 +27,9 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { CoreSchemeAdapterBase } from "../core/CoreSchemeServices.ts";
 import type { CoreSchemeCallContext } from "../core/CoreSchemeServices.ts";
-import Results, { type SchemeResult, type SchemeResultBase } from "../core/results.ts";
+import ErrorDetail from "../core/ErrorDetail.ts";
+import Results, { OperationFailureError, type SchemeResult, type SchemeResultBase } from "../core/results.ts";
+import { InvalidOperationResultError } from "@plurnk/plurnk-schemes";
 
 type ExecResult = SchemeResultBase & { body?: string; attrs?: object };
 
@@ -191,15 +193,40 @@ export default class Exec extends CoreSchemeAdapterBase {
             scheme,
             pathname,
         });
-        if (terminal === null) return Results.failure("scheme:exec", "stream-not-found", 404, `No stream exists at ${scheme}://${pathname}.`);
-        if (terminal === 499) return Results.failure("scheme:exec", "stream-already-killed", 410, `${scheme}://${pathname} was killed earlier.`);
+        if (terminal === null) {
+            return Results.failure(
+                "scheme:exec",
+                "stream-not-found",
+                404,
+                `No stream exists at ${scheme}://${pathname}.`,
+                {},
+                { target: `${scheme}://${pathname}` },
+            );
+        }
+        if (terminal === 499) {
+            return Results.failure(
+                "scheme:exec",
+                "stream-already-killed",
+                410,
+                `Stream ${scheme}://${pathname} was already killed.`,
+                {},
+                {
+                    target: `${scheme}://${pathname}`,
+                    retryable: false,
+                },
+            );
+        }
         return Results.failure(
             "scheme:exec",
             "stream-already-terminal",
             409,
             `${scheme}://${pathname} already concluded with status ${terminal}.`,
             {},
-            { terminalStatus: terminal },
+            {
+                target: `${scheme}://${pathname}`,
+                terminalStatus: terminal,
+                retryable: false,
+            },
         );
     }
 
@@ -234,7 +261,17 @@ export default class Exec extends CoreSchemeAdapterBase {
         // script) or a #462 FILE target (run it, no stdin). Empty body with a directory target (nothing
         // to run) or no target at all → 400.
         if (command.length === 0 && schemeTarget === null && routedTarget === null) {
-            return Results.failure("scheme:exec", "command-required", 400, "EXEC requires a command body or a scheme target to run.") as ExecResult;
+            return Results.failure(
+                "scheme:exec",
+                "command-required",
+                400,
+                "EXEC requires a command body or an executable target.",
+                {},
+                {
+                    recovery: "Provide a command body or executable target.",
+                    retryable: false,
+                },
+            ) as ExecResult;
         }
 
         const requested = typeof statement.signal === "string" ? statement.signal : "";
@@ -252,18 +289,57 @@ export default class Exec extends CoreSchemeAdapterBase {
                 "scheme:exec",
                 "runtime-not-registered",
                 501,
-                `\`${runtime}\` is not a registered executable tool. Use a registered tag, or run complete shell commands with bare EXEC or EXEC[sh]. Available to this workspace: ${available.join(", ") || "(none)"}.`,
+                `Executable tool '${runtime}' is not registered in this workspace.`,
+                {},
+                {
+                    requestedRuntime: runtime,
+                    availableRuntimes: available,
+                    ...(available.length > 0
+                        ? {
+                            recovery: available.includes("sh")
+                                ? `Use bare EXEC for a shell command or select a registered executable tool: ${available.join(", ")}.`
+                                : `Select a registered executable tool: ${available.join(", ")}.`,
+                        }
+                        : {}),
+                    retryable: false,
+                },
             ) as ExecResult;
         }
         // #328 — per-workspace client policy narrows the boot-registered set (subtractive). A tag the
         // workspace's client layer disables is ABSENT for this workspace — refused like an unavailable
         // runtime. Bare EXEC resolves to sh before this gate, so disabling sh also disables the default.
         if (workspaceExecs !== null && !Policy.isEnabled(runtime, workspaceExecs)) {
-            return Results.failure("scheme:exec", "runtime-disabled", 501, `\`${runtime}\` is disabled for this workspace by client policy (PLURNK_EXECS_*).`) as ExecResult;
+            const available = core.executors.availableRuntimes()
+                .filter((tag) => Policy.isEnabled(tag, workspaceExecs));
+            return Results.failure(
+                "scheme:exec",
+                "runtime-disabled",
+                501,
+                `Executable tool '${runtime}' is disabled by workspace policy.`,
+                {},
+                {
+                    requestedRuntime: runtime,
+                    availableRuntimes: available,
+                    recovery: available.length > 0
+                        ? `Use an enabled executable tool: ${available.join(", ")}.`
+                        : "Continue without executing a tool in this workspace.",
+                    retryable: false,
+                },
+            ) as ExecResult;
         }
         if (!resolved.available) {
-            const why = resolved.detail === undefined ? "" : `: ${resolved.detail}`;
-            return Results.failure("scheme:exec", "runtime-unavailable", 501, `\`${runtime}\` is unavailable${why}.`) as ExecResult;
+            const why = resolved.detail === undefined ? "" : `: ${ErrorDetail.preview(resolved.detail)}`;
+            return Results.failure(
+                "scheme:exec",
+                "runtime-unavailable",
+                501,
+                `Executable tool '${runtime}' is unavailable${why}.`,
+                {},
+                {
+                    requestedRuntime: runtime,
+                    retryable: false,
+                },
+            ) as ExecResult;
         }
         // The (target) slot the executor receives — its DATA SOURCE / program (jq input, sqlite db, or a
         // subprocess program run with the body as stdin; #15). A #462 directory target routed to cwd above
@@ -312,9 +388,7 @@ export default class Exec extends CoreSchemeAdapterBase {
         const cwd = (typeof attrs.cwd === "string" && attrs.cwd.length > 0) ? attrs.cwd : null;
         let target = (typeof attrs.target === "string" && attrs.target.length > 0) ? attrs.target : null;
         if (typeof pathname !== "string" || pathname.length === 0) {
-            return Results.failure("scheme:exec", "stream-path-missing", 500, "The accepted EXEC proposal is missing its stream pathname.", {
-                outcome: "missing_pathname",
-            });
+            throw new InvalidOperationResultError("The accepted EXEC proposal is missing its stream pathname.");
         }
 
         // #201 — resolve a scheme-URI target to content (executors stay scheme-blind).
@@ -326,7 +400,10 @@ export default class Exec extends CoreSchemeAdapterBase {
             const { scheme, pathname: tPath, fragment } = attrs.schemeTarget;
             const read = await EntryCrud.readEntry(tPath, core, scheme);
             if (read.entry === null) {
-                return Results.failure("scheme:exec", "scheme-target-not-found", 404, read.problem?.detail ?? `No entry exists at ${scheme}://${tPath}.`, {
+                if (read.problem === undefined) throw new Error("Exec.applyResolution: failed scheme target read omitted Problem Details");
+                return Results.assert({
+                    status: read.status,
+                    problem: read.problem,
                     outcome: "scheme_target_not_found",
                 });
             }
@@ -335,12 +412,22 @@ export default class Exec extends CoreSchemeAdapterBase {
             const content = channelName === undefined ? undefined : channels[channelName]?.content;
             // §channel-selection-unknown-channel-400 sibling fact — the miss names what exists.
             if (content === undefined) {
+                const availableChannels = Object.keys(channels);
+                const requestedChannel = channelName ?? fragment ?? "";
                 return Results.failure(
                     "scheme:exec",
                     "scheme-target-channel-not-found",
                     404,
-                    `No channel #${channelName ?? fragment} exists at ${scheme}:///${tPath.replace(/^\//, "")}; channels: ${Object.keys(channels).join(", ")}.`,
+                    `Channel #${requestedChannel} does not exist at ${scheme}:///${tPath.replace(/^\//, "")}.`,
                     { outcome: "scheme_target_channel_not_found" },
+                    {
+                        requestedChannel,
+                        availableChannels,
+                        ...(availableChannels.length === 0
+                            ? {}
+                            : { recovery: `Use one of the available channels: ${availableChannels.map((channel) => `#${channel}`).join(", ")}.` }),
+                        retryable: false,
+                    },
                 );
             }
             if (command.length === 0) {
@@ -356,9 +443,7 @@ export default class Exec extends CoreSchemeAdapterBase {
         // positional, transient exec per the owner ruling). Empty body with no target of any kind
         // remains the contradiction.
         if (command.length === 0 && target === null) {
-            return Results.failure("scheme:exec", "command-missing", 500, "The accepted EXEC proposal has neither a command nor a target.", {
-                outcome: "missing_command",
-            });
+            throw new InvalidOperationResultError("The accepted EXEC proposal has neither a command nor a target.");
         }
 
         // Resolve the runtime's executor from the boot registry, then seed
@@ -366,15 +451,11 @@ export default class Exec extends CoreSchemeAdapterBase {
         // executor declares, scheme honors). Each executor declares its own
         // shape (subprocess → stdout/stderr; search → results; etc.).
         if (core.executors === undefined) {
-            return Results.failure("scheme:exec", "executor-registry-missing", 500, "The executor registry is unavailable.", {
-                outcome: "no_executor_registry",
-            });
+            throw new InvalidOperationResultError("An accepted EXEC proposal has no executor registry.");
         }
         const resolved = core.executors.entry(runtime);
         if (resolved === undefined) {
-            return Results.failure("scheme:exec", "executor-missing", 500, `The '${runtime}' executor disappeared after proposal.`, {
-                outcome: "no_executor",
-            });
+            throw new InvalidOperationResultError(`The '${runtime}' executor disappeared after its EXEC proposal.`);
         }
         // #485 — the per-tool effect (execs Effect: read/host/pure) rides the hold predicate so a
         // suffixed PLURNK_SERVICE_EXEC_HOLD entry (`github:read`) can hold one tool-class and not another.
@@ -394,6 +475,10 @@ export default class Exec extends CoreSchemeAdapterBase {
         if (entryId === null) {
             return Results.failure("scheme:exec", "stream-entry-write-failed", 500, `The ${runtime} stream entry could not be created.`, {
                 outcome: "entry_write_failed",
+            }, {
+                runtime,
+                stage: "stream-creation",
+                retryable: false,
             });
         }
 
@@ -478,6 +563,12 @@ export default class Exec extends CoreSchemeAdapterBase {
             "executor-did-not-conclude",
             500,
             `The '${runtime}' executor did not produce a terminal result.`,
+            {},
+            {
+                runtime,
+                stage: "execution",
+                retryable: false,
+            },
         );
         let exitLabel = "did not conclude";
         let stdoutLength = 0;
@@ -496,7 +587,14 @@ export default class Exec extends CoreSchemeAdapterBase {
         // survivor executor-side without breaking the chain. Lazy narration context: one plurnk-run
         // turn per spawn, not per entry.
         let entryChain: Promise<unknown> = Promise.resolve();
-        let narration: { workerId: number; loopId: number; turnId: number; seq: number } | null = null;
+        let narration: {
+            workerId: number;
+            loopId: number;
+            loopSeq: number;
+            turnId: number;
+            turnSeq: number;
+            seq: number;
+        } | null = null;
         const entrySink = (path: string, content: string | null, opts: { tags: string[]; mimetype?: string }): Promise<string> => {
             const parsed = parsePath(path);
             if (parsed === null || parsed.kind !== "url" || parsed.scheme === null) return Promise.reject(new Error(`entry(): '${path.slice(0, 80)}' is not a URL`));
@@ -549,35 +647,56 @@ export default class Exec extends CoreSchemeAdapterBase {
                     };
                     decisive = projected;
                 }
-                const written = await EntryCrud.writeEntry(pathname, { channels, tags }, ctx, parsed.scheme);
+                const written = Results.assert(
+                    await EntryCrud.writeEntry(pathname, { channels, tags }, ctx, parsed.scheme),
+                );
                 if (narration === null) {
                     const run = await db.envelope_get_worker_by_name.get<{ id: number }>({ workspace_id: ctx.workspaceId, name: "plurnk" })
                         ?? await db.envelope_insert_worker.get<{ id: number }>({ workspace_id: ctx.workspaceId, name: "plurnk", origin: "plurnk" });
                     if (run === undefined) throw new Error("entry(): plurnk worker resolution returned no row");
-                    const loop = await db.envelope_insert_client_loop.get<{ id: number }>({ worker_id: run.id });
+                    const loop = await db.envelope_insert_client_loop.get<{ id: number; sequence: number }>({ worker_id: run.id });
                     if (loop === undefined) throw new Error("entry(): loop insert returned no row");
                     const seqRow = await db.client_turn_next_sequence.get<{ next: number }>({ loop_id: loop.id });
-                    const turn = await db.client_turn_insert.get<{ id: number }>({ loop_id: loop.id, sequence: seqRow?.next ?? 1, packet: "{}" });
+                    const turn = await db.client_turn_insert.get<{ id: number; sequence: number }>({ loop_id: loop.id, sequence: seqRow?.next ?? 1, packet: "{}" });
                     if (turn === undefined) throw new Error("entry(): turn insert returned no row");
-                    narration = { workerId: run.id, loopId: loop.id, turnId: turn.id, seq: 1 };
+                    narration = {
+                        workerId: run.id,
+                        loopId: loop.id,
+                        loopSeq: loop.sequence,
+                        turnId: turn.id,
+                        turnSeq: turn.sequence,
+                        seq: 1,
+                    };
+                }
+                const sequence = narration.seq++;
+                if (written.problem !== undefined) {
+                    Results.attachInstance(
+                        written,
+                        `log:///${narration.loopSeq}/${narration.turnSeq}/${sequence}/EDIT`,
+                    );
                 }
                 await db.engine_insert_log_entry.get({
-                    worker_id: narration.workerId, loop_id: narration.loopId, turn_id: narration.turnId, sequence: narration.seq++,
+                    worker_id: narration.workerId, loop_id: narration.loopId, turn_id: narration.turnId, sequence,
                     // signal carries the tags — the SAME slot a model's EDIT[tags] uses, so the
                     // ambient row renders its tags natively everywhere (packet meta line, digest).
                     origin: "plurnk", source: String(ctx.workerId), op: "EDIT", suffix: "", signal: JSON.stringify(tags),
                     scheme: parsed.scheme, username: null, password: null, hostname: null, port: null,
                     pathname, params: null, fragment: null, lineMarker: null,
                     tx: JSON.stringify({ op: "EDIT", body }), mimetype_tx: "application/json",
-                    rx: JSON.stringify({
-                        status: written.status, entryId: written.entryId, tags,
-                        span: decisive.split("\n").map((l, n) => `${n + 1}:${l}`).join("\n"),
-                    }), mimetype_rx: "application/json",
+                    rx: JSON.stringify(written.problem === undefined
+                        ? {
+                            ...written,
+                            tags,
+                            span: decisive.split("\n").map((l, n) => `${n + 1}:${l}`).join("\n"),
+                        }
+                        : written),
+                    mimetype_rx: "application/json",
                     status_rx: written.status, tokens: ctx.tokenize?.(decisive) ?? 0, state: "resolved", outcome: null,
                     // Durable provenance for clients/forensics. This is machine
                     // ambience, not a human/model action waterfall item.
                     attrs: JSON.stringify({ tags, kind: "entry_materialized" }),
                 });
+                if (written.problem !== undefined) throw new OperationFailureError(written);
                 return renderAddress(parsed.scheme, pathname);
             };
             const run = entryChain.then(op, op);
@@ -609,21 +728,35 @@ export default class Exec extends CoreSchemeAdapterBase {
                 try {
                     result = Results.assert(reported);
                 } catch (cause) {
+                    console.error(`Executor '${runtime}' returned an invalid operation result:`, cause);
                     result = Results.failure(
                         "scheme:exec",
                         "executor-invalid-result",
                         500,
-                        `The '${runtime}' executor returned an invalid operation result: ${cause instanceof Error ? cause.message : String(cause)}`,
+                        `The '${runtime}' executor returned an invalid operation result.`,
+                        {},
+                        {
+                            runtime,
+                            stage: "result-validation",
+                            retryable: false,
+                        },
                     );
                 }
             } catch (cause) {
                 // A rejecting driver must still CONCLUDE its stream — uncaught, the subscription sat
                 // open forever and the floating spawn promise was an unhandled rejection.
+                console.error(`Executor '${runtime}' threw outside its operation result contract:`, cause);
                 result = Results.failure(
                     "scheme:exec",
                     "executor-threw",
                     500,
-                    `The '${runtime}' executor threw: ${cause instanceof Error ? cause.message : String(cause)}`,
+                    `The '${runtime}' executor failed outside its operation result contract.`,
+                    {},
+                    {
+                        runtime,
+                        stage: "execution",
+                        retryable: false,
+                    },
                 );
             }
 
@@ -637,7 +770,12 @@ export default class Exec extends CoreSchemeAdapterBase {
                     504,
                     `Execution of '${runtime}' exceeded its ${timeoutSec}-second deadline.`,
                     exitCode === null ? {} : { exitCode },
-                    { runtime, timeoutSeconds: timeoutSec },
+                    {
+                        runtime,
+                        timeoutSeconds: timeoutSec,
+                        stage: "execution",
+                        retryable: false,
+                    },
                 );
             // The service's own abort knowledge outranks a driver's claim: a
             // spawn we reaped did not succeed, whatever it resolved under abort.
@@ -648,7 +786,11 @@ export default class Exec extends CoreSchemeAdapterBase {
                     499,
                     `Execution of '${runtime}' was cancelled by the service.`,
                     exitCode === null ? {} : { exitCode },
-                    { runtime },
+                    {
+                        runtime,
+                        stage: "execution",
+                        retryable: false,
+                    },
                 );
             }
             exitLabel = timedOut

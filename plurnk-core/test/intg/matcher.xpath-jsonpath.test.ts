@@ -340,3 +340,24 @@ test("Matcher.matchCandidates runs ONE matcher over candidates keyed by ANY iden
     assert.equal(r.status, 200);
     assert.deepEqual(r.matches.map((m) => m.key), ["worker:///a.md", "worker:///b.md"], "hits keyed by the caller's own identity — the matcher never cares whether it's an entry pathname or a log coordinate");
 });
+
+test("Matcher.matchCandidates omits unsupported resources without poisoning a heterogeneous search", async () => {
+    const mimetypes = new Mimetypes(); await mimetypes.ready();
+    const matcher = { dialect: "regex", raw: "/needle/", pattern: "needle", flags: "" } as MatcherBody;
+    const mixed = await Matcher.matchCandidates(matcher, [
+        { key: "README.md", content: "the needle is here", mimetype: "text/markdown" },
+        { key: "image.bin", content: "", mimetype: "application/octet-stream" },
+    ], mimetypes);
+    assert.equal(mixed.status, 200);
+    assert.deepEqual(mixed.matches.map(({ key }) => key), ["README.md"]);
+
+    const unsupported = await Matcher.matchCandidates(matcher, [
+        { key: "image.bin", content: "", mimetype: "application/octet-stream" },
+    ], mimetypes);
+    assert.equal(unsupported.status, 415);
+    assert.equal(
+        unsupported.problem?.type,
+        "https://problems.plurnk.dev/schemes/matcher/unsupported-dialect",
+    );
+    assert.equal(unsupported.problem?.mimetype, "application/octet-stream");
+});

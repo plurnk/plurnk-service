@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { isAbsolute, resolve } from "node:path";
 import wabtInit from "wabt";
-import { BaseExecutor, Results } from "@plurnk/plurnk-execs";
+import { BaseExecutor, ErrorDetail, Results } from "@plurnk/plurnk-execs";
 import type { ChannelDecl, Effect, ExecArgs, ExecResult, RuntimeAvailability } from "@plurnk/plurnk-execs";
 
 // `WebAssembly` is a Node/JS global; declare the subset we use so the build
@@ -50,16 +50,47 @@ export default class Wasm extends BaseExecutor {
     }
 
     async run({ runtime, command, cwd, target, signal, write, setState }: ExecArgs): Promise<ExecResult> {
-        const fail = (kind: string, message: string): ExecResult => {
+        const fail = (
+            kind: string,
+            message: string,
+            status = 500,
+            extensions: Readonly<Record<string, unknown>> = {},
+        ): ExecResult => {
             setState("results", "errored");
-            return Results.failure("executor:wasm", kind.replaceAll("_", "-"), 500, message, {}, { runtime });
+            return Results.failure(
+                "executor:wasm",
+                kind,
+                status,
+                message,
+                {},
+                {
+                    runtime,
+                    ...extensions,
+                },
+            );
         };
+        const detailLimit = ErrorDetail.configuredLimit();
+        if (detailLimit === null) {
+            setState("results", "errored");
+            return ErrorDetail.invalidConfiguration("executor:wasm");
+        }
         // Honor an abort at each phase boundary (SPEC §6). The file read, wabt init,
         // and instantiate are the await points where a KILL/cancel can land; the
         // entry-point call itself is synchronous and uninterruptible.
         const aborted = (): ExecResult => {
             setState("results", "errored");
-            return Results.failure("executor:wasm", "cancelled", 499, "WebAssembly execution was cancelled.", {}, { runtime });
+            return Results.failure(
+                "executor:wasm",
+                "cancelled",
+                499,
+                "WebAssembly execution was cancelled.",
+                {},
+                {
+                    runtime,
+                    stage: "execution",
+                    retryable: false,
+                },
+            );
         };
         if (signal.aborted) return aborted();
         // target = a module file, resolved against cwd (the workspace) —
@@ -72,26 +103,72 @@ export default class Wasm extends BaseExecutor {
             let watText: string;
             if (path !== null) {
                 try { watText = await readFile(path, "utf8"); }
-                catch (err) { return fail("wasm_read_failed", `cannot read '${path}': ${(err as Error).message}`); }
+                catch (err) {
+                    const code = (err as NodeJS.ErrnoException).code;
+                    return fail(
+                        "wasm-read-failed",
+                        `WebAssembly could not read '${path}': ${ErrorDetail.preview(err, detailLimit)}`,
+                        code === "ENOENT" ? 404 : 500,
+                        {
+                            stage: "read",
+                            target: path,
+                            errorCode: code,
+                            recovery: "Use a readable module target.",
+                            retryable: false,
+                        },
+                    );
+                }
             } else {
                 watText = command;
             }
             let wabt: Wabt;
             try { wabt = await getWabt(); }
-            catch (err) { return fail("wabt_init_failed", (err as Error).message); }
+            catch (err) {
+                return fail(
+                    "wabt-init-failed",
+                    `The WebAssembly text compiler failed to initialize: ${ErrorDetail.preview(err, detailLimit)}`,
+                    500,
+                    {
+                        stage: "compiler-initialization",
+                    },
+                );
+            }
             let mod: ReturnType<Wabt["parseWat"]> | undefined;
             try {
                 mod = wabt.parseWat(path ?? "module.wat", watText);
                 bytes = mod.toBinary({}).buffer;
             } catch (err) {
-                return fail("wat_parse_error", (err as Error).message);
+                return fail(
+                    "wat-parse-error",
+                    `The WebAssembly text module is invalid: ${ErrorDetail.preview(err, detailLimit)}`,
+                    400,
+                    {
+                        stage: "parse",
+                        recovery: "Correct the WebAssembly text module.",
+                        retryable: false,
+                    },
+                );
             } finally {
                 mod?.destroy();
             }
         } else if (runtime === "wasm") {
             if (path !== null) {
                 try { bytes = await readFile(path); }
-                catch (err) { return fail("wasm_read_failed", `cannot read '${path}': ${(err as Error).message}`); }
+                catch (err) {
+                    const code = (err as NodeJS.ErrnoException).code;
+                    return fail(
+                        "wasm-read-failed",
+                        `WebAssembly could not read '${path}': ${ErrorDetail.preview(err, detailLimit)}`,
+                        code === "ENOENT" ? 404 : 500,
+                        {
+                            stage: "read",
+                            target: path,
+                            errorCode: code,
+                            recovery: "Use a readable module target.",
+                            retryable: false,
+                        },
+                    );
+                }
             } else {
                 bytes = Uint8Array.from(Buffer.from(command.trim(), "base64"));
             }
@@ -106,7 +183,16 @@ export default class Wasm extends BaseExecutor {
         try {
             ({ instance } = await WebAssembly.instantiate(bytes, { env: { log: (v: unknown) => log.push(v) } }));
         } catch (err) {
-            return fail("wasm_invalid", (err as Error).message);
+            return fail(
+                "wasm-invalid",
+                `The WebAssembly module could not be instantiated: ${ErrorDetail.preview(err, detailLimit)}`,
+                400,
+                {
+                    stage: "instantiate",
+                    recovery: "Correct the WebAssembly module.",
+                    retryable: false,
+                },
+            );
         }
 
         if (signal.aborted) return aborted();
@@ -117,7 +203,19 @@ export default class Wasm extends BaseExecutor {
         let returned: unknown = null;
         if (entry !== undefined) {
             try { returned = (exports[entry] as () => unknown)(); }
-            catch (err) { return fail("wasm_trap", `${entry}: ${(err as Error).message}`); }
+            catch (err) {
+                return fail(
+                    "wasm-trap",
+                    `WebAssembly entry point '${entry}' trapped: ${ErrorDetail.preview(err, detailLimit)}`,
+                    500,
+                    {
+                        stage: "execution",
+                        entryPoint: entry,
+                        recovery: "Correct the module's execution path.",
+                        retryable: false,
+                    },
+                );
+            }
         }
 
         write("results", JSON.stringify({ returned, log, exports: funcs }, jsonReplacer));

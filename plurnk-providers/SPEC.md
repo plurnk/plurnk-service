@@ -246,6 +246,11 @@ Provider failures normalize to `ProviderError`. Its public contract is an RFC
 detail, and provider-kind extension; the original error remains its cause.
 A caught failure is surfaced or deliberately preserved; it is never converted
 into an empty model turn or reduced to a message plus a generic status.
+Upstream diagnostic text is bounded by
+`PLURNK_PROVIDERS_ERROR_DETAIL_LIMIT`; the committed `.env.defaults` owns its
+normal value. Retry exhaustion is preserved as `attempts` and
+`retryExhausted`, and the resulting Problem is not marked retryable after the
+provider has consumed its automatic retry budget.
 
 The AI SDK owns attempt scheduling. `PLURNK_PROVIDERS_RETRY_ATTEMPTS` is the
 maximum retry count. Caller cancellation spans the operation. Total and

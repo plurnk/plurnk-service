@@ -4,7 +4,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { withDaemon, connect, rpcCall } from "./_rpc.ts";
+import { withDaemon, connect, rpcCall, rpcProblem } from "./_rpc.ts";
 
 test("workspace.constrain / .constraints / .unconstrain round-trip over RPC (SPEC overlay tooling)", async () => {
     await withDaemon(null, async (_db, _daemon, addr) => {
@@ -23,7 +23,9 @@ test("workspace.constrain / .constraints / .unconstrain round-trip over RPC (SPE
             assert.deepEqual((after.result as { constraints: unknown[] }).constraints, [], "unconstrain (the `drop` verb) deletes the row");
 
             const bad = await rpcCall(ws, 6, "workspace.constrain", { effect: "bogus", glob: "x" });
-            assert.ok(bad.error, "an invalid effect must surface as a JSON-RPC error, not a silent accept");
+            const problem = rpcProblem(bad);
+            assert.equal(problem.type, "https://problems.plurnk.dev/daemon/input/constraint-effect-invalid");
+            assert.deepEqual(problem.allowedEffects, ["pick", "hide", "view"]);
         } finally {
             ws.close();
         }
@@ -56,8 +58,10 @@ test("workspace.create rejects a malformed seeded constraint (#200)", async () =
         const ws = await connect(addr);
         try {
             const bad = await rpcCall(ws, 1, "workspace.create", { name: "bad-seed", constraints: [{ effect: "bogus", glob: "x" }] });
-            assert.ok(bad.error, "an invalid seeded constraint surfaces as a JSON-RPC error, not a silent accept");
-            assert.match(bad.error!.message, /pick \| hide \| view/);
+            const problem = rpcProblem(bad);
+            assert.equal(problem.type, "https://problems.plurnk.dev/daemon/input/constraint-effect-invalid");
+            assert.equal(problem.field, "constraints[0].effect");
+            assert.deepEqual(problem.allowedEffects, ["pick", "hide", "view"]);
         } finally { ws.close(); }
     });
 });

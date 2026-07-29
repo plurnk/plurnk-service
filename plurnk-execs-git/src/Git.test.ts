@@ -135,7 +135,8 @@ test("commit: no user.name/user.email in repo config → durable Problem, 500, e
     assert.equal(result.status, 500);
     assert.equal(out, undefined);
     assert.equal(result.problem?.type, "https://problems.plurnk.dev/executor/git/git-no-author");
-    assert.match(result.problem?.detail ?? "", /no user\.name\/user\.email/);
+    assert.match(result.problem?.detail ?? "", /no configured commit author/);
+    assert.equal(result.problem?.recovery, "Configure user.name and user.email in the repository.");
     assert.equal(events.length, 0);
     assert.deepEqual(states, ["errored"]);
 });
@@ -146,7 +147,8 @@ test("commit without -m → bad-arguments Problem, 400", async () => {
     assert.equal(result.status, 400);
     assert.equal(out, undefined);
     assert.equal(result.problem?.type, "https://problems.plurnk.dev/executor/git/git-bad-arguments");
-    assert.match(result.problem?.detail ?? "", /commit needs a message/);
+    assert.match(result.problem?.detail ?? "", /requires a message/);
+    assert.equal(result.problem?.recovery, "Provide the message with -m.");
     assert.equal(events.length, 0);
     assert.deepEqual(states, ["errored"]);
 });
@@ -201,7 +203,8 @@ test("unknown verb (push is unsupported day-one) → Problem, 400, names the ver
     assert.equal(out, undefined);
     assert.equal(result.problem?.type, "https://problems.plurnk.dev/executor/git/git-unknown-op");
     assert.match(result.problem?.detail ?? "", /'push'/);
-    assert.match(result.problem?.detail ?? "", /init, status, add, commit, log, branch, checkout/);
+    assert.deepEqual(result.problem?.availableOperations, ["init", "status", "add", "commit", "log", "branch", "checkout"]);
+    assert.equal(result.problem?.recovery, "Use a supported operation or run native git through the shell.");
     assert.equal(events.length, 0);
     assert.deepEqual(states, ["errored"]);
 });

@@ -7,4 +7,4 @@ SELECT COALESCE(MAX(sequence), 0) + 1 AS next FROM turns WHERE loop_id = $loop_i
 -- PREP: client_turn_insert
 INSERT INTO turns (loop_id, sequence, status, packet)
 VALUES ($loop_id, $sequence, 200, $packet)
-RETURNING id;
+RETURNING id, sequence;

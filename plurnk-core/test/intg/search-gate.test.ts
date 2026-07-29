@@ -8,6 +8,7 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import ExecutorRegistry from "../../src/core/ExecutorRegistry.ts";
 import type { ExecStatement } from "@plurnk/plurnk-grammar";
+import Results from "../../src/core/results.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, DEFAULT_MIMETYPES } from "./_helpers.ts";
 import { setTimeout as delay } from "node:timers/promises";
 
@@ -36,7 +37,16 @@ const stubExecutor = (behavior: { fail?: boolean } = {}) => ({
     get defaultChannel() { return "#results"; },
     get channels() { return { "#results": { mimetype: "application/json" } }; },
     async run(args: { write: (c: string, chunk: string, m?: string) => void }) {
-        if (behavior.fail === true) return { status: 500 };
+        if (behavior.fail === true) {
+            return Results.failure(
+                "executor:search-fixture",
+                "request-failed",
+                500,
+                "The search fixture request failed.",
+                {},
+                { stage: "execute", retryable: true },
+            );
+        }
         args.write("#results", JSON.stringify(DIGEST), "application/json");
         return { status: 200 };
     },
@@ -97,7 +107,10 @@ test("the per-turn cap 429s the overflow search; a failed spawn never poisons th
         assert.ok((await dispatchSearch(engine, ids, "q3", 3)).status < 400);
         const fourth = await dispatchSearch(engine, ids, "q4", 4);
         assert.equal(fourth.status, 429, "the fourth DISTINCT search this turn is flood-controlled");
-        assert.match(fourth.problem?.detail ?? "", /limit/i, "with a legible steer");
+        assert.equal(fourth.problem?.type, "https://problems.plurnk.dev/engine/dispatcher/search-limit-reached");
+        assert.equal(fourth.problem?.searchLimit, 3);
+        assert.equal(fourth.problem?.recovery, "Continue without another search in this turn.");
+        assert.equal(fourth.problem?.retryable, false);
     } finally { await settle(db, workspaceId).catch(() => {}); await db.close(); }
 });
 

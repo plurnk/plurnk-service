@@ -103,6 +103,7 @@ export const providerFromSdkModel = ({
         reasoningReserve,
         completionReserve,
         retryAttempts: parseRequiredInt(env.PLURNK_PROVIDERS_RETRY_ATTEMPTS, "PLURNK_PROVIDERS_RETRY_ATTEMPTS", name),
+        errorDetailLimit: parseRequiredInt(env.PLURNK_PROVIDERS_ERROR_DETAIL_LIMIT, "PLURNK_PROVIDERS_ERROR_DETAIL_LIMIT", name),
         reasoningStyle: reasoningStyleFromEnv(env, name),
         promptCacheKey: url === undefined ? false : promptCacheKeyFromEnv(env, name),
         serviceTier: env.PLURNK_PROVIDERS_SERVICE_TIER,

@@ -85,7 +85,16 @@ test("End-to-end: synthetic streaming scheme — SEND[499] tears down subscripti
             };
             async read(statement: ReadStatement, ctx: SchemeCtx): Promise<{ status: number }> {
                 const path = statement.target;
-                if (path === null || path.kind !== "url") return { status: 400 };
+                if (path === null || path.kind !== "url") {
+                    return Results.failure(
+                        "scheme:teststream",
+                        "target-required",
+                        400,
+                        "The stream fixture requires a URL target.",
+                        {},
+                        { stage: "validate", retryable: false },
+                    );
+                }
                 await ctx.entries.write(path.pathname, {
                     channels: { data: { content: "", mimetype: "text/plain", state: "active" } },
                     tags: [],

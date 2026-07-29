@@ -1,6 +1,6 @@
 import test from "node:test";
 import { strict as assert } from "node:assert";
-import { APICallError } from "ai";
+import { APICallError, RetryError } from "ai";
 import { ProviderError, classifyProviderError, toProviderError } from "./errors.ts";
 import { providerSource } from "./notices.ts";
 
@@ -55,10 +55,18 @@ test("ProviderError carries a validated RFC 9457 Problem Details object", () => 
         status: 429,
         detail: "OpenAI 429 - slow down",
         providerKind: "rate_limit",
+        stage: "provider-request",
+        retryable: true,
     });
     assert.match(e.source, SOURCE_PATTERN);
     assert.ok(e instanceof Error);
     assert.equal(e.status, 429);
+});
+
+test("ProviderError marks failures that require changed external state as non-retryable", () => {
+    const unauthorized = new ProviderError("provider:openai", "unauthorized", "Invalid API key.");
+    assert.equal(unauthorized.problem.retryable, false);
+    assert.equal(unauthorized.problem.stage, "provider-request");
 });
 
 test("toProviderError classifies and tags an HTTP error with the source + status", () => {
@@ -73,4 +81,28 @@ test("toProviderError classifies and tags an HTTP error with the source + status
 test("toProviderError passes an existing ProviderError through unchanged", () => {
     const original = new ProviderError("provider:xai", "rate_limit", "429");
     assert.equal(toProviderError(original, "provider:other"), original);
+});
+
+test("provider diagnostics are bounded without losing structured failure facts", () => {
+    const cause = apiError(502);
+    Object.defineProperty(cause, "message", { value: "abcdefghij" });
+    const error = toProviderError(cause, "provider:test", 4);
+    assert.equal(error.problem.detail, "abcd...");
+    assert.equal(error.problem.status, 502);
+    assert.equal(error.problem.providerKind, "network_failure");
+    assert.equal(error.cause, cause);
+});
+
+test("retry exhaustion is explicit and does not recommend another automatic replay", () => {
+    const failures = [apiError(429), apiError(429), apiError(429)];
+    const cause = new RetryError({
+        message: "Failed after 3 attempts.",
+        reason: "maxRetriesExceeded",
+        errors: failures,
+    });
+    const error = toProviderError(cause, "provider:test");
+    assert.equal(error.problem.retryable, false);
+    assert.equal(error.problem.attempts, 3);
+    assert.equal(error.problem.retryExhausted, true);
+    assert.equal(error.cause, cause);
 });

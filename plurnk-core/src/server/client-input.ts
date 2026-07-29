@@ -1,83 +1,415 @@
-// Client-input validation at the SEAM — the daemon's client surface fail-hards on malformed
-// input for EVERY module riding it (#364 flushed these out of the retired WS handlers, where
-// only the socket path got them). Messages are the client-facing contract; tests assert them.
+// Client-input validation at the seam. Malformed external input becomes one
+// exact public operation failure for every module riding the daemon surface.
+// Internal invariant violations still throw ordinary implementation errors.
 import { isAbsolute } from "node:path";
+import Results, { OperationFailureError } from "../core/results.ts";
+import type { ProposalResolution } from "../core/ProposalLifecycle.ts";
 
 const CONSTRAINT_EFFECTS: ReadonlySet<string> = new Set(["pick", "hide", "view"]);
 
 export default class ClientInput {
-    // A workspace pin must be an absolute path (or null = headless) — a relative root would
+    static #invalid(
+        context: string,
+        code: string,
+        detail: string,
+        extensions: Readonly<Record<string, unknown>> = {},
+    ): never {
+        throw new OperationFailureError(Results.failure(
+            "daemon:input",
+            code,
+            400,
+            detail,
+            {},
+            {
+                context,
+                stage: "input-validation",
+                retryable: false,
+                ...extensions,
+            },
+        ));
+    }
+
+    // A workspace pin must be an absolute path (or null = headless) - a relative root would
     // silently resolve against the daemon's cwd, never the client's.
     static assertProjectRoot(context: string, projectRoot: unknown): string | null {
         const root = (projectRoot as string | null | undefined) ?? null;
         if (root === null) return null;
         if (typeof root !== "string" || root.length === 0) {
-            throw new Error(`${context}: projectRoot must be a non-empty string or null`);
+            ClientInput.#invalid(
+                context,
+                "project-root-invalid",
+                "projectRoot is neither a non-empty string nor null.",
+                { field: "projectRoot", recovery: "Provide an absolute project path or null." },
+            );
         }
-        if (!isAbsolute(root)) throw new Error(`${context}: projectRoot must be an absolute path`);
+        if (!isAbsolute(root)) {
+            ClientInput.#invalid(
+                context,
+                "project-root-not-absolute",
+                `projectRoot '${root}' is not an absolute path.`,
+                { field: "projectRoot", value: root, recovery: "Provide an absolute project path." },
+            );
+        }
         return root;
+    }
+
+    static assertOptionalName(context: string, field: string, value: unknown): string | undefined {
+        if (value === undefined) return undefined;
+        if (typeof value !== "string" || value.length === 0) {
+            ClientInput.#invalid(
+                context,
+                "name-invalid",
+                `${field} is not a non-empty string.`,
+                { field, recovery: `Provide a non-empty ${field}.` },
+            );
+        }
+        return value;
+    }
+
+    static assertOptionalSelector(context: string, field: "alias" | "model", value: unknown): string | undefined {
+        if (value === undefined) return undefined;
+        if (typeof value !== "string" || value.length === 0) {
+            ClientInput.#invalid(
+                context,
+                `${field}-invalid`,
+                `${field} is not a non-empty string.`,
+                { field, recovery: `Provide a non-empty provider ${field}.` },
+            );
+        }
+        return value;
+    }
+
+    static assertOptionalChannel(context: string, channel: unknown): string | undefined {
+        if (channel === undefined) return undefined;
+        if (typeof channel !== "string" || channel.length === 0) {
+            ClientInput.#invalid(
+                context,
+                "channel-invalid",
+                "channel is not a non-empty string.",
+                { field: "channel", recovery: "Provide a non-empty channel name." },
+            );
+        }
+        return channel;
+    }
+
+    static assertId(context: string, field: string, value: unknown): number {
+        if (!Number.isSafeInteger(value) || (value as number) < 1) {
+            ClientInput.#invalid(
+                context,
+                "identifier-invalid",
+                `${field} is not a positive safe integer.`,
+                { field, value, recovery: `Provide a valid ${field}.` },
+            );
+        }
+        return value as number;
+    }
+
+    static assertPrompt(context: string, prompt: unknown): string {
+        if (typeof prompt !== "string" || prompt.length === 0) {
+            ClientInput.#invalid(
+                context,
+                "prompt-invalid",
+                "prompt is not a non-empty string.",
+                { field: "prompt", recovery: "Provide a non-empty prompt." },
+            );
+        }
+        return prompt;
+    }
+
+    static assertMaxTurns(context: string, maxTurns: unknown): number | undefined {
+        if (maxTurns === undefined) return undefined;
+        if (!Number.isSafeInteger(maxTurns) || (maxTurns as number) < -1) {
+            ClientInput.#invalid(
+                context,
+                "max-turns-invalid",
+                "maxTurns is neither -1 nor a non-negative safe integer.",
+                {
+                    field: "maxTurns",
+                    value: maxTurns,
+                    recovery: "Use -1 for no per-call ceiling or a non-negative integer ceiling.",
+                },
+            );
+        }
+        return maxTurns as number;
+    }
+
+    static assertOpenPaths(context: string, openPaths: unknown): string[] | undefined {
+        if (openPaths === undefined) return undefined;
+        if (!Array.isArray(openPaths)) {
+            ClientInput.#invalid(
+                context,
+                "open-paths-invalid",
+                "openPaths is not an array.",
+                { field: "openPaths", recovery: "Provide an array of non-empty paths." },
+            );
+        }
+        for (let i = 0; i < openPaths.length; i++) {
+            if (typeof openPaths[i] !== "string" || openPaths[i].length === 0) {
+                ClientInput.#invalid(
+                    context,
+                    "open-path-invalid",
+                    `openPaths[${i}] is not a non-empty string.`,
+                    { field: `openPaths[${i}]`, recovery: "Provide a non-empty path." },
+                );
+            }
+        }
+        return openPaths as string[];
+    }
+
+    static assertLimit(context: string, limit: unknown): number | undefined {
+        if (limit === undefined) return undefined;
+        if (!Number.isSafeInteger(limit) || (limit as number) < 1) {
+            ClientInput.#invalid(
+                context,
+                "limit-invalid",
+                "limit is not a positive safe integer.",
+                { field: "limit", value: limit, recovery: "Use a positive integer limit." },
+            );
+        }
+        return limit as number;
+    }
+
+    static assertProposalResolution(context: string, resolution: unknown): ProposalResolution {
+        if (typeof resolution !== "object" || resolution === null || Array.isArray(resolution)) {
+            ClientInput.#invalid(
+                context,
+                "proposal-resolution-invalid",
+                "resolution is not an object.",
+                { field: "resolution", recovery: "Provide a proposal decision." },
+            );
+        }
+        const value = resolution as Record<string, unknown>;
+        const supported = new Set(["decision", "body", "outcome"]);
+        for (const key of Object.keys(value)) {
+            if (!supported.has(key)) {
+                ClientInput.#invalid(
+                    context,
+                    "proposal-resolution-field-not-supported",
+                    `resolution.${key} is not supported.`,
+                    {
+                        field: `resolution.${key}`,
+                        supportedFields: [...supported],
+                        recovery: "Remove the unsupported proposal resolution field.",
+                    },
+                );
+            }
+        }
+        if (value.decision !== "accept" && value.decision !== "reject" && value.decision !== "cancel") {
+            ClientInput.#invalid(
+                context,
+                "proposal-decision-invalid",
+                "resolution.decision is not accept, reject, or cancel.",
+                {
+                    field: "resolution.decision",
+                    allowedDecisions: ["accept", "reject", "cancel"],
+                    recovery: "Use an allowed proposal decision.",
+                },
+            );
+        }
+        if (value.body !== undefined && typeof value.body !== "string") {
+            ClientInput.#invalid(
+                context,
+                "proposal-body-invalid",
+                "resolution.body is not a string.",
+                { field: "resolution.body", recovery: "Provide a string body or omit it." },
+            );
+        }
+        if (value.outcome !== undefined && (typeof value.outcome !== "string" || value.outcome.length === 0)) {
+            ClientInput.#invalid(
+                context,
+                "proposal-outcome-invalid",
+                "resolution.outcome is not a non-empty string.",
+                { field: "resolution.outcome", recovery: "Provide a non-empty outcome or omit it." },
+            );
+        }
+        return {
+            decision: value.decision,
+            ...(value.body === undefined ? {} : { body: value.body }),
+            ...(value.outcome === undefined ? {} : { outcome: value.outcome }),
+        } as ProposalResolution;
     }
 
     static assertConstraint(context: string, effect: unknown, glob: unknown): void {
         if (typeof effect !== "string" || !CONSTRAINT_EFFECTS.has(effect)) {
-            throw new Error(`${context}: effect must be one of pick | hide | view`);
+            ClientInput.#invalid(
+                context,
+                "constraint-effect-invalid",
+                `Constraint effect ${JSON.stringify(effect)} is not supported.`,
+                {
+                    field: "effect",
+                    allowedEffects: [...CONSTRAINT_EFFECTS],
+                    recovery: "Use one of the allowed constraint effects.",
+                },
+            );
         }
         if (typeof glob !== "string" || glob.length === 0) {
-            throw new Error(`${context}: glob must be a non-empty string`);
+            ClientInput.#invalid(
+                context,
+                "constraint-glob-invalid",
+                "Constraint glob is not a non-empty string.",
+                { field: "glob", recovery: "Provide a non-empty constraint glob." },
+            );
         }
     }
 
     static parseConstraints(raw: unknown): Array<{ effect: string; glob: string }> {
         if (raw === undefined || raw === null) return [];
-        if (!Array.isArray(raw)) throw new Error("workspace.create: constraints must be an array");
+        if (!Array.isArray(raw)) {
+            ClientInput.#invalid(
+                "workspace.create",
+                "constraints-invalid",
+                "constraints is not an array.",
+                { field: "constraints", recovery: "Provide an array of constraint objects." },
+            );
+        }
         return raw.map((c, i) => {
+            if (typeof c !== "object" || c === null || Array.isArray(c)) {
+                ClientInput.#invalid(
+                    "workspace.create",
+                    "constraint-invalid",
+                    `constraints[${i}] is not an object.`,
+                    {
+                        field: `constraints[${i}]`,
+                        recovery: "Provide an object with effect and glob fields.",
+                    },
+                );
+            }
             const e = c as { effect?: unknown; glob?: unknown };
             if (typeof e.effect !== "string" || !CONSTRAINT_EFFECTS.has(e.effect)) {
-                throw new Error(`workspace.create: constraints[${i}].effect must be one of pick | hide | view`);
+                ClientInput.#invalid(
+                    "workspace.create",
+                    "constraint-effect-invalid",
+                    `constraints[${i}].effect ${JSON.stringify(e.effect)} is not supported.`,
+                    {
+                        field: `constraints[${i}].effect`,
+                        allowedEffects: [...CONSTRAINT_EFFECTS],
+                        recovery: "Use one of the allowed constraint effects.",
+                    },
+                );
             }
             if (typeof e.glob !== "string" || e.glob.length === 0) {
-                throw new Error(`workspace.create: constraints[${i}].glob must be a non-empty string`);
+                ClientInput.#invalid(
+                    "workspace.create",
+                    "constraint-glob-invalid",
+                    `constraints[${i}].glob is not a non-empty string.`,
+                    {
+                        field: `constraints[${i}].glob`,
+                        recovery: "Provide a non-empty constraint glob.",
+                    },
+                );
             }
             return { effect: e.effect, glob: e.glob };
         });
     }
 
-    // §wait — loop flags are booleans (mode aside); a truthy string silently flipping auto-approval would
-    // be a review-bypass, so the shape fail-hards at the surface.
+    // Loop flags are booleans (mode aside); a truthy string silently flipping
+    // auto-approval would be a review bypass, so the public surface rejects it.
     static normalizeLoopFlags(context: string, flags: unknown): Record<string, unknown> | undefined {
         if (flags === undefined) return undefined;
         if (typeof flags !== "object" || flags === null || Array.isArray(flags)) {
-            throw new Error(`${context}: flags must be an object`);
+            ClientInput.#invalid(
+                context,
+                "loop-flags-invalid",
+                "flags is not an object.",
+                { field: "flags", recovery: "Provide an object containing supported loop flags." },
+            );
         }
         const f = flags as Record<string, unknown>;
         const booleanFlags = new Set(["auto", "noProposals", "noWeb", "noInteraction"]);
         const allowed = new Set([...booleanFlags, "mode"]);
         for (const key of Object.keys(f)) {
-            if (!allowed.has(key)) throw new Error(`${context}: flags.${key} is not supported`);
+            if (!allowed.has(key)) {
+                ClientInput.#invalid(
+                    context,
+                    "loop-flag-not-supported",
+                    `Loop flag '${key}' is not supported.`,
+                    {
+                        field: `flags.${key}`,
+                        allowedFlags: [...allowed],
+                        recovery: "Remove the unsupported loop flag.",
+                    },
+                );
+            }
         }
         for (const bool of booleanFlags) {
             if (f[bool] !== undefined && typeof f[bool] !== "boolean") {
-                throw new Error(`${context}: flags.${bool} must be a boolean`);
+                ClientInput.#invalid(
+                    context,
+                    "loop-flag-invalid",
+                    `Loop flag '${bool}' is not boolean.`,
+                    { field: `flags.${bool}`, recovery: "Use true or false for this loop flag." },
+                );
             }
         }
         if (f.mode !== undefined && f.mode !== "ask" && f.mode !== "act") {
-            throw new Error(`${context}: flags.mode must be 'ask' or 'act'`);
+            ClientInput.#invalid(
+                context,
+                "loop-mode-invalid",
+                `Loop mode ${JSON.stringify(f.mode)} is not supported.`,
+                {
+                    field: "flags.mode",
+                    allowedModes: ["ask", "act"],
+                    recovery: "Use loop mode 'ask' or 'act'.",
+                },
+            );
         }
         return f;
     }
 
     // #231 — validate + serialize the client open-context bag. filesItems is a scalar (replace);
-    // mdDocs is [{alias, content}] (union'd with env at turn-0). A pre-serialized string passes
-    // through (a module may serialize at its own edge).
+    // mdDocs is [{alias, content}] (union'd with env at turn-0). A module may
+    // serialize the object at its edge; core still parses and validates it here.
     static parseSettings(raw: unknown): string {
         if (raw === undefined || raw === null) return "{}";
-        if (typeof raw === "string") return raw;
-        if (typeof raw !== "object" || Array.isArray(raw)) throw new Error("workspace.create: settings must be an object");
-        const r = raw as { filesItems?: unknown; maxCommands?: unknown; git?: unknown; mdDocs?: unknown; client?: unknown; execs?: unknown; questions?: unknown };
+        let parsed: unknown = raw;
+        if (typeof raw === "string") {
+            try {
+                parsed = JSON.parse(raw) as unknown;
+            } catch {
+                ClientInput.#invalid(
+                    "workspace.create",
+                    "settings-invalid",
+                    "settings is not valid JSON.",
+                    { field: "settings", recovery: "Provide a JSON object." },
+                );
+            }
+        }
+        if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+            ClientInput.#invalid(
+                "workspace.create",
+                "settings-invalid",
+                "settings is not an object.",
+                { field: "settings", recovery: "Provide a settings object." },
+            );
+        }
+        const r = parsed as { filesItems?: unknown; maxCommands?: unknown; git?: unknown; mdDocs?: unknown; client?: unknown; execs?: unknown; questions?: unknown };
+        const supported = new Set(["filesItems", "maxCommands", "git", "mdDocs", "client", "execs", "questions"]);
+        for (const key of Object.keys(r)) {
+            if (!supported.has(key)) {
+                ClientInput.#invalid(
+                    "workspace.create",
+                    "setting-not-supported",
+                    `settings.${key} is not supported.`,
+                    {
+                        field: `settings.${key}`,
+                        supportedSettings: [...supported],
+                        recovery: "Remove the unsupported setting.",
+                    },
+                );
+            }
+        }
         const out: { filesItems?: number; maxCommands?: number; git?: boolean; mdDocs?: Array<{ alias: string; content: string }>; client?: string; execs?: Record<string, string>; questions?: boolean } = {};
         if (r.filesItems !== undefined) {
-            if (typeof r.filesItems !== "number" || !Number.isInteger(r.filesItems)) {
-                throw new Error("workspace.create: settings.filesItems must be an integer (-1 full | 0 off | N first-N)");
+            if (typeof r.filesItems !== "number" || !Number.isInteger(r.filesItems) || r.filesItems < -1) {
+                ClientInput.#invalid(
+                    "workspace.create",
+                    "setting-invalid",
+                    `settings.filesItems ${JSON.stringify(r.filesItems)} is not an integer.`,
+                    {
+                        field: "settings.filesItems",
+                        recovery: "Use -1 for all files, 0 for none, or a positive first-N limit.",
+                    },
+                );
             }
             out.filesItems = r.filesItems;
         }
@@ -86,25 +418,52 @@ export default class ClientInput {
         // git:false denies git for the workspace (env AND workspace).
         if (r.maxCommands !== undefined) {
             if (typeof r.maxCommands !== "number" || !Number.isInteger(r.maxCommands) || r.maxCommands < 0) {
-                throw new Error("workspace.create: settings.maxCommands must be a non-negative integer (a tighten-only ceiling; 0 = plan + conclude only, no actions)");
+                ClientInput.#invalid(
+                    "workspace.create",
+                    "setting-invalid",
+                    `settings.maxCommands ${JSON.stringify(r.maxCommands)} is not a non-negative integer.`,
+                    {
+                        field: "settings.maxCommands",
+                        recovery: "Use a non-negative integer command ceiling.",
+                    },
+                );
             }
             out.maxCommands = r.maxCommands;
         }
         if (r.git !== undefined) {
-            if (typeof r.git !== "boolean") throw new Error("workspace.create: settings.git must be a boolean (false denies git for the workspace)");
+            if (typeof r.git !== "boolean") {
+                ClientInput.#invalid(
+                    "workspace.create",
+                    "setting-invalid",
+                    "settings.git is not boolean.",
+                    { field: "settings.git", recovery: "Use true or false for settings.git." },
+                );
+            }
             out.git = r.git;
         }
         // §send-300-choices — operator questions: the client AFFIRMATIVELY requests them per
         // workspace (its own PLURNK_QUESTIONS=1 forwarded); enabled = allowed (service env) AND this.
         if (r.questions !== undefined) {
-            if (typeof r.questions !== "boolean") throw new Error("workspace.create: settings.questions must be a boolean (operator questions — [300] — requested for this workspace)");
+            if (typeof r.questions !== "boolean") {
+                ClientInput.#invalid(
+                    "workspace.create",
+                    "setting-invalid",
+                    "settings.questions is not boolean.",
+                    { field: "settings.questions", recovery: "Use true or false for settings.questions." },
+                );
+            }
             out.questions = r.questions;
         }
         // #249 — workspace-stable frontend id (e.g. "plurnk.nvim/1.4.0"), forwarded to the plurnk
         // provider as Plurnk-Client metadata; ignored by every other provider. Self-identified.
         if (r.client !== undefined) {
             if (typeof r.client !== "string" || r.client.length === 0) {
-                throw new Error("workspace.create: settings.client must be a non-empty string (the frontend id, e.g. 'plurnk.nvim/1.4.0')");
+                ClientInput.#invalid(
+                    "workspace.create",
+                    "setting-invalid",
+                    "settings.client is not a non-empty string.",
+                    { field: "settings.client", recovery: "Provide the client identifier." },
+                );
             }
             out.client = r.client;
         }
@@ -114,25 +473,87 @@ export default class ClientInput {
         // here as defense-in-depth even though the client already excludes them (the bare MCP toggle stays).
         if (r.execs !== undefined) {
             if (typeof r.execs !== "object" || r.execs === null || Array.isArray(r.execs)) {
-                throw new Error("workspace.create: settings.execs must be an object of PLURNK_EXECS_* key→value strings");
+                ClientInput.#invalid(
+                    "workspace.create",
+                    "setting-invalid",
+                    "settings.execs is not an object.",
+                    {
+                        field: "settings.execs",
+                        recovery: "Provide an object of PLURNK_EXECS_* string values.",
+                    },
+                );
             }
             const execs: Record<string, string> = {};
             for (const [k, v] of Object.entries(r.execs as Record<string, unknown>)) {
-                if (!/^PLURNK_EXECS_[A-Za-z0-9_]+$/.test(k)) throw new Error(`workspace.create: settings.execs key '${k}' is not a PLURNK_EXECS_* flag`);
-                if (/^PLURNK_EXECS_MCP_/i.test(k)) throw new Error(`workspace.create: settings.execs may not carry MCP server config '${k}' — those are not policy and must not ride the wire`);
-                if (typeof v !== "string") throw new Error(`workspace.create: settings.execs['${k}'] must be a string`);
+                if (!/^PLURNK_EXECS_[A-Za-z0-9_]+$/.test(k)) {
+                    ClientInput.#invalid(
+                        "workspace.create",
+                        "setting-key-invalid",
+                        `settings.execs key '${k}' is not a PLURNK_EXECS_* flag.`,
+                        { field: `settings.execs.${k}`, recovery: "Use a PLURNK_EXECS_* policy key." },
+                    );
+                }
+                if (/^PLURNK_EXECS_MCP_/i.test(k)) {
+                    ClientInput.#invalid(
+                        "workspace.create",
+                        "mcp-configuration-forbidden",
+                        `settings.execs key '${k}' contains MCP server configuration rather than workspace policy.`,
+                        { field: `settings.execs.${k}`, recovery: "Configure MCP servers outside workspace settings." },
+                    );
+                }
+                if (typeof v !== "string") {
+                    ClientInput.#invalid(
+                        "workspace.create",
+                        "setting-invalid",
+                        `settings.execs['${k}'] is not a string.`,
+                        { field: `settings.execs.${k}`, recovery: "Use a string policy value." },
+                    );
+                }
                 execs[k] = v;
             }
             out.execs = execs;
         }
         if (r.mdDocs !== undefined) {
-            if (!Array.isArray(r.mdDocs)) throw new Error("workspace.create: settings.mdDocs must be an array");
+            if (!Array.isArray(r.mdDocs)) {
+                ClientInput.#invalid(
+                    "workspace.create",
+                    "setting-invalid",
+                    "settings.mdDocs is not an array.",
+                    { field: "settings.mdDocs", recovery: "Provide an array of document objects." },
+                );
+            }
             out.mdDocs = r.mdDocs.map((d, i) => {
+                if (typeof d !== "object" || d === null || Array.isArray(d)) {
+                    ClientInput.#invalid(
+                        "workspace.create",
+                        "setting-invalid",
+                        `settings.mdDocs[${i}] is not an object.`,
+                        {
+                            field: `settings.mdDocs[${i}]`,
+                            recovery: "Provide an object with alias and content fields.",
+                        },
+                    );
+                }
                 const e = d as { alias?: unknown; content?: unknown };
                 if (typeof e.alias !== "string" || e.alias.length === 0 || /[^\w.-]/.test(e.alias)) {
-                    throw new Error(`workspace.create: settings.mdDocs[${i}].alias must be a non-empty [\\w.-] string`);
+                    ClientInput.#invalid(
+                        "workspace.create",
+                        "setting-invalid",
+                        `settings.mdDocs[${i}].alias is not a non-empty [\\w.-] string.`,
+                        {
+                            field: `settings.mdDocs[${i}].alias`,
+                            recovery: "Use a non-empty alias containing letters, digits, underscore, dot, or hyphen.",
+                        },
+                    );
                 }
-                if (typeof e.content !== "string") throw new Error(`workspace.create: settings.mdDocs[${i}].content must be a string`);
+                if (typeof e.content !== "string") {
+                    ClientInput.#invalid(
+                        "workspace.create",
+                        "setting-invalid",
+                        `settings.mdDocs[${i}].content is not a string.`,
+                        { field: `settings.mdDocs[${i}].content`, recovery: "Provide string document content." },
+                    );
+                }
                 return { alias: e.alias, content: e.content };
             });
         }

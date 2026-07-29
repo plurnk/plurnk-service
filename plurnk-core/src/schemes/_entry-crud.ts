@@ -53,6 +53,7 @@ export default class EntryCrud {
                 404,
                 `No entry exists at ${scheme}://${pathname}.`,
                 { entry: null },
+                { target: `${scheme}://${pathname}` },
             ) as ReadEntryResult;
         }
 
@@ -116,6 +117,8 @@ export default class EntryCrud {
                 "entry-not-found",
                 404,
                 `No entry exists at ${scheme}://${pathname}.`,
+                {},
+                { target: `${scheme}://${pathname}` },
             ) as DeleteEntryResult;
         }
         await db.crud_delete_entry.run({ entry_id: existing.id });

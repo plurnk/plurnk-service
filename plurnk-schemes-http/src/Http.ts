@@ -36,10 +36,12 @@ import type {
     UrlPath,
     EntryData,
     FindStatement,
+    SchemeResult,
 } from "@plurnk/plurnk-schemes";
 import { Results } from "@plurnk/plurnk-schemes";
 import { readFile } from "node:fs/promises";
 import Browser, { BROWSER_UA, requireNumEnv, type RenderResult } from "./Browser.ts";
+import ErrorDetail from "./ErrorDetail.ts";
 import WebFetcher from "./WebFetcher.ts";
 
 // The channel the response body streams into, and the header metadata channel.
@@ -90,9 +92,11 @@ export default class Http implements SchemeHandler {
     // The render foundation (lazy chromium). Injectable for tests; one warm
     // pool per Http instance, shared across this scheme's fetches.
     readonly #browser: Renderer;
+    readonly #errorDetailLimit: number;
     readonly #webFetcher: WebFetcher;
     constructor(browser: Renderer = new Browser()) {
         this.#browser = browser;
+        this.#errorDetailLimit = ErrorDetail.configuredLimit();
         this.#webFetcher = new WebFetcher(browser);
     }
 
@@ -116,9 +120,22 @@ export default class Http implements SchemeHandler {
         if (pathname.includes("*")) return { shape: "passthrough", status: 200 };
         const prior = await ctx.entries.read(pathname);
         if (prior.entry !== null) return { shape: "passthrough", status: 200 };
+        if (Results.isErrorStatus(prior.status) && prior.status !== 404) {
+            return Http.#passthrough(prior);
+        }
         const fetched = await this.#webFetcher.fetch(Http.#urlFrom(target), { signal: ctx.signal });
         if (fetched === null) {
-            return Http.#bad(404, "http", "not_materialized", "the requested URL could not be materialized");
+            return Http.#bad(
+                404,
+                "http",
+                "not-materialized",
+                `The URL ${Http.#urlFrom(target)} could not be materialized.`,
+                {
+                    target: Http.#urlFrom(target),
+                    stage: "acquisition",
+                    retryable: true,
+                },
+            );
         }
         let { body, mimetype } = fetched;
         let channels: EntryData["channels"] = {
@@ -136,7 +153,17 @@ export default class Http implements SchemeHandler {
                 }
             }
             if (projected === null || projected.content.length === 0) {
-                return Http.#bad(422, "http", "no_readable_projection", "the requested URL has no readable projection");
+                return Http.#bad(
+                    422,
+                    "http",
+                    "no-readable-projection",
+                    `The URL ${Http.#urlFrom(target)} has no readable projection.`,
+                    {
+                        target: Http.#urlFrom(target),
+                        stage: "projection",
+                        retryable: false,
+                    },
+                );
             }
             channels = {
                 [BODY]: { content: projected.content, mimetype: projected.mimetype },
@@ -145,7 +172,7 @@ export default class Http implements SchemeHandler {
             };
         }
         const written = await ctx.entries.write(pathname, { channels, tags: [] });
-        return { shape: "passthrough", status: written.status };
+        return Http.#passthrough(written);
     }
 
     // An unscoped READ fetches/revalidates. A scoped READ observes the already
@@ -153,40 +180,74 @@ export default class Http implements SchemeHandler {
     // and return another asynchronous whole-body 102.
     async read(statement: ReadStatement, ctx: SchemeCtx): Promise<PassthroughResult> {
         if (statement.target === null || statement.target.kind !== "url") {
-            return Http.#bad(400, "http", "bad_target", "READ requires an http(s):// URL target");
+            return Http.#bad(400, "http", "bad-target", "READ requires an http(s):// URL target.", {
+                stage: "target-validation",
+                recovery: "Provide an http(s):// URL target.",
+                retryable: false,
+            });
         }
         if (statement.lineMarker !== null) {
             const prior = await ctx.entries.read(Http.#pathname(statement.target));
+            if (Results.isErrorStatus(prior.status) && prior.status !== 404) {
+                return Http.#passthrough(prior);
+            }
             const body = prior.entry?.channels[BODY];
             if (body === undefined || body.content.length === 0) {
-                return Http.#bad(409, "http", "scope_requires_materialization", "scoped READ requires a materialized response; READ the URL without <scope> first");
-            }
-            const { error, ...read } = await ctx.entries.operations.read(statement);
-            if (read.status >= 400) {
                 return Http.#bad(
-                    read.status,
+                    409,
                     "http",
-                    "scoped_read_failed",
-                    error ?? read.reason ?? `scoped READ failed with status ${read.status}`,
+                    "scope-requires-materialization",
+                    "The requested scoped READ has no materialized response.",
+                    {
+                        target: Http.#urlFrom(statement.target),
+                        stage: "projection",
+                        recovery: "READ the URL without a scope before requesting a range.",
+                        retryable: false,
+                    },
                 );
             }
-            return { shape: "passthrough", ...read };
+            return Http.#passthrough(await ctx.entries.operations.read(statement));
         }
         return this.#fetchStream(statement.target, ctx, "GET", undefined);
     }
 
-    // EDIT → PUT the body (full-resource replace). `<L>` has no meaning against a
-    // remote resource — reject rather than silently ignore the model's intent.
+    // EDIT -> PUT the body (full-resource replace). `<L>` has no meaning against a
+    // remote resource - reject rather than silently ignore the model's intent.
     async editBatch(statements: readonly EditStatement[], ctx: SchemeCtx): Promise<PassthroughResult> {
         if (statements.length !== 1) {
-            return Http.#bad(409, "http", "non_atomic_edit_batch", "multiple EDITs of one remote resource cannot be committed atomically");
+            return Http.#bad(
+                409,
+                "http",
+                "non-atomic-edit-batch",
+                `${statements.length} EDIT statements cannot be committed atomically to one remote resource.`,
+                {
+                    statements: statements.length,
+                    stage: "mutation",
+                    recovery: "Submit one whole-resource EDIT.",
+                    retryable: false,
+                },
+            );
         }
         const statement = statements[0];
         if (statement.target === null || statement.target.kind !== "url") {
-            return Http.#bad(400, "http", "bad_target", "EDIT requires an http(s):// URL target");
+            return Http.#bad(400, "http", "bad-target", "EDIT requires an http(s):// URL target.", {
+                stage: "target-validation",
+                recovery: "Provide an http(s):// URL target.",
+                retryable: false,
+            });
         }
         if (statement.lineMarker !== null) {
-            return Http.#bad(400, "http", "no_line_edit", "EDIT on http PUTs the whole body; <L> line-editing a remote resource is unsupported");
+            return Http.#bad(
+                400,
+                "http",
+                "line-edit-unsupported",
+                "HTTP EDIT replaces the whole remote resource and does not accept a line range.",
+                {
+                    stage: "mutation",
+                    recovery: "Remove the line range and submit the complete replacement body.",
+                    retryable: false,
+                },
+            );
         }
         return this.#fetchStream(statement.target, ctx, "PUT", statement.body ?? "");
     }
@@ -195,24 +256,32 @@ export default class Http implements SchemeHandler {
         return this.editBatch([statement], ctx);
     }
 
-    // KILL → DELETE the resource. Distinct from SEND[410] (which drops the local
+    // KILL -> DELETE the resource. Distinct from SEND[410] (which drops the local
     // cached entry): KILL is an HTTP DELETE request to the remote.
     async kill(statement: KillStatement, ctx: SchemeCtx): Promise<PassthroughResult> {
         if (statement.target === null || statement.target.kind !== "url") {
-            return Http.#bad(400, "http", "bad_target", "KILL requires an http(s):// URL target");
+            return Http.#bad(400, "http", "bad-target", "KILL requires an http(s):// URL target.", {
+                stage: "target-validation",
+                recovery: "Provide an http(s):// URL target.",
+                retryable: false,
+            });
         }
         return this.#fetchStream(statement.target, ctx, "DELETE", statement.body ?? undefined);
     }
 
     // SEND dispatch — status-code-as-verb (SPEC §op-surface).
-    //   200 → request with body (POST), stream response
-    //   410 → delete the cached entry
-    //   499 → cancel in-flight (handled by the subscription's force-cancel;
+    //   200 -> request with body (POST), stream response
+    //   410 -> delete the cached entry
+    //   499 -> cancel in-flight (handled by the subscription's force-cancel;
     //         the engine routes 499 to the registered SubscriptionHandle, so a
     //         scheme-level no-op here is correct — teardown already happened)
     async send(statement: SendStatement, ctx: SchemeCtx): Promise<PassthroughResult> {
         if (statement.target === null || statement.target.kind !== "url") {
-            return Http.#bad(400, "http", "bad_target", "SEND requires an http(s):// URL target");
+            return Http.#bad(400, "http", "bad-target", "SEND requires an http(s):// URL target.", {
+                stage: "target-validation",
+                recovery: "Provide an http(s):// URL target.",
+                retryable: false,
+            });
         }
         const status = statement.signal;
         if (status === 200) {
@@ -220,8 +289,7 @@ export default class Http implements SchemeHandler {
             return this.#fetchStream(statement.target, ctx, "POST", body);
         }
         if (status === 410) {
-            const { status: delStatus } = await ctx.entries.delete(Http.#pathname(statement.target));
-            return { shape: "passthrough", status: delStatus };
+            return Http.#passthrough(await ctx.entries.delete(Http.#pathname(statement.target)));
         }
         if (status === 499) {
             // Cancellation is routed by the engine to the subscription's
@@ -230,7 +298,17 @@ export default class Http implements SchemeHandler {
             return { shape: "passthrough", status: 200 };
         }
         // Entry-bearing schemes return 501 for status codes they don't interpret.
-        return Http.#bad(501, "http", "unsupported_send", `SEND[${status}] not supported by http`);
+        return Http.#bad(
+            501,
+            "http",
+            "send-status-unsupported",
+            `The HTTP scheme does not interpret SEND status ${status}.`,
+            {
+                requestedStatus: status,
+                stage: "dispatch",
+                retryable: false,
+            },
+        );
     }
 
     // The streaming core, shared by every verb. Opens the subscription
@@ -246,7 +324,19 @@ export default class Http implements SchemeHandler {
         const headers = target.headers ?? [];  // [key,value][] — opaque to grammar, honored here
         const publishedChannel = target.fragment ?? Http.manifest.defaultChannel;
         if (!(publishedChannel in Http.manifest.channels)) {
-            return Http.#bad(400, "http", "unknown_channel", `no channel #${publishedChannel}; channels: ${Object.keys(Http.manifest.channels).join(", ")}`);
+            const availableChannels = Object.keys(Http.manifest.channels);
+            return Http.#bad(
+                400,
+                "http",
+                "channel-not-found",
+                `Channel #${publishedChannel} does not exist on HTTP responses.`,
+                {
+                    requestedChannel: publishedChannel,
+                    availableChannels,
+                    recovery: `Use one of the available channels: ${availableChannels.map((channel) => `#${channel}`).join(", ")}.`,
+                    retryable: false,
+                },
+            );
         }
 
         // Conditional revalidation (GET only, service#341): recover the prior
@@ -261,6 +351,9 @@ export default class Http implements SchemeHandler {
         const conditional: Array<[string, string]> = [];
         if (method === "GET") {
             const prior = await ctx.entries.read(pathname);
+            if (Results.isErrorStatus(prior.status) && prior.status !== 404) {
+                return Http.#passthrough(prior);
+            }
             const pb = prior.entry?.channels[BODY];
             if (pb !== undefined && pb.content.length > 0) {
                 const ph = prior.entry?.channels[HEADER]?.content ?? "";
@@ -280,7 +373,8 @@ export default class Http implements SchemeHandler {
         // the clock only resets when the ORIGIN vouches (fetch or 304), never by
         // serving from cache.
         if (cached !== undefined && Http.#storedCopyServable(Http.#fetchedAt(cached.header), null)) {
-            await ctx.entries.write(pathname, Http.#seedEntry());
+            const written = await ctx.entries.write(pathname, Http.#seedEntry());
+            if (Results.isErrorStatus(written.status)) return Http.#passthrough(written);
             await ctx.subscriptions.open(pathname, { cancel: () => {} }, { publishedChannel });
             await ctx.subscriptions.notifyChunk(HEADER, cached.header, "text/plain");
             if (cached.html !== undefined) await ctx.subscriptions.notifyChunk("html", cached.html.content, cached.html.mimetype);
@@ -298,7 +392,8 @@ export default class Http implements SchemeHandler {
         // it seeds them. Mirror exec's create-then-subscribe: write a seed entry
         // whose channels are the manifest's (body: octet-stream placeholder,
         // header: text/plain) — the same channels notifyChunk then populates.
-        await ctx.entries.write(pathname, Http.#seedEntry());
+        const written = await ctx.entries.write(pathname, Http.#seedEntry());
+        if (Results.isErrorStatus(written.status)) return Http.#passthrough(written);
 
         // open() returns the worker+teardown-composed signal — fires on loop.cancel
         // OR our local teardown. Wire it so either path aborts the fetch/render.
@@ -384,9 +479,24 @@ export default class Http implements SchemeHandler {
             return { shape: "passthrough", status: 102 };
         } catch (err) {
             const aborted = local.signal.aborted;
-            const reason = aborted ? "aborted" : err instanceof Error ? err.message : String(err);
+            if (!aborted) console.error("HTTP acquisition failed", { method, url, err });
+            const cause = ErrorDetail.preview(err, this.#errorDetailLimit);
+            const reason = aborted
+                ? `HTTP ${method} ${url} was cancelled.`
+                : `HTTP ${method} ${url} failed: ${cause}`;
             // 499 for client-cancelled, 502 for upstream/network/render failure.
-            const result = Http.#bad(aborted ? 499 : 502, "http", aborted ? "aborted" : "fetch_failed", reason);
+            const result = Http.#bad(
+                aborted ? 499 : 502,
+                "http",
+                aborted ? "cancelled" : "fetch-failed",
+                reason,
+                {
+                    target: url,
+                    method,
+                    stage: "acquisition",
+                    retryable: !aborted,
+                },
+            );
             await ctx.subscriptions.close(result, reason);
             return result;
         } finally {
@@ -536,13 +646,24 @@ export default class Http implements SchemeHandler {
         return out;
     }
 
-    static #bad(status: number, scheme: string, kind: string, message: string): PassthroughResult {
+    static #passthrough(result: SchemeResult): PassthroughResult {
+        return Results.assert({ ...result, shape: "passthrough" }) as PassthroughResult;
+    }
+
+    static #bad(
+        status: number,
+        scheme: string,
+        kind: string,
+        message: string,
+        extensions: Readonly<Record<string, unknown>> = {},
+    ): PassthroughResult {
         return Results.failure(
             `scheme:${scheme}`,
-            kind.replaceAll("_", "-"),
+            kind,
             status,
             message,
             { shape: "passthrough" },
+            extensions,
         ) as PassthroughResult;
     }
 }

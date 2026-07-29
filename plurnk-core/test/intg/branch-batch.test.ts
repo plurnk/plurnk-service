@@ -126,7 +126,16 @@ test("a branch batch freezes one base, runs children serially, and restores the 
                     await GitBranch.switch(root, branch);
                 }
                 assert.equal(await batches.completionGate(workerId), null);
-                const result = branch === "feature/failure" ? { status: 500 } : { status: 200 };
+                const result = branch === "feature/failure"
+                    ? Results.failure(
+                        "test:branch-batch",
+                        "child-failed",
+                        500,
+                        "The branch child fixture failed.",
+                        {},
+                        { stage: "loop", retryable: false },
+                    )
+                    : { status: 200 };
                 return await lifecycle.finish(loopId, result)
                     ?? { status: await lifecycle.status(loopId) };
             },
@@ -636,7 +645,19 @@ test("branch preflight rejects every dirty checkout class and existing refs with
                         await GitBranch.branchExists(root, "feature/specimen"),
                         specimen === "existing-branch",
                     );
-                    assert.equal((await new LoopLifecycle(db).result(child.loopId))?.status, 409);
+                    const result = await new LoopLifecycle(db).result(child.loopId);
+                    assert.equal(result?.status, 409);
+                    assert.equal(
+                        result?.problem?.type,
+                        specimen === "existing-branch"
+                            ? "https://problems.plurnk.dev/lifecycle/branch/branch-already-exists"
+                            : "https://problems.plurnk.dev/lifecycle/branch/branch-checkout-dirty",
+                    );
+                    assert.equal(result?.problem?.stage, "git-preflight");
+                    assert.equal(result?.problem?.retryable, false);
+                    if (specimen === "existing-branch") {
+                        assert.equal(result?.problem?.branch, "feature/specimen");
+                    }
                     assert.equal((await db.branch_batch_active.all({})).length, 0);
                     const release = await gate.acquireTurn(workspaceId, parentWorkerId);
                     release();
@@ -799,7 +820,15 @@ test("branch preflight refuses a workspace with a still-open stream", async () =
         assert.equal(started, false);
         assert.deepEqual(await GitBranch.snapshot(root), original);
         assert.equal(await GitBranch.branchExists(root, "feature/stream"), false);
-        assert.equal((await new LoopLifecycle(db).result(child.loopId))?.status, 409);
+        const result = await new LoopLifecycle(db).result(child.loopId);
+        assert.equal(result?.status, 409);
+        assert.equal(
+            result?.problem?.type,
+            "https://problems.plurnk.dev/lifecycle/branch/branch-streams-open",
+        );
+        assert.equal(result?.problem?.openSubscriptions, 1);
+        assert.equal(result?.problem?.stage, "stream-settlement");
+        assert.equal(result?.problem?.retryable, false);
         assert.equal((await db.branch_batch_active.all({})).length, 0);
     } finally {
         await db.close();
@@ -908,7 +937,24 @@ test("an ambiguous dirty child checkout is preserved as recovery_required", asyn
             },
             startChild: async (_workspaceId, _workerId, loopId) => {
                 await writeFile(join(root, "uncommitted.txt"), "preserve me\n");
-                return await lifecycle.finish(loopId, { status: 500 }) ?? { status: 500 };
+                return await lifecycle.finish(
+                    loopId,
+                    Results.failure(
+                        "test:branch-batch",
+                        "child-failed",
+                        500,
+                        "The branch child fixture failed.",
+                        {},
+                        { stage: "loop", retryable: false },
+                    ),
+                ) ?? Results.failure(
+                    "test:branch-batch",
+                    "child-failed",
+                    500,
+                    "The branch child fixture failed.",
+                    {},
+                    { stage: "loop", retryable: false },
+                );
             },
             wakeParent: async () => {},
             notify: () => {},

@@ -55,6 +55,12 @@ runtime failure: return that failure result and set the affected channel to
 exception or an invalid result is an executor contract violation, which the
 consumer converts into its own durable failure result before closing the stream.
 
+Third-party diagnostic text included in a Problem detail is bounded through
+`ErrorDetail` and `PLURNK_EXECS_ERROR_DETAIL_LIMIT`. The committed
+`.env.defaults` supplies the required limit. A missing or invalid configured
+limit is itself an exact
+`invalid-configuration` failure. Structured facts remain separate extensions.
+
 ### §2.1 Channel topology is executor-declared
 
 The executor declares its channels; the consuming scheme seeds the exec entry from `executor.channels` rather than from a static scheme-level manifest (plurnk-service#174 Q1). This keeps channel names honest — `search` exposes `{ results: { mimetype: "application/json" } }`, and the model reads `exec://<coord>/EXEC#results` instead of an overloaded `#stdout`. `write` / `setState` are generic over channel name; writing to an undeclared channel is a contract violation.

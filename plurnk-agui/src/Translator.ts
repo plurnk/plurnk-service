@@ -14,6 +14,7 @@
 // (§agui-numbers-passthrough).
 
 import { EventType, type AguiEvent, type LogEntryNotification, type TerminatedNotification } from "./types.ts";
+import { Validator } from "@plurnk/plurnk-contracts";
 
 export default class Translator {
     #threadId: string;
@@ -121,6 +122,7 @@ export default class Translator {
     }
 
     terminated(n: TerminatedNotification): AguiEvent[] {
+        const result = Validator.assertOperationResult(n.result);
         const events: AguiEvent[] = [];
         if (this.#currentTurn !== null) {
             events.push({ type: EventType.STEP_FINISHED, stepName: `turn-${this.#currentTurn}` });
@@ -149,13 +151,13 @@ export default class Translator {
         if (n.usage.meta !== undefined && n.usage.meta !== null && Object.keys(n.usage.meta).length > 0) {
             events.push({ type: EventType.RAW, event: n.usage.meta, source: "provider" });
         }
-        if (n.result.status === 200) {
+        if (result.status === 200) {
             events.push({ type: EventType.RUN_FINISHED, threadId: this.#threadId, runId: this.#runId, outcome: { type: "success" } });
         } else {
             events.push({
                 type: EventType.RUN_ERROR,
-                message: n.result.problem?.detail ?? `loop terminated ${n.result.status}`,
-                code: n.result.problem?.type ?? String(n.result.status),
+                message: result.problem!.detail,
+                code: result.problem!.type,
             });
         }
         return events;

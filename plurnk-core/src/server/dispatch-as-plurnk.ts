@@ -32,13 +32,19 @@ export default class DispatchAsPlurnk {
             }
             await Envelope.closeClientLoop(db, loopId, { status: 200 });
         } catch (cause) {
+            console.error(`Plurnk actor dispatch failed for loop ${loopId}:`, cause);
             const failure = cause instanceof OperationFailureError
                 ? cause.result
                 : Results.failure(
                     "daemon:plurnk-actor",
                     "dispatch-threw",
                     500,
-                    `The plurnk actor dispatch threw: ${cause instanceof Error ? cause.message : String(cause)}`,
+                    "The Plurnk actor failed outside its operation result contract.",
+                    {},
+                    {
+                        stage: "dispatch",
+                        retryable: false,
+                    },
                 );
             try {
                 await Envelope.closeClientLoop(db, loopId, failure);

@@ -265,7 +265,14 @@ test("a retrievals-ONLY refusal states the continuation, not a remedy menu (owne
         const refusals = await db.test_send_rows_for_run.all<{ rx: string; status_rx: number }>({ worker_id: workerId });
         const refused = refusals.find((r) => r.status_rx === 409);
         assert.ok(refused, "the retrieval gate refused");
-        assert.match(refused!.rx, /Last turn both performed retrieval operations and attempted to terminate\. Retrieval operations force an additional turn to receive results for review and reaction\. To conclude, only use PLAN and SEND\[200\] operations\./, "the steer narrates history third-person, states the forced-turn mechanism, and prescribes the concluding emission's shape (#384, owner wording, run48)");
+        const problem = (JSON.parse(refused!.rx) as { problem?: Record<string, unknown> }).problem;
+        assert.equal(problem?.type, "https://problems.plurnk.dev/engine/dispatcher/retrieval-results-unobserved");
+        assert.equal(
+            problem?.detail,
+            "Last turn both performed retrieval operations and attempted to terminate. Retrieval operations force an additional turn so their results can be reviewed.",
+        );
+        assert.equal(problem?.recovery, "Review the results, then use only PLAN and SEND[200] to conclude.");
+        assert.equal(problem?.retryable, false);
         assert.doesNotMatch(refused!.rx, /KILL/, "no remedy menu for a leverless kind");
     } finally { await db.close(); }
 });

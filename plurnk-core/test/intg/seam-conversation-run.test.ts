@@ -5,6 +5,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
+import { OperationFailureError } from "../../src/core/results.ts";
 import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal } from "./_rpc.ts";
 
 test("createConversationWorker: fresh named conversation — empty log, runLoop accepts, the stable door unaffected (#366)", async () => {
@@ -32,8 +33,27 @@ test("createConversationWorker: fresh named conversation — empty log, runLoop 
             assert.equal(await daemon.ensureModelWorker(workspaceId), stable, "ensureModelWorker is unmoved by fresh conversations");
 
             // Name invariants mirror forkWorker's: reserved + taken are legible refusals.
-            await assert.rejects(() => daemon.createConversationWorker({ workspaceId, name: "plurnk" }), /reserved/);
-            await assert.rejects(() => daemon.createConversationWorker({ workspaceId, name: "thread-2" }), /already exists/);
+            await assert.rejects(
+                () => daemon.createConversationWorker({ workspaceId, name: "plurnk" }),
+                (error) => {
+                    assert.ok(error instanceof OperationFailureError);
+                    assert.equal(error.result.problem.type, "https://problems.plurnk.dev/daemon/worker/name-reserved");
+                    assert.equal(error.result.problem.name, "plurnk");
+                    assert.equal(error.result.problem.recovery, "Choose another worker name.");
+                    return true;
+                },
+            );
+            await assert.rejects(
+                () => daemon.createConversationWorker({ workspaceId, name: "thread-2" }),
+                (error) => {
+                    assert.ok(error instanceof OperationFailureError);
+                    assert.equal(error.result.problem.type, "https://problems.plurnk.dev/daemon/worker/name-conflict");
+                    assert.equal(error.result.problem.workspaceId, workspaceId);
+                    assert.equal(error.result.problem.name, "thread-2");
+                    assert.equal(error.result.problem.recovery, "Choose another worker name.");
+                    return true;
+                },
+            );
             // A default name mints distinct model-<ts> conversations.
             const anon = await daemon.createConversationWorker({ workspaceId });
             assert.match(anon.workerName, /^model-/, "default name follows the model-run convention");

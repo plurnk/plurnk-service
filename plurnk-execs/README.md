@@ -70,6 +70,8 @@ Declare the two and a third-party tag gets the same self-documenting surface the
 
 - `BaseExecutor` — abstract base: `channels`, `run(args)`, optional `probe()` / `effect(target)`.
 - `SubprocessExecutor` — concrete base for subprocess runtimes; override `spawnArgs()` (and `binary`). Streaming + process-group abort + env scoping + exit code, inherited.
+- `ErrorDetail` - validates `PLURNK_EXECS_ERROR_DETAIL_LIMIT` and bounds
+  third-party diagnostic text before it enters a model-facing Problem.
 - `discover(options?)` — the scope-agnostic registry scan (trust-gated + runtime-policy-gated, fail-hard on collision).
 - `Policy` — the runtime enable/disable resolver (SPEC §3.3): `Policy.isEnabled(tag, env?)`, `Policy.enabledAcross(tag, layers)`. Same parser the daemon and the consumer's per-workspace client layer share.
 - `Results` and the `ProblemDetails` / `SchemeResult` types — the universal

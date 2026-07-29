@@ -6,22 +6,27 @@
 
 import test from "node:test";
 import { strict as assert } from "node:assert";
-import type {
-    SchemeCtx,
-    SubscriptionHandle,
-    EntryCaps,
-    ChannelCaps,
-    TagCaps,
-    NotifyCaps,
-    ProjectionCaps,
-    SubscriptionCaps,
-    EntryData,
-    ReadStatement,
-    SendStatement,
-    EditStatement,
-    KillStatement,
-    FindStatement,
-    UrlPath,
+import {
+    Results,
+    type EntryStorageReadResult,
+    type EntryStorageWriteResult,
+    type SchemeResult,
+    type EntryReadResult,
+    type SchemeCtx,
+    type SubscriptionHandle,
+    type EntryCaps,
+    type ChannelCaps,
+    type TagCaps,
+    type NotifyCaps,
+    type ProjectionCaps,
+    type SubscriptionCaps,
+    type EntryData,
+    type ReadStatement,
+    type SendStatement,
+    type EditStatement,
+    type KillStatement,
+    type FindStatement,
+    type UrlPath,
 } from "@plurnk/plurnk-schemes";
 import Http from "./Http.ts";
 import type { RenderResult } from "./Browser.ts";
@@ -40,7 +45,14 @@ const fakeBrowser = (html: string) => {
 };
 
 // ── conformant ctx + recorder ─────────────────────────────────────────────
-const makeCtx = (priorEntry: EntryData | null = null) => {
+interface CtxOverrides {
+    readonly read?: (pathname: string) => Promise<EntryStorageReadResult>;
+    readonly write?: (pathname: string, entry: EntryData) => Promise<EntryStorageWriteResult>;
+    readonly delete?: (pathname: string) => Promise<SchemeResult>;
+    readonly operationRead?: (statement: ReadStatement) => Promise<EntryReadResult>;
+}
+
+const makeCtx = (priorEntry: EntryData | null = null, overrides: CtxOverrides = {}) => {
     const chunks: Array<{ channel: string; chunk: string; mimetype?: string }> = [];
     let opened: { pathname: string; handle: SubscriptionHandle; publishedChannel?: string } | null = null;
     let closed: { result: Parameters<SubscriptionCaps["close"]>[0]; summary?: string } | null = null;
@@ -55,14 +67,35 @@ const makeCtx = (priorEntry: EntryData | null = null) => {
             async editBatch() { return { status: 501, entryId: null, channel: null }; },
             async read(statement) {
                 observedRead = statement;
+                if (overrides.operationRead !== undefined) return overrides.operationRead(statement);
                 return { status: 200, content: "selected lines", mimetype: "text/markdown", channel: "body" };
             },
             async find() { return { status: 501, content: null, mimetype: null, results: [], itemsTokenTotal: 0, pathnames: [], matches: [] }; },
             async send() { return { status: 501 }; },
         },
-        async read() { return priorEntry === null ? { status: 404, entry: null } : { status: 200, entry: priorEntry }; },
-        async write(pathname, entry) { wrote = { pathname, entry }; seq.push("write"); return { status: 201, created: true, entryId: 1 }; },
-        async delete(pathname) { deleted = pathname; return { status: 200 }; },
+        async read(pathname) {
+            if (overrides.read !== undefined) return overrides.read(pathname);
+            return priorEntry === null
+                ? Results.failure(
+                    "scheme:test",
+                    "entry-not-found",
+                    404,
+                    `No entry exists at ${pathname}.`,
+                    { entry: null },
+                ) as EntryStorageReadResult
+                : Results.assert({ status: 200, entry: priorEntry });
+        },
+        async write(pathname, entry) {
+            wrote = { pathname, entry };
+            seq.push("write");
+            if (overrides.write !== undefined) return overrides.write(pathname, entry);
+            return { status: 201, created: true, entryId: 1 };
+        },
+        async delete(pathname) {
+            deleted = pathname;
+            if (overrides.delete !== undefined) return overrides.delete(pathname);
+            return { status: 200 };
+        },
     };
     const channels: ChannelCaps = {
         async append() { return { status: 200 }; },
@@ -201,6 +234,50 @@ test("prepareFind leaves absent and glob discovery to the shared entry query", a
     assert.equal(inspect().wrote, null);
 });
 
+test("prepareFind preserves an exact storage-read failure without fetching", async () => {
+    const failure = Results.failure(
+        "scheme:test",
+        "storage-unavailable",
+        503,
+        "The entry store is unavailable.",
+        { entry: null },
+        { stage: "storage", retryable: true },
+    ) as EntryStorageReadResult;
+    const { ctx, inspect } = makeCtx(null, { read: async () => failure });
+    let fetched = false;
+    await withFetch(async () => { fetched = true; return new Response("wrong"); }, async () => {
+        const result = await new Http().prepareFind(
+            findStmt(urlTarget("https://example.com/x", "/x")),
+            ctx,
+        );
+        assert.deepEqual(result, { ...failure, shape: "passthrough" });
+    });
+    assert.equal(fetched, false);
+    assert.equal(inspect().wrote, null);
+});
+
+test("prepareFind preserves an exact storage-write failure", async () => {
+    const failure = Results.failure(
+        "scheme:test",
+        "storage-read-only",
+        503,
+        "The entry store is read-only.",
+        { created: false, entryId: null },
+        { stage: "storage", retryable: false },
+    ) as EntryStorageWriteResult;
+    const { ctx } = makeCtx(null, { write: async () => failure });
+    await withFetch(
+        mockFetch(200, "OK", ["body"], { "content-type": "text/plain" }),
+        async () => {
+            const result = await new Http().prepareFind(
+                findStmt(urlTarget("https://example.com/x", "/x")),
+                ctx,
+            );
+            assert.deepEqual(result, { ...failure, shape: "passthrough" });
+        },
+    );
+});
+
 // ── create-then-subscribe (http#3) ────────────────────────────────────────
 test("READ: materializes the entry (manifest channels) BEFORE subscribing", async () => {
     const { ctx, inspect } = makeCtx();
@@ -262,6 +339,30 @@ test("scoped READ observes the materialized readable entry without refetching", 
     assert.equal(inspect().opened, null, "no subscription is opened for a stored range");
 });
 
+test("scoped READ preserves the exact standard-reader failure", async () => {
+    const failure = Results.failure(
+        "schemes:slicer",
+        "range-not-satisfiable",
+        416,
+        "The requested line range is outside the selected body.",
+        { content: null, mimetype: null, channel: null },
+        {
+            stage: "selection",
+            recovery: "Request a range within the reported line bounds.",
+            retryable: false,
+        },
+    ) as EntryReadResult;
+    const { ctx } = makeCtx(
+        priorEntry("complete page", "text/markdown", ""),
+        { operationRead: async () => failure },
+    );
+    const result = await new Http().read(
+        readStmt(urlTarget("https://example.com/x", "/x"), { marks: [30, 100] }),
+        ctx,
+    );
+    assert.deepEqual(result, { ...failure, shape: "passthrough" });
+});
+
 test("scoped READ fails clearly when no readable response has been materialized", async () => {
     const { ctx, inspect } = makeCtx();
     let fetched = false;
@@ -271,7 +372,8 @@ test("scoped READ fails clearly when no readable response has been materialized"
             ctx,
         );
         assert.equal(result.status, 409);
-        assert.match(result.problem?.detail ?? "", /READ the URL without <scope> first/);
+        assert.equal(result.problem?.detail, "The requested scoped READ has no materialized response.");
+        assert.equal(result.problem?.recovery, "READ the URL without a scope before requesting a range.");
     });
     assert.equal(fetched, false);
     assert.equal(inspect().opened, null);
@@ -424,6 +526,50 @@ test("READ: empty response body closes done without body chunks", async () => {
     assert.equal(closed?.result.status, 200);
 });
 
+test("READ preserves an exact storage-read failure before acquisition", async () => {
+    const failure = Results.failure(
+        "scheme:test",
+        "storage-unavailable",
+        503,
+        "The entry store is unavailable.",
+        { entry: null },
+        { stage: "storage", retryable: true },
+    ) as EntryStorageReadResult;
+    const { ctx, inspect } = makeCtx(null, { read: async () => failure });
+    let fetched = false;
+    await withFetch(async () => { fetched = true; return new Response("wrong"); }, async () => {
+        const result = await new Http().read(
+            readStmt(urlTarget("https://example.com/x", "/x")),
+            ctx,
+        );
+        assert.deepEqual(result, { ...failure, shape: "passthrough" });
+    });
+    assert.equal(fetched, false);
+    assert.equal(inspect().opened, null);
+});
+
+test("READ preserves an exact seed-write failure before acquisition", async () => {
+    const failure = Results.failure(
+        "scheme:test",
+        "storage-read-only",
+        503,
+        "The entry store is read-only.",
+        { created: false, entryId: null },
+        { stage: "storage", retryable: false },
+    ) as EntryStorageWriteResult;
+    const { ctx, inspect } = makeCtx(null, { write: async () => failure });
+    let fetched = false;
+    await withFetch(async () => { fetched = true; return new Response("wrong"); }, async () => {
+        const result = await new Http().read(
+            readStmt(urlTarget("https://example.com/x", "/x")),
+            ctx,
+        );
+        assert.deepEqual(result, { ...failure, shape: "passthrough" });
+    });
+    assert.equal(fetched, false);
+    assert.equal(inspect().opened, null);
+});
+
 test("READ: network failure → close error + 502", async () => {
     const { ctx, inspect } = makeCtx();
     await withFetch(async () => { throw new Error("ECONNREFUSED"); }, async () => {
@@ -433,6 +579,22 @@ test("READ: network failure → close error + 502", async () => {
     });
     assert.equal(inspect().closed?.result.status, 502);
     assert.equal(inspect().closed?.result.problem?.type, "https://problems.plurnk.dev/scheme/http/fetch-failed");
+});
+
+test("READ: network failure bounds caught diagnostics in the exact Problem", async () => {
+    const prior = process.env.PLURNK_SCHEMES_HTTP_ERROR_DETAIL_LIMIT;
+    process.env.PLURNK_SCHEMES_HTTP_ERROR_DETAIL_LIMIT = "4";
+    try {
+        const { ctx, inspect } = makeCtx();
+        await withFetch(async () => { throw new Error("ECONNREFUSED"); }, async () => {
+            const result = await new Http().read(readStmt(urlTarget("http://example.com/x", "/x")), ctx);
+            assert.equal(result.problem?.detail, "HTTP GET http://example.com/x failed: ECON...");
+            assert.deepEqual(inspect().closed?.result, result);
+        });
+    } finally {
+        if (prior === undefined) delete process.env.PLURNK_SCHEMES_HTTP_ERROR_DETAIL_LIMIT;
+        else process.env.PLURNK_SCHEMES_HTTP_ERROR_DETAIL_LIMIT = prior;
+    }
 });
 
 // ── SEND verbs ────────────────────────────────────────────────────────────
@@ -459,6 +621,23 @@ test("SEND[410]: deletes the cached entry", async () => {
     assert.equal(inspect().deleted, "/example.com/x");
 });
 
+test("SEND[410] preserves the exact storage-delete failure", async () => {
+    const failure = Results.failure(
+        "scheme:test",
+        "storage-unavailable",
+        503,
+        "The entry store is unavailable.",
+        {},
+        { stage: "storage", retryable: true },
+    );
+    const { ctx } = makeCtx(null, { delete: async () => failure });
+    const result = await new Http().send(
+        sendStmt(410, urlTarget("http://example.com/x", "/x")),
+        ctx,
+    );
+    assert.deepEqual(result, { ...failure, shape: "passthrough" });
+});
+
 test("SEND[499]: scheme-level no-op (engine routes cancel to the handle)", async () => {
     const { ctx } = makeCtx();
     const r = await new Http().send(sendStmt(499, urlTarget("http://example.com/x", "/x")), ctx);
@@ -469,7 +648,9 @@ test("SEND with an uninterpreted status → 501", async () => {
     const { ctx } = makeCtx();
     const r = await new Http().send(sendStmt(418, urlTarget("http://example.com/x", "/x")), ctx);
     assert.equal(r.status, 501);
-    assert.equal(r.problem?.type, "https://problems.plurnk.dev/scheme/http/unsupported-send");
+    assert.equal(r.problem?.type, "https://problems.plurnk.dev/scheme/http/send-status-unsupported");
+    assert.equal(r.problem?.stage, "dispatch");
+    assert.equal(r.problem?.requestedStatus, 418);
 });
 
 // ── request headers + method verbs (grammar#46) ───────────────────────────
@@ -519,7 +700,8 @@ test("EDIT: a <L> line marker is rejected — http PUT replaces the whole resour
     const { ctx } = makeCtx();
     const r = await new Http().edit(editStmt(urlTarget("https://api.x/thing/42", "/thing/42"), "x", { marks: [1] } as NonNullable<EditStatement["lineMarker"]>), ctx);
     assert.equal(r.status, 400);
-    assert.equal(r.problem?.type, "https://problems.plurnk.dev/scheme/http/no-line-edit");
+    assert.equal(r.problem?.type, "https://problems.plurnk.dev/scheme/http/line-edit-unsupported");
+    assert.equal(r.problem?.recovery, "Remove the line range and submit the complete replacement body.");
 });
 
 test("KILL → DELETE (method mapping); distinct from SEND[410] cache drop", async () => {
@@ -753,7 +935,7 @@ test("a model-supplied User-Agent target block overrides the default identity", 
 });
 
 // ── cancellation ──────────────────────────────────────────────────────────
-test("force-cancel via the SubscriptionHandle aborts the fetch → 499", async () => {
+test("force-cancel via the SubscriptionHandle aborts the fetch -> 499", async () => {
     const { ctx, inspect, forceCancel } = makeCtx();
     // A fetch that rejects when its signal aborts; we trip it via the handle.
     const hangThenAbort = async (_url: string | URL | Request, init?: RequestInit) => {
@@ -767,9 +949,11 @@ test("force-cancel via the SubscriptionHandle aborts the fetch → 499", async (
     await withFetch(hangThenAbort as typeof fetch, async () => {
         const r = await new Http().read(readStmt(urlTarget("http://example.com/x", "/x")), ctx);
         assert.equal(r.status, 499);
-        assert.equal(r.problem?.type, "https://problems.plurnk.dev/scheme/http/aborted");
+        assert.equal(r.problem?.type, "https://problems.plurnk.dev/scheme/http/cancelled");
+        assert.equal(r.problem?.stage, "acquisition");
+        assert.equal(r.problem?.retryable, false);
     });
     assert.equal(inspect().closed?.result.status, 499);
-    assert.equal(inspect().closed?.result.problem?.type, "https://problems.plurnk.dev/scheme/http/aborted");
-    assert.equal(inspect().closed?.summary, "aborted");
+    assert.equal(inspect().closed?.result.problem?.type, "https://problems.plurnk.dev/scheme/http/cancelled");
+    assert.equal(inspect().closed?.summary, "HTTP GET http://example.com/x was cancelled.");
 });

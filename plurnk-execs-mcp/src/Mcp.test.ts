@@ -181,6 +181,8 @@ test("run: an isError tool result closes errored with status 500", async () => {
     const { result, writes, states } = await invoke("echo", "", { target: "boom" });
     assert.equal(result.status, 500);
     assert.equal(result.problem?.type, "https://problems.plurnk.dev/executor/mcp/tool-reported-error");
+    assert.equal(result.problem?.recovery, "Inspect the results channel for the tool's error response.");
+    assert.equal(result.problem?.retryable, false);
     assert.equal(JSON.parse(writes[0].chunk).isError, true);
     assert.equal(states.at(-1)?.state, "errored");
 });
@@ -189,23 +191,25 @@ test("run: non-JSON tool arguments → durable Problem, status 400, no call", as
     const { result, events, states } = await invoke("echo", "{not json}", { target: "echo" });
     assert.equal(result.status, 400);
     assert.equal(result.problem?.type, "https://problems.plurnk.dev/executor/mcp/mcp-bad-arguments");
-    assert.match(result.problem?.detail ?? "", /must be a JSON object/);
+    assert.match(result.problem?.detail ?? "", /not valid JSON/);
+    assert.equal(result.problem?.recovery, "Provide one JSON object as the tool arguments.");
     assert.equal(events.length, 0);
     assert.equal(states.at(-1)?.state, "errored");
 });
 
-test("run: an unknown tool surfaces as mcp_tool_error, status 500", async () => {
+test("run: an unknown tool surfaces as mcp_tool_error, status 502", async () => {
     const { result, events } = await invoke("echo", "{}", { target: "nope" });
-    assert.equal(result.status, 500);
+    assert.equal(result.status, 502);
     assert.equal(result.problem?.type, "https://problems.plurnk.dev/executor/mcp/mcp-tool-error");
     assert.match(result.problem?.detail ?? "", /unknown tool/);
     assert.equal(events.length, 0);
 });
 
-test("run: an unconfigured server → mcp_not_configured, status 500", async () => {
+test("run: an unconfigured server -> mcp_not_configured, status 501", async () => {
     const { result, events } = await invoke("ghost", "anything");
-    assert.equal(result.status, 500);
+    assert.equal(result.status, 501);
     assert.equal(result.problem?.type, "https://problems.plurnk.dev/executor/mcp/mcp-not-configured");
+    assert.equal(result.problem?.retryable, false);
     assert.equal(events.length, 0);
 });
 
@@ -298,7 +302,18 @@ test("installServer: gate off (PLURNK_EXECS_MCP_INSTALL unset) → 501, nothing 
     delete process.env.PLURNK_EXECS_MCP_INSTALL;
     let hotloaded = false;
     const r = await installServer("gated", { target: `node ${FIXTURE}`, hotload: () => { hotloaded = true; } });
-    assert.equal(r.status, 501);
+    assert.deepEqual(r, {
+        status: 501,
+        problem: {
+            type: "https://problems.plurnk.dev/executor/mcp/runtime-install-disabled",
+            title: "Runtime install disabled",
+            status: 501,
+            detail: "Runtime MCP installation is disabled.",
+            stage: "install-gate",
+            recovery: "Enable PLURNK_EXECS_MCP_INSTALL before installing an MCP server at runtime.",
+            retryable: false,
+        },
+    });
     assert.equal(hotloaded, false);
     assert.equal(serverConfig("gated"), null, "no config injected when the gate is off");
 });
@@ -309,7 +324,7 @@ test("installServer: a reachable target → 200 + hotload gets {decl, executor, 
     try {
         const r = await installServer("dyn", { target: `node ${FIXTURE}`, hotload: (x) => { reg = x; } });
         assert.equal(r.status, 200);
-        assert.match(r.detail, /2 tools/);
+        assert.match(String(r.detail), /2 tools/);
         assert.ok(reg, "hotload callback received the registration");
         assert.equal(reg.decl.name, "dyn");
         assert.equal(reg.decl.glyph, "🔌");
@@ -329,6 +344,11 @@ test("installServer: a dead target → 502, injected config rolled back, no hotl
     try {
         const r = await installServer("deadone", { target: "node /no/such/mcp-server.mjs", hotload: () => { hotloaded = true; } });
         assert.equal(r.status, 502);
+        assert.equal(r.problem?.type, "https://problems.plurnk.dev/executor/mcp/runtime-server-unreachable");
+        assert.equal(r.problem?.stage, "install-probe");
+        assert.equal(r.problem?.retryable, true);
+        assert.equal(r.problem?.server, "deadone");
+        assert.equal(typeof r.problem?.diagnostic, "string");
         assert.equal(hotloaded, false, "a server that won't connect never reaches the registry");
         assert.equal(serverConfig("deadone"), null, "its injected config is rolled back on failure");
     } finally {

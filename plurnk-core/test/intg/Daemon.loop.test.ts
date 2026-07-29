@@ -49,8 +49,10 @@ test("loop.inject speaks into an existing run; errors when there's none (#193)",
 
             // No model worker yet → inject has nothing to talk to (loop.run starts one).
             const noWorker = await rpcCall(ws, 2, "loop.inject", { prompt: "too early" });
-            assert.ok(noWorker.error !== undefined, "inject before any worker errors");
-            assert.match(noWorker.error!.message, /no model worker/);
+            const noWorkerResult = noWorker.result as { status: number; problem: { type: string; detail: string } };
+            assert.equal(noWorkerResult.status, 409);
+            assert.equal(noWorkerResult.problem.type, "https://problems.plurnk.dev/daemon/worker/model-worker-required");
+            assert.equal(noWorkerResult.problem.detail, "No model worker exists for prompt injection.");
 
             // Start a worker; SEND[200] ends it, leaving the worker idle. Wait for the terminal
             // (loop.run no longer blocks) so the worker is genuinely idle before we inject.
@@ -65,7 +67,9 @@ test("loop.inject speaks into an existing run; errors when there's none (#193)",
 
             // empty prompt is a contract violation.
             const empty = await rpcCall(ws, 5, "loop.inject", { prompt: "" });
-            assert.ok(empty.error !== undefined, "empty prompt errors");
+            const emptyResult = empty.result as { status: number; problem: { type: string } };
+            assert.equal(emptyResult.status, 400);
+            assert.equal(emptyResult.problem.type, "https://problems.plurnk.dev/daemon/input/prompt-invalid");
         } finally { ws.close(); }
     });
 });
@@ -79,8 +83,10 @@ test("run.fork branches the model worker into a new -fork run; names it at insta
 
             // No model worker yet → nothing to fork.
             const noWorker = await rpcCall(ws, 2, "run.fork", {});
-            assert.ok(noWorker.error, "fork with no model worker errors");
-            assert.match(noWorker.error!.message, /no model worker/);
+            const noWorkerResult = noWorker.result as { status: number; problem: { type: string; detail: string } };
+            assert.equal(noWorkerResult.status, 409);
+            assert.equal(noWorkerResult.problem.type, "https://problems.plurnk.dev/daemon/worker/model-worker-required");
+            assert.equal(noWorkerResult.problem.detail, "No model worker exists to fork.");
 
             // A loop builds the model worker + its log; forking branches it. Wait for the
             // terminal so the log is settled before the fork copies it.
@@ -98,16 +104,19 @@ test("run.fork branches the model worker into a new -fork run; names it at insta
             // Reserved + taken names are refused up front (workers.name is UNIQUE per workspace) —
             // mirrors workspace.attach, never falling through to the insert.
             const reserved = await rpcCall(ws, 6, "run.fork", { name: "plurnk" });
-            assert.ok(reserved.error, "the reserved name is refused");
-            assert.match(reserved.error!.message, /reserved/);
+            const reservedResult = reserved.result as { status: number; problem: { type: string } };
+            assert.equal(reservedResult.status, 409);
+            assert.equal(reservedResult.problem.type, "https://problems.plurnk.dev/daemon/worker/name-reserved");
 
             const taken = await rpcCall(ws, 7, "run.fork", { name: "harvest" });
-            assert.ok(taken.error, "a name already in the workspace is refused — names are immutable");
-            assert.match(taken.error!.message, /already exists/);
+            const takenResult = taken.result as { status: number; problem: { type: string } };
+            assert.equal(takenResult.status, 409);
+            assert.equal(takenResult.problem.type, "https://problems.plurnk.dev/daemon/worker/name-conflict");
 
             const empty = await rpcCall(ws, 8, "run.fork", { name: "" });
-            assert.ok(empty.error, "an empty name is refused");
-            assert.match(empty.error!.message, /non-empty/);
+            const emptyResult = empty.result as { status: number; problem: { type: string } };
+            assert.equal(emptyResult.status, 400);
+            assert.equal(emptyResult.problem.type, "https://problems.plurnk.dev/daemon/input/name-invalid");
         } finally { ws.close(); }
     });
 });
@@ -185,9 +194,10 @@ test("loop.run fires loop/terminated notification on completion", async () => {
 test("loop.run still fires loop/terminated when the loop throws — no client hang (#265)", async () => {
     // A loop that ERRORS (terminal provider failure / engine throw — not a clean SEND, abort, or
     // strike-abandonment) must STILL broadcast loop/terminated: loop.run only acked 100, so it's the
-    // async client's sole outcome channel. One non-terminal turn, then the Mock exhausts — generate()
-    // throws a plain Error, runTurn re-throws (non-ProviderError → throw), it escapes runLoop to the
-    // drain. Pre-#265 the drain rejected the already-.catch()'d promise and broadcast nothing → hang.
+    // async client's sole outcome channel. One non-terminal turn, then the Mock exhausts - generate()
+    // throws outside the provider's typed failure contract, so the engine records a generic provider
+    // contract violation and the drain must still publish it. Pre-#265 the drain rejected the
+    // already-.catch()'d promise and broadcast nothing, leaving the client hung.
     const dsl = "<<EDIT(worker:///x):iter:EDIT\n<<SEND[102]:continue:SEND";
     const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse(dsl, 10)] });
     // #506 — the death must reach the daemon log too. Capture stderr around the run.
@@ -211,8 +221,9 @@ test("loop.run still fires loop/terminated when the loop throws — no client ha
             assert.equal(captured[0].result.status, 502, "the exact provider-boundary status reaches the client");
             assert.ok(captured[0].turnIds.length > 0, "every durable turn completed before the failure is accounted for");
             assert.equal(captured[0].hitMaxTurns, false);
-            const exact = captured[0].result as { status: number; problem?: { detail?: string; instance?: string } };
-            assert.match(exact.problem?.detail ?? "", /Mock provider exhausted/);
+            const exact = captured[0].result as { status: number; problem?: { type?: string; detail?: string; instance?: string } };
+            assert.equal(exact.problem?.type, "https://problems.plurnk.dev/engine/provider/provider-contract-violation");
+            assert.equal(exact.problem?.detail, "The provider failed without returning its required Problem Details.");
             assert.match(exact.problem?.instance ?? "", /^log:\/\/\//, "the failure identifies its durable operation");
             const loopRow = await _db.test_get_loop_status.get<{ status: number }>({ id: (captured[0] as { loopId: number }).loopId });
             assert.equal(loopRow?.status, 500, "the compact scheduler projection is terminal, never a live 102");
@@ -260,8 +271,11 @@ test("loop.run requires non-empty prompt", async () => {
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "empty-test" });
             const response = await rpcCall(ws, 2, "loop.run", { prompt: "" });
-            assert.equal(response.error?.code, -32603);
-            assert.match(response.error?.message ?? "", /non-empty params\.prompt/);
+            const result = response.result as { status: number; problem?: { type?: string; detail?: string; field?: string } };
+            assert.equal(result.status, 400);
+            assert.equal(result.problem?.type, "https://problems.plurnk.dev/daemon/input/prompt-invalid");
+            assert.equal(result.problem?.detail, "prompt is not a non-empty string.");
+            assert.equal(result.problem?.field, "prompt");
         } finally { ws.close(); }
     });
 });

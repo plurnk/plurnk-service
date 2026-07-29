@@ -3,7 +3,7 @@
 // certifies the one client surface. Used by every Daemon.* and SEND[*] integration test.
 
 import { PlurnkParser } from "@plurnk/plurnk-grammar";
-import type { OperationResult } from "@plurnk/plurnk-contracts";
+import type { OperationResult, ProblemDetails } from "@plurnk/plurnk-contracts";
 import type { PlurnkStatement } from "@plurnk/plurnk-grammar";
 import Daemon from "../../src/server/Daemon.ts";
 import SeamSocket from "./_seam.ts";
@@ -34,6 +34,14 @@ export const rpcCall = (ws: SeamSocket, id: number, method: string, params?: obj
         if (params !== undefined) payload.params = params;
         ws.send(JSON.stringify(payload));
     });
+
+export const rpcProblem = (response: RpcResponse): ProblemDetails => {
+    const result = response.result as OperationResult | undefined;
+    if (result?.problem === undefined) {
+        throw new Error(`RPC response did not carry a Problem result: ${JSON.stringify(response)}`);
+    }
+    return result.problem;
+};
 
 // Subscribe to a notification stream. Returns a getter that yields the
 // captured params in order.

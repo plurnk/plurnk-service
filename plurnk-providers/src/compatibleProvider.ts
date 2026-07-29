@@ -185,6 +185,7 @@ export const compatibleProviderFromEnv = async (
         completionReserve,
         tuningFloors: provider !== "plurnk",
         retryAttempts: parseRequiredInt(env.PLURNK_PROVIDERS_RETRY_ATTEMPTS, "PLURNK_PROVIDERS_RETRY_ATTEMPTS", provider),
+        errorDetailLimit: parseRequiredInt(env.PLURNK_PROVIDERS_ERROR_DETAIL_LIMIT, "PLURNK_PROVIDERS_ERROR_DETAIL_LIMIT", provider),
         promptCacheKey: promptCacheKeyFromEnv(env, provider),
         source: providerSource(provider),
         grammarStyle,

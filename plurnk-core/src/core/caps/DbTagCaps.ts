@@ -23,6 +23,7 @@ export default class DbTagCaps implements TagCaps {
             404,
             `No entry exists at ${this.#scheme ?? "entry"}://${pathname}.`,
             fields,
+            { target: `${this.#scheme ?? "entry"}://${pathname}` },
         );
     }
 

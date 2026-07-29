@@ -18,7 +18,7 @@ import { Mock } from "@plurnk/plurnk-providers";
 import type { Db } from "../../src/core/Db.ts";
 import Envelope from "../../src/server/envelope.ts";
 import { openMigrated, viableWindow } from "./_helpers.ts";
-import { rpcCall, connect, withDaemon, makeMockResponse, subscribeNotifications, flush, runLoopToTerminal } from "./_rpc.ts";
+import { rpcCall, rpcProblem, connect, withDaemon, makeMockResponse, subscribeNotifications, flush, runLoopToTerminal } from "./_rpc.ts";
 
 const execFileP = promisify(execFile);
 
@@ -124,11 +124,15 @@ test("workspace.create rejects malformed ceiling settings — fail hard, no sile
         const ws = await connect(addr);
         try {
             const badMC = await rpcCall(ws, 1, "workspace.create", { name: "bad-mc", settings: { maxCommands: -1 } });
-            assert.ok(badMC.error, "maxCommands:-1 (negative) is a JSON-RPC error — 0 is now a valid floor, negatives are not");
-            assert.match(badMC.error!.message, /maxCommands must be a non-negative integer/);
+            const maxCommandsProblem = rpcProblem(badMC);
+            assert.equal(maxCommandsProblem.type, "https://problems.plurnk.dev/daemon/input/setting-invalid");
+            assert.equal(maxCommandsProblem.field, "settings.maxCommands");
+            assert.match(maxCommandsProblem.recovery ?? "", /non-negative integer/);
             const badGit = await rpcCall(ws, 2, "workspace.create", { name: "bad-git", settings: { git: "no" } });
-            assert.ok(badGit.error, "a non-boolean git is rejected");
-            assert.match(badGit.error!.message, /git must be a boolean/);
+            const gitProblem = rpcProblem(badGit);
+            assert.equal(gitProblem.type, "https://problems.plurnk.dev/daemon/input/setting-invalid");
+            assert.equal(gitProblem.field, "settings.git");
+            assert.match(gitProblem.recovery ?? "", /true or false/);
         } finally { ws.close(); }
     });
 });

@@ -12,6 +12,8 @@ Ordinary provider behavior is intentionally not reimplemented here:
   evidence capture, first-party metadata, and local endpoint capabilities.
 
 See `SPEC.md` for the contract and `.env.defaults` for every operational knob.
+The package-owned `PLURNK_PROVIDERS_ERROR_DETAIL_LIMIT` bounds upstream
+diagnostic text in public provider Problems.
 
 ## Configure a model
 

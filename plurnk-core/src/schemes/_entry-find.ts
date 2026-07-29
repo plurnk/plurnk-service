@@ -25,7 +25,7 @@ import EntryCrud from "./_entry-crud.ts";
 import EntryManifest, { type CatalogEntry } from "./_entry-manifest.ts";
 import Owner from "../core/Owner.ts";
 import EntrySemantic from "./_entry-semantic.ts";
-import Results, { type SchemeResultBase } from "../core/results.ts";
+import Results, { type ProblemDetails, type SchemeResultBase } from "../core/results.ts";
 import type { MatchRange, RangeExtent } from "@plurnk/plurnk-schemes";
 import { resolveSearchCandidates } from "./_search-candidate.ts";
 import { pathFolderSummaries, pathScope, pathScopeMatches, type PathScope } from "./_path-scope.ts";
@@ -51,6 +51,7 @@ export interface FindResult extends SchemeResultBase {
     pathnames: string[];      // unique matched pathnames, in result order — the set a multi-file READ fans out over
     matches: Match[];         // one per selected resource, in result order
     overflow?: number;        // §find-count-not-contents — over-budget: N matched but were NOT enumerated (content is a narrow-steer)
+    overflowLimit?: number;
 }
 
 export default class EntryFind {
@@ -74,8 +75,8 @@ export default class EntryFind {
     // order (rank for ~semantic, candidate order otherwise). Candidate selection (scope +
     // tags) runs in SQL (find_workspace_entry_candidates); a content matcher then runs against
     // each candidate's default-channel CONTENT (Matcher.matchAgainstContent → the mimetypes
-    // plugin) and INCLUDES/EXCLUDES the entry — 200 keeps it, 204/415/203 drop it, 400
-    // (malformed matcher) fails the whole op. Path-scoping stays in the (target). Returns the
+    // plugin) and INCLUDES/EXCLUDES the entry - 200 keeps it, 204/203 drop it, and a
+    // 4xx matcher failure ends the whole operation. Path-scoping stays in the (target). Returns the
     // matched pathnames plus `locations` — each content hit's source line(s), keyed by pathname.
     static async #matchPathnames(
         statement: FindStatement,
@@ -88,10 +89,21 @@ export default class EntryFind {
         scope?: PathScope;
         candidatePathnames?: string[];
         error?: string;
+        problem?: ProblemDetails;
         range?: RangeExtent;
         extensions?: Readonly<Record<string, unknown>>;
     }> {
-        if (statement.target === null) return { status: 400, matches: [] };
+        if (statement.target === null) {
+            return {
+                status: 400,
+                matches: [],
+                error: "FIND requires a target.",
+                extensions: {
+                    recovery: "Provide the FIND target.",
+                    retryable: false,
+                },
+            };
+        }
         // Scope by the manifest's persisted entries.scheme (storedScheme; absent →
         // name). File persists under the reserved 'file' scheme ({§entry-identity-no-null}).
         const scheme = EntryCrud.identityScheme(manifest);
@@ -110,7 +122,14 @@ export default class EntryFind {
                 owner_id: explicitOwnerId ?? await Owner.commonsId(ctx.db, ctx.workspaceId),
                 scheme, pathname: scope.pathname,
             });
-            if (exact === undefined) return { status: 404, matches: [], error: `No entry exists at ${EntryManifest.toPath(scheme, scope.pathname)}.` };
+            if (exact === undefined) {
+                return {
+                    status: 404,
+                    matches: [],
+                    error: `No entry exists at ${EntryManifest.toPath(scheme, scope.pathname)}.`,
+                    extensions: { target: EntryManifest.toPath(scheme, scope.pathname) },
+                };
+            }
         }
         // SQL receives only the literal prefix and returns a safe superset. Node's
         // path matcher owns the shell-glob truth below: unlike SQLite GLOB, `*`
@@ -141,7 +160,16 @@ export default class EntryFind {
             try {
                 candidates = candidates.filter((c) => pathScopeMatches(scope, c.pathname));
             } catch {
-                return { status: 400, matches: [], error: `Malformed path glob '${scopePathname ?? ""}'.` };
+                return {
+                    status: 400,
+                    matches: [],
+                    error: `The path glob '${scopePathname ?? ""}' is malformed.`,
+                    extensions: {
+                        target: scopePathname ?? "",
+                        recovery: "Correct the target glob.",
+                        retryable: false,
+                    },
+                };
             }
         }
 
@@ -154,7 +182,17 @@ export default class EntryFind {
             // other matcher. Passing entry identities into the ranker preserves top-K meaning:
             // constrain first, then rank, never rank the corpus and discard out-of-scope hits.
             const { mimetypes } = ctx;
-            if (mimetypes === undefined) return { status: 501, matches: [] };
+            if (mimetypes === undefined) {
+                return {
+                    status: 501,
+                    matches: [],
+                    error: "Semantic search requires the mimetypes capability.",
+                    extensions: {
+                        stage: "semantic-search",
+                        retryable: false,
+                    },
+                };
+            }
             const marker = statement.lineMarker === null
                 ? { first: EntrySemantic.defaultTopK(), last: null }
                 : LineMarkerOps.firstLast(statement.lineMarker);
@@ -165,7 +203,12 @@ export default class EntryFind {
                 status: 503,
                 matches: [],
                 error: `The persistent search index covers ${candidateSet.indexed} of ${candidateSet.total} selected entries.`,
-                extensions: { search: candidateSet },
+                extensions: {
+                    search: candidateSet,
+                    stage: "search-index",
+                    recovery: "Wait for search indexing to complete before repeating the search.",
+                    retryable: false,
+                },
             };
             const ranked = await EntrySemantic.rankCandidates(
                 ctx.db,
@@ -174,7 +217,23 @@ export default class EntryFind {
                 statement.body.raw,
                 marker,
             );
-            if (ranked.status !== 200) return { status: ranked.status, matches: [] };
+            if (ranked.status !== 200) {
+                return {
+                    status: ranked.status,
+                    matches: [],
+                    error: ranked.status === 501
+                        ? "Similarity-threshold search requires an embedding provider."
+                        : "The requested similarity threshold is outside the supported range.",
+                    extensions: {
+                        stage: "semantic-search",
+                        threshold: marker.first,
+                        recovery: ranked.status === 501
+                            ? "Use a top-k semantic search while embeddings are unavailable."
+                            : "Use a similarity threshold greater than zero and less than one.",
+                        retryable: false,
+                    },
+                };
+            }
             matches = await EntryFind.#addReadableRows(
                 ranked.results.map((x): SourceCandidateMatch => ({
                     key: x.key,
@@ -197,7 +256,12 @@ export default class EntryFind {
                 status: 503,
                 matches: [],
                 error: `The persistent search index covers ${scopedCandidates.indexed} of ${scopedCandidates.total} selected entries.`,
-                extensions: { search: scopedCandidates },
+                extensions: {
+                    search: scopedCandidates,
+                    stage: "search-index",
+                    recovery: "Wait for search indexing to complete before repeating the search.",
+                    retryable: false,
+                },
             };
             const universeRows = await ctx.db.find_workspace_derivation_candidates.all<{ key: string; deep_hash: string | null }>({
                 workspace_id: ctx.workspaceId,
@@ -209,7 +273,12 @@ export default class EntryFind {
                 status: 503,
                 matches: [],
                 error: `The persistent search index covers ${universe.indexed} of ${universe.total} entries in the relationship universe.`,
-                extensions: { search: universe },
+                extensions: {
+                    search: universe,
+                    stage: "search-index",
+                    recovery: "Wait for search indexing to complete before repeating the search.",
+                    retryable: false,
+                },
             };
             const graph = await EntryGraph.matchCandidates(
                 ctx.db,
@@ -217,7 +286,19 @@ export default class EntryFind {
                 scopedCandidates.candidates,
                 statement.body.raw,
             );
-            if (graph.status !== 200) return { status: graph.status, matches: [] };
+            if (graph.status !== 200) {
+                return {
+                    status: graph.status,
+                    matches: [],
+                    error: `The graph matcher '${statement.body.raw}' is malformed.`,
+                    extensions: {
+                        stage: "matcher",
+                        dialect: "graph",
+                        recovery: "Correct or remove the matcher.",
+                        retryable: false,
+                    },
+                };
+            }
             matches = await EntryFind.#addReadableRows(
                 graph.matches.map((m): SourceCandidateMatch => ({
                     key: m.key,
@@ -236,18 +317,53 @@ export default class EntryFind {
                 if (c.content === undefined || c.mimetype === undefined) throw new Error("EntryFind.#matchPathnames: content candidate is incomplete");
                 return { key: c.pathname, content: c.content, mimetype: c.mimetype };
             }), mimetypes);
-            if (r.status !== 200) return { status: r.status, matches: [] };
+            if (r.status !== 200) return {
+                status: r.status,
+                matches: [],
+                problem: r.problem,
+            };
             matches = r.matches.map((match) => ({ pathname: match.key, matches: match.matches }));
         }
 
         if (statement.lineMarker !== null && statement.body?.dialect !== "semantic" && candidatePathnames === undefined) {
             const page = LineMarkerOps.page(matches, statement.lineMarker);
-            if (page.status !== 200) return {
-                status: page.status,
-                matches: [],
-                error: page.problem?.detail,
-                range: page.range,
-            };
+            if (page.status !== 200) {
+                if (statement.body !== null && matches.length === 0) {
+                    const failure = Results.failure(
+                        `scheme:${manifest.name}`,
+                        "selection-range-unavailable",
+                        416,
+                        `The ${statement.body.dialect} matcher selected 0 resources; <${statement.lineMarker.marks.join(",")}> cannot select from an empty result set.`,
+                        {
+                            matches: [],
+                            range: page.range,
+                        },
+                        {
+                            stage: "selection",
+                            dialect: statement.body.dialect,
+                            matchedResources: 0,
+                            range: page.range,
+                            recovery: "Correct or remove the matcher before choosing a range.",
+                            retryable: false,
+                        },
+                    );
+                    if (failure.problem === undefined) {
+                        throw new Error("FIND selection range failure has no Problem Details");
+                    }
+                    return {
+                        status: failure.status,
+                        matches: [],
+                        problem: failure.problem,
+                        range: page.range,
+                    };
+                }
+                return {
+                    status: page.status,
+                    matches: [],
+                    problem: page.problem,
+                    range: page.range,
+                };
+            }
             matches = page.items ?? [];
         }
         return { status: 200, matches, ...(scope === null ? {} : { scope }), ...(candidatePathnames === undefined ? {} : { candidatePathnames }) };
@@ -292,13 +408,23 @@ export default class EntryFind {
     static async findWorkspaceEntries(statement: FindStatement, ctx: PlurnkSchemeContext, manifest: SchemeManifest, explicitOwnerId?: number): Promise<FindResult> {
         const match = await EntryFind.#matchPathnames(statement, ctx, manifest, explicitOwnerId);
         if (match.status !== 200) {
-            const detail = match.error ?? `FIND could not resolve the requested selection (status ${match.status}).`;
+            const empty = { content: null, mimetype: null, results: [], itemsTokenTotal: 0, pathnames: [], matches: [] };
+            if (match.problem !== undefined) {
+                return Results.assert({
+                    status: match.status,
+                    problem: match.problem,
+                    ...empty,
+                }) as FindResult;
+            }
+            if (match.error === undefined) {
+                throw new Error(`EntryFind selection failed with status ${match.status} without Problem Details or a diagnostic.`);
+            }
             return Results.failure(
                 `scheme:${manifest.name}`,
                 match.status === 404 ? "entry-not-found" : match.status === 416 ? "range-not-satisfiable" : "find-failed",
                 match.status,
-                detail,
-                { content: null, mimetype: null, results: [], itemsTokenTotal: 0, pathnames: [], matches: [] },
+                match.error,
+                empty,
                 {
                     ...(match.range === undefined ? {} : { range: match.range }),
                     ...match.extensions,
@@ -348,14 +474,19 @@ export default class EntryFind {
             if (statement.lineMarker !== null) {
                 const page = LineMarkerOps.page(results, statement.lineMarker);
                 if (page.status !== 200) {
-                    return Results.failure(
-                        `scheme:${manifest.name}`,
-                        "range-not-satisfiable",
-                        page.status,
-                        page.problem?.detail ?? "The requested FIND result range is not satisfiable.",
-                        { content: null, mimetype: null, results: [], itemsTokenTotal: 0, pathnames: [], matches: [] },
-                        page.range === undefined ? {} : { range: page.range },
-                    ) as FindResult;
+                    if (page.problem === undefined) {
+                        throw new Error("FIND pagination failed without Problem Details");
+                    }
+                    return Results.assert({
+                        status: page.status,
+                        problem: page.problem,
+                        content: null,
+                        mimetype: null,
+                        results: [],
+                        itemsTokenTotal: 0,
+                        pathnames: [],
+                        matches: [],
+                    }) as FindResult;
                 }
                 results = page.items ?? [];
                 const retained = new Set(results.filter((item) => item.items === undefined).map((item) => item.path));
@@ -384,7 +515,17 @@ export default class EntryFind {
             // terse rendered steer defeated the contract twice: callers could still fan
             // every hidden match into work, and the full objects stayed resident. The
             // overflow count + aggregate weight are the complete bounded result.
-            return { status: 200, content: steer, mimetype: "text/markdown", results: [], itemsTokenTotal, pathnames: [], matches: [], overflow: results.length };
+            return {
+                status: 200,
+                content: steer,
+                mimetype: "text/markdown",
+                results: [],
+                itemsTokenTotal,
+                pathnames: [],
+                matches: [],
+                overflow: results.length,
+                overflowLimit: budget,
+            };
         }
         // Compact JSON — the model parses it natively; the `null, 2` pretty-print was ~36%
         // whitespace of the catalog body, tokens the wire doesn't need.

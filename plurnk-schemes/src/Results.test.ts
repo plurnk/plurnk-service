@@ -93,6 +93,13 @@ test("assert rejects a bare failure and a mismatched problem status", () => {
     );
 });
 
+test("assert rejects the legacy top-level error envelope", () => {
+    assert.throws(
+        () => Results.assert({ status: 500, error: "legacy failure" } as never),
+        /invalid operation result/,
+    );
+});
+
 test("attachInstance adds the durable operation coordinate", () => {
     const result = Results.failure("scheme:file", "entry-not-found", 404, "Missing.");
     Results.attachInstance(result, "log:///5/2/1/READ");

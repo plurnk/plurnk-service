@@ -10,48 +10,17 @@
 // can fall back to regex/visual parsing (SPEC §matcher-dispatch).
 
 import type { MatcherBody } from "@plurnk/plurnk-grammar";
-import type { Mimetypes, QueryMatch, ParsedBodyMatcher } from "@plurnk/plurnk-mimetypes";
-import type { MatchRange } from "@plurnk/plurnk-schemes";
-import { InvalidExpressionError, QueryParseFailureError, UnsupportedDialectError, GrammarNotInstalledError } from "@plurnk/plurnk-mimetypes";
-import MimetypeBinary from "./mimetype-binary.ts";
+import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
+import {
+    Matcher as SchemeMatcher,
+    type MatchRange,
+    type MatchResult,
+    type ProblemDetails,
+} from "@plurnk/plurnk-schemes";
 
-export interface MatchResult {
-    status: number;
-    body?: string;                         // raw fallback content (203)
-    matches?: ReadonlyArray<MatchRange>;  // addressable evidence (200 / 204)
-    error?: string;         // status 400 — malformed matcher expression
-    mimetype?: string;      // 203 fallback mimetype
-    reason?: string;        // 203 fallback: the parse-failure reason for the model
-}
+export type { MatchResult };
 
 export default class Matcher {
-    static #ranges(matches: readonly QueryMatch[]): MatchRange[] {
-        const ranges: MatchRange[] = [];
-        const seen = new Set<string>();
-        for (const match of matches) {
-            const lines = match.lines ?? [];
-            const rows = match.rows ?? [];
-            if (lines.length !== rows.length) {
-                throw new Error(`Mimetypes.query returned ${lines.length} source ranges and ${rows.length} readable ranges for one match`);
-            }
-            for (let index = 0; index < lines.length; index += 1) {
-                const range = {
-                    lineStart: lines[index].line,
-                    lineEnd: lines[index].endLine,
-                    rowStart: rows[index].row,
-                    rowEnd: rows[index].endRow,
-                    ...(match.matching === undefined ? {} : { path: match.matching }),
-                };
-                const key = `${range.lineStart}\0${range.lineEnd}\0${range.rowStart}\0${range.rowEnd}\0${range.path ?? ""}`;
-                if (!seen.has(key)) {
-                    seen.add(key);
-                    ranges.push(range);
-                }
-            }
-        }
-        return ranges;
-    }
-
     static async matchAgainstContent(
         body: MatcherBody,
         content: string,
@@ -62,26 +31,7 @@ export default class Matcher {
         // evidence through FIND's persistent index, never through this content
         // matcher. Reaching here with a relation dialect is a routing bug.
         if (body.dialect === "semantic" || body.dialect === "graph") throw new Error(`matchAgainstContent is content-only; ${body.dialect} must resolve through FIND`);
-        // Hand the plugin the matcher the GRAMMAR parsed — no second parser (mimetypes#42).
-        const parsedMatcher: ParsedBodyMatcher = body.dialect === "regex"
-            ? { dialect: "regex", pattern: body.pattern, flags: body.flags }
-            : { dialect: body.dialect, pattern: body.raw };
-        let matches: QueryMatch[];
-        try {
-            matches = await mimetypes.query({ content, hint: mimetype }, parsedMatcher);
-        } catch (err) {
-            // A malformed matcher EXPRESSION is the model's fault → 400. Source/projection
-            // failures (unparseable for the mimetype, unsupported dialect for this type, grammar
-            // not installed, no handler) → 203 soft fallback: raw bytes as text so the model
-            // can regex/visual-parse (§matcher-dispatch-203-soft-fallback).
-            if (err instanceof InvalidExpressionError) return { status: 400, error: err.message };
-            if (err instanceof QueryParseFailureError || err instanceof UnsupportedDialectError || err instanceof GrammarNotInstalledError || err instanceof ReferenceError) {
-                return { status: 203, body: content, mimetype: MimetypeBinary.TEXT_PRIMITIVE_MIMETYPE, reason: err instanceof Error ? err.message : String(err) };
-            }
-            throw err;
-        }
-        if (matches.length === 0) return { status: 204, matches: [] };
-        return { status: 200, matches: Matcher.#ranges(matches) };
+        return SchemeMatcher.matchAgainstContent(body, content, mimetype, mimetypes);
     }
 
     // §find-source-agnostic — apply a content matcher to a list of candidates from ANY source
@@ -89,19 +39,38 @@ export default class Matcher {
     // caller's own identity, with all addressable evidence grouped on it. The
     // matcher never cares what table content came from; this is
     // the shared primitive both EntryFind and Log.find run, so every dialect works uniformly by
-    // construction rather than being re-implemented per scheme. 400 (malformed matcher) fails the
-    // whole op; a non-200 candidate (204 no-match / 415 / 203) simply drops out.
+    // construction rather than being re-implemented per scheme. A 4xx matcher
+    // failure ends the whole operation; 204 no-match and 203 unlocated-match
+    // candidates simply drop out.
     static async matchCandidates(
         body: MatcherBody,
         candidates: ReadonlyArray<{ key: string; content: string; mimetype: string }>,
         mimetypes: Mimetypes,
-    ): Promise<{ status: number; matches: CandidateMatch[] }> {
+    ): Promise<{ status: number; matches: CandidateMatch[]; problem?: ProblemDetails }> {
         const matches: CandidateMatch[] = [];
+        let queryable = 0;
+        let unsupported: ProblemDetails | undefined;
         for (const cand of candidates) {
             const match = await Matcher.matchAgainstContent(body, cand.content, cand.mimetype, mimetypes);
-            if (match.status === 400) return { status: 400, matches: [] };
+            if (match.status === 415) {
+                if (match.problem === undefined) {
+                    throw new Error("Matcher.matchCandidates: status 415 has no Problem Details");
+                }
+                unsupported ??= match.problem;
+                continue;
+            }
+            if (match.status >= 400) {
+                if (match.problem === undefined) {
+                    throw new Error(`Matcher.matchCandidates: status ${match.status} has no Problem Details`);
+                }
+                return { status: match.status, matches: [], problem: match.problem };
+            }
+            queryable += 1;
             if (match.status !== 200) continue;
             matches.push({ key: cand.key, matches: [...(match.matches ?? [])] });
+        }
+        if (queryable === 0 && unsupported !== undefined) {
+            return { status: 415, matches: [], problem: unsupported };
         }
         return { status: 200, matches };
     }

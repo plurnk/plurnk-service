@@ -7,6 +7,7 @@ test("withProviderDefaults supplies the package-owned operational floor", () => 
     assert.equal(env.PLURNK_PROVIDERS_PROMPT_CACHE_KEY, "1");
     assert.equal(env.PLURNK_PROVIDERS_FETCH_TIMEOUT, "600000");
     assert.equal(env.PLURNK_PROVIDERS_RETRY_ATTEMPTS, "3");
+    assert.equal(env.PLURNK_PROVIDERS_ERROR_DETAIL_LIMIT, "512");
 });
 
 test("withProviderDefaults preserves every explicit operator value", () => {
