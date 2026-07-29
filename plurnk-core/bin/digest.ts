@@ -26,8 +26,8 @@ if (import.meta.main) {
             const opts = { dbPath: positionals[0] ?? Digest.defaultDbPath(), ...(positionals[1] !== undefined ? { digestDir: positionals[1] } : {}) };
             Digest.run(opts);
             if (requiem) {
-                const { path, workers } = await Digest.requiem(opts);
-                process.stdout.write(`requiem: interviewed ${workers} run(s) → ${path}\n`);
+                const { path, reportPath, workers } = await Digest.requiem(opts);
+                process.stdout.write(`requiem: interviewed ${workers} run(s) -> ${path}, ${reportPath}\n`);
             }
         } catch (err) {
             process.stderr.write(`${(err as Error).message}\n`);

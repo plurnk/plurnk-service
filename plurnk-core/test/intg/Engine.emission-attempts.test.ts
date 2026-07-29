@@ -19,8 +19,8 @@ const valid = (body = "done", usage?: Partial<ProviderUsage>): MockResponse => (
     },
 });
 
-const invalid = (content: string, usage?: Partial<ProviderUsage>): MockResponse => ({
-    assistant: { content, reasoning: null, usage },
+const invalid = (content: string, usage?: Partial<ProviderUsage>, reasoning: string | null = null): MockResponse => ({
+    assistant: { content, reasoning, usage },
 });
 
 class AttemptWitness extends Mock {
@@ -411,7 +411,7 @@ test("digest preserves rejected emissions as forensic artifacts without putting 
         const provider = new AttemptWitness({
             contextWindow: 100_000,
             responses: [
-                invalid("rejected bytes", { prompt: 10, completion: 2, total: 12 }),
+                invalid("rejected bytes", { prompt: 10, completion: 2, total: 12 }, "rejected reasoning"),
                 valid("accepted bytes", { prompt: 10, completion: 3, total: 13 }),
             ],
         });
@@ -447,6 +447,11 @@ test("digest preserves rejected emissions as forensic artifacts without putting 
         const markdown = await readFile(join(digestDir, "digest.md"), "utf8");
         assert.match(markdown, /rejected-emissions=1\/2/);
         assert.doesNotMatch(markdown, /rejected bytes/, "rejected content stays out of the accepted-turn waterfall");
+        const reasoning = await readFile(join(digestDir, "reasoning.md"), "utf8");
+        assert.match(reasoning, /Attempt 1 - rejected/);
+        assert.match(reasoning, /rejected reasoning/);
+        assert.match(reasoning, /turn must begin with/);
+        assert.match(reasoning, /Attempt 2 - admitted/);
         const json = JSON.parse(await readFile(join(digestDir, "digest.json"), "utf8")) as {
             turn_attempts: Array<{ accepted: boolean }>;
         };
