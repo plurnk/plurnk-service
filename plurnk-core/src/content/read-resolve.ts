@@ -8,12 +8,12 @@
 import type { LineMarker, MatcherBody } from "@plurnk/plurnk-grammar";
 import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import type { RangeExtent } from "@plurnk/plurnk-schemes";
+import type { SchemeResultBase } from "@plurnk/plurnk-schemes";
 import LineMarkerOps from "./line-marker.ts";
 import Matcher from "./matcher.ts";
 import MimetypeBinary from "./mimetype-binary.ts";
 
-export interface ReadSliceResult {
-    status: number;
+export interface ReadSliceResult extends SchemeResultBase {
     content: string | null;
     mimetype: string;
     startLine?: number | null;
@@ -39,9 +39,10 @@ export default class ReadResolve {
                 const sliced = LineMarkerOps.sliceJsonItems(content, lineMarker);
                 if (sliced.status === 416) return {
                     status: 416,
+                    problem: sliced.problem,
                     content: null,
                     mimetype,
-                    reason: sliced.error,
+                    reason: sliced.problem?.detail,
                     range: sliced.range,
                 };
                 if (sliced.status !== 200) return { status: sliced.status, content: null, mimetype };
@@ -52,9 +53,10 @@ export default class ReadResolve {
                 const sliced = LineMarkerOps.sliceLines(content, lineMarker);
                 if (sliced.status === 416) return {
                     status: 416,
+                    problem: sliced.problem,
                     content: null,
                     mimetype,
-                    reason: sliced.error,
+                    reason: sliced.problem?.detail,
                     range: sliced.range,
                 };
                 if (sliced.status !== 200) return { status: sliced.status, content: null, mimetype };

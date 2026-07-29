@@ -989,11 +989,11 @@ export default class Dispatcher {
         if (whole.status !== 200 || span === null) return whole;
         const sliced = LineMarkerOps.sliceLines(typeof whole.content === "string" ? whole.content : "", { marks: [span.lineStart, span.lineEnd] });
         if (sliced.status !== 200) {
-            return Dispatcher.#failure(
-                "read-range-invalid",
-                sliced.status,
-                sliced.error ?? "The requested source range is not satisfiable.",
-            );
+            return Results.assert({
+                ...sliced,
+                content: null,
+                mimetype: "text/markdown",
+            }) as DispatchResult;
         }
         return { status: 200, content: sliced.text ?? "", mimetype: "text/markdown", startLine: sliced.startLine ?? span.lineStart };
     }
@@ -1096,7 +1096,7 @@ export default class Dispatcher {
                     return Dispatcher.#failure("binary-range-unsupported", 415, `Cannot slice <L> on binary channel '${channelName}' (${channelData.mimetype}).`);
                 }
                 const r = LineMarkerOps.sliceLinesRaw(channelData.content ?? "", lineMarker);
-                if (r.status !== 200) return Dispatcher.#failure("copy-range-invalid", r.status, r.error ?? "The requested COPY/MOVE range is not satisfiable.");
+                if (r.status !== 200) return Results.assert(r) as DispatchResult;
                 sliced[channelName] = { ...channelData, content: r.text ?? "" };
             }
             channels = sliced;

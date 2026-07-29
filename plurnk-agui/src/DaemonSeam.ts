@@ -58,7 +58,7 @@ export interface DaemonSeam {
     // One client action journals all of its parsed statements in one internal segment.
     // The segment is evidence for the action and may remain open across an AG-UI
     // interrupt/resume while a proposed statement awaits resolution.
-    dispatchClientAction(args: { workspaceId: number; workerId: number; statements: PlurnkStatement[] }): Promise<Array<{ status: number; [key: string]: unknown }>>;
+    dispatchClientAction(args: { workspaceId: number; workerId: number; statements: PlurnkStatement[] }): Promise<OperationResult[]>;
     // Journal read — the module's primary render input (ownership-verified per workspace).
     readLog(args: { workspaceId: number; workerId: number; loopId?: number; turnId?: number; sinceId?: number; limit?: number; loopSeq?: number; turnSeq?: number; sequence?: number }): Promise<LogEntryWire[]>;
     // Providers + effective prompt budget (promptBudget) for the STATE gauge.

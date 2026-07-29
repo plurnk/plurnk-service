@@ -149,7 +149,7 @@ test("matcher: UnsupportedDialectError → 415", async () => {
     });
     const r = await Matcher.matchAgainstContent(regexBody, "x", "image/png", mts);
     assert.equal(r.status, 415);
-    assert.ok((r.error ?? "").length > 0);
+    assert.ok((r.problem?.detail ?? "").length > 0);
 });
 
 test("matcher: InvalidExpressionError → 400", async () => {

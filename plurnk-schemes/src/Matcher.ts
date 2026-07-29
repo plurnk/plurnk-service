@@ -18,12 +18,11 @@ import {
     QueryParseFailureError,
 } from "@plurnk/plurnk-mimetypes";
 import { TEXT_PRIMITIVE_MIMETYPE } from "./MimetypeClassifier.ts";
+import Results, { type SchemeResult } from "./Results.ts";
 
-export interface MatchResult {
-    status: number;
+export interface MatchResult extends SchemeResult {
     body?: string;          // N:\t<source-line> lines (status 200) or raw fallback content (status 203)
     matches?: number;       // hit count (status 200 or 204); omitted on 203
-    error?: string;         // status >= 400 paths (framework dialect errors; not a scheme Notice)
     mimetype?: string;      // overrides default text/markdown on the 203 fallback path
     reason?: string;        // 203 fallback: framework's parse-failure reason for the model
 }
@@ -122,10 +121,24 @@ export default class Matcher {
             // sets each error subclass's `.name` to its class name.
             const name = err instanceof Error ? err.name : "";
             if (name === "UnsupportedDialectError" || err instanceof UnsupportedDialectError) {
-                return { status: 415, error: err instanceof Error ? err.message : String(err) };
+                return Results.failure(
+                    "schemes:matcher",
+                    "unsupported-dialect",
+                    415,
+                    err instanceof Error ? err.message : String(err),
+                    {},
+                    { dialect: body.dialect },
+                );
             }
             if (name === "InvalidExpressionError" || err instanceof InvalidExpressionError) {
-                return { status: 400, error: err instanceof Error ? err.message : String(err) };
+                return Results.failure(
+                    "schemes:matcher",
+                    "invalid-expression",
+                    400,
+                    err instanceof Error ? err.message : String(err),
+                    {},
+                    { dialect: body.dialect, expression: body.raw },
+                );
             }
             if (name === "QueryParseFailureError" || err instanceof QueryParseFailureError) {
                 // 203 soft fallback: return raw content as text so the model

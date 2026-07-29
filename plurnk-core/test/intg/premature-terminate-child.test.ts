@@ -356,7 +356,7 @@ test("a FAILED op row carries its failure message on its META LINE — the recor
         const log = packet.sections?.find((x) => x.name === "log")?.content ?? "";
         const metaLine = log.split("\n").find((l) => l.includes('"op":"SEND"') && l.includes('"status":409'));
         assert.ok(metaLine !== undefined, "the refused SEND row renders");
-        assert.match(metaLine!, /"error":"Last turn both performed retrieval operations and attempted to terminate\./, "the steer rides the META LINE — visible in every packet, never folded away");
+        assert.match(metaLine!, /"problem":\{[^}]*"detail":"Last turn both performed retrieval operations and attempted to terminate\./, "the exact Problem rides the META LINE - visible in every packet, never folded away");
         // And NO minted action_failure item exists — the row is the one record.
         const errs = await db.test_error_rows_for_run.all<{ rx: string }>({ worker_id: workerId });
         assert.ok(!errs.some((e) => e.rx.includes("action_failure")), "no separate minted item — the op row is the model's op result");

@@ -11,11 +11,10 @@ import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import Slicer from "./Slicer.ts";
 import Matcher from "./Matcher.ts";
 import type { RangeExtent } from "./Slicer.ts";
+import type { SchemeResult } from "./Results.ts";
 
-export interface ReadResolution {
-    readonly status: number;
+export interface ReadResolution extends SchemeResult {
     readonly body?: string;
-    readonly error?: string;
     readonly range?: RangeExtent;
 }
 
@@ -32,11 +31,12 @@ export default class DefaultRead {
     ): Promise<ReadResolution> {
         if (statement.body !== null) {
             const m = await Matcher.matchAgainstContent(statement.body, content, mimetype, mimetypes);
-            return { status: m.status, body: m.body, error: m.error };
+            return m;
         }
         if (statement.lineMarker !== null) {
             const s = Slicer.lines(content, statement.lineMarker);
-            return { status: s.status, body: s.text, error: s.error, range: s.range };
+            if (s.status >= 400) return s;
+            return { status: s.status, body: s.text, range: s.range };
         }
         return { status: 200, body: content };
     }

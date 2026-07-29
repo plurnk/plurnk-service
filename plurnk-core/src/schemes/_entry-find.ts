@@ -241,7 +241,7 @@ export default class EntryFind {
             if (page.status !== 200) return {
                 status: page.status,
                 matches: [],
-                error: page.error,
+                error: page.problem?.detail,
                 range: page.range,
             };
             matches = page.items ?? [];
@@ -358,7 +358,7 @@ export default class EntryFind {
                         `scheme:${manifest.name}`,
                         "range-not-satisfiable",
                         page.status,
-                        page.error ?? "The requested FIND result range is not satisfiable.",
+                        page.problem?.detail ?? "The requested FIND result range is not satisfiable.",
                         { content: null, mimetype: null, results: [], itemsTokenTotal: 0, pathnames: [], matches: [] },
                         page.range === undefined ? {} : { range: page.range },
                     ) as FindResult;

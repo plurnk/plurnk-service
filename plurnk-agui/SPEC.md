@@ -46,6 +46,7 @@ One daemon notification in, zero-or-more AG-UI events out (`Translator`, pure):
 | `log/entry` origin≠model | `CUSTOM plurnk.ambient` (foists, deltas, narrations) |
 | `loop/proposal` | `TOOL_CALL_START/ARGS/END`, then `RUN_FINISHED` with an interrupt outcome |
 | `loop/terminated` | `STATE_DELTA` (budget) + `CUSTOM plurnk.terminated` + `RAW` (the provider's native completion frame, `source: provider`, §475) + `RUN_FINISHED` (`result.status === 200`) or `RUN_ERROR` (otherwise, from the exact RFC 9457 Problem Details) |
+| transport failure after SSE opens | `CUSTOM plurnk.problem` (exact Problem Details) + `RUN_ERROR` (`code` = Problem `type`, `message` = Problem `detail`) |
 | `notice/event` | `CUSTOM plurnk.notice` |
 | `stream/event` + `stream/concluded` | `CUSTOM plurnk.stream` + `ACTIVITY_SNAPSHOT` (the standard background-activity channel: `activityType` = the scheme, replace-snapshot, §475). A conclusion preserves its exact universal `result`, including RFC 9457 Problem Details; AG-UI does not reconstruct failure from a status or summary. |
 | `workspace/branch-batch` | `CUSTOM plurnk.branch_batch` with the daemon's full queued/running/completed/failed/recovery-required lifecycle payload |
@@ -110,8 +111,10 @@ multi-worker interrupt sets fails before any proposal is released.
 ## The action surface {§agui-management-plane}
 
 A verb is a §3 action run: `forwardedProps.plurnk.action = {kind, …params}` in, one
-`CUSTOM plurnk.action.result` (`{kind, ok, result|error}`) out, `RUN_FINISHED`. There is
-no side-channel RPC endpoint; the worker envelope is the whole interface. Unknown kinds
+`CUSTOM plurnk.action.result` (`{kind, ok, result|problem}`) out, `RUN_FINISHED`. A
+failed action carries exact RFC 9457 Problem Details; it never invents a parallel
+error string. There is no side-channel RPC endpoint; the worker envelope is the
+whole interface. Unknown kinds
 error honestly (`ok:false`). `loop.inject` rides this surface; its steered effect
 streams on the original worker's open SSE. `loop.cancel` is its counterpart — it aborts
 the model worker's active drain (the addressable spelling of the SSE-hangup abort; both
@@ -164,3 +167,7 @@ Two consequences the module owns and a client must handle:
 one `data:` line per event, ending after `RUN_FINISHED`/`RUN_ERROR`. Multimodal user content
 is rejected until the model-loop seam supports it deliberately. Loop auto never answers
 a question — that is the daemon's own rule; the module inherits it.
+
+Failures before SSE headers are sent use `application/problem+json` with exact
+RFC 9457 Problem Details. Once SSE has opened, `CUSTOM plurnk.problem` preserves
+that same object and `RUN_ERROR` maps it to the standard AG-UI fields.

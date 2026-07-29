@@ -130,7 +130,8 @@ test("a failed content-bearing READ renders both its Problem and diagnostic body
         folded: false,
     }], tok);
 
-    assert.match(out, /"error":"'sh' exited with code 1\."/);
+    assert.match(out, /"problem":\{[^}]*"detail":"'sh' exited with code 1\."/);
+    assert.doesNotMatch(out, /"error":/, "the packet does not flatten Problem Details into a legacy error string");
     assert.match(out, /"status":500/);
     assert.match(out, /"display":"open"/);
     assert.match(out, /1:main\.go:17: undefined: os/, "failure status never erases diagnostic content");

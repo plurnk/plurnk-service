@@ -261,7 +261,7 @@ export default class File extends CoreSchemeAdapterBase {
             const result = MimetypeBinary.isJsonMimetype(mimetype)
                 ? LineMarkerOps.applyJsonItemEditBatch(original, edits)
                 : LineMarkerOps.applyLineMarkerEditBatch(original, edits);
-            if (result.status !== 200) return failure("edit-range-invalid", result.status, result.error ?? "The requested edit range is invalid.");
+            if (result.status !== 200) return Results.assert(result) as EditResult;
             patched = result.result ?? "";
         } else {
             if (statements.length !== 1) return failure("creation-batch-conflict", 409, "Creation cannot coexist with another EDIT.");

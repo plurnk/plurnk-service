@@ -17,6 +17,7 @@
 // means "include through the last line" (so <1,-1> is whole content).
 
 import type { LineMarker } from "@plurnk/plurnk-grammar";
+import Results, { type SchemeResult } from "./Results.ts";
 
 interface NormalizedMarker {
     kind: "range" | "before-first" | "after-last" | "insert-between";
@@ -30,16 +31,33 @@ export interface RangeExtent {
     readonly requested: { readonly first: number; readonly last: number | null };
     readonly available: { readonly first: number | null; readonly last: number | null; readonly total: number };
 }
-export interface SliceResult { status: number; text?: string; startLine?: number; error?: string; range?: RangeExtent }
-export interface JsonSliceResult { status: number; body?: string; error?: string; range?: RangeExtent }
-export interface PageResult<T> { status: number; items?: T[]; error?: string; range?: RangeExtent }
-export interface EditResult { status: number; result?: string; error?: string }
+export interface SliceResult extends SchemeResult { text?: string; startLine?: number; range?: RangeExtent }
+export interface JsonSliceResult extends SchemeResult { body?: string; range?: RangeExtent }
+export interface PageResult<T> extends SchemeResult { items?: T[]; range?: RangeExtent }
+export interface EditResult extends SchemeResult { result?: string; range?: RangeExtent }
 export interface BatchEdit {
     readonly marker: LineMarker;
     readonly body: string;
 }
 
 export default class Slicer {
+    static #failure<T extends SchemeResult>(
+        code: string,
+        status: number,
+        detail: string,
+        fields: Readonly<Record<string, unknown>> = {},
+        extensions: Readonly<Record<string, unknown>> = {},
+    ): T {
+        return Results.failure("schemes:slicer", code, status, detail, fields, extensions) as T;
+    }
+
+    static #rangeFailure<T extends SchemeResult>(
+        detail: string,
+        range: RangeExtent,
+    ): T {
+        return Slicer.#failure("range-not-satisfiable", 416, detail, { range }, { range });
+    }
+
     static #extent(marker: LineMarker, total: number, unit: RangeUnit): RangeExtent {
         return {
             unit,
@@ -114,11 +132,9 @@ export default class Slicer {
     static lines(content: string, marker: LineMarker): SliceResult {
         const { lines } = Slicer.#splitLines(content);
         const norm = Slicer.#normalize(marker, lines.length);
-        if ("error" in norm) return {
-            status: 416,
-            error: norm.error,
-            range: Slicer.#extent(marker, lines.length, "line"),
-        };
+        if ("error" in norm) {
+            return Slicer.#rangeFailure(norm.error, Slicer.#extent(marker, lines.length, "line"));
+        }
         if (norm.kind !== "range") return { status: 200, text: "", startLine: undefined };
         const selected = lines.slice(norm.start - 1, norm.end);
         return { status: 200, text: selected.join("\n"), startLine: norm.start };
@@ -149,7 +165,13 @@ export default class Slicer {
     static jsonItems(content: string, marker: LineMarker): JsonSliceResult {
         let parsed: unknown;
         try { parsed = JSON.parse(content); }
-        catch (err) { return { status: 400, error: `malformed JSON: ${err instanceof Error ? err.message : String(err)}` }; }
+        catch (err) {
+            return Slicer.#failure(
+                "malformed-json",
+                400,
+                `Malformed JSON: ${err instanceof Error ? err.message : String(err)}`,
+            );
+        }
         const items = Slicer.#jsonValueToItems(parsed);
         const total = items.length;
         const first = marker.marks[0];
@@ -157,41 +179,36 @@ export default class Slicer {
         if (last === null) {
             if (first === 0 || first === -1) return { status: 200, body: "[]" };
             if (first > 0 && first <= total) return { status: 200, body: JSON.stringify([items[first - 1]], null, 2) };
-            return {
-                status: 416,
-                error: `item ${first} out of range (1..${total})`,
-                range: Slicer.#extent(marker, total, "item"),
-            };
+            return Slicer.#rangeFailure(
+                `Item ${first} is out of range; available positions are 1..${total}.`,
+                Slicer.#extent(marker, total, "item"),
+            );
         }
         // Whole-content `<1,-1>` is valid on an empty item list — it selects
         // the entire, empty range (mirrors #normalize's empty-content rule).
         if (total === 0) {
             if ((first === 0 || first === 1) && last === -1) return { status: 200, body: "[]" };
-            return {
-                status: 416,
-                error: `range ${first},${last} out of range (no items)`,
-                range: Slicer.#extent(marker, total, "item"),
-            };
+            return Slicer.#rangeFailure(
+                `Range ${first},${last} cannot select from an empty item set.`,
+                Slicer.#extent(marker, total, "item"),
+            );
         }
         let n = first;
         let m = last;
         if (n === 0) n = 1;
         if (m === -1) m = total;
-        if (n < 1 || n > total) return {
-            status: 416,
-            error: `range start ${first} out of range (1..${total})`,
-            range: Slicer.#extent(marker, total, "item"),
-        };
-        if (m < 1 || m > total) return {
-            status: 416,
-            error: `range end ${last} out of range (1..${total})`,
-            range: Slicer.#extent(marker, total, "item"),
-        };
-        if (n > m) return {
-            status: 416,
-            error: `range start ${first} > end ${last}`,
-            range: Slicer.#extent(marker, total, "item"),
-        };
+        if (n < 1 || n > total) return Slicer.#rangeFailure(
+            `Range start ${first} is out of range; available positions are 1..${total}.`,
+            Slicer.#extent(marker, total, "item"),
+        );
+        if (m < 1 || m > total) return Slicer.#rangeFailure(
+            `Range end ${last} is out of range; available positions are 1..${total}.`,
+            Slicer.#extent(marker, total, "item"),
+        );
+        if (n > m) return Slicer.#rangeFailure(
+            `Range start ${first} exceeds end ${last}.`,
+            Slicer.#extent(marker, total, "item"),
+        );
         return { status: 200, body: JSON.stringify(items.slice(n - 1, m), null, 2) };
     }
 
@@ -203,22 +220,40 @@ export default class Slicer {
         const extent = Slicer.#extent(marker, total, "result");
         const { first, last } = extent.requested;
         if (!Number.isInteger(first) || (last !== null && !Number.isInteger(last))) {
-            return { status: 416, error: `result range requires integer positions (available 1..${total})`, range: extent };
+            return Slicer.#rangeFailure(
+                `Result ranges require integer positions; the result set contains ${total} item(s).`,
+                extent,
+            );
         }
         if (last === null) {
             if (first === 0 || first === -1) return { status: 200, items: [] };
             if (first > 0 && first <= total) return { status: 200, items: [items[first - 1]] };
-            return { status: 416, error: `result ${first} out of range (1..${total})`, range: extent };
+            return Slicer.#rangeFailure(
+                `Result ${first} is out of range; available positions are 1..${total}.`,
+                extent,
+            );
         }
         if (total === 0) {
             if ((first === 0 || first === 1) && last === -1) return { status: 200, items: [] };
-            return { status: 416, error: `result range ${first},${last} out of range (no results)`, range: extent };
+            return Slicer.#rangeFailure(
+                `Result range ${first},${last} cannot select from an empty result set.`,
+                extent,
+            );
         }
         const n = first === 0 ? 1 : first;
         const m = last === -1 ? total : last;
-        if (n < 1 || n > total) return { status: 416, error: `result range start ${first} out of range (1..${total})`, range: extent };
-        if (m < 1 || m > total) return { status: 416, error: `result range end ${last} out of range (1..${total})`, range: extent };
-        if (n > m) return { status: 416, error: `result range start ${first} > end ${last}`, range: extent };
+        if (n < 1 || n > total) return Slicer.#rangeFailure(
+            `Result range start ${first} is out of range; available positions are 1..${total}.`,
+            extent,
+        );
+        if (m < 1 || m > total) return Slicer.#rangeFailure(
+            `Result range end ${last} is out of range; available positions are 1..${total}.`,
+            extent,
+        );
+        if (n > m) return Slicer.#rangeFailure(
+            `Result range start ${first} exceeds end ${last}.`,
+            extent,
+        );
         return { status: 200, items: items.slice(n - 1, m) };
     }
 
@@ -259,21 +294,36 @@ export default class Slicer {
             if (first === 0) result = [...items, ...source];
             else if (first === -1) result = [...source, ...items];
             else if (first > 0 && first <= total) result = [...source.slice(0, first - 1), ...items, ...source.slice(first)];
-            else return { status: 416, error: `position ${first} out of range (1..${total})` };
+            else return Slicer.#rangeFailure(
+                `Position ${first} is out of range; available positions are 1..${total}.`,
+                Slicer.#extent(marker, total, "item"),
+            );
         } else if (total === 0) {
             // Empty array: only whole-content `<1,-1>` (or `<0,-1>` alias) is
             // valid — it replaces the (empty) whole with the body items. Any
             // other range on an empty array is out of range.
-            if ((first !== 1 && first !== 0) || last !== -1) return { status: 416, error: `range on empty array` };
+            if ((first !== 1 && first !== 0) || last !== -1) return Slicer.#rangeFailure(
+                `Range ${first},${last} cannot edit an empty array.`,
+                Slicer.#extent(marker, total, "item"),
+            );
             result = [...items];
         } else {
             let n = first;
             let m = last;
             if (n === 0) n = 1;
             if (m === -1) m = total;
-            if (n < 1 || n > total) return { status: 416, error: `range start ${first} out of range (1..${total})` };
-            if (m < 1 || m > total) return { status: 416, error: `range end ${last} out of range (1..${total})` };
-            if (n > m) return { status: 416, error: `range start ${first} > end ${last}` };
+            if (n < 1 || n > total) return Slicer.#rangeFailure(
+                `Range start ${first} is out of range; available positions are 1..${total}.`,
+                Slicer.#extent(marker, total, "item"),
+            );
+            if (m < 1 || m > total) return Slicer.#rangeFailure(
+                `Range end ${last} is out of range; available positions are 1..${total}.`,
+                Slicer.#extent(marker, total, "item"),
+            );
+            if (n > m) return Slicer.#rangeFailure(
+                `Range start ${first} exceeds end ${last}.`,
+                Slicer.#extent(marker, total, "item"),
+            );
             result = [...source.slice(0, n - 1), ...items, ...source.slice(m)];
         }
         return { status: 200, result: JSON.stringify(result, null, 2) };
@@ -287,7 +337,11 @@ export default class Slicer {
         const bodyEntries: [string, unknown][] = [];
         for (const item of items) {
             if (item === null || typeof item !== "object" || Array.isArray(item)) {
-                return { status: 400, error: "object source requires body items to be JSON objects (key-value pairs)" };
+                return Slicer.#failure(
+                    "invalid-edit-body",
+                    400,
+                    "An object source requires every body item to be a JSON object containing key-value pairs.",
+                );
             }
             bodyEntries.push(...Object.entries(item as Record<string, unknown>));
         }
@@ -300,20 +354,35 @@ export default class Slicer {
             if (first === 0) result = [...bodyEntries, ...entries];
             else if (first === -1) result = [...entries, ...bodyEntries];
             else if (first > 0 && first <= total) result = [...entries.slice(0, first - 1), ...bodyEntries, ...entries.slice(first)];
-            else return { status: 416, error: `position ${first} out of range (1..${total})` };
+            else return Slicer.#rangeFailure(
+                `Position ${first} is out of range; available positions are 1..${total}.`,
+                Slicer.#extent(marker, total, "item"),
+            );
         } else if (total === 0) {
             // Empty object: only whole-content `<1,-1>` (or `<0,-1>` alias) is
             // valid — replaces the (empty) whole with the body kv-pairs.
-            if ((first !== 1 && first !== 0) || last !== -1) return { status: 416, error: `range on empty object` };
+            if ((first !== 1 && first !== 0) || last !== -1) return Slicer.#rangeFailure(
+                `Range ${first},${last} cannot edit an empty object.`,
+                Slicer.#extent(marker, total, "item"),
+            );
             result = [...bodyEntries];
         } else {
             let n = first;
             let m = last;
             if (n === 0) n = 1;
             if (m === -1) m = total;
-            if (n < 1 || n > total) return { status: 416, error: `range start ${first} out of range (1..${total})` };
-            if (m < 1 || m > total) return { status: 416, error: `range end ${last} out of range (1..${total})` };
-            if (n > m) return { status: 416, error: `range start ${first} > end ${last}` };
+            if (n < 1 || n > total) return Slicer.#rangeFailure(
+                `Range start ${first} is out of range; available positions are 1..${total}.`,
+                Slicer.#extent(marker, total, "item"),
+            );
+            if (m < 1 || m > total) return Slicer.#rangeFailure(
+                `Range end ${last} is out of range; available positions are 1..${total}.`,
+                Slicer.#extent(marker, total, "item"),
+            );
+            if (n > m) return Slicer.#rangeFailure(
+                `Range start ${first} exceeds end ${last}.`,
+                Slicer.#extent(marker, total, "item"),
+            );
             result = [...entries.slice(0, n - 1), ...bodyEntries, ...entries.slice(m)];
         }
         return { status: 200, result: JSON.stringify(Object.fromEntries(result), null, 2) };
@@ -329,23 +398,43 @@ export default class Slicer {
         if (last === null && first === 1) {
             if (items.length === 0) return { status: 200, result: "null" };  // delete the scalar
             if (items.length === 1) return { status: 200, result: JSON.stringify(items[0], null, 2) };
-            return { status: 400, error: "scalar source: <1> body must produce 0 or 1 items (no implicit promotion to array)" };
+            return Slicer.#failure(
+                "invalid-edit-body",
+                400,
+                "A scalar source EDIT at <1> must produce zero or one item; implicit array promotion is forbidden.",
+            );
         }
         if (last === -1 && first === 1) {
             // <1,-1> = whole content. Same constraints as <1> for scalars.
             if (items.length === 0) return { status: 200, result: "null" };
             if (items.length === 1) return { status: 200, result: JSON.stringify(items[0], null, 2) };
-            return { status: 400, error: "scalar source: <1,-1> body must produce 0 or 1 items (no implicit promotion to array)" };
+            return Slicer.#failure(
+                "invalid-edit-body",
+                400,
+                "A scalar source EDIT at <1,-1> must produce zero or one item; implicit array promotion is forbidden.",
+            );
         }
-        return { status: 400, error: "scalar JSON source: only <1> or <1,-1> markers supported (no implicit promotion to array via grow markers)" };
+        return Slicer.#failure(
+            "invalid-edit-range",
+            400,
+            "A scalar JSON source supports only <1> or <1,-1>; grow markers would require implicit array promotion.",
+        );
     }
 
     static jsonItemEdit(content: string, marker: LineMarker, body: string): EditResult {
         let parsed: unknown;
         try { parsed = JSON.parse(content); }
-        catch (err) { return { status: 400, error: `malformed JSON source: ${err instanceof Error ? err.message : String(err)}` }; }
+        catch (err) {
+            return Slicer.#failure(
+                "malformed-json-source",
+                400,
+                `Malformed JSON source: ${err instanceof Error ? err.message : String(err)}`,
+            );
+        }
         const bodyResult = Slicer.#itemsFromBody(body);
-        if ("error" in bodyResult) return { status: 400, error: bodyResult.error };
+        if ("error" in bodyResult) {
+            return Slicer.#failure("malformed-json-body", 400, bodyResult.error);
+        }
         const items = bodyResult.items;
         // Empty-body sentinel insertion is a no-op (model accidentally
         // emitted no items at an insertion point). Single mark <0>/<-1> (#19).
@@ -366,7 +455,9 @@ export default class Slicer {
     static linesRaw(content: string, marker: LineMarker): SliceResult {
         const { lines } = Slicer.#splitLines(content);
         const norm = Slicer.#normalize(marker, lines.length);
-        if ("error" in norm) return { status: 416, error: norm.error };
+        if ("error" in norm) {
+            return Slicer.#rangeFailure(norm.error, Slicer.#extent(marker, lines.length, "line"));
+        }
         if (norm.kind !== "range") return { status: 200, text: "" };
         const selected = lines.slice(norm.start - 1, norm.end);
         const result = selected.length > 0 ? `${selected.join("\n")}\n` : "";
@@ -385,7 +476,9 @@ export default class Slicer {
     static lineMarkerEdit(content: string, marker: LineMarker, body: string): EditResult {
         const { lines, trailingNewline } = Slicer.#splitLines(content);
         const norm = Slicer.#normalize(marker, lines.length);
-        if ("error" in norm) return { status: 416, error: norm.error };
+        if ("error" in norm) {
+            return Slicer.#rangeFailure(norm.error, Slicer.#extent(marker, lines.length, "line"));
+        }
 
         const bodyLines = Slicer.#splitLines(body).lines;
         let newLines: string[];
@@ -446,7 +539,14 @@ export default class Slicer {
     static lineMarkerEditBatch(content: string, edits: readonly BatchEdit[]): EditResult {
         const total = Slicer.#splitLines(content).lines.length;
         const ordered = Slicer.#batchOrder(edits, total);
-        if (ordered.error !== undefined) return { status: ordered.status ?? 409, error: ordered.error };
+        if (ordered.error !== undefined) {
+            const status = ordered.status ?? 409;
+            return Slicer.#failure(
+                status === 416 ? "range-not-satisfiable" : "overlapping-edits",
+                status,
+                ordered.error,
+            );
+        }
         let result = content;
         for (const edit of ordered.edits ?? []) {
             const applied = Slicer.lineMarkerEdit(result, edit.marker, edit.body);
@@ -459,10 +559,23 @@ export default class Slicer {
     static jsonItemEditBatch(content: string, edits: readonly BatchEdit[]): EditResult {
         let parsed: unknown;
         try { parsed = JSON.parse(content); }
-        catch (err) { return { status: 400, error: `malformed JSON source: ${err instanceof Error ? err.message : String(err)}` }; }
+        catch (err) {
+            return Slicer.#failure(
+                "malformed-json-source",
+                400,
+                `Malformed JSON source: ${err instanceof Error ? err.message : String(err)}`,
+            );
+        }
         const total = Slicer.#jsonValueToItems(parsed).length;
         const ordered = Slicer.#batchOrder(edits, total);
-        if (ordered.error !== undefined) return { status: ordered.status ?? 409, error: ordered.error };
+        if (ordered.error !== undefined) {
+            const status = ordered.status ?? 409;
+            return Slicer.#failure(
+                status === 416 ? "range-not-satisfiable" : "overlapping-edits",
+                status,
+                ordered.error,
+            );
+        }
         let result = content;
         for (const edit of ordered.edits ?? []) {
             const applied = Slicer.jsonItemEdit(result, edit.marker, edit.body);

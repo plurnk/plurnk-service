@@ -113,10 +113,11 @@ test("an action run executes via the seam: result custom + RUN_FINISHED, no loop
         assert.equal(ack.value.result.action, "injected_next_turn", "inject folds into the active drain via the unified runLoop");
         // an unknown kind errors honestly
         const bad = await post(mod.address().port, { threadId: "t1", workerId: "r3", forwardedProps: { plurnk: { workspace: "t1", action: { kind: "nope.nothing" } } } });
-        const err = bad.find((e) => e.type === "CUSTOM" && (e as { name: string }).name === "plurnk.action.result") as { value: { ok: boolean; error: string } };
+        const err = bad.find((e) => e.type === "CUSTOM" && (e as { name: string }).name === "plurnk.action.result") as { value: { ok: boolean; problem: { type: string; detail: string } } };
         assert.equal(err.value.ok, false);
-        assert.match(err.value.error, /unknown action 'nope\.nothing'/);
-        assert.doesNotMatch(err.value.error, /seam surface/, "no internal jargon leaks to the client");
+        assert.equal(err.value.problem.type, "https://problems.plurnk.dev/agui/action/unknown-action");
+        assert.match(err.value.problem.detail, /Unknown action 'nope\.nothing'/);
+        assert.doesNotMatch(err.value.problem.detail, /seam surface/, "no internal jargon leaks to the client");
     } finally { await mod.close(); }
 });
 
@@ -272,9 +273,12 @@ test("NO workspace prop is a HARD ERROR (500) — a worker has no world to forge
     try {
         const res = await fetch(`http://127.0.0.1:${mod.address().port}/`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(standardInput({ threadId: "solo", runId: "r1", messages: [{ role: "user", content: "hi" }] })) });
         assert.equal(res.status, 500, "the missing workspace surfaces as an honest 500, not a fabricated 200");
-        const body = await res.json() as { error: string };
-        assert.match(body.error, /forwardedProps\.plurnk\.workspace \(a workspace name\) is required/);
-        assert.doesNotMatch(body.error, /world|existence/, "the error states the contract, never the machine-model philosophy");
+        assert.equal(res.headers.get("content-type"), "application/problem+json");
+        const body = await res.json() as { type: string; status: number; detail: string };
+        assert.equal(body.type, "https://problems.plurnk.dev/agui/http/request-failed");
+        assert.equal(body.status, 500);
+        assert.match(body.detail, /forwardedProps\.plurnk\.workspace \(a workspace name\) is required/);
+        assert.doesNotMatch(body.detail, /world|existence/, "the error states the contract, never the machine-model philosophy");
         assert.equal(created, 0, "NO workspace was forged from the threadId");
     } finally { await mod.close(); }
 });
@@ -319,8 +323,8 @@ test("workspace.create WITH a name is worldless and does NOT demand a pre-bound 
     try {
         // No forwardedProps.plurnk.workspace on the worker itself — workspace.create supplies its own world.
         const ev = await post(mod.address().port, { threadId: "probe", workerId: "r1", forwardedProps: { plurnk: { action: { kind: "workspace.create", name: "fresh-world" } } } });
-        const r = ev.find((e) => e.type === "CUSTOM" && (e as { name: string }).name === "plurnk.action.result") as { value: { ok: boolean; result: { name: string }; error?: string } };
-        assert.equal(r.value.ok, true, r.value.error ?? "");
+        const r = ev.find((e) => e.type === "CUSTOM" && (e as { name: string }).name === "plurnk.action.result") as { value: { ok: boolean; result: { name: string } } };
+        assert.equal(r.value.ok, true);
         assert.equal(r.value.result.name, "fresh-world", "created the named world, no workspace-required throw");
     } finally { await mod.close(); }
 });
@@ -335,8 +339,8 @@ test("loop.cancel is a REAL action kind — cancels the model worker's drain (bo
     const mod = await Module.init({ host: "127.0.0.1", port: 0 })(seam);
     try {
         const ev = await post(mod.address().port, { threadId: "w", workerId: "r1", forwardedProps: { plurnk: { workspace: "w", action: { kind: "loop.cancel", reason: "user_stop" } } } });
-        const r = ev.find((e) => e.type === "CUSTOM" && (e as { name: string }).name === "plurnk.action.result") as { value: { ok: boolean; result: { cancelled: boolean }; error?: string } };
-        assert.equal(r.value.ok, true, r.value.error ?? "loop.cancel must be a known kind");
+        const r = ev.find((e) => e.type === "CUSTOM" && (e as { name: string }).name === "plurnk.action.result") as { value: { ok: boolean; result: { cancelled: boolean } } };
+        assert.equal(r.value.ok, true, "loop.cancel must be a known kind");
         assert.equal(r.value.result.cancelled, true);
         assert.deepEqual(cancelled, [20], "the MODEL worker's drain was cancelled");
     } finally { await mod.close(); }
@@ -464,7 +468,18 @@ test("a post-headers runLoop throw becomes a legible RUN_ERROR frame, not a sile
         const err = frames.find((e) => e.type === "RUN_ERROR");
         assert.ok(err !== undefined, "the throw surfaced as a RUN_ERROR frame, not a silent end");
         assert.match(err.message ?? "", /no provider configured/);
-        assert.equal(err.code, "501", "the no-model throw maps to 501");
+        assert.equal(
+            err.code,
+            "https://problems.plurnk.dev/agui/http/provider-not-configured",
+            "RUN_ERROR code carries the stable Problem type",
+        );
+        const exact = frames.find((event) => event.type === "CUSTOM"
+            && (event as { name?: string }).name === "plurnk.problem") as {
+            value?: { type?: string; status?: number; detail?: string };
+        } | undefined;
+        assert.equal(exact?.value?.type, err.code);
+        assert.equal(exact?.value?.status, 501);
+        assert.equal(exact?.value?.detail, err.message);
         // The leak pin: the error path must release the run's handles (heartbeat
         // interval, portal binding) — a survivor here wedges `node --test` (no
         // force-exit in the drill) forever.

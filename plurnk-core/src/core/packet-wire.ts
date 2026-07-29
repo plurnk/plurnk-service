@@ -14,6 +14,7 @@
 // with no content are omitted entirely (no empty headers in the wire).
 
 import { MimetypeBinary } from "../content/index.ts";
+import { Validator, type ProblemDetails } from "@plurnk/plurnk-contracts";
 import { renderAddress } from "./plurnk-uri.ts";
 import { encodePathParens } from "./path-decode.ts";
 import type { GitStatus } from "./git-state.ts";
@@ -416,16 +417,16 @@ export default class PacketWire {
             // Parse rx once — reused for the matcher/items enrichment and the body.
             const rx = (typeof e.rx === "string" ? PacketWire.#safeParse(e.rx) : e.rx) as RxView | null;
 
-            // §log-row-self-explains — a FAILED op row carries its failure message ON THE META LINE,
+            // §log-row-self-explains - a FAILED op row carries its exact RFC 9457 Problem ON THE META LINE,
             // so the record explains itself in every packet, folded or open. The old shape (a bare
-            // status; the message buried in an rx no render shows) is what sent the wildcard model
+            // status or a lossy error string; the Problem buried in an rx no render shows) sent the wildcard model
             // theorizing "SEND[409] probably means bad request?" for 201s, and the jumbo model
             // chasing a phantom "engine error" off a message-less item. The row IS the model's op
-            // result — it states its own why; the errors section stays a terse pointer at it.
+            // result: one standard, pretrained failure object. The Errors section stays a terse pointer.
             if (typeof e.status === "number" && e.status >= 400 && rx !== null && typeof rx === "object") {
-                const problem = (rx as { problem?: { detail?: unknown } }).problem;
-                const text = typeof problem?.detail === "string" ? problem.detail : null;
-                if (text !== null && text.length > 0) meta.error = text;
+                const problem = (rx as { problem?: unknown }).problem;
+                Validator.assertProblemDetails(problem as ProblemDetails);
+                meta.problem = problem;
             }
 
             // READ + FIND enrichment: the matcher body (from tx) + `items`, the count

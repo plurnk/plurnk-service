@@ -117,6 +117,13 @@ export default class Log extends CoreSchemeAdapterBase {
             mimetypes: core.mimetypes,
         });
         if (resolved.status >= 400) {
+            if (resolved.problem !== undefined) {
+                return Results.assert({
+                    ...resolved,
+                    content: null,
+                    mimetype: null,
+                }) as SchemeReadResult;
+            }
             return failure(
                 resolved.status === 416 ? "range-not-satisfiable" : "read-resolution-failed",
                 resolved.status,
@@ -239,7 +246,7 @@ export default class Log extends CoreSchemeAdapterBase {
             const page = LineMarkerOps.page(sourceMatches, statement.lineMarker);
             if (page.status !== 200) return empty(
                 page.status,
-                page.error ?? "The requested log result range is not satisfiable.",
+                page.problem?.detail ?? "The requested log result range is not satisfiable.",
                 page.range === undefined ? {} : { range: page.range },
             );
             sourceMatches = page.items ?? [];
@@ -295,7 +302,7 @@ export default class Log extends CoreSchemeAdapterBase {
                 const page = LineMarkerOps.page(results, statement.lineMarker);
                 if (page.status !== 200) return empty(
                     page.status,
-                    page.error ?? "The requested log result range is not satisfiable.",
+                    page.problem?.detail ?? "The requested log result range is not satisfiable.",
                     page.range === undefined ? {} : { range: page.range },
                 );
                 results = page.items ?? [];
@@ -368,7 +375,7 @@ export default class Log extends CoreSchemeAdapterBase {
             if (page.status !== 200) return {
                 status: page.status,
                 ids: [],
-                error: page.error,
+                error: page.problem?.detail,
                 range: page.range,
             };
             selected = page.items ?? [];
@@ -402,7 +409,7 @@ export default class Log extends CoreSchemeAdapterBase {
             if (page.status !== 200) return {
                 status: page.status,
                 ids: [],
-                error: page.error,
+                error: page.problem?.detail,
                 range: page.range,
             };
             selected = page.items ?? [];

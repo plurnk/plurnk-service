@@ -151,7 +151,13 @@ export default class EntryOps {
             const result = MimetypeBinary.isJsonMimetype(effectiveMimetype)
                 ? LineMarkerOps.applyJsonItemEditBatch(originalContent, edits)
                 : LineMarkerOps.applyLineMarkerEditBatch(originalContent, edits);
-            if (result.status !== 200) return failure("edit-range-invalid", result.status, result.error ?? "The requested edit range is invalid.", { entryId: existing.id, channel: targetChannel });
+            if (result.status !== 200) {
+                return Results.assert({
+                    ...result,
+                    entryId: existing.id,
+                    channel: targetChannel,
+                }) as EditResult;
+            }
             newContent = result.result ?? "";
         } else {
             if (statements.length !== 1) {
@@ -286,6 +292,13 @@ export default class EntryOps {
             mimetypes: ctx.mimetypes,
         });
         if (r.status >= 400) {
+            if (r.problem !== undefined) {
+                return Results.assert({
+                    ...r,
+                    content: null,
+                    channel: readChannel,
+                }) as ReadResult;
+            }
             const detail = r.reason ?? `READ could not resolve the requested content (status ${r.status}).`;
             return failure(
                 r.status === 416 ? "range-not-satisfiable" : "read-resolution-failed",

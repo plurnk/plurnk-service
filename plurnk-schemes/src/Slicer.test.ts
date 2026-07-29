@@ -287,7 +287,7 @@ test("page: result misses expose the requested and available extent", () => {
         requested: { first: 4, last: -1 },
         available: { first: 1, last: 3, total: 3 },
     });
-    assert.match(r.error ?? "", /1\.\.3/);
+    assert.match(r.problem?.detail ?? "", /1\.\.3/);
 });
 
 test("page: fractional result positions fail instead of being floored", () => {
@@ -513,7 +513,7 @@ test("lineMarkerEditBatch rejects overlap without producing a partial result", (
         { marker: { marks: [3, 4] }, body: "tail" },
     ]);
     assert.equal(r.status, 409);
-    assert.match(r.error ?? "", /overlap/);
+    assert.match(r.problem?.detail ?? "", /overlap/i);
     assert.equal(r.result, undefined);
 });
 
@@ -523,7 +523,7 @@ test("lineMarkerEditBatch rejects whole-resource replacement mixed with another 
         { marker: { marks: [-1] }, body: "tail" },
     ]);
     assert.equal(r.status, 409);
-    assert.match(r.error ?? "", /whole-resource/);
+    assert.match(r.problem?.detail ?? "", /whole-resource/);
 });
 
 test("jsonItemEditBatch preserves original item coordinates", () => {

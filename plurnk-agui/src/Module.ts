@@ -20,6 +20,7 @@ import { authorize as mcpAuthorize, poll as mcpPoll } from "@plurnk/plurnk-execs
 import { EventType, type AguiEvent, type RunAgentInput } from "./types.ts";
 import { RunAgentInputSchema, type Interrupt } from "@ag-ui/core";
 import { logEntryIdFromToolCallId, proposalInterrupt } from "./AguiPlus.ts";
+import { Problems, type OperationResult, type ProblemDetails } from "@plurnk/plurnk-contracts";
 
 export interface ModuleOptions {
     host: string;
@@ -28,6 +29,34 @@ export interface ModuleOptions {
     maxTurns?: number;
     heartbeatMs?: number;         // SSE comment-frame cadence (agui#3); default 15s, 0 disables
 }
+
+const actionFailure = (
+    code: string,
+    detail: string,
+    status: number = 400,
+): ActionOutcome => ({
+    ok: false,
+    problem: Problems.create("agui:action", code, status, detail),
+});
+
+const errorDetail = (error: unknown): string =>
+    error instanceof Error ? error.message : String(error);
+
+const httpProblem = (
+    code: string,
+    status: number,
+    detail: string,
+): ProblemDetails => Problems.create("agui:http", code, status, detail);
+
+const writeHttpProblem = (res: ServerResponse, problem: ProblemDetails): void => {
+    res.writeHead(problem.status, { "content-type": "application/problem+json" });
+    res.end(JSON.stringify(problem));
+};
+
+const runErrorEvents = (problem: ProblemDetails): AguiEvent[] => [
+    { type: EventType.CUSTOM, name: "plurnk.problem", value: problem },
+    { type: EventType.RUN_ERROR, message: problem.detail, code: problem.type },
+];
 
 export default class Module {
     #seam: DaemonSeam;
@@ -90,23 +119,27 @@ export default class Module {
             // The perimeter (§governance): bearer check before any body read.
             const token = this.#opts.token ?? "";
             if (token.length > 0 && req.headers.authorization !== `Bearer ${token}`) {
-                res.writeHead(401, { "content-type": "application/json" }).end(JSON.stringify({ error: "bearer token required" }));
+                writeHttpProblem(res, httpProblem("bearer-token-required", 401, "A bearer token is required."));
                 return;
             }
             if (req.method === "POST" && (req.url === "/" || req.url === "/agui")) return await this.#run(req, res);
-            res.writeHead(404, { "content-type": "application/json" }).end(JSON.stringify({ error: "POST / (AG-UI run) is the interface" }));
+            writeHttpProblem(res, httpProblem("route-not-found", 404, "POST / is the AG-UI run interface."));
         } catch (err) {
-            const message = err instanceof Error ? err.message : String(err);
+            const detail = errorDetail(err);
+            const problem = httpProblem("request-failed", 500, detail);
             if (!res.headersSent) {
-                res.writeHead(500, { "content-type": "application/json" });
-                res.end(JSON.stringify({ error: message }));
+                writeHttpProblem(res, problem);
                 return;
             }
             // Post-headers throw (svc#480): the SSE is already open, so a JSON body is
             // invisible to the event parser — the stream reads as a silent death. Emit a
             // legible terminal RUN_ERROR frame instead (501 for the no-model case), then end.
-            const code = /no provider configured|no model|unknown alias/i.test(message) ? "501" : "500";
-            res.write(`data: ${JSON.stringify({ type: EventType.RUN_ERROR, message, code })}\n\n`);
+            const mapped = /no provider configured|no model|unknown alias/i.test(detail)
+                ? httpProblem("provider-not-configured", 501, detail)
+                : problem;
+            for (const event of runErrorEvents(mapped)) {
+                res.write(`data: ${JSON.stringify(event)}\n\n`);
+            }
             res.end();
         }
     }
@@ -245,7 +278,7 @@ export default class Module {
                 // bookkeeping arms BEFORE the finish decision (then stream/concluded,
                 // not a timer, releases any deferral).
                 .then(async (outcome) => { await new Promise((r) => setImmediate(r)); finishAction(outcome); })
-                .catch((err: unknown) => finishAction({ ok: false, error: err instanceof Error ? err.message : String(err) }));
+                .catch((err: unknown) => finishAction(actionFailure("action-failed", errorDetail(err), 500)));
             res.on("close", () => {
                 if (finished) return;
                 this.#seam.cancelDrain(lifecycleWorkerId, "client_disconnected");
@@ -294,9 +327,11 @@ export default class Module {
             // not enough — the heartbeat interval and the Portal binding are live, and a
             // throw that escapes past finish() leaks them forever (the drill-hang). emit()
             // writes the terminal frame AND finish()es on RUN_ERROR — one door out.
-            const message = err instanceof Error ? err.message : String(err);
-            const code = /no provider configured|no model|unknown alias/i.test(message) ? "501" : "500";
-            emit([{ type: EventType.RUN_ERROR, message, code }]);
+            const detail = errorDetail(err);
+            const problem = /no provider configured|no model|unknown alias/i.test(detail)
+                ? httpProblem("provider-not-configured", 501, detail)
+                : httpProblem("run-failed", 500, detail);
+            emit(runErrorEvents(problem));
         }
     }
 
@@ -307,7 +342,8 @@ export default class Module {
         res.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-cache", "connection": "keep-alive" });
         const emit = (e: AguiEvent): void => { res.write(`data: ${JSON.stringify(e)}\n\n`); };
         emit({ type: EventType.RUN_STARTED, threadId: input.threadId, runId: input.runId });
-        const outcome = await this.#action(action, null).catch((err: unknown): ActionOutcome => ({ ok: false, error: err instanceof Error ? err.message : String(err) }));
+        const outcome = await this.#action(action, null)
+            .catch((err: unknown): ActionOutcome => actionFailure("action-failed", errorDetail(err), 500));
         emit(actionResult(action.kind, outcome));
         emit({ type: EventType.RUN_FINISHED, threadId: input.threadId, runId: input.runId, outcome: { type: "success" } });
         res.end();
@@ -358,7 +394,7 @@ export default class Module {
                     // A REAL attach: rebind the thread map to the chosen workspace and hand
                     // back its envelope — the picker does what it says (the unwired kind +
                     // a nil-masking fallback produced the 2026-07-10 front-door disaster).
-                    if (typeof p.id !== "number") return { ok: false, error: "workspace.attach requires id" };
+                    if (typeof p.id !== "number") return actionFailure("invalid-action-parameters", "workspace.attach requires id.");
                     const att = await this.#seam.attachWorkspace({ workspaceId: p.id, ...(typeof p.workerId === "number" ? { workerId: p.workerId } : {}) });
                     this.#threads.set(att.workspaceName, att);
                     return { ok: true, result: { id: att.workspaceId, name: att.workspaceName, workerId: att.workerId, modelWorkerId: att.modelWorkerId } };
@@ -366,17 +402,17 @@ export default class Module {
                 case "auth.authorize": {
                     // Stateless relay to the execs-mcp driver (settled: no auth seam — the
                     // driver owns its mechanics; the bearer overlays its own config registry).
-                    if (typeof p.target !== "string" || p.target.length === 0) return { ok: false, error: "auth.authorize requires target" };
+                    if (typeof p.target !== "string" || p.target.length === 0) return actionFailure("invalid-action-parameters", "auth.authorize requires target.");
                     return { ok: true, result: await mcpAuthorize(p.target) };
                 }
                 case "auth.authorize.poll": {
-                    if (typeof p.target !== "string" || p.target.length === 0) return { ok: false, error: "auth.authorize.poll requires target" };
+                    if (typeof p.target !== "string" || p.target.length === 0) return actionFailure("invalid-action-parameters", "auth.authorize.poll requires target.");
                     return { ok: true, result: await mcpPoll(p.target, { device: p.device as never }) };
                 }
             }
             // Below this line lives IN a world. An unknown kind is no worker at all; a
             // world-scoped kind with no bound workspace is a routing bug — both surface plainly.
-            if (!Module.#WORLD_SCOPED.has(a.kind)) return { ok: false, error: `unknown action '${a.kind}'` };
+            if (!Module.#WORLD_SCOPED.has(a.kind)) return actionFailure("unknown-action", `Unknown action '${a.kind}'.`, 404);
             if (env === null) throw new Error(`action '${a.kind}' operates within a workspace, but none is bound`);
             switch (a.kind) {
                 case "workspace.workers": return { ok: true, result: { workers: await this.#seam.listWorkers(typeof p.id === "number" ? p.id : env.workspaceId) } };
@@ -387,7 +423,7 @@ export default class Module {
                     return { ok: true, result: { entries } };
                 }
                 case "loop.inject": {
-                    if (typeof p.prompt !== "string" || p.prompt.length === 0) return { ok: false, error: "loop.inject requires prompt" };
+                    if (typeof p.prompt !== "string" || p.prompt.length === 0) return actionFailure("invalid-action-parameters", "loop.inject requires prompt.");
                     const ack = await this.#seam.runLoop({ workspaceId: env.workspaceId, workerId: convRun ?? await this.#seam.ensureModelWorker(env.workspaceId), prompt: p.prompt });
                     return { ok: true, result: ack };
                 }
@@ -396,27 +432,27 @@ export default class Module {
                 case "loop.cancel": return { ok: true, result: { cancelled: this.#seam.cancelDrain(convRun ?? await this.#seam.ensureModelWorker(env.workspaceId)) } };
                 case "workspace.prompts": return { ok: true, result: { prompts: await this.#seam.listPrompts(env.workspaceId, typeof p.limit === "number" ? p.limit : undefined) } };
                 case "workspace.rename": {
-                    if (typeof p.name !== "string" || p.name.length === 0) return { ok: false, error: "workspace.rename requires name" };
+                    if (typeof p.name !== "string" || p.name.length === 0) return actionFailure("invalid-action-parameters", "workspace.rename requires name.");
                     return { ok: true, result: await this.#seam.renameWorkspace(env.workspaceId, p.name) };
                 }
                 case "workspace.constrain": {
-                    if (typeof p.effect !== "string" || typeof p.glob !== "string") return { ok: false, error: "workspace.constrain requires effect + glob" };
+                    if (typeof p.effect !== "string" || typeof p.glob !== "string") return actionFailure("invalid-action-parameters", "workspace.constrain requires effect and glob.");
                     return { ok: true, result: await this.#seam.constrain(env.workspaceId, p.effect, p.glob) };
                 }
                 case "workspace.unconstrain": {
-                    if (typeof p.effect !== "string" || typeof p.glob !== "string") return { ok: false, error: "workspace.unconstrain requires effect + glob" };
+                    if (typeof p.effect !== "string" || typeof p.glob !== "string") return actionFailure("invalid-action-parameters", "workspace.unconstrain requires effect and glob.");
                     return { ok: true, result: await this.#seam.unconstrain(env.workspaceId, p.effect, p.glob) };
                 }
                 case "workspace.constraints": return { ok: true, result: { constraints: await this.#seam.listConstraints(env.workspaceId) } };
                 case "workspace.derivation": return { ok: true, result: { status: this.#seam.workspaceDerivationStatus(env.workspaceId) } };
                 case "entry.read": {
-                    if (typeof p.target !== "string") return { ok: false, error: "entry.read requires target" };
+                    if (typeof p.target !== "string") return actionFailure("invalid-action-parameters", "entry.read requires target.");
                     return { ok: true, result: await this.#seam.readEntry({ workspaceId: env.workspaceId, target: p.target, ...(typeof p.channel === "string" ? { channel: p.channel } : {}), ...(typeof p.offset === "number" ? { offset: p.offset } : {}) }) };
                 }
                 case "op.exec": {
                     // EXEC constructed structurally (no DSL text): the model-facing shape,
                     // proposal-gated by the engine like any client op.
-                    if (typeof p.command !== "string" || p.command.length === 0) return { ok: false, error: "op.exec requires command" };
+                    if (typeof p.command !== "string" || p.command.length === 0) return actionFailure("invalid-action-parameters", "op.exec requires command.");
                     const statement = { op: "EXEC", suffix: "", signal: null, target: null, lineMarker: null, body: p.command, position: { line: 1, col: 1 } } as unknown as PlurnkStatement;
                     // Client ops journal as client-origin turns in the CLIENT run (run-split:
                     // only LOOPS live in the model worker).
@@ -427,12 +463,24 @@ export default class Module {
                     // Raw DSL parsed at the module's edge (the grammar is a family-internal
                     // runtime dep, operator-approved) → each statement dispatched; parse
                     // failures return as per-statement 400 results.
-                    if (typeof p.text !== "string" || p.text.length === 0) return { ok: false, error: "op.parse requires text" };
+                    if (typeof p.text !== "string" || p.text.length === 0) return actionFailure("invalid-action-parameters", "op.parse requires text.");
                     const parsed = PlurnkParser.parseClient(p.text);
-                    const results: Array<Record<string, unknown> | null> = [];
+                    const results: Array<OperationResult | null> = [];
                     const statements: PlurnkStatement[] = [];
                     for (const item of parsed.items) {
-                        if (item.kind === "error") { results.push({ status: 400, error: String(item.error.message ?? item.error) }); continue; }
+                        if (item.kind === "error") {
+                            results.push({
+                                status: 400,
+                                problem: Problems.create(
+                                    "agui:action",
+                                    "parse-failed",
+                                    400,
+                                    String(item.error.message ?? item.error),
+                                    { line: item.error.line, column: item.error.column },
+                                ),
+                            });
+                            continue;
+                        }
                         if (item.kind !== "statement") continue; // interstitial text isn't dispatchable
                         statements.push(item.statement as unknown as PlurnkStatement);
                         results.push(null);
@@ -450,18 +498,18 @@ export default class Module {
                 case "op.look": {
                     // Parse at the edge; LOOK is the wire spelling of the read-projection —
                     // rewrite to READ (Engine.look enforces READ-only).
-                    if (typeof p.text !== "string" || p.text.length === 0) return { ok: false, error: "op.look requires text" };
+                    if (typeof p.text !== "string" || p.text.length === 0) return actionFailure("invalid-action-parameters", "op.look requires text.");
                     const parsed = PlurnkParser.parseClient(p.text);
                     const item = parsed.items.find((i) => i.kind === "statement");
-                    if (item === undefined || item.kind !== "statement") return { ok: false, error: "op.look: no statement parsed" };
+                    if (item === undefined || item.kind !== "statement") return actionFailure("parse-failed", "op.look parsed no statement.");
                     const statement = { ...(item.statement as unknown as Record<string, unknown>), op: "READ" } as unknown as PlurnkStatement;
                     return { ok: true, result: await this.#seam.look({ workspaceId: env.workspaceId, workerId: env.workerId, statement }) };
                 }
                 case "run.fork": return { ok: true, result: await this.#seam.forkWorker({ workspaceId: env.workspaceId, workerId: convRun ?? await this.#seam.ensureModelWorker(env.workspaceId), ...(typeof p.name === "string" ? { name: p.name } : {}) }) };
-                default: return { ok: false, error: `unknown action '${a.kind}'` };
+                default: return actionFailure("unknown-action", `Unknown action '${a.kind}'.`, 404);
             }
         } catch (err) {
-            return { ok: false, error: err instanceof Error ? err.message : String(err) };
+            return actionFailure("action-failed", errorDetail(err), 500);
         }
     }
 

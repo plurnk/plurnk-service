@@ -8,6 +8,7 @@
 
 import { EventType, type AguiEvent, type ProposalNotification } from "./types.ts";
 import type { Interrupt, ResumeEntry } from "@ag-ui/core";
+import type { ProblemDetails } from "@plurnk/plurnk-contracts";
 
 // ── §1 — stop-the-world → tool-call ──────────────────────────────────
 // toolCallId correlates the terminating run's TOOL_CALL and interrupt with the next
@@ -91,6 +92,6 @@ export const parseAction = (forwardedProps: unknown): ActionRequest | null => {
     const { kind: _kind, ...params } = action as Record<string, unknown>;
     return { kind, params };
 };
-export type ActionOutcome = { ok: true; result?: unknown } | { ok: false; error: string };
+export type ActionOutcome = { ok: true; result?: unknown } | { ok: false; problem: ProblemDetails };
 export const actionResult = (kind: string, outcome: ActionOutcome): AguiEvent =>
     ({ type: EventType.CUSTOM, name: "plurnk.action.result", value: { kind, ...outcome } });
