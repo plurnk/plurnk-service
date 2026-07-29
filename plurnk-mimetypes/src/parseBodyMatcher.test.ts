@@ -1,6 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { parseBodyMatcher } from "./parseBodyMatcher.ts";
+import { InvalidExpressionError } from "./QueryError.ts";
 
 describe("parseBodyMatcher", () => {
     it("dispatches xpath via // prefix", () => {
@@ -30,16 +31,32 @@ describe("parseBodyMatcher", () => {
         assert.equal(p.flags, undefined);
     });
 
-    it("dispatches regex without trailing slash leniently (takes the whole tail)", () => {
-        const p = parseBodyMatcher("/error.*");
-        assert.equal(p.dialect, "regex");
-        assert.equal(p.pattern, "error.*");
+    it("rejects a regex without its closing slash", () => {
+        assert.throws(() => parseBodyMatcher("/error.*"), InvalidExpressionError);
     });
 
     it("supports all flag characters per JS regex spec (gimsuy)", () => {
         const p = parseBodyMatcher("/foo/gimsuy");
         assert.equal(p.dialect, "regex");
         assert.equal(p.flags, "gimsuy");
+    });
+
+    it("keeps escaped slashes and slashes inside character classes in the pattern", () => {
+        assert.deepEqual(parseBodyMatcher("/a\\/b/i"), {
+            dialect: "regex",
+            pattern: "a\\/b",
+            flags: "i",
+        });
+        assert.deepEqual(parseBodyMatcher("/[/]/"), {
+            dialect: "regex",
+            pattern: "[/]",
+            flags: undefined,
+        });
+    });
+
+    it("rejects invalid patterns and flags at the classifier boundary", () => {
+        assert.throws(() => parseBodyMatcher("/[abc/"), InvalidExpressionError);
+        assert.throws(() => parseBodyMatcher("/foo/nope"), InvalidExpressionError);
     });
 
     it("dispatches glob for anything not matching the other prefixes", () => {

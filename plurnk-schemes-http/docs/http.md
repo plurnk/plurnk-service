@@ -23,7 +23,7 @@ The HTTP method is the **op**:
 - `READ(http(s)://…)` — GET.
 - `FIND(http(s)://…):matcher` - fetch an exact URL when absent, then return
   the standard JSON FIND metadata and match coordinates. It does not return
-  the page body; READ does. Glob and regex targets query only web entries
+  the page body; READ does. Glob targets query only web entries
   already materialized in the workspace.
 - `SEND[200](http(s)://…):body:` — POST the body.
 - `EDIT(http(s)://…):body:` — PUT the body (replaces the whole resource; no `<L>`).

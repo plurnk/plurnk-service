@@ -73,11 +73,11 @@ L. `<<SEND[200]:answer prompt or describe action(s) performed:SEND`
 
 ### Pattern Filtering (FIND, READ, OPEN, FOLD)
 
-Plurnk Service treemaps every file, entry, and item, allowing every pattern filter on everything.
+Matcher bodies filter content across treemapped files, entries, and items.
 
 | prefix | dialect  | form                           | engine           |
 |--------|----------|--------------------------------|------------------|
-| `#`    | regex    | #pattern#[igmsu]*              | ECMAScript       |
+| `/`    | regex    | /pattern/flags                 | ECMAScript       |
 | `//`   | xpath    | //selector                     | XPath 1.0        |
 | `$`    | jsonpath | $.field, $[?(@.role=="admin")] | RFC 9535         |
 | `~`    | semantic | ~phrase                        | cosine / keyword fallback |
@@ -85,14 +85,16 @@ Plurnk Service treemaps every file, entry, and item, allowing every pattern filt
 | none   | glob     | pattern                        | shell glob       |
 
 * The leading symbol commits its dialect; a mistyped matcher is flagged, not silently downgraded to a glob.
-* In path targets, `*` maps one level; `dir/**` rows summarize recursive `items` and `tokens`, while `**` crosses directories.
+* In path targets, `*` maps one level and `**` crosses directories.
+* A `dir/**` summary reports the recursive `items` and `tokens`.
 * Filters bracket directly: $[?(@.role=="admin")], never $.[?(...)].
 * Mapping is universal (you can do jsonpath against XML files and xpath on json files, etc...).
 * Matching returns whole lines, never extracted values: `Alice` returns `42: I bought Alice some flowers`, not `1: Alice`.
-* The `#...#` fence takes any regex verbatim, so only a literal `#` inside needs escaping, as `\#`.
+* Regex uses the standard `/pattern/flags` literal; escape a literal delimiter as `\/`.
 
 ### `(path)`
 
+* Paths address exact resources or shell globs; content patterns belong in `:body:`.
 * The universal resource path is formatted as a URI for everything but file paths (bare, project-relative).
 * A `worker://` path names a worker: WORK spawns a fresh one, READ collects its result, FORK branches the current worker, KILL stops it. A path beneath it, like `worker://checker/notes.md`, is an entry in that worker's namespace.
 * Log item paths are nested (`log:///1/2/3` is loop/turn/item).
@@ -258,10 +260,9 @@ These are unsorted examples of legal plurnk usage, not a coherent or complete tu
 <<FIND(config/**/*.xml)://user[@role='admin']:FIND
 <<FIND(worker:///**):~french revolutionary history:FIND
 <<FIND(worker:///**)<0.7>:~french territorial concessions:FIND
-<<FIND(log:///**/error):#budget overflow|budget exceeded#i:FIND
+<<FIND(log:///**/error):/budget overflow|budget exceeded/i:FIND
 <<FIND[history](worker:///**):revolution:FIND
 <<FIND(data/users.json):$[?(@.role=="admin")]:FIND
-<<FIND(#src/.*\.test\.ts#)::FIND
 <<FIND(src/**):@createCoder:FIND
 <<FIND(src/**):@<createCoder:FIND
 <<FIND(**/notes.md)::FIND
@@ -272,6 +273,7 @@ These are unsorted examples of legal plurnk usage, not a coherent or complete tu
 <<READ(log:///1/2/3)<0.8>:~high-signal findings:READ
 <<READ(node:///3/1/2#stdout)<1,40>::READ
 <<READ(../AGENTS.md)<2>::READ
+<<READ(/AGENTS.md)::READ
 <<READ(https://en.wikipedia.org/wiki/Paris)<426,465>::READ
 <<EDIT[philosophy,existentialism](worker:///philosophy/existentialism/meaning.md):The meaning of life is 42:EDIT
 <<EDIT[france,geography](worker:///countries/france/capital.md):What is the capital of France?:EDIT

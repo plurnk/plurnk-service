@@ -108,7 +108,7 @@ export default class Http implements SchemeHandler {
     // FIND itself is the consumer's standard entry query. This hook owns only
     // HTTP's prerequisite: an exact URL that is not already an entry must be
     // acquired through the same guarded byte/render path used by search
-    // prefetch. Glob and regex targets only query already-known web entries.
+    // prefetch. Glob targets only query already-known web entries.
     async prepareFind(statement: FindStatement, ctx: SchemeCtx): Promise<PassthroughResult> {
         const target = statement.target;
         if (target === null || target.kind !== "url") return { shape: "passthrough", status: 200 };

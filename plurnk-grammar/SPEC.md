@@ -195,8 +195,8 @@ Two RFC concessions justify the relaxation:
    way before presenting them to the model, and the generation rail admits only
    that spelling. Unbalanced literal parentheses cannot be distinguished from
    the outer slot syntax and therefore require encoding.
-   For *matching* a parenthesized name,
-   glob (`Mercury_*planet*`) or a `#…#` regex is the natural form.
+   For *matching* a parenthesized name, a glob such as
+   `Mercury_*planet*` is the natural form.
 2. Bulk Pattern Matching extends path segments with glob
    metacharacters (`*`, `**`, `?`, `[…]`) that fall outside the RFC
    character set.
@@ -206,9 +206,6 @@ Lexer-enforced shape:
 - Optional scheme: `[a-z][a-z0-9+.-]*` followed by `://`.
 - Path content: any character except `)`, `<`, and newline. A literal
   `)` closes the slot (percent-encode to embed one).
-- A `#pattern#flags` regex target is recognized as a unit, bounded by
-  its own `#` delimiters (`\#` escapes a literal hash), so it MAY contain
-  `)` — regex groups work: `(#(draft|final)/.*#)`.
 - Glob metacharacters in path segments are permitted.
 
 Runtime-enforced semantics:
@@ -238,8 +235,8 @@ result. Glob is the no-prefix dialect only. {§matcher-prefix-claims}
 
 | Leading prefix | Dialect   | Canonical form            | Validation         |
 |----------------|-----------|---------------------------|--------------------|
-| `#`            | regex     | `#pattern#flags` (closing `#` required; flags `[igmsu]*`; `\#` escapes a literal hash) | `new RegExp()` in Visitor; error on failure |
 | `//`           | xpath     | `//…`                     | `xpath.parse()` in Visitor; error on failure |
+| `/`            | regex     | `/pattern/flags` (closing `/` required; `\/` escapes a literal slash) | `new RegExp()` in Visitor; error on failure |
 | `$`            | jsonpath  | `$…`                      | `JSONPath()` in Visitor; error on failure |
 | `~`            | semantic  | `~phrase`                 | none — any text is a valid query |
 | `@`            | graph     | `@symbol`, `@<symbol`, `@>symbol` | none — resolved service-side |
@@ -248,13 +245,12 @@ result. Glob is the no-prefix dialect only. {§matcher-prefix-claims}
 Dialect conventions (the Visitor uses these to construct typed AST
 body fields; the lexer is unaware):
 
-- Regex is `#pattern#flags` — `#` was chosen over `/` so the delimiter
-  never collides with path `/` or regex's own `|` alternation. A bare
-  `/`-leading body (`/etc/hosts`) is therefore an ordinary glob; only
-  the double-slash `//` prefix claims xpath.
-- Regex anchors `^` and `$` go inside the hashes: `#^foo$#`. Flag
-  semantics (`i`, `g`, `m`, `s`, `u`) follow ECMAScript.
-- Xpath body begins with `//` (descendant-or-self axis).
+- Regex is the standard ECMAScript `/pattern/flags` literal. Its body
+  slot is structurally separate from the target path, so a rooted path
+  cannot collide with it. Escape a literal delimiter as `\/`.
+- XPath begins with `//` (descendant-or-self axis) and is classified
+  before the single-slash regex prefix.
+- Regex anchors and flag semantics follow ECMAScript.
 - Semantic body is a free-text similarity query. With no `<scope>`, the
   consumer chooses its default result count; an integer overrides that count,
   while threshold and range narrowing ride `<scope>` (§7).
@@ -276,9 +272,9 @@ body fields; the lexer is unaware):
   `pathname`, `search`, `fragment`). Genuine URL-protocol violations
   (malformed authority, unterminated IPv6 brackets, invalid port, etc.)
   produce a `PlurnkParseError` with source `"visitor"`.
-- **Regex body** (matcher-body OPs only, leading `#`): the Visitor
-  splits `#pattern#flags` (respecting `\#` escapes) and calls
-  `new RegExp(pattern, flags)`. An unclosed fence and an invalid
+- **Regex body** (matcher-body OPs only, leading `/`): the Visitor
+  splits `/pattern/flags` (respecting escapes and character classes) and
+  calls `new RegExp(pattern, flags)`. An unclosed literal and an invalid
   pattern/flags pair produce distinct `"visitor"` errors (the latter
   carries the library's own detail, e.g. `Invalid flags supplied to
   RegExp constructor 'i:'`).
@@ -296,12 +292,6 @@ body fields; the lexer is unaware):
 Errors here are per-statement: sibling statements in the same turn
 still build, so a consumer executes the rest of the turn and relays the
 errored matcher's message as the teaching failure.
-
-**The target slot is the deliberate asymmetry.** A `(#pattern#flags)`
-*target* (path-name regex, §5) that fails to parse falls back to a
-local path rather than erroring — a file may legitimately be named
-`#…`, so the fallback has a real referent there; a matcher pattern has
-none. {§target-regex-local-fallback}
 
 **GBNF note — pattern bodies are single-line at the rail.** The shipped
 `dist/plurnk.gbnf` forbids literal newlines inside FIND/READ/OPEN/FOLD
@@ -639,23 +629,14 @@ interface StatementBase<S> {
 
 interface LineMarker { marks: number[]; } // 1+ ordered components; arity = consumer interpretation
 
-// Path is local (no scheme), URL (has scheme), or a regex-shaped target. The Visitor
-// decides by matching the leading [a-z][a-z0-9+.-]*:// pattern; only URLs are passed
-// through `new URL()` for component breakdown.
-type ParsedPath = LocalPath | UrlPath | RegexPath;
+// Path is local (no scheme) or URL (has scheme). The Visitor decides by matching
+// the leading [a-z][a-z0-9+.-]*:// pattern; only URLs are passed through
+// `new URL()` for component breakdown. Exact paths and shell globs share this shape.
+type ParsedPath = LocalPath | UrlPath;
 
 interface LocalPath {
     kind: "local";
     raw: string;             // filesystem path or other non-URL identifier
-}
-
-// A regex-shaped target — a `#pattern#` literal in the (path) slot (e.g.
-// `FIND(#.*\.test\.ts#)`). pattern/flags split out of the literal.
-interface RegexPath {
-    kind: "regex";
-    raw: string;
-    pattern: string;
-    flags: string;
 }
 
 interface UrlPath {
@@ -675,7 +656,7 @@ interface UrlPath {
 }
 
 // Typed body for FIND/READ/OPEN/FOLD — the leading prefix claims the dialect (§6).
-// The regex variant carries pattern/flags split out of the `#pattern#flags` literal;
+// The regex variant carries pattern/flags split out of the `/pattern/flags` literal;
 // no compiled RegExp rides the AST (JSON-serializable wire contract).
 type MatcherBody =
     | { dialect: "xpath"; raw: string }
@@ -815,7 +796,7 @@ The three sources distinguish:
 - **`"parser"`** — structural failures at parse-tree level (missing close tag, wrong token order, etc.).
 - **`"visitor"`** — semantic failures during AST construction (SEND signal not an integer, EXEC signal with multiple values, etc.).
 
-`severity` distinguishes a hard error from a non-fatal advisory. The parser is the sole and complete owner of syntax-error messaging (it holds the parse state, lexer mode, and expected-token set that no consumer has), so it produces the final diagnostic message plus value-adds: deduped expected-token lists, turn-shape imperatives (begin with `<<PLAN`, end with a terminal `<<SEND`), and `warning`-severity near-miss advisories when the forgiving parser swallows a `<<Word…:Word` heredoc whose keyword is a known op confusion (`<<CLOSE` → did you mean `<<FOLD`), plus the invented-closer diagnostic on a never-closed body: when the swallowed text carries a `:ALLCAPS` tag that is not the op's closer, the unparsedTail reason names it (`found \`:COMPARISON_TASK\`, which is body text - the closer echoes the op's name`) so a cap-cut runaway's recovery turn learns what happened, not just that something did. {§invented-closer-advisory} A lexer-side redirect fires when EXEC's `[signal]` slot (executor-ident mode) hits a leading `-` or digit — mark-shaped `<timeout, poll>` scope content mistyped into the brackets: the message becomes `timeout/poll ride the \`<scope>\` slot; try \`EXEC<-1,300>\`` instead of a raw `unrecognized character`, teaching at the parse where a model that has the vocabulary but missed the delimiter is reachable. EXEC-scoped (its signal mode is exclusive), so SEND/KILL are untouched. {§signal-scope-redirect} A sibling lexer-side redirect fires when the slot region (post-target) hits a matcher's leading char (`#` regex, `$` jsonpath, `~` semantic, `@` graph): the model put a body matcher where a slot goes (`FIND(path)#pattern#`), so the message becomes `a matcher rides the \`:body:\` slot; try \`:#pattern#:\`` instead of the generic slot list, redirecting the most re-derived placement mistake into the body at the parse. The four prefixes commit their dialect unambiguously and nothing legal in the slot region leads with them; `/` (xpath) is excluded, colliding with a forgotten `(path)` wrap. {§matcher-body-redirect} A sibling advisory fires when an unsuffixed PLAN body contains op-shaped text (`<<EXEC`…): it is almost always an omitted `:PLAN` whose body swallowed the turn's ops (`ops belong after the plan closes; did you omit \`:PLAN\`?`). A non-empty suffix deliberately invokes §suffix-discipline and suppresses this advisory. {§plan-body-op-advisory} A sibling advisory fires when a mutating op (EDIT/COPY/MOVE) parses with a null `(target)` and a path-shaped `[signal]` element (a `/` or a dotted extension): the model read `[signal](target)` as a markdown `[label](url)` link and routed a plain file path — which does not look like a URL — into the tag slot, leaving nothing to edit. The message redirects the path into `(…)` (`\`<<EDIT\` has no \`(target)\` - that path sits in the \`[…]\` tag slot; a target goes in \`(…)\`. Try \`EDIT(path):…\``), teaching at the parse where the engine returns only a bare 400. Gated on a path-shaped signal so a genuine tags-only slip is not mis-steered toward a path it lacks. {§misplaced-target-advisory} Consumers map hard parse errors bounded to a trustworthy model-turn frame to durable failed operation results and may project warnings as Notices with `level: "warn"`. An `unparsedTail` makes everything beyond its boundary undefined and cannot be recovered this way. Packet presentation may normalize and bound the producer-owned message without changing its meaning.
+`severity` distinguishes a hard error from a non-fatal advisory. The parser is the sole and complete owner of syntax-error messaging (it holds the parse state, lexer mode, and expected-token set that no consumer has), so it produces the final diagnostic message plus value-adds: deduped expected-token lists, turn-shape imperatives (begin with `<<PLAN`, end with a terminal `<<SEND`), and `warning`-severity near-miss advisories when the forgiving parser swallows a `<<Word…:Word` heredoc whose keyword is a known op confusion (`<<CLOSE` → did you mean `<<FOLD`), plus the invented-closer diagnostic on a never-closed body: when the swallowed text carries a `:ALLCAPS` tag that is not the op's closer, the unparsedTail reason names it (`found \`:COMPARISON_TASK\`, which is body text - the closer echoes the op's name`) so a cap-cut runaway's recovery turn learns what happened, not just that something did. {§invented-closer-advisory} A lexer-side redirect fires when EXEC's `[signal]` slot (executor-ident mode) hits a leading `-` or digit — mark-shaped `<timeout, poll>` scope content mistyped into the brackets: the message becomes `timeout/poll ride the \`<scope>\` slot; try \`EXEC<-1,300>\`` instead of a raw `unrecognized character`, teaching at the parse where a model that has the vocabulary but missed the delimiter is reachable. EXEC-scoped (its signal mode is exclusive), so SEND/KILL are untouched. {§signal-scope-redirect} A sibling lexer-side redirect fires when the slot region (post-target) begins with `$`, `~`, or `@`: the model put an unambiguous body matcher where a slot goes, so the message redirects it into `:body:` instead of returning the generic slot list. Slash-led regex and XPath are excluded because the same character can be a forgotten target wrap. {§matcher-body-redirect} A sibling advisory fires when an unsuffixed PLAN body contains op-shaped text (`<<EXEC`…): it is almost always an omitted `:PLAN` whose body swallowed the turn's ops (`ops belong after the plan closes; did you omit \`:PLAN\`?`). A non-empty suffix deliberately invokes §suffix-discipline and suppresses this advisory. {§plan-body-op-advisory} A sibling advisory fires when a mutating op (EDIT/COPY/MOVE) parses with a null `(target)` and a path-shaped `[signal]` element (a `/` or a dotted extension): the model read `[signal](target)` as a markdown `[label](url)` link and routed a plain file path — which does not look like a URL — into the tag slot, leaving nothing to edit. The message redirects the path into `(…)` (`\`<<EDIT\` has no \`(target)\` - that path sits in the \`[…]\` tag slot; a target goes in \`(…)\`. Try \`EDIT(path):…\``), teaching at the parse where the engine returns only a bare 400. Gated on a path-shaped signal so a genuine tags-only slip is not mis-steered toward a path it lacks. {§misplaced-target-advisory} Consumers map hard parse errors bounded to a trustworthy model-turn frame to durable failed operation results and may project warnings as Notices with `level: "warn"`. An `unparsedTail` makes everything beyond its boundary undefined and cannot be recovered this way. Packet presentation may normalize and bound the producer-owned message without changing its meaning.
 
 Serialization convention for transmission to the model (the agent
 runtime constructs this; the parser provides the fields):

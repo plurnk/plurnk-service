@@ -475,16 +475,6 @@ export default class AstBuilder {
      */
     static parsePath(raw: string, pos: Position = { line: 0, column: 0 }): ParsedPath | null {
         if (raw.length === 0) return null;
-        // A leading `#` dispatches a path-name regex (`#pattern#flags`) — an
-        // addressing pattern over paths, not a single address. `#` is collision-
-        // free here: scheme paths never lead with it, and `#channel` is a postfix.
-        // Unlike the matcher dispatch (which THROWS on a malformed claim, #59), a
-        // malformed `#…` target falls back to a local path - a file may legitimately
-        // be named `#…`, so the fallback has a real referent here.
-        if (raw.startsWith("#")) {
-            const regex = AstBuilder.#tryParseRegex(raw);
-            if (regex.ok) return { kind: "regex", raw, pattern: regex.pattern, flags: regex.flags };
-        }
         if (!AstBuilder.#SCHEME_PATTERN.test(raw)) {
             return { kind: "local", raw };
         }
@@ -572,14 +562,13 @@ export default class AstBuilder {
     }
 
     // Matcher dispatch: the leading prefix CLAIMS its dialect - the canon table's
-    // contract (`#` regex, `//` xpath, `$` jsonpath, `~` semantic, `@` graph, none
+    // contract (`/` regex, `//` xpath, `$` jsonpath, `~` semantic, `@` graph, none
     // glob). A claimed body that fails its dialect's parse is a positioned visitor
     // ERROR, never a silent glob fallback: the fallback converted a syntax fumble
     // into a lying 204 no-matches (#59 - four burned matcher turns and a confidently
     // wrong "no occurrences exist" about a file with two matches). Semantic and graph
     // have no parse step - any text is a valid query - so every prefix now claims
-    // unconditionally. Regex is `#pattern#flags` (`#` chosen over `/` so it never
-    // collides with path `/` or regex's own `|` alternation).
+    // unconditionally. XPath's `//` is tested before the regex `/pattern/flags`.
     static #parseMatcherBody(body: string, pos: Position): MatcherBody {
         if (body.startsWith("//")) {
             try { xpath.parse(body); }
@@ -589,13 +578,13 @@ export default class AstBuilder {
             }
             return { dialect: "xpath", raw: body };
         }
-        if (body.startsWith("#")) {
-            const regex = AstBuilder.#tryParseRegex(body);
+        if (body.startsWith("/")) {
+            const regex = AstBuilder.#tryParseSlashRegex(body);
             if (regex.ok) return { dialect: "regex", raw: body, pattern: regex.pattern, flags: regex.flags };
             throw new PlurnkParseError(pos.line, pos.column, "visitor",
                 regex.reason === "unclosed"
-                    ? "pattern leads with `#` but never closes the `#pattern#flags` fence - add the closing `#`"
-                    : `pattern leads with \`#\` but is not a valid \`#pattern#flags\` regex - ${regex.detail}`);
+                    ? "pattern leads with `/` but never closes the `/pattern/flags` literal - add the closing `/`"
+                    : `pattern leads with \`/\` but is not a valid \`/pattern/flags\` regex - ${regex.detail}`);
         }
         if (body.startsWith("$")) {
             // Compile-only validity check against RFC 9535 — json-p3 is the engine the runtime
@@ -616,16 +605,26 @@ export default class AstBuilder {
         return e instanceof Error ? e.message : String(e);
     }
 
-    // Splits a `#pattern#flags` literal. Assumes raw[0] is the opening `#`. `\#`
-    // escapes a literal hash inside the pattern. Discriminated result: the MATCHER
-    // caller throws the precise malformation (#59); the TARGET caller falls back to
-    // a local path (a file may legitimately be named `#…`; a matcher pattern may not).
-    static #tryParseRegex(raw: string):
+    // Splits an ECMAScript `/pattern/flags` literal. Backslash escapes and character
+    // classes keep a slash inside the pattern; the first unescaped slash outside a
+    // class closes it. The native constructor owns pattern and flag validity.
+    static #tryParseSlashRegex(raw: string):
         { ok: true; pattern: string; flags: string } | { ok: false; reason: "unclosed" } | { ok: false; reason: "invalid"; detail: string } {
         let i = 1;
+        let inClass = false;
         while (i < raw.length) {
             if (raw[i] === "\\") { i += 2; continue; }
-            if (raw[i] === "#") break;
+            if (raw[i] === "[") {
+                inClass = true;
+                i++;
+                continue;
+            }
+            if (raw[i] === "]" && inClass) {
+                inClass = false;
+                i++;
+                continue;
+            }
+            if (raw[i] === "/" && !inClass) break;
             i++;
         }
         if (i >= raw.length) return { ok: false, reason: "unclosed" };

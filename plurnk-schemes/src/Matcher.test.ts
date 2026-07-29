@@ -57,11 +57,11 @@ test("matcher: a multi-line span anchors on — and renders — its start line",
 test("matcher: passes the PARSED matcher to query (no re-parse), declared dialect authoritative (mimetypes#42)", async () => {
     let seen: string | ParsedBodyMatcher | undefined;
     const mts = stubMimetypes(async (_input, matcher) => { seen = matcher; return []; });
-    // A regex body whose pattern `//foo` would STRING-classify as xpath — the
+    // A regex body whose pattern `@foo` would STRING-classify as graph — the
     // exact drift #42 kills. We pass {dialect:"regex"} so it runs as regex.
-    const body: MatcherBody = { dialect: "regex", raw: "#//foo#g", pattern: "//foo", flags: "g" };
+    const body: MatcherBody = { dialect: "regex", raw: "/@foo/g", pattern: "@foo", flags: "g" };
     await Matcher.matchAgainstContent(body, "irrelevant", "text/markdown", mts);
-    assert.deepEqual(seen, { dialect: "regex", pattern: "//foo", flags: "g" });
+    assert.deepEqual(seen, { dialect: "regex", pattern: "@foo", flags: "g" });
 });
 
 test("matcher: a structural dialect passes {dialect, pattern: raw} (no flags)", async () => {

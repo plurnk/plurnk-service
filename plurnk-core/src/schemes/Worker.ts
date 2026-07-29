@@ -189,10 +189,6 @@ export default class Worker extends CoreSchemeAdapterBase {
     // worker://~/** your own, worker://<name>/** a named space (ancestry-gated like READ).
     async find(statement: FindStatement, ctx: CoreSchemeCallContext): Promise<FindResult> {
         const core = this.coreContext(ctx);
-        // A regex-kind target (#pattern#flags) has no authority slot — it draws from the commons.
-        if (statement.target !== null && statement.target.kind === "regex") {
-            return EntryFind.findWorkspaceEntries(statement, core, Worker.manifest, await Owner.commonsId(core.db, core.workspaceId));
-        }
         const authority = Worker.#authority(statement.target);
         if (authority === null) {
             return Results.failure("scheme:worker", "worker-target-required", 400, "FIND requires a worker:// target.", {

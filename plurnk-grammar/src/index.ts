@@ -52,7 +52,6 @@ export type {
     OperationResult,
     Position,
     ReadStatement,
-    RegexPath,
     SendBody,
     SendStatement,
     OpenStatement,

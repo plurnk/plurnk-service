@@ -103,5 +103,4 @@ export type {
     ParsedPath,
     LocalPath,
     UrlPath,
-    RegexPath,
 } from "@plurnk/plurnk-grammar";

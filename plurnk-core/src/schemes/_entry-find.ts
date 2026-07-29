@@ -106,7 +106,7 @@ export default class EntryFind {
         // name). File persists under the reserved 'file' scheme ({§entry-identity-no-null}).
         const scheme = EntryCrud.identityScheme(manifest);
         const scopePathname = EntryFind.#scopePathnameOf(statement);
-        const scope = statement.target.kind === "regex" || scopePathname === null
+        const scope = scopePathname === null
             ? null
             : pathScope(scopePathname, manifest.folderScopes === true);
         // {§fs-errno} — the green-lie pin (#545): a FIND whose target is an EXACT path (no glob,
@@ -147,15 +147,7 @@ export default class EntryFind {
             ? candidates.map((candidate) => candidate.pathname)
             : undefined;
 
-        // grammar 0.46 regex-in-path — a `#pattern#flags` target narrows candidates by regex
-        // over their pathname (in TS; SQLite has no regex). Malformed pattern → 400, parallel
-        // to a malformed body matcher.
-        if (statement.target.kind === "regex") {
-            let re: RegExp;
-            try { re = new RegExp(statement.target.pattern, statement.target.flags || undefined); }
-            catch { return { status: 400, matches: [] }; }
-            candidates = candidates.filter((c) => re.test(c.pathname));
-        } else if (scope !== null) {
+        if (scope !== null) {
             try {
                 candidates = candidates.filter((c) => pathScopeMatches(scope, c.pathname));
             } catch {

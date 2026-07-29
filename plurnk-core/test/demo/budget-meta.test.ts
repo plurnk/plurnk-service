@@ -146,7 +146,8 @@ test("budget-meta: a jumbo uniform-density doc under a tight ceiling — FIND th
     });
     try {
         if (!/CRIMSON-MERIDIAN-84/i.test(run.lastContent)) await run.dump();
-        // The doc cannot be held whole under the ceiling, so good-faith management is: FIND(#shutdown#)
+        // The doc cannot be held whole under the ceiling, so good-faith management is:
+        // FIND(ledger.md):/shutdown/
         // to locate the one line, size a precise chunk-read around it from the reliable uniform
         // tokens/line clue, curate the rest, and answer. The buried code proves it read precisely and
         // curated — not read blindly. Uniform density means correct sizing never overflows: a fair test.

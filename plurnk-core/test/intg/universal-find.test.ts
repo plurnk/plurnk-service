@@ -108,7 +108,7 @@ test("exact URL FIND acquires live HTTP resources, reuses them, and rejects dead
         const loopId = await insertLoop(db, workerId, 1);
         const turnId = await insertTurn(db, loopId, 1, 102);
         const result = await engine.dispatch({
-            statement: parseFind(`<<FIND(${url}):#Zhannetta#:FIND`),
+            statement: parseFind(`<<FIND(${url}):/Zhannetta/:FIND`),
             workspaceId,
             workerId,
             loopId,
@@ -138,7 +138,7 @@ test("exact URL FIND acquires live HTTP resources, reuses them, and rejects dead
         assert.doesNotMatch(String(reused.content), /Zhannetta Nikolaevna Lotnik was his spouse/);
 
         const surveyed = await engine.dispatch({
-            statement: parseFind("<<FIND(https://93.184.216.34/*):#spouse#:FIND"),
+            statement: parseFind("<<FIND(https://93.184.216.34/*):/spouse/:FIND"),
             workspaceId,
             workerId,
             loopId,

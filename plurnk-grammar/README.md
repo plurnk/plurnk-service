@@ -63,9 +63,9 @@ Exit `0` on clean parse, `1` on any error or unparsed tail.
 | KILL | unix signal int  | annotation (opaque)   | n/a                |
 | PLAN | tags             | reasoning text        | n/a                |
 
-Matcher body dialect by leading char: `//` xpath, `#...#flags` regex, `$` jsonpath, `~` semantic, `@` graph, else glob. A leading symbol commits its dialect; invalid syntax is reported.
+Matcher body dialect by leading char: `//` xpath, `/pattern/flags` regex, `$` jsonpath, `~` semantic, `@` graph, else glob. A leading symbol commits its dialect; invalid syntax is reported.
 
-Path scheme detection: a leading `#` → path-name regex (`#pattern#flags`); else `[a-z][a-z0-9+.-]*://` → URL (fully decomposed); else local (raw). Bare paths default to `file://` at runtime.
+Path scheme detection: `[a-z][a-z0-9+.-]*://` → URL (fully decomposed); otherwise local (raw). Targets address exact paths or shell globs. Bare paths default to `file://` at runtime.
 
 Nesting: outer body may contain inner `<<OP:…:OP` statements; outer must use a non-empty suffix so its close `:OPsuffix` is distinct.
 
@@ -133,7 +133,7 @@ Nesting: outer body may contain inner `<<OP:…:OP` statements; outer must use a
 	<<SEND[200]:Paris:SEND
 
 19. Search logs for budget-overflow errors (case-insensitive regex body)
-	<<FIND(log:///**/error):#budget overflow|budget exceeded#i:FIND
+	<<FIND(log:///**/error):/budget overflow|budget exceeded/i:FIND
 
 20. Find entries whose content begins with "Paris" (glob body)
 	<<FIND(worker:///countries/**):Paris*:FIND
@@ -192,8 +192,8 @@ Nesting: outer body may contain inner `<<OP:…:OP` statements; outer must use a
 	<<EDIT(worker:///inner):hello world:EDIT
 	:EDITouter
 
-37. Find every entry whose path matches a regex (path-name regex target)
-	<<FIND(#draft.*#i)::FIND
+37. Read a file from the project root
+	<<READ(/AGENTS.md)::READ
 
 ## error format
 

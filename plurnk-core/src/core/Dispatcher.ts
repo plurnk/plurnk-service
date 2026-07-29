@@ -1545,8 +1545,7 @@ export default class Dispatcher {
         params: string | null; fragment: string | null;
     } {
         if (path === null) return { scheme: null, username: null, password: null, hostname: null, port: null, pathname: null, params: null, fragment: null };
-        // `local` (bare path) and `regex` (grammar 0.46 `#pattern#flags` target) carry no URL parts — store the raw text as the pathname for the log record, scheme=null.
-        if (path.kind === "regex") return { scheme: null, username: null, password: null, hostname: null, port: null, pathname: path.raw, params: null, fragment: null }; // regex source — no decode
+        // `local` (bare path) carries no URL parts — store the raw text as the pathname for the log record, scheme=null.
         if (path.kind === "local") return { scheme: null, username: null, password: null, hostname: null, port: null, pathname: decodePathParens(path.raw), params: null, fragment: null }; // #239 item 4
         const scheme = path.scheme === "file" ? null : path.scheme;
         // Every registered (plurnk-namespace) scheme uses its authority as a namespace segment — fold

@@ -1,7 +1,6 @@
 // #239 item 4 — the grammar's target slot is opaque: parens in a path are percent-encoded
 // (%28/%29) so a literal `)` doesn't close the op slot, and the service decodes them at
-// resolve time. Only parens are encoded, so the decode is exact (never a literal `%`); a
-// regex target's source stays raw (its parens are syntax).
+// resolve time. Only parens are encoded, so the decode is exact (never a literal `%`).
 
 import test from "node:test";
 import assert from "node:assert/strict";

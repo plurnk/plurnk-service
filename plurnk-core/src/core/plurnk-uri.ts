@@ -36,7 +36,6 @@ export function foldAuthorityIntoPath(hostname: string | null, pathname: string)
 }
 
 export function entryPathnameOf(path: ParsedPath): string {
-    if (path.kind === "regex") return path.raw;
     const pathname = path.kind === "url"
         ? foldAuthorityIntoPath(path.hostname, path.pathname)
         : path.raw;

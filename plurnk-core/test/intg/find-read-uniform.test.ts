@@ -95,7 +95,7 @@ test("[#286] regex READ across files — one row per match, each at its (file, s
         await seedRaw(ctx, "a.md", "intro\nerror: one\ntail");
         await seedRaw(ctx, "b.md", "error: two\nmore");
         await seedRaw(ctx, "c.md", "clean");
-        const { result, rows } = await dispatchRows(db, engine, ids, parseOp<ReadStatement>("<<READ(worker:///**):#error: \\w+#:READ", "READ"));
+        const { result, rows } = await dispatchRows(db, engine, ids, parseOp<ReadStatement>("<<READ(worker:///**):/error: \\w+/:READ", "READ"));
         assert.equal(result.rowsWritten, 3, "the FIND summary + two matches across two files (c excluded)");
         assert.deepEqual(rows.map((r) => r.content).toSorted(), ["error: one", "error: two"]);
     } finally { await db.close(); }

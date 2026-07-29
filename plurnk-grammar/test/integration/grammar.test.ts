@@ -21,7 +21,7 @@ test("ex 4 — bare READ, empty body", () => {
 });
 
 test("#607: balanced parentheses are ordinary URL target content", () => {
-    const source = "<<READ(https://en.wikipedia.org/wiki/Igor_Smirnov_(politician)):#spouse|wife|married|Zhannetta|Lotnik#i:READ";
+    const source = "<<READ(https://en.wikipedia.org/wiki/Igor_Smirnov_(politician)):/spouse|wife|married|Zhannetta|Lotnik/i:READ";
     const result = PlurnkParser.parseStatements(source);
     assert.equal(result.items.filter((item) => item.kind === "error").length, 0);
     const item = result.items.find((candidate) => candidate.kind === "statement");
@@ -508,62 +508,60 @@ test("invalid path (unterminated IPv6 bracket) produces visitor error", () => {
 });
 
 test("valid regex body accepted", () => {
-    const result = PlurnkParser.parseStatements("<<FIND(log://errors):#timeout|deadline#i:FIND");
+    const result = PlurnkParser.parseStatements("<<FIND(log://errors):/timeout|deadline/i:FIND");
     assert.equal(result.items.filter((i) => i.kind === "statement").length, 1);
     assert.equal(result.items.filter((i) => i.kind === "error").length, 0);
 });
 
 // {§matcher-prefix-claims}
-test("#59: a `#`-leading body that never closes the fence is a visitor ERROR, not a silent glob", () => {
-    const result = PlurnkParser.parseStatements("<<FIND(log://x):#unclosed-regex:FIND");
+test("#59: a `/`-leading body that never closes the literal is a visitor ERROR, not a silent glob", () => {
+    const result = PlurnkParser.parseStatements("<<FIND(log://x):/unclosed-regex:FIND");
     const errors = result.items.filter((i) => i.kind === "error");
     assert.equal(errors.length, 1);
-    assert.match(errors[0]!.error.message, /never closes the `#pattern#flags` fence - add the closing `#`/);
+    assert.match(errors[0]!.error.message, /never closes the `\/pattern\/flags` literal - add the closing `\/`/);
     assert.equal(errors[0]!.error.source, "visitor");
     assert.equal(result.items.filter((i) => i.kind === "statement").length, 0);
 });
 
-test("#59: invalid regex pattern (unterminated character class) is a visitor ERROR, not a silent glob", () => {
-    const result = PlurnkParser.parseStatements("<<FIND(log://x):#[abc#:FIND");
+test("#59: invalid regex pattern is a visitor ERROR, not a silent glob", () => {
+    const result = PlurnkParser.parseStatements("<<FIND(log://x):/(abc/:FIND");
     const errors = result.items.filter((i) => i.kind === "error");
     assert.equal(errors.length, 1);
-    assert.match(errors[0]!.error.message, /is not a valid `#pattern#flags` regex/);
+    assert.match(errors[0]!.error.message, /is not a valid `\/pattern\/flags` regex/);
 });
 
-test("#59: the live specimen — `#hello#i:` (stray fence colon in flags) errors with the library detail", () => {
+test("#59: a stray colon in regex flags errors with the library detail", () => {
     // gemma's actual emission: a lying 204 told it "no matches" about a file with two;
     // it burned four matcher turns and delivered a confidently wrong conclusion.
-    const result = PlurnkParser.parseStatements("<<READ(f.txt):#hello#i::READ");
+    const result = PlurnkParser.parseStatements("<<READ(f.txt):/hello/i::READ");
     const errors = result.items.filter((i) => i.kind === "error");
     assert.equal(errors.length, 1);
-    assert.match(errors[0]!.error.message, /is not a valid `#pattern#flags` regex - Invalid flags/);
+    assert.match(errors[0]!.error.message, /is not a valid `\/pattern\/flags` regex - Invalid flags/);
     assert.equal(result.items.filter((i) => i.kind === "statement").length, 0);
 });
 
 test("#59: the claim is per-statement — sibling statements still build around the errored matcher", () => {
-    const result = PlurnkParser.parseStatements("<<READ(a.txt):#ok#i:READ\n<<READ(f.txt):#bad#i::READ\n<<KILL(log:///1/2/3)::KILL");
+    const result = PlurnkParser.parseStatements("<<READ(a.txt):/ok/i:READ\n<<READ(f.txt):/bad/i::READ\n<<KILL(log:///1/2/3)::KILL");
     assert.equal(result.items.filter((i) => i.kind === "statement").length, 2);
     assert.equal(result.items.filter((i) => i.kind === "error").length, 1);
 });
 
-test("#59 residual: specimen 2 (`:<1,-1>:#hello#i:`) leads with `:`, claims nothing, stays a glob", () => {
+test("#59 residual: a marker-shaped body prefix still claims nothing and stays a glob", () => {
     // A line-marker bled into the body is a DIFFERENT fumble - no prefix claim fires.
     // Documented residual: we claim declared intent, we don't heuristic every fumble.
-    const result = PlurnkParser.parseStatements("<<READ(f.txt)::<1,-1>:#hello#i::READ");
+    const result = PlurnkParser.parseStatements("<<READ(f.txt)::<1,-1>:/hello/i::READ");
     const stmt = result.items.find((i) => i.kind === "statement");
     assert.ok(stmt && stmt.kind === "statement");
     if (stmt.kind !== "statement" || stmt.statement.op !== "READ") return;
     assert.equal(stmt.statement.body?.dialect, "glob");
 });
 
-test("MatcherBody: single-slash `/path`-shaped literal falls back to glob (`/` is freed)", () => {
+test("MatcherBody: a path-shaped slash expression is regex syntax, not a glob", () => {
     const result = PlurnkParser.parseStatements("<<READ(host.conf):/etc/hosts:READ");
-    const stmt = result.items.find((i) => i.kind === "statement");
-    if (!stmt || stmt.kind !== "statement" || stmt.statement.op !== "READ") return;
-    const b = stmt.statement.body;
-    assert.ok(b);
-    assert.equal(b.dialect, "glob");
-    assert.equal(b.raw, "/etc/hosts");
+    const errors = result.items.filter((i) => i.kind === "error");
+    assert.equal(errors.length, 1);
+    assert.match(errors[0]!.error.message, /Invalid flags supplied to RegExp constructor 'hosts'/);
+    assert.equal(result.items.filter((i) => i.kind === "statement").length, 0);
 });
 
 test("valid xpath body (//user[@role='admin']) accepted", () => {
@@ -1009,7 +1007,7 @@ test("ParsedPath cleavage: file:// stays authority-bearing", () => {
 // -------------------------------------------------------------------------
 
 test("MatcherBody: regex returns dialect + compiled regexp", () => {
-    const result = PlurnkParser.parseStatements("<<FIND(log://x):#foo|bar#i:FIND");
+    const result = PlurnkParser.parseStatements("<<FIND(log://x):/foo|bar/i:FIND");
     const item = result.items[0];
     if (item.kind !== "statement" || item.statement.op !== "FIND") return;
     const b = item.statement.body;
@@ -1023,14 +1021,27 @@ test("MatcherBody: regex returns dialect + compiled regexp", () => {
     assert.equal(rx.test("FOO"), true); // i flag works
 });
 
-test("target: path-name regex `#…#flags` parses to a regex ParsedPath", () => {
+test("MatcherBody: regex preserves escaped delimiters and character-class slashes", () => {
+    for (const [source, pattern] of [
+        ["<<FIND(log://x):/a\\/b/i:FIND", "a\\/b"],
+        ["<<FIND(log://x):/[/]/:FIND", "[/]"],
+    ]) {
+        const item = PlurnkParser.parseStatements(source).items[0];
+        if (item?.kind !== "statement" || item.statement.op !== "FIND") assert.fail("expected FIND");
+        const body = item.statement.body;
+        if (body?.dialect !== "regex") assert.fail("expected regex body");
+        assert.equal(body.pattern, pattern);
+        assert.doesNotThrow(() => new RegExp(body.pattern, body.flags));
+    }
+});
+
+test("target: a regex-shaped hash spelling remains a local path", () => {
     const result = PlurnkParser.parseStatements("<<FIND(#draft.*#i)::FIND");
     const item = result.items[0];
     if (item.kind !== "statement" || item.statement.op !== "FIND") return;
     const t = item.statement.target;
-    if (t?.kind !== "regex") { assert.fail("expected regex target"); return; }
-    assert.equal(t.pattern, "draft.*");
-    assert.equal(t.flags, "i");
+    assert.equal(t?.kind, "local");
+    assert.equal(t?.raw, "#draft.*#i");
 });
 
 test("MatcherBody: xpath returns dialect + raw", () => {
@@ -1123,10 +1134,9 @@ test("MatcherBody: graph neighborhood query (@symbol) dispatches graph", () => {
     assert.equal(b.raw, "@createCoder");
 });
 
-test("#59: a `//`-leading literal (code comment) errors — the prefix claims xpath, steer toward `#regex#`", () => {
-    // The old fallback quietly glob'd this; under claiming, searching for literal
-    // comment text gets a one-turn steer (write `#// TODO#` regex) instead of a
-    // silent misclassification.
+test("#59: a `//`-leading literal (code comment) errors because the prefix claims xpath", () => {
+    // The old fallback quietly glob'd this; under claiming, invalid XPath fails
+    // instead of silently becoming a different matcher.
     const result = PlurnkParser.parseStatements("<<READ(src/app.js):// TODO: add error handling:READ");
     const errors = result.items.filter((i) => i.kind === "error");
     assert.equal(errors.length, 1);
@@ -1292,19 +1302,16 @@ test("error message: the redirect's suggested spelling actually parses (EXEC<-1,
     if (stmt?.kind === "statement") assert.deepEqual((stmt.statement as any).lineMarker?.marks, [-1, 300]);
 });
 
-// #562 (run61): a model that recites "pattern in body" yet writes `FIND(path)#pattern#` - the
-// matcher after the path instead of in the `:body:` - gets a redirect to the body slot AT THE
-// PARSE, not a generic slot list. The four unambiguous matcher prefixes (#, $, ~, @) commit
-// their dialect and nothing legal in the slot region starts with them.
-test("error message: matcher-shaped char in the slot region redirects to :body: ()", () => {
+// #562 (run61): an unambiguous matcher after the path instead of in the body gets
+// redirected at the parse. Slash is excluded because it can also be an unwrapped target.
+test("error message: matcher-shaped char in the slot region redirects to :body:", () => {
     for (const src of [
-        "<<FIND(functions.go)#require#:FIND",
         "<<FIND(data.json)$.role:FIND",
         "<<FIND(notes.md)~budget:FIND",
         "<<FIND(main.ts)@<handler:FIND",
     ]) {
         const e = firstError(src);
-        assert.match(e.message, /a matcher rides the `:body:` slot; try `:#pattern#:`/, src);
+        assert.match(e.message, /a matcher rides the `:body:` slot; put it between the body fences/, src);
     }
 });
 
@@ -1318,8 +1325,8 @@ test("error message: a non-matcher slot-region failure keeps the generic slot li
     }
 });
 
-test("error message: the matcher redirect's suggested spelling actually parses (:#pattern#:)", () => {
-    const result = PlurnkParser.parseStatements("<<FIND(functions.go):#require#:FIND");
+test("error message: a redirected matcher parses in the body", () => {
+    const result = PlurnkParser.parseStatements("<<FIND(data.json):$.role:FIND");
     assert.equal(result.items.filter((i) => i.kind === "error").length, 0);
     const stmt = result.items.find((i) => i.kind === "statement");
     assert.ok(stmt && stmt.kind === "statement" && stmt.statement.op === "FIND");

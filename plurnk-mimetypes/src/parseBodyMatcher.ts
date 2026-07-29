@@ -1,4 +1,5 @@
 import type { QueryDialect } from "./types.ts";
+import { InvalidExpressionError } from "./QueryError.ts";
 
 export interface ParsedBodyMatcher {
     readonly dialect: QueryDialect;
@@ -23,20 +24,41 @@ export function parseBodyMatcher(expr: string): ParsedBodyMatcher {
         return { dialect: "jsonpath", pattern: expr };
     }
     if (expr.startsWith("/")) {
-        // Strip the leading slash, then look for a trailing /flags. We allow
-        // `\/` as an escape inside the pattern body to preserve literal slashes.
-        const inner = expr.slice(1);
-        const trailing = inner.match(/\/([gimsuy]*)$/);
-        if (trailing) {
-            const patternEnd = inner.length - trailing[0].length;
-            return {
-                dialect: "regex",
-                pattern: inner.slice(0, patternEnd),
-                flags: trailing[1] || undefined,
-            };
+        let end = 1;
+        let inClass = false;
+        while (end < expr.length) {
+            if (expr[end] === "\\") {
+                end += 2;
+                continue;
+            }
+            if (expr[end] === "[") {
+                inClass = true;
+                end++;
+                continue;
+            }
+            if (expr[end] === "]" && inClass) {
+                inClass = false;
+                end++;
+                continue;
+            }
+            if (expr[end] === "/" && !inClass) break;
+            end++;
         }
-        // No closing slash → take the whole tail as the pattern (lenient).
-        return { dialect: "regex", pattern: inner };
+        if (end >= expr.length) {
+            throw new InvalidExpressionError({
+                dialect: "regex",
+                expression: expr,
+                cause: new SyntaxError("missing closing slash"),
+            });
+        }
+        const pattern = expr.slice(1, end);
+        const flags = expr.slice(end + 1);
+        try {
+            new RegExp(pattern, flags);
+        } catch (cause) {
+            throw new InvalidExpressionError({ dialect: "regex", expression: expr, cause });
+        }
+        return { dialect: "regex", pattern, flags: flags || undefined };
     }
     return { dialect: "glob", pattern: expr };
 }

@@ -233,15 +233,13 @@ export default class File extends CoreSchemeAdapterBase {
         if (statement === undefined) return failure("edit-empty", 400, "EDIT batch is empty.");
         const core = this.coreContext(ctx);
         if (statement.target === null) return failure("edit-target-required", 400, "EDIT requires a path.");
-        const pathname = statement.target.kind === "regex" ? statement.target.raw
-            : decodePathParens(statement.target.kind === "url" ? statement.target.pathname : statement.target.raw); // #239 item 4
+        const pathname = decodePathParens(statement.target.kind === "url" ? statement.target.pathname : statement.target.raw); // #239 item 4
         const target = await this.#resolveWriteTarget(pathname, core);
         if (!target.ok) return failure("write-target-refused", target.status, target.error);
         const { canonical, rel, fileExists, original, mimetype, baseSig, admittedBy } = target;
         for (const candidate of statements.slice(1)) {
             if (candidate.target === null) return failure("edit-batch-mismatch", 400, "EDIT batch spans multiple resources.");
-            const candidatePathname = candidate.target.kind === "regex" ? candidate.target.raw
-                : decodePathParens(candidate.target.kind === "url" ? candidate.target.pathname : candidate.target.raw);
+            const candidatePathname = decodePathParens(candidate.target.kind === "url" ? candidate.target.pathname : candidate.target.raw);
             const candidateTarget = await this.#resolveWriteTarget(candidatePathname, core);
             if (!candidateTarget.ok || candidateTarget.rel !== rel) return failure("edit-batch-mismatch", 400, "EDIT batch spans multiple resources.");
         }

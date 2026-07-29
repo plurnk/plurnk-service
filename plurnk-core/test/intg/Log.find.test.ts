@@ -1,6 +1,6 @@
 // §log-uniform-query — FIND over the worker's log rows, on the SAME source-agnostic primitive every
 // entry scheme runs (§find-source-agnostic). The jumbo forensic: the model ran
-// `FIND(log:///**):#engine#i` six times — a canon-documented gesture (plurnk.md:148) — and got a
+// `FIND(log:///**):/engine/i` six times — a canon-documented gesture — and got a
 // bare 501 from the one scheme that sat outside the universal paradigm. These pin the uniform
 // contract through the REAL dispatch: FIND(log) with content dialects, the hierarchy as scope, and
 // the FIND→READ fan-out composition.
@@ -38,7 +38,7 @@ const setup = async () => {
     return { db, engine, workspaceId, workerId, loopId, turnId };
 };
 
-test("FIND(log:///**):#regex# matches log rows by CONTENT — the jumbo gesture works", async () => {
+test("FIND(log:///**):/regex/ matches log rows by CONTENT — the jumbo gesture works", async () => {
     const { db, workerId } = await setup();
     try {
         const r = await new Log().find(
@@ -131,7 +131,7 @@ test("log FIND maps source lines to the structured rows a scoped READ accepts", 
     } finally { await db.close(); }
 });
 
-test("READ(log:///**):#pattern# fans out — FIND locates, per-row READs deliver, uniform with entries", async () => {
+test("READ(log:///**):/pattern/ fans out — FIND locates, per-row READs deliver, uniform with entries", async () => {
     const { db, engine, workspaceId, workerId, loopId, turnId } = await setup();
     try {
         const result = await engine.dispatch({

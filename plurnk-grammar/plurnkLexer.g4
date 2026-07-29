@@ -252,12 +252,6 @@ SD_END   : ']' -> type(RBRACKET), mode(SLOTS) ;
 // ============================================================================
 
 mode TARGET;
-// A `#…#flags` regex target may legitimately contain `)` (regex groups). The naive
-// TARGET_INNER terminates on the first `)`, so recognize a complete regex up front —
-// bounded by its own `#` delimiters (`\#` escapes a literal hash). The trailing
-// predicate requires the next char to be `)`, so this fires ONLY for a whole-target
-// regex; a `#`-leading path that isn't a clean regex falls through to TARGET_INNER.
-TARGET_REGEX : '#' ('\\' . | ~[#\r\n])* '#' [a-zA-Z]* { this.inputStream.LA(1) === 0x29 }? -> type(TARGET_TEXT) ;
 TARGET_INNER : (~[()<\r\n] | '<' ~[()<\r\n])+ -> type(TARGET_TEXT) ;
 TARGET_NEST_OPEN : '(' { this.targetDepth++; } -> type(TARGET_TEXT) ;
 TARGET_NEST_END  : { this.targetDepth > 0 }? ')' { this.targetDepth--; } -> type(TARGET_TEXT) ;

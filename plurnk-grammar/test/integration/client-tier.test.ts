@@ -39,7 +39,7 @@ test("client: LOOK is read-shaped — tag signal, target, lineMarker, matcher bo
 });
 
 test("client: BUFF carries a matcher body (filter on the way in)", () => {
-    const stmts = clientStatementsOf("<<BUFF(file://draft.md):#TODO#i:BUFF");
+    const stmts = clientStatementsOf("<<BUFF(file://draft.md):/TODO/i:BUFF");
     const s: any = stmts[0].statement;
     assert.equal(s.op, "BUFF");
     assert.equal(s.body.dialect, "regex");

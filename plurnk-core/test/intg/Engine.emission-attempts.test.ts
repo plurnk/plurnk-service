@@ -180,7 +180,7 @@ test("a bounded malformed operation is admitted once and becomes a model-visible
     try {
         const malformed = [
             "<<PLAN:inspect relevant modules:PLAN",
-            "<<FIND(ast/**|lexer/**|parser/**|stdlib/**|util/**):#module|#require|#load|#cache#i:FIND",
+            "<<FIND(ast/**|lexer/**|parser/**|stdlib/**|util/**):/module|/require|/load|/cache/i:FIND",
             "<<SEND[102]:inspect the results next:SEND",
         ].join("\n");
         const provider = new AttemptWitness({
@@ -235,7 +235,7 @@ test("a bounded malformed operation is admitted once and becomes a model-visible
             syntaxFailure.problem?.type,
             "https://problems.plurnk.dev/grammar/parser/invalid-operation-syntax",
         );
-        assert.match(syntaxFailure.problem?.detail ?? "", /not a valid `#pattern#flags` regex/);
+        assert.match(syntaxFailure.problem?.detail ?? "", /not a valid `\/pattern\/flags` regex/);
         assert.equal(syntaxFailure.problem?.line, 2);
         assert.equal(syntaxFailure.problem?.source, "visitor");
 
@@ -251,7 +251,7 @@ test("a bounded malformed operation is admitted once and becomes a model-visible
         assert.match(packetSection(packet, "errors"), /400 log:\/\/\/.*\/error/);
         assert.match(
             packetSection(packet, "log"),
-            /not a valid `#pattern#flags` regex/,
+            /not a valid `\/pattern\/flags` regex/,
             "the next turn receives the parser's actionable diagnostic",
         );
     } finally {
@@ -267,7 +267,7 @@ test("a bounded malformed operation prevents same-turn completion until the mode
             responses: [
                 invalid([
                     "<<PLAN:search and conclude:PLAN",
-                    "<<FIND(**):#unterminated[:FIND",
+                    "<<FIND(**):/unterminated[:FIND",
                     "<<SEND[200]:done:SEND",
                 ].join("\n")),
             ],

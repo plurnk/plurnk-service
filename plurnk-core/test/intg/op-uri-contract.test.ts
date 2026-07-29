@@ -117,6 +117,21 @@ test("contract: FIND(/leading-slash) resolves the member — isolates the missin
     });
 });
 
+test("contract: a hash-shaped target addresses that literal path, never a pathname regex", async () => {
+    await withWorkspaceRoot(async (root, ctx) => {
+        await writeFile(join(root, "#draft.*#i"), "literal hash path\n");
+        await writeFile(join(root, "draft.md"), "would match the retired regex interpretation\n");
+        await addMember(ctx, "#draft.*#i");
+        await addMember(ctx, "draft.md");
+
+        const stmt = parseOp<FindStatement>("<<FIND(#draft.*#i)::FIND", "FIND");
+        const result = await new File().find(stmt, ctx);
+
+        assert.equal(result.status, 200);
+        assert.deepEqual(result.results.map((item) => item.path), ["#draft.*#i"]);
+    });
+});
+
 // ── §matcher-result: READ returns matching LINES, uniformly. A matcher SELECTS; READ
 // returns the source line(s) at the match. regex matches (never extracts); glob, jsonpath,
 // xpath all select lines. One shape across every dialect. ──
@@ -128,7 +143,7 @@ test("a regex READ returns the matching LINE, not the substring", async () => {
     await withWorkspaceRoot(async (root, ctx) => {
         await writeFile(join(root, "notes.md"), "the codename is phoenix\n");
         await addMember(ctx, "notes.md");
-        const stmt = parseOp<ReadStatement>("<<READ(notes.md):#phoenix#:READ", "READ");
+        const stmt = parseOp<ReadStatement>("<<READ(notes.md):/phoenix/:READ", "READ");
         const result = await new File().read(stmt, ctx);
         assert.match(result.content ?? "", /the codename is phoenix/, `regex READ returns the whole LINE; got: ${JSON.stringify(result.content)}`);
     });

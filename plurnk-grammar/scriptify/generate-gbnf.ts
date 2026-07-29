@@ -457,26 +457,11 @@ export const buildModel = (): GModel => {
     model.set("branch", [[lit("["), plus(BRANCH_CHAR), lit("]")]]);
     model.set("tag", [[plus(TAG_CHAR)]]);
     model.set("tag-rest", [[lit(","), ref("tag")]]);
-    // Target — two alternatives, both `(`-`)`-delimited slots:
-    //   target-inner : the canonical generation subset — an opaque blob with
-    //     parentheses percent-encoded. ANTLR deliberately accepts balanced raw
-    //     parentheses too, but the rail generates one low-ambiguity spelling.
-    //   target-regex : a `#…#flags` path-name regex. The `#` fences bound it, so a `)`
-    //     MAY appear inside (regex groups: `(#(draft|final)/.*#i)`) — the slot-closing
-    //     `)` comes after the flags. Mirrors the ANTLR `TARGET_REGEX` rule; without this
-    //     a constrained model couldn't emit grouped path-name regexes the parser accepts.
-    // Both are strict subsets of their ANTLR lexer rules, so `L(GBNF) ⊆ L(ANTLR)` holds.
-    // A `#…#` target matches both alternatives (ambiguous), but only `#`-leading targets
-    // pay that cost — a normal path kills the regex branch at the first char.
-    model.set("target", [
-        [lit("("), ref("target-inner"), lit(")")],
-        [lit("("), ref("target-regex"), lit(")")],
-    ]);
+    // Target — the canonical generation subset: an opaque exact path or shell glob
+    // with parentheses percent-encoded. ANTLR deliberately accepts balanced raw
+    // parentheses too, but the rail generates one low-ambiguity spelling.
+    model.set("target", [[lit("("), ref("target-inner"), lit(")")]]);
     model.set("target-inner", [[plus(cls([...CONTROL_RANGES, ...C("()<\r\n")], true))]]);
-    model.set("target-regex", [[lit("#"), star(ref("target-rx-char")), lit("#"), star(cls([R("a", "z"), R("A", "Z")]))]]);
-    // Regex content: an escaped char (`\#` for a literal hash) or any non-`#`/newline.
-    // `\` + non-newline is a strict subset of ANTLR's `'\\' .` (which also allows newline).
-    model.set("target-rx-char", [[lit("\\"), cls(C("\r\n"), true)], [cls([...C("#\r\n")], true)]]);
     // N numeric components, comma-separated (the dictated form). `<N>`, `<N,M>`,
     // `<0.7,10,20>` all derive; the dash separator (`<N-M>`) stays parse-side only.
     model.set("line", [[lit("<"), ref("int"), star(ref("line-rest")), lit(">")]]);
