@@ -48,6 +48,8 @@ test("the template ships no double policy, no active model, ONLY service-owned k
     // virtual PROMPT_BUDGET is optional and therefore absent from the parsed floor.
     const safety = Number(env.get("PLURNK_SERVICE_SAFETY"));
     assert.ok(Number.isFinite(safety) && safety > 0, "SAFETY ships as a positive int — core's one partition knob");
+    const largestItems = Number(env.get("PLURNK_SERVICE_BUDGET_LARGEST_ITEMS"));
+    assert.ok(Number.isSafeInteger(largestItems) && largestItems >= 0, "the open-body ranking limit is an explicit non-negative knob");
     // #352 — the bare partition is cloud-generous: 163840 − 16384 − 49152 − 1024 = 97280 prompt
     // budget with a 65536 decode envelope the backend self-clamps (the local per-alias template
     // is the 64Ki-prompt gemma envelope). Prompt budget stays well above the decode envelope.
@@ -74,6 +76,15 @@ test("under the shipped policy wiring, the personality renders in the packet exa
         const carriers = packet.sections.filter((s) => s.content.includes(marker)).map((s) => s.name);
         assert.deepEqual(carriers, ["system-policy"], `the policy rides exactly one section; got ${carriers.join(", ")}`);
         assert.ok(packetSection(packet, "system-policy").includes(marker), "the section carries the personality");
+        const autonomy = "You curate your own context.";
+        const autonomyCarriers = packet.sections.filter((s) => s.content.includes(autonomy)).map((s) => s.name);
+        assert.deepEqual(autonomyCarriers, ["system-policy"], "context autonomy is policy, not duplicated grammar teaching");
+        const rendered = packet.sections.map((s) => s.content).join("\n");
+        assert.doesNotMatch(
+            rendered,
+            /FOLD targets|folding reclaims their tokens|preserve headroom|KILLing irrelevant|FOLD or KILL irrelevant/i,
+            "the assembled packet contains no ambient context-curation command",
+        );
         // And the turn-0 foists contain no POLICY doc READ — the doc path is retired for the policy.
         const rows = await db.test_log_sequencees_by_turn.all<{ op: string; pathname: string | null }>({ turn_id: result.turnId });
         assert.ok(!rows.some((r) => r.op === "READ" && (r.pathname ?? "").includes("POLICY")), "no foisted plurnk:///POLICY.md READ");

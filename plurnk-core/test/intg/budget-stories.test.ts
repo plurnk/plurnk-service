@@ -334,9 +334,8 @@ test("budget: the provider window governs the partition — ceiling = window −
     } finally { await db.close(); }
 });
 
-test("toggle on: two budget-scaled mermaid diagrams, placeholders resolved, headline preserved, never truncated at low usage", async () => {
-    // #440 — the visual layer, measured against the tabular baseline (default off). Under a WIDE ceiling
-    // usage is <50%, where the TABLES would truncate; the diagrams must stay (calm view is the point).
+test("toggle on: two budget-scaled mermaid diagrams, placeholders resolved, and neutral size ranking", async () => {
+    // #440 - the visual layer, measured against the tabular presentation.
     process.env.PLURNK_SERVICE_BUDGET_MERMAID = "on";
     const db = await openMigrated();
     try {
@@ -346,23 +345,23 @@ test("toggle on: two budget-scaled mermaid diagrams, placeholders resolved, head
         await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: MESSAGES });        // turn 1: fat READ folds into turn 2
         const t2 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: MESSAGES }); // turn 2: its packet carries the log weight
         const budget = packetSection((await packetOf(db, t2.turnId)).packet, "budget");
-        // Headline stays (weighability), and it is NOT truncated to just the headline despite <50% usage.
+        // Headline and factual measurements stay regardless of occupancy.
         assert.match(budget, /Token Ceiling \d+ · Token Usage \d+ \((<1|\d+)%\) · Tokens Free \d+/, "the ceiling/usage/free line stays");
-        assert.equal((budget.match(/```mermaid/g) ?? []).length, 2, "two mermaid diagrams render even under half-full (self-scaling, not truncated)");
+        assert.equal((budget.match(/```mermaid/g) ?? []).length, 2, "two mermaid diagrams render");
         assert.doesNotMatch(budget, /xychart/, "the heaviest-items xychart was cut (#450 — cryptic coord labels)");
         // Treemap: turn boxes + system+context + free compose the ceiling; all resolved to numbers.
         assert.match(budget, /treemap-beta/, "turn-composition treemap");
         assert.match(budget, /"free": \d+/, "treemap free box resolved to a number");
         assert.match(budget, /"system \+ context": \d+/, "treemap system+context box resolved (total − Σturns)");
         assert.match(budget, /"turn 1\/1": \d+/, "a per-turn box carries its token weight");
-        // Xychart: bars against the FULL ceiling y-axis (the space above is headroom).
         // Pie: used vs free.
         assert.match(budget, /pie showData[\s\S]*?"used" : \d+[\s\S]*?"free" : \d+/, "used-vs-free gauge");
         // No placeholder survived — every total-dependent value resolved post-assembly.
         assert.doesNotMatch(budget, /\{\{/, "no {{…}} placeholder left in any diagram");
-        // #450 — the heaviest-items list stays a plain ranked table alongside the mermaid, not a chart.
-        assert.match(budget, /Heaviest items \(FOLD targets/, "the heaviest-items list stays a table in the mermaid budget");
-        assert.match(budget, /\| log:\/\/\/.+ \| \d+ \|/, "its rows are log:/// handles + tokens (the FOLD targets)");
+        // #450 - the largest-open-bodies ranking stays a table alongside the diagrams.
+        assert.match(budget, /Largest open log bodies:/, "the neutral open-body ranking stays a table");
+        assert.match(budget, /\| log:\/\/\/.+ \| \d+ \|/, "its rows are log handles and body-token measurements");
+        assert.doesNotMatch(budget, /FOLD targets|folding reclaims|KILL|curation pressure/i, "the budget presents no curation command");
     } finally {
         delete process.env.PLURNK_SERVICE_BUDGET_MERMAID;
         await db.close();

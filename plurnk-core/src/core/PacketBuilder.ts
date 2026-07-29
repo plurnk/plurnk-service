@@ -163,8 +163,8 @@ export default class PacketBuilder {
     // §tokenomics-agnostic-ruler — the ceiling is the real window partition (window − reserves),
     // NO calibration ratio: the model-facing measure is the chars/2 ruler (an over-count for
     // typical text), so comparing ruler-weight to the real-token ceiling is itself the conservative
-    // bias — the model curates against less room than it has and never overflows for typical
-    // content; the exact provider count guards the pathological tail at the materialization gate.
+    // bias - the packet reports less room than the provider usually has; the exact provider count
+    // guards the pathological tail at the materialization gate.
     ceilingFor(provider: Provider): number | null {
         const alias = ProviderInstantiate.aliasOf(provider) ?? resolveActiveAlias(process.env)?.alias ?? "";
         const operatorCap = this.#promptBudgetCapFor(alias);
@@ -317,24 +317,9 @@ export default class PacketBuilder {
         let total = countTokens(PacketWire.renderSlot(sections, "system")) + countTokens(PacketWire.renderSlot(sections, "user"));
         {
             const budgetSec = sections.find((s) => s.name === "budget"); // a plugin may have removed it
-            // A null ceiling (#421 — unbounded window) has no headline to calibrate: no truncation, no
-            // percent/free substitution. #renderBudget already omitted the headline, so nothing to do.
+            // A null ceiling (#421 - unbounded window) has no headline to calibrate and therefore no
+            // percent/free substitution. #renderBudget already omitted the headline.
             if (budgetSec && ceiling !== null) {
-                // Curation pressure gates on OCCUPANCY (§tokenomics-pressure-gates-on-occupancy, #308):
-                // the Turns/Heaviest tables are a standing FOLD-target list, and a high-headroom model
-                // reads them as a todo — burning turns on token hygiene at 3% of a 64k window. Under
-                // half-full, the headline's numbers stand alone (truncate at the first blank line) and
-                // the total RE-measures — the substituted figures must reconcile with what ships.
-                // A null ceiling can't calibrate, so the full readout stays.
-                // A mermaid budget (#440) self-scales to pressure, so it is never truncated — the calm
-                // low-usage view IS the point; only the tabular readout collapses under half-full.
-                if (!budgetSec.content.includes("```mermaid") && (total / ceiling) * 100 < 50) {
-                    const cut = budgetSec.content.indexOf("\n\n");
-                    if (cut !== -1) {
-                        budgetSec.content = budgetSec.content.slice(0, cut);
-                        total = countTokens(PacketWire.renderSlot(sections, "system")) + countTokens(PacketWire.renderSlot(sections, "user"));
-                    }
-                }
                 const tokensFree = Math.max(0, ceiling - total); // free floors at 0 on overshoot — §tokenomics-over-budget-floor
                 const percent = (total / ceiling) * 100; // usage as % of the ceiling — §tokenomics-context-percent
                 const sumTurns = logBudget.byTurn.reduce((s, t) => s + t.tokens, 0); // #440 — treemap non-turn box = total − Σturns
@@ -357,68 +342,61 @@ export default class PacketBuilder {
         return { tokens: packetTokens, sections };
     }
 
-    // Budget readout body, rendered into the `## Plurnk Service Budget` section.
-    // Headline `ceiling/free` only when a ceiling exists; section lines for the
-    // curatable index/log weight the model can FOLD back. tokensFree is a
-    // placeholder here — buildRequestPacket substitutes it after measuring the packet.
+    // Budget readout body. Headline `ceiling/free` appears only when a ceiling
+    // exists; the remaining lines neutrally describe the rendered log. tokensFree
+    // is a placeholder here - buildRequestPacket substitutes it after measuring.
     #renderBudget(
         log: {
             entries: number; tokens: number;
             byTurn: Array<{ turn: string; tokens: number }>;
-            largest: Array<{ path: string; tokens: number }>;
+            largestOpenBodies: Array<{ path: string; tokens: number }>;
         },
         ceiling: number | null,
     ): string {
         const lines: string[] = [];
-        // #421 — no ceiling (unbounded window): omit the headline entirely; the section lines below
-        // stay so the model keeps its FOLD-target surface, just with no percent it can't compute.
+        // #421 - no ceiling (unbounded window): omit the headline entirely; the objective log
+        // measurements below remain valid without a percentage.
         if (ceiling !== null) lines.push(`Token Ceiling ${ceiling} · Token Usage ${TOKEN_USAGE_PLACEHOLDER} (${TOKEN_PERCENT_PLACEHOLDER}%) · Tokens Free ${TOKENS_FREE_PLACEHOLDER}`);
-        // #440 {§budget-mermaid} — the enriched visual Budget (default on). With a ceiling to scale
-        // against, the treemap REPLACES the Turns table (per-turn composition) + a pie gauge; the
-        // heaviest-items list stays a table (#450). Self-scaled to pressure (calm→urgent), never <50%-truncated.
+        // #440 {§budget-mermaid} - the visual Budget (default on). With a ceiling to scale against,
+        // the treemap replaces the per-turn table and the pie shows used/free. The open-body size
+        // ranking remains a table (#450).
         // Set PLURNK_SERVICE_BUDGET_MERMAID=off to A/B against the tabular baseline (#440's before/after).
         if (process.env.PLURNK_SERVICE_BUDGET_MERMAID !== "off" && ceiling !== null && log.entries > 0) {
             if (lines.length > 0) lines.push("");
             lines.push(PacketBuilder.#renderBudgetMermaid(log, ceiling));
-            // #450 — the heaviest items stay a plain ranked list (a ranking isn't a composition, no
-            // treemap; two mermaid diagrams are enough visual examples) — the same table as the tabular budget.
-            lines.push(...PacketBuilder.#heaviestItemsLines(log.largest));
+            lines.push(...PacketBuilder.#largestOpenBodyLines(log.largestOpenBodies));
             return lines.join("\n");
         }
         if (log.entries > 0) {
             if (lines.length > 0) lines.push("");
-            lines.push(`Log entries: ${log.entries} entries, ${log.tokens} tokens`);
-            // Per-turn weight — chronological (oldest first); the turn is the grinder's
-            // rollback unit and the rail folds the newest first (§tokenomics {§tokenomics-turn-totals}).
+            lines.push(`Rendered log: ${log.entries} entries, ${log.tokens} tokens`);
+            // Per-turn rendered weight, chronological (oldest first).
             if (log.byTurn.length > 0) {
-                lines.push("", "Turns:", "| turn | tokens |", "|---|--:|");
+                lines.push("", "Rendered log tokens by turn:", "| turn | tokens |", "|---|--:|");
                 for (const t of log.byTurn) lines.push(`| ${t.turn} | ${t.tokens} |`);
             }
-            lines.push(...PacketBuilder.#heaviestItemsLines(log.largest));
+            lines.push(...PacketBuilder.#largestOpenBodyLines(log.largestOpenBodies));
         }
         return lines.join("\n");
     }
 
-    // The heaviest individual log items — the FOLD targets behind the weight, a ranked LIST in both the
-    // mermaid and tabular budgets (#450: a ranking isn't a composition, so it's never a chart). "items",
-    // not "entries": log:/// rows, distinct from catalog entries (plurnk.md: "EDIT is only for entries").
-    // {§tokenomics-largest-entries}
-    static #heaviestItemsLines(largest: Array<{ path: string; tokens: number }>): string[] {
-        if (largest.length === 0) return [];
-        return ["", "Heaviest items (FOLD targets — folding reclaims their tokens):", "| item | tokens |", "|---|--:|",
-            ...largest.map((e) => `| ${e.path} | ${e.tokens} |`)];
+    // Objective ranking of the largest bodies currently rendered open. A ranking
+    // is not a composition, so it stays a table in both budget renderers.
+    // {§tokenomics-largest-open-bodies}
+    static #largestOpenBodyLines(largestOpenBodies: Array<{ path: string; tokens: number }>): string[] {
+        if (largestOpenBodies.length === 0) return [];
+        return ["", "Largest open log bodies:", "| item | body tokens |", "|---|--:|",
+            ...largestOpenBodies.map((e) => `| ${e.path} | ${e.tokens} |`)];
     }
 
     // #440 {§budget-mermaid} — the Budget as two budget-scaled mermaid diagrams (validated to render on
-    // GitHub; syntax: plurnk-plurnkdown/demo/budget-mermaid.md). Both scaled to the CEILING, so salience
-    // tracks pressure: `free` dominates at low usage (calm), turn boxes fill as it climbs (urgent).
+    // GitHub; syntax: plurnk-plurnkdown/demo/budget-mermaid.md). Both scale to the ceiling.
     // free/used/system+context are placeholders — the post-assembly total resolves them. (#450 cut the xychart.)
     static #renderBudgetMermaid(
         log: { byTurn: Array<{ turn: string; tokens: number }> },
         ceiling: number,
     ): string {
-        // Turn composition → treemap: turn boxes + system+context + free compose the whole ceiling —
-        // the per-turn FOLD surface (which turns are heavy, labeled `turn L/T`) the headline can't give.
+        // Turn composition: turn boxes + system+context + free compose the whole ceiling.
         const treemap = [
             "```mermaid",
             "treemap-beta",
@@ -428,9 +406,8 @@ export default class PacketBuilder {
             ...log.byTurn.map((t) => `    "turn ${t.turn}": ${t.tokens}`),
             "```",
         ].join("\n");
-        // Gauge → pie: used vs free, budget-scaled (used + free = ceiling); also a visual exemplar for
-        // the model's own user-facing SENDs. (#450 cut the heaviest-items xychart — its bare-coordinate
-        // labels a floor model can't decode, and the treemap already surfaces per-turn heaviness.)
+        // Gauge: used + free = ceiling. (#450 cut the open-body ranking xychart because bare
+        // coordinate labels were harder to read than a table.)
         const pie = [
             "```mermaid",
             "pie showData",
@@ -552,10 +529,9 @@ export default class PacketBuilder {
         // ONE rule, every turn — turn 1 and turn 101 alike (§grinder-layer1-rollback): fold the
         // NEWEST turn boundary's still-open rows (the prior turn's emissions + this turn's
         // pre-model rows; errors exempt) in one set-op, strike once, rebuild, re-measure.
-        // THE DOCTRINE: the log is the model's memory and the model ALONE curates history — the
-        // grinder never reaches back; it only blocks NEW memories from landing when there is no
-        // room, forcing the model to do its own housekeeping (the strike is the escalation,
-        // §grinder-compaction-strikes; a model that won't curate hard-413s/strikes out).
+        // The model owns history visibility. The grinder never reaches back; it folds only the
+        // newest boundary required to produce a physically valid packet. Continued overflow
+        // follows the explicit recovery/hard-stop contract (§grinder-fold-strikes).
         const usage = measure(packet);
         await this.#db.engine_grinder_fold_newest_turn.run({ loop_id: loopId, turn_id: turnId });
         let current = await rebuild();

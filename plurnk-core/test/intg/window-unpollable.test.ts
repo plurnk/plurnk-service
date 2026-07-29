@@ -24,7 +24,7 @@ test("null window + no per-alias knob → NO-CAP: the turn builds unbounded and 
         assert.equal(engine.promptBudgetFor(mock), null, "the prompt budget is null — genuinely-unknown, uncapped");
         const result = await engine.runTurn({ provider: mock, workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
         assert.ok(result.turnId > 0, "the turn builds unbounded — a probe blip degrades to no-cap, never crashes the loop");
-        // The gauge omits its Token Ceiling headline (no percent to compute) — the FOLD-target lines still ship.
+        // The gauge omits its Token Ceiling headline; denominator-independent log measurements remain.
         const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: result.turnId }))!.packet) as { sections: Array<{ name: string; content: string }> };
         const budget = packet.sections.find((s) => s.name === "budget");
         assert.ok(budget, "the budget section still ships");

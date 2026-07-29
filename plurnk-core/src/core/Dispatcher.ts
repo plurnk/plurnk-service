@@ -399,9 +399,6 @@ export default class Dispatcher {
                 {
                     constraint: operationConstraint.code,
                     allowedOperations: [...operationConstraint.allowedOperations],
-                    recovery: operationConstraint.code === "budget-recovery"
-                        ? "FOLD or KILL irrelevant log items before continuing work."
-                        : `Use one of the allowed operations: ${operationConstraint.allowedOperations.join(", ")}.`,
                     retryable: false,
                 },
             )

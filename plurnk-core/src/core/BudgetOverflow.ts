@@ -52,7 +52,6 @@ export default class BudgetOverflow {
                     ...(recovery
                         ? {
                             allowedOperations: [...BudgetOverflow.recoveryOperations],
-                            recovery: "FOLD or KILL irrelevant log items before continuing work.",
                         }
                         : {}),
                 },

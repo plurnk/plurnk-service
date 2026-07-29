@@ -114,39 +114,37 @@ test("budget groups render-weight by turn, oldest first", async () => {
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1, "p");
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-        // A window the floor fits but the fat log pushes past 50% occupancy — the tables render
-        // only under pressure now (§tokenomics-pressure-gates-on-occupancy).
+        // A compact window makes the per-turn values easy to inspect.
         const reply = (ops: PlurnkStatement[]) => new Mock({ contextWindow: 3000, responses: [{ assistant: { content: "", reasoning: null, ops } }] });
         // Two turns each write to the log → two distinct loop/turn coordinates (1/1, 1/2).
         await engine.runTurn({ provider: reply([anyEdit(anyUrl("worker", "a"), "alpha beta gamma delta ".repeat(80)), sendStmt(200)]), workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
         await engine.runTurn({ provider: reply([anyEdit(anyUrl("worker", "b"), "epsilon zeta eta theta ".repeat(80)), sendStmt(200)]), workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
         const t3 = await engine.runTurn({ provider: reply([sendStmt(200)]), workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
         const budget = packetSection(JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: t3.turnId }))!.packet), "budget");
-        assert.match(budget, /Turns:\n\| turn \| tokens \|/, "per-turn table present");
+        assert.match(budget, /Rendered log tokens by turn:\n\| turn \| tokens \|/, "per-turn table present");
         assert.match(budget, /\| 1\/1 \|/, "turn 1/1 row present");
         assert.match(budget, /\| 1\/2 \|/, "turn 1/2 row present");
         assert.ok(budget.indexOf("| 1/1 |") < budget.indexOf("| 1/2 |"), "oldest turn first — the grinder's rollback order");
     } finally { await db.close(); }
 });
 
-test("budget lists the heaviest log entries by their log:/// handle, heaviest first", async () => {
+test("budget neutrally ranks the largest open log bodies by handle and size", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `tok-heavy-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1, "p");
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-        // A window sized so the fat log lands BETWEEN the 50% occupancy gate and the grinder: too
-        // tight and the grinder folds the fixture itself (folded rows collapse occupancy back under
-        // the gate — exactly what the 0.74.49 teaching growth exposed at 3000).
-        const reply = (ops: PlurnkStatement[]) => new Mock({ contextWindow: 6500, responses: [{ assistant: { content: "", reasoning: null, ops } }] }); // unfolded ≈4.6k (heavy row 3.6k open) → ~78%: above the gate, under the grinder
+        // The window leaves the fixture under the grinder ceiling so its open bodies remain measurable.
+        const reply = (ops: PlurnkStatement[]) => new Mock({ contextWindow: 6500, responses: [{ assistant: { content: "", reasoning: null, ops } }] });
         // A heavy edit (seq 1) and a tiny edit (seq 2) in one turn; read the next turn's budget. An
         // EDIT span is a CONTENT op (#566) — it renders full, so a big edit is a genuine heavy item.
         const heavy = "lorem ipsum dolor sit amet consectetur adipiscing elit sed do eiusmod tempor incididunt ut labore et dolore magna aliqua ".repeat(60);
         await engine.runTurn({ provider: reply([anyEdit(anyUrl("worker", "big"), heavy), anyEdit(anyUrl("worker", "small"), "x"), sendStmt(200)]), workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
         const t2 = await engine.runTurn({ provider: reply([sendStmt(200)]), workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
         const budget = packetSection(JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: t2.turnId }))!.packet), "budget");
-        assert.match(budget, /Heaviest items \(FOLD targets — folding reclaims their tokens\):\n\| item \| tokens \|/, "heaviest-items table present, verb attached — the lever is named where the targets are listed");
+        assert.match(budget, /Largest open log bodies:\n\| item \| body tokens \|/, "the size ranking is present and neutrally labeled");
+        assert.doesNotMatch(budget, /FOLD targets|folding reclaims|KILL|curation pressure/i, "budget telemetry contains no context-management instruction");
         // Every listed item is a log:/// handle (log items, not catalog entries), heaviest-first.
         const rows = budget.split("\n").filter((l) => /^\| log:\/\/\//.test(l));
         assert.ok(rows.length >= 2, `at least two entries listed; got ${rows.length}`);
@@ -213,9 +211,7 @@ test("the UN-FOLDABLE hard-413 record renders the overshoot honestly (free floor
     } finally { await db.close(); }
 });
 
-test("a high-headroom window renders NO curation tables — headline only", async () => {
-    // #308 (the bench grok run): the Turns/Heaviest tables are a standing FOLD-target list; a
-    // model with 75%+ free burned turns on token hygiene. Below half the ceiling, numbers only.
+test("a high-headroom window renders the same neutral measurements without an occupancy gate", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `tok-headroom-${crypto.randomUUID()}`);
@@ -227,9 +223,10 @@ test("a high-headroom window renders NO curation tables — headline only", asyn
         const t2 = await engine.runTurn({ provider: reply([sendStmt(200)]), workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
         const budget = packetSection(JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: t2.turnId }))!.packet), "budget");
         assert.match(budget, /Token Ceiling \d+/, "the headline gauge always renders");
-        assert.doesNotMatch(budget, /Heaviest items/, "no FOLD-target list at low occupancy");
-        assert.doesNotMatch(budget, /Turns:/, "no per-turn table at low occupancy");
-        assert.doesNotMatch(budget, /Log entries:/, "no log-weight line at low occupancy — numbers only");
+        assert.match(budget, /Rendered log: \d+ entries, \d+ tokens/, "rendered-log measurement remains visible");
+        assert.match(budget, /Rendered log tokens by turn:/, "per-turn composition remains visible");
+        assert.match(budget, /Largest open log bodies:/, "open-body size ranking remains visible");
+        assert.doesNotMatch(budget, /FOLD targets|folding reclaims|KILL|preserve headroom|curation pressure/i, "high-headroom telemetry remains factual");
     } finally { await db.close(); }
 });
 

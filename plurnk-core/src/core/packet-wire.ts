@@ -28,6 +28,15 @@ const editReceiptRevisionChars = (): number => {
     return value;
 };
 
+const budgetLargestItems = (): number => {
+    const raw = process.env.PLURNK_SERVICE_BUDGET_LARGEST_ITEMS;
+    const value = Number(raw);
+    if (!Number.isSafeInteger(value) || value < 0) {
+        throw new Error(`PLURNK_SERVICE_BUDGET_LARGEST_ITEMS must be a non-negative safe integer, got ${JSON.stringify(raw)}`);
+    }
+    return value;
+};
+
 // PacketSection is the canonical packet shape: an ordered list of named,
 // slotted sections (defined below). Sections arrive both from Engine's
 // in-memory packet AND from `turns.packet` re-parsed by the digest — re-parsed
@@ -177,31 +186,27 @@ export default class PacketWire {
         ];
     }
 
-    // Measure the curatable log section's budget subtotals from the STRUCTURED
-    // log (the foldable unit), using the provider's tokenizer — meta lines and
-    // fences included, matching what ships. Feeds the per-turn rollup (chronological;
-    // the grinder folds the newest turn) and the FOLD unit (heaviest entries) — the
-    // two budget levers the model can pull (§tokenomics {§tokenomics-turn-totals},
-    // {§tokenomics-largest-entries}). Build-time only; the stored log section is
-    // the rendered result. §tokenomics-render-weight-budget
+    // Measure the log section's budget subtotals from the STRUCTURED log using
+    // the packet ruler - meta lines and fences included, matching what ships.
+    // The per-turn rollup describes rendered composition; largestOpenBodies is
+    // an objective size ranking of currently visible bodies. Build-time only;
+    // the stored log section is the rendered result.
+    // §tokenomics-render-weight-budget
     static measureLogBudget(entries: unknown, countTokens: CountTokens): {
         entries: number; tokens: number;
         byTurn: Array<{ turn: string; tokens: number }>;
-        largest: Array<{ path: string; tokens: number }>;
+        largestOpenBodies: Array<{ path: string; tokens: number }>;
     } {
         const logEntries: LogEntryView[] = Array.isArray(entries) ? (entries as LogEntryView[]) : [];
         const logBody = logEntries.length > 0 ? PacketWire.renderLog(logEntries, countTokens) : "";
-        const HEAVIEST_COUNT = 5;
         const byTurn = new Map<string, number>();
         const perEntry: Array<{ path: string; tokens: number }> = [];
         for (const e of logEntries) {
-            // Two weights, two purposes (#466 — one labeled semantic per number): the row's FULL
-            // render (meta line + fences + body) composes the turn rollup — the room the turn takes in
-            // the packet; the heaviest list carries the row's BODY weight — the FOLD unit, the SAME
-            // number the row's own `tokens` shows, so the budget and the log can never disagree
-            // about one row. A row ranks ONLY when a FOLD would actually reclaim it: a bodyless
-            // row has nothing to fold, and an already-folded row is already reclaimed (its price
-            // is an OPEN's cost) — listing either sells the model a lever that no-ops.
+            // Two weights, two labeled meanings (#466): the row's FULL render
+            // (meta line + fences + body) composes the turn rollup; the size
+            // ranking carries the visible BODY weight, the SAME number the
+            // row's own `tokens` shows. Bodyless and folded rows have no open
+            // body in the current packet, so neither belongs in that ranking.
             const bodyPrice: number[] = [];
             const weight = countTokens(PacketWire.#renderLogEntries([e], countTokens, bodyPrice));
             const coordinate = typeof e.coordinate === "string" ? e.coordinate : null;
@@ -226,7 +231,7 @@ export default class PacketWire {
                     const [bl, bt] = b.turn.split("/").map(Number);
                     return al - bl || at - bt;
                 }),
-            largest: perEntry.toSorted((a, b) => b.tokens - a.tokens).slice(0, HEAVIEST_COUNT),
+            largestOpenBodies: perEntry.toSorted((a, b) => b.tokens - a.tokens).slice(0, budgetLargestItems()),
         };
     }
 
@@ -343,8 +348,8 @@ export default class PacketWire {
     //   2. Every other op → re-emit tx as a heredoc in the model's native
     //      syntax. The model wrote this; mirror it back so the log is a true
     //      record of its actions instead of a row of opaque status codes.
-    // The log:/// handle the model sees for an entry — its FOLD target
-    // (§open-fold) and the label the budget's heaviest-entries readout reuses,
+    // The log:/// handle the model sees for an entry.
+    // (§open-fold) and the label the budget's open-body ranking reuses,
     // so the readout names an entry exactly as the log does.
     static #entryPath(coordinate: string | null, op: string | null): string | null {
         if (coordinate === null) return null;

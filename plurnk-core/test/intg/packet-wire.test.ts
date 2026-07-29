@@ -295,15 +295,15 @@ test("log render: EDIT@200 with no tx → meta line only (defensive — tx is al
     assert.doesNotMatch(out, /<<EDIT\(/);
 });
 
-test("measureLogBudget: log subtotals (entries, tokens, byTurn, largest) from the structured log", () => {
+test("measureLogBudget: log subtotals and largest open bodies come from the structured log", () => {
     const tk = (s: string) => s.length; // deterministic: one token per char
     const empty = PacketWire.measureLogBudget([], tk);
     assert.equal(empty.entries, 0);
     assert.equal(empty.tokens, 0, "no log entries → zero tokens");
     assert.deepEqual(empty.byTurn, []);
-    assert.deepEqual(empty.largest, []);
-    // One BODYLESS entry: it weighs on the turn rollup (its meta line ships), but it is no FOLD
-    // target — nothing to save — so `largest` never lists it (#466).
+    assert.deepEqual(empty.largestOpenBodies, []);
+    // One bodyless entry weighs on the turn rollup because its meta line ships,
+    // but it has no open body to rank.
     const one = PacketWire.measureLogBudget(
         [{ coordinate: "1/1/1", op: "EDIT", origin: "model", status: 200, target: { scheme: null, pathname: "/x" } }],
         tk,
@@ -311,42 +311,64 @@ test("measureLogBudget: log subtotals (entries, tokens, byTurn, largest) from th
     assert.equal(one.entries, 1);
     assert.ok(one.tokens > 0, "a log entry has render-weight");
     assert.equal(one.byTurn[0].turn, "1/1");
-    assert.deepEqual(one.largest, [], "a bodyless row is no FOLD target — largest omits it");
-    // A BODIED entry ranks, and its `largest` figure IS the row's own rendered `tokens` (the FOLD
-    // price) — the budget and the log can never disagree about one row (#466: 577-vs-6127).
+    assert.deepEqual(one.largestOpenBodies, [], "a bodyless row is absent from the open-body ranking");
+    // A bodied entry ranks, and its figure is the row's own rendered `tokens`, so
+    // the budget and log cannot disagree about one body (#466: 577-vs-6127).
     const bodied = [{ coordinate: "1/1/2", op: "READ", origin: "model", status: 200, target: { scheme: "worker", pathname: "/x" }, rx: { status: 200, content: "alpha\nbeta\ngamma", mimetype: "text/plain" } }];
     const two = PacketWire.measureLogBudget(bodied, tk);
-    assert.equal(two.largest[0].path, "log:///1/1/2/READ");
+    assert.equal(two.largestOpenBodies[0].path, "log:///1/1/2/READ");
     const rendered = PacketWire.renderLog(bodied, tk);
     const rowTokens = Number(/"tokens":(\d+)/.exec(rendered)?.[1]);
-    assert.equal(two.largest[0].tokens, rowTokens, "largest carries the SAME number the row's own meta shows");
+    assert.equal(two.largestOpenBodies[0].tokens, rowTokens, "the ranking carries the same number the row's meta shows");
 });
 
-test("largest advertises every open bodied row and omits states already reclaimed", () => {
+test("largestOpenBodies ranks open bodies and omits bodyless or folded rows", () => {
     const tk = (s: string) => s.length;
     const entries = [
-        // A prior loop's foisted preview: open, bodied, ordinary memory — it RANKS.
+        // A prior loop's foisted preview is open and bodied, so it ranks.
         { coordinate: "1/1/3", op: "READ", origin: "plurnk", status: 200, target: { scheme: "prompt", pathname: "/1/1" }, rx: { status: 200, content: "the old task readback ".repeat(40), mimetype: "text/plain" } },
         // The current loop's foist EDIT is excluded as already-folded; its open preview READ ranks.
         { coordinate: "2/1/2", op: "EDIT", origin: "plurnk", status: 201, target: { scheme: "prompt", pathname: "/2/1" }, folded: true, rx: { status: 201, content: "the whole task body ".repeat(50), mimetype: "text/plain" } },
         { coordinate: "2/1/3", op: "READ", origin: "plurnk", status: 200, target: { scheme: "prompt", pathname: "/2/1" }, rx: { status: 200, content: "the task readback ".repeat(40), mimetype: "text/plain" } },
-        // The model's own deeper prompt READ: fold-legal curation — it RANKS.
+        // The model's own deeper prompt READ is open and bodied, so it ranks.
         { coordinate: "2/2/2", op: "READ", origin: "model", status: 200, target: { scheme: "prompt", pathname: "/2/1" }, rx: { status: 200, content: "lines seventeen through forty ".repeat(20), mimetype: "text/plain" } },
-        // An already-folded ordinary row: its body prices an OPEN, not a FOLD — nothing to reclaim.
+        // An already-folded ordinary row has no open body in this packet.
         { coordinate: "2/2/4", op: "READ", origin: "model", status: 200, target: { scheme: "worker", pathname: "/main.go" }, folded: true, rx: { status: 200, content: "package main ".repeat(30), mimetype: "text/plain" } },
-        // An ordinary open row: open, bodied, fold-legal — it RANKS.
+        // An ordinary open row ranks.
         { coordinate: "2/2/6", op: "READ", origin: "model", status: 200, target: { scheme: "worker", pathname: "/util.go" }, rx: { status: 200, content: "alpha beta gamma", mimetype: "text/plain" } },
     ];
-    const { largest, byTurn } = PacketWire.measureLogBudget(entries, tk);
+    const { largestOpenBodies, byTurn } = PacketWire.measureLogBudget(entries, tk);
     assert.deepEqual(
-        largest.map((e) => e.path).toSorted(),
+        largestOpenBodies.map((e) => e.path).toSorted(),
         ["log:///1/1/3/READ", "log:///2/1/3/READ", "log:///2/2/2/READ", "log:///2/2/6/READ"],
         "every open bodied row ranks; only bodyless and already-folded rows are absent",
     );
-    // The excluded rows still weigh on the TURN rollup — room taken is room taken; only the
-    // FOLD-target advertisement is withheld.
+    // Excluded bodies still contribute their rendered meta lines to the turn rollup.
     assert.equal(byTurn.length, 3);
     assert.ok(byTurn.every((t) => t.tokens > 0));
+});
+
+test("largestOpenBodies count is a validated environment knob", () => {
+    const prior = process.env.PLURNK_SERVICE_BUDGET_LARGEST_ITEMS;
+    const tk = (s: string) => s.length;
+    const entries = [
+        { coordinate: "1/1/1", op: "READ", origin: "model", status: 200, target: { scheme: "worker", pathname: "/a" }, rx: { status: 200, content: "a".repeat(30), mimetype: "text/plain" } },
+        { coordinate: "1/1/2", op: "READ", origin: "model", status: 200, target: { scheme: "worker", pathname: "/b" }, rx: { status: 200, content: "b".repeat(20), mimetype: "text/plain" } },
+    ];
+    try {
+        process.env.PLURNK_SERVICE_BUDGET_LARGEST_ITEMS = "1";
+        assert.equal(PacketWire.measureLogBudget(entries, tk).largestOpenBodies.length, 1);
+        process.env.PLURNK_SERVICE_BUDGET_LARGEST_ITEMS = "0";
+        assert.deepEqual(PacketWire.measureLogBudget(entries, tk).largestOpenBodies, []);
+        process.env.PLURNK_SERVICE_BUDGET_LARGEST_ITEMS = "nope";
+        assert.throws(
+            () => PacketWire.measureLogBudget(entries, tk),
+            /PLURNK_SERVICE_BUDGET_LARGEST_ITEMS must be a non-negative safe integer/,
+        );
+    } finally {
+        if (prior === undefined) delete process.env.PLURNK_SERVICE_BUDGET_LARGEST_ITEMS;
+        else process.env.PLURNK_SERVICE_BUDGET_LARGEST_ITEMS = prior;
+    }
 });
 
 test("notice render: message and content-offset share one bounded line, no snippet fence", () => {

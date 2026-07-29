@@ -88,18 +88,15 @@ plurnkdown owns the shape, not the wording.
 ### Git Status — live state
 Already clean: `` branch `master` — 0 staged, 2 unstaged, 1 untracked ``. Keep; drop the prefix.
 
-### Budget — live state, visualized
-The ceiling/usage/free line, plus **dynamic mermaid** — validated to render on GitHub (demo:
-`demo/budget-mermaid.md`), all **budget-scaled** (the ceiling is the reference, not the items),
-so salience tracks pressure: calm with headroom, urgent near the ceiling.
+### Budget - live state, visualized
+The ceiling/usage/free line plus dynamic Mermaid, validated in `demo/budget-mermaid.md`:
 
-- **Turn composition → treemap** — turn boxes + `free` compose the ceiling; fills as usage climbs.
-- **Heaviest items → xychart** — ranked bars against the full ceiling; the space above is headroom.
-- **Gauge → pie** — used vs free; a visual exemplar for the model's own user-facing SENDs as much as a meter.
+- **Turn composition - treemap:** turn boxes, `system + context`, and `free` compose the ceiling.
+- **Gauge - pie:** used plus free equals the ceiling.
+- **Largest open log bodies - table:** a neutral ranking of addressable bodies and their measured sizes.
 
-The token numbers stay available (weighability) — the diagrams are a visual layer over the
-data, not a replacement. This is an enrichment to implement and **measure**: it costs packet
-tokens on the weak model it's meant to help, so it earns in on a behavior delta, not on looks.
+The same categories render regardless of occupancy. Token numbers remain available; diagrams
+visualize state without prescribing a context-management action.
 
 ### User Prompts — live input
 The incoming prompts / environment updates. Render faithful, as clean prose or a light list.

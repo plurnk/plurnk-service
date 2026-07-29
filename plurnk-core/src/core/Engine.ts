@@ -245,8 +245,8 @@ export default class Engine {
     #notices: NoticeChannel;
     #problems: ProblemLog;
     #strikes: StrikeRail;
-    // §grinder-hard-413-recovery — loops granted their ONE over-ceiling recovery turn. Cleared on a
-    // fitting turn (the model curated; a LATER overflow earns a fresh recovery) and at loop cleanup.
+    // §grinder-hard-413-recovery - loops granted their one over-ceiling recovery turn. Cleared on a
+    // fitting turn so a later independent overflow can earn a fresh recovery, and at loop cleanup.
     #hardOverflowRecovery = new Set<number>();
     #packets: PacketBuilder;
     readonly searchGate = new SearchGate();
@@ -1198,9 +1198,9 @@ export default class Engine {
             // history (§grinder-layer1-rollback doctrine). So the first hard overflow is a
             // RECOVERY TURN, not death: the packet is over the POLICY ceiling but usually well
             // within PHYSICS (the jumbo pin: ceiling 13k, real window 49k) — send it once, with a
-            // minted steer naming the remedy, and a strike (budgetStruck). The model curates →
-            // next turn fits → the grant clears. It declines → the second consecutive hard
-            // overflow terminates 413 — death only after the model was told. Physically
+            // exact measurements and an enforced allowed-operation set, plus a strike
+            // (budgetStruck). A fitting next turn clears the grant; a second consecutive
+            // overflow terminates 413. Physically
             // unsendable (over the provider's real window too) → 413 immediately; physics
             // doesn't negotiate. The pointer stays at 100% of budget — a margin would mask it.
             const physicallySendable = provider.contextWindow === null
@@ -1233,7 +1233,7 @@ export default class Engine {
                     currentTurnSeq: seq, provider, gitStatus, notices,
                 });
             } else {
-            // Hard 413: physically unsendable, or the model already declined its recovery turn.
+            // Hard 413: physically unsendable, or still over after the constrained recovery turn.
             const ceiling = this.#packets.ceilingFor(provider);
             if (ceiling === null) {
                 throw new Error("an unbounded prompt budget cannot hard-stop");
@@ -1275,8 +1275,8 @@ export default class Engine {
             };
             }
         } else {
-            // A fitting turn clears the recovery grant — the model curated; a later overflow
-            // earns a fresh recovery turn (chronic overflow still strikes out via the rail).
+            // A fitting turn clears the recovery grant; a later independent overflow can earn
+            // a fresh recovery turn (chronic overflow still strikes out via the rail).
             this.#hardOverflowRecovery.delete(loopId);
         }
         const modelMessages = PacketWire.packetToWireMessages(requestPacket) as ChatMessage[];

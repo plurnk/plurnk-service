@@ -127,12 +127,12 @@ test("a PLAN row at the newest boundary survives the overflow fold — the check
     } finally { await db.close(); }
 });
 
-test("THE DOCTRINE: older history is NEVER grinder-folded — the model alone curates it", async () => {
+test("the grinder never folds older history - the model owns its visibility", async () => {
     // The guard whose absence once let a fold-everything variant run green. Three turns; turn 1's
     // rows are OLD history by turn 3. Overflow at turn 3 folds the newest boundary (turn 2 + turn
     // 3's pre-model rows) and MUST leave turn 1's open rows untouched — even though folding them
-    // would help fit. The engine never janitors the model's memory; a model that won't curate
-    // strikes out/413s instead. That consequence IS the design.
+    // would help fit. The engine never chooses older history to hide; continued
+    // overflow receives an honest hard failure.
     const db = await openMigrated();
     try {
         const { workspaceId, workerId, loopId } = await envelope(db);
@@ -143,30 +143,30 @@ test("THE DOCTRINE: older history is NEVER grinder-folded — the model alone cu
         await engine.runTurn({ provider: wideP, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 2 });
         const openT1before = (await db.engine_render_log.all<{ turn_seq: number; expanded: number }>({ worker_id: workerId }))
             .filter((r) => r.turn_seq === 1 && r.expanded === 1).length;
-        assert.ok(openT1before > 0, "precondition: turn 1 left open rows (uncurated history)");
+        assert.ok(openT1before > 0, "precondition: turn 1 left older open rows");
         await engine.runTurn({ provider: tinyP, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 3 });
         const after = await db.engine_render_log.all<{ turn_seq: number; expanded: number }>({ worker_id: workerId });
         assert.equal(after.filter((r) => r.turn_seq === 1 && r.expanded === 1).length, openT1before,
-            "turn 1's open rows are UNTOUCHED by the turn-3 grinder fire — history is the model's alone");
+            "turn 1's open rows are untouched by the turn-3 grinder fire");
         assert.ok(after.filter((r) => r.turn_seq === 2).every((r) => r.expanded === 0),
             "the newest completed turn (2) IS folded — the boundary rule fired");
     } finally { await db.close(); }
 });
 
-test("a DECLINED recovery abandons at 413 (budget_overflow) — the terminal that follows being told", async () => {
+test("a second consecutive hard overflow after recovery terminates at 413", async () => {
     const db = await openMigrated();
     try {
         const { workspaceId, workerId, loopId } = await envelope(db);
         const engine = plainEngine(db);
         // Sendable within the 4096 window, over the TINY policy ceiling: recovery turn granted;
-        // the model continues without curing it; the second hard overflow is the abort.
+        // a continuing recovery remains over, so the second hard overflow is the abort.
         const result = await engine.runLoop({ provider: mockAt(TINY, [response([sendStmt(102, "carrying on")]), response([sendStmt(102, "carrying on")])]), workspaceId, workerId, loopId, messages: MESSAGES, maxTurns: 5 });
         assert.equal(result.result.status, 413, "hard-stop abandons the loop at 413 Content Too Large");
         assert.equal(result.reason, "budget_overflow", "abandonment reason is the budget, not a strike or max-turns");
     } finally { await db.close(); }
 });
 
-test("a recovery turn that CONCLUDES is a legitimate 200 — finishing IS a way to stop overflowing", async () => {
+test("a recovery turn may conclude cleanly at 200", async () => {
     const db = await openMigrated();
     try {
         const { workspaceId, workerId, loopId } = await envelope(db);
@@ -174,7 +174,7 @@ test("a recovery turn that CONCLUDES is a legitimate 200 — finishing IS a way 
         const restore = pinSafety(4092); // budget = 4096−2−4092 = TINY; sendable to 4094
         try {
             const result = await engine.runLoop({ provider: mockAt(4094, okSends(1)), workspaceId, workerId, loopId, messages: MESSAGES, maxTurns: 5 });
-            assert.equal(result.result.status, 200, "the told model wrapped up — over-policy but done beats dead");
+            assert.equal(result.result.status, 200, "the recovery turn concluded cleanly");
         } finally { restore(); }
     } finally { await db.close(); }
 });
@@ -197,7 +197,7 @@ test("turn-1 overflow folds the turn's own foists and STRIKES — no soft exempt
         const restore = pinSafety(4092);
         let t1: Awaited<ReturnType<Engine["runTurn"]>>;
         try { t1 = await engine.runTurn({ provider: mockAt(4094, okSends(1)), workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 1 }); } finally { restore(); }
-        assert.equal(t1.budgetStruck, true, "every compaction strikes — turn 0/1 is NOT exempt (#4): a fold happened, so it counts");
+        assert.equal(t1.budgetStruck, true, "every grinder fold strikes - turn 1 is not exempt");
         // §grinder-hard-413-recovery: the first hard overflow is now the RECOVERY turn (sendable
         // within the 4096 window), not a hard stop — the strike above is what this test pins.
         assert.equal(t1.budgetHardStop, false, "first overflow → recovery turn, not death");
@@ -261,7 +261,7 @@ test("a huge ENGINE-WRITTEN row on the current turn is part of the newest bounda
             packet, provider, workerId, loopId, turnId, mintSequence: 99,
             rebuild: () => builder.buildRequestPacket(args),
         });
-        assert.equal(result.struck, true, "the compaction struck (one strike for the fire)");
+        assert.equal(result.struck, true, "the grinder fold struck once");
         assert.equal(result.fit, true, "stage 2 folded the current turn's engine row — the packet fits, no 413");
         const rows = await db.engine_render_log.all<{ turn_seq: number; op: string; expanded: number }>({ worker_id: workerId });
         const bigRow = rows.find((r) => r.turn_seq === 2 && r.op === "READ");
@@ -392,13 +392,13 @@ test("the FIRST hard overflow is a constrained RECOVERY TURN; the SECOND termina
         const engine = plainEngine(db);
         // Physically sendable (window 200k >> the packet) but hopelessly over the policy ceiling:
         // the SAFETY pin holds the budget at ~TINY while sendability stays 199,998. The model gets
-        // its ONE told-and-heard turn, CONTINUES (102) without curing it — the second hard overflow
-        // then dies honestly. (A recovery turn that CONCLUDES 200 is legitimate.)
+        // one constrained recovery turn. A continuing response remains over, so
+        // the second hard overflow terminates. A concluding recovery is legitimate.
         const restore = pinSafety(199_990);
         const mock = mockAt(199_998, [response([sendStmt(102, "still working")]), response([sendStmt(102, "still working")]), response([sendStmt(102, "still working")])], 200_000);
         let result: Awaited<ReturnType<Engine["runLoop"]>>;
         try { result = await engine.runLoop({ provider: mock, workspaceId, workerId, loopId, messages: MESSAGES, maxTurns: 5 }); } finally { restore(); }
-        assert.equal(result.result.status, 413, "still terminates 413 — the model was told and (structurally) could not comply");
+        assert.equal(result.result.status, 413, "a second consecutive hard overflow terminates 413");
         assert.equal(result.reason, "budget_overflow");
         assert.equal(mock.remaining, 2, "generate ran EXACTLY once — the recovery turn happened; the second overflow skipped the LLM");
         const errs = await db.test_error_rows_for_run.all<{ rx: string }>({ worker_id: workerId });
@@ -421,7 +421,7 @@ test("the FIRST hard overflow is a constrained RECOVERY TURN; the SECOND termina
         assert.ok(recovery !== undefined, "the recovery occurrence carries its enforced operation constraint");
         assert.equal(recovery.title, "Prompt budget exceeded");
         assert.deepEqual(recovery.allowedOperations, ["PLAN", "FOLD", "KILL", "SEND"]);
-        assert.equal(recovery.recovery, "FOLD or KILL irrelevant log items before continuing work.");
+        assert.equal(recovery.recovery, undefined, "the Problem reports constraints without prescribing which history to curate");
         assert.equal(recovery.retryable, false);
         assert.equal(recovery.ceiling, 8);
         assert.ok((recovery.usage ?? 0) > (recovery.ceiling ?? 0));
