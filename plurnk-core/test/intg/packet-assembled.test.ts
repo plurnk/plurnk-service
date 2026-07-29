@@ -14,7 +14,7 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { Mock } from "@plurnk/plurnk-providers";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, seedEntryWithChannel, packetSection, DEFAULT_MIMETYPES } from "./_helpers.ts";
-import { sendStmt } from "./_dsl.ts";
+import { readStmt, regex, sendStmt, urlPath } from "./_dsl.ts";
 
 const getPacket = async (db: Awaited<ReturnType<typeof openMigrated>>, turnId: number): Promise<{ sections: Array<{ name: string; slot: string }> }> =>
     JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: turnId }))!.packet);
@@ -57,6 +57,44 @@ test("assembled packet: the turn-0 catalog foist renders its entries into the lo
         await db.close();
         if (prev === undefined) delete process.env.PLURNK_SERVICE_FILES_ITEMS; else process.env.PLURNK_SERVICE_FILES_ITEMS = prev;
     }
+});
+
+test("assembled packet: matcher READ shows the resource and surgical coordinates together", async () => {
+    const db = await openMigrated();
+    try {
+        const workspaceId = await insertWorkspace(db, `pkt-matches-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const loopId = await insertLoop(db, workerId, 1, "find the target");
+        await seedEntryWithChannel(db, {
+            workspaceId,
+            workerId,
+            scheme: "worker",
+            pathname: "/notes.md",
+            channel: "body",
+            content: "heading\ntarget one\ncontext\ntarget two",
+            mimetype: "text/markdown",
+        });
+
+        const matchedRead = {
+            ...readStmt(urlPath("worker", "/notes.md")),
+            body: regex("target"),
+        };
+        const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
+        const provider = new Mock({
+            contextWindow: 100000,
+            responses: [
+                { assistant: { content: "", reasoning: null, ops: [matchedRead, sendStmt(102)] } },
+                { assistant: { content: "", reasoning: null, ops: [sendStmt(200)] } },
+            ],
+        });
+        await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
+        const second = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
+        const log = packetSection(await getPacket(db, second.turnId), "log");
+
+        assert.match(log, /"matcher":"\/target\/"/);
+        assert.match(log, /"matches":\[\{"lineStart":2,"lineEnd":2,"rowStart":2,"rowEnd":2\},\{"lineStart":4,"lineEnd":4,"rowStart":4,"rowEnd":4\}\]/);
+        assert.match(log, /<<:::worker:\/\/\/notes\.md\n1:heading\n2:target one\n3:context\n4:target two\n:::worker:\/\/\/notes\.md/);
+    } finally { await db.close(); }
 });
 
 test("the wire is monotone in volatility — byte-stable system; user: log → status clump → recap", async () => {

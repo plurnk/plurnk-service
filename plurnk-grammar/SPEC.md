@@ -132,6 +132,14 @@ above) but the syntax is uniform: a single integer denotes one
 position, an integer range `<N-M>` selects items at positions `N..M`
 inclusive of whatever sequence the OP operates on or produces.
 
+For READ, a body matcher selects resources against their complete readable
+content. A non-semantic `<L>` then projects readable rows from each selected
+resource; it never paginates the match set or limits where the matcher searches.
+Without `<L>`, READ returns each selected resource's complete readable content.
+Semantic READ reserves a leading decimal for an optional similarity threshold;
+remaining integers project readable rows. Without a leading decimal, every
+integer belongs to READ projection and selection uses the configured default.
+
 EDIT line-marker semantics (single source of authority):
 
 - No `<L>`, target does NOT exist: CREATE — the body becomes the new file/entry contents (an empty body creates an empty resource). This is the ONLY unscoped write.
@@ -146,8 +154,8 @@ EDIT line-marker semantics (single source of authority):
 
 | OP   | Produces |
 |------|----------|
-| FIND | JSON array of catalog objects — each carries its `path` plus per-channel `mimetype`, `tokens`, and `lines` (plus `matchSpan` with source-line and readable-row coordinates, and `matchPath`, on matcher hits) |
-| READ | content of matched entries, line-numbered `N:\t` (whole source lines, never extracted values) |
+| FIND | One catalog object per selected resource; matcher rows add `matches`, an array of source-line/readable-row coordinates with optional structural paths |
+| READ | One complete or explicitly scoped body per selected resource, plus the same `matches` navigation evidence |
 | EDIT | status; resulting entry content on success |
 | COPY | status; destination path on success |
 | MOVE | status; destination path on success |

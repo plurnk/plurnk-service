@@ -87,10 +87,11 @@ export interface SchemeHandler {
 ```
 
 `prepareFind?` is not a second query implementation. It is the optional
-discovery/materialization seam invoked before the consumer's standard FIND
-when a data scheme has no custom `find()`. Stored schemes omit it. Acquisition
+discovery/materialization seam invoked before the consumer's standard resource
+selection when a data scheme has no custom `find()`. Stored schemes omit it.
+FIND and matcher READ both invoke it before selecting entries. Acquisition
 schemes use it to make an exact requested resource into an ordinary entry,
-then receive the same catalog, matcher, span, weight, pagination, and status
+then receive the same catalog, matcher evidence, weight, pagination, and status
 semantics as every other entry-bearing scheme. The consumer resolves the
 standard query through the same canonical entry identity used by
 `ctx.entries`: a URL authority remains part of that identity and cannot be
@@ -111,7 +112,7 @@ The entry CRUD primitives (`readEntry`/`writeEntry`/`deleteEntry`) are not handl
 - Optional `PacketSectionTransformer` — a scheme MAY implement `transformSections(sections: PacketSection[]) → PacketSection[] | Promise<…>` to reshape the packet's section list (add/remove/reorder) before the engine measures it; called duck-typed in registration order. `PacketSection` = `{ name; slot: "system"|"user"; header: string|null; content; tokens }`. Contract declares the shape; service conforms (the in-process plugin-packet-control / fork-avoidance seam — schemes#24).
 - Behavior contract: `SchemeHandler` (§2). Scheme-facing grammar types re-exported here so siblings pin only this package: `PlurnkStatement` + the per-op statement types (`ReadStatement`, `FindStatement`, `OpenStatement`, `FoldStatement`, `EditStatement`, `CopyStatement`, `MoveStatement`, `SendStatement`, `ExecStatement`, `WorkStatement`, `ForkStatement`, `KillStatement`, `PlanStatement`) and path types (`ParsedPath` = `LocalPath` | `UrlPath`).
 - Discovery: `SchemeDiscovery` (behavior class) with `SchemeInfo` / `SchemeDiscoveryResult` / `DiscoverOptions` (§6).
-- Executor-scheme (RFC schemes#20 — "an executor is a scheme"): `OutputScheme.manifestFromRuntime(decl)` derives a read-only-output `SchemeManifest` from an executor's `RuntimeDecl` (zero scheme-authoring); `DefaultRead.read(content, mimetype, statement, mimetypes)` → `ReadResolution` is the free `<L>`/matcher read over produced output (reuses `Slicer`/`Matcher`); `Summarize.summarize(content, mimetype)` → `OrientIndex` is the structural-only EXEC-receipt index (no content — universal-receipt containment). A per-tag executor-scheme supplies its manifest via instance `get manifest()` (§2 `SchemeHandler.manifest?`).
+- Executor-scheme (RFC schemes#20 - "an executor is a scheme"): `OutputScheme.manifestFromRuntime(decl)` derives a read-only-output `SchemeManifest` from an executor's `RuntimeDecl` (zero scheme-authoring); `DefaultRead.read(content, mimetype, statement, mimetypes)` -> `ReadResolution` is the free `<L>`/matcher read over produced output (reuses `Slicer`/`Matcher`). A matcher selects the complete output resource before `<L>` projects rows; without `<L>`, READ returns the complete resource. Match coordinates remain metadata for a model-chosen follow-up READ. `Summarize.summarize(content, mimetype)` -> `OrientIndex` is the structural-only EXEC-receipt index (no content - universal-receipt containment). A per-tag executor-scheme supplies its manifest via instance `get manifest()` (§2 `SchemeHandler.manifest?`).
 - Results: `SchemeResult` is the universal operation-result contract. Statuses below 400 carry no `problem`; statuses 400–599 require RFC 9457 `ProblemDetails`, and the legacy `error` member is forbidden. `EntryResult`, `ProposalResult`, and `PassthroughResult` are optional conventional shapes, not engine routing discriminators. Guards inspect those optional shapes; proposal routing itself is engine-owned and follows status plus operation semantics.
 - Capability ctx (see §3.bis): `SchemeCtx` and its domain capabilities. Entry authors additionally receive `EntryOperationCaps`, semantic `EntryOwner`, and typed standard-operation results. `editBatch` receives every same-turn EDIT for one canonical resource and channel; it validates against one snapshot and commits one revision or none. There is no sequential single-EDIT fallback.
 
@@ -163,14 +164,12 @@ consumer does not invent a fallback error or reinterpret arbitrary fields.
 The same discrimination applies to every `SchemeCtx` capability result:
 entries, channels, and tags never return a bare failure status.
 
-### Matcher dispatch — `Matcher` {§matcher-dispatch}
+### Matcher dispatch - `Matcher` {§matcher-dispatch}
 
-- `Matcher.matchAgainstContent(body, content, mimetype, mimetypes, baseLine?)` — body-matcher adapter over `Mimetypes.query` (glob/regex/jsonpath/xpath, all served by the framework). Maps framework errors:
-  - `UnsupportedDialectError` → status 415
-  - `InvalidExpressionError` → status 400
-  - `QueryParseFailureError` → status 203 (soft fallback: raw content as text/markdown with `reason`)
-  - Empty match array → status 204
-  - Matches → status 200, body rendered as lean `<source-line>:\t<value>` lines (one match per line, the `N:\t` convention READ emits). Value bare for a single-line string, JSON-encoded otherwise so the one-match-per-line invariant holds (preserves `<L><K>` pick-Kth composition). The resolved query path (`matching`) is dropped — the structured `{matched, matching}` wrapper was a model-legibility barrier (schemes#12).
+- `Matcher.matchAgainstContent(body, content, mimetype, mimetypes)` is the body-matcher adapter over `Mimetypes.query` (glob/regex/jsonpath/xpath).
+- A match returns status 200 and `matches: MatchRange[]`. `MatchRange` is `{lineStart,lineEnd,rowStart,rowEnd,path?}`: source coordinates explain the finding, readable-row coordinates can drive a later scoped READ, and `path` preserves a structural query identity.
+- The matcher is a boolean resource selector. It does not replace content with matched values or choose a retrieval window. `DefaultRead` returns the complete selected resource unless the authored READ supplies `<L>`.
+- Empty results return 204 with `matches: []`; `UnsupportedDialectError` maps to 415; `InvalidExpressionError` maps to 400; `QueryParseFailureError` maps to 203 with raw content, text/markdown, and `reason`.
 
 ### §3.bis Capability ctx — the stable trusted-extension surface {§capability-ctx}
 

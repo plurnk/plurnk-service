@@ -52,7 +52,7 @@ test("FIND(log:///**):/regex/ matches log rows by CONTENT — the jumbo gesture 
         assert.ok(paths.includes("log:///1/1/2/READ"), "the READ-result row matches by its content");
         assert.ok(paths.includes("log:///1/1/1/EDIT"), "the EDIT row matches too — its rx echoes the written span (the projection is the contract)");
         assert.ok(!paths.some((x) => x.includes("/1/1/3/")), "the irrelevant row is excluded");
-        assert.ok(r.results.every((x) => x.matchSpan !== undefined), "(row, span) items — READ fan-out honors them (#286)");
+        assert.ok(r.results.every((x) => x.matches !== undefined), "each selected row carries addressable match coordinates");
     } finally { await db.close(); }
 });
 
@@ -122,12 +122,13 @@ test("log FIND maps source lines to the structured rows a scoped READ accepts", 
             makeSchemeCtx({ db, workerId, mimetypes: DEFAULT_MIMETYPES }),
         );
         assert.equal(result.status, 200);
-        assert.deepEqual(result.results[0]?.matchSpan, {
+        assert.deepEqual(result.results[0]?.matches, [{
             lineStart: 3,
             lineEnd: 3,
             rowStart: 2,
             rowEnd: 2,
-        });
+            path: "$['second']",
+        }]);
     } finally { await db.close(); }
 });
 

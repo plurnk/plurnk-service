@@ -4,6 +4,7 @@ import { PlurnkParser } from "@plurnk/plurnk-grammar";
 import Http from "@plurnk/plurnk-schemes-http";
 import type {
     FindStatement,
+    ReadStatement,
     SchemeCtx,
     SchemeHandler,
     SchemeManifest,
@@ -55,6 +56,16 @@ const parseFind = (dsl: string): FindStatement => {
     return item.statement;
 };
 
+const parseRead = (dsl: string): ReadStatement => {
+    const item = PlurnkParser.parse(`<<PLAN::PLAN\n${dsl}`).items.find(
+        (candidate) => candidate.kind === "statement" && candidate.statement.op === "READ",
+    );
+    if (item?.kind !== "statement" || item.statement.op !== "READ") {
+        throw new Error(`no READ parsed from ${dsl}`);
+    }
+    return item.statement;
+};
+
 test("data schemes inherit standard FIND after their optional preparation hook", async () => {
     const db = await openMigrated();
     const schemes = new SchemeRegistry();
@@ -77,7 +88,51 @@ test("data schemes inherit standard FIND after their optional preparation hook",
 
         assert.equal(result.status, 200);
         assert.match(String(result.content), /prepared:\/\/\/fact\.md/);
-        assert.match(String(result.content), /"matchSpan"/);
+        assert.match(String(result.content), /"matches"/);
+    } finally {
+        await db.close();
+    }
+});
+
+test("matcher READ invokes preparation, then returns one selected resource with navigation evidence", async () => {
+    const db = await openMigrated();
+    const schemes = new SchemeRegistry();
+    schemes.register("prepared", new PreparedDataScheme());
+    const engine = new Engine({ db, schemes, mimetypes: DEFAULT_MIMETYPES });
+    try {
+        const workspaceId = await insertWorkspace(db, `universal-read-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const loopId = await insertLoop(db, workerId, 1);
+        const turnId = await insertTurn(db, loopId, 1, 102);
+        const result = await engine.dispatch({
+            statement: parseRead("<<READ(prepared:///fact.md):*forty-two*:READ"),
+            workspaceId,
+            workerId,
+            loopId,
+            turnId,
+            sequence: 1,
+            origin: "model",
+        });
+
+        assert.equal(result.status, 200);
+        assert.equal(result.rowsWritten, 1);
+        const row = await db.log_read_by_coordinate.get<{ rx: string }>({
+            worker_id: workerId,
+            loop_seq: 1,
+            turn_seq: 1,
+            sequence: 1,
+        });
+        const rx = JSON.parse(row?.rx ?? "{}") as {
+            content?: string;
+            matches?: Array<{ lineStart: number; lineEnd: number; rowStart: number; rowEnd: number }>;
+        };
+        assert.equal(rx.content, "the universal answer is forty-two");
+        assert.deepEqual(rx.matches, [{
+            lineStart: 1,
+            lineEnd: 1,
+            rowStart: 1,
+            rowEnd: 1,
+        }]);
     } finally {
         await db.close();
     }
@@ -120,7 +175,7 @@ test("exact URL FIND acquires live HTTP resources, reuses them, and rejects dead
         assert.equal(result.status, 200);
         assert.deepEqual(requests, [url]);
         assert.match(String(result.content), new RegExp(url.replaceAll(".", "\\.")));
-        assert.match(String(result.content), /"matchSpan"/);
+        assert.match(String(result.content), /"matches"/);
         assert.doesNotMatch(String(result.content), /Zhannetta Nikolaevna Lotnik was his spouse/);
 
         const reused = await engine.dispatch({
@@ -149,7 +204,7 @@ test("exact URL FIND acquires live HTTP resources, reuses them, and rejects dead
         assert.equal(surveyed.status, 200);
         assert.deepEqual(requests, [url]);
         assert.match(String(surveyed.content), new RegExp(url.replaceAll(".", "\\.")));
-        assert.match(String(surveyed.content), /"matchSpan"/);
+        assert.match(String(surveyed.content), /"matches"/);
         assert.doesNotMatch(String(surveyed.content), /Zhannetta Nikolaevna Lotnik was his spouse/);
 
         const dead = await engine.dispatch({

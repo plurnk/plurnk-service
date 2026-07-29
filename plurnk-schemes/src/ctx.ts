@@ -6,7 +6,7 @@
 
 import type { WriterTier } from "./types.ts";
 import type { EditStatement, FindStatement, ReadStatement, SendStatement } from "@plurnk/plurnk-grammar";
-import type { SchemeResult } from "./Results.ts";
+import type { MatchRange, SchemeResult } from "./Results.ts";
 // Channel streaming-lifecycle state (mirrors plurnk-service's ChannelState /
 // grammar ChannelContent.state). Metadata, not an engine gate (service SPEC: channel lifecycle state).
 export type ChannelState = "static" | "active" | "closed" | "errored";
@@ -31,7 +31,7 @@ export interface EntryReadResult extends SchemeResult {
     readonly mimetype: string | null;
     readonly channel: string | null;
     readonly startLine?: number | null;
-    readonly matches?: number | null;
+    readonly matches?: ReadonlyArray<MatchRange>;
     readonly reason?: string;
     readonly awaitWorker?: string;
 }
@@ -41,14 +41,12 @@ export interface EntryCatalogItem {
     readonly seconds?: number;
     readonly tags?: ReadonlyArray<string>;
     readonly channels: Readonly<Record<string, { mimetype: string; tokens: number; lines: number }>>;
-    readonly matchSpan?: { lineStart: number; lineEnd: number };
-    readonly matchPath?: string;
+    readonly matches?: ReadonlyArray<MatchRange>;
 }
 
 export interface EntryMatch {
     readonly pathname: string;
-    readonly span: { lineStart: number; lineEnd: number } | null;
-    readonly path?: string;
+    readonly matches: ReadonlyArray<MatchRange>;
 }
 
 export interface EntryFindResult extends SchemeResult {

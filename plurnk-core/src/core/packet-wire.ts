@@ -253,9 +253,9 @@ export default class PacketWire {
     static #renderContentBody(fence: string, content: string, mimetype: string, startLine: number | null = 1): string {
         if (content.length === 0) return "";
         // Line-navigable text gets the `N:` source-line prefix from startLine. `startLine === null`
-        // means the content is ALREADY source-numbered — a matcher result whose lines carry their own
-        // (non-contiguous) source numbers like `143:…`; re-numbering would double it to `1:143:…`
-        // (one source-line prefix). Render verbatim. §render-rule-line-navigable-prefix
+        // means the producer already supplied source-numbered content; re-numbering
+        // would duplicate its coordinates. Render it verbatim.
+        // §render-rule-line-navigable-prefix
         const rendered = MimetypeBinary.isLineNavigableMimetype(mimetype) && startLine !== null
             ? PacketWire.#numberLines(content, startLine)
             : content;
@@ -338,8 +338,8 @@ export default class PacketWire {
     // can read to know what it did. Two body cases:
     //   1. READ/FIND with content → render rx.content under the target fence.
     //      Status and content are orthogonal: a failed stream READ still carries
-    //      the diagnostics that explain the failure. (Matcher is in meta.matcher,
-    //      count is in meta.matches.)
+    //      the diagnostics that explain the failure. (Matcher is in meta.matcher;
+    //      FIND's selected-resource count is in meta.items.)
     //   2. Every other op → re-emit tx as a heredoc in the model's native
     //      syntax. The model wrote this; mirror it back so the log is a true
     //      record of its actions instead of a row of opaque status codes.
@@ -429,11 +429,9 @@ export default class PacketWire {
                 meta.problem = problem;
             }
 
-            // READ + FIND enrichment: the matcher body (from tx) + `items`, the count
-            // of rows the op returned — a matcher's hits, or a bare catalog FIND's entry
-            // count. Without it the model can't tell "0 results" from "empty content",
-            // nor weigh a re-FIND. `matches` when the dispatch tallied it; else a FIND
-            // body is a JSON array whose length IS the count.
+            // READ + FIND enrichment: the matcher body, READ match coordinates,
+            // and FIND resource count. Match coordinates let the model choose a
+            // surgical follow-up READ without silently narrowing this result.
             let items: number | null = null;
             if (op === "READ" || op === "FIND") {
                 const tx = e.tx;
@@ -441,12 +439,13 @@ export default class PacketWire {
                     if (typeof tx.body.raw === "string") meta.matcher = tx.body.raw;
                 }
                 if (op === "FIND" && rx !== null && typeof rx === "object" && typeof rx.overflow === "number") {
-                    items = rx.overflow; // §find-count-not-contents — the full match count, though the rows weren't enumerated
-                } else if (rx !== null && typeof rx === "object" && typeof rx.matches === "number") {
-                    items = rx.matches;
+                    items = rx.overflow; // §find-count-not-contents - selected-resource count, though rows were not enumerated
                 } else if (op === "FIND" && rx !== null && typeof rx === "object" && typeof rx.content === "string") {
                     const parsed = PacketWire.#safeParse(rx.content);
                     if (Array.isArray(parsed)) items = parsed.length;
+                }
+                if (op === "READ" && rx !== null && typeof rx === "object" && Array.isArray(rx.matches)) {
+                    meta.matches = rx.matches;
                 }
                 // The matched set's content weight (sum of the entries' live channel tokens) — the
                 // FIND self-describes its hits' READ-weight; carries the per-scheme roll-up in the foist.
@@ -473,8 +472,8 @@ export default class PacketWire {
                 // same branch. #renderContentBody applies the line-number convention
                 // (§render-rule-line-navigable-prefix / §render-rule-tree-navigable-verbatim).
                 const mimetype = typeof rx.mimetype === "string" ? rx.mimetype : "text/plain";
-                // startLine === null is the matcher-result signal (already source-numbered → verbatim);
-                // a number numbers from it; absent → 1 (whole-content default).
+                // A number controls line numbering; null preserves a deliberately
+                // pre-numbered body; absent starts whole content at 1.
                 const start = rx.startLine === null ? null : (typeof rx.startLine === "number" ? rx.startLine : 1);
                 // §arrival-law — a foisted READ of a prompt path is PUSHED content (user- or
                 // sibling-authored); the render-side preview bounds it like any arrival, closing

@@ -154,7 +154,7 @@ test("Log.read: a range miss carries the exact JSON-item extent", async () => {
     } finally { db.close(); }
 });
 
-test("Log.read: regex body matcher on rx returns N:\\t<value> rows", async () => {
+test("Log.read: regex body matcher returns the complete projection plus coordinates", async () => {
     const { db, engine, workspaceId, workerId, loopId, turnId } = await setup();
     try {
         await engine.dispatch({ statement: editStmt("/y", "v"), workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model" });
@@ -166,9 +166,9 @@ test("Log.read: regex body matcher on rx returns N:\\t<value> rows", async () =>
         };
         const r = await new Log().read(stmt, makeSchemeCtx({ db, workerId }));
         assert.equal(r.status, 200);
-        assert.equal(r.mimetype, "text/markdown");
-        // READ returns the LINE (plurnk.md:31) — the rx JSON line containing "status", not the token.
-        assert.match(r.content ?? "", /^\d+:.*"status"/);
+        assert.equal(r.mimetype, "application/json");
+        assert.match(r.content ?? "", /"status"\s*:\s*201/);
+        assert.ok((r.matches?.length ?? 0) > 0);
     } finally { db.close(); }
 });
 
@@ -182,13 +182,12 @@ test("Log.read: a tag filter on an exact READ → 404 (tag recall is OPEN[tag]/F
     } finally { db.close(); }
 });
 
-test("Log.read: <L> + body matcher composes — slice structural item first, match within", async () => {
+test("Log.read: body matcher selects the full projection before <L> projects a structural item", async () => {
     const { db, engine, workspaceId, workerId, loopId, turnId } = await setup();
     try {
         await engine.dispatch({ statement: editStmt("/x", "v"), workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model" });
-        // <L> dispatches structural on the JSON rx — <1> picks the first
-        // kv pair. Then regex matches against that JSON slice. The slice is
-        // `[{"status":201}]`; `\d+` extracts the status code.
+        // The matcher qualifies the complete JSON rx. <1> then projects its
+        // first structural item instead of paginating matcher hits.
         const stmt: ReadStatement = {
             ...readStmt(urlPath("log", "/1/1/1")),
             lineMarker: { marks: [1, 1] },
@@ -196,22 +195,19 @@ test("Log.read: <L> + body matcher composes — slice structural item first, mat
         };
         const r = await new Log().read(stmt, makeSchemeCtx({ db, workerId }));
         assert.equal(r.status, 200);
-        // READ returns the LINE of the structural slice containing the match, not the bare 201.
-        assert.match(r.content ?? "", /^\d+:.*201/);
+        assert.match(r.content ?? "", /"status"\s*:\s*201/);
+        assert.ok((r.matches?.length ?? 0) > 0);
     } finally { db.close(); }
 });
 
-test("Log.read: a matcher READ fans out per match — the Nth match is its own row (#286)", async () => {
-    // The compose-chain under per-match: a matcher READ writes one row per match, so the N-th
-    // match IS log:///<l>/<t>/N — addressed directly, not sliced out of a combined result.
+test("Log.read: a matcher READ writes one resource row with surgical coordinates", async () => {
     const { db, engine, workspaceId, workerId, loopId, turnId } = await setup();
     try {
         await new Worker().edit(
             { ...editStmt("/notes", "alpha\nbeta\ngamma"), target: { kind: "url", raw: "worker:///notes", scheme: "worker", username: null, password: null, hostname: null, port: null, pathname: "/notes", params: {}, fragment: null } },
             { db, workspaceId, workerId, loopId, turnId, writer: "model", signal: undefined, tokenize: (t: string) => Math.ceil(t.length / 4) },
         );
-        // Dispatch a matcher READ — captures all three lines.
-        await engine.dispatch({
+        const result = await engine.dispatch({
             statement: {
                 op: "READ", suffix: "", signal: null,
                 target: { kind: "url", raw: "worker:///notes", scheme: "worker", username: null, password: null, hostname: null, port: null, pathname: "/notes", params: {}, fragment: null },
@@ -221,13 +217,11 @@ test("Log.read: a matcher READ fans out per match — the Nth match is its own r
             },
             workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
         });
-        // Sequence 1 is the FIND selection-summary row (§matcher-selection-signal); the 2nd match
-        // is its own row at log:///1/1/3 — read it directly (#286), no <L>-slice of a blob.
-        const r = await new Log().read(readStmt(urlPath("log", "/1/1/3")), makeSchemeCtx({ db, workerId }));
+        assert.equal(result.rowsWritten ?? 1, 1);
+        const r = await new Log().read(readStmt(urlPath("log", "/1/1/1")), makeSchemeCtx({ db, workerId }));
         assert.equal(r.status, 200);
         assert.equal(r.mimetype, "text/markdown");
-        assert.match(r.content ?? "", /beta/, "the 2nd row holds the 2nd match");
-        assert.doesNotMatch(r.content ?? "", /alpha|gamma/);
+        assert.equal(r.content, "alpha\nbeta\ngamma");
     } finally { db.close(); }
 });
 

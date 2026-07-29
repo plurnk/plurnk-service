@@ -63,6 +63,11 @@ Exit `0` on clean parse, `1` on any error or unparsed tail.
 | KILL | unix signal int  | annotation (opaque)   | n/a                |
 | PLAN | tags             | reasoning text        | n/a                |
 
+On READ, a matcher selects resources against their full readable content and
+the line marker projects rows from every selected resource. Without one, READ
+returns each complete selected resource. FIND line markers instead paginate
+selected resources.
+
 Matcher body dialect by leading char: `//` xpath, `/pattern/flags` regex, `$` jsonpath, `~` semantic, `@` graph, else glob. A leading symbol commits its dialect; invalid syntax is reported.
 
 Path scheme detection: `[a-z][a-z0-9+.-]*://` → URL (fully decomposed); otherwise local (raw). Targets address exact paths or shell globs. Bare paths default to `file://` at runtime.

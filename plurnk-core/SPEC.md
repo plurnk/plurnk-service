@@ -549,7 +549,7 @@ Directed SEND (non-null path) routes to scheme's `send`. Status = intent:
 
 - **Log speaks the universal query contract** {§log-uniform-query} — `FIND(log://…)` works like every scheme's FIND. Candidates are worker rows scoped by the coordinate hierarchy ({§log-coordinate-hierarchy}) and projected exactly as READ shows them. Content dialects use `Matcher.matchCandidates`; `~semantic` and `@graph` use the same persistent derivation artifacts and candidate rankers as entries. Results are catalog-shaped items keyed `log:///loop/turn/seq/OP`, and matcher READ retargets per-row READs exactly as entry schemes do. A tag signal filters candidates by the model's own region tags ({§log-region-tagging}). Log remains an event stream in storage; uniformity begins at its readable projection and search attachment, not by forcing logs into the entries table.
 - **The content matcher is source-agnostic** {§find-source-agnostic} — `Matcher.matchCandidates(body, candidates, mimetypes)` applies a content matcher (regex/jsonpath/xpath/glob) to candidates from ANY source, keyed by the caller's own identity (a pathname for entries, a `loop/turn/seq` coordinate for log). The matcher never cares what table the content came from, so FIND/READ with every content dialect works uniformly across schemes BY CONSTRUCTION — `EntryFind` and `Log.find` run the ONE shared primitive rather than re-implementing per scheme. This is the query-layer half of the log-uniformity decision (Q3, Option B): log stays its own event stream, but its rows are candidates the shared matcher covers like any entry's content.
-- **Matching carries provenance and navigation coordinates** {§matcher-selection-signal} — a pattern match returns the SOURCE LINE containing it, with its line number (`42:I bought Alice some flowers`, never `1:Alice`), and its FIND item carries both that source footprint and the corresponding rows accepted by scoped READ. `matchSpan` is `{lineStart,lineEnd,rowStart,rowEnd}`; rows equal lines for line-navigable text and identify top-level readable items for structured content. `Matcher.addReadableRows` performs that mapping for entry, log, and future scheme candidates from the same readable projection FIND matched, so storage topology cannot change the coordinates. `matchPath` remains the hit's canonical dialect coordinate (for example `$['users'][0]['name']`) when available. A matcher READ writes its internal FIND as a selection-summary row before its span-deduplicated deliveries, so minified or otherwise shared-line hits remain distinguishable without changing the returned source content. The teaching half is grammar's canon (grammar#56).
+- **Matching carries provenance and navigation coordinates** {§matcher-selection-signal} - a matcher is a boolean resource predicate. Each selected resource carries `matches: MatchRange[]`, where `MatchRange` is `{lineStart,lineEnd,rowStart,rowEnd,path?}`. Source coordinates explain where the match occurred; readable-row coordinates are valid input to a later scoped READ; `path` preserves a structural dialect's canonical identity (for example `$['users'][0]['name']`). Multiple findings on one resource remain one FIND/READ result with every distinct range attached. `Matcher.addReadableRows` maps relation findings through the same readable projection that READ uses, so storage topology cannot change the coordinates. The agent reports objective navigation evidence and never guesses which surgical READ the model wants.
 
 `SEND[410](path[#fragment])` also deletes the target entry/channel — an implemented side-effect, NOT taught to the model and with no live/demo surface. The model-facing delete idiom is KILL (§move).
 
@@ -586,11 +586,11 @@ The optional engine-/daemon-populated capabilities (the notifiers, `injectWorker
 Engine → scheme guarantees:
 
 - `ctx` is fresh per call. No mutation across calls.
-- FIND on a `category: "data"` scheme with no custom `find()` invokes its
-  optional `prepareFind()` and then the standard entry FIND. Preparation owns
-  discovery/materialization only; query semantics remain universal. The
-  prepared write and the query resolve through one canonical entry identity,
-  including a URI authority folded into its storage pathname.
+- FIND or matcher READ on a `category: "data"` scheme with no custom `find()`
+  invokes its optional `prepareFind()` and then the standard entry selection.
+  Preparation owns discovery/materialization only; query semantics remain
+  universal. The prepared write and the query resolve through one canonical
+  entry identity, including a URI authority folded into its storage pathname.
 - `ctx.writer` reflects the actual writer at this dispatch.
 - `manifest.writableBy` checked BEFORE invocation; engine returns 403 directly on exclusion. {§scheme-surface-writableby-403}
 - `ctx.signal` is wired to the worker's AbortController (§provider-guarantees-signal-wired).
@@ -785,8 +785,9 @@ A `file:///` member EDIT diverges from this immediate-write contract: it diffs a
 AST: `{ op: "READ", target, body: MatcherBody | null, signal: tags | null, lineMarker? }`.
 
 - Returns channel content + mimetype {§read-read-content}, or 404 {§read-read-404}.
-- `lineMarker` slices per §slice-semantics.
-- `body` matcher dispatches through the in-tree `Matcher` per §matcher-dispatch (all four content dialects wired).
+- `body` is a resource predicate dispatched per §matcher-dispatch.
+- `lineMarker` projects readable rows per §slice-semantics after selection. It never limits the content searched or paginates match occurrences. Without a marker, READ returns each selected resource's complete readable content. A miss is 204 before projection; an invalid row projection is 416. {§read-selection-projection}
+- Semantic READ uses a leading decimal as its optional similarity threshold. Remaining integer components are the readable-row projection. Without a leading decimal, semantic selection uses the configured default and every integer component belongs to READ projection. Direct FIND retains §find-semantic-default-top-k.
 
 ### §open-fold OPEN / FOLD
 
@@ -850,7 +851,7 @@ AST: `{ op: "FIND", target (scope), body: MatcherBody | null (predicate), signal
 - Every matcher operates only over the candidate set selected by `(target)` and `[tags]`; relation matchers do not bypass that selection. Semantic ranking is exhaustive within that candidate set, then applies its result policy—never rank the wider corpus and discard out-of-scope hits afterward, which changes top-K meaning and leaks entries across an exact target. A semantic matcher with no `<scope>` returns the configured `PLURNK_SERVICE_SEMANTIC_TOP_K` highest-ranked results. An integer scope overrides that count; a leading decimal is a minimum cosine-similarity threshold, optionally followed by a result cap. The ordinary FIND render budget remains independent of semantic ranking. {§find-semantic-default-top-k}
 - `signal` is a tag filter; entries match if they have ALL listed tags. {§find-tag-filter-and-semantics}
 - Workspace + scheme scoped — no cross-workspace/cross-scheme leakage. {§find-scoped-isolation}
-- Returns `FindResult { status, content, mimetype, results: MatchItem[], matches, pathnames }`. The matcher sets the unit (#286). A **body-less** FIND is the **catalog**. Ordinary rows are one per entry: `{ path, stream?, tags?, channels: { <uri>: { mimetype, tokens, lines } } }`. A terminal single-star path scope is a one-level map: direct entries retain that shape, while deeper first-segment directories collapse to `{ path: "dir/**", items, tokens }`, where the selector and both aggregates describe the exact recursive subtree. Scope summaries are navigation metadata, not entries or hidden READ fan-out matches. A **matcher** FIND resolves to one item per match: the entry's catalog row plus `matchSpan {lineStart,lineEnd,rowStart,rowEnd}`. The line pair records source provenance; the row pair is directly reusable as scoped READ input. A file with N matches yields N items; there is no `matchLines` array. The unit is uniform across every content dialect, and the mimetype handler maps each hit to readable rows. Order is match order (rank for `~`semantic, source order otherwise); a miss contributes nothing; identical source spans dedup. `content` is the compact JSON array. {§find-result-catalog-rows} **Over the render budget, FIND returns a count, not contents** (#418, `PLURNK_SERVICE_FIND_MAX_MATCHES`): a repo-scale recursive FIND cannot enumerate safely. When the rendered catalog-item count exceeds the budget, `overflow` and `itemsTokenTotal` carry the count and aggregate weight while `results`, `matches`, and `pathnames` are empty; no caller may perform hidden work from content the model was denied. The gate is independent of model window size. `0`/unset disables it. {§find-count-not-contents}
+- Returns `FindResult { status, content, mimetype, results, matches, pathnames }`. A **body-less** FIND is the **catalog**. Ordinary rows are one per resource: `{ path, stream?, tags?, channels: { <uri>: { mimetype, tokens, lines } } }`. A terminal single-star path scope is a one-level map: direct entries retain that shape, while deeper first-segment directories collapse to `{ path: "dir/**", items, tokens }`, where the selector and both aggregates describe the exact recursive subtree. Scope summaries are navigation metadata, not resources or hidden READ fan-out matches. A matcher FIND retains the same one-row-per-resource unit and adds `matches: MatchRange[]` (§matcher-selection-signal). FIND pagination counts selected resources, never occurrences. Resource order is rank for `~`semantic and candidate order otherwise; match ranges retain dialect order and exact duplicate coordinates deduplicate. `content` is the compact JSON array. {§find-result-catalog-rows} **Over the render budget, FIND returns a count, not contents** (#418, `PLURNK_SERVICE_FIND_MAX_MATCHES`): a repo-scale recursive FIND cannot enumerate safely. When the selected-resource count exceeds the budget, `overflow` and `itemsTokenTotal` carry the count and aggregate weight while `results`, `matches`, and `pathnames` are empty; no caller may perform hidden work from content the model was denied. The gate is independent of model window size. `0`/unset disables it. {§find-count-not-contents}
 
 ### §send SEND
 
@@ -1617,24 +1618,22 @@ Body matchers and `<L>` both dispatch on entry mimetype. Body matcher: leading-c
 
 Glob anchoring (`TODO*` starts-with, `*TODO*` contains, `*.log` ends-with, `[Tt]odo*` char class) lives in framework's `BaseHandler`.
 
-### §matcher-result Matcher result shape — READ returns matching LINES, uniformly
+### §matcher-result Matcher selection and evidence
 
-The contract is the grammar's: **plurnk.md §"`<Line> / <Result>`" — "FIND returns rows of results, READ returns lines of content"**, and READ "prefixes every line with its line number, `N:` — no separator whitespace" (#564 owner policy: a bare `N:` prefix; the old hard-tab separator leaked into edit bodies and corrupted indentation). The number is one source-line coordinate, not part of the source. This section documents the service's implementation of that.
-
-**A matcher selects locations; it never extracts a value.** Every dialect identifies *where* in the source it matches; READ returns the **source line(s)** at those locations, faithfully — one shape for every dialect: `<line>:<line-content>`, prefixed with the single source-line number per plurnk.md (shifted back to source coordinates inside an `<L>` slice), never double-numbered. Empty → 204; mimetype `text/markdown` regardless of source. The model reads the line and adapts whatever it needs out of it — READ never pre-chews a match down to a bare value. {§matcher-result-read-returns-lines}
+**A matcher selects resources; it never extracts a value or chooses a retrieval window.** Every dialect answers whether a candidate resource matches and, when the backend can locate the finding, returns `MatchRange` evidence (§matcher-selection-signal). A matcher miss is 204. A selected resource keeps its native readable content and mimetype. FIND lists it once; READ returns it once, complete unless the authored READ supplied a row projection. {§matcher-result-resource-selection}
 
 | Dialect | Selects | Natural use |
 |---|---|---|
-| regex `/pat/` | the lines the pattern occurs in (it *matches*, never captures-and-extracts) | the lines mentioning X |
-| glob `pat` | the lines the glob matches | the lines containing TODO |
-| jsonpath `$.path` | the line(s) where the structural path resolves | the line defining `host` |
-| xpath `//sel` | the line(s) of the selected node (text/html) | the line(s) of the h1 |
-| `~`semantic `~q` | the line span of each ranked chunk (a relation, resolved by FIND) | the section about X |
-| `@`graph `@<sym` | the line span of each matched symbol occurrence (a relation, resolved by FIND) | where X is referenced |
+| regex `/pat/` | resources whose raw content matches | exact source and readable-row coordinates |
+| glob `pat` | resources with matching raw-content lines | exact source and readable-row coordinates |
+| jsonpath `$.path` | resources whose readable JSON projection resolves the path | source/readable ranges plus canonical JSONPath |
+| xpath `//sel` | resources whose readable XML projection resolves the selector | source/readable ranges plus canonical XPath when available |
+| `~`semantic `~q` | resources ranked by indexed chunks | ranked chunk coordinates when available |
+| `@`graph `@<sym` | resources with matching symbol relations | symbol occurrence coordinates |
 
-**READ honors FIND.** A READ that resolves to more than the single exact entry — a glob/folder scope, OR any matcher — fans out: the engine runs the scheme's FIND, then writes **one log row per MATCH** (not per file), each delivering that match's content — READ is the content retrieval over FIND's survey (§find-result-catalog-rows). A file with N matches → N rows. It costs **one command** (the model emitted one READ) yet writes N rows, each its own concrete `(file, span)` — individually foldable/killable/re-READable. A matcher row carries the source LINES at the match's span, delivered via a **raw line-slice** so a structural mimetype's item-index `<L>` never mis-slices a span that is, by construction, source lines; a body-less folder/glob row carries the whole entry. A **bare entry, body-less** is the single direct read. Zero matches writes a single `204` row (never silence). If FIND is count-only under §find-count-not-contents, READ writes that bounded FIND summary followed by one **413** READ refusal naming the count and asking for a narrower target or matcher; it delivers ZERO hidden matches. Fan-out checks cancellation between deliveries, so an operator abort bounds additional work rather than waiting for the entire selected set. {§read-multi-file-fanout}
+**READ uses the FIND contract as a selector, not as a visible intermediate operation.** A READ over a glob, folder, relation matcher, or acquisition-scheme matcher writes one READ log row per selected resource. It does not write a synthetic FIND row. Every matcher delivery carries all of that resource's match evidence. A body-less folder/glob uses the same resource unit. An exact stored-resource content matcher may resolve directly with the same visible contract, preserving content-level outcomes such as the 203 raw-source fallback. A bare body-less entry remains one direct READ. Zero selections write one 204 row. If selection exceeds §find-count-not-contents, READ writes one 413 refusal and no hidden deliveries. Fan-out checks cancellation between resources. {§read-multi-file-fanout}
 
-> **Source-line provenance (shipped, every dialect).** Each hit carries a source-line span: regex/glob over raw content; jsonpath/xpath over the parsed `deepJson`/`deepXml` projection (the mimetypes plugin reports each hit's line span); `~`semantic the ranked chunk's span; `@`graph the symbol occurrence's span. So the per-match `(file, span)` item is well-defined for every dialect, and READ returns the line uniformly.
+**Selection and projection are ordered and independent.** The matcher evaluates the complete readable candidate. The READ marker then projects rows from each selected resource. Match coordinates are not an implicit projection: the agent gives the model the information required to author a surgical follow-up READ without guessing which finding or context window it wants. A coordinate-less but valid relation result may select a resource with `matches: []`; the service never fabricates coordinates. {§read-selection-projection}
 
 ### §slice-semantics `<L>` semantics by source mimetype
 
@@ -1658,7 +1657,7 @@ The contract is the grammar's: **plurnk.md §"`<Line> / <Result>`" — "FIND ret
 - `<0>` / `<-1>` → `[]` for READ
 - Out-of-range → 416; malformed JSON → 400
 
-**Compose by addressing the match.** Under per-match fan-out a matcher READ writes one row per match, so the **N-th match IS `log:///<l>/<t>/N`** — its own addressable row, read directly. There is no `<P>`-slice of a combined blob (no blob exists). To process a match further, READ its row and apply a matcher/`<L>` to that content (the body-less compose-chain). {§slice-semantics-compose-pattern}
+**Compose from evidence.** Match metadata reports both source lines and readable rows. A follow-up `READ(resource)<rowStart,rowEnd>` retrieves the chosen structural or textual region. The service does not turn findings into synthetic log resources or assume which occurrence the model wants. {§slice-semantics-compose-pattern}
 
 ### §json-edit Structural EDIT on JSON
 

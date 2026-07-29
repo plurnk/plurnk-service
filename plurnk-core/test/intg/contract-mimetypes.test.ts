@@ -1,15 +1,15 @@
 // Integration coverage for previously-untagged SPEC.md contract anchors that
 // concentrate around the mimetype seam: matcher soft-fallback (§matcher-dispatch),
-// compose-pattern (§slice-semantics), 410 channel-delete
+// matcher navigation (§slice-semantics), 410 channel-delete
 // (§send-dispatch), the Mimetypes.process entry point (§mimetype-methods), and the write-time vs
 // render-time handler firing boundary (§mimetype — schemes do not invoke handlers).
 //
 // Vehicles are the real production paths:
-//   - §matcher-dispatch / §slice-semantics — Known.read matcher dispatch (Matcher.matchAgainstContent → 203)
-//                     + Log.read structural <L> compose over the matcher result.
-//   - §send-dispatch — _entry-send.sendToWorkspaceEntry 410-with-fragment over Engine.dispatch.
-//   - §mimetype-methods / §mimetype — Mimetypes.process shape + a spy handler proving write (detect)
-//                 never fires preview, but render (manifest build → process) does.
+//   - §matcher-dispatch / §slice-semantics - Known.read matcher dispatch
+//                     (Matcher.matchAgainstContent -> 203) plus coordinate-guided READ.
+//   - §send-dispatch - _entry-send.sendToWorkspaceEntry 410-with-fragment over Engine.dispatch.
+//   - §mimetype-methods / §mimetype - Mimetypes.process shape + a spy handler proving write
+//                 (detect) never fires preview, but render (manifest build -> process) does.
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -25,7 +25,6 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import PacketWire from "../../src/core/packet-wire.ts";
 import Worker from "../../src/schemes/Worker.ts";
-import Log from "../../src/schemes/Log.ts";
 import File from "../../src/schemes/File.ts";
 import type { Db } from "../../src/core/Db.ts";
 import type { PlurnkSchemeContext } from "../../src/core/scheme-types.ts";
@@ -76,15 +75,39 @@ test("jsonpath on malformed-JSON entry returns 203 with raw bytes as text/markdo
         // ...with a reason so the model knows WHY it got raw bytes.
         assert.equal(typeof (matched as { reason?: string }).reason, "string");
         assert.ok(((matched as { reason?: string }).reason ?? "").length > 0, "reason explains the parse failure");
+
+        const loopId = await insertLoop(db, workerId, 1, "malformed-json");
+        const turnId = await insertTurn(db, loopId, 1, 102);
+        const dispatched = await new Engine({ db, schemes: new SchemeRegistry(), mimetypes }).dispatch({
+            statement: {
+                ...readStmt(urlPath("worker", "/config.json")),
+                body: { dialect: "jsonpath", raw: "$.host" } as MatcherBody,
+            },
+            workspaceId,
+            workerId,
+            loopId,
+            turnId,
+            sequence: 1,
+            origin: "model",
+        });
+        assert.equal(dispatched.status, 203, "the composed exact-READ path preserves raw-source recovery");
+
+        const scopedFallback = await k.read(
+            {
+                ...readStmt(urlPath("worker", "/config.json")),
+                body: { dialect: "jsonpath", raw: "$.host" } as MatcherBody,
+                lineMarker: { marks: [1] },
+            },
+            makeSchemeCtx({ db, workspaceId, mimetypes }),
+        );
+        assert.equal(scopedFallback.status, 203, "raw fallback is line-navigable even when the declared JSON is malformed");
+        assert.equal(scopedFallback.content, broken);
     } finally { await db.close(); }
 });
 
-// --- §slice-semantics killer composition: matcher-then-<L> ----------------------------
-// Dispatch a regex matcher READ through the Engine (lands at log:///1/1/1 as
-// an application/json result), then structural <L><P> over that log entry
-// picks the P-th match — matcher rx is application/json, <L> selects the item.
+// --- §slice-semantics: matcher evidence guides a later <L> -----------------------------
 
-test("a matcher READ fans out per match — the Nth match is log:///<l>/<t>/N, addressed directly (#286)", async () => {
+test("a matcher READ returns one resource and coordinates for a surgical follow-up READ", async () => {
     const { db, workspaceId, workerId, mimetypes } = await setup();
     try {
         const loopId = await insertLoop(db, workerId, 1, "compose");
@@ -96,7 +119,6 @@ test("a matcher READ fans out per match — the Nth match is log:///<l>/<t>/N, a
             makeSchemeCtx({ db, workspaceId, workerId, mimetypes }),
         );
 
-        // Matcher READ through the engine → fans out one row per match (#286).
         const r = await engine.dispatch({
             statement: {
                 ...readStmt(urlPath("worker", "/log.txt")),
@@ -104,16 +126,30 @@ test("a matcher READ fans out per match — the Nth match is log:///<l>/<t>/N, a
             },
             workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
         });
-        assert.equal(r.rowsWritten, 3, "the FIND selection-summary row + two error matches, not one combined blob");
+        assert.equal(r.rowsWritten ?? 1, 1);
 
-        // The compose pattern under per-match: the Nth match IS log:///<l>/<t>/N — its own
-        // addressable row. No <P>-slice of a combined result (there is no combined result). Each
-        // row carries its matching LINE (regex SELECTS, never extracts — plurnk.md:31).
-        const m1 = await new Log().read(readStmt(urlPath("log", "/1/1/2")), makeSchemeCtx({ db, workerId, mimetypes }));
-        const m2 = await new Log().read(readStmt(urlPath("log", "/1/1/3")), makeSchemeCtx({ db, workerId, mimetypes }));
-        assert.match(m1.content ?? "", /error: alpha/, "the 1st match is its own row");
-        assert.match(m2.content ?? "", /error: gamma/, "the 2nd match is the 2nd row");
-        assert.doesNotMatch(m2.content ?? "", /alpha/, "each row holds exactly its own match");
+        const row = await db.log_read_by_coordinate.get<{ rx: string }>({
+            worker_id: workerId,
+            loop_seq: 1,
+            turn_seq: 1,
+            sequence: 1,
+        });
+        const rx = JSON.parse(row!.rx) as {
+            content: string;
+            matches: Array<{ rowStart: number; rowEnd: number }>;
+        };
+        assert.equal(rx.content, "error: alpha\nok: beta\nerror: gamma");
+        assert.equal(rx.matches.length, 2);
+
+        const second = rx.matches[1]!;
+        const surgical = await new Worker().read(
+            {
+                ...readStmt(urlPath("worker", "/log.txt")),
+                lineMarker: { marks: [second.rowStart, second.rowEnd] },
+            },
+            makeSchemeCtx({ db, workspaceId, workerId, mimetypes }),
+        );
+        assert.equal(surgical.content, "error: gamma");
     } finally { await db.close(); }
 });
 

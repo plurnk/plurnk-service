@@ -58,7 +58,7 @@ test("[#186-semantic-e2e] ~query ranks by REAL semantic similarity (full pipelin
         // ranking too; it simply falls below both connection entries.
         assert.deepEqual(r.results.map((f) => f.path).sort(), ["worker:///db.md", "worker:///sql.md"]);
         assert.ok(!r.results.some((f) => f.path === "worker:///cake.md"), "the unrelated recipe never enters the ranking");
-        assert.ok(r.results.every((row) => typeof row.channels === "object" && !("extent" in (row as object))), "~semantic FIND returns uniform catalog rows (no per-match extent) — the matched chunk's span is a READ, the ranking is the row order");
+        assert.ok(r.results.every((row) => typeof row.channels === "object" && !("extent" in (row as object))), "~semantic FIND returns one catalog row per selected resource");
     } finally { db.close(); }
 });
 

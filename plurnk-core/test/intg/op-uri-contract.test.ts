@@ -132,49 +132,52 @@ test("contract: a hash-shaped target addresses that literal path, never a pathna
     });
 });
 
-// ── §matcher-result: READ returns matching LINES, uniformly. A matcher SELECTS; READ
-// returns the source line(s) at the match. regex matches (never extracts); glob, jsonpath,
-// xpath all select lines. One shape across every dialect. ──
+// §matcher-result: matchers select resources and expose navigation coordinates.
 
-// {§matcher-result-read-returns-lines} — DEFERRED-RED until Stage 2. A regex SELECTS the
-// lines it occurs in; READ returns the LINE, not the matched substring. Today the matcher
-// renders `<line>:<matched-value>` (the token `phoenix`); the contract wants the line.
-test("a regex READ returns the matching LINE, not the substring", async () => {
+test("a regex READ returns the selected resource and its match coordinate", async () => {
     await withWorkspaceRoot(async (root, ctx) => {
-        await writeFile(join(root, "notes.md"), "the codename is phoenix\n");
+        await writeFile(join(root, "notes.md"), "heading\nthe codename is phoenix\ncontext\n");
         await addMember(ctx, "notes.md");
         const stmt = parseOp<ReadStatement>("<<READ(notes.md):/phoenix/:READ", "READ");
         const result = await new File().read(stmt, ctx);
-        assert.match(result.content ?? "", /the codename is phoenix/, `regex READ returns the whole LINE; got: ${JSON.stringify(result.content)}`);
+        assert.equal(result.content, "heading\nthe codename is phoenix\ncontext\n");
+        assert.deepEqual(result.matches, [{
+            lineStart: 2,
+            lineEnd: 2,
+            rowStart: 2,
+            rowEnd: 2,
+        }]);
     });
 });
 
-// COVERAGE — glob already meets the contract (proof the uniform line-return is achievable):
-// it returns whole matching lines with their non-sequential source numbers. GREEN today.
-test("contract: a glob READ returns whole matching lines with non-sequential source numbers ()", async () => {
+test("contract: a glob READ preserves every match coordinate on one selected resource", async () => {
     await withWorkspaceRoot(async (root, ctx) => {
         await writeFile(join(root, "log.md"), "alpha\ntarget one\nbeta\ngamma\ntarget two\n");
         await addMember(ctx, "log.md");
         const stmt = parseOp<ReadStatement>("<<READ(log.md):*target*:READ", "READ");
         const result = await new File().read(stmt, ctx);
-        const content = result.content ?? "";
-        assert.match(content, /2:target one/, `glob returns line 2 whole; got: ${JSON.stringify(content)}`);
-        assert.match(content, /5:target two/, `glob returns line 5 whole; got: ${JSON.stringify(content)}`);
+        assert.equal(result.content, "alpha\ntarget one\nbeta\ngamma\ntarget two\n");
+        assert.deepEqual(result.matches, [
+            { lineStart: 2, lineEnd: 2, rowStart: 2, rowEnd: 2 },
+            { lineStart: 5, lineEnd: 5, rowStart: 5, rowEnd: 5 },
+        ]);
     });
 });
 
-// CELL [READ × jsonpath] — GREEN: the plugin reports each structural hit's source-line
-// provenance. Per §matcher-result, jsonpath SELECTS the line where the path resolves; READ
-// returns that LINE (`  "host": "db.internal",`), not the bare value. Today it returns the
-// value, and the structural match carries no source line — so this can't go green until the
-// plugin reports the line span of each jsonpath hit (the coordination the owner flagged).
-test("contract: a jsonpath READ returns the LINE where the path resolves", async () => {
+test("contract: a jsonpath READ returns the JSON resource with structural coordinates", async () => {
     await withWorkspaceRoot(async (root, ctx) => {
         await writeFile(join(root, "config.json"), '{\n  "host": "db.internal",\n  "pool": 5\n}\n');
         await addMember(ctx, "config.json");
         const stmt = parseOp<ReadStatement>("<<READ(config.json):$.host:READ", "READ");
         const result = await new File().read(stmt, ctx);
-        assert.match(result.content ?? "", /"host": "db\.internal"/, `jsonpath READ returns the LINE; got: ${JSON.stringify(result.content)}`);
+        assert.equal(result.content, '{\n  "host": "db.internal",\n  "pool": 5\n}\n');
+        assert.deepEqual(result.matches, [{
+            lineStart: 2,
+            lineEnd: 2,
+            rowStart: 1,
+            rowEnd: 1,
+            path: "$['host']",
+        }]);
     });
 });
 

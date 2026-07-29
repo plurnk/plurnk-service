@@ -335,9 +335,10 @@ export default class Dispatcher {
         if (denial !== null) {
             result = denial;
         } else if (this.#readFansOut(statement)) {
-            // READ honors FIND: a glob/folder scope or a matcher fans out to one log row per MATCH
-            // (its own writeLogs), returning early. A READ never proposes, so it bypasses the
-            // single-row path below. A bare entry, body-less, falls through to the direct read. #286
+            // Multi-resource scopes, relation matchers, and acquisition-scheme
+            // matchers use FIND for selection and write their own rows. An exact
+            // stored-resource content matcher remains a direct READ, preserving
+            // content-level outcomes such as 203.
             return await this.#handleReadFanout(statement, schemeCtx, { workerId, loopId, turnId, sequence, origin, onDispatch });
         } else {
             // SPEC §scheme-surface + plurnk-schemes#1: action-entry-as-outcome. Scheme-handler
@@ -859,35 +860,57 @@ export default class Dispatcher {
         return this.#deleteEntry(schemeName, entryPathnameOf(path), ctx);
     }
 
-    // Multi-file READ fan-out (SPEC §matcher-result — "the companion to FIND's survey"). A glob
-    // READ target resolves to MANY files; READ returns one log row per file that matches, each
-    // holding that file's matching lines. The matched SET is exactly FIND's survey (which files
-    // + where — matchSpan), so we reuse the scheme's own find, then READ each matched file. One
-    // model command, N log rows — each row addresses its concrete file, so it folds/kills/re-READs
-    // on its own. The running sequence counter in runTurn advances by rowsWritten.
-    // A READ fans out (honors FIND) when it resolves to more than the single exact entry: a glob
-    // or folder scope, OR a matcher (which selects per-match within whatever the target resolved).
-    // A bare entry, body-less, is the one direct read. #286
+    // A multi-resource READ uses FIND as its resource selector, then writes one
+    // READ row per selected resource. Match coordinates remain metadata on that
+    // resource; they never create extra rows or replace its content.
     #readFansOut(statement: PlurnkStatement): boolean {
         if (statement.op !== "READ") return false;
-        if ("body" in statement && (statement as ReadStatement).body !== null) return true;  // a matcher → per-match fan-out
+        const body = statement.body;
+        if (body?.dialect === "semantic" || body?.dialect === "graph") return true;
+        const schemeName = schemeNameOf(statement.target);
+        const handler = schemeName === null
+            ? undefined
+            : this.#schemes.get(schemeName) as { prepareFind?: unknown } | undefined;
+        if (body !== null && typeof handler?.prepareFind === "function") return true;
         const t = statement.target;
         const p = t === null ? "" : (t.kind === "url" ? t.pathname : t.raw);
         if (hasPathGlob(p)) return true;
-        const schemeName = schemeNameOf(t);
         return p.endsWith("/") && schemeName !== null && this.#schemes.manifestFor(schemeName)?.folderScopes === true;
     }
 
-    // Clone the READ onto one concrete match — the FIND already matched, so strip the body
-    // (no re-match) and set <L> to its readable-row span. A null span (body-less folder/glob
-    // fan-out) reads the whole entry. #286
-    static #retargetRead(statement: PlurnkStatement, pathname: string, span: { rowStart: number; rowEnd: number } | null): PlurnkStatement {
+    static #retargetRead(
+        statement: PlurnkStatement,
+        pathname: string,
+        lineMarker: LineMarker | null,
+        body: ReadStatement["body"],
+    ): PlurnkStatement {
         const t = statement.target;
         const target = t !== null && t.kind === "url"
             ? { ...t, pathname, raw: `${t.scheme}://${pathname}` }
             : { ...(t as { raw: string }), raw: pathname };
-        const lineMarker = span !== null ? { marks: [span.rowStart, span.rowEnd] } : null;
-        return { ...statement, target: target as PlurnkStatement["target"], lineMarker, body: null } as PlurnkStatement;
+        return { ...statement, target: target as PlurnkStatement["target"], lineMarker, body } as PlurnkStatement;
+    }
+
+    // READ scope always projects rows. Semantic READ reserves a leading decimal
+    // for similarity selection; any remaining integers are the row projection.
+    // FIND retains its own public result-range interpretation.
+    static #readMarkers(statement: ReadStatement): {
+        selection: LineMarker | null;
+        projection: LineMarker | null;
+    } {
+        const marker = statement.lineMarker;
+        if (statement.body?.dialect !== "semantic") {
+            return { selection: null, projection: marker };
+        }
+        if (marker === null) return { selection: null, projection: null };
+        const [first, ...rest] = marker.marks;
+        if (Number.isInteger(first)) {
+            return { selection: null, projection: marker };
+        }
+        return {
+            selection: { marks: [first] },
+            projection: rest.length === 0 ? null : { marks: rest as [number, ...number[]] },
+        };
     }
 
     #standardEntryManifest(schemeName: string, statement: PlurnkStatement): SchemeManifest | null {
@@ -899,31 +922,26 @@ export default class Dispatcher {
         return manifest === undefined ? null : { ...manifest, name: target.scheme };
     }
 
-    static #foldStoredEntryAuthority(statement: PlurnkStatement): PlurnkStatement {
+    static #storedEntryRead(
+        statement: PlurnkStatement,
+        pathname: string,
+        lineMarker: LineMarker | null,
+        body: ReadStatement["body"],
+        storage: boolean,
+    ): PlurnkStatement {
         const target = statement.target;
-        if (target === null || target.kind !== "url") return statement;
-        const pathname = foldAuthorityIntoPath(target.hostname, target.pathname);
-        return {
-            ...statement,
-            target: { ...target, hostname: null, pathname, raw: `${target.scheme}://${pathname}` },
-        } as PlurnkStatement;
-    }
-
-    static #storedEntryMatchRead(statement: PlurnkStatement, pathname: string, span: { rowStart: number; rowEnd: number } | null, storage: boolean): PlurnkStatement {
-        const target = statement.target;
-        if (target === null || target.kind !== "url") return Dispatcher.#retargetRead(statement, pathname, span);
+        if (target === null || target.kind !== "url") return Dispatcher.#retargetRead(statement, pathname, lineMarker, body);
         const hostPrefix = target.hostname === null ? null : `/${target.hostname}`;
         const displayPath = hostPrefix !== null && pathname.startsWith(`${hostPrefix}/`)
             ? pathname.slice(hostPrefix.length)
             : pathname;
-        const lineMarker = span === null ? null : { marks: [span.rowStart, span.rowEnd] };
         return {
             ...statement,
             target: storage
                 ? { ...target, hostname: null, pathname, raw: `${target.scheme}://${pathname}` }
                 : { ...target, pathname: displayPath, raw: `${target.scheme}://${target.hostname ?? ""}${displayPath}` },
             lineMarker,
-            body: null,
+            body,
         } as PlurnkStatement;
     }
 
@@ -934,96 +952,74 @@ export default class Dispatcher {
     ): Promise<DispatchResult> {
         const { workerId, loopId, turnId, sequence, origin, onDispatch } = ids;
         const schemeName = schemeNameOf(statement.target);
-        const findStatement = { ...statement, op: "FIND" } as PlurnkStatement;
+        const read = statement as ReadStatement;
+        const markers = Dispatcher.#readMarkers(read);
+        const findStatement = {
+            ...statement,
+            op: "FIND",
+            lineMarker: markers.selection,
+        } as PlurnkStatement;
         const standardEntryManifest = schemeName === null ? null : this.#standardEntryManifest(schemeName, statement);
-        const found = standardEntryManifest === null
-            ? await this.#run(schemeName, findStatement, ctx)
-            : await EntryFind.findWorkspaceEntries(Dispatcher.#foldStoredEntryAuthority(findStatement) as Extract<PlurnkStatement, { op: "FIND" }>, ctx, standardEntryManifest) as unknown as DispatchResult;
-        const matches = (found.matches as Array<{ pathname: string; span: { lineStart: number; lineEnd: number; rowStart: number; rowEnd: number } | null }> | undefined) ?? [];
+        const found = await this.#run(schemeName, findStatement, ctx);
+        const matches = (found.matches as Array<{
+            pathname: string;
+            matches: ReadonlyArray<{
+                lineStart: number;
+                lineEnd: number;
+                rowStart: number;
+                rowEnd: number;
+                path?: string;
+            }>;
+        }> | undefined) ?? [];
         const overflow = typeof found.overflow === "number" ? found.overflow : null;
-        // §find-count-not-contents applies to WORK as well as rendering. A READ
-        // over an over-budget selection writes the bounded FIND summary plus one
-        // loud refusal; it never silently truncates and never materializes a
-        // hidden prefix/suffix of the set.
         if (overflow !== null) {
-            const findRowId = await this.#writeLog({ statement: { ...statement, op: "FIND" } as PlurnkStatement, result: found, workspaceId: ctx.workspaceId, workerId, loopId, turnId, sequence, origin });
-            onDispatch?.(findRowId);
             const result = Dispatcher.#failure(
                 "read-materialization-too-large",
                 413,
-                `${overflow} matches exceed the READ materialization budget — narrow the target or matcher.`,
+                `${overflow} resources exceed the READ materialization budget - narrow the target or matcher.`,
                 {},
-                { matches: overflow },
+                { resources: overflow },
             );
-            const readRowId = await this.#writeLog({ statement, result, workspaceId: ctx.workspaceId, workerId, loopId, turnId, sequence: sequence + 1, origin });
+            const readRowId = await this.#writeLog({ statement, result, workspaceId: ctx.workspaceId, workerId, loopId, turnId, sequence, origin });
             onDispatch?.(readRowId);
-            return { ...result, rowsWritten: 2 };
+            return { ...result, rowsWritten: 1 };
         }
         // Find-less scheme, a matcher/scope error, or zero matches → a single row carrying the
         // status, exactly like a non-fanned READ. The model sees the empty/failed result, not silence.
         if (found.status !== 200 || matches.length === 0) {
-            const result: DispatchResult = found.status === 200 ? { status: 204 } : found;
+            const result: DispatchResult = found.status === 200
+                ? { status: 204, ...(read.body === null ? {} : { matches: [] }) }
+                : found;
             const id = await this.#writeLog({ statement, result, workspaceId: ctx.workspaceId, workerId, loopId, turnId, sequence, origin });
             onDispatch?.(id);
             return { ...result, rowsWritten: 1 };
         }
-        // One READ row per MATCH — deliver its source lines (or the whole entry for a body-less
-        // folder/glob) while the logged statement carries the corresponding readable-row scope.
-        // The delivery uses a raw line-slice rather than reinterpreting provenance as the scheme's
-        // structural <L>. Read each distinct entry's content once, then line-slice per match. #286
-        // §matcher-selection-signal — the SELECTION SUMMARY row: the internal FIND that located
-        // the matches is WRITTEN (op=FIND, its full result — per-hit matchSpan + matchPath, the
-        // canonical dialect coordinate) before the per-match deliveries, exactly as if the model
-        // had FINDed then READ. On a degenerate single-line document the N delivery rows are
-        // identical whole-file lines; the summary row is what tells the model its query hit N
-        // times and WHERE (run30: two hits indistinguishable from failure; 17 retries, 508).
-        const findRowId = await this.#writeLog({ statement: { ...statement, op: "FIND" } as PlurnkStatement, result: found, workspaceId: ctx.workspaceId, workerId, loopId, turnId, sequence, origin });
-        onDispatch?.(findRowId);
-        const wholeByPath = new Map<string, DispatchResult>();
         const fannedStatuses: number[] = [];
-        let written = 1;
-        for (const m of matches) {
+        let written = 0;
+        for (const match of matches) {
             ctx.signal?.throwIfAborted();
-            let whole = wholeByPath.get(m.pathname);
-            if (whole === undefined) {
-                const retargeted = standardEntryManifest === null
-                    ? Dispatcher.#retargetRead(statement, m.pathname, null)
-                    : Dispatcher.#storedEntryMatchRead(statement, m.pathname, null, true);
-                whole = standardEntryManifest === null
-                    ? await this.#run(schemeName, retargeted, ctx)
-                    : await EntryOps.readWorkspaceEntry(
-                        retargeted as ReadStatement,
-                        ctx,
-                        standardEntryManifest,
-                    ) as DispatchResult;
-                wholeByPath.set(m.pathname, whole);
-            }
-            const result = Dispatcher.#sliceMatch(whole, m.span);
-            const deliveredStatement = standardEntryManifest === null
-                ? Dispatcher.#retargetRead(statement, m.pathname, m.span)
-                : Dispatcher.#storedEntryMatchRead(statement, m.pathname, m.span, false);
-            const id = await this.#writeLog({ statement: deliveredStatement, result, workspaceId: ctx.workspaceId, workerId, loopId, turnId, sequence: sequence + written, origin });
+            const executionStatement = standardEntryManifest === null
+                ? Dispatcher.#retargetRead(statement, match.pathname, markers.projection, null)
+                : Dispatcher.#storedEntryRead(statement, match.pathname, markers.projection, null, true);
+            const readResult = standardEntryManifest === null
+                ? await this.#run(schemeName, executionStatement, ctx)
+                : await EntryOps.readWorkspaceEntry(
+                    executionStatement as ReadStatement,
+                    ctx,
+                    standardEntryManifest,
+                ) as DispatchResult;
+            const result: DispatchResult = read.body === null
+                ? readResult
+                : { ...readResult, matches: match.matches };
+            const loggedStatement = standardEntryManifest === null
+                ? Dispatcher.#retargetRead(statement, match.pathname, statement.lineMarker, read.body)
+                : Dispatcher.#storedEntryRead(statement, match.pathname, statement.lineMarker, read.body, false);
+            const id = await this.#writeLog({ statement: loggedStatement, result, workspaceId: ctx.workspaceId, workerId, loopId, turnId, sequence: sequence + written, origin });
             onDispatch?.(id);
             fannedStatuses.push(result.status);
             written++;
         }
         return { status: 200, rowsWritten: written, fannedStatuses };
-    }
-
-    // Deliver one match: the whole entry (body-less, span null) or the source lines at the span —
-    // a RAW line-slice, so a structural mimetype (json item-index / xml) doesn't mis-slice a span
-    // that is, by construction, source line numbers (#286).
-    static #sliceMatch(whole: DispatchResult, span: { lineStart: number; lineEnd: number } | null): DispatchResult {
-        if (whole.status !== 200 || span === null) return whole;
-        const sliced = LineMarkerOps.sliceLines(typeof whole.content === "string" ? whole.content : "", { marks: [span.lineStart, span.lineEnd] });
-        if (sliced.status !== 200) {
-            return Results.assert({
-                ...sliced,
-                content: null,
-                mimetype: "text/markdown",
-            }) as DispatchResult;
-        }
-        return { status: 200, content: sliced.text ?? "", mimetype: "text/markdown", startLine: sliced.startLine ?? span.lineStart };
     }
 
     // §model-entry — mirror an admitted model emission back as an actionless `model` log row, so

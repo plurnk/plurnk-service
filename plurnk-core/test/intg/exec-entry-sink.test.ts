@@ -150,7 +150,7 @@ test("entry() materializes a tagged https entry (upsert UNIONS tags) and the plu
         assert.ok(openLine.includes("1:wild turkeys are large birds, revised"), "opened, the full written content renders line-numbered");
         const sig = await db.test_log_entries_by_run_op_signal.all<{ signal: string | null }>({ worker_id: plurnkWorker.id, op: "EDIT" });
         assert.ok(sig.some((r) => /turkeys_query/.test(r.signal ?? "")), "SIGNAL carries the tags — the same slot a model's EDIT[tags] uses, so renderers show them natively");
-    } finally { await quiesceExecs(schemes); await db.close(); }
+    } finally { await quiesceExecs(schemes); await schemes.close(); await db.close(); }
 });
 
 test("search-prefetched https content is matcher-queryable in place — no origin refetch, host identity preserved", async () => {
@@ -171,18 +171,19 @@ test("search-prefetched https content is matcher-queryable in place — no origi
             workspaceId, workerId, loopId, turnId, sequence: 2, origin: "model",
         });
         assert.equal(queried.status, 200);
-        assert.equal(queried.rowsWritten, 2, "one bounded FIND summary + one stored match delivery");
+        assert.equal(queried.rowsWritten, 1,
+            "an exact matcher READ writes one selected-resource delivery, never an internal FIND summary");
         assert.deepEqual(queried.fannedStatuses, [200]);
 
         const delivered = await db.log_read_by_coordinate.get<{ scheme: string; pathname: string; rx: string }>({
-            worker_id: workerId, loop_seq: 1, turn_seq: 1, sequence: 3,
+            worker_id: workerId, loop_seq: 1, turn_seq: 1, sequence: 2,
         });
         assert.equal(delivered?.scheme, "https");
         assert.equal(delivered?.pathname, "/turkeys");
         assert.match(delivered?.rx ?? "", /wild turkeys are large birds, revised/);
         const stored = await db.test_entries_by_pathname.get<{ scheme: string }>({ pathname: "/example.org/turkeys" });
         assert.equal(stored?.scheme, "https", "the stored identity retains protocol + authority + path");
-    } finally { await quiesceExecs(schemes); await db.close(); }
+    } finally { await quiesceExecs(schemes); await schemes.close(); await db.close(); }
 });
 
 test("search-prefetched encoded parentheses resolve through later scoped HTTPS READs", async () => {
@@ -213,7 +214,7 @@ test("search-prefetched encoded parentheses resolve through later scoped HTTPS R
         });
         assert.match(delivered?.rx ?? "", /spouse: Example Person/,
             "the grammar-safe address resolves the canonical entry and applies its scope");
-    } finally { await quiesceExecs(schemes); await db.close(); }
+    } finally { await quiesceExecs(schemes); await schemes.close(); await db.close(); }
 });
 
 test("an exact HTTPS semantic READ cannot leak or retarget a match from another authority", async () => {
@@ -238,7 +239,7 @@ test("an exact HTTPS semantic READ cannot leak or retarget a match from another 
         assert.equal(queried.status, 204);
         assert.equal(queried.rowsWritten, 1,
             "the semantic miss is one honest row; other.example is never fabricated beneath example.org");
-    } finally { await quiesceExecs(schemes); await db.close(); }
+    } finally { await quiesceExecs(schemes); await schemes.close(); await db.close(); }
 });
 
 test("an absolute web URL ending in slash is one fetchable resource, not a folder FIND", async () => {
@@ -261,6 +262,7 @@ test("an absolute web URL ending in slash is one fetchable resource, not a folde
     } finally {
         globalThis.fetch = originalFetch;
         await quiesceExecs(schemes);
+        await schemes.close();
         await db.close();
     }
 });
@@ -301,7 +303,7 @@ test("entry(content:null) fetches through the guarded sink — live materializes
         // Search discovery membership is independently preserved by the search executor (#596).
         const dead = await db.test_entries_by_pathname.get<{ id: number }>({ pathname: "/example.org/dead" });
         assert.equal(dead, undefined, "a null fetch rejects the sink so no page body materializes");
-    } finally { await quiesceExecs(schemes); await db.close(); }
+    } finally { await quiesceExecs(schemes); await schemes.close(); await db.close(); }
 });
 
 test("#596: an empty byte-response projection renders once, then stores only useful fallback markdown", async () => {
@@ -337,5 +339,5 @@ test("#596: an empty byte-response projection renders once, then stores only use
         assert.equal(body?.mimetype, "text/markdown");
         assert.match(body?.content ?? "", /useful client-rendered article/);
         assert.ok(!(body?.content ?? "").includes("<html>"), "raw HTML never becomes the decisive model/embed body");
-    } finally { await quiesceExecs(schemes); await db.close(); }
+    } finally { await quiesceExecs(schemes); await schemes.close(); await db.close(); }
 });

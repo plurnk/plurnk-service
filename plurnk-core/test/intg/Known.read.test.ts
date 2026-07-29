@@ -87,7 +87,7 @@ test("Known.read: lineMarker <N> on text source returns raw line + text/markdown
     } finally { db.close(); }
 });
 
-test("Known.read: regex body matcher returns N:\\t<value> rows", async () => {
+test("Known.read: regex matcher selects the resource and reports coordinates", async () => {
     const { db, workspaceId, workerId } = await setupContext();
     try {
         const k = new Worker();
@@ -96,12 +96,17 @@ test("Known.read: regex body matcher returns N:\\t<value> rows", async () => {
         const result = await k.read(readStatement({ target: urlPath("worker", "/match"), body: matcher }), makeSchemeCtx({ db, workspaceId }));
         assert.equal(result.status, 200);
         assert.equal(result.mimetype, "text/markdown");
-        // READ returns LINES (plurnk.md:31): two matches on line 1 → the line, deduped once.
-        assert.equal(result.content, "1:alpha beta alpha gamma");
+        assert.equal(result.content, "alpha beta alpha gamma");
+        assert.deepEqual(result.matches, [{
+            lineStart: 1,
+            lineEnd: 1,
+            rowStart: 1,
+            rowEnd: 1,
+        }]);
     } finally { db.close(); }
 });
 
-test("Known.read: glob body matcher returns matching lines (line-filter primitive)", async () => {
+test("Known.read: glob matcher selects the resource and reports match coordinates", async () => {
     const { db, workspaceId, workerId } = await setupContext();
     try {
         const k = new Worker();
@@ -110,7 +115,11 @@ test("Known.read: glob body matcher returns matching lines (line-filter primitiv
         const result = await k.read(readStatement({ target: urlPath("worker", "/g"), body: matcher }), makeSchemeCtx({ db, workspaceId }));
         assert.equal(result.status, 200);
         assert.equal(result.mimetype, "text/markdown");
-        assert.equal(result.content, "1:TODO: one\n3:TODO: two");
+        assert.equal(result.content, "TODO: one\nhello\nTODO: two\nworld");
+        assert.deepEqual(result.matches, [
+            { lineStart: 1, lineEnd: 1, rowStart: 1, rowEnd: 1 },
+            { lineStart: 3, lineEnd: 3, rowStart: 3, rowEnd: 3 },
+        ]);
     } finally { db.close(); }
 });
 
@@ -135,19 +144,25 @@ test("Known.read: tag filter — entry missing requested tag → 404", async () 
     } finally { db.close(); }
 });
 
-test("Known.read: <L> + body matcher composes — slice first, match within, source lines preserved", async () => {
+test("Known.read: matcher selects the full resource before <L> projects readable rows", async () => {
     const { db, workspaceId, workerId } = await setupContext();
     try {
         const k = new Worker();
-        await k.edit(editStatement({ target: urlPath("worker", "/c"), body: "one\nfoo and bar\nthree" }), makeSchemeCtx({ db, workspaceId, workerId }));
+        await k.edit(editStatement({ target: urlPath("worker", "/c"), body: "one\nprojected\nfoo later" }), makeSchemeCtx({ db, workspaceId, workerId }));
         const result = await k.read(readStatement({
             target: urlPath("worker", "/c"),
-            lineMarker: { marks: [2, 2] },
+            lineMarker: { marks: [1, 2] },
             body: { dialect: "regex", raw: "/foo/", pattern: "foo", flags: "" },
         }), makeSchemeCtx({ db, workspaceId }));
         assert.equal(result.status, 200);
-        // READ returns the LINE on source line 2 (after slice, baseLine preserved): `foo and bar`.
-        assert.equal(result.content, "2:foo and bar");
+        assert.equal(result.content, "one\nprojected", "the later match selects the entry but is not substituted for the requested rows");
+        assert.equal(result.startLine, 1);
+        assert.deepEqual(result.matches, [{
+            lineStart: 3,
+            lineEnd: 3,
+            rowStart: 3,
+            rowEnd: 3,
+        }]);
     } finally { db.close(); }
 });
 

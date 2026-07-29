@@ -16,7 +16,7 @@
 // The path-globs live in the (target); the body is the content matcher.
 //
 // READ resolves via read-resolve; FIND runs its body matcher through
-// _entry-find (#matchPathnames → matchAgainstContent) against the candidate's
+// _entry-find (#matchPathnames -> matchAgainstContent) against the candidate's
 // CONTENT, returning the matched entries' catalog rows; OPEN/FOLD curate the
 // log view (log_entries.expanded). The body-on-pathname divergence these once
 // pinned is reconciled — they are green pins now, not deferred-reds.
@@ -88,7 +88,8 @@ test("[plurnk.md-READ-glob-on-content] READ glob body matches entry CONTENT, not
         await seed(db, workspaceId, workerId, [["doc", "alpha\nTODO: ship\nbeta"]]);
         const r = await new Worker().read(readStmt(url("doc"), glob("TODO*")), makeSchemeCtx({ db, workspaceId }));
         assert.equal(r.status, 200);
-        assert.equal(r.content, "2:TODO: ship");
+        assert.equal(r.content, "alpha\nTODO: ship\nbeta");
+        assert.deepEqual(r.matches, [{ lineStart: 2, lineEnd: 2, rowStart: 2, rowEnd: 2 }]);
     } finally { db.close(); }
 });
 
@@ -96,11 +97,11 @@ test("[plurnk.md-READ-regex-on-content] READ regex body matches entry CONTENT, n
     const { db, workspaceId, workerId } = await setup();
     try {
         // pathname "doc" contains no "timeout"; only the content does.
-        await seed(db, workspaceId, workerId, [["doc", "alpha timeout beta"]]);
+        await seed(db, workspaceId, workerId, [["doc", "heading\nalpha timeout beta\ncontext"]]);
         const r = await new Worker().read(readStmt(url("doc"), regex("timeout")), makeSchemeCtx({ db, workspaceId }));
         assert.equal(r.status, 200);
-        // READ returns the LINE that matched (plurnk.md:31), not the token `timeout`.
-        assert.equal(r.content, "1:alpha timeout beta");
+        assert.equal(r.content, "heading\nalpha timeout beta\ncontext");
+        assert.deepEqual(r.matches, [{ lineStart: 2, lineEnd: 2, rowStart: 2, rowEnd: 2 }]);
     } finally { db.close(); }
 });
 

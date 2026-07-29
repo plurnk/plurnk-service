@@ -43,6 +43,7 @@ export { default as Results } from "./Results.ts";
 export { InvalidOperationResultError } from "./Results.ts";
 export type {
     EntryResult,
+    MatchRange,
     PassthroughResult,
     ProposalResult,
     ProblemDetails,

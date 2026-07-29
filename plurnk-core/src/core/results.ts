@@ -1,9 +1,9 @@
 import { Results as _Results } from "@plurnk/plurnk-schemes";
 import type {
-    EntryResult, ProblemDetails, ProposalResult, PassthroughResult, SchemeResult, SchemeResultBase,
+    EntryResult, MatchRange, ProblemDetails, ProposalResult, PassthroughResult, SchemeResult, SchemeResultBase,
 } from "@plurnk/plurnk-schemes";
 
-export type { EntryResult, ProblemDetails, ProposalResult, PassthroughResult, SchemeResult, SchemeResultBase };
+export type { EntryResult, MatchRange, ProblemDetails, ProposalResult, PassthroughResult, SchemeResult, SchemeResultBase };
 
 export class OperationFailureError extends Error {
     readonly result: SchemeResult & { readonly problem: ProblemDetails };

@@ -10,6 +10,7 @@ import type { WriterTier } from "./types.ts";
 import type { Notice } from "@plurnk/plurnk-contracts";
 import type { PacketSection } from "./packet-wire.ts";
 import type { SchemeResultBase } from "./results.ts";
+import type { MatchRange } from "@plurnk/plurnk-schemes";
 
 // Re-export framework types so existing imports of `scheme-types.ts`
 // keep working without callers needing to know the new origin.
@@ -28,7 +29,7 @@ export type SchemeReadResult = SchemeResultBase & {
     mimetype: string | null;
     reason?: string;
     startLine?: number | null;
-    matches?: number | null;
+    matches?: ReadonlyArray<MatchRange>;
     // §join-blocking-collect (#354) — a READ(worker://running-child) sets this to the worker name it is
     // blocked on; the dispatcher arms a join so the turn's bare SEND[102] parks (the blocking collect).
     awaitWorker?: string;

@@ -48,7 +48,7 @@ test("Known.find returns the scheme's catalog rows (JSON), filtered to matches",
         const r = await new Worker().find(findStmt(url("")), makeSchemeCtx({ db, workspaceId, workerId, loopId: 0, turnId: 0 }));
         assert.equal(r.status, 200);
         // FIND is the filtered catalog: a JSON array of catalog rows (path + per-channel
-        // {mimetype, tokens, lines}), NOT findings carrying per-match extents.
+        // {mimetype, tokens, lines}), not one row per finding.
         assert.equal(r.mimetype, "application/json");
         assert.deepEqual(r.results.map((row) => row.path), ["worker:///a", "worker:///b", "worker:///c"]);
         assert.deepEqual(JSON.parse(r.content!), r.results, "content is the JSON serialization of the catalog rows");
@@ -59,7 +59,7 @@ test("Known.find returns the scheme's catalog rows (JSON), filtered to matches",
         assert.equal(typeof first.channels["worker:///a"].mimetype, "string");
         assert.equal(first.channels["worker:///a"].lines, 1, "\"alpha\" is one line");
         assert.equal(typeof first.channels["worker:///a"].tokens, "number");
-        assert.ok(!("extent" in (first as object)), "a catalog row carries no per-match extent");
+        assert.ok(!("extent" in (first as object)), "a catalog row carries no legacy extent");
     } finally { db.close(); }
 });
 
@@ -175,7 +175,7 @@ test("Known.find with glob matcher filters by CONTENT", async () => {
     } finally { db.close(); }
 });
 
-test("a content match emits one item per match, each carrying its (file, span) (#286)", async () => {
+test("a content match emits one item per resource with match coordinates", async () => {
     const { db, workspaceId, workerId } = await setup();
     try {
         // Multi-line content: the match sits on line 3 of a, line 2 of b; c never matches.
@@ -187,9 +187,8 @@ test("a content match emits one item per match, each carrying its (file, span) (
         const r = await new Worker().find(findStmt(url(""), glob("france*")), makeSchemeCtx({ db, workspaceId, workerId, loopId: 0, turnId: 0 }));
         assert.equal(r.status, 200);
         const byPath = new Map(r.results.map((row) => [row.path, row] as const));
-        // Each match is a (file, span) item — the span is where the matcher hit (plurnk.md:31).
-        assert.deepEqual(byPath.get("worker:///a")?.matchSpan, { lineStart: 3, lineEnd: 3, rowStart: 3, rowEnd: 3 }, "the item carries source and readable coordinates");
-        assert.deepEqual(byPath.get("worker:///b")?.matchSpan, { lineStart: 2, lineEnd: 2, rowStart: 2, rowEnd: 2 });
+        assert.deepEqual(byPath.get("worker:///a")?.matches, [{ lineStart: 3, lineEnd: 3, rowStart: 3, rowEnd: 3 }]);
+        assert.deepEqual(byPath.get("worker:///b")?.matches, [{ lineStart: 2, lineEnd: 2, rowStart: 2, rowEnd: 2 }]);
         assert.equal(byPath.has("worker:///c"), false, "a miss excludes the entry entirely — no item");
     } finally { db.close(); }
 });

@@ -19,6 +19,17 @@ export interface SchemeResultBase extends SchemeResult {
     readonly problem?: ProblemDetails;
 }
 
+// A matcher location in both the source representation and the readable-row
+// representation accepted by READ scope. `path` is the optional canonical
+// coordinate supplied by structural dialects such as JSONPath and XPath.
+export interface MatchRange {
+    readonly lineStart: number;
+    readonly lineEnd: number;
+    readonly rowStart: number;
+    readonly rowEnd: number;
+    readonly path?: string;
+}
+
 export interface EntryResult extends SchemeResultBase {
     readonly shape: "entry";
     readonly entryId: number | null;
@@ -26,7 +37,7 @@ export interface EntryResult extends SchemeResultBase {
     readonly content?: string | null;
     readonly mimetype?: string | null;
     readonly startLine?: number | null;
-    readonly matches?: number | null;
+    readonly matches?: ReadonlyArray<MatchRange>;
     readonly reason?: string;
 }
 
@@ -42,7 +53,7 @@ export interface PassthroughResult extends SchemeResultBase {
     readonly content?: string | null;
     readonly mimetype?: string | null;
     readonly startLine?: number | null;
-    readonly matches?: number | null;
+    readonly matches?: ReadonlyArray<MatchRange>;
     readonly reason?: string;
 }
 

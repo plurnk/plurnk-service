@@ -203,7 +203,7 @@ test("File.read: lineMarker out of range returns 416", async () => {
     });
 });
 
-test("File.read: regex body matcher returns N:\\t<value> rows", async () => {
+test("File.read: matcher returns the selected resource plus match coordinates", async () => {
     await withWorkspaceRoot(async (root, ctx) => {
         await writeFile(join(root, "f.txt"), "foo\nbar foo");
         await addMember(ctx, "f.txt");
@@ -213,26 +213,34 @@ test("File.read: regex body matcher returns N:\\t<value> rows", async () => {
         );
         assert.equal(r.status, 200);
         assert.equal(r.mimetype, "text/markdown");
-        // READ returns LINES (plurnk.md:31): the matching source lines, not the value `foo`.
-        assert.equal(r.content, "1:foo\n2:bar foo");
+        assert.equal(r.content, "foo\nbar foo");
+        assert.deepEqual(r.matches, [
+            { lineStart: 1, lineEnd: 1, rowStart: 1, rowEnd: 1 },
+            { lineStart: 2, lineEnd: 2, rowStart: 2, rowEnd: 2 },
+        ]);
     });
 });
 
-test("File.read: <L> + body matcher composes — slice first, match within, source lines preserved", async () => {
+test("File.read: matcher selects the full resource before <L> projects readable rows", async () => {
     await withWorkspaceRoot(async (root, ctx) => {
-        await writeFile(join(root, "f.txt"), "alpha\nfoo bar foo\ngamma\n");
+        await writeFile(join(root, "f.txt"), "alpha\nprojected\nfoo later\n");
         await addMember(ctx, "f.txt");
         const r = await new File().read(
             readStmt(urlPath("file", "/f.txt"), {
-                lineMarker: { marks: [2, 2] },
+                lineMarker: { marks: [1, 2] },
                 body: { dialect: "regex", raw: "/foo/g", pattern: "foo", flags: "g" },
             }),
             ctx,
         );
         assert.equal(r.status, 200);
-        // Both matches fall on source line 2 (after the slice, baseLine=2); READ returns
-        // the LINE deduped once — `foo bar foo`, not the value `foo` twice.
-        assert.equal(r.content, "2:foo bar foo");
+        assert.equal(r.content, "alpha\nprojected", "the later match selects the file but is not substituted for the requested rows");
+        assert.equal(r.startLine, 1);
+        assert.deepEqual(r.matches, [{
+            lineStart: 3,
+            lineEnd: 3,
+            rowStart: 3,
+            rowEnd: 3,
+        }]);
     });
 });
 

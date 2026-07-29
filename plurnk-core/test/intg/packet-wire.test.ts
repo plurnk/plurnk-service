@@ -137,20 +137,28 @@ test("a failed content-bearing READ renders both its Problem and diagnostic body
     assert.match(out, /1:main\.go:17: undefined: os/, "failure status never erases diagnostic content");
 });
 
-test("log render: READ@200 matcher result (startLine null) renders VERBATIM — no double line-numbering", () => {
-    // A matcher result is already source-numbered with non-contiguous lines (`143:…`,
-    // `617:…`) and carries startLine=null. The render must NOT re-number it — that would
-    // double it to `1:143:…` and lose the true source line (plurnk.md:32: one `N:`).
+test("log render: a matcher READ keeps the resource body and exposes surgical coordinates", () => {
+    const matches = [
+        { lineStart: 143, lineEnd: 143, rowStart: 143, rowEnd: 143 },
+        { lineStart: 617, lineEnd: 617, rowStart: 617, rowEnd: 617 },
+    ];
     const out = PacketWire.renderLog([{
         coordinate: "1/1/3",
         origin: "model",
         op: "READ",
         status: 200,
         target: { scheme: null, pathname: "/spec.md" },
-        rx: { content: "143:grinder\n617:grinder", mimetype: "text/markdown", startLine: null },
+        tx: { body: { raw: "/grinder/" } },
+        rx: {
+            content: "intro\ngrinder\ncontext",
+            mimetype: "text/markdown",
+            startLine: 1,
+            matches,
+        },
     }], tok);
-    assert.match(out, /<<:::spec\.md\n143:grinder\n617:grinder\n:::spec\.md/);
-    assert.doesNotMatch(out, /1:143:/);
+    assert.match(out, /"matcher":"\/grinder\/"/);
+    assert.match(out, /"matches":\[\{"lineStart":143,"lineEnd":143,"rowStart":143,"rowEnd":143\},\{"lineStart":617,"lineEnd":617,"rowStart":617,"rowEnd":617\}\]/);
+    assert.match(out, /<<:::spec\.md\n1:intro\n2:grinder\n3:context\n:::spec\.md/);
 });
 
 test("log render: READ@200 with application/json rx body → verbatim heredoc (no N:\\t)", () => {

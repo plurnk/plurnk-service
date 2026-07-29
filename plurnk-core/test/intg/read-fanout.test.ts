@@ -1,11 +1,9 @@
-// Multi-file READ fan-out (SPEC §matcher-result — "the companion to FIND's survey", #278).
-// A glob READ target resolves to many files; READ returns ONE log row per file that matches,
-// each holding that file's matching lines. One model command, N log rows — each addressing
-// its concrete file (foldable/killable/re-READable on its own).
+// Multi-resource READ fan-out. FIND selects resources; READ returns one row per
+// resource with match coordinates available for a later surgical READ.
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import type { MatcherBody, ParsedPath, ReadStatement, UrlPath } from "@plurnk/plurnk-grammar";
+import type { FindStatement, MatcherBody, ParsedPath, ReadStatement, UrlPath } from "@plurnk/plurnk-grammar";
 import { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
@@ -51,7 +49,7 @@ const rowBody = async (db: Db, workerId: number, mimetypes: Mimetypes, seq: numb
     return { status: r.status, content: r.content, startLine: r.startLine };
 };
 
-test("a matcher READ fans out to one row per MATCH, each at its (file, span) (#286)", async () => {
+test("a matcher READ fans out to one row per selected resource", async () => {
     const { db, workspaceId, workerId, loopId, turnId, mimetypes, engine } = await setup();
     try {
         // france sits on a line of a (line 2) and b (line 1); c never matches.
@@ -65,21 +63,266 @@ test("a matcher READ fans out to one row per MATCH, each at its (file, span) (#2
         });
 
         assert.equal(r.status, 200);
-        assert.equal(r.rowsWritten, 3, "the FIND selection-summary row + two matches (one per file; c excluded)");
+        assert.equal(r.rowsWritten, 2);
         assert.deepEqual(r.fannedStatuses, [200, 200]);
 
-        // Each row stores its match's line RAW at its source startLine (in the rx); packet-wire
-        // numbers it N: at render (#286 — no pre-numbering baked into the body). Read the stored
-        // rx directly: Log.read re-resolves the body fresh and wouldn't surface the stored span.
-        const rxOf = async (seq: number): Promise<{ content?: string; startLine?: number | null }> => {
+        const rxOf = async (seq: number): Promise<{
+            content?: string;
+            matches?: Array<{ lineStart: number }>;
+        }> => {
             const row = await db.log_read_by_coordinate.get<{ rx: string }>({ worker_id: workerId, loop_seq: 1, turn_seq: 1, sequence: seq });
-            return JSON.parse(row!.rx) as { content?: string; startLine?: number | null };
+            return JSON.parse(row!.rx) as { content?: string; matches?: Array<{ lineStart: number }> };
         };
-        // Sequence 1 is the FIND selection-summary row (§matcher-selection-signal); deliveries follow.
-        const stored = [await rxOf(2), await rxOf(3)];
-        const numbered = stored.map((x) => `${x.startLine}:${x.content}`).toSorted();
-        assert.deepEqual(numbered, ["1:france beta", "2:france alpha"], "each fanned row stores its match line at its source span — render numbers it");
+        const stored = [await rxOf(1), await rxOf(2)];
+        assert.deepEqual(stored.map(({ content }) => content).toSorted(), [
+            "france beta\nmore",
+            "intro\nfrance alpha\ntail",
+        ]);
+        assert.deepEqual(stored.map(({ matches }) => matches?.[0]?.lineStart).toSorted(), [1, 2]);
     } finally { await db.close(); }
+});
+
+test("a scoped matcher READ selects full resources then projects the range from each resource", async () => {
+    const { db, workspaceId, workerId, loopId, turnId, mimetypes, engine } = await setup();
+    try {
+        await seed(db, workspaceId, workerId, mimetypes, "/a", "a heading\na context\nneedle one\nneedle two");
+        await seed(db, workspaceId, workerId, mimetypes, "/b", "b heading\nb context\nneedle");
+        await seed(db, workspaceId, workerId, mimetypes, "/c", "c heading\nc context\nabsent");
+
+        const statement: ReadStatement = {
+            ...readStmt(urlPath("worker", "/**"), {
+                dialect: "regex",
+                raw: "/needle/g",
+                pattern: "needle",
+                flags: "g",
+            }),
+            lineMarker: { marks: [1, 2] },
+        };
+        const result = await engine.dispatch({
+            statement,
+            workspaceId,
+            workerId,
+            loopId,
+            turnId,
+            sequence: 1,
+            origin: "model",
+        });
+
+        assert.equal(result.status, 200);
+        assert.equal(result.rowsWritten, 2);
+        assert.deepEqual(result.fannedStatuses, [200, 200]);
+
+        const rows = await Promise.all([1, 2].map((sequence) =>
+            db.log_read_by_coordinate.get<{ op: string; rx: string }>({
+                worker_id: workerId,
+                loop_seq: 1,
+                turn_seq: 1,
+                sequence,
+            }),
+        ));
+        assert.ok(rows.every((row) => row !== undefined));
+
+        assert.ok(rows.every((row) => row!.op === "READ"));
+
+        const projected = rows.map((row) => JSON.parse(row!.rx) as { content: string; startLine: number | null });
+        assert.deepEqual(
+            projected.map(({ content, startLine }) => ({ content, startLine })).toSorted((a, b) => a.content.localeCompare(b.content)),
+            [
+                { content: "a heading\na context", startLine: 1 },
+                { content: "b heading\nb context", startLine: 1 },
+            ],
+        );
+        assert.doesNotMatch(projected.map(({ content }) => content).join("\n"), /needle/, "the matcher selects resources; the scope controls delivered rows");
+    } finally { await db.close(); }
+});
+
+test("a scoped matcher READ with no matching resource returns 204 instead of paginating an empty match set", async () => {
+    const { db, workspaceId, workerId, loopId, turnId, mimetypes, engine } = await setup();
+    try {
+        await seed(db, workspaceId, workerId, mimetypes, "/a", Array.from({ length: 120 }, (_, index) => `line ${index + 1}`).join("\n"));
+        const result = await engine.dispatch({
+            statement: {
+                ...readStmt(urlPath("worker", "/a"), {
+                    dialect: "glob",
+                    raw: "EVALUATOR_FUNCTIONS",
+                }),
+                lineMarker: { marks: [30, 100] },
+            },
+            workspaceId,
+            workerId,
+            loopId,
+            turnId,
+            sequence: 1,
+            origin: "model",
+        });
+
+        assert.equal(result.status, 204);
+        const row = await db.log_read_by_coordinate.get<{ status_rx: number; rx: string }>({
+            worker_id: workerId,
+            loop_seq: 1,
+            turn_seq: 1,
+            sequence: 1,
+        });
+        assert.equal(row?.status_rx, 204);
+        assert.equal((JSON.parse(row!.rx) as { problem?: unknown }).problem, undefined);
+    } finally { await db.close(); }
+});
+
+test("the dispatcher preserves READ row scope across a registered scheme boundary", async () => {
+    const seen: { find?: FindStatement; read?: ReadStatement } = {};
+    class Probe {
+        static manifest = {
+            name: "probe",
+            channels: { body: "text/plain" },
+            defaultChannel: "body",
+            category: "data" as const,
+            scope: "workspace" as const,
+            writableBy: ["plugin"] as const,
+            volatile: false,
+            modelVisible: true,
+        };
+
+        async find(statement: FindStatement): Promise<{
+            status: number;
+            content: string;
+            mimetype: string;
+            results: [];
+            itemsTokenTotal: number;
+            pathnames: string[];
+            matches: Array<{
+                pathname: string;
+                matches: Array<{ lineStart: number; lineEnd: number; rowStart: number; rowEnd: number }>;
+            }>;
+        }> {
+            seen.find = statement;
+            return {
+                status: 200,
+                content: "[]",
+                mimetype: "application/json",
+                results: [],
+                itemsTokenTotal: 3,
+                pathnames: ["/doc"],
+                matches: [{
+                    pathname: "/doc",
+                    matches: [{ lineStart: 3, lineEnd: 3, rowStart: 3, rowEnd: 3 }],
+                }],
+            };
+        }
+
+        async read(statement: ReadStatement): Promise<{ status: number; content: string; mimetype: string; startLine: number }> {
+            seen.read = statement;
+            return { status: 200, content: "heading\ncontext", mimetype: "text/markdown", startLine: 1 };
+        }
+    }
+
+    const { db, workspaceId, workerId, loopId, turnId, schemes, engine } = await setup();
+    try {
+        schemes.register("probe", new Probe());
+        const result = await engine.dispatch({
+            statement: {
+                ...readStmt(urlPath("probe", "/**"), {
+                    dialect: "regex",
+                    raw: "/needle/",
+                    pattern: "needle",
+                    flags: "",
+                }),
+                lineMarker: { marks: [1, 2] },
+            },
+            workspaceId,
+            workerId,
+            loopId,
+            turnId,
+            sequence: 1,
+            origin: "model",
+        });
+
+        assert.equal(result.status, 200);
+        assert.equal(seen.find?.lineMarker, null);
+        assert.deepEqual(seen.find?.body, {
+            dialect: "regex",
+            raw: "/needle/",
+            pattern: "needle",
+            flags: "",
+        });
+        assert.deepEqual(seen.read?.lineMarker, { marks: [1, 2] });
+        assert.equal(seen.read?.body, null, "the scheme does not repeat the matcher after FIND selected the resource");
+    } finally { await db.close(); }
+});
+
+test("semantic READ separates similarity threshold from resource row projection", async () => {
+    const cases = [
+        {
+            marker: { marks: [0.7, 10, 20] as [number, ...number[]] },
+            findMarker: { marks: [0.7] },
+            readMarker: { marks: [10, 20] },
+        },
+        {
+            marker: { marks: [10, 20] as [number, ...number[]] },
+            findMarker: null,
+            readMarker: { marks: [10, 20] },
+        },
+    ];
+
+    for (const expected of cases) {
+        const seen: { find?: FindStatement; read?: ReadStatement } = {};
+        class SemanticProbe {
+            static manifest = {
+                name: "semantic-probe",
+                channels: { body: "text/plain" },
+                defaultChannel: "body",
+                category: "data" as const,
+                scope: "workspace" as const,
+                writableBy: ["plugin"] as const,
+                volatile: false,
+                modelVisible: true,
+            };
+
+            async find(statement: FindStatement) {
+                seen.find = statement;
+                return {
+                    status: 200,
+                    content: "[]",
+                    mimetype: "application/json",
+                    results: [],
+                    itemsTokenTotal: 1,
+                    pathnames: ["/doc"],
+                    matches: [{
+                        pathname: "/doc",
+                        matches: [{ lineStart: 30, lineEnd: 30, rowStart: 30, rowEnd: 30 }],
+                    }],
+                };
+            }
+
+            async read(statement: ReadStatement) {
+                seen.read = statement;
+                return { status: 200, content: "projected", mimetype: "text/plain", startLine: 10 };
+            }
+        }
+
+        const { db, workspaceId, workerId, loopId, turnId, schemes, engine } = await setup();
+        try {
+            schemes.register("semantic-probe", new SemanticProbe());
+            await engine.dispatch({
+                statement: {
+                    ...readStmt(urlPath("semantic-probe", "/**"), {
+                        dialect: "semantic",
+                        raw: "~database failure",
+                    } as MatcherBody),
+                    lineMarker: expected.marker,
+                },
+                workspaceId,
+                workerId,
+                loopId,
+                turnId,
+                sequence: 1,
+                origin: "model",
+            });
+
+            assert.deepEqual(seen.find?.lineMarker, expected.findMarker);
+            assert.deepEqual(seen.read?.lineMarker, expected.readMarker);
+            assert.equal(seen.read?.body, null);
+        } finally { await db.close(); }
+    }
 });
 
 test("a glob READ with zero matches writes a single 204 row, not silence", async () => {
@@ -129,12 +372,12 @@ test("a declared folder scope still fans out on trailing slash", async () => {
             workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
         });
         assert.equal(result.status, 200);
-        assert.equal(result.rowsWritten, 3, "one FIND summary + both declared folder members");
+        assert.equal(result.rowsWritten, 2);
         assert.deepEqual(result.fannedStatuses, [200, 200]);
     } finally { await db.close(); }
 });
 
-test("an over-budget matcher READ writes a bounded FIND + 413 and zero deliveries", async () => {
+test("an over-budget matcher READ writes one bounded 413 and zero deliveries", async () => {
     const prev = process.env.PLURNK_SERVICE_FIND_MAX_MATCHES;
     process.env.PLURNK_SERVICE_FIND_MAX_MATCHES = "2";
     const { db, workspaceId, workerId, loopId, turnId, mimetypes, engine } = await setup();
@@ -147,42 +390,37 @@ test("an over-budget matcher READ writes a bounded FIND + 413 and zero deliverie
             workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
         });
         assert.equal(r.status, 413);
-        assert.equal(r.rowsWritten, 2, "one count-bearing FIND summary + one loud READ refusal");
-        const rows = await Promise.all([1, 2].map((sequence) =>
-            db.log_read_by_coordinate.get<{ op: string; status_rx: number; rx: string }>({
-                worker_id: workerId,
-                loop_seq: 1,
-                turn_seq: 1,
-                sequence,
-            }),
-        ));
-        assert.ok(rows[0] !== undefined && rows[1] !== undefined);
-        assert.deepEqual(rows.map((x) => [x?.op, x?.status_rx]), [["FIND", 200], ["READ", 413]]);
-        assert.match(rows[0].rx, /3 entries match.*not enumerated/i);
-        assert.match(rows[1].rx, /3 matches exceed.*narrow/i);
+        assert.equal(r.rowsWritten, 1);
+        const row = await db.log_read_by_coordinate.get<{ op: string; status_rx: number; rx: string }>({
+            worker_id: workerId,
+            loop_seq: 1,
+            turn_seq: 1,
+            sequence: 1,
+        });
+        assert.deepEqual([row?.op, row?.status_rx], ["READ", 413]);
+        assert.match(row?.rx ?? "", /3 resources exceed.*narrow/i);
     } finally {
         if (prev === undefined) delete process.env.PLURNK_SERVICE_FIND_MAX_MATCHES; else process.env.PLURNK_SERVICE_FIND_MAX_MATCHES = prev;
         await db.close();
     }
 });
 
-test("the running sequence counter advances past the fan-out — a later op lands after all N rows", async () => {
+test("the running sequence counter advances past the fan-out - a later op lands after all N rows", async () => {
     const { db, workspaceId, workerId, loopId, turnId, mimetypes, engine } = await setup();
     try {
         await seed(db, workspaceId, workerId, mimetypes, "/a", "france one");
         await seed(db, workspaceId, workerId, mimetypes, "/b", "france two");
-        // Dispatch the glob READ at sequence 1 → rows 1,2. A following single READ must land at 3.
+        // Dispatch the glob READ at sequence 1 -> rows 1,2. A following single READ must land at 3.
         const fan = await engine.dispatch({
             statement: readStmt(urlPath("worker", "/**"), { dialect: "glob", raw: "france*" } as MatcherBody),
             workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
         });
-        assert.equal(fan.rowsWritten, 3, "the FIND summary + one delivery per file");
+        assert.equal(fan.rowsWritten, 2);
         await engine.dispatch({
             statement: readStmt(urlPath("worker", "/a")),
             workspaceId, workerId, loopId, turnId, sequence: 1 + (fan.rowsWritten as number), origin: "model",
         });
-        // Row 4 (after summary + 2 deliveries) is the single-file READ of /a (its full content).
-        const row3 = await rowBody(db, workerId, mimetypes, 4);
+        const row3 = await rowBody(db, workerId, mimetypes, 3);
         assert.equal(row3.status, 200);
         assert.match(row3.content ?? "", /france one/);
     } finally { await db.close(); }

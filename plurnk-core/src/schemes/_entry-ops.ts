@@ -8,7 +8,7 @@ import Owner from "../core/Owner.ts";
 import EntryManifest from "./_entry-manifest.ts";
 import { LineMarkerOps, MimetypeBinary, PathMimetype, ReadResolve, editReceipt, editReceiptUnit } from "../content/index.ts";
 import type { EditBatchReceipt } from "../content/index.ts";
-import Results, { type SchemeResultBase } from "../core/results.ts";
+import Results, { type MatchRange, type SchemeResultBase } from "../core/results.ts";
 
 // Shared static-method helpers for workspace-scope entry-bearing schemes
 // (Known, Unknown, Skill). Each scheme passes its manifest; helpers
@@ -21,13 +21,12 @@ export type EditResult = SchemeResultBase & { entryId: number | null; channel: s
 // startLine = 1-indexed position the content starts at in the original
 // source. Lets the render layer prefix N: correctly for both full
 // reads (start=1) and <L> slices (start=N). Null when not line-relevant
-// (matcher results, errors).
-// matches = count of matcher hits when body matcher was used; null when
-// no matcher in the statement. Surfaced in the log meta so the model
-// distinguishes "0 matches" from "empty content."
+// (errors).
+// matches = addressable matcher coordinates. They explain why the resource
+// qualified and let the model choose a surgical follow-up READ.
 // reason — surfaced on 203 dialect-fallback so the model sees why the
 // structured parse failed and got raw content instead.
-export type ReadResult = SchemeResultBase & { content: string | null; mimetype: string | null; channel: string | null; startLine?: number | null; matches?: number | null; reason?: string; awaitWorker?: string };
+export type ReadResult = SchemeResultBase & { content: string | null; mimetype: string | null; channel: string | null; startLine?: number | null; matches?: ReadonlyArray<MatchRange>; reason?: string; awaitWorker?: string };
 export type OpenFoldResult = SchemeResultBase;
 
 export default class EntryOps {

@@ -1,9 +1,7 @@
 // xpath / jsonpath matcher coverage — asserts the matcher contract: status
 // mapping, dialect dispatch (through plurnk-mimetypes), and the model-facing
-// result shape. READ returns LINES (plurnk.md:31): each result row is the SOURCE
-// line at a match, prefixed `N:` with the match's source line number — one match
-// per line, line numbers NON-SEQUENTIAL when matches scatter through the document.
-// A matcher SELECTS the line; it never extracts or re-encodes the projected value.
+// result shape. A matcher selects a resource; READ returns its complete/scoped
+// content and reports source/readable match coordinates as metadata.
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -30,12 +28,8 @@ const readStmt = (target: ParsedPath | null, body: MatcherBody | null = null): R
     position: { line: 1, column: 1 },
 });
 
-// Each result row is `N:<source line>`. rxLines strips the prefix to the line text;
-// rxLineNos surfaces the N's — non-sequential when matches scatter (the contract's point).
-const rxLines = (content: string | null | undefined): string[] =>
-    (content ?? "").split("\n").map((line) => line.replace(/^\d+:/, ""));
-const rxLineNos = (content: string | null | undefined): number[] =>
-    (content ?? "").split("\n").map((line) => Number(/^(\d+):/.exec(line)?.[1] ?? -1));
+const matchLines = (matches: ReadonlyArray<{ lineStart: number }> | undefined): number[] =>
+    (matches ?? []).map(({ lineStart }) => lineStart);
 
 const setup = async () => {
     const db = await openMigrated();
@@ -60,7 +54,7 @@ const seedJson = async (db: Db, workspaceId: number, workerId: number, mimetypes
 
 // --- jsonpath -------------------------------------------------------
 
-test("jsonpath: $.host returns the SOURCE LINE at the match — not the extracted value", async () => {
+test("jsonpath: $.host returns the JSON resource with its match coordinate", async () => {
     const { db, workspaceId, workerId, mimetypes } = await setup();
     try {
         await seedJson(db, workspaceId, workerId, mimetypes, "/config.json", '{\n  "host": "db.internal",\n  "pool": 5\n}');
@@ -70,14 +64,13 @@ test("jsonpath: $.host returns the SOURCE LINE at the match — not the extracte
         );
 
         assert.equal(r.status, 200);
-        assert.equal(r.mimetype, "text/markdown");
-        // host sits on source line 2 — READ delivers that whole line, not the bare value "db.internal".
-        assert.deepEqual(rxLineNos(r.content), [2]);
-        assert.match(rxLines(r.content)[0], /^\s*"host": "db\.internal",$/);
+        assert.equal(r.mimetype, "application/json");
+        assert.equal(r.content, '{\n  "host": "db.internal",\n  "pool": 5\n}');
+        assert.deepEqual(matchLines(r.matches), [2]);
     } finally { await db.close(); }
 });
 
-test("jsonpath: $.users[*].name returns one SOURCE LINE per match", async () => {
+test("jsonpath: $.users[*].name reports each match on the selected JSON resource", async () => {
     const { db, workspaceId, workerId, mimetypes } = await setup();
     try {
         await seedJson(db, workspaceId, workerId, mimetypes, "/team.json",
@@ -88,15 +81,13 @@ test("jsonpath: $.users[*].name returns one SOURCE LINE per match", async () => 
         );
 
         assert.equal(r.status, 200);
-        assert.equal(r.mimetype, "text/markdown");
-        // each name sits on its own source line (3, 4) — READ returns those lines, in order.
-        assert.deepEqual(rxLineNos(r.content), [3, 4]);
-        assert.match(rxLines(r.content)[0], /"name": "Alice"/);
-        assert.match(rxLines(r.content)[1], /"name": "Bob"/);
+        assert.equal(r.mimetype, "application/json");
+        assert.deepEqual(matchLines(r.matches), [3, 4]);
+        assert.match(r.content ?? "", /Alice.*Bob/s);
     } finally { await db.close(); }
 });
 
-test("jsonpath: $.users[*] returns each matched object's SOURCE LINE (not a JSON re-encode)", async () => {
+test("jsonpath: $.users[*] preserves the original JSON body", async () => {
     const { db, workspaceId, workerId, mimetypes } = await setup();
     try {
         await seedJson(db, workspaceId, workerId, mimetypes, "/team.json",
@@ -107,16 +98,12 @@ test("jsonpath: $.users[*] returns each matched object's SOURCE LINE (not a JSON
         );
 
         assert.equal(r.status, 200);
-        // an object match selects the line it sits on — the verbatim source, not a re-serialized value.
-        assert.deepEqual(rxLineNos(r.content), [3, 4]);
-        assert.deepEqual(rxLines(r.content), [
-            '    { "name": "Alice", "role": "admin" },',
-            '    { "name": "Bob", "role": "viewer" }',
-        ]);
+        assert.deepEqual(matchLines(r.matches), [3, 4]);
+        assert.match(r.content ?? "", /"users"/);
     } finally { await db.close(); }
 });
 
-test("jsonpath filter `$.users[?(@.role=='admin')]`: skipped non-matches → NON-SEQUENTIAL line numbers", async () => {
+test("jsonpath filter reports non-sequential match coordinates", async () => {
     const { db, workspaceId, workerId, mimetypes } = await setup();
     try {
         await seedJson(db, workspaceId, workerId, mimetypes, "/team.json",
@@ -127,15 +114,12 @@ test("jsonpath filter `$.users[?(@.role=='admin')]`: skipped non-matches → NON
         );
 
         assert.equal(r.status, 200);
-        // Bob (line 4, viewer) is filtered out → the returned source-line numbers jump 3 → 5.
-        assert.deepEqual(rxLineNos(r.content), [3, 5]);
-        const lines = rxLines(r.content);
-        assert.match(lines[0], /"name": "Alice"/);
-        assert.match(lines[1], /"name": "Carol"/);
+        assert.deepEqual(matchLines(r.matches), [3, 5]);
+        assert.match(r.content ?? "", /Alice.*Bob.*Carol/s);
     } finally { await db.close(); }
 });
 
-test("jsonpath: zero matches → 204 with matches:0", async () => {
+test("jsonpath: zero matches returns 204 with empty evidence", async () => {
     const { db, workspaceId, workerId, mimetypes } = await setup();
     try {
         await seedJson(db, workspaceId, workerId, mimetypes, "/empty.json", '{"users":[]}');
@@ -145,7 +129,7 @@ test("jsonpath: zero matches → 204 with matches:0", async () => {
         );
 
         assert.equal(r.status, 204);
-        assert.equal((r as { matches?: number }).matches, 0);
+        assert.deepEqual(r.matches, []);
     } finally { await db.close(); }
 });
 
@@ -158,7 +142,7 @@ test("jsonpath on text/markdown applies against the heading outline (no headings
             makeSchemeCtx({ db, workspaceId, mimetypes }),
         );
         assert.equal(r.status, 204);
-        assert.equal(r.matches, 0);
+        assert.deepEqual(r.matches, []);
     } finally { await db.close(); }
 });
 
@@ -184,7 +168,7 @@ test("jsonpath on text/markdown queries the marked-AST deepJson", async () => {
 
 // --- xpath ----------------------------------------------------------
 
-test("xpath //h1/text(): returns each heading's SOURCE LINE, non-sequential across the page", async () => {
+test("xpath //h1/text(): selects the HTML resource and reports each heading coordinate", async () => {
     const { db, workspaceId, workerId, mimetypes } = await setup();
     try {
         await seedJson(db, workspaceId, workerId, mimetypes, "/page.html",
@@ -195,14 +179,13 @@ test("xpath //h1/text(): returns each heading's SOURCE LINE, non-sequential acro
         );
 
         assert.equal(r.status, 200);
-        assert.equal(r.mimetype, "text/markdown");
-        // the <p> on line 4 is skipped → the h1 source lines are 3 and 5.
-        assert.deepEqual(rxLineNos(r.content), [3, 5]);
-        assert.deepEqual(rxLines(r.content), ["<h1>Welcome</h1>", "<h1>About</h1>"]);
+        assert.equal(r.mimetype, "text/html");
+        assert.deepEqual(matchLines(r.matches), [3, 5]);
+        assert.match(r.content ?? "", /<h1>Welcome<\/h1>.*<p>intro<\/p>.*<h1>About<\/h1>/s);
     } finally { await db.close(); }
 });
 
-test("xpath //user/@email: an attribute match returns its element's SOURCE LINE", async () => {
+test("xpath //user/@email: attribute matches identify their source elements", async () => {
     const { db, workspaceId, workerId, mimetypes } = await setup();
     try {
         await seedJson(db, workspaceId, workerId, mimetypes, "/users.html",
@@ -213,14 +196,13 @@ test("xpath //user/@email: an attribute match returns its element's SOURCE LINE"
         );
 
         assert.equal(r.status, 200);
-        // the match is the attribute, but READ delivers the LINE the element sits on (2, 3).
-        assert.deepEqual(rxLineNos(r.content), [2, 3]);
-        assert.match(rxLines(r.content)[0], /email="alice@x\.com"/);
-        assert.match(rxLines(r.content)[1], /email="bob@x\.com"/);
+        assert.equal(r.mimetype, "text/html");
+        assert.deepEqual(matchLines(r.matches), [2, 3]);
+        assert.match(r.content ?? "", /email="alice@x\.com".*email="bob@x\.com"/s);
     } finally { await db.close(); }
 });
 
-test("xpath //user node selection: returns the element's SOURCE LINE, not a re-serialized node", async () => {
+test("xpath //user node selection preserves the complete HTML resource", async () => {
     const { db, workspaceId, workerId, mimetypes } = await setup();
     try {
         await seedJson(db, workspaceId, workerId, mimetypes, "/page.html",
@@ -231,15 +213,13 @@ test("xpath //user node selection: returns the element's SOURCE LINE, not a re-s
         );
 
         assert.equal(r.status, 200);
-        // Selecting the ELEMENT node returns its verbatim source line — the deep-xml pk: position
-        // bookkeeping (plurnk-mimetypes#12) never reaches the model because READ delivers the LINE,
-        // not the plugin's re-serialized node.
-        assert.deepEqual(rxLineNos(r.content), [2, 3]);
-        assert.deepEqual(rxLines(r.content), ["  <user>Alice</user>", "  <user>Bob</user>"]);
+        assert.equal(r.mimetype, "text/html");
+        assert.deepEqual(matchLines(r.matches), [2, 3]);
+        assert.equal(r.content, "<root>\n  <user>Alice</user>\n  <user>Bob</user>\n</root>");
     } finally { await db.close(); }
 });
 
-test("xpath predicate //user[@role='admin']: matching lines returned, viewer line skipped", async () => {
+test("xpath predicate reports selected coordinates without dropping unselected content", async () => {
     const { db, workspaceId, workerId, mimetypes } = await setup();
     try {
         await seedJson(db, workspaceId, workerId, mimetypes, "/users.html",
@@ -250,10 +230,8 @@ test("xpath predicate //user[@role='admin']: matching lines returned, viewer lin
         );
 
         assert.equal(r.status, 200);
-        // Bob (viewer, line 3) fails the predicate → returned lines are 2 and 4.
-        assert.deepEqual(rxLineNos(r.content), [2, 4]);
-        assert.match(rxLines(r.content)[0], /Alice/);
-        assert.match(rxLines(r.content)[1], /Carol/);
+        assert.deepEqual(matchLines(r.matches), [2, 4]);
+        assert.match(r.content ?? "", /Alice.*Bob.*Carol/s);
     } finally { await db.close(); }
 });
 
@@ -272,13 +250,9 @@ test("xpath on markdown content with no structural match → 204", async () => {
     } finally { await db.close(); }
 });
 
-// --- Composition with structural <L> on log:/// ----------------------
+// --- Composition with structural <L> ---------------------------------
 
-test("jsonpath compose-chain: matcher-then-<L> picks the Nth match from log:///", async () => {
-    // End-to-end the killer composition: dispatch a jsonpath matcher READ
-    // through the engine, then <<READ(log:///N/M/K)<2>::READ to pick the 2nd
-    // match line. One match per source line is what makes <L> paging work — so
-    // the seed is multi-line (single-line JSON would collapse every match to one row).
+test("jsonpath match coordinates support a model-chosen surgical follow-up READ", async () => {
     const { db, workspaceId, workerId, mimetypes } = await setup();
     try {
         const loopId = await insertLoop(db, workerId, 1, "compose-jsonpath");
@@ -286,36 +260,48 @@ test("jsonpath compose-chain: matcher-then-<L> picks the Nth match from log:///"
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes });
 
         await seedJson(db, workspaceId, workerId, mimetypes, "/team.json",
-            '{\n  "users": [\n    { "name": "Alice" },\n    { "name": "Bob" },\n    { "name": "Carol" }\n  ]\n}');
+            '[\n  { "name": "Alice" },\n  { "name": "Bob" },\n  { "name": "Carol" }\n]');
 
-        // Dispatch the matcher READ — lands at log:///1/1/1.
         await engine.dispatch({
             statement: {
                 op: "READ", suffix: "", signal: null,
                 target: urlPath("worker", "/team.json"),
                 lineMarker: null,
-                body: { dialect: "jsonpath", raw: "$.users[*].name" } as MatcherBody,
+                body: { dialect: "jsonpath", raw: "$[*].name" } as MatcherBody,
                 position: { line: 1, column: 1 },
             },
             workspaceId, workerId, loopId, turnId,
             sequence: 1, origin: "model",
         });
 
-        // Per-match fan-out: sequence 1 is the FIND selection-summary row
-        // (§matcher-selection-signal); the matches follow — the 2nd jsonpath match is log:///1/1/3 (Bob). Read it
-        // directly (#286), no <L>-slice of a combined result.
-        const r = await new Log().read(readStmt(urlPath("log", "/1/1/3")), makeSchemeCtx({ db, workerId, mimetypes }));
-        assert.equal(r.status, 200);
-        assert.match(r.content ?? "", /Bob/, "the 2nd row holds the 2nd match");
-        assert.doesNotMatch(r.content ?? "", /Alice|Carol/);
+        const row = await db.log_read_by_coordinate.get<{ rx: string }>({
+            worker_id: workerId,
+            loop_seq: 1,
+            turn_seq: 1,
+            sequence: 1,
+        });
+        const rx = JSON.parse(row!.rx) as {
+            content: string;
+            matches: Array<{ rowStart: number; rowEnd: number; path?: string }>;
+        };
+        assert.match(rx.content, /Alice.*Bob.*Carol/s, "the initial READ does not guess which hit the model wants");
+        assert.equal(rx.matches.length, 3);
+
+        const bob = rx.matches[1]!;
+        const surgical = await new Worker().read(
+            {
+                ...readStmt(urlPath("worker", "/team.json")),
+                lineMarker: { marks: [bob.rowStart, bob.rowEnd] },
+            },
+            makeSchemeCtx({ db, workspaceId, workerId, mimetypes }),
+        );
+        assert.equal(surgical.status, 200);
+        assert.match(surgical.content ?? "", /Bob/);
+        assert.doesNotMatch(surgical.content ?? "", /Alice|Carol/);
     } finally { await db.close(); }
 });
 
-test("THE REAL PATH: a matcher READ's FIND row carries each hit's canonical path in the STORED rx (run30)", async () => {
-    // Through engine.dispatch — the fanout path production takes (a matcher READ becomes
-    // FIND → per-match body-less READs), asserting on the rx AS STORED, which is what the
-    // packet renders. The prior citation proved a direct-call seam dispatch never takes;
-    // this one cannot lie about reaching the model.
+test("a matcher READ stores canonical paths with its coordinate evidence", async () => {
     const { db, workspaceId, workerId, mimetypes } = await setup();
     try {
         const loopId = await insertLoop(db, workerId, 1, "sig");
@@ -328,13 +314,18 @@ test("THE REAL PATH: a matcher READ's FIND row carries each hit's canonical path
         });
         assert.equal(result.status, 200);
         const rows = await db.test_log_entries_by_loop.all<{ op: string; rx: string }>({ loop_id: loopId });
-        const findRow = rows.find((r) => r.op === "FIND");
-        assert.ok(findRow, "the fanout writes its FIND row");
-        const rx = JSON.parse(findRow!.rx) as { results?: Array<{ matchPath?: string; matchSpan?: object }> };
-        const paths = (rx.results ?? []).map((x) => x.matchPath);
-        assert.deepEqual(paths, ["$['users'][0]['name']", "$['users'][1]['name']"], "each hit's canonical coordinate is in the STORED rx — the model can discriminate identical spans");
         const reads = rows.filter((r) => r.op === "READ");
-        assert.equal(reads.length, 1, "deliveries dedup by span (#286): two hits on ONE source line deliver that line once — the rx above is what discriminates them");
+        assert.equal(reads.length, 1, "one selected resource produces one READ row");
+        const rx = JSON.parse(reads[0]!.rx) as {
+            content?: string;
+            matches?: Array<{ path?: string; lineStart: number; lineEnd: number; rowStart: number; rowEnd: number }>;
+        };
+        assert.match(rx.content ?? "", /Alice.*Bob/s);
+        assert.deepEqual(
+            rx.matches?.map(({ path }) => path),
+            ["$['users'][0]['name']", "$['users'][1]['name']"],
+            "canonical coordinates distinguish hits that share a source line",
+        );
     } finally { await db.close(); }
 });
 

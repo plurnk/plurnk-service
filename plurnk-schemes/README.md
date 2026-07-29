@@ -78,7 +78,7 @@ That's the whole contract: declare, `implements SchemeHandler`, manifest with se
 
 - Manifest/flags: `SchemeManifest` (incl. `example` / `documentation` / `glyph` self-doc), `SchemeFlagAffinity`, `WriterTier`, `LoopFlags`, `DEFAULT_LOOP_FLAGS`.
 - Behavior contract: `SchemeHandler` + optional `PacketSectionTransformer` (`PacketSection`); the re-exported scheme-facing grammar types (`PlurnkStatement` + per-op statements + `ParsedPath` / `LocalPath` / `UrlPath`).
-- Results: universal `SchemeResult` plus RFC 9457 `ProblemDetails`, optional `EntryResult` / `ProposalResult` / `PassthroughResult` authoring shapes, and `SchemeResultBase`.
+- Results: universal `SchemeResult` plus RFC 9457 `ProblemDetails`, optional `EntryResult` / `ProposalResult` / `PassthroughResult` authoring shapes, `SchemeResultBase`, and matcher navigation `MatchRange`.
 - Capability ctx: `SchemeCtx` and its entry, channel, tag, notification, projection, and subscription domains. Entry schemes can reuse typed standard operations with semantic commons/worker ownership.
 
 ### Helpers (`export default class`, static methods)
@@ -87,7 +87,7 @@ That's the whole contract: declare, `implements SchemeHandler`, manifest with se
 - `MimetypeClassifier.isBinary` / `.isLineNavigable` / `.isJson` / `.normalizeAutoText` (+ `TEXT_PRIMITIVE_MIMETYPE` named export) — mimetype classification.
 - `Slicer.lines` / `.linesRaw` / `.jsonItems` / `.lineMarkerEdit` / `.jsonItemEdit` — `<L>` slicing + structural EDIT.
 - `PathMimetype.resolve(pathname, default, mimetypes)` — path-extension mimetype resolver.
-- `Matcher.matchAgainstContent(body, content, mimetype, mimetypes, baseLine?)` — body-matcher dispatch over `Mimetypes.query` (glob/regex/jsonpath/xpath).
+- `Matcher.matchAgainstContent(body, content, mimetype, mimetypes)` - boolean resource selection over `Mimetypes.query` (glob/regex/jsonpath/xpath), returning source/readable `MatchRange` evidence.
 - `Results.problem` / `.failure` / `.assert` / `.attachInstance` / `.isEntry` / `.isProposal` / `.isPassthrough` / `.isErrorStatus` — RFC 9457 result builders, validator, durable-occurrence attachment, and guards.
 - `SchemeDiscovery.discover({ cwd? })` — scope-agnostic `node_modules` scan for `plurnk.kind:"scheme"` packages (trust-gated, fail-hard on prefix collision); returns descriptors for the consumer to register (SPEC §6).
 

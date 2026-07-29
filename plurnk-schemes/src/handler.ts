@@ -54,9 +54,10 @@ export interface SchemeHandler {
     close?(): Promise<void>;
     applyResolution?(request: ProposalApplyRequest, ctx: SchemeCtx): Promise<ProposalApplyResult>;
 
-    // Entry-bearing schemes receive the standard FIND implementation from the
-    // consumer. A scheme implements this hook only when the requested target
-    // must be discovered or materialized before that shared query runs.
+    // Entry-bearing schemes receive the standard resource-selection
+    // implementation from the consumer. A scheme implements this hook only
+    // when the requested target must be discovered or materialized before FIND
+    // or matcher READ selects stored entries.
     prepareFind?(statement: FindStatement, ctx: SchemeCtx): Promise<SchemeResult>;
     read?(statement: ReadStatement, ctx: SchemeCtx): Promise<SchemeResult>;
     find?(statement: FindStatement, ctx: SchemeCtx): Promise<SchemeResult>;

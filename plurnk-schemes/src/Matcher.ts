@@ -18,56 +18,41 @@ import {
     QueryParseFailureError,
 } from "@plurnk/plurnk-mimetypes";
 import { TEXT_PRIMITIVE_MIMETYPE } from "./MimetypeClassifier.ts";
-import Results, { type SchemeResult } from "./Results.ts";
+import Results, { type MatchRange, type SchemeResult } from "./Results.ts";
 
 export interface MatchResult extends SchemeResult {
-    body?: string;          // N:\t<source-line> lines (status 200) or raw fallback content (status 203)
-    matches?: number;       // hit count (status 200 or 204); omitted on 203
-    mimetype?: string;      // overrides default text/markdown on the 203 fallback path
-    reason?: string;        // 203 fallback: framework's parse-failure reason for the model
+    body?: string;                         // raw fallback content (status 203)
+    matches?: ReadonlyArray<MatchRange>;  // addressable evidence (status 200 or 204)
+    mimetype?: string;                    // overrides default text/markdown on the 203 fallback path
+    reason?: string;                      // 203 fallback: framework's parse-failure reason for the model
 }
 
 export default class Matcher {
-    // Render one match's value for the model-facing line. Bare for a single-
-    // line string; JSON-encoded otherwise so the one-match-per-line invariant
-    // holds (a multi-line value would otherwise break the `<L><K>` pick-Kth
-    // composition that matcher-then-slice depends on).
-    static #renderValue(value: unknown): string {
-        return typeof value === "string" && !value.includes("\n") ? value : JSON.stringify(value);
-    }
-
-    // Render matches as the model-facing `<source-line>:\t<line-content>` form,
-    // one source line per entry — the `N:\t` convention READ emits. A matcher
-    // SELECTS a location; READ returns the SOURCE LINE at that location, never an
-    // extracted value (grammar contract plurnk.md:31, schemes#27). A regex hit on
-    // `### §grinder …` renders that whole line, not the matched token `grinder`.
-    //
-    // The hit's source footprint is `lines[]` (mimetypes #41: structural dialects
-    // self-provide it, symmetric with regex/glob). We anchor on the first span's
-    // start line and emit the SOURCE line text there. Deduped by source line — a
-    // line matched twice appears once (e.g. two regex hits on one line). A
-    // footprint-less match — an xpath computed scalar (count()/string()/sum()/…)
-    // that lives nowhere in the source — has no line to return, so it renders its
-    // value bare; the framework never fakes a line for it, and neither do we.
-    //
-    // Line lookup uses SLICE coordinates (the `content` the matcher ran against),
-    // while the displayed number is SOURCE coordinates (`+ baseLine - 1`) — so an
-    // `<L>`-sliced match reports its original-source line but reads text from the
-    // slice in hand. `matching` (the resolved query path) is never surfaced.
-    static #renderMatches(matches: readonly QueryMatch[], content: string, baseLine: number): string[] {
-        const sliceLines = content.split("\n");
-        const offset = baseLine - 1;
-        const seen = new Set<number>();
-        const out: string[] = [];
-        for (const m of matches) {
-            const sliceLine = m.lines?.[0]?.line;
-            if (sliceLine === undefined) { out.push(Matcher.#renderValue(m.matched)); continue; }
-            const sourceLine = sliceLine + offset;
-            if (seen.has(sourceLine)) continue; // dedup by source line
-            seen.add(sourceLine);
-            out.push(`${sourceLine}:\t${sliceLines[sliceLine - 1] ?? ""}`);
+    static #ranges(matches: readonly QueryMatch[]): MatchRange[] {
+        const ranges: MatchRange[] = [];
+        const seen = new Set<string>();
+        for (const match of matches) {
+            const lines = match.lines ?? [];
+            const rows = match.rows ?? [];
+            if (lines.length !== rows.length) {
+                throw new Error(`Mimetypes.query returned ${lines.length} source ranges and ${rows.length} readable ranges for one match`);
+            }
+            for (let index = 0; index < lines.length; index += 1) {
+                const range = {
+                    lineStart: lines[index].line,
+                    lineEnd: lines[index].endLine,
+                    rowStart: rows[index].row,
+                    rowEnd: rows[index].endRow,
+                    ...(match.matching === undefined ? {} : { path: match.matching }),
+                };
+                const key = `${range.lineStart}\0${range.lineEnd}\0${range.rowStart}\0${range.rowEnd}\0${range.path ?? ""}`;
+                if (!seen.has(key)) {
+                    seen.add(key);
+                    ranges.push(range);
+                }
+            }
         }
-        return out;
+        return ranges;
     }
 
     // Hand the framework the ALREADY-PARSED matcher (mimetypes#42), not the raw
@@ -93,7 +78,6 @@ export default class Matcher {
         content: string,
         mimetype: string,
         mimetypes: Mimetypes,
-        baseLine: number = 1,
     ): Promise<MatchResult> {
         try {
             // Pass the parsed matcher (declared dialect authoritative) + `hint`
@@ -104,15 +88,11 @@ export default class Matcher {
                 Matcher.#parsedMatcher(body),
             );
             if (rawMatches.length === 0) {
-                return { status: 204, matches: 0 };
+                return { status: 204, matches: [] };
             }
-            // Render to deduped source lines; `matches` counts the lines the model
-            // sees (post-dedup), not raw hits — a line matched twice is one result.
-            const rendered = Matcher.#renderMatches(rawMatches, content, baseLine);
             return {
                 status: 200,
-                body: rendered.join("\n"),
-                matches: rendered.length,
+                matches: Matcher.#ranges(rawMatches),
             };
         } catch (err) {
             // Name-based dispatch tolerates dup-copy node_modules layouts where

@@ -3,7 +3,7 @@ import { LineMarkerOps } from "../content/index.ts";
 import type { SchemeManifest, PlurnkSchemeContext, SchemeReadResult } from "../core/scheme-types.ts";
 import { ReadResolve } from "../content/index.ts";
 import Matcher from "../content/matcher.ts";
-import type { CandidateMatch } from "../content/matcher.ts";
+import type { SourceCandidateMatch } from "../content/matcher.ts";
 import type { FindResult, MatchItem, Match, CatalogScope, CatalogMatch } from "./_entry-find.ts";
 import { CoreSchemeAdapterBase } from "../core/CoreSchemeServices.ts";
 import type { CoreSchemeCallContext } from "../core/CoreSchemeServices.ts";
@@ -178,7 +178,7 @@ export default class Log extends CoreSchemeAdapterBase {
         const byCoord = new Map(rows.map((r) => [r.coordinate, r] as const));
         const projected = rows.map((r) => ({ key: r.coordinate, ...LogProjectionResolver.resolve(r.rx) }));
 
-        let sourceMatches: CandidateMatch[];
+        let matches: Match[];
         if (statement.body?.dialect === "semantic") {
             if (mimetypes === undefined) return empty(501, "Semantic matching requires the mimetypes capability.");
             const candidateSet = resolveSearchCandidates(
@@ -198,11 +198,14 @@ export default class Log extends CoreSchemeAdapterBase {
                 LineMarkerOps.firstLast(marker),
             );
             if (ranked.status !== 200) return empty(ranked.status, `The log semantic matcher failed with status ${ranked.status}.`);
-            sourceMatches = ranked.results.map(({ key, lineStart, lineEnd }) => ({
+            const sourceMatches = ranked.results.map(({ key, lineStart, lineEnd }): SourceCandidateMatch => ({
                 key,
                 span: { lineStart, lineEnd },
             }));
+            const readable = await Matcher.addReadableRows(sourceMatches, projected, mimetypes);
+            matches = readable.map(({ key, matches: ranges }) => ({ pathname: key, matches: ranges }));
         } else if (statement.body?.dialect === "graph") {
+            if (mimetypes === undefined) return empty(501, "Graph matching requires the mimetypes capability.");
             const candidateSet = resolveSearchCandidates(
                 rows.map(({ coordinate, deep_hash }) => ({ key: coordinate, deepHash: deep_hash })),
             );
@@ -227,49 +230,34 @@ export default class Log extends CoreSchemeAdapterBase {
                 statement.body.raw,
             );
             if (graph.status !== 200) return empty(graph.status, `The log graph matcher failed with status ${graph.status}.`);
-            sourceMatches = graph.matches.map(({ key, lineStart, lineEnd }) => ({
+            const sourceMatches = graph.matches.map(({ key, lineStart, lineEnd }): SourceCandidateMatch => ({
                 key,
                 span: { lineStart, lineEnd },
             }));
+            const readable = await Matcher.addReadableRows(sourceMatches, projected, mimetypes);
+            matches = readable.map(({ key, matches: ranges }) => ({ pathname: key, matches: ranges }));
         } else if (statement.body === null) {
-            sourceMatches = projected.map(({ key }) => ({ key, span: null }));
+            matches = projected.map(({ key }) => ({ pathname: key, matches: [] }));
         } else {
             if (mimetypes === undefined) return empty(501, "Content matching requires the mimetypes capability.");
             const r = await Matcher.matchCandidates(statement.body, projected, mimetypes);
             if (r.status !== 200) return empty(r.status, `The log matcher failed with status ${r.status}.`);
-            sourceMatches = r.matches;
+            matches = r.matches.map(({ key, matches: ranges }) => ({ pathname: key, matches: ranges }));
         }
         const folderSummaries = statement.body === null
             ? pathFolderSummaries(scope, candidateRows.map((row) => row.coordinate))
             : [];
         if (statement.lineMarker !== null && statement.body?.dialect !== "semantic" && folderSummaries.length === 0) {
-            const page = LineMarkerOps.page(sourceMatches, statement.lineMarker);
+            const page = LineMarkerOps.page(matches, statement.lineMarker);
             if (page.status !== 200) return empty(
                 page.status,
                 page.problem?.detail ?? "The requested log result range is not satisfiable.",
                 page.range === undefined ? {} : { range: page.range },
             );
-            sourceMatches = page.items ?? [];
+            matches = page.items ?? [];
         }
-        let matches: Match[];
-        if (sourceMatches.some(({ span }) => span !== null)) {
-            if (mimetypes === undefined) return empty(501, "Readable match coordinates require the mimetypes capability.");
-            const readable = await Matcher.addReadableRows(sourceMatches, projected, mimetypes);
-            matches = readable.map(({ key, span, path }) => ({
-                pathname: key,
-                span,
-                ...(path === undefined ? {} : { path }),
-            }));
-        } else {
-            matches = sourceMatches.map(({ key, path }) => ({
-                pathname: key,
-                span: null,
-                ...(path === undefined ? {} : { path }),
-            }));
-        }
-        // The result rows mirror the catalog-row shape (§find-result-catalog-rows): one item per
-        // match, keyed by the row's self-documenting path, carrying {mimetype, tokens, lines} so
-        // the model budgets its READs — uniform with every scheme's FIND.
+        // The result rows mirror the catalog-row shape: one item per selected
+        // resource, with optional match coordinates for a surgical READ.
         let results: MatchItem[] = [];
         const seenPath: string[] = [];
         const seen = new Set<string>();
@@ -283,7 +271,7 @@ export default class Log extends CoreSchemeAdapterBase {
                 path,
                 channels: { [path]: { mimetype: proj.mimetype, tokens: row.tokens, lines: proj.content.length === 0 ? 0 : proj.content.split("\n").length } },
             };
-            results.push(m.span !== null ? { ...item, matchSpan: m.span, ...(m.path !== undefined ? { matchPath: m.path } : {}) } : item);
+            results.push(m.matches.length > 0 ? { ...item, matches: m.matches } : item);
             if (!seen.has(m.pathname)) { seen.add(m.pathname); seenPath.push(m.pathname); itemsTokenTotal += row.tokens; }
         }
         for (const folder of folderSummaries) {
