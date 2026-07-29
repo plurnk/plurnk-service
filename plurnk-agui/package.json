@@ -59,6 +59,7 @@
     },
     "dependencies": {
         "@ag-ui/core": "^0.0.57",
+        "@plurnk/plurnk-contracts": "1.3.12",
         "@plurnk/plurnk-execs-mcp": "1.3.12",
         "@plurnk/plurnk-grammar": "1.3.12"
     }

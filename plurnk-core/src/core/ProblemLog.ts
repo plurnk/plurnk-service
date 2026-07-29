@@ -1,4 +1,4 @@
-import type { ProblemDetails } from "@plurnk/plurnk-grammar";
+import type { ProblemDetails } from "@plurnk/plurnk-contracts";
 import type { Db } from "./Db.ts";
 import Results, { type SchemeResult } from "./results.ts";
 import type { WriterTier } from "./scheme-types.ts";

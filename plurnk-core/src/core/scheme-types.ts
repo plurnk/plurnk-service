@@ -7,7 +7,7 @@ import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import type ExecutorRegistry from "./ExecutorRegistry.ts";
 import type { StreamEventNotify, WakeWorkerNotify, InjectWorkerNotify } from "./ChannelWrite.ts";
 import type { WriterTier } from "./types.ts";
-import type { Notice } from "@plurnk/plurnk-grammar";
+import type { Notice } from "@plurnk/plurnk-contracts";
 import type { PacketSection } from "./packet-wire.ts";
 import type { SchemeResultBase } from "./results.ts";
 

@@ -1,4 +1,4 @@
-import { Validator, type Notice } from "@plurnk/plurnk-grammar";
+import { Validator, type Notice } from "@plurnk/plurnk-contracts";
 import type { NoticeNotify } from "./ChannelWrite.ts";
 
 // The transient notice channel. Durable operation failures live in log_entries as
@@ -39,9 +39,6 @@ export default class NoticeChannel {
     }
 
     static #assert(notice: Notice): void {
-        const validation = Validator.validateNotice(notice);
-        if (!validation.valid) {
-            throw new TypeError(`invalid Notice: ${JSON.stringify(validation.errors)}`);
-        }
+        Validator.assertNotice(notice);
     }
 }

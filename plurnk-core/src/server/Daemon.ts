@@ -19,7 +19,8 @@ import type { Provider, ProviderAlias } from "@plurnk/plurnk-providers";
 export type NotifyTarget = "all" | { workspaceId: number };
 // One drained loop's terminal shape — the drain's return currency.
 export interface DrainLoopResult { loopId: number; result: SchemeResult; hitMaxTurns: boolean; turnIds: number[]; action?: string; usage?: { promptTokens: number; completionTokens: number; costUsd: number } }
-import type { Notice, PlurnkStatement } from "@plurnk/plurnk-grammar";
+import type { Notice } from "@plurnk/plurnk-contracts";
+import type { PlurnkStatement } from "@plurnk/plurnk-grammar";
 import LogEntry from "./logEntry.ts";
 import type { LogEntryWire } from "./logEntry.ts";
 import Envelope from "./envelope.ts";

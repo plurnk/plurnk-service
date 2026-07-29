@@ -1,5 +1,6 @@
 import { parsePath } from "@plurnk/plurnk-grammar";
-import type { ExecStatement, FindStatement, ReadStatement, Notice } from "@plurnk/plurnk-grammar";
+import type { Notice } from "@plurnk/plurnk-contracts";
+import type { ExecStatement, FindStatement, ReadStatement } from "@plurnk/plurnk-grammar";
 import { Policy, type ChannelState } from "@plurnk/plurnk-execs";
 import type { ExecResult as ExecutorResult } from "@plurnk/plurnk-execs";
 import { WebFetcher, type WebFetchResult } from "@plurnk/plurnk-schemes-http";

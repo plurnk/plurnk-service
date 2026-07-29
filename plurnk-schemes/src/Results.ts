@@ -1,6 +1,12 @@
-import { Validator, type ProblemDetails } from "@plurnk/plurnk-grammar";
+import {
+    InvalidOperationResultError,
+    Problems,
+    Validator,
+    type ProblemDetails,
+} from "@plurnk/plurnk-contracts";
 
 export type { ProblemDetails };
+export { InvalidOperationResultError };
 
 export interface SchemeResult {
     readonly status: number;
@@ -40,12 +46,6 @@ export interface PassthroughResult extends SchemeResultBase {
     readonly reason?: string;
 }
 
-const TYPE_ROOT = "https://problems.plurnk.dev";
-const OWNER = /^[a-z][a-z0-9-]*(?::[a-z][a-z0-9-]*)*$/;
-const CODE = /^[a-z][a-z0-9-]*$/;
-
-export class InvalidOperationResultError extends TypeError {}
-
 export default class Results {
     static isEntry(result: SchemeResult): result is EntryResult {
         return "shape" in result && result.shape === "entry";
@@ -70,18 +70,7 @@ export default class Results {
         detail: string,
         extensions: Readonly<Record<string, unknown>> = {},
     ): ProblemDetails {
-        if (!OWNER.test(owner)) throw new Error(`problem owner must be a colon-delimited lowercase identifier; got ${JSON.stringify(owner)}`);
-        if (!CODE.test(code)) throw new Error(`problem code must be a lowercase kebab-case identifier; got ${JSON.stringify(code)}`);
-        const title = code.charAt(0).toUpperCase() + code.slice(1).replaceAll("-", " ");
-        const problem: ProblemDetails = {
-            ...extensions,
-            type: `${TYPE_ROOT}/${owner.replaceAll(":", "/")}/${code}`,
-            title,
-            status,
-            detail,
-        };
-        Results.assertProblem(problem);
-        return problem;
+        return Problems.create(owner, code, status, detail, extensions);
     }
 
     static failure(
@@ -100,21 +89,11 @@ export default class Results {
     }
 
     static assertProblem(problem: unknown): asserts problem is ProblemDetails {
-        const validation = Validator.validateProblemDetails(problem);
-        if (!validation.valid) {
-            throw new TypeError(`invalid RFC 9457 Problem Details: ${JSON.stringify(validation.errors)}`);
-        }
+        Validator.assertProblemDetails(problem as ProblemDetails);
     }
 
     static assert<T extends SchemeResult>(result: T): T {
-        const validation = Validator.validateOperationResult(result);
-        if (!validation.valid) {
-            throw new InvalidOperationResultError(`invalid operation result: ${JSON.stringify(validation.errors)}`);
-        }
-        if (result.problem !== undefined && result.problem.status !== result.status) {
-            throw new InvalidOperationResultError(`operation result status ${result.status} does not match problem status ${result.problem.status}`);
-        }
-        return result;
+        return Validator.assertOperationResult(result);
     }
 
     static attachInstance<T extends SchemeResult>(result: T, instance: string): T {

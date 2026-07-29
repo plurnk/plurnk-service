@@ -10,7 +10,7 @@
 import type { Db } from "./Db.ts";
 import type { LoopFlags, WriterTier } from "./types.ts";
 import { Results, type SchemeResult } from "@plurnk/plurnk-schemes";
-import type { Notice } from "@plurnk/plurnk-grammar";
+import type { Notice } from "@plurnk/plurnk-contracts";
 import { renderAddress } from "./plurnk-uri.ts";
 
 export type ChannelState = "static" | "active" | "closed" | "errored"; // render metadata, never a read gate — §channel-state-state-is-metadata

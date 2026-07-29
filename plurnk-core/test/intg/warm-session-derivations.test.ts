@@ -15,7 +15,7 @@ import type { MockResponse } from "@plurnk/plurnk-providers";
 import { Mock } from "@plurnk/plurnk-providers";
 import { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import type { Db } from "../../src/core/Db.ts";
-import type { Notice } from "@plurnk/plurnk-grammar";
+import type { Notice } from "@plurnk/plurnk-contracts";
 import Engine from "../../src/core/Engine.ts";
 import Owner from "../../src/core/Owner.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";

@@ -1,4 +1,5 @@
-import type { PlurnkStatement, Notice } from "@plurnk/plurnk-grammar";
+import type { Notice } from "@plurnk/plurnk-contracts";
+import type { PlurnkStatement } from "@plurnk/plurnk-grammar";
 import type { Db } from "./Db.ts";
 import type SchemeRegistry from "./SchemeRegistry.ts";
 import type ExecutorRegistry from "./ExecutorRegistry.ts";

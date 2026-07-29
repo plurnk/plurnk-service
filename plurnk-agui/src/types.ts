@@ -7,7 +7,7 @@
 
 export { EventType } from "@ag-ui/core";
 export type { AGUIEvent as AguiEvent, RunAgentInput } from "@ag-ui/core";
-import type { OperationResult } from "@plurnk/plurnk-grammar/contracts";
+import type { OperationResult } from "@plurnk/plurnk-contracts";
 
 // The daemon wire — the slice of the plurnk JSON-RPC protocol this bridge consumes.
 // The daemon owns these shapes; the module consumes them from the in-process seam.

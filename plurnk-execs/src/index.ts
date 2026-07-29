@@ -44,5 +44,5 @@ export type {
     SpawnArgs,
 } from "./types.ts";
 
-// Transient notice envelope (local mirror of grammar's Notice schema)
+// Transient observation contract, re-exported for executor authors.
 export type { Notice, NoticeLevel, ContentOffset, LogCoordinate } from "./Notice.ts";

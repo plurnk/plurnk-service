@@ -1,4 +1,4 @@
-import { Validator, type ProblemDetails } from "@plurnk/plurnk-grammar/contracts";
+import { Problems, type ProblemDetails } from "@plurnk/plurnk-contracts";
 import { APICallError, RetryError } from "ai";
 import { providerSource } from "./notices.ts";
 
@@ -23,27 +23,15 @@ const defaultStatus = (kind: ProviderErrorKind): number => {
     }
 };
 
-const problemTitle = (kind: ProviderErrorKind): string =>
-    kind.charAt(0).toUpperCase() + kind.slice(1).replaceAll("_", " ");
-
 const buildProblem = (
     source: string,
     kind: ProviderErrorKind,
     message: string,
     status: number,
 ): ProblemDetails => {
-    const problem: ProblemDetails = {
-        type: `https://problems.plurnk.dev/${source.replaceAll(":", "/")}/${kind.replaceAll("_", "-")}`,
-        title: problemTitle(kind),
-        status,
-        detail: message,
+    return Problems.create(source, kind.replaceAll("_", "-"), status, message, {
         providerKind: kind,
-    };
-    const validation = Validator.validateProblemDetails(problem);
-    if (!validation.valid) {
-        throw new TypeError(`invalid provider Problem Details: ${JSON.stringify(validation.errors)}`);
-    }
-    return problem;
+    });
 };
 
 // A provider operation failed before a completed exchange existed. The

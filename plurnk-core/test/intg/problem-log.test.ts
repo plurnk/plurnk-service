@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { Validator } from "@plurnk/plurnk-grammar";
+import { Validator } from "@plurnk/plurnk-contracts";
 import ProblemLog from "../../src/core/ProblemLog.ts";
 import Results from "../../src/core/results.ts";
 import { insertLoop, insertTurn, insertWorker, insertWorkspace, openMigrated } from "./_helpers.ts";

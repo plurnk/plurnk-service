@@ -2,7 +2,7 @@
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "$id": "https://schemas.plurnk.dev/v0/OperationResult.json",
     "title": "OperationResult",
-    "description": "Universal PLURNK operation result. Scheme-owned metadata is open, but failures always carry one RFC 9457 Problem Details object and never a parallel error field.",
+    "description": "Universal PLURNK operation result. Producer-owned metadata is open, but failures always carry one RFC 9457 Problem Details object and never a parallel error field.",
     "type": "object",
     "required": ["status"],
     "additionalProperties": true,

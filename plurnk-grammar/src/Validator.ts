@@ -10,9 +10,6 @@ import schemeRegistrationSchema from "../schema/SchemeRegistration.json" with { 
 import providerDeclarationSchema from "../schema/ProviderDeclaration.json" with { type: "json" };
 import plurnkStatementSchema from "../schema/PlurnkStatement.json" with { type: "json" };
 import clientStatementSchema from "../schema/ClientStatement.json" with { type: "json" };
-import noticeSchema from "../schema/Notice.json" with { type: "json" };
-import problemDetailsSchema from "../schema/ProblemDetails.json" with { type: "json" };
-import operationResultSchema from "../schema/OperationResult.json" with { type: "json" };
 
 export type ValidationResult = { valid: boolean; errors: OutputUnit[] };
 
@@ -34,9 +31,6 @@ export default class Validator {
         clientStatementSchema,
         [plurnkStatementSchema, positionSchema, lineMarkerSchema, paramsSchema, parsedPathSchema, matcherBodySchema, sendBodySchema],
     );
-    static #notice = new CfValidator(noticeSchema as Schema, "2020-12");
-    static #problemDetails = new CfValidator(problemDetailsSchema as Schema, "2020-12");
-    static #operationResult = Validator.#buildWithRefs(operationResultSchema, [problemDetailsSchema]);
 
     static #buildWithRefs(mainSchema: unknown, refSchemas: unknown[]): CfValidator {
         const validator = new CfValidator(mainSchema as Schema, "2020-12");
@@ -60,10 +54,6 @@ export default class Validator {
     static validateProviderDeclaration(obj: unknown): ValidationResult { return Validator.#run(Validator.#providerDeclaration, obj); }
     static validatePlurnkStatement(obj: unknown): ValidationResult { return Validator.#run(Validator.#plurnkStatement, obj); }
     static validateClientStatement(obj: unknown): ValidationResult { return Validator.#run(Validator.#clientStatement, obj); }
-    static validateNotice(obj: unknown): ValidationResult { return Validator.#run(Validator.#notice, obj); }
-    static validateProblemDetails(obj: unknown): ValidationResult { return Validator.#run(Validator.#problemDetails, obj); }
-    static validateOperationResult(obj: unknown): ValidationResult { return Validator.#run(Validator.#operationResult, obj); }
-
     static #run(validator: CfValidator, obj: unknown): ValidationResult {
         const result = validator.validate(obj);
         return { valid: result.valid, errors: result.errors };

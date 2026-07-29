@@ -26,12 +26,12 @@ const json = (column: string): FieldStorage => ({ kind: "json", column });
 const decomposed = (...columns: string[]): FieldStorage => ({ kind: "decomposed", columns });
 const joinTable = (table: string): FieldStorage => ({ kind: "joinTable", table });
 
-// grammar 0.65–0.67 scoped the contract to the PROTOCOL (statements, paths, scheme/provider
-// registration, notices, channels) and DROPPED the persistence schemas — Entry, Workspace,
+// Grammar owns the model language (statements, paths, scheme/provider registration,
+// and channels) and DROPPED the persistence schemas - Entry, Workspace,
 // Run, Loop, Turn, LogEntry, Packet, Agent are gone. Those shapes are the SERVICE's now,
 // owned by our migrations + tests, not grammar. So this aligns only the protocol schemas that
 // still map to a table; the persistence tables (workspaces/runs/loops/turns/entries/log_entries)
-// are ours and validated elsewhere.
+// are ours and validated elsewhere. Runtime-neutral envelopes live in plurnk-contracts.
 const MAPPING: Record<string, SchemaMapping> = {
     ChannelContent: {
         kind: "embedded", table: "entry_channels", fields: {
@@ -60,9 +60,6 @@ const MAPPING: Record<string, SchemaMapping> = {
     MatcherBody:     { kind: "skip", reason: "AST shape; not persisted" },
     SendBody:        { kind: "skip", reason: "AST shape; embedded in log_entries.tx for SEND rows" },
     PlurnkStatement: { kind: "skip", reason: "AST shape; embedded in turn.packet.assistant.ops JSON" },
-    ProblemDetails:  { kind: "skip", reason: "failure envelope; embedded in log_entries.rx JSON" },
-    OperationResult: { kind: "skip", reason: "operation envelope; embedded in log_entries.rx JSON" },
-    Notice:  { kind: "skip", reason: "transient observation envelope; projected into the packet Notices section" },
     ClientStatement: { kind: "skip", reason: "client-tier AST (PlurnkStatement + the client-only LOOK/BUFF ops, via parseClient); never persisted — the service contract is PlurnkStatement, op.look parses a READ" },
 };
 

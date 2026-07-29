@@ -2,7 +2,7 @@ import type { Db } from "./Db.ts";
 import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import type ExecutorRegistry from "./ExecutorRegistry.ts";
 import type { InjectWorkerNotify, StreamEventNotify, WakeWorkerNotify } from "./ChannelWrite.ts";
-import type { Notice } from "@plurnk/plurnk-grammar";
+import type { Notice } from "@plurnk/plurnk-contracts";
 import type { PlurnkSchemeContext } from "./scheme-types.ts";
 import type { SchemeCtx } from "@plurnk/plurnk-schemes";
 import type LiveSubscriptions from "./LiveSubscriptions.ts";

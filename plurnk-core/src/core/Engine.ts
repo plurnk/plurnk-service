@@ -1,6 +1,7 @@
 import { PlurnkParser, PlurnkParseError } from "@plurnk/plurnk-grammar";
 import Owner from "./Owner.ts";
-import type { PlurnkStatement, EditStatement, ReadStatement, UrlPath, FindStatement, Notice } from "@plurnk/plurnk-grammar";
+import type { Notice } from "@plurnk/plurnk-contracts";
+import type { PlurnkStatement, EditStatement, ReadStatement, UrlPath, FindStatement } from "@plurnk/plurnk-grammar";
 
 // Internal-only — collected from PlurnkParser output, then translated to
 // Notice envelopes (per @plurnk/plurnk-grammar 0.17.0 protocol)
