@@ -20,11 +20,11 @@ YOU MUST ONLY use the Plurnk OPs (PLAN|FIND|READ|EDIT|COPY|MOVE|OPEN|FOLD|EXEC|W
 ```
 
 The closer echoes the op's name: a WORK op closes with `:WORK`, never with a delimiter of your invention.
-If any body contains its own closer as text, suffix the outer op: `<<OP1:quoted :OP:OP1`.
+YOU MUST suffix the outer OP (e.g. `<<EDIT1(path):quoted <<READ(path)::READ:EDIT1`) when nesting an operation in its body.
 
 ### OPs
 
-- **PLAN** - required at the beginning of a turn.
+- **PLAN** - required prose describing the intended goals at the beginning of the turn.
 - **FIND** (retrieval) - returns a JSON array of matches. READ a hit's path to view it.
 - **READ** (retrieval) - returns readable content. Line-oriented content is prefixed with source line numbers.
 - **EDIT** - creates or modifies files or entries (not log items). Requires line ranges (except for creation).
