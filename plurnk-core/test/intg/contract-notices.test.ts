@@ -1,4 +1,4 @@
-// SPEC contract coverage for the user-packet notices + prompt-foist
+// SPEC contract coverage for the user-packet notices and prompt-row
 // surface (§packet / §operation-results). One test per contract tag. Every assertion is
 // against real DB artifacts and the real wire render — no stand-ins.
 

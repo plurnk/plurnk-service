@@ -108,12 +108,12 @@ test("Engine.runTurn: EDIT + SEND turn writes entry, log rows, turn row with sta
         assert.equal(turn.status, 200);
         assert.equal(turn.usage_completion, 42);
 
-        // 5 log_entries: the turn-0 `model` exemplar (mirrored OPEN at sequence 1,
-        // §model-entry) + the prompt foist EDIT + its auto-READ (§prompt-auto-read) + 2 model
-        // ops (EDIT, SEND) + 1 folded `model` echo of THIS turn's verbatim emission.
+        // 5 log entries: the turn-0 `model` exemplar (mirrored OPEN at sequence 1),
+        // one first-class prompt row, two model ops (EDIT, SEND), and one folded
+        // `model` echo of this turn's verbatim emission.
         // Turn-as-container model — pre-model writes share the turn's sequence counter.
         const logCount = (await db.test_count_log_entries_by_turn.get<{ n: number }>({ turn_id: result.turnId }))?.n;
-        assert.equal(logCount, 6);
+        assert.equal(logCount, 5);
 
         const loopStatus = (await db.test_get_loop_status.get<{ status: number }>({ id: loopId }))?.status;
         assert.equal(loopStatus, 200, "terminal SEND propagated to loop.status");
@@ -152,15 +152,15 @@ test("Engine.runTurn: recorded turn cost reflects reasoning tokens (calculateCos
     } finally { await db.close(); }
 });
 
-test("Engine.runTurn: packet stores system + user content from messages (no loop-prompt foist)", async () => {
-    // packet.user.prompt sources first from the loop's prompt foist
-    // entry; falls back to messages.user when no foist exists. Test the
+test("Engine.runTurn: packet stores system + user content from messages when the loop prompt is empty", async () => {
+    // packet.user.prompt sources first from the loop's durable prompt
+    // entry; it falls back to messages.user when no entry exists. Test the
     // fallback explicitly by using a loop with an empty prompt.
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `ws-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1, "");  // empty prompt = no foist
+        const loopId = await insertLoop(db, workerId, 1, "");  // empty prompt = no prompt row
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         const provider = new Mock({ contextWindow: 100000, responses: [response([sendStmt(102, "ok")])] });
         const result = await engine.runTurn({
@@ -176,7 +176,7 @@ test("Engine.runTurn: packet stores system + user content from messages (no loop
         const packet = JSON.parse(row.packet) as { assistant: unknown };
         // The definition section is now JUST the system message body — the scheme
         // catalogue moved to its own `schemes` section (below tools). The body leads
-        // the definition; the prompt-foist fallback is the assertion's real subject.
+        // the definition; the empty-prompt fallback is the assertion's real subject.
         const definition = packetSection(packet, "definition");
         assert.ok(definition.startsWith("system prompt body"), "system message body leads the definition section");
         assert.match(packetSection(packet, "schemes"), /<<EDIT\(worker:\/\/\/notes\.md\)/, "the scheme directory is its own section now, not appended to the definition");
@@ -185,11 +185,10 @@ test("Engine.runTurn: packet stores system + user content from messages (no loop
     } finally { await db.close(); }
 });
 
-test("Engine.runTurn: multi-op turn — prompt at 1, model ops at 2..N", async () => {
+test("Engine.runTurn: multi-op turn - first-class prompt precedes model ops", async () => {
     // Turn-as-container model, 1-based. The worker's first turn opens with sequence=1
-    // reserved for the turn-0 `model` exemplar (§model-entry), the prompt EDIT at 2,
-    // its auto-READ at 3 (§prompt-auto-read), then the 3 model ops and the terminal
-    // SEND on the running counter.
+    // reserved for the turn-0 `model` exemplar, the prompt row at 2, then the
+    // three model ops and terminal SEND on the running counter.
     const { db, engine, workspaceId, workerId, loopId } = await setup();
     try {
         const provider = new Mock({
@@ -206,12 +205,11 @@ test("Engine.runTurn: multi-op turn — prompt at 1, model ops at 2..N", async (
             indices.map((r) => ({ idx: r.sequence, op: r.op })),
             [
                 { idx: 1, op: "model" }, // the turn-0 exemplar, mirrored OPEN at sequence 1 (§model-entry)
-                { idx: 2, op: "EDIT" },  // the prompt (prompt:///<loop>/1, owner-keyed)
-                { idx: 3, op: "READ" },  // §prompt-auto-read — the prompt's body arrives as a READ
+                { idx: 2, op: "prompt" }, // the prompt (prompt:///<loop>/1, owner-keyed)
+                { idx: 3, op: "EDIT" },
                 { idx: 4, op: "EDIT" },
                 { idx: 5, op: "EDIT" },
-                { idx: 6, op: "EDIT" },
-                { idx: 7, op: "SEND" },
+                { idx: 6, op: "SEND" },
             ],
         );
     } finally { await db.close(); }
@@ -774,9 +772,8 @@ test("Engine.runTurn: multi-SEND turn — last SEND wins on turn.status", async 
 // Task #44.
 
 test("Engine.runTurn: packet.system.log on first turn contains the prompt entry", async () => {
-    // Turn-as-container: turn 1 opens with the prompt written as a real
-    // system-origin EDIT against prompt:///<loop>/1 at
-    // sequence=1 (1-based). When #buildLog snapshots the log for
+    // Turn-as-container: turn 1 opens with the prompt written as one
+    // system-origin actionless row against prompt:///<loop>/1. When #buildLog snapshots the log for
     // THIS turn's packet, the prompt is already there. The 2 model ops
     // dispatch AFTER the packet builds, so they don't appear in this
     // turn's snapshot — they'll surface in turn 2's snapshot.
@@ -789,13 +786,13 @@ test("Engine.runTurn: packet.system.log on first turn contains the prompt entry"
         const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
         const row = await db.test_get_packet.get<{ packet: string }>({ id: result.turnId });
         const log = logEntries(JSON.parse(row?.packet ?? "{}"));
-        // The prompt foist is the loop's opening EDIT (plurnk-origin) against
-        // prompt:///<loop>/1 ({§prompt-self-only}). Found by its stable identity (origin + target),
+        // The prompt is one actionless plurnk-origin row against prompt:///<loop>/1.
+        // Found by its stable identity (origin + target),
         // robust to the turn-0 `model` exemplar at 1/1/1 (§model-entry) and any
         // manifest-preview READ that shift its coordinate.
-        const prompt = log.find((e) => e.origin === "plurnk" && e.op === "EDIT" && e.target === "prompt:///1/1");
-        assert.ok(prompt, "prompt entry logged (plurnk-origin EDIT against prompt:///1/1)");
-        assert.equal(prompt.op, "EDIT");
+        const prompt = log.find((e) => e.origin === "plurnk" && e.op === "prompt" && e.target === "prompt:///1/1");
+        assert.ok(prompt, "first-class prompt row logged against prompt:///1/1");
+        assert.equal(prompt.op, "prompt");
         assert.equal(prompt.origin, "plurnk");
         assert.equal(prompt.target, "prompt:///1/1");
     } finally { await db.close(); }
@@ -815,11 +812,11 @@ test("Engine.runTurn: packet.system.log captures prior turn's actions on second 
         const t2 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
         const row = await db.test_get_packet.get<{ packet: string }>({ id: t2.turnId });
         const log = logEntries(JSON.parse(row?.packet ?? "{}"));
-        // Turn 2 packet sees the prompt foist + the prior turn's 2 model ops (an
+        // Turn 2 packet sees the prompt row + the prior turn's two model ops (an
         // EDIT and a SEND). Found by identity (origin + op + target), robust to the
         // turn-0 `model` exemplar (§model-entry) and a manifest-preview foist that
         // shift coordinates between the prompt and the model's ops.
-        assert.ok(log.find((e) => e.origin === "plurnk" && e.op === "EDIT" && typeof e.target === "string" && e.target.startsWith("prompt:///")), "prompt foist logged");
+        assert.ok(log.find((e) => e.origin === "plurnk" && e.op === "prompt" && typeof e.target === "string" && e.target.startsWith("prompt:///")), "prompt row logged");
         const edit = log.find((e) => e.origin === "model" && e.op === "EDIT");
         assert.ok(edit, "model EDIT logged");
         assert.equal(edit.status, 201);
@@ -895,9 +892,9 @@ test("Engine.runTurn: previous-turn 403 surfaces in the next packet's Errors sec
         const packet = JSON.parse(row?.packet ?? "{}");
         // §log-row-self-explains: the pointer targets the OP ROW — the row carries its own
         // failure message on its meta line, so the pointer leads to a record that states its why.
-        // Turn-as-container, 1-based: model exemplar 1/1/1, prompt EDIT 1/1/2, auto-READ 1/1/3;
-        // the model's denied EDIT is 1/1/4.
-        assert.equal(packetSection(packet, "errors"), "* 403 log:///1/1/4/EDIT", "the pointer targets the failing op row itself");
+        // Turn-as-container, 1-based: model exemplar 1/1/1, prompt 1/1/2,
+        // then the model's denied EDIT at 1/1/3.
+        assert.equal(packetSection(packet, "errors"), "* 403 log:///1/1/3/EDIT", "the pointer targets the failing op row itself");
     } finally { await db.close(); }
 });
 

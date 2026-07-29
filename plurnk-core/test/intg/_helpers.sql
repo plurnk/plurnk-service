@@ -421,7 +421,7 @@ SELECT id, name, origin, parent_worker_id FROM workers WHERE workspace_id = $wor
 SELECT packet FROM turns WHERE loop_id = $loop_id ORDER BY sequence LIMIT 1;
 
 -- PREP: test_prompt_expanded
-SELECT expanded FROM log_entries WHERE scheme='prompt' AND op='READ' LIMIT 1;
+SELECT expanded FROM log_entries WHERE scheme='prompt' AND op='prompt' LIMIT 1;
 
 -- PREP: test_turn_id_by_seq
 SELECT id FROM turns WHERE loop_id = $loop_id AND sequence = $sequence;

@@ -46,10 +46,8 @@ UPDATE loops SET open_paths = $open_paths WHERE id = $loop_id;
 SELECT open_paths FROM loops WHERE id = $loop_id;
 
 -- PREP: engine_get_loop_prompt
--- Loop's prompt + sequence — runTurn reads it on turn 1 to foist a
--- system-origin EDIT against plurnk://prompt/<run>/<loop>/1 (§packet), at the
--- turn's first action sequence. Prompts are first-class log entries
--- (no synthetic / shim layer).
+-- Loop prompt + sequence. On turn 1, runTurn stores the owner-keyed
+-- prompt:///<loop>/1 entry and publishes one actionless prompt log row.
 SELECT prompt, sequence FROM loops WHERE id = $loop_id;
 
 -- PREP: engine_reclaim_queued_loop
@@ -416,7 +414,7 @@ ORDER BY t.sequence, le.sequence;
 -- boundary — the immediately-prior turn's emissions and the current turn's pre-model rows
 -- (foists, wake surfaces). Turn 1 is the same rule (no prior turn; its foists are the newest).
 -- Folded, never deleted; THREE exemptions (§grinder-errors-exempt): op='error' rows, the
--- user PROMPT (#382 — the task frame the engine foisted is not the model's curatable memory;
+-- user PROMPT (#382 - the task frame is not ordinary model-authored memory;
 -- the engine never reclaims the definition of the task it set), and PLAN rows (#465, owner
 -- ruling — the checklist is the model's orientation surface at exactly the moment the grinder
 -- fires; plans are concise by rule, so exempting them reclaims almost nothing and preserves
@@ -428,9 +426,8 @@ WHERE loop_id = $loop_id AND expanded = 1 AND op NOT IN ('error', 'PLAN')
        OR turn_id = (SELECT MAX(id) FROM turns WHERE loop_id = $loop_id AND id < $turn_id));
 
 -- PREP: engine_fold_log_entry
--- §prompt-fold (User Note 6): fold a single log row by id — collapse to its
--- coordinate, body elided in the render, re-OPENable. Used for the foisted prompt
--- EDIT, which duplicates packet.user.prompt: logged for forensics, born folded.
+-- Fold one known log row by id. Model mirror rows use this after insertion so
+-- the complete admitted emission remains available without opening by default.
 UPDATE log_entries SET expanded = 0 WHERE id = $id;
 
 -- PREP: engine_render_log

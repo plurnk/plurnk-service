@@ -37,7 +37,7 @@ const setup = async () => {
     return { db, engine, workspaceId, workerId, loopId, turnId };
 };
 
-test("Log.read: EDIT op log entry returns rx JSON (entryId, channel, status)", async () => {
+test("Log.read: EDIT op log entry returns its canonical effect receipt", async () => {
     const { db, engine, workspaceId, workerId, loopId, turnId } = await setup();
     try {
         await engine.dispatch({
@@ -47,14 +47,12 @@ test("Log.read: EDIT op log entry returns rx JSON (entryId, channel, status)", a
         });
         const result = await new Log().read(readStmt(urlPath("log", "/1/1/1")), makeSchemeCtx({ db, workerId }));
         assert.equal(result.status, 200);
-        assert.equal(result.mimetype, "application/json");
-        const rx = JSON.parse(result.content ?? "") as { status: number; channel: string };
-        assert.equal(rx.status, 201);
-        assert.equal(rx.channel, "body");
+        assert.equal(result.mimetype, "text/plain");
+        assert.equal(result.content, "1:Paris", "storage envelope fields do not replace the model-facing edit result");
     } finally { db.close(); }
 });
 
-test("Log.read: each coordinate addresses its own entry's rx", async () => {
+test("Log.read: each coordinate addresses its own canonical body", async () => {
     const { db, engine, workspaceId, workerId, loopId, turnId } = await setup();
     try {
         await engine.dispatch({ statement: editStmt("/a", "1"), workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model" });
@@ -64,11 +62,11 @@ test("Log.read: each coordinate addresses its own entry's rx", async () => {
         const r1 = await new Log().read(readStmt(urlPath("log", "/1/1/1")), makeSchemeCtx({ db, workerId }));
         const r2 = await new Log().read(readStmt(urlPath("log", "/1/1/2")), makeSchemeCtx({ db, workerId }));
         const r3 = await new Log().read(readStmt(urlPath("log", "/1/1/3")), makeSchemeCtx({ db, workerId }));
-        // Each EDIT created a distinct entry; entryId rises monotonically.
-        const id1 = JSON.parse(r1.content ?? "").entryId as number;
-        const id2 = JSON.parse(r2.content ?? "").entryId as number;
-        const id3 = JSON.parse(r3.content ?? "").entryId as number;
-        assert.ok(id1 < id2 && id2 < id3);
+        assert.deepEqual(
+            [r1.content, r2.content, r3.content],
+            ["1:1", "1:2", "1:3"],
+            "coordinates resolve their own receipts rather than a neighboring row",
+        );
     } finally { db.close(); }
 });
 
@@ -83,9 +81,8 @@ test("Log.read: cross-loop coordinates within a worker resolve correctly", async
 
         const r1 = await new Log().read(readStmt(urlPath("log", "/1/1/1")), makeSchemeCtx({ db, workerId }));
         const r2 = await new Log().read(readStmt(urlPath("log", "/2/1/1")), makeSchemeCtx({ db, workerId }));
-        const id1 = JSON.parse(r1.content ?? "").entryId as number;
-        const id2 = JSON.parse(r2.content ?? "").entryId as number;
-        assert.ok(id1 !== id2);
+        assert.equal(r1.content, "1:x");
+        assert.equal(r2.content, "1:y");
     } finally { db.close(); }
 });
 
@@ -116,21 +113,17 @@ test("Log.read: 400 on null path", async () => {
     } finally { db.close(); }
 });
 
-test("Log.read: lineMarker <1> on a JSON rx returns first item by insertion order (structural <L>)", async () => {
-    // EDIT rx is JSON {"status":201,"entryId":N,"channel":"body"}; <L>
-    // dispatches on mimetype (application/json), so <1> picks the 1st
-    // key-value pair by insertion order, wrapped in an array per the
-    // structural-<L> contract.
+test("Log.read: lineMarker <1> on a JSON result returns first item by insertion order (structural <L>)", async () => {
     const { db, engine, workspaceId, workerId, loopId, turnId } = await setup();
     try {
-        await engine.dispatch({ statement: editStmt("/x", "v"), workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model" });
-        const stmt: ReadStatement = { ...readStmt(urlPath("log", "/1/1/1")), lineMarker: { marks: [1] } };
+        await engine.dispatch({ statement: editStmt("/data.json", '{"status":201,"entryId":7,"channel":"body"}'), workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model" });
+        await engine.dispatch({ statement: readStmt(urlPath("worker", "/data.json")), workspaceId, workerId, loopId, turnId, sequence: 2, origin: "model" });
+        const stmt: ReadStatement = { ...readStmt(urlPath("log", "/1/1/2")), lineMarker: { marks: [1] } };
         const r = await new Log().read(stmt, makeSchemeCtx({ db, workerId }));
         assert.equal(r.status, 200);
         assert.equal(r.mimetype, "application/json");
         const items = JSON.parse(r.content ?? "") as Array<Record<string, unknown>>;
         assert.equal(items.length, 1);
-        // First key in the rx JSON is "status" (DispatchResult shape).
         assert.equal(items[0].status, 201);
     } finally { db.close(); }
 });
@@ -138,8 +131,9 @@ test("Log.read: lineMarker <1> on a JSON rx returns first item by insertion orde
 test("Log.read: a range miss carries the exact JSON-item extent", async () => {
     const { db, engine, workspaceId, workerId, loopId, turnId } = await setup();
     try {
-        await engine.dispatch({ statement: editStmt("/x", "v"), workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model" });
-        const stmt: ReadStatement = { ...readStmt(urlPath("log", "/1/1/1")), lineMarker: { marks: [99] } };
+        await engine.dispatch({ statement: editStmt("/data.json", '{"status":201,"entryId":7,"channel":"body"}'), workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model" });
+        await engine.dispatch({ statement: readStmt(urlPath("worker", "/data.json")), workspaceId, workerId, loopId, turnId, sequence: 2, origin: "model" });
+        const stmt: ReadStatement = { ...readStmt(urlPath("log", "/1/1/2")), lineMarker: { marks: [99] } };
         const r = await new Log().read(stmt, makeSchemeCtx({ db, workerId }));
         assert.equal(r.status, 416);
         assert.equal(r.content, null);
@@ -157,11 +151,10 @@ test("Log.read: a range miss carries the exact JSON-item extent", async () => {
 test("Log.read: regex body matcher returns the complete projection plus coordinates", async () => {
     const { db, engine, workspaceId, workerId, loopId, turnId } = await setup();
     try {
-        await engine.dispatch({ statement: editStmt("/y", "v"), workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model" });
-        // EDIT rx is JSON like {"status":201,"entryId":N,"channel":"body"}.
-        // Match the "status" field key in that JSON.
+        await engine.dispatch({ statement: editStmt("/data.json", '{"status":201,"entryId":7,"channel":"body"}'), workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model" });
+        await engine.dispatch({ statement: readStmt(urlPath("worker", "/data.json")), workspaceId, workerId, loopId, turnId, sequence: 2, origin: "model" });
         const stmt: ReadStatement = {
-            ...readStmt(urlPath("log", "/1/1/1")),
+            ...readStmt(urlPath("log", "/1/1/2")),
             body: { dialect: "regex", raw: "/\"status\"/", pattern: "\"status\"", flags: "" },
         };
         const r = await new Log().read(stmt, makeSchemeCtx({ db, workerId }));
@@ -185,11 +178,12 @@ test("Log.read: a tag filter on an exact READ → 404 (tag recall is OPEN[tag]/F
 test("Log.read: body matcher selects the full projection before <L> projects a structural item", async () => {
     const { db, engine, workspaceId, workerId, loopId, turnId } = await setup();
     try {
-        await engine.dispatch({ statement: editStmt("/x", "v"), workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model" });
-        // The matcher qualifies the complete JSON rx. <1> then projects its
+        await engine.dispatch({ statement: editStmt("/data.json", '{"status":201,"entryId":7,"channel":"body"}'), workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model" });
+        await engine.dispatch({ statement: readStmt(urlPath("worker", "/data.json")), workspaceId, workerId, loopId, turnId, sequence: 2, origin: "model" });
+        // The matcher qualifies the complete JSON result. <1> then projects its
         // first structural item instead of paginating matcher hits.
         const stmt: ReadStatement = {
-            ...readStmt(urlPath("log", "/1/1/1")),
+            ...readStmt(urlPath("log", "/1/1/2")),
             lineMarker: { marks: [1, 1] },
             body: { dialect: "regex", raw: "/\\d+/", pattern: "\\d+", flags: "" },
         };
@@ -240,8 +234,7 @@ test("Log.read: dispatches correctly via Engine.dispatch routing to log scheme",
             sequence: 2, origin: "model",
         });
         assert.equal(result.status, 200);
-        // Log unwrap returns the EDIT rx as JSON; check for status field.
-        const rx = JSON.parse((result as unknown as { content: string }).content) as { status: number };
-        assert.equal(rx.status, 201);
+        assert.equal((result as unknown as { mimetype: string }).mimetype, "text/plain");
+        assert.equal((result as unknown as { content: string }).content, "1:knowledge");
     } finally { db.close(); }
 });

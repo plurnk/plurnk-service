@@ -18,6 +18,7 @@ import { Validator, type ProblemDetails } from "@plurnk/plurnk-contracts";
 import { renderAddress } from "./plurnk-uri.ts";
 import { encodePathParens } from "./path-decode.ts";
 import type { GitStatus } from "./git-state.ts";
+import LogBody from "./LogBody.ts";
 
 const editReceiptRevisionChars = (): number => {
     const raw = process.env.PLURNK_SERVICE_EDIT_RECEIPT_REVISION_CHARS;
@@ -37,6 +38,20 @@ const budgetLargestItems = (): number => {
     return value;
 };
 
+const previewBounds = (): { lines: number; chars: number } => {
+    const rawLines = process.env.PLURNK_SERVICE_PREVIEW_LINES;
+    const rawChars = process.env.PLURNK_SERVICE_PREVIEW_CHARS;
+    const lines = Number(rawLines);
+    const chars = Number(rawChars);
+    if (!Number.isSafeInteger(lines) || lines < 1) {
+        throw new Error(`PLURNK_SERVICE_PREVIEW_LINES must be a positive safe integer, got ${JSON.stringify(rawLines)}`);
+    }
+    if (!Number.isSafeInteger(chars) || chars < 1) {
+        throw new Error(`PLURNK_SERVICE_PREVIEW_CHARS must be a positive safe integer, got ${JSON.stringify(rawChars)}`);
+    }
+    return { lines, chars };
+};
+
 // PacketSection is the canonical packet shape: an ordered list of named,
 // slotted sections (defined below). Sections arrive both from Engine's
 // in-memory packet AND from `turns.packet` re-parsed by the digest — re-parsed
@@ -48,7 +63,7 @@ interface ActionTarget { scheme?: string | null; hostname?: string | null; port?
 interface StatementTx {
     body?: string | { raw?: unknown } | null;
 }
-interface RxView { content?: unknown; mimetype?: unknown; startLine?: unknown; matches?: unknown; itemsTokenTotal?: unknown; overflow?: unknown }
+interface RxView { content?: unknown; mimetype?: unknown; startLine?: unknown; matches?: unknown; itemsTokenTotal?: unknown; omittedItems?: unknown }
 interface LogEntryView {
     coordinate?: unknown;
     op?: unknown;
@@ -56,7 +71,9 @@ interface LogEntryView {
     status?: unknown;
     target?: ActionTarget | null;
     tx?: StatementTx | null;
+    mimetype_tx?: unknown;
     rx?: unknown;
+    mimetype_rx?: unknown;
     folded?: boolean;
     source?: unknown;
     attrs?: unknown;
@@ -120,7 +137,7 @@ export default class PacketWire {
 
     // Non-terminal model-facing observations are deliberately separate from
     // operation failures. Producer messages are normalized and bounded by the
-    // existing arrival-preview contract; typed positions remain legible.
+    // shared preview limit; typed positions remain legible.
     static renderNotices(notices: unknown): string {
         const observations = Array.isArray(notices) ? notices as NoticeView[] : [];
         return observations.map((notice) => {
@@ -129,7 +146,7 @@ export default class PacketWire {
                 ? notice.message.replace(/\s+/g, " ").trim()
                 : "";
             const message = rawMessage.length > 0
-                ? PacketWire.#arrivalPreview(rawMessage).text
+                ? PacketWire.#preview(rawMessage).text
                 : "";
             const position = notice.position?.type === "content-offset"
                 ? ` @ ${String(notice.position.line)}:${String(notice.position.column)}`
@@ -296,24 +313,6 @@ export default class PacketWire {
         return `<<:::${fence}\n${body}${sep}:::${fence}`;
     }
 
-    // Heredoc block for one channel of one entry. Fence is `URI#channel`
-    // (the `<<:::FENCE` packet-rendering marker per wrapHeredocBody — a
-    // projection is read-only context, NOT an emittable op, so it must not
-    // wear the DSL op-fence; that conflation was the demo.sh corruption bug).
-    // When `channel` is null/empty the fence is path-only —
-    // this is the default-channel convention: the absence of `#channel` is
-    // the addressing of the scheme's default channel, not a missing field.
-    // Body is a mimetypes preview, rendered VERBATIM — the framework owns its
-    // formatting (N: line numbers for text, source-annotated outline for
-    // symbols, correct start-line for tail slices) and bakes it into the
-    // preview string as of mimetypes 0.7.3, so the service must not re-number
-    // it (re-numbering would double-prefix text and mis-number symbol
-    // outlines — plurnk-mimetypes#8).
-    static #renderHeredoc(uri: string, channel: string | null, body: string): string {
-        const fence = channel ? `${uri}#${channel}` : uri;
-        return PacketWire.#wrapHeredocBody(fence, body);
-    }
-
     // Render a (scheme, pathname) tuple as the URI the model should SEE.
     // Null scheme → bare pathname. The `file` scheme never reaches this
     // function because Dispatcher.#extractTarget normalizes it to null at the
@@ -339,15 +338,9 @@ export default class PacketWire {
     // meta will gain tokensBefore/After + linesBefore/After to convey
     // change scope without carrying the body content.)
     //
-    // Per-entry render: one meta JSON line plus a body block that the model
-    // can read to know what it did. Two body cases:
-    //   1. READ/FIND with content → render rx.content under the target fence.
-    //      Status and content are orthogonal: a failed stream READ still carries
-    //      the diagnostics that explain the failure. (Matcher is in meta.matcher;
-    //      FIND's selected-resource count is in meta.items.)
-    //   2. Every other op → re-emit tx as a heredoc in the model's native
-    //      syntax. The model wrote this; mirror it back so the log is a true
-    //      record of its actions instead of a row of opaque status codes.
+    // Per-entry render: one meta JSON line plus the row's canonical body.
+    // LogBody owns tx/rx storage interpretation; packet projection owns only
+    // visibility, previewing, mimetype rendering, and metadata.
     // The log:/// handle the model sees for an entry.
     // (§open-fold) and the label the budget's open-body ranking reuses,
     // so the readout names an entry exactly as the log does.
@@ -358,33 +351,19 @@ export default class PacketWire {
 
     // `collectBodyTokens`, when supplied, receives each row's body weight (the rendered meta.tokens)
     // in order — the FOLD unit measureLogBudget ranks, guaranteed identical to what the row shows.
-    // §arrival-law (#499) — the pushed-lane bound: another actor's text rides OPEN only up to
-    // the preview (N lines AND 80×N chars — the char cap guards single-line bombs); over, the
-    // head rides with the cut stated and the address for a deliberate pull. run111 entry 56:
-    // a child's ratified 19,363-token deliverable landed whole in its parent and cascaded.
-    static #arrivalPreview(text: string): { text: string; cut: boolean } {
-        const maxLines = Number(process.env.PLURNK_SERVICE_ARRIVAL_PREVIEW_LINES ?? "16");
-        const maxChars = 80 * maxLines;
-        const lines = text.split("\n");
-        if (lines.length <= maxLines && text.length <= maxChars) return { text, cut: false };
-        const head = lines.slice(0, maxLines).join("\n").slice(0, maxChars);
-        return { text: head, cut: true };
-    }
-
-    // §arrival-law (#566): a model-COMPOSED op body — a PLAN/SEND/WORK/FORK's text or an EXEC
-    // command — renders PREVIEW-bounded, so the model can never compose an unbounded OPEN log row.
-    // run42: an unclosed `<<PLAN` swallowed a 57k-char runaway into ONE 29k open row the grinder is
-    // forbidden to fold (op NOT IN … 'PLAN') — a permanent budget bomb that pushed the packet past
-    // the physical window and gated out the recovery. CONTENT ops are exempt and render FULL —
-    // READ/FIND (retrieved bytes; capping a READ would break its `<start,end>` slice contract) and
-    // EDIT/COPY/MOVE spans (the resulting file content the model inspects). The verbatim emission
-    // always survives in the folded `model` mirror, so nothing is lost; a cut states the true extent.
-    static #renderAuthoredBody(logAddr: string, body: string, preNumbered: boolean): string {
-        const arrival = PacketWire.#arrivalPreview(body);
-        const rendered = preNumbered
-            ? PacketWire.#wrapHeredocBody(logAddr, arrival.text)
-            : PacketWire.#renderContentBody(logAddr, arrival.text, "text/plain");
-        return arrival.cut ? `${rendered}\n… preview — the full body is ${body.split("\n").length} line(s)` : rendered;
+    // One preview function for every bounded model-facing projection. Lines
+    // protect ordinary documents and chars protect a single-line bomb.
+    static #preview(text: string): { text: string; cut: boolean } {
+        const { lines: maxLines, chars: maxChars } = previewBounds();
+        let lineEnd = text.length;
+        let newline = -1;
+        for (let line = 0; line < maxLines; line++) {
+            newline = text.indexOf("\n", newline + 1);
+            if (newline === -1) break;
+            if (line === maxLines - 1) lineEnd = newline + 1;
+        }
+        const end = Math.min(text.length, lineEnd, maxChars);
+        return { text: text.slice(0, end), cut: end < text.length };
     }
 
     static #renderLogEntries(entries: LogEntryView[], countTokens: CountTokens, collectBodyTokens?: number[]): string {
@@ -443,8 +422,8 @@ export default class PacketWire {
                 if (tx !== null && tx !== undefined && typeof tx === "object" && tx.body !== null && typeof tx.body === "object") {
                     if (typeof tx.body.raw === "string") meta.matcher = tx.body.raw;
                 }
-                if (op === "FIND" && rx !== null && typeof rx === "object" && typeof rx.overflow === "number") {
-                    items = rx.overflow; // §find-count-not-contents - selected-resource count, though rows were not enumerated
+                if (op === "FIND" && rx !== null && typeof rx === "object" && typeof rx.omittedItems === "number") {
+                    items = rx.omittedItems; // §find-count-not-contents - selected-resource count, though rows were not enumerated
                 } else if (op === "FIND" && rx !== null && typeof rx === "object" && typeof rx.content === "string") {
                     const parsed = PacketWire.#safeParse(rx.content);
                     if (Array.isArray(parsed)) items = parsed.length;
@@ -459,45 +438,9 @@ export default class PacketWire {
                 }
             }
 
-            // The foldable body — computed ALWAYS (folded too), because `tokens` measures it: for
-            // an open row that's what a FOLD would save, for a folded row what an OPEN would cost.
-            // "" ⇒ genuinely no body (an empty FIND, an empty EDIT span, a @204).
-            let body = "";
-            if (op === "FIND" && e.status === 200 && items === 0) {
-                // Empty FIND result → no body. items:0 already says "empty"; rendering [] under a
-                // fence is redundant noise. (The always-foisted empty known:///** / unknown:///**
-                // workspace rows are the common case.)
-                body = "";
-            } else if ((op === "READ" || op === "FIND") &&
-                rx !== null && typeof rx === "object" && typeof rx.content === "string" && rx.content.length > 0) {
-                // Content-bearing READ/FIND results render independently of status. In particular,
-                // a terminal stream failure carries both its Problem Details and captured output;
-                // suppressing the output leaves the model with an exit code but no diagnostic.
-                // Turn-0 catalog FINDs and ordinary successful retrievals use the
-                // same branch. #renderContentBody applies the line-number convention
-                // (§render-rule-line-navigable-prefix / §render-rule-tree-navigable-verbatim).
-                const mimetype = typeof rx.mimetype === "string" ? rx.mimetype : "text/plain";
-                // A number controls line numbering; null preserves a deliberately
-                // pre-numbered body; absent starts whole content at 1.
-                const start = rx.startLine === null ? null : (typeof rx.startLine === "number" ? rx.startLine : 1);
-                // §arrival-law — a foisted READ of a prompt path is PUSHED content (user- or
-                // sibling-authored); the render-side preview bounds it like any arrival, closing
-                // the single-line char-bomb the line-slice alone cannot cut (line markers cannot
-                // cut mid-line; the render can). Model-authored READs stay self-invited — untouched.
-                const promptPush = e.origin === "plurnk" && op === "READ"
-                    && e.target !== null && typeof e.target === "object" && (e.target as { scheme?: string }).scheme === "prompt";
-                const streamPush = e.origin === "plurnk" && op === "READ" && mimetype === "text/stream";
-                if (promptPush || streamPush) {
-                    const arrival = PacketWire.#arrivalPreview(rx.content);
-                    body = PacketWire.#renderContentBody(target ?? `log:///${coordinate}`, arrival.text, mimetype, start);
-                    if (arrival.cut) {
-                        const noun = streamPush ? "stream output" : "prompt";
-                        body += `\n… arrival preview — the full ${noun} is ${rx.content.split("\n").length} line(s), ${rx.content.length} chars: READ ${target}`;
-                    }
-                } else {
-                    body = PacketWire.#renderContentBody(target ?? `log:///${coordinate}`, rx.content, mimetype, start);
-                }
-            } else if (op === "EDIT" && rx !== null && typeof rx === "object" && (rx as { receipt?: unknown }).receipt !== null && typeof (rx as { receipt?: unknown }).receipt === "object") {
+            // EDIT's structured receipt contributes compact outcome metadata.
+            // Its canonical body is resolved below with every other log body.
+            if (op === "EDIT" && rx !== null && typeof rx === "object" && (rx as { receipt?: unknown }).receipt !== null && typeof (rx as { receipt?: unknown }).receipt === "object") {
                 const receipt = (rx as {
                     receipt: {
                         revision?: unknown;
@@ -524,63 +467,44 @@ export default class PacketWire {
                     throw new Error("invalid structured EDIT receipt");
                 }
                 meta.rev = receipt.revision.slice(0, editReceiptRevisionChars());
-                meta.extent = `${receipt.unit} ${receipt.before}→${receipt.after}`;
+                meta.extent = `${receipt.unit} ${receipt.before}->${receipt.after}`;
                 meta.change = `-${effect.removed} +${effect.inserted}`;
-                meta.range = `${effect.requested} ${effect.source}→${effect.result}`;
-                if (effect.context.length > 0) body = PacketWire.#wrapHeredocBody(target ?? `log:///${coordinate}`, effect.context);
-            } else if ((op === "EDIT" || op === "COPY" || op === "MOVE") && rx !== null && typeof rx === "object" && (typeof (rx as { receipt?: unknown }).receipt === "string" || typeof (rx as { span?: unknown }).span === "string" || typeof (rx as { body?: unknown }).body === "string")) {
-                // EDIT renders its bounded effect receipt; COPY/MOVE and environment-delta
-                // EDITs retain their resulting span. Each is already line-addressed where
-                // appropriate, so wrapping is verbatim.
-                const r = rx as { receipt?: string; span?: string; body?: string };
-                const span = typeof r.receipt === "string" ? r.receipt : typeof r.span === "string" ? r.span : (r.body ?? "");
-                // An EDIT/COPY/MOVE span is the RESULTING file content — bytes the model inspects to
-                // confirm its edit landed, CONTENT not composed directive text — so it renders FULL
-                // like READ/FIND (#566). Grinder-foldable (not PLAN-exempt), so a large span reclaims.
-                if (span.length > 0) body = PacketWire.#wrapHeredocBody(target ?? `log:///${coordinate}`, span);
-            } else if (op === "EXEC" && e.tx !== null && e.tx !== undefined && typeof (e.tx as { body?: unknown }).body === "string") {
-                // EXEC: the literal command body, :::-fenced + line-numbered at the op's log address —
-                // the model sees what it ran and can reference lines of its own code. The OUTPUT is a
-                // SEPARATE stream (meta.stream), surfaced by the injector, never re-emitted here. §exec-stream
-                body = PacketWire.#renderAuthoredBody(path ?? `log:///${coordinate}`, (e.tx as { body: string }).body, false);
-            } else if ((op === "PLAN" || op === "SEND" || op === "WORK" || op === "FORK") && e.tx !== null && e.tx !== undefined) {
-                // PLAN's plan / SEND's message / WORK's & FORK's seed task ride into the log as N:
-                // content at the op's log address — a dispatch's record IS the task it dispatched, so
-                // the next turn reads what each worker is doing (the spawn-then-retask confusion was
-                // this body missing: the log showed "spawned worker-db" with no task). The log
-                // mirrors the model's WORK, NEVER a repeated <<OP:…:OP tag (tags are emission
-                // syntax, not the log paradigm). Bodyless ops (COPY/MOVE/OPEN/FOLD, a non-200 READ/FIND
-                // whose matcher already rides in meta, a span-less EDIT) fall through to their meta line.
-                const b = e.tx.body;
-                const opBody = typeof b === "string" ? b
-                    : b !== null && typeof b === "object" && typeof b.raw === "string" ? b.raw : "";
-                if (opBody.length > 0) body = PacketWire.#renderAuthoredBody(path ?? `log:///${coordinate}`, opBody, false);
-                // §worker-scheme-collect: an injected SEND (a child worker's concluded deliverable surfaced in
-                // the parent) has no authored tx body — its payload is the deliverable in rx (a raw string,
-                // not the {status} envelope a model SEND gets). Surface it so a child's 2xx reaches the
-                // parent OPEN (born-open at the insert), never a bodyless `*` row.
-                else if (op === "SEND" && opBody.length === 0 && typeof e.rx === "string" && e.rx.length > 0) {
-                    // §arrival-law — the deliverable is PUSHED content: preview-bounded, never whole-by-default.
-                    const arrival = PacketWire.#arrivalPreview(e.rx);
-                    body = PacketWire.#renderContentBody(path ?? `log:///${coordinate}`, arrival.text, "text/plain");
-                    if (arrival.cut) body += `\n… arrival preview — the full deliverable is ${e.rx.split("\n").length} lines: READ worker://${(e.target && typeof e.target === "object" && "pathname" in e.target ? String((e.target as { pathname?: string }).pathname ?? "") : "").replace(/^\//, "")}`;
-                }
-            } else if (op === "error") {
-                // §operation-results — an actionless engine-rail failure is a LOG ITEM.
-                // Foldable like any body; the errors section keeps only a pointer.
-                const detail = (rx !== null && typeof rx === "object" ? rx : {}) as { message?: unknown };
-                if (typeof detail.message === "string" && detail.message.length > 0) {
-                    body = PacketWire.#wrapHeredocBody(path ?? `log:///${coordinate}`, detail.message);
-                }
-            } else if (op === "model") {
-                // §model-entry — the model's own admitted emission, mirrored back verbatim.
-                // Folded by default → just the meta line until OPENed; the turn-0 exemplar
-                // is born open (the worked example).
-                if (rx !== null && typeof rx === "object" && typeof rx.content === "string" && rx.content.length > 0) {
-                    const mimetype = typeof rx.mimetype === "string" ? rx.mimetype : "text/vnd.plurnk";
-                    body = PacketWire.#renderContentBody(path ?? `log:///${coordinate}`, rx.content, mimetype);
-                }
+                meta.range = `${effect.requested} ${effect.source}->${effect.result}`;
             }
+
+            // The canonical full body is shared with READ(log://), FIND(log://),
+            // and search derivation. Only a worker-issued READ/FIND result renders
+            // complete; every pushed, authored, ambient, plugin, and engine body
+            // uses this one preview projection.
+            const fullBody = LogBody.resolve({
+                op: op ?? "",
+                tx: e.tx,
+                rx: e.rx,
+                mimetypeTx: typeof e.mimetype_tx === "string" ? e.mimetype_tx : undefined,
+                mimetypeRx: typeof e.mimetype_rx === "string" ? e.mimetype_rx : undefined,
+            });
+            const emptyFind = op === "FIND" && e.status === 200 && items === 0;
+            const previewExempt = e.origin === "model" && (op === "READ" || op === "FIND");
+            const projection = previewExempt
+                ? { text: fullBody.content, cut: false }
+                : PacketWire.#preview(fullBody.content);
+            const resourceBody = op === "READ" || op === "FIND" || op === "EDIT"
+                || op === "COPY" || op === "MOVE" || op === "prompt";
+            const bodyFence = resourceBody ? (target ?? path) : path;
+            if (projection.cut && path === null) {
+                throw new Error("a previewed log body requires an addressable log path");
+            }
+            if (projection.cut) {
+                meta.overflow = `Body content truncated. Use READ ${path} to view the full body.`;
+            }
+            const body = emptyFind || projection.text.length === 0
+                ? ""
+                : PacketWire.#renderContentBody(
+                    bodyFence ?? `log:///${coordinate}`,
+                    projection.text,
+                    fullBody.mimetype,
+                    fullBody.startLine,
+                );
 
             // tokens on EVERY row (0 when there's genuinely no body) so the model can always weigh
             // it; for a folded row this is the room an OPEN would add. items present even at 0.

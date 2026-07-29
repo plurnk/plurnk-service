@@ -37,7 +37,7 @@ LIMIT 1;
 
 -- PREP: drain_next_turn_seq_for_loop
 -- Next turn sequence for the given loop. Used by Engine.inject to compute
--- the path of the prompt entry it should write (plurnk://prompt/<run>/<loop>/<N>).
+-- the turn on which its next prompt frame will be published.
 SELECT COALESCE(MAX(sequence), 0) + 1 AS next FROM turns WHERE loop_id = $loop_id;
 
 -- PREP: drain_get_worker_workspace
@@ -46,25 +46,6 @@ SELECT COALESCE(MAX(sequence), 0) + 1 AS next FROM turns WHERE loop_id = $loop_i
 -- context to write entries under the worker's workspace scope).
 SELECT workspace_id FROM workers WHERE id = $worker_id;
 
--- PREP: drain_get_latest_prompt_body_for_loop
--- Sources packet.user.prompt at packet-build time. plurnk://prompt/<run>/<loop>/<N>
--- entries accumulate per turn; the latest one (highest entries.id) is the
--- "current" prompt the model sees in user.prompt. Falls back to NULL when
--- no prompt entry exists for the loop (caller substitutes runLoop's
--- messages parameter for backward compat with tests that bypass inject).
--- Pattern is built JS-side via promptLoopPrefix (worker-qualified `/prompt/<run>/<loop>/%`,
--- matching the foist's #pathnameOf and the inject) — SqlRite's parameter
--- binding doesn't reliably coerce integers for `LIKE` with `||`.
-SELECT c.content, e.pathname
-FROM entries e
-JOIN entry_channels c ON c.entry_id = e.id
-WHERE e.scheme = 'prompt'
-  AND e.owner_id = $owner_id
-  AND e.pathname LIKE $pattern
-  AND c.name = 'body'
-ORDER BY e.id DESC
-LIMIT 1;
-
 -- PREP: drain_count_prompts_for_loop
 -- {§prompt-loop-containment} — the per-loop prompt ORDINAL source: N = count+1. The frame key is
 -- the Nth prompt of the loop, never a turn slot, so rapid arrivals can never share a row.
@@ -72,9 +53,9 @@ SELECT COUNT(*) AS n FROM entries
 WHERE scheme = 'prompt' AND owner_id = $owner_id AND pathname LIKE $pattern;
 
 -- PREP: drain_undelivered_prompts_for_loop
--- {§prompt-loop-containment} — the prompts the loop CONTAINS but has not yet delivered: no
--- plurnk-origin auto-READ row exists for the frame in this loop. Oldest first; the next turn
--- boundary foists each, so every arrival reaches the model exactly once.
+-- {§prompt-loop-containment} - the prompts the loop contains but has not yet delivered: no
+-- actionless prompt row exists for the frame in this loop. Oldest first; the next turn
+-- boundary publishes each, so every arrival reaches the model exactly once.
 SELECT c.content, e.pathname
 FROM entries e
 JOIN entry_channels c ON c.entry_id = e.id
@@ -84,15 +65,15 @@ WHERE e.scheme = 'prompt'
   AND c.name = 'body'
   AND NOT EXISTS (
       SELECT 1 FROM log_entries le
-      WHERE le.loop_id = $loop_id AND le.origin = 'plurnk' AND le.op = 'READ'
+      WHERE le.loop_id = $loop_id AND le.origin = 'plurnk' AND le.op = 'prompt'
         AND le.scheme = 'prompt' AND le.pathname = e.pathname
   )
 ORDER BY e.id ASC;
 
 -- PREP: drain_get_all_prompt_bodies_for_loop
--- Sources the Active User Prompts section (§prompt-fold): EVERY prompt entry the
+-- Sources the Active User Prompts section: EVERY prompt entry the
 -- current loop holds, OLDEST first — typically one, but an active loop admits injected
--- prompts (multiple plurnk://prompt/<run>/<loop>/<N>), all shown in order. Same pattern as
+-- prompts (multiple prompt:///<loop>/<N> entries), all shown in order. Same pattern as
 -- the latest-only sibling (promptLoopPrefix pattern, built JS-side); the section renders
 -- each body as a bare heredoc.
 SELECT c.content, e.pathname
@@ -107,7 +88,7 @@ ORDER BY e.id ASC;
 -- PREP: drain_orphaned_prompt_for_loop
 -- A loop can terminate before consuming a next-turn prompt injected into it
 -- (a wake-on-completion, or a loop.run-while-active that landed on a turn the
--- loop never reached). Engine.inject writes prompt/<run>/<loop>/<N> at MAX(turn)+1;
+-- loop never reached). Engine.inject writes prompt:///<loop>/<N>;
 -- if the loop ended at turn K, an injected prompt at turn > K never ran.
 -- Returns the latest such orphan's body + the ended loop's flags so
 -- the drain can promote it to a fresh loop — no wake silently lost.
@@ -123,7 +104,7 @@ WHERE e.scheme = 'prompt'
   AND c.name = 'body'
   AND NOT EXISTS (
       SELECT 1 FROM log_entries le
-      WHERE le.loop_id = $loop_id AND le.origin = 'plurnk' AND le.op = 'READ'
+      WHERE le.loop_id = $loop_id AND le.origin = 'plurnk' AND le.op = 'prompt'
         AND le.scheme = 'prompt' AND le.pathname = e.pathname
   )
 ORDER BY e.id DESC

@@ -116,7 +116,7 @@ test("the wire is monotone in volatility — byte-stable system; user: log → s
         // non-injectable content — NO log.
         const slot = (s: string): string[] => packet.sections.filter((x) => x.slot === s).map((x) => x.name);
         assert.deepEqual(slot("system"), ["definition", "tools", "schemes", "system-policy", "project-policy"], "system slot is the byte-stable doctrine, in teaching order, nothing volatile");
-        assert.deepEqual(slot("user"), ["log", "child-streams", "child-workers", "errors", "notices", "git", "budget", "prompt", "requirements"], "user slot: log → status clump → recap (§prompt-auto-read: the prompts paths-list closes the clump)");
+        assert.deepEqual(slot("user"), ["log", "child-streams", "child-workers", "errors", "notices", "git", "budget", "prompt", "requirements"], "user slot: log -> status clump -> recap; the prompt paths list closes the clump");
         assert.ok(packetSection(packet, "requirements").length > 0, "requirements section carries content");
     } finally { await db.close(); }
 });

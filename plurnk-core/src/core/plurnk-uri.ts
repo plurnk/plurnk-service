@@ -1,5 +1,5 @@
 // The plurnk:// addressing convention. A namespace lives in the URL authority slot
-// (plurnk://docs/x.md, plurnk://prompt/<run>/<loop>/<N>), but the canonical STORAGE key is the full
+// (plurnk://docs/x.md, plurnk://skills/x.md), but the canonical STORAGE key is the full
 // path with the namespace folded in (/docs/x.md) — entries are keyed by (scope, scheme,
 // pathname) with no authority column, so the authority MUST fold into the path.
 //

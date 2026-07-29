@@ -2,7 +2,8 @@
 -- coordinate; open/fold toggle the `expanded` flag on the addressed row.
 
 -- PREP: log_read_by_coordinate
-SELECT le.op, le.scheme, le.pathname, le.status_rx, le.rx, le.mimetype_rx
+SELECT le.op, le.scheme, le.pathname, le.status_rx,
+       le.tx, le.mimetype_tx, le.rx, le.mimetype_rx
 FROM log_entries le
 JOIN turns t ON t.id = le.turn_id
 JOIN loops l ON l.id = t.loop_id
@@ -48,7 +49,7 @@ DELETE FROM log_entries WHERE id = $id;
 -- fields Log's rx projection renders (FIND must match exactly what READ shows). Coordinate-ordered.
 SELECT
     (l.sequence || '/' || t.sequence || '/' || le.sequence || '/' || le.op) AS coordinate,
-    le.op, le.rx, le.mimetype_rx, le.tokens, le.deep_hash
+    le.op, le.tx, le.mimetype_tx, le.rx, le.mimetype_rx, le.tokens, le.deep_hash
 FROM log_entries le
 JOIN turns t ON t.id = le.turn_id
 JOIN loops l ON l.id = t.loop_id
@@ -91,7 +92,7 @@ ORDER BY l.sequence, t.sequence, le.sequence;
 -- §log-region-tagging — FIND[tag](log): log_find_candidates PLUS the same ALL-tags AND filter.
 SELECT
     (l.sequence || '/' || t.sequence || '/' || le.sequence || '/' || le.op) AS coordinate,
-    le.op, le.rx, le.mimetype_rx, le.tokens, le.deep_hash
+    le.op, le.tx, le.mimetype_tx, le.rx, le.mimetype_rx, le.tokens, le.deep_hash
 FROM log_entries le
 JOIN turns t ON t.id = le.turn_id
 JOIN loops l ON l.id = t.loop_id
@@ -116,6 +117,9 @@ ORDER BY l.sequence, t.sequence, le.sequence;
 SELECT
     le.id,
     (l.sequence || '/' || t.sequence || '/' || le.sequence || '/' || le.op) AS coordinate,
+    le.op,
+    le.tx,
+    le.mimetype_tx,
     le.rx,
     le.mimetype_rx,
     le.deep_hash

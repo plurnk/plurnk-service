@@ -1198,8 +1198,8 @@ export default class Daemon {
 
     /**
      * Inject a prompt into a worker. Two paths:
-     *   - Active drain: writes a plurnk://prompt/<run>/<loop>/<next-turn> entry
-     *     via Engine.inject. Current loop sees the new prompt at its next
+     *   - Active drain: writes the next prompt:///<loop>/<N> entry via
+     *     Engine.inject. The current loop publishes it at its next
      *     turn. Returns immediately with {action: "injected_next_turn"}.
      *   - No active drain: enqueues a fresh loop with the prompt at
      *     status=100, starts a drain. Returns the drain promise so the

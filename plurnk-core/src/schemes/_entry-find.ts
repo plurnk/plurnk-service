@@ -50,8 +50,8 @@ export interface FindResult extends SchemeResultBase {
     itemsTokenTotal: number;  // content weight of the matched set, summed per UNIQUE entry
     pathnames: string[];      // unique matched pathnames, in result order — the set a multi-file READ fans out over
     matches: Match[];         // one per selected resource, in result order
-    overflow?: number;        // §find-count-not-contents — over-budget: N matched but were NOT enumerated (content is a narrow-steer)
-    overflowLimit?: number;
+    omittedItems?: number;    // §find-count-not-contents - N selected items omitted from an over-budget result
+    maximumItems?: number;
 }
 
 export default class EntryFind {
@@ -514,7 +514,7 @@ export default class EntryFind {
             // Count-forward means COUNT ONLY. Retaining the enumerated arrays behind a
             // terse rendered steer defeated the contract twice: callers could still fan
             // every hidden match into work, and the full objects stayed resident. The
-            // overflow count + aggregate weight are the complete bounded result.
+            // Omitted count + aggregate weight are the complete bounded result.
             return {
                 status: 200,
                 content: steer,
@@ -523,8 +523,8 @@ export default class EntryFind {
                 itemsTokenTotal,
                 pathnames: [],
                 matches: [],
-                overflow: results.length,
-                overflowLimit: budget,
+                omittedItems: results.length,
+                maximumItems: budget,
             };
         }
         // Compact JSON — the model parses it natively; the `null, 2` pretty-print was ~36%

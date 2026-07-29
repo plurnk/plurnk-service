@@ -87,7 +87,7 @@ test("on overflow the prior turn's log entries are folded to their coordinate", 
     try {
         const { workspaceId, workerId, loopId } = await envelope(db);
         // Turn 1 runs under a WIDE ceiling so the model completes and leaves an
-        // open SEND (the foisted prompt is now folded by default — §prompt-fold);
+        // open SEND (the first-class prompt row is grinder-exempt);
         // turn 2 runs under TINY so its accumulated packet overflows and the
         // grinder folds turn 1's open log.
         const engine = plainEngine(db);
@@ -211,7 +211,7 @@ test("overflow is a terse op='error' log row (413) surfaced THIS turn as a LogCo
         const engine = plainEngine(db);
         const wideP = mockAt(4096, okSends(2));
         const tinyP = mockAt(TINY, okSends(2));
-        // Turn 1 under WIDE leaves an open SEND (the foisted prompt is folded by default — §prompt-fold);
+        // Turn 1 under WIDE leaves an open SEND (the prompt row is grinder-exempt);
         // turn 2 overflows under TINY → the grinder folds that SEND AND mints a terse 'Budget Overflow'
         // op='error' row, re-derived into turn 2's OWN packet (same-turn, not a turn late).
         await engine.runTurn({ provider: wideP, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 1 });

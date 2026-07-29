@@ -146,6 +146,49 @@ test("READ(log:///**):/pattern/ fans out — FIND locates, per-row READs deliver
     } finally { await db.close(); }
 });
 
+test("READ(log://) returns a composed row's complete canonical body", async () => {
+    const { db, workerId, loopId, turnId } = await setup();
+    try {
+        const full = Array.from({ length: 30 }, (_, i) => `plan line ${i + 1}`).join("\n");
+        await db.engine_insert_log_entry.get({
+            worker_id: workerId,
+            loop_id: loopId,
+            turn_id: turnId,
+            sequence: 4,
+            origin: "model",
+            source: null,
+            op: "PLAN",
+            suffix: "",
+            signal: null,
+            scheme: null,
+            username: null,
+            password: null,
+            hostname: null,
+            port: null,
+            pathname: null,
+            params: null,
+            fragment: null,
+            lineMarker: null,
+            tx: JSON.stringify({ body: full }),
+            mimetype_tx: "application/json",
+            rx: JSON.stringify({ status: 200 }),
+            mimetype_rx: "application/json",
+            status_rx: 200,
+            tokens: 0,
+            state: "resolved",
+            outcome: null,
+            attrs: "{}",
+        });
+
+        const result = await new Log().read(
+            readStmt(urlPath("log", "/1/1/4/PLAN")),
+            makeSchemeCtx({ db, workerId, mimetypes: DEFAULT_MIMETYPES }),
+        );
+        assert.equal(result.status, 200);
+        assert.equal(result.content, full, "log READ bypasses only the packet projection, not the canonical body");
+    } finally { await db.close(); }
+});
+
 test("zero content matches → 204; an unwarmed relation query fails with structured index state", async () => {
     const { db, workerId } = await setup();
     try {

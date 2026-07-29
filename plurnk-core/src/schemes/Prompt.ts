@@ -23,8 +23,8 @@ export default class Prompt implements SchemeHandler {
         documentation: "Your task frames — each loop's prompt at `prompt:///<loop>/<N>` (READ the address the User Prompts section lists). READ-ONLY: the engine writes these for you; your scratch lives at `worker://~/` and the shared blackboard at `worker:///`.",
     };
 
-    // The engine's foisted prompt EDIT (origin plurnk; the model is gated off by writableBy) —
-    // the frame lands owner-keyed to the worker it addresses.
+    // Engine and client prompt writers persist the frame owner-keyed to the
+    // worker it addresses. The actionless prompt log row is written separately.
     async editBatch(statements: readonly EditStatement[], ctx: SchemeCtx): Promise<EntryEditResult> {
         return ctx.entries.operations.editBatch(statements, "worker");
     }

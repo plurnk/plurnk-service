@@ -56,7 +56,8 @@ export interface EntryFindResult extends SchemeResult {
     readonly itemsTokenTotal: number;
     readonly pathnames: ReadonlyArray<string>;
     readonly matches: ReadonlyArray<EntryMatch>;
-    readonly overflow?: number;
+    readonly omittedItems?: number;
+    readonly maximumItems?: number;
 }
 
 export interface EntryOperationCaps {

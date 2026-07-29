@@ -1,7 +1,7 @@
 // Engine.inject — direct surface tests. Deterministic state setup; no
 // daemon, no Mock provider timing races. Verifies the rummy-parallel
-// inject mechanics: writes prompt:///<loop>/<next-turn> owner-keyed ({§prompt-self-only}), last-wins
-// per turn slot, returns null when no loop is currently active.
+// inject mechanics: writes distinct prompt:///<loop>/<N> frames owner-keyed
+// ({§prompt-self-only}) and returns null when no loop is active.
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -81,27 +81,5 @@ test("engine.inject: returns null when no loop is currently active (status=102)"
         });
         const result2 = await engine.inject(workerId, "still orphan");
         assert.equal(result2, null, "loop at status=200 doesn't count as active");
-    } finally { await db.close(); }
-});
-
-test("engine.inject: per-turn foist reads latest prompt body into packet.user.prompt", async () => {
-    // The drain_get_latest_prompt_body_for_loop SQL slot is what feeds
-    // packet.user.prompt at packet-build time. Inject writes a new entry;
-    // the next packet build picks up its content.
-    const db = await openMigrated();
-    try {
-        const engine = new Engine({ db, schemes: new SchemeRegistry() });
-        const workspaceId = await insertWorkspace(db, "engine-inject-foist");
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1, "initial");
-        await insertTurn(db, loopId, 1, 102);
-
-        await engine.inject(workerId, "the new prompt the model should see");
-
-        // Read the latest prompt body (what #buildRequestPacket would see).
-        const row = await db.drain_get_latest_prompt_body_for_loop.get<{ content: string }>({
-            owner_id: workerId, pattern: "/1/%",
-        });
-        assert.equal(row?.content, "the new prompt the model should see");
     } finally { await db.close(); }
 });

@@ -210,18 +210,16 @@ export default class PacketBuilder {
         // NOT appended here: grammar 0.49+ is scheme-agnostic, so the service advertises
         // the scheme set at packet-time (grammar#239 item 7) via SchemeRegistry.teach().
         const system_definition = byRole("system");
-        // the prompt section sources from the loop's most recent prompt entry first
-        // (plurnk://prompt/<run>/<loop>/<N> for the highest N written to date).
-        // This is what inject + the turn-1 foist write into. Falls back to
-        // the runLoop caller's messages.user for tests that bypass the
-        // foist mechanism entirely.
+        // The prompt section sources the loop's prompt:///<loop>/<N> entries.
+        // Inject and turn-1 initialization write them. Bare callers that
+        // bypass prompt persistence fall back to messages.user.
         const loopSeqRow = await this.#db.engine_loop_sequence.get<{ sequence: number }>({ loop_id: loopId });
         const promptRows = (await this.#db.drain_get_all_prompt_bodies_for_loop.all<{ content: string; pathname: string }>({ owner_id: workerId, pattern: `${promptLoopPrefix(loopSeqRow?.sequence ?? loopId)}%` }))
             .filter((r) => typeof r.content === "string" && r.content.length > 0);
-        // §prompt-auto-read (owner): the section is a PATHS list (the errors shape — no bodies);
-        // each prompt's content reaches the model through its foisted auto-READ in the log, and
-        // prior prompts stay READable by the listed address — never silently lost, never an
-        // unfair curation imposition. Fallback: callers that bypass the foist (bare messages)
+        // The section is a paths list (the errors shape - no bodies);
+        // each prompt's content reaches the model through its actionless prompt row, and
+        // prior prompts stay READable by the listed address - never silently lost, never an
+        // unfair curation imposition. Fallback: callers that bypass persistence (bare messages)
         // still get their user text rendered directly.
         const prompt = promptRows.length > 0
             ? promptRows.map((r) => `* prompt://${r.pathname}`).join("\n")
@@ -303,8 +301,8 @@ export default class PacketBuilder {
             { name: "git", slot: "user", header: "Git Status", content: PacketWire.renderGit(gitStatus), tokens: 0 },
             // budget — LAW (a hard ceiling the model must obey).
             { name: "budget", slot: "user", header: "Budget", content: budgetReadout, tokens: 0 },
-            // §prompt-auto-read (owner): the prompts section closes the status clump —
-            // a paths-only list (the errors shape); bodies arrive via the foisted auto-READ.
+            // The prompts section closes the status clump as a paths-only list;
+            // bodies arrive through first-class prompt rows.
             { name: "prompt", slot: "user", header: "User Prompts", content: prompt, tokens: 0 },
             // requirements renders LAST — the user-slot footer, the syntax contract closest to the model's turn (a recency carve-out for weak models).
             { name: "requirements", slot: "user", header: "Recap", content: baseRequirements, tokens: 0 },
@@ -609,10 +607,9 @@ export default class PacketBuilder {
         // not the loop's. Span all loops in the worker so the model sees
         // earlier loops' work as conversational memory.
         //
-        // User prompts are first-class log entries: runTurn writes a
-        // client-origin SEND[200] row at sequence=0 of each new
-        // turn-1. Prompts thus surface naturally in this query — no
-        // synthetic / shim layer.
+        // User prompts are first-class actionless log entries written by
+        // runTurn. They surface naturally in this query without synthetic
+        // EDIT/READ delivery rows.
         const rows = await this.#db.engine_render_log.all<{
             loop_seq: number; turn_seq: number; sequence: number;
             origin: string; op: string; suffix: string; signal: string | null;

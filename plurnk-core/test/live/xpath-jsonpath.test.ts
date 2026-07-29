@@ -1,9 +1,8 @@
 // Live xpath/jsonpath coverage. Each test SEEDS its entry (the model never writes the JSON/HTML),
 // then asks a NATURAL question whose answer requires extracting from that entry — and asserts the
 // OUTCOME (the value), never the path. The model drives the matcher (jsonpath/xpath) and any pick
-// itself; we do NOT script ops or hardcode log coordinates. Coordinates shift with the foist and no
-// real task names them — scripting them made these brittle (and wrong: a hardcoded log:///1/1/2 was
-// the prompt-foist EDIT, not the model's result). The matcher MECHANICS are pinned deterministically
+// itself; we do NOT script ops or hardcode log coordinates. Coordinates shift with initialization
+// and no real task names them; scripting them made these brittle. The matcher mechanics are pinned deterministically
 // in intg; this tier proves gemma actually answers real extraction questions through the prod loop
 // (loop.run via the daemon — liveWorkspace + liveLoop). Seeded pathnames are slash-prefixed (the
 // RFC-3986 path the parser resolves worker:///x.json to), so seed and the model's READ can't drift.

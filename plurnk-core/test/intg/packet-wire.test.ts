@@ -225,9 +225,9 @@ test("log render: model EDIT receipt renders revision and bounded join context v
         rx: { status: 200, receipt },
     }], tok);
     assert.match(out, /"rev":"abcdef01"/);
-    assert.match(out, /"extent":"lines 4→5"/);
+    assert.match(out, /"extent":"lines 4->5"/);
     assert.match(out, /"change":"-1 \+2"/);
-    assert.match(out, /"range":"<2> 2→2-3"/);
+    assert.match(out, /"range":"<2> 2->2-3"/);
     assert.match(out, /3:2\.5/);
     assert.doesNotMatch(out, new RegExp(revision));
 });
@@ -258,7 +258,7 @@ test("render guard: every content-emitting op applies the N:\\t convention unifo
     }
 });
 
-test("an oversized auto-opened terminal stream is preview-bounded and retains its READ address", () => {
+test("an oversized auto-opened terminal stream uses the universal log-body preview", () => {
     const output = Array.from({ length: 40 }, (_, i) => `stream line ${i + 1}`).join("\n");
     const rendered = PacketWire.renderLog([{
         coordinate: "1/2/1",
@@ -273,8 +273,8 @@ test("an oversized auto-opened terminal stream is preview-bounded and retains it
     assert.doesNotMatch(rendered, /stream line 30/, "the pushed tail cannot bypass the arrival bound");
     assert.match(
         rendered,
-        /arrival preview — the full stream output is 40 line\(s\), \d+ chars: READ sh:\/\/\/1\/1\/1#stdout/,
-        "the cut points at the complete addressable stream",
+        /"overflow":"Body content truncated\. Use READ log:\/\/\/1\/2\/1\/READ to view the full body\."/,
+        "the cut points at the canonical complete log body",
     );
 });
 
@@ -325,11 +325,10 @@ test("measureLogBudget: log subtotals and largest open bodies come from the stru
 test("largestOpenBodies ranks open bodies and omits bodyless or folded rows", () => {
     const tk = (s: string) => s.length;
     const entries = [
-        // A prior loop's foisted preview is open and bodied, so it ranks.
-        { coordinate: "1/1/3", op: "READ", origin: "plurnk", status: 200, target: { scheme: "prompt", pathname: "/1/1" }, rx: { status: 200, content: "the old task readback ".repeat(40), mimetype: "text/plain" } },
-        // The current loop's foist EDIT is excluded as already-folded; its open preview READ ranks.
-        { coordinate: "2/1/2", op: "EDIT", origin: "plurnk", status: 201, target: { scheme: "prompt", pathname: "/2/1" }, folded: true, rx: { status: 201, content: "the whole task body ".repeat(50), mimetype: "text/plain" } },
-        { coordinate: "2/1/3", op: "READ", origin: "plurnk", status: 200, target: { scheme: "prompt", pathname: "/2/1" }, rx: { status: 200, content: "the task readback ".repeat(40), mimetype: "text/plain" } },
+        // A prior loop's prompt row is open and bodied, so its preview ranks.
+        { coordinate: "1/1/2", op: "prompt", origin: "plurnk", status: 200, target: { scheme: "prompt", pathname: "/1/1" }, rx: { status: 200, content: "the old task ".repeat(40), mimetype: "text/plain" } },
+        // An explicitly folded prompt has no open projection to rank.
+        { coordinate: "2/1/1", op: "prompt", origin: "plurnk", status: 200, target: { scheme: "prompt", pathname: "/2/1" }, folded: true, rx: { status: 200, content: "the current task ".repeat(50), mimetype: "text/plain" } },
         // The model's own deeper prompt READ is open and bodied, so it ranks.
         { coordinate: "2/2/2", op: "READ", origin: "model", status: 200, target: { scheme: "prompt", pathname: "/2/1" }, rx: { status: 200, content: "lines seventeen through forty ".repeat(20), mimetype: "text/plain" } },
         // An already-folded ordinary row has no open body in this packet.
@@ -340,7 +339,7 @@ test("largestOpenBodies ranks open bodies and omits bodyless or folded rows", ()
     const { largestOpenBodies, byTurn } = PacketWire.measureLogBudget(entries, tk);
     assert.deepEqual(
         largestOpenBodies.map((e) => e.path).toSorted(),
-        ["log:///1/1/3/READ", "log:///2/1/3/READ", "log:///2/2/2/READ", "log:///2/2/6/READ"],
+        ["log:///1/1/2/prompt", "log:///2/2/2/READ", "log:///2/2/6/READ"],
         "every open bodied row ranks; only bodyless and already-folded rows are absent",
     );
     // Excluded bodies still contribute their rendered meta lines to the turn rollup.
@@ -437,7 +436,7 @@ test("log render: FIND@200 renders its result catalog, not just the echoed query
     // The turn-0 foisted FIND catalog map is how a worker's opening catalog reaches
     // the packet. If the renderer only re-emits the query statement (the regression),
     // the model is shown its own question and zero entries.
-    const catalog = '[\n  {\n    "path": "plurnk://prompt/1/1",\n    "channels": {\n      "plurnk://prompt/1/1": { "mimetype": "text/markdown", "tokens": 20, "lines": 1 }\n    }\n  }\n]';
+    const catalog = '[\n  {\n    "path": "prompt:///1/1",\n    "channels": {\n      "prompt:///1/1": { "mimetype": "text/markdown", "tokens": 20, "lines": 1 }\n    }\n  }\n]';
     const out = PacketWire.renderLog([{
         coordinate: "1/1/2",
         origin: "plurnk",
@@ -447,7 +446,7 @@ test("log render: FIND@200 renders its result catalog, not just the echoed query
         tx: { op: "FIND", suffix: "", target: { kind: "url", raw: "plurnk:///**", scheme: "plurnk", pathname: "", fragment: null }, body: null, signal: null, lineMarker: null },
         rx: { content: catalog, mimetype: "application/json" },
     }], tok);
-    assert.match(out, /"path": "plurnk:\/\/prompt\/1\/1"/, "FIND@200 renders its result body — the model sees what the FIND returned");
+    assert.match(out, /"path": "prompt:\/\/\/1\/1"/, "FIND@200 renders its result body - the model sees what the FIND returned");
     // Tree-navigable JSON → verbatim, no N: line-number prefix.
     assert.doesNotMatch(out, /\n1:/);
 });
@@ -519,7 +518,7 @@ test("the opening fence outgrows any backtick run a body carries — a code samp
     assert.ok(opener.length >= 4, `fence opens with ${opener.length} backticks — longer than the body's 3-run, so the body cannot close it`);
 });
 
-test("a runaway authored body renders preview-bounded; READ/FIND stay full (#566)", () => {
+test("only worker-issued READ/FIND bodies bypass the universal preview", () => {
     const long = Array.from({ length: 30 }, (_, i) => `line ${i + 1} of a runaway emission`).join("\n");
 
     // A short PLAN renders whole — no behavior change for a well-formed op.
@@ -527,33 +526,105 @@ test("a runaway authored body renders preview-bounded; READ/FIND stay full (#566
         { coordinate: "1/1/1", origin: "model", op: "PLAN", status: 200, target: { scheme: null, pathname: "" }, tx: { body: "Tidy context, then read the loader." } },
     ], tok);
     assert.match(shortOut, /Tidy context, then read the loader\./, "a short PLAN renders in full");
-    assert.doesNotMatch(shortOut, /preview — the full body/, "no cut note under the bound");
+    assert.doesNotMatch(shortOut, /"overflow"/, "no overflow under the bound");
 
     // A runaway PLAN (30 lines) renders preview-bounded — the run42 bomb, defused.
     const planOut = PacketWire.renderLog([
         { coordinate: "1/1/1", origin: "model", op: "PLAN", status: 200, target: { scheme: null, pathname: "" }, tx: { body: long } },
     ], tok);
-    assert.match(planOut, /preview — the full body is 30 line\(s\)/, "the runaway PLAN is preview-bounded, the true extent stated");
+    assert.match(planOut, /"overflow":"Body content truncated\. Use READ log:\/\/\/1\/1\/1\/PLAN to view the full body\."/, "the PLAN preview is recoverable");
     assert.doesNotMatch(planOut, /line 20 of a runaway/, "content past the 16-line preview is cut from the render");
 
-    // An EDIT span is CONTENT (the resulting file bytes the model inspects) — full, like READ/FIND.
+    // Mutation receipts are generated results, not deliberate retrievals.
     const numberedSpan = Array.from({ length: 30 }, (_, i) => `${i + 1}:span line ${i + 1}`).join("\n");
     const editOut = PacketWire.renderLog([
         { coordinate: "1/1/2", origin: "model", op: "EDIT", status: 200, target: { scheme: "worker", pathname: "/x" }, rx: { span: numberedSpan } },
     ], tok);
-    assert.match(editOut, /span line 30/, "an EDIT span renders full — file content is a content op, exempt");
-    assert.doesNotMatch(editOut, /preview — the full body/, "no preview cut on an EDIT span");
+    assert.doesNotMatch(editOut, /span line 30/, "an EDIT receipt cannot bypass the preview");
+    assert.match(editOut, /"overflow":"Body content truncated\. Use READ log:\/\/\/1\/1\/2\/EDIT to view the full body\."/, "the complete receipt remains retrievable");
 
     // READ and FIND deliver RETRIEVED content — full, even when long (the exemption).
     const readOut = PacketWire.renderLog([
         { coordinate: "1/1/3", origin: "model", op: "READ", status: 200, target: { scheme: null, pathname: "/big.txt" }, rx: { content: long, mimetype: "text/plain", startLine: 1 } },
     ], tok);
     assert.match(readOut, /line 30 of a runaway/, "a long READ delivers full content — retrieval is exempt");
-    assert.doesNotMatch(readOut, /preview — the full body/, "no preview cut on a READ");
+    assert.doesNotMatch(readOut, /"overflow"/, "no preview cut on a worker-issued READ");
 
     const findOut = PacketWire.renderLog([
         { coordinate: "1/1/4", origin: "model", op: "FIND", status: 200, target: { scheme: null, pathname: "" }, rx: { content: long, mimetype: "text/plain", startLine: null } },
     ], tok);
     assert.match(findOut, /line 30 of a runaway/, "a long FIND renders its full result — retrieval is exempt");
-    assert.doesNotMatch(findOut, /preview — the full body/, "no preview cut on a FIND");
+    assert.doesNotMatch(findOut, /"overflow"/, "no preview cut on a worker-issued FIND");
+
+    const pushedRead = PacketWire.renderLog([
+        { coordinate: "1/1/5", origin: "plurnk", op: "READ", status: 200, target: { scheme: "sh", pathname: "/1/1/1" }, rx: { content: long, mimetype: "text/plain", startLine: 1 } },
+    ], tok);
+    assert.doesNotMatch(pushedRead, /line 30 of a runaway/, "a READ-shaped engine push is still previewed");
+    assert.match(pushedRead, /"overflow":"Body content truncated\. Use READ log:\/\/\/1\/1\/5\/READ to view the full body\."/, "provenance, not the overloaded op label, controls the exemption");
+});
+
+test("every non-retrieval body producer uses the same recoverable preview", () => {
+    const long = Array.from({ length: 30 }, (_, i) => `producer line ${i + 1}`).join("\n");
+    const numbered = Array.from({ length: 30 }, (_, i) => `${i + 1}:producer line ${i + 1}`).join("\n");
+    const entries = [
+        { op: "prompt", origin: "plurnk", target: { scheme: "prompt", pathname: "/1/1" }, rx: { content: long, mimetype: "text/markdown" } },
+        { op: "model", origin: "model", target: null, rx: { content: long, mimetype: "text/vnd.plurnk" } },
+        { op: "PLAN", origin: "model", target: null, tx: { body: long } },
+        { op: "SEND", origin: "model", target: null, tx: { body: { raw: long } } },
+        { op: "WORK", origin: "model", target: { scheme: "worker", pathname: "/reviewer" }, tx: { body: long } },
+        { op: "FORK", origin: "model", target: null, tx: { body: long } },
+        { op: "EXEC", origin: "model", target: { scheme: "sh", pathname: "/1/1/1" }, tx: { body: long } },
+        { op: "EDIT", origin: "model", target: { scheme: "worker", pathname: "/a" }, rx: { span: numbered } },
+        { op: "COPY", origin: "model", target: { scheme: "worker", pathname: "/b" }, rx: { span: numbered } },
+        { op: "MOVE", origin: "model", target: { scheme: "worker", pathname: "/c" }, rx: { span: numbered } },
+        { op: "READ", origin: "plurnk", target: { scheme: "sh", pathname: "/1/1/1" }, rx: { content: long, mimetype: "text/plain" } },
+        { op: "FIND", origin: "plurnk", target: { scheme: "worker", pathname: "/**" }, rx: { content: long, mimetype: "text/plain" } },
+        { op: "extension", origin: "plugin", target: { scheme: "custom", pathname: "/result" }, rx: { content: long, mimetype: "text/plain" } },
+    ];
+
+    entries.forEach((entry, index) => {
+        const coordinate = `1/2/${index + 1}`;
+        const rendered = PacketWire.renderLog([{ coordinate, status: 200, ...entry }], tok);
+        assert.doesNotMatch(rendered, /producer line 30/, `${entry.op} cannot bypass the preview`);
+        assert.ok(
+            rendered.includes(`"overflow":"Body content truncated. Use READ log:///${coordinate}/${entry.op} to view the full body."`),
+            `${entry.op} exposes the same log recovery contract`,
+        );
+    });
+});
+
+test("preview bounds are exact and reject invalid configuration", () => {
+    const previousLines = process.env.PLURNK_SERVICE_PREVIEW_LINES;
+    const previousChars = process.env.PLURNK_SERVICE_PREVIEW_CHARS;
+    try {
+        process.env.PLURNK_SERVICE_PREVIEW_LINES = "16";
+        process.env.PLURNK_SERVICE_PREVIEW_CHARS = "10000";
+        const sixteenTerminatedLines = `${Array.from({ length: 16 }, (_, i) => `line ${i + 1}`).join("\n")}\n`;
+        const exact = PacketWire.renderLog([{
+            coordinate: "1/1/1",
+            origin: "plurnk",
+            op: "prompt",
+            status: 200,
+            target: { scheme: "prompt", pathname: "/1/1" },
+            rx: { content: sixteenTerminatedLines, mimetype: "text/plain" },
+        }], tok);
+        assert.doesNotMatch(exact, /"overflow"/, "a trailing newline does not invent a seventeenth line");
+
+        process.env.PLURNK_SERVICE_PREVIEW_LINES = "0";
+        assert.throws(
+            () => PacketWire.renderLog([{ coordinate: "1/1/1", op: "PLAN", origin: "model", status: 200, tx: { body: "x" } }], tok),
+            /PLURNK_SERVICE_PREVIEW_LINES must be a positive safe integer/,
+        );
+        process.env.PLURNK_SERVICE_PREVIEW_LINES = "16";
+        process.env.PLURNK_SERVICE_PREVIEW_CHARS = "NaN";
+        assert.throws(
+            () => PacketWire.renderLog([{ coordinate: "1/1/1", op: "PLAN", origin: "model", status: 200, tx: { body: "x" } }], tok),
+            /PLURNK_SERVICE_PREVIEW_CHARS must be a positive safe integer/,
+        );
+    } finally {
+        if (previousLines === undefined) delete process.env.PLURNK_SERVICE_PREVIEW_LINES;
+        else process.env.PLURNK_SERVICE_PREVIEW_LINES = previousLines;
+        if (previousChars === undefined) delete process.env.PLURNK_SERVICE_PREVIEW_CHARS;
+        else process.env.PLURNK_SERVICE_PREVIEW_CHARS = previousChars;
+    }
 });

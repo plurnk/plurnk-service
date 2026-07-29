@@ -50,6 +50,10 @@ test("the template ships no double policy, no active model, ONLY service-owned k
     assert.ok(Number.isFinite(safety) && safety > 0, "SAFETY ships as a positive int — core's one partition knob");
     const largestItems = Number(env.get("PLURNK_SERVICE_BUDGET_LARGEST_ITEMS"));
     assert.ok(Number.isSafeInteger(largestItems) && largestItems >= 0, "the open-body ranking limit is an explicit non-negative knob");
+    const previewLines = Number(env.get("PLURNK_SERVICE_PREVIEW_LINES"));
+    const previewChars = Number(env.get("PLURNK_SERVICE_PREVIEW_CHARS"));
+    assert.ok(Number.isSafeInteger(previewLines) && previewLines > 0, "the universal preview line limit is explicit and positive");
+    assert.ok(Number.isSafeInteger(previewChars) && previewChars > 0, "the universal preview character limit is explicit and positive");
     // #352 — the bare partition is cloud-generous: 163840 − 16384 − 49152 − 1024 = 97280 prompt
     // budget with a 65536 decode envelope the backend self-clamps (the local per-alias template
     // is the 64Ki-prompt gemma envelope). Prompt budget stays well above the decode envelope.

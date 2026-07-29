@@ -18,7 +18,7 @@ async function seedPromptWorker(db: Awaited<ReturnType<typeof openMigrated>>) {
     const workerId = await insertWorker(db, workspaceId);
     const loopId = await insertLoop(db, workerId, 1, "go");
     const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-    // turn 1 runs the prompt foist (EDIT + auto-READ of prompt:///1/1)
+    // Turn 1 publishes one first-class prompt row at prompt:///1/1.
     await engine.runTurn({
         provider: new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [{ op: "SEND", suffix: "", signal: 102, target: null, lineMarker: null, body: null, position: { line: 1, column: 1 } }] } }] }),
         workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "Improve the module loader so require() stays deterministic." }],
@@ -27,12 +27,12 @@ async function seedPromptWorker(db: Awaited<ReturnType<typeof openMigrated>>) {
     return { workspaceId, workerId, loopId, engine, curationTurn };
 }
 
-test("an explicit FOLD of the prompt auto-READ is ordinary curation", async () => {
+test("an explicit FOLD of the prompt row is ordinary curation", async () => {
     const db = await openMigrated();
     try {
         const { workspaceId, workerId, loopId, engine, curationTurn } = await seedPromptWorker(db);
-        // the prompt auto-READ is at coordinate 1/1/3 (foist EDIT=2, READ=3)
-        const r = await engine.dispatch({ statement: foldStmt(urlLog("log:///1/1/3/READ")), workspaceId, workerId, loopId, turnId: curationTurn, sequence: 1, origin: "model" });
+        // The turn-0 model exemplar is row 1; the prompt is row 2.
+        const r = await engine.dispatch({ statement: foldStmt(urlLog("log:///1/1/2/prompt")), workspaceId, workerId, loopId, turnId: curationTurn, sequence: 1, origin: "model" });
         assert.equal(r.status, 200, "the valid prompt log row folds like every other open row");
         assert.equal((r as { matched?: number }).matched, 1);
         const exp = await db.test_prompt_expanded.get<{ expanded: number }>({});
@@ -40,38 +40,36 @@ test("an explicit FOLD of the prompt auto-READ is ordinary curation", async () =
     } finally { await db.close(); }
 });
 
-test("the EDIT foist is ordinary memory — OPEN then fold-back is legal curation", async () => {
+test("the prompt row can be folded and opened again", async () => {
     const db = await openMigrated();
     try {
         const { workspaceId, workerId, loopId, engine, curationTurn } = await seedPromptWorker(db);
-        // the foist EDIT (born folded) sits at 1/1/2 — peek at the full body, then fold it back
-        const opened = await engine.dispatch({ statement: openStmt(urlLog("log:///1/1/2/EDIT")), workspaceId, workerId, loopId, turnId: curationTurn, sequence: 1, origin: "model" });
-        assert.equal(opened.status, 200, "OPEN of the frame body is legal");
-        const folded = await engine.dispatch({ statement: foldStmt(urlLog("log:///1/1/2/EDIT")), workspaceId, workerId, loopId, turnId: curationTurn, sequence: 2, origin: "model" });
-        assert.equal(folded.status, 200, "the fold BACK is legal — no one-way door on the frame body");
-        // the preview stays open throughout — the frame survives the round trip
+        const folded = await engine.dispatch({ statement: foldStmt(urlLog("log:///1/1/2/prompt")), workspaceId, workerId, loopId, turnId: curationTurn, sequence: 1, origin: "model" });
+        assert.equal(folded.status, 200, "FOLD of the frame body is legal");
+        const opened = await engine.dispatch({ statement: openStmt(urlLog("log:///1/1/2/prompt")), workspaceId, workerId, loopId, turnId: curationTurn, sequence: 2, origin: "model" });
+        assert.equal(opened.status, 200, "OPEN restores the ordinary prompt projection");
         const exp = await db.test_prompt_expanded.get<{ expanded: number }>({});
-        assert.equal(exp?.expanded, 1, "the preview READ is untouched by the foist's round trip");
+        assert.equal(exp?.expanded, 1, "the frame survives the round trip");
     } finally { await db.close(); }
 });
 
-test("prior and current loop previews share the same explicit curation contract", async () => {
+test("prior and current loop prompts share the same explicit curation contract", async () => {
     const db = await openMigrated();
     try {
         const { workspaceId, workerId, engine } = await seedPromptWorker(db);
-        // a second loop takes over the frame; loop 1's preview becomes curatable history
+        // A second loop takes over the frame; loop 1's prompt becomes curatable history.
         const loop2 = await insertLoop(db, workerId, 2, "the next task");
         await engine.runTurn({
             provider: new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [{ op: "SEND", suffix: "", signal: 102, target: null, lineMarker: null, body: null, position: { line: 1, column: 1 } }] } }] }),
             workspaceId, workerId, loopId: loop2, messages: [{ role: "system", content: "SD" }, { role: "user", content: "the next task" }],
         });
         const curationTurn = await insertTurn(db, loop2, 2, 102);
-        const stale = await engine.dispatch({ statement: foldStmt(urlLog("log:///1/1/3/READ")), workspaceId, workerId, loopId: loop2, turnId: curationTurn, sequence: 1, origin: "model" });
-        assert.equal(stale.status, 200, "the old loop's preview folds — it is not the frame anymore");
-        assert.equal((stale as { matched?: number }).matched, 1, "the fold matched the stale preview row — not a vacuous zero-match 200");
-        // loop 2's foist has no turn-0 exemplar ahead of it: EDIT=2/1/1, preview READ=2/1/2
-        const current = await engine.dispatch({ statement: foldStmt(urlLog("log:///2/1/2/READ")), workspaceId, workerId, loopId: loop2, turnId: curationTurn, sequence: 2, origin: "model" });
-        assert.equal(current.status, 200, "the current preview folds under the same valid-entry contract");
+        const stale = await engine.dispatch({ statement: foldStmt(urlLog("log:///1/1/2/prompt")), workspaceId, workerId, loopId: loop2, turnId: curationTurn, sequence: 1, origin: "model" });
+        assert.equal(stale.status, 200, "the old loop's prompt folds");
+        assert.equal((stale as { matched?: number }).matched, 1, "the fold matched the stale prompt row - not a vacuous zero-match 200");
+        // Loop 2 has no turn-0 exemplar, so its prompt is row 1.
+        const current = await engine.dispatch({ statement: foldStmt(urlLog("log:///2/1/1/prompt")), workspaceId, workerId, loopId: loop2, turnId: curationTurn, sequence: 2, origin: "model" });
+        assert.equal(current.status, 200, "the current prompt folds under the same valid-entry contract");
     } finally { await db.close(); }
 });
 
@@ -79,7 +77,7 @@ test("KILL of the prompt is still allowed — deliberate curation preserved (#38
     const db = await openMigrated();
     try {
         const { workspaceId, workerId, loopId, engine, curationTurn } = await seedPromptWorker(db);
-        const r = await engine.dispatch({ statement: killStmt(urlLog("log:///1/1/3/READ")), workspaceId, workerId, loopId, turnId: curationTurn, sequence: 1, origin: "model" });
+        const r = await engine.dispatch({ statement: killStmt(urlLog("log:///1/1/2/prompt")), workspaceId, workerId, loopId, turnId: curationTurn, sequence: 1, origin: "model" });
         assert.ok(r.status < 400, `KILL of the prompt succeeds (deliberate) — got ${r.status}`);
     } finally { await db.close(); }
 });

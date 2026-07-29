@@ -91,9 +91,9 @@ const ENGINE_PROBLEMS = Object.freeze({
 } as const);
 type EngineProblemKind = keyof typeof ENGINE_PROBLEMS;
 
-// The foisted prompt EDIT/READ target — prompt:///<loop>/<N>, self-only ({§prompt-self-only}):
+// The prompt entry target - prompt:///<loop>/<N>, self-only ({§prompt-self-only}):
 // the owner rides the owner_id column, the address carries only the loop coordinate.
-const promptTarget = (workerId: number, loopSeq: number, turnSeq: number): UrlPath => {
+const promptTarget = (loopSeq: number, turnSeq: number): UrlPath => {
     const storage = promptPathname(loopSeq, turnSeq);
     return {
         kind: "url", raw: `prompt://${storage}`,
@@ -880,18 +880,28 @@ export default class Engine {
         });
         if (openRow === undefined) throw new Error("Engine.runTurn: turn open returned no row");
         const turnId = openRow.id;
+        // Threaded per turn, never engine state, so concurrent loops on
+        // different providers each read their own honest tokenizer values.
+        const systemCtx: PlurnkSchemeContext = {
+            db: this.#db, workspaceId, workerId, loopId, turnId,
+            writer: "plurnk",
+            signal: this.#loopAborts.get(loopId)?.signal,
+            streamEventNotify: this.#streamEventNotify,
+            wakeWorkerNotify: this.#wakeWorkerNotify,
+            tokenize: this.#tokenize,
+            mimetypes: this.#mimetypes,
+            defaultChannelFor: (s) => this.#schemes.defaultChannelFor(s),
+            pushNotice: (notice) => this.#notices.push(workspaceId, loopId, notice),
+        };
 
-        // Pre-model writes. Each turn opens with a system-origin EDIT
-        // against `plurnk://prompt/<run>/<loop>/<seq>` IF there's a prompt
-        // for THIS turn the model hasn't seen yet:
+        // Pre-model writes. Each prompt the model has not seen yet becomes an
+        // actionless `prompt` log row whose target is its durable prompt:// entry:
         //   - Turn 1: loop.prompt is the initial user prompt.
         //   - Turn N>1: only if Engine.inject (or wake-on-completion via
         //     daemon.inject) wrote a prompt entry for this turn slot
         //     between turn N-1 and N. Inject writes directly to entries;
         //     we DON'T re-foist here for N>1.
-        // The log records the EDIT for forensics. Model ops dispatch
-        // from sequence=2 onward on prompt-foisted turns; 1 onward
-        // otherwise.
+        // Model ops dispatch after these pre-model rows.
         let nextActionIndex = 1;
         // §model-entry — the worker's first turn opens with the model's own turn-0, mirrored OPEN: a
         // worked turn PLAN → the environment FINDs the foist ACTUALLY dispatches → SEND[102]. Built
@@ -928,68 +938,45 @@ export default class Engine {
             const promptRow = loopRow; // #269 — already read above (per-loop; fires every loop's turn 1)
             if (promptRow !== undefined && typeof promptRow.prompt === "string" && promptRow.prompt.length > 0) {
                 const promptLoopSeq = promptRow.sequence; // the loop's PER-RUN sequence — model-facing, matching log coordinates (owner: the db id read as prompt/2/1)
-                const promptPath = promptTarget(workerId, promptLoopSeq, seq);
-                const promptStmt: EditStatement = {
-                    op: "EDIT", suffix: "", signal: null,
-                    target: promptPath, lineMarker: null,
-                    body: promptRow.prompt, position: { line: 1, column: 1 },
+                const promptPath = promptTarget(promptLoopSeq, seq);
+                const entry: EntryData = {
+                    channels: { body: { content: promptRow.prompt, mimetype: "text/markdown" } },
+                    tags: [],
                 };
-                let promptLogId: number | undefined;
-                await this.dispatch({
-                    statement: promptStmt, workspaceId, workerId, loopId, turnId,
-                    sequence: nextActionIndex, origin: "plurnk",
-                    onDispatch: (id) => { promptLogId = id; onDispatch?.(id); },
+                await EntryCrud.writeEntry(promptPath.pathname, entry, systemCtx, "prompt", workerId);
+                const promptLogId = await this.#writePromptLog({
+                    workerId,
+                    loopId,
+                    turnId,
+                    sequence: nextActionIndex,
+                    target: promptPath,
+                    content: promptRow.prompt,
                 });
-                // §prompt-fold: the prompt EDIT's row is folded — the body reaches the model
-                // through the auto-READ below; the EDIT stays forensic, re-OPENable.
-                if (promptLogId !== undefined) await this.#db.engine_fold_log_entry.run({ id: promptLogId });
-                nextActionIndex++;
-                // §prompt-auto-read (owner): the prompt's body reaches the model as a foisted
-                // READ of its own entry — first 12 lines (<1,12>), or the whole prompt (<1,-1>)
-                // when it runs fewer than 12 (whole-read form doubles as teaching). Prior prompts
-                // stay listed by path in the system packet's User Prompts section — reachable,
-                // never silently lost.
-                // §arrival-law (#499) — the preview bound is the knob (was a hardcoded 12). The
-                // line-slice is an EFFICIENCY (do not materialize hundreds of lines into rx); the
-                // RENDER is the law — packet-wire's arrival preview cuts the char dimension there,
-                // which a line marker structurally cannot (a 1-line slice of a 1-line bomb is 416).
-                const previewLines = Number(process.env.PLURNK_SERVICE_ARRIVAL_PREVIEW_LINES ?? "16");
-                const promptLineCount = promptRow.prompt.split("\n").length;
-                const promptRead: ReadStatement = {
-                    op: "READ", suffix: "", signal: null, target: promptPath,
-                    lineMarker: { marks: promptLineCount >= previewLines ? [1, previewLines] : [1, -1] },
-                    body: null, position: { line: 1, column: 1 },
-                };
-                await this.dispatch({
-                    statement: promptRead, workspaceId, workerId, loopId, turnId,
-                    sequence: nextActionIndex, origin: "plurnk", onDispatch,
-                });
+                onDispatch?.(promptLogId);
                 nextActionIndex++;
             }
         }
 
-        // §prompt-auto-read, the mid-loop half + {§prompt-loop-containment}: the loop CONTAINS
-        // every prompt that arrived while it ran — this boundary foists an auto-READ for each
-        // frame not yet delivered (no prior auto-READ in the loop), oldest first, so rapid
-        // arrivals reach the model together, none lost, each exactly once.
+        // §prompt-loop-containment: the loop contains every prompt that arrived
+        // while it ran. Publish each undelivered frame as a prompt row, oldest
+        // first, so rapid arrivals reach the model together exactly once.
         if (seq > 1) {
             const loopSeqRow = await this.#db.engine_loop_sequence.get<{ sequence: number }>({ loop_id: loopId });
             const loopSeq = loopSeqRow?.sequence ?? loopId;
             const undelivered = (await this.#db.drain_undelivered_prompts_for_loop.all<{ content: string; pathname: string }>({ owner_id: workerId, pattern: `${promptLoopPrefix(loopSeq)}%`, loop_id: loopId }))
                 .filter((r) => typeof r.content === "string" && r.content.length > 0);
             for (const injectedRow of undelivered) {
-                const lineCount = injectedRow.content.split("\n").length;
                 const ordinal = Number(injectedRow.pathname.split("/").filter(Boolean).at(-1));
-                const injTarget = promptTarget(workerId, loopSeq, ordinal);
-                const injRead: ReadStatement = {
-                    op: "READ", suffix: "", signal: null, target: injTarget,
-                    lineMarker: { marks: lineCount >= 12 ? [1, 12] : [1, -1] },
-                    body: null, position: { line: 1, column: 1 },
-                };
-                await this.dispatch({
-                    statement: injRead, workspaceId, workerId, loopId, turnId,
-                    sequence: nextActionIndex, origin: "plurnk", onDispatch,
+                const injTarget = promptTarget(loopSeq, ordinal);
+                const promptLogId = await this.#writePromptLog({
+                    workerId,
+                    loopId,
+                    turnId,
+                    sequence: nextActionIndex,
+                    target: injTarget,
+                    content: injectedRow.content,
                 });
+                onDispatch?.(promptLogId);
                 nextActionIndex++;
             }
         }
@@ -1001,19 +988,6 @@ export default class Engine {
         // on demand by FIND: recursive when asked, shallow-mapped in the first turn below.
         // #312 — the turn's token gauge: the ACTIVE provider's tokenizer identity + exact counter
         // (mimetypes seam; provider upper bound surfaced as tokenizer_unavailable when inexact).
-        // Threaded per turn — never engine state — so concurrent loops on different providers
-        // each read their own honest numbers.
-        const systemCtx: PlurnkSchemeContext = {
-            db: this.#db, workspaceId, workerId, loopId, turnId,
-            writer: "plurnk",
-            signal: this.#loopAborts.get(loopId)?.signal,
-            streamEventNotify: this.#streamEventNotify,
-            wakeWorkerNotify: this.#wakeWorkerNotify,
-            tokenize: this.#tokenize,
-            mimetypes: this.#mimetypes,
-            defaultChannelFor: (s) => this.#schemes.defaultChannelFor(s),
-            pushNotice: (notice) => this.#notices.push(workspaceId, loopId, notice),
-        };
         // SPEC §membership D4/D5 — git-ls-files workspace membership, resolved at
         // prompt-composition (EMI is eager + exhaustive — git is the only bound). When the
         // workspace's project_root is a git working tree, tracked files are
@@ -2119,6 +2093,54 @@ export default class Engine {
         return this.#dispatcher.look(context);
     }
 
+    async #writePromptLog({
+        workerId,
+        loopId,
+        turnId,
+        sequence,
+        target,
+        content,
+    }: {
+        workerId: number;
+        loopId: number;
+        turnId: number;
+        sequence: number;
+        target: UrlPath;
+        content: string;
+    }): Promise<number> {
+        const row = await this.#db.engine_insert_log_entry.get<{ id: number }>({
+            worker_id: workerId,
+            loop_id: loopId,
+            turn_id: turnId,
+            sequence,
+            origin: "plurnk",
+            source: null,
+            op: "prompt",
+            suffix: "",
+            signal: null,
+            scheme: target.scheme,
+            username: target.username,
+            password: target.password,
+            hostname: target.hostname,
+            port: target.port,
+            pathname: target.pathname,
+            params: JSON.stringify(target.params),
+            fragment: target.fragment,
+            lineMarker: null,
+            tx: "",
+            mimetype_tx: "text/plain",
+            rx: JSON.stringify({ content, mimetype: "text/markdown" }),
+            mimetype_rx: "application/json",
+            status_rx: 200,
+            tokens: this.#tokenize(content),
+            state: "resolved",
+            outcome: null,
+            attrs: "{}",
+        });
+        if (row === undefined) throw new Error("Engine.#writePromptLog: INSERT ... RETURNING produced no row");
+        return row.id;
+    }
+
     // External API to feed a resolution into a pending proposal — the loop/resolve
     // RPC handler, the in-tree auto listener, or the timeout watcher.
     // Shutdown lane: settle every pending proposal with a cancel so a stopped world can never
@@ -2171,11 +2193,10 @@ export default class Engine {
         await this.#queueWorkspaceWarm(ctx); // materialize first; overlapping requests coalesce and rescan
     }
 
-    // Inject a prompt into the worker's currently-executing loop. Writes a
-    // plurnk://prompt/<run>/<loop>/<next-turn> entry whose body becomes the
-    // prompt section at the next turn boundary. Last-wins: if two
-    // injects target the same next-turn slot, the second overwrites the
-    // first.
+    // Inject a prompt into the worker's currently executing loop. Writes the
+    // next owner-keyed prompt:///<loop>/<N> entry; the next turn publishes it
+    // as one actionless prompt row. Concurrent injections take distinct
+    // ordinals and remain ordered.
     //
     // Returns null when no loop in the worker is currently active (status=102).
     // The daemon-side inject path then enqueues a fresh loop with this

@@ -1234,17 +1234,17 @@ export default class Dispatcher {
                 path?: string;
             }>;
         }> | undefined) ?? [];
-        const overflow = typeof found.overflow === "number" ? found.overflow : null;
-        if (overflow !== null) {
-            const overflowLimit = typeof found.overflowLimit === "number" ? found.overflowLimit : null;
+        const omittedItems = typeof found.omittedItems === "number" ? found.omittedItems : null;
+        if (omittedItems !== null) {
+            const maximumItems = typeof found.maximumItems === "number" ? found.maximumItems : null;
             const result = Dispatcher.#failure(
                 "read-materialization-too-large",
                 413,
-                `READ selected ${overflow} resources, exceeding the materialization limit${overflowLimit === null ? "" : ` of ${overflowLimit}`}.`,
+                `READ selected ${omittedItems} resources, exceeding the materialization limit${maximumItems === null ? "" : ` of ${maximumItems}`}.`,
                 {},
                 {
-                    resources: overflow,
-                    ...(overflowLimit === null ? {} : { maximumResources: overflowLimit }),
+                    resources: omittedItems,
+                    ...(maximumItems === null ? {} : { maximumResources: maximumItems }),
                     stage: "materialization",
                     recovery: "Narrow the target or matcher.",
                     retryable: false,

@@ -9,7 +9,7 @@ import { entryPathnameOf, foldAuthorityIntoPath, renderAddress, schemeNameOf } f
 
 test("foldAuthorityIntoPath folds a namespace authority into the canonical path", () => {
     assert.equal(foldAuthorityIntoPath("docs", "/x.md"), "/docs/x.md");
-    assert.equal(foldAuthorityIntoPath("prompt", "/7/3"), "/prompt/7/3");
+    assert.equal(foldAuthorityIntoPath("skills", "/x.md"), "/skills/x.md");
     // no authority → unchanged (empty-authority schemes are a no-op)
     assert.equal(foldAuthorityIntoPath(null, "/manifest.json"), "/manifest.json");
     assert.equal(foldAuthorityIntoPath(null, "/docs/x.md"), "/docs/x.md");
@@ -29,7 +29,7 @@ test("entryPathnameOf preserves namespace and network authorities in canonical s
 
 test("renderAddress promotes a multi-segment plurnk path to authority form", () => {
     assert.equal(renderAddress("plurnk", "/docs/x.md"), "plurnk://docs/x.md");
-    assert.equal(renderAddress("plurnk", "/prompt/7/3"), "plurnk://prompt/7/3");
+    assert.equal(renderAddress("plurnk", "/skills/x.md"), "plurnk://skills/x.md");
 });
 
 test("renderAddress keeps a single-segment plurnk singleton at empty-authority root", () => {

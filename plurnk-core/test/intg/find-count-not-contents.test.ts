@@ -26,7 +26,7 @@ test("over the budget, FIND returns a count + narrow steer, not the enumerated r
         const ctx = makeSchemeCtx({ db, workspaceId, workerId });
         const r = await EntryFind.findWorkspaceEntries(findAll(), ctx, Worker.manifest);
         assert.equal(r.status, 200);
-        assert.equal(r.overflow, 6, "the full match count is reported");
+        assert.equal(r.omittedItems, 6, "the full omitted-item count is reported");
         assert.equal(r.mimetype, "text/markdown", "the content is a steer, not the JSON catalog");
         assert.match(String(r.content), /6 entries match.*render budget/i, "the model is told the fact: how many matched, over budget, not enumerated");
         assert.doesNotMatch(String(r.content), /\{"path"/, "no catalog rows were materialized into the body");
@@ -49,7 +49,7 @@ test("under the budget, FIND enumerates the catalog rows as before (#418)", asyn
         await seedEntryWithChannel(db, { workspaceId, workerId, scheme: "worker", pathname: "/one", channel: "body", content: "just one", mimetype: "text/markdown" });
         const ctx = makeSchemeCtx({ db, workspaceId, workerId });
         const r = await EntryFind.findWorkspaceEntries(findAll(), ctx, Worker.manifest);
-        assert.equal(r.overflow, undefined, "no overflow under budget");
+        assert.equal(r.omittedItems, undefined, "no items are omitted under budget");
         assert.equal(r.mimetype, "application/json", "the catalog rows are enumerated");
         assert.ok(Array.isArray(JSON.parse(String(r.content))), "content is the JSON catalog array");
     } finally {

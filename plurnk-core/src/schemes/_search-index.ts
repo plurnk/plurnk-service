@@ -9,7 +9,7 @@ import { availableParallelism } from "node:os";
 import { MimetypeBinary } from "../content/index.ts";
 import EntryGraph from "./_entry-graph.ts";
 import EntrySemantic from "./_entry-semantic.ts";
-import LogProjectionResolver from "./_log-projection.ts";
+import LogBody from "../core/LogBody.ts";
 
 type EntryRow = {
     entry_id: number;
@@ -150,6 +150,9 @@ export default class SearchIndex {
         const logRows = await db.log_derivation_rows.all<{
             id: number;
             coordinate: string;
+            op: string;
+            tx: string;
+            mimetype_tx: string;
             rx: string;
             mimetype_rx: string;
             deep_hash: string | null;
@@ -188,7 +191,13 @@ export default class SearchIndex {
             }); // unchanged since last derivation → deep rows persist
         }
         for (const row of logRows) {
-            const projection = LogProjectionResolver.resolve(row.rx);
+            const projection = LogBody.resolve({
+                op: row.op,
+                tx: row.tx,
+                rx: row.rx,
+                mimetypeTx: row.mimetype_tx,
+                mimetypeRx: row.mimetype_rx,
+            });
             const hash = createHash("sha256")
                 .update(projection.content)
                 .update("\0")

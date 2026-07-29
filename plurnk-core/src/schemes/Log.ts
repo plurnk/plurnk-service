@@ -9,7 +9,7 @@ import { CoreSchemeAdapterBase } from "../core/CoreSchemeServices.ts";
 import type { CoreSchemeCallContext } from "../core/CoreSchemeServices.ts";
 import Results, { type ProblemDetails, type SchemeResultBase } from "../core/results.ts";
 import type { RangeExtent } from "@plurnk/plurnk-schemes";
-import LogProjectionResolver from "./_log-projection.ts";
+import LogBody from "../core/LogBody.ts";
 import EntrySemantic from "./_entry-semantic.ts";
 import EntryGraph from "./_entry-graph.ts";
 import { resolveSearchCandidates } from "./_search-candidate.ts";
@@ -130,13 +130,21 @@ export default class Log extends CoreSchemeAdapterBase {
             scheme: string | null;
             pathname: string | null;
             status_rx: number;
+            tx: string;
+            mimetype_tx: string;
             rx: string;
             mimetype_rx: string;
         }>({ worker_id: workerId, loop_seq: coord.loopSeq, turn_seq: coord.turnSeq, sequence: coord.sequence });
 
         if (row === undefined) return failure("entry-not-found", 404, `No log entry exists at log:///${pathname}.`);
 
-        const { content: underlyingContent, mimetype: underlyingMimetype } = LogProjectionResolver.resolve(row.rx);
+        const { content: underlyingContent, mimetype: underlyingMimetype } = LogBody.resolve({
+            op: row.op,
+            tx: row.tx,
+            rx: row.rx,
+            mimetypeTx: row.mimetype_tx,
+            mimetypeRx: row.mimetype_rx,
+        });
 
         const resolved = await ReadResolve.resolve({
             content: underlyingContent,
@@ -184,8 +192,8 @@ export default class Log extends CoreSchemeAdapterBase {
 
     // §log-uniform-query — FIND over the worker's log rows, on the SAME source-agnostic primitive
     // every entry scheme runs (Matcher.matchCandidates, §find-source-agnostic): candidates are the
-    // coordinate-scoped rows projected exactly as READ shows them (LogProjectionResolver), so every content
-    // dialect works on log BY CONSTRUCTION and FIND(log)→READ(coordinate) composes like any scheme.
+    // coordinate-scoped rows resolved by LogBody exactly as READ shows them, so every content
+    // dialect works on log BY CONSTRUCTION and FIND(log)->READ(coordinate) composes like any scheme.
     async find(statement: FindStatement, ctx: CoreSchemeCallContext): Promise<FindResult> {
         const core = this.coreContext(ctx);
         const { db, workerId, mimetypes } = core;
@@ -237,7 +245,16 @@ export default class Log extends CoreSchemeAdapterBase {
         // §log-region-tagging — a tag signal AND-filters the candidates (§find-tag-filter-and-semantics):
         // a row survives only if it carries EVERY listed tag. No signal → the plain coordinate scope.
         const tags = Array.isArray(statement.signal) ? statement.signal : [];
-        type Candidate = { coordinate: string; op: string; rx: string; mimetype_rx: string; tokens: number; deep_hash: string | null };
+        type Candidate = {
+            coordinate: string;
+            op: string;
+            tx: string;
+            mimetype_tx: string;
+            rx: string;
+            mimetype_rx: string;
+            tokens: number;
+            deep_hash: string | null;
+        };
         const candidateRows = tags.length > 0
             ? await db.log_find_candidates_tagged.all<Candidate>({ worker_id: workerId, scope_prefix: scope.candidatePrefix, tags: JSON.stringify(tags) })
             : await db.log_find_candidates.all<Candidate>({ worker_id: workerId, scope_prefix: scope.candidatePrefix });
@@ -256,7 +273,16 @@ export default class Log extends CoreSchemeAdapterBase {
         }
         const candidateByCoord = new Map(candidateRows.map((row) => [row.coordinate, row] as const));
         const byCoord = new Map(rows.map((r) => [r.coordinate, r] as const));
-        const projected = rows.map((r) => ({ key: r.coordinate, ...LogProjectionResolver.resolve(r.rx) }));
+        const projected = rows.map((r) => ({
+            key: r.coordinate,
+            ...LogBody.resolve({
+                op: r.op,
+                tx: r.tx,
+                rx: r.rx,
+                mimetypeTx: r.mimetype_tx,
+                mimetypeRx: r.mimetype_rx,
+            }),
+        }));
 
         let matches: Match[];
         if (statement.body?.dialect === "semantic") {
@@ -439,7 +465,13 @@ export default class Log extends CoreSchemeAdapterBase {
             const row = byCoord.get(m.pathname);
             if (row === undefined) continue;
             const path = `log:///${m.pathname}`;
-            const proj = LogProjectionResolver.resolve(row.rx);
+            const proj = LogBody.resolve({
+                op: row.op,
+                tx: row.tx,
+                rx: row.rx,
+                mimetypeTx: row.mimetype_tx,
+                mimetypeRx: row.mimetype_rx,
+            });
             const item: CatalogMatch = {
                 path,
                 channels: { [path]: { mimetype: proj.mimetype, tokens: row.tokens, lines: proj.content.length === 0 ? 0 : proj.content.split("\n").length } },
@@ -498,8 +530,8 @@ export default class Log extends CoreSchemeAdapterBase {
                 itemsTokenTotal,
                 pathnames: [],
                 matches: [],
-                overflow: results.length,
-                overflowLimit: budget,
+                omittedItems: results.length,
+                maximumItems: budget,
             };
         }
         // matches[].pathname is the fan-out's retarget key — `/loop/turn/seq/OP` re-parses as a

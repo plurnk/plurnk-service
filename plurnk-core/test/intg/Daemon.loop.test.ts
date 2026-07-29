@@ -136,26 +136,20 @@ test("loop.run streams log/entry notifications during execution", async () => {
             await flush();
 
             const captured = logEntries().filter((event) => (event as { entry?: { loop_id?: unknown } }).entry?.loop_id === terminal.loopId);
-            // §notifications / #198 — the turn-1 prompt-foist (system-origin EDIT, the
-            // user's words entering the worker) broadcasts too, ahead of the model's ops —
-            // and so does its auto-READ (§prompt-auto-read).
-            assert.equal(captured.length, 5);
+            // The actionless prompt row broadcasts once ahead of model ops.
+            assert.equal(captured.length, 4);
             const prompt = captured[0] as { entry: { op: string; origin: string } };
-            assert.equal(prompt.entry.op, "EDIT");
+            assert.equal(prompt.entry.op, "prompt");
             assert.equal(prompt.entry.origin, "plurnk");
-            // §prompt-auto-read — the prompt's body arrives as a foisted READ, broadcast too.
-            const autoRead = captured[1] as { entry: { op: string; origin: string } };
-            assert.equal(autoRead.entry.op, "READ");
-            assert.equal(autoRead.entry.origin, "plurnk");
             // PLAN leads every model turn (grammar 0.70) — dispatched + broadcast to the
             // client as an ordinary log op (this is the "pass PLAN along" behavior).
-            const plan = captured[2] as { entry: { op: string; origin: string } };
+            const plan = captured[1] as { entry: { op: string; origin: string } };
             assert.equal(plan.entry.op, "PLAN");
             assert.equal(plan.entry.origin, "model");
-            const first = captured[3] as { entry: { op: string; origin: string } };
+            const first = captured[2] as { entry: { op: string; origin: string } };
             assert.equal(first.entry.op, "EDIT");
             assert.equal(first.entry.origin, "model");
-            const second = captured[4] as { entry: { op: string; status_rx: number } };
+            const second = captured[3] as { entry: { op: string; status_rx: number } };
             assert.equal(second.entry.op, "SEND");
             assert.equal(second.entry.status_rx, 200);
         } finally { ws.close(); }
@@ -312,7 +306,7 @@ test("loop.run({ openPaths }) foists a turn-0 file READ for each path (#260)", a
             await runLoopToTerminal(ws, 2, { prompt: "look at these", openPaths: ["src/foo.ts", "README.md"] });
             await flush();
             // file:/// paths store with scheme=NULL (a routing-internal scheme; the entries), so that plus
-            // a plurnk origin identifies the foists — the prompt EDIT alongside them is scheme='plurnk'.
+            // a plurnk origin identifies the foists; the prompt row uses scheme='prompt'.
             const reads = (logEntries() as Array<{ entry: { op: string; origin: string; scheme: string | null; pathname: string } }>)
                 .map((c) => c.entry)
                 .filter((e) => e.op === "READ" && e.origin === "plurnk" && e.scheme === null);
