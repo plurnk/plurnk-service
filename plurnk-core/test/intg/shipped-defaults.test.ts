@@ -83,6 +83,11 @@ test("under the shipped policy wiring, the personality renders in the packet exa
         const autonomy = "You curate your own context.";
         const autonomyCarriers = packet.sections.filter((s) => s.content.includes(autonomy)).map((s) => s.name);
         assert.deepEqual(autonomyCarriers, ["system-policy"], "context autonomy is policy, not duplicated grammar teaching");
+        assert.doesNotMatch(
+            packetSection(packet, "system-policy"),
+            /READ the row an error points at/,
+            "the permanent policy does not prescribe retrieval for already-inline errors",
+        );
         const rendered = packet.sections.map((s) => s.content).join("\n");
         assert.doesNotMatch(
             rendered,

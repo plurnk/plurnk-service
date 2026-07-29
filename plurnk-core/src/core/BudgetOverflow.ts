@@ -45,13 +45,15 @@ export default class BudgetOverflow {
                 "engine:grinder",
                 "budget-overflow",
                 413,
-                `Token Usage ${formatTokens(measurement.usage)} exceeds Token Ceiling ${formatTokens(measurement.ceiling)} by ${formatTokens(measurement.deficit)}. No working room remains.`,
+                `At overflow detection, Token Usage ${formatTokens(measurement.usage)} exceeds Token Ceiling ${formatTokens(measurement.ceiling)} by ${formatTokens(measurement.deficit)}. No working room remains.`,
                 {
                     ...measurement,
+                    stage: "overflow-detection",
                     retryable: false,
                     ...(recovery
                         ? {
                             allowedOperations: [...BudgetOverflow.recoveryOperations],
+                            recovery: "Curate context by FOLDing or KILLing irrelevant log items to restore working room.",
                         }
                         : {}),
                 },

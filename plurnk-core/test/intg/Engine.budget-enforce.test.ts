@@ -306,6 +306,7 @@ test("the 413 row reports the exact measured budget violation", async () => {
                     usage?: number;
                     ceiling?: number;
                     deficit?: number;
+                    stage?: string;
                     retryable?: boolean;
                 };
             })
@@ -317,10 +318,11 @@ test("the 413 row reports the exact measured budget violation", async () => {
         assert.equal(overflow.ceiling, TINY);
         assert.ok((overflow.usage ?? 0) > TINY);
         assert.equal(overflow.deficit, (overflow.usage ?? 0) - TINY);
+        assert.equal(overflow.stage, "overflow-detection");
         assert.equal(overflow.retryable, false);
         assert.equal(
             overflow.detail,
-            `Token Usage ${(overflow.usage ?? 0).toLocaleString("en-US")} exceeds Token Ceiling ${TINY.toLocaleString("en-US")} by ${(overflow.deficit ?? 0).toLocaleString("en-US")}. No working room remains.`,
+            `At overflow detection, Token Usage ${(overflow.usage ?? 0).toLocaleString("en-US")} exceeds Token Ceiling ${TINY.toLocaleString("en-US")} by ${(overflow.deficit ?? 0).toLocaleString("en-US")}. No working room remains.`,
         );
     } finally { await db.close(); }
 });
@@ -401,6 +403,18 @@ test("the FIRST hard overflow is a constrained RECOVERY TURN; the SECOND termina
         assert.equal(result.result.status, 413, "a second consecutive hard overflow terminates 413");
         assert.equal(result.reason, "budget_overflow");
         assert.equal(mock.remaining, 2, "generate ran EXACTLY once — the recovery turn happened; the second overflow skipped the LLM");
+        const recoveryPacketRow = await db.test_get_packet.get<{ packet: string }>({ id: result.turnIds[0] });
+        const recoveryPacket = JSON.parse(recoveryPacketRow!.packet);
+        const recoveryErrors = packetSection(recoveryPacket, "errors");
+        assert.match(recoveryErrors, /^\* 413 log:\/\/\/.+\/error$/m);
+        assert.doesNotMatch(recoveryErrors, /Prompt budget exceeded|overflow-detection|FOLDing/, "Errors remains a terse index, not a duplicate Problem");
+        const recoveryLog = packetSection(recoveryPacket, "log");
+        assert.equal(
+            recoveryLog.match(/Curate context by FOLDing or KILLing irrelevant log items to restore working room\./g)?.length,
+            1,
+            "the complete recovery instruction appears once on the inline error row",
+        );
+        assert.match(recoveryLog, /"stage":"overflow-detection"/);
         const errs = await db.test_error_rows_for_run.all<{ rx: string }>({ worker_id: workerId });
         const recovery = errs
             .map((e) => JSON.parse(e.rx) as {
@@ -410,6 +424,7 @@ test("the FIRST hard overflow is a constrained RECOVERY TURN; the SECOND termina
                     usage?: number;
                     ceiling?: number;
                     deficit?: number;
+                    stage?: string;
                     allowedOperations?: string[];
                     recovery?: string;
                     retryable?: boolean;
@@ -421,7 +436,11 @@ test("the FIRST hard overflow is a constrained RECOVERY TURN; the SECOND termina
         assert.ok(recovery !== undefined, "the recovery occurrence carries its enforced operation constraint");
         assert.equal(recovery.title, "Prompt budget exceeded");
         assert.deepEqual(recovery.allowedOperations, ["PLAN", "FOLD", "KILL", "SEND"]);
-        assert.equal(recovery.recovery, undefined, "the Problem reports constraints without prescribing which history to curate");
+        assert.equal(
+            recovery.recovery,
+            "Curate context by FOLDing or KILLing irrelevant log items to restore working room.",
+        );
+        assert.equal(recovery.stage, "overflow-detection");
         assert.equal(recovery.retryable, false);
         assert.equal(recovery.ceiling, 8);
         assert.ok((recovery.usage ?? 0) > (recovery.ceiling ?? 0));
