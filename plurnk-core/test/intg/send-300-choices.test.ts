@@ -183,16 +183,6 @@ test("PLURNK_QUESTIONS=0 is a servicewide ceiling — the client's request canno
 });
 
 test("the teaching injects ONLY where enabled — docEntries carries questions.md for the requesting workspace, not the default one", async () => {
-    // The installed docs package (0.1.1) predates questions.md — seed the REAL read location so
-    // the mechanism is exercised on the real path; restored after. Redundant-but-harmless once
-    // docs 0.1.2 ships the file.
-    const { writeFileSync, unlinkSync, existsSync, readFileSync } = await import("node:fs");
-    const { resolve } = await import("node:path");
-    const Paths = (await import("../../src/Paths.ts")).default;
-    const qPath = resolve(Paths.schemeDocs, "questions.md");
-    const hadFile = existsSync(qPath);
-    const original = hadFile ? readFileSync(qPath, "utf8") : null;
-    writeFileSync(qPath, "# Operator questions\nChoices are suggestions — the operator always has a free-text option.\n");
     const db = await openMigrated();
     try {
         const off = await insertWorkspace(db, `qdoc-off-${crypto.randomUUID()}`);
@@ -205,7 +195,6 @@ test("the teaching injects ONLY where enabled — docEntries carries questions.m
         assert.ok(onDocs.some((d) => d.name === "questions" && /free-text/.test(d.content)), "the enabled workspace gets questions.md — including the always-free-text answer teaching");
     } finally {
         await db.close();
-        if (original !== null) writeFileSync(qPath, original); else if (existsSync(qPath)) unlinkSync(qPath);
     }
 });
 
