@@ -241,7 +241,7 @@ stateDiagram-v2
 
 ### Rule: Work economically
 
-- Delegate multiple non-trivial independent tasks, each to its own WORK child.
+- If your work naturally decomposes, spawn workers for the separate tasks.
 - Use the Plurnk OP built for the job; reserve EXEC for what no op can do.
 
 YOU MUST submit the OPs by SENDing a brief response or valid markdown with the proper submit code:
