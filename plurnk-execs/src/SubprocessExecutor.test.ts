@@ -159,6 +159,10 @@ test("sh: nonzero exit → durable Problem result, errored channels, no notices"
     assert.equal(result.exitCode, 3);
     assert.equal(result.problem?.type, "https://problems.plurnk.dev/executor/subprocess/nonzero-exit");
     assert.equal(result.problem?.detail, "'sh' exited with code 3.");
+    assert.equal(
+        result.problem?.recovery,
+        "Inspect the stdout and stderr channels before correcting the command.",
+    );
     assert.deepEqual(states, [
         { channel: "stdout", state: "errored" },
         { channel: "stderr", state: "errored" },

@@ -229,7 +229,13 @@ test("a bounded malformed operation is admitted once and becomes a model-visible
             "the recovered failure is committed before the turn disposition",
         );
         const syntaxFailure = JSON.parse(authored[1]!.rx) as {
-            problem?: { type?: string; detail?: string; line?: number; source?: string };
+            problem?: {
+                type?: string;
+                detail?: string;
+                line?: number;
+                source?: string;
+                recovery?: string;
+            };
         };
         assert.equal(
             syntaxFailure.problem?.type,
@@ -238,6 +244,10 @@ test("a bounded malformed operation is admitted once and becomes a model-visible
         assert.match(syntaxFailure.problem?.detail ?? "", /not a valid `\/pattern\/flags` regex/);
         assert.equal(syntaxFailure.problem?.line, 2);
         assert.equal(syntaxFailure.problem?.source, "visitor");
+        assert.equal(
+            syntaxFailure.problem?.recovery,
+            "Correct only the failed operation; sibling operations were retained.",
+        );
 
         const recovery = await engine.runTurn({
             provider,

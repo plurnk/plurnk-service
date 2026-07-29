@@ -224,7 +224,7 @@ export default class SubprocessExecutor extends BaseExecutor {
                         {
                             runtime,
                             stage: "execution",
-                            recovery: "Inspect the stderr channel before correcting the command.",
+                            recovery: "Inspect the stdout and stderr channels before correcting the command.",
                             retryable: false,
                         },
                     ), ok ? "closed" : "errored");

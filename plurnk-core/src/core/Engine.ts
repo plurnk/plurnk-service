@@ -1660,7 +1660,7 @@ export default class Engine {
                             column: error.column,
                             source: error.source,
                             stage: "parse",
-                            recovery: "Correct the operation syntax.",
+                            recovery: "Correct only the failed operation; sibling operations were retained.",
                             retryable: false,
                         },
                     ),

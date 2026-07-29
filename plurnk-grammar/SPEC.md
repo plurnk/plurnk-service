@@ -285,7 +285,9 @@ body fields; the lexer is unaware):
   calls `new RegExp(pattern, flags)`. An unclosed literal and an invalid
   pattern/flags pair produce distinct `"visitor"` errors (the latter
   carries the library's own detail, e.g. `Invalid flags supplied to
-  RegExp constructor 'i:'`).
+  RegExp constructor 'i:'`). An unclosed literal states the required
+  `/pattern/flags` form; invalid flags state that only ECMAScript flags may
+  follow the delimiter and that a literal slash inside the pattern uses `\/`.
 - **XPath body** (matcher-body OPs only, leading `//`): the Visitor
   calls `xpath.parse()` from the `xpath` npm package (XPath 1.0
   parser-only, no DOM execution). Failure is a `"visitor"` error.

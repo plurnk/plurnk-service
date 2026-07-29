@@ -54,6 +54,9 @@ runtime failure: return that failure result and set the affected channel to
 `errored`. The consumer validates every result at the plugin boundary. A thrown
 exception or an invalid result is an executor contract violation, which the
 consumer converts into its own durable failure result before closing the stream.
+A nonzero subprocess exit directs the model to inspect both stdout and stderr:
+programs may report their failure through either channel, so recovery never
+presumes stderr contains the useful evidence.
 
 Third-party diagnostic text included in a Problem detail is bounded through
 `ErrorDetail` and `PLURNK_EXECS_ERROR_DETAIL_LIMIT`. The committed

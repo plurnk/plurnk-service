@@ -581,10 +581,14 @@ export default class AstBuilder {
         if (body.startsWith("/")) {
             const regex = AstBuilder.#tryParseSlashRegex(body);
             if (regex.ok) return { dialect: "regex", raw: body, pattern: regex.pattern, flags: regex.flags };
+            const slashRecovery = regex.reason === "invalid"
+                && regex.detail.includes("Invalid flags supplied")
+                ? " - use only ECMAScript flags after the closing `/`; escape a literal `/` inside the pattern as `\\/`"
+                : "";
             throw new PlurnkParseError(pos.line, pos.column, "visitor",
                 regex.reason === "unclosed"
-                    ? "pattern leads with `/` but never closes the `/pattern/flags` literal - add the closing `/`"
-                    : `pattern leads with \`/\` but is not a valid \`/pattern/flags\` regex - ${regex.detail}`);
+                    ? "regex matcher must use `/pattern/flags`; this matcher has no closing `/`"
+                    : `pattern leads with \`/\` but is not a valid \`/pattern/flags\` regex - ${regex.detail}${slashRecovery}`);
         }
         if (body.startsWith("$")) {
             // Compile-only validity check against RFC 9535 — json-p3 is the engine the runtime
@@ -609,7 +613,9 @@ export default class AstBuilder {
     // classes keep a slash inside the pattern; the first unescaped slash outside a
     // class closes it. The native constructor owns pattern and flag validity.
     static #tryParseSlashRegex(raw: string):
-        { ok: true; pattern: string; flags: string } | { ok: false; reason: "unclosed" } | { ok: false; reason: "invalid"; detail: string } {
+        { ok: true; pattern: string; flags: string }
+        | { ok: false; reason: "unclosed" }
+        | { ok: false; reason: "invalid"; detail: string } {
         let i = 1;
         let inClass = false;
         while (i < raw.length) {

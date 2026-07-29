@@ -518,7 +518,7 @@ test("#59: a `/`-leading body that never closes the literal is a visitor ERROR, 
     const result = PlurnkParser.parseStatements("<<FIND(log://x):/unclosed-regex:FIND");
     const errors = result.items.filter((i) => i.kind === "error");
     assert.equal(errors.length, 1);
-    assert.match(errors[0]!.error.message, /never closes the `\/pattern\/flags` literal - add the closing `\/`/);
+    assert.match(errors[0]!.error.message, /regex matcher must use `\/pattern\/flags`; this matcher has no closing `\/`/);
     assert.equal(errors[0]!.error.source, "visitor");
     assert.equal(result.items.filter((i) => i.kind === "statement").length, 0);
 });
@@ -561,6 +561,23 @@ test("MatcherBody: a path-shaped slash expression is regex syntax, not a glob", 
     const errors = result.items.filter((i) => i.kind === "error");
     assert.equal(errors.length, 1);
     assert.match(errors[0]!.error.message, /Invalid flags supplied to RegExp constructor 'hosts'/);
+    assert.match(
+        errors[0]!.error.message,
+        /use only ECMAScript flags after the closing `\/`; escape a literal `\/` inside the pattern as `\\\/`/,
+    );
+    assert.equal(result.items.filter((i) => i.kind === "statement").length, 0);
+});
+
+test("MatcherBody: invalid flags explain literal slash escaping", () => {
+    const result = PlurnkParser.parseStatements(
+        "<<FIND(evaluator/**):/func Asset|//go:embed|stdlib/runtime|bindata/i:FIND",
+    );
+    const errors = result.items.filter((i) => i.kind === "error");
+    assert.equal(errors.length, 1);
+    assert.match(
+        errors[0]!.error.message,
+        /use only ECMAScript flags after the closing `\/`; escape a literal `\/` inside the pattern as `\\\/`/,
+    );
     assert.equal(result.items.filter((i) => i.kind === "statement").length, 0);
 });
 
