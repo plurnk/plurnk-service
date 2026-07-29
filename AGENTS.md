@@ -13,7 +13,9 @@ command-line client and editor integrations are separate repositories.
 
 - `plurnk-core` owns daemon lifecycle, persistence, workspaces, workers, loops,
   packet assembly, and orchestration.
-- `plurnk-grammar` owns the model-facing language and shared protocol schemas.
+- `plurnk-grammar` owns the model-facing language and its syntax schemas.
+- `plurnk-contracts` owns runtime-neutral Problems, operation results, notices,
+  and their wire schemas.
 - `plurnk-agui` owns the external client protocol and translates between AG-UI
   and daemon operations.
 - `plurnk-providers*`, `plurnk-schemes*`, `plurnk-mimetypes*`, and

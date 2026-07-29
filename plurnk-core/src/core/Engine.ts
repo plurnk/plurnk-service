@@ -42,6 +42,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import PacketWire from "./packet-wire.ts";
 import Results, { OperationFailureError, type SchemeResult } from "./results.ts";
 import BranchReceipt from "./BranchReceipt.ts";
+import BudgetOverflow, { type BudgetOverflowMeasurement } from "./BudgetOverflow.ts";
 
 // The engine's collaborators — each owns one machine; Engine owns the loop/turn
 // lifecycle and wires them together as the public facade.
@@ -164,6 +165,7 @@ type EngineTurnResult = {
     steerStruck: boolean;
     emissionAttempts: number;
     emissionExhausted: boolean;
+    budget?: BudgetOverflowMeasurement;
 };
 
 // Default turn.status when ops were emitted but no SEND. Model is implicitly
@@ -756,11 +758,13 @@ export default class Engine {
 
             // SPEC §grinder: budget hard-stop — packet won't fit even collapsed → abandon.
             if (turn.budgetHardStop) {
-                const failure = Results.failure(
-                    "engine:rails",
-                    "budget-overflow",
-                    413,
-                    `The packet exceeds the budget even after the newest turn folded; overflow remained unrecoverable after ${turnIds.length} turns.`,
+                if (turn.budget === undefined) {
+                    throw new Error("a budget hard-stop requires its measured overflow");
+                }
+                const failure = BudgetOverflow.result(
+                    turn.budget.usage,
+                    turn.budget.ceiling,
+                    false,
                 );
                 const result = await this.#lifecycle.finish(loopId, failure);
                 if (result === null) throw new Error(`loop ${loopId} became terminal before budget settlement`);
@@ -1158,8 +1162,9 @@ export default class Engine {
                 currentTurnSeq: seq, provider, gitStatus, notices,
             }),
         });
-        if (enforced.struck) nextActionIndex += 1; // the budget-overflow error row consumed a sequence
+        if (enforced.recorded) nextActionIndex += 1; // a fold-to-fit Problem consumed the reserved sequence
         requestPacket = enforced.packet;
+        let operationConstraint: DispatchContext["operationConstraint"];
         if (!enforced.fit) {
             // §grinder-hard-413-recovery (Q4, owner ruling: recoverable strike, NO margin) — the
             // overflow lives in foldable HISTORY the model owns, and the grinder won't touch
@@ -1175,6 +1180,10 @@ export default class Engine {
                 ? true
                 : this.#packets.exactPacketTokens(requestPacket, provider) <= provider.contextWindow - (this.#packets.maxTokensFor(provider) ?? 0);
             if (physicallySendable && !this.#hardOverflowRecovery.has(loopId)) {
+                const ceiling = this.#packets.ceilingFor(provider);
+                if (ceiling === null) {
+                    throw new Error("an unbounded prompt budget cannot enter budget recovery");
+                }
                 this.#hardOverflowRecovery.add(loopId);
                 await this.#problems.record({
                     workerId,
@@ -1183,13 +1192,13 @@ export default class Engine {
                     sequence: nextActionIndex++,
                     origin: "model",
                     source: "engine",
-                    result: Results.failure(
-                        "engine:grinder",
-                        "budget-overflow",
-                        413,
-                        "The packet exceeds the budget even after the newest turn folded — this is your ONE recovery turn: KILL or FOLD history items now (the budget table lists the heaviest) to reclaim room; a second consecutive overflow terminates the loop.",
-                    ),
+                    result: BudgetOverflow.result(requestPacket.tokens, ceiling, true),
                 });
+                operationConstraint = {
+                    code: "budget-recovery",
+                    detail: "budget recovery is active",
+                    allowedOperations: BudgetOverflow.recoveryOperations,
+                };
                 // Rebuild so the recovery-steer row just minted renders in THIS packet's log +
                 // errors sections (the same re-derive contract the soft grind uses).
                 requestPacket = await this.#packets.buildRequestPacket({
@@ -1198,6 +1207,25 @@ export default class Engine {
                 });
             } else {
             // Hard 413: physically unsendable, or the model already declined its recovery turn.
+            const ceiling = this.#packets.ceilingFor(provider);
+            if (ceiling === null) {
+                throw new Error("an unbounded prompt budget cannot hard-stop");
+            }
+            if (!enforced.recorded) {
+                await this.#problems.record({
+                    workerId,
+                    loopId,
+                    turnId,
+                    sequence: nextActionIndex++,
+                    origin: "plurnk",
+                    source: "engine",
+                    result: BudgetOverflow.result(requestPacket.tokens, ceiling, false),
+                });
+                requestPacket = await this.#packets.buildRequestPacket({
+                    initialMessages: messages, requirements, workspaceId, workerId, loopId,
+                    currentTurnSeq: seq, provider, gitStatus, notices,
+                });
+            }
             // Skip the LLM, close the turn, and let runLoop abandon.
             const hardPacket = this.#packets.completePacket(requestPacket, { content: "", ops: [], reasoning: null }, null, provider);
             await this.#db.engine_close_turn.run({
@@ -1216,6 +1244,7 @@ export default class Engine {
                 steerStruck: false,
                 emissionAttempts: 0,
                 emissionExhausted: false,
+                budget: BudgetOverflow.measure(requestPacket.tokens, ceiling),
             };
             }
         } else {
@@ -1545,14 +1574,23 @@ export default class Engine {
         // (the PLAN/SEND ops, zero actions), which is its only coherent meaning.
         let realCommands = 0;
         const admittedOps = packetAssistant.ops.filter(
-            (op) =>
-                op.op === "PLAN"
+            (op) => {
+                const constrained = operationConstraint !== undefined
+                    && !operationConstraint.allowedOperations.includes(op.op);
+                return op.op === "PLAN"
                 || (op.op === "SEND" && typeof op.signal === "number" && op.signal >= 200)
-                || realCommands++ < maxCommands,
+                || constrained
+                || realCommands++ < maxCommands;
+            },
         );
         const opsToDispatch = scheduleTurnOps(admittedOps);
         await this.#dispatcher.prepareEditBatches(
-            opsToDispatch.filter((statement): statement is EditStatement => statement.op === "EDIT"),
+            opsToDispatch.filter(
+                (statement): statement is EditStatement =>
+                    statement.op === "EDIT"
+                    && (operationConstraint === undefined
+                        || operationConstraint.allowedOperations.includes(statement.op)),
+            ),
             {
                 workspaceId, workerId, loopId, turnId,
                 origin, onDispatch,
@@ -1604,6 +1642,7 @@ export default class Engine {
             const result = await this.#dispatcher.dispatch({
                 statement, workspaceId, workerId, loopId, turnId,
                 sequence: rowSeq,
+                ...(operationConstraint === undefined ? {} : { operationConstraint }),
                 origin, onDispatch,
             });
             statuses.push(result.status);

@@ -45,8 +45,8 @@ resources in `finally` blocks or test hooks.
 ## Boundaries
 
 - Treat database migrations and shared wire shapes as compatibility-sensitive.
-- Put shared protocol shapes in `plurnk-grammar`; keep persistence-only types in
-  core.
+- Put runtime-neutral wire shapes in `plurnk-contracts`, model-language shapes
+  in `plurnk-grammar`, and persistence-only types in core.
 - Keep AG-UI transport and event translation in `plurnk-agui`.
 - Validate external input once at its owning boundary.
 - Test lifecycle changes through a complete loop, including terminal and

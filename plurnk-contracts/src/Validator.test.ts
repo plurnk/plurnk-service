@@ -93,6 +93,17 @@ test("Problems creates canonical typed occurrences", () => {
         () => Problems.create("Scheme/File", "not-found", 404, "Missing."),
         /problem owner must be/,
     );
+    assert.equal(
+        Problems.create(
+            "engine:grinder",
+            "budget-overflow",
+            413,
+            "No working room remains.",
+            {},
+            { title: "Prompt budget exceeded" },
+        ).title,
+        "Prompt budget exceeded",
+    );
 });
 
 test("ProblemDetails rejects missing fields and non-absolute type URIs", () => {

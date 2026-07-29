@@ -243,7 +243,7 @@ stateDiagram-v2
 
 - Delegate multiple non-trivial independent tasks, each to its own WORK child.
 - Use the Plurnk OP built for the job; reserve EXEC for what no op can do.
-- On a budget overflow, FOLD the heaviest irrelevant open log items to save tokens.
+- Tokens Free is working room, not a quota to exhaust; preserve headroom by FOLDing or KILLing irrelevant log items.
 
 YOU MUST submit the OPs by SENDing a brief response or valid markdown with the proper submit code:
 

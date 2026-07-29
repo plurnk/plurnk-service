@@ -25,7 +25,7 @@ import PacketWire, { type PacketSection } from "./packet-wire.ts";
 import type { Provider } from "@plurnk/plurnk-providers";
 import { scopeEnvToAlias, resolveActiveAlias } from "@plurnk/plurnk-providers";
 import ProviderInstantiate from "./ProviderInstantiate.ts";
-import Results from "./results.ts";
+import BudgetOverflow from "./BudgetOverflow.ts";
 
 // Substituted into the budget readout after the assembled packet is measured
 // (the figure depends on the packet's own rendered size — chicken/egg).
@@ -540,12 +540,14 @@ export default class PacketBuilder {
         packet: RequestPacket; provider: Provider;
         workerId: number; loopId: number; turnId: number; mintSequence: number;
         rebuild: () => Promise<RequestPacket>;
-    }): Promise<{ packet: RequestPacket; fit: boolean; struck: boolean }> {
+    }): Promise<{ packet: RequestPacket; fit: boolean; struck: boolean; recorded: boolean }> {
         const ceiling = this.ceilingFor(provider);
         const measure = (p: RequestPacket): number => p.tokens;
         // #421 — a null ceiling is an unbounded window: always fit, never fold or strike (the backend
         // clamps; this mirrors Engine's physicallySendable, which treats a null contextWindow as sendable).
-        if (ceiling === null || measure(packet) <= ceiling) return { packet, fit: true, struck: false };
+        if (ceiling === null || measure(packet) <= ceiling) {
+            return { packet, fit: true, struck: false, recorded: false };
+        }
 
         // ONE rule, every turn — turn 1 and turn 101 alike (§grinder-layer1-rollback): fold the
         // NEWEST turn boundary's still-open rows (the prior turn's emissions + this turn's
@@ -554,11 +556,18 @@ export default class PacketBuilder {
         // grinder never reaches back; it only blocks NEW memories from landing when there is no
         // room, forcing the model to do its own housekeeping (the strike is the escalation,
         // §grinder-compaction-strikes; a model that won't curate hard-413s/strikes out).
-        // Mint the overflow as a terse op='error' log row BEFORE the rebuild, so the rebuild's
-        // re-derived errors section surfaces it THIS turn — the warning lands at strike 1, not a
-        // turn late. The row is grinder-exempt, so it stacks into a visible recurrence trail. It
-        // sits at the turn's reserved running sequence (mintSequence) so it never collides with the
-        // post-generate dispatch rows. §operation-result-uniform-error-channel, §grinder-overflow-error-row
+        const usage = measure(packet);
+        await this.#db.engine_grinder_fold_newest_turn.run({ loop_id: loopId, turn_id: turnId });
+        let current = await rebuild();
+        if (measure(current) > ceiling) {
+            // Engine owns the hard-overflow branch and records its one occurrence with
+            // the enforced recovery constraint (or terminal physics), so this layer does
+            // not mint a second, weaker account of the same failure.
+            return { packet: current, fit: false, struck: true, recorded: false };
+        }
+
+        // The fold recovered the request. Preserve the triggering measurements on one
+        // actionless row and rebuild once so its Problem surfaces in this same packet.
         await this.#problems.record({
             workerId,
             loopId,
@@ -566,16 +575,15 @@ export default class PacketBuilder {
             sequence: mintSequence,
             origin: "plurnk",
             source: "rail",
-            result: Results.failure(
-                "engine:grinder",
-                "budget-overflow",
-                413,
-                "Budget Overflow: newest log items automatically FOLDed — a retrieval larger than Tokens Free arrives folded; FOLD older items first, then fetch within the room made",
-            ),
+            result: BudgetOverflow.result(usage, ceiling, false),
         });
-        await this.#db.engine_grinder_fold_newest_turn.run({ loop_id: loopId, turn_id: turnId });
-        const current = await rebuild();
-        return { packet: current, fit: measure(current) <= ceiling, struck: true };
+        current = await rebuild();
+        return {
+            packet: current,
+            fit: measure(current) <= ceiling,
+            struck: true,
+            recorded: true,
+        };
     }
 
     // §tokenomics-agnostic-ruler — the EXACT materialization measure: the provider's own token

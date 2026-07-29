@@ -35,6 +35,11 @@ Recovery prose is appropriate only when the producer can state a generally
 valid response. Exact measurements remain factual even when no universal
 recovery amount exists.
 
+`Problems.create(owner, code, status, detail, extensions?, options?)` derives
+the stable title from `code` by default. A type whose established title is not
+that mechanical rendering supplies `options.title`; occurrence-specific text
+never belongs there.
+
 ## Exceptions and external protocols
 
 Internal invariant violations throw with their cause. They are bugs, not

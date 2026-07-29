@@ -283,10 +283,7 @@ test("the ceiling is the real window partition (window − reserves), no calibra
     } finally { await db.close(); }
 });
 
-test("the 413 row states the pressure law — fold history first, fetch within the room", async () => {
-    // run24/jumbo forensics: the read→grind→re-read spiral happens because the model is never
-    // TOLD that an oversized retrieval arrives pre-folded. The 413 is the right slot: the signal
-    // fires exactly when the lesson applies. Terse, causal, factual — not an essay.
+test("the 413 row reports the exact measured budget violation", async () => {
     const db = await openMigrated();
     try {
         const { workspaceId, workerId, loopId } = await envelope(db);
@@ -298,11 +295,31 @@ test("the 413 row states the pressure law — fold history first, fetch within t
         const row = await db.test_get_packet.get<{ packet: string }>({ id: t2.turnId });
         const packet = JSON.parse(row!.packet);
         assert.match(packetSection(packet, "errors"), /^\* 413 log:\/\/\/.+\/error$/m, "the overflow pointer surfaced (terse LogCoordinate)");
-        // The text lives in the error ROW the pointer names — what the model actually reads.
         const errRow = await db.test_error_rows_for_run.all<{ rx: string }>({ worker_id: workerId });
-        const text = errRow.map((r) => r.rx).join(" ");
-        assert.match(text, /larger than Tokens Free arrives folded/, "the law rides the signal row");
-        assert.match(text, /FOLD older items first/, "the lever is named");
+        const overflow = errRow
+            .map((row) => JSON.parse(row.rx) as {
+                problem?: {
+                    type?: string;
+                    title?: string;
+                    status?: number;
+                    detail?: string;
+                    usage?: number;
+                    ceiling?: number;
+                    deficit?: number;
+                };
+            })
+            .find((row) => row.problem?.type === "https://problems.plurnk.dev/engine/grinder/budget-overflow")
+            ?.problem;
+        assert.ok(overflow !== undefined);
+        assert.equal(overflow.title, "Prompt budget exceeded");
+        assert.equal(overflow.status, 413);
+        assert.equal(overflow.ceiling, TINY);
+        assert.ok((overflow.usage ?? 0) > TINY);
+        assert.equal(overflow.deficit, (overflow.usage ?? 0) - TINY);
+        assert.equal(
+            overflow.detail,
+            `Token Usage ${(overflow.usage ?? 0).toLocaleString("en-US")} exceeds Token Ceiling ${TINY.toLocaleString("en-US")} by ${(overflow.deficit ?? 0).toLocaleString("en-US")}. No working room remains.`,
+        );
     } finally { await db.close(); }
 });
 
@@ -366,7 +383,7 @@ test("virtual PROMPT_BUDGET resolves per alias without changing the provider env
     }
 });
 
-test("the FIRST hard overflow is a RECOVERY TURN — steer minted, generate runs, strike counted; the SECOND terminates 413", async () => {
+test("the FIRST hard overflow is a constrained RECOVERY TURN; the SECOND terminates 413", async () => {
     const db = await openMigrated();
     try {
         const { workspaceId, workerId, loopId } = await envelope(db);
@@ -383,11 +400,94 @@ test("the FIRST hard overflow is a RECOVERY TURN — steer minted, generate runs
         assert.equal(result.reason, "budget_overflow");
         assert.equal(mock.remaining, 2, "generate ran EXACTLY once — the recovery turn happened; the second overflow skipped the LLM");
         const errs = await db.test_error_rows_for_run.all<{ rx: string }>({ worker_id: workerId });
-        const steer = errs
-            .map((e) => JSON.parse(e.rx) as { problem?: { type?: string; detail?: string } })
+        const recovery = errs
+            .map((e) => JSON.parse(e.rx) as {
+                problem?: {
+                    type?: string;
+                    title?: string;
+                    usage?: number;
+                    ceiling?: number;
+                    deficit?: number;
+                    allowedOperations?: string[];
+                };
+            })
             .find((e) => e.problem?.type === "https://problems.plurnk.dev/engine/grinder/budget-overflow"
-                && (e.problem.detail ?? "").includes("recovery turn"));
-        assert.ok(steer, "the recovery steer was minted — over-budget, the remedy (KILL/FOLD history), and the consequence, stated");
+                && Array.isArray(e.problem.allowedOperations))
+            ?.problem;
+        assert.ok(recovery !== undefined, "the recovery occurrence carries its enforced operation constraint");
+        assert.equal(recovery.title, "Prompt budget exceeded");
+        assert.deepEqual(recovery.allowedOperations, ["PLAN", "FOLD", "KILL", "SEND"]);
+        assert.equal(recovery.ceiling, 8);
+        assert.ok((recovery.usage ?? 0) > (recovery.ceiling ?? 0));
+        assert.equal(recovery.deficit, (recovery.usage ?? 0) - (recovery.ceiling ?? 0));
+    } finally { await db.close(); }
+});
+
+test("budget recovery rejects a forbidden op on its own row before scheme dispatch", async () => {
+    const db = await openMigrated();
+    try {
+        const { workspaceId, workerId, loopId } = await envelope(db);
+        const engine = plainEngine(db);
+        const read: PlurnkStatement = {
+            op: "READ",
+            suffix: "",
+            signal: null,
+            target: {
+                kind: "url",
+                raw: "worker:///would-run-outside-recovery",
+                scheme: "worker",
+                username: null,
+                password: null,
+                hostname: null,
+                port: null,
+                pathname: "/would-run-outside-recovery",
+                params: {},
+                fragment: null,
+            },
+            lineMarker: null,
+            body: null,
+            position: { line: 1, column: 1 },
+        };
+        const restore = pinSafety(199_990);
+        try {
+            await engine.runTurn({
+                provider: mockAt(
+                    199_998,
+                    [response([read, sendStmt(102, "continue")])],
+                    200_000,
+                ),
+                workspaceId,
+                workerId,
+                loopId,
+                messages: MESSAGES,
+                turnNumber: 2,
+            });
+        } finally {
+            restore();
+        }
+        const rows = await db.test_log_entries_by_run_op_full.all<{
+            rx: string;
+            status_rx: number;
+        }>({
+            worker_id: workerId,
+            op: "READ",
+        });
+        const denied = rows
+            .map((row) => ({
+                ...row,
+                result: JSON.parse(row.rx) as {
+                    problem?: {
+                        type?: string;
+                        constraint?: string;
+                        allowedOperations?: string[];
+                    };
+                },
+            }))
+            .find((row) => row.result.problem?.type === "https://problems.plurnk.dev/engine/dispatcher/operation-not-allowed");
+        assert.ok(denied !== undefined, "the original READ row owns the constraint failure");
+        assert.equal(denied.status_rx, 409);
+        assert.equal(denied.result.problem?.constraint, "budget-recovery");
+        assert.deepEqual(denied.result.problem?.allowedOperations, ["PLAN", "FOLD", "KILL", "SEND"]);
     } finally { await db.close(); }
 });
 
