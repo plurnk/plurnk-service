@@ -80,9 +80,6 @@ test("under the shipped policy wiring, the personality renders in the packet exa
         const carriers = packet.sections.filter((s) => s.content.includes(marker)).map((s) => s.name);
         assert.deepEqual(carriers, ["system-policy"], `the policy rides exactly one section; got ${carriers.join(", ")}`);
         assert.ok(packetSection(packet, "system-policy").includes(marker), "the section carries the personality");
-        const autonomy = "You curate your own context.";
-        const autonomyCarriers = packet.sections.filter((s) => s.content.includes(autonomy)).map((s) => s.name);
-        assert.deepEqual(autonomyCarriers, ["system-policy"], "context autonomy is policy, not duplicated grammar teaching");
         assert.doesNotMatch(
             packetSection(packet, "system-policy"),
             /READ the row an error points at/,
@@ -91,7 +88,7 @@ test("under the shipped policy wiring, the personality renders in the packet exa
         const rendered = packet.sections.map((s) => s.content).join("\n");
         assert.doesNotMatch(
             rendered,
-            /FOLD targets|folding reclaims their tokens|preserve headroom|KILLing irrelevant|FOLD or KILL irrelevant/i,
+            /You curate your own context|FOLD targets|folding reclaims their tokens|preserve headroom|KILLing irrelevant|FOLD or KILL irrelevant/i,
             "the assembled packet contains no ambient context-curation command",
         );
         // And the turn-0 foists contain no POLICY doc READ — the doc path is retired for the policy.
