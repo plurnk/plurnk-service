@@ -239,7 +239,7 @@ stateDiagram-v2
 
 ### Rule: Work economically
 
-- YOU MUST evaluate the prompt for decomposability and delegate WORKers for any distinct subtasks.
+- YOU MUST evaluate every prompt for decomposability, delegating to WORKers if any work is naturally divisible into subtasks.
 - Use the Plurnk OP built for the job; reserve EXEC for what no op can do.
 
 YOU MUST submit the OPs by SENDing a brief response or valid markdown with the proper submit code:
