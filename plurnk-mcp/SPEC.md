@@ -33,7 +33,7 @@ JSON fail startup.
 | MCP surface | Plurnk surface |
 |---|---|
 | Server | `EXEC[server]` and `server://` |
-| Tool catalog | empty target or `?` |
+| Tool catalog | `server:///` |
 | Tool call | `EXEC[server](tool)` with a JSON object body |
 | Resource catalog | `server:///resources` |
 | Resource read | `server:///resources/<encoded-uri>` |

@@ -7,7 +7,7 @@ Each configured MCP server becomes a model-facing executor and resource
 authority:
 
 ```text
-<<EXEC[github]:?:EXEC
+<<READ(github:///):READ
 <<EXEC[github](create_issue):{"title":"Bug"}:EXEC
 <<FIND(github:///resources/**)::FIND
 <<READ(github:///resources/https%3A%2F%2Fexample.test%2Fdocument)::READ
@@ -47,7 +47,7 @@ Portable timeout defaults and complete examples live in
 
 ## Current surface
 
-- `EXEC[server]:?` returns the live tools, resources, resource templates, and
+- `READ(server:///)` returns the live tools, resources, resource templates, and
   prompts catalog.
 - `EXEC[server](tool)` calls a tool with one JSON object in the body.
 - `server:///resources` exposes the resource catalog through ordinary Plurnk

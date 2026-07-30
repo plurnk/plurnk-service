@@ -19,20 +19,19 @@ const CHANNEL = "body";
 export const runtimeDecl = (name: string): RuntimeDecl => ({
     name,
     glyph: "🔌",
-    example: `<<EXEC[${name}]:?:EXEC`,
+    example: `<<EXEC[${name}](tool_name):{"argument":"value"}:EXEC`,
     documentation: `# ${name}
 
 This configured MCP server is available as an executable tool family and an
 addressable resource family.
 
 \`\`\`plurnk
-<<EXEC[${name}]:?:EXEC
-<<EXEC[${name}](tool_name):{"argument":"value"}:EXEC
 <<READ(${name}:///):READ
+<<EXEC[${name}](tool_name):{"argument":"value"}:EXEC
 \`\`\`
 
-The first operation returns the live catalog. Tool arguments are one JSON
-object. Tool results are written to the operation's \`body\` channel.
+READ returns the live catalog. Tool arguments are one JSON object. Tool results
+are written to the operation's \`body\` channel.
 `,
 });
 
@@ -124,25 +123,16 @@ export default class McpExecutor extends BaseExecutor {
             return ErrorDetail.invalidConfiguration("executor:mcp");
         }
         const body = command.trim();
-        if (target === null || target.length === 0 || body === "?") {
-            try {
-                write(
-                    CHANNEL,
-                    JSON.stringify(await this.#connection.catalog(signal)),
-                    "application/json",
-                );
-                setState(CHANNEL, "closed");
-                return { status: 200 };
-            } catch (error) {
-                return fail(
-                    signal.aborted ? "cancelled" : "catalog-failed",
-                    signal.aborted ? 499 : 502,
-                    signal.aborted
-                        ? `MCP catalog request for '${runtime}' was cancelled.`
-                        : `MCP server '${runtime}' could not return its catalog: ${ErrorDetail.preview(message(error), detailLimit)}.`,
-                    { retryable: !signal.aborted },
-                );
-            }
+        if (target === null || target.length === 0) {
+            return fail(
+                "tool-required",
+                400,
+                `MCP executor '${runtime}' requires a tool target.`,
+                {
+                    recovery: `READ ${runtime}:/// for the live catalog, then target one listed tool.`,
+                    retryable: false,
+                },
+            );
         }
 
         let args: Record<string, unknown> = {};
