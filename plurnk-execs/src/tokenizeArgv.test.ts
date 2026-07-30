@@ -12,27 +12,19 @@ test("preserves quoted multi-word args", () => {
     assert.deepEqual(tokenizeArgv("commit -m 'single quoted msg'"), ["commit", "-m", "single quoted msg"]);
 });
 
-test("does NOT expand $ or backticks (the whole point vs shelling)", () => {
+test("does not expand variables, commands, or shell metacharacters", () => {
     assert.deepEqual(tokenizeArgv('commit -m "costs $5 and `cmd`"'), ["commit", "-m", "costs $5 and `cmd`"]);
-    assert.deepEqual(tokenizeArgv("commit -m '$HOME stays literal'"), ["commit", "-m", "$HOME stays literal"]);
-});
-
-test("does NOT interpret shell metacharacters — passed as literal args", () => {
-    assert.deepEqual(tokenizeArgv("log | head"), ["log", "|", "head"]);
     assert.deepEqual(tokenizeArgv("status; rm -rf /"), ["status;", "rm", "-rf", "/"]);
 });
 
-test("backslash escapes and escaped quotes inside double quotes", () => {
-    assert.deepEqual(tokenizeArgv('a\\ b'), ["a b"]);
+test("handles escapes and quoted empty arguments", () => {
+    assert.deepEqual(tokenizeArgv("a\\ b"), ["a b"]);
     assert.deepEqual(tokenizeArgv('--title "a \\"quoted\\" title"'), ["--title", 'a "quoted" title']);
+    assert.deepEqual(tokenizeArgv('commit --cleanup=""'), ["commit", "--cleanup="]);
 });
 
-test("empty input → no args", () => {
-    assert.deepEqual(tokenizeArgv(""), []);
-    assert.deepEqual(tokenizeArgv("   "), []);
-});
-
-test("unterminated quotes throw", () => {
+test("rejects unterminated quoting", () => {
     assert.throws(() => tokenizeArgv('commit -m "unterminated'), /unterminated double quote/);
     assert.throws(() => tokenizeArgv("commit -m 'unterminated"), /unterminated single quote/);
+    assert.throws(() => tokenizeArgv("status\\"), /trailing backslash/);
 });

@@ -1,9 +1,7 @@
-// Split a command string into argv the way a POSIX shell would tokenize words —
-// honoring single quotes, double quotes, and backslash escapes — but WITHOUT
-// any variable/command expansion. That distinction is the whole point: shelling
-// `git commit -m "costs $5"` would expand `$5` and corrupt the message; passing
-// real argv preserves `$`, backticks, etc. literally. No shell, no metacharacter
-// interpretation (pipes/redirects are passed through as literal args).
+// Split a command string into argv the way a POSIX shell tokenizes words,
+// honoring single quotes, double quotes, and backslash escapes, without
+// variable or command expansion. Direct-spawn executors use this to preserve
+// familiar CLI spelling without passing the command through a shell.
 export function tokenizeArgv(input: string): string[] {
     const args: string[] = [];
     let cur = "";

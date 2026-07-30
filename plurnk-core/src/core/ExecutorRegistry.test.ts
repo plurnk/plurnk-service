@@ -38,12 +38,12 @@ class AlwaysAvailable {
 }
 const loadAvailable = async () => ({ default: AlwaysAvailable });
 
-// The git-executor package (git + gh) beside a non-git one — the shape #259 filters.
+// Native Git and the explicit isomorphic-git subset beside a non-Git runtime.
 const gitAndShell = async () => ({
     registry: new Map([
         ["sh", { runtime: "sh", glyph: "$", packageName: "fake-common" }],
         ["git", { runtime: "git", glyph: "⎇", packageName: "@plurnk/plurnk-execs-git" }],
-        ["gh", { runtime: "gh", glyph: "⌥", packageName: "@plurnk/plurnk-execs-git" }],
+        ["isogit", { runtime: "isogit", glyph: "iso", packageName: "@plurnk/plurnk-execs-isogit" }],
     ]),
 });
 
@@ -83,21 +83,20 @@ test("ExecutorRegistry: an unavailable configured default fails the boot (#185)"
     );
 });
 
-test("ExecutorRegistry: PLURNK_SERVICE_GIT_ALLOWED=0 drops the git/gh executors entirely (#259)", async () => {
+test("ExecutorRegistry: PLURNK_SERVICE_GIT_ALLOWED=0 drops native and isomorphic Git executors entirely (#259)", async () => {
     const prior = process.env.PLURNK_SERVICE_GIT_ALLOWED;
     try {
-        // Denied: the @plurnk/plurnk-execs-git tags are filtered out of the registry — so they
-        // can't dispatch AND aren't in availableRuntimes() (the source the tools sheet teaches from).
+        // Denied: neither Git capability can dispatch or appear in the tools sheet.
         process.env.PLURNK_SERVICE_GIT_ALLOWED = "0";
         const denied = await ExecutorRegistry.build({ discoverFn: gitAndShell, load: loadAvailable });
         assert.equal(denied.entry("git"), undefined, "git is not registered when git is denied");
-        assert.equal(denied.entry("gh"), undefined, "gh is not registered when git is denied");
-        assert.deepEqual(denied.availableRuntimes(), ["sh"], "neither git nor gh is offered/taught when denied");
+        assert.equal(denied.entry("isogit"), undefined, "isogit is not registered when git is denied");
+        assert.deepEqual(denied.availableRuntimes(), ["sh"], "neither Git runtime is offered or taught when denied");
 
-        // Allowed: the same discovery yields all three — the filter is scoped to the git package.
+        // Allowed: the registry preserves whichever Git runtimes discovery enabled.
         process.env.PLURNK_SERVICE_GIT_ALLOWED = "1";
         const allowed = await ExecutorRegistry.build({ discoverFn: gitAndShell, load: loadAvailable });
-        assert.deepEqual(allowed.availableRuntimes(), ["gh", "git", "sh"], "all tags present when git is allowed");
+        assert.deepEqual(allowed.availableRuntimes(), ["git", "isogit", "sh"], "all tags present when git is allowed");
     } finally {
         if (prior === undefined) delete process.env.PLURNK_SERVICE_GIT_ALLOWED;
         else process.env.PLURNK_SERVICE_GIT_ALLOWED = prior;

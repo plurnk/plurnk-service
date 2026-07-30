@@ -1,11 +1,7 @@
-// The in-process git READ backend (#461/#463, isomorphic-git + the `ignore` lib) — the portable
-// default behind every core git read. No subprocess, and hermetic BY CONSTRUCTION: isomorphic-git
-// takes an explicit `dir` and never reads GIT_* env, ~/.gitconfig, or the system config, so the
-// escape class hermeticGitEnv scrubs on the native path (#401/#428) cannot exist here. A sandboxed
-// or git-less host gets identical membership + working-tree status. `PLURNK_SERVICE_GIT_NATIVE=1` routes the
-// callers (GitMembership, GitState) to system git instead — the membership pass measures ~8x native
-// (~130ms at 20k files); the status read is pure-JS workdir hashing (statusMatrix, ~55x), the
-// flag's main case on a large repo.
+// Optional in-process Git reads (#461/#463, isomorphic-git + `ignore`). This
+// backend takes an explicit dir and reads no GIT_* env or global/system config.
+// Native Git is the default; PLURNK_SERVICE_GIT_ISO=1 selects this slower
+// portability backend for a deployment that cannot spawn Git.
 
 import git, { STAGE, type WalkerEntry } from "isomorphic-git";
 import fs from "node:fs";
@@ -30,7 +26,7 @@ export class GitIsoError extends Error {
                 : String(cause);
         super(
             `isomorphic-git could not read repository "${root}" while ${operation}: ${detail ?? "unknown failure"}. `
-            + "Set PLURNK_SERVICE_GIT_NATIVE=1 to use the system Git backend.",
+            + "Disable PLURNK_SERVICE_GIT_ISO to use the native Git backend.",
             { cause },
         );
         this.name = "GitIsoError";

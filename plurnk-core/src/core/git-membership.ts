@@ -20,13 +20,12 @@
 //        re-tokenized, and rewritten; an unchanged member is a no-op, and the EMI
 //        divergence rides that same pass. {§membership-change-gated-sync}
 //
-// git resolution is in-process by default (GitIso / isomorphic-git, #461) — portable,
-// sandbox-safe, hermetic by construction. PLURNK_SERVICE_GIT_NATIVE=1 routes to system git
-// (subprocess + hermeticGitEnv, AbortSignal-respecting) — the in-process membership pass
-// measures ~8x native (~130ms at 20k files), so a large-repo host can buy the hot path back.
+// Git resolution uses native Git by default (subprocess + hermeticGitEnv,
+// AbortSignal-respecting). PLURNK_SERVICE_GIT_ISO=1 explicitly selects the
+// slower in-process portability backend for a deployment that cannot spawn Git.
 
 import { execFile } from "node:child_process";
-import { gitOutputMaxBytes, hermeticGitEnv } from "./git-env.ts";
+import { gitOutputMaxBytes, hermeticGitEnv, isomorphicGitEnabled } from "./git-env.ts";
 import GitIso from "./git-iso.ts";
 import { promisify } from "node:util";
 import { readFile, glob, stat } from "node:fs/promises";
@@ -50,9 +49,6 @@ export interface FsDivergence {
     before: string;
     after: string;
 }
-
-// Feature-flag convention: `=== "1"` exactly. Default (unset/0) = the in-process GitIso backend.
-const nativeGit = (): boolean => process.env.PLURNK_SERVICE_GIT_NATIVE === "1";
 
 export default class GitMembership {
     // Workspace creation starts a background warm while the first model turn
@@ -83,11 +79,11 @@ export default class GitMembership {
         return row?.project_root ?? null;
     }
 
-    // Tracked files of one repo, workspace-relative — GitIso.trackedFiles (walk STAGE, blob
-    // entries only) or `git ls-files --stage -z` under the native flag. Either way gitlinks
+    // Tracked files of one repo, workspace-relative - GitIso.trackedFiles (walk STAGE, blob
+    // entries only) or native `git ls-files --stage -z`. Either way gitlinks
     // are filtered: a submodule is a repository boundary, not a file member. Empty → [].
     static async #gitTrackedFiles(root: string, signal: AbortSignal | undefined, cache: object): Promise<string[]> {
-        if (!nativeGit()) return GitIso.trackedFiles(root, cache);
+        if (isomorphicGitEnabled()) return GitIso.trackedFiles(root, cache);
         // NUL-delimited so paths with spaces/newlines survive.
         const { stdout } = await GitMembership.#execFileP("git", ["ls-files", "--stage", "-z"], { cwd: root, signal, maxBuffer: gitOutputMaxBytes(), env: hermeticGitEnv() });
         const files: string[] = [];
@@ -102,18 +98,18 @@ export default class GitMembership {
     }
 
     // Untracked-but-not-ignored files of one repo (SPEC §membership-auto-add) —
-    // GitIso.untrackedFiles (the differential-gated pruning ignore-walk) or `git ls-files
-    // --others --exclude-standard -z` under the native flag. A model-created file is a repo
+    // GitIso.untrackedFiles (the differential-gated pruning ignore-walk) or native `git ls-files
+    // --others --exclude-standard -z`. A model-created file is a repo
     // member the moment it exists — no git-stage required — while `.gitignore` still filters it.
     static async #gitUntrackedFiles(root: string, signal: AbortSignal | undefined, cache: object): Promise<string[]> {
-        if (!nativeGit()) return GitIso.untrackedFiles(root, cache);
+        if (isomorphicGitEnabled()) return GitIso.untrackedFiles(root, cache);
         const { stdout } = await GitMembership.#execFileP("git", ["ls-files", "--others", "--exclude-standard", "-z"], { cwd: root, signal, maxBuffer: gitOutputMaxBytes(), env: hermeticGitEnv() });
         return stdout.split("\0").filter((e) => e.length > 0);
     }
 
     // Resolve a directory to the containing Git repository, or null when absent.
     static async #repoToplevel(dir: string, signal: AbortSignal | undefined): Promise<string | null> {
-        if (!nativeGit()) return GitIso.repoToplevel(dir);
+        if (isomorphicGitEnabled()) return GitIso.repoToplevel(dir);
         try {
             const { stdout } = await GitMembership.#execFileP("git", ["rev-parse", "--show-toplevel"], { cwd: dir, signal, env: hermeticGitEnv() });
             return stdout.trim();

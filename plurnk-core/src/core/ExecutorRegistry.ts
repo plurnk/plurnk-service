@@ -39,7 +39,7 @@ export interface RegistryEntry {
 // Boot-time runtime registry. Discovers installed @plurnk/plurnk-execs-*
 // siblings (plurnk.kind:"exec") and probes each runtime TAG independently —
 // one executor instance per tag (this.runtime = the tag), so a multi-tag
-// package (-common: sh/perl/ruby/…; -git: git/gh) lights up only the tags the
+// package (-common: sh/perl/ruby/...) lights up only the tags the
 // host actually has, instead of stamping all of them with the first tag's
 // probe. Probes are cheap + local (command -v / env read / `gh auth status`),
 // so per-tag costs nothing. A probe that rejects or exceeds its timeout
@@ -85,11 +85,12 @@ export default class ExecutorRegistry {
             console.warn(`exec discovery: '${name}' is discovered but untrusted (PLURNK_PLUGINS_TRUSTED_ONLY); not registered`);
         }
 
-        // #259 — git lockout. PLURNK_SERVICE_GIT_ALLOWED=0 must drop the git/gh executors ENTIRELY (not
-        // just membership + notices): a denied host neither dispatches EXEC[git]/[gh] nor teaches
-        // them (the tools sheet reads the registered set). "No git" then training on git is a break.
+        // #259 - Git lockout. PLURNK_SERVICE_GIT_ALLOWED=0 must drop every
+        // Git-capability executor entirely: a denied host neither dispatches
+        // EXEC[git]/EXEC[isogit] nor teaches them through the tools sheet.
         const gitDenied = process.env.PLURNK_SERVICE_GIT_ALLOWED !== "1";
-        const infos = [...discovered.values()].filter((info) => !(gitDenied && info.packageName === "@plurnk/plurnk-execs-git"));
+        const gitRuntimes = new Set(["git", "isogit"]);
+        const infos = [...discovered.values()].filter((info) => !(gitDenied && gitRuntimes.has(info.runtime)));
 
         // Probe per-TAG: one executor instance per tag (this.runtime = the tag),
         // each probed on its own merits. import() is module-cached, so

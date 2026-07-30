@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { gitOutputMaxBytes, hermeticGitEnv } from "./git-env.ts";
+import { gitOutputMaxBytes, hermeticGitEnv, isomorphicGitEnabled } from "./git-env.ts";
 import GitIso from "./git-iso.ts";
 import { promisify } from "node:util";
 import type { Db } from "./Db.ts";
@@ -14,11 +14,10 @@ export interface GitStatus {
     untracked: number;
 }
 
-// Git working-tree state for the packet: the model's
-// ambient "where am I, what have I touched" without running a command. In-process
-// by default (GitIso / isomorphic-git, #461 — portable, sandbox-safe, hermetic by
-// construction); PLURNK_SERVICE_GIT_NATIVE=1 shells out to system git instead (the
-// same surface git membership routes). Gated by `PLURNK_SERVICE_GIT_ALLOWED` (the
+// Git working-tree state for the packet: the model's ambient "where am I, what
+// have I touched" without running a command. Native Git is the default;
+// PLURNK_SERVICE_GIT_ISO=1 explicitly selects the in-process portability
+// backend. Gated by `PLURNK_SERVICE_GIT_ALLOWED` (the
 // hard service ceiling) + a git worktree. Returns null when git is disabled,
 // headless, or non-git — the status block is then omitted entirely. This is the
 // *state* read; the model's arbitrary git *operations* go through EXEC[git].
@@ -37,7 +36,7 @@ export default class GitState {
         const row = await db.envelope_get_workspace.get<{ project_root: string | null }>({ id: workspaceId });
         const root = row?.project_root ?? null;
         if (root === null) return null;
-        if (process.env.PLURNK_SERVICE_GIT_NATIVE !== "1") {
+        if (isomorphicGitEnabled()) {
             if (await GitIso.repoToplevel(root) === null) return null;
             return GitIso.status(root);
         }

@@ -4,7 +4,7 @@
 // exercised; the rest of the bundle (jq, sqlite, wat/wasm, awk, bc, perl, python, …) went untested.
 //
 // Two axes the suite gets right because the gap hid them: each runtime's output lands on its OWN
-// declared channel (subprocess → stdout; jq/sqlite/wat/git → a JSON `results` channel), and host-effecting
+// declared channel (subprocess and native Git -> stdout; jq/sqlite/wat -> a JSON `results` channel), and host-effecting
 // runtimes PROPOSE (accept) while pure/read ones run INLINE (auto-resolved, no accept). The census
 // REQUIRES every available self-contained tag to be covered, REPORTS the resource-gated ones
 // (mcp needs a server, search is covered in the live tier, wasm needs a compiled module — its
@@ -14,7 +14,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ExecStatement } from "@plurnk/plurnk-grammar";
@@ -115,8 +115,7 @@ const CASES: ReadonlyArray<{ tag: string; body: string; cwd: string | null; expe
 
 // Self-contained batteries tags — runnable deterministically with no external resource. The census
 // REQUIRES every one of these that the host probes available to be covered by this suite (sh is
-// covered by Exec.scheme.test.ts; git — in-process isomorphic-git post-#460, always available,
-// no binary, no auth — by the init→status test below).
+// covered by Exec.scheme.test.ts; native Git is exercised below when its binary is available).
 const SELF_CONTAINED = ["sh", "bash", "node", "awk", "bc", "perl", "python", "jq", "sqlite", "wat", "git"] as const;
 // Resource/binary-gated tags — need a server or a compiled artifact. Reported, not required here:
 // search is exercised in the live tier; wasm needs a compiled module (its compile+run path is
@@ -144,7 +143,6 @@ test("execs batteries: coverage census — every self-contained default-install 
     console.log(`  unavailable in this env: ${unavailable.join(", ") || "(none)"}`);
     assert.deepEqual(uncovered, [], `every AVAILABLE self-contained batteries tag must be covered — uncovered: ${uncovered.join(", ")}`);
     assert.ok(available.has("jq") && available.has("sqlite") && available.has("wat"), "the core batteries executors (jq, sqlite, wat) are discovered and available");
-    assert.ok(available.has("git"), "the in-process git executor is ALWAYS available — no binary, no auth (#460)");
 
     // Channel mimetype shape: a results-returning runtime declares the HONEST JSON family on its channel
     // so consumers route jsonpath/render correctly — sqlite/wat emit a single document (application/json),
@@ -157,6 +155,7 @@ test("execs batteries: coverage census — every self-contained default-install 
     assert.equal(declMime("sqlite"), "application/json", "EXEC[sqlite] results channel is application/json (single document)");
     assert.equal(declMime("wat"), "application/json", "EXEC[wat] results channel is application/json (single document)");
     assert.equal(declMime("jq"), "application/jsonl", "EXEC[jq] results channel is application/jsonl (newline-delimited stream)");
+    assert.equal(declMime("git"), "text/stream", "EXEC[git] exposes the native CLI stdout stream");
     for (const t of ["node", "awk", "bash"]) assert.equal(declMime(t), "text/stream", `EXEC[${t}] stdout channel is text/stream`);
 });
 
@@ -182,21 +181,33 @@ for (const { tag, body, cwd, expect, gate } of CASES) {
     });
 }
 
-test("execs batteries: EXEC[git] init→status — in-process, self-contained, host-gated (#471)", async () => {
-    // Post-#460 the git runtime is isomorphic-git in-process: always available (no binary, no
-    // auth), one verb per body, results as JSON. effect stays `host` (mutating verbs exist), so
-    // every git op PROPOSES — runExec accepts. The repo persists on disk between the two dispatches.
+test("execs batteries: EXEC[git] preserves native checkout argv through the assembled scheme path", async (t) => {
+    const registry = await testExecutors();
+    if (!registry.availableRuntimes().includes("git")) {
+        t.skip("native Git is not available on PATH");
+        return;
+    }
     const repo = mkdtempSync(join(tmpdir(), "plurnk-batt-git-"));
     const init = await runExec("git", "init", repo);
     assert.equal(init.status, 200, "EXEC[git]:init dispatches 200");
-    assert.equal(init.inline, false, "git is host-effecting — proposes, never inline");
-    assert.deepEqual(JSON.parse(init.out), { initialized: repo }, "init reports the repo it created");
-    const status = await runExec("git", "status", repo);
-    assert.equal(status.status, 200, "EXEC[git]:status dispatches 200");
-    const parsed = JSON.parse(status.out) as { branch: string; changes: unknown[] };
-    assert.equal(typeof parsed.branch, "string", "status names the branch");
-    assert.deepEqual(parsed.changes, [], "a fresh empty repo has zero changes — deterministic");
-    assert.equal(status.mimetype, "application/json", "git results channel carries JSON");
+    assert.equal(init.inline, false, "native Git is host-effecting and proposal-gated");
+    assert.equal(init.mimetype, "text/stream", "native Git stdout is a text stream");
+    assert.equal((await runExec("git", "config user.email fixture@plurnk.invalid", repo)).status, 200);
+    assert.equal((await runExec("git", 'config user.name "Plurnk Fixture"', repo)).status, 200);
+    writeFileSync(join(repo, "fixture.txt"), "fixture\n");
+    assert.equal((await runExec("git", "add fixture.txt", repo)).status, 200);
+    assert.equal(
+        (await runExec("git", '-c commit.gpgsign=false commit --no-verify -m "fixture"', repo)).status,
+        200,
+    );
+    assert.equal(
+        (await runExec("git", "checkout -b feature/module-loading", repo)).status,
+        200,
+        "native checkout -b is not translated into a different command",
+    );
+    const branch = await runExec("git", "branch --show-current", repo);
+    assert.equal(branch.status, 200);
+    assert.equal(branch.out.trim(), "feature/module-loading");
 });
 
 test("an unregistered executable tag fails without shell reinterpretation", async () => {

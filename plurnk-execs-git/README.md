@@ -1,33 +1,31 @@
 # @plurnk/plurnk-execs-git
 
-In-process git runtime executor for [plurnk-service](https://github.com/plurnk/plurnk-service)'s `exec` scheme — [isomorphic-git](https://github.com/isomorphic-git/isomorphic-git), **no subprocess**. `EXEC[git]` is the sandbox-portable versioning surface: version control that survives a deployment disabling `sh`, with zero shell-escape surface (no aliases, hooks, pagers — there is no process to escape into).
+Native Git for [Plurnk Service](https://github.com/plurnk/plurnk-service)'s
+EXEC scheme. `EXEC[git]` invokes the installed `git` binary with ordinary Git
+arguments. Arguments are tokenized into argv and executed directly, never
+interpreted by a shell.
 
-Built on the [plurnk-execs](https://github.com/plurnk/plurnk-service/tree/main/plurnk-execs) framework (#460, DIVERGENCES #15).
+## Contract
 
-## The contract
+- `git` means native Git. Plurnk does not replace or reinterpret its commands.
+- Native stdout and stderr are preserved as stream channels.
+- `(target)` names the repo directory and maps to Git's `-C` option.
+- An unavailable Git binary makes the runtime unavailable; there is no fallback.
+- Every invocation is host-effecting and follows the normal proposal policy.
 
-- **`EXEC[git]` = the safe subset.** A deliberately limited verb set (`init` / `status` / `add` / `commit` / `log` / `branch` / `checkout`) mapped onto the isomorphic-git API, in-process. Results are JSON on `#results`.
-- **Full git = the shell.** `<<EXEC:git rebase -i …:EXEC` rides the sh fallthrough and works only where the deployment grants a shell. Sandboxes can't do everything — that's the design, not a gap.
-- The old `gh` tag is gone (a CLI wrapped as a CLI adds nothing over the fallthrough); GitHub work rides the shell.
+Git may invoke repository hooks, aliases, credential helpers, and network
+operations. Deployments that do not grant those capabilities should disable the
+runtime with `PLURNK_EXECS_GIT=0`.
 
 ## Usage
 
-```
-<<EXEC[git]:status:EXEC
+```plurnk
+<<EXEC[git]:status --short:EXEC
+<<EXEC[git]:checkout -b feature/example:EXEC
 <<EXEC[git]:add .:EXEC
 <<EXEC[git]:commit -m "save work":EXEC
-<<EXEC[git](./subrepo):log -n 5:EXEC
+<<EXEC[git](./subrepo):log --oneline -5:EXEC
 ```
 
-`(target)` is the repo directory (default: the workspace workspace). Commit author comes from the repo's own `user.name`/`user.email` config — never invented; unset fails with `git_no_author`.
-
-## Availability & gating
-
-`probe()` is always available — in-process, nothing on PATH to check. Every op
-is `effect → host` (proposal-gated): mutating verbs exist and `effect()` never
-inspects the command. Failures return RFC 9457 Problems in the terminal
-operation result.
-
-## Tests
-
-`test:lint`, `test:unit` — the unit suite drives real temp-dir repos end-to-end.
+The repo's normal Git configuration determines author identity and other native
+behavior.

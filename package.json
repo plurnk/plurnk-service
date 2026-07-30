@@ -38,6 +38,7 @@
         "plurnk-execs-search",
         "plurnk-execs-mcp",
         "plurnk-execs-git",
+        "plurnk-execs-isogit",
         "plurnk-execs-jq",
         "plurnk-execs-sqlite",
         "plurnk-execs-wasm",

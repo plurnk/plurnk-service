@@ -1,7 +1,6 @@
-// Ambient GIT_* is scrubbed at the one boundary that spawns git — post-#461 that boundary is
-// the PLURNK_SERVICE_GIT_NATIVE=1 arm (GitMembership/GitState routing to system git) plus the
-// intg git fixtures; the default GitIso backend never spawns and never reads env, so it needs
-// none of this. A process launched from a git hook inherits GIT_DIR — ABSOLUTE in a worktree
+// Ambient GIT_* is scrubbed at every core boundary that spawns native Git. The
+// explicitly selected GitIso backend never spawns and never reads env. A
+// process launched from a git hook inherits GIT_DIR - ABSOLUTE in a worktree
 // checkout — which retargets every child git at the enclosing repo regardless of cwd (#401:
 // the pre-push drill's fixture seeds stacked onto lane branches and deleted tracked files; a
 // hook-launched daemon would misread project git state the same way). Git resolves everything
@@ -21,6 +20,11 @@ export const hermeticGitEnv = (): NodeJS.ProcessEnv => ({
     GIT_CONFIG_GLOBAL: "/dev/null",
     GIT_CONFIG_SYSTEM: "/dev/null",
 });
+
+// Native Git is the default. Isomorphic Git is an explicit portability option,
+// never an automatic fallback for an absent or failed native binary.
+export const isomorphicGitEnabled = (): boolean =>
+    process.env.PLURNK_SERVICE_GIT_ISO === "1";
 
 export const gitOutputMaxBytes = (): number => {
     const value = Number(process.env.PLURNK_SERVICE_GIT_OUTPUT_MAX_BYTES);
