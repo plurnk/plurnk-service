@@ -2,6 +2,7 @@ import { spawn, spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { resolveCandidateModel } from "./candidate-model.mjs";
+import { parseCandidateClientEnv } from "./candidate-env.mjs";
 
 const root = resolve(import.meta.dirname, "..");
 const clientRoot = resolve(process.env.PLURNK_CLIENT_CHECKOUT ?? resolve(root, "..", "plurnk"));
@@ -17,6 +18,7 @@ const candidateEnv = {
     ...process.env,
     ...(candidateModel === undefined ? {} : { PLURNK_MODEL: candidateModel }),
 };
+const clientEnv = parseCandidateClientEnv(process.env.PLURNK_CANDIDATE_CLIENT_ENV);
 writeFileSync(resolve(stateDir, "command"), `${process.argv.join(" ")}\n`);
 
 const run = (command, args, cwd) => {
@@ -103,6 +105,7 @@ client = spawn(
         cwd: process.cwd(),
         env: {
             ...candidateEnv,
+            ...clientEnv,
             PLURNK_HOST: address.host,
             PLURNK_PORT: address.port,
         },
