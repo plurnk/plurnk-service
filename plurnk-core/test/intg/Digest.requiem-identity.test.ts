@@ -121,6 +121,7 @@ test("[#561] the requiem interview identifies as its own root - primaryWorkerId 
     assert.match(call.messages[1]?.content ?? "", /missing PLAN/);
     assert.match(call.messages[1]?.content ?? "", /accepted bytes/);
     assert.match(call.messages[1]?.content ?? "", /accepted reasoning/);
+    assert.match(call.messages[1]?.content ?? "", /what made acting seem unsafe, premature, or unclear/);
 
     const requiem = readFileSync(path, "utf8");
     assert.match(requiem, /the testimony/, "the testimony was written");

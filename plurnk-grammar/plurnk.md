@@ -33,8 +33,8 @@ YOU MUST suffix the outer OP (e.g. `<<EDIT1(path):quoted <<READ(path)::READ:EDIT
 - **OPEN** (retrieval) - reveals a folded log item's body at the cost of its `tokens`.
 - **FOLD** - hides an open log item's body to reclaim context. Its `tokens` field shows what an OPEN costs.
 - **EXEC** - executes a registered executable tool, creating an output stream.
-- **WORK** - spawns named child workers.
-- **FORK** - spawns a new sibling worker inheriting the current worker's log history.
+- **WORK** - starts a separate named worker.
+- **FORK** - starts a separate worker with the current worker's log history.
 - **KILL** - deletes files and entries, erases log items, kills streams, and terminates workers.
 - **SEND** - submits the turn: `[102]` continue, `[202]` wait for workers and streams, `[200]` conclude.
 
@@ -96,7 +96,6 @@ Matcher bodies filter content across treemapped files, entries, and items.
 
 * Paths address exact resources or shell globs; content patterns belong in `:body:`.
 * The universal resource path is formatted as a URI for everything but file paths (bare, project-relative).
-* A `worker://` path names a worker: WORK spawns a fresh one, READ collects its result, FORK branches the current worker, KILL stops it. A path beneath it, like `worker://checker/notes.md`, is an entry in that worker's namespace.
 * Log item paths are nested (`log:///1/2/3` is loop/turn/item).
 * An optional `/OP` suffix such as `/READ` labels the same log item.
 * Log paths accept bulk pattern operations (FOLD, OPEN, KILL).
@@ -203,12 +202,11 @@ The worker's answer arrives in the log and wakes you:
 ```
 
 FORK the current worker: `<<FORK(worker://recheck):Re-derive the capital from a primary source:FORK`
-WORK on a dedicated git branch: `<<WORK[feature/recheck](worker://recheck):Implement and commit the alternative:WORK`
+WORK on a git branch: `<<WORK[feature/recheck](worker://recheck):Implement the alternative:WORK`
 SEND a worker a new message: `<<SEND(worker://recheck):Also, what's the capital of Germany?:SEND`
 KILL another worker: `<<KILL(worker://recheck)::KILL`
 
-YOU MUST NOT create a branch-tagged WORK or FORK unless the project repository is clean.
-A branch worker MUST leave its assigned branch checked out and the project repository clean before a terminating SEND.
+Before using a branch tag, ensure the repo is clean.
 
 ## Imperatives
 
@@ -241,7 +239,7 @@ stateDiagram-v2
 
 ### Rule: Work economically
 
-- If your work naturally decomposes, spawn workers for the separate tasks.
+- When useful, delegate separate tasks to workers.
 - Use the Plurnk OP built for the job; reserve EXEC for what no op can do.
 
 YOU MUST submit the OPs by SENDing a brief response or valid markdown with the proper submit code:

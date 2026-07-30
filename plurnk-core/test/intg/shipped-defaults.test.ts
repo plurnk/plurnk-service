@@ -91,6 +91,11 @@ test("under the shipped policy wiring, the personality renders in the packet exa
             /You curate your own context|FOLD targets|folding reclaims their tokens|preserve headroom|KILLing irrelevant|FOLD or KILL irrelevant/i,
             "the assembled packet contains no ambient context-curation command",
         );
+        assert.doesNotMatch(
+            packetSection(packet, "system-policy"),
+            /keep implementation, specification, documentation, and coverage aligned/i,
+            "the general worker policy does not expand every task into a four-lane maintenance obligation",
+        );
         // And the turn-0 foists contain no POLICY doc READ — the doc path is retired for the policy.
         const rows = await db.test_log_sequencees_by_turn.all<{ op: string; pathname: string | null }>({ turn_id: result.turnId });
         assert.ok(!rows.some((r) => r.op === "READ" && (r.pathname ?? "").includes("POLICY")), "no foisted plurnk:///POLICY.md READ");
