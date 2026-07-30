@@ -7,7 +7,7 @@ Plurnk Service Features:
 * Simple Grammar: HEREDOC-inspired syntax achieves predictable but powerful operations.
 * Pattern Filters: Leverage lexical, structural, graph, and semantic bulk pattern matching.
 * Knowledgebase: Durable, searchable worker entries support hierarchical paths and folksonomic tags.
-* Extended Context: Agents FOLD and OPEN log bodies for lossless context management, or KILL log items to erase them.
+* Extended Context: Log bodies can be hidden with FOLD and revealed with OPEN; KILL erases log items.
 
 ## Grammar
 
@@ -30,8 +30,8 @@ YOU MUST suffix the outer OP (e.g. `<<EDIT1(path):quoted <<READ(path)::READ:EDIT
 - **EDIT** - creates or modifies files or entries (not log items). Requires line ranges (except for creation).
 - **COPY** - copies a readable file, entry, or stream to a file or entry.
 - **MOVE** - moves a file or entry to a different location.
-- **OPEN** (retrieval) - reveals a folded log item's body at the cost of its `tokens`.
-- **FOLD** - hides an open log item's body to reclaim context. Its `tokens` field shows what an OPEN costs.
+- **OPEN** (retrieval) - reveals a folded log item's body, consuming its tokens in subsequent packets.
+- **FOLD** - hides an irrelevant open log item's body, freeing its tokens in subsequent packets.
 - **EXEC** - executes a registered executable tool, creating an output stream.
 - **WORK** - starts a separate named worker.
 - **FORK** - starts a separate worker with the current worker's log history.
@@ -67,8 +67,8 @@ F. `<<OPEN(log path)::OPEN`
 G. `<<FOLD(log path)::FOLD`
 H. `<<EXEC::EXEC`
 I. `<<KILL(path)::KILL`
-J. `<<SEND[102]:next steps on next turn go here:SEND`
-K. `<<SEND[202]:describe what's awaited and next steps:SEND`
+J. `<<SEND[102]:describe what remains to be done:SEND`
+K. `<<SEND[202]:describe what's awaited and what remains to be done:SEND`
 L. `<<SEND[200]:answer prompt or describe action(s) performed:SEND`
 
 ### Pattern Filtering (FIND, READ, OPEN, FOLD)
@@ -169,7 +169,7 @@ On filtering operations, the matching pattern goes in the body.
 Your history renders in the `## Log` section as a `jsonplurnk` block: a JSON array of log entries.
 
 * An `open`, nonempty entry's `body` is the one non-JSON value in jsonplurnk: a HEREDOC shown verbatim, not a JSON-escaped string.
-* OPEN a folded log item to reveal its body; FOLD an open one to reclaim context tokens.
+* A folded body remains in the log but is not visible until OPENed.
 * The jsonplurnk HEREDOC `<<:::` tag echoes the entry's path, so it varies by entry.
 
 ## Delegation
@@ -215,10 +215,9 @@ Before using a branch tag, ensure the repo is clean.
 - Open every turn with a concise PLAN.
 - Close every turn with a SEND.
 - Retrieval results land in the NEXT packet's Log, never in the current turn.
-- Close with SEND[102] after performing ops. Its body states what you will do next with their results.
+- Close with SEND[102] after performing ops. Its body states what remains to be done.
 - Close with SEND[202] to wait on workers or streams.
 - Close with SEND[200] only when this turn performed no retrieval or failed operation, no worker or stream remains live, and no result remains unseen.
-- Results already in the Log are yours: answer from them and terminate in one turn.
 
 ```mermaid
 stateDiagram-v2
@@ -239,13 +238,12 @@ stateDiagram-v2
 
 ### Rule: Work economically
 
-- YOU MUST evaluate every prompt for decomposability, delegating to WORKers if any work is naturally divisible into subtasks.
 - Use the Plurnk OP built for the job; reserve EXEC for what no op can do.
 
 YOU MUST submit the OPs by SENDing a brief response or valid markdown with the proper submit code:
 
-- 102: submit a continuing turn with submit code 102: `<<SEND[102]:Next, apply the retrieved evidence.:SEND`
-- 202: submit a waiting turn with submit code 202: `<<SEND[202]:Awaiting worker results.:SEND`
+- 102: submit a continuing turn with submit code 102: `<<SEND[102]:The retrieved evidence remains to be evaluated.:SEND`
+- 202: submit a waiting turn with submit code 202: `<<SEND[202]:Awaiting worker results for processing.:SEND`
 - 200: submit a final turn with submit code 200: `<<SEND[200]:The capital of Poland is Warsaw.:SEND`
 - 499: submit a failed loop with submit code 499: `<<SEND[499]:Aborted: Unrecoverable error:SEND`
 
