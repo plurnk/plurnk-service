@@ -105,11 +105,11 @@ test("client input failures are exact RFC 9457 operation failures", () => {
         },
         {
             run: () => ClientInput.parseSettings({
-                execs: { PLURNK_EXECS_MCP_PRIVATE_HEADERS: "{}" },
+                execs: { PLURNK_MCP_PRIVATE_HEADERS: "{}" },
             }),
             code: "mcp-configuration-forbidden",
             context: "workspace.create",
-            field: "settings.execs.PLURNK_EXECS_MCP_PRIVATE_HEADERS",
+            field: "settings.execs.PLURNK_MCP_PRIVATE_HEADERS",
         },
         {
             run: () => ClientInput.parseSettings("{"),

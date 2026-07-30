@@ -33,8 +33,7 @@ import Fork from "../core/fork.ts";
 import LoopLifecycle from "../core/LoopLifecycle.ts";
 import { promptLoopPrefix } from "../core/plurnk-uri.ts";
 import { rulerCount } from "../core/token-ruler.ts";
-import type { Executor, RegistryEntry } from "../core/ExecutorRegistry.ts";
-import type { RuntimeDecl, RuntimeAvailability } from "@plurnk/plurnk-execs";
+import type { RegistryEntry } from "../core/ExecutorRegistry.ts";
 import { parseAliasesFromEnv, resolveActiveAlias } from "@plurnk/plurnk-providers";
 import ProviderInstantiate from "../core/ProviderInstantiate.ts";
 import { resolveLoopAlias } from "./loop-model.ts";
@@ -46,6 +45,13 @@ import Results, { OperationFailureError, type SchemeResult } from "../core/resul
 import WorkspaceGate from "../core/WorkspaceGate.ts";
 import BranchBatches from "./BranchBatches.ts";
 import ErrorDetail from "../core/ErrorDetail.ts";
+import type {
+    DaemonModule,
+    ModuleActionHandler,
+    ModuleSetupSeam,
+    RuntimeRegistration,
+    StartedModule,
+} from "./DaemonModule.ts";
 
 const clientActionFailure = (error: unknown): SchemeResult => {
     if (error instanceof OperationFailureError) return error.result;
@@ -115,6 +121,10 @@ export default class Daemon {
     #nodeModulesPath: string;
     #discoveryCwd: string;
     #started = false; // start() runs once — boots discovery + plugin modules (#364: no listener, ever)
+    #capabilitiesPublished = false;
+    #modules: Array<DaemonModule<CoreSeam>> = [];
+    #moduleClosers: StartedModule[] = [];
+    #moduleActions = new Map<string, ModuleActionHandler>();
     // The emit half of the broadcast, exposed as an in-process event source (#355). A transport
     // module (plurnk-agui) subscribes and fans out to its OWN clients; core emits, never owns
     // client transport or connection state.
@@ -1033,35 +1043,56 @@ export default class Daemon {
         return { workerId: branchWorkerId, workerName: branch?.name ?? null, parentWorkerId: workerId };
     }
 
-    // The module-load hook (#355 / #289) — register a runtime into the live registry, driver-agnostic:
-    // the kernel knows nothing about MCP or any specific driver. The struct is the booth window agreed
-    // with the execs agent (execs-mcp installServer's hotload callback): framework types only — the decl
-    // (tag + glyph/example/documentation), the executor, the driver's probe result. RegistryEntry never
-    // leaves the kernel; it's wrapped here, mirroring boot. The engine's scheme-face arbitration
-    // (reserved / cross-family collision, #240) gates the tag before registering.
-    hotloadRuntime(reg: { decl: RuntimeDecl; executor: Executor; availability: RuntimeAvailability }): void {
-        const { decl, executor, availability } = reg;
-        this.#engine.hotloadRuntime(decl.name, {
+    async registerRuntime({ decl, executor, availability, scheme }: RuntimeRegistration): Promise<void> {
+        this.#engine.registerRuntime(decl.name, {
             executor,
             glyph: decl.glyph ?? "",
             example: decl.example ?? "",
             documentation: decl.documentation ?? "",
             available: availability.available,
             detail: availability.detail,
-        } satisfies RegistryEntry);
+        } satisfies RegistryEntry, scheme);
+        if (this.#capabilitiesPublished) {
+            for (const workspace of await Envelope.listWorkspaces(this.#db)) {
+                await LoopDocs.materialize(this.#engine, this.#db, workspace.id);
+            }
+        }
+    }
+
+    async registerScheme(name: string, handler: object): Promise<void> {
+        this.#schemes.register(name, handler);
+        if (this.#capabilitiesPublished) {
+            const ready = (handler as { ready?: () => Promise<void> }).ready;
+            if (ready !== undefined) await ready.call(handler);
+            for (const workspace of await Envelope.listWorkspaces(this.#db)) {
+                await LoopDocs.materialize(this.#engine, this.#db, workspace.id);
+            }
+        }
+    }
+
+    registerModuleAction(name: string, handler: ModuleActionHandler): void {
+        if (name.length === 0) throw new Error("registerModuleAction: action name must not be empty");
+        if (this.#moduleActions.has(name)) throw new Error(`module action '${name}' is already registered`);
+        this.#moduleActions.set(name, handler);
+    }
+
+    listModuleActions(): string[] {
+        return [...this.#moduleActions.keys()].toSorted();
+    }
+
+    async invokeModuleAction(name: string, params: Readonly<Record<string, unknown>>): Promise<unknown> {
+        const handler = this.#moduleActions.get(name);
+        if (handler === undefined) throw new Error(`module action '${name}' is not registered`);
+        return handler(params);
     }
     get engine(): Engine { return this.#engine; }
     get provider(): Provider | null { return this.#provider; }
     get schemes(): SchemeRegistry { return this.#schemes; }
     get mimetypes(): Mimetypes { return this.#mimetypes; }
 
-    // The boot plug-point (#355 hook D) — register a plugin module before start(); its init runs at
-    // boot with the curated CoreSeam handle, where it opens its own transport/listener. Direct wiring, no
-    // plugin-kind abstraction: a second transport earns one if it ever appears. "Here's your handle."
-    // The init's return value is ignored — a module may hand back its instance (or nothing).
-    #moduleInits: Array<(seam: CoreSeam) => unknown> = [];
-    registerModule(init: (seam: CoreSeam) => unknown): void {
-        this.#moduleInits.push(init);
+    registerModule(module: DaemonModule<CoreSeam>): void {
+        if (this.#started) throw new Error("registerModule: modules must be registered before daemon start");
+        this.#modules.push(module);
     }
 
     async start(): Promise<void> {
@@ -1084,6 +1115,11 @@ export default class Daemon {
         // (agnostic, by plurnk.kind:"scheme"). They light up http://, etc. with
         // no further engine change — #run wraps their ctx in SchemeCtxImpl (#195).
         await this.#schemes.discoverExternal(this.#discoveryCwd);
+        const setupSeam: ModuleSetupSeam = this;
+        for (const module of this.#modules) {
+            if (module.close !== undefined) this.#moduleClosers.push(module as StartedModule);
+            await module.setup?.(setupSeam);
+        }
         await this.#schemes.ready();
 
         // Reconcile the kernel-published documentation surface once per existing workspace.
@@ -1092,11 +1128,18 @@ export default class Daemon {
         for (const workspace of await Envelope.listWorkspaces(this.#db)) {
             await LoopDocs.materialize(this.#engine, this.#db, workspace.id);
         }
+        this.#capabilitiesPublished = true;
 
         await this.#recoverLifecycle();
 
-        // #364 — the daemon opens NO transport, ever: plugin modules open theirs via the seam.
-        for (const init of this.#moduleInits) await init(this);
+        // #364 — the daemon opens no transport. Modules start their listeners only
+        // after capability publication and durable lifecycle recovery are complete.
+        for (const module of this.#modules) {
+            const started = await module.start?.(this);
+            if (started !== undefined && !this.#moduleClosers.includes(started)) {
+                this.#moduleClosers.push(started);
+            }
+        }
     }
 
     async #recoverLifecycle(): Promise<void> {
@@ -1139,6 +1182,15 @@ export default class Daemon {
         if (!this.#started) return;
         this.#started = false;
 
+        // Stop accepting external work immediately, but do not await listener
+        // closure before cancelling active runs: an SSE connection may itself be
+        // waiting for the run cancellation that follows.
+        const moduleClose = Promise.allSettled(
+            this.#moduleClosers
+                .toReversed()
+                .map((module) => Promise.resolve().then(() => module.close())),
+        );
+        this.#moduleClosers = [];
 
         // Drain order: (1) abort in-flight loops via #activeDrains so
         // strike paths don't keep going, (2) await each drain's promise
@@ -1166,9 +1218,14 @@ export default class Daemon {
         await this.#branchBatches.idle();
         const drainPromises = [...this.#activeDrains.values()].map((d) => d.promise);
         await Promise.allSettled(drainPromises);
+        const closeResults = await moduleClose;
         await this.#drainStreamingSchemes();
         await this.#engine.drainDerivations(); // active workspace warms finish before the db closes upstream
         await this.#schemes.close();
+        const closeErrors = closeResults
+            .filter((result): result is PromiseRejectedResult => result.status === "rejected")
+            .map((result) => result.reason);
+        if (closeErrors.length > 0) throw new AggregateError(closeErrors, "daemon module shutdown failed");
     }
 
     // Per-scheme idle awaits for clean shutdown. New streaming schemes
@@ -2010,5 +2067,5 @@ export type CoreSeam = Pick<Daemon,
     | "listProviders" | "listWorkspaces" | "listWorkers" | "listPrompts" | "listMembers" | "listConstraints" | "workspaceDerivationStatus"
     | "createWorkspace" | "attachWorkspace" | "createConversationWorker" | "renameWorkspace" | "constrain" | "unconstrain"
     | "forkWorker"
-    | "hotloadRuntime"
+    | "listModuleActions" | "invokeModuleAction"
 >;

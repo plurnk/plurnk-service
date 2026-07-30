@@ -29,8 +29,8 @@ test("loop.run accepts immediately (100); the loop's outcome arrives via loop/te
             // catalog is FIND-served), plus 11 docs: the 3 non-excluded in-tree schemes (log/worker/prompt
             // — file/exec dropped by the default PLURNK_SERVICE_DOCS_EXCLUDE, skill excluded too), the
             // boot-discovered `http` + `wss` externals (#473), and sh/node/sqlite/git/jq —
-            // executor docs the execs family ships. MCP servers are dynamic executor tags,
-            // not a generic scheme document. 2 + 10 = 12.
+            // executor docs the execs family ships. Configured protocol modules add their own
+            // runtime docs only when present. 2 + 10 = 12.
             assert.equal(entryCount, 12);
         } finally { ws.close(); }
     });

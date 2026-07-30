@@ -467,10 +467,9 @@ export default class ClientInput {
             }
             out.client = r.client;
         }
-        // #328 — the client's resolved PLURNK_EXECS_* policy subset, verbatim key→value, fed to execs'
+        // #328 - the client's resolved PLURNK_EXECS_* policy subset, verbatim key->value, fed to execs'
         // Policy as the per-workspace client layer (subtractive: narrows the boot-registered set, never
-        // widens). PLURNK_EXECS_MCP_* (server URLs + _HEADERS tokens) MUST NOT ride the wire — refused
-        // here as defense-in-depth even though the client already excludes them (the bare MCP toggle stays).
+        // widens). MCP connection configuration is daemon-owned and never workspace policy.
         if (r.execs !== undefined) {
             if (typeof r.execs !== "object" || r.execs === null || Array.isArray(r.execs)) {
                 ClientInput.#invalid(
@@ -485,20 +484,20 @@ export default class ClientInput {
             }
             const execs: Record<string, string> = {};
             for (const [k, v] of Object.entries(r.execs as Record<string, unknown>)) {
+                if (/^PLURNK_(?:EXECS_)?MCP_/i.test(k)) {
+                    ClientInput.#invalid(
+                        "workspace.create",
+                        "mcp-configuration-forbidden",
+                        `settings.execs key '${k}' contains MCP server configuration rather than workspace policy.`,
+                        { field: `settings.execs.${k}`, recovery: "Configure MCP servers outside workspace settings." },
+                    );
+                }
                 if (!/^PLURNK_EXECS_[A-Za-z0-9_]+$/.test(k)) {
                     ClientInput.#invalid(
                         "workspace.create",
                         "setting-key-invalid",
                         `settings.execs key '${k}' is not a PLURNK_EXECS_* flag.`,
                         { field: `settings.execs.${k}`, recovery: "Use a PLURNK_EXECS_* policy key." },
-                    );
-                }
-                if (/^PLURNK_EXECS_MCP_/i.test(k)) {
-                    ClientInput.#invalid(
-                        "workspace.create",
-                        "mcp-configuration-forbidden",
-                        `settings.execs key '${k}' contains MCP server configuration rather than workspace policy.`,
-                        { field: `settings.execs.${k}`, recovery: "Configure MCP servers outside workspace settings." },
                     );
                 }
                 if (typeof v !== "string") {

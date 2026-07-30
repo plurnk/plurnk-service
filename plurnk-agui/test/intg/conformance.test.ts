@@ -25,8 +25,12 @@ test("the official @ag-ui/client accepts the full stream (create-ag-ui-app confo
     const provider = await liveProvider();
     const daemon = new Daemon({ db, provider, nodeModulesPath: join(SERVICE, "node_modules") });
     let module: Module | null = null;
-    daemon.registerModule(async (seam: DaemonSeam) => {
-        module = await Module.init({ host: "127.0.0.1", port: 0 })(seam);
+    const registration = Module.init({ host: "127.0.0.1", port: 0 });
+    daemon.registerModule({
+        start: async (seam: DaemonSeam) => {
+            module = await registration.start(seam);
+            return module;
+        },
     });
     await daemon.start({ host: "127.0.0.1", port: 0 });
     const addr = (module as Module | null)?.address();

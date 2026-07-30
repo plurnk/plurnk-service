@@ -132,7 +132,10 @@ The executor's only scheme-facing contribution is a **derived manifest** — `Ou
 
 **No executor read-face; no per-runtime read, no orientation receipt.** `BaseExecutor` implements no `read`/`find`, and none is wired downstream — not one sibling in the family overrides them (the "rich" `sqlite`/MCP included), and the consumer's per-tag scheme serves every READ through its single `DefaultRead` resolver (which holds the `Mimetypes` instance + output store the executor never sees) over the stored entry. Orientation is **model-pulled**: the model probes an output's shape by querying the entry (FIND / READ with jsonpath / glob / line-range) against the neutral `{ mimetype, tokens, lines }` every entry carries, pulling only the slice it wants. An engine-pushed shape digest *is* the catalog-as-index the paradigm forbids ("the instant it did, it would be an index again") — so there is none, and the answer to service#240's *"where is the OrientIndex receipt built?"* is **nowhere; nothing builds one.** A `<tag>://` entry is folded by default, so output never floods context regardless; the one real risk — a chatty runtime filling sqlite — is a daemon storage-cap concern, not an executor one.
 
-MCP is the proof, not the exception: `plurnk-execs-mcp` is a plain producer — `run()` calls the tool and writes its JSON result to a `results` channel, exactly as `search` writes `results` — with no `read`, no `find`, no summary. Bring a need and it maps onto the log; the log paradigm already orients, and the executor never curates.
+Module-owned executors are not exceptions: `run()` writes results through declared
+channels exactly like an installed executor. A module may also register a
+separate same-name resource facet, but unclaimed executor-output coordinates
+still use the consumer's uniform entry machinery.
 
 **Entry materialization is a sink, not a substrate breach (execs#18 / service#340).** `ExecArgs.entry?(path, content, { tags, mimetype }) → Promise<void>` lets an executor *request* that the consumer materialize a substrate entry — the same shape as `write`/`emit` (consumer-implemented callbacks; the executor never touches storage, tagging, or announcement machinery). The consumer creates the entry, applies the tags, and announces it through its ambience as a **folded** row (the meta line carries path + tokens; page-scale bodies never ride a wake packet). Consumer collision semantics: upsert content, union tags, bump freshness. A rejected `entry()` means only *not materialized*; it does not invalidate upstream discovery metadata. The sink is optional: absent, producers degrade gracefully without a materialization verdict. This closed the gap that §2.6's earlier absolutism forced on the search flow (a double-fetch dance routed around the missing sink); the principle — executors own zero substrate machinery — is unchanged.
 
@@ -167,11 +170,13 @@ Each entry's optional **`documentation`** is full markdown — the flags, modes,
 
 ### §3.1 Dynamic runtimes (per-deployment tags)
 
-A package whose tags are not known at publish time — the MCP bridge is the motivating case, where each tag is a per-deployment MCP **server** an operator configures in the environment (plurnk-execs#10) — declares **`plurnk.runtimesModule`** (an export subpath, resolved through the package's export map) **instead of** a static `plurnk.runtimes[]`:
+A plugin package whose tags are not known at publish time declares
+**`plurnk.runtimesModule`** (an export subpath, resolved through the package's
+export map) **instead of** a static `plurnk.runtimes[]`:
 
 ```json
 {
-    "name": "@plurnk/plurnk-execs-mcp",
+    "name": "@acme/executor-fleet",
     "plurnk": { "kind": "exec", "runtimesModule": "./runtimes" }
 }
 ```
@@ -191,7 +196,7 @@ Each runtime package's **default export** is its `BaseExecutor` subclass (also a
 
 ### §3.2 Activation (Active / Available)
 
-Discovery answers *what is installed/configured*; **activation** answers *what is offered to the model right now*. They are distinct axes and must not be conflated — `discover()` stays static truth, activation is a runtime overlay the consumer owns on top of it (plurnk-execs#10). This generalizes across the **shared exec/scheme namespace**: a registered capability is a tag claimed once that is both `EXEC[tag]` and `tag://`, and activation operates on it whichever family it came from. MCP is not a category here — it is one *route* for registering a capability (alongside package discovery and env), so its tags activate by the same rules as any other.
+Discovery answers *what is installed/configured*; **activation** answers *what is offered to the model right now*. They are distinct axes and must not be conflated - `discover()` stays static truth, activation is a runtime overlay the consumer owns on top of it (plurnk-execs#10). This generalizes across the **shared exec/scheme namespace**: a registered capability is a tag claimed once that is both `EXEC[tag]` and `tag://`, and activation operates on it whichever family it came from. Daemon-module registration is another route into the same namespace, not another executor category.
 
 **Two states, no third.** A registered capability is **Active** (in the `# Plurnk System Tools` sheet, dispatchable) or **Available** (registered, inert). "Disabled" is the *verb* (Active→Available), not a state. The consumer's capability sheet surfaces two buckets:
 
@@ -206,18 +211,22 @@ This split *is* the progressive disclosure that bounds the sheet: N available se
 |---|---|---|
 | Installed package (boot discovery) | first-party (`@plurnk/*`) | **Active** |
 | Installed package (boot discovery) | third-party | **Available** |
-| Env-declared (e.g. `PLURNK_EXECS_MCP_<server>`, model-alias style) | — | **Available** |
-| Runtime hotload (`/mcp`, gated — below) | — | **Active** on add |
+| Daemon-module registration | module-owned | **Active** when available |
 
-The principle: *Active = the operator unambiguously committed this capability ON* (installed a first-party package; explicitly hotloaded). Configuring connection details (env) or installing a third-party package is the lighter act → Available, opt-in. Mirrors `PLURNK_MODEL_*` — declare many aliases, activate a subset.
+The principle: *Active = the operator unambiguously committed this capability ON* through an installed first-party package or a configured daemon module. Installing a third-party package is the lighter act -> Available, opt-in.
 
-**Reachability is orthogonal.** Whether a capability is Active/Available (activation) is independent of whether it is reachable/unreachable (the §2.2 `probe()` health flag). A configured MCP server that is down is *Available but unreachable*. Do not overload "available" across the two axes.
+**Reachability is orthogonal.** Whether a capability is Active/Available (activation) is independent of whether it is reachable/unreachable (the §2.2 `probe()` health flag). Do not overload "available" across the two axes.
 
 **Capability vs substrate.** enable/disable targets **capability** tags only (execs and executor-backed schemes). Core **substrate** schemes (`file://`, the addressing/ops ground) are always-active and never toggleable — `/disable file` must not be able to brick the address space. For an executor-backed scheme, `disable` gates *new production*; existing `tag://` entries stay READable (reads are pure).
 
-**Security — one gate, on introduction not activation.** `enable` / `disable` are **not** trust-gated: a client (and the model itself) may freely activate any *registered* capability. This is safe because the registered set is operator-bounded — only env-declared or package-installed capabilities exist — *unless* the single daemon gate **`PLURNK_EXECS_MCP_INSTALL`** (default off) opens the runtime-hotload route, permitting *arbitrary* tooling to be **added**. Gate the introduction of capabilities, never their activation. The trust gate (§3) still bounds *registration*; activation rides on top of an already-trusted set.
+**Security - gate introduction, not activation.** `enable` / `disable` are
+not trust-gated: a client may activate any registered capability. Plugin
+registration remains bounded by the trust gate (§3). Daemon modules are
+explicit dependencies registered by the daemon rather than packages found by
+the plugin scanner.
 
-Execs owns none of the overlay machinery — the live Active/Available state, the `/enable` `/disable` `/mcp` commands, and the gate enforcement are the consumer's (plurnk-service#240). Execs' contribution is the static signals above and (for the hotload route) an MCP executor that accepts a runtime-injected server config and re-checks `PLURNK_EXECS_MCP_INSTALL` at its connect path (defense in depth).
+Execs owns none of the overlay machinery. Live availability, workspace policy,
+and daemon-module registration are consumer concerns.
 
 ### §3.3 Runtime policy (the enable/disable cascade)
 

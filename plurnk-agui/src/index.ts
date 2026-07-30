@@ -4,7 +4,7 @@
 // Portal) export for the daemon's tests and future transports.
 
 export { default as Module } from "./Module.ts";
-export type { ModuleOptions } from "./Module.ts";
+export type { ModuleOptions, ModuleRegistration } from "./Module.ts";
 export type { DaemonSeam, ClientEnvelope, PendingProposal, ProposalResolution, PlurnkStatement, LogEntryWire } from "./DaemonSeam.ts";
 export { default as Portal } from "./Portal.ts";
 export { default as EventRouter } from "./EventRouter.ts";

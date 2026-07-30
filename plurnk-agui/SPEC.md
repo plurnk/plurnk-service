@@ -99,7 +99,7 @@ One daemon notification in, zero-or-more AG-UI events out (`Translator`, pure):
 
 ## Stop-the-world {§agui-proposal-resolve}
 
-Every client-owned daemon proposal — file edits, MCP auths, `[300]` operator questions
+Every client-owned daemon proposal - file edits and `[300]` operator questions
 (service#346) — emits an AG-UI tool call and terminates run A with
 `RUN_FINISHED.outcome.type = "interrupt"`. The durable loop remains paused indefinitely
 by default; absence is not an answer. Run B on the same thread supplies standard

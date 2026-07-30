@@ -18,6 +18,7 @@ import { resolve } from "node:path";
 import Paths from "../Paths.ts";
 import { docsExcludeSet } from "./teaching.ts";
 import type { CoreSchemeAdapter, CoreSchemeServices } from "./CoreSchemeServices.ts";
+import type { RuntimeSchemeFacet } from "../server/DaemonModule.ts";
 
 // The in-tree CORE-scheme depth (run/known/unknown/log) lives in the docs corpus (docs/)
 // (Paths.schemeDocs), NOT inline — the docs agent owns the prose; loaded once at module eval.
@@ -92,18 +93,18 @@ export default class SchemeRegistry {
         }
     }
 
-    // Register ONE executor tag's scheme face (the boot loop above + the #289 runtime hotload:
-    // an MCP server connected live becomes EXEC[<server>]). The reserved/cross-family arbitration
+    // Register one executor tag's scheme face (the boot loop above or daemon-module setup).
+    // The reserved/cross-family arbitration
     // lives HERE so both paths share it — one name, one owner across the exec/scheme families (#240):
     // idempotent on a tag that already has its own runtime scheme (a boot re-scan), fail-hard on a
     // collision with a reserved built-in or a DIFFERENT already-claimed scheme.
-    registerRuntimeScheme(tag: string, executor: Executor): void {
+    registerRuntimeScheme(tag: string, executor: Executor, facet?: RuntimeSchemeFacet): void {
         const exec = this.#handlers.get("exec");
         if (!(exec instanceof Exec)) throw new Error("registerRuntimeScheme: the exec handler is not registered");
         if (this.#reserved.has(tag)) throw new Error(`executor tag '${tag}' collides with a reserved built-in scheme — fail-hard (#240)`);
         if (this.#runtimeSchemes.has(tag)) return; // idempotent — already this tag's own runtime scheme
         if (this.#handlers.has(tag)) throw new Error(`executor tag '${tag}' collides with an already-claimed scheme '${tag}' — one name, one owner across the exec/scheme families (#240)`);
-        this.register(tag, new ExecOutputScheme(executor, exec));
+        this.register(tag, new ExecOutputScheme(executor, exec, facet));
         this.#runtimeSchemes.add(tag);
     }
 

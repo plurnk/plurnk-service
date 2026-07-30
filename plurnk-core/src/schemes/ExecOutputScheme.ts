@@ -9,6 +9,9 @@ import EntryCrud, { type ReadEntryResult } from "./_entry-crud.ts";
 import { CoreSchemeAdapterBase } from "../core/CoreSchemeServices.ts";
 import type { CoreSchemeCallContext } from "../core/CoreSchemeServices.ts";
 import Results, { type SchemeResultBase } from "../core/results.ts";
+import type { RuntimeSchemeFacet } from "../server/DaemonModule.ts";
+import SchemeCtxImpl from "../core/caps/SchemeCtxImpl.ts";
+import type { SchemeCtx } from "@plurnk/plurnk-schemes";
 
 // #240 — an executor IS a scheme; its output lives at <tag>://. Each discovered
 // executor registers this face under its runtime tag, so READ/FIND <tag>://<coord>
@@ -23,18 +26,42 @@ import Results, { type SchemeResultBase } from "../core/results.ts";
 export default class ExecOutputScheme extends CoreSchemeAdapterBase {
     #executor: Executor;
     #exec: Exec;
-    constructor(executor: Executor, exec: Exec) {
+    #facet: RuntimeSchemeFacet | undefined;
+
+    constructor(executor: Executor, exec: Exec, facet?: RuntimeSchemeFacet) {
         super();
         this.#executor = executor;
         this.#exec = exec;
+        this.#facet = facet;
     }
 
-    get manifest(): SchemeManifest { return this.#executor.manifest; }
+    get manifest(): SchemeManifest {
+        return this.#executor.manifest;
+    }
+
+    #claimedPath(statement: ReadStatement | FindStatement): boolean {
+        const target = statement.target;
+        return target?.kind === "url" && this.#facet?.claims(target.pathname ?? "") === true;
+    }
+
+    #facetContext(ctx: CoreSchemeCallContext): SchemeCtx {
+        if ("entries" in ctx) return ctx;
+        return new SchemeCtxImpl(
+            ctx,
+            this.#executor.manifest.name,
+            this.#executor.manifest,
+            this.liveSubscriptions(),
+        );
+    }
 
     // {§stream-owner-scoped} — the authority names the OWNER: empty = the calling worker (your
     // own streams need no qualifier), a name = that worker's streams, ancestry-gated. The
     // resolved owner scopes the identity; the storage path stays the bare loop coordinate.
     async read(statement: ReadStatement, ctx: CoreSchemeCallContext): Promise<ReadResult> {
+        const read = this.#facet?.read;
+        if (read !== undefined && this.#claimedPath(statement)) {
+            return await read.call(this.#facet, statement, this.#facetContext(ctx)) as ReadResult;
+        }
         const core = this.coreContext(ctx);
         const owner = await resolveStreamStatement(statement, core);
         if (owner === null) {
@@ -46,6 +73,10 @@ export default class ExecOutputScheme extends CoreSchemeAdapterBase {
     }
 
     async find(statement: FindStatement, ctx: CoreSchemeCallContext): Promise<FindResult> {
+        const find = this.#facet?.find;
+        if (find !== undefined && this.#claimedPath(statement)) {
+            return await find.call(this.#facet, statement, this.#facetContext(ctx)) as FindResult;
+        }
         const core = this.coreContext(ctx);
         const owner = await resolveStreamStatement(statement, core);
         if (owner === null) {

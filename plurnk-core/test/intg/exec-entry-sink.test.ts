@@ -34,7 +34,7 @@ const parseOne = (input: string): PlurnkStatement => {
 
 const wire = async (opts?: { fetchWeb?: WebFetch; nullContent?: boolean; tag?: string; webScheme?: boolean; encodedPath?: boolean; entryFailure?: boolean }) => {
     // testExecutors() is a module singleton, so each wire() must claim a DISTINCT runtime tag —
-    // "one name, one owner" (#289) rejects a second hotload of the same tag onto the shared registry.
+    // "one name, one owner" (#289) rejects a second registration of the same tag.
     const tag = opts?.tag ?? "stubsearch";
     const db = await openMigrated();
     const schemes = new SchemeRegistry(opts?.fetchWeb ? { fetchWeb: opts.fetchWeb } : undefined);
@@ -45,7 +45,7 @@ const wire = async (opts?: { fetchWeb?: WebFetch; nullContent?: boolean; tag?: s
     // The stub runtime: fetches nothing — materializes two "pages" through the sink, one of
     // which fails (pruned executor-side), then returns clean. Effect 'pure' so no proposal gate.
     // With nullContent, it instead hands content:null so core fetches through the sink's WebFetch.
-    engine.hotloadRuntime(tag, {
+    engine.registerRuntime(tag, {
         executor: {
             runtime: tag,
             glyph: "?",

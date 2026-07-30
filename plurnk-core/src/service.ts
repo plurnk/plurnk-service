@@ -16,6 +16,7 @@ import ProviderInstantiate from "./core/ProviderInstantiate.ts";
 import Meta from "@plurnk/plurnk-meta";
 import { parseAliasesFromEnv, resolveActiveAlias } from "@plurnk/plurnk-providers";
 import { Module as AguiModule } from "@plurnk/plurnk-agui";
+import { Module as McpModule } from "@plurnk/plurnk-mcp";
 import { formatBuildInfo, getBuildInfo } from "./build-info.ts";
 
 // The `plurnk-service` executable: launches the daemon (start) or runs migrations.
@@ -213,19 +214,24 @@ export default class Service {
         const db = await Service.#openDb(dbPath, true);
         const daemon = new Daemon({ db, provider, nodeModulesPath: Service.#pluginsNodeModules() });
         try {
+            daemon.registerModule(McpModule.init());
             // AG-UI plugin module (#355) — THE client surface, always on: its init runs at boot with the
             // seam handle and binds PLURNK_HOST:PLURNK_PORT. The module owns its knobs' semantics.
-            const aguiInit = AguiModule.init({
+            const aguiModule = AguiModule.init({
                 host, port,
                 ...(process.env.PLURNK_AGUI_TOKEN !== undefined && process.env.PLURNK_AGUI_TOKEN.length > 0 ? { token: process.env.PLURNK_AGUI_TOKEN } : {}),
                 ...(process.env.PLURNK_AGUI_MAX_TURNS !== undefined && process.env.PLURNK_AGUI_MAX_TURNS.length > 0 ? { maxTurns: Number(process.env.PLURNK_AGUI_MAX_TURNS) } : {}),
             });
-            // Capture the module so the banner reports the BOUND address, not the configured one —
-            // with PLURNK_PORT=0 the configured value is 0 and banner parsers get garbage.
-            let agui: Awaited<ReturnType<typeof aguiInit>> | null = null;
-            daemon.registerModule(async (seam) => { agui = await aguiInit(seam); });
+            let agui: AguiModule | null = null;
+            daemon.registerModule({
+                start: async (seam) => {
+                    agui = await aguiModule.start(seam);
+                    return agui;
+                },
+            });
             await daemon.start(); // the daemon owns no transport (#364) — the agui module opens the one listener
-            const aguiAddr = (agui as Awaited<ReturnType<typeof aguiInit>> | null)?.address() ?? { host, port };
+            if (agui === null) throw new Error("AG-UI module did not start");
+            const aguiAddr = (agui as AguiModule).address();
             // mimetypes#50 recontract: null ⇔ NO embedder (a remote embedder with an incomplete
             // self-report returns info with the unknowns explicitly null — say which case this is).
             const embedInfo = await daemon.mimetypes.embedderInfo();

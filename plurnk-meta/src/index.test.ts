@@ -13,7 +13,7 @@ test("isTrusted: gate off (unset / empty / '0') trusts everything", () => {
 
 test("isTrusted: gate on — @plurnk/* always, allowlist admits, everything else refused", () => {
     const env = { PLURNK_PLUGINS_TRUSTED_ONLY: "acme-plugin, @firewolf/firepad" };
-    assert.equal(Meta.isTrusted("@plurnk/plurnk-execs-mcp", env), true);
+    assert.equal(Meta.isTrusted("@plurnk/plurnk-schemes-http", env), true);
     assert.equal(Meta.isTrusted("acme-plugin", env), true);
     assert.equal(Meta.isTrusted("@firewolf/firepad", env), true);
     assert.equal(Meta.isTrusted("evil-plugin", env), false);

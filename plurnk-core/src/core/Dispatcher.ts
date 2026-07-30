@@ -1681,8 +1681,8 @@ export default class Dispatcher {
                     },
                 );
             }
-            // Owner ruling (#346): the question rides the SAME proposal system as file edits and
-            // MCP auths — stop the world. Returning 202 here routes through the proposal seam
+            // Owner ruling (#346): the question rides the same stop-the-world proposal system as
+            // file edits. Returning 202 here routes through the proposal seam
             // (#isProposal admits signal-300 SENDs): loop/proposal carries {question, choices},
             // loop.resolve's accept body IS the answer, and applyResolution writes it into the
             // model-facing rx — the answer arrives as the result of the ask itself. Timeout is

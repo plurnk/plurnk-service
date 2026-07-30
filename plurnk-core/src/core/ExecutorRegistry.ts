@@ -17,8 +17,8 @@ export interface Executor {
     // signal (execs 0.4.28, #16): the host aborts it on resolve/timeout so a probe reaps its
     // --version child at once — no in-flight write EPIPEs after teardown. Optional + ignore-safe.
     probe(signal?: AbortSignal): Promise<RuntimeAvailability>;
-    // command-aware (#289): the effect may be resolved per-command, not just per-target — an MCP
-    // executor reads a per-tool readOnlyHint off the command to auto-run a read-only call. Target-only
+    // command-aware (#289): the effect may be resolved per-command, not just per-target - a module
+    // executor may read per-command metadata to auto-run a read-only call. Target-only
     // executors ignore the second arg (a narrower signature still satisfies this interface).
     effect(target: string | null, command?: string): Effect;
 }
@@ -54,10 +54,9 @@ export default class ExecutorRegistry {
         this.#attributions = attributions;
     }
 
-    // Runtime registration (#289) — add an executor TAG after boot (the /mcp hotload: an MCP server
-    // becomes an EXEC[<server>] runtime once connected). The boot path is discover→probe→build; this
-    // is the post-boot door for a runtime the operator installs live. The caller owns availability
-    // (a hotloaded MCP server is connected, hence available); the SchemeRegistry face is registered
+    // Module runtime registration - add an executor tag after boot discovery. The boot path is
+    // discover -> probe -> build; this is the setup door for a daemon module whose runtime names
+    // depend on operator configuration. The caller owns availability; the SchemeRegistry face is registered
     // separately (registerRuntimeScheme), keeping the reserved/cross-family arbitration one-owned there.
     // Fail-hard on a tag already registered — one name, one owner (mirrors #240 boot policy).
     register(tag: string, entry: RegistryEntry): void {

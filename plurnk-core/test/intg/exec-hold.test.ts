@@ -19,14 +19,14 @@ const execStmt = (runtime: string, body: string): ExecStatement => ({
 let wireN = 0;
 const wire = async (finishAfterMs: number, effect: "read" | "host" | "pure" = "pure") => {
     // unique tag per wiring: testExecutors() is a shared cached registry — a duplicate
-    // hotload tag throws and leaks the just-opened db, wedging the file run.
+    // runtime registration throws and leaks the just-opened db, wedging the file run.
     const tag = `holdstub${++wireN}`;
     const db = await openMigrated();
     const schemes = new SchemeRegistry();
     const engine = new Engine({ db, schemes, mimetypes: DEFAULT_MIMETYPES });
     engine.setExecutors(await testExecutors());
     schemes.registerRuntimeSchemes(await testExecutors());
-    engine.hotloadRuntime(tag, {
+    engine.registerRuntime(tag, {
         executor: {
             runtime: tag, glyph: "?",
             get manifest() { return { name: tag, channels: { results: "application/json" }, defaultChannel: "results", category: "data", scope: "workspace", writableBy: ["plugin"], volatile: true, modelVisible: true } as never; },

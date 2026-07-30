@@ -137,6 +137,7 @@ import type { Provider, ProviderResponse, ProviderUsage } from "@plurnk/plurnk-p
 import { ProviderError, scopeEnvToAlias, resolveActiveAlias } from "@plurnk/plurnk-providers";
 import { validateGbnf } from "@plurnk/gbnf";
 import ProviderInstantiate from "./ProviderInstantiate.ts";
+import type { RuntimeSchemeFacet } from "../server/DaemonModule.ts";
 
 // Split-out call-metadata that travels with the parsed packet but lands in
 // Turn columns instead of packet.assistant.
@@ -465,18 +466,15 @@ export default class Engine {
         this.#executors = executors;
     }
 
-    // Runtime hotload (#289) — register an executor TAG live, after boot (the /mcp route: an MCP
-    // server connected at runtime becomes EXEC[<server>]). Registers on BOTH registries the boot path
-    // wires: the ExecutorRegistry (dispatch resolves the tag; the tools sheet, rebuilt per packet, then
-    // offers it to the model) and the SchemeRegistry face (the tag's READ/FIND/KILL scheme), sharing the
-    // same reserved/cross-family arbitration boot uses. Fail-hard if the registry isn't wired yet — a
-    // hotload before daemon start() is a caller bug, not a silent no-op.
-    hotloadRuntime(tag: string, entry: RegistryEntry): void {
-        if (this.#executors === undefined) throw new Error("hotloadRuntime: executor registry not wired yet (call after daemon start)");
+    // Register a module-owned runtime on the same two registries as boot discovery.
+    // An optional same-name scheme handler lets one capability own both execution
+    // and addressable state without teaching core its protocol.
+    registerRuntime(tag: string, entry: RegistryEntry, scheme?: RuntimeSchemeFacet): void {
+        if (this.#executors === undefined) throw new Error("registerRuntime: executor registry not wired yet");
         // Scheme face FIRST — it is the arbitration gate (reserved / cross-family collision, #240) and
         // throws before we mutate the executor registry, so a rejected tag leaves neither registry
         // half-written. A brand-new tag registers on both; a reserved/claimed tag throws here untouched.
-        this.#schemes.registerRuntimeScheme(tag, entry.executor);
+        this.#schemes.registerRuntimeScheme(tag, entry.executor, scheme);
         this.#executors.register(tag, entry);
     }
 

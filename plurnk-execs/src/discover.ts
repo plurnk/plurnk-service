@@ -112,7 +112,7 @@ export default class Discover {
 
     // Read a package's `package.json` and return its manifest iff it declares
     // `plurnk.kind === "exec"` — or an array including it, the dual-kind form for
-    // a package shipping an exec AND a scheme face (#483; plurnk-execs-mcp).
+    // a package shipping both an exec and a scheme face (#483).
     // Returns null for non-executor packages, a missing or malformed
     // `package.json` — discover() silently skips those (they are not "skipped by
     // trust", just not exec packages).

@@ -20,7 +20,7 @@ const withAsk = async <T>(fn: () => Promise<T>): Promise<T> => fn(); // enabled 
 const send300 = (body: string) => ({ ...sendStmt(300, null, body) });
 
 test("SEND[300] is a PROPOSAL — stop the world; the accept body IS the answer, in the ask's own rx", async () => { await withAsk(async () => {
-    // Owner ruling (#346): the question rides the SAME proposal system as file edits/MCP auths.
+    // Owner ruling (#346): the question rides the same proposal system as file edits.
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `c300-${crypto.randomUUID()}`);

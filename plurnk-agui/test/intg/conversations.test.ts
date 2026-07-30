@@ -38,8 +38,12 @@ test("two threads, one world: distinct runs, shared filesystem (the environment 
     const db = await openMigrated();
     const daemon = new Daemon({ db, provider: null, nodeModulesPath: join(SERVICE, "node_modules") });
     let module: Module | null = null;
-    daemon.registerModule(async (seam: DaemonSeam) => {
-        module = await Module.init({ host: "127.0.0.1", port: 0 })(seam);
+    const registration = Module.init({ host: "127.0.0.1", port: 0 });
+    daemon.registerModule({
+        start: async (seam: DaemonSeam) => {
+            module = await registration.start(seam);
+            return module;
+        },
     });
     await daemon.start({ host: "127.0.0.1", port: 0 });
     const port = (module as unknown as Module).address().port;

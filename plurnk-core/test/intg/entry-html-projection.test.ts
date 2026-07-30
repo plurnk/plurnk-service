@@ -47,7 +47,7 @@ test("a FETCHED html page (via the exec sink) projects: decisive markdown body +
     const engine = new Engine({ db, schemes, mimetypes: DEFAULT_MIMETYPES });
     engine.setExecutors(await testExecutors());
     schemes.registerRuntimeSchemes(await testExecutors());
-    engine.hotloadRuntime("fetchstub", {
+    engine.registerRuntime("fetchstub", {
         executor: {
             runtime: "fetchstub", glyph: "?",
             get manifest() { return { name: "fetchstub", channels: { results: "text/html" }, defaultChannel: "results", category: "data", scope: "workspace", writableBy: ["plugin"], volatile: true, modelVisible: true } as never; },

@@ -16,7 +16,6 @@ import Portal from "./Portal.ts";
 import { stateSnapshot, parseAction, actionResult, type ActionRequest, type ActionOutcome } from "./AguiPlus.ts";
 import type { DaemonSeam, ClientEnvelope, PlurnkStatement } from "./DaemonSeam.ts";
 import { PlurnkParser } from "@plurnk/plurnk-grammar";
-import { authorize as mcpAuthorize, poll as mcpPoll } from "@plurnk/plurnk-execs-mcp";
 import { EventType, type AguiEvent, type RunAgentInput } from "./types.ts";
 import { RunAgentInputSchema, type Interrupt } from "@ag-ui/core";
 import { logEntryIdFromToolCallId, proposalInterrupt } from "./AguiPlus.ts";
@@ -28,6 +27,10 @@ export interface ModuleOptions {
     token?: string;               // empty/undefined = local trust (loopback bind is the boundary)
     maxTurns?: number;
     heartbeatMs?: number;         // SSE comment-frame cadence (agui#3); default 15s, 0 disables
+}
+
+export interface ModuleRegistration {
+    start(seam: DaemonSeam): Promise<Module>;
 }
 
 const actionFailure = (
@@ -125,12 +128,13 @@ export default class Module {
         this.#http = createServer((req, res) => { void this.#route(req, res); });
     }
 
-    // The boot-plug-point init: `daemon.registerModule(Module.init(opts))`.
-    static init(opts: ModuleOptions): (seam: DaemonSeam) => Promise<Module> {
-        return async (seam) => {
-            const m = new Module(seam, opts);
-            await m.listen();
-            return m;
+    static init(opts: ModuleOptions): ModuleRegistration {
+        return {
+            start: async (seam) => {
+                const module = new Module(seam, opts);
+                await module.listen();
+                return module;
+            },
         };
     }
 
@@ -504,7 +508,14 @@ export default class Module {
     // events the client un-projects. Built from the real surface — never a hand-kept list.
     #capabilities(): { methods: Record<string, true>; notifications: Record<string, true> } {
         const methods: Record<string, true> = {};
-        for (const k of ["ping", "discover", "providers.list", "workspace.list", "workspace.create", "workspace.attach", "auth.authorize", "auth.authorize.poll", ...Module.#WORLD_SCOPED]) methods[k] = true;
+        for (const k of [
+            "ping", "discover", "providers.list", "workspace.list", "workspace.create", "workspace.attach",
+            ...Module.#WORLD_SCOPED,
+            ...this.#seam.listModuleActions(),
+        ]) {
+            if (methods[k]) throw new Error(`AG-UI action '${k}' is registered more than once`);
+            methods[k] = true;
+        }
         const notifications: Record<string, true> = {};
         for (const n of ["log/entry", "loop/terminated", "loop/proposal", "notice/event", "stream/event", "stream/concluded", "workspace/branch-batch"]) notifications[n] = true;
         return { methods, notifications };
@@ -573,30 +584,9 @@ export default class Module {
                     this.#threads.set(att.workspaceName, att);
                     return { ok: true, result: { id: att.workspaceId, name: att.workspaceName, workerId: att.workerId, modelWorkerId: att.modelWorkerId } };
                 }
-                case "auth.authorize": {
-                    // Stateless relay to the execs-mcp driver (settled: no auth seam — the
-                    // driver owns its mechanics; the bearer overlays its own config registry).
-                    if (typeof p.target !== "string" || p.target.length === 0) {
-                        return actionFailure(
-                            "invalid-action-parameters",
-                            "auth.authorize requires an MCP server target.",
-                            400,
-                            { field: "target", recovery: "Provide a configured MCP server name." },
-                        );
-                    }
-                    return { ok: true, result: await mcpAuthorize(p.target) };
-                }
-                case "auth.authorize.poll": {
-                    if (typeof p.target !== "string" || p.target.length === 0) {
-                        return actionFailure(
-                            "invalid-action-parameters",
-                            "auth.authorize.poll requires an MCP server target.",
-                            400,
-                            { field: "target", recovery: "Provide the MCP server name used to start authorization." },
-                        );
-                    }
-                    return { ok: true, result: await mcpPoll(p.target, { device: p.device as never }) };
-                }
+            }
+            if (this.#seam.listModuleActions().includes(a.kind)) {
+                return { ok: true, result: await this.#seam.invokeModuleAction(a.kind, p) };
             }
             // Below this line lives IN a world. An unknown kind is no worker at all; a
             // world-scoped kind with no bound workspace is a routing bug — both surface plainly.

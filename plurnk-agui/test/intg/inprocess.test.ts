@@ -32,8 +32,12 @@ test("in-process module: boot plug-point → AG-UI+ run → real model → SSE",
     // Hook D — the plug-point. The daemon hands the module its seam handle at boot;
     // the module opens its own listener. This IS the plugin-module activation.
     let module: Module | null = null;
-    daemon.registerModule(async (seam: DaemonSeam) => {
-        module = await Module.init({ host: "127.0.0.1", port: 0 })(seam);
+    const registration = Module.init({ host: "127.0.0.1", port: 0 });
+    daemon.registerModule({
+        start: async (seam: DaemonSeam) => {
+            module = await registration.start(seam);
+            return module;
+        },
     });
     await daemon.start({ host: "127.0.0.1", port: 0 });
     assert.ok(module !== null, "the plug-point activated the module at boot");

@@ -1,6 +1,6 @@
 -- PREP: proposal_list_pending
 -- §proposal-list — every stopped-world proposal in the workspace (state='proposed'): file edits,
--- MCP auths, [300] questions. The ruling's mandatory companion ({§proposal-timeout-cancels}
+-- [300] questions. The ruling's mandatory companion ({§proposal-timeout-cancels}
 -- ships indefinite): a world that can stay stopped for days MUST be discoverable by a
 -- reconnecting client, or granted patience reads as a mystery hang.
 SELECT le.id AS logEntryId, le.worker_id AS workerId, le.loop_id AS loopId, le.turn_id AS turnId,

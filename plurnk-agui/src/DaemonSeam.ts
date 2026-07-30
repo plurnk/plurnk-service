@@ -38,6 +38,8 @@ export type { PlurnkStatement };
 export type LogEntryWire = Record<string, unknown>;
 
 export interface DaemonSeam {
+    listModuleActions(): string[];
+    invokeModuleAction(name: string, params: Readonly<Record<string, unknown>>): Promise<unknown>;
     // Hook B — the in-process event source. `handler` receives every workspace-scoped
     // engine event as (workspaceId, method, params); workspaceId is null for a global
     // event (workspace/created). Returns an unsubscribe. Core emits; the module fans out.

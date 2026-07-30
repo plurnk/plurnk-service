@@ -91,7 +91,7 @@ test("discover: surfaces raw plurnk.attribution (string | string[]) on each tag 
 
 test("discover: a dual-kind package (kind array including 'exec') registers its tags (#483)", async () => {
     const dualDir = await makePkg({
-        name: "@plurnk/plurnk-execs-mcp",
+        name: "@plurnk/plurnk-execs-dynamic-fixture",
         plurnk: { kind: ["exec", "scheme"], runtimes: [{ name: "dual", glyph: "🔌" }] },
     });
     const schemeOnlyDir = await makePkg({
@@ -99,7 +99,7 @@ test("discover: a dual-kind package (kind array including 'exec') registers its 
         plurnk: { kind: ["scheme"], runtimes: [{ name: "phantom" }] },
     });
     const { registry } = await Discover.scan({ packageDirs: [dualDir, schemeOnlyDir] });
-    assert.equal(registry.get("dual")?.packageName, "@plurnk/plurnk-execs-mcp", "kind: [\"exec\", \"scheme\"] is an exec package");
+    assert.equal(registry.get("dual")?.packageName, "@plurnk/plurnk-execs-dynamic-fixture", "kind: [\"exec\", \"scheme\"] is an exec package");
     assert.equal(registry.get("phantom"), undefined, "an array kind WITHOUT 'exec' is not");
 });
 
@@ -119,7 +119,7 @@ const makeDynamicPkg = async (name: string, hookSrc: string, rel = "runtimes.mjs
 
 test("discover: dynamic runtimesModule hook materializes per-deployment tags (#10)", async () => {
     const dir = await makeDynamicPkg(
-        "@plurnk/plurnk-execs-mcp",
+        "@plurnk/plurnk-execs-dynamic-fixture",
         `export async function runtimes() {
             return [
                 { name: "github", glyph: "🐙", example: "EXEC[github]:create_issue {}:EXEC", documentation: "gh tools" },
@@ -132,16 +132,16 @@ test("discover: dynamic runtimesModule hook materializes per-deployment tags (#1
     assert.equal(registry.size, 2);
     assert.deepEqual(registry.get("github"), {
         runtime: "github", glyph: "🐙", example: "EXEC[github]:create_issue {}:EXEC",
-        documentation: "gh tools", packageName: "@plurnk/plurnk-execs-mcp",
+        documentation: "gh tools", packageName: "@plurnk/plurnk-execs-dynamic-fixture",
     });
     assert.deepEqual(registry.get("figma"), {
-        runtime: "figma", glyph: "🎨", example: "", documentation: "", packageName: "@plurnk/plurnk-execs-mcp",
+        runtime: "figma", glyph: "🎨", example: "", documentation: "", packageName: "@plurnk/plurnk-execs-dynamic-fixture",
     });
 });
 
 test("discover: the dynamic hook accepts a default export and a sync return", async () => {
     const dir = await makeDynamicPkg(
-        "@plurnk/plurnk-execs-mcp",
+        "@plurnk/plurnk-execs-dynamic-fixture",
         `export default () => [{ name: "slack" }];`,
     );
     const { registry } = await Discover.scan({ packageDirs: [dir] });
@@ -149,18 +149,18 @@ test("discover: the dynamic hook accepts a default export and a sync return", as
 });
 
 test("discover: a broken dynamic hook is fail-hard (trusted-package contract)", async () => {
-    const missing = await makeDynamicPkg("@plurnk/plurnk-execs-mcp", "// no exports", "gone.mjs");
+    const missing = await makeDynamicPkg("@plurnk/plurnk-execs-dynamic-fixture", "// no exports", "gone.mjs");
     // Point at a file that doesn't exist on disk → unloadable.
     await fs.rm(path.join(missing, "gone.mjs"));
-    await assert.rejects(Discover.scan({ packageDirs: [missing] }), /runtimes hook unloadable: @plurnk\/plurnk-execs-mcp/);
+    await assert.rejects(Discover.scan({ packageDirs: [missing] }), /runtimes hook unloadable: @plurnk\/plurnk-execs-dynamic-fixture/);
 
-    const noFn = await makeDynamicPkg("@plurnk/plurnk-execs-mcp", `export const runtimes = 42;`);
+    const noFn = await makeDynamicPkg("@plurnk/plurnk-execs-dynamic-fixture", `export const runtimes = 42;`);
     await assert.rejects(Discover.scan({ packageDirs: [noFn] }), /runtimes hook invalid:.*must export 'runtimes'/);
 
-    const threw = await makeDynamicPkg("@plurnk/plurnk-execs-mcp", `export function runtimes() { throw new Error("boom"); }`);
-    await assert.rejects(Discover.scan({ packageDirs: [threw] }), /runtimes hook threw: @plurnk\/plurnk-execs-mcp/);
+    const threw = await makeDynamicPkg("@plurnk/plurnk-execs-dynamic-fixture", `export function runtimes() { throw new Error("boom"); }`);
+    await assert.rejects(Discover.scan({ packageDirs: [threw] }), /runtimes hook threw: @plurnk\/plurnk-execs-dynamic-fixture/);
 
-    const nonArray = await makeDynamicPkg("@plurnk/plurnk-execs-mcp", `export const runtimes = () => ({ name: "x" });`);
+    const nonArray = await makeDynamicPkg("@plurnk/plurnk-execs-dynamic-fixture", `export const runtimes = () => ({ name: "x" });`);
     await assert.rejects(Discover.scan({ packageDirs: [nonArray] }), /runtimes hook returned a non-array/);
 });
 

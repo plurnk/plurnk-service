@@ -11,6 +11,13 @@ export { default as SchemeRegistry } from "./core/SchemeRegistry.ts";
 export { Mimetypes } from "@plurnk/plurnk-mimetypes";
 
 export { default as Daemon } from "./server/Daemon.ts";
+export type {
+    DaemonModule,
+    ModuleActionHandler,
+    ModuleSetupSeam,
+    RuntimeRegistration,
+    StartedModule,
+} from "./server/DaemonModule.ts";
 
 export { default as Skill } from "./schemes/Skill.ts";
 export { default as Log } from "./schemes/Log.ts";

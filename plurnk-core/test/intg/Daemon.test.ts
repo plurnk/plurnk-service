@@ -9,7 +9,7 @@ import type { Executor } from "../../src/core/ExecutorRegistry.ts";
 import { OperationFailureError } from "../../src/core/results.ts";
 import { Validator, type OperationResult, type ProblemDetails } from "@plurnk/plurnk-contracts";
 
-// A stand-in registration in the booth-window shape (execs-mcp installServer's hotload struct):
+// A stand-in registration in the daemon-module setup shape:
 // framework types only — decl + executor + the driver's probe result. The kernel wraps the
 // RegistryEntry itself; registration needs no live driver (the scheme face reads lazily at dispatch).
 const fakeRegistration = (tag: string) => ({
@@ -701,23 +701,23 @@ test("the client-interface seam — forkWorker branches a worker's log, ownershi
     });
 });
 
-test("the client-interface seam — hotloadRuntime registers a live tag, dispatchable through the engine (#355)", async () => {
-    // The generic module-load hook: a module (agui, for MCP) builds the RegistryEntry with its own
+test("the module setup seam registers a live tag, dispatchable through the engine (#355)", async () => {
+    // The generic module-load hook builds the RegistryEntry with its own
     // driver and hands it here; the kernel knows nothing about the driver. Tested with a stand-in.
     await withDaemon(null, async (db, daemon, addr) => {
         const ws = await connect(addr);
         try {
-            const created = (await rpcCall(ws, 1, "workspace.create", { name: "seam-hotload" })).result as { id: number };
+            const created = (await rpcCall(ws, 1, "workspace.create", { name: "seam-module" })).result as { id: number };
             const run = (await db.test_get_run_by_session.get<{ id: number }>({ workspace_id: created.id }))!;
 
-            daemon.hotloadRuntime(fakeRegistration("seamtag"));
+            await daemon.registerRuntime(fakeRegistration("seamtag"));
             // the tag is live — EXEC[seamtag] dispatches through the engine to the registered executor.
             const exec = await daemon.dispatchAsClient({ workspaceId: created.id, workerId: run.id, statement: Dsl.buildExec({ runtime: "seamtag", command: "ping" }) });
-            assert.equal(exec.status, 200, "the hotloaded runtime is dispatchable through the seam's dispatch path");
+            assert.equal(exec.status, 200, "the module runtime is dispatchable through the seam's dispatch path");
 
             // one-name-one-owner arbitration flows through the seam: a dup and a reserved name fail-hard.
-            assert.throws(() => daemon.hotloadRuntime(fakeRegistration("seamtag")), /already/i, "a dup tag is rejected");
-            assert.throws(() => daemon.hotloadRuntime(fakeRegistration("worker")), /reserved/i, "a reserved built-in name is rejected");
+            await assert.rejects(() => daemon.registerRuntime(fakeRegistration("seamtag")), /already/i, "a dup tag is rejected");
+            await assert.rejects(() => daemon.registerRuntime(fakeRegistration("worker")), /reserved/i, "a reserved built-in name is rejected");
         } finally { ws.close(); }
     });
 });
@@ -731,7 +731,7 @@ test("the client-interface seam — a dispatched EXEC's stdout streams as stream
     await withDaemon(new Mock({ contextWindow: 8192, responses: [] }), async (db, daemon, addr) => {
         const ws = await connect(addr);
         try {
-            daemon.hotloadRuntime({
+            await daemon.registerRuntime({
                 decl: { name: "streamtag", glyph: "🔌", example: "", documentation: "" },
                 executor: {
                     runtime: "streamtag", glyph: "🔌",
@@ -769,10 +769,12 @@ test("the client-interface seam — the boot plug-point hands a registered modul
     try {
         let handed: CoreSeam | null = null;
         let createdInInit: number | null = null;
-        daemon.registerModule(async (seam) => {
-            handed = seam;
-            const env = await seam.createWorkspace({ name: "from-module-init" });
-            createdInInit = env.workspaceId;
+        daemon.registerModule({
+            start: async (seam) => {
+                handed = seam;
+                const env = await seam.createWorkspace({ name: "from-module-init" });
+                createdInInit = env.workspaceId;
+            },
         });
         await daemon.start();
 
@@ -780,6 +782,76 @@ test("the client-interface seam — the boot plug-point hands a registered modul
         assert.ok(createdInInit !== null && createdInInit > 0, "the init drove a LIVE seam — createWorkspace worked during boot");
         const seam = handed as CoreSeam;
         assert.ok((await seam.listWorkspaces()).some((s) => s.id === createdInInit), "the module's seam and the daemon are one live surface");
+    } finally {
+        await daemon.stop();
+        await db.close();
+    }
+});
+
+test("module lifecycle orders setup, start, listener close, and module close", async () => {
+    const db = await openMigrated();
+    const daemon = new Daemon({
+        db,
+        provider: new Mock({
+            contextWindow: 8192,
+            responses: [],
+        }),
+    });
+    const events: string[] = [];
+    daemon.registerModule({
+        setup: async () => {
+            events.push("setup");
+        },
+        start: async () => {
+            events.push("start");
+            return {
+                close: async () => {
+                    events.push("listener-close");
+                },
+            };
+        },
+        close: async () => {
+            events.push("module-close");
+        },
+    });
+    try {
+        await daemon.start();
+        assert.deepEqual(events, ["setup", "start"]);
+        await daemon.stop();
+        assert.deepEqual(events, [
+            "setup",
+            "start",
+            "listener-close",
+            "module-close",
+        ]);
+    } finally {
+        await daemon.stop();
+        await db.close();
+    }
+});
+
+test("a module that acquires resources during setup is closed when later setup fails", async () => {
+    const db = await openMigrated();
+    const daemon = new Daemon({
+        db,
+        provider: new Mock({
+            contextWindow: 8192,
+            responses: [],
+        }),
+    });
+    let closed = false;
+    daemon.registerModule({
+        setup: async () => {
+            throw new Error("setup failed");
+        },
+        close: async () => {
+            closed = true;
+        },
+    });
+    try {
+        await assert.rejects(() => daemon.start(), /setup failed/);
+        await daemon.stop();
+        assert.equal(closed, true, "setup-acquired resources are not leaked after boot failure");
     } finally {
         await daemon.stop();
         await db.close();

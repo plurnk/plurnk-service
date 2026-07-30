@@ -16,7 +16,8 @@ especially for smaller models.
 
 Interoperability:
 
-- PLURNK consumes MCP servers through `plurnk-execs-mcp`.
+- PLURNK hosts current MCP servers through `@plurnk/plurnk-mcp`, exposing
+  their tools and resources through the ordinary operation language.
 - Clients use AG-UI.
 - Provider adapters use established model APIs.
 

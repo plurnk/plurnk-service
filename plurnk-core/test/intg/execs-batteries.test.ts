@@ -119,10 +119,8 @@ const CASES: ReadonlyArray<{ tag: string; body: string; cwd: string | null; expe
 const SELF_CONTAINED = ["sh", "bash", "node", "awk", "bc", "perl", "python", "jq", "sqlite", "wat", "git"] as const;
 // Resource/binary-gated tags — need a server or a compiled artifact. Reported, not required here:
 // search is exercised in the live tier; wasm needs a compiled module (its compile+run path is
-// covered inline via `wat`). mcp is NOT a tag: plurnk-execs-mcp declares a dynamic
-// `runtimesModule` — each connected server becomes its own EXEC[<server>] at runtime (#289),
-// covered by mcp-hotload.test.ts. (The #471 discovery assertion caught the old census's `mcp`
-// entry as a phantom — always silently absent, the exact hole class.)
+// covered inline via `wat`). Protocol modules register their configured tags through the daemon
+// module seam and are covered by module-runtime.test.ts rather than this installed-plugin census.
 const RESOURCE_GATED = ["wasm", "search"] as const;
 
 test("execs batteries: coverage census — every self-contained default-install tag is exercised", async () => {

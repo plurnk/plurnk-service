@@ -69,7 +69,7 @@ test("an empty failed child stream is observed by the child before its terminal 
         makeMockResponse("<<SEND[200]:the child reported the empty stream failure:SEND", 10),
     ] });
     await withDaemon(mock, async (_db, daemon, addr) => {
-        daemon.hotloadRuntime({
+        await daemon.registerRuntime({
             decl: { name: "emptyfail", glyph: "×", example: "", documentation: "" },
             executor: {
                 runtime: "emptyfail", glyph: "×",

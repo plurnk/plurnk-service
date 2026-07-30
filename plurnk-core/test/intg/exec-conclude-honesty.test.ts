@@ -25,7 +25,7 @@ const wire = async (run: Executor["run"]) => {
     const engine = new Engine({ db, schemes, mimetypes: DEFAULT_MIMETYPES, wakeWorkerNotify: (p) => { wakes.push(p); } });
     engine.setExecutors(await testExecutors());
     schemes.registerRuntimeSchemes(await testExecutors());
-    engine.hotloadRuntime(tag, {
+    engine.registerRuntime(tag, {
         executor: {
             runtime: tag, glyph: "?",
             get manifest() { return { name: tag, channels: { results: "text/stream" }, defaultChannel: "results", category: "data", scope: "workspace", writableBy: ["plugin"], volatile: true, modelVisible: true } as never; },
