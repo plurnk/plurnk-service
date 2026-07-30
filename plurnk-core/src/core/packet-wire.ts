@@ -29,15 +29,6 @@ const editReceiptRevisionChars = (): number => {
     return value;
 };
 
-const budgetLargestItems = (): number => {
-    const raw = process.env.PLURNK_SERVICE_BUDGET_LARGEST_ITEMS;
-    const value = Number(raw);
-    if (!Number.isSafeInteger(value) || value < 0) {
-        throw new Error(`PLURNK_SERVICE_BUDGET_LARGEST_ITEMS must be a non-negative safe integer, got ${JSON.stringify(raw)}`);
-    }
-    return value;
-};
-
 const previewBounds = (): { lines: number; chars: number } => {
     const rawLines = process.env.PLURNK_SERVICE_PREVIEW_LINES;
     const rawChars = process.env.PLURNK_SERVICE_PREVIEW_CHARS;
@@ -203,55 +194,6 @@ export default class PacketWire {
         ];
     }
 
-    // Measure the log section's budget subtotals from the STRUCTURED log using
-    // the packet ruler - meta lines and fences included, matching what ships.
-    // The per-turn rollup describes rendered composition; largestOpenBodies is
-    // an objective size ranking of currently visible bodies. Build-time only;
-    // the stored log section is the rendered result.
-    // §tokenomics-render-weight-budget
-    static measureLogBudget(entries: unknown, countTokens: CountTokens): {
-        entries: number; tokens: number;
-        byTurn: Array<{ turn: string; tokens: number }>;
-        largestOpenBodies: Array<{ path: string; tokens: number }>;
-    } {
-        const logEntries: LogEntryView[] = Array.isArray(entries) ? (entries as LogEntryView[]) : [];
-        const logBody = logEntries.length > 0 ? PacketWire.renderLog(logEntries, countTokens) : "";
-        const byTurn = new Map<string, number>();
-        const perEntry: Array<{ path: string; tokens: number }> = [];
-        for (const e of logEntries) {
-            // Two weights, two labeled meanings (#466): the row's FULL render
-            // (meta line + fences + body) composes the turn rollup; the size
-            // ranking carries the visible BODY weight, the SAME number the
-            // row's own `tokens` shows. Bodyless and folded rows have no open
-            // body in the current packet, so neither belongs in that ranking.
-            const bodyPrice: number[] = [];
-            const weight = countTokens(PacketWire.#renderLogEntries([e], countTokens, bodyPrice));
-            const coordinate = typeof e.coordinate === "string" ? e.coordinate : null;
-            const op = typeof e.op === "string" && e.op.length > 0 ? e.op : null;
-            // Turn = the loop_seq/turn_seq prefix of the coordinate
-            // (log:///<loop_seq>/<turn_seq>/<sequence>); the sequence drops off.
-            if (coordinate !== null) {
-                const turn = coordinate.split("/").slice(0, 2).join("/");
-                byTurn.set(turn, (byTurn.get(turn) ?? 0) + weight);
-            }
-            const path = PacketWire.#entryPath(coordinate, op);
-            const foldable = e.folded !== true;
-            if (path !== null && foldable && (bodyPrice[0] ?? 0) > 0) perEntry.push({ path, tokens: bodyPrice[0] });
-        }
-        return {
-            entries: logEntries.length,
-            tokens: logBody ? countTokens(`## Plurnk Service Log\n\n${logBody}`) : 0,
-            byTurn: [...byTurn.entries()]
-                .map(([turn, tokens]) => ({ turn, tokens }))
-                .toSorted((a, b) => {
-                    const [al, at] = a.turn.split("/").map(Number);
-                    const [bl, bt] = b.turn.split("/").map(Number);
-                    return al - bl || at - bt;
-                }),
-            largestOpenBodies: perEntry.toSorted((a, b) => b.tokens - a.tokens).slice(0, budgetLargestItems()),
-        };
-    }
-
     // Number each line of body as `<N>:<line>` — a bare `N:` prefix, NO separator whitespace
     // (#564, owner policy pivot): the leading digit prevents column-zero fence collisions and gives
     // the model line refs for free (`READ<42-46>`), while the absence of any separator means a
@@ -342,15 +284,12 @@ export default class PacketWire {
     // LogBody owns tx/rx storage interpretation; packet projection owns only
     // visibility, previewing, mimetype rendering, and metadata.
     // The log:/// handle the model sees for an entry.
-    // (§open-fold) and the label the budget's open-body ranking reuses,
-    // so the readout names an entry exactly as the log does.
+    // (§open-fold).
     static #entryPath(coordinate: string | null, op: string | null): string | null {
         if (coordinate === null) return null;
         return op !== null ? `log:///${coordinate}/${op}` : `log:///${coordinate}`;
     }
 
-    // `collectBodyTokens`, when supplied, receives each row's body weight (the rendered meta.tokens)
-    // in order — the FOLD unit measureLogBudget ranks, guaranteed identical to what the row shows.
     // One preview function for every bounded model-facing projection. Lines
     // protect ordinary documents and chars protect a single-line bomb.
     static #preview(text: string): { text: string; cut: boolean } {
@@ -366,7 +305,7 @@ export default class PacketWire {
         return { text: text.slice(0, end), cut: end < text.length };
     }
 
-    static #renderLogEntries(entries: LogEntryView[], countTokens: CountTokens, collectBodyTokens?: number[]): string {
+    static #renderLogEntries(entries: LogEntryView[], countTokens: CountTokens): string {
         return entries.map((e) => {
             const meta: Record<string, unknown> = {};
             const coordinate = typeof e.coordinate === "string" ? e.coordinate : null;
@@ -512,7 +451,6 @@ export default class PacketWire {
             // 0 for a genuinely empty body — never call countTokens("") (some providers return
             // undefined for it, which JSON.stringify would drop, leaving the row with no tokens).
             meta.tokens = body.length > 0 ? countTokens(body) : 0;
-            collectBodyTokens?.push(meta.tokens as number);
             // lines beside tokens on any row with a navigable body — the count of `N:`-numbered
             // lines (fences and unnumbered prose don't count), so the model can plan a <start,end>
             // slice before paying for an OPEN. Omitted when the body isn't line-addressable.

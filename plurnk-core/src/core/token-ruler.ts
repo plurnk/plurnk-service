@@ -5,7 +5,7 @@
 // "true" per-entry count is therefore a fiction — there is no one model to be true to — and
 // exact tokenizers exist only for models with a bundled tokenizer.json (most frontier models
 // degrade to this same chars ruler anyway). So the ENTIRE model-facing perspective — catalog
-// costs, tokensFree, ceiling, per-turn weights, write-time stamps — uses this one
+// costs, tokensFree, ceiling, and write-time stamps - uses this one
 // model-INDEPENDENT ruler: one number per content, identical no matter which model reads it, no
 // per-model state, trivially concurrent-safe.
 //

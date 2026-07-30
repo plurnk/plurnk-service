@@ -88,15 +88,10 @@ plurnkdown owns the shape, not the wording.
 ### Git Status — live state
 Already clean: `` branch `master` — 0 staged, 2 unstaged, 1 untracked ``. Keep; drop the prefix.
 
-### Budget - live state, visualized
-The ceiling/usage/free line plus dynamic Mermaid, validated in `demo/budget-mermaid.md`:
-
-- **Turn composition - treemap:** turn boxes, `system + context`, and `free` compose the ceiling.
-- **Gauge - pie:** used plus free equals the ceiling.
-- **Largest open log bodies - table:** a neutral ranking of addressable bodies and their measured sizes.
-
-The same categories render regardless of occupancy. Token numbers remain available; diagrams
-visualize state without prescribing a context-management action.
+### Budget - live state
+One line reports the token ceiling, current usage and percentage, and free tokens. Per-entry
+token weights remain on log rows. Packet-level rankings and visualizations are intentionally
+absent so telemetry does not compete with the user prompt for salience.
 
 ### User Prompts — live input
 The incoming prompts / environment updates. Render faithful, as clean prose or a light list.
@@ -115,8 +110,7 @@ exception or converges. Ecosystem-wide rows live in `plurnk-meta/DIVERGENCES.md`
 | # | Practice | Industry standard | Plurnkdown position | Ruling |
 |---|---|---|---|---|
 | 1 | Markdown flavor | CommonMark/GFM | Strict GFM subset + written house constraints (fenced ops, bare H2 scheme, Recap footer, atomic sentences) | **CONVERGED-plus** — every plurnkdown document is valid GFM by construction (ATX headings, bullets, GFM tables, fenced code with info strings). Each constraint beyond GFM is a written rule in this file, enforced by the linter (`op-fence` / `op-syntax` / `run-on`). No linter rule exists without a written rule here. |
-| 2 | Mermaid chart types | Stable core diagram types; beta types churn | Budget emits `treemap-beta` + `xychart-beta`; the canon doc uses stable `stateDiagram-v2` / `sequenceDiagram` / `pie` | **EXCEPTION + CONVERGENCE SCHEDULED** (#440, owner-ruled on-by-default) — budget-scaled salience visuals, GitHub-render-validated. Converge when mermaid graduates them: drop `-beta`, re-verify syntax. |
-| 3 | Log fence name | NDJSON, or a pure JSON array in a ` ```json ` fence (multi-line bodies as escaped strings) | ` ```jsonplurnk `: a JSON array where an `open` entry's `body` is a verbatim HEREDOC — the one non-JSON value | **EXCEPTION — grammar-owned (#437)** — JSON-escaping bodies would destroy char-perfect semantics (`N:	` line addressing, EDIT literality). The custom fence name honestly signals "not parseable as pure JSON"; a ` ```json ` label would lie to parsers. Corpus-checked (grammar strip-parser, 184 entries). |
+| 2 | Log fence name | NDJSON, or a pure JSON array in a ` ```json ` fence (multi-line bodies as escaped strings) | ` ```jsonplurnk `: a JSON array where an `open` entry's `body` is a verbatim HEREDOC - the one non-JSON value | **EXCEPTION - grammar-owned (#437)** - JSON-escaping bodies would destroy char-perfect semantics (`N:	` line addressing, EDIT literality). The custom fence name honestly signals "not parseable as pure JSON"; a ` ```json ` label would lie to parsers. Corpus-checked (grammar strip-parser, 184 entries). |
 
 Two non-constraints, stated so they are not re-invented: prose carries no character cap
 (atomicity is the lever — `run-on` measures weld and length, never a raw limit), and Gherkin

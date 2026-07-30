@@ -9,9 +9,6 @@ import type { MockResponse } from "@plurnk/plurnk-providers";
 import type { PlurnkStatement, SendStatement } from "@plurnk/plurnk-grammar";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, packetSection } from "./_helpers.ts";
 
-// These pin the TABULAR budget baseline; #440's default is the mermaid form (covered by [§budget-mermaid]).
-process.env.PLURNK_SERVICE_BUDGET_MERMAID = "off";
-
 test("the prompt ceiling derives from the provider window minus reserves — reserves over the window fail hard", async () => {
     // #507 — the envelope is PROVIDER-owned: the window is the provider's own (Mock ctor), the
     // reserves ride the bare PLURNK_PROVIDERS_*_RESERVE knobs Mock reads, SAFETY stays core's.

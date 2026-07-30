@@ -48,8 +48,6 @@ test("the template ships no double policy, no active model, ONLY service-owned k
     // virtual PROMPT_BUDGET is optional and therefore absent from the parsed floor.
     const safety = Number(env.get("PLURNK_SERVICE_SAFETY"));
     assert.ok(Number.isFinite(safety) && safety > 0, "SAFETY ships as a positive int — core's one partition knob");
-    const largestItems = Number(env.get("PLURNK_SERVICE_BUDGET_LARGEST_ITEMS"));
-    assert.ok(Number.isSafeInteger(largestItems) && largestItems >= 0, "the open-body ranking limit is an explicit non-negative knob");
     const previewLines = Number(env.get("PLURNK_SERVICE_PREVIEW_LINES"));
     const previewChars = Number(env.get("PLURNK_SERVICE_PREVIEW_CHARS"));
     assert.ok(Number.isSafeInteger(previewLines) && previewLines > 0, "the universal preview line limit is explicit and positive");

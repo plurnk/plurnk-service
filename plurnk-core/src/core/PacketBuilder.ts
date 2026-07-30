@@ -32,7 +32,6 @@ import BudgetOverflow from "./BudgetOverflow.ts";
 const TOKENS_FREE_PLACEHOLDER = "{{tokensFree}}";
 const TOKEN_USAGE_PLACEHOLDER = "{{tokenUsage}}";
 const TOKEN_PERCENT_PLACEHOLDER = "{{tokenPercent}}";
-const SYSTEM_CTX_PLACEHOLDER = "{{systemCtx}}"; // #440 — treemap's non-turn overhead = total − Σturns, known only post-assembly
 
 // §tokenomics-window-partition — the four partition numbers. REQUIRED (fail-hard, the
 // providers-env convention): the ceiling is DERIVED from these, never set directly
@@ -241,16 +240,11 @@ export default class PacketBuilder {
         // model is never taught a tag it'll then be 403'd on (the taught→emitted→rejected→508 spiral).
         const activeSchemes = this.#schemes.resolveForLoop(await this.#loadLoopFlags(loopId));
         const tools = this.#collectTools(await this.#workspaceEnabled(workspaceId), await WorkspaceSettings.questionsEnabled(this.#db, workspaceId), activeSchemes);
-        // Budget readout (SPEC.md §tokenomics). Two-pass: render the budget from
-        // the structured log's subtotals with a {{tokensFree}} placeholder, build
-        // the section list, measure the assembled total, resolve free, substitute.
-        // Subtotals come from the real log render — meta and fences included — not
-        // a serialized approximation. ceiling is the provider's window ×
-        // PLURNK_BUDGET_CEILING (null when no window is reported → headline
-        // omitted, section lines still shown). §tokenomics-render-weight-budget
+        // Budget readout (SPEC.md §tokenomics). Two-pass: render the headline
+        // with placeholders, build the section list, measure the assembled total,
+        // then substitute usage, percent, and free.
         const ceiling = this.ceilingFor(provider);
-        const logBudget = PacketWire.measureLogBudget(log, countTokens);
-        const budgetReadout = this.#renderBudget(logBudget, ceiling);
+        const budgetReadout = this.#renderBudget(ceiling);
         // The default packet: an ordered list of addressable sections (§packet-assembly).
         // `slot` is the MESSAGE boundary — and therefore the cache breakpoint every serving
         // stack keys on. The wire is monotone in volatility ({§packet-cache-monotone}, #531):
@@ -320,17 +314,12 @@ export default class PacketBuilder {
             if (budgetSec && ceiling !== null) {
                 const tokensFree = Math.max(0, ceiling - total); // free floors at 0 on overshoot — §tokenomics-over-budget-floor
                 const percent = (total / ceiling) * 100; // usage as % of the ceiling — §tokenomics-context-percent
-                const sumTurns = logBudget.byTurn.reduce((s, t) => s + t.tokens, 0); // #440 — treemap non-turn box = total − Σturns
-                const systemCtx = Math.max(0, total - sumTurns);
-                // replaceAll: a mermaid budget recurs free/used across the headline + treemap + pie, so a
-                // single .replace would leave the diagrams carrying literal {{…}} placeholders.
                 budgetSec.content = budgetSec.content
-                    .replaceAll(TOKEN_USAGE_PLACEHOLDER, String(total))
+                    .replace(TOKEN_USAGE_PLACEHOLDER, String(total))
                     // Any nonzero usage under 1% is "<1" — Math.round alone claimed "1%" from 0.51%,
                     // overstating a near-empty window.
-                    .replaceAll(TOKEN_PERCENT_PLACEHOLDER, total > 0 && percent < 1 ? "<1" : String(Math.round(percent)))
-                    .replaceAll(TOKENS_FREE_PLACEHOLDER, String(tokensFree))
-                    .replaceAll(SYSTEM_CTX_PLACEHOLDER, String(systemCtx));
+                    .replace(TOKEN_PERCENT_PLACEHOLDER, total > 0 && percent < 1 ? "<1" : String(Math.round(percent)))
+                    .replace(TOKENS_FREE_PLACEHOLDER, String(tokensFree));
             }
         }
         // Pass 2: per-section render-weight + the assembled packet total (post
@@ -340,81 +329,11 @@ export default class PacketBuilder {
         return { tokens: packetTokens, sections };
     }
 
-    // Budget readout body. Headline `ceiling/free` appears only when a ceiling
-    // exists; the remaining lines neutrally describe the rendered log. tokensFree
-    // is a placeholder here - buildRequestPacket substitutes it after measuring.
-    #renderBudget(
-        log: {
-            entries: number; tokens: number;
-            byTurn: Array<{ turn: string; tokens: number }>;
-            largestOpenBodies: Array<{ path: string; tokens: number }>;
-        },
-        ceiling: number | null,
-    ): string {
-        const lines: string[] = [];
-        // #421 - no ceiling (unbounded window): omit the headline entirely; the objective log
-        // measurements below remain valid without a percentage.
-        if (ceiling !== null) lines.push(`Token Ceiling ${ceiling} · Token Usage ${TOKEN_USAGE_PLACEHOLDER} (${TOKEN_PERCENT_PLACEHOLDER}%) · Tokens Free ${TOKENS_FREE_PLACEHOLDER}`);
-        // #440 {§budget-mermaid} - the visual Budget (default on). With a ceiling to scale against,
-        // the treemap replaces the per-turn table and the pie shows used/free. The open-body size
-        // ranking remains a table (#450).
-        // Set PLURNK_SERVICE_BUDGET_MERMAID=off to A/B against the tabular baseline (#440's before/after).
-        if (process.env.PLURNK_SERVICE_BUDGET_MERMAID !== "off" && ceiling !== null && log.entries > 0) {
-            if (lines.length > 0) lines.push("");
-            lines.push(PacketBuilder.#renderBudgetMermaid(log, ceiling));
-            lines.push(...PacketBuilder.#largestOpenBodyLines(log.largestOpenBodies));
-            return lines.join("\n");
-        }
-        if (log.entries > 0) {
-            if (lines.length > 0) lines.push("");
-            lines.push(`Rendered log: ${log.entries} entries, ${log.tokens} tokens`);
-            // Per-turn rendered weight, chronological (oldest first).
-            if (log.byTurn.length > 0) {
-                lines.push("", "Rendered log tokens by turn:", "| turn | tokens |", "|---|--:|");
-                for (const t of log.byTurn) lines.push(`| ${t.turn} | ${t.tokens} |`);
-            }
-            lines.push(...PacketBuilder.#largestOpenBodyLines(log.largestOpenBodies));
-        }
-        return lines.join("\n");
-    }
-
-    // Objective ranking of the largest bodies currently rendered open. A ranking
-    // is not a composition, so it stays a table in both budget renderers.
-    // {§tokenomics-largest-open-bodies}
-    static #largestOpenBodyLines(largestOpenBodies: Array<{ path: string; tokens: number }>): string[] {
-        if (largestOpenBodies.length === 0) return [];
-        return ["", "Largest open log bodies:", "| item | body tokens |", "|---|--:|",
-            ...largestOpenBodies.map((e) => `| ${e.path} | ${e.tokens} |`)];
-    }
-
-    // #440 {§budget-mermaid} — the Budget as two budget-scaled mermaid diagrams (validated to render on
-    // GitHub; syntax: plurnk-plurnkdown/demo/budget-mermaid.md). Both scale to the ceiling.
-    // free/used/system+context are placeholders — the post-assembly total resolves them. (#450 cut the xychart.)
-    static #renderBudgetMermaid(
-        log: { byTurn: Array<{ turn: string; tokens: number }> },
-        ceiling: number,
-    ): string {
-        // Turn composition: turn boxes + system+context + free compose the whole ceiling.
-        const treemap = [
-            "```mermaid",
-            "treemap-beta",
-            `"Budget — ceiling ${ceiling}"`,
-            `    "free": ${TOKENS_FREE_PLACEHOLDER}`,
-            `    "system + context": ${SYSTEM_CTX_PLACEHOLDER}`,
-            ...log.byTurn.map((t) => `    "turn ${t.turn}": ${t.tokens}`),
-            "```",
-        ].join("\n");
-        // Gauge: used + free = ceiling. (#450 cut the open-body ranking xychart because bare
-        // coordinate labels were harder to read than a table.)
-        const pie = [
-            "```mermaid",
-            "pie showData",
-            `    title Budget — used vs free (ceiling ${ceiling})`,
-            `    "used" : ${TOKEN_USAGE_PLACEHOLDER}`,
-            `    "free" : ${TOKENS_FREE_PLACEHOLDER}`,
-            "```",
-        ].join("\n");
-        return [treemap, pie].join("\n\n");
+    // The model-facing budget is one measured headline. Per-entry token weights
+    // remain on log rows; richer telemetry belongs in clients, not the prompt.
+    #renderBudget(ceiling: number | null): string {
+        if (ceiling === null) return "";
+        return `Token Ceiling ${ceiling} · Token Usage ${TOKEN_USAGE_PLACEHOLDER} (${TOKEN_PERCENT_PLACEHOLDER}%) · Tokens Free ${TOKENS_FREE_PLACEHOLDER}`;
     }
 
     // #328 — the per-workspace client execs policy narrows what the packet ADVERTISES, matching what

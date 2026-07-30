@@ -334,42 +334,7 @@ test("budget: the provider window governs the partition — ceiling = window −
     } finally { await db.close(); }
 });
 
-test("toggle on: two budget-scaled mermaid diagrams, placeholders resolved, and neutral size ranking", async () => {
-    // #440 - the visual layer, measured against the tabular presentation.
-    process.env.PLURNK_SERVICE_BUDGET_MERMAID = "on";
-    const db = await openMigrated();
-    try {
-        const { workspaceId, workerId, loopId } = await envelope(db);
-        const engine = engineAt(db, WIDE);
-        const provider = new Mock({ contextWindow: WINDOW, responses: [...fatReads(FAT, 1), ...okSends(1)] });
-        await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: MESSAGES });        // turn 1: fat READ folds into turn 2
-        const t2 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: MESSAGES }); // turn 2: its packet carries the log weight
-        const budget = packetSection((await packetOf(db, t2.turnId)).packet, "budget");
-        // Headline and factual measurements stay regardless of occupancy.
-        assert.match(budget, /Token Ceiling \d+ · Token Usage \d+ \((<1|\d+)%\) · Tokens Free \d+/, "the ceiling/usage/free line stays");
-        assert.equal((budget.match(/```mermaid/g) ?? []).length, 2, "two mermaid diagrams render");
-        assert.doesNotMatch(budget, /xychart/, "the heaviest-items xychart was cut (#450 — cryptic coord labels)");
-        // Treemap: turn boxes + system+context + free compose the ceiling; all resolved to numbers.
-        assert.match(budget, /treemap-beta/, "turn-composition treemap");
-        assert.match(budget, /"free": \d+/, "treemap free box resolved to a number");
-        assert.match(budget, /"system \+ context": \d+/, "treemap system+context box resolved (total − Σturns)");
-        assert.match(budget, /"turn 1\/1": \d+/, "a per-turn box carries its token weight");
-        // Pie: used vs free.
-        assert.match(budget, /pie showData[\s\S]*?"used" : \d+[\s\S]*?"free" : \d+/, "used-vs-free gauge");
-        // No placeholder survived — every total-dependent value resolved post-assembly.
-        assert.doesNotMatch(budget, /\{\{/, "no {{…}} placeholder left in any diagram");
-        // #450 - the largest-open-bodies ranking stays a table alongside the diagrams.
-        assert.match(budget, /Largest open log bodies:/, "the neutral open-body ranking stays a table");
-        assert.match(budget, /\| log:\/\/\/.+ \| \d+ \|/, "its rows are log handles and body-token measurements");
-        assert.doesNotMatch(budget, /FOLD targets|folding reclaims|KILL|curation pressure/i, "the budget presents no curation command");
-    } finally {
-        delete process.env.PLURNK_SERVICE_BUDGET_MERMAID;
-        await db.close();
-    }
-});
-
-test("set off: the tabular readout renders — the A/B baseline (#440 before/after)", async () => {
-    process.env.PLURNK_SERVICE_BUDGET_MERMAID = "off";
+test("the model-facing budget is a single measured headline", async () => {
     const db = await openMigrated();
     try {
         const { workspaceId, workerId, loopId } = await envelope(db);
@@ -378,9 +343,8 @@ test("set off: the tabular readout renders — the A/B baseline (#440 before/aft
         await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: MESSAGES });
         const t2 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: MESSAGES });
         const budget = packetSection((await packetOf(db, t2.turnId)).packet, "budget");
-        assert.doesNotMatch(budget, /```mermaid/, "off → no diagrams, the tabular baseline for the A/B");
-    } finally {
-        delete process.env.PLURNK_SERVICE_BUDGET_MERMAID;
-        await db.close();
-    }
+        assert.match(budget, /Token Ceiling \d+ · Token Usage \d+ \((<1|\d+)%\) · Tokens Free \d+/, "the ceiling/usage/free line stays");
+        assert.equal(budget.split("\n").length, 1, "no packet-level composition or ranking follows the headline");
+        assert.doesNotMatch(budget, /\{\{/, "no placeholder survives");
+    } finally { await db.close(); }
 });

@@ -1,14 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import type { EditStatement, UrlPath, PlurnkStatement } from "@plurnk/plurnk-grammar";
+import type { EditStatement, UrlPath } from "@plurnk/plurnk-grammar";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, DEFAULT_MIMETYPES, packetSection } from "./_helpers.ts";
 import { Mock } from "@plurnk/plurnk-providers";
-import { urlPath as anyUrl, editStmt as anyEdit, sendStmt } from "./_dsl.ts";
-
-// The budget assertions here pin the TABULAR baseline; #440's default is the mermaid form ([§budget-mermaid]).
-process.env.PLURNK_SERVICE_BUDGET_MERMAID = "off";
+import { sendStmt } from "./_dsl.ts";
 
 // Tokenomics Phase 1: real token counts are stored at write time (SPEC §tokenomics).
 // entry_channels.tokens comes from the entry write helpers via ctx.tokenize;
@@ -101,58 +98,10 @@ test("budget headline shows ceiling/usage/free, measured from the assembled pack
         const budget = packetSection(JSON.parse(row!.packet), "budget");
         const m = budget.match(/Token Ceiling (\d+) · Token Usage (\d+) \((?:<1|\d+)%\) · Tokens Free (\d+)/);
         assert.ok(m, `budget headline carries ceiling/usage/free; got: ${budget}`);
+        assert.equal(budget.split("\n").length, 1, "the model-facing budget is one line");
         const ceiling = Number(m![1]); const usage = Number(m![2]); const free = Number(m![3]);
         assert.ok(usage > 0, "usage is the measured render-weight, not zero or a leftover placeholder");
         assert.equal(usage + free, ceiling, "usage + free = ceiling (the accounting closes)");
-    } finally { await db.close(); }
-});
-
-test("budget groups render-weight by turn, oldest first", async () => {
-    const db = await openMigrated();
-    try {
-        const workspaceId = await insertWorkspace(db, `tok-turn-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1, "p");
-        const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-        // A compact window makes the per-turn values easy to inspect.
-        const reply = (ops: PlurnkStatement[]) => new Mock({ contextWindow: 3000, responses: [{ assistant: { content: "", reasoning: null, ops } }] });
-        // Two turns each write to the log → two distinct loop/turn coordinates (1/1, 1/2).
-        await engine.runTurn({ provider: reply([anyEdit(anyUrl("worker", "a"), "alpha beta gamma delta ".repeat(80)), sendStmt(200)]), workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
-        await engine.runTurn({ provider: reply([anyEdit(anyUrl("worker", "b"), "epsilon zeta eta theta ".repeat(80)), sendStmt(200)]), workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
-        const t3 = await engine.runTurn({ provider: reply([sendStmt(200)]), workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
-        const budget = packetSection(JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: t3.turnId }))!.packet), "budget");
-        assert.match(budget, /Rendered log tokens by turn:\n\| turn \| tokens \|/, "per-turn table present");
-        assert.match(budget, /\| 1\/1 \|/, "turn 1/1 row present");
-        assert.match(budget, /\| 1\/2 \|/, "turn 1/2 row present");
-        assert.ok(budget.indexOf("| 1/1 |") < budget.indexOf("| 1/2 |"), "oldest turn first — the grinder's rollback order");
-    } finally { await db.close(); }
-});
-
-test("budget neutrally ranks the largest open log bodies by handle and size", async () => {
-    const db = await openMigrated();
-    try {
-        const workspaceId = await insertWorkspace(db, `tok-heavy-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1, "p");
-        const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-        // The window leaves the fixture under the grinder ceiling so its open bodies remain measurable.
-        const reply = (ops: PlurnkStatement[]) => new Mock({ contextWindow: 6500, responses: [{ assistant: { content: "", reasoning: null, ops } }] });
-        // A heavy edit (seq 1) and a tiny edit (seq 2) in one turn; read the next turn's budget. An
-        // EDIT span is a CONTENT op (#566) — it renders full, so a big edit is a genuine heavy item.
-        const heavy = "lorem ipsum dolor sit amet consectetur adipiscing elit sed do eiusmod tempor incididunt ut labore et dolore magna aliqua ".repeat(60);
-        await engine.runTurn({ provider: reply([anyEdit(anyUrl("worker", "big"), heavy), anyEdit(anyUrl("worker", "small"), "x"), sendStmt(200)]), workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
-        const t2 = await engine.runTurn({ provider: reply([sendStmt(200)]), workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
-        const budget = packetSection(JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: t2.turnId }))!.packet), "budget");
-        assert.match(budget, /Largest open log bodies:\n\| item \| body tokens \|/, "the size ranking is present and neutrally labeled");
-        assert.doesNotMatch(budget, /FOLD targets|folding reclaims|KILL|curation pressure/i, "budget telemetry contains no context-management instruction");
-        // Every listed item is a log:/// handle (log items, not catalog entries), heaviest-first.
-        const rows = budget.split("\n").filter((l) => /^\| log:\/\/\//.test(l));
-        assert.ok(rows.length >= 2, `at least two entries listed; got ${rows.length}`);
-        const tokens = rows.map((l) => Number(l.split("|")[2].trim()));
-        for (let i = 1; i < tokens.length; i++) {
-            assert.ok(tokens[i - 1] >= tokens[i], `heaviest first — non-increasing: ${tokens.join(", ")}`);
-        }
-        assert.ok(tokens[0] > tokens[tokens.length - 1], "the heavy edit genuinely outweighs the tiny ones");
     } finally { await db.close(); }
 });
 
@@ -208,25 +157,6 @@ test("the UN-FOLDABLE hard-413 record renders the overshoot honestly (free floor
         assert.ok(usage > 9, `usage ${usage} exceeds the ceiling of 9`);
         assert.equal(free, 0, "free floors at 0 — never negative");
         assert.ok(percent > 100, `percent ${percent} honestly recorded past 100 in the failure record`);
-    } finally { await db.close(); }
-});
-
-test("a high-headroom window renders the same neutral measurements without an occupancy gate", async () => {
-    const db = await openMigrated();
-    try {
-        const workspaceId = await insertWorkspace(db, `tok-headroom-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1, "p");
-        const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-        const reply = (ops: PlurnkStatement[]) => new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops } }] });
-        await engine.runTurn({ provider: reply([anyEdit(anyUrl("worker", "note"), "some content worth logging"), sendStmt(200)]), workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
-        const t2 = await engine.runTurn({ provider: reply([sendStmt(200)]), workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
-        const budget = packetSection(JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: t2.turnId }))!.packet), "budget");
-        assert.match(budget, /Token Ceiling \d+/, "the headline gauge always renders");
-        assert.match(budget, /Rendered log: \d+ entries, \d+ tokens/, "rendered-log measurement remains visible");
-        assert.match(budget, /Rendered log tokens by turn:/, "per-turn composition remains visible");
-        assert.match(budget, /Largest open log bodies:/, "open-body size ranking remains visible");
-        assert.doesNotMatch(budget, /FOLD targets|folding reclaims|KILL|preserve headroom|curation pressure/i, "high-headroom telemetry remains factual");
     } finally { await db.close(); }
 });
 
