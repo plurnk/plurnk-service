@@ -204,10 +204,18 @@ export default class Digest {
         return le.fragment === null || le.fragment.length === 0 ? base : `${base}#${le.fragment}`;
     }
 
+    static #renderStream(le: LogRow): string | null {
+        if (le.op !== "EXEC") return null;
+        const stream = (Digest.#parseJson(le.attrs, {}) as { stream?: unknown }).stream;
+        return typeof stream === "string" ? stream : null;
+    }
+
     static #renderOpLine(le: LogRow): string {
         const target = Digest.#renderTarget(le) ?? "—";
+        const stream = Digest.#renderStream(le);
         const state = le.state !== "resolved" ? ` state=${le.state}` : "";
         const outcome = le.outcome !== null ? ` outcome=${le.outcome}` : "";
+        const streamLink = stream === null ? "" : ` stream=${stream}`;
         const fail = le.status_rx >= 400 ? " ✗" : "";
         // For failed outcomes, surface the Problem Details explanation from rx so
         // the waterfall explains WHY each failure happened without opening packets.
@@ -215,7 +223,7 @@ export default class Digest {
         if (le.status_rx >= 400) {
             errLine = `\n    -> ${Digest.#summarize(Digest.#rowProblem(le).detail, 140)}`;
         }
-        return `  ← [${le.origin}] ${le.op}[${le.status_rx}] ${target}${state}${outcome}${fail}${errLine}`;
+        return `  ← [${le.origin}] ${le.op}[${le.status_rx}] ${target}${state}${outcome}${streamLink}${fail}${errLine}`;
     }
 
     // Human triage is not a row dump. Preserve every row in digest.json, but
@@ -232,6 +240,7 @@ export default class Digest {
                 : [
                     row.op, row.scheme ?? "", row.hostname ?? "", row.port ?? "",
                     row.pathname ?? "", row.fragment ?? "", row.status_rx, row.state, row.outcome ?? "",
+                    Digest.#renderStream(row) ?? "",
                 ].join("\0");
             const group = groups.get(key);
             if (group === undefined) {
@@ -522,6 +531,9 @@ export default class Digest {
                 turn_id: le.turn_id, sequence: le.sequence, origin: le.origin,
                 op: le.op, target: Digest.#renderTarget(le),
                 status_rx: le.status_rx, state: le.state, outcome: le.outcome,
+                ...(Digest.#renderStream(le) === null
+                    ? {}
+                    : { stream: Digest.#renderStream(le) }),
                 ...(le.status_rx >= 400 ? { problem: Digest.#rowProblem(le) } : {}),
             })),
         }, null, 2);
