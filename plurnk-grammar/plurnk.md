@@ -100,6 +100,7 @@ Matcher bodies filter content across treemapped files, entries, and items.
 * An optional `/OP` suffix such as `/READ` labels the same log item.
 * Log paths accept bulk pattern operations (FOLD, OPEN, KILL).
 * Append `#channel` to select a channel (e.g. `#stdout`, `#stderr`); absent, the scheme's default channel is used.
+* `worker://~/` is your private cross-turn knowledgebase; `worker:///` is the shared workspace knowledgebase.
 * On file and entry resources, a path suffix (`.json`, `.md`, `.txt`, etc.) declares mimetype.
 * Percent-encode reserved characters in paths: `(` becomes `%28`, `)` becomes `%29`, `<` becomes `%3C`.
 
