@@ -4,7 +4,7 @@ import Discover from "./discover.ts";
 export { default as BaseExecutor } from "./BaseExecutor.ts";
 export { default as SubprocessExecutor } from "./SubprocessExecutor.ts";
 export { default as ErrorDetail, ERROR_DETAIL_LIMIT } from "./ErrorDetail.ts";
-export { tokenizeArgv } from "./tokenizeArgv.ts";
+export { CommandSyntaxError, tokenizeArgv } from "./tokenizeArgv.ts";
 
 // Discovery (SPEC §3). The behavior lives on the `Discover` class; the
 // documented `discover()` entry is its `scan` static, re-exported here so the

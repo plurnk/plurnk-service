@@ -4,6 +4,7 @@ import { spawnSync } from "node:child_process";
 import { realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
 import SubprocessExecutor from "./SubprocessExecutor.ts";
+import { tokenizeArgv } from "./tokenizeArgv.ts";
 import type { ExecArgs, ExecResult } from "./types.ts";
 import type { Notice } from "./Notice.ts";
 
@@ -96,6 +97,32 @@ class StdinExec extends SubprocessExecutor {
         return { cmd: "cat", args: [] as string[], useShell: false, stdin: command };
     }
 }
+
+class DirectArgvExec extends SubprocessExecutor {
+    protected override spawnArgs(_runtime: string, command: string) {
+        return { cmd: "printf", args: tokenizeArgv(command), useShell: false };
+    }
+}
+
+test("command-tokenization failures return a durable input Problem", async () => {
+    const states: { channel: string; state: string }[] = [];
+    const result = await new DirectArgvExec({ runtime: "direct", glyph: "d" }).run({
+        runtime: "direct", command: '"unterminated', cwd: null, target: null,
+        signal: new AbortController().signal,
+        write: () => {},
+        setState: (channel, state) => states.push({ channel, state }),
+        emit: () => {},
+    });
+    assert.equal(result.status, 400);
+    assert.equal(result.exitCode, -1);
+    assert.equal(result.problem?.type, "https://problems.plurnk.dev/executor/subprocess/invalid-command");
+    assert.equal(result.problem?.detail, "Could not parse the 'direct' command: unterminated double quote.");
+    assert.equal(result.problem?.recovery, "Correct the command quoting and retry.");
+    assert.deepEqual(states, [
+        { channel: "stdout", state: "errored" },
+        { channel: "stderr", state: "errored" },
+    ]);
+});
 
 test("spawnArgs override + stdin: command fed via stdin reaches stdout", async () => {
     const out: Record<string, string> = { stdout: "", stderr: "" };

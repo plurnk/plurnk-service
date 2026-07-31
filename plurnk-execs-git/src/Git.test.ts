@@ -77,6 +77,14 @@ test("native Git receives familiar argv directly, with target mapped to -C", () 
     });
 });
 
+test("malformed quoted argv returns a durable input Problem", async () => {
+    const { result, states } = await run('commit -m "unterminated');
+    assert.equal(result.status, 400);
+    assert.equal(result.problem?.type, "https://problems.plurnk.dev/executor/subprocess/invalid-command");
+    assert.equal(result.problem?.detail, "Could not parse the 'git' command: unterminated double quote.");
+    assert.deepEqual(states, { stdout: ["errored"], stderr: ["errored"] });
+});
+
 test("probe reflects native Git availability", async () => {
     assert.equal((await make().probe()).available, present());
 });

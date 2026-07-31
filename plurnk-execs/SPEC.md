@@ -293,6 +293,10 @@ universal result construction, exit status, and process-group cancellation. Abor
 explicit kill reason supplies its signal; loop-end housekeeping may escalate to
 SIGKILL after the consumer-provided grace period.
 
+A `CommandSyntaxError` raised while translating model input becomes a durable
+400 `invalid-command` result with both channels errored. Other `spawnArgs()`
+exceptions remain executor contract violations and propagate to the consumer.
+
 ## §5 Consumer surface (plurnk-service)
 
 Per plurnk-service#174/#181/#182, realized in service `0.9.0`, the exec scheme:

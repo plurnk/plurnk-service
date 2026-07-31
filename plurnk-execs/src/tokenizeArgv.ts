@@ -2,6 +2,10 @@
 // honoring single quotes, double quotes, and backslash escapes, without
 // variable or command expansion. Direct-spawn executors use this to preserve
 // familiar CLI spelling without passing the command through a shell.
+export class CommandSyntaxError extends Error {
+    override name = "CommandSyntaxError";
+}
+
 export function tokenizeArgv(input: string): string[] {
     const args: string[] = [];
     let cur = "";
@@ -13,7 +17,7 @@ export function tokenizeArgv(input: string): string[] {
         if (c === "'") {
             inArg = true; i++;
             while (i < n && input[i] !== "'") { cur += input[i]; i++; }
-            if (i >= n) throw new Error("unterminated single quote");
+            if (i >= n) throw new CommandSyntaxError("unterminated single quote");
             i++;
         } else if (c === '"') {
             inArg = true; i++;
@@ -24,10 +28,10 @@ export function tokenizeArgv(input: string): string[] {
                     cur += input[i]; i++;
                 }
             }
-            if (i >= n) throw new Error("unterminated double quote");
+            if (i >= n) throw new CommandSyntaxError("unterminated double quote");
             i++;
         } else if (c === "\\") {
-            if (i + 1 >= n) throw new Error("trailing backslash");
+            if (i + 1 >= n) throw new CommandSyntaxError("trailing backslash");
             cur += input[i + 1]; inArg = true; i += 2;
         } else if (c === " " || c === "\t" || c === "\n" || c === "\r") {
             if (inArg) { args.push(cur); cur = ""; inArg = false; }

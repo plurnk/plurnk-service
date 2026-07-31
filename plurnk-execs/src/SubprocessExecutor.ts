@@ -3,6 +3,7 @@ import { Results } from "@plurnk/plurnk-schemes";
 import BaseExecutor from "./BaseExecutor.ts";
 import ErrorDetail, { ERROR_DETAIL_LIMIT } from "./ErrorDetail.ts";
 import Runtime from "./runtime.ts";
+import { CommandSyntaxError } from "./tokenizeArgv.ts";
 import type { ChannelDecl, Effect, ExecArgs, ExecResult, RuntimeAvailability, SpawnArgs } from "./types.ts";
 
 // KILL[code]: an abort reason carrying `{ signal }` (a Unix signal name or
@@ -91,7 +92,28 @@ export default class SubprocessExecutor extends BaseExecutor {
             setState("stderr", "errored");
             return Promise.resolve(ErrorDetail.invalidConfiguration("executor:subprocess"));
         }
-        const { cmd, args, useShell, stdin } = this.spawnArgs(runtime, command, target);
+        let spawnArgs: SpawnArgs;
+        try {
+            spawnArgs = this.spawnArgs(runtime, command, target);
+        } catch (cause) {
+            if (!(cause instanceof CommandSyntaxError)) throw cause;
+            setState("stdout", "errored");
+            setState("stderr", "errored");
+            return Promise.resolve(Results.failure(
+                "executor:subprocess",
+                "invalid-command",
+                400,
+                `Could not parse the '${runtime}' command: ${ErrorDetail.preview(cause, detailLimit)}.`,
+                { exitCode: -1 },
+                {
+                    runtime,
+                    stage: "input-validation",
+                    recovery: "Correct the command quoting and retry.",
+                    retryable: false,
+                },
+            ));
+        }
+        const { cmd, args, useShell, stdin } = spawnArgs;
         return new Promise<ExecResult>((resolve) => {
             // Already cancelled before we start — don't launch a doomed process.
             if (signal.aborted) {
