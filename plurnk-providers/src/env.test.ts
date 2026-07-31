@@ -192,12 +192,12 @@ test("#399: the shipped floor activates reasoning by default (adaptive — owner
     assert.ok(!defaults.match(/^PLURNK_PROVIDERS_REASONING_BUDGET=/m), "no shipped magnitude — budget is on-mode only");
 });
 
-test("#567: the shipped DRY floor stays off while retaining the measured alias-safe shape", async () => {
+test("#567: the shipped DRY floor is off and claims no universally safe shape", async () => {
     const { readFileSync } = await import("node:fs");
     const defaults = readFileSync(new URL("../.env.defaults", import.meta.url), "utf8");
-    assert.match(defaults, /^PLURNK_PROVIDERS_DRY_MULTIPLIER=0$/m, "one-model tuning is not a universal sampler floor");
-    assert.match(defaults, /^PLURNK_PROVIDERS_DRY_BASE=1\.75$/m);
-    assert.match(defaults, /^PLURNK_PROVIDERS_DRY_ALLOWED_LENGTH=32$/m, "the measured identifier-safe shape remains available for alias opt-in");
+    assert.match(defaults, /^PLURNK_PROVIDERS_DRY_MULTIPLIER=0$/m, "a fidelity-corrupting sampler cannot be a portable floor");
+    assert.doesNotMatch(defaults, /^PLURNK_PROVIDERS_DRY_BASE=/m);
+    assert.doesNotMatch(defaults, /^PLURNK_PROVIDERS_DRY_ALLOWED_LENGTH=/m);
 });
 
 // -- #507: envelope reserves (owner-ruled migration from PLURNK_SERVICE_*) --

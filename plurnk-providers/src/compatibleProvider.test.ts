@@ -43,3 +43,37 @@ test("compatible endpoints preserve configured prompt-cache affinity", async () 
 
     assert.equal(body?.prompt_cache_key, "worker-affinity");
 });
+
+test("#567: the server-wide DRY-off floor emits no DRY request fields", async () => {
+    let body: Record<string, unknown> | undefined;
+    mock.method(globalThis, "fetch", async (input: string | URL | Request, init?: RequestInit) => {
+        if (String(input).endsWith("/models")) {
+            return new Response(JSON.stringify({
+                data: [{ id: "local", meta: { n_ctx: 8192 } }],
+            }));
+        }
+        body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+        return new Response(JSON.stringify({
+            model: "local",
+            choices: [{ message: { content: "ok" }, finish_reason: "stop" }],
+            usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+        }), { headers: { "content-type": "application/json" } });
+    });
+
+    const provider = await compatibleProviderFromEnv("openai", {
+        ...env,
+        PLURNK_PROVIDERS_DRY_MULTIPLIER: "0",
+        // Stale or independently supplied shape values cannot activate DRY.
+        PLURNK_PROVIDERS_DRY_BASE: "1.75",
+        PLURNK_PROVIDERS_DRY_ALLOWED_LENGTH: "32",
+    }, "local");
+    await provider.generate({
+        workerId: "worker-dry-off",
+        messages: [{ role: "user", content: "repeat exactly" }],
+    });
+
+    assert.equal(body?.repeat_penalty, 1.15);
+    assert.equal("dry_multiplier" in (body ?? {}), false);
+    assert.equal("dry_base" in (body ?? {}), false);
+    assert.equal("dry_allowed_length" in (body ?? {}), false);
+});

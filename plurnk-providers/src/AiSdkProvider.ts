@@ -97,12 +97,10 @@ export type AiSdkProviderConfig = {
     // Optional (default 0 = off) so an out-of-date plugin that omits it just runs unguarded
     // rather than failing construction; the standard factory always supplies it.
     frequencyPenalty?: number;
-    // #567: llama.cpp anti-repetition-LOOP controls, sent on the llamacpp path (DRY is a
-    // llama.cpp sampler). DRY penalizes repeated SEQUENCES with a penalty escalating in run
-    // length — the tool for a plan-restart loop a single-token repeat_penalty over a short
-    // window can't see. The GENERIC DRY defaults (0.8/1.75/2) ship as a floor in .env.defaults
-    // like repeatPenalty — applied for a detected llama.cpp backend, customer-overridable;
-    // absent (a plugin omitting them) = the box's own default. repeatLastN widens the window.
+    // #567: optional llama.cpp anti-repetition controls. DRY can suppress long
+    // repeated sequences, but it can also corrupt exact repetition required by
+    // PLURNK operations. The portable default is off; these fields ride only
+    // after an explicit operator opt-in. repeatLastN widens the repeat window.
     dryMultiplier?: number;
     dryBase?: number;
     dryAllowedLength?: number;
