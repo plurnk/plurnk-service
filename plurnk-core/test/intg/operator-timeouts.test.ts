@@ -11,7 +11,7 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { Mock } from "@plurnk/plurnk-providers";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, DEFAULT_MIMETYPES } from "./_helpers.ts";
 import type { Db } from "../../src/core/Db.ts";
-import { sendStmt, editStmt, localPath } from "./_dsl.ts";
+import { sendStmt } from "./_dsl.ts";
 
 // A ws stand-in: EventEmitter for "message", captured sends. The registered
 // handlers never touch ctx, so db/engine/daemon are inert casts.
@@ -21,17 +21,34 @@ const waitForReply = async (replies: object[]): Promise<{ id: number; result?: u
     return replies[0] as never;
 };
 
-test("the wall rules a legible 504 loop_timeout terminal", async () => {
-    process.env.PLURNK_SERVICE_LOOP_TIMEOUT = "1"; // expires before the first turn settles
+class AbortBlockingMock extends Mock {
+    readonly entered = Promise.withResolvers<void>();
+
+    async generate(args: Parameters<Mock["generate"]>[0]): Promise<never> {
+        args.signal?.throwIfAborted();
+        if (args.signal === undefined) throw new Error("AbortBlockingMock requires the engine's loop signal");
+        this.entered.resolve();
+        return await new Promise<never>((_resolve, reject) => {
+            args.signal?.addEventListener("abort", () => reject(args.signal?.reason), { once: true });
+        });
+    }
+}
+
+test("the wall rules a legible 504 loop_timeout terminal", async (t) => {
+    const loopTimeoutMs = 60_000;
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    process.env.PLURNK_SERVICE_LOOP_TIMEOUT = String(loopTimeoutMs);
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `loop-wall-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1, "walled");
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-        // Continue turns forever — only the wall ends this loop.
-        const provider = new Mock({ contextWindow: 100000, responses: Array.from({ length: 50 }, (_, i) => ({ assistant: { content: "", reasoning: null, ops: [editStmt(localPath(`/w${i}`), "x"), sendStmt(102)] } })) });
-        const result = await engine.runLoop({ provider, workspaceId, workerId, loopId, messages: [], maxTurns: 50 });
+        const provider = new AbortBlockingMock({ contextWindow: 100000, responses: [] });
+        const running = engine.runLoop({ provider, workspaceId, workerId, loopId, messages: [], maxTurns: 50 });
+        await provider.entered.promise;
+        t.mock.timers.tick(loopTimeoutMs);
+        const result = await running;
         assert.equal(result.result.status, 504, "the wall's terminal is 504, never an outside kill");
         assert.equal(result.reason, "loop_timeout");
         const loopStatus = (await db.test_get_loop_status.get<{ status: number }>({ id: loopId }))?.status;
