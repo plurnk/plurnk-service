@@ -131,7 +131,7 @@ One or more numbers narrowing the operation. Their meaning depends on the operat
 - On FIND, OPEN, and FOLD, integers select result positions.
 - On READ and EDIT, a text scope selects readable content.
 - On COPY and MOVE, the header scope selects source content. The destination path in the body may carry an independent destination scope.
-- On semantic FIND and READ, a leading decimal is a `~`-similarity threshold: results scoring at least that value.
+- On semantic FIND and READ, a leading decimal filters by `~` similarity. Remaining integers keep their operation-specific meaning above.
 - On EXEC and SEND, the slot is `<timeout, poll>` seconds.
 
 Text scopes have one universal meaning for every textual mimetype:
@@ -149,7 +149,7 @@ D. READ views lines 12 through 15: `<<READ(notes.md)<12,15>::READ`
 E. EDIT replaces those same lines: `<<EDIT(notes.md)<12,15>:The revised lines go here.:EDIT`
 F. READ views an exact region: `<<READ(notes.md)<12,5,12,20>::READ`
 G. EDIT inserts at an exact position: `<<EDIT(notes.md)<12,5,12,5>:inserted text:EDIT`
-H. COPY saves an exact response-header region to a default-channel entry: `<<COPY(https://en.wikipedia.org/wiki/James_Dean#header)<1,1,1,12>:worker:///dean-header.txt:COPY`
+H. COPY saves an exact stderr region to a default-channel entry: `<<COPY(sh:///1/2/3#stderr)<1,1,1,12>:worker:///firstError.txt:COPY`
 
 For EDIT, sentinels `<0>` and `<-1>` insert before position 1 and after the last position.
 Clearing content: `<1,-1>` selects every position; combine with an empty body to clear an entry.
@@ -164,8 +164,8 @@ Editing by line is exacting work. Use the precise, current file or entry positio
 
 Examples:
 
-A. FIND results with a semantic score of 0.7 or greater: `<<FIND(worker:///**)<0.7>:~france:FIND`
-B. READ 10th-20th results with a semantic score >= 0.5: `<<READ(worker:///**)<0.5,10,20>:~poland:READ`
+A. FIND results 11 through 20 with semantic score >= 0.7: `<<FIND(worker:///**)<0.7,11,20>:~france:FIND`
+B. READ lines 11 through 20 from each matching entry scoring >= 0.5: `<<READ(worker:///**)<0.5,11,20>:~poland:READ`
 
 ### `:body:`
 

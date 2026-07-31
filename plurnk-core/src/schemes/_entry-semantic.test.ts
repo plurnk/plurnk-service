@@ -38,6 +38,63 @@ test("EntrySemantic.defaultTopK reads and validates the service-owned semantic r
     }
 });
 
+test("EntrySemantic.resultSelection preserves FIND pagination after an optional threshold", () => {
+    const prev = process.env.PLURNK_SERVICE_SEMANTIC_TOP_K;
+    try {
+        process.env.PLURNK_SERVICE_SEMANTIC_TOP_K = "12";
+        assert.deepEqual(EntrySemantic.resultSelection(null), {
+            threshold: null,
+            page: null,
+            limit: 12,
+        });
+        assert.deepEqual(EntrySemantic.resultSelection({ marks: [4] }), {
+            threshold: null,
+            page: { marks: [4] },
+            limit: 4,
+        });
+        assert.deepEqual(EntrySemantic.resultSelection({ marks: [4, 9] }), {
+            threshold: null,
+            page: { marks: [4, 9] },
+            limit: 9,
+        });
+        assert.deepEqual(EntrySemantic.resultSelection({ marks: [1, -1] }), {
+            threshold: null,
+            page: { marks: [1, -1] },
+            limit: -1,
+        });
+        assert.deepEqual(EntrySemantic.resultSelection({ marks: [0.7] }), {
+            threshold: 0.7,
+            page: null,
+            limit: -1,
+        });
+        assert.deepEqual(EntrySemantic.resultSelection({ marks: [0.7, 4] }), {
+            threshold: 0.7,
+            page: { marks: [4] },
+            limit: 4,
+        });
+        assert.deepEqual(EntrySemantic.resultSelection({ marks: [0.7, 4, 9] }), {
+            threshold: 0.7,
+            page: { marks: [4, 9] },
+            limit: 9,
+        });
+        assert.deepEqual(EntrySemantic.resultSelection({ marks: [0.7, 1, -1] }), {
+            threshold: 0.7,
+            page: { marks: [1, -1] },
+            limit: -1,
+        });
+        assert.equal(EntrySemantic.resultSelection({ marks: [0] }).limit, 0);
+        assert.equal(EntrySemantic.resultSelection({ marks: [-2, 9] }).limit, -1);
+        assert.equal(
+            EntrySemantic.resultSelection({ marks: [0.7, 1, 2, 3] }).limit,
+            -1,
+            "an invalid page remains exhaustive so the shared pager can report its real extent",
+        );
+    } finally {
+        if (prev === undefined) delete process.env.PLURNK_SERVICE_SEMANTIC_TOP_K;
+        else process.env.PLURNK_SERVICE_SEMANTIC_TOP_K = prev;
+    }
+});
+
 test("EntrySemantic.deriveEmbeddings: capable embedder tiles a large body losslessly, embeds each chunk (#plan-semantics)", async () => {
     const prev = process.env.PLURNK_SERVICE_SEMANTIC_CHUNK_TOKENS;
     process.env.PLURNK_SERVICE_SEMANTIC_CHUNK_TOKENS = "20"; // force tiling regardless of the .env.defaults default

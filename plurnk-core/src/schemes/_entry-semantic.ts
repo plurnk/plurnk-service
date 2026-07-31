@@ -3,6 +3,7 @@
 // vector in scope; FTS is only the explicit no-embedder fallback.
 
 import type { Db } from "../core/Db.ts";
+import type { LineMarker } from "@plurnk/plurnk-grammar";
 import { TextCoordinates, type Mimetypes } from "@plurnk/plurnk-mimetypes";
 
 // mimetypes' package entry doesn't re-export EmbedderInfo (asked on mimetypes#51) — project it
@@ -10,6 +11,12 @@ import { TextCoordinates, type Mimetypes } from "@plurnk/plurnk-mimetypes";
 type EmbedderInfo = NonNullable<Awaited<ReturnType<Mimetypes["embedderInfo"]>>>;
 import EntryChunk from "./_entry-chunk.ts";
 import type { SearchCandidate } from "./_search-candidate.ts";
+
+type SemanticResultSelection = {
+    threshold: number | null;
+    page: LineMarker | null;
+    limit: number;
+};
 
 export default class EntrySemantic {
     static defaultTopK(): number {
@@ -19,6 +26,44 @@ export default class EntrySemantic {
             throw new Error(`PLURNK_SERVICE_SEMANTIC_TOP_K must be a positive safe integer, got ${JSON.stringify(raw)}`);
         }
         return value;
+    }
+
+    // FIND owns result positions uniformly across matcher dialects. Semantic
+    // search adds only an optional leading decimal threshold; any remaining
+    // integers retain the ordinary FIND positional meaning. The rank query
+    // needs only the prefix ending at the requested page, while an open-ended
+    // or malformed page remains exhaustive so the shared pager can report the
+    // authoritative result extent.
+    static resultSelection(marker: LineMarker | null): SemanticResultSelection {
+        if (marker === null) {
+            return { threshold: null, page: null, limit: EntrySemantic.defaultTopK() };
+        }
+        const [first, ...remaining] = marker.marks;
+        if (Number.isInteger(first)) {
+            return {
+                threshold: null,
+                page: marker,
+                limit: EntrySemantic.#pageLimit(marker),
+            };
+        }
+        const page = remaining.length === 0
+            ? null
+            : { marks: remaining as [number, ...number[]] };
+        return {
+            threshold: first,
+            page,
+            limit: page === null ? -1 : EntrySemantic.#pageLimit(page),
+        };
+    }
+
+    static #pageLimit(marker: LineMarker): number {
+        if (marker.marks.length !== 1 && marker.marks.length !== 2) return -1;
+        const [first, last] = marker.marks;
+        if (!Number.isInteger(first) || (last !== undefined && !Number.isInteger(last))) return -1;
+        if (last === undefined) return first >= 0 ? first : -1;
+        if (last === -1) return -1;
+        if (first < 0 || first > last || last < 1) return -1;
+        return last;
     }
 
     static maxEmbedSize(): number {
@@ -182,33 +227,33 @@ export default class EntrySemantic {
     }
 
     // The ~query dispatch: embed the query text through the SAME channel and cosine-rank
-    // every vector in scope, top-K. Each result carries its best-matching
-    // chunk's line span (the Finding extent). No embedder → the top-K <K> form degrades to an
-    // FTS-only keyword rank (whole-entry findings); the <0.x> threshold form stays 501.
+    // every vector in scope. Each result carries its best-matching
+    // chunk's line span (the Finding extent). No embedder -> an unthresholded
+    // ranked prefix degrades to FTS-only keyword rank (whole-entry findings);
+    // a similarity threshold stays 501.
     static async rankCandidates(
         db: Db,
         candidates: readonly SearchCandidate[],
         mimetypes: Mimetypes,
         queryText: string,
-        marker: { first: number; last: number | null },
+        selection: Pick<SemanticResultSelection, "threshold" | "limit">,
     ): Promise<{ status: number; results: Array<{ key: string; lineStart: number; lineEnd: number }> }> {
-        // #209 — the result marker form-dispatches: integer <K> → top-K rank;
-        // decimal <0.x> → a similarity threshold (minimum cosine in (0,1)), with
-        // <0.x,N> capping the threshold set at N (else unbounded). A fractional
-        // value outside (0,1) is a nonsense result-marker → 416, never coerced.
-        const { first, last } = marker;
+        const { threshold, limit } = selection;
         const toResult = (x: { key: string; line_start: number; line_end: number }) => ({
             key: x.key,
             lineStart: x.line_start,
             lineEnd: x.line_end,
         });
+        if (threshold !== null && (threshold <= 0 || threshold >= 1)) {
+            return { status: 416, results: [] };
+        }
         if (candidates.length === 0) return { status: 200, results: [] };
         const serializedCandidates = JSON.stringify(candidates);
 
         // The query embedding honors the SAME gate as the corpus (#embedderInfo /
         // PLURNK_SERVICE_EMBED_DISABLE): with the embeddings package installed but disabled,
         // calling process() directly would compute a query vector and rank it against
-        // an empty derivation_embeddings — every ~query silently []. Disabled → the honest
+        // an empty derivation_embeddings - every ~query silently []. Disabled means the honest
         // FTS keyword fallback, same as no embedder at all.
         const info = await EntrySemantic.#embedderInfo(mimetypes);
         const r = info === null
@@ -217,34 +262,32 @@ export default class EntrySemantic {
         if (r.embedding === undefined || r.embedding.byteLength === 0 || r.embeddingModel === undefined) {
             // FTS fallback: no embedder, so there is no query vector to cosine with. Top-K ranks
             // by BM25 keyword relevance alone; the <0.x> threshold form is intrinsically cosine-
-            // based (no bounded BM25 analogue) → it stays 501.
-            if (!Number.isInteger(first)) return { status: 501, results: [] };
+            // based (no bounded BM25 analogue), so it stays 501.
+            if (threshold !== null) return { status: 501, results: [] };
             const ftsQuery = EntrySemantic.ftsQueryFor(queryText);
             if (ftsQuery.length === 0) return { status: 200, results: [] };
             const rows = await db.semantic_rank_candidates_fts.all<{ key: string; line_start: number; line_end: number }>({
                 fts_query: ftsQuery,
                 candidates: serializedCandidates,
-                k: first,
+                k: limit,
             });
             return { status: 200, results: rows.map(toResult) };
         }
-        if (Number.isInteger(first)) {
+        if (threshold === null) {
             const rows = await db.semantic_rank_candidates.all<{ key: string; line_start: number; line_end: number }>({
                 candidates: serializedCandidates,
                 query_vector: r.embedding,
                 embedding_model: r.embeddingModel,
-                k: first,
+                k: limit,
             });
             return { status: 200, results: rows.map(toResult) };
         }
-        if (first <= 0 || first >= 1) return { status: 416, results: [] };
-        const cap = (last !== null && Number.isInteger(last) && last > 0) ? last : -1;
         const rows = await db.semantic_rank_candidates_threshold.all<{ key: string; line_start: number; line_end: number }>({
             candidates: serializedCandidates,
             query_vector: r.embedding,
             embedding_model: r.embeddingModel,
-            threshold: first,
-            cap,
+            threshold,
+            cap: limit,
         });
         return { status: 200, results: rows.map(toResult) };
     }

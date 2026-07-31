@@ -27,10 +27,4 @@ export default class LineMarkerOps {
     }
     static page<T>(items: readonly T[], marker: LineMarker): PageResult<T> { return Slicer.page(items, marker); }
 
-    // grammar 0.49+: the <L> parser carries raw numbers in `marks`; role-assignment is the
-    // consumer's. We read the first mark as start and the second as end (<N,M> range), null for
-    // a lone <N>. Used by the service's own range/threshold consumers (paginate, ~query top-K).
-    static firstLast(marker: LineMarker): { first: number; last: number | null } {
-        return { first: marker.marks[0], last: marker.marks.length > 1 ? marker.marks[1] : null };
-    }
 }

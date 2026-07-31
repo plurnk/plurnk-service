@@ -26,9 +26,10 @@ const editStmt = (target: UrlPath, body: string, marker: LineMarker | null = nul
     op: "EDIT", suffix: "", signal: null, target, lineMarker: marker, body,
     position: { line: 1, column: 1 },
 });
-const semanticStmt = (target: UrlPath, query: string, k: number): FindStatement => ({
+const semanticStmt = (target: UrlPath, query: string, last: number | null): FindStatement => ({
     op: "FIND", suffix: "", signal: null, target,
-    lineMarker: { marks: [k] }, body: { dialect: "semantic", raw: query } as MatcherBody,
+    lineMarker: last === null ? null : { marks: [1, last] },
+    body: { dialect: "semantic", raw: query } as MatcherBody,
     position: { line: 1, column: 1 },
 });
 
@@ -216,7 +217,7 @@ test("[#semantic-e2e] chunked ~query full pipeline: tile → embed → store →
             await searchCandidates(db, workspaceId),
             embedder,
             "photosynthesis chloroplasts",
-            { first: 5, last: null },
+            { threshold: null, limit: 5 },
         );
         const hit = r.results.find((x) => x.key === "/bio.md");
         assert.ok(hit, "the deep chunk was embedded + stored, and ~query retrieved its entry via max-pool");
@@ -287,7 +288,7 @@ test("[#semantic-json-tile] deriveEmbeddings embeds tiled chunks via embedBatch 
     assert.equal(batched[0].length, chunks.length, "the single batch carried every tile's raw text (no JSON re-validation)");
 });
 
-test("[#fts-fallback] no embedder → ~query<K> degrades to an FTS keyword rank; <0.x> threshold stays 501", async () => {
+test("[#fts-fallback] no embedder uses FTS for unthresholded rank; <0.x> stays 501", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `fts-fallback-${crypto.randomUUID()}`);
@@ -308,21 +309,40 @@ test("[#fts-fallback] no embedder → ~query<K> degrades to an FTS keyword rank;
         await SearchIndex.maintain(makeSchemeCtx({ db, workspaceId, workerId, mimetypes: noEmbedder }));
         const candidates = await searchCandidates(db, workspaceId);
 
-        const topK = await EntrySemantic.rankCandidates(db, candidates, noEmbedder, "payment", { first: 5, last: null });
-        assert.equal(topK.status, 200, "no embedder no longer 501s the top-K form");
+        const topK = await EntrySemantic.rankCandidates(db, candidates, noEmbedder, "payment", { threshold: null, limit: 5 });
+        assert.equal(topK.status, 200, "no embedder retains the unthresholded ranked path");
         assert.deepEqual(topK.results.map((x) => x.key), ["/heavy.ts", "/light.ts"],
             "BM25 ranks heavy (two hits) above light (one); auth (no keyword) excluded by the narrow");
         const heavy = topK.results.find((x) => x.key === "/heavy.ts");
         assert.ok(heavy && heavy.lineStart === 1 && heavy.lineEnd === 2, `whole-entry span, no chunk vectors (got ${heavy?.lineStart}-${heavy?.lineEnd})`);
 
-        const exactMiss = await new Worker().find(
-            semanticStmt(url("auth.ts"), "payment", 5),
+        const firstTwo = await new Worker().find(
+            semanticStmt(url(""), "payment", 2),
             makeSchemeCtx({ db, workspaceId, workerId, mimetypes: noEmbedder }),
         );
+        assert.deepEqual(firstTwo.results.map(({ path }) => path), ["worker:///heavy.ts", "worker:///light.ts"]);
+        const second = await new Worker().find(
+            {
+                ...semanticStmt(url(""), "payment", 2),
+                lineMarker: { marks: [2] },
+            },
+            makeSchemeCtx({ db, workspaceId, workerId, mimetypes: noEmbedder }),
+        );
+        assert.deepEqual(
+            second.results.map(({ path }) => path),
+            ["worker:///light.ts"],
+            "semantic FIND <2> selects ranked result 2 instead of returning the first two",
+        );
+
+        const exactMiss = await new Worker().find(
+            semanticStmt(url("auth.ts"), "payment", null),
+            makeSchemeCtx({ db, workspaceId, workerId, mimetypes: noEmbedder }),
+        );
+        assert.equal(exactMiss.status, 200);
         assert.deepEqual(exactMiss.results, [],
             "semantic ranking is constrained by the exact target before ranking — matches elsewhere never leak in");
         const exactHit = await new Worker().find(
-            semanticStmt(url("heavy.ts"), "payment", 5),
+            semanticStmt(url("heavy.ts"), "payment", null),
             makeSchemeCtx({ db, workspaceId, workerId, mimetypes: noEmbedder }),
         );
         assert.equal(exactHit.status, 200);
@@ -340,7 +360,7 @@ test("[#fts-fallback] no embedder → ~query<K> degrades to an FTS keyword rank;
         await mk("cr.ts", "payment\ragain\r");
         await SearchIndex.maintain(makeSchemeCtx({ db, workspaceId, workerId, mimetypes: noEmbedder }));
         const crHit = await new Worker().find(
-            semanticStmt(url("cr.ts"), "payment", 5),
+            semanticStmt(url("cr.ts"), "payment", null),
             makeSchemeCtx({ db, workspaceId, workerId, mimetypes: noEmbedder }),
         );
         assert.deepEqual(crHit.results[0]?.matches, [{
@@ -353,7 +373,7 @@ test("[#fts-fallback] no embedder → ~query<K> degrades to an FTS keyword rank;
         }], "FTS fallback uses the universal CR/CRLF/LF physical-line model");
 
         // The similarity-threshold form needs a cosine score the FTS half can't supply.
-        const thresh = await EntrySemantic.rankCandidates(db, candidates, noEmbedder, "payment", { first: 0.5, last: null });
+        const thresh = await EntrySemantic.rankCandidates(db, candidates, noEmbedder, "payment", { threshold: 0.5, limit: -1 });
         assert.equal(thresh.status, 501, "the <0.x> threshold form is cosine-intrinsic → 501 without an embedder");
     } finally { db.close(); }
 });

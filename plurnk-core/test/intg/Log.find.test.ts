@@ -243,13 +243,27 @@ test("semantic and graph FIND over logs use the same persistent derivations as e
             "identical entry and log READ projections attach the same immutable derivation artifact",
         );
 
+        const semanticStatement = findStmt(
+            urlPath("log", "/**"),
+            { dialect: "semantic", raw: "engine hums" } as MatcherBody,
+        );
         const semantic = await new Log().find(
-            findStmt(urlPath("log", "/**"), { dialect: "semantic", raw: "engine hums" } as MatcherBody),
+            semanticStatement,
             makeSchemeCtx({ db, workspaceId, workerId, mimetypes: DEFAULT_MIMETYPES }),
         );
         assert.equal(semantic.status, 200);
         assert.ok(semantic.results.some(({ path }) => path.includes("/1/1/2/READ")),
             "semantic rank returns the log address whose READ projection carries the phrase");
+        assert.ok(semantic.results.length >= 2, "the semantic specimen has multiple ranked log results");
+        const secondSemantic = await new Log().find(
+            { ...semanticStatement, lineMarker: { marks: [2] } },
+            makeSchemeCtx({ db, workspaceId, workerId, mimetypes: DEFAULT_MIMETYPES }),
+        );
+        assert.deepEqual(
+            secondSemantic.results.map(({ path }) => path),
+            semantic.results.slice(1, 2).map(({ path }) => path),
+            "log semantic FIND uses the same positional result scope as every FIND",
+        );
 
         const graph = await new Log().find(
             findStmt(urlPath("log", "/**"), { dialect: "graph", raw: "@<helper" } as MatcherBody),

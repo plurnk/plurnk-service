@@ -179,7 +179,7 @@ export default class EntryFind {
         let matches: Match[];
         if (statement.body !== null && statement.body.dialect === "semantic") {
             // Semantic rank is exhaustive within the SAME target/tag candidate set as every
-            // other matcher. Passing entry identities into the ranker preserves top-K meaning:
+            // other matcher. Passing entry identities into the ranker preserves ranking meaning:
             // constrain first, then rank, never rank the corpus and discard out-of-scope hits.
             const { mimetypes } = ctx;
             if (mimetypes === undefined) {
@@ -193,9 +193,7 @@ export default class EntryFind {
                     },
                 };
             }
-            const marker = statement.lineMarker === null
-                ? { first: EntrySemantic.defaultTopK(), last: null }
-                : LineMarkerOps.firstLast(statement.lineMarker);
+            const selection = EntrySemantic.resultSelection(statement.lineMarker);
             const candidateSet = resolveSearchCandidates(
                 candidates.map(({ pathname, deep_hash }) => ({ key: pathname, deepHash: deep_hash })),
             );
@@ -215,7 +213,7 @@ export default class EntryFind {
                 candidateSet.candidates,
                 mimetypes,
                 statement.body.raw,
-                marker,
+                selection,
             );
             if (ranked.status !== 200) {
                 return {
@@ -226,16 +224,29 @@ export default class EntryFind {
                         : "The requested similarity threshold is outside the supported range.",
                     extensions: {
                         stage: "semantic-search",
-                        threshold: marker.first,
+                        ...(selection.threshold === null ? {} : { threshold: selection.threshold }),
                         recovery: ranked.status === 501
-                            ? "Use a top-k semantic search while embeddings are unavailable."
+                            ? "Remove the decimal similarity threshold while embeddings are unavailable."
                             : "Use a similarity threshold greater than zero and less than one.",
                         retryable: false,
                     },
                 };
             }
+            let selected = ranked.results;
+            if (selection.page !== null) {
+                const page = LineMarkerOps.page(selected, selection.page);
+                if (page.status !== 200) {
+                    return {
+                        status: page.status,
+                        matches: [],
+                        problem: page.problem,
+                        range: page.range,
+                    };
+                }
+                selected = page.items ?? [];
+            }
             matches = await EntryFind.#addTextRegions(
-                ranked.results.map((x): SourceCandidateMatch => ({
+                selected.map((x): SourceCandidateMatch => ({
                     key: x.key,
                     span: { lineStart: x.lineStart, lineEnd: x.lineEnd },
                 })),

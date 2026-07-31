@@ -366,13 +366,15 @@ consumer's job (see arity table).
 
 | Form     | `marks`       | Meaning (consumer interpretation)    |
 |----------|---------------|--------------------------------------|
-| `<N>`    | `[N]`         | single position N                    |
-| `<N,M>` / `<N-M>` | `[N, M]` | inclusive range N..M               |
+| `<N>`    | `[N]`         | single operation-specific position N |
+| `<N,M>` / `<N-M>` | `[N, M]` | inclusive operation-specific range N..M |
 | `<SL,SC,EL,EC>` | `[SL, SC, EL, EC]` | exact text region |
 | `<0>`    | `[0]`         | prepend anchor (before position 1)   |
 | `<-1>`   | `[-1]`        | append anchor (after last position)  |
 | `<0.7>`  | `[0.7]`       | semantic similarity threshold in (0,1) |
-| `<0.7,10,20>` | `[0.7, 10, 20]` | threshold + range (score >= 0.7, positions 10..20) |
+| `<0.7,10>` | `[0.7, 10]` | threshold + position (FIND result 10; READ line 10) |
+| `<0.7,10,20>` | `[0.7, 10, 20]` | threshold + range (FIND results 10..20; READ lines 10..20) |
+| `<0.7,12,5,12,20>` | `[0.7, 12, 5, 12, 20]` | threshold + exact READ text region |
 
 Examples involving negative integers:
 

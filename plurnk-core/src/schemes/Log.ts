@@ -309,16 +309,15 @@ export default class Log extends CoreSchemeAdapterBase {
                     retryable: false,
                 },
             );
-            const marker = statement.lineMarker ?? { marks: [EntrySemantic.defaultTopK()] as [number] };
+            const selection = EntrySemantic.resultSelection(statement.lineMarker);
             const ranked = await EntrySemantic.rankCandidates(
                 db,
                 candidateSet.candidates,
                 mimetypes,
                 statement.body.raw,
-                LineMarkerOps.firstLast(marker),
+                selection,
             );
             if (ranked.status !== 200) {
-                const { first: threshold } = LineMarkerOps.firstLast(marker);
                 return empty(
                     ranked.status,
                     ranked.status === 501
@@ -326,15 +325,33 @@ export default class Log extends CoreSchemeAdapterBase {
                         : "The requested similarity threshold is outside the supported range.",
                     {
                         stage: "semantic-search",
-                        threshold,
+                        ...(selection.threshold === null ? {} : { threshold: selection.threshold }),
                         recovery: ranked.status === 501
-                            ? "Use a top-k semantic search while embeddings are unavailable."
+                            ? "Remove the decimal similarity threshold while embeddings are unavailable."
                             : "Use a similarity threshold greater than zero and less than one.",
                         retryable: false,
                     },
                 );
             }
-            const sourceMatches = ranked.results.map(({ key, lineStart, lineEnd }): SourceCandidateMatch => ({
+            let selected = ranked.results;
+            if (selection.page !== null) {
+                const page = LineMarkerOps.page(selected, selection.page);
+                if (page.status !== 200) {
+                    if (page.problem === undefined) throw new Error("Log semantic FIND pagination failed without Problem Details");
+                    return Results.assert({
+                        status: page.status,
+                        problem: page.problem,
+                        content: null,
+                        mimetype: null,
+                        results: [],
+                        itemsTokenTotal: 0,
+                        pathnames: [],
+                        matches: [],
+                    }) as FindResult;
+                }
+                selected = page.items ?? [];
+            }
+            const sourceMatches = selected.map(({ key, lineStart, lineEnd }): SourceCandidateMatch => ({
                 key,
                 span: { lineStart, lineEnd },
             }));

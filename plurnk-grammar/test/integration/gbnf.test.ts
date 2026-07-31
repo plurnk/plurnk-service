@@ -711,6 +711,7 @@ test("GBNF: permissive decimal marker shapes derive for runtime interpretation",
     assert.equal(derives("statement", "<<FIND(known://**)<0.7>:~q:FIND"), true);
     assert.equal(derives("statement", "<<FIND(known://**)<0.7,20>:~q:FIND"), true);
     assert.equal(derives("statement", "<<FIND(known://**)<0.7,10,20>:~q:FIND"), true); // thresholded triple
+    assert.equal(derives("statement", "<<READ(known://**)<0.7,12,5,12,20>:~q:READ"), true);
     assert.equal(derives("statement", "<<READ(a.md)<2.>::READ"), false); // bare trailing dot is not a decimal
 });
 

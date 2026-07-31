@@ -76,8 +76,8 @@ test("PlurnkStatement: FIND with decimal threshold and semantic matcher", () => 
     assert.equal(r!.valid, true, JSON.stringify(r!.errors));
 });
 
-test("PlurnkStatement: FIND with mixed threshold-and-cap range", () => {
-    const r = validateRoundTrip("<<FIND(known://**)<0.7,20>:~concessions:FIND");
+test("PlurnkStatement: FIND with threshold-prefixed result range", () => {
+    const r = validateRoundTrip("<<FIND(known://**)<0.7,10,20>:~concessions:FIND");
     assert.equal(r!.valid, true, JSON.stringify(r!.errors));
 });
 

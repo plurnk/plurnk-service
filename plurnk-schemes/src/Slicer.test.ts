@@ -223,6 +223,15 @@ test("page rejects fractional result positions instead of rounding", () => {
     assert.equal(result.range?.requested.first, 0.5);
 });
 
+test("page rejects text-shaped and threshold-prefixed coordinate lists", () => {
+    for (const marks of [[1, 1, 1, 1], [0.7, 1, 1, 1, 1]]) {
+        const result = Slicer.page(["a", "b"], { marks: marks as [number, ...number[]] });
+        assert.equal(result.status, 416);
+        assert.match(result.problem?.detail ?? "", /requires one position or an inclusive two-position range/);
+        assert.deepEqual(result.problem?.requestedPositions, marks);
+    }
+});
+
 test("lineMarkerEditBatch applies disjoint edits against one snapshot", () => {
     const edits = [
         { marker: { marks: [2] as [number] }, body: "TWO\n2.5" },

@@ -326,6 +326,21 @@ export default class Slicer {
     static page<T>(items: readonly T[], marker: LineMarker): PageResult<T> {
         const total = items.length;
         const extent = Slicer.#extent(marker, total, "result");
+        if (marker.marks.length !== 1 && marker.marks.length !== 2) {
+            return Slicer.#failure(
+                "range-not-satisfiable",
+                416,
+                `Result pagination requires one position or an inclusive two-position range; received ${marker.marks.length} positions.`,
+                { range: extent },
+                {
+                    range: extent,
+                    requestedPositions: marker.marks,
+                    stage: "projection",
+                    recovery: "Use <N> or <N,M> to select results.",
+                    retryable: false,
+                },
+            );
+        }
         const { first, last } = extent.requested;
         if (!Number.isInteger(first) || (last !== null && !Number.isInteger(last))) {
             return Slicer.#rangeFailure(

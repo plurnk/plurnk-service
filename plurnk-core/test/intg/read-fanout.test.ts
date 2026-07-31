@@ -273,6 +273,11 @@ test("semantic READ separates similarity threshold from text projection", async 
             findMarker: null,
             readMarker: { marks: [10, 20] },
         },
+        {
+            marker: { marks: [0.7, 12, 5, 12, 20] as [number, ...number[]] },
+            findMarker: { marks: [0.7] },
+            readMarker: { marks: [12, 5, 12, 20] },
+        },
     ];
 
     for (const expected of cases) {

@@ -29,13 +29,25 @@ const editStmt = (target: UrlPath, body: string): EditStatement => ({
 });
 const semanticStmt = (target: UrlPath, query: string, k: number): FindStatement => ({
     op: "FIND", suffix: "", signal: null, target,
-    lineMarker: { marks: [k] }, body: { dialect: "semantic", raw: query } as MatcherBody,
+    lineMarker: { marks: [1, k] }, body: { dialect: "semantic", raw: query } as MatcherBody,
     position: { line: 1, column: 1 },
 });
-// #209 — decimal <0.x> (+ optional ,N cap) = similarity threshold, not top-K.
-const thresholdStmt = (target: UrlPath, query: string, threshold: number, cap: number | null = null): FindStatement => ({
+const thresholdStmt = (
+    target: UrlPath,
+    query: string,
+    threshold: number,
+    first: number | null = null,
+    last: number | null = null,
+): FindStatement => ({
     op: "FIND", suffix: "", signal: null, target,
-    lineMarker: { marks: cap === null ? [threshold] : [threshold, cap] }, body: { dialect: "semantic", raw: query } as MatcherBody,
+    lineMarker: {
+        marks: first === null
+            ? [threshold]
+            : last === null
+                ? [threshold, first]
+                : [threshold, first, last],
+    },
+    body: { dialect: "semantic", raw: query } as MatcherBody,
     position: { line: 1, column: 1 },
 });
 
@@ -59,7 +71,7 @@ test("[#186-semantic-e2e] ~query ranks by REAL semantic similarity (full pipelin
 
         const r = await new Worker().find(semanticStmt(url(""), "database connection error", 2), makeSchemeCtx({ db, workspaceId, workerId, loopId: 0, turnId: 0, mimetypes }));
         assert.equal(r.status, 200);
-        // Top-2 returns the two closest vectors. Cake is eligible for cosine
+        // FIND <1,2> returns the two closest vectors. Cake is eligible for cosine
         // ranking too; it simply falls below both connection entries.
         assert.deepEqual(r.results.map((f) => f.path).sort(), ["worker:///db.md", "worker:///sql.md"]);
         assert.ok(!r.results.some((f) => f.path === "worker:///cake.md"), "the unrelated recipe never enters the ranking");
@@ -108,7 +120,7 @@ test("[#272] the derivation pump emits throttled embed_progress notices for a mu
     } finally { db.close(); }
 });
 
-test("[#209-semantic-threshold] ~query <0.x> form-dispatches to a similarity threshold, not top-K", async () => {
+test("[#209-semantic-threshold] a decimal threshold composes with ordinary FIND result positions", async () => {
     const mimetypes = new Mimetypes();
     await mimetypes.ready();
     const db = await openMigrated();
@@ -131,14 +143,41 @@ test("[#209-semantic-threshold] ~query <0.x> form-dispatches to a similarity thr
         assert.ok(lowPaths.has("worker:///db.md"));
         assert.ok(lowPaths.has("worker:///sql.md"));
 
-        // A near-1 floor admits nothing — the threshold actually filters; it isn't a top-K in disguise.
+        // A near-1 floor admits nothing - the threshold actually filters.
         const high = await new Worker().find(thresholdStmt(url(""), "database connection error", 0.999), findCtx());
         assert.equal(high.status, 200);
         assert.deepEqual([...new Set(high.results.map((f) => f.path))], [], "a 0.999 floor filters everything out");
 
-        // <0.05,1> — threshold + result cap → at most one, the closest.
-        const capped = await new Worker().find(thresholdStmt(url(""), "database connection error", 0.05, 1), findCtx());
-        assert.equal(capped.results.length, 1, "the ,N cap bounds the threshold set");
+        const first = await new Worker().find(thresholdStmt(url(""), "database connection error", 0.05, 1), findCtx());
+        assert.deepEqual(
+            first.results.map(({ path }) => path),
+            low.results.slice(0, 1).map(({ path }) => path),
+            "<threshold,1> selects result position 1 rather than defining a cap dialect",
+        );
+
+        const second = await new Worker().find(thresholdStmt(url(""), "database connection error", 0.05, 2), findCtx());
+        assert.deepEqual(
+            second.results.map(({ path }) => path),
+            low.results.slice(1, 2).map(({ path }) => path),
+            "<threshold,2> selects result position 2",
+        );
+
+        const firstTwo = await new Worker().find(thresholdStmt(url(""), "database connection error", 0.05, 1, 2), findCtx());
+        assert.deepEqual(
+            firstTwo.results.map(({ path }) => path),
+            low.results.slice(0, 2).map(({ path }) => path),
+            "<threshold,1,2> selects the inclusive result range",
+        );
+
+        const textShapedFind = await new Worker().find({
+            ...thresholdStmt(url(""), "database connection error", 0.05),
+            lineMarker: { marks: [0.05, 1, 1, 1, 1] },
+        }, findCtx());
+        assert.equal(
+            textShapedFind.status,
+            416,
+            "semantic FIND rejects READ's four-coordinate text scope instead of reinterpreting it",
+        );
 
         // A fractional value outside (0,1) is a nonsense result-marker → 416, never coerced.
         const bad = await new Worker().find(thresholdStmt(url(""), "database connection error", 1.5), findCtx());
