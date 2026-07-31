@@ -468,7 +468,7 @@ export default class PacketBuilder {
             sequence: mintSequence,
             origin: "plurnk",
             source: "rail",
-            result: BudgetOverflow.result(usage, ceiling, false),
+            result: BudgetOverflow.foldedResult(usage, ceiling),
         });
         current = await rebuild();
         return {

@@ -1,4 +1,4 @@
-// Search-index materialization for every readable workspace projection. Entries
+// Search-index materialization for every readable workspace body. Entries
 // and logs attach to the same immutable, content-addressed derivation artifacts;
 // FTS, vectors, and graph relationships consume those artifacts uniformly.
 
@@ -28,7 +28,7 @@ type DerivationRow = {
     mimetype: string;
 };
 export default class SearchIndex {
-    // The index materializes one immutable artifact per readable projection and
+    // The index materializes one immutable artifact per exact READ body and
     // configuration identity, then atomically attaches resource addresses to it.
     // Cancellation leaves a building artifact unattached for retry; a local failure
     // is terminal and observable so
@@ -91,7 +91,7 @@ export default class SearchIndex {
         try {
             result = await mimetypes.process(
                 { content: r.content, hint: r.mimetype, path: r.pathname },
-                { channels: ["symbols", "references", "content"] },
+                { channels: ["symbols", "references"] },
             );
         } catch (error) {
             if (ctx.signal?.aborted === true) throw error;
@@ -106,15 +106,11 @@ export default class SearchIndex {
         // building and propagates so a later warm can retry; it is never
         // mislabeled as one malformed resource.
         await EntryGraph.populateFrom(db, derivationId, result.symbols ?? [], result.references ?? []);
-        // Store the processed lexical projection and vectors in the derivation
-        // artifact. Empty/binary content clears rather than stores projections.
-        // The SEMANTIC SOURCE: when the handler returns a readable projection
-        // (ProcessResult.content — e.g. text/html's Readability→markdown), FTS and the
-        // embedder consume THAT, not the raw body. A 424k-token raw page becomes a few-k
-        // article; the vectors and keywords index what a reader (and the model, per the
-        // epic's READ-slices-of-reading end-state) actually consumes. Handlers that return
-        // no projection keep today's raw-body behavior exactly.
-        const semanticSource = result.content ?? r.content;
+        // The stored default body is the exact text READ exposes and therefore the
+        // only honest coordinate space for FTS and vectors. Acquisition schemes
+        // project noisy source material before writing that body (HTTP retains raw
+        // HTML in an auxiliary channel); authored files remain verbatim data.
+        const semanticSource = r.content;
         await EntrySemantic.indexFts(db, derivationId, semanticSource);
         // Size rejection is vector-only: membership, READ, graph, and FTS remain exhaustive.
         if (EntrySemantic.embedSizeRejection(semanticSource) !== null) {

@@ -70,6 +70,26 @@ test("[#186-fts] manifest-add indexes body content into derivation_fts; re-index
     } finally { db.close(); }
 });
 
+test("semantic artifacts index the exact READ body rather than a hidden mimetype projection", async () => {
+    const db = await openMigrated();
+    try {
+        const workspaceId = await insertWorkspace(db, `fts-readable-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const ctx = makeSchemeCtx({ db, workspaceId, workerId });
+        await new Worker().edit(
+            editStmt(url("authored.html"), "<main data-rawonlymarker=\"yes\">Visible prose</main>\n"),
+            ctx,
+        );
+        await SearchIndex.maintain(ctx);
+
+        assert.deepEqual(
+            await fts(db, workspaceId, "rawonlymarker"),
+            ["/authored.html"],
+            "an authored HTML file is indexed in the same verbatim coordinate space READ exposes",
+        );
+    } finally { db.close(); }
+});
+
 test("[#186-cosine] the cosine SqlRite function ranks Float32-BLOB vectors", async () => {
     const db = await openMigrated();
     try {
@@ -204,6 +224,45 @@ test("[#semantic-e2e] chunked ~query full pipeline: tile → embed → store →
     } finally { db.close(); }
 });
 
+test("semantic FIND maps a terminal-newline chunk to an addressable TextRegion", async () => {
+    const db = await openMigrated();
+    try {
+        const workspaceId = await insertWorkspace(db, `newline-region-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const vector = new Uint8Array(new Float32Array([1, 0]).buffer);
+        const embedder = {
+            process: async () => ({ embedding: vector, embeddingModel: "stub@newline" }),
+            embedBatch: async (texts: readonly string[]) => texts.map(() => vector),
+            embedderInfo: () => ({
+                contextWindow: 100,
+                countTokens: (text: string) => (text.match(/\S+/g) ?? []).length,
+                model: "stub@newline",
+            }),
+        } as unknown as Mimetypes;
+        const seed = makeSchemeCtx({ db, workspaceId, workerId });
+        await new Worker().edit(
+            editStmt(url("todo.ts"), "export const ready = true;\n// TODO audit this\n"),
+            seed,
+        );
+        const ctx = makeSchemeCtx({ db, workspaceId, workerId, mimetypes: embedder });
+        await SearchIndex.maintain(ctx);
+
+        const result = await new Worker().find(
+            semanticStmt(url("todo.ts"), "TODO audit", 1),
+            ctx,
+        );
+        assert.equal(result.status, 200);
+        assert.deepEqual(result.results[0]?.matches, [{
+            region: {
+                startLine: 1,
+                startColumn: 1,
+                endLine: 2,
+                endColumn: 19,
+            },
+        }]);
+    } finally { db.close(); }
+});
+
 test("[#semantic-json-tile] deriveEmbeddings embeds tiled chunks via embedBatch (raw text) — a JSON fragment is never re-validated under the entry mimetype (#272)", async () => {
     // A tile of a JSON document is an invalid JSON fragment. Embedding it under application/json
     // would re-validate and throw on the partial — which crashed every turn that held a JSON entry
@@ -277,6 +336,21 @@ test("[#fts-fallback] no embedder → ~query<K> degrades to an FTS keyword rank;
                 endColumn: 5,
             },
         }], "FTS fallback evidence identifies the exact whole-entry searchable region");
+
+        await mk("cr.ts", "payment\ragain\r");
+        await SearchIndex.maintain(makeSchemeCtx({ db, workspaceId, workerId, mimetypes: noEmbedder }));
+        const crHit = await new Worker().find(
+            semanticStmt(url("cr.ts"), "payment", 5),
+            makeSchemeCtx({ db, workspaceId, workerId, mimetypes: noEmbedder }),
+        );
+        assert.deepEqual(crHit.results[0]?.matches, [{
+            region: {
+                startLine: 1,
+                startColumn: 1,
+                endLine: 2,
+                endColumn: 6,
+            },
+        }], "FTS fallback uses the universal CR/CRLF/LF physical-line model");
 
         // The similarity-threshold form needs a cosine score the FTS half can't supply.
         const thresh = await EntrySemantic.rankCandidates(db, candidates, noEmbedder, "payment", { first: 0.5, last: null });

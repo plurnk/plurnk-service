@@ -61,4 +61,28 @@ export default class BudgetOverflow {
             ),
         });
     }
+
+    static foldedResult(
+        usage: number,
+        ceiling: number,
+    ): OperationResult {
+        const measurement = BudgetOverflow.measure(usage, ceiling);
+        return Validator.assertOperationResult({
+            status: 413,
+            problem: Problems.create(
+                "engine:grinder",
+                "budget-overflow",
+                413,
+                `At overflow detection, Token Usage ${formatTokens(measurement.usage)} exceeded Token Ceiling ${formatTokens(measurement.ceiling)} by ${formatTokens(measurement.deficit)}. The newest open log items were FOLDed, and the rebuilt packet now fits.`,
+                {
+                    ...measurement,
+                    stage: "overflow-detection",
+                    resolution: "newest-log-items-folded",
+                    recovery: "Keep irrelevant log items FOLDed or KILL them, and use smaller retrieval ranges.",
+                    retryable: false,
+                },
+                { title: "Prompt budget exceeded" },
+            ),
+        });
+    }
 }

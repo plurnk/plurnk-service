@@ -267,6 +267,24 @@ test("a huge ENGINE-WRITTEN row on the current turn is part of the newest bounda
         const bigRow = rows.find((r) => r.turn_seq === 2 && r.op === "READ");
         assert.ok(bigRow !== undefined, "the wake row is still LISTED (folded, not deleted)");
         assert.equal(bigRow.expanded, 0, "the wake row is FOLDED (re-OPENable) — and not fatal");
+        const errorRows = await db.test_error_rows_for_run.all<{ rx: string }>({ worker_id: workerId });
+        const overflow = errorRows
+            .map(({ rx }) => JSON.parse(rx) as {
+                problem?: {
+                    detail?: string;
+                    resolution?: string;
+                    recovery?: string;
+                };
+            })
+            .find(({ problem }) => problem?.resolution === "newest-log-items-folded")
+            ?.problem;
+        assert.ok(overflow !== undefined, "the recovered overflow states how the packet was made safe");
+        assert.match(overflow.detail ?? "", /rebuilt packet now fits/);
+        assert.doesNotMatch(overflow.detail ?? "", /No working room remains/);
+        assert.equal(
+            overflow.recovery,
+            "Keep irrelevant log items FOLDed or KILL them, and use smaller retrieval ranges.",
+        );
     } finally { await db.close(); }
 });
 

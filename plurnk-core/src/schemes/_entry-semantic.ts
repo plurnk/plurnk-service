@@ -1,9 +1,9 @@
 // ~semantic storage and ranking. Complete content-addressed derivations own the
-// reader-projected FTS, graph, and vectors. Vector search ranks every eligible
+// exact READ-body FTS, graph, and vectors. Vector search ranks every eligible
 // vector in scope; FTS is only the explicit no-embedder fallback.
 
 import type { Db } from "../core/Db.ts";
-import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
+import { TextCoordinates, type Mimetypes } from "@plurnk/plurnk-mimetypes";
 
 // mimetypes' package entry doesn't re-export EmbedderInfo (asked on mimetypes#51) — project it
 // from the contract method itself so this stays the REAL type, never a local fiction.
@@ -89,7 +89,7 @@ export default class EntrySemantic {
     ): Promise<{ chunks: { lineStart: number; lineEnd: number; vector: Uint8Array }[]; model: string | undefined }> {
         const info = await EntrySemantic.#embedderInfo(mimetypes);
         if (info === null) {
-            const totalLines = content.length === 0 ? 0 : content.split("\n").length;
+            const totalLines = TextCoordinates.logicalLines(content).length;
             if (fallbackEmbedding === undefined || fallbackEmbedding.byteLength === 0 || totalLines === 0) return { chunks: [], model: undefined };
             return { chunks: [{ lineStart: 1, lineEnd: totalLines, vector: fallbackEmbedding }], model: fallbackModel };
         }

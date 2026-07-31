@@ -11,6 +11,7 @@
 // one; a stub in tests). Every tunable is a parameter — no constants live here.
 
 import { availableParallelism } from "node:os";
+import { TextCoordinates } from "@plurnk/plurnk-mimetypes";
 
 export interface ChunkSpec {
     seq: number;        // 0-based index within the entry
@@ -32,7 +33,9 @@ export default class EntryChunk {
         if (!(overlap >= 0 && overlap < 1)) throw new Error(`EntryChunk.tile: overlap must be in [0,1), got ${overlap}`);
         if (content.length === 0) return [];
 
-        const lines = content.split("\n");
+        const lines = TextCoordinates.logicalLines(content).map(
+            ({ start, end }) => content.slice(start, end),
+        );
         const n = lines.length;
         // The budget is checked against the SUM of per-line counts. Cross-line BPE
         // merges only ever shrink the true token count, so the sum is a safe upper
@@ -86,7 +89,7 @@ export default class EntryChunk {
                 seq: chunks.length,
                 lineStart: start + 1,
                 lineEnd: closeAt + 1,
-                text: lines.slice(start, closeAt + 1).join("\n"),
+                text: lines.slice(start, closeAt + 1).join(""),
             });
             start = EntryChunk.#nextStart(start, closeAt, n, overlap, budget, lineTokens);
         }
@@ -129,6 +132,7 @@ export default class EntryChunk {
                 const prior = text.charCodeAt(end - 1);
                 const next = text.charCodeAt(end);
                 if (prior >= 0xD800 && prior <= 0xDBFF && next >= 0xDC00 && next <= 0xDFFF) end++;
+                if (prior === 0x0D && next === 0x0A) end++;
                 if (end > start) out.push(text.slice(start, end));
                 start = end;
             }
@@ -165,7 +169,11 @@ export default class EntryChunk {
                 if (piece.length <= 1) {
                     throw new RangeError(`one code unit tokenizes to ${tokens} tokens, exceeding chunk budget ${budget}`);
                 }
-                next.push(...partition(piece, Math.ceil(tokens / budget)));
+                const repartitioned = partition(piece, Math.ceil(tokens / budget));
+                if (repartitioned.length === 1 && repartitioned[0] === piece) {
+                    throw new RangeError(`one indivisible text unit tokenizes to ${tokens} tokens, exceeding chunk budget ${budget}`);
+                }
+                next.push(...repartitioned);
                 changed = true;
             }
             pieces = next;

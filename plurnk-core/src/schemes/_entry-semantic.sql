@@ -67,7 +67,7 @@ ORDER BY score DESC
 LIMIT $cap;
 
 -- PREP: semantic_rank_candidates_fts
--- FTS-only fallback when no embedder is installed: rank processed readable content by BM25
+-- FTS-only fallback when no embedder is installed: rank the exact READ body by BM25
 -- relevance alone (no derivation_embeddings join, no cosine). Without
 -- chunk vectors there is no winning span, so the finding is the whole entry — line
 -- 1..its line count, derived from the indexed FTS content.
@@ -75,17 +75,26 @@ WITH candidates AS (
     SELECT json_extract(value, '$.key') AS key,
            json_extract(value, '$.deepHash') AS deep_hash
     FROM json_each($candidates)
+),
+ranked AS (
+    SELECT c.key,
+           replace(replace(f.content, char(13) || char(10), char(10)), char(13), char(10)) AS content,
+           bm25(derivation_fts) AS score
+    FROM derivation_fts f
+    JOIN derivations d ON d.id = f.rowid AND d.state = 'complete'
+    JOIN candidates c ON c.deep_hash = d.deep_hash
+    WHERE f.content MATCH $fts_query
 )
-SELECT c.key,
+SELECT key,
        1 AS line_start,
        CASE
-           WHEN length(f.content) = 0 THEN 0
-           ELSE length(f.content) - length(replace(f.content, char(10), ''))
-                + CASE WHEN substr(f.content, -1) = char(10) THEN 0 ELSE 1 END
+           WHEN length(content) = 0 THEN 0
+           ELSE length(content) - length(replace(content, char(10), ''))
+               + CASE
+                   WHEN substr(content, -1) = char(10) THEN 0
+                   ELSE 1
+               END
        END AS line_end
-FROM derivation_fts f
-JOIN derivations d ON d.id = f.rowid AND d.state = 'complete'
-JOIN candidates c ON c.deep_hash = d.deep_hash
-WHERE f.content MATCH $fts_query
-ORDER BY bm25(derivation_fts)
+FROM ranked
+ORDER BY score
 LIMIT $k;

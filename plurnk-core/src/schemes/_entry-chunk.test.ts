@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { TextCoordinates } from "@plurnk/plurnk-mimetypes";
 import EntryChunk from "./_entry-chunk.ts";
 
 // Stub tokenizer: word count, async to mirror the real (framework) countTokens which
@@ -10,7 +11,7 @@ const countTokens = (t: string): Promise<number> => Promise.resolve(words(t));
 
 // Losslessness: every line 1..n is covered by some chunk, and no phantom lines.
 const assertLossless = (content: string, chunks: { lineStart: number; lineEnd: number }[]): void => {
-    const n = content.length === 0 ? 0 : content.split("\n").length;
+    const n = TextCoordinates.logicalLines(content).length;
     const covered = new Set<number>();
     for (const c of chunks) for (let l = c.lineStart; l <= c.lineEnd; l++) covered.add(l);
     for (let l = 1; l <= n; l++) assert.ok(covered.has(l), `line ${l}/${n} covered`);
@@ -32,6 +33,37 @@ test("EntryChunk: content that fits in budget is a single full-span chunk", asyn
     assert.equal(chunks.length, 1);
     assert.deepEqual({ s: chunks[0].lineStart, e: chunks[0].lineEnd, t: chunks[0].text }, { s: 1, e: 3, t: content });
     assertLossless(content, chunks);
+});
+
+test("EntryChunk: terminal newlines do not create phantom searchable lines", async () => {
+    const content = "alpha\nbeta\n";
+    const chunks = await EntryChunk.tile(content, new Set(), 10, 0, countTokens);
+    assert.deepEqual(chunks, [{
+        seq: 0,
+        lineStart: 1,
+        lineEnd: 2,
+        text: content,
+    }]);
+    assertLossless(content, chunks);
+});
+
+test("EntryChunk: CRLF and CR separators remain lossless physical line boundaries", async () => {
+    const content = "alpha\r\nbeta\rgamma\n";
+    const chunks = await EntryChunk.tile(content, new Set(), 10, 0, countTokens);
+    assert.deepEqual(chunks, [{
+        seq: 0,
+        lineStart: 1,
+        lineEnd: 3,
+        text: content,
+    }]);
+    assertLossless(content, chunks);
+});
+
+test("EntryChunk: an indivisible CRLF that exceeds the token budget fails hard", async () => {
+    await assert.rejects(
+        EntryChunk.tile("\r\n", new Set(), 1, 0, (text) => Promise.resolve(text.length)),
+        /indivisible text unit/,
+    );
 });
 
 test("EntryChunk: multi-chunk tiling with no overlap is contiguous, lossless, within budget", async () => {

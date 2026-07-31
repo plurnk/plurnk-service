@@ -123,6 +123,13 @@ test("EntrySemantic.deriveEmbeddings: no embedder capability → one whole-entry
     const empty = await EntrySemantic.deriveEmbeddings(dormant, "x", [], undefined, undefined);
     assert.deepEqual(empty.chunks, [], "no fallback vector → cleared");
     assert.equal(empty.model, undefined);
+
+    const terminated = await EntrySemantic.deriveEmbeddings(dormant, "a\nb\n", [], fallback, "real@1");
+    assert.deepEqual(
+        terminated.chunks.map(({ lineStart, lineEnd }) => ({ lineStart, lineEnd })),
+        [{ lineStart: 1, lineEnd: 2 }],
+        "a terminal newline does not create a phantom fallback span",
+    );
 });
 
 test("EntrySemantic.deriveEmbeddings: empty PLURNK_SERVICE_SEMANTIC_CHUNK_TOKENS = the embedder's reported window (scalable, no baked-in budget)", async () => {

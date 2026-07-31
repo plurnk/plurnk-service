@@ -697,7 +697,7 @@ The `embedding` channel supplies vectors for plurnk-service's `~semantic` dialec
 
 ## 18. Content channel
 
-The `content` channel is the **model-facing readable text** of an entry — the markup-free projection a model reads for information (what plurnk-service's READ returns) and the **embed-source** (the embedding channel embeds `content` over the raw bytes). `ProcessResult.content?: string`.
+The `content` channel is a consumer-ready readable projection - the markup-free text a host may materialize for model-facing information and the per-handler **embed-source** (the embedding channel embeds `content` over the raw bytes). `ProcessResult.content?: string`. Addressable hosts decide whether to store that projection or preserve source bytes; the handler does not silently redefine their coordinate space.
 
 **Present iff the readable form differs from the raw body.** Sort every mimetype by one question — *is the readable text the same as the bytes?*
 
@@ -705,7 +705,7 @@ The `content` channel is the **model-facing readable text** of an entry — the 
 - **Binary with a readable projection** (PDF, ...): `content` is the handler's extracted text. The same projection serves regex/glob matching, so any reported text region addresses exactly what the model can read.
 - **text/html**: `content` = **Readability + turndown markdown** - main-content extraction (strips nav/ads/chrome) into clean markdown. Projected prose is wrapped at `PLURNK_MIMETYPES_HTML_WRAP_COLUMNS` (default `100`; `0` disables) so line scopes bound ordinary reading work instead of inheriting a page's arbitrary source density. Wrapping breaks only at whitespace and preserves Markdown structures: fenced/indented code, headings, tables, inline code, links, and retained raw tags are never split merely to satisfy the column target. The source HTML and structural channels remain untouched. HTML is the only case transforming an already-textual-but-noisy body into a cleaner read. (Email/EPUB are HTML-shaped and would reuse the pattern when they land - built then, not speculatively.)
 
-**Always-on and source-agnostic.** `content` is in the default channel set (it's cheap — pure JS, no model). text/html computes it from whatever HTML bytes arrive: a local file → the document as markdown; the bytes a browser scheme rendered and serialized → the live page's readable content. The handler is a pure function of bytes and cannot tell which (see the HTML rendering split — rendering is the http scheme's job; `content` projects whatever it's handed).
+**Always-on and source-agnostic.** `content` is in the default processing channel set (it's cheap - pure JS, no model). text/html computes it from whatever HTML bytes arrive: a local file can be projected to document markdown; bytes a browser scheme rendered and serialized can become a live page's readable content. The handler is a pure function of bytes and cannot tell which (see the HTML rendering split - rendering is the http scheme's job; `content` projects whatever it is handed).
 
 **Relationship to `toText`.** A handler that overrides `content` routes `toText` (the regex/glob query surface) through the same projection, so there is one readable-text implementation per handler. The framework's embed-source resolves as `content() ?? toText()`: projected readable text, then the passthrough body.
 
