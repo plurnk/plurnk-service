@@ -1,4 +1,4 @@
-import { BaseHandler, projectJsonToXml, queryJsonpathObject } from "@plurnk/plurnk-mimetypes";
+import { BaseHandler, projectJsonToXml, queryJsonpathObject, regionsForLineSpans } from "@plurnk/plurnk-mimetypes";
 import type { HandlerContent, MimeSymbol, QueryDialect, QueryMatch } from "@plurnk/plurnk-mimetypes";
 
 // text/x-dotenv (.env) handler — Tier 4, no parser dep.
@@ -36,11 +36,13 @@ export default class Dotenv extends BaseHandler {
         if (dialect === "jsonpath") {
             const byPointer = new Map<string, number>();
             for (const v of parseDotenv(toText(content))) byPointer.set(`/${ptr(v.key)}`, v.line);
-            const lineFor = (pointer: string): readonly { line: number; endLine: number }[] | undefined => {
+            const regionFor = (pointer: string) => {
                 const ln = byPointer.get(pointer);
-                return ln === undefined ? undefined : [{ line: ln, endLine: ln }];
+                return ln === undefined
+                    ? undefined
+                    : regionsForLineSpans(toText(content), [{ line: ln, endLine: ln }]);
             };
-            return queryJsonpathObject(this.deepJson(content), pattern, lineFor);
+            return queryJsonpathObject(this.deepJson(content), pattern, regionFor);
         }
         return super.query(content, dialect, pattern, flags);
     }

@@ -16,11 +16,10 @@ test("application/json + relatives are text", () => {
     assert.equal(MimetypeClassifier.isBinary("application/xml"), false);
 });
 
-test("NDJSON family is text, line-navigable, and NOT structural-JSON (schemes#28)", () => {
+test("NDJSON family is text and not a single JSON document (schemes#28)", () => {
     for (const mt of ["application/jsonl", "application/x-ndjson"]) {
-        assert.equal(MimetypeClassifier.isBinary(mt), false);       // was true → 415 on READ
-        assert.equal(MimetypeClassifier.isLineNavigable(mt), true); // each line is a record
-        assert.equal(MimetypeClassifier.isJson(mt), false);         // line slicer, not jsonItems
+        assert.equal(MimetypeClassifier.isBinary(mt), false);
+        assert.equal(MimetypeClassifier.isJson(mt), false);
     }
 });
 
@@ -46,32 +45,6 @@ test("application/pdf and friends are binary", () => {
 test("malformed input", () => {
     assert.equal(MimetypeClassifier.isBinary(""), false);
     assert.equal(MimetypeClassifier.isBinary("noslashhere"), true);
-});
-
-// --- isLineNavigableMimetype ---
-
-test("line-navigable: text/plain, text/markdown, text/csv, source code", () => {
-    assert.equal(MimetypeClassifier.isLineNavigable("text/plain"), true);
-    assert.equal(MimetypeClassifier.isLineNavigable("text/markdown"), true);
-    assert.equal(MimetypeClassifier.isLineNavigable("text/csv"), true);
-    assert.equal(MimetypeClassifier.isLineNavigable("text/javascript"), true);
-    assert.equal(MimetypeClassifier.isLineNavigable("text/typescript"), true);
-    assert.equal(MimetypeClassifier.isLineNavigable("application/javascript"), true);
-    assert.equal(MimetypeClassifier.isLineNavigable("application/yaml"), true);
-    assert.equal(MimetypeClassifier.isLineNavigable("application/toml"), true);
-});
-
-test("tree-navigable: JSON, XML, HTML, suffix variants", () => {
-    assert.equal(MimetypeClassifier.isLineNavigable("application/json"), false);
-    assert.equal(MimetypeClassifier.isLineNavigable("application/xml"), false);
-    assert.equal(MimetypeClassifier.isLineNavigable("text/html"), false);
-    assert.equal(MimetypeClassifier.isLineNavigable("application/vnd.api+json"), false);
-    assert.equal(MimetypeClassifier.isLineNavigable("image/svg+xml"), false);
-});
-
-test("binary mimetypes are not line-navigable", () => {
-    assert.equal(MimetypeClassifier.isLineNavigable("image/png"), false);
-    assert.equal(MimetypeClassifier.isLineNavigable("application/pdf"), false);
 });
 
 // --- normalizeAutoTextMimetype ---

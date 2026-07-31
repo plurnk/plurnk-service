@@ -45,48 +45,49 @@ class FakeTreeHandler extends BaseHandler {
 }
 
 const meta = { mimetype: "text/x-test", glyph: "🧪", extensions: [".test"] as const };
+const source = Array.from({ length: 100 }, (_, index) => `line ${index + 1}`).join("\n");
 
 describe("Issue #13 — Q1: xpath QueryMatch.line reflects pk:line on element", () => {
     it("element match returns the source line from pk:line", async () => {
         const h = new FakeTreeHandler(meta);
-        const matches = await h.query("anything", "xpath", "//function");
+        const matches = await h.query(source, "xpath", "//function");
         assert.equal(matches.length, 2);
         // The two function elements have pk:line="42" and pk:line="73".
-        const lines = matches.map((m) => m.lines![0].line).sort((a, b) => a - b);
+        const lines = matches.map((m) => m.regions![0].startLine).sort((a, b) => a - b);
         assert.deepEqual(lines, [42, 73]);
     });
 
     it("single match returns the right line", async () => {
         const h = new FakeTreeHandler(meta);
         const matches = await h.query(
-            "anything",
+            source,
             "xpath",
             "//function[name='fn_b']",
         );
         assert.equal(matches.length, 1);
-        assert.equal(matches[0].lines![0].line, 73);
+        assert.equal(matches[0].regions![0].startLine, 73);
     });
 
     it("computed scalars (count/string/…) carry no lines — no source node (#41)", async () => {
         const h = new FakeTreeHandler(meta);
-        const matches = await h.query("anything", "xpath", "count(//function)");
+        const matches = await h.query(source, "xpath", "count(//function)");
         assert.equal(matches.length, 1);
         // count(...) synthesizes a number from many nodes — it lives nowhere in
         // the source, so `lines` is absent (not a faked line 1). The value is
         // still reported faithfully.
-        assert.equal(matches[0].lines, undefined);
+        assert.equal(matches[0].regions, undefined);
         assert.equal(matches[0].matched, "2");
     });
 
     it("symmetry with jsonpath: same logical query returns the same source line", async () => {
         const h = new FakeTreeHandler(meta);
         const viaJsonpath = await h.query(
-            "anything",
+            source,
             "jsonpath",
             "$..children[?(@.type=='function' && @.name=='fn_a')]",
         );
         const viaXpath = await h.query(
-            "anything",
+            source,
             "xpath",
             "//function[name='fn_a']",
         );
@@ -94,7 +95,7 @@ describe("Issue #13 — Q1: xpath QueryMatch.line reflects pk:line on element", 
         assert.equal(viaXpath.length, 1);
         // Both should report line 42 — jsonpath via the matched subtree's line
         // annotations, xpath via pk:line on the element.
-        assert.equal(viaJsonpath[0].lines![0].line, 42);
-        assert.equal(viaXpath[0].lines![0].line, 42);
+        assert.equal(viaJsonpath[0].regions![0].startLine, 42);
+        assert.equal(viaXpath[0].regions![0].startLine, 42);
     });
 });

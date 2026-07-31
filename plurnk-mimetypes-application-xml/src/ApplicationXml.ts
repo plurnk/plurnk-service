@@ -2,6 +2,7 @@ import {
     BaseHandler,
     InvalidExpressionError,
     QueryParseFailureError,
+    regionsForLineSpans,
 } from "@plurnk/plurnk-mimetypes";
 import type {
     HandlerContent,
@@ -114,7 +115,7 @@ export default class ApplicationXml extends BaseHandler {
             } catch (cause) {
                 throw new InvalidExpressionError({ dialect: "xpath", expression: pattern, cause });
             }
-            return shapeXpathResult(pattern, result);
+            return shapeXpathResult(pattern, result, text);
         }
         return super.query(content, dialect, pattern, flags);
     }
@@ -196,7 +197,11 @@ function elementToDeep(el: Element): Record<string, unknown> {
 
 // Translate xpath.select result per grammar #17, with real source-line spans
 // (#41) from @xmldom/xmldom's node lineNumber.
-function shapeXpathResult(pattern: string, result: xpath.SelectReturnType): QueryMatch[] {
+function shapeXpathResult(
+    pattern: string,
+    result: xpath.SelectReturnType,
+    content: string,
+): QueryMatch[] {
     if (Array.isArray(result)) {
         return result.map((node, i): QueryMatch => {
             const line = nodeLine(node);
@@ -205,17 +210,23 @@ function shapeXpathResult(pattern: string, result: xpath.SelectReturnType): Quer
             const endLine = line !== undefined && node.nodeType === ELEMENT_NODE
                 ? spanEnd(node as unknown as Element)
                 : line;
+            const regions = line === undefined
+                ? undefined
+                : regionsForLineSpans(content, [{ line, endLine: endLine ?? line }]);
             return {
                 matched: serializeNode(node),
-                matching: result.length > 1 ? `(${pattern})[${i + 1}]` : undefined,
-                ...(line !== undefined && { lines: [{ line, endLine: endLine ?? line }] }),
+                matching: result.length > 1 ? `(${pattern})[${i + 1}]` : pattern,
+                ...(regions === undefined ? {} : { regions }),
             };
         });
     }
     if (result === null || result === undefined) return [];
     // Computed scalar (string()/count()/boolean()): no source node → no `lines`
     // (#41). The value is reported; the location is honestly absent.
-    return [{ matched: typeof result === "string" ? result : String(result) }];
+    return [{
+        matched: typeof result === "string" ? result : String(result),
+        matching: pattern,
+    }];
 }
 
 // 1-indexed source line of a matched node from xmldom's lineNumber. Attributes

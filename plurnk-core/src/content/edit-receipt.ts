@@ -1,77 +1,186 @@
 import { createHash } from "node:crypto";
+import { InvalidOperationResultError } from "@plurnk/plurnk-contracts";
 import type { LineMarker } from "@plurnk/plurnk-grammar";
+import type {
+    EditBatchReceipt,
+    EditEffectReceipt,
+    EditReceipt,
+    EditReceiptUnit,
+} from "@plurnk/plurnk-schemes";
+import LineMarkerOps from "./line-marker.ts";
 
 export interface ReceiptEdit {
     readonly marker: LineMarker;
     readonly body: string;
 }
 
-interface ReceiptOptions {
-    readonly unit?: "lines" | "items";
+export type {
+    EditBatchReceipt,
+    EditEffectReceipt,
+    EditReceipt,
+    EditReceiptUnit,
+} from "@plurnk/plurnk-schemes";
+
+export type ResourceEffectAction = "create" | "update" | "delete";
+
+export interface ResourceEffect {
+    readonly target: string;
+    readonly action: ResourceEffectAction;
+    readonly receipt?: EditReceipt;
 }
 
-export interface EditEffectReceipt {
-    readonly requested: string;
-    readonly source: string;
-    readonly result: string;
-    readonly removed: number;
-    readonly inserted: number;
-    readonly context: string;
+interface EffectWithContextRange extends EditEffectReceipt {
+    readonly resultStartLine: number;
+    readonly resultEndLine: number;
 }
 
-export interface EditBatchReceipt {
-    readonly revision: string;
-    readonly unit: "lines" | "items";
-    readonly before: number;
-    readonly after: number;
-    readonly effects: readonly EditEffectReceipt[];
-}
+const receiptRecord = (value: unknown, label: string): Record<string, unknown> => {
+    if (value === null || typeof value !== "object" || Array.isArray(value)) {
+        throw new InvalidOperationResultError(`${label} must be an object.`);
+    }
+    return value as Record<string, unknown>;
+};
 
-export interface EditReceipt {
-    readonly revision: string;
-    readonly unit: "lines" | "items";
-    readonly before: number;
-    readonly after: number;
-    readonly effect: EditEffectReceipt;
-}
-
-export const editReceiptUnit = (
-    structuralJson: boolean,
-    original: string,
-    updated: string,
-): "lines" | "items" => {
-    if (!structuralJson) return "lines";
-    try {
-        if (original.length > 0) JSON.parse(original);
-        if (updated.length > 0) JSON.parse(updated);
-        return "items";
-    } catch {
-        return "lines";
+const exactFields = (
+    record: Record<string, unknown>,
+    fields: readonly string[],
+    label: string,
+): void => {
+    const allowed = new Set(fields);
+    const unexpected = Object.keys(record).find((field) => !allowed.has(field));
+    if (unexpected !== undefined) {
+        throw new InvalidOperationResultError(
+            `${label} contains unexpected field ${JSON.stringify(unexpected)}.`,
+        );
+    }
+    const missing = fields.find((field) => !Object.hasOwn(record, field));
+    if (missing !== undefined) {
+        throw new InvalidOperationResultError(
+            `${label} is missing field ${JSON.stringify(missing)}.`,
+        );
     }
 };
 
+const assertExtent = (value: unknown, field: string): void => {
+    if (!Number.isSafeInteger(value) || (value as number) < 0) {
+        throw new InvalidOperationResultError(
+            `EDIT receipt ${field} must be a non-negative safe integer.`,
+        );
+    }
+};
+
+const assertEffectReceipt = (value: unknown): EditEffectReceipt => {
+    const effect = receiptRecord(value, "EDIT effect receipt");
+    exactFields(
+        effect,
+        ["requested", "source", "result", "removed", "inserted", "context"],
+        "EDIT effect receipt",
+    );
+    for (const field of ["requested", "source", "result", "context"] as const) {
+        if (typeof effect[field] !== "string") {
+            throw new InvalidOperationResultError(
+                `EDIT effect receipt ${field} must be a string.`,
+            );
+        }
+    }
+    assertExtent(effect.removed, "removed");
+    assertExtent(effect.inserted, "inserted");
+    return value as EditEffectReceipt;
+};
+
+const assertReceiptHead = (
+    receipt: Record<string, unknown>,
+    label: string,
+): void => {
+    if (typeof receipt.revision !== "string" || !/^[a-f0-9]{64}$/.test(receipt.revision)) {
+        throw new InvalidOperationResultError(`${label} revision must be a lowercase SHA-256 digest.`);
+    }
+    if (receipt.unit !== "lines" && receipt.unit !== "codePoints") {
+        throw new InvalidOperationResultError(`${label} unit must be 'lines' or 'codePoints'.`);
+    }
+    assertExtent(receipt.before, "before");
+    assertExtent(receipt.after, "after");
+};
+
+export const assertEditReceipt = (value: unknown): EditReceipt => {
+    const receipt = receiptRecord(value, "EDIT receipt");
+    exactFields(receipt, ["revision", "unit", "before", "after", "effect"], "EDIT receipt");
+    assertReceiptHead(receipt, "EDIT receipt");
+    assertEffectReceipt(receipt.effect);
+    return value as EditReceipt;
+};
+
+export const assertEditBatchReceipt = (value: unknown): EditBatchReceipt => {
+    const receipt = receiptRecord(value, "EDIT batch receipt");
+    exactFields(receipt, ["revision", "unit", "before", "after", "effects"], "EDIT batch receipt");
+    assertReceiptHead(receipt, "EDIT batch receipt");
+    if (!Array.isArray(receipt.effects) || receipt.effects.length === 0) {
+        throw new InvalidOperationResultError("EDIT batch receipt effects must be a non-empty array.");
+    }
+    for (const effect of receipt.effects) assertEffectReceipt(effect);
+    return value as unknown as EditBatchReceipt;
+};
+
+export const assertResourceEffects = (value: unknown): readonly ResourceEffect[] => {
+    if (!Array.isArray(value) || value.length === 0) {
+        throw new InvalidOperationResultError("Resource effects must be a non-empty array.");
+    }
+    for (const candidate of value) {
+        const effect = receiptRecord(candidate, "Resource effect");
+        const fields = Object.hasOwn(effect, "receipt")
+            ? ["target", "action", "receipt"]
+            : ["target", "action"];
+        exactFields(effect, fields, "Resource effect");
+        if (typeof effect.target !== "string" || effect.target.length === 0) {
+            throw new InvalidOperationResultError("Resource effect target must be a non-empty string.");
+        }
+        if (
+            effect.action !== "create"
+            && effect.action !== "update"
+            && effect.action !== "delete"
+        ) {
+            throw new InvalidOperationResultError(
+                "Resource effect action must be 'create', 'update', or 'delete'.",
+            );
+        }
+        if (Object.hasOwn(effect, "receipt")) {
+            if (effect.action !== "update") {
+                throw new InvalidOperationResultError(
+                    "Only an updated resource effect may carry a text receipt.",
+                );
+            }
+            assertEditReceipt(effect.receipt);
+        }
+    }
+    return value as readonly ResourceEffect[];
+};
+
 export const projectEditReceipt = (receipt: EditBatchReceipt, index: number): EditReceipt => {
-    const effect = receipt.effects[index];
+    const exact = assertEditBatchReceipt(receipt);
+    const effect = exact.effects[index];
     if (effect === undefined) throw new Error(`EDIT receipt has no effect at index ${index}`);
     return {
-        revision: receipt.revision,
-        unit: receipt.unit,
-        before: receipt.before,
-        after: receipt.after,
+        revision: exact.revision,
+        unit: exact.unit,
+        before: exact.before,
+        after: exact.after,
         effect,
     };
 };
 
 const splitLines = (content: string): string[] => {
     if (content.length === 0) return [];
-    const lines = content.split("\n");
-    if (content.endsWith("\n")) lines.pop();
+    const lines = content.split(/\r\n|\r|\n/);
+    if (/[\r\n]$/.test(content)) lines.pop();
     return lines;
 };
 
 const markerText = ({ marks }: LineMarker): string => `<${marks.join(",")}>`;
 
-const sourceRange = (marker: LineMarker, total: number): { start: number; end: number; removed: number } => {
+const sourceLineRange = (
+    marker: LineMarker,
+    total: number,
+): { start: number; end: number; removed: number } => {
     const first = marker.marks[0];
     const last = marker.marks[1];
     if (last !== undefined) {
@@ -81,117 +190,195 @@ const sourceRange = (marker: LineMarker, total: number): { start: number; end: n
     }
     if (first === 0) return { start: 1, end: 0, removed: 0 };
     if (first === -1) return { start: total + 1, end: total, removed: 0 };
-    if (!Number.isInteger(first)) {
-        const start = Math.floor(first) + 1;
-        return { start, end: start - 1, removed: 0 };
-    }
+    if (!Number.isInteger(first)) throw new Error("Whole-line EDIT receipts require integer coordinates.");
     return { start: first, end: first, removed: 1 };
+};
+
+const lineEffects = (
+    original: string,
+    edits: readonly ReceiptEdit[],
+): EffectWithContextRange[] => {
+    const before = splitLines(original);
+    let offset = 0;
+    const effects: Array<EffectWithContextRange | undefined> = new Array(edits.length);
+    edits
+        .map((edit, index) => ({
+            edit,
+            index,
+            source: sourceLineRange(edit.marker, before.length),
+        }))
+        .sort((left, right) => left.source.start - right.source.start)
+        .forEach(({ edit, index, source }) => {
+            const inserted = splitLines(edit.body).length;
+            const resultStart = source.start + offset;
+            const resultEnd = inserted === 0
+                ? resultStart - 1
+                : resultStart + inserted - 1;
+            offset += inserted - source.removed;
+            effects[index] = {
+                requested: markerText(edit.marker),
+                source: source.removed === 0
+                    ? `${source.start}^`
+                    : source.start === source.end
+                        ? `${source.start}`
+                        : `${source.start}-${source.end}`,
+                result: resultEnd < resultStart
+                    ? `${resultStart}^`
+                    : resultStart === resultEnd
+                        ? `${resultStart}`
+                        : `${resultStart}-${resultEnd}`,
+                removed: source.removed,
+                inserted,
+                context: "",
+                resultStartLine: resultStart,
+                resultEndLine: Math.max(resultStart, resultEnd),
+            };
+        });
+    return effects.map((effect, index) => {
+        if (effect === undefined) throw new Error(`EDIT receipt calculation omitted effect ${index}`);
+        return effect;
+    });
+};
+
+const codePointCount = (content: string): number => [...content].length;
+
+const codePointOffset = (content: string, jsOffset: number): number =>
+    codePointCount(content.slice(0, jsOffset));
+
+const jsOffsetFromCodePoints = (content: string, offset: number): number =>
+    [...content].slice(0, offset).join("").length;
+
+const coordinateAt = (
+    content: string,
+    codePoints: number,
+): { line: number; column: number } => {
+    const prefix = content.slice(0, jsOffsetFromCodePoints(content, codePoints));
+    const lines = prefix.split(/\r\n|\r|\n/);
+    return {
+        line: lines.length,
+        column: codePointCount(lines.at(-1) ?? "") + 1,
+    };
+};
+
+const coordinateText = ({ line, column }: { line: number; column: number }): string =>
+    `${line}:${column}`;
+
+const codePointEffects = (
+    original: string,
+    updated: string,
+    edits: readonly ReceiptEdit[],
+): EffectWithContextRange[] => {
+    const effects: Array<EffectWithContextRange | undefined> = new Array(edits.length);
+    let offset = 0;
+    edits
+        .map((edit, index) => {
+            const replacement = LineMarkerOps.textReplacement(
+                original,
+                edit.marker,
+                edit.body,
+            );
+            if ("error" in replacement) {
+                throw new Error(`EDIT receipt could not resolve ${markerText(edit.marker)}: ${replacement.error}`);
+            }
+            return {
+                edit,
+                index,
+                replacement,
+                sourceStart: codePointOffset(original, replacement.start),
+                sourceEnd: codePointOffset(original, replacement.end),
+                inserted: codePointCount(replacement.body),
+            };
+        })
+        .sort((left, right) => left.sourceStart - right.sourceStart)
+        .forEach((effect) => {
+            const removed = effect.sourceEnd - effect.sourceStart;
+            const resultStart = effect.sourceStart + offset;
+            const resultEnd = resultStart + effect.inserted;
+            offset += effect.inserted - removed;
+            const sourceStart = coordinateAt(original, effect.sourceStart);
+            const sourceEnd = coordinateAt(original, effect.sourceEnd);
+            const updatedStart = coordinateAt(updated, resultStart);
+            const updatedEnd = coordinateAt(updated, resultEnd);
+            effects[effect.index] = {
+                requested: markerText(effect.edit.marker),
+                source: removed === 0
+                    ? `${coordinateText(sourceStart)}^`
+                    : `${coordinateText(sourceStart)}-${coordinateText(sourceEnd)}`,
+                result: effect.inserted === 0
+                    ? `${coordinateText(updatedStart)}^`
+                    : `${coordinateText(updatedStart)}-${coordinateText(updatedEnd)}`,
+                removed,
+                inserted: effect.inserted,
+                context: "",
+                resultStartLine: updatedStart.line,
+                resultEndLine: updatedEnd.line,
+            };
+        });
+    return effects.map((effect, index) => {
+        if (effect === undefined) throw new Error(`EDIT receipt calculation omitted effect ${index}`);
+        return effect;
+    });
+};
+
+const contextRadius = (): number => {
+    const raw = process.env.PLURNK_SERVICE_EDIT_RECEIPT_CONTEXT_LINES;
+    const value = Number(raw);
+    if (!Number.isSafeInteger(value) || value < 0) {
+        throw new Error(
+            `PLURNK_SERVICE_EDIT_RECEIPT_CONTEXT_LINES must be a non-negative safe integer, got ${JSON.stringify(raw)}`,
+        );
+    }
+    return value;
+};
+
+const addContext = (
+    effects: readonly EffectWithContextRange[],
+    updated: string,
+): EditEffectReceipt[] => {
+    const lines = splitLines(updated);
+    const radius = contextRadius();
+    return effects.map((effect) => {
+        const first = Math.max(1, effect.resultStartLine - radius);
+        const last = Math.min(
+            lines.length,
+            Math.max(effect.resultStartLine, effect.resultEndLine) + radius,
+        );
+        const context: string[] = [];
+        for (let line = first; line <= last; line += 1) {
+            context.push(`${line}:${lines[line - 1]}`);
+        }
+        const {
+            resultStartLine: _resultStartLine,
+            resultEndLine: _resultEndLine,
+            ...receipt
+        } = effect;
+        return {
+            ...receipt,
+            context: context.join("\n"),
+        };
+    });
 };
 
 export const editReceipt = (
     original: string,
     updated: string,
     edits: readonly ReceiptEdit[],
-    options: ReceiptOptions = {},
 ): EditBatchReceipt => {
-    const { unit = "lines" } = options;
-    const before = splitLines(original);
-    const after = splitLines(updated);
-    let sourceShape: "array" | "object" | "scalar" = "scalar";
-    const itemCount = (content: string): number => {
-        if (content.length === 0) return 0;
-        const parsed = JSON.parse(content) as unknown;
-        if (Array.isArray(parsed)) return parsed.length;
-        if (parsed !== null && typeof parsed === "object") return Object.keys(parsed).length;
-        return 1;
-    };
-    if (unit === "items" && (original.length > 0 || updated.length > 0)) {
-        const parsed = JSON.parse(original.length > 0 ? original : updated) as unknown;
-        sourceShape = Array.isArray(parsed) ? "array" : parsed !== null && typeof parsed === "object" ? "object" : "scalar";
-    }
-    const countBody = (body: string): number => {
-        if (unit === "lines") return splitLines(body).length;
-        if (body.length === 0) return 0;
-        const parsed = JSON.parse(body) as unknown;
-        if (sourceShape === "array") return Array.isArray(parsed) ? parsed.length : 1;
-        if (sourceShape === "object") {
-            const values = Array.isArray(parsed) ? parsed : [parsed];
-            return values.reduce((count, value) =>
-                count + (value !== null && typeof value === "object" && !Array.isArray(value) ? Object.keys(value).length : 0), 0);
-        }
-        return Array.isArray(parsed) ? parsed.length : 1;
-    };
-    const beforeExtent = unit === "lines" ? before.length : itemCount(original);
-    const afterExtent = unit === "lines" ? after.length : itemCount(updated);
-    let offset = 0;
-    const effectsByIndex: Array<{
-        marker: string;
-        source: { start: number; end: number; removed: number };
-        inserted: number;
-        resultStart: number;
-        resultEnd: number;
-    } | undefined> = new Array(edits.length);
-    edits
-        .map((edit, index) => ({ edit, index, source: sourceRange(edit.marker, beforeExtent) }))
-        .sort((a, b) => a.source.start - b.source.start)
-        .forEach(({ edit, index, source }) => {
-            const inserted = countBody(edit.body);
-            const resultStart = source.start + offset;
-            const resultEnd = inserted === 0 ? resultStart - 1 : resultStart + inserted - 1;
-            offset += inserted - source.removed;
-            effectsByIndex[index] = {
-                marker: markerText(edit.marker),
-                source,
-                inserted,
-                resultStart,
-                resultEnd,
-            };
-        });
-    const effects = effectsByIndex.map((effect, index) => {
-        if (effect === undefined) throw new Error(`EDIT receipt calculation omitted effect ${index}`);
-        return effect;
-    });
-
-    const joinRadiusRaw = process.env.PLURNK_SERVICE_EDIT_RECEIPT_CONTEXT_LINES;
-    const joinRadius = Number(joinRadiusRaw);
-    if (!Number.isSafeInteger(joinRadius) || joinRadius < 0) {
-        throw new Error(`PLURNK_SERVICE_EDIT_RECEIPT_CONTEXT_LINES must be a non-negative safe integer, got ${JSON.stringify(joinRadiusRaw)}`);
-    }
-    const contextItems = unit === "lines"
-        ? after
-        : (() => {
-            if (updated.length === 0) return [];
-            const parsed = JSON.parse(updated) as unknown;
-            if (Array.isArray(parsed)) return parsed.map((item) => JSON.stringify(item));
-            if (parsed !== null && typeof parsed === "object") return Object.entries(parsed).map(([key, value]) => JSON.stringify({ [key]: value }));
-            return [JSON.stringify(parsed)];
-        })();
-    const withContext = effects.map((effect) => {
-        const visible = new Set<number>();
-        const join = Math.min(Math.max(effect.resultStart, 1), Math.max(contextItems.length, 1));
-        const end = Math.max(join, effect.resultEnd);
-        for (let line = Math.max(1, join - joinRadius); line <= Math.min(contextItems.length, end + joinRadius); line += 1) {
-            visible.add(line);
-        }
-        const contextRows = [...visible].sort((a, b) => a - b).map((line) => `${line}:${contextItems[line - 1]}`);
-        const sourceText = effect.source.removed === 0 ? `${effect.source.start}^` : effect.source.start === effect.source.end ? `${effect.source.start}` : `${effect.source.start}-${effect.source.end}`;
-        const resultText = effect.resultEnd < effect.resultStart ? `${effect.resultStart}^` : effect.resultStart === effect.resultEnd ? `${effect.resultStart}` : `${effect.resultStart}-${effect.resultEnd}`;
-        return {
-            requested: effect.marker,
-            source: sourceText,
-            result: resultText,
-            removed: effect.source.removed,
-            inserted: effect.inserted,
-            context: contextRows.join("\n"),
-        };
-    });
-
-    const revision = createHash("sha256").update(updated).digest("hex");
+    const unit: EditReceiptUnit = edits.some(({ marker }) => marker.marks.length === 4)
+        ? "codePoints"
+        : "lines";
+    const effects = unit === "codePoints"
+        ? codePointEffects(original, updated, edits)
+        : lineEffects(original, edits);
     return {
-        revision,
+        revision: createHash("sha256").update(updated).digest("hex"),
         unit,
-        before: beforeExtent,
-        after: afterExtent,
-        effects: withContext,
+        before: unit === "codePoints"
+            ? codePointCount(original)
+            : splitLines(original).length,
+        after: unit === "codePoints"
+            ? codePointCount(updated)
+            : splitLines(updated).length,
+        effects: addContext(effects, updated),
     };
 };

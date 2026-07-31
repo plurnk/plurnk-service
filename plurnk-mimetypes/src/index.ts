@@ -1,5 +1,8 @@
 // Top-level orchestrator
 export { default as Mimetypes } from "./Mimetypes.ts";
+export { default as TextCoordinates } from "./TextCoordinates.ts";
+export type { TextLine, TextPosition } from "./TextCoordinates.ts";
+export type { TextRegion } from "@plurnk/plurnk-contracts";
 export type {
     Channel,
     HandlerLoader,
@@ -46,7 +49,13 @@ export { parseBodyMatcher } from "./parseBodyMatcher.ts";
 export type { ParsedBodyMatcher } from "./parseBodyMatcher.ts";
 export { buildJsonOutline } from "./buildJsonOutline.ts";
 export type { JsonOutline } from "./buildJsonOutline.ts";
-export { queryGlob, queryJsonpathObject, queryRegex, queryXpathString } from "./query.ts";
+export {
+    queryGlob,
+    queryJsonpathObject,
+    queryRegex,
+    queryXpathString,
+    regionsForLineSpans,
+} from "./query.ts";
 export { projectJsonToXml } from "./projectJsonToXml.ts";
 export {
     InvalidExpressionError,
@@ -102,7 +111,6 @@ export type {
     MimeSymbol,
     QueryDialect,
     QueryMatch,
-    RowSpan,
     RefKind,
     Registry,
     SymbolKind,

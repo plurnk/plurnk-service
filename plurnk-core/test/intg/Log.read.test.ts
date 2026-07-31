@@ -113,22 +113,25 @@ test("Log.read: 400 on null path", async () => {
     } finally { db.close(); }
 });
 
-test("Log.read: lineMarker <1> on a JSON result returns first item by insertion order (structural <L>)", async () => {
+test("Log.read: lineMarker <1> on a JSON result selects its first physical line", async () => {
     const { db, engine, workspaceId, workerId, loopId, turnId } = await setup();
     try {
         await engine.dispatch({ statement: editStmt("/data.json", '{"status":201,"entryId":7,"channel":"body"}'), workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model" });
         await engine.dispatch({ statement: readStmt(urlPath("worker", "/data.json")), workspaceId, workerId, loopId, turnId, sequence: 2, origin: "model" });
+        const whole = await new Log().read(
+            readStmt(urlPath("log", "/1/1/2")),
+            makeSchemeCtx({ db, workerId }),
+        );
         const stmt: ReadStatement = { ...readStmt(urlPath("log", "/1/1/2")), lineMarker: { marks: [1] } };
         const r = await new Log().read(stmt, makeSchemeCtx({ db, workerId }));
         assert.equal(r.status, 200);
-        assert.equal(r.mimetype, "application/json");
-        const items = JSON.parse(r.content ?? "") as Array<Record<string, unknown>>;
-        assert.equal(items.length, 1);
-        assert.equal(items[0].status, 201);
+        assert.equal(r.mimetype, "text/markdown");
+        assert.equal(r.startLine, 1);
+        assert.equal(r.content, (whole.content ?? "").split(/\r\n|\r|\n/)[0]);
     } finally { db.close(); }
 });
 
-test("Log.read: a range miss carries the exact JSON-item extent", async () => {
+test("Log.read: a range miss carries the exact textual line extent", async () => {
     const { db, engine, workspaceId, workerId, loopId, turnId } = await setup();
     try {
         await engine.dispatch({ statement: editStmt("/data.json", '{"status":201,"entryId":7,"channel":"body"}'), workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model" });
@@ -142,7 +145,7 @@ test("Log.read: a range miss carries the exact JSON-item extent", async () => {
             requested?: { first?: number };
             available?: { total?: number };
         };
-        assert.equal(range.unit, "item");
+        assert.equal(range.unit, "line");
         assert.equal(range.requested?.first, 99);
         assert.ok(Number(range.available?.total) > 0);
     } finally { db.close(); }
@@ -175,13 +178,13 @@ test("Log.read: a tag filter on an exact READ → 404 (tag recall is OPEN[tag]/F
     } finally { db.close(); }
 });
 
-test("Log.read: body matcher selects the full projection before <L> projects a structural item", async () => {
+test("Log.read: body matcher selects the full projection before <L> projects text", async () => {
     const { db, engine, workspaceId, workerId, loopId, turnId } = await setup();
     try {
         await engine.dispatch({ statement: editStmt("/data.json", '{"status":201,"entryId":7,"channel":"body"}'), workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model" });
         await engine.dispatch({ statement: readStmt(urlPath("worker", "/data.json")), workspaceId, workerId, loopId, turnId, sequence: 2, origin: "model" });
         // The matcher qualifies the complete JSON result. <1> then projects its
-        // first structural item instead of paginating matcher hits.
+        // first rendered line instead of paginating matcher hits.
         const stmt: ReadStatement = {
             ...readStmt(urlPath("log", "/1/1/2")),
             lineMarker: { marks: [1, 1] },

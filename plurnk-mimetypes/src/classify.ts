@@ -1,27 +1,18 @@
 // Per-mimetype classification (SPEC §20, #43): this family is the single
-// source of filetype truth, so binary-vs-text and line-vs-tree navigation are
-// answered HERE — consumers (plurnk-schemes' retired MimetypeClassifier) stop
-// hand-maintaining allowlists that drift (the application/jsonl → 415 bug,
-// schemes#28).
+// source of binary-vs-text truth, so consumers stop hand-maintaining allowlists
+// that drift (the application/jsonl -> 415 bug, schemes#28).
 //
 // Two layers:
-//   * classifyMimetype() — the pure TAXONOMY heuristic (this file): sync, no
-//     registry, answers for ANY mimetype string — consumers classify stream
+//   * classifyMimetype() - the pure taxonomy heuristic (this file): sync, no
+//     registry, answers for any mimetype string - consumers classify stream
 //     labels for types with no installed handler (image/png on a byte stream).
 //     Rules are RFC-shaped (type prefix, RFC 6839 structured-syntax suffixes)
 //     plus the known text-application set.
-//   * Mimetypes.classify() — registry-aware: an INSTALLED handler's declared
-//     facts (plurnk.binary, plurnk.navigation) override the heuristic; absent
-//     declarations fall through to it.
+//   * Mimetypes.classify() - registry-aware: an installed handler's declared
+//     plurnk.binary value overrides the heuristic.
 
 export interface MimeClassification {
     binary: boolean;
-    // Line-navigable = the model addresses this content by line number (`N:`
-    // READ prefixes, line-based <L>); tree-navigated = structural addressing
-    // (jsonpath/xpath) where line prefixes would fight the format's own
-    // navigation. The axes do NOT collapse: NDJSON is text AND line-navigable
-    // (each line is a record); a single JSON doc is text and tree-navigated.
-    lineNavigable: boolean;
     // Provenance: "handler" when an installed handler's declaration decided
     // (registry truth), "heuristic" when taxonomy rules did.
     source: "handler" | "heuristic";
@@ -43,30 +34,16 @@ const TEXT_APPLICATION = new Set([
     "application/x-ndjson",
 ]);
 
-// Tree-navigated types: JSON-shaped and markup documents whose native
-// navigation is structural (jsonpath/xpath), not line numbers. yaml/toml/csv
-// are deliberately NOT here — they are line-oriented text (a `N:` prefix
-// reads naturally), matching the consumer semantics this absorbs.
-const TREE_NAVIGATED = new Set([
-    "application/json",
-    "application/xml",
-    "text/html",
-]);
-
 // RFC 6839 structured-syntax suffixes that mark a type as text.
 const TEXT_SUFFIXES = ["+json", "+xml", "+yaml", "+toml"];
-// Suffixes whose structure is tree-navigated.
-const TREE_SUFFIXES = ["+json", "+xml"];
 
 // The pure taxonomy heuristic. Answers for ANY mimetype string; installed
 // handlers refine it via Mimetypes.classify(). Edge semantics (absorbed from
-// the consumer contract): "" → not binary but not line-navigable (no type, no
-// navigation); a slash-less string is malformed → binary (consumers 415).
+// the consumer contract): "" is not binary; a slash-less string is malformed
+// and therefore binary (consumers 415).
 export function classifyMimetype(mimetype: string): MimeClassification {
-    const binary = isBinaryHeuristic(mimetype);
     return {
-        binary,
-        lineNavigable: mimetype.length > 0 && !binary && !isTreeNavigated(mimetype),
+        binary: isBinaryHeuristic(mimetype),
         source: "heuristic",
     };
 }
@@ -80,23 +57,11 @@ function isBinaryHeuristic(mimetype: string): boolean {
     return !TEXT_SUFFIXES.some((s) => mimetype.endsWith(s));
 }
 
-function isTreeNavigated(mimetype: string): boolean {
-    return TREE_NAVIGATED.has(mimetype) || TREE_SUFFIXES.some((s) => mimetype.endsWith(s));
-}
-
 // Registry-aware refinement, called by Mimetypes.classify() with the installed
-// handler's declared facts. Declared binary is authoritative (pdf declares
-// binary:true); declared navigation ("line" | "tree") wins over the taxonomy;
-// a binary type is never line-navigable regardless of declarations.
+// handler's declared facts. Declared binary is authoritative.
 export function classifyWithHandler(
-    mimetype: string,
-    declared: { binary: boolean; navigation?: "line" | "tree" },
+    _mimetype: string,
+    declared: { binary: boolean },
 ): MimeClassification {
-    const heuristic = classifyMimetype(mimetype);
-    const lineNavigable = declared.binary
-        ? false
-        : declared.navigation !== undefined
-            ? declared.navigation === "line"
-            : heuristic.lineNavigable;
-    return { binary: declared.binary, lineNavigable, source: "handler" };
+    return { binary: declared.binary, source: "handler" };
 }

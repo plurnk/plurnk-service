@@ -7,6 +7,29 @@ Language grammar belongs to `@plurnk/plurnk-grammar`; scheme and executor
 authoring helpers belong to `@plurnk/plurnk-schemes`; transport projections
 belong to their adapters.
 
+## Text regions
+
+`TextRegion` is the shared coordinate shape for contiguous textual content:
+
+```ts
+interface TextRegion {
+    startLine: number;
+    startColumn: number;
+    endLine: number;
+    endColumn: number;
+}
+```
+
+Lines and columns are positive safe integers and 1-based. Columns count Unicode
+code points. LF, CRLF, and CR are line separators; CRLF is one indivisible
+separator, and separator code units are not column positions. The end position
+is exclusive, and an equal start and end position is a zero-length insertion
+point. A producer either supplies all four coordinates or omits the region; it
+never substitutes UTF-16 offsets, readable-row indices, or partial coordinates.
+
+`Validator.assertTextRegion` enforces the complete shape and rejects an end
+position before its start.
+
 ## Operation results
 
 Every public PLURNK operation returns an `OperationResult`:

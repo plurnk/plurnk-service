@@ -1,4 +1,7 @@
 import assert from "node:assert/strict";
+import { Validator, type TextRegion } from "@plurnk/plurnk-contracts";
+import type { HandlerContent } from "./BaseHandler.ts";
+import { UnsupportedDialectError } from "./QueryError.ts";
 import type { MimeRef, MimeSymbol } from "./types.ts";
 
 // Third-party references-channel conformance harness (issue #20 made public,
@@ -136,81 +139,96 @@ export async function assertHandlerConformance(
     return { symbols, references };
 }
 
-// ——— Structural-query line-fidelity conformance (issue #41) ———
+// Structural-query evidence conformance.
 //
-// The query channel's contract: a content-backed structural match (jsonpath
-// node, xpath node) MUST carry an accurate source-line footprint, so a READ
-// returns the right line. A handler that produces structural matches without
-// `lines` silently breaks READ — this gate makes that a red build, not a latent
-// bug found months later. Every handler that supports a structural dialect runs
-// it; the gate, not an agent's memory, is what keeps the contract uniform.
+// A query result has exactly one honest verdict:
+// - "exact": an exact region in the text the model can READ.
+// - "enclosing": the nearest honest enclosing region in that text.
+// - "locator-only": a canonical structural locator without a text region.
+// - "unsupported": the handler rejects the dialect explicitly.
+//
+// "defect" is deliberately not a passing verdict. A missing, fabricated, or
+// incorrectly classified result fails the gate.
 
-export interface QueryLineCase {
-    // Real-world-shaped source for the handler's mimetype.
-    source: string;
+export interface QueryEvidenceCase {
+    source: HandlerContent;
     dialect: "jsonpath" | "xpath" | "regex" | "glob";
     pattern: string;
-    // Coverage mode (omit) vs precise mode (provide). When omitted, the harness
-    // asserts only that EVERY content-backed match carries a well-formed span —
-    // the core contract, wireable without predicting exact lines. When provided,
-    // it additionally checks the 1-indexed start line of each match in order.
-    // A case must produce at least one match either way (an empty query is not a
-    // conformance signal).
-    expectStartLines?: readonly number[];
-    // Set for a node-less computed scalar (xpath count()/string()/…): the match
-    // MUST carry no `lines` (we never fake a location). Default false.
-    scalar?: boolean;
+    verdict: "exact" | "enclosing" | "locator-only" | "unsupported";
+    expectRegions?: ReadonlyArray<ReadonlyArray<TextRegion>>;
 }
 
-// Minimal query surface; any handler instance satisfies it structurally.
-export interface QueryConformanceHandler {
+export interface QueryEvidenceConformanceHandler {
     query(
-        content: string,
+        content: HandlerContent,
         dialect: string,
         pattern: string,
         flags?: string,
-    ): Promise<ReadonlyArray<{ matched: unknown; lines?: ReadonlyArray<{ line: number; endLine: number }> }>>;
+    ): Promise<ReadonlyArray<{
+        matched: unknown;
+        matching?: string;
+        regions?: ReadonlyArray<TextRegion>;
+    }>>;
 }
 
-// Assert a handler's structural-query matches carry accurate source-line spans
-// (issue #41). Throws AssertionError on the first violation — wire one `it(...)`
-// per case. A content-backed match with no `lines` is a failure; a scalar case
-// asserts the opposite (no `lines`, value still present).
-export async function assertQueryLineConformance(
-    handler: QueryConformanceHandler,
-    cases: readonly QueryLineCase[],
+export async function assertQueryEvidenceConformance(
+    handler: QueryEvidenceConformanceHandler,
+    cases: readonly QueryEvidenceCase[],
 ): Promise<void> {
     for (const c of cases) {
-        const matches = await handler.query(c.source, c.dialect, c.pattern);
         const label = `${c.dialect} \`${c.pattern}\``;
+        if (c.verdict === "unsupported") {
+            await assert.rejects(
+                () => handler.query(c.source, c.dialect, c.pattern),
+                (cause: unknown) => cause instanceof UnsupportedDialectError,
+                `${label}: unsupported verdict must throw UnsupportedDialectError`,
+            );
+            continue;
+        }
 
-        if (c.scalar) {
-            assert.ok(matches.length > 0, `${label}: scalar query produced no match`);
+        const matches = await handler.query(c.source, c.dialect, c.pattern);
+        assert.ok(matches.length > 0, `${label}: produced no matches; not a conformance signal`);
+
+        if (c.verdict === "locator-only") {
             for (const m of matches) {
-                assert.equal(m.lines, undefined, `${label}: computed scalar must carry no lines (#41), got ${JSON.stringify(m.lines)}`);
+                assert.equal(
+                    m.regions,
+                    undefined,
+                    `${label}: locator-only match fabricated text regions: ${JSON.stringify(m.regions)}`,
+                );
+                assert.ok(
+                    typeof m.matching === "string" && m.matching.length > 0,
+                    `${label}: locator-only match omitted its canonical locator`,
+                );
             }
             continue;
         }
 
-        assert.ok(matches.length > 0, `${label}: produced no matches — not a conformance signal`);
-        const starts: number[] = [];
+        assert.ok(
+            c.expectRegions !== undefined,
+            `${label}: ${c.verdict} verdict must declare complete expected regions`,
+        );
         for (const m of matches) {
             assert.ok(
-                Array.isArray(m.lines) && m.lines.length > 0,
-                `${label}: content-backed match has no lines (#41) — value ${JSON.stringify(m.matched)}`,
+                Array.isArray(m.regions) && m.regions.length > 0,
+                `${label}: ${c.verdict} match has no region: ${JSON.stringify(m.matched)}`,
             );
-            for (const span of m.lines!) {
-                assert.ok(Number.isInteger(span.line) && span.line >= 1, `${label}: span.line 1-indexed, got ${span.line}`);
-                assert.ok(Number.isInteger(span.endLine) && span.endLine >= span.line, `${label}: span.endLine >= line, got ${JSON.stringify(span)}`);
+            for (const region of m.regions!) {
+                assertTextRegion(region, label);
             }
-            starts.push(m.lines![0].line);
         }
-        if (c.expectStartLines !== undefined) {
-            assert.deepEqual(
-                starts,
-                [...c.expectStartLines],
-                `${label}: match start lines mismatch — expected ${JSON.stringify(c.expectStartLines)}, got ${JSON.stringify(starts)}`,
-            );
-        }
+        assert.deepEqual(
+            matches.map((match) => match.regions),
+            c.expectRegions,
+            `${label}: ${c.verdict} regions mismatch`,
+        );
+    }
+}
+
+function assertTextRegion(region: TextRegion, label: string): void {
+    try {
+        Validator.assertTextRegion(region);
+    } catch (cause) {
+        assert.fail(`${label}: invalid TextRegion ${JSON.stringify(region)}: ${String(cause)}`);
     }
 }

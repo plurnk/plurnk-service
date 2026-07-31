@@ -91,3 +91,10 @@ recovery?: string
 retryable?: boolean
 [k: string]: unknown
 }
+
+export interface TextRegion {
+startLine: number
+startColumn: number
+endLine: number
+endColumn: number
+}

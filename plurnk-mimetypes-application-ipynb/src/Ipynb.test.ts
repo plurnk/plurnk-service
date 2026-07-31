@@ -92,12 +92,4 @@ describe("Ipynb — deepJson + validate", () => {
         assert.throws(() => h().validate("{ not json"));
         assert.doesNotThrow(() => h().validate(NB));
     });
-
-    it("extent is the projection's line count (editor convention)", () => {
-        const md = h().content(NB) as string;
-        // The projection ends with a trailing newline, which is a terminator,
-        // not a line — extent counts newlines in that case.
-        const newlines = (md.match(/\n/g) ?? []).length;
-        assert.equal(h().extent(NB), newlines);
-    });
 });

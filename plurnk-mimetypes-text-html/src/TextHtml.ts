@@ -126,10 +126,9 @@ export default class TextHtml extends BaseHandler {
 
     // Override xpath dispatch. parse5's tree isn't xpath-traversable, so we
     // re-parse via @xmldom/xmldom (which produces a real DOM that the `xpath`
-    // package can walk). Line numbers default to 1 because xmldom doesn't
-    // track source positions — accepting that limitation in exchange for a
-    // standards-compliant XPath 1.0 engine. Models can still get the matched
-    // value and a structural locator via `matching` for multi-match queries.
+    // package can walk). Raw HTML positions do not address the model-facing
+    // Markdown projection, so XPath results retain structural locators without
+    // fabricating TextRegions.
     override async query(
         content: HandlerContent,
         dialect: QueryDialect,
@@ -170,46 +169,19 @@ export default class TextHtml extends BaseHandler {
     }
 }
 
-// Translate an xpath.select return value to QueryMatch[] per grammar #17, with
-// real source-line spans (#41) from @xmldom/xmldom's node lineNumber — far
-// better than a faked line 1.
+// Translate an xpath.select return value to QueryMatch[] per grammar #17.
 function shapeXpathResult(pattern: string, result: xpath.SelectReturnType): QueryMatch[] {
     if (Array.isArray(result)) {
-        return result.map((node, i): QueryMatch => {
-            const line = nodeLine(node);
-            const endLine = line !== undefined ? spanEnd(node, line) : line;
-            return {
-                matched: serializeNode(node),
-                matching: result.length > 1 ? `(${pattern})[${i + 1}]` : undefined,
-                ...(line !== undefined && { lines: [{ line, endLine: endLine ?? line }] }),
-            };
-        });
+        return result.map((node, i): QueryMatch => ({
+            matched: serializeNode(node),
+            matching: result.length > 1 ? `(${pattern})[${i + 1}]` : pattern,
+        }));
     }
     if (result === null || result === undefined) return [];
-    // Computed scalar (string()/count()/boolean()): no source node → no `lines`
-    // (#41). Report the value faithfully; never fake a line.
-    return [{ matched: typeof result === "string" ? result : String(result) }];
-}
-
-// 1-indexed source line of a matched node from xmldom's lineNumber. Attributes
-// borrow their owner element; other non-element nodes their parent. Undefined
-// when no position is available.
-function nodeLine(node: Node): number | undefined {
-    const direct = (node as { lineNumber?: number }).lineNumber;
-    if (typeof direct === "number" && direct > 0) return direct;
-    const owner = (node as Attr).ownerElement
-        ?? (node as { parentNode?: Node | null }).parentNode ?? null;
-    const ln = (owner as { lineNumber?: number } | null)?.lineNumber;
-    return typeof ln === "number" && ln > 0 ? ln : undefined;
-}
-
-const ELEMENT_NODE_TYPE = 1;
-// An element's source-line span end = start line + newlines in its serialized
-// form (covers the closing tag) — accurate and consistent with the deepJson
-// channel's parse5 spans.
-function spanEnd(node: Node, startLine: number): number {
-    const serialized = serializeNode(node);
-    return startLine + (serialized.match(/\n/g)?.length ?? 0);
+    return [{
+        matched: typeof result === "string" ? result : String(result),
+        matching: pattern,
+    }];
 }
 
 // Convert an xpath result node to a string suitable for QueryMatch.matched.

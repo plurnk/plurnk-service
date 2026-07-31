@@ -18,41 +18,42 @@ import {
     QueryParseFailureError,
 } from "@plurnk/plurnk-mimetypes";
 import { TEXT_PRIMITIVE_MIMETYPE } from "./MimetypeClassifier.ts";
-import Results, { type MatchRange, type SchemeResult } from "./Results.ts";
+import Results, { type MatchEvidence, type SchemeResult } from "./Results.ts";
 
 export interface MatchResult extends SchemeResult {
     body?: string;                         // raw fallback content (status 203)
-    matches?: ReadonlyArray<MatchRange>;  // addressable evidence (status 200 or 204)
+    matches?: ReadonlyArray<MatchEvidence>;  // addressable evidence (status 200 or 204)
     mimetype?: string;                    // overrides default text/markdown on the 203 fallback path
     reason?: string;                      // 203 fallback: framework's parse-failure reason for the model
 }
 
 export default class Matcher {
-    static #ranges(matches: readonly QueryMatch[]): MatchRange[] {
-        const ranges: MatchRange[] = [];
+    static #evidence(matches: readonly QueryMatch[]): MatchEvidence[] {
+        const evidence: MatchEvidence[] = [];
         const seen = new Set<string>();
         for (const match of matches) {
-            const lines = match.lines ?? [];
-            const rows = match.rows ?? [];
-            if (lines.length !== rows.length) {
-                throw new Error(`Mimetypes.query returned ${lines.length} source ranges and ${rows.length} readable ranges for one match`);
-            }
-            for (let index = 0; index < lines.length; index += 1) {
-                const range = {
-                    lineStart: lines[index].line,
-                    lineEnd: lines[index].endLine,
-                    rowStart: rows[index].row,
-                    rowEnd: rows[index].endRow,
-                    ...(match.matching === undefined ? {} : { path: match.matching }),
-                };
-                const key = `${range.lineStart}\0${range.lineEnd}\0${range.rowStart}\0${range.rowEnd}\0${range.path ?? ""}`;
+            const regions = match.regions ?? [];
+            if (regions.length === 0 && match.matching !== undefined) {
+                const item = Results.assertMatchEvidence({ path: match.matching });
+                const key = JSON.stringify(item);
                 if (!seen.has(key)) {
                     seen.add(key);
-                    ranges.push(range);
+                    evidence.push(item);
                 }
+                continue;
+            }
+            for (const region of regions) {
+                const item = Results.assertMatchEvidence({
+                    ...(match.matching === undefined ? {} : { path: match.matching }),
+                    region,
+                });
+                const key = JSON.stringify(item);
+                if (seen.has(key)) continue;
+                seen.add(key);
+                evidence.push(item);
             }
         }
-        return ranges;
+        return evidence;
     }
 
     // Hand the framework the ALREADY-PARSED matcher (mimetypes#42), not the raw
@@ -92,7 +93,7 @@ export default class Matcher {
             }
             return {
                 status: 200,
-                matches: Matcher.#ranges(rawMatches),
+                matches: Matcher.#evidence(rawMatches),
             };
         } catch (err) {
             // Name-based dispatch tolerates dup-copy node_modules layouts where

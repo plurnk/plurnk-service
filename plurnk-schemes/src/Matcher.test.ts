@@ -17,23 +17,19 @@ import Matcher from "./Matcher.ts";
 // or rejects per the caller's spec. The adapter only touches `query`.
 const stubMimetypes = (impl: (input: object, matcher: string | ParsedBodyMatcher) => Promise<QueryMatch[]>): Mimetypes => {
     return {
-        query: async (input: object, matcher: string | ParsedBodyMatcher) => {
-            const matches = await impl(input, matcher);
-            return matches.map((match) => match.lines === undefined || match.rows !== undefined
-                ? match
-                : {
-                    ...match,
-                    rows: match.lines.map(({ line, endLine }) => ({ row: line, endRow: endLine })),
-                });
-        },
+        query: async (input: object, matcher: string | ParsedBodyMatcher) =>
+            impl(input, matcher),
     } as unknown as Mimetypes;
 };
 
 const regexBody: MatcherBody = { dialect: "regex", raw: "/foo/", pattern: "foo", flags: "" };
 
-// A content-backed hit's footprint: one span anchored at line N (start === end
-// for a single-line hit). Matches the mimetypes #41 QueryMatch.lines shape.
-const at = (n: number) => [{ line: n, endLine: n }];
+const at = (line: number, startColumn = 1, endColumn = 2) => [{
+    startLine: line,
+    startColumn,
+    endLine: line,
+    endColumn,
+}];
 
 // Source fixture the matcher reads line text from. The matcher SELECTS a line;
 // READ returns that line's CONTENT, not the matched token (schemes#27).
@@ -44,29 +40,39 @@ const doc = [
     "delta foo foo",    // 4 — two hits on one line (dedup)
 ].join("\n");
 
-test("matcher: returns deduped source/readable coordinates", async () => {
+test("matcher: returns deduplicated readable-text regions", async () => {
     const mts = stubMimetypes(async () => [
-        { lines: at(2), matched: "foo" },
-        { lines: at(4), matched: "foo" },
-        { lines: at(4), matched: "foo" },
+        { regions: at(2, 7, 10), matched: "foo" },
+        { regions: at(4, 7, 10), matched: "foo" },
+        { regions: at(4, 7, 10), matched: "foo" },
     ]);
     const r = await Matcher.matchAgainstContent(regexBody, doc, "text/markdown", mts);
     assert.equal(r.status, 200);
     assert.deepEqual(r.matches, [
-        { lineStart: 2, lineEnd: 2, rowStart: 2, rowEnd: 2 },
-        { lineStart: 4, lineEnd: 4, rowStart: 4, rowEnd: 4 },
+        { region: { startLine: 2, startColumn: 7, endLine: 2, endColumn: 10 } },
+        { region: { startLine: 4, startColumn: 7, endLine: 4, endColumn: 10 } },
     ]);
     assert.equal(r.body, undefined);
 });
 
 test("matcher: a multi-line span remains one range", async () => {
-    const mts = stubMimetypes(async () => [{ lines: [{ line: 2, endLine: 4 }], matched: "block" }]);
+    const mts = stubMimetypes(async () => [{
+        regions: [{
+            startLine: 2,
+            startColumn: 1,
+            endLine: 4,
+            endColumn: 14,
+        }],
+        matched: "block",
+    }]);
     const r = await Matcher.matchAgainstContent(regexBody, doc, "text/markdown", mts);
     assert.deepEqual(r.matches, [{
-        lineStart: 2,
-        lineEnd: 4,
-        rowStart: 2,
-        rowEnd: 4,
+        region: {
+            startLine: 2,
+            startColumn: 1,
+            endLine: 4,
+            endColumn: 14,
+        },
     }]);
 });
 
@@ -90,14 +96,17 @@ test("matcher: a structural dialect passes {dialect, pattern: raw} (no flags)", 
     assert.deepEqual(seen, { dialect: "jsonpath", pattern: "$.users[*].name" });
 });
 
-test("matcher: a footprint-less match selects without faked coordinates", async () => {
-    const mts = stubMimetypes(async () => [{ matched: 42 }]);
+test("matcher: a locator-only match selects without fabricated coordinates", async () => {
+    const mts = stubMimetypes(async () => [{
+        matched: 42,
+        matching: "count(//item)",
+    }]);
     const r = await Matcher.matchAgainstContent(
         { dialect: "xpath", raw: "count(//item)" } as MatcherBody,
         "irrelevant", "text/html", mts,
     );
     assert.equal(r.status, 200);
-    assert.deepEqual(r.matches, []);
+    assert.deepEqual(r.matches, [{ path: "count(//item)" }]);
     assert.equal(r.body, undefined);
 });
 
@@ -112,16 +121,22 @@ test("matcher: framework returns empty array → status 204", async () => {
 test("matcher: structural hit exposes its canonical path as metadata", async () => {
     const json = ['{', '  "users": [', '    { "name": "Alice" },', '    { "name": "Bob" }', '  ]', '}'].join("\n");
     const mts = stubMimetypes(async () => [
-        { lines: at(3), matched: "Alice", matching: "$.users[0].name" },
-        { lines: at(4), matched: "Bob", matching: "$.users[1].name" },
+        { regions: at(3, 7, 22), matched: "Alice", matching: "$.users[0].name" },
+        { regions: at(4, 7, 20), matched: "Bob", matching: "$.users[1].name" },
     ]);
     const r = await Matcher.matchAgainstContent(
         { dialect: "jsonpath", raw: "$.users[*].name" } as MatcherBody,
         json, "application/json", mts,
     );
     assert.deepEqual(r.matches, [
-        { lineStart: 3, lineEnd: 3, rowStart: 3, rowEnd: 3, path: "$.users[0].name" },
-        { lineStart: 4, lineEnd: 4, rowStart: 4, rowEnd: 4, path: "$.users[1].name" },
+        {
+            path: "$.users[0].name",
+            region: { startLine: 3, startColumn: 7, endLine: 3, endColumn: 22 },
+        },
+        {
+            path: "$.users[1].name",
+            region: { startLine: 4, startColumn: 7, endLine: 4, endColumn: 20 },
+        },
     ]);
 });
 
@@ -136,6 +151,22 @@ test("matcher: footprint-less values do not become retrieval content", async () 
     );
     assert.deepEqual(r.matches, []);
     assert.equal(r.body, undefined);
+});
+
+test("matcher: malformed plugin evidence fails at the adapter boundary", async () => {
+    const mts = stubMimetypes(async () => [{
+        matched: "broken",
+        regions: [{
+            startLine: 2,
+            startColumn: 1,
+            endLine: 1,
+            endColumn: 2,
+        }],
+    }]);
+    await assert.rejects(
+        Matcher.matchAgainstContent(regexBody, doc, "text/markdown", mts),
+        /TextRegion/,
+    );
 });
 
 test("matcher: UnsupportedDialectError → 415", async () => {
@@ -205,7 +236,7 @@ test("matcher: xpath dialect served by the framework, no local xml engine", asyn
     const r = await Matcher.matchAgainstContent(xpathBody, xml, "text/html", mts);
     assert.equal(r.status, 200);
     assert.deepEqual(r.matches, [
-        { lineStart: 2, lineEnd: 2, rowStart: 2, rowEnd: 2, path: "(//item)[1]" },
-        { lineStart: 3, lineEnd: 3, rowStart: 3, rowEnd: 3, path: "(//item)[2]" },
+        { path: "(//item)[1]" },
+        { path: "(//item)[2]" },
     ]);
 });

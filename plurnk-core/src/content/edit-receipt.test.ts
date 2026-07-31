@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { editReceipt } from "./edit-receipt.ts";
+import {
+    assertEditBatchReceipt,
+    assertEditReceipt,
+    assertResourceEffects,
+    editReceipt,
+    projectEditReceipt,
+} from "./edit-receipt.ts";
 
 test("editReceipt correlates disjoint edits to one bounded resulting revision", () => {
     const receipt = editReceipt(
@@ -53,6 +59,79 @@ test("editReceipt reports creation, prepend, append, and deletion boundaries exp
     }
 });
 
+test("editReceipt reports exact regions in Unicode code points and line-column coordinates", () => {
+    const receipt = editReceipt(
+        "A😀B\nsecond\n",
+        "AXB\nsecond\n",
+        [{ marker: { marks: [1, 2, 1, 3] }, body: "X" }],
+    );
+    assert.equal(receipt.unit, "codePoints");
+    assert.equal(receipt.before, 11);
+    assert.equal(receipt.after, 11);
+    assert.deepEqual(
+        receipt.effects.map(({ requested, source, result, removed, inserted }) => ({
+            requested,
+            source,
+            result,
+            removed,
+            inserted,
+        })),
+        [{
+            requested: "<1,2,1,3>",
+            source: "1:2-1:3",
+            result: "1:2-1:3",
+            removed: 1,
+            inserted: 1,
+        }],
+    );
+});
+
+test("editReceipt maps multiline exact insertion endpoints in the resulting revision", () => {
+    const receipt = editReceipt(
+        "ab\ncd",
+        "aX\nYb\ncd",
+        [{ marker: { marks: [1, 2, 1, 2] }, body: "X\nY" }],
+    );
+    assert.deepEqual(
+        receipt.effects.map(({ source, result, removed, inserted }) => ({
+            source,
+            result,
+            removed,
+            inserted,
+        })),
+        [{
+            source: "1:2^",
+            result: "1:2-2:2",
+            removed: 0,
+            inserted: 3,
+        }],
+    );
+});
+
+test("editReceipt reports mixed line and exact edits in one code-point coordinate system", () => {
+    const receipt = editReceipt(
+        "one\ntwo\nthree\n",
+        "oNe\ntwo\nTHREE\n",
+        [
+            { marker: { marks: [1, 2, 1, 3] }, body: "N" },
+            { marker: { marks: [3] }, body: "THREE" },
+        ],
+    );
+    assert.equal(receipt.unit, "codePoints");
+    assert.deepEqual(
+        receipt.effects.map(({ source, result, removed, inserted }) => ({
+            source,
+            result,
+            removed,
+            inserted,
+        })),
+        [
+            { source: "1:2-1:3", result: "1:2-1:3", removed: 1, inserted: 1 },
+            { source: "3:1-4:1", result: "3:1-4:1", removed: 6, inserted: 6 },
+        ],
+    );
+});
+
 test("editReceipt fails hard when its context tuning is missing or malformed", () => {
     const prior = process.env.PLURNK_SERVICE_EDIT_RECEIPT_CONTEXT_LINES;
     try {
@@ -64,4 +143,45 @@ test("editReceipt fails hard when its context tuning is missing or malformed", (
         if (prior === undefined) delete process.env.PLURNK_SERVICE_EDIT_RECEIPT_CONTEXT_LINES;
         else process.env.PLURNK_SERVICE_EDIT_RECEIPT_CONTEXT_LINES = prior;
     }
+});
+
+test("receipt and resource-effect validators reject malformed plugin results", () => {
+    const batch = editReceipt("a", "b", [{
+        marker: { marks: [1] },
+        body: "b",
+    }]);
+    assert.equal(assertEditBatchReceipt(batch), batch);
+    const receipt = projectEditReceipt(batch, 0);
+    assert.equal(assertEditReceipt(receipt), receipt);
+    const effects = [{ target: "worker:///notes", action: "update", receipt }] as const;
+    assert.equal(assertResourceEffects(effects), effects);
+
+    assert.throws(
+        () => assertEditReceipt({ ...receipt, revision: "short" }),
+        /lowercase SHA-256/,
+    );
+    assert.throws(
+        () => assertEditBatchReceipt({ ...batch, effects: [] }),
+        /non-empty array/,
+    );
+    assert.throws(
+        () => assertResourceEffects([{ target: "", action: "update" }]),
+        /non-empty string/,
+    );
+    assert.throws(
+        () => assertResourceEffects([]),
+        /non-empty array/,
+    );
+    assert.throws(
+        () => assertResourceEffects([{ target: "worker:///notes", action: "replace" }]),
+        /create.*update.*delete/,
+    );
+    assert.throws(
+        () => assertResourceEffects([{
+            target: "worker:///notes",
+            action: "create",
+            receipt,
+        }]),
+        /Only an updated resource effect/,
+    );
 });

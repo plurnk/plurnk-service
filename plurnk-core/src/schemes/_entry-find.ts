@@ -26,11 +26,11 @@ import EntryManifest, { type CatalogEntry } from "./_entry-manifest.ts";
 import Owner from "../core/Owner.ts";
 import EntrySemantic from "./_entry-semantic.ts";
 import Results, { type ProblemDetails, type SchemeResultBase } from "../core/results.ts";
-import type { MatchRange, RangeExtent } from "@plurnk/plurnk-schemes";
+import type { MatchEvidence, RangeExtent } from "@plurnk/plurnk-schemes";
 import { resolveSearchCandidates } from "./_search-candidate.ts";
 import { pathFolderSummaries, pathScope, pathScopeMatches, type PathScope } from "./_path-scope.ts";
 
-export interface Match { pathname: string; matches: MatchRange[]; }
+export interface Match { pathname: string; matches: MatchEvidence[]; }
 // A FIND result row: the entry's catalog row plus addressable match evidence
 // (absent for a body-less or source-less match).
 export type CatalogScope = {
@@ -40,7 +40,7 @@ export type CatalogScope = {
     channels?: never;
     matches?: undefined;
 };
-export type CatalogMatch = CatalogEntry & { matches?: MatchRange[]; items?: never; tokens?: never };
+export type CatalogMatch = CatalogEntry & { matches?: MatchEvidence[]; items?: never; tokens?: never };
 export type MatchItem = CatalogMatch | CatalogScope;
 
 export interface FindResult extends SchemeResultBase {
@@ -174,8 +174,8 @@ export default class EntryFind {
         }
 
         // Every dialect resolves to one selection per resource. Content
-        // dialects already carry both coordinate systems; relation dialects
-        // add readable-row coordinates below.
+        // dialects already carry honest match evidence; relation dialects map
+        // their indexed source spans into readable TextRegions below.
         let matches: Match[];
         if (statement.body !== null && statement.body.dialect === "semantic") {
             // Semantic rank is exhaustive within the SAME target/tag candidate set as every
@@ -234,7 +234,7 @@ export default class EntryFind {
                     },
                 };
             }
-            matches = await EntryFind.#addReadableRows(
+            matches = await EntryFind.#addTextRegions(
                 ranked.results.map((x): SourceCandidateMatch => ({
                     key: x.key,
                     span: { lineStart: x.lineStart, lineEnd: x.lineEnd },
@@ -299,7 +299,7 @@ export default class EntryFind {
                     },
                 };
             }
-            matches = await EntryFind.#addReadableRows(
+            matches = await EntryFind.#addTextRegions(
                 graph.matches.map((m): SourceCandidateMatch => ({
                     key: m.key,
                     span: { lineStart: m.lineStart, lineEnd: m.lineEnd },
@@ -369,7 +369,7 @@ export default class EntryFind {
         return { status: 200, matches, ...(scope === null ? {} : { scope }), ...(candidatePathnames === undefined ? {} : { candidatePathnames }) };
     }
 
-    static async #addReadableRows(
+    static async #addTextRegions(
         matches: readonly SourceCandidateMatch[],
         ctx: PlurnkSchemeContext,
         manifest: SchemeManifest,
@@ -378,7 +378,6 @@ export default class EntryFind {
         if (matches.every(({ span }) => span === null)) {
             return [...new Set(matches.map(({ key }) => key))].map((pathname) => ({ pathname, matches: [] }));
         }
-        if (ctx.mimetypes === undefined) throw new Error("EntryFind.#addReadableRows: matched entries require the mimetypes capability");
         const scheme = EntryCrud.identityScheme(manifest);
         const ownerId = explicitOwnerId ?? await Owner.commonsId(ctx.db, ctx.workspaceId);
         const candidates: Array<{ key: string; content: string; mimetype: string }> = [];
@@ -390,14 +389,10 @@ export default class EntryFind {
                 pathname,
                 channel: manifest.defaultChannel,
             });
-            if (row === undefined) throw new Error(`EntryFind.#addReadableRows: matched entry ${pathname} has no default channel`);
+            if (row === undefined) throw new Error(`EntryFind.#addTextRegions: matched entry ${pathname} has no default channel`);
             candidates.push({ key: pathname, ...row });
         }
-        const resolved = await Matcher.addReadableRows(
-            matches,
-            candidates,
-            ctx.mimetypes,
-        );
+        const resolved = Matcher.addTextRegions(matches, candidates);
         return resolved.map(({ key, matches: ranges }) => ({ pathname: key, matches: ranges }));
     }
 

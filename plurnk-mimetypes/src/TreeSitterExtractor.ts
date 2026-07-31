@@ -3,6 +3,7 @@ import type { HandlerContent } from "./BaseHandler.ts";
 import type { MimeRef, MimeSymbol } from "./types.ts";
 import { collectReferences } from "./treesitter/refsEngine.ts";
 import type { RefsQuery } from "./treesitter/refsEngine.ts";
+import TextCoordinates from "./TextCoordinates.ts";
 
 // web-tree-sitter's Query constructor, typed locally. Produces a raw query
 // object; for most languages it already satisfies RefsQuery (it exposes
@@ -181,7 +182,7 @@ export default abstract class TreeSitterExtractor extends BaseHandler {
             return null;
         }
         try {
-            return walkDeepNode(tree.rootNode);
+            return walkDeepNode(tree.rootNode, content);
         } catch {
             return null;
         } finally {
@@ -222,18 +223,40 @@ export function isGrammarNotInstalled(err: unknown): boolean {
 export interface DeepTreeNode {
     type: string;
     line: number;
+    column?: number;
     endLine: number;
+    endColumn?: number;
     text?: string;
     children?: DeepTreeNode[];
 }
 
 // Public so handlers can call it from a custom deepJson override (e.g. to walk
 // a fragment of the tree, or to combine the AST with additional metadata).
-export function walkDeepNode(node: TreeSitterNode): DeepTreeNode {
+export function walkDeepNode(node: TreeSitterNode, content?: string): DeepTreeNode {
+    return walkIndexedDeepNode(
+        node,
+        content === undefined ? undefined : new TextCoordinates(content),
+    );
+}
+
+function walkIndexedDeepNode(
+    node: TreeSitterNode,
+    coordinates: TextCoordinates | undefined,
+): DeepTreeNode {
+    const region = coordinates === undefined
+        ? null
+        : coordinates.regionFromUtf8Points(
+            node.startPosition,
+            node.endPosition,
+        );
     const out: DeepTreeNode = {
         type: node.type,
-        line: node.startPosition.row + 1,
-        endLine: node.endPosition.row + 1,
+        line: region?.startLine ?? node.startPosition.row + 1,
+        endLine: region?.endLine ?? node.endPosition.row + 1,
+        ...(region === null ? {} : {
+            column: region.startColumn,
+            endColumn: region.endColumn,
+        }),
     };
     if (node.namedChildCount === 0) {
         // Leaf — preserve source text so jsonpath can match against identifier
@@ -244,7 +267,7 @@ export function walkDeepNode(node: TreeSitterNode): DeepTreeNode {
     const children: DeepTreeNode[] = [];
     for (let i = 0; i < node.namedChildCount; i += 1) {
         const child = node.namedChild(i);
-        if (child) children.push(walkDeepNode(child));
+        if (child) children.push(walkIndexedDeepNode(child, coordinates));
     }
     if (children.length > 0) out.children = children;
     return out;

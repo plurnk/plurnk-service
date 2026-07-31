@@ -21,7 +21,9 @@ const result = PlurnkParser.parse(input);
 
 Discriminate on `item.kind`. For `statement` items, narrow on `statement.op` (one of `FIND READ EDIT COPY MOVE OPEN FOLD SEND EXEC WORK FORK KILL PLAN`) to access per-OP typed fields. Full API: [SPEC.md §12](SPEC.md#12-public-api).
 
-`parsePath(raw)` is a top-level helper that decomposes a path/URI string into a `ParsedPath` (the same decomposition applied to `(target)` slots). Reach for it to resolve a **COPY destination**: COPY's destination body remains an opaque string until the consumer calls `parsePath`. MOVE destinations arrive pre-parsed.
+`parsePath(raw)` decomposes a path/URI string into the same `ParsedPath`
+used by `(target)` slots. `parseResourceSelection(raw)` additionally recognizes
+the optional trailing text scope used by COPY and MOVE destinations.
 
 ## cli
 
@@ -44,16 +46,16 @@ Exit `0` on clean parse, `1` on any error or unparsed tail.
 | `suffix` | `[A-Za-z0-9_]*` glued to `OP`; used for nesting    |
 | `[…]`    | optional CSV; per-OP semantics                     |
 | `(…)`    | optional URI                                       |
-| `<L>`    | optional `<N>`, `<N,M>`/`<N-M>`, or N-component `<0.7,10,20>`; components ∈ signed numbers — decimals mean insert-between (lines) or score threshold (results); parses to `marks: number[]` |
+| `<L>`    | optional numeric scope; one/two integers select positions, four integers select an exact text region, and a leading decimal may be a semantic threshold; parses to `marks: number[]` |
 | `:body:` | optional; opaque between fences                    |
 
 | OP   | signal           | body                  | line marker        |
 |------|------------------|-----------------------|--------------------|
 | FIND | tag filter       | matcher               | result-set range   |
-| READ | tag filter       | matcher               | per-entry lines    |
-| EDIT | tags             | content (empty=clear) | entry lines        |
-| COPY | tags-to-apply    | destination URI       | entry lines        |
-| MOVE | tags-to-apply    | destination URI       | entry lines        |
+| READ | tag filter       | matcher               | text region        |
+| EDIT | tags             | content (empty=clear) | text region        |
+| COPY | tags-to-apply    | destination selection | source region      |
+| MOVE | tags-to-apply    | destination selection | source region      |
 | OPEN | tag filter       | matcher               | result-set range   |
 | FOLD | tag filter       | matcher               | result-set range   |
 | SEND | HTTP status int  | payload (JSON conv.)  | n/a                |
@@ -64,7 +66,7 @@ Exit `0` on clean parse, `1` on any error or unparsed tail.
 | PLAN | tags             | reasoning text        | n/a                |
 
 On READ, a matcher selects resources against their full readable content and
-the line marker projects rows from every selected resource. Without one, READ
+the line marker projects text from every selected resource. Without one, READ
 returns each complete selected resource. FIND line markers instead paginate
 selected resources.
 
@@ -185,8 +187,9 @@ Nesting: outer body may contain inner `<<OP:…:OP` statements; outer must use a
 33. Think aloud — reasoning recorded to the log
 	<<PLAN:Need the capital fact; discover via wiki, record to known, deliver.:PLAN
 
-34. Insert a line between lines 2 and 3 (decimal = between; replaces nothing)
-	<<EDIT(worker://~/plan)<2.5>:- [ ] Verify against a second source:EDIT
+34. Insert text at line 3, column 1 (equal exact endpoints replace nothing)
+	<<EDIT(worker://~/plan)<3,1,3,1>:- [ ] Verify against a second source
+:EDIT
 
 35. Semantic search with a similarity threshold (decimal = minimum score)
 	<<FIND(worker:///**)<0.7>:~territorial concessions:FIND

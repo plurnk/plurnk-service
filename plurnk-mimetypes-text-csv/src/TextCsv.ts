@@ -3,6 +3,8 @@ import {
     projectJsonToXml,
     queryJsonpathObject,
     QueryParseFailureError,
+    regionsForLineSpans,
+    TextCoordinates,
 } from "@plurnk/plurnk-mimetypes";
 import type {
     HandlerContent,
@@ -88,16 +90,18 @@ export default class TextCsv extends BaseHandler {
             } catch (cause) {
                 throw new QueryParseFailureError({ mimetype: this.mimetype, cause });
             }
-            const lineFor = (pointer: string): readonly { line: number; endLine: number }[] | undefined => {
+            const physicalRowsAlign = TextCoordinates.logicalLines(content).length === rows.length + 1;
+            const regionFor = (pointer: string) => {
+                if (!physicalRowsAlign) return undefined;
                 // The JSON pointer starts with /N where N is the row index;
                 // header is line 1, so data row N is on line N+2 (one line per
                 // row, embedded newlines aside — see the note above).
                 const m = pointer.match(/^\/(\d+)/);
                 if (!m) return undefined;
                 const line = Number(m[1]) + 2;
-                return [{ line, endLine: line }];
+                return regionsForLineSpans(content, [{ line, endLine: line }]);
             };
-            return queryJsonpathObject(rows, pattern, lineFor);
+            return queryJsonpathObject(rows, pattern, regionFor);
         }
         return super.query(content, dialect, pattern, flags);
     }

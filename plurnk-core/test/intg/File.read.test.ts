@@ -222,8 +222,8 @@ test("File.read: matcher returns the selected resource plus match coordinates", 
         assert.equal(r.mimetype, "text/markdown");
         assert.equal(r.content, "foo\nbar foo");
         assert.deepEqual(r.matches, [
-            { lineStart: 1, lineEnd: 1, rowStart: 1, rowEnd: 1 },
-            { lineStart: 2, lineEnd: 2, rowStart: 2, rowEnd: 2 },
+            { region: { startLine: 1, startColumn: 1, endLine: 1, endColumn: 4 } },
+            { region: { startLine: 2, startColumn: 5, endLine: 2, endColumn: 8 } },
         ]);
     });
 });
@@ -285,7 +285,7 @@ test("File.read: an invalid matcher exposes stable cause and recovery facts", as
     });
 });
 
-test("File.read: matcher selects the full resource before <L> projects readable rows", async () => {
+test("File.read: matcher selects the full resource before <L> projects text", async () => {
     await withWorkspaceRoot(async (root, ctx) => {
         await writeFile(join(root, "f.txt"), "alpha\nprojected\nfoo later\n");
         await addMember(ctx, "f.txt");
@@ -300,10 +300,7 @@ test("File.read: matcher selects the full resource before <L> projects readable 
         assert.equal(r.content, "alpha\nprojected", "the later match selects the file but is not substituted for the requested rows");
         assert.equal(r.startLine, 1);
         assert.deepEqual(r.matches, [{
-            lineStart: 3,
-            lineEnd: 3,
-            rowStart: 3,
-            rowEnd: 3,
+            region: { startLine: 3, startColumn: 1, endLine: 3, endColumn: 4 },
         }]);
     });
 });

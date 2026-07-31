@@ -41,12 +41,12 @@ test("PlurnkStatement: EDIT with raw markdown body", () => {
     assert.equal(r!.valid, true, JSON.stringify(r!.errors));
 });
 
-test("PlurnkStatement: COPY with raw string body (destination)", () => {
+test("PlurnkStatement: COPY with destination resource selection", () => {
     const r = validateRoundTrip("<<COPY[archive](known://draft):known://archive/draft:COPY");
     assert.equal(r!.valid, true, JSON.stringify(r!.errors));
 });
 
-test("PlurnkStatement: MOVE with path body", () => {
+test("PlurnkStatement: MOVE with destination resource selection", () => {
     const r = validateRoundTrip("<<MOVE(known://draft):known://final:MOVE");
     assert.equal(r!.valid, true, JSON.stringify(r!.errors));
 });
@@ -66,7 +66,7 @@ test("PlurnkStatement: EXEC with executor and code body", () => {
     assert.equal(r!.valid, true, JSON.stringify(r!.errors));
 });
 
-test("PlurnkStatement: EDIT with decimal insert-between marker", () => {
+test("PlurnkStatement parser preserves a decimal marker for runtime validation", () => {
     const r = validateRoundTrip("<<EDIT(known://plan)<2.5>:- [ ] new step:EDIT");
     assert.equal(r!.valid, true, JSON.stringify(r!.errors));
 });
@@ -189,14 +189,31 @@ test("PlurnkStatement: FIND accepts lineMarker", () => {
     assert.equal(valid, true, JSON.stringify(errors));
 });
 
-test("PlurnkStatement: COPY body is a raw string, not a ParsedPath", () => {
+test("PlurnkStatement: COPY body requires a resource selection", () => {
     const stmt = { ...baseFields("COPY"), body: { kind: "local", raw: "destination/path" } };
     const { valid } = Validator.validatePlurnkStatement(stmt);
     assert.equal(valid, false);
 });
 
-test("PlurnkStatement: COPY destination body accepts a raw string", () => {
-    const stmt = { ...baseFields("COPY"), body: "known://archive/draft" };
+test("PlurnkStatement: COPY destination body accepts a scoped resource", () => {
+    const stmt = {
+        ...baseFields("COPY"),
+        body: {
+            target: {
+                kind: "url",
+                raw: "known://archive/draft",
+                scheme: "known",
+                username: null,
+                password: null,
+                hostname: "archive",
+                port: null,
+                pathname: "/draft",
+                params: {},
+                fragment: null,
+            },
+            lineMarker: { marks: [12, 5, 12, 5] },
+        },
+    };
     const { valid, errors } = Validator.validatePlurnkStatement(stmt);
     assert.equal(valid, true, JSON.stringify(errors));
 });

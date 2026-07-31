@@ -53,7 +53,15 @@ type StoredRead = {
     content?: string;
     startLine?: number | null;
     status?: number;
-    matches?: Array<{ lineStart: number; lineEnd: number; rowStart: number; rowEnd: number; path?: string }>;
+    matches?: Array<{
+        region?: {
+            startLine: number;
+            startColumn: number;
+            endLine: number;
+            endColumn: number;
+        };
+        path?: string;
+    }>;
 };
 
 // Dispatch an op and collect every resource delivery's stored result.
@@ -91,7 +99,7 @@ test("glob READ returns one resource with every matched line in metadata", async
         const { rows } = await dispatchRows(db, engine, ids, parseOp<ReadStatement>("<<READ(worker:///log.md):*target*:READ", "READ"));
         assert.equal(rows.length, 1);
         assert.equal(rows[0].content, "alpha target\nbeta\ngamma target\ndelta target");
-        assert.deepEqual(rows[0].matches?.map(({ lineStart }) => lineStart), [1, 3, 4]);
+        assert.deepEqual(rows[0].matches?.map(({ region }) => region?.startLine), [1, 3, 4]);
     } finally { await db.close(); }
 });
 
@@ -107,18 +115,23 @@ test("regex READ returns one whole body per selected resource", async () => {
             "error: two\nmore",
             "intro\nerror: one\ntail",
         ]);
-        assert.deepEqual(rows.flatMap((row) => row.matches ?? []).map(({ lineStart }) => lineStart).toSorted(), [1, 2]);
+        assert.deepEqual(
+            rows.flatMap((row) => row.matches ?? [])
+                .map(({ region }) => region?.startLine)
+                .toSorted(),
+            [1, 2],
+        );
     } finally { await db.close(); }
 });
 
-test("jsonpath READ returns one JSON resource with path and row coordinates", async () => {
+test("jsonpath READ returns one JSON resource with locators and exact regions", async () => {
     const { db, engine, ctx, ...ids } = await setup();
     try {
         await seedRaw(ctx, "team.json", '{\n  "users": [\n    { "name": "Alice" },\n    { "name": "Bob" },\n    { "name": "Carol" }\n  ]\n}');
         const { rows } = await dispatchRows(db, engine, ids, parseOp<ReadStatement>("<<READ(worker:///team.json):$.users[*].name:READ", "READ"));
         assert.equal(rows.length, 1);
         assert.match(rows[0].content ?? "", /Alice.*Bob.*Carol/s);
-        assert.deepEqual(rows[0].matches?.map(({ lineStart }) => lineStart), [3, 4, 5]);
+        assert.deepEqual(rows[0].matches?.map(({ region }) => region?.startLine), [3, 4, 5]);
         assert.deepEqual(rows[0].matches?.map(({ path }) => path), [
             "$['users'][0]['name']",
             "$['users'][1]['name']",
@@ -161,14 +174,17 @@ test("semantic READ uses ranking to select resources and returns their bodies", 
     } finally { await db.close(); }
 });
 
-test("xpath READ returns one HTML resource with node coordinates", async () => {
+test("xpath READ returns one HTML resource with honest locator-only evidence", async () => {
     const { db, engine, ctx, ...ids } = await setup();
     try {
         await seedRaw(ctx, "page.html", "<ul>\n  <li>one</li>\n  <li>two</li>\n</ul>");
         const { rows } = await dispatchRows(db, engine, ids, parseOp<ReadStatement>("<<READ(worker:///page.html)://li:READ", "READ"));
         assert.equal(rows.length, 1);
         assert.equal(rows[0].content, "<ul>\n  <li>one</li>\n  <li>two</li>\n</ul>");
-        assert.deepEqual(rows[0].matches?.map(({ lineStart }) => lineStart), [2, 3]);
+        assert.deepEqual(rows[0].matches, [
+            { path: "(//li)[1]" },
+            { path: "(//li)[2]" },
+        ]);
     } finally { await db.close(); }
 });
 
@@ -246,8 +262,8 @@ test("FIND with a matcher emits one item per resource with all coordinates", asy
         assert.equal(r.status, 200);
         assert.equal(r.results.length, 1);
         assert.deepEqual(r.results[0].matches, [
-            { lineStart: 1, lineEnd: 1, rowStart: 1, rowEnd: 1 },
-            { lineStart: 3, lineEnd: 3, rowStart: 3, rowEnd: 3 },
+            { region: { startLine: 1, startColumn: 1, endLine: 1, endColumn: 13 } },
+            { region: { startLine: 3, startColumn: 1, endLine: 3, endColumn: 13 } },
         ]);
     } finally { await db.close(); }
 });
@@ -263,7 +279,7 @@ test("FIND pagination counts selected resources, not match occurrences", async (
         );
         assert.deepEqual(result.results.map(({ path }) => path), ["worker:///b.md"]);
         assert.deepEqual(result.results[0]?.matches, [
-            { lineStart: 1, lineEnd: 1, rowStart: 1, rowEnd: 1 },
+            { region: { startLine: 1, startColumn: 1, endLine: 1, endColumn: 12 } },
         ]);
     } finally { await db.close(); }
 });
@@ -289,23 +305,27 @@ test("FIND coordinates compose into scoped READ for structured JSON", async () =
             makeSchemeCtx({ db, workspaceId, workerId, mimetypes: ctx.mimetypes }),
         );
         assert.deepEqual(found.results[0]?.matches, [{
-            lineStart: 2,
-            lineEnd: 5,
-            rowStart: 1,
-            rowEnd: 1,
             path: "$[0]",
+            region: { startLine: 2, startColumn: 3, endLine: 5, endColumn: 4 },
         }]);
         const span = found.results[0]?.matches?.[0];
-        assert.ok(span);
+        assert.ok(span?.region);
         const read = await worker.read(
             {
-                ...parseOp<ReadStatement>("<<READ(worker:///users.json)<1,1>::READ", "READ"),
-                lineMarker: { marks: [span.rowStart, span.rowEnd] },
+                ...parseOp<ReadStatement>("<<READ(worker:///users.json)<1,1,1,1>::READ", "READ"),
+                lineMarker: {
+                    marks: [
+                        span.region.startLine,
+                        span.region.startColumn,
+                        span.region.endLine,
+                        span.region.endColumn,
+                    ],
+                },
             },
             makeSchemeCtx({ db, workspaceId, workerId, mimetypes: ctx.mimetypes }),
         );
         assert.equal(read.status, 200);
-        assert.deepEqual(JSON.parse(read.content ?? ""), [{ name: "Alice", role: "admin" }]);
+        assert.deepEqual(JSON.parse(read.content ?? ""), { name: "Alice", role: "admin" });
     } finally { await db.close(); }
 });
 

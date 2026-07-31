@@ -1,3 +1,5 @@
+import type { TextRegion } from "@plurnk/plurnk-contracts";
+
 export type SymbolKind =
     | "class"
     | "function"
@@ -102,12 +104,6 @@ export interface HandlerInfo {
     // @plurnk packages take precedence — tree-sitter entries only fill in
     // mimetypes that no @plurnk package claims.
     source: "package" | "treesitter";
-    // Per-handler navigation declaration (SPEC §20, #43): "line" (addressed by
-    // line numbers) or "tree" (structural jsonpath/xpath addressing). Set via
-    // `navigation` on the handler entry in the plurnk block. OPTIONAL — absent
-    // means the framework's taxonomy heuristic decides (classifyMimetype); a
-    // handler declares it only when its algebra defies the taxonomy.
-    navigation?: "line" | "tree";
     // Raw `plurnk.attribution` (string | string[]) declared at the top of the
     // package's plurnk block — plugin attribution tags the host unions onto
     // model `generate({ attributions })` calls (issue #37 / plurnk-service#249).
@@ -163,20 +159,12 @@ export type QueryDialect = "regex" | "glob" | "xpath" | "jsonpath";
 //   - jsonpath wildcards → `$.users[0].name` per match
 //   - xpath multi-match → `(//user)[1]` per match
 //   - omitted otherwise.
-// A 1-indexed, inclusive source-line span. The hit's footprint is an array of
-// these (issue #41) — one for a contiguous hit, several only when the source is
-// genuinely disjoint (gaps preserved, never coalesced).
+// Internal 1-indexed, inclusive parser provenance. Query adapters translate
+// these spans into honest exact or enclosing TextRegion evidence when they map
+// into the readable representation.
 export interface LineSpan {
     readonly line: number;
     readonly endLine: number;
-}
-
-// A 1-indexed, inclusive span in the handler's model-readable navigation
-// surface. For line-navigable content rows equal source lines. Structural
-// handlers map source footprints to the top-level items READ scopes.
-export interface RowSpan {
-    readonly row: number;
-    readonly endRow: number;
 }
 
 export interface QueryMatch {
@@ -184,13 +172,9 @@ export interface QueryMatch {
     readonly matched: unknown;
     // The locus: jsonpath path or xpath expression. Present when meaningful.
     readonly matching?: string;
-    // The hit's source-line footprint. Present and accurate for every
-    // content-backed match (regex/glob, jsonpath nodes, xpath node selections).
-    // ABSENT only for node-less computed scalars (xpath count()/string()/sum()/
-    // boolean()) — those synthesize a value out of many nodes (or none) and so
-    // live nowhere in the source. We never fake a line for them.
-    readonly lines?: ReadonlyArray<LineSpan>;
-    // The corresponding READ coordinates. Mimetypes.query guarantees these
-    // whenever `lines` are present.
-    readonly rows?: ReadonlyArray<RowSpan>;
+    // Contiguous regions in the exact text the model can READ. Each region is
+    // complete and uses 1-based Unicode code-point columns with an exclusive
+    // end. Omitted when a structural or computed match has no honest mapping
+    // into the readable text.
+    readonly regions?: ReadonlyArray<TextRegion>;
 }

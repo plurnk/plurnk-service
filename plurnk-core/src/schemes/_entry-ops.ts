@@ -6,9 +6,10 @@ import { entryPathnameOf } from "../core/plurnk-uri.ts";
 import type { PlurnkSchemeContext, SchemeManifest } from "../core/scheme-types.ts";
 import Owner from "../core/Owner.ts";
 import EntryManifest from "./_entry-manifest.ts";
-import { LineMarkerOps, MimetypeBinary, PathMimetype, ReadResolve, editReceipt, editReceiptUnit } from "../content/index.ts";
+import { LineMarkerOps, MimetypeBinary, PathMimetype, ReadResolve, editReceipt } from "../content/index.ts";
 import type { EditBatchReceipt } from "../content/index.ts";
-import Results, { type MatchRange, type SchemeResultBase } from "../core/results.ts";
+import type { TextRegion } from "@plurnk/plurnk-contracts";
+import Results, { type MatchEvidence, type SchemeResultBase } from "../core/results.ts";
 
 // Shared static-method helpers for workspace-scope entry-bearing schemes
 // (Known, Unknown, Skill). Each scheme passes its manifest; helpers
@@ -26,7 +27,16 @@ export type EditResult = SchemeResultBase & { entryId: number | null; channel: s
 // qualified and let the model choose a surgical follow-up READ.
 // reason — surfaced on 203 dialect-fallback so the model sees why the
 // structured parse failed and got raw content instead.
-export type ReadResult = SchemeResultBase & { content: string | null; mimetype: string | null; channel: string | null; startLine?: number | null; matches?: ReadonlyArray<MatchRange>; reason?: string; awaitWorker?: string };
+export type ReadResult = SchemeResultBase & {
+    content: string | null;
+    mimetype: string | null;
+    channel: string | null;
+    startLine?: number | null;
+    region?: TextRegion;
+    matches?: ReadonlyArray<MatchEvidence>;
+    reason?: string;
+    awaitWorker?: string;
+};
 export type OpenFoldResult = SchemeResultBase;
 
 export default class EntryOps {
@@ -183,9 +193,8 @@ export default class EntryOps {
             originalContent = channel?.content ?? "";
         }
 
-        // `<L>` line marker EDIT semantics. Dispatch on effective mimetype:
-        // JSON → LineMarkerOps.applyJsonItemEdit (structural item edit, plurnk-grammar 0.13.0);
-        // otherwise → LineMarkerOps.applyLineMarkerEdit (line edit, original semantics).
+        // `<scope>` always addresses the selected channel's textual representation.
+        // Structured query dialects locate content but never redefine mutation coordinates.
         // A CREATE (no existing entry) has nothing to scope into, so a markerless body
         // becomes the new entry's content. {§edit-marker-required-on-existing} (#571) — an
         // EXISTING entry has no easy-clobber path: a marker is REQUIRED, even for a
@@ -208,9 +217,7 @@ export default class EntryOps {
                 marker: candidate.lineMarker!,
                 body: candidate.body ?? "",
             }));
-            const result = MimetypeBinary.isJsonMimetype(effectiveMimetype)
-                ? LineMarkerOps.applyJsonItemEditBatch(originalContent, edits)
-                : LineMarkerOps.applyLineMarkerEditBatch(originalContent, edits);
+            const result = LineMarkerOps.applyLineMarkerEditBatch(originalContent, edits);
             if (result.status !== 200) {
                 return Results.assert({
                     ...result,
@@ -283,9 +290,7 @@ export default class EntryOps {
             status: createdNow ? 201 : 200,
             entryId,
             channel: targetChannel,
-            editReceipt: editReceipt(originalContent, newContent, receiptEdits, {
-                unit: editReceiptUnit(MimetypeBinary.isJsonMimetype(effectiveMimetype), originalContent, newContent),
-            }),
+            editReceipt: editReceipt(originalContent, newContent, receiptEdits),
         };  // §edit-status-201-200
     }
 

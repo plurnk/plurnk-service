@@ -37,7 +37,16 @@ export default class Foo implements SchemeHandler {
 }
 ```
 
-Implement only the op methods you support — `read` / `find` / `edit` / `copy` / `move` / `send` / … — all optional; the engine calls `handler[op.toLowerCase()](statement, ctx)` and returns **501** for any op you omit. `implements SchemeHandler` gives you compile-time signature checking. The statement + path types (`ReadStatement`, `SendStatement`, `UrlPath`, …) are **re-exported from this package**, so you depend on and peer (`^1`) **only `@plurnk/plurnk-schemes`** — grammar rides underneath.
+Implement only the delegated methods you support - `read`, `find`, `editBatch`,
+`send`, and the other optional methods in `SchemeHandler`. COPY and MOVE are
+engine-owned compositions over `ctx.entries` and `editBatch`, so plugins do not
+override them or author COPY/MOVE effect envelopes. A regional `editBatch`
+returns `EditBatchResult` with its typed `EditBatchReceipt`; the engine validates
+and projects it.
+`implements SchemeHandler` gives compile-time signature checking. The statement
+and path types (`ReadStatement`, `SendStatement`, `UrlPath`, etc.) are re-exported
+from this package, so you depend on and peer (`^1`) only
+`@plurnk/plurnk-schemes`; grammar rides underneath.
 
 ### 3. Declare the manifest — including self-doc
 
@@ -78,17 +87,17 @@ That's the whole contract: declare, `implements SchemeHandler`, manifest with se
 
 - Manifest/flags: `SchemeManifest` (incl. `example` / `documentation` / `glyph` self-doc), `SchemeFlagAffinity`, `WriterTier`, `LoopFlags`, `DEFAULT_LOOP_FLAGS`.
 - Behavior contract: `SchemeHandler` + optional `PacketSectionTransformer` (`PacketSection`); the re-exported scheme-facing grammar types (`PlurnkStatement` + per-op statements + `ParsedPath` / `LocalPath` / `UrlPath`).
-- Results: universal `SchemeResult` plus RFC 9457 `ProblemDetails`, optional `EntryResult` / `ProposalResult` / `PassthroughResult` authoring shapes, `SchemeResultBase`, and matcher navigation `MatchRange`.
+- Results: universal `SchemeResult` plus RFC 9457 `ProblemDetails`, optional `EntryResult` / `ProposalResult` / `PassthroughResult` authoring shapes, `SchemeResultBase`, and matcher navigation `MatchEvidence`.
 - Capability ctx: `SchemeCtx` and its entry, channel, tag, notification, projection, and subscription domains. Entry schemes can reuse typed standard operations with semantic commons/worker ownership.
 
 ### Helpers (`export default class`, static methods)
 
 - `SchemeResolver.forLoop(handlers, flags)` — active-scheme resolution under loop flags.
-- `MimetypeClassifier.isBinary` / `.isLineNavigable` / `.isJson` / `.normalizeAutoText` (+ `TEXT_PRIMITIVE_MIMETYPE` named export) — mimetype classification.
-- `Slicer.lines` / `.linesRaw` / `.jsonItems` / `.lineMarkerEdit` / `.jsonItemEdit` — `<L>` slicing + structural EDIT.
+- `MimetypeClassifier.isBinary` / `.isJson` / `.normalizeAutoText` (+ `TEXT_PRIMITIVE_MIMETYPE` named export) - mimetype classification.
+- `Slicer.lines` / `.linesRaw` / `.textReplacement` / `.lineMarkerEdit` / `.lineMarkerEditBatch` - universal text-region projection and same-snapshot replacement; `Slicer.page` handles ordered results separately.
 - `PathMimetype.resolve(pathname, default, mimetypes)` — path-extension mimetype resolver.
-- `Matcher.matchAgainstContent(body, content, mimetype, mimetypes)` - boolean resource selection over `Mimetypes.query` (glob/regex/jsonpath/xpath), returning source/readable `MatchRange` evidence.
-- `Results.problem` / `.failure` / `.assert` / `.attachInstance` / `.isEntry` / `.isProposal` / `.isPassthrough` / `.isErrorStatus` — RFC 9457 result builders, validator, durable-occurrence attachment, and guards.
+- `Matcher.matchAgainstContent(body, content, mimetype, mimetypes)` - boolean resource selection over `Mimetypes.query` (glob/regex/jsonpath/xpath), returning locator/exact-region `MatchEvidence`.
+- `Results.problem` / `.failure` / `.assert` / `.assertReadResult` / `.assertMatchEvidenceList` / `.attachInstance` / `.isEntry` / `.isProposal` / `.isPassthrough` / `.isErrorStatus` - RFC 9457 result builders, validators, durable-occurrence attachment, and guards.
 - `SchemeDiscovery.discover({ cwd? })` — scope-agnostic `node_modules` scan for `plurnk.kind:"scheme"` packages (trust-gated, fail-hard on prefix collision); returns descriptors for the consumer to register (SPEC §6).
 
 `SchemeCtx` is the stable semantic API for trusted in-process schemes, not a

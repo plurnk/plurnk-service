@@ -215,21 +215,25 @@ test("Known.edit: null path returns 400", async () => {
 
 
 
-// --- Structural <L> EDIT on JSON (M.8 / grammar 0.13.0 + 0.14.0) ---
-
-test("Known.edit: <-1> on `.json` path appends an item structurally (grammar 0.14.0 example)", async () => {
+test("Known.edit: exact coordinates edit minified JSON as text", async () => {
     const { db, workspaceId, workerId } = await setupContext();
     const mimetypes = new Mimetypes();
     await mimetypes.ready();
     try {
         const k = new Worker();
         await k.edit(
-            editStatement({ target: urlPath("worker", "/users.json"), body: '[{"name":"Alice"}]' }),
+            editStatement({
+                target: urlPath("worker", "/users.json"),
+                body: '[{"name":"Alice"},{"name":"Bob"},{"name":"Carol"}]',
+            }),
             makeSchemeCtx({ db, workspaceId, workerId, mimetypes }),
         );
-        // The grammar example: <<EDIT(worker:///users.json)<-1>:{"name":"Eve"}:EDIT
         const r = await k.edit(
-            editStatement({ target: urlPath("worker", "/users.json"), body: '{"name":"Eve"}', lineMarker: { marks: [-1] } }),
+            editStatement({
+                target: urlPath("worker", "/users.json"),
+                body: "Beth",
+                lineMarker: { marks: [1, 28, 1, 31] },
+            }),
             makeSchemeCtx({ db, workspaceId, workerId, mimetypes }),
         );
         assert.equal(r.status, 200);
@@ -239,24 +243,31 @@ test("Known.edit: <-1> on `.json` path appends an item structurally (grammar 0.1
         );
         assert.deepEqual(JSON.parse(read.content ?? ""), [
             { name: "Alice" },
-            { name: "Eve" },
+            { name: "Beth" },
+            { name: "Carol" },
         ]);
     } finally { await db.close(); }
 });
 
-test("Known.edit: <N> on `.json` replaces position N; <1,-1>:[]:EDIT clears", async () => {
+test("Known.edit: line shorthand edits JSON physical lines and can replace the whole resource", async () => {
     const { db, workspaceId, workerId } = await setupContext();
     const mimetypes = new Mimetypes();
     await mimetypes.ready();
     try {
         const k = new Worker();
         await k.edit(
-            editStatement({ target: urlPath("worker", "/users.json"), body: '[{"name":"Alice"},{"name":"Bob"},{"name":"Carol"}]' }),
+            editStatement({
+                target: urlPath("worker", "/users.json"),
+                body: '[\n  {"name":"Alice"},\n  {"name":"Bob"},\n  {"name":"Carol"}\n]',
+            }),
             makeSchemeCtx({ db, workspaceId, workerId, mimetypes }),
         );
-        // Replace position 2 (Bob) with a new item.
         await k.edit(
-            editStatement({ target: urlPath("worker", "/users.json"), body: '{"name":"Beth"}', lineMarker: { marks: [2] } }),
+            editStatement({
+                target: urlPath("worker", "/users.json"),
+                body: '  {"name":"Beth"},',
+                lineMarker: { marks: [3] },
+            }),
             makeSchemeCtx({ db, workspaceId, workerId, mimetypes }),
         );
         const read1 = await k.read(readStatement({ target: urlPath("worker", "/users.json") }), makeSchemeCtx({ db, workspaceId, mimetypes }));
@@ -266,7 +277,6 @@ test("Known.edit: <N> on `.json` replaces position N; <1,-1>:[]:EDIT clears", as
             { name: "Carol" },
         ]);
 
-        // <1,-1>:[]:EDIT clears the array.
         await k.edit(
             editStatement({ target: urlPath("worker", "/users.json"), body: "[]", lineMarker: { marks: [1, -1] } }),
             makeSchemeCtx({ db, workspaceId, workerId, mimetypes }),
@@ -276,7 +286,7 @@ test("Known.edit: <N> on `.json` replaces position N; <1,-1>:[]:EDIT clears", as
     } finally { await db.close(); }
 });
 
-test("Known.edit: <L> on no-suffix path is line-based; .json siblings get structural", async () => {
+test("Known.edit: line shorthand has the same meaning without a path suffix", async () => {
     const { db, workspaceId, workerId } = await setupContext();
     const mimetypes = new Mimetypes();
     await mimetypes.ready();
@@ -290,7 +300,7 @@ test("Known.edit: <L> on no-suffix path is line-based; .json siblings get struct
     } finally { await db.close(); }
 });
 
-test("Known.edit: <L> on JSON path with malformed body → 400", async () => {
+test("Known.edit: textual JSON edits do not introduce a hidden parse gate", async () => {
     const { db, workspaceId, workerId } = await setupContext();
     const mimetypes = new Mimetypes();
     await mimetypes.ready();
@@ -301,10 +311,9 @@ test("Known.edit: <L> on JSON path with malformed body → 400", async () => {
             editStatement({ target: urlPath("worker", "/users.json"), body: "{not valid json", lineMarker: { marks: [-1] } }),
             makeSchemeCtx({ db, workspaceId, workerId, mimetypes }),
         );
-        assert.equal(r.status, 400);
-        // Original content unchanged.
+        assert.equal(r.status, 200);
         const read = await k.read(readStatement({ target: urlPath("worker", "/users.json") }), makeSchemeCtx({ db, workspaceId, mimetypes }));
-        assert.deepEqual(JSON.parse(read.content ?? ""), [1, 2, 3]);
+        assert.equal(read.content, '[1,2,3]\n{not valid json');
     } finally { await db.close(); }
 });
 

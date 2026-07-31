@@ -40,32 +40,6 @@ test("malformed input", () => {
     assert.equal(MimetypeBinary.isBinaryMimetype("noslashhere"), true);
 });
 
-// --- MimetypeBinary.isLineNavigableMimetype ---
-
-test("line-navigable: text/plain, text/markdown, text/csv, source code", () => {
-    assert.equal(MimetypeBinary.isLineNavigableMimetype("text/plain"), true);
-    assert.equal(MimetypeBinary.isLineNavigableMimetype("text/markdown"), true);
-    assert.equal(MimetypeBinary.isLineNavigableMimetype("text/csv"), true);
-    assert.equal(MimetypeBinary.isLineNavigableMimetype("text/javascript"), true);
-    assert.equal(MimetypeBinary.isLineNavigableMimetype("text/typescript"), true);
-    assert.equal(MimetypeBinary.isLineNavigableMimetype("application/javascript"), true);
-    assert.equal(MimetypeBinary.isLineNavigableMimetype("application/yaml"), true);
-    assert.equal(MimetypeBinary.isLineNavigableMimetype("application/toml"), true);
-});
-
-test("tree-navigable: JSON, XML, HTML, suffix variants", () => {
-    assert.equal(MimetypeBinary.isLineNavigableMimetype("application/json"), false);
-    assert.equal(MimetypeBinary.isLineNavigableMimetype("application/xml"), false);
-    assert.equal(MimetypeBinary.isLineNavigableMimetype("text/html"), false);
-    assert.equal(MimetypeBinary.isLineNavigableMimetype("application/vnd.api+json"), false);
-    assert.equal(MimetypeBinary.isLineNavigableMimetype("image/svg+xml"), false);
-});
-
-test("binary mimetypes are not line-navigable", () => {
-    assert.equal(MimetypeBinary.isLineNavigableMimetype("image/png"), false);
-    assert.equal(MimetypeBinary.isLineNavigableMimetype("application/pdf"), false);
-});
-
 // --- MimetypeBinary.normalizeAutoTextMimetype ---
 
 test("MimetypeBinary.normalizeAutoTextMimetype: text/plain → text/markdown (the text primitive)", () => {

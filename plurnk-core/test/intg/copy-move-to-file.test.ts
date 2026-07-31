@@ -54,7 +54,13 @@ const seedFileMember = async (ctx: Ctx, root: string, rel: string, content: stri
     await mkdir(dirname(abs), { recursive: true });
     await writeFile(abs, content, "utf8");
     const seeded = await ctx.db.crud_insert_workspace_entry.get<{ id: number }>({ workspace_id: ctx.workspaceId, owner_id: await Owner.commonsId(ctx.db, ctx.workspaceId), scheme: "file", pathname: `${rel}` });
-    await ctx.db.ops_upsert_channel.run({ entry_id: seeded?.id, name: "body", content, mimetype: "text/plain", tokens: 0 });
+    await ctx.db.ops_upsert_channel.run({
+        entry_id: seeded?.id,
+        name: "body",
+        content,
+        mimetype: rel.endsWith(".md") ? "text/markdown" : "text/plain",
+        tokens: 0,
+    });
     const st = await stat(abs);
     await ctx.db.crud_set_synced_sig.run({ entry_id: seeded?.id, synced_sig: `${st.mtimeMs}:${st.size}` });
 };
@@ -80,6 +86,10 @@ test("[#2-copy-to-file] COPY worker:/// → file:/// proposes then lands the fil
         await seedKnown(ctx, "note", "copied content\n");
         const result = await proposeAndResolve(ctx, copyStmt(urlPath("worker", "/note"), urlPath("file", "/copied.txt")), "accept");
         assert.equal(result.status, 200);
+        assert.deepEqual(result.effects, [{
+            target: "copied.txt",
+            action: "create",
+        }]);
         assert.equal(await readFile(join(root, "copied.txt"), "utf8"), "copied content\n");
         assert.notEqual(await knownEntry(ctx, "note"), undefined, "COPY leaves the source intact");
     });
@@ -90,7 +100,38 @@ test("[#2-copy-to-file-reject] a rejected COPY into file:/// never touches disk"
         await seedKnown(ctx, "note", "nope\n");
         const result = await proposeAndResolve(ctx, copyStmt(urlPath("worker", "/note"), urlPath("file", "/rejected.txt")), "reject");
         assert.ok(result.status >= 400, "rejected proposal is a 4xx");
+        assert.equal(result.effects, undefined, "a rejected destination proposal lands no effect");
         await assert.rejects(readFile(join(root, "rejected.txt"), "utf8"), "the rejected COPY never created the file");
+    });
+});
+
+test("a regional COPY into file:/// reports the accepted text receipt", async () => {
+    await withWorkspace(async (root, ctx) => {
+        await seedKnown(ctx, "note", "alpha\nbeta\ngamma\n");
+        await seedFileMember(ctx, root, "destination.md", "before\nreplace\nafter\n");
+        const result = await proposeAndResolve(
+            ctx,
+            copyStmt(
+                urlPath("worker", "/note"),
+                localPath("destination.md"),
+                null,
+                { marks: [2] },
+                { marks: [2] },
+            ),
+            "accept",
+        );
+        assert.equal(result.status, 200);
+        assert.equal(await readFile(join(root, "destination.md"), "utf8"), "before\nbeta\nafter\n");
+        assert.ok(Array.isArray(result.effects));
+        const [effect] = result.effects as Array<{
+            target: string;
+            action: string;
+            receipt?: { effect?: { requested?: string; context?: string } };
+        }>;
+        assert.equal(effect?.target, "destination.md");
+        assert.equal(effect?.action, "update");
+        assert.equal(effect?.receipt?.effect?.requested, "<2>");
+        assert.match(effect?.receipt?.effect?.context ?? "", /1:before\n2:beta\n3:after/);
     });
 });
 
@@ -99,8 +140,48 @@ test("[#2-move-to-file] MOVE worker:/// → file:/// lands the file AND deletes 
         await seedKnown(ctx, "movee", "moved content\n");
         const result = await proposeAndResolve(ctx, moveStmt(urlPath("worker", "/movee"), urlPath("file", "/moved.txt")), "accept");
         assert.equal(result.status, 200);
+        assert.deepEqual(result.effects, [
+            { target: "moved.txt", action: "create" },
+            { target: "worker:///movee", action: "delete" },
+        ]);
         assert.equal(await readFile(join(root, "moved.txt"), "utf8"), "moved content\n");
         assert.equal(await knownEntry(ctx, "movee"), undefined, "MOVE deletes the source on accept");
+    });
+});
+
+test("a same-file regional MOVE reports both accepted effects from one batch", async () => {
+    await withWorkspace(async (root, ctx) => {
+        await seedFileMember(ctx, root, "document.md", "abcdef");
+        const result = await proposeAndResolve(
+            ctx,
+            moveStmt(
+                localPath("document.md"),
+                localPath("document.md"),
+                null,
+                { marks: [1, 2, 1, 4] },
+                { marks: [1, 7, 1, 7] },
+            ),
+            "accept",
+        );
+        assert.equal(result.status, 200);
+        assert.equal(await readFile(join(root, "document.md"), "utf8"), "adefbc");
+        assert.ok(Array.isArray(result.effects));
+        const effects = result.effects as Array<{
+            target: string;
+            action: string;
+            receipt?: { effect?: { requested?: string } };
+        }>;
+        assert.deepEqual(
+            effects.map(({ target, action }) => ({ target, action })),
+            [
+                { target: "document.md", action: "update" },
+                { target: "document.md", action: "update" },
+            ],
+        );
+        assert.deepEqual(
+            effects.map(({ receipt }) => receipt?.effect?.requested),
+            ["<1,7,1,7>", "<1,2,1,4>"],
+        );
     });
 });
 
@@ -109,6 +190,7 @@ test("[#2-move-to-file-reject] a rejected MOVE into file:/// preserves the sourc
         await seedKnown(ctx, "keepme", "keep\n");
         const result = await proposeAndResolve(ctx, moveStmt(urlPath("worker", "/keepme"), urlPath("file", "/rejected-move.txt")), "reject");
         assert.ok(result.status >= 400, "rejected proposal is a 4xx");
+        assert.equal(result.effects, undefined, "a rejected destination proposal lands no effect");
         assert.notEqual(await knownEntry(ctx, "keepme"), undefined, "the source MUST survive a rejected MOVE — the delete was deferred behind the dest write");
     });
 });
@@ -122,9 +204,53 @@ test("[#2-move-file-to-file] MOVE file:/// → file:/// into a NEW subdir lands 
         // read must normalize `brief.md` → the `/brief.md` member key, or it 404s a real member.
         const result = await proposeAndResolve(ctx, moveStmt(localPath("brief.md"), localPath("drafts/brief.md")), "accept");
         assert.equal(result.status, 200);
+        assert.deepEqual(result.effects, [
+            { target: "drafts/brief.md", action: "create" },
+            { target: "brief.md", action: "delete" },
+        ]);
         assert.equal(await readFile(join(root, "drafts/brief.md"), "utf8"), "the brief\n", "dest written into the freshly-created subdir");
         await assert.rejects(readFile(join(root, "brief.md"), "utf8"), "source file unlinked — a MOVE, not a COPY");
         assert.equal(await fileMember(ctx, "brief.md"), undefined, "source entry deregistered");
+    });
+});
+
+test("MOVE file:/// to an internal destination applies the source proposal after the destination lands", async () => {
+    await withWorkspace(async (root, ctx) => {
+        await seedFileMember(ctx, root, "source.md", "source content\n");
+        const result = await proposeAndResolve(
+            ctx,
+            moveStmt(localPath("source.md"), urlPath("worker", "/moved")),
+            "accept",
+        );
+        assert.equal(result.status, 200);
+        assert.deepEqual(result.effects, [
+            { target: "worker:///moved", action: "create" },
+            { target: "source.md", action: "delete" },
+        ]);
+        assert.notEqual(await knownEntry(ctx, "moved"), undefined);
+        await assert.rejects(readFile(join(root, "source.md"), "utf8"));
+        assert.equal(await fileMember(ctx, "source.md"), undefined);
+    });
+});
+
+test("rejecting a source-side MOVE proposal reports the already-written destination without deleting the source", async () => {
+    await withWorkspace(async (root, ctx) => {
+        await seedFileMember(ctx, root, "source.md", "source content\n");
+        const result = await proposeAndResolve(
+            ctx,
+            moveStmt(localPath("source.md"), urlPath("worker", "/copied")),
+            "reject",
+        );
+        assert.equal(result.status, 409);
+        assert.equal(result.problem?.destinationWritten, true);
+        assert.equal(result.problem?.destination, "worker:///copied");
+        assert.deepEqual(result.effects, [{
+            target: "worker:///copied",
+            action: "create",
+        }]);
+        assert.notEqual(await knownEntry(ctx, "copied"), undefined);
+        assert.equal(await readFile(join(root, "source.md"), "utf8"), "source content\n");
+        assert.notEqual(await fileMember(ctx, "source.md"), undefined);
     });
 });
 

@@ -92,7 +92,7 @@ test("assembled packet: matcher READ shows the resource and surgical coordinates
         const log = packetSection(await getPacket(db, second.turnId), "log");
 
         assert.match(log, /"matcher":"\/target\/"/);
-        assert.match(log, /"matches":\[\{"lineStart":2,"lineEnd":2,"rowStart":2,"rowEnd":2\},\{"lineStart":4,"lineEnd":4,"rowStart":4,"rowEnd":4\}\]/);
+        assert.match(log, /"matches":\[\{"region":\{"startLine":2,"startColumn":1,"endLine":2,"endColumn":7\}\},\{"region":\{"startLine":4,"startColumn":1,"endLine":4,"endColumn":7\}\}\]/);
         assert.match(log, /<<:::worker:\/\/\/notes\.md\n1:heading\n2:target one\n3:context\n4:target two\n:::worker:\/\/\/notes\.md/);
     } finally { await db.close(); }
 });

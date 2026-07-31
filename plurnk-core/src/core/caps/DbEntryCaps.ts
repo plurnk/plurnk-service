@@ -84,7 +84,9 @@ export default class DbEntryCaps implements EntryCaps {
         return EntryCrud.writeEntry(pathname, { channels: entry.channels, tags: [...entry.tags] }, this.#ctx, this.#scheme, this.#ownerId(owner));
     }
 
-    async delete(pathname: string, owner?: EntryOwner): Promise<SchemeResult> {
-        return EntryCrud.deleteEntry(pathname, this.#ctx, this.#scheme, this.#ownerId(owner));
+    async delete(pathname: string, owner?: EntryOwner, channel?: string): Promise<SchemeResult> {
+        return channel === undefined
+            ? EntryCrud.deleteEntry(pathname, this.#ctx, this.#scheme, this.#ownerId(owner))
+            : EntryCrud.deleteChannel(pathname, channel, this.#ctx, this.#scheme, this.#ownerId(owner));
     }
 }

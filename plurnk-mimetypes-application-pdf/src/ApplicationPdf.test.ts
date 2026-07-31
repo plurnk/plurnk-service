@@ -142,7 +142,7 @@ describe("ApplicationPdf — metadata title fallback", () => {
     });
 });
 
-describe("ApplicationPdf — null returns (dark in the radar)", () => {
+describe("ApplicationPdf - empty structural channels", () => {
     it("returns [] symbols for a PDF with no outline and no Title", async () => {
         // buildPdf({}) makes a structurally valid but textless PDF — no
         // outline, no metadata Title. Empty symbols, by design; the body
@@ -158,12 +158,21 @@ describe("ApplicationPdf — null returns (dark in the radar)", () => {
 });
 
 describe("ApplicationPdf — body text stays reachable via toText (0.15)", () => {
-    it("page text serves regex queries even when no outline/Title exists", async () => {
+    it("page text is one shared content and regex-query representation", async () => {
         // The Hello-world fixture has a text content stream but no bookmark
         // outline and no Info dict Title — symbols are empty, but the body
         // remains reachable through the query path.
-        const out = await h.query(helloWorldPdf(), "regex", "Hello, world!");
+        const pdf = helloWorldPdf();
+        const content = await h.content(pdf.slice());
+        const out = await h.query(pdf.slice(), "regex", "Hello, world!");
+        assert.ok(content?.includes("Hello, world!"));
         assert.equal(out.length, 1);
+        assert.deepEqual(out[0].regions, [{
+            startLine: 1,
+            startColumn: 1,
+            endLine: 1,
+            endColumn: 14,
+        }]);
     });
 
     it("outline surfaces through extractRaw", async () => {
@@ -212,12 +221,12 @@ describe("ApplicationPdf — query (body-matcher path)", () => {
         assert.ok((out[0].matched as string).includes("Hello, world!"));
     });
 
-    it("jsonpath inherits outline-shape default; PDF with outline is queryable by bookmark title", async () => {
+    it("jsonpath addresses the canonical deep document model", async () => {
         const pdf = buildPdf({
             outline: [{ title: "Chapter 1", items: [{ title: "Section 1.1" }] }],
         });
-        const out = await h.query(pdf, "jsonpath", "$['Chapter 1']['Section 1.1']");
+        const out = await h.query(pdf, "jsonpath", "$.children[1].name");
         assert.equal(out.length, 1);
-        assert.equal(typeof out[0].matched, "number");
+        assert.equal(out[0].matched, "Section 1.1");
     });
 });

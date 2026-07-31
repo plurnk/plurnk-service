@@ -142,10 +142,7 @@ test("a regex READ returns the selected resource and its match coordinate", asyn
         const result = await new File().read(stmt, ctx);
         assert.equal(result.content, "heading\nthe codename is phoenix\ncontext\n");
         assert.deepEqual(result.matches, [{
-            lineStart: 2,
-            lineEnd: 2,
-            rowStart: 2,
-            rowEnd: 2,
+            region: { startLine: 2, startColumn: 17, endLine: 2, endColumn: 24 },
         }]);
     });
 });
@@ -158,8 +155,8 @@ test("contract: a glob READ preserves every match coordinate on one selected res
         const result = await new File().read(stmt, ctx);
         assert.equal(result.content, "alpha\ntarget one\nbeta\ngamma\ntarget two\n");
         assert.deepEqual(result.matches, [
-            { lineStart: 2, lineEnd: 2, rowStart: 2, rowEnd: 2 },
-            { lineStart: 5, lineEnd: 5, rowStart: 5, rowEnd: 5 },
+            { region: { startLine: 2, startColumn: 1, endLine: 2, endColumn: 11 } },
+            { region: { startLine: 5, startColumn: 1, endLine: 5, endColumn: 11 } },
         ]);
     });
 });
@@ -172,11 +169,8 @@ test("contract: a jsonpath READ returns the JSON resource with structural coordi
         const result = await new File().read(stmt, ctx);
         assert.equal(result.content, '{\n  "host": "db.internal",\n  "pool": 5\n}\n');
         assert.deepEqual(result.matches, [{
-            lineStart: 2,
-            lineEnd: 2,
-            rowStart: 1,
-            rowEnd: 1,
             path: "$['host']",
+            region: { startLine: 2, startColumn: 3, endLine: 2, endColumn: 24 },
         }]);
     });
 });

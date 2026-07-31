@@ -1177,18 +1177,34 @@ test("MatcherBody: valid xpath still dispatches xpath even after disambiguation"
     assert.equal(b.raw, "//h1/text()");
 });
 
-test("COPY destination body remains an opaque raw string", () => {
-    const result = PlurnkParser.parseStatements("<<COPY(known://draft):known://archive/2026-05-14/draft:COPY");
+test("COPY destination body is a resource selection", () => {
+    const result = PlurnkParser.parseStatements("<<COPY(known://draft):known://archive/2026-05-14/draft<12,5,12,5>:COPY");
     const item = result.items[0];
     if (item.kind !== "statement" || item.statement.op !== "COPY") return;
-    assert.equal(item.statement.body, "known://archive/2026-05-14/draft");
+    assert.equal(item.statement.body?.target.kind, "url");
+    assert.deepEqual(item.statement.body?.lineMarker, { marks: [12, 5, 12, 5] });
 });
 
-test("parsePath export resolves a COPY destination into the same ParsedPath as a (target) slot", () => {
+test("COPY destination selection keeps a channel fragment distinct from its scope", () => {
+    const result = PlurnkParser.parseStatements(
+        "<<COPY(known:///draft#body)<2,4>:known:///archive#notes<1,3,1,3>:COPY",
+    );
+    const item = result.items[0];
+    if (item.kind !== "statement" || item.statement.op !== "COPY") return;
+    const destination = item.statement.body;
+    assert.equal(destination?.target.kind, "url");
+    if (destination?.target.kind !== "url") return;
+    assert.equal(destination.target.fragment, "notes");
+    assert.equal(destination.target.raw, "known:///archive#notes");
+    assert.deepEqual(destination.lineMarker, { marks: [1, 3, 1, 3] });
+    assert.deepEqual(item.statement.lineMarker, { marks: [2, 4] });
+});
+
+test("COPY destination resolves into the same ParsedPath as a target slot", () => {
     const result = PlurnkParser.parseStatements("<<COPY(worker:///draft):worker:///archive/draft:COPY");
     const item = result.items[0];
     if (item.kind !== "statement" || item.statement.op !== "COPY") return;
-    const dest = parsePath(item.statement.body!);
+    const dest = item.statement.body?.target;
     assert.ok(dest);
     if (dest.kind !== "url") return;
     assert.equal(dest.scheme, "worker");
@@ -1197,11 +1213,11 @@ test("parsePath export resolves a COPY destination into the same ParsedPath as a
     assert.deepEqual(parsePath("archive/2026/draft"), { kind: "local", raw: "archive/2026/draft" });
 });
 
-test("MOVE body is a ParsedPath", () => {
+test("MOVE body is a resource selection", () => {
     const result = PlurnkParser.parseStatements("<<MOVE(worker:///draft):worker:///final/answer:MOVE");
     const item = result.items[0];
     if (item.kind !== "statement" || item.statement.op !== "MOVE") return;
-    const b = item.statement.body;
+    const b = item.statement.body?.target;
     assert.ok(b);
     if (b.kind !== "url") return;
     assert.equal(b.scheme, "worker");
@@ -1213,7 +1229,7 @@ test("MOVE body with local destination is kind=local", () => {
     const result = PlurnkParser.parseStatements("<<MOVE(known://draft):./out.txt:MOVE");
     const item = result.items[0];
     if (item.kind !== "statement" || item.statement.op !== "MOVE") return;
-    const b = item.statement.body;
+    const b = item.statement.body?.target;
     assert.ok(b);
     assert.equal(b.kind, "local");
     assert.equal(b.raw, "./out.txt");

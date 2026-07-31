@@ -51,13 +51,27 @@ export const findStmt = (target: ParsedPath | null, body: MatcherBody | null = n
     position: { line: 1, column: 1 },
 });
 
-export const copyStmt = (src: ParsedPath, dst: ParsedPath, tags: string[] | null = null): CopyStatement => ({
-    op: "COPY", suffix: "", signal: tags, target: src, lineMarker: null, body: dst.raw,
+export const copyStmt = (
+    src: ParsedPath,
+    dst: ParsedPath,
+    tags: string[] | null = null,
+    sourceMarker: LineMarker | null = null,
+    destinationMarker: LineMarker | null = null,
+): CopyStatement => ({
+    op: "COPY", suffix: "", signal: tags, target: src, lineMarker: sourceMarker,
+    body: { target: dst, lineMarker: destinationMarker },
     position: { line: 1, column: 1 },
 });
 
-export const moveStmt = (src: ParsedPath, dst: ParsedPath | null, tags: string[] | null = null): MoveStatement => ({
-    op: "MOVE", suffix: "", signal: tags, target: src, lineMarker: null, body: dst,
+export const moveStmt = (
+    src: ParsedPath,
+    dst: ParsedPath | null,
+    tags: string[] | null = null,
+    sourceMarker: LineMarker | null = null,
+    destinationMarker: LineMarker | null = null,
+): MoveStatement => ({
+    op: "MOVE", suffix: "", signal: tags, target: src, lineMarker: sourceMarker,
+    body: dst === null ? null : { target: dst, lineMarker: destinationMarker },
     position: { line: 1, column: 1 },
 });
 

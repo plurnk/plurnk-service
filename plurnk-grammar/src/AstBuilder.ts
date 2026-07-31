@@ -19,6 +19,7 @@ import type {
     LookStatement,
     MatcherBody,
     MoveStatement,
+    ResourceSelection,
     ParsedPath,
     PlanStatement,
     PlurnkOp,
@@ -217,13 +218,12 @@ export default class AstBuilder {
     static #buildCopy(ctx: CopyStatementContext): CopyStatement {
         const position = AstBuilder.#positionOf(ctx);
         const slots = AstBuilder.#extractTagSlots(ctx.tagOpModifiers(), position);
-        // COPY's destination remains opaque until the consumer resolves it. Unlike
-        // MOVE, whose body is always a parsed path, COPY preserves the exact spelling.
+        const raw = AstBuilder.#bodyTextOf(ctx);
         return {
             op: "COPY",
             suffix: AstBuilder.#splitSuffix(ctx.OPEN_COPY().getText(), "COPY"),
             ...slots,
-            body: AstBuilder.#bodyTextOf(ctx),
+            body: raw === null ? null : AstBuilder.parseResourceSelection(raw, position),
             position,
         };
     }
@@ -236,7 +236,7 @@ export default class AstBuilder {
             op: "MOVE",
             suffix: AstBuilder.#splitSuffix(ctx.OPEN_MOVE().getText(), "MOVE"),
             ...slots,
-            body: raw !== null ? AstBuilder.parsePath(raw, position) : null,
+            body: raw !== null ? AstBuilder.parseResourceSelection(raw, position) : null,
             position,
         };
     }
@@ -463,6 +463,27 @@ export default class AstBuilder {
         }
         // L_MARKER always matches at least one number, so marks is non-empty.
         return { marks: marks as [number, ...number[]] };
+    }
+
+    /**
+     * Parse a COPY/MOVE body into its destination resource and optional trailing
+     * scope. The scope is adjacent to the resource it selects:
+     * `destination.txt<12,5,12,5>`.
+     */
+    static parseResourceSelection(
+        raw: string,
+        pos: Position = { line: 0, column: 0 },
+    ): ResourceSelection | null {
+        if (raw.length === 0) return null;
+        const markerMatch = /(<-?\d+(?:\.\d+)?(?:(?:-|, ?)-?\d+(?:\.\d+)?)*>)$/.exec(raw);
+        const markerText = markerMatch?.[1] ?? null;
+        const pathText = markerText === null ? raw : raw.slice(0, -markerText.length);
+        const target = AstBuilder.parsePath(pathText, pos);
+        if (target === null) return null;
+        return {
+            target,
+            lineMarker: markerText === null ? null : AstBuilder.#parseLineMarker(markerText),
+        };
     }
 
     /**

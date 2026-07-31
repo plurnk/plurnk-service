@@ -17,25 +17,35 @@ import MimetypeBinary from "./mimetype-binary.ts";
 const stubQuery = (impl: (input: { content: string; hint: string }, matcher: ParsedBodyMatcher) => Promise<QueryMatch[]>): Mimetypes =>
     ({ query: impl } as unknown as Mimetypes);
 
-// A single-line hit: source line N (1-based) carrying matched value v.
+// A single-line hit in the exact text the model can READ.
 const hit = (line: number, matched: unknown): QueryMatch =>
     ({
         matched,
         matching: `#${line}`,
-        lines: [{ line, endLine: line }],
-        rows: [{ row: line, endRow: line }],
+        regions: [{
+            startLine: line,
+            startColumn: 1,
+            endLine: line,
+            endColumn: 2,
+        }],
     });
 
 const regexBody = (pattern: string): MatcherBody => ({ dialect: "regex", raw: `/${pattern}/`, pattern, flags: "" });
 
-test("regex hits select the resource and retain source/readable coordinates", async () => {
+test("regex hits select the resource and retain readable-text regions", async () => {
     const content = "alpha\nfoo bar\nbeta\nfoo baz";
     const r = await Matcher.matchAgainstContent(regexBody("foo"), content, "text/markdown",
         stubQuery(async () => [hit(2, "foo"), hit(4, "foo")]));
     assert.equal(r.status, 200);
     assert.deepEqual(r.matches, [
-        { lineStart: 2, lineEnd: 2, rowStart: 2, rowEnd: 2, path: "#2" },
-        { lineStart: 4, lineEnd: 4, rowStart: 4, rowEnd: 4, path: "#4" },
+        {
+            path: "#2",
+            region: { startLine: 2, startColumn: 1, endLine: 2, endColumn: 2 },
+        },
+        {
+            path: "#4",
+            region: { startLine: 4, startColumn: 1, endLine: 4, endColumn: 2 },
+        },
     ]);
     assert.equal(r.body, undefined);
 });
@@ -56,8 +66,14 @@ test("structural hits expose coordinates rather than extracted values", async ()
         stubQuery(async () => [hit(3, { name: "Alice", role: "admin" }), hit(4, { name: "Bob" })]));
     assert.equal(r.status, 200);
     assert.deepEqual(r.matches, [
-        { lineStart: 3, lineEnd: 3, rowStart: 3, rowEnd: 3, path: "#3" },
-        { lineStart: 4, lineEnd: 4, rowStart: 4, rowEnd: 4, path: "#4" },
+        {
+            path: "#3",
+            region: { startLine: 3, startColumn: 1, endLine: 3, endColumn: 2 },
+        },
+        {
+            path: "#4",
+            region: { startLine: 4, startColumn: 1, endLine: 4, endColumn: 2 },
+        },
     ]);
 });
 
@@ -71,8 +87,14 @@ test("two structural matches on one line retain distinct canonical paths", async
         ]));
     assert.equal(r.status, 200);
     assert.deepEqual(r.matches, [
-        { lineStart: 1, lineEnd: 1, rowStart: 1, rowEnd: 1, path: "$.users[0].name" },
-        { lineStart: 1, lineEnd: 1, rowStart: 1, rowEnd: 1, path: "$.users[1].name" },
+        {
+            path: "$.users[0].name",
+            region: { startLine: 1, startColumn: 1, endLine: 1, endColumn: 2 },
+        },
+        {
+            path: "$.users[1].name",
+            region: { startLine: 1, startColumn: 1, endLine: 1, endColumn: 2 },
+        },
     ]);
 });
 
@@ -83,25 +105,31 @@ test("a multi-line match remains one coordinate range", async () => {
         stubQuery(async () => [{
             matched: "<user>...</user>",
             matching: "(//user)[1]",
-            lines: [{ line: 2, endLine: 4 }],
-            rows: [{ row: 2, endRow: 4 }],
+            regions: [{
+                startLine: 2,
+                startColumn: 1,
+                endLine: 4,
+                endColumn: 10,
+            }],
         }]));
     assert.equal(r.status, 200);
     assert.deepEqual(r.matches, [{
-        lineStart: 2,
-        lineEnd: 4,
-        rowStart: 2,
-        rowEnd: 4,
         path: "(//user)[1]",
+        region: {
+            startLine: 2,
+            startColumn: 1,
+            endLine: 4,
+            endColumn: 10,
+        },
     }]);
 });
 
-test("a source-less scalar selects the resource without fabricated coordinates", async () => {
+test("a scalar retains its locator without fabricated coordinates", async () => {
     const r = await Matcher.matchAgainstContent(
         { dialect: "xpath", raw: "count(//user)" } as MatcherBody, "<root><user/><user/></root>", "text/html",
-        stubQuery(async () => [{ matched: 2 }]));
+        stubQuery(async () => [{ matched: 2, matching: "count(//user)" }]));
     assert.equal(r.status, 200);
-    assert.deepEqual(r.matches, []);
+    assert.deepEqual(r.matches, [{ path: "count(//user)" }]);
 });
 
 test("source unparseable for its mimetype → 203 soft fallback with raw content + reason", async () => {

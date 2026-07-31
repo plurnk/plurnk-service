@@ -61,10 +61,10 @@ dispatch. An absent method returns **501**, except FIND on an entry-bearing
 FIND automatically. The op-dispatch surface is the exported
 **`SchemeHandler`** interface — every method optional, each
 `(statement, ctx) => Promise<SchemeResult>`, the per-op statement type from
-grammar:
+grammar. `editBatch` returns the typed `EditBatchResult` specialization:
 
 ```ts
-import type { SchemeHandler } from "@plurnk/plurnk-schemes";
+import type { EditBatchResult, SchemeHandler } from "@plurnk/plurnk-schemes";
 
 export interface SchemeHandler {
     close?(): Promise<void>;
@@ -73,9 +73,7 @@ export interface SchemeHandler {
     find?(statement: FindStatement, ctx: SchemeCtx): Promise<SchemeResult>;
     open?(statement: OpenStatement, ctx: SchemeCtx): Promise<SchemeResult>;
     fold?(statement: FoldStatement, ctx: SchemeCtx): Promise<SchemeResult>;
-    editBatch?(statements: readonly EditStatement[], ctx: SchemeCtx): Promise<SchemeResult>;
-    copy?(statement: CopyStatement, ctx: SchemeCtx): Promise<SchemeResult>;
-    move?(statement: MoveStatement, ctx: SchemeCtx): Promise<SchemeResult>;
+    editBatch?(statements: readonly EditStatement[], ctx: SchemeCtx): Promise<EditBatchResult>;
     send?(statement: SendStatement, ctx: SchemeCtx): Promise<SchemeResult>;
     exec?(statement: ExecStatement, ctx: SchemeCtx): Promise<SchemeResult>;
     work?(statement: WorkStatement, ctx: SchemeCtx): Promise<SchemeResult>;
@@ -104,15 +102,51 @@ A sibling does `export default class X implements SchemeHandler` (with `static m
 
 The entry CRUD primitives (`readEntry`/`writeEntry`/`deleteEntry`) are not handler operations; schemes use `ctx.entries`. Proposal application is the optional `applyResolution` handler hook described in §3.bis.
 
+COPY and MOVE are not handler methods. The engine composes their source and
+destination resource selections over `ctx.entries` and uses `editBatch` for a
+scoped destination or source mutation. This keeps channel selection, snapshot
+ordering, cross-scheme failures, and proposal sequencing uniform for every data
+scheme. Scheme hooks return their ordinary mutation result and, for a regional
+`editBatch`, an `EditBatchResult` carrying its aggregate `EditBatchReceipt`:
+
+```ts
+type EditReceiptUnit = "lines" | "codePoints";
+
+interface EditEffectReceipt {
+    readonly requested: string;
+    readonly source: string;
+    readonly result: string;
+    readonly removed: number;
+    readonly inserted: number;
+    readonly context: string;
+}
+
+interface EditBatchReceipt {
+    readonly revision: string;
+    readonly unit: EditReceiptUnit;
+    readonly before: number;
+    readonly after: number;
+    readonly effects: readonly EditEffectReceipt[];
+}
+
+interface EditBatchResult extends SchemeResult {
+    readonly editReceipt?: EditBatchReceipt | null;
+}
+```
+
+The engine validates that receipt and owns the ordered COPY/MOVE resource
+effects shown to consumers; plugins do not invent a second effect envelope.
+
 ## §3 Helpers exported by this repo
 
 ### Types
 
 - Manifest/flags: `SchemeManifest`, `SchemeFlagAffinity`, `WriterTier`, `LoopFlags`, `DEFAULT_LOOP_FLAGS`.
+- Mutation receipts: `EditBatchResult`, `EditBatchReceipt`, `EditReceipt`, `EditEffectReceipt`, and `EditReceiptUnit`.
 - Optional `PacketSectionTransformer` — a scheme MAY implement `transformSections(sections: PacketSection[]) → PacketSection[] | Promise<…>` to reshape the packet's section list (add/remove/reorder) before the engine measures it; called duck-typed in registration order. `PacketSection` = `{ name; slot: "system"|"user"; header: string|null; content; tokens }`. Contract declares the shape; service conforms (the in-process plugin-packet-control / fork-avoidance seam — schemes#24).
 - Behavior contract: `SchemeHandler` (§2). Scheme-facing grammar types re-exported here so siblings pin only this package: `PlurnkStatement` + the per-op statement types (`ReadStatement`, `FindStatement`, `OpenStatement`, `FoldStatement`, `EditStatement`, `CopyStatement`, `MoveStatement`, `SendStatement`, `ExecStatement`, `WorkStatement`, `ForkStatement`, `KillStatement`, `PlanStatement`) and path types (`ParsedPath` = `LocalPath` | `UrlPath`).
 - Discovery: `SchemeDiscovery` (behavior class) with `SchemeInfo` / `SchemeDiscoveryResult` / `DiscoverOptions` (§6).
-- Executor-scheme (RFC schemes#20 - "an executor is a scheme"): `OutputScheme.manifestFromRuntime(decl)` derives a read-only-output `SchemeManifest` from an executor's `RuntimeDecl` (zero scheme-authoring); `DefaultRead.read(content, mimetype, statement, mimetypes)` -> `ReadResolution` is the free `<L>`/matcher read over produced output (reuses `Slicer`/`Matcher`). A matcher selects the complete output resource before `<L>` projects rows; without `<L>`, READ returns the complete resource. Match coordinates remain metadata for a model-chosen follow-up READ. `Summarize.summarize(content, mimetype)` -> `OrientIndex` is the structural-only EXEC-receipt index (no content - universal-receipt containment). A per-tag executor-scheme supplies its manifest via instance `get manifest()` (§2 `SchemeHandler.manifest?`).
+- Executor-scheme (RFC schemes#20 - "an executor is a scheme"): `OutputScheme.manifestFromRuntime(decl)` derives a read-only-output `SchemeManifest` from an executor's `RuntimeDecl` (zero scheme-authoring); `DefaultRead.read(content, mimetype, statement, mimetypes)` -> `ReadResolution` is the free text-scope/matcher read over produced output (reuses `Slicer`/`Matcher`). A matcher selects the complete output resource before `<scope>` projects text; without a scope, READ returns the complete resource. Match evidence remains metadata for a model-chosen follow-up READ. `Summarize.summarize(content, mimetype)` -> `OrientIndex` is the structural-only EXEC-receipt index (no content - universal-receipt containment). A per-tag executor-scheme supplies its manifest via instance `get manifest()` (§2 `SchemeHandler.manifest?`).
 - Results: `SchemeResult` is the universal operation-result contract. Statuses below 400 carry no `problem`; statuses 400–599 require RFC 9457 `ProblemDetails`, and the legacy `error` member is forbidden. `EntryResult`, `ProposalResult`, and `PassthroughResult` are optional conventional shapes, not engine routing discriminators. Guards inspect those optional shapes; proposal routing itself is engine-owned and follows status plus operation semantics.
 - Standard FIND results may carry `omittedItems` and `maximumItems` when a selected catalog is too large to enumerate. `omittedItems` is the exact selected-resource count and `maximumItems` is the active materialization limit. These names cannot collide with the model-facing string `overflow` metadata used for truncated packet bodies.
 - Capability ctx (see §3.bis): `SchemeCtx` and its domain capabilities. Entry authors additionally receive `EntryOperationCaps`, semantic `EntryOwner`, and typed standard-operation results. `editBatch` receives every same-turn EDIT for one canonical resource and channel; it validates against one snapshot and commits one revision or none. There is no sequential single-EDIT fallback.
@@ -126,24 +160,37 @@ Behavior ships as `export default class` (one class per file, static methods) �
 ### Mimetype classification — `MimetypeClassifier` {§mimetype-classifier}
 
 - `MimetypeClassifier.isBinary(mimetype)` — enforces 415 boundary on binary entries. Delegates to `classifyMimetype` from @plurnk/plurnk-mimetypes (the framework owns the text/binary taxonomy — mimetypes#43; the former local allowlists were absorbed upstream verbatim and retired).
-- `MimetypeClassifier.isJson(mimetype)` — `application/json` plus `+json` variants. Used by `<L>` dispatch. Scheme semantics — stays local, not delegated.
-- `MimetypeClassifier.isLineNavigable(mimetype)` — render-layer decides whether to prefix lines with `N:\t`. Delegates to `classifyMimetype`.
+- `MimetypeClassifier.isJson(mimetype)` - `application/json` plus `+json` variants, used only by result summarization.
 - `MimetypeClassifier.normalizeAutoText(mimetype)` — `text/plain` / null / undefined → `TEXT_PRIMITIVE_MIMETYPE` (`text/markdown`).
 - `TEXT_PRIMITIVE_MIMETYPE` — `"text/markdown"` (named export from the same module).
 
-### `<L>` slicing — `Slicer`
+### Text-region slicing and replacement - `Slicer`
 
-- `Slicer.lines(content, marker)` — line-navigable slice. Returns `{ status, text?, startLine?, problem?, range? }`.
-- `Slicer.linesRaw(content, marker)` — same shape; no `N:\t` prefix.
-- `Slicer.jsonItems(content, marker)` — JSON-source item slice. Returns `{ status, body?, problem?, range? }`.
-- `Slicer.page(items, marker)` — ordered result pagination under the same positional rules. Returns `{ status, items?, problem?, range? }`.
-- `Slicer.lineMarkerEdit(content, marker, body)` — line-navigable EDIT.
-- `Slicer.jsonItemEdit(content, marker, body)` — structural JSON EDIT.
+`Slicer` owns one text algebra for every textual mimetype:
 
-Every 416 carries exact RFC 9457 Problem Details and `range: { unit, requested: { first, last }, available:
-{ first, last, total } }`. Empty sources use `null` available endpoints and
-`total: 0`. The same range is present in the Problem extensions so a caller can
-recover from the actual extent without parsing prose.
+| Scope | Meaning |
+|---|---|
+| `<N>` | whole physical line `N` |
+| `<N,M>` | inclusive whole physical lines `N..M` |
+| `<SL,SC,EL,EC>` | exact exclusive-end region using 1-based Unicode code-point columns |
+| `<0>` / `<-1>` | mutation anchors before the first / after the final line |
+
+- `Slicer.lines(content, marker)` returns the selected text, source
+  `startLine`, and complete resolved `region`; `Slicer.linesRaw` preserves
+  original newline separators for COPY/MOVE source transfer.
+- `Slicer.textReplacement(content, marker, body)` lowers a line shorthand or
+  exact region to one `{start,end,body}` replacement against the source
+  snapshot.
+- `Slicer.lineMarkerEdit` applies one replacement.
+- `Slicer.lineMarkerEditBatch` validates all replacements against one snapshot,
+  rejects overlaps, and applies all or none.
+- `Slicer.page(items, marker)` is the separate ordered-result pagination
+  helper; it accepts only one or two integer positions.
+
+A line/pagination 416 carries `range: { unit, requested: { first, last },
+available: { first, last, total } }`. An exact-region 416 carries the four
+`requestedCoordinates` and `columnKind: "unicodeCodePoints"`. Empty sources use
+`null` line-range endpoints and `total: 0`.
 
 ### Path-extension mimetype — `PathMimetype`
 
@@ -156,6 +203,8 @@ recover from the actual extent without parsing prose.
 - `Results.problem(owner, code, status, detail, extensions?)` — build and validate RFC 9457 Problem Details with a stable `https://problems.plurnk.dev/<owner>/<code>` type.
 - `Results.failure(owner, code, status, detail, fields?, extensions?)` — build and validate a failed operation result.
 - `Results.assert(result)` — validate the complete success/failure discrimination and reject malformed plugin output.
+- `Results.assertMatchEvidence(evidence)` / `assertMatchEvidenceList(evidence)` - enforce the exact `{ path?, region? }` shape and shared `TextRegion` contract.
+- `Results.assertReadResult(result)` - validate the universal operation result plus any `region` and `matches` it exposes.
 - `Results.attachInstance(result, uri)` — attach the durable occurrence URI to a failed result.
 
 A handler owns its failure classification and explanation. The daemon owns the
@@ -168,7 +217,12 @@ entries, channels, and tags never return a bare failure status.
 ### Matcher dispatch - `Matcher` {§matcher-dispatch}
 
 - `Matcher.matchAgainstContent(body, content, mimetype, mimetypes)` is the body-matcher adapter over `Mimetypes.query` (glob/regex/jsonpath/xpath).
-- A match returns status 200 and `matches: MatchRange[]`. `MatchRange` is `{lineStart,lineEnd,rowStart,rowEnd,path?}`: source coordinates explain the finding, readable-row coordinates can drive a later scoped READ, and `path` preserves a structural query identity.
+- A match returns status 200 and `matches: MatchEvidence[]`.
+  `MatchEvidence` is `{path?, region?}`. `path` preserves a structural locator;
+  `region` is a complete four-coordinate `TextRegion` only when the finding has
+  an honest exact or nearest-enclosing mapping into the text the model can READ.
+  Each item must contain at least one of `path` or `region`; other fields violate
+  the shared evidence contract.
 - The matcher is a boolean resource selector. It does not replace content with matched values or choose a retrieval window. `DefaultRead` returns the complete selected resource unless the authored READ supplies `<L>`.
 - Empty results return 204 with `matches: []`; `UnsupportedDialectError` maps to 415; `InvalidExpressionError` maps to 400; `QueryParseFailureError` maps to 203 with raw content, text/markdown, and `reason`.
 - A multi-resource matcher omits candidates that return 415 when at least one candidate supports the dialect. If no candidate supports it, the matcher returns the first exact 415 Problem. An unreadable binary marker therefore cannot poison a repository-wide text search or masquerade as a match.

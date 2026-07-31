@@ -13,22 +13,16 @@
 // on (and exact-pins) ONLY @plurnk/plurnk-schemes — grammar rides underneath as
 // the framework's transitive pin, not a second pin every scheme tracks by hand.
 
-// The op set tracks the EXACT pinned grammar (0.74.57): Find/Read/Open/Fold/
-// Edit/Copy/Move/Send/Exec/Work/Fork/Kill/Plan — exactly the `PlurnkStatement`
-// dispatch union. When the framework's grammar pin moves and the op surface
-// changes, this interface moves with it — same consumer-driven bump as every
-// other grammar-derived type here. (Show/Hide → Open/Fold + Kill/Plan at 0.49,
-// schemes#19; Work/Fork added at 0.74.57.) LOOK/BUFF are deliberately absent:
-// they live only in grammar's `ClientStatement` union, not `PlurnkStatement`,
-// so they're client-facing ops the engine never dispatches to a scheme.
+// This interface contains only operations the engine delegates to one scheme.
+// COPY and MOVE are engine-owned compositions over entry capabilities and
+// editBatch, not overridable handler methods. LOOK/BUFF are deliberately absent:
+// they are client operations the engine never dispatches to a scheme.
 import type {
     FindStatement,
     ReadStatement,
     OpenStatement,
     FoldStatement,
     EditStatement,
-    CopyStatement,
-    MoveStatement,
     SendStatement,
     ExecStatement,
     WorkStatement,
@@ -37,6 +31,7 @@ import type {
     PlanStatement,
 } from "@plurnk/plurnk-grammar";
 import type { ProposalApplyRequest, ProposalApplyResult, SchemeCtx } from "./ctx.ts";
+import type { EditBatchResult } from "./edit-receipt.ts";
 import type { SchemeResult } from "./Results.ts";
 import type { SchemeManifest } from "./types.ts";
 
@@ -63,9 +58,7 @@ export interface SchemeHandler {
     find?(statement: FindStatement, ctx: SchemeCtx): Promise<SchemeResult>;
     open?(statement: OpenStatement, ctx: SchemeCtx): Promise<SchemeResult>;
     fold?(statement: FoldStatement, ctx: SchemeCtx): Promise<SchemeResult>;
-    editBatch?(statements: readonly EditStatement[], ctx: SchemeCtx): Promise<SchemeResult>;
-    copy?(statement: CopyStatement, ctx: SchemeCtx): Promise<SchemeResult>;
-    move?(statement: MoveStatement, ctx: SchemeCtx): Promise<SchemeResult>;
+    editBatch?(statements: readonly EditStatement[], ctx: SchemeCtx): Promise<EditBatchResult>;
     send?(statement: SendStatement, ctx: SchemeCtx): Promise<SchemeResult>;
     exec?(statement: ExecStatement, ctx: SchemeCtx): Promise<SchemeResult>;
     work?(statement: WorkStatement, ctx: SchemeCtx): Promise<SchemeResult>;

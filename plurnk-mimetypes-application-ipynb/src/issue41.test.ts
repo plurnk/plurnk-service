@@ -1,5 +1,5 @@
-// Issue #41: a .ipynb is JSON, so jsonpath matches carry the notebook-file
-// source line (jsonc-parser offsets), like application/json.
+// A notebook's readable body is projected Markdown. Structural matches retain
+// canonical JSONPath locators without leaking raw-JSON coordinates into it.
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import Ipynb from "./Ipynb.ts";
@@ -11,15 +11,17 @@ const nb = JSON.stringify(
     1,
 );
 
-describe("issue #41 — ipynb jsonpath source-line spans", () => {
-    it("every cell match carries a source line", async () => {
+describe("ipynb structural match evidence", () => {
+    it("every cell match retains a locator and no fabricated Markdown region", async () => {
         const out = await h.query(nb, "jsonpath", "$.cells[*]");
         assert.equal(out.length, 2);
-        assert.ok(out.every((m) => Array.isArray(m.lines) && m.lines.length === 1 && m.lines[0].line >= 1));
+        assert.ok(out.every((match) =>
+            typeof match.matching === "string" && match.regions === undefined));
     });
-    it("a leaf resolves to its notebook-file line", async () => {
+    it("a leaf retains its canonical locator", async () => {
         const out = await h.query(nb, "jsonpath", "$.nbformat");
         assert.equal(out[0].matched, 4);
-        assert.ok(out[0].lines && out[0].lines[0].line >= 1);
+        assert.equal(out[0].matching, "$['nbformat']");
+        assert.equal(out[0].regions, undefined);
     });
 });

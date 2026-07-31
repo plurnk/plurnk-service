@@ -131,7 +131,7 @@ export default class TreeSitterLanguageHandler extends TreeSitterExtractor {
             return null;
         }
         try {
-            return walkDeepNode(tree.rootNode);
+            return walkDeepNode(tree.rootNode, content);
         } catch {
             return null;
         } finally {

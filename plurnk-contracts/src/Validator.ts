@@ -2,18 +2,21 @@ import { Validator as CfValidator, type OutputUnit, type Schema } from "@cfworke
 import noticeSchema from "../schema/Notice.json" with { type: "json" };
 import problemDetailsSchema from "../schema/ProblemDetails.json" with { type: "json" };
 import operationResultSchema from "../schema/OperationResult.json" with { type: "json" };
-import type { Notice, OperationResult, ProblemDetails } from "./types.generated.ts";
+import textRegionSchema from "../schema/TextRegion.json" with { type: "json" };
+import type { Notice, OperationResult, ProblemDetails, TextRegion } from "./types.generated.ts";
 
 export type ValidationResult = { valid: boolean; errors: OutputUnit[] };
 
 export class InvalidNoticeError extends TypeError {}
 export class InvalidProblemDetailsError extends TypeError {}
 export class InvalidOperationResultError extends TypeError {}
+export class InvalidTextRegionError extends TypeError {}
 
 export default class Validator {
     static #notice = new CfValidator(noticeSchema as Schema, "2020-12");
     static #problemDetails = new CfValidator(problemDetailsSchema as Schema, "2020-12");
     static #operationResult = Validator.#withRefs(operationResultSchema, [problemDetailsSchema]);
+    static #textRegion = new CfValidator(textRegionSchema as Schema, "2020-12");
 
     static #withRefs(mainSchema: unknown, refSchemas: unknown[]): CfValidator {
         const validator = new CfValidator(mainSchema as Schema, "2020-12");
@@ -31,6 +34,10 @@ export default class Validator {
 
     static validateOperationResult(value: unknown): ValidationResult {
         return Validator.#validate(Validator.#operationResult, value);
+    }
+
+    static validateTextRegion(value: unknown): ValidationResult {
+        return Validator.#validate(Validator.#textRegion, value);
     }
 
     static assertNotice<T extends Notice>(value: T): T {
@@ -56,6 +63,20 @@ export default class Validator {
             throw new InvalidOperationResultError(
                 `operation result status ${value.status} does not match problem status ${value.problem.status}`,
             );
+        }
+        return value;
+    }
+
+    static assertTextRegion<T extends TextRegion>(value: T): T {
+        const result = Validator.validateTextRegion(value);
+        if (!result.valid) {
+            throw new InvalidTextRegionError(`invalid TextRegion: ${JSON.stringify(result.errors)}`);
+        }
+        if (
+            value.endLine < value.startLine
+            || (value.endLine === value.startLine && value.endColumn < value.startColumn)
+        ) {
+            throw new InvalidTextRegionError("TextRegion ends before it starts");
         }
         return value;
     }

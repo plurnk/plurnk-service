@@ -12,11 +12,11 @@ export { default as RecordingListener } from "./RecordingListener.ts";
  * applies to every `(target)` slot. The top-level helper to reach for; no need to
  * touch AstBuilder.
  *
- * Primary use: resolving a COPY destination. COPY's destination body remains an
- * opaque string until the consumer calls this helper. MOVE destinations arrive
- * pre-parsed because their body is always a path. See SPEC section 4 (COPY) and 12.
+ * Use this when a consumer needs the same path decomposition as an operation
+ * target without constructing a synthetic statement.
  */
 export const parsePath = (raw: string) => AstBuilder.parsePath(raw);
+export const parseResourceSelection = (raw: string) => AstBuilder.parseResourceSelection(raw);
 export { default as Validator } from "./Validator.ts";
 export type { ValidationResult } from "./Validator.ts";
 // The canonical runtime op-set (a value, not just the PlurnkOp type) — consumers derive their
@@ -48,6 +48,7 @@ export type {
     PlurnkStatement,
     Position,
     ReadStatement,
+    ResourceSelection,
     SendBody,
     SendStatement,
     OpenStatement,

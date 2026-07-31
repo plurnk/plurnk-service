@@ -46,7 +46,7 @@ that needs interpretation belongs in the runtime resolver.
 **Concretely in domain — Visitor-managed (typed AST construction):**
 
 - Extracting `op`, `suffix`, `signal` (split on comma), `path` (raw),
-  `lineMarker` (parsed `<N>` or `<N-M>` integer form), and `body` (raw)
+  `lineMarker` (parsed ordered numeric components), and `body`
   from the parse tree into a typed discriminated union.
 - Native-JS validation of slot contents where useful (e.g., `new URL()`
   for path, `new RegExp()` for regex bodies). This is preferred over
@@ -114,10 +114,10 @@ All other restrictions are runtime concerns, not grammar concerns.
 | OP     | `[signal]`        | `(path)` | `body`                  | `<scope>`     |
 |--------|-------------------|----------|-------------------------|---------------|
 | FIND   | tag filter (CSV)  | required | pattern matcher         | result-set pagination |
-| READ   | tag filter (CSV)  | required | pattern matcher         | per-entry rows |
-| EDIT   | tags (CSV)        | required | content (empty body clears the entry) | entry lines |
-| COPY   | tags to apply (CSV) | required | destination URI (plain resource copy — the worker-fork overload was retired for the dedicated FORK verb, 0.74.54) | entry lines |
-| MOVE   | tags to apply (CSV) | required | destination URI       | entry lines |
+| READ   | tag filter (CSV)  | required | pattern matcher         | text region |
+| EDIT   | tags (CSV)        | required | content (empty body deletes the selected region) | text region |
+| COPY   | tags to apply (CSV) | required | destination `ResourceSelection` | source text region |
+| MOVE   | tags to apply (CSV) | required | destination `ResourceSelection` | source text region |
 | OPEN   | tag filter (CSV)  | required | optional pattern matcher | result-set pagination |
 | FOLD   | tag filter (CSV)  | required | optional pattern matcher | result-set pagination |
 | SEND   | submit code (single integer; see §9) | optional (recipient) | message payload (JSON by convention for structured responses) | `<timeout, poll>` — the wait park on a terminal `[202]` (see §7, §9) |
@@ -127,38 +127,52 @@ All other restrictions are runtime concerns, not grammar concerns.
 | KILL   | unix signal (single integer; taught in canon, e.g. `KILL[9]`) | required | opaque annotation (logged, no runtime meaning) | not applicable |
 | PLAN   | tag filter (CSV; parse-side, canon is slotless) | optional (parse-side; canon is slotless) | reasoning text (recorded to the log; no other effect) | parse-side only |
 
-The `<L>` slot is optional. Its referent shifts by OP (per the column
-above) but the syntax is uniform: a single integer denotes one
-position, an integer range `<N-M>` selects items at positions `N..M`
-inclusive of whatever sequence the OP operates on or produces.
+The `<L>` slot is optional and its domain is OP-specific. FIND, OPEN, and
+FOLD scope ordered results. EXEC and SEND scope timing. READ, EDIT, COPY, and
+MOVE use one universal text algebra independent of mimetype:
+
+| Arity | Text meaning |
+|---|---|
+| one integer | one whole physical line, or the documented `0`/`-1` mutation anchor |
+| two integers | inclusive whole physical lines |
+| four integers | exact `startLine,startColumn,endLine,endColumn` region |
+
+Exact regions use 1-based lines and Unicode code-point columns. The end
+position is exclusive, and equal start/end positions are insertion points.
+Whole-line replacement deliberately accounts for newline separators; it is an
+ergonomic projection over exact replacement, not a different mimetype
+navigation mode. Other arities and decimal text coordinates are runtime 416
+failures.
 
 For READ, a body matcher selects resources against their complete readable
-content. A non-semantic `<L>` then projects readable rows from each selected
+content. A non-semantic `<L>` then projects text from each selected
 resource; it never paginates the match set or limits where the matcher searches.
 Without `<L>`, READ returns each selected resource's complete readable content.
 Semantic READ reserves a leading decimal for an optional similarity threshold;
-remaining integers project readable rows. Without a leading decimal, every
+the remaining one, two, or four integers project text. Without a leading decimal, every
 integer belongs to READ projection and selection uses the configured default.
 
-EDIT line-marker semantics (single source of authority):
+Mutation semantics:
 
-- No `<L>`, target does NOT exist: CREATE — the body becomes the new file/entry contents (an empty body creates an empty resource). This is the ONLY unscoped write.
-- No `<L>`, target EXISTS: REFUSED — an unscoped EDIT must never modify existing content, since it would replace the whole resource (#571, the full-file wipe). Use `<N-M>` to edit a range or `<1,-1>` to replace wholesale. The parser passes an unscoped EDIT through — it cannot know whether the target exists (runtime) — so core owns the create-or-refuse decision. {§unscoped-edit-create-only}
+- No `<L>`, target does NOT exist: CREATE - the body becomes the new file/entry contents (an empty body creates an empty resource). This is the only unscoped EDIT.
+- No `<L>`, target EXISTS: REFUSED - an unscoped EDIT must never modify existing content. Use a text scope or `<1,-1>` to replace wholesale. The parser cannot know whether the target exists, so core owns this decision. {§unscoped-edit-create-only}
 - `<N>` (single position) + body: replace the single line at `N` with body.
 - `<N-M>` (range) + body: replace lines `N..M` inclusive with body.
 - A selected position or range + empty body: delete the selection.
 - `<0>` + body: prepend body before line 1.
 - `<-1>` + body: append body after the last line.
+- `<SL,SC,EL,EC>` + body: delete the exact exclusive-end region, then insert body at its start.
+- COPY and MOVE parse their body as a destination `ResourceSelection`: a path plus an optional trailing destination scope. The header path/fragment/scope selects one source resource, channel, and region; the body independently selects the destination.
 
 ### Per-OP Output (what each OP produces)
 
 | OP   | Produces |
 |------|----------|
-| FIND | One catalog object per selected resource; matcher rows add `matches`, an array of source-line/readable-row coordinates with optional structural paths |
+| FIND | One catalog object per selected resource; matcher rows add `matches`, an array of optional structural locators and honest exact/enclosing text regions |
 | READ | One complete or explicitly scoped body per selected resource, plus the same `matches` navigation evidence |
-| EDIT | status; resulting entry content on success |
-| COPY | status; destination path on success |
-| MOVE | status; destination path on success |
+| EDIT | status plus a bounded receipt for the effect that landed |
+| COPY | status plus ordered applied resource effects, destination only |
+| MOVE | status plus ordered applied resource effects, destination then source |
 | OPEN | status; list of log items opened |
 | FOLD | status; list of log items folded |
 | SEND | status; recipient ack if applicable |
@@ -325,14 +339,14 @@ their respective dialects. ANTLR sub-grammars for any of these would
 add hundreds of lines of generated parser code with no validation
 benefit over the native or library facilities.
 
-## 7. Line Markers
+## 7. Scope Markers
 
-A line marker limits the scope of its operation — the canon names the
+A marker limits the scope of its operation - the canon names the
 slot `<scope>`; the AST field remains `lineMarker` (a deliberate
 vocabulary divergence: the canon is the model's language, the schema is
 the versioned wire contract). The referent is OP-specific (see §4
-per-OP table): entry lines for EDIT/COPY/MOVE, matched content lines
-for READ, positions in the matched result set for FIND/OPEN/FOLD, and
+per-OP table): text for READ/EDIT/COPY/MOVE, positions in the matched
+result set for FIND/OPEN/FOLD, and
 `<timeout, poll>` seconds for EXEC (spawn lifetime cap + poll cadence)
 and for SEND (the wait park on a terminal `[202]`, §9: `<T>` bounded,
 `<T,P>` adds a poll cadence, `<-1>` indefinite). The shipped GBNF
@@ -350,11 +364,11 @@ consumer's job (see arity table).
 |----------|---------------|--------------------------------------|
 | `<N>`    | `[N]`         | single position N                    |
 | `<N,M>` / `<N-M>` | `[N, M]` | inclusive range N..M               |
+| `<SL,SC,EL,EC>` | `[SL, SC, EL, EC]` | exact text region |
 | `<0>`    | `[0]`         | prepend anchor (before position 1)   |
 | `<-1>`   | `[-1]`        | append anchor (after last position)  |
-| `<2.5>`  | `[2.5]`       | line context: insert between lines 2 and 3 (fraction value is don't-care) |
-| `<0.7>`  | `[0.7]`       | result context: similarity threshold ∈ (0,1) for semantic matchers |
-| `<0.7,10,20>` | `[0.7, 10, 20]` | threshold + range (score ≥ 0.7, positions 10..20) |
+| `<0.7>`  | `[0.7]`       | semantic similarity threshold in (0,1) |
+| `<0.7,10,20>` | `[0.7, 10, 20]` | threshold + range (score >= 0.7, positions 10..20) |
 
 Examples involving negative integers:
 
@@ -375,12 +389,9 @@ the GBNF dictates the comma form. {§scope-marker-forms}
 - Validity of any specific value (out-of-range, inverted range where
   `N > M`, sentinel meanings beyond the canonical `0`/`-1`) is decided
   per-OP at runtime.
-- Decimal dispatch is form-driven, like matcher-dialect dispatch: an
-  integer addresses a position; a decimal addresses the space between
-  (line contexts: insertion point) or above (result contexts: score
-  threshold). A decimal where neither meaning applies — a threshold on
-  a non-semantic matcher, a fractional position on COPY/MOVE — is
-  answered with `416 Range Not Satisfiable`, not silently coerced.
+- A decimal is a leading semantic similarity threshold. Text positions are
+  integers; a decimal text coordinate is answered with 416 rather than
+  rounded or reinterpreted.
 
 **Result-set ordering** (FIND, OPEN, FOLD): the runtime must produce a
 deterministic order so that `<N-M>` pagination is reproducible. The
@@ -591,12 +602,12 @@ PlurnkParser.parseClient(input: string): ParseResult<ClientStatement>
 // its own PLAN-anchored sandwich. The script/log tier; never used for model output.
 PlurnkParser.parseLog(input: string): ParseResult
 
-// Parse a path/URI string into a ParsedPath — the exact decomposition the parser
-// applies to every (target) slot. The top-level helper to reach for (no need to
-// touch AstBuilder). Primary use: resolving a COPY destination — COPY's body stays
-// a raw string on the wire (the scheme handler calls this to resolve it), while
-// MOVE destinations arrive pre-parsed (body is always a path).
+// Parse a path/URI string into a ParsedPath - the exact decomposition the parser
+// applies to every (target) slot.
 parsePath(raw: string): ParsedPath | null
+
+// Parse a COPY/MOVE body as a destination path plus an optional trailing scope.
+parseResourceSelection(raw: string): ResourceSelection | null
 
 type ParseResult = {
     items: ParseItem[];
@@ -638,6 +649,11 @@ interface StatementBase<S> {
 }
 
 interface LineMarker { marks: number[]; } // 1+ ordered components; arity = consumer interpretation
+
+interface ResourceSelection {
+    target: ParsedPath;
+    lineMarker: LineMarker | null;
+}
 
 // Path is local (no scheme) or URL (has scheme). The Visitor decides by matching
 // the leading [a-z][a-z0-9+.-]*:// pattern; only URLs are passed through
@@ -694,12 +710,10 @@ interface FoldStatement extends StatementBase<string[]> { op: "FOLD"; body: Matc
 // EDIT — body is arbitrary content (markdown, code, prose). Raw.
 interface EditStatement extends StatementBase<string[]> { op: "EDIT"; body: string | null; }
 
-// MOVE — body is the destination URI, parsed identically to the path slot.
-interface MoveStatement extends StatementBase<string[]> { op: "MOVE"; body: ParsedPath | null; }
-// COPY — body is the destination URI, carried as a raw string on the wire (the
-// scheme handler resolves it via parsePath). Plain resource copy only — the
-// worker-fork overload was retired for the dedicated FORK verb (0.74.54).
-interface CopyStatement extends StatementBase<string[]> { op: "COPY"; body: string | null; }
+// COPY/MOVE - body independently selects the destination resource, channel,
+// and optional text region.
+interface CopyStatement extends StatementBase<string[]> { op: "COPY"; body: ResourceSelection | null; }
+interface MoveStatement extends StatementBase<string[]> { op: "MOVE"; body: ResourceSelection | null; }
 
 // SEND — body is raw + best-effort JSON.
 interface SendStatement extends StatementBase<number> { op: "SEND"; body: SendBody | null; }

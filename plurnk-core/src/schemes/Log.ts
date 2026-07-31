@@ -338,20 +338,9 @@ export default class Log extends CoreSchemeAdapterBase {
                 key,
                 span: { lineStart, lineEnd },
             }));
-            const readable = await Matcher.addReadableRows(sourceMatches, projected, mimetypes);
+            const readable = Matcher.addTextRegions(sourceMatches, projected);
             matches = readable.map(({ key, matches: ranges }) => ({ pathname: key, matches: ranges }));
         } else if (statement.body?.dialect === "graph") {
-            if (mimetypes === undefined) {
-                return empty(
-                    501,
-                    "Graph matching requires the mimetypes capability.",
-                    {
-                        stage: "matcher",
-                        dialect: "graph",
-                        retryable: false,
-                    },
-                );
-            }
             const candidateSet = resolveSearchCandidates(
                 rows.map(({ coordinate, deep_hash }) => ({ key: coordinate, deepHash: deep_hash })),
             );
@@ -401,7 +390,7 @@ export default class Log extends CoreSchemeAdapterBase {
                 key,
                 span: { lineStart, lineEnd },
             }));
-            const readable = await Matcher.addReadableRows(sourceMatches, projected, mimetypes);
+            const readable = Matcher.addTextRegions(sourceMatches, projected);
             matches = readable.map(({ key, matches: ranges }) => ({ pathname: key, matches: ranges }));
         } else if (statement.body === null) {
             matches = projected.map(({ key }) => ({ pathname: key, matches: [] }));

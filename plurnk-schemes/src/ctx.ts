@@ -6,7 +6,9 @@
 
 import type { WriterTier } from "./types.ts";
 import type { EditStatement, FindStatement, ReadStatement, SendStatement } from "@plurnk/plurnk-grammar";
-import type { MatchRange, SchemeResult } from "./Results.ts";
+import type { TextRegion } from "@plurnk/plurnk-contracts";
+import type { MatchEvidence, SchemeResult } from "./Results.ts";
+import type { EditBatchResult } from "./edit-receipt.ts";
 // Channel streaming-lifecycle state (mirrors plurnk-service's ChannelState /
 // grammar ChannelContent.state). Metadata, not an engine gate (service SPEC: channel lifecycle state).
 export type ChannelState = "static" | "active" | "closed" | "errored";
@@ -20,10 +22,9 @@ export interface EntryData {
 
 export type EntryOwner = "commons" | "worker";
 
-export interface EntryEditResult extends SchemeResult {
+export interface EntryEditResult extends EditBatchResult {
     readonly entryId: number | null;
     readonly channel: string | null;
-    readonly editReceipt?: object | null;
 }
 
 export interface EntryReadResult extends SchemeResult {
@@ -31,7 +32,8 @@ export interface EntryReadResult extends SchemeResult {
     readonly mimetype: string | null;
     readonly channel: string | null;
     readonly startLine?: number | null;
-    readonly matches?: ReadonlyArray<MatchRange>;
+    readonly region?: TextRegion;
+    readonly matches?: ReadonlyArray<MatchEvidence>;
     readonly reason?: string;
     readonly awaitWorker?: string;
 }
@@ -41,12 +43,12 @@ export interface EntryCatalogItem {
     readonly seconds?: number;
     readonly tags?: ReadonlyArray<string>;
     readonly channels: Readonly<Record<string, { mimetype: string; tokens: number; lines: number }>>;
-    readonly matches?: ReadonlyArray<MatchRange>;
+    readonly matches?: ReadonlyArray<MatchEvidence>;
 }
 
 export interface EntryMatch {
     readonly pathname: string;
-    readonly matches: ReadonlyArray<MatchRange>;
+    readonly matches: ReadonlyArray<MatchEvidence>;
 }
 
 export interface EntryFindResult extends SchemeResult {
@@ -84,7 +86,7 @@ export interface EntryCaps {
     readonly operations: EntryOperationCaps;
     read(pathname: string, owner?: EntryOwner): Promise<EntryStorageReadResult>;
     write(pathname: string, entry: EntryData, owner?: EntryOwner): Promise<EntryStorageWriteResult>;
-    delete(pathname: string, owner?: EntryOwner): Promise<SchemeResult>;
+    delete(pathname: string, owner?: EntryOwner, channel?: string): Promise<SchemeResult>;
 }
 
 // ── channels ─────────────────────────────────────────────────────────────

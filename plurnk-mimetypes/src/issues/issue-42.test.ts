@@ -76,7 +76,9 @@ describe("Issue #42 — C1: parsed-form matcher is accepted alongside the raw st
         const m = makeMimetypes();
         const out = await m.query(INPUT, { dialect: "jsonpath", pattern: "$..children[*]" });
         assert.equal(out.length, 1);
-        assert.deepEqual(out[0].lines, [{ line: 2, endLine: 2 }]);
+        assert.deepEqual(out[0].regions, [{
+            startLine: 2, startColumn: 1, endLine: 2, endColumn: 10,
+        }]);
     });
 });
 
@@ -94,7 +96,10 @@ describe("Issue #42 — C2: parsed and raw forms agree, with m.lines, on every d
             assert.deepEqual(parsedOut, rawOut, "parsed form must match raw-string dispatch exactly");
             assert.ok(parsedOut.length > 0, "expected at least one match");
             for (const m of parsedOut) {
-                assert.ok(m.lines && m.lines.length > 0 && m.lines[0].line >= 1, "every match carries a source-line span");
+                assert.ok(
+                    m.regions && m.regions.length > 0 && m.regions[0].startLine >= 1,
+                    "every match carries a readable text region",
+                );
             }
         });
     }
@@ -107,7 +112,9 @@ describe("Issue #42 — C3: parsed dialect is authoritative; no re-parse by pref
         const asRegex = await m.query(INPUT, { dialect: "regex", pattern: "//foo" });
         assert.equal(asRegex.length, 1);
         assert.equal(asRegex[0].matched, "//foo");
-        assert.deepEqual(asRegex[0].lines, [{ line: 2, endLine: 2 }]);
+        assert.deepEqual(asRegex[0].regions, [{
+            startLine: 2, startColumn: 1, endLine: 2, endColumn: 6,
+        }]);
 
         // The same text passed as the raw string "//foo" classifies as xpath and
         // selects <foo> elements — of which there are none. Different dialect,

@@ -3,6 +3,7 @@ export {
     InvalidNoticeError,
     InvalidOperationResultError,
     InvalidProblemDetailsError,
+    InvalidTextRegionError,
 } from "./Validator.ts";
 export { default as Problems } from "./Problems.ts";
 export type { ProblemOptions } from "./Problems.ts";
@@ -13,4 +14,5 @@ export type {
     Notice,
     OperationResult,
     ProblemDetails,
+    TextRegion,
 } from "./types.generated.ts";

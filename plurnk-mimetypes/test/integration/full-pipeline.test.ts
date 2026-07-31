@@ -51,7 +51,6 @@ describe("full pipeline — text/plain fixture (no structural signal)", () => {
         assert.equal(result.ok, true);
         assert.equal(result.mimetype, "text/plain");
         assert.equal(result.totalLines, 2);
-        assert.equal(result.extent, 2);
         // text/plain has no structural extraction path — empty by design.
         assert.deepEqual(result.symbols, []);
         assert.equal(result.deepJson, null);
@@ -80,7 +79,6 @@ describe("full pipeline — text/plain fixture (no structural signal)", () => {
             mimetype: "text/plain",
             ok: true,
             totalLines: 1,
-            extent: 1,
         });
     });
 

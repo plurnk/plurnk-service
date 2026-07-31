@@ -1,15 +1,16 @@
 // Integration coverage for previously-untagged SPEC.md contract anchors that
 // concentrate around the mimetype seam: matcher soft-fallback (§matcher-dispatch),
 // matcher navigation (§slice-semantics), 410 channel-delete
-// (§send-dispatch), the Mimetypes.process entry point (§mimetype-methods), and the write-time vs
-// render-time handler firing boundary (§mimetype — schemes do not invoke handlers).
+// (§send-dispatch), the Mimetypes.process entry point (§mimetype-methods), and
+// the write-time vs explicit-projection handler boundary (§mimetype - schemes
+// do not invoke handlers).
 //
 // Vehicles are the real production paths:
 //   - §matcher-dispatch / §slice-semantics - Known.read matcher dispatch
 //                     (Matcher.matchAgainstContent -> 203) plus coordinate-guided READ.
 //   - §send-dispatch - _entry-send.sendToWorkspaceEntry 410-with-fragment over Engine.dispatch.
-//   - §mimetype-methods / §mimetype - Mimetypes.process shape + a spy handler proving write
-//                 (detect) never fires preview, but render (manifest build -> process) does.
+//   - §mimetype-methods / §mimetype - Mimetypes.process shape + a spy handler
+//                 proving write (detect) never fires a content projection.
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -17,10 +18,9 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type {
-    EditStatement, MatcherBody, ParsedPath, PlurnkStatement, ReadStatement, SendStatement,
+    EditStatement, MatcherBody, ParsedPath, ReadStatement, SendStatement,
 } from "@plurnk/plurnk-grammar";
 import { Mimetypes } from "@plurnk/plurnk-mimetypes";
-import { Mock } from "@plurnk/plurnk-providers";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import PacketWire from "../../src/core/packet-wire.ts";
@@ -136,16 +136,31 @@ test("a matcher READ returns one resource and coordinates for a surgical follow-
         });
         const rx = JSON.parse(row!.rx) as {
             content: string;
-            matches: Array<{ rowStart: number; rowEnd: number }>;
+            matches: Array<{
+                region?: {
+                    startLine: number;
+                    startColumn: number;
+                    endLine: number;
+                    endColumn: number;
+                };
+            }>;
         };
         assert.equal(rx.content, "error: alpha\nok: beta\nerror: gamma");
         assert.equal(rx.matches.length, 2);
 
         const second = rx.matches[1]!;
+        assert.ok(second.region);
         const surgical = await new Worker().read(
             {
                 ...readStmt(urlPath("worker", "/log.txt")),
-                lineMarker: { marks: [second.rowStart, second.rowEnd] },
+                lineMarker: {
+                    marks: [
+                        second.region.startLine,
+                        second.region.startColumn,
+                        second.region.endLine,
+                        second.region.endColumn,
+                    ],
+                },
             },
             makeSchemeCtx({ db, workspaceId, workerId, mimetypes }),
         );
@@ -193,12 +208,12 @@ test("SEND[410](path#fragment) deletes only the named channel; siblings remain (
 });
 
 // --- §mimetype-methods Mimetypes.process is the projection entry point -------------------
-// process(input, { channels }) returns the structural projections + extent
-// ({ mimetype, ok, totalLines, symbols?/deepJson?/deepXml? }) — no preview
+// process(input, { channels }) returns metadata plus requested projections
+// ({ mimetype, ok, totalLines, symbols?/deepJson?/deepXml? }) - no preview
 // post-0.15. Assert the shape against the real auto-discovered service for a
 // known mimetype (markdown → symbols) and an unknown one (ok:false).
 
-test("Mimetypes.process returns the structural projections + extent", async () => {
+test("Mimetypes.process returns metadata plus requested projections", async () => {
     const md = "# Title\n\nbody paragraph\n\n## Sub\n\nmore";
     const known = await DEFAULT_MIMETYPES.process({ content: md, hint: "text/markdown" }, { channels: ["symbols"] });
     assert.equal(known.mimetype, "text/markdown", "process echoes the resolved mimetype");
@@ -213,26 +228,23 @@ test("Mimetypes.process returns the structural projections + extent", async () =
 });
 
 // --- §mimetype schemes do NOT invoke mimetype handlers at write time --------------
-// A spy handler instrumented on preview/query. Writing (Known.edit) resolves
-// the mimetype via Mimetypes.detect — it must NOT fire the handler. Rendering
-// (the manifest build → Mimetypes.process) MUST fire it. Same handler, two
-// phases: 0 firings after write, >0 after render.
+// A spy handler instrumented on content/query. Writing resolves the mimetype
+// via Mimetypes.detect and must not fire either channel. An explicit content
+// projection does fire content(). Same handler, separate phases.
 
-test("write resolves mimetype without firing the handler; render fires it", async () => {
+test("write resolves mimetype without firing the handler; explicit projection fires it", async () => {
     const db = await openMigrated();
     try {
         const env = await seedEnvelope(db, `cm-fire-${crypto.randomUUID()}`);
-        const { workspaceId, workerId, loopId } = env;
+        const { workspaceId, workerId } = env;
 
-        const previewCalls: string[] = [];
+        const projectionCalls: string[] = [];
         const queryCalls: string[] = [];
         const BaseHandler = (await import("@plurnk/plurnk-mimetypes")).BaseHandler;
         class SpyHandler extends BaseHandler {
-            // The render path (manifest build → process) always calls extent();
-            // overriding it records that the handler fired at render, not write.
-            override async extent(content: import("@plurnk/plurnk-mimetypes").HandlerContent): Promise<number> {
-                previewCalls.push(typeof content === "string" ? content : "");
-                return 1;
+            override async content(content: import("@plurnk/plurnk-mimetypes").HandlerContent): Promise<undefined> {
+                projectionCalls.push(typeof content === "string" ? content : "");
+                return undefined;
             }
             override async query(content: import("@plurnk/plurnk-mimetypes").HandlerContent, dialect: import("@plurnk/plurnk-mimetypes").QueryDialect, pattern: string, flags?: string): Promise<never[]> {
                 queryCalls.push(`${dialect}:${pattern}:${flags}`);
@@ -240,8 +252,8 @@ test("write resolves mimetype without firing the handler; render fires it", asyn
             }
         }
         // Bind the spy handler to a `.spy` extension so write-time
-        // PathMimetype.resolveEntryMimetype({ ext }) → detect resolves text/x-spy and the
-        // entry's stored mimetype routes render through the spy. text/* keeps
+        // PathMimetype.resolveEntryMimetype({ ext }) -> detect resolves
+        // text/x-spy. text/* keeps
         // the write off the binary 415 gate (MimetypeBinary.isBinaryMimetype).
         const mimetypes = new Mimetypes({
             discovery: {
@@ -256,28 +268,23 @@ test("write resolves mimetype without firing the handler; render fires it", asyn
         await mimetypes.ready();
 
         // WRITE phase: Known.edit on a `.spy` path. Resolves mimetype via
-        // detect; must not touch preview/query.
+        // detect; must not touch content/query.
         const edited = await new Worker().edit(
             editStmt(urlPath("worker", "/notes.spy"), "alpha\nbeta\ngamma"),
             makeSchemeCtx({ db, workspaceId, workerId, mimetypes }),
         );
         assert.equal(edited.status, 201, "write succeeded");
         // Confirm the write resolved the spy mimetype (detect ran, not the handler).
-        const channel = await db.test_get_channel.get<{ mimetype: string }>({ entry_id: edited.entryId, name: "body" });
+        const channel = await db.test_get_channel.get<{ mimetype: string; content: string }>({ entry_id: edited.entryId, name: "body" });
         assert.equal(channel?.mimetype, "text/x-spy", "write-time detect resolved the spy mimetype");
-        assert.equal(previewCalls.length, 0, "§mimetype: scheme write did NOT invoke the handler's preview");
+        assert.equal(projectionCalls.length, 0, "§mimetype: scheme write did not invoke the handler's content projection");
         assert.equal(queryCalls.length, 0, "§mimetype: scheme write did NOT invoke the handler's query");
 
-        // RENDER phase: a turn assembles the packet; the manifest build routes
-        // the spy channel through Mimetypes.process → handler.preview fires.
-        const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes });
-        const provider = new Mock({
-            contextWindow: 100000,
-            responses: [{ assistant: { content: "", ops: [] as PlurnkStatement[], reasoning: null } }],
-        });
-        await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
-        assert.ok(previewCalls.length > 0, "§mimetype: render-time manifest build DID invoke the handler's preview");
-        assert.ok(previewCalls.includes("alpha\nbeta\ngamma"), "handler saw the stored channel content at render time");
+        await mimetypes.process(
+            { content: channel?.content ?? "", hint: channel?.mimetype },
+            { channels: ["content"] },
+        );
+        assert.deepEqual(projectionCalls, ["alpha\nbeta\ngamma"], "explicit projection passes the stored content to the handler");
     } finally { await db.close(); }
 });
 

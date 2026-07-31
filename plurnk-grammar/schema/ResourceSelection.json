@@ -1,0 +1,20 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "https://schemas.plurnk.dev/v0/ResourceSelection.json",
+    "title": "ResourceSelection",
+    "description": "One addressed resource representation and an optional textual region. A fragment-less target selects the scheme's default channel; a URI fragment selects a named channel. The line marker scopes that selected channel.",
+    "type": "object",
+    "required": ["target", "lineMarker"],
+    "additionalProperties": false,
+    "properties": {
+        "target": {
+            "$ref": "https://schemas.plurnk.dev/v0/ParsedPath.json"
+        },
+        "lineMarker": {
+            "oneOf": [
+                { "$ref": "https://schemas.plurnk.dev/v0/LineMarker.json" },
+                { "type": "null" }
+            ]
+        }
+    }
+}

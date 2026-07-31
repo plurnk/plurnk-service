@@ -21,12 +21,19 @@ test("DefaultRead: <L> line marker slices via Slicer", async () => {
     const r = await DefaultRead.read("a\nb\nc", "text/plain", stmt({ lineMarker: { marks: [2] } }), mimetypes);
     assert.equal(r.status, 200);
     assert.equal(r.body, "b");
+    assert.equal(r.startLine, 2);
+    assert.deepEqual(r.region, {
+        startLine: 2,
+        startColumn: 1,
+        endLine: 2,
+        endColumn: 2,
+    });
 });
 
-test("DefaultRead: <2.5> insert-point selects no content for READ (sentinel)", async () => {
+test("DefaultRead: a fractional text scope is rejected", async () => {
     const r = await DefaultRead.read("a\nb\nc", "text/plain", stmt({ lineMarker: { marks: [2.5] } }), mimetypes);
-    assert.equal(r.status, 200);
-    assert.equal(r.body, "");
+    assert.equal(r.status, 416);
+    assert.match(r.problem?.detail ?? "", /integer coordinates/);
 });
 
 test("DefaultRead: failed slices preserve the structured source extent", async () => {
@@ -46,15 +53,17 @@ test("DefaultRead: matcher body routes through Matcher (jsonpath dispatch)", asy
     assert.equal(r.status, 200);
     assert.equal(r.body, whole);
     assert.deepEqual(r.matches, [{
-        lineStart: 1,
-        lineEnd: 1,
-        rowStart: 1,
-        rowEnd: 2,
         path: "$['name']",
+        region: {
+            startLine: 1,
+            startColumn: 2,
+            endLine: 1,
+            endColumn: 12,
+        },
     }]);
 });
 
-test("DefaultRead: matcher selects the full blob before <L> projects rows", async () => {
+test("DefaultRead: matcher selects the full blob before <L> projects text", async () => {
     const body: MatcherBody = { dialect: "regex", raw: "/needle/", pattern: "needle", flags: "" };
     const r = await DefaultRead.read(
         "heading\ncontext\nneedle later",
@@ -64,11 +73,19 @@ test("DefaultRead: matcher selects the full blob before <L> projects rows", asyn
     );
     assert.equal(r.status, 200);
     assert.equal(r.body, "heading\ncontext");
+    assert.deepEqual(r.region, {
+        startLine: 1,
+        startColumn: 1,
+        endLine: 2,
+        endColumn: 8,
+    });
     assert.deepEqual(r.matches, [{
-        lineStart: 3,
-        lineEnd: 3,
-        rowStart: 3,
-        rowEnd: 3,
+        region: {
+            startLine: 3,
+            startColumn: 1,
+            endLine: 3,
+            endColumn: 7,
+        },
     }]);
 });
 
@@ -79,4 +96,30 @@ test("DefaultRead: a scoped matcher miss is 204, not an empty-range 416", async 
     assert.equal(r.status, 204);
     assert.deepEqual(r.matches, []);
     assert.equal(r.problem, undefined);
+});
+
+test("DefaultRead: an empty exact selection is 204 and retains its region and matcher evidence", async () => {
+    const body: MatcherBody = { dialect: "regex", raw: "/a/", pattern: "a", flags: "" };
+    const r = await DefaultRead.read(
+        "a",
+        "text/plain",
+        stmt({ body, lineMarker: { marks: [1, 1, 1, 1] } }),
+        mimetypes,
+    );
+    assert.equal(r.status, 204);
+    assert.equal(r.body, "");
+    assert.deepEqual(r.region, {
+        startLine: 1,
+        startColumn: 1,
+        endLine: 1,
+        endColumn: 1,
+    });
+    assert.deepEqual(r.matches, [{
+        region: {
+            startLine: 1,
+            startColumn: 1,
+            endLine: 1,
+            endColumn: 2,
+        },
+    }]);
 });

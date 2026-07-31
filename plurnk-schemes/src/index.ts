@@ -22,11 +22,11 @@ export { default as Slicer } from "./Slicer.ts";
 export type {
     BatchEdit,
     EditResult as LineEditResult,
-    JsonSliceResult,
     PageResult,
     RangeExtent,
     RangeUnit,
     SliceResult,
+    TextReplacement,
 } from "./Slicer.ts";
 export { default as PathMimetype } from "./PathMimetype.ts";
 export { default as Matcher } from "./Matcher.ts";
@@ -42,8 +42,15 @@ export type { ReadResolution } from "./DefaultRead.ts";
 export { default as Results } from "./Results.ts";
 export { InvalidOperationResultError } from "./Results.ts";
 export type {
+    EditBatchReceipt,
+    EditBatchResult,
+    EditEffectReceipt,
+    EditReceipt,
+    EditReceiptUnit,
+} from "./edit-receipt.ts";
+export type {
     EntryResult,
-    MatchRange,
+    MatchEvidence,
     PassthroughResult,
     ProposalResult,
     ProblemDetails,

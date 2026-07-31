@@ -47,9 +47,14 @@ test("[#186-semantic-e2e] ~query ranks by REAL semantic similarity (full pipelin
         const workspaceId = await insertWorkspace(db, `e2e-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
         const ctx = makeSchemeCtx({ db, workspaceId, workerId, mimetypes });
-        await new Worker().edit(editStmt(url("db.md"), "the database connection failed with a timeout error"), ctx);
-        await new Worker().edit(editStmt(url("sql.md"), "sql server connection could not be established"), ctx);
-        await new Worker().edit(editStmt(url("cake.md"), "preheat the oven and frost the birthday cake"), ctx);
+        const bodies = new Map([
+            ["worker:///db.md", "the database connection failed with a timeout error"],
+            ["worker:///sql.md", "sql server connection could not be established"],
+            ["worker:///cake.md", "preheat the oven and frost the birthday cake"],
+        ]);
+        for (const [path, body] of bodies) {
+            await new Worker().edit(editStmt(url(path.slice("worker:///".length)), body), ctx);
+        }
         await SearchIndex.maintain(ctx);  // real embeddings stored via mimetypes-embeddings
 
         const r = await new Worker().find(semanticStmt(url(""), "database connection error", 2), makeSchemeCtx({ db, workspaceId, workerId, loopId: 0, turnId: 0, mimetypes }));
@@ -59,6 +64,18 @@ test("[#186-semantic-e2e] ~query ranks by REAL semantic similarity (full pipelin
         assert.deepEqual(r.results.map((f) => f.path).sort(), ["worker:///db.md", "worker:///sql.md"]);
         assert.ok(!r.results.some((f) => f.path === "worker:///cake.md"), "the unrelated recipe never enters the ranking");
         assert.ok(r.results.every((row) => typeof row.channels === "object" && !("extent" in (row as object))), "~semantic FIND returns one catalog row per selected resource");
+        for (const row of r.results) {
+            const body = bodies.get(row.path);
+            assert.ok(body !== undefined);
+            assert.deepEqual(row.matches, [{
+                region: {
+                    startLine: 1,
+                    startColumn: 1,
+                    endLine: 1,
+                    endColumn: [...body].length + 1,
+                },
+            }], "one-chunk semantic evidence is the exact indexed text region");
+        }
     } finally { db.close(); }
 });
 

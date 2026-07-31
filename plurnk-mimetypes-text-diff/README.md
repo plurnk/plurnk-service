@@ -56,8 +56,6 @@ The deep channel carries the **target-file** ranges and per-file stats — jsonp
 }
 ```
 
-`extent` is `totalLines` (the framework default — correct for a line-oriented format).
-
 ## references
 
 Refs-free for v1. References are a code-graph concept (`call`, `import`, `inherit`, …) that a diff doesn't natively express. A future **file-path use-edge** is plausible — a diff's touched paths are in-corpus entry paths, so the diff could link to the entries it patches — but that edge is not built here (precision over speculation).

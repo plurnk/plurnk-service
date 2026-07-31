@@ -187,8 +187,12 @@ test("a content match emits one item per resource with match coordinates", async
         const r = await new Worker().find(findStmt(url(""), glob("france*")), makeSchemeCtx({ db, workspaceId, workerId, loopId: 0, turnId: 0 }));
         assert.equal(r.status, 200);
         const byPath = new Map(r.results.map((row) => [row.path, row] as const));
-        assert.deepEqual(byPath.get("worker:///a")?.matches, [{ lineStart: 3, lineEnd: 3, rowStart: 3, rowEnd: 3 }]);
-        assert.deepEqual(byPath.get("worker:///b")?.matches, [{ lineStart: 2, lineEnd: 2, rowStart: 2, rowEnd: 2 }]);
+        assert.deepEqual(byPath.get("worker:///a")?.matches, [{
+            region: { startLine: 3, startColumn: 1, endLine: 3, endColumn: 15 },
+        }]);
+        assert.deepEqual(byPath.get("worker:///b")?.matches, [{
+            region: { startLine: 2, startColumn: 1, endLine: 2, endColumn: 13 },
+        }]);
         assert.equal(byPath.has("worker:///c"), false, "a miss excludes the entry entirely — no item");
     } finally { db.close(); }
 });

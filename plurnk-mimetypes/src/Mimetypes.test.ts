@@ -186,7 +186,6 @@ describe("Mimetypes — process: metadata + error paths", () => {
             mimetype: null,
             ok: false,
             totalLines: 0,
-            extent: 0,
         });
     });
 
@@ -200,7 +199,6 @@ describe("Mimetypes — process: metadata + error paths", () => {
             mimetype: "text/plain",
             ok: false,
             totalLines: 0,
-            extent: 0,
         });
     });
 
@@ -278,7 +276,6 @@ describe("Mimetypes — process: channel selection (#17)", () => {
             mimetype: "text/plain",
             ok: true,
             totalLines: 3,
-            extent: 3,
         });
         assert.equal(extractCalls, 0, "no channel work for channels: []");
     });
@@ -389,7 +386,7 @@ describe("Mimetypes — process: channel selection (#17)", () => {
     });
 });
 
-describe("Mimetypes — process: totalLines + extent (#9)", () => {
+describe("Mimetypes - process: totalLines", () => {
     it("returns 0 for empty content", async () => {
         const m = new Mimetypes({
             discovery: makeDiscovery([plainInfo]),
@@ -440,31 +437,6 @@ describe("Mimetypes — process: totalLines + extent (#9)", () => {
         assert.equal(r2.totalLines, 2);
         const r3 = await m.process({ path: "foo.txt", content: "a\n\nb" });
         assert.equal(r3.totalLines, 3);
-    });
-
-    it("populates extent on the ok path (default: line count)", async () => {
-        const m = new Mimetypes({
-            discovery: makeDiscovery([plainInfo]),
-            loader: async () => ({ default: FakePlainHandler }),
-        });
-        const result = await m.process({ path: "anything.txt", content: "one\ntwo\nthree" });
-        assert.equal(result.extent, 3);
-        assert.equal(result.totalLines, 3);
-    });
-
-    it("extent honors a handler override (non-line units)", async () => {
-        class RowsHandler extends BaseHandler {
-            override extent(): number {
-                return 42;
-            }
-        }
-        const m = new Mimetypes({
-            discovery: makeDiscovery([plainInfo]),
-            loader: async () => ({ default: RowsHandler }),
-        });
-        const r = await m.process({ path: "foo.txt", content: "a\nb" }, { channels: [] });
-        assert.equal(r.extent, 42);
-        assert.equal(r.totalLines, 2, "totalLines stays the editor convention");
     });
 
     it("returns 0 for binary content (lines not meaningful for binary mimetypes)", async () => {
@@ -519,8 +491,8 @@ describe("Mimetypes — query", () => {
         );
         assert.equal(results.length, 2);
         assert.equal(results[0].matched, "beta");
-        assert.equal(results[0].lines![0].line, 2);
-        assert.equal(results[1].lines![0].line, 4);
+        assert.equal(results[0].regions?.[0]?.startLine, 2);
+        assert.equal(results[1].regions?.[0]?.startLine, 4);
     });
 
     it("dispatches jsonpath via $ expression to the handler's outline", async () => {
@@ -537,12 +509,12 @@ describe("Mimetypes — query", () => {
             loader: async () => ({ default: OutlineHandler }),
         });
         const results = await m.query(
-            { path: "foo.txt", content: "(unused)" },
+            { path: "foo.txt", content: "top\n2\n3\n4\nsection" },
             "$.Top.Section",
         );
         assert.equal(results.length, 1);
         assert.equal(results[0].matched, 5);
-        assert.equal(results[0].lines![0].line, 5);
+        assert.equal(results[0].regions?.[0]?.startLine, 5);
     });
 
     it("dispatches glob (no prefix) line-anchored against text body", async () => {
@@ -566,7 +538,9 @@ describe("Mimetypes — query", () => {
         });
         const results = await m.query({ path: "foo.txt", content: "any" }, "//Plain");
         assert.equal(results.length, 1);
-        assert.deepEqual(results[0].lines, [{ line: 1, endLine: 1 }]);
+        assert.deepEqual(results[0].regions, [{
+            startLine: 1, startColumn: 1, endLine: 1, endColumn: 4,
+        }]);
     });
 
     it("xpath still throws when the handler has no deep tree and no symbols (mapped to 415 upstream)", async () => {

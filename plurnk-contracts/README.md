@@ -4,7 +4,8 @@ Runtime-neutral PLURNK wire contracts:
 
 - RFC 9457 `ProblemDetails`;
 - universal `OperationResult`;
-- nonterminal `Notice`.
+- nonterminal `Notice`;
+- universal Unicode text coordinates through `TextRegion`.
 
 The package publishes JSON Schemas, generated TypeScript types, and runtime
 validation without importing PLURNK's parser, daemon, providers, or plugin SDKs.

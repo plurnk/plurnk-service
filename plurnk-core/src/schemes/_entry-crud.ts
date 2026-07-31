@@ -125,4 +125,51 @@ export default class EntryCrud {
         // CASCADE on entry_channels, entry_tags per FK constraints.
         return { status: 200 };
     }
+
+    static async deleteChannel(
+        pathname: string,
+        channel: string,
+        ctx: PlurnkSchemeContext,
+        scheme: string,
+        ownerId?: number,
+    ): Promise<DeleteEntryResult> {
+        const { db, workspaceId } = ctx;
+        const owner_id = ownerId ?? await Owner.commonsId(db, workspaceId);
+        const existing = await db.crud_find_workspace_entry.get<{ id: number }>({
+            workspace_id: workspaceId,
+            owner_id,
+            scheme,
+            pathname,
+        });
+        if (existing === undefined) {
+            return Results.failure(
+                `scheme:${scheme}`,
+                "entry-not-found",
+                404,
+                `No entry exists at ${scheme}://${pathname}.`,
+                {},
+                { target: `${scheme}://${pathname}` },
+            ) as DeleteEntryResult;
+        }
+        const deleted = await db.crud_delete_channel.get<{ name: string }>({
+            entry_id: existing.id,
+            name: channel,
+        });
+        if (deleted === undefined) {
+            return Results.failure(
+                `scheme:${scheme}`,
+                "channel-not-found",
+                404,
+                `No channel named #${channel} exists at ${scheme}://${pathname}.`,
+                {},
+                {
+                    target: `${scheme}://${pathname}`,
+                    channel,
+                },
+            ) as DeleteEntryResult;
+        }
+        const remaining = await db.crud_read_channels.all<{ name: string }>({ entry_id: existing.id });
+        if (remaining.length === 0) await db.crud_delete_entry.run({ entry_id: existing.id });
+        return { status: 200 };
+    }
 }

@@ -9,8 +9,6 @@ import type {
     MimeSymbol,
     QueryDialect,
     QueryMatch,
-    LineSpan,
-    RowSpan,
 } from "./types.ts";
 
 // Content shape that handler methods accept. Text mimetypes receive `string`;
@@ -21,8 +19,8 @@ export type HandlerContent = string | Uint8Array;
 
 // Base class for mimetype handlers. Subclasses override the structural
 // channels their algebra supports: extractRaw (symbols/defs), deepJson,
-// deepXml, references, extent — plus validate when the mimetype has a real
-// syntax check. The canonical consumer interface is `Mimetypes.process`,
+// deepXml, and references, plus validate when the mimetype has a real syntax
+// check. The canonical consumer interface is `Mimetypes.process`,
 // which materializes the requested channels per call (issue #17).
 export default class BaseHandler {
     readonly mimetype: string;
@@ -81,30 +79,12 @@ export default class BaseHandler {
 
     // Model-facing readable text — the content channel. Default: undefined
     // (absent), which is correct for every handler whose raw body is already
-    // what the model should read (code, markdown, json, plain text) and for
-    // binary handlers whose readable body is toText(). Only handlers that
-    // transform an already-textual-but-noisy body override this — text/html
-    // returns Readability+turndown markdown. When present it is also the
-    // embed-source (the framework embeds content() over the raw bytes).
+    // what the model should read (code, markdown, json, plain text). Handlers
+    // whose readable representation differs from the raw body override this:
+    // text/html returns Readability+turndown markdown and PDF returns extracted
+    // page text. When present it is also the embed-source.
     content(_content: HandlerContent): string | undefined | Promise<string | undefined> {
         return undefined;
-    }
-
-    // Addressable extent of the content in the unit the model navigates by
-    // (issue #9). For text content the default is line count; binary content
-    // returns 0 (the handler should override with a meaningful unit like
-    // pages for PDF, items for structured archives). Surfaced on
-    // ProcessResult so index tiles can hand the model navigation bounds.
-    extent(content: HandlerContent): number | Promise<number> {
-        if (typeof content !== "string") return 0;
-        return countLines(content);
-    }
-
-    // Map source-line footprints to the rows consumed by scoped READ. The
-    // default navigation surface is line-oriented, so the coordinates are
-    // identical. Structural handlers override this mapping.
-    rowsForLines(_content: HandlerContent, lines: ReadonlyArray<LineSpan>): ReadonlyArray<RowSpan> | Promise<ReadonlyArray<RowSpan>> {
-        return lines.map(({ line, endLine }) => ({ row: line, endRow: endLine }));
     }
 
     // Throw on malformed content. Default no-op. Sync or async; the framework
@@ -138,11 +118,9 @@ export default class BaseHandler {
     //   - regex/glob: apply against decoded text content (toText). Subclasses
     //     with binary content override toText to provide a text projection
     //     (e.g. PDF returns extracted page text).
-    //   - jsonpath: apply against the bare-leaves outline tree built from
-    //     extractRaw. Mimetypes with native JSON-shaped content (JSON, YAML,
-    //     TOML, CSV) override to apply against the parsed value instead.
-    //   - xpath: throws UnsupportedDialectError. text-html overrides to apply
-    //     against the parsed DOM.
+    //   - jsonpath: apply against deepJson, falling back to the symbol outline.
+    //   - xpath: apply against deepXml, which projects the same structural
+    //     channel. A handler with neither a deep tree nor symbols rejects it.
     async query(
         content: HandlerContent,
         dialect: QueryDialect,
@@ -159,27 +137,24 @@ export default class BaseHandler {
                 return queryGlob(text, pattern);
             }
             case "jsonpath": {
-                // Per issue #10: jsonpath dispatches against the deep-json
-                // channel, not the bare-leaves symbols outline. Handlers that
-                // implement deepJson() (most should, post-#10) get full-tree
-                // reach. Handlers that haven't migrated yet fall back to the
-                // outline so existing queries keep working through the
-                // transition. The fallback should disappear once every handler
-                // supplies a deep-json shape appropriate to its algebra.
+                // JSONPath dispatches against the deep-json channel when the
+                // handler has one. Otherwise the handler's symbol outline is
+                // its canonical structural projection.
                 const tree = await this.deepJson(content);
+                const readableText = await this.#structuralText(content);
                 if (tree !== null && tree !== undefined) {
-                    return queryJsonpathObject(tree, pattern);
+                    return queryJsonpathObject(tree, pattern, undefined, readableText);
                 }
                 const outline = buildJsonOutline(await this.extractRaw(content));
-                return queryJsonpathObject(outline, pattern);
+                return queryJsonpathObject(outline, pattern, undefined, readableText);
             }
             case "xpath": {
                 // Per issue #10's symmetric design: xpath dispatches against
                 // the deep-xml channel for every entry. The framework projects
                 // deepJson() → deepXml() (or the handler overrides deepXml()
-                // directly) so xpath works on JSON, code, markdown, anything
-                // with a structural tree — not just XML-shaped content.
-                // Handlers that want source-position accuracy (text-html,
+                // directly) so xpath works on JSON, code, markdown, and any
+                // other content with a structural tree. Handlers that can map
+                // the native source more precisely (text-html,
                 // application-xml) override query() entirely to dispatch
                 // xpath against the real DOM.
                 const xml = await this.deepXml(content);
@@ -190,9 +165,19 @@ export default class BaseHandler {
                         reason: "no deep tree available for xpath projection",
                     });
                 }
-                return queryXpathString(xml, pattern, this.mimetype);
+                return queryXpathString(
+                    xml,
+                    pattern,
+                    this.mimetype,
+                    await this.#structuralText(content),
+                );
             }
         }
+    }
+
+    async #structuralText(content: HandlerContent): Promise<string | undefined> {
+        if (typeof content !== "string") return undefined;
+        return await this.content(content) === undefined ? content : undefined;
     }
 
     // Provide a text projection for regex/glob queries. Default: pass through
@@ -206,17 +191,4 @@ export default class BaseHandler {
             reason: "binary content has no text projection for this mimetype",
         });
     }
-}
-
-// Editor-convention line count. `abc\ndef` → 2; `abc\ndef\n` → 2 (trailing
-// newline is a terminator, not a new line); empty string → 0. Mirrors the
-// computation in Mimetypes.ts; lives here so the default extent() can use it
-// without importing the orchestrator.
-function countLines(text: string): number {
-    if (text.length === 0) return 0;
-    let newlines = 0;
-    for (let i = 0; i < text.length; i += 1) {
-        if (text.charCodeAt(i) === 0x0a) newlines += 1;
-    }
-    return text.charCodeAt(text.length - 1) === 0x0a ? newlines : newlines + 1;
 }

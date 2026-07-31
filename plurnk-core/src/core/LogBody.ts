@@ -1,3 +1,9 @@
+import {
+    assertEditReceipt,
+    assertResourceEffects,
+    type EditReceipt,
+} from "../content/index.ts";
+
 export interface LogBodyRow {
     readonly op: string;
     readonly tx: unknown;
@@ -43,6 +49,15 @@ export default class LogBody {
         };
     }
 
+    static #receiptBody(receipts: readonly EditReceipt[]): ResolvedLogBody {
+        if (receipts.length === 0) return EMPTY_BODY;
+        return {
+            content: receipts.map(({ effect }) => effect.context).join("\n\n"),
+            mimetype: "text/plain",
+            startLine: null,
+        };
+    }
+
     static resolve(row: LogBodyRow): ResolvedLogBody {
         const tx = LogBody.#decode(row.tx, row.mimetypeTx);
         const rx = LogBody.#decode(row.rx, row.mimetypeRx);
@@ -52,39 +67,40 @@ export default class LogBody {
             return contentBody ?? EMPTY_BODY;
         }
 
-        if (row.op === "EDIT" && rx !== null && typeof rx === "object") {
-            const receipt = (rx as {
-                receipt?: {
-                    effect?: {
-                        context?: unknown;
-                    };
-                };
-            }).receipt;
-            if (receipt !== null && typeof receipt === "object" && typeof receipt.effect?.context === "string") {
-                return {
-                    content: receipt.effect.context,
-                    mimetype: "text/plain",
-                    startLine: null,
-                };
-            }
-        }
-
-        if ((row.op === "EDIT" || row.op === "COPY" || row.op === "MOVE") && rx !== null && typeof rx === "object") {
-            const result = rx as { receipt?: unknown; span?: unknown; body?: unknown };
-            const content = typeof result.receipt === "string"
-                ? result.receipt
-                : typeof result.span === "string"
+        if (row.op === "EDIT") {
+            if (rx !== null && typeof rx === "object") {
+                const result = rx as Record<string, unknown>;
+                if (Object.hasOwn(result, "receipt")) {
+                    return LogBody.#receiptBody([
+                        assertEditReceipt(result.receipt),
+                    ]);
+                }
+                const content = typeof result.span === "string"
                     ? result.span
                     : typeof result.body === "string"
                         ? result.body
                         : null;
-            if (content !== null) {
-                return {
-                    content,
-                    mimetype: "text/plain",
-                    startLine: null,
-                };
+                if (content !== null) {
+                    return {
+                        content,
+                        mimetype: "text/plain",
+                        startLine: null,
+                    };
+                }
             }
+            return EMPTY_BODY;
+        }
+
+        if (row.op === "COPY" || row.op === "MOVE") {
+            if (rx !== null && typeof rx === "object") {
+                const result = rx as Record<string, unknown>;
+                if (Object.hasOwn(result, "effects")) {
+                    const receipts = assertResourceEffects(result.effects)
+                        .flatMap(({ receipt }) => receipt === undefined ? [] : [receipt]);
+                    return LogBody.#receiptBody(receipts);
+                }
+            }
+            return EMPTY_BODY;
         }
 
         if (row.op === "EXEC" && tx !== null && typeof tx === "object") {

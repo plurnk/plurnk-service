@@ -10,7 +10,6 @@
 // in plurnk-grammar issue #7.
 
 import { PlurnkParser } from "@plurnk/plurnk-grammar";
-import { LineMarkerOps } from "../../src/content/index.ts";
 import type { LineMarker, PlurnkStatement } from "@plurnk/plurnk-grammar";
 
 // A parse failure surfaced from raw DSL — an error item or an unterminated tail. `line`/`column`
@@ -36,6 +35,7 @@ interface OpCopyMoveParams {
     destination?: string;
     tags?: string[];
     lineRange?: LineMarker;
+    destinationRange?: LineMarker;
 }
 
 interface OpSendParams {
@@ -64,9 +64,7 @@ export default class Dsl {
 
     static #formatLineMarker(lm: LineMarker | undefined): string {
         if (lm === undefined || lm === null) return "";
-        const { first, last } = LineMarkerOps.firstLast(lm);
-        if (last === null || last === first) return `<${first}>`;
-        return `<${first}-${last}>`;
+        return `<${lm.marks.join(",")}>`;
     }
 
     static #formatPath(path: string | undefined): string {
@@ -196,7 +194,7 @@ export default class Dsl {
             signal: Dsl.#formatTags(p.tags),
             target: Dsl.#formatPath(p.source),
             lineMarker: Dsl.#formatLineMarker(p.lineRange),
-            body: p.destination,
+            body: `${p.destination}${Dsl.#formatLineMarker(p.destinationRange)}`,
         }));
     }
 
@@ -206,7 +204,9 @@ export default class Dsl {
             signal: Dsl.#formatTags(p.tags),
             target: Dsl.#formatPath(p.source),
             lineMarker: Dsl.#formatLineMarker(p.lineRange),
-            body: p.destination ?? "",
+            body: p.destination === undefined
+                ? ""
+                : `${p.destination}${Dsl.#formatLineMarker(p.destinationRange)}`,
         }));
     }
 

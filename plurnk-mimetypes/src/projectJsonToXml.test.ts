@@ -171,8 +171,14 @@ describe("projectJsonToXml — element names from arbitrary keys are sanitized (
         assert.ok(xml.includes("<Given_a_paid_invoice"), xml);
         assert.ok(!xml.includes("<Given a"), xml);
         // Round-trips through a strict XML parser without error.
-        const out = queryXpathString(xml, "//Given_a_paid_invoice", "text/test");
+        const readable = ["one", "two", "three"].join("\n");
+        const out = queryXpathString(xml, "//Given_a_paid_invoice", "text/test", readable);
         assert.equal(out.length, 1);
-        assert.deepEqual(out[0].lines, [{ line: 3, endLine: 3 }]);
+        assert.deepEqual(out[0].regions, [{
+            startLine: 3,
+            startColumn: 1,
+            endLine: 3,
+            endColumn: 6,
+        }]);
     });
 });

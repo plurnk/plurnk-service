@@ -1,5 +1,16 @@
-import { parsePath } from "@plurnk/plurnk-grammar";
-import type { PlurnkStatement, ParsedPath, LineMarker, PlurnkOp, ReadStatement, EditStatement, WorkStatement, ForkStatement } from "@plurnk/plurnk-grammar";
+import type {
+    CopyStatement,
+    EditStatement,
+    ForkStatement,
+    LineMarker,
+    MoveStatement,
+    ParsedPath,
+    PlurnkOp,
+    PlurnkStatement,
+    ReadStatement,
+    ResourceSelection,
+    WorkStatement,
+} from "@plurnk/plurnk-grammar";
 import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import type { Db } from "./Db.ts";
 import Owner from "./Owner.ts";
@@ -7,17 +18,27 @@ import type SchemeRegistry from "./SchemeRegistry.ts";
 import type ExecutorRegistry from "./ExecutorRegistry.ts";
 import type NoticeChannel from "./NoticeChannel.ts";
 import type ProposalLifecycle from "./ProposalLifecycle.ts";
-import type { ProposalPendingEvent } from "./ProposalLifecycle.ts";
+import type { ProposalPendingEvent, ProposalSettlement } from "./ProposalLifecycle.ts";
 import type { EntryData, ReadEntryResult, WriteEntryResult, DeleteEntryResult } from "../schemes/_entry-crud.ts";
-import { entryPathnameOf, foldAuthorityIntoPath, schemeNameOf } from "./plurnk-uri.ts";
+import { entryPathnameOf, foldAuthorityIntoPath, renderAddress, schemeNameOf } from "./plurnk-uri.ts";
 import Fork from "./fork.ts";
 import WorkerCap from "./worker-cap.ts";
-import { decodePathParens } from "./path-decode.ts";
+import { decodePathParens, encodePathParens } from "./path-decode.ts";
 import Namespace from "./namespace.ts";
 import type { SchemeManifest, WriterTier, PlurnkSchemeContext, LoopFlags } from "./scheme-types.ts";
 import { DEFAULT_LOOP_FLAGS } from "./scheme-types.ts";
 import ChannelWrite, { type StreamEventNotify, type WakeWorkerNotify, type InjectWorkerNotify, type BranchWorkerNotify, type BranchCompletionGate, type CancelWorkerNotify, type CancelDescendantsNotify } from "./ChannelWrite.ts";
-import { LineMarkerOps, MimetypeBinary } from "../content/index.ts";
+import {
+    assertEditBatchReceipt,
+    assertEditReceipt,
+    assertResourceEffects,
+    LineMarkerOps,
+    MimetypeBinary,
+    PathMimetype,
+    projectEditReceipt,
+    type ResourceEffect,
+    type ResourceEffectAction,
+} from "../content/index.ts";
 import SchemeCtxImpl from "./caps/SchemeCtxImpl.ts";
 import EntryCrud from "../schemes/_entry-crud.ts";
 import EntryFind from "../schemes/_entry-find.ts";
@@ -28,7 +49,11 @@ import type LiveSubscriptions from "./LiveSubscriptions.ts";
 import LoopLifecycle from "./LoopLifecycle.ts";
 import Results from "./results.ts";
 import { OperationFailureError } from "./results.ts";
-import { InvalidOperationResultError, type SchemeResult } from "@plurnk/plurnk-schemes";
+import {
+    InvalidOperationResultError,
+    type MatchEvidence,
+    type SchemeResult,
+} from "@plurnk/plurnk-schemes";
 
 // SPEC §scheme-surface: writer must be in target scheme's manifest.writableBy.
 // OPEN/FOLD/READ/FIND are not gated — they curate the log or read, never mutating an entry.
@@ -66,7 +91,46 @@ interface SchemeWithCrud {
     readEntry?: (pathname: string, ctx: SchemeCtx) => Promise<ReadEntryResult>;
     writeEntry?: (pathname: string, entry: EntryData, ctx: SchemeCtx) => Promise<WriteEntryResult>;
     deleteEntry?: (pathname: string, ctx: SchemeCtx) => Promise<DeleteEntryResult>;
+    deleteChannel?: (pathname: string, channel: string, ctx: SchemeCtx) => Promise<DeleteEntryResult>;
 }
+
+type ResolvedResourceSelection = {
+    readonly target: ParsedPath;
+    readonly lineMarker: LineMarker | null;
+    readonly scheme: string;
+    readonly pathname: string;
+    readonly identityPathname: string;
+    readonly channel: string;
+    readonly manifest: SchemeManifest;
+};
+
+type SelectedSource = ResolvedResourceSelection & {
+    readonly content: string;
+    readonly mimetype: string;
+};
+
+type DeferredMoveSource = {
+    readonly target: ParsedPath;
+    readonly lineMarker: LineMarker | null;
+    readonly scheme: string;
+    readonly pathname: string;
+    readonly channel: string;
+    readonly destination: string;
+};
+
+type PendingResourceEffect = Pick<ResourceEffect, "target" | "action">;
+
+type OrchestrationProposalAttrs = {
+    readonly proposalScheme?: string;
+    readonly proposalTarget?: {
+        readonly scheme: string;
+        readonly pathname: string;
+    };
+    readonly proposalEffects?: readonly PendingResourceEffect[];
+    readonly moveSource?: DeferredMoveSource;
+    readonly moveDestinationWritten?: string;
+    readonly moveDestinationEffects?: readonly ResourceEffect[];
+};
 
 // Op dispatch (§op-methods-op-dispatch): gates (writableBy, loop flags), the
 // engine-owned op orchestrations (COPY/MOVE/KILL/SEND/READ-fanout), scheme
@@ -230,7 +294,7 @@ export default class Dispatcher {
                 },
             ) as WriteEntryResult;
         }
-        return Results.assert(await caps.write(pathname, entry)) as WriteEntryResult;
+        return Results.assert(await caps.write(pathname, entry, scheme === "prompt" ? "worker" : "commons")) as WriteEntryResult;
     }
 
     async #deleteEntry(scheme: string, pathname: string, ctx: PlurnkSchemeContext): Promise<DeleteEntryResult> {
@@ -254,7 +318,39 @@ export default class Dispatcher {
                 },
             );
         }
-        return Results.assert(await caps.delete(pathname));
+        return Results.assert(await caps.delete(pathname, scheme === "prompt" ? "worker" : "commons"));
+    }
+
+    async #deleteChannel(
+        scheme: string,
+        pathname: string,
+        channel: string,
+        ctx: PlurnkSchemeContext,
+    ): Promise<DeleteEntryResult> {
+        const handler = this.#schemes.get(scheme) as SchemeWithCrud | undefined;
+        const handlerCtx = this.#entryContext(scheme, ctx);
+        if (typeof handler?.deleteChannel === "function" && handlerCtx !== null) {
+            return Results.assert(await handler.deleteChannel(pathname, channel, handlerCtx)) as DeleteEntryResult;
+        }
+        const caps = handlerCtx?.entries;
+        if (caps === undefined) {
+            return Dispatcher.#failure(
+                "channel-delete-not-implemented",
+                501,
+                `The '${scheme}' scheme does not provide channel deletion.`,
+                {},
+                {
+                    stage: "channel-delete",
+                    scheme,
+                    target: renderAddress(scheme, pathname),
+                    channel,
+                    retryable: false,
+                },
+            );
+        }
+        return Results.assert(
+            await caps.delete(pathname, scheme === "prompt" ? "worker" : "commons", channel),
+        );
     }
     async #workspaceRoot(workspaceId: number): Promise<string | null> {
         if (this.#rootCache.has(workspaceId)) return this.#rootCache.get(workspaceId) ?? null;
@@ -427,28 +523,12 @@ export default class Dispatcher {
                     } else {
                         const settled = prepared.first ? prepared.initial : await prepared.settled;
                         const aggregate = settled.editReceipt ?? prepared.initial.editReceipt;
-                        if (aggregate !== null && typeof aggregate === "object") {
-                            const receipt = aggregate as {
-                                revision: string;
-                                unit: "lines" | "items";
-                                before: number;
-                                after: number;
-                                effects: readonly object[];
-                            };
-                            const effect = receipt.effects[prepared.index];
-                            if (effect === undefined) {
-                                throw new InvalidOperationResultError(`EDIT receipt has no effect at index ${prepared.index}`);
-                            }
+                        if (aggregate !== undefined) {
+                            const receipt = assertEditBatchReceipt(aggregate);
                             const { editReceipt: _editReceipt, ...withoutAggregate } = settled;
                             result = {
                                 ...withoutAggregate,
-                                receipt: {
-                                    revision: receipt.revision,
-                                    unit: receipt.unit,
-                                    before: receipt.before,
-                                    after: receipt.after,
-                                    effect,
-                                },
+                                receipt: projectEditReceipt(receipt, prepared.index),
                             };
                         } else {
                             result = settled;
@@ -523,7 +603,23 @@ export default class Dispatcher {
             // no human gate, no loop/proposal notification. Accept + apply
             // in-process; the model sees the outcome directly, never a review.
             if ((result.attrs as { inline?: boolean } | undefined)?.inline === true) {
-                const effective = await this.#proposals.workerApply(statement, result, { decision: "accept" }, { workspaceId, workerId, loopId, turnId });
+                const initialSettlement = await this.#proposals.workerApply(
+                    statement,
+                    result,
+                    { decision: "accept" },
+                    { workspaceId, workerId, loopId, turnId },
+                );
+                const settlement = Dispatcher.#settleProposalEffects(
+                    result,
+                    initialSettlement,
+                );
+                const effective = await this.#settleMoveProposal({
+                    statement,
+                    result,
+                    settlement,
+                    ctx: schemeCtx,
+                    ids: { workspaceId, workerId, loopId, turnId },
+                });
                 return this.#proposals.applyResolution(logEntryId, effective);
             }
             // Register the resolution waiter SYNCHRONOUSLY before any await
@@ -535,7 +631,12 @@ export default class Dispatcher {
             // Notify external listeners (Daemon broadcasts loop/proposal;
             // auto listener auto-resolves) BEFORE awaiting — they may
             // resolve synchronously inside their handlers.
-            const target = this.#extractTarget(statement.target);
+            const proposalPath = (
+                statement.op === "COPY" || statement.op === "MOVE"
+            ) && (result.attrs as OrchestrationProposalAttrs | undefined)?.moveDestinationWritten === undefined
+                ? statement.body?.target ?? null
+                : statement.target;
+            const target = this.#extractTarget(proposalPath);
             await this.#canonColumns(target, workspaceId); // {§fs-answer-in-canon} — compare in the same canon the rows store
             const flags = await this.#loadLoopFlags(loopId); // the proposal carries loop authority — §proposal-ownership-notification
             // #note10 — if the target diverged on disk this turn, the model's EDIT is based
@@ -556,22 +657,23 @@ export default class Dispatcher {
             // file, spawns the process, etc.). Its operation result is
             // preserved: an apply failure keeps its original status and
             // Problem Details instead of masquerading as a client rejection.
-            const effective = await this.#proposals.workerApply(statement, result, resolution, { workspaceId, workerId, loopId, turnId });
-            // MOVE into a proposed dest: the deferred source-delete fires ONLY now,
-            // after the dest write landed (accept). On reject the source survives.
-            if (effective.resolution.decision === "accept" && (effective.applied?.status ?? 200) < 400) {
-                const moveSource = (result.attrs as { moveSource?: { scheme: string; pathname: string } } | undefined)?.moveSource;
-                if (moveSource !== undefined) {
-                    const srcHandler = this.#schemes.get(moveSource.scheme) as (SchemeWithCrud & { applyResolution?: (a: { attrs: object }, c: SchemeCtx) => Promise<{ status: number }> }) | undefined;
-                    if (srcHandler !== undefined) {
-                        const del = await this.#deleteEntry(moveSource.scheme, moveSource.pathname, schemeCtx);
-                        // A host-effecting source-delete PROPOSES (202); the MOVE proposal already gated the whole
-                        // create+kill, so apply the source-delete now — never raise a second review for one MOVE.
-                        const sourceCtx = this.#handlerContext(moveSource.scheme, schemeCtx);
-                        if (del.status === 202 && del.attrs !== undefined && typeof srcHandler.applyResolution === "function" && sourceCtx !== null) await srcHandler.applyResolution({ attrs: del.attrs }, sourceCtx);
-                    }
-                }
-            }
+            const initialSettlement = await this.#proposals.workerApply(
+                statement,
+                result,
+                resolution,
+                { workspaceId, workerId, loopId, turnId },
+            );
+            const settlement = Dispatcher.#settleProposalEffects(
+                result,
+                initialSettlement,
+            );
+            const effective = await this.#settleMoveProposal({
+                statement,
+                result,
+                settlement,
+                ctx: schemeCtx,
+                ids: { workspaceId, workerId, loopId, turnId },
+            });
             const post = await this.#proposals.applyResolution(logEntryId, effective);
             return post;
         }
@@ -651,7 +753,7 @@ export default class Dispatcher {
         if (this.#isWorkerControl(statement)) return this.#denyIfDisallowed("worker", origin);
 
         if (statement.op === "COPY" || statement.op === "MOVE") {
-            const dst = statement.op === "COPY" ? (statement.body === null ? null : parsePath(statement.body)) : statement.body;
+            const dst = statement.body?.target ?? null;
             const dstScheme = schemeNameOf(dst);
             const dstDenial = this.#denyIfDisallowed(dstScheme, origin);
             if (dstDenial !== null) return dstDenial;
@@ -754,12 +856,12 @@ export default class Dispatcher {
         if (flags.mode === "ask") {
             const isFile = (t: PlurnkStatement["target"]): boolean => schemeNameOf(t) === "file";
             // Each branch narrows statement.op so statement.body is correctly typed (COPY dest is a
-            // string to parse; MOVE dest is already a path). EDIT/KILL write the target; COPY writes
-            // the dest; MOVE deletes the source AND writes the dest — any `file` touch is a write.
+            // resource selection). EDIT/KILL write the target; COPY writes the dest;
+            // MOVE deletes the source AND writes the dest - any `file` touch is a write.
             let writesFilesystem = false;
             if (statement.op === "EDIT" || statement.op === "KILL") writesFilesystem = isFile(statement.target);
-            else if (statement.op === "COPY") writesFilesystem = isFile(statement.body === null ? null : parsePath(statement.body));
-            else if (statement.op === "MOVE") writesFilesystem = isFile(statement.target) || isFile(statement.body);
+            else if (statement.op === "COPY") writesFilesystem = isFile(statement.body?.target ?? null);
+            else if (statement.op === "MOVE") writesFilesystem = isFile(statement.target) || isFile(statement.body?.target ?? null);
             if (writesFilesystem) {
                 return Dispatcher.#failure(
                     "ask-mode-read-only",
@@ -804,7 +906,7 @@ export default class Dispatcher {
 
         if (this.#isWorkerControl(statement)) return check(statement.target); // body is a spawn/fork task, not a dst path
         if (statement.op === "COPY" || statement.op === "MOVE") {
-            return check(statement.target) ?? check(statement.op === "COPY" ? (statement.body === null ? null : parsePath(statement.body)) : statement.body);
+            return check(statement.target) ?? check(statement.body?.target ?? null);
         }
         return check(statement.target);
     }
@@ -926,37 +1028,37 @@ export default class Dispatcher {
         return { status: 200, body: name };
     }
 
-    async #handleCopy(statement: PlurnkStatement, ctx: PlurnkSchemeContext): Promise<DispatchResult> {
-        if (statement.op !== "COPY") throw new Error("unreachable");
-        const srcPath = statement.target;
-        // COPY is entry-copy only — run control (spawn/fork) moved to the FORK/WORK verbs
-        // (grammar 0.74.55). COPY's body is a dest path (grammar §COPY); an unparseable dest → 400.
-        const dstPath = statement.body === null ? null : parsePath(statement.body);
-        if (srcPath === null) {
+    async #handleCopy(statement: CopyStatement, ctx: PlurnkSchemeContext): Promise<DispatchResult> {
+        if (statement.target === null) {
             return Dispatcher.#failure("copy-source-required", 400, "COPY requires a source path.", {}, { retryable: false });
         }
-        if (dstPath === null) {
+        if (statement.body === null) {
             return Dispatcher.#failure(
-                "copy-destination-invalid",
+                "copy-destination-required",
                 400,
-                "COPY requires a valid destination path.",
+                "COPY requires a destination.",
                 {},
                 { retryable: false },
             );
         }
-        return await this.#copyOrchestration({ statement, srcPath, dstPath, ctx });
+        return this.#copyOrchestration({
+            statement,
+            source: {
+                target: statement.target,
+                lineMarker: statement.lineMarker,
+            },
+            destination: statement.body,
+            ctx,
+        });
     }
 
-    async #handleMove(statement: PlurnkStatement, ctx: PlurnkSchemeContext): Promise<DispatchResult> {
-        if (statement.op !== "MOVE") throw new Error("unreachable");
-        const srcPath = statement.target;
-        const dstPath = statement.body;
-        if (srcPath === null) {
+    async #handleMove(statement: MoveStatement, ctx: PlurnkSchemeContext): Promise<DispatchResult> {
+        if (statement.target === null) {
             return Dispatcher.#failure("move-source-required", 400, "MOVE requires a source path.", {}, { retryable: false });
         }
-        // MOVE is relocation only — deletion is KILL's job (§move, §move-dev-null-not-special). The /dev/null
+        // MOVE is relocation only - deletion is KILL's job (§move, §move-dev-null-not-special). The /dev/null
         // and null-body delete-by-MOVE has no alternate meaning.
-        if (dstPath === null) {
+        if (statement.body === null) {
             return Dispatcher.#failure(
                 "move-destination-required",
                 400,
@@ -967,60 +1069,16 @@ export default class Dispatcher {
                     retryable: false,
                 },
             );
-        } // §move-null-body-400
-
-        const srcSchemeName = schemeNameOf(srcPath);
-        if (srcSchemeName === null) {
-            return Dispatcher.#failure(
-                "move-source-scheme-required",
-                400,
-                "MOVE source requires a scheme.",
-                {},
-                { retryable: false },
-            );
         }
-        if (!this.#schemes.has(srcSchemeName)) {
-            return Dispatcher.#failure(
-                "scheme-not-found",
-                501,
-                `MOVE source scheme '${srcSchemeName}' is not registered.`,
-                {},
-                { scheme: srcSchemeName, retryable: false },
-            );
-        }
-
-        // Relocation: COPY then DELETE source (§move-relocation-deletes-source).
-        const copyResult = await this.#copyOrchestration({ statement, srcPath, dstPath, ctx });
-        if (copyResult.status >= 400) return copyResult;
-        const dstSchemeName = schemeNameOf(dstPath);
-        if (dstSchemeName === null) {
-            throw new InvalidOperationResultError("A successful MOVE copy has no destination scheme.");
-        }
-        const srcPathname = entryPathnameOf(srcPath);
-        // If the dest write is a pending proposal (file dest → §membership review), the
-        // source-delete MUST wait until the dest actually lands — a rejected
-        // proposal would otherwise lose the source. Thread it into the resolution:
-        // dispatch deletes the source AFTER the dest applies on accept.
-        if (copyResult.status === 202) {
-            return { ...copyResult, attrs: { ...(copyResult.attrs as Record<string, unknown>), moveSource: { scheme: srcSchemeName, pathname: srcPathname } } };
-        }
-        const delResult = await this.#deleteEntry(srcSchemeName, srcPathname, ctx);
-        if (delResult.status >= 400) {
-            const exact = Results.assert(delResult);
-            if (exact.problem === undefined) {
-                throw new InvalidOperationResultError("A failed MOVE source deletion has no Problem Details.");
-            }
-            return Results.assert({
-                ...exact,
-                problem: {
-                    ...exact.problem,
-                    operation: "MOVE",
-                    destinationWritten: true,
-                    destination: `${dstSchemeName}://${entryPathnameOf(dstPath)}`,
-                },
-            });
-        }
-        return copyResult;
+        return this.#moveOrchestration({
+            statement,
+            source: {
+                target: statement.target,
+                lineMarker: statement.lineMarker,
+            },
+            destination: statement.body,
+            ctx,
+        });
     }
 
     // KILL — scheme-polymorphic destroy (plurnk-grammar#203 / 0.28.0). Entry-KILL
@@ -1154,8 +1212,8 @@ export default class Dispatcher {
         return { ...statement, target: target as PlurnkStatement["target"], lineMarker, body } as PlurnkStatement;
     }
 
-    // READ scope always projects rows. Semantic READ reserves a leading decimal
-    // for similarity selection; any remaining integers are the row projection.
+    // READ scope always projects text. Semantic READ reserves a leading decimal
+    // for similarity selection; any remaining integers are the text projection.
     // FIND retains its own public result-range interpretation.
     static #readMarkers(statement: ReadStatement): {
         selection: LineMarker | null;
@@ -1226,13 +1284,7 @@ export default class Dispatcher {
         const found = await this.#run(schemeName, findStatement, ctx);
         const matches = (found.matches as Array<{
             pathname: string;
-            matches: ReadonlyArray<{
-                lineStart: number;
-                lineEnd: number;
-                rowStart: number;
-                rowEnd: number;
-                path?: string;
-            }>;
+            matches: ReadonlyArray<MatchEvidence>;
         }> | undefined) ?? [];
         const omittedItems = typeof found.omittedItems === "number" ? found.omittedItems : null;
         if (omittedItems !== null) {
@@ -1331,160 +1383,978 @@ export default class Dispatcher {
         return { status: 200 };
     }
 
-    // Same- and cross-scheme COPY share one orchestrator — §copy-cross-scheme-copy §move-cross-scheme-move
-    async #copyOrchestration({ statement, srcPath, dstPath, ctx }: {
-        statement: PlurnkStatement;
-        srcPath: ParsedPath;
-        dstPath: ParsedPath;
-        ctx: PlurnkSchemeContext;
-    }): Promise<DispatchResult> {
-        const srcSchemeName = schemeNameOf(srcPath);
-        const dstSchemeName = schemeNameOf(dstPath);
-        if (srcSchemeName === null || dstSchemeName === null) {
+    static #isDispatchResult(
+        value: ResolvedResourceSelection | SelectedSource | DispatchResult,
+    ): value is DispatchResult {
+        return "status" in value;
+    }
+
+    async #resolveResourceSelection(
+        selection: ResourceSelection,
+        ctx: PlurnkSchemeContext,
+    ): Promise<ResolvedResourceSelection | DispatchResult> {
+        const { target, lineMarker } = selection;
+        const scheme = schemeNameOf(target);
+        if (scheme === null) {
             return Dispatcher.#failure(
-                "copy-scheme-required",
+                "resource-scheme-required",
                 400,
-                "COPY and MOVE require source and destination schemes.",
+                "COPY and MOVE resources require a scheme.",
                 {},
                 { retryable: false },
             );
         }
-        // {§worker-authority-carving} — the entry-copy seam is pathname-keyed; on worker:// it
-        // addresses the COMMONS. A space's content moves via READ + EDIT, not COPY.
-        for (const p of [srcPath, dstPath]) {
-            if (p.kind === "url" && p.scheme === "worker" && (p.hostname ?? "") !== "") {
+        if (target.kind === "url" && target.scheme === "worker" && (target.hostname ?? "") !== "") {
+            return Dispatcher.#failure(
+                "worker-copy-address-invalid",
+                400,
+                "COPY and MOVE do not address named worker spaces.",
+                {},
+                {
+                    recovery: "Move worker-space content with READ and EDIT.",
+                    retryable: false,
+                },
+            );
+        }
+        const handler = this.#schemes.get(scheme);
+        const manifest = this.#schemes.manifestFor(scheme);
+        if (handler === undefined || manifest === undefined) {
+            return Dispatcher.#failure(
+                "scheme-not-found",
+                501,
+                `COPY or MOVE addressed the unregistered scheme '${scheme}'.`,
+                {},
+                {
+                    scheme,
+                    retryable: false,
+                },
+            );
+        }
+        if (manifest.category !== "data") {
+            return Dispatcher.#failure(
+                "entry-operation-unsupported",
+                400,
+                `COPY and MOVE require entry-bearing resources; '${scheme}' is a ${manifest.category} scheme.`,
+                {},
+                {
+                    scheme,
+                    category: manifest.category,
+                    retryable: false,
+                },
+            );
+        }
+        const fragment = target.kind === "url" ? target.fragment : null;
+        const channel = fragment ?? manifest.defaultChannel;
+        if (channel.length === 0) {
+            return Dispatcher.#failure(
+                "channel-required",
+                400,
+                `The '${scheme}' scheme has no default channel.`,
+                {},
+                {
+                    scheme,
+                    recovery: "Address a named channel with a URI fragment.",
+                    retryable: false,
+                },
+            );
+        }
+        if (
+            fragment !== null
+            && fragment !== manifest.defaultChannel
+            && !Object.hasOwn(manifest.channels, fragment)
+        ) {
+            const availableChannels = [
+                ...new Set([manifest.defaultChannel, ...Object.keys(manifest.channels)]),
+            ].filter((candidate) => candidate.length > 0);
+            return Dispatcher.#failure(
+                "channel-not-found",
+                400,
+                `Channel #${fragment} is not declared by the '${scheme}' scheme.`,
+                {},
+                {
+                    requestedChannel: fragment,
+                    availableChannels,
+                    retryable: false,
+                },
+            );
+        }
+        const pathname = entryPathnameOf(target);
+        const canonicalFilePath = scheme === "file"
+            ? Namespace.canonicalizeSpelling(pathname, await this.#workspaceRoot(ctx.workspaceId))
+            : pathname;
+        return {
+            target,
+            lineMarker,
+            scheme,
+            pathname,
+            identityPathname: canonicalFilePath ?? pathname,
+            channel,
+            manifest,
+        };
+    }
+
+    async #selectSource(
+        selection: ResolvedResourceSelection,
+        ctx: PlurnkSchemeContext,
+    ): Promise<SelectedSource | DispatchResult> {
+        const read = await this.#readEntry(selection.scheme, selection.pathname, ctx);
+        if (read.status >= 400) return read;
+        if (read.status !== 200 || read.entry === null) {
+            throw new InvalidOperationResultError(
+                `The '${selection.scheme}' scheme returned status ${read.status} without a COPY/MOVE source entry.`,
+            );
+        }
+        const selected = read.entry.channels[selection.channel];
+        if (selected === undefined) {
+            return Dispatcher.#failure(
+                "channel-not-found",
+                404,
+                `No channel named #${selection.channel} exists at ${renderAddress(selection.scheme, selection.identityPathname)}.`,
+                {},
+                {
+                    target: renderAddress(selection.scheme, selection.identityPathname),
+                    requestedChannel: selection.channel,
+                    availableChannels: Object.keys(read.entry.channels),
+                    retryable: false,
+                },
+            );
+        }
+        let content = selected.content;
+        if (selection.lineMarker !== null) {
+            if (MimetypeBinary.isBinaryMimetype(selected.mimetype)) {
                 return Dispatcher.#failure(
-                    "worker-copy-address-invalid",
-                    400,
-                    "COPY and MOVE do not address named worker spaces.",
+                    "binary-range-unsupported",
+                    415,
+                    `Channel #${selection.channel} is binary and cannot be region-sliced.`,
                     {},
                     {
-                        recovery: "Move worker-space content with READ and EDIT.",
+                        channel: selection.channel,
+                        mimetype: selected.mimetype,
                         retryable: false,
                     },
                 );
             }
+            const sliced = LineMarkerOps.sliceLinesRaw(content, selection.lineMarker);
+            if (sliced.status !== 200) return Results.assert(sliced) as DispatchResult;
+            content = sliced.text ?? "";
         }
+        return {
+            ...selection,
+            content,
+            mimetype: selected.mimetype,
+        };
+    }
 
-        const srcHandler = this.#schemes.get(srcSchemeName);
-        const dstHandler = this.#schemes.get(dstSchemeName);
-        if (srcHandler === undefined || dstHandler === undefined) {
+    #resourceAddress(selection: ResolvedResourceSelection): string {
+        const address = selection.scheme === "file"
+            ? encodePathParens(selection.identityPathname.replace(/^\//, ""))
+            : renderAddress(selection.scheme, selection.identityPathname);
+        return selection.channel === selection.manifest.defaultChannel
+            ? address
+            : `${address}#${selection.channel}`;
+    }
+
+    #pendingEffect(
+        selection: ResolvedResourceSelection,
+        action: ResourceEffectAction,
+    ): PendingResourceEffect {
+        return {
+            target: this.#resourceAddress(selection),
+            action,
+        };
+    }
+
+    static #appliedEffects(
+        result: DispatchResult,
+        pending: readonly PendingResourceEffect[],
+    ): DispatchResult {
+        const exact = Results.assert(result);
+        if (exact.status === 304 || exact.status === 202 || exact.status >= 300) return exact;
+        if (exact.effects !== undefined) {
+            throw new InvalidOperationResultError(
+                "A COPY/MOVE mutation result supplied effects before engine composition.",
+            );
+        }
+        const batch = exact.editReceipt === undefined
+            ? undefined
+            : assertEditBatchReceipt(exact.editReceipt);
+        const single = batch === undefined && exact.receipt !== undefined
+            ? assertEditReceipt(exact.receipt)
+            : undefined;
+        if (batch !== undefined && batch.effects.length !== pending.length) {
+            throw new InvalidOperationResultError(
+                `COPY/MOVE expected ${pending.length} receipt effects, got ${batch.effects.length}.`,
+            );
+        }
+        if (single !== undefined && pending.length !== 1) {
+            throw new InvalidOperationResultError(
+                `COPY/MOVE received one receipt for ${pending.length} resource effects.`,
+            );
+        }
+        const effects = pending.map((effect, index): ResourceEffect => ({
+            ...effect,
+            ...(batch !== undefined
+                ? { receipt: projectEditReceipt(batch, index) }
+                : single !== undefined
+                    ? { receipt: single }
+                    : {}),
+        }));
+        assertResourceEffects(effects);
+        const {
+            editReceipt: _editReceipt,
+            receipt: _receipt,
+            ...withoutInternalReceipts
+        } = exact;
+        return {
+            ...withoutInternalReceipts,
+            effects,
+        };
+    }
+
+    #finalizeEffects(
+        result: DispatchResult,
+        selection: ResolvedResourceSelection,
+        pending: readonly PendingResourceEffect[],
+    ): DispatchResult {
+        const routed = this.#withProposalRoute(result, selection);
+        if (routed.status !== 202) return Dispatcher.#appliedEffects(routed, pending);
+        return {
+            ...routed,
+            attrs: {
+                ...(routed.attrs as Record<string, unknown> | undefined),
+                proposalEffects: pending,
+            },
+        };
+    }
+
+    static #effectsOf(result: DispatchResult): readonly ResourceEffect[] {
+        return result.effects === undefined
+            ? []
+            : assertResourceEffects(result.effects);
+    }
+
+    static #withCombinedEffects(
+        result: DispatchResult,
+        ...additional: ReadonlyArray<readonly ResourceEffect[]>
+    ): DispatchResult {
+        const existing = Dispatcher.#effectsOf(result);
+        const effects = [...existing, ...additional.flat()];
+        const { effects: _effects, ...withoutEffects } = result;
+        return effects.length === 0
+            ? withoutEffects
+            : { ...withoutEffects, effects: assertResourceEffects(effects) };
+    }
+
+    static #settleProposalEffects(
+        original: DispatchResult,
+        settlement: ProposalSettlement,
+    ): ProposalSettlement {
+        const pending = (original.attrs as OrchestrationProposalAttrs | undefined)
+            ?.proposalEffects;
+        if (
+            pending === undefined
+            || settlement.resolution.decision !== "accept"
+            || settlement.applied === undefined
+            || settlement.applied.status >= 300
+        ) {
+            return settlement;
+        }
+        const projected = settlement.resolution.result ?? {};
+        const applied = Dispatcher.#appliedEffects(
+            {
+                ...projected,
+                status: settlement.applied.status,
+            },
+            pending,
+        );
+        const {
+            status: _status,
+            body: _body,
+            ...result
+        } = applied;
+        const {
+            body: _resolutionBody,
+            ...resolution
+        } = settlement.resolution;
+        return {
+            ...settlement,
+            resolution: {
+                ...resolution,
+                result,
+            },
+        };
+    }
+
+    static #settlementEffects(settlement: ProposalSettlement): readonly ResourceEffect[] {
+        const effects = (settlement.resolution.result as Record<string, unknown> | undefined)
+            ?.effects;
+        return effects === undefined ? [] : assertResourceEffects(effects);
+    }
+
+    static #withSettlementEffects(
+        settlement: ProposalSettlement,
+        effects: readonly ResourceEffect[],
+    ): ProposalSettlement {
+        const projected = (settlement.resolution.result ?? {}) as Record<string, unknown>;
+        const { effects: _effects, ...withoutEffects } = projected;
+        const result = effects.length === 0
+            ? withoutEffects
+            : {
+                ...withoutEffects,
+                effects: assertResourceEffects(effects),
+            };
+        return {
+            ...settlement,
+            resolution: {
+                ...settlement.resolution,
+                result,
+            },
+        };
+    }
+
+    #sameChannel(
+        left: ResolvedResourceSelection,
+        right: ResolvedResourceSelection,
+    ): boolean {
+        return left.scheme === right.scheme
+            && left.identityPathname === right.identityPathname
+            && left.channel === right.channel;
+    }
+
+    #withProposalRoute(
+        result: DispatchResult,
+        selection: ResolvedResourceSelection,
+    ): DispatchResult {
+        if (result.status !== 202) return result;
+        return {
+            ...result,
+            attrs: {
+                ...(result.attrs as Record<string, unknown> | undefined),
+                proposalScheme: selection.scheme,
+                proposalTarget: {
+                    scheme: selection.scheme,
+                    pathname: selection.identityPathname,
+                },
+            },
+        };
+    }
+
+    async #invokeEditBatch(
+        selection: ResolvedResourceSelection,
+        edits: ReadonlyArray<{
+            readonly marker: LineMarker;
+            readonly body: string;
+            readonly tags: string[] | null;
+            readonly position: EditStatement["position"];
+        }>,
+        ctx: PlurnkSchemeContext,
+    ): Promise<DispatchResult> {
+        const handler = this.#schemes.get(selection.scheme) as SchemeHandler | undefined;
+        if (typeof handler?.editBatch !== "function") {
             return Dispatcher.#failure(
-                "scheme-not-found",
+                "operation-not-implemented",
                 501,
-                "COPY or MOVE addressed an unregistered scheme.",
+                `Scheme '${selection.scheme}' does not implement EDIT batches.`,
                 {},
                 {
-                    sourceScheme: srcSchemeName,
-                    destinationScheme: dstSchemeName,
+                    scheme: selection.scheme,
+                    operation: "EDIT",
+                    retryable: false,
+                },
+            );
+        }
+        const statements: EditStatement[] = edits.map(({ marker, body, tags, position }) => ({
+            op: "EDIT",
+            suffix: "",
+            signal: tags,
+            target: selection.target,
+            lineMarker: marker,
+            body,
+            position,
+        }));
+        const addressedScheme = selection.target.kind === "url"
+            ? selection.target.scheme
+            : selection.scheme;
+        try {
+            const result = Results.assert(await handler.editBatch(
+                statements,
+                new SchemeCtxImpl(
+                    ctx,
+                    addressedScheme,
+                    selection.manifest,
+                    this.#liveSubscriptions,
+                ),
+            ));
+            return this.#withProposalRoute(result, selection);
+        } catch (err) {
+            if (err instanceof InvalidOperationResultError) throw err;
+            console.error(
+                `Scheme '${selection.scheme}' COPY/MOVE edit threw outside its operation result contract:`,
+                err,
+            );
+            return Dispatcher.#failure(
+                "scheme-handler-threw",
+                500,
+                `The '${selection.scheme}' scheme did not produce a COPY/MOVE edit result.`,
+                {},
+                {
+                    stage: "scheme-dispatch",
+                    scheme: selection.scheme,
+                    operation: "EDIT",
+                },
+            );
+        }
+    }
+
+    async #writeDestination(
+        statement: CopyStatement | MoveStatement,
+        source: SelectedSource,
+        destination: ResolvedResourceSelection,
+        ctx: PlurnkSchemeContext,
+    ): Promise<DispatchResult> {
+        const existingResult = await this.#readEntry(
+            destination.scheme,
+            destination.pathname,
+            ctx,
+        );
+        if (existingResult.status >= 400 && existingResult.status !== 404) {
+            return existingResult;
+        }
+        const existing = existingResult.status === 200
+            ? existingResult.entry
+            : null;
+        if (existingResult.status === 200 && existing === null) {
+            throw new InvalidOperationResultError(
+                `The '${destination.scheme}' scheme returned 200 without a destination entry.`,
+            );
+        }
+        const destinationChannel = existing?.channels[destination.channel];
+        const expectedMimetype = destinationChannel?.mimetype
+            ?? await PathMimetype.resolveEntryMimetype(
+                destination.pathname,
+                destination.manifest.channels[destination.channel] ?? source.mimetype,
+                ctx.mimetypes,
+            );
+        if (source.mimetype !== expectedMimetype) {
+            return Dispatcher.#failure(
+                "mimetype-mismatch",
+                415,
+                `COPY or MOVE cannot write '${source.mimetype}' into a '${expectedMimetype}' channel.`,
+                {},
+                {
+                    channel: destination.channel,
+                    sourceMimetype: source.mimetype,
+                    destinationMimetype: expectedMimetype,
                     retryable: false,
                 },
             );
         }
 
-        const srcPathname = entryPathnameOf(srcPath);
-        const dstPathname = entryPathnameOf(dstPath);
-
-        const srcResult = await this.#readEntry(srcSchemeName, srcPathname, ctx);
-        if (srcResult.status >= 400) return srcResult;
-        if (srcResult.status !== 200 || srcResult.entry === null) {
-            throw new InvalidOperationResultError(
-                `The '${srcSchemeName}' scheme returned status ${srcResult.status} without a source entry for COPY/MOVE.`,
-            );
-        }
-        const entry = srcResult.entry;
-
-        // Destination read — the conflict/no-op verdict is deferred until the
-        // to-be-written content is known (after <L> slice + tag resolution below),
-        // so an identical re-copy resolves to 304 instead of a phantom 409.
-        const dstExisting = await this.#readEntry(dstSchemeName, dstPathname, ctx);
-        if (dstExisting.status >= 400 && dstExisting.status !== 404) return dstExisting;
-
-        // Mimetype compatibility check against the destination scheme's manifest
-        const dstManifest = (dstHandler.constructor as { manifest?: SchemeManifest }).manifest;
-        const dstChannels = dstManifest?.channels ?? {};
-        for (const [channelName, channelData] of Object.entries(entry.channels)) {
-            const expectedMimetype = dstChannels[channelName];
-            if (expectedMimetype !== undefined && expectedMimetype !== channelData.mimetype) {
+        const tags = Array.isArray(statement.signal) ? statement.signal : [];
+        const destinationEffect = this.#pendingEffect(
+            destination,
+            destinationChannel === undefined ? "create" : "update",
+        );
+        if (destination.lineMarker !== null) {
+            if (destinationChannel === undefined) {
                 return Dispatcher.#failure(
-                    "mimetype-mismatch",
-                    415,
-                    `Channel '${channelName}' has mimetype '${channelData.mimetype}', but the destination requires '${expectedMimetype}'.`,
+                    "destination-region-not-found",
+                    404,
+                    `A destination region requires an existing #${destination.channel} channel.`,
                     {},
                     {
-                        channel: channelName,
-                        sourceMimetype: channelData.mimetype,
-                        destinationMimetype: expectedMimetype,
+                        destination: this.#resourceAddress(destination),
                         retryable: false,
                     },
-                ); // cross-mimetype COPY/MOVE -> 415, never coerce - §channel-mimetype-cross-mimetype-415
+                );
             }
+            if (MimetypeBinary.isBinaryMimetype(destinationChannel.mimetype)) {
+                return Dispatcher.#failure(
+                    "binary-region-unsupported",
+                    415,
+                    `Channel #${destination.channel} is binary and cannot receive a textual region.`,
+                    {},
+                    {
+                        channel: destination.channel,
+                        mimetype: destinationChannel.mimetype,
+                        retryable: false,
+                    },
+                );
+            }
+            const edited = await this.#invokeEditBatch(
+                destination,
+                [{
+                    marker: destination.lineMarker,
+                    body: source.content,
+                    tags,
+                    position: statement.position,
+                }],
+                ctx,
+            );
+            return this.#finalizeEffects(edited, destination, [destinationEffect]);
         }
 
-        // `<L>` source range slicing per SPEC.md §op-invariants (symmetric with READ
-        // `<L>` — source range, no line-number prefix).
-        // Applied to every channel of the source entry. Binary channels return
-        // 415 since line semantics don't apply.
-        const lineMarker = (statement as { lineMarker?: LineMarker | null }).lineMarker ?? null;
-        let channels = entry.channels;
-        if (lineMarker !== null) {
-            const sliced: typeof entry.channels = {};
-            for (const [channelName, channelData] of Object.entries(entry.channels)) {
-                if (MimetypeBinary.isBinaryMimetype(channelData.mimetype)) {
-                    return Dispatcher.#failure(
-                        "binary-range-unsupported",
-                        415,
-                        `Channel '${channelName}' is binary and cannot be range-sliced.`,
-                        {},
-                        {
-                            channel: channelName,
-                            mimetype: channelData.mimetype,
-                            retryable: false,
-                        },
-                    );
-                }
-                const r = LineMarkerOps.sliceLinesRaw(channelData.content ?? "", lineMarker);
-                if (r.status !== 200) return Results.assert(r) as DispatchResult;
-                sliced[channelName] = { ...channelData, content: r.text ?? "" };
-            }
-            channels = sliced;
-        }
-
-        // Tag resolution: signal = replace (§copy-signal-replaces-source-tags); absent/empty = carry from source (§copy-no-signal-carries-source-tags)
-        const tags = (Array.isArray(statement.signal) && statement.signal.length > 0)
-            ? statement.signal
-            : entry.tags;
-
-        // 304/409 on an existing destination (SPEC §copy): a re-copy that would write
-        // exactly what's already there — same channel contents, same tags — is a no-op
-        // (304), mirroring EDIT's 304-on-noop (§edit). A divergent destination is a real
-        // collision (409); COPY/MOVE never clobbers.
-        if (dstExisting !== null && dstExisting.status === 200 && dstExisting.entry !== null) {
-            const dstChannels = dstExisting.entry.channels;
-            const writeNames = Object.keys(channels).sort();
-            const dstNames = Object.keys(dstChannels).sort();
-            const sameContent = writeNames.length === dstNames.length
-                && writeNames.every((n, i) => n === dstNames[i] && (channels[n]?.content ?? "") === (dstChannels[n]?.content ?? ""));
-            const sameTags = [...tags].sort().join("") === [...dstExisting.entry.tags].sort().join("");
-            if (sameContent && sameTags) return { status: 304 };  // identical → §copy-noop-304
+        if (
+            destinationChannel !== undefined
+            && destinationChannel.content !== source.content
+        ) {
             return Dispatcher.#failure(
                 "copy-destination-exists",
                 409,
-                `COPY or MOVE destination ${dstSchemeName}://${dstPathname} already exists with different content or tags.`,
+                `COPY or MOVE destination ${this.#resourceAddress(destination)} already contains different content.`,
                 {},
                 {
-                    destination: `${dstSchemeName}://${dstPathname}`,
+                    destination: this.#resourceAddress(destination),
                     retryable: false,
                 },
-            );  // §copy-conflict-409
+            );
+        }
+        const priorTags = existing?.tags ?? [];
+        const mergedTags = [...new Set([...priorTags, ...tags])];
+        const addsTags = mergedTags.length !== priorTags.length;
+        if (destinationChannel !== undefined && !addsTags) return { status: 304 };
+
+        const channels = {
+            ...(existing?.channels ?? {}),
+            [destination.channel]: {
+                content: source.content,
+                mimetype: source.mimetype,
+            },
+        };
+        const written = await this.#writeEntry(
+            destination.scheme,
+            destination.pathname,
+            { channels, tags: mergedTags },
+            ctx,
+        );
+        return this.#finalizeEffects(
+            Results.assert(written),
+            destination,
+            [destinationEffect],
+        );
+    }
+
+    async #copyOrchestration({
+        statement,
+        source,
+        destination,
+        ctx,
+    }: {
+        statement: CopyStatement;
+        source: ResourceSelection;
+        destination: ResourceSelection;
+        ctx: PlurnkSchemeContext;
+    }): Promise<DispatchResult> {
+        const resolvedSource = await this.#resolveResourceSelection(source, ctx);
+        if (Dispatcher.#isDispatchResult(resolvedSource)) return resolvedSource;
+        const resolvedDestination = await this.#resolveResourceSelection(destination, ctx);
+        if (Dispatcher.#isDispatchResult(resolvedDestination)) return resolvedDestination;
+        const selected = await this.#selectSource(resolvedSource, ctx);
+        if (Dispatcher.#isDispatchResult(selected)) return selected;
+        return this.#writeDestination(statement, selected, resolvedDestination, ctx);
+    }
+
+    #deferredMoveSource(
+        source: ResolvedResourceSelection,
+        destination: ResolvedResourceSelection,
+    ): DeferredMoveSource {
+        return {
+            target: source.target,
+            lineMarker: source.lineMarker,
+            scheme: source.scheme,
+            pathname: source.pathname,
+            channel: source.channel,
+            destination: this.#resourceAddress(destination),
+        };
+    }
+
+    #moveFailureAfterDestination(
+        result: DispatchResult,
+        destination: string,
+        destinationEffects: readonly ResourceEffect[],
+    ): DispatchResult {
+        const exact = Results.assert(result);
+        if (exact.status < 400) {
+            throw new InvalidOperationResultError(
+                "A successful MOVE source result was classified as a partial failure.",
+            );
+        }
+        if (exact.problem === undefined) {
+            throw new InvalidOperationResultError(
+                "A failed MOVE source mutation has no Problem Details.",
+            );
+        }
+        const failed = Results.assert({
+            ...exact,
+            problem: {
+                ...exact.problem,
+                operation: "MOVE",
+                destinationWritten: true,
+                destination,
+            },
+        });
+        return Dispatcher.#withCombinedEffects(failed, destinationEffects);
+    }
+
+    async #removeMoveSource(
+        statement: MoveStatement,
+        source: ResolvedResourceSelection,
+        ctx: PlurnkSchemeContext,
+    ): Promise<DispatchResult> {
+        const effect = this.#pendingEffect(
+            source,
+            source.lineMarker === null ? "delete" : "update",
+        );
+        if (source.lineMarker === null) {
+            const deleted = await this.#deleteChannel(
+                source.scheme,
+                source.pathname,
+                source.channel,
+                ctx,
+            );
+            return this.#finalizeEffects(Results.assert(deleted), source, [effect]);
+        }
+        const edited = await this.#invokeEditBatch(
+            source,
+            [{
+                marker: source.lineMarker,
+                body: "",
+                tags: null,
+                position: statement.position,
+            }],
+            ctx,
+        );
+        return this.#finalizeEffects(edited, source, [effect]);
+    }
+
+    async #moveWithinChannel(
+        statement: MoveStatement,
+        source: SelectedSource,
+        destination: ResolvedResourceSelection,
+        ctx: PlurnkSchemeContext,
+    ): Promise<DispatchResult> {
+        if (source.lineMarker === null) {
+            if (destination.lineMarker !== null) {
+                return Dispatcher.#failure(
+                    "move-region-overlap",
+                    409,
+                    "MOVE cannot insert a whole channel into itself and then remove that channel.",
+                    {},
+                    {
+                        source: this.#resourceAddress(source),
+                        destination: this.#resourceAddress(destination),
+                        retryable: false,
+                    },
+                );
+            }
+            return this.#writeDestination(statement, source, destination, ctx);
+        }
+        if (destination.lineMarker === null) {
+            return this.#writeDestination(statement, source, destination, ctx);
+        }
+        const moved = await this.#invokeEditBatch(
+            destination,
+            [
+                {
+                    marker: destination.lineMarker,
+                    body: source.content,
+                    tags: Array.isArray(statement.signal) ? statement.signal : [],
+                    position: statement.position,
+                },
+                {
+                    marker: source.lineMarker,
+                    body: "",
+                    tags: null,
+                    position: statement.position,
+                },
+            ],
+            ctx,
+        );
+        const effect = this.#pendingEffect(destination, "update");
+        return this.#finalizeEffects(moved, destination, [effect, effect]);
+    }
+
+    async #moveOrchestration({
+        statement,
+        source,
+        destination,
+        ctx,
+    }: {
+        statement: MoveStatement;
+        source: ResourceSelection;
+        destination: ResourceSelection;
+        ctx: PlurnkSchemeContext;
+    }): Promise<DispatchResult> {
+        const resolvedSource = await this.#resolveResourceSelection(source, ctx);
+        if (Dispatcher.#isDispatchResult(resolvedSource)) return resolvedSource;
+        const resolvedDestination = await this.#resolveResourceSelection(destination, ctx);
+        if (Dispatcher.#isDispatchResult(resolvedDestination)) return resolvedDestination;
+        const selected = await this.#selectSource(resolvedSource, ctx);
+        if (Dispatcher.#isDispatchResult(selected)) return selected;
+
+        if (this.#sameChannel(resolvedSource, resolvedDestination)) {
+            return this.#moveWithinChannel(
+                statement,
+                selected,
+                resolvedDestination,
+                ctx,
+            );
         }
 
-        const writeResult = await this.#writeEntry(dstSchemeName, dstPathname, { channels, tags }, ctx);
-        // A file dest returns 202 (disk write → §membership review): propagate the
-        // proposal so dispatch runs the gate + routes applyResolution to the dest.
-        if (writeResult.status === 202) return { status: 202, attrs: writeResult.attrs, body: writeResult.body };
-        if (writeResult.status >= 400) return writeResult;
-        return { status: writeResult.status, entryId: writeResult.entryId, created: writeResult.created };
+        const destinationResult = await this.#writeDestination(
+            statement,
+            selected,
+            resolvedDestination,
+            ctx,
+        );
+        if (destinationResult.status >= 400) return destinationResult;
+        const destinationAddress = this.#resourceAddress(resolvedDestination);
+        const destinationEffects = Dispatcher.#effectsOf(destinationResult);
+        if (destinationResult.status === 202) {
+            return {
+                ...destinationResult,
+                attrs: {
+                    ...(destinationResult.attrs as Record<string, unknown> | undefined),
+                    moveSource: this.#deferredMoveSource(
+                        resolvedSource,
+                        resolvedDestination,
+                    ),
+                },
+            };
+        }
+
+        const sourceResult = await this.#removeMoveSource(
+            statement,
+            resolvedSource,
+            ctx,
+        );
+        if (sourceResult.status === 202) {
+            return {
+                ...sourceResult,
+                attrs: {
+                    ...(sourceResult.attrs as Record<string, unknown> | undefined),
+                    moveDestinationWritten: destinationAddress,
+                    moveDestinationEffects: destinationEffects,
+                },
+            };
+        }
+        if (sourceResult.status >= 400) {
+            return this.#moveFailureAfterDestination(
+                sourceResult,
+                destinationAddress,
+                destinationEffects,
+            );
+        }
+        const base = destinationResult.status === 304
+            ? { ...destinationResult, status: 200 }
+            : destinationResult;
+        return Dispatcher.#withCombinedEffects(
+            base,
+            Dispatcher.#effectsOf(sourceResult),
+        );
+    }
+
+    async #settleMoveProposal({
+        statement,
+        result,
+        settlement,
+        ctx,
+        ids,
+    }: {
+        statement: PlurnkStatement;
+        result: DispatchResult;
+        settlement: ProposalSettlement;
+        ctx: PlurnkSchemeContext;
+        ids: {
+            workspaceId: number;
+            workerId: number;
+            loopId: number;
+            turnId: number;
+        };
+    }): Promise<ProposalSettlement> {
+        if (statement.op !== "MOVE") return settlement;
+        const attrs = result.attrs as OrchestrationProposalAttrs | undefined;
+        const destinationWritten = attrs?.moveDestinationWritten;
+        if (destinationWritten !== undefined) {
+            const destinationEffects = attrs?.moveDestinationEffects === undefined
+                ? []
+                : assertResourceEffects(attrs.moveDestinationEffects);
+            if (settlement.resolution.decision !== "accept") {
+                const decision = settlement.resolution.decision;
+                return {
+                    resolution: settlement.resolution,
+                    applied: this.#moveFailureAfterDestination(
+                        Dispatcher.#failure(
+                            "move-source-not-applied",
+                            decision === "cancel" ? 499 : 409,
+                            `The MOVE destination was written, but source removal was ${decision === "cancel" ? "cancelled" : "rejected"}.`,
+                            {},
+                            {
+                                retryable: false,
+                            },
+                        ),
+                        destinationWritten,
+                        destinationEffects,
+                    ),
+                };
+            }
+            if (settlement.applied === undefined) {
+                return {
+                    resolution: settlement.resolution,
+                    applied: this.#moveFailureAfterDestination(
+                        Dispatcher.#failure(
+                            "proposal-apply-missing",
+                            500,
+                            "The source scheme accepted its MOVE proposal without applying the source mutation.",
+                            {},
+                            {
+                                stage: "proposal-application",
+                                retryable: false,
+                            },
+                        ),
+                        destinationWritten,
+                        destinationEffects,
+                    ),
+                };
+            }
+            if (settlement.applied.status >= 400) {
+                return {
+                    resolution: settlement.resolution,
+                    applied: this.#moveFailureAfterDestination(
+                        settlement.applied,
+                        destinationWritten,
+                        destinationEffects,
+                    ),
+                };
+            }
+            return Dispatcher.#withSettlementEffects(
+                settlement,
+                [
+                    ...destinationEffects,
+                    ...Dispatcher.#settlementEffects(settlement),
+                ],
+            );
+        }
+
+        const deferred = attrs?.moveSource;
+        if (
+            deferred === undefined
+            || settlement.resolution.decision !== "accept"
+            || (settlement.applied?.status ?? 200) >= 400
+        ) {
+            return settlement;
+        }
+        if (settlement.applied === undefined) {
+            return {
+                resolution: settlement.resolution,
+                applied: Dispatcher.#failure(
+                    "proposal-apply-missing",
+                    500,
+                    "The destination scheme accepted its MOVE proposal without applying the destination mutation.",
+                    {},
+                    {
+                        stage: "proposal-application",
+                        retryable: false,
+                    },
+                ),
+            };
+        }
+        const destinationEffects = Dispatcher.#settlementEffects(settlement);
+
+        const resolvedSource = await this.#resolveResourceSelection(
+            {
+                target: deferred.target,
+                lineMarker: deferred.lineMarker,
+            },
+            ctx,
+        );
+        if (Dispatcher.#isDispatchResult(resolvedSource)) {
+            return {
+                resolution: settlement.resolution,
+                applied: this.#moveFailureAfterDestination(
+                    resolvedSource,
+                    deferred.destination,
+                    destinationEffects,
+                ),
+            };
+        }
+        if (
+            resolvedSource.scheme !== deferred.scheme
+            || resolvedSource.pathname !== deferred.pathname
+            || resolvedSource.channel !== deferred.channel
+        ) {
+            throw new InvalidOperationResultError(
+                "A deferred MOVE source no longer resolves to its recorded identity.",
+            );
+        }
+
+        const removed = await this.#removeMoveSource(statement, resolvedSource, ctx);
+        if (removed.status >= 400) {
+            return {
+                resolution: settlement.resolution,
+                applied: this.#moveFailureAfterDestination(
+                    removed,
+                    deferred.destination,
+                    destinationEffects,
+                ),
+            };
+        }
+        if (removed.status !== 202) {
+            return Dispatcher.#withSettlementEffects(
+                settlement,
+                [
+                    ...destinationEffects,
+                    ...Dispatcher.#effectsOf(removed),
+                ],
+            );
+        }
+
+        const initialSourceSettlement = await this.#proposals.workerApply(
+            statement,
+            removed,
+            { decision: "accept" },
+            ids,
+        );
+        const sourceSettlement = Dispatcher.#settleProposalEffects(
+            removed,
+            initialSourceSettlement,
+        );
+        if (sourceSettlement.applied === undefined) {
+            return {
+                resolution: settlement.resolution,
+                applied: this.#moveFailureAfterDestination(
+                    Dispatcher.#failure(
+                        "proposal-apply-missing",
+                        500,
+                        "The source scheme accepted its MOVE proposal without applying the source mutation.",
+                        {},
+                        {
+                            stage: "proposal-application",
+                            retryable: false,
+                        },
+                    ),
+                    deferred.destination,
+                    destinationEffects,
+                ),
+            };
+        }
+        if (sourceSettlement.applied.status >= 400) {
+            return {
+                resolution: settlement.resolution,
+                applied: this.#moveFailureAfterDestination(
+                    sourceSettlement.applied,
+                    deferred.destination,
+                    destinationEffects,
+                ),
+            };
+        }
+        return Dispatcher.#withSettlementEffects(
+            settlement,
+            [
+                ...destinationEffects,
+                ...Dispatcher.#settlementEffects(sourceSettlement),
+            ],
+        );
     }
 
     // §send-premature-terminate — the unified PENDING SET, judged at the terminal's OWN dispatch
@@ -1908,6 +2778,7 @@ export default class Dispatcher {
         if ((statement.op === "EXEC" || result.problem !== undefined) && seqs === undefined) {
             throw new Error(`Dispatcher.#writeLog: loop_turn_seqs returned no row for loop=${loopId} turn=${turnId}`);
         }
+        if (statement.op === "READ") Results.assertReadResult(result);
         if (result.problem !== undefined && seqs !== undefined) {
             Results.attachInstance(result, `log:///${seqs.loop_seq}/${seqs.turn_seq}/${sequence}/${statement.op}`);
         } else {

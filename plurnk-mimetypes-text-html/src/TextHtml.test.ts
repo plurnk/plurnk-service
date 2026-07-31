@@ -175,20 +175,23 @@ describe("TextHtml — xpath query", () => {
         assert.ok(first.includes("<p"));
     });
 
-    it("reports the real source-line span of each match, not a faked 1 (#41)", async () => {
+    it("retains locators without mapping raw HTML positions into readable Markdown", async () => {
         const html = "<root>\n  <p>a</p>\n  <p>b</p>\n</root>";
         const out = await h.query(html, "xpath", "//p");
         assert.equal(out.length, 2);
-        assert.deepEqual(out[0].lines, [{ line: 2, endLine: 2 }]);
-        assert.deepEqual(out[1].lines, [{ line: 3, endLine: 3 }]);
+        assert.equal(out[0].regions, undefined);
+        assert.equal(out[1].regions, undefined);
+        assert.equal(out[0].matching, "(//p)[1]");
+        assert.equal(out[1].matching, "(//p)[2]");
     });
 
-    it("a computed scalar (count) carries no lines (#41)", async () => {
+    it("a computed scalar (count) retains its expression without a text region", async () => {
         const html = "<root>\n  <p>a</p>\n  <p>b</p>\n</root>";
         const out = await h.query(html, "xpath", "count(//p)");
         assert.equal(out.length, 1);
         assert.equal(out[0].matched, "2");
-        assert.equal(out[0].lines, undefined);
+        assert.equal(out[0].regions, undefined);
+        assert.equal(out[0].matching, "count(//p)");
     });
 
     it("emits `matching` with indexed xpath form when there are multiple results", async () => {
@@ -200,11 +203,11 @@ describe("TextHtml — xpath query", () => {
         assert.equal(out[2].matching, "(//p)[3]");
     });
 
-    it("omits `matching` for single results", async () => {
+    it("retains the canonical XPath locator for a single result", async () => {
         const html = "<html><body><h1>Only</h1></body></html>";
         const out = await h.query(html, "xpath", "//h1");
         assert.equal(out.length, 1);
-        assert.equal(out[0].matching, undefined);
+        assert.equal(out[0].matching, "//h1");
     });
 
     it("returns string for attribute-axis queries", async () => {

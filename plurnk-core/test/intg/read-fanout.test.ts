@@ -68,17 +68,20 @@ test("a matcher READ fans out to one row per selected resource", async () => {
 
         const rxOf = async (seq: number): Promise<{
             content?: string;
-            matches?: Array<{ lineStart: number }>;
+            matches?: Array<{ region?: { startLine: number } }>;
         }> => {
             const row = await db.log_read_by_coordinate.get<{ rx: string }>({ worker_id: workerId, loop_seq: 1, turn_seq: 1, sequence: seq });
-            return JSON.parse(row!.rx) as { content?: string; matches?: Array<{ lineStart: number }> };
+            return JSON.parse(row!.rx) as {
+                content?: string;
+                matches?: Array<{ region?: { startLine: number } }>;
+            };
         };
         const stored = [await rxOf(1), await rxOf(2)];
         assert.deepEqual(stored.map(({ content }) => content).toSorted(), [
             "france beta\nmore",
             "intro\nfrance alpha\ntail",
         ]);
-        assert.deepEqual(stored.map(({ matches }) => matches?.[0]?.lineStart).toSorted(), [1, 2]);
+        assert.deepEqual(stored.map(({ matches }) => matches?.[0]?.region?.startLine).toSorted(), [1, 2]);
     } finally { await db.close(); }
 });
 
@@ -132,7 +135,7 @@ test("a scoped matcher READ selects full resources then projects the range from 
                 { content: "b heading\nb context", startLine: 1 },
             ],
         );
-        assert.doesNotMatch(projected.map(({ content }) => content).join("\n"), /needle/, "the matcher selects resources; the scope controls delivered rows");
+        assert.doesNotMatch(projected.map(({ content }) => content).join("\n"), /needle/, "the matcher selects resources; the scope controls delivered text");
     } finally { await db.close(); }
 });
 
@@ -168,7 +171,7 @@ test("a scoped matcher READ with no matching resource returns 204 instead of pag
     } finally { await db.close(); }
 });
 
-test("the dispatcher preserves READ row scope across a registered scheme boundary", async () => {
+test("the dispatcher preserves READ text scope across a registered scheme boundary", async () => {
     const seen: { find?: FindStatement; read?: ReadStatement } = {};
     class Probe {
         static manifest = {
@@ -191,7 +194,14 @@ test("the dispatcher preserves READ row scope across a registered scheme boundar
             pathnames: string[];
             matches: Array<{
                 pathname: string;
-                matches: Array<{ lineStart: number; lineEnd: number; rowStart: number; rowEnd: number }>;
+                matches: Array<{
+                    region: {
+                        startLine: number;
+                        startColumn: number;
+                        endLine: number;
+                        endColumn: number;
+                    };
+                }>;
             }>;
         }> {
             seen.find = statement;
@@ -204,7 +214,9 @@ test("the dispatcher preserves READ row scope across a registered scheme boundar
                 pathnames: ["/doc"],
                 matches: [{
                     pathname: "/doc",
-                    matches: [{ lineStart: 3, lineEnd: 3, rowStart: 3, rowEnd: 3 }],
+                    matches: [{
+                        region: { startLine: 3, startColumn: 1, endLine: 3, endColumn: 7 },
+                    }],
                 }],
             };
         }
@@ -249,7 +261,7 @@ test("the dispatcher preserves READ row scope across a registered scheme boundar
     } finally { await db.close(); }
 });
 
-test("semantic READ separates similarity threshold from resource row projection", async () => {
+test("semantic READ separates similarity threshold from text projection", async () => {
     const cases = [
         {
             marker: { marks: [0.7, 10, 20] as [number, ...number[]] },
@@ -288,7 +300,14 @@ test("semantic READ separates similarity threshold from resource row projection"
                     pathnames: ["/doc"],
                     matches: [{
                         pathname: "/doc",
-                        matches: [{ lineStart: 30, lineEnd: 30, rowStart: 30, rowEnd: 30 }],
+                        matches: [{
+                            region: {
+                                startLine: 30,
+                                startColumn: 1,
+                                endLine: 30,
+                                endColumn: 8,
+                            },
+                        }],
                     }],
                 };
             }

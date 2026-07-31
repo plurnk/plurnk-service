@@ -1,0 +1,417 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import type {
+    EditStatement,
+    SchemeCtx,
+    SchemeHandler,
+    SchemeManifest,
+} from "@plurnk/plurnk-schemes";
+import Engine from "../../src/core/Engine.ts";
+import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
+import EntryCrud from "../../src/schemes/_entry-crud.ts";
+import type { EntryData } from "../../src/schemes/_entry-crud.ts";
+import {
+    makeSchemeCtx,
+    openMigrated,
+    seedEnvelope,
+} from "./_helpers.ts";
+import {
+    copyStmt,
+    moveStmt,
+    urlPath,
+} from "./_dsl.ts";
+
+type EffectView = {
+    readonly target: string;
+    readonly action: "create" | "update" | "delete";
+    readonly receipt?: {
+        readonly unit: "lines" | "codePoints";
+        readonly effect: {
+            readonly requested: string;
+            readonly source: string;
+            readonly result: string;
+        };
+    };
+};
+
+const effectsOf = (result: unknown): readonly EffectView[] => {
+    assert.ok(result !== null && typeof result === "object");
+    const effects = (result as { readonly effects?: unknown }).effects;
+    assert.ok(Array.isArray(effects), "a landed COPY/MOVE reports resource effects");
+    return effects as readonly EffectView[];
+};
+
+class MultiChannelScheme implements SchemeHandler {
+    static manifest: SchemeManifest = {
+        name: "multi",
+        channels: {
+            aux: "text/markdown",
+            blob: "application/octet-stream",
+            body: "text/markdown",
+            notes: "text/markdown",
+        },
+        defaultChannel: "body",
+        category: "data",
+        scope: "workspace",
+        writableBy: ["model", "client"],
+        volatile: false,
+        modelVisible: true,
+    };
+
+    async editBatch(
+        statements: readonly EditStatement[],
+        ctx: SchemeCtx,
+    ) {
+        return ctx.entries.operations.editBatch(statements);
+    }
+}
+
+const setup = async () => {
+    const db = await openMigrated();
+    const env = await seedEnvelope(db, `copy-move-region-${crypto.randomUUID()}`);
+    const schemes = new SchemeRegistry();
+    schemes.register("multi", new MultiChannelScheme());
+    const engine = new Engine({ db, schemes });
+    const ctx = makeSchemeCtx({
+        db,
+        workspaceId: env.workspaceId,
+        workerId: env.workerId,
+    });
+    const seed = (pathname: string, entry: EntryData) =>
+        EntryCrud.writeEntry(pathname, entry, ctx, "multi");
+    const read = (pathname: string) =>
+        EntryCrud.readEntry(pathname, ctx, "multi");
+    let sequence = 0;
+    const dispatch = (statement: Parameters<Engine["dispatch"]>[0]["statement"]) =>
+        engine.dispatch({
+            statement,
+            workspaceId: env.workspaceId,
+            workerId: env.workerId,
+            loopId: env.loopId,
+            turnId: env.turnId,
+            sequence: sequence += 1,
+            origin: "client",
+        });
+    return { db, seed, read, dispatch };
+};
+
+test("COPY transfers only the selected channel and unions only explicit destination tags", async () => {
+    const { db, seed, read, dispatch } = await setup();
+    try {
+        await seed("/source", {
+            channels: {
+                body: { content: "source body", mimetype: "text/markdown" },
+                notes: { content: "selected notes", mimetype: "text/markdown" },
+            },
+            tags: ["source-only"],
+        });
+        await seed("/destination", {
+            channels: {
+                body: { content: "destination body", mimetype: "text/markdown" },
+            },
+            tags: ["preserved"],
+        });
+
+        const result = await dispatch(copyStmt(
+            urlPath("multi", "/source", "notes"),
+            urlPath("multi", "/destination", "aux"),
+            ["explicit"],
+        ));
+        assert.equal(result.status, 200);
+        assert.deepEqual(effectsOf(result), [{
+            target: "multi:///destination#aux",
+            action: "create",
+        }]);
+
+        const source = await read("/source");
+        assert.equal(source.entry?.channels.body?.content, "source body");
+        assert.equal(source.entry?.channels.notes?.content, "selected notes");
+        const destination = await read("/destination");
+        assert.equal(destination.entry?.channels.body?.content, "destination body");
+        assert.equal(destination.entry?.channels.aux?.content, "selected notes");
+        assert.deepEqual(destination.entry?.tags.toSorted(), ["explicit", "preserved"]);
+    } finally {
+        await db.close();
+    }
+});
+
+test("COPY composes source selection and destination insertion with Unicode code-point coordinates", async () => {
+    const { db, seed, read, dispatch } = await setup();
+    try {
+        await seed("/source", {
+            channels: {
+                body: { content: "A😀B\n", mimetype: "text/markdown" },
+            },
+            tags: [],
+        });
+        await seed("/destination", {
+            channels: {
+                body: { content: "xy\n", mimetype: "text/markdown" },
+            },
+            tags: [],
+        });
+
+        const result = await dispatch(copyStmt(
+            urlPath("multi", "/source"),
+            urlPath("multi", "/destination"),
+            null,
+            { marks: [1, 2, 1, 3] },
+            { marks: [1, 2, 1, 2] },
+        ));
+        assert.equal(result.status, 200);
+        const effects = effectsOf(result);
+        assert.deepEqual(
+            effects.map(({ target, action }) => ({ target, action })),
+            [{ target: "multi:///destination", action: "update" }],
+        );
+        assert.equal(effects[0]?.receipt?.unit, "codePoints");
+        assert.equal(effects[0]?.receipt?.effect.requested, "<1,2,1,2>");
+        assert.equal((await read("/destination")).entry?.channels.body?.content, "x😀y\n");
+        assert.equal((await read("/source")).entry?.channels.body?.content, "A😀B\n");
+    } finally {
+        await db.close();
+    }
+});
+
+test("MOVE composes exact source and destination regions across resources", async () => {
+    const { db, seed, read, dispatch } = await setup();
+    try {
+        await seed("/source", {
+            channels: {
+                body: { content: "abc", mimetype: "text/markdown" },
+            },
+            tags: [],
+        });
+        await seed("/destination", {
+            channels: {
+                body: { content: "XY", mimetype: "text/markdown" },
+            },
+            tags: [],
+        });
+
+        const result = await dispatch(moveStmt(
+            urlPath("multi", "/source"),
+            urlPath("multi", "/destination"),
+            null,
+            { marks: [1, 2, 1, 3] },
+            { marks: [1, 2, 1, 2] },
+        ));
+        assert.equal(result.status, 200);
+        const effects = effectsOf(result);
+        assert.deepEqual(
+            effects.map(({ target, action }) => ({ target, action })),
+            [
+                { target: "multi:///destination", action: "update" },
+                { target: "multi:///source", action: "update" },
+            ],
+        );
+        assert.deepEqual(
+            effects.map(({ receipt }) => receipt?.effect.requested),
+            ["<1,2,1,2>", "<1,2,1,3>"],
+        );
+        assert.equal((await read("/source")).entry?.channels.body?.content, "ac");
+        assert.equal((await read("/destination")).entry?.channels.body?.content, "XbY");
+    } finally {
+        await db.close();
+    }
+});
+
+test("same-channel MOVE applies destination insertion and source deletion to one snapshot", async () => {
+    const { db, seed, read, dispatch } = await setup();
+    try {
+        await seed("/document", {
+            channels: {
+                body: { content: "abcdef", mimetype: "text/markdown" },
+            },
+            tags: [],
+        });
+
+        const result = await dispatch(moveStmt(
+            urlPath("multi", "/document"),
+            urlPath("multi", "/document"),
+            null,
+            { marks: [1, 2, 1, 4] },
+            { marks: [1, 7, 1, 7] },
+        ));
+        assert.equal(result.status, 200);
+        const effects = effectsOf(result);
+        assert.deepEqual(
+            effects.map(({ target, action }) => ({ target, action })),
+            [
+                { target: "multi:///document", action: "update" },
+                { target: "multi:///document", action: "update" },
+            ],
+        );
+        assert.deepEqual(
+            effects.map(({ receipt }) => receipt?.effect.requested),
+            ["<1,7,1,7>", "<1,2,1,4>"],
+        );
+        assert.equal((await read("/document")).entry?.channels.body?.content, "adefbc");
+    } finally {
+        await db.close();
+    }
+});
+
+test("same-channel MOVE rejects overlapping source and destination regions without mutation", async () => {
+    const { db, seed, read, dispatch } = await setup();
+    try {
+        await seed("/document", {
+            channels: {
+                body: { content: "abcdef", mimetype: "text/markdown" },
+            },
+            tags: [],
+        });
+
+        const result = await dispatch(moveStmt(
+            urlPath("multi", "/document"),
+            urlPath("multi", "/document"),
+            null,
+            { marks: [1, 2, 1, 5] },
+            { marks: [1, 3, 1, 3] },
+        ));
+        assert.equal(result.status, 409);
+        assert.equal((await read("/document")).entry?.channels.body?.content, "abcdef");
+    } finally {
+        await db.close();
+    }
+});
+
+test("whole-channel MOVE removes only the selected source channel", async () => {
+    const { db, seed, read, dispatch } = await setup();
+    try {
+        await seed("/source", {
+            channels: {
+                body: { content: "preserved", mimetype: "text/markdown" },
+                notes: { content: "moved", mimetype: "text/markdown" },
+            },
+            tags: ["source-tag"],
+        });
+
+        const result = await dispatch(moveStmt(
+            urlPath("multi", "/source", "notes"),
+            urlPath("multi", "/destination", "aux"),
+        ));
+        assert.equal(result.status, 201);
+        assert.deepEqual(effectsOf(result), [
+            { target: "multi:///destination#aux", action: "create" },
+            { target: "multi:///source#notes", action: "delete" },
+        ]);
+        const source = await read("/source");
+        assert.equal(source.entry?.channels.body?.content, "preserved");
+        assert.equal(source.entry?.channels.notes, undefined);
+        assert.deepEqual(source.entry?.tags, ["source-tag"]);
+        assert.equal((await read("/destination")).entry?.channels.aux?.content, "moved");
+    } finally {
+        await db.close();
+    }
+});
+
+test("whole-channel MOVE removes the source entry when its final channel leaves", async () => {
+    const { db, seed, read, dispatch } = await setup();
+    try {
+        await seed("/source", {
+            channels: {
+                notes: { content: "only", mimetype: "text/markdown" },
+            },
+            tags: [],
+        });
+
+        const result = await dispatch(moveStmt(
+            urlPath("multi", "/source", "notes"),
+            urlPath("multi", "/destination", "aux"),
+        ));
+        assert.equal(result.status, 201);
+        assert.deepEqual(effectsOf(result), [
+            { target: "multi:///destination#aux", action: "create" },
+            { target: "multi:///source#notes", action: "delete" },
+        ]);
+        assert.equal((await read("/source")).status, 404);
+    } finally {
+        await db.close();
+    }
+});
+
+test("a destination region requires existing content and leaves the source untouched", async () => {
+    const { db, seed, read, dispatch } = await setup();
+    try {
+        await seed("/source", {
+            channels: {
+                body: { content: "source", mimetype: "text/markdown" },
+            },
+            tags: [],
+        });
+
+        const result = await dispatch(moveStmt(
+            urlPath("multi", "/source"),
+            urlPath("multi", "/missing"),
+            null,
+            null,
+            { marks: [1, 1, 1, 1] },
+        ));
+        assert.equal(result.status, 404);
+        assert.equal((await read("/source")).entry?.channels.body?.content, "source");
+    } finally {
+        await db.close();
+    }
+});
+
+test("a divergent whole-channel destination conflicts and leaves the MOVE source untouched", async () => {
+    const { db, seed, read, dispatch } = await setup();
+    try {
+        await seed("/source", {
+            channels: {
+                body: { content: "source", mimetype: "text/markdown" },
+            },
+            tags: [],
+        });
+        await seed("/destination", {
+            channels: {
+                body: { content: "different", mimetype: "text/markdown" },
+            },
+            tags: [],
+        });
+
+        const result = await dispatch(moveStmt(
+            urlPath("multi", "/source"),
+            urlPath("multi", "/destination"),
+        ));
+        assert.equal(result.status, 409);
+        assert.equal((await read("/source")).entry?.channels.body?.content, "source");
+        assert.equal((await read("/destination")).entry?.channels.body?.content, "different");
+    } finally {
+        await db.close();
+    }
+});
+
+test("whole-channel COPY supports binary content while binary regions fail", async () => {
+    const { db, seed, read, dispatch } = await setup();
+    try {
+        await seed("/source", {
+            channels: {
+                blob: { content: "AAEC", mimetype: "application/octet-stream" },
+            },
+            tags: [],
+        });
+
+        const copied = await dispatch(copyStmt(
+            urlPath("multi", "/source", "blob"),
+            urlPath("multi", "/destination", "blob"),
+        ));
+        assert.equal(copied.status, 201);
+        assert.deepEqual(effectsOf(copied), [{
+            target: "multi:///destination#blob",
+            action: "create",
+        }]);
+        assert.equal((await read("/destination")).entry?.channels.blob?.content, "AAEC");
+
+        const sliced = await dispatch(copyStmt(
+            urlPath("multi", "/source", "blob"),
+            urlPath("multi", "/other", "blob"),
+            null,
+            { marks: [1] },
+        ));
+        assert.equal(sliced.status, 415);
+    } finally {
+        await db.close();
+    }
+});

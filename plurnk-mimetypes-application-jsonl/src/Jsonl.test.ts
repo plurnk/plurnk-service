@@ -20,10 +20,6 @@ describe("Jsonl — record schema as symbols", () => {
         // score first appears on line 2
         assert.equal(syms.find((s) => s.name === "score")?.line, 2);
     });
-
-    it("extent is the record count (blank lines skipped)", () => {
-        assert.equal(h().extent(DATA), 3);
-    });
 });
 
 describe("Jsonl — deepJson is the records array", () => {
@@ -39,9 +35,9 @@ describe("Jsonl — deepJson is the records array", () => {
         assert.equal(records.length, 2);
     });
 
-    it("non-object records (primitives/arrays) contribute no schema but still count", () => {
+    it("non-object records (primitives/arrays) contribute no schema", () => {
         const prims = `"just a string"\n[1,2,3]\n42\n`;
         assert.deepEqual(h().extractRaw(prims), []);
-        assert.equal(h().extent(prims), 3);
+        assert.equal((h().deepJson(prims) as unknown[]).length, 3);
     });
 });

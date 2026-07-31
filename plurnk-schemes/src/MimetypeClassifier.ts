@@ -1,6 +1,6 @@
 // Mimetype classifiers used at op-handler boundaries.
 //
-// binary/line-navigable taxonomy DELEGATES to @plurnk/plurnk-mimetypes'
+// Binary/text taxonomy delegates to @plurnk/plurnk-mimetypes'
 // `classifyMimetype` (mimetypes#43, delivered 0.18.0) — the framework is the
 // single source of filetype truth, and our former local allowlists were a
 // drift surface (schemes#28: NDJSON classified binary → READ 415). The 44-case
@@ -8,7 +8,7 @@
 // unit suite here remains as the conformance guard on that absorption.
 //
 // What stays LOCAL is scheme semantics, not filetype fact (ruled in #43):
-//   isJson           — `<L>` item-index dispatch (RFC 6839 + slicer semantics).
+//   isJson           - JSON receipt summarization (RFC 6839).
 //   normalizeAutoText — the text-primitive policy (auto-derived text is markdown).
 
 import { classifyMimetype } from "@plurnk/plurnk-mimetypes";
@@ -29,17 +29,11 @@ export default class MimetypeClassifier {
         return classifyMimetype(mimetype).binary;
     }
 
-    // JSON-family check — used by `<L>` dispatch to pick structural slicer
-    // (Slicer.jsonItems) over line slicer (Slicer.lines) for JSON sources.
+    // JSON-family check used by receipt summarization.
     // Matches application/json plus +json suffix variants per RFC 6839.
     // Scheme semantics, deliberately NOT delegated (mimetypes#43).
     static isJson(mimetype: string): boolean {
         return mimetype === "application/json" || mimetype.endsWith("+json");
-    }
-
-    // Render-layer `N:\t` prefix decision (SPEC §mimetype-classifier).
-    static isLineNavigable(mimetype: string): boolean {
-        return classifyMimetype(mimetype).lineNavigable;
     }
 
     // Normalize an auto-derived text mimetype to the text primitive.

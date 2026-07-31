@@ -73,9 +73,6 @@
             "optional": true
         }
     },
-    "dependencies": {
-        "@plurnk/plurnk-contracts": "1.3.12"
-    },
     "devDependencies": {
         "@plurnk/plurnk-mimetypes-grammar-bash": "1.2.0",
         "@plurnk/plurnk-mimetypes-grammar-c": "1.2.0",
@@ -109,6 +106,7 @@
         "web-tree-sitter": "^0.26.9"
     },
     "dependencies": {
+        "@plurnk/plurnk-contracts": "1.3.12",
         "@plurnk/plurnk-meta": "1.3.12",
         "@plurnk/plurnk-mimetypes-application-ipynb": "1.3.12",
         "@plurnk/plurnk-mimetypes-application-json": "1.3.12",

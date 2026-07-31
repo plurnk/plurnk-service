@@ -1,9 +1,9 @@
 import { Results as _Results } from "@plurnk/plurnk-schemes";
 import type {
-    EntryResult, MatchRange, ProblemDetails, ProposalResult, PassthroughResult, SchemeResult, SchemeResultBase,
+    EntryResult, MatchEvidence, ProblemDetails, ProposalResult, PassthroughResult, SchemeResult, SchemeResultBase,
 } from "@plurnk/plurnk-schemes";
 
-export type { EntryResult, MatchRange, ProblemDetails, ProposalResult, PassthroughResult, SchemeResult, SchemeResultBase };
+export type { EntryResult, MatchEvidence, ProblemDetails, ProposalResult, PassthroughResult, SchemeResult, SchemeResultBase };
 
 export class OperationFailureError extends Error {
     readonly result: SchemeResult & { readonly problem: ProblemDetails };
@@ -51,6 +51,14 @@ export default class Results {
     }
 
     static assert<T extends SchemeResult>(result: T): T { return _Results.assert(result); }
+
+    static assertReadResult<T extends SchemeResult>(result: T): T {
+        return _Results.assertReadResult(result);
+    }
+
+    static assertMatchEvidenceList(evidence: unknown): ReadonlyArray<MatchEvidence> {
+        return _Results.assertMatchEvidenceList(evidence);
+    }
 
     static attachInstance<T extends SchemeResult>(result: T, instance: string): T {
         return _Results.attachInstance(result, instance);

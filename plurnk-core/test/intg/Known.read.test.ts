@@ -82,8 +82,68 @@ test("Known.read: lineMarker <N> on text source returns raw line + text/markdown
         assert.equal(result.status, 200);
         assert.equal(result.content, "second");
         assert.equal((result as { startLine?: number }).startLine, 2);
-        // <L> on line-navigable source → text/markdown (text primitive).
+        // <L> on a textual source returns the text primitive.
         assert.equal(result.mimetype, "text/markdown");
+    } finally { db.close(); }
+});
+
+test("Known.read: four-coordinate scope returns an exact Unicode text region", async () => {
+    const { db, workspaceId, workerId } = await setupContext();
+    try {
+        const k = new Worker();
+        await k.edit(
+            editStatement({
+                target: urlPath("worker", "/exact"),
+                body: "a😀b\nsecond",
+            }),
+            makeSchemeCtx({ db, workspaceId, workerId }),
+        );
+        const result = await k.read(
+            readStatement({
+                target: urlPath("worker", "/exact"),
+                lineMarker: { marks: [1, 2, 1, 3] },
+            }),
+            makeSchemeCtx({ db, workspaceId }),
+        );
+        assert.equal(result.status, 200);
+        assert.equal(result.content, "😀");
+        assert.equal(result.startLine, 1);
+        assert.deepEqual(result.region, {
+            startLine: 1,
+            startColumn: 2,
+            endLine: 1,
+            endColumn: 3,
+        });
+    } finally { db.close(); }
+});
+
+test("Known.read: an empty exact scope retains its region and matcher evidence", async () => {
+    const { db, workspaceId, workerId } = await setupContext();
+    try {
+        const k = new Worker();
+        await k.edit(
+            editStatement({ target: urlPath("worker", "/empty-exact"), body: "a" }),
+            makeSchemeCtx({ db, workspaceId, workerId }),
+        );
+        const result = await k.read(
+            readStatement({
+                target: urlPath("worker", "/empty-exact"),
+                lineMarker: { marks: [1, 1, 1, 1] },
+                body: { dialect: "regex", raw: "/a/", pattern: "a", flags: "" },
+            }),
+            makeSchemeCtx({ db, workspaceId }),
+        );
+        assert.equal(result.status, 204);
+        assert.equal(result.content, "");
+        assert.deepEqual(result.region, {
+            startLine: 1,
+            startColumn: 1,
+            endLine: 1,
+            endColumn: 1,
+        });
+        assert.deepEqual(result.matches, [{
+            region: { startLine: 1, startColumn: 1, endLine: 1, endColumn: 2 },
+        }]);
     } finally { db.close(); }
 });
 
@@ -97,12 +157,10 @@ test("Known.read: regex matcher selects the resource and reports coordinates", a
         assert.equal(result.status, 200);
         assert.equal(result.mimetype, "text/markdown");
         assert.equal(result.content, "alpha beta alpha gamma");
-        assert.deepEqual(result.matches, [{
-            lineStart: 1,
-            lineEnd: 1,
-            rowStart: 1,
-            rowEnd: 1,
-        }]);
+        assert.deepEqual(result.matches, [
+            { region: { startLine: 1, startColumn: 1, endLine: 1, endColumn: 6 } },
+            { region: { startLine: 1, startColumn: 12, endLine: 1, endColumn: 17 } },
+        ]);
     } finally { db.close(); }
 });
 
@@ -117,8 +175,8 @@ test("Known.read: glob matcher selects the resource and reports match coordinate
         assert.equal(result.mimetype, "text/markdown");
         assert.equal(result.content, "TODO: one\nhello\nTODO: two\nworld");
         assert.deepEqual(result.matches, [
-            { lineStart: 1, lineEnd: 1, rowStart: 1, rowEnd: 1 },
-            { lineStart: 3, lineEnd: 3, rowStart: 3, rowEnd: 3 },
+            { region: { startLine: 1, startColumn: 1, endLine: 1, endColumn: 10 } },
+            { region: { startLine: 3, startColumn: 1, endLine: 3, endColumn: 10 } },
         ]);
     } finally { db.close(); }
 });
@@ -144,7 +202,7 @@ test("Known.read: tag filter — entry missing requested tag → 404", async () 
     } finally { db.close(); }
 });
 
-test("Known.read: matcher selects the full resource before <L> projects readable rows", async () => {
+test("Known.read: matcher selects the full resource before <L> projects text", async () => {
     const { db, workspaceId, workerId } = await setupContext();
     try {
         const k = new Worker();
@@ -155,13 +213,10 @@ test("Known.read: matcher selects the full resource before <L> projects readable
             body: { dialect: "regex", raw: "/foo/", pattern: "foo", flags: "" },
         }), makeSchemeCtx({ db, workspaceId }));
         assert.equal(result.status, 200);
-        assert.equal(result.content, "one\nprojected", "the later match selects the entry but is not substituted for the requested rows");
+        assert.equal(result.content, "one\nprojected", "the later match selects the entry but is not substituted for the requested text");
         assert.equal(result.startLine, 1);
         assert.deepEqual(result.matches, [{
-            lineStart: 3,
-            lineEnd: 3,
-            rowStart: 3,
-            rowEnd: 3,
+            region: { startLine: 3, startColumn: 1, endLine: 3, endColumn: 4 },
         }]);
     } finally { db.close(); }
 });
@@ -249,25 +304,27 @@ test("Known: path suffix `.json` declares mimetype; READ returns application/jso
     } finally { db.close(); }
 });
 
-test("Known: extension `.json` enables structural <L> dispatch on READ", async () => {
+test("Known: extension `.json` does not change line shorthand semantics", async () => {
     const { db, workspaceId, workerId } = await setupContext();
     const mimetypes = new Mimetypes();
     await mimetypes.ready();
     try {
         const k = new Worker();
         await k.edit(
-            editStatement({ target: urlPath("worker", "/users.json"), body: '[{"name":"Alice"},{"name":"Bob"},{"name":"Carol"}]' }),
+            editStatement({
+                target: urlPath("worker", "/users.json"),
+                body: '[\n  {"name":"Alice"},\n  {"name":"Bob"},\n  {"name":"Carol"}\n]',
+            }),
             makeSchemeCtx({ db, workspaceId, workerId, mimetypes }),
         );
-        // <L><2> on JSON source picks the 2nd item (Bob), wrapped in array.
         const result = await k.read(
-            readStatement({ target: urlPath("worker", "/users.json"), lineMarker: { marks: [2] } }),
+            readStatement({ target: urlPath("worker", "/users.json"), lineMarker: { marks: [3] } }),
             makeSchemeCtx({ db, workspaceId, mimetypes }),
         );
         assert.equal(result.status, 200);
-        assert.equal(result.mimetype, "application/json");
-        const items = JSON.parse(result.content ?? "") as object[];
-        assert.deepEqual(items, [{ name: "Bob" }]);
+        assert.equal(result.mimetype, "text/markdown");
+        assert.equal(result.content, '  {"name":"Bob"},');
+        assert.equal(result.startLine, 3);
     } finally { db.close(); }
 });
 

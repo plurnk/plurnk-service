@@ -124,14 +124,18 @@ test("matcher READ invokes preparation, then returns one selected resource with 
         });
         const rx = JSON.parse(row?.rx ?? "{}") as {
             content?: string;
-            matches?: Array<{ lineStart: number; lineEnd: number; rowStart: number; rowEnd: number }>;
+            matches?: Array<{
+                region?: {
+                    startLine: number;
+                    startColumn: number;
+                    endLine: number;
+                    endColumn: number;
+                };
+            }>;
         };
         assert.equal(rx.content, "the universal answer is forty-two");
         assert.deepEqual(rx.matches, [{
-            lineStart: 1,
-            lineEnd: 1,
-            rowStart: 1,
-            rowEnd: 1,
+            region: { startLine: 1, startColumn: 1, endLine: 1, endColumn: 34 },
         }]);
     } finally {
         await db.close();

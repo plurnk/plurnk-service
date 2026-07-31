@@ -6,6 +6,7 @@ import channelContentSchema from "../schema/ChannelContent.json" with { type: "j
 import parsedPathSchema from "../schema/ParsedPath.json" with { type: "json" };
 import matcherBodySchema from "../schema/MatcherBody.json" with { type: "json" };
 import sendBodySchema from "../schema/SendBody.json" with { type: "json" };
+import resourceSelectionSchema from "../schema/ResourceSelection.json" with { type: "json" };
 import schemeRegistrationSchema from "../schema/SchemeRegistration.json" with { type: "json" };
 import providerDeclarationSchema from "../schema/ProviderDeclaration.json" with { type: "json" };
 import plurnkStatementSchema from "../schema/PlurnkStatement.json" with { type: "json" };
@@ -25,11 +26,11 @@ export default class Validator {
     static #providerDeclaration = new CfValidator(providerDeclarationSchema as Schema, "2020-12");
     static #plurnkStatement = Validator.#buildWithRefs(
         plurnkStatementSchema,
-        [positionSchema, lineMarkerSchema, paramsSchema, parsedPathSchema, matcherBodySchema, sendBodySchema],
+        [positionSchema, lineMarkerSchema, paramsSchema, parsedPathSchema, matcherBodySchema, sendBodySchema, resourceSelectionSchema],
     );
     static #clientStatement = Validator.#buildWithRefs(
         clientStatementSchema,
-        [plurnkStatementSchema, positionSchema, lineMarkerSchema, paramsSchema, parsedPathSchema, matcherBodySchema, sendBodySchema],
+        [plurnkStatementSchema, positionSchema, lineMarkerSchema, paramsSchema, parsedPathSchema, matcherBodySchema, sendBodySchema, resourceSelectionSchema],
     );
 
     static #buildWithRefs(mainSchema: unknown, refSchemas: unknown[]): CfValidator {

@@ -13,11 +13,10 @@ npm i @plurnk/plurnk-mimetypes-application-jsonl
 One JSON value per line — training data, eval sets, fine-tune files, chat/agent logs. The structural definition of a JSONL dataset is its **record schema**, not its rows (a file can be millions of lines), so:
 
 - `extractRaw(content)` — the schema: each distinct top-level key across records becomes a `field` symbol at the line it first appears. Scale-safe (bounded by schema width, not record count), and it answers "what is this dataset" — `{prompt, completion, score}`.
-- `extent` — the **record count**, the unit you address by.
 - `deepJson(content)` — the parsed records array, a jsonpath target (`$[5].completion`), computed only on demand.
 - `query(content, dialect, pattern)` — jsonpath dispatches against the records array; regex/glob against the raw text.
 
-Lenient by design: blank lines are skipped, and a line that doesn't parse is skipped (a trailing newline or a partial write doesn't poison the file). The raw body is already readable JSON-per-line, so there is no content projection. References are not applicable.
+Lenient by design: blank lines are skipped, and a line that doesn't parse is skipped (a trailing newline or a partial write doesn't poison the file). The raw body is already readable JSON-per-line, so text scopes address its physical lines. JSONPath locates matching records but never changes the text-region coordinate system. References are not applicable.
 
 ## license
 

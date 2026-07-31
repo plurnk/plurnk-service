@@ -106,7 +106,7 @@ test("FIND pagination misses carry the exact result extent", async () => {
     } finally { await db.close(); }
 });
 
-test("log FIND maps source lines to the structured rows a scoped READ accepts", async () => {
+test("log FIND reports an exact readable region for structural matches", async () => {
     const { db, engine, workspaceId, workerId, loopId, turnId } = await setup();
     try {
         await engine.dispatch({
@@ -122,13 +122,11 @@ test("log FIND maps source lines to the structured rows a scoped READ accepts", 
             makeSchemeCtx({ db, workerId, mimetypes: DEFAULT_MIMETYPES }),
         );
         assert.equal(result.status, 200);
-        assert.deepEqual(result.results[0]?.matches, [{
-            lineStart: 3,
-            lineEnd: 3,
-            rowStart: 2,
-            rowEnd: 2,
-            path: "$['second']",
-        }]);
+        const match = result.results[0]?.matches?.[0];
+        assert.equal(match?.path, "$['second']");
+        assert.equal(match?.region?.startLine, 3);
+        assert.equal(match?.region?.endLine, 3);
+        assert.ok((match?.region?.endColumn ?? 0) > (match?.region?.startColumn ?? 0));
     } finally { await db.close(); }
 });
 

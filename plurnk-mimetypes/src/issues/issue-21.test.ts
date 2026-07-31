@@ -17,7 +17,7 @@ import assert from "node:assert/strict";
 import Mimetypes from "../Mimetypes.ts";
 import type { Discovery, HandlerInfo, MimeSymbol, Registry } from "../types.ts";
 
-// Shaped like a pre-0.15 handler: extractRaw/deepJson/extent/validate exist,
+// Shaped like a pre-0.15 handler: extractRaw/deepJson/validate exist,
 // deepXml and references do not. Deliberately NOT extending BaseHandler —
 // that's the realm-split situation #21 hit.
 class LegacyHandler {
@@ -35,9 +35,6 @@ class LegacyHandler {
     }
     deepJson(): unknown {
         return { type: "root", line: 1, endLine: 1 };
-    }
-    extent(): number {
-        return 1;
     }
 }
 
@@ -108,6 +105,6 @@ describe("Issue #21 — C2: channels the handler does implement still work", () 
     it("channels: [] metadata works regardless of handler vintage", async () => {
         const m = makeMimetypes();
         const r = await m.process({ path: "a.leg", content: "a\nb" }, { channels: [] });
-        assert.deepEqual(r, { mimetype: "text/x-legacy", ok: true, totalLines: 2, extent: 1 });
+        assert.deepEqual(r, { mimetype: "text/x-legacy", ok: true, totalLines: 2 });
     });
 });

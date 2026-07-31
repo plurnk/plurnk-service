@@ -4,6 +4,7 @@ import {
     Validator,
     type ProblemDetails,
 } from "@plurnk/plurnk-contracts";
+import type { TextRegion } from "@plurnk/plurnk-contracts";
 
 export type { ProblemDetails };
 export { InvalidOperationResultError };
@@ -19,15 +20,12 @@ export interface SchemeResultBase extends SchemeResult {
     readonly problem?: ProblemDetails;
 }
 
-// A matcher location in both the source representation and the readable-row
-// representation accepted by READ scope. `path` is the optional canonical
-// coordinate supplied by structural dialects such as JSONPath and XPath.
-export interface MatchRange {
-    readonly lineStart: number;
-    readonly lineEnd: number;
-    readonly rowStart: number;
-    readonly rowEnd: number;
+// Evidence explaining why a matcher selected a resource. Structural dialects
+// retain their canonical locator in `path`. `region` is present only when the
+// finding has an honest exact or enclosing mapping into text the model can READ.
+export interface MatchEvidence {
     readonly path?: string;
+    readonly region?: TextRegion;
 }
 
 export interface EntryResult extends SchemeResultBase {
@@ -37,7 +35,8 @@ export interface EntryResult extends SchemeResultBase {
     readonly content?: string | null;
     readonly mimetype?: string | null;
     readonly startLine?: number | null;
-    readonly matches?: ReadonlyArray<MatchRange>;
+    readonly region?: TextRegion;
+    readonly matches?: ReadonlyArray<MatchEvidence>;
     readonly reason?: string;
 }
 
@@ -53,7 +52,8 @@ export interface PassthroughResult extends SchemeResultBase {
     readonly content?: string | null;
     readonly mimetype?: string | null;
     readonly startLine?: number | null;
-    readonly matches?: ReadonlyArray<MatchRange>;
+    readonly region?: TextRegion;
+    readonly matches?: ReadonlyArray<MatchEvidence>;
     readonly reason?: string;
 }
 
@@ -101,6 +101,51 @@ export default class Results {
 
     static assertProblem(problem: unknown): asserts problem is ProblemDetails {
         Validator.assertProblemDetails(problem as ProblemDetails);
+    }
+
+    static assertMatchEvidence(evidence: unknown): MatchEvidence {
+        if (
+            evidence === null
+            || typeof evidence !== "object"
+            || Array.isArray(evidence)
+        ) {
+            throw new TypeError("invalid match evidence: expected an object");
+        }
+        const record = evidence as Record<string, unknown>;
+        const extras = Object.keys(record).filter((key) => key !== "path" && key !== "region");
+        if (extras.length > 0) {
+            throw new TypeError(`invalid match evidence: unexpected field ${JSON.stringify(extras[0])}`);
+        }
+        const hasPath = Object.hasOwn(record, "path");
+        const hasRegion = Object.hasOwn(record, "region");
+        if (!hasPath && !hasRegion) {
+            throw new TypeError("invalid match evidence: expected path, region, or both");
+        }
+        if (hasPath && (typeof record.path !== "string" || record.path.length === 0)) {
+            throw new TypeError("invalid match evidence: path must be a non-empty string");
+        }
+        if (hasRegion) Validator.assertTextRegion(record.region as TextRegion);
+        return evidence as MatchEvidence;
+    }
+
+    static assertMatchEvidenceList(evidence: unknown): ReadonlyArray<MatchEvidence> {
+        if (!Array.isArray(evidence)) {
+            throw new TypeError("invalid match evidence list: expected an array");
+        }
+        for (const item of evidence) Results.assertMatchEvidence(item);
+        return evidence as ReadonlyArray<MatchEvidence>;
+    }
+
+    static assertReadResult<T extends SchemeResult>(result: T): T {
+        const exact = Results.assert(result);
+        const record = exact as Record<string, unknown>;
+        if (Object.hasOwn(record, "region") && record.region !== undefined) {
+            Validator.assertTextRegion(record.region as TextRegion);
+        }
+        if (Object.hasOwn(record, "matches") && record.matches !== undefined) {
+            Results.assertMatchEvidenceList(record.matches);
+        }
+        return exact;
     }
 
     static assert<T extends SchemeResult>(result: T): T {

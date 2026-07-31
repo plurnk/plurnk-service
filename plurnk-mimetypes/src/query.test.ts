@@ -13,18 +13,32 @@ describe("queryRegex — bare patterns", () => {
         assert.equal(out[1].matched, "foo");
     });
 
-    it("computes line spans from the offset of each match", () => {
+    it("computes exact text regions from the offset of each match", () => {
         const text = "alpha\nbeta\ngamma\nbeta";
         const out = queryRegex(text, "beta");
         assert.equal(out.length, 2);
-        assert.deepEqual(out[0].lines, [{ line: 2, endLine: 2 }]);
-        assert.deepEqual(out[1].lines, [{ line: 4, endLine: 4 }]);
+        assert.deepEqual(out[0].regions, [{
+            startLine: 2, startColumn: 1, endLine: 2, endColumn: 5,
+        }]);
+        assert.deepEqual(out[1].regions, [{
+            startLine: 4, startColumn: 1, endLine: 4, endColumn: 5,
+        }]);
     });
 
     it("spans a multi-line match across its lines", () => {
         const out = queryRegex("a\nstart x\ny end\nb", "start[\\s\\S]*end");
         assert.equal(out.length, 1);
-        assert.deepEqual(out[0].lines, [{ line: 2, endLine: 3 }]);
+        assert.deepEqual(out[0].regions, [{
+            startLine: 2, startColumn: 1, endLine: 3, endColumn: 6,
+        }]);
+    });
+
+    it("reports the smallest enclosing region when a match bisects CRLF", () => {
+        const out = queryRegex("a\r\nb", "\\n");
+        assert.equal(out.length, 1);
+        assert.deepEqual(out[0].regions, [{
+            startLine: 1, startColumn: 2, endLine: 2, endColumn: 1,
+        }]);
     });
 
     it("returns an empty array when nothing matches", () => {
@@ -79,6 +93,23 @@ describe("queryRegex — flag handling", () => {
         // 4 zero-width positions in "abc": before/between/after each char
         assert.equal(out.length, 4);
     });
+
+    it("advances zero-length Unicode matches by code point", () => {
+        const out = queryRegex("😀", "()", "u");
+        assert.equal(out.length, 2);
+        assert.deepEqual(out.map(({ regions }) => regions), [
+            [{ startLine: 1, startColumn: 1, endLine: 1, endColumn: 1 }],
+            [{ startLine: 1, startColumn: 2, endLine: 1, endColumn: 2 }],
+        ]);
+    });
+
+    it("honestly encloses a non-Unicode match inside a surrogate pair", () => {
+        const out = queryRegex("😀", "()");
+        assert.equal(out.length, 3);
+        assert.deepEqual(out[1].regions, [{
+            startLine: 1, startColumn: 1, endLine: 1, endColumn: 2,
+        }]);
+    });
 });
 
 describe("queryRegex — error policy", () => {
@@ -117,11 +148,17 @@ describe("queryGlob", () => {
         assert.equal(out[0].matched, "a.b");
     });
 
-    it("returns line numbers (1-indexed)", () => {
+    it("returns complete regions with 1-indexed columns", () => {
         const text = "first\nsecond\nthird";
         const out = queryGlob(text, "second");
         assert.equal(out.length, 1);
-        assert.deepEqual(out[0].lines, [{ line: 2, endLine: 2 }]);
+        assert.deepEqual(out[0].regions, [{
+            startLine: 2, startColumn: 1, endLine: 2, endColumn: 7,
+        }]);
+    });
+
+    it("does not invent a whole line for empty content", () => {
+        assert.deepEqual(queryGlob("", "*"), []);
     });
 });
 
@@ -134,19 +171,19 @@ describe("queryJsonpathObject — bare-leaves outline (default)", () => {
         Trailer: 9,
     };
 
-    it("returns the bare leaf number as `matched` and the line", () => {
+    it("retains the locator when the outline has no readable-text mapping", () => {
         const out = queryJsonpathObject(outline, "$.Top.Section.Sub");
         assert.equal(out.length, 1);
         assert.equal(out[0].matched, 5);
-        assert.deepEqual(out[0].lines, [{ line: 5, endLine: 5 }]);
+        assert.equal(out[0].matching, "$['Top']['Section']['Sub']");
+        assert.equal(out[0].regions, undefined);
     });
 
     it("returns the nested subtree as `matched` for parent paths", () => {
         const out = queryJsonpathObject(outline, "$.Top.Section");
         assert.equal(out.length, 1);
         assert.deepEqual(out[0].matched, { Sub: 5 });
-        // span derives from the subtree's leaf numbers (a single leaf here, 5)
-        assert.deepEqual(out[0].lines, [{ line: 5, endLine: 5 }]);
+        assert.equal(out[0].regions, undefined);
     });
 
     it("emits one match per wildcard result with the resolved matching path", () => {
@@ -171,20 +208,27 @@ describe("queryJsonpathObject — bare-leaves outline (default)", () => {
     });
 });
 
-describe("queryJsonpathObject — custom lineFor (used by JSON/YAML/TOML handlers)", () => {
-    it("delegates line resolution to the provided callback by pointer", () => {
+describe("queryJsonpathObject - custom region resolver", () => {
+    it("delegates readable-text region resolution by pointer", () => {
         const data = { users: [{ name: "alice" }, { name: "bob" }] };
         const out = queryJsonpathObject(data, "$.users[*].name", (pointer) => {
-            // Fake source-position map: alice on line 3, bob on line 7
-            if (pointer === "/users/0/name") return [{ line: 3, endLine: 3 }];
-            if (pointer === "/users/1/name") return [{ line: 7, endLine: 7 }];
+            if (pointer === "/users/0/name") {
+                return [{ startLine: 3, startColumn: 2, endLine: 3, endColumn: 7 }];
+            }
+            if (pointer === "/users/1/name") {
+                return [{ startLine: 7, startColumn: 2, endLine: 7, endColumn: 5 }];
+            }
             return undefined;
         });
         assert.equal(out.length, 2);
         assert.equal(out[0].matched, "alice");
-        assert.deepEqual(out[0].lines, [{ line: 3, endLine: 3 }]);
+        assert.deepEqual(out[0].regions, [{
+            startLine: 3, startColumn: 2, endLine: 3, endColumn: 7,
+        }]);
         assert.equal(out[1].matched, "bob");
-        assert.deepEqual(out[1].lines, [{ line: 7, endLine: 7 }]);
+        assert.deepEqual(out[1].regions, [{
+            startLine: 7, startColumn: 2, endLine: 7, endColumn: 5,
+        }]);
     });
 });
 
@@ -197,17 +241,21 @@ describe("queryXpathString — line-less child elements walk to the enclosing sp
     });
 
     it("a matched line-less <name> inherits the nearest annotated ancestor span", () => {
-        const out = queryXpathString(xml, "//name", "text/test");
+        const readable = Array.from({ length: 10 }, () => "x").join("\n");
+        const out = queryXpathString(xml, "//name", "text/test", readable);
         assert.equal(out.length, 1);
         assert.equal(out[0].matched, "<name>greet</name>");
-        assert.deepEqual(out[0].lines, [{ line: 5, endLine: 10 }]);
+        assert.deepEqual(out[0].regions, [{
+            startLine: 5, startColumn: 1, endLine: 10, endColumn: 2,
+        }]);
     });
 
     it("a node with NO annotated ancestor honestly reports no lines (never faked)", () => {
         const bare = projectJsonToXml({ name: "x" });
         const out = queryXpathString(bare, "//name", "text/test");
         assert.equal(out.length, 1);
-        assert.equal(out[0].lines, undefined);
+        assert.equal(out[0].regions, undefined);
+        assert.equal(out[0].matching, "//name");
     });
 });
 
@@ -227,11 +275,14 @@ describe("outlineLineFor — bare-number outline projection resolver (#41 symmet
         assert.deepEqual(lineFor(""), { line: 5, endLine: 9 });
     });
 
-    it("xpath over the projected outline reports the same lines as the resolver", () => {
+    it("xpath over the projected outline maps the resolver into readable text", () => {
         const xml = projectJsonToXml(outline, "root", lineFor);
-        const out = queryXpathString(xml, "//Sub", "text/test");
+        const readable = Array.from({ length: 9 }, () => "x").join("\n");
+        const out = queryXpathString(xml, "//Sub", "text/test", readable);
         assert.equal(out.length, 1);
-        assert.deepEqual(out[0].lines, [{ line: 5, endLine: 5 }]);
+        assert.deepEqual(out[0].regions, [{
+            startLine: 5, startColumn: 1, endLine: 5, endColumn: 2,
+        }]);
     });
 });
 

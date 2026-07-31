@@ -1,4 +1,4 @@
-import { BaseHandler, projectJsonToXml, queryJsonpathObject } from "@plurnk/plurnk-mimetypes";
+import { BaseHandler, projectJsonToXml, queryJsonpathObject, regionsForLineSpans } from "@plurnk/plurnk-mimetypes";
 import type { HandlerContent, MimeSymbol, QueryDialect, QueryMatch } from "@plurnk/plurnk-mimetypes";
 
 // application/jsonl (JSON Lines / NDJSON) handler — Tier 4, no parser dep.
@@ -7,9 +7,8 @@ import type { HandlerContent, MimeSymbol, QueryDialect, QueryMatch } from "@plur
 // agent logs. The structural definition of a JSONL dataset is its RECORD
 // SCHEMA — the union of top-level keys across records — not its rows: a file
 // can be millions of lines, so one-symbol-per-record would explode and
-// sampling would lie. So symbols are the schema (each distinct top-level key →
-// a `field` at the line it first appears), and `extent` is the record count
-// (the unit you address by). The records themselves live in deepJson — the
+// sampling would lie. So symbols are the schema (each distinct top-level key
+// becomes a `field` at the line it first appears). The records themselves live in deepJson - the
 // parsed array, a jsonpath target (`$[N].field`) computed only on demand.
 //
 // Lenient: blank lines are skipped, a line that doesn't parse is skipped (a
@@ -50,13 +49,15 @@ export default class Jsonl extends BaseHandler {
                     recordLines.push(i + 1);
                 } catch { /* unparseable line skipped, mirroring scan() */ }
             }
-            const lineFor = (pointer: string): readonly { line: number; endLine: number }[] | undefined => {
+            const regionFor = (pointer: string) => {
                 const m = pointer.match(/^\/(\d+)/);
                 if (m === null) return undefined;
                 const ln = recordLines[Number(m[1])];
-                return ln === undefined ? undefined : [{ line: ln, endLine: ln }];
+                return ln === undefined
+                    ? undefined
+                    : regionsForLineSpans(toText(content), [{ line: ln, endLine: ln }]);
             };
-            return queryJsonpathObject(this.deepJson(content), pattern, lineFor);
+            return queryJsonpathObject(this.deepJson(content), pattern, regionFor);
         }
         return super.query(content, dialect, pattern, flags);
     }
@@ -84,9 +85,6 @@ export default class Jsonl extends BaseHandler {
         return Promise.resolve(projectJsonToXml(this.deepJson(content), "root", span));
     }
 
-    override extent(content: HandlerContent): number {
-        return scan(toText(content)).records.length;
-    }
 }
 
 interface SchemaEntry {

@@ -31,12 +31,8 @@ interface Handler {
     // transform an already-textual-but-noisy body override it (text/html →
     // markdown).
     content(content: HandlerContent): string | undefined | Promise<string | undefined>;
-    // Navigation bound (§12.5) — line count for text, item count for structured.
-    extent(content: HandlerContent): number | Promise<number>;
     // Body-matcher dispatch (§11). Default implementation on BaseHandler.
     query(content: HandlerContent, dialect: QueryDialect, pattern: string, flags?: string): Promise<QueryMatch[]>;
-    // Map source footprints to the rows consumed by scoped READ.
-    rowsForLines(content: HandlerContent, lines: ReadonlyArray<LineSpan>): ReadonlyArray<RowSpan> | Promise<ReadonlyArray<RowSpan>>;
     // Rendered outline — format(extractRaw). Diagnostic / human surface.
     symbolsRaw(content: HandlerContent): Promise<string>;
 }
@@ -52,8 +48,8 @@ In practice handlers extend `BaseHandler` (or `TreeSitterExtractor` / `AntlrExtr
 
 - **Structured handlers** (JSON, YAML, TOML, CSV, source code) implement `extractRaw` and `deepJson`.
 - **Markup handlers** (HTML, XML) additionally override `deepXml` and/or `query` to serve real source markup for xpath.
-- **Flat handlers** (`text/plain`, `text/stream`) override nothing — empty symbols and null deepJson are the honest channels for unstructured content; such entries contribute metadata (`totalLines`, `extent`) only.
-- **Binary handlers** (PDF) override `extent` with a meaningful unit and `toText` for regex/glob query support.
+- **Flat handlers** (`text/plain`, `text/stream`) override nothing - empty symbols and null deepJson are the honest channels for unstructured content; such entries contribute `totalLines` metadata only.
+- **Binary handlers** (PDF) override `toText` for regex/glob query support and `content` when they provide model-readable text.
 
 Identity (`mimetype`, `glyph`, `extensions`) is injected at construction time from the handler's `package.json` `plurnk` block.
 
@@ -221,7 +217,7 @@ type Channel = "symbols" | "deepJson" | "deepXml" | "references" | "content" | "
 
 - **Default set: `symbols`, `deepJson`, `deepXml`, `references`, `content`** (five). `content` (§18) is cheap pure-JS and ships by default; `embedding` (§17) is model inference and is **opt-in only** — never in the default set. `process()` remains the universal projection surface (#11); callers that want less say less.
 - **Unrequested channels are not computed and their fields are absent** from `ProcessResult`. A channel an entry legitimately lacks (flat text has no deep tree) comes back *present but empty* (`[]` / `null` / `""`) — absence means "not asked," emptiness means "asked, nothing there."
-- **`channels: []` is valid** — metadata only (`mimetype`, `ok`, `totalLines`, `extent`), no parse paid. This is the cheap stat call (plurnk-service's manifest uses it for line counts).
+- **`channels: []` is valid** - metadata only (`mimetype`, `ok`, `totalLines`), no parse paid. This is the cheap stat call (plurnk-service's manifest uses it for line counts).
 - The default deep-xml projection consumes the deep-json value; when `deepXml` alone is requested the framework computes deep-json internally without exposing it.
 
 Known consumer selections (plurnk-service): manifest → `[]`; body-matcher plugin → `["deepJson", "deepXml"]`; graph/semantic add-time pipeline → `["symbols", "references"]`.
@@ -244,7 +240,6 @@ interface ProcessResult {
     mimetype: string | null;
     ok: boolean;
     totalLines: number;
-    extent: number;            // §12.5
     grammarMissing?: string;   // §13.4
     searchExcluded?: string;          // §21 — matched SEARCH_EXCLUDE pattern
     notices?: readonly Notice[];   // non-fatal degradation observations — §11.5
@@ -263,15 +258,15 @@ interface ProcessResult {
 `totalLines` is the editor-convention line count of the source content. Conventions:
 
 - `wc -l`-style — `abc\ndef` → `2`, `abc\ndef\n` → `2` (trailing newline is line terminator, not new line), `"\n"` → `1`, `""` → `0`.
-- **Binary content** (mimetypes flagged `binary: true` in their `plurnk` block — PDF, future images/archives): `totalLines: 0`. Lines aren't a meaningful unit for binary mimetypes; service reasons about size differently (e.g., pages for PDF). `0` is the explicit "not line-oriented" signal.
+- **Binary content** (mimetypes flagged `binary: true` in their `plurnk` block - PDF, future images/archives): `totalLines: 0`. Lines are not a meaningful unit for the source bytes. A handler's readable `content` projection is independently line-addressable; `totalLines` does not describe that derived text.
 - `0` on every error path (detection null, content unreadable, handler missing).
 
 | Failure | Behavior |
 |---|---|
-| Detection returns null | `{ mimetype: null, ok: false, totalLines: 0, extent: 0 }` — no channel fields |
-| Content read fails (path missing/unreadable) | `{ mimetype, ok: false, totalLines: 0, extent: 0 }` — no channel fields |
-| Handler package not loadable | `{ mimetype, ok: false, totalLines: 0, extent: 0 }` — no channel fields |
-| Grammar package not installed (#14) | Degrades: `ok: true`, real `totalLines`/`extent`, requested channels present but empty, `grammarMissing` set to the package name. `{ strict: true }` throws `GrammarNotInstalledError` instead. |
+| Detection returns null | `{ mimetype: null, ok: false, totalLines: 0 }` - no channel fields |
+| Content read fails (path missing/unreadable) | `{ mimetype, ok: false, totalLines: 0 }` - no channel fields |
+| Handler package not loadable | `{ mimetype, ok: false, totalLines: 0 }` - no channel fields |
+| Grammar package not installed (#14) | Degrades: `ok: true`, real `totalLines`, requested channels present but empty, `grammarMissing` set to the package name. `{ strict: true }` throws `GrammarNotInstalledError` instead. |
 | `validate()` throws | **Propagates** to the caller — contract violation |
 | Channel method throws inside handler | Contained per handler discipline (`AntlrExtractor`/`TreeSitterExtractor` catch parse failures inside `extractRaw`/`deepJson` and return empty/null). Framework does not catch. |
 
@@ -356,7 +351,10 @@ The framework neither tokenizes nor budgets content for its own pipeline. Token 
 
 ## 11. Body-matcher query
 
-Plurnk-service dispatches `FIND`/`READ`/`SHOW`/`HIDE` body matchers through `Mimetypes.query(input, expression)`. The framework parses the matcher's leading prefix to a `QueryDialect` (per plurnk-grammar's plurnk.md table) and forwards to the resolved handler's `query(content, dialect, pattern, flags?)`.
+Plurnk-service dispatches FIND and READ body matchers through
+`Mimetypes.query(input, expression)`. Standalone consumers may pass raw matcher
+syntax for framework classification; PLURNK passes the grammar's already-parsed
+dialect to the resolved handler's `query(content, dialect, pattern, flags?)`.
 
 ### 11.1 Dialect dispatch
 
@@ -369,28 +367,44 @@ Plurnk-service dispatches `FIND`/`READ`/`SHOW`/`HIDE` body matchers through `Mim
 
 Implemented by the framework's `parseBodyMatcher(expr)`. Order matters — `//` is tested before `/` because both begin with `/`.
 
-**Parsed-form entry (#42).** `Mimetypes.query(input, matcher)` accepts `matcher` as **either** a raw string (classified by the table above) **or** an already-parsed `ParsedBodyMatcher { dialect, pattern, flags? }` — the same shape `@plurnk/plurnk-grammar` produces when it parses the model-facing matcher syntax. A caller that already holds the parsed body (plurnk-service receives it from the grammar) passes the object and the framework dispatches it **verbatim** — `parseBodyMatcher` is skipped entirely. This is deliberate: the grammar owns the matcher syntax, so re-deriving the dialect inside mimetypes would be a *second parser for one syntax* and a silent drift surface (a matcher the grammar accepts but mimetypes classifies differently). The parsed form's **declared dialect is authoritative** — a `{ dialect: "regex", pattern: "@foo" }` runs as regex even though the string `"@foo"` would classify differently in the model-facing grammar. Both forms converge on the same per-dialect dispatch, so `lines` (§11.2) comes back uniformly regardless of entry form.
+**Parsed-form entry (#42).** `Mimetypes.query(input, matcher)` accepts `matcher` as **either** a raw string (classified by the table above) **or** an already-parsed `ParsedBodyMatcher { dialect, pattern, flags? }` - the same shape `@plurnk/plurnk-grammar` produces when it parses the model-facing matcher syntax. A caller that already holds the parsed body (plurnk-service receives it from the grammar) passes the object and the framework dispatches it **verbatim** - `parseBodyMatcher` is skipped entirely. This is deliberate: the grammar owns the matcher syntax, so re-deriving the dialect inside mimetypes would be a second parser for one syntax and a silent drift surface. The parsed form's declared dialect is authoritative. Both forms converge on the same per-dialect dispatch and evidence contract.
 
 ### 11.2 Per-match return shape (from plurnk-grammar #17)
 
 ```ts
 interface QueryMatch {
-    readonly matched: unknown;                          // polymorphic per dialect (see below)
-    readonly matching?: string;                         // resolved canonical locator when disambiguating
-    readonly lines?: ReadonlyArray<{ line: number; endLine: number }>; // source footprint (#41)
-    readonly rows?: ReadonlyArray<{ row: number; endRow: number }>;    // scoped-READ coordinates
+    readonly matched: unknown;
+    readonly matching?: string;
+    readonly regions?: ReadonlyArray<TextRegion>;
 }
 ```
 
-**Source-line footprint (`lines`, issue #41).** Every match carries `matched` (the value); `lines` is its 1-indexed, inclusive **source-line footprint** — an array of spans reported **as they fall**: one span for a contiguous hit, several only when the source is genuinely disjoint (gaps preserved, never coalesced; separate matches stay separate `QueryMatch` entries). `lines` is present and accurate for every **content-backed** match:
+`matched` is the extractor's internal result value. It proves the predicate and
+is available to consumers, but PLURNK's resource matcher does not substitute it
+for the resource body.
 
-- **regex / glob** — from the match offset(s).
-- **jsonpath** — the matched node's own `line`/`endLine`; for a value that carries none (a bare primitive), **the nearest enclosing annotated ancestor** (walked via the JSON pointer); or a handler-supplied `lineFor` resolving source offsets for JSON-family content.
-- **xpath** — the matched element's `pk:line`..`pk:endLine`; for an element that carries none of its own (a key-projected child like `<name>greet</name>`), **the nearest enclosing `pk:line`-bearing ancestor** (walked up the element tree).
+`matching` is an optional canonical structural locator. `regions` contains
+contiguous regions in the exact text the model can READ. Each `TextRegion` has
+all four 1-based `startLine`, `startColumn`, `endLine`, and `endColumn`
+coordinates; columns count Unicode code points and the end is exclusive.
 
-**Dialect symmetry (#41) is a hard invariant.** The jsonpath ancestor-walk and the xpath ancestor-walk are deliberately the same rule expressed in two trees, so for a given source construct **both dialects resolve to the same span**. Neither dialect ever fakes a line: `lines` is **absent** only for **node-less computed scalars** — xpath `count()`/`string()`/`sum()`/`boolean()` — which synthesize a value out of many nodes (or none) and so live nowhere in the source; jsonpath has no equivalent node-less form. Consumers render the spans for READ and fall back to `matched` when `lines` is absent. The invariant is enforced, not assumed — see the conformance harness (§14).
+Evidence is honest or absent:
 
-**Readable-row coordinates (`rows`).** `Mimetypes.query` maps every source span through the handler's `rowsForLines` method. The default maps lines identically to rows. A structural handler overrides it when scoped READ navigates a rendered item surface; application/json maps a source footprint to the top-level array items or object properties containing it. The returned row span is therefore directly reusable as scoped READ input without losing source-line provenance.
+- Regex and glob derive regions from offsets in the readable text. The region
+  is exact when both offsets are addressable Unicode code-point boundaries. If
+  a regex bisects an indivisible code point or CRLF separator, the smallest
+  enclosing addressable region is reported instead.
+- JSONPath and XPath preserve their canonical locator. A native source node may
+  contribute its exact or nearest honest enclosing text region.
+- A computed scalar, synthetic tree, or transformed projection whose parser
+  coordinates do not address the readable text is locator-only and omits
+  `regions`.
+- A genuinely disjoint finding may report several regions. Separate findings
+  remain separate `QueryMatch` values.
+
+JSONPath and XPath apply the same evidence rule. Neither dialect fabricates
+coordinates merely to satisfy a consumer. The conformance harness in §14
+enforces this matrix.
 
 `matched` is polymorphic by extractor:
 
@@ -404,14 +418,14 @@ interface QueryMatch {
 | xpath | text/attribute node | string |
 | xpath | element node | serialized XML string |
 
-`matching` is the resolved locator for multi-match dialects: jsonpath wildcards emit `$.users[0].name` etc.; xpath multi-match emits `(//user)[1]` etc.; regex omits it (captures + line carry discrimination).
+`matching` is the resolved locator for multi-match dialects: jsonpath wildcards emit `$.users[0].name` etc.; xpath multi-match emits `(//user)[1]` etc.; regex and glob omit it.
 
 ### 11.3 Handler defaults
 
 `BaseHandler.query` provides defaults:
 
 - **regex / glob** — apply against `toText(content)`. Default `toText` returns string content as-is; for binary content it throws `UnsupportedDialectError`. Handlers with binary content (PDF) override `toText` to provide a text projection (e.g. extracted page text).
-- **jsonpath** — apply against the **deep-json** channel (`handler.deepJson(content)`) per issue #10. Handlers whose mimetype has a native JSON-shaped representation (`application/json`, `application/yaml`, `application/toml`, `text/csv`) override `query` to dispatch jsonpath with handler-specific line resolution (jsonc-parser tree, yaml Document positions, etc.). The legacy bare-leaves outline path remains as a fallback when `deepJson()` returns null.
+- **jsonpath** - apply against the **deep-json** channel (`handler.deepJson(content)`) per issue #10. Handlers whose mimetype has a native JSON-shaped representation (`application/json`, `application/yaml`, `application/toml`, `text/csv`) override `query` to dispatch jsonpath with handler-specific region resolution. When `deepJson()` is absent, the handler's symbol outline is its canonical structural projection.
 - **xpath** — apply against the **deep-xml** channel (`handler.deepXml(content)`, default = `projectJsonToXml(await this.deepJson(content))`) per issue #10. Every handler that emits a structural tree automatically gets xpath dispatch — xpath-on-JSON, xpath-on-code, xpath-on-markdown all work via the projection. **Symbols-only handlers** (no `deepJson`) still answer xpath: when `deepJson()` is null, `deepXml` falls back to projecting the **same bare-number symbol outline** the jsonpath default uses (`buildJsonOutline(extractRaw)`), with an outline line-resolver so the projected elements carry the same real lines — so a handler that answers jsonpath answers xpath too, over the same entries, with the same spans (#41 symmetry). Handlers that want source-position accuracy (`text/html`, `application/xml`) override `query` to dispatch xpath against the real parsed DOM. `UnsupportedDialectError` is thrown only when there is **neither a deep tree nor any symbol** to project (`deepXml()` is empty).
 
 This is the symmetric design promised in issue #10: jsonpath dispatches against deep-json on any entry; xpath dispatches against deep-xml on any entry. The cross cases (xpath-on-JSON, jsonpath-on-XML, both on code) all work.
@@ -518,10 +532,6 @@ Channels are built **per request** (§5): a requested channel is computed eagerl
 
 The deep channels are **never model-visible**. They are consumed exclusively by the jsonpath and xpath body-matcher tool implementations.
 
-### 12.5 Addressable extent (`extent` on `ProcessResult`)
-
-Per plurnk-mimetypes#9. The full content's addressable extent in the unit `<L>` addresses for that content — line count for text, item count for structured. Exposed on `ProcessResult` so consumers can hand the model navigation bounds (`READ<100,150>` needs to know whether 150 is in range). Defaults: `extent = totalLines` for text content, `0` for binary; handlers with non-line units (structured archives, paginated documents) override `BaseHandler.extent()`.
-
 ## 13. Per-grammar package architecture
 
 ### 13.1 Runtime boundary
@@ -564,14 +574,44 @@ interface TreeSitterLanguageEntry {
 
 Each leaf rebuilds from a pinned upstream commit and verifies that the committed WASM is byte-identical.
 
-## 14. Query-line conformance
+## 14. Query-evidence conformance
 
-The dialect-symmetry invariant (§11.2) is enforced by a shipped harness, not eyeballed per handler. `@plurnk/plurnk-mimetypes/conformance` exports `assertQueryLineConformance(handler, cases)`, where each case is `{ source, dialect, pattern, expectStartLines?, scalar? }`:
+`@plurnk/plurnk-mimetypes/conformance` exports
+`assertQueryEvidenceConformance(handler, cases)`. Every case declares its
+expected verdict:
 
-- **Coverage mode** (no `expectStartLines`): every match the query returns must carry a well-formed `lines` span (`line >= 1`, `endLine >= line`), and there must be ≥1 match. This is what catches a dialect silently returning line-less or inverted matches.
-- **Scalar mode** (`scalar: true`): asserts the result carries *no* `lines` — the node-less computed-scalar case, so a future change that starts faking a line fails here.
+| Verdict | Required result |
+|---|---|
+| `exact` | one or more complete `TextRegion` values equal the declared exact coordinates |
+| `enclosing` | one or more complete `TextRegion` values equal the declared nearest honest enclosing coordinates |
+| `locator-only` | a nonempty canonical `matching` value and no fabricated region |
+| `unsupported` | `UnsupportedDialectError` |
 
-**The gate must exercise every dialect a handler supports** — the single most important rule, and the one whose absence let the jsonpath/xpath asymmetry hide. A handler that supports both jsonpath and xpath gets a case for each (`$..*` and `//*`); testing one dialect proves nothing about the other. Each handler ships `src/queryLines.conformance.test.ts` (binary handlers assert the contract directly against a built fixture, e.g. pdf). The 30 tree-sitter grammar packages route through the one shared handler, so they are gated centrally in the framework's `src/treesitter/queryLines.conformance.test.ts` across a spread of languages on both dialects — one red build for an ecosystem-wide regression.
+The expected verdict follows from the available mapping, not from the mimetype
+name:
+
+| Matcher result and readable representation | Verdict |
+|---|---|
+| Regex offset on readable text | `exact`, or `enclosing` when an offset bisects a Unicode code point or CRLF |
+| Glob match on a readable line | `exact` |
+| Structural node with complete coordinates in readable text | `exact` |
+| Structural node with honest but coarser source coordinates | `enclosing` |
+| Structural node over a synthetic or transformed representation with no source map | `locator-only` |
+| Computed structural scalar | `locator-only` |
+| Text matcher with no readable text projection | `unsupported` |
+| Structural matcher with neither a deep channel nor symbols | `unsupported` |
+
+Exact and enclosing cases must declare complete expected regions; a start line
+alone is not positional proof. Locator-only cases fail if any coordinates
+appear. Unsupported cases fail unless the handler rejects the dialect
+explicitly. `defect` is not a passing verdict: an unclassified, missing, or
+fabricated result remains a red test. Every supported dialect receives a case;
+testing JSONPath does not prove XPath, and a text-backed regex does not prove a
+transformed structural projection. Shared tree-sitter behavior is gated through
+the framework handler across representative grammars. Binary-derived handlers
+assert either exact coordinates in their readable projection or an honest
+locator-only verdict. The harness validates every reported region through the
+shared `TextRegion` contract before comparing it with the declared verdict.
 
 ## 15. Public API stability
 
@@ -662,12 +702,12 @@ The `content` channel is the **model-facing readable text** of an entry — the 
 **Present iff the readable form differs from the raw body.** Sort every mimetype by one question — *is the readable text the same as the bytes?*
 
 - **Directly-readable formats** (code, markdown, JSON, plain text): `content` is **absent**. The raw body already is the readable text; the model reads the bytes directly; a `content` channel would just duplicate the body.
-- **Binary** (PDF, …): the readable text is the handler's `toText` (page text) — its *only* readable form and its de-facto body. It is surfaced as the body, **not** via this channel. `content` stays absent for binary.
-- **text/html**: `content` = **Readability + turndown markdown** — main-content extraction (strips nav/ads/chrome) into clean markdown. Projected prose is wrapped at `PLURNK_MIMETYPES_HTML_WRAP_COLUMNS` (default `100`; `0` disables) so line scopes bound ordinary reading work instead of inheriting a page's arbitrary source density. Wrapping breaks only at whitespace and preserves Markdown structures: fenced/indented code, headings, tables, inline code, links, and retained raw tags are never split merely to satisfy the column target. The source HTML and structural channels remain untouched. This is the *only* case transforming an already-textual-but-noisy body into a cleaner read, and **HTML is the only mimetype that populates `content`, for now**. (Email/EPUB are HTML-shaped and would reuse the pattern when they land — built then, not speculatively.)
+- **Binary with a readable projection** (PDF, ...): `content` is the handler's extracted text. The same projection serves regex/glob matching, so any reported text region addresses exactly what the model can read.
+- **text/html**: `content` = **Readability + turndown markdown** - main-content extraction (strips nav/ads/chrome) into clean markdown. Projected prose is wrapped at `PLURNK_MIMETYPES_HTML_WRAP_COLUMNS` (default `100`; `0` disables) so line scopes bound ordinary reading work instead of inheriting a page's arbitrary source density. Wrapping breaks only at whitespace and preserves Markdown structures: fenced/indented code, headings, tables, inline code, links, and retained raw tags are never split merely to satisfy the column target. The source HTML and structural channels remain untouched. HTML is the only case transforming an already-textual-but-noisy body into a cleaner read. (Email/EPUB are HTML-shaped and would reuse the pattern when they land - built then, not speculatively.)
 
 **Always-on and source-agnostic.** `content` is in the default channel set (it's cheap — pure JS, no model). text/html computes it from whatever HTML bytes arrive: a local file → the document as markdown; the bytes a browser scheme rendered and serialized → the live page's readable content. The handler is a pure function of bytes and cannot tell which (see the HTML rendering split — rendering is the http scheme's job; `content` projects whatever it's handed).
 
-**Relationship to `toText`.** A handler that overrides `content` typically routes `toText` (the regex/glob query surface) through the same projection, so there is one readable-text implementation per handler. The framework's embed-source resolves as `content() ?? toText()`: HTML markdown, else binary page-text, else the passthrough body.
+**Relationship to `toText`.** A handler that overrides `content` routes `toText` (the regex/glob query surface) through the same projection, so there is one readable-text implementation per handler. The framework's embed-source resolves as `content() ?? toText()`: projected readable text, then the passthrough body.
 
 ## 19. Tokenizer seam (issue #44)
 
@@ -700,26 +740,23 @@ The tokenizers package default-exports (or exports) `resolve(modelRef) → Promi
 
 ## 20. Classification authority (issue #43)
 
-This family is the single source of filetype truth, so **binary-vs-text** and **line-vs-tree navigation** are answered here; consumers retire hand-maintained allowlists (the `application/jsonl` → 415 drift, schemes#28, is the motivating bug).
+This family is the single source of **binary-vs-text** truth, so consumers retire hand-maintained allowlists (the `application/jsonl` -> 415 drift, schemes#28, is the motivating bug). Navigation is not a mimetype property: every readable projection uses the universal text-region algebra, while jsonpath and xpath are matcher locators.
 
 ### 20.1 Surface
 
 ```ts
 interface MimeClassification {
     binary: boolean;
-    lineNavigable: boolean;                 // line-number addressing vs structural (jsonpath/xpath)
     source: "handler" | "heuristic";        // which layer decided
 }
 classifyMimetype(mimetype): MimeClassification            // pure taxonomy heuristic, sync
 mimetypes.classify(mimetype): Promise<MimeClassification> // registry-aware
 ```
 
-The axes do not collapse: NDJSON is text AND line-navigable (each line is a record); a single JSON document is text and tree-navigated.
-
 ### 20.2 Two layers
 
-- **Taxonomy heuristic** (`classifyMimetype`, exported): answers for ANY mimetype string — consumers classify stream labels with no installed handler. Rules: `text/*` → text; a known text-application set (json/yaml/toml/xml/javascript/ecmascript/typescript/sql/jsonl/x-ndjson) → text; RFC 6839 suffixes `+json/+xml/+yaml/+toml` → text; else binary; slash-less → binary; `""` → not binary, not line-navigable. Tree-navigated: `application/json`, `application/xml`, `text/html`, and `+json`/`+xml` suffixes; every other non-binary text is line-navigable (yaml/toml/csv deliberately read as line-oriented).
-- **Registry refinement** (`Mimetypes.classify`): an installed handler's declared `plurnk.binary` is authoritative, and an optional per-entry **`navigation: "line" | "tree"`** in the plurnk block overrides the taxonomy (declare it only when a handler's algebra defies the taxonomy — no current handler needs it). A binary type is never line-navigable. `source: "handler"` marks registry-decided answers.
+- **Taxonomy heuristic** (`classifyMimetype`, exported): answers for any mimetype string so consumers can classify stream labels with no installed handler. Rules: `text/*` -> text; a known text-application set (json/yaml/toml/xml/javascript/ecmascript/typescript/sql/jsonl/x-ndjson) -> text; RFC 6839 suffixes `+json/+xml/+yaml/+toml` -> text; everything else is binary; a slash-less value is binary; `""` is not binary.
+- **Registry refinement** (`Mimetypes.classify`): an installed handler's declared `plurnk.binary` value is authoritative. `source: "handler"` marks registry-decided answers.
 
 ## 21. Embedding-eligibility suppression (issue #47)
 

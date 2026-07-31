@@ -81,6 +81,18 @@ test("[#186-graph-referrers] @<foo finds entries that REFERENCE foo (not the def
         const r = await find(db, workspaceId, workerId, "@<foo");
         assert.equal(r.status, 200);
         assert.deepEqual([...new Set(r.results.map((f) => f.path))], ["worker:///b.ts"]);
+        assert.deepEqual(r.results[0]?.matches, [
+            {
+                region: {
+                    startLine: 1, startColumn: 1, endLine: 1, endColumn: 27,
+                },
+            },
+            {
+                region: {
+                    startLine: 2, startColumn: 1, endLine: 2, endColumn: 7,
+                },
+            },
+        ], "graph evidence uses honest enclosing source lines for the import and call");
     } finally { db.close(); }
 });
 

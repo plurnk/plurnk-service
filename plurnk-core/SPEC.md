@@ -512,7 +512,11 @@ Per author contract. Each scheme declares a `static manifest: SchemeManifest` wi
 
 ### §crud CRUD primitives
 
-Per author contract (`readEntry` / `writeEntry` / `deleteEntry`). Engine drives cross-scheme COPY/MOVE/SEND[410] through these — the orchestration and its 404/409/415 semantics are anchored under §copy/§move. Each method is one SQL transaction; engine owns the outer transaction for orchestrations.
+Entry-bearing schemes expose direct storage through their manifest-bound
+`ctx.entries` capability (`read`, `write`, and `delete`). The engine uses that
+same public capability for COPY/MOVE/KILL orchestration when a scheme does not
+own a more specific operation. Each capability call owns its local atomicity.
+There is no fictional cross-scheme SQL transaction.
 
 ### §op-methods Op methods
 
@@ -522,27 +526,33 @@ Per author contract (`editBatch`/`read`/`open`/`fold`/`find`/`send`/`exec?`). En
 
 - **Decisive operations settle before the next scheduled operation.** {§op-synchronous} The dispatcher `await`s every decisive operation. The only operations that return tracked work still in flight are the operations whose purpose is to create concurrency: `FORK`, `WORK`, and stream-producing `EXEC` handlers. MODE changes scheduling, not completion semantics. This is why a same-turn `KILL + SEND[200]` concludes (§send-premature-terminate): `KILL` synchronously flips the worker's live loops terminal (`engine_terminate_worker_live_loops`) before the End phase judges the pending set, while the physical scope reap rides `cancelWorker` asynchronously and invisibly.
 
-- **Same-resource EDITs are one mutation.** {§edit-batch} Every EDIT targeting the same canonical resource and channel in one turn applies to the resource's one pre-turn snapshot. The scheme validates the complete batch before writing, applies disjoint ranges from the highest original coordinate downward, and commits its one resulting revision atomically; reversing the statements cannot change that revision. A failing statement rejects that resource batch without a partial write; independent resource batches remain independent. Whole-resource replacement or creation cannot coexist with another EDIT in the same batch, selected ranges may not overlap, and a boundary insertion may occur at most once at each boundary. Prepend (`<0>`), append (`<-1>`), and fractional insertions name distinct snapshot boundaries and compose with non-overlapping ranges; two insertions naming the same boundary fail rather than acquiring an authored-order meaning. Proposal-gated schemes expose one proposal for the resource batch and accept all or none. The public scheme contract is batch-shaped: a scheme must never emulate this guarantee by applying individual EDITs sequentially.
+- **Same-resource EDITs are one mutation.** {§edit-batch} Every EDIT targeting the same canonical resource and channel in one turn applies to the resource's one pre-turn snapshot. The scheme validates the complete batch before writing, applies disjoint replacements from the highest original coordinate downward, and commits one resulting revision atomically; reversing the statements cannot change that revision. A failing statement rejects that resource batch without a partial write; independent resource batches remain independent. Whole-resource replacement or creation cannot coexist with another EDIT in the same batch, selected regions may not overlap, and a zero-length insertion may occur at most once at each boundary. Prepend (`<0>`), append (`<-1>`), and exact equal-endpoint insertions compose with non-overlapping replacements. Proposal-gated schemes expose one proposal for the resource batch and accept all or none. The public scheme contract is batch-shaped: a scheme must never emulate this guarantee by applying individual EDITs sequentially.
 
 ### §orchestration Cross-scheme orchestration
 
-```
-copy(source_path, dest_path, signal_tags, ctx):
-    src_scheme = scheme_for(source_path)
-    dst_scheme = scheme_for(dest_path)
-    entry = src_scheme.readEntry(source_pathname, ctx)
-    if entry == null: return 404
-    if dst_scheme.readEntry(dest_pathname, ctx) succeeds: return 409
-    if not mimetype_compatible(entry, dst_scheme): return 415
-    tags = signal_tags ?? entry.tags
-    dst_scheme.writeEntry(dest_pathname, { channels: entry.channels, tags }, ctx)
+COPY and MOVE independently resolve a source and destination resource
+selection. Each selection contains one scheme resource, one channel (URI
+fragment or scheme default), and an optional text scope.
 
-move(source_path, dest_path, signal_tags, ctx):
-    copy(source_path, dest_path, signal_tags, ctx)
-    src_scheme.deleteEntry(source_pathname, ctx)
+```mermaid
+flowchart LR
+    A[resolve source selection] --> B[read selected source channel]
+    B --> C[apply optional source text scope]
+    C --> D[resolve destination selection]
+    D --> E{destination scoped?}
+    E -->|yes| F[destination editBatch]
+    E -->|no| G[write selected destination channel]
+    F --> H{MOVE?}
+    G --> H
+    H -->|no| I[complete COPY]
+    H -->|yes| J[remove selected source region or channel]
 ```
 
-Same- and cross-scheme operations share the orchestrator. Same-scheme COPY is not a special case. Orchestration behavior — 404/409/415, `move` = `copy` + `deleteEntry` — is anchored under §copy/§move.
+The same orchestrator covers same- and cross-scheme resources. A same-channel
+regional MOVE lowers both replacements into one `editBatch` against one source
+snapshot. Cross-resource MOVE is ordered destination-then-source and cannot be
+globally atomic; if source removal fails after destination success, its Problem
+Details state `destinationWritten: true` and identify the destination.
 
 ### §send-dispatch SEND dispatch (status-code-as-verb)
 
@@ -553,7 +563,7 @@ Directed SEND (non-null path) routes to scheme's `send`. Status = intent:
 
 - **Log speaks the universal query contract** {§log-uniform-query} — `FIND(log://…)` works like every scheme's FIND. Candidates are worker rows scoped by the coordinate hierarchy ({§log-coordinate-hierarchy}) and projected exactly as READ shows them. Content dialects use `Matcher.matchCandidates`; `~semantic` and `@graph` use the same persistent derivation artifacts and candidate rankers as entries. Results are catalog-shaped items keyed `log:///loop/turn/seq/OP`, and matcher READ retargets per-row READs exactly as entry schemes do. A tag signal filters candidates by the model's own region tags ({§log-region-tagging}). Log remains an event stream in storage; uniformity begins at its readable projection and search attachment, not by forcing logs into the entries table.
 - **The content matcher is source-agnostic** {§find-source-agnostic} — `Matcher.matchCandidates(body, candidates, mimetypes)` applies a content matcher (regex/jsonpath/xpath/glob) to candidates from ANY source, keyed by the caller's own identity (a pathname for entries, a `loop/turn/seq` coordinate for log). The matcher never cares what table the content came from, so FIND/READ with every content dialect works uniformly across schemes BY CONSTRUCTION — `EntryFind` and `Log.find` run the ONE shared primitive rather than re-implementing per scheme. This is the query-layer half of the log-uniformity decision (Q3, Option B): log stays its own event stream, but its rows are candidates the shared matcher covers like any entry's content.
-- **Matching carries provenance and navigation coordinates** {§matcher-selection-signal} - a matcher is a boolean resource predicate. Each selected resource carries `matches: MatchRange[]`, where `MatchRange` is `{lineStart,lineEnd,rowStart,rowEnd,path?}`. Source coordinates explain where the match occurred; readable-row coordinates are valid input to a later scoped READ; `path` preserves a structural dialect's canonical identity (for example `$['users'][0]['name']`). Multiple findings on one resource remain one FIND/READ result with every distinct range attached. `Matcher.addReadableRows` maps relation findings through the same readable projection that READ uses, so storage topology cannot change the coordinates. The agent reports objective navigation evidence and never guesses which surgical READ the model wants.
+- **Matching carries navigation evidence** {§matcher-selection-signal} - a matcher is a boolean resource predicate. Each selected resource carries `matches: MatchEvidence[]`, where `MatchEvidence` is `{path?,region?}`. `path` preserves a structural locator. `region` is a complete four-coordinate `TextRegion` only when the finding maps honestly into the exact text the model can READ. Multiple findings on one resource remain one FIND/READ result; exact duplicate evidence deduplicates. Relation findings map their indexed source spans through the same readable text coordinate index. The engine never fabricates a region or guesses which surgical READ the model wants.
 
 `SEND[410](path[#fragment])` also deletes the target entry/channel — an implemented side-effect, NOT taught to the model and with no live/demo surface. The model-facing delete idiom is KILL (§move).
 
@@ -618,7 +628,7 @@ Per author contract. Manifest declares `kind: "mimetype"`; handler class declare
 
 Author contract owned by plurnk-mimetypes. plurnk-service consumes ONE entry point:
 
-- `Mimetypes.process(input)` — the projection entry point; returns the structural projections (`deepJson` / `deepXml` / `symbols` / `references`) + extent (`totalLines`). {§mimetype-methods-process-entry-point}
+- `Mimetypes.process(input)` - the projection entry point; returns requested projections (`deepJson` / `deepXml` / `symbols` / `references` / `content`) plus the source `totalLines`. {§mimetype-methods-process-entry-point}
 
 **The plugin projects; the service queries.** `Mimetypes.query()` exists in the author contract, but plurnk-service does NOT consume it. The service owns **all** dialect matching — glob, regex, jsonpath, xpath, `@graph`, `~semantic` — resolved in-tree over those projections plus its own indexes (`symbol_defs`/`symbol_refs`, FTS5, vectors). mimetypes is mimetype-*literate* (content→structure); the service is dialect-*literate* (structure→matches). The pattern-matching DSL is plurnk's defining surface — the service's authority, never a plugin's.
 
@@ -740,7 +750,7 @@ Rules:
 Op implications:
 
 - EDIT to undeclared channel → 400; read-only channel → 405.
-- COPY/MOVE with fragment is per-channel; design deferred until needed.
+- COPY/MOVE source and destination fragments independently select channels.
 
 RPC params carry fragments inline via the `target` string (`{ target: "known:///x#stderr" }`).
 
@@ -790,8 +800,8 @@ AST: `{ op: "READ", target, body: MatcherBody | null, signal: tags | null, lineM
 
 - Returns channel content + mimetype {§read-read-content}, or 404 {§read-read-404}.
 - `body` is a resource predicate dispatched per §matcher-dispatch.
-- `lineMarker` projects readable rows per §slice-semantics after selection. It never limits the content searched or paginates match occurrences. Without a marker, READ returns each selected resource's complete readable content. A miss is 204 before projection; an invalid row projection is 416. {§read-selection-projection}
-- Semantic READ uses a leading decimal as its optional similarity threshold. Remaining integer components are the readable-row projection. Without a leading decimal, semantic selection uses the configured default and every integer component belongs to READ projection. Direct FIND retains §find-semantic-default-top-k.
+- `lineMarker` projects text through §text-region after selection. It never limits the content searched or paginates match occurrences. Without a marker, READ returns each selected resource's complete readable content. A miss is 204 before projection; an invalid text region is 416. {§read-selection-projection}
+- Semantic READ uses a leading decimal as its optional similarity threshold. The remaining one, two, or four integers are the text projection. Without a leading decimal, semantic selection uses the configured default and every integer component belongs to READ projection. Direct FIND retains §find-semantic-default-top-k.
 
 ### §open-fold OPEN / FOLD
 
@@ -801,7 +811,7 @@ OPEN/FOLD operate on the **log** (`log:///`) - the model's context-curation surf
 
 ### §jsonplurnk The Log's wire format
 
-The `## Log` section renders as a fenced `jsonplurnk` block - a JSON array of entry objects, otherwise-valid JSON with **exactly one** deviation: an open, nonempty `body` is a raw HEREDOC (`<<:::TAG ... :::TAG`, TAG = the entry's target/log URI), rendered verbatim (numbered for text, tree-navigable verbatim), never a JSON-escaped string. The carve-out is localized to `body`, so the strip-parser is trivial: after `"body":`, `<<:::TAG` opens and `:::TAG` at column 0 closes; replacing that block with an escaped string recovers strict JSON (the plurnkdown linter's transform). The body shape is a strict three-state invariant: `"display":"none","body":""` for no body, `"display":"folded"` with the ordinary projection withheld, and `"display":"open","body":HEREDOC` with it shown. A bounded projection also carries `"overflow":"Body content truncated. Use READ log:///<coordinate>/<op> to view the full body."` whether open or folded. The block is data only - no prose leads the fence. `tokens` is the ruler-weight of the row's ordinary packet body: the room OPEN adds and FOLD saves. A FIND's `itemsTokenTotal` is the ruler-weight of the matched entries themselves: the room READing them takes. These are curation weights, not dollars. The invariants bind regardless of shape (§packet): addressability (`path`/`target`/`#channel`/numbered bodies), weighability (per-item `tokens`), honesty (every 4xx/5xx row and the exact body/display state). {§jsonplurnk}
+The `## Log` section renders as a fenced `jsonplurnk` block - a JSON array of entry objects, otherwise-valid JSON with **exactly one** deviation: an open, nonempty `body` is a raw HEREDOC (`<<:::TAG ... :::TAG`, TAG = the entry's target/log URI), rendered with universal `N:` line prefixes, never as a JSON-escaped string. The carve-out is localized to `body`, so the strip-parser is trivial: after `"body":`, `<<:::TAG` opens and `:::TAG` at column 0 closes; replacing that block with an escaped string recovers strict JSON (the plurnkdown linter's transform). The body shape is a strict three-state invariant: `"display":"none","body":""` for no body, `"display":"folded"` with the ordinary projection withheld, and `"display":"open","body":HEREDOC` with it shown. A bounded projection also carries `"overflow":"Body content truncated. Use READ log:///<coordinate>/<op> to view the full body."` whether open or folded. The block is data only - no prose leads the fence. `tokens` is the ruler-weight of the row's ordinary packet body: the room OPEN adds and FOLD saves. A FIND's `itemsTokenTotal` is the ruler-weight of the matched entries themselves: the room READing them takes. These are curation weights, not dollars. The invariants bind regardless of shape (§packet): addressability (`path`/`target`/`#channel`/numbered bodies), weighability (per-item `tokens`), honesty (every 4xx/5xx row and the exact body/display state). {§jsonplurnk}
 
 The opening fence length is **dynamic**: one backtick longer than the longest backtick run in any body (floor 3). A body can carry arbitrary content — a READ of a doc whose own text opens a column-0 triple-backtick fence — which a fixed opener would let close the block early; a dynamic opener can never be closed by its own body content (CommonMark closes a fence only on a line of at least its own length), independent of the `N:` numbering that incidentally keeps text bodies off column 0. {§jsonplurnk-dynamic-fence}
 
@@ -821,24 +831,44 @@ The worker's **first** model row is exceptional: a born-OPEN turn-0 **exemplar**
 
 ### §copy COPY (engine-orchestrated)
 
-AST: `{ op: "COPY", target (source), body (destination), signal: tags | null, lineMarker? }`.
+AST: `{ op: "COPY", target (source), lineMarker (source scope),
+body: ResourceSelection (destination), signal: tags | null }`.
 
-Engine orchestrates over CRUD primitives (§crud, §orchestration):
+1. Resolve source path, channel, and optional text scope; missing resource or
+   channel is 404. Binary whole-channel COPY is valid, but a binary region is
+   415. {§copy-missing-source-404}
+2. Resolve destination path, channel, and optional text scope. Source and
+   destination mimetypes must agree or the result is 415.
+3. A scoped destination must already exist and is mutated through the
+   destination scheme's `editBatch`.
+4. An unscoped destination writes only its selected channel. Existing other
+   channels survive. Different content in that channel is 409; identical
+   content with no new tag is 304. {§copy-noop-304} {§copy-conflict-409}
+5. Only explicit `signal` tags are applied, additively, to the destination.
+   Source tags are never copied.
 
-1. `src_scheme.readEntry` → 404 if missing. {§copy-missing-source-404}
-2. `dst_scheme.readEntry` → conflict verdict, deferred until the written content is known (step 5): exists with identical content + tags → 304 (no-op, mirrors EDIT §edit) {§copy-noop-304}; exists with different content → 409 (no overwrite) {§copy-conflict-409}; absent → proceed.
-3. Mimetype compat — channels' mimetypes must be accepted by `dst_scheme.manifest.channels`. Mismatch → 415.
-4. Tags: `signal` non-null replaces source tags {§copy-signal-replaces-source-tags}; null/empty carries source tags {§copy-no-signal-carries-source-tags}.
-5. `dst_scheme.writeEntry({channels, tags})`.
-
-Returns 201 on success. Same- and cross-scheme COPY share the orchestrator. {§copy-cross-scheme-copy}
+The result is 201 for a new entry, 200 for a write, 304 for an exact no-op, or
+202 when the owning scheme requires proposal review. Same- and cross-scheme
+COPY use this one orchestrator. {§copy-cross-scheme-copy}
 
 ### §move MOVE (engine-orchestrated)
 
-AST: `{ op: "MOVE", target (source), body: dest | null, signal: tags | null, lineMarker? }`.
+AST: `{ op: "MOVE", target (source), lineMarker (source scope),
+body: ResourceSelection (destination), signal: tags | null }`.
 
-- **Relocation** (`body` non-null, resolvable dest): COPY (§copy) + `src_scheme.deleteEntry` in one transaction. 201 on success. {§move-relocation-deletes-source} Cross-scheme same as same-scheme. {§move-cross-scheme-move} Missing source → 404. {§move-missing-source-404}
-- **MOVE never deletes.** A null body → 400 (a destination is required). {§move-null-body-400} `/dev/null` carries no special meaning; KILL is the canonical delete. {§move-dev-null-not-special}
+- MOVE first performs the destination mutation under §copy, then removes only
+  the selected source region or channel. A whole-channel MOVE deletes the
+  source entry only when that was its final channel. {§move-relocation-deletes-source}
+- A same-channel regional MOVE applies destination insertion and source
+  deletion in one same-snapshot `editBatch`; overlapping regions are 409.
+- A cross-resource destination failure leaves the source untouched. A source
+  failure after destination success is an explicit partial failure with
+  `destinationWritten: true`. Proposal acceptance/rejection follows the same
+  ordered rule.
+- Same- and cross-scheme resources use the same contract; there is no global
+  cross-scheme transaction. {§move-cross-scheme-move} Missing source is 404.
+  {§move-missing-source-404}
+- **MOVE is not a delete operation.** A null body returns 400 because a destination is required. {§move-null-body-400} `/dev/null` carries no special meaning; KILL is the canonical standalone delete. {§move-dev-null-not-special}
 
 Log history preserved — `log_entries` stores path tuple as text, not FK to `entries.id`.
 
@@ -855,7 +885,7 @@ AST: `{ op: "FIND", target (scope), body: MatcherBody | null (predicate), signal
 - Every matcher operates only over the candidate set selected by `(target)` and `[tags]`; relation matchers do not bypass that selection. Semantic ranking is exhaustive within that candidate set, then applies its result policy—never rank the wider corpus and discard out-of-scope hits afterward, which changes top-K meaning and leaks entries across an exact target. A semantic matcher with no `<scope>` returns the configured `PLURNK_SERVICE_SEMANTIC_TOP_K` highest-ranked results. An integer scope overrides that count; a leading decimal is a minimum cosine-similarity threshold, optionally followed by a result cap. The ordinary FIND render budget remains independent of semantic ranking. {§find-semantic-default-top-k}
 - `signal` is a tag filter; entries match if they have ALL listed tags. {§find-tag-filter-and-semantics}
 - Workspace + scheme scoped — no cross-workspace/cross-scheme leakage. {§find-scoped-isolation}
-- Returns `FindResult { status, content, mimetype, results, matches, pathnames }`. A **body-less** FIND is the **catalog**. Ordinary rows are one per resource: `{ path, stream?, tags?, channels: { <uri>: { mimetype, tokens, lines } } }`. A terminal single-star path scope is a one-level map: direct entries retain that shape, while deeper first-segment directories collapse to `{ path: "dir/**", items, tokens }`, where the selector and both aggregates describe the exact recursive subtree. Scope summaries are navigation metadata, not resources or hidden READ fan-out matches. A matcher FIND retains the same one-row-per-resource unit and adds `matches: MatchRange[]` (§matcher-selection-signal). FIND pagination counts selected resources, never occurrences. Resource order is rank for `~`semantic and candidate order otherwise; match ranges retain dialect order and exact duplicate coordinates deduplicate. `content` is the compact JSON array. {§find-result-catalog-rows} **Over the render budget, FIND returns a count, not contents** (#418, `PLURNK_SERVICE_FIND_MAX_MATCHES`): a repo-scale recursive FIND cannot enumerate safely. When the selected-resource count exceeds the budget, `overflow` and `itemsTokenTotal` carry the count and aggregate weight while `results`, `matches`, and `pathnames` are empty; no caller may perform hidden work from content the model was denied. The gate is independent of model window size. `0`/unset disables it. {§find-count-not-contents}
+- Returns `FindResult { status, content, mimetype, results, matches, pathnames }`. A **body-less** FIND is the **catalog**. Ordinary rows are one per resource: `{ path, stream?, tags?, channels: { <uri>: { mimetype, tokens, lines } } }`. A terminal single-star path scope is a one-level map: direct entries retain that shape, while deeper first-segment directories collapse to `{ path: "dir/**", items, tokens }`, where the selector and both aggregates describe the exact recursive subtree. Scope summaries are navigation metadata, not resources or hidden READ fan-out matches. A matcher FIND retains the same one-row-per-resource unit and adds `matches: MatchEvidence[]` (§matcher-selection-signal). FIND pagination counts selected resources, never occurrences. Resource order is rank for `~`semantic and candidate order otherwise; evidence retains dialect order and exact duplicates deduplicate. `content` is the compact JSON array. {§find-result-catalog-rows} **Over the render budget, FIND returns a count, not contents** (#418, `PLURNK_SERVICE_FIND_MAX_MATCHES`): a repo-scale recursive FIND cannot enumerate safely. When the selected-resource count exceeds the budget, `overflow` and `itemsTokenTotal` carry the count and aggregate weight while `results`, `matches`, and `pathnames` are empty; no caller may perform hidden work from content the model was denied. The gate is independent of model window size. `0`/unset disables it. {§find-count-not-contents}
 
 ### §send SEND
 
@@ -1274,8 +1304,8 @@ Naming: `target` = URI the op acts on; `scope` for FIND; `source`/`destination` 
 | `op.find`     | `scope: string`, `matcher?: string`, `tags?: string[]`, `lineRange?: LineMarker` | Mirrors `<<FIND>>`. |
 | `op.read`     | `target: string`, `matcher?: string`, `lineRange?: LineMarker`, `tags?: string[]` | Mirrors `<<READ>>`. |
 | `op.edit`     | `target: string`, `content?: string`, `tags?: string[]`, `lineRange?: LineMarker` | Mirrors `<<EDIT>>`. |
-| `op.copy`     | `source: string`, `destination: string`, `tags?: string[]`, `lineRange?: LineMarker` | Mirrors `<<COPY>>`. |
-| `op.move`     | `source: string`, `destination?: string`, `tags?: string[]`, `lineRange?: LineMarker` | Mirrors `<<MOVE>>`. Missing `destination` = delete (null-body MOVE). |
+| `op.copy`     | `source: string`, `destination: string`, `tags?: string[]`, `lineRange?: LineMarker`, `destinationRange?: LineMarker` | Mirrors `<<COPY>>`; source and destination scopes are independent. |
+| `op.move`     | `source: string`, `destination: string`, `tags?: string[]`, `lineRange?: LineMarker`, `destinationRange?: LineMarker` | Mirrors `<<MOVE>>`; destination is required. |
 | `op.open`     | `target: string`, `matcher?: string`, `tags?: string[]`, `lineRange?: LineMarker` | Mirrors `<<OPEN>>`. |
 | `op.fold`     | `target: string`, `matcher?: string`, `tags?: string[]`, `lineRange?: LineMarker` | Mirrors `<<FOLD>>`. |
 | `op.send`     | `status: number`, `recipient?: string`, `body?: string` | Mirrors `<<SEND>>`. |
@@ -1464,13 +1494,44 @@ The CAS is the **hard backstop**, at the moment of writing, on every accept path
 
 **Migration path.** Built. The per-worker world-snapshot the architecture forbade (§machine-processes) is **deleted**; its `[§machine-processes-worker-is-its-log]` conformance test is now green. The pull + the `plurnk`-run fs narration replace it.
 
-### §edit-result-render EDIT log rows render a bounded effect receipt
+### §edit-result-render Mutation log rows render truthful effects
 
 **Question.** An EDIT's log row exists so the model has a record of what it did. Re-emitting the model's *input* statement (the tx heredoc) records the *intent* but not the *outcome* — the model still has to READ the entry back to confirm "did it land, what does it look like now." And a system delta-EDIT (§env-delta) has no input statement at all. What should an EDIT row's body be?
 
 **Decision — effect, revision, and bounded join context.** A model-authored EDIT row renders compact metadata (`rev`, `extent`, `change`, and `range`) plus bounded numbered context around that edit's resulting join. The durable result retains the full SHA-256 revision; `rev` abbreviates it to `PLURNK_SERVICE_EDIT_RECEIPT_REVISION_CHARS` for display correlation only and is never an identity, lookup key, or compare-and-swap token. Every row in one resource batch carries the same revision and extent but its own requested marker, normalized source/result ranges, removed/inserted counts, and context. The receipt proves what landed without copying an arbitrarily large changed region into the next packet. A deliberate READ in the same turn is scheduled after mutation (§op-mode-phases) and remains the universal way to request arbitrary current content.
 
-**Scope.** The receipt is computed from the one pre-turn snapshot and committed result and stored structurally on the EDIT's `rx`; reviewer-modified proposals recompute it from the content that actually lands. Text resources report lines; structural JSON resources report top-level items. `PLURNK_SERVICE_EDIT_RECEIPT_CONTEXT_LINES` bounds neighboring lines/items independently for each row. Environment-delta EDITs remain factual state-diff events and carry their resulting span (§env-delta); COPY/MOVE likewise retain their resulting span.
+**Scope.** The receipt is computed from the one pre-turn snapshot and committed
+result and stored structurally on the EDIT's `rx`; reviewer-modified proposals
+recompute it from the content that actually lands. Whole-line edits report line
+extent; any exact-region edit reports Unicode code-point extent. There is no
+JSON row/item receipt mode. `PLURNK_SERVICE_EDIT_RECEIPT_CONTEXT_LINES` bounds
+neighboring physical lines independently for each receipt. Environment-delta
+EDITs remain factual state-diff events and carry their resulting span
+(§env-delta).
+
+**COPY/MOVE effects.** A landed COPY or MOVE returns a non-empty ordered
+`effects` array:
+
+```ts
+interface ResourceEffect {
+    target: string;
+    action: "create" | "update" | "delete";
+    receipt?: EditReceipt;
+}
+```
+
+The target is the canonical model-facing resource address. A default channel is
+path-only; an explicitly selected non-default channel retains its fragment.
+COPY lists its destination effect. MOVE lists destination then source effects;
+same-resource MOVE may list the same target twice because insertion and removal
+are distinct effects from one atomic batch. A text-region effect carries its
+bounded EDIT receipt. Whole-channel and binary effects carry no invented text
+receipt. A 304 no-op and a rejected or cancelled proposal that landed nothing
+omit `effects`; an accepted proposal reports effects only after application. If
+a cross-resource MOVE writes its destination but source removal fails, the
+failure retains the effects that actually landed. Scheme hooks return their
+native mutation result and aggregate edit receipt; the engine validates and
+projects this resource-level contract.
 
 **Migration path.** Built with MODE scheduling and atomic resource batches; the former unbounded resulting-span confirmation is removed from model-authored EDITs.
 
@@ -1613,13 +1674,21 @@ Rendered at the END of the user packet under `## Recap` {§requirements-requirem
 
 ---
 
-## §matcher Matcher and `<L>` slicing
+## §matcher Matcher selection and text regions
 
-Body matchers and `<L>` both dispatch on entry mimetype. Body matcher: leading-char classification (`//` xpath, `/` regex, `$` jsonpath, otherwise glob). `<L>`: line-navigable → by line, structured → by item.
+Body matchers and text scopes are independent. Matcher prefixes choose a
+dialect (`//` xpath, `/` regex, `$` jsonpath, otherwise glob); they select
+resources and report evidence. A text scope always addresses the exact readable
+text, regardless of mimetype.
 
 ### §matcher-dispatch Matcher dispatch (service-owned, over plugin primitives)
 
-`Matcher.matchCandidates` (in-tree, `src/content/matcher.ts`) is the service-owned content-dialect dispatch over caller-supplied `{key, content, mimetype}` candidates. It calls the mimetype plugin's individual primitives: glob and regex over raw content; jsonpath over `deepJson`; xpath over `deepXml`. `~semantic` and `@graph` are relation dialects, not content matchers. FIND resolves them through the universal `{key, deepHash}` candidate contract and returns `(key, span)` items. The matcher therefore has no dependency on the table that stored an entry or log row, and impossible relation-to-content routing fails hard. Status mapping (content dialects):
+`Matcher.matchCandidates` (in-tree, `src/content/matcher.ts`) applies a parsed
+content dialect over caller-supplied `{key, content, mimetype}` candidates.
+Glob and regex inspect readable text; JSONPath uses `deepJson`; XPath uses
+`deepXml`. `~semantic` and `@graph` are indexed relation dialects and never
+route through the content matcher. The matcher has no dependency on the table
+that stored a resource.
 
 | Result | HTTP status |
 |---|---|
@@ -1629,7 +1698,9 @@ Body matchers and `<L>` both dispatch on entry mimetype. Body matcher: leading-c
 | Source unparseable for its mimetype | 203 (soft fallback: raw content as text with `reason`) |
 | Dialect unsupported by the resource | 415 |
 
-203 is HTTP-creative ("Non-Authoritative Information"). On parse failure, returns raw bytes as text primitive with `reason` so the model can fall back to regex/visual parsing or fix source. {§matcher-dispatch-203-soft-fallback}
+On parse failure, 203 returns raw content as the text primitive with `reason`
+so the model can use ordinary text retrieval or repair the source.
+{§matcher-dispatch-203-soft-fallback}
 
 `Matcher.matchCandidates` searches heterogeneous resource sets. A candidate
 whose handler returns 415 is omitted when another candidate supports the
@@ -1637,77 +1708,75 @@ dialect; if every candidate is unsupported, the first exact 415 Problem is the
 operation result. This preserves exact-resource diagnostics without allowing
 one binary marker to fail a repository-wide text search.
 
-Glob anchoring (`TODO*` starts-with, `*TODO*` contains, `*.log` ends-with, `[Tt]odo*` char class) lives in framework's `BaseHandler`.
+Glob anchoring (`TODO*` starts-with, `*TODO*` contains, `*.log` ends-with,
+`[Tt]odo*` character class) lives in the mimetypes framework.
 
 ### §matcher-result Matcher selection and evidence
 
-**A matcher selects resources; it never extracts a value or chooses a retrieval window.** Every dialect answers whether a candidate resource matches and, when the backend can locate the finding, returns `MatchRange` evidence (§matcher-selection-signal). A matcher miss is 204. A selected resource keeps its native readable content and mimetype. FIND lists it once; READ returns it once, complete unless the authored READ supplied a row projection. {§matcher-result-resource-selection}
+**A matcher selects resources; it never extracts a value or chooses a retrieval
+window.** Every dialect answers whether a resource matches and may return
+`MatchEvidence { path?, region? }` (§matcher-selection-signal). `path` is a
+canonical structural locator. `region` is a complete `TextRegion` in the exact
+text the model can READ and may be exact or the smallest honest enclosing
+region. A matcher miss is 204. FIND lists a selected resource
+once; READ returns it once, complete unless the authored READ supplied a text
+scope. {§matcher-result-resource-selection}
 
 | Dialect | Selects | Natural use |
 |---|---|---|
-| regex `/pat/` | resources whose raw content matches | exact source and readable-row coordinates |
-| glob `pat` | resources with matching raw-content lines | exact source and readable-row coordinates |
-| jsonpath `$.path` | resources whose readable JSON projection resolves the path | source/readable ranges plus canonical JSONPath |
-| xpath `//sel` | resources whose readable XML projection resolves the selector | source/readable ranges plus canonical XPath when available |
-| `~`semantic `~q` | resources ranked by indexed chunks | ranked chunk coordinates when available |
-| `@`graph `@<sym` | resources with matching symbol relations | symbol occurrence coordinates |
+| regex `/pat/` | resources whose readable text matches | exact text region, or the smallest enclosing region when a match bisects an indivisible text unit |
+| glob `pat` | resources with matching readable lines | exact text region |
+| jsonpath `$.path` | resources whose deep JSON resolves the path | canonical locator plus exact/enclosing text region when honest |
+| xpath `//sel` | resources whose deep XML resolves the selector | canonical locator plus exact/enclosing text region when honest |
+| `~`semantic `~q` | resources ranked by indexed chunks | chunk text region when available |
+| `@`graph `@<sym` | resources with matching symbol relations | symbol text region when available |
 
 **READ uses the FIND contract as a selector, not as a visible intermediate operation.** A READ over a glob, folder, relation matcher, or acquisition-scheme matcher writes one READ log row per selected resource. It does not write a synthetic FIND row. Every matcher delivery carries all of that resource's match evidence. A body-less folder/glob uses the same resource unit. An exact stored-resource content matcher may resolve directly with the same visible contract, preserving content-level outcomes such as the 203 raw-source fallback. A bare body-less entry remains one direct READ. Zero selections write one 204 row. If selection exceeds §find-count-not-contents, READ writes one 413 refusal and no hidden deliveries. Fan-out checks cancellation between resources. {§read-multi-file-fanout}
 
-**Selection and projection are ordered and independent.** The matcher evaluates the complete readable candidate. The READ marker then projects rows from each selected resource. Match coordinates are not an implicit projection: the agent gives the model the information required to author a surgical follow-up READ without guessing which finding or context window it wants. A coordinate-less but valid relation result may select a resource with `matches: []`; the service never fabricates coordinates. {§read-selection-projection}
+**Selection and projection are ordered and independent.** The matcher evaluates
+the complete readable candidate. The READ marker then projects text from each
+selected resource. Match evidence is never an implicit projection: it gives the
+model enough information to author a surgical follow-up READ without the engine
+guessing which occurrence or context window it wants. A locator-only or
+coordinate-less valid result still selects the resource; the service never
+fabricates coordinates. {§read-selection-projection}
 
-### §slice-semantics `<L>` semantics by source mimetype
+### §text-region Universal text-region algebra
 
-**General**: sentinels `<0>` (before pos 1) and `<-1>` (after last) are EDIT insertion points; READ/COPY select empty. Other negatives in a single-position marker → 416. In a range, `M = -1` normalizes to "last" so `<1,-1>` is the whole content.
+All textual READ/EDIT/COPY/MOVE scopes use the same physical text:
 
-**Line-navigable** (text/markdown, source code, csv, yaml/toml): indexes by line via `sliceLines`. Output mimetype = `text/markdown`.
-
-**JSON**: indexes by item via `sliceJsonItems`. Every JSON value becomes a list of top-level items:
-
-| Source | Items |
-|---|---|
-| Array `[a, b, c]` | array elements |
-| Object `{k1: v1, k2: v2}` | key-value pairs as single-key wrappers (insertion order) |
-| Scalar | the scalar itself (length-1 list) |
-
-`<L>` indexes 1-based. READ result always a JSON array. Output mimetype = `application/json` (preserves structure for compose).
-
-- `<N>` → `[items[N-1]]`
-- `<N,M>` → `items.slice(N-1, M)`
-- `<1,-1>` → whole top-level
-- `<0>` / `<-1>` → `[]` for READ
-- Out-of-range → 416; malformed JSON → 400
-
-**Compose from evidence.** Match metadata reports both source lines and readable rows. A follow-up `READ(resource)<rowStart,rowEnd>` retrieves the chosen structural or textual region. The service does not turn findings into synthetic log resources or assume which occurrence the model wants. {§slice-semantics-compose-pattern}
-
-### §json-edit Structural EDIT on JSON
-
-When effective mimetype is `application/json`, EDIT dispatches through `applyJsonItemEdit`. {§json-edit-structural-json-edit} Body shape rule (parse-then-discriminate):
-
-- Body parses as JSON array → items to splice
-- Body parses as non-array JSON → single item to splice
-- Empty body → delete the selection
-- Body fails JSON parse → 400 (path-extension declares intent; honor strictly) {§json-edit-json-parse-fail-400}
-
-**Array source marker × body:**
-
-| Marker | Body | Effect |
+| Scope | Retrieval | Mutation |
 |---|---|---|
-| `<-1>` | `"d"` | append one |
-| `<-1>` | `["x","y"]` | append multiple |
-| `<-1>` | `[[1,2]]` | append inner array as one element (wrap-workaround) |
-| `<0>` | `"x"` | prepend |
-| `<N>` | `"X"` | replace position N |
-| `<N>` | `["X","Y"]` | replace position N, expanding |
-| `<N,M>` | `"X"` | range collapses to single item |
-| `<N,M>` | `[...]` | range replaced with array items |
-| `<N>` | (empty) | delete position N |
-| `<1,-1>` | (empty) | clear to `[]` |
-| `<-1>` / `<0>` | (empty) | no-op |
+| `<N>` | whole line `N` | replace/delete whole line `N` |
+| `<N,M>` | inclusive whole lines | replace/delete inclusive whole lines |
+| `<SL,SC,EL,EC>` | exact exclusive-end region | delete that region, then insert at its start |
+| `<0>` / `<-1>` | empty selection | prepend / append anchor |
 
-**Object source** (items are kv-pairs): body items must be objects (multi-key body inserts multiple kv-pairs). Array body → 400.
+Lines and Unicode code-point columns are 1-based. Exact end positions are
+exclusive; equal endpoints are zero-length insertion points. One/two-coordinate
+line shorthand is newline-aware so deleting a line does not leave an empty line.
+LF, CRLF, and CR are physical line separators; CRLF is indivisible and
+separators are not column positions. A terminal position after a final newline
+is an exact insertion anchor, not an additional whole line. `<1,-1>` selects all
+content. Other negative values, decimal text coordinates,
+inverted regions, out-of-range coordinates, and arities other than one, two, or
+four are 416.
 
-**Scalar source**: `<1>` replaces only. Grow markers (`<-1>`, `<0>`) and multi-item bodies → 400 (no implicit promotion scalar→array).
+Every successful scoped READ carries its complete resolved `region` in the
+operation result and packet metadata. The body remains line-numbered from
+`startLine`; the region preserves columns that line numbering cannot express.
+
+Every same-resource mutation resolves its replacement offsets against one
+unmodified snapshot. Disjoint replacements apply from the highest source offset
+down; overlaps and duplicate insertion boundaries are 409. This is the adopted
+SARIF region/replacement algebra for exact spans and same-snapshot ordering, not
+adoption of the SARIF interchange envelope.
+
+**Compose from evidence.** A match region already uses the four-coordinate
+scope shape. A follow-up `READ(resource)<SL,SC,EL,EC>` retrieves that exact
+region. JSONPath/XPath remain locators and matchers; they do not introduce a
+second structural scope or structural EDIT language.
+{§slice-semantics-compose-pattern}
 
 ### §ext-mimetype Path-extension declares mimetype
 
@@ -1718,18 +1787,30 @@ When effective mimetype is `application/json`, EDIT dispatches through `applyJso
 - `known:///config.yaml` → `application/yaml`
 - `known:///users` (no suffix) → `text/markdown` (Known manifest default)
 
-Same rule applies across Known, Unknown, Skill, Plurnk, File. Effective mimetype is stored in `entry_channels.mimetype` on write and drives `<L>` and matcher dispatch on read. {§ext-mimetype-extension-mimetype}
+Same rule applies across Known, Unknown, Skill, Plurnk, File. Effective
+mimetype is stored in `entry_channels.mimetype` on write and drives matcher,
+projection, and binary handling. Text scope meaning does not vary by mimetype.
+{§ext-mimetype-extension-mimetype}
 
-### §render-rule Render rule (mimetype-driven)
+### §render-rule Render rule
 
-`packet-wire` log render branches on `isLineNavigableMimetype`:
+Every textual content body with a source `startLine` renders with an `N:`
+prefix on each physical line, independent of mimetype. JSON, XML, and HTML are
+therefore just as line-addressable as markdown and source code. The prefix is a
+packet presentation aid, never part of canonical content; matchers and
+mutations consume canonical bytes before rendering. A producer may set
+`startLine: null` only when its content is already source-numbered, such as an
+effect receipt. {§render-rule-line-navigable-prefix}
 
-- **Line-navigable** (text/markdown, text/plain, csv, source code, yaml, toml) → `N:` line-number prefix per line {§render-rule-line-navigable-prefix}
-- **Tree-navigable** (application/json, application/xml, text/html, +json/+xml suffixes) → verbatim body (no `N:` — outer line numbers would collide with structural navigation like jsonpath/xpath) {§render-rule-tree-navigable-verbatim}
+A log row's canonical full body is resolved once by `LogBody`: READ/FIND/model/prompt and extension result content comes from `rx.content`; EDIT uses its structured receipt or an environment-delta span; COPY/MOVE concatenate the textual receipt contexts in their ordered `effects`; EXEC and the composed PLAN/SEND/WORK/FORK family use their statement body. Whole-channel COPY/MOVE effects are bodyless rather than fabricating a text projection. Packet rendering applies §body-projection and universal line numbering. READ/FIND over `log:///` and search consume the complete canonical body instead. Status and content are orthogonal: a failed terminal stream READ retains its Problem Details and failure status while rendering captured diagnostic output; failure never erases evidence. {§render-rule-find-renders-result}
 
-A log row's canonical full body is resolved once by `LogBody`: READ/FIND/model/prompt and extension result content comes from `rx.content`; EDIT/COPY/MOVE use their result receipt or span; EXEC and the composed PLAN/SEND/WORK/FORK family use their statement body. Packet rendering applies §body-projection, then renders the projected content under its mimetype-driven fence. READ/FIND over `log:///` and search consume the complete canonical body instead. Status and content are orthogonal: a failed terminal stream READ retains its Problem Details and failure status while rendering captured diagnostic output; failure never erases evidence. {§render-rule-find-renders-result}
-
-An `EDIT` log row renders its bounded **effect receipt** (`rx.receipt`) as row metadata and join context, not its input statement. Proposal-gated file EDITs compute the accepted receipt from what actually lands. Environment-delta EDITs and COPY/MOVE rows render their resulting `rx.span`; all remain under §body-projection. {§edit-result-render}
+An `EDIT` log row renders its bounded effect receipt (`rx.receipt`) as row
+metadata and join context, not its input statement. Proposal-gated file EDITs
+compute the accepted receipt from what actually lands. Environment-delta EDITs
+render their resulting `rx.span`. COPY/MOVE rows render compact ordered
+`effects` metadata and any regional receipt contexts under their `log:///`
+address, never under one operand's resource address. All generated bodies remain
+under §body-projection. {§edit-result-render}
 
 The `N:` prefix is presentation/reference per plurnk.md ("not part of the source"); stripped before any matcher operation on the log entry.
 
@@ -1737,7 +1818,7 @@ The `N:` prefix is presentation/reference per plurnk.md ("not part of the source
 
 Auto-derived text mimetypes anywhere in plurnk-service normalize to `text/markdown`:
 
-- `<L>` slice on line-navigable source → `text/markdown` {§markdown-primitive-text-markdown-normalize}
+- Any scoped text projection -> `text/markdown` {§markdown-primitive-text-markdown-normalize}
 - File scheme extension fallback → `text/markdown`
 - `Mimetypes.detect()` returning `text/plain` → normalized via `normalizeAutoTextMimetype`
 
@@ -1750,8 +1831,18 @@ Carried from the contract walk; durable.
 - **Dialect/mimetype mismatch** → 415 (xpath on text/plain → 415; jsonpath on JSON-shapeless mimetypes → 204 because outline is empty, not 415).
 - **Binary entries** → 415 across the board for READ/EDIT/OPEN/FOLD.
 - **EDIT `<L>` on non-existent entry** → body becomes content; `<L>` is positional-only on existing content.
-- **COPY/MOVE `<L>`** → slices the SOURCE range into the destination (every channel), symmetric with READ `<L>` but WITHOUT the `N:` prefix (`sliceLinesRaw`); an out-of-range marker → 416. MOVE `<L>` copies the slice, then deletes the whole source (relocation of a fragment). Binary channels can't be sliced (the binary→415 rule above). {§copy-l-source-range}
-- **READ rx** prefixes each line with `N:` per §render-rule. `sliceLinesRaw` (used by COPY) returns the lines without prefix.
+- **COPY/MOVE source scope** selects only the addressed source channel and
+  transfers canonical text without the packet's `N:` prefix. A MOVE removes
+  that same selected region; an unscoped MOVE removes only the selected
+  channel, deleting the entry only when no channels remain. Binary whole
+  channels may be copied/moved, but binary regions are 415.
+  {§copy-l-source-range}
+- **COPY/MOVE destination scope** is independent of the source scope and lowers
+  through the destination scheme's `editBatch`.
+- **COPY/MOVE result effects** are engine-owned and describe only mutations that
+  landed. COPY orders destination only; MOVE orders destination then source.
+  Text regions carry receipts; whole-channel changes do not.
+- **READ rx** prefixes every textual line with `N:` per §render-rule.
 - **FIND body matcher** applies to entry content (all dialects), per-candidate via the in-tree `Matcher.matchAgainstContent` (§matcher-dispatch; status 200 = content hit → entry selected). Scope + tags select candidates in SQL; the path-glob is the (target).
 - **OPEN/FOLD** operate on the **log** (`log:///`), not entries (§open-fold) — FOLD collapses a log row to its path, OPEN restores its body. Aimed at an entry scheme they return 501.
 - **SEND[410]** deletes as a side-effect (not the model idiom; §move): with `#fragment`, that channel only; without, the whole entry. **SEND[499]** resolves the durable open-subscription row and invokes that subscription's exact callable owner through the process-local live registry (§subscriptions).

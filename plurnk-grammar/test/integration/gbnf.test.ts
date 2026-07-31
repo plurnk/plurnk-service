@@ -684,7 +684,7 @@ test("GBNF: unsuffixed body cannot contain its own close literal", () => {
     assert.equal(derives("statement", collision), false);
 });
 
-test("GBNF: decimal line markers derive — insert-between, threshold, mixed", () => {
+test("GBNF: permissive decimal marker shapes derive for runtime interpretation", () => {
     assert.equal(derives("statement", "<<EDIT(known://plan)<2.5>:x:EDIT"), true);
     assert.equal(derives("statement", "<<FIND(known://**)<0.7>:~q:FIND"), true);
     assert.equal(derives("statement", "<<FIND(known://**)<0.7,20>:~q:FIND"), true);

@@ -26,10 +26,10 @@ YOU MUST suffix the outer OP (e.g. `<<EDIT1(path):quoted <<READ(path)::READ:EDIT
 
 - **PLAN** - required prose describing the intended goals at the beginning of the turn.
 - **FIND** (retrieval) - returns a JSON array of matches. READ a hit's path to view it.
-- **READ** (retrieval) - returns readable content. Line-oriented content is prefixed with source line numbers.
-- **EDIT** - creates or modifies files or entries (not log items). Requires line ranges (except for creation).
-- **COPY** - copies a readable file, entry, or stream to a file or entry.
-- **MOVE** - moves a file or entry to a different location.
+- **READ** (retrieval) - returns readable content prefixed with source line numbers.
+- **EDIT** - creates or modifies files or entries (not log items). Requires a content scope except for creation.
+- **COPY** - copies a selected channel or text region to a file or entry.
+- **MOVE** - moves a selected channel or text region to a different location.
 - **OPEN** (retrieval) - reveals a folded log item's body, consuming its tokens in subsequent packets.
 - **FOLD** - hides an irrelevant open log item's body, freeing its tokens in subsequent packets.
 - **EXEC** - executes a registered executable tool, creating an output stream.
@@ -40,21 +40,21 @@ YOU MUST suffix the outer OP (e.g. `<<EDIT1(path):quoted <<READ(path)::READ:EDIT
 
 A `?` marks an optional field, as in the Syntax line; unmarked fields are required.
 
-| OP   | `[signal]`     | `(path)`        | `<scope>`          | `:body:`           | OP   |
-|------|----------------|-----------------|--------------------|--------------------|------|
-| PLAN | -              | -               | -                  | :plan, free text:  | PLAN |
-| FIND | [filter tags]? | (path)          | <result,result>?   | :pattern:?         | FIND |
-| READ | [filter tags]? | (path)          | <row,row>?         | :pattern:?         | READ |
-| EDIT | [apply tags]?  | (path)          | <row,row>?         | :literal text:?    | EDIT |
-| COPY | [apply tags]?  | (path)          | <row,row>?         | :destination path: | COPY |
-| MOVE | [apply tags]?  | (path)          | <row,row>?         | :destination path: | MOVE |
-| OPEN | [filter tags]? | (log path)      | <result,result>?   | :pattern:?         | OPEN |
-| FOLD | [apply tags]?  | (log path)      | <result,result>?   | :pattern:?         | FOLD |
-| EXEC | [executor]?    | (path)?         | <timeout, poll>?   | :input:?           | EXEC |
-| WORK | [branch]?      | (worker://name) | -                  | :prompt:           | WORK |
-| FORK | [branch]?      | (worker://name) | -                  | :prompt:           | FORK |
-| KILL | [signal]?      | (path)          | -                  | ::                 | KILL |
-| SEND | [submit code]? | (recipient)?    | <timeout, poll>?   | :message:          | SEND |
+| OP   | `[signal]`     | `(path)`        | `<scope>`          | `:body:`              | OP   |
+|------|----------------|-----------------|--------------------|-----------------------|------|
+| PLAN | -              | -               | -                  | :plan, free text:     | PLAN |
+| FIND | [filter tags]? | (path)          | <result,result>?   | :pattern?:            | FIND |
+| READ | [filter tags]? | (path)          | <text region>?     | :pattern?:            | READ |
+| EDIT | [apply tags]?  | (path)          | <text region>?     | :literal text?:       | EDIT |
+| COPY | [apply tags]?  | (source path)   | <source region>?   | :dest path<region>?:  | COPY |
+| MOVE | [apply tags]?  | (source path)   | <source region>?   | :dest path<region>?:  | MOVE |
+| OPEN | [filter tags]? | (log path)      | <result,result>?   | :pattern?:            | OPEN |
+| FOLD | [apply tags]?  | (log path)      | <result,result>?   | :pattern?:            | FOLD |
+| EXEC | [executor]?    | (path)?         | <timeout, poll>?   | :input?:              | EXEC |
+| WORK | [branch]?      | (worker://name) | -                  | :prompt:              | WORK |
+| FORK | [branch]?      | (worker://name) | -                  | :prompt:              | FORK |
+| KILL | [signal]?      | (path)          | -                  | ::                    | KILL |
+| SEND | [submit code]? | (recipient)?    | <timeout, poll>?   | :message:             | SEND |
 
 Examples:
 
@@ -89,7 +89,7 @@ Matcher bodies filter content across treemapped files, entries, and items.
 * A `dir/**` summary reports the recursive `items` and `tokens`.
 * Filters bracket directly: $[?(@.role=="admin")], never $.[?(...)].
 * Mapping is universal (you can do jsonpath against XML files and xpath on json files, etc...).
-* Matching returns whole lines, never extracted values: `Alice` returns `42: I bought Alice some flowers`, not `1: Alice`.
+* A matcher selects resources; `matches` reports a locator and an honest exact or enclosing text region when available. It never replaces a resource with an extracted value.
 * Regex uses the standard `/pattern/flags` literal; escape a literal delimiter as `\/`.
 
 ### `(path)`
@@ -126,13 +126,19 @@ Which ops target which resource. WORK and FORK are delegation ops, not resource 
 
 ### `<scope>`
 
-One or more numbers narrowing the operation, highly contextual and polymorphic by operation. Their meaning depends on the operation and the numbers' shapes:
+One or more numbers narrowing the operation. Their meaning depends on the operation:
 
 - On FIND, OPEN, and FOLD, integers select result positions.
-- On READ and EDIT, integers select readable content positions.
-- On COPY and MOVE, integers select source lines.
+- On READ and EDIT, a text scope selects readable content.
+- On COPY and MOVE, the header scope selects source content. The destination path in the body may carry an independent destination scope.
 - On semantic FIND and READ, a leading decimal is a `~`-similarity threshold: results scoring at least that value.
 - On EXEC and SEND, the slot is `<timeout, poll>` seconds.
+
+Text scopes have one universal meaning for every textual mimetype:
+
+- `<line>` selects one whole physical line.
+- `<firstLine,lastLine>` selects inclusive whole physical lines.
+- `<startLine,startColumn,endLine,endColumn>` selects an exact text region. Lines and Unicode code-point columns are 1-based; the end is exclusive. Equal start and end positions insert without deleting.
 
 Examples:
 
@@ -141,6 +147,9 @@ B. FIND retrieves results 10 through 20, inclusive: `<<FIND(src/**)<10,20>::FIND
 C. EDIT appends a new line: `<<EDIT(file.md)<-1>:literal text appended to the file:EDIT`
 D. READ views lines 12 through 15: `<<READ(notes.md)<12,15>::READ`
 E. EDIT replaces those same lines: `<<EDIT(notes.md)<12,15>:The revised lines go here.:EDIT`
+F. READ views an exact region: `<<READ(notes.md)<12,5,12,20>::READ`
+G. EDIT inserts at an exact position: `<<EDIT(notes.md)<12,5,12,5>:inserted text:EDIT`
+H. COPY saves an exact response-header region to a default-channel entry: `<<COPY(https://en.wikipedia.org/wiki/James_Dean#header)<1,1,1,12>:worker:///dean-header.txt:COPY`
 
 For EDIT, sentinels `<0>` and `<-1>` insert before position 1 and after the last position.
 Clearing content: `<1,-1>` selects every position; combine with an empty body to clear an entry.
@@ -149,8 +158,7 @@ Multiple EDITs to one target in a turn use the same source snapshot and cannot o
 
 YOU MUST include line numbers (e.g. `<356>` or `<42,67>`) when editing an existing file or entry.
 
-FIND matches report source `lineStart`/`lineEnd` and readable `rowStart`/`rowEnd`.
-Scope READ with rows; rows equal lines for unstructured text.
+FIND and READ matches may report `path` and an honest `region`. Use the region's four coordinates for a surgical READ; a locator-only match has no honest text region.
 
 Editing by line is exacting work. Use the precise, current file or entry positions from recent READ operations.
 
@@ -280,6 +288,7 @@ These are unsorted examples of legal plurnk usage, not a coherent or complete tu
 <<EDIT(worker:///notes.md)<0>:# Notes:EDIT
 <<EDIT[tutorial,training,scripts](example.sh):echo "Maximize your Active Context signal/noise ratio." > advice.txt:EDIT
 <<COPY[archive,2026-05-14](worker:///draft.md):worker:///archive/2026-05-14/draft.md:COPY
+<<COPY(worker:///draft.md)<2,8>:worker:///archive.md<-1>:COPY
 <<MOVE[final](worker:///draft/answer.md):worker:///final/answer.md:MOVE
 <<OPEN(log:///**)<1,10>::OPEN
 <<FOLD(log:///**)<101,200>::FOLD

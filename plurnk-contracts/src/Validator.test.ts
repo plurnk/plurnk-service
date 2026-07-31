@@ -4,8 +4,32 @@ import Validator, {
     InvalidNoticeError,
     InvalidOperationResultError,
     InvalidProblemDetailsError,
+    InvalidTextRegionError,
 } from "./Validator.ts";
 import Problems from "./Problems.ts";
+
+test("TextRegion requires complete ordered Unicode text coordinates", () => {
+    const region = {
+        startLine: 2,
+        startColumn: 3,
+        endLine: 4,
+        endColumn: 1,
+    };
+    assert.equal(Validator.validateTextRegion(region).valid, true);
+    assert.equal(Validator.assertTextRegion(region), region);
+    for (const invalid of [
+        { startLine: 1, startColumn: 1, endLine: 1 },
+        { startLine: 0, startColumn: 1, endLine: 1, endColumn: 1 },
+        { startLine: Number.MAX_SAFE_INTEGER + 1, startColumn: 1, endLine: Number.MAX_SAFE_INTEGER + 1, endColumn: 1 },
+        { startLine: 2, startColumn: 1, endLine: 1, endColumn: 1 },
+        { startLine: 1, startColumn: 3, endLine: 1, endColumn: 2 },
+    ]) {
+        assert.throws(
+            () => Validator.assertTextRegion(invalid as never),
+            InvalidTextRegionError,
+        );
+    }
+});
 
 test("Notice accepts open producer observations and typed positions", () => {
     for (const notice of [

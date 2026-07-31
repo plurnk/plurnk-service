@@ -18,7 +18,8 @@ const urlPath = (scheme: string, pathname: string): UrlPath => ({
 });
 
 const copyStmt = (src: UrlPath, dst: UrlPath): CopyStatement => ({
-    op: "COPY", suffix: "", signal: null, target: src, lineMarker: null, body: dst.raw, position: { line: 1, column: 1 },
+    op: "COPY", suffix: "", signal: null, target: src, lineMarker: null,
+    body: { target: dst, lineMarker: null }, position: { line: 1, column: 1 },
 });
 
 test("COPY a json-bodied source into a markdown-fixed worker:/// dst returns 415", async () => {

@@ -89,7 +89,9 @@ test("[plurnk.md-READ-glob-on-content] READ glob body matches entry CONTENT, not
         const r = await new Worker().read(readStmt(url("doc"), glob("TODO*")), makeSchemeCtx({ db, workspaceId }));
         assert.equal(r.status, 200);
         assert.equal(r.content, "alpha\nTODO: ship\nbeta");
-        assert.deepEqual(r.matches, [{ lineStart: 2, lineEnd: 2, rowStart: 2, rowEnd: 2 }]);
+        assert.deepEqual(r.matches, [{
+            region: { startLine: 2, startColumn: 1, endLine: 2, endColumn: 11 },
+        }]);
     } finally { db.close(); }
 });
 
@@ -101,7 +103,9 @@ test("[plurnk.md-READ-regex-on-content] READ regex body matches entry CONTENT, n
         const r = await new Worker().read(readStmt(url("doc"), regex("timeout")), makeSchemeCtx({ db, workspaceId }));
         assert.equal(r.status, 200);
         assert.equal(r.content, "heading\nalpha timeout beta\ncontext");
-        assert.deepEqual(r.matches, [{ lineStart: 2, lineEnd: 2, rowStart: 2, rowEnd: 2 }]);
+        assert.deepEqual(r.matches, [{
+            region: { startLine: 2, startColumn: 7, endLine: 2, endColumn: 14 },
+        }]);
     } finally { db.close(); }
 });
 

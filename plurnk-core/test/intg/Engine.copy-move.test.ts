@@ -22,7 +22,7 @@ const dispatch = async (engine: Engine, env: { workspaceId: number; workerId: nu
     });
 };
 
-test("Engine.copy same-scheme (known → known)", async () => {
+test("Engine.copy copies the default channel without carrying source tags", async () => {
     const { db, workspaceId, workerId, loopId, turnId, engine } = await setup();
     try {
         await new Worker().edit(editStmt(urlPath("worker", "/france/capital"), "Paris", ["france"]), makeSchemeCtx({ db, workspaceId, workerId }));
@@ -35,7 +35,7 @@ test("Engine.copy same-scheme (known → known)", async () => {
         const channel = await db.test_get_channel_by_pathname.get<{ content: string }>({ pathname: "/europe/france", name: "body" });
         assert.equal(channel?.content, "Paris");
         const tags = await db.test_tags_by_pathname.all<{ tag: string }>({ pathname: "/europe/france" });
-        assert.deepEqual(tags.map((t) => t.tag), ["france"]);
+        assert.deepEqual(tags.map((t) => t.tag), []);
     } finally { await db.close(); }
 });
 
@@ -86,8 +86,15 @@ test("Engine.copy to a destination already holding identical content returns 304
         // Three dispatches in one turn → distinct sequences (log_entries is unique on turn_id+sequence).
         const copy = (sequence: number) => engine.dispatch({ statement: copyStmt(urlPath("worker", "/src"), urlPath("worker", "/dst")), workspaceId, workerId, loopId, turnId, sequence, origin: "client" });
 
-        assert.equal((await copy(1)).status, 201, "first copy creates the destination");
-        assert.equal((await copy(2)).status, 304, "identical re-copy is a no-op, not a 409");
+        const created = await copy(1);
+        assert.equal(created.status, 201, "first copy creates the destination");
+        assert.deepEqual(created.effects, [{
+            target: "worker:///dst",
+            action: "create",
+        }]);
+        const unchanged = await copy(2);
+        assert.equal(unchanged.status, 304, "identical re-copy is a no-op, not a 409");
+        assert.equal(unchanged.effects, undefined, "a no-op reports no effects");
 
         // Divergent destination is still a real collision; it stays untouched.
         await k.edit(editStmt(urlPath("worker", "/src"), "changed body", null, fullReplace), makeSchemeCtx({ db, workspaceId, workerId }));
@@ -97,7 +104,7 @@ test("Engine.copy to a destination already holding identical content returns 304
     } finally { await db.close(); }
 });
 
-test("Engine.copy tag policy — signal present REPLACES source tags on dest", async () => {
+test("Engine.copy applies explicit destination tags", async () => {
     const { db, workspaceId, workerId, loopId, turnId, engine } = await setup();
     try {
         await new Worker().edit(editStmt(urlPath("worker", "/src"), "x", ["original", "tags"]), makeSchemeCtx({ db, workspaceId, workerId }));
@@ -110,7 +117,7 @@ test("Engine.copy tag policy — signal present REPLACES source tags on dest", a
     } finally { await db.close(); }
 });
 
-test("Engine.copy tag policy — no signal CARRIES source tags", async () => {
+test("Engine.copy without signal leaves source tags behind", async () => {
     const { db, workspaceId, workerId, loopId, turnId, engine } = await setup();
     try {
         await new Worker().edit(editStmt(urlPath("worker", "/src"), "x", ["a", "b"]), makeSchemeCtx({ db, workspaceId, workerId }));
@@ -119,7 +126,7 @@ test("Engine.copy tag policy — no signal CARRIES source tags", async () => {
         assert.equal(r.status, 201);
 
         const tags = await db.test_tags_by_pathname.all<{ tag: string }>({ pathname: "/dst" });
-        assert.deepEqual(tags.map((t) => t.tag), ["a", "b"]);
+        assert.deepEqual(tags.map((t) => t.tag), []);
     } finally { await db.close(); }
 });
 
@@ -217,7 +224,7 @@ test("Engine.copy with <L> out of range returns 416", async () => {
     } finally { await db.close(); }
 });
 
-test("Engine.move with <L> slices the source range, then deletes the whole source", async () => {
+test("Engine.move with a source region removes only that region", async () => {
     const { db, workspaceId, workerId, loopId, turnId, engine } = await setup();
     try {
         await new Worker().edit(editStmt(urlPath("worker", "/orig"), "first\nsecond\nthird"), makeSchemeCtx({ db, workspaceId, workerId }));
@@ -225,7 +232,9 @@ test("Engine.move with <L> slices the source range, then deletes the whole sourc
         const r = await dispatch(engine, { workspaceId, workerId, loopId, turnId }, stmt);
         assert.equal(r.status, 201);
         const srcRemaining = await db.test_get_entry_id_by_pathname.get<{ id: number }>({ pathname: "/orig" });
-        assert.equal(srcRemaining, undefined);
+        assert.notEqual(srcRemaining, undefined, "the source entry remains");
+        const srcChannel = await db.test_get_channel.get<{ content: string }>({ entry_id: srcRemaining?.id, name: "body" });
+        assert.equal(srcChannel?.content, "third");
         const entryRow = await db.test_get_entry_id_by_pathname.get<{ id: number }>({ pathname: "/moved" });
         const dstChannel = await db.test_get_channel.get<{ content: string }>({ entry_id: entryRow?.id, name: "body" });
         assert.equal(dstChannel?.content, "first\nsecond\n");

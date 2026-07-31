@@ -1,16 +1,16 @@
 // Shared READ selection-to-projection resolution for entry-bearing schemes
 // (Known/Skill/Unknown/Exec/Plurnk via `_entry-ops`), plus `Log` and `File`.
 // A body matcher selects the resource against its full readable content; `<L>`
-// then projects rows from that selected resource. Without `<L>`, READ returns
+// then projects text from that selected resource. Without `<L>`, READ returns
 // the complete selected resource. Match coordinates remain metadata in both
-// cases. `<L>` dispatches on source mimetype - JSON -> item index
-// (sliceJsonItems), line-navigable -> line index (sliceLines). Callers
-// bind their own (content, mimetype) and wrap the result (e.g. `_entry-ops` adds
-// `channel`).
+// cases. `<scope>` always addresses the readable textual representation;
+// structured matchers may locate content, but do not change scope coordinates.
+// Callers bind their own (content, mimetype) and wrap the result.
 
 import type { LineMarker, MatcherBody } from "@plurnk/plurnk-grammar";
+import type { TextRegion } from "@plurnk/plurnk-contracts";
 import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
-import type { MatchRange, RangeExtent, SchemeResultBase } from "@plurnk/plurnk-schemes";
+import type { MatchEvidence, RangeExtent, SchemeResultBase } from "@plurnk/plurnk-schemes";
 import LineMarkerOps from "./line-marker.ts";
 import Matcher from "./matcher.ts";
 import MimetypeBinary from "./mimetype-binary.ts";
@@ -19,7 +19,8 @@ export interface ReadSliceResult extends SchemeResultBase {
     content: string | null;
     mimetype: string;
     startLine?: number | null;
-    matches?: ReadonlyArray<MatchRange>;
+    region?: TextRegion;
+    matches?: ReadonlyArray<MatchEvidence>;
     reason?: string;
     range?: RangeExtent;
 }
@@ -33,7 +34,7 @@ export default class ReadResolve {
         mimetypes: Mimetypes | undefined;
     }): Promise<ReadSliceResult> {
         const { content, mimetype, lineMarker, body, mimetypes } = opts;
-        let selectedMatches: ReadonlyArray<MatchRange> | undefined;
+        let selectedMatches: ReadonlyArray<MatchEvidence> | undefined;
         let selectionFallback: { mimetype: string; reason?: string } | null = null;
 
         // Match the complete resource once. The body is a resource predicate;
@@ -72,40 +73,23 @@ export default class ReadResolve {
 
         let workingContent = content;
         let workingStart: number | null = 1;
-        let workingMimetypeForSlice = MimetypeBinary.TEXT_PRIMITIVE_MIMETYPE;
+        let workingRegion: TextRegion | undefined;
         if (lineMarker !== null) {
-            if (selectionFallback === null && MimetypeBinary.isJsonMimetype(mimetype)) {
-                const sliced = LineMarkerOps.sliceJsonItems(content, lineMarker);
-                if (sliced.status === 416) return {
-                    status: 416,
-                    problem: sliced.problem,
-                    content: null,
-                    mimetype,
-                    reason: sliced.problem?.detail,
-                    range: sliced.range,
-                };
-                if (sliced.status !== 200) {
-                    throw new Error(`ReadResolve: JSON slicing returned unexpected status ${sliced.status}`);
-                }
-                workingContent = sliced.body ?? "[]";
-                workingStart = null;
-                workingMimetypeForSlice = "application/json";
-            } else {
-                const sliced = LineMarkerOps.sliceLines(content, lineMarker);
-                if (sliced.status === 416) return {
-                    status: 416,
-                    problem: sliced.problem,
-                    content: null,
-                    mimetype,
-                    reason: sliced.problem?.detail,
-                    range: sliced.range,
-                };
-                if (sliced.status !== 200) {
-                    throw new Error(`ReadResolve: line slicing returned unexpected status ${sliced.status}`);
-                }
-                workingContent = sliced.text ?? "";
-                workingStart = sliced.startLine ?? null;
+            const sliced = LineMarkerOps.sliceLines(content, lineMarker);
+            if (sliced.status === 416) return {
+                status: 416,
+                problem: sliced.problem,
+                content: null,
+                mimetype,
+                reason: sliced.problem?.detail,
+                range: sliced.range,
+            };
+            if (sliced.status !== 200) {
+                throw new Error(`ReadResolve: text slicing returned unexpected status ${sliced.status}`);
             }
+            workingContent = sliced.text ?? "";
+            workingStart = sliced.startLine ?? null;
+            workingRegion = sliced.region;
         }
 
         if (selectionFallback !== null) {
@@ -114,20 +98,28 @@ export default class ReadResolve {
                 content: workingContent,
                 mimetype: selectionFallback.mimetype,
                 startLine: workingStart,
-                reason: selectionFallback.reason,
+                ...(workingRegion === undefined ? {} : { region: workingRegion }),
+                ...(selectionFallback.reason === undefined ? {} : { reason: selectionFallback.reason }),
             };
         }
 
         if (lineMarker !== null) {
-            // `<L>` slice mimetype follows the source family: line-navigable ->
-            // text/markdown, JSON -> application/json. Empty / `[]` -> 204.
-            const isEmptyJsonArray = workingMimetypeForSlice === "application/json" && workingContent === "[]";
-            if (workingContent === "" || isEmptyJsonArray) return { status: 204, content: "", mimetype: workingMimetypeForSlice, startLine: null };
+            if (workingContent === "") {
+                return {
+                    status: 204,
+                    content: "",
+                    mimetype: MimetypeBinary.TEXT_PRIMITIVE_MIMETYPE,
+                    startLine: null,
+                    ...(workingRegion === undefined ? {} : { region: workingRegion }),
+                    ...(selectedMatches === undefined ? {} : { matches: selectedMatches }),
+                };
+            }
             return {
                 status: 200,
                 content: workingContent,
-                mimetype: workingMimetypeForSlice,
+                mimetype: MimetypeBinary.TEXT_PRIMITIVE_MIMETYPE,
                 startLine: workingStart,
+                ...(workingRegion === undefined ? {} : { region: workingRegion }),
                 ...(selectedMatches === undefined ? {} : { matches: selectedMatches }),
             };
         }

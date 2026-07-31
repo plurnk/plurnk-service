@@ -7,6 +7,21 @@ const content = (value: string, mimetype = "text/markdown") => ({
     mimetype,
 });
 
+const receipt = (context: string, requested = "<2>") => ({
+    revision: "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789",
+    unit: "lines",
+    before: 2,
+    after: 2,
+    effect: {
+        requested,
+        source: "2",
+        result: "2",
+        removed: 1,
+        inserted: 1,
+        context,
+    },
+});
+
 test("LogBody resolves built-in result-backed bodies", () => {
     for (const op of ["READ", "FIND", "model", "prompt"]) {
         assert.deepEqual(
@@ -21,11 +36,7 @@ test("LogBody resolves built-in result-backed bodies", () => {
             op: "EDIT",
             tx: { body: "input" },
             rx: {
-                receipt: {
-                    effect: {
-                        context: "10:before\n11:after",
-                    },
-                },
+                receipt: receipt("10:before\n11:after"),
             },
         }),
         { content: "10:before\n11:after", mimetype: "text/plain", startLine: null },
@@ -33,11 +44,81 @@ test("LogBody resolves built-in result-backed bodies", () => {
 
     for (const [op, rx] of [
         ["EDIT", { span: "1:edited" }],
-        ["COPY", { receipt: "1:copied" }],
-        ["MOVE", { body: "1:moved" }],
     ] as const) {
         assert.equal(LogBody.resolve({ op, tx: "", rx }).content, Object.values(rx)[0], op);
     }
+});
+
+test("LogBody resolves COPY/MOVE bodies only from ordered textual effects", () => {
+    assert.deepEqual(
+        LogBody.resolve({
+            op: "COPY",
+            tx: "",
+            rx: {
+                effects: [{
+                    target: "worker:///destination",
+                    action: "update",
+                    receipt: receipt("1:before\n2:copied"),
+                }],
+            },
+        }),
+        { content: "1:before\n2:copied", mimetype: "text/plain", startLine: null },
+    );
+    assert.deepEqual(
+        LogBody.resolve({
+            op: "MOVE",
+            tx: "",
+            rx: {
+                effects: [
+                    {
+                        target: "worker:///destination",
+                        action: "update",
+                        receipt: receipt("1:destination", "<1>"),
+                    },
+                    {
+                        target: "worker:///source",
+                        action: "update",
+                        receipt: receipt("1:source", "<2>"),
+                    },
+                ],
+            },
+        }),
+        {
+            content: "1:destination\n\n1:source",
+            mimetype: "text/plain",
+            startLine: null,
+        },
+    );
+    assert.equal(
+        LogBody.resolve({
+            op: "MOVE",
+            tx: "",
+            rx: {
+                effects: [
+                    { target: "worker:///destination", action: "create" },
+                    { target: "worker:///source", action: "delete" },
+                ],
+            },
+        }).content,
+        "",
+        "whole-channel effects have no invented textual receipt",
+    );
+    assert.equal(
+        LogBody.resolve({ op: "COPY", tx: "", rx: { span: "legacy" } }).content,
+        "",
+        "COPY/MOVE do not retain a second legacy body contract",
+    );
+});
+
+test("LogBody rejects malformed EDIT and COPY/MOVE result receipts", () => {
+    assert.throws(
+        () => LogBody.resolve({ op: "EDIT", tx: "", rx: { receipt: { effect: { context: "x" } } } }),
+        /EDIT receipt/,
+    );
+    assert.throws(
+        () => LogBody.resolve({ op: "COPY", tx: "", rx: { effects: [] } }),
+        /non-empty array/,
+    );
 });
 
 test("LogBody resolves built-in statement-backed and pushed bodies", () => {

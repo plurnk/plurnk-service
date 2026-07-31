@@ -30,11 +30,11 @@ type WriteTarget =
         detail: string;
         extensions?: Readonly<Record<string, unknown>>;
     };
-import { LineMarkerOps, MimetypeBinary, editReceipt, editReceiptUnit, editedSpan, projectEditReceipt } from "../content/index.ts";
+import { LineMarkerOps, MimetypeBinary, editReceipt, projectEditReceipt } from "../content/index.ts";
 import type { EditBatchReceipt } from "../content/index.ts";
 
 type EditResult = SchemeResultBase & { body?: string; attrs?: object; editReceipt?: EditBatchReceipt };
-type ApplyArgs = { attrs: { path?: string; canonical?: string; patched?: string; editReceipt?: EditBatchReceipt; span?: string; deletePath?: string; baseSig?: string | null; existed?: boolean; [k: string]: unknown }; body?: string };
+type ApplyArgs = { attrs: { path?: string; canonical?: string; patched?: string; editReceipt?: EditBatchReceipt; deletePath?: string; baseSig?: string | null; existed?: boolean; [k: string]: unknown }; body?: string };
 type ApplyResult = SchemeResultBase & { outcome?: string; body?: string; result?: object };
 
 // Workspace root for file ops is sourced from `workspaces.project_root`,
@@ -386,9 +386,7 @@ export default class File extends CoreSchemeAdapterBase {
             }
         }
 
-        // `<L>` line marker dispatches on file mimetype: JSON →
-        // LineMarkerOps.applyJsonItemEdit (structural item edit); otherwise →
-        // LineMarkerOps.applyLineMarkerEdit (line edit). A CREATE (no existing file) has
+        // `<scope>` always addresses the file's textual representation. A CREATE has
         // nothing to scope into, so a markerless body becomes the new file's content.
         // {§edit-marker-required-on-existing} (#571) — an EXISTING file has no easy-clobber
         // path: a marker is REQUIRED, even for a deliberate full rewrite (`<1,-1>` states
@@ -410,9 +408,7 @@ export default class File extends CoreSchemeAdapterBase {
                 );
             }
             const edits = statements.map((candidate) => ({ marker: candidate.lineMarker!, body: candidate.body ?? "" }));
-            const result = MimetypeBinary.isJsonMimetype(mimetype)
-                ? LineMarkerOps.applyJsonItemEditBatch(original, edits)
-                : LineMarkerOps.applyLineMarkerEditBatch(original, edits);
+            const result = LineMarkerOps.applyLineMarkerEditBatch(original, edits);
             if (result.status !== 200) return Results.assert(result) as EditResult;
             patched = result.result ?? "";
         } else {
@@ -436,9 +432,7 @@ export default class File extends CoreSchemeAdapterBase {
         const receiptEdits = fileExists
             ? statements.map((candidate) => ({ marker: candidate.lineMarker!, body: candidate.body ?? "" }))
             : [{ marker: { marks: [1, -1] as [number, number] }, body: patched }];
-        const batchReceipt = editReceipt(original, patched, receiptEdits, {
-            unit: editReceiptUnit(MimetypeBinary.isJsonMimetype(mimetype), original, patched),
-        });
+        const batchReceipt = editReceipt(original, patched, receiptEdits);
         return {
             status: 202,
             body: patch,
@@ -487,7 +481,7 @@ export default class File extends CoreSchemeAdapterBase {
         const { canonical, rel, fileExists, original, baseSig, admittedBy } = target;
         const patched = bodyChannel.content;
         const patch = createPatch(rel, original, patched, "current", "proposed");
-        return { status: 202, created: !fileExists, entryId: null, body: patch, attrs: { path: rel, canonical, patch, patched, span: editedSpan(original, patched), baseSig, existed: fileExists, ...(admittedBy !== undefined ? { admittedBy } : {}) } };
+        return { status: 202, created: !fileExists, entryId: null, body: patch, attrs: { path: rel, canonical, patch, patched, baseSig, existed: fileExists, ...(admittedBy !== undefined ? { admittedBy } : {}) } };
     }
 
     // applyResolution — called by Engine.dispatch after a proposed log
@@ -495,9 +489,8 @@ export default class File extends CoreSchemeAdapterBase {
     //   1. Write the patched content to disk.
     //   2. Register the file as an entry so it appears in the manifest and the
     //      model can READ its full landed work.
-    // The accepted result returns the editedSpan diff as its body, so the EDIT row
-    // itself carries the line-numbered confirmation of what changed — parity with the
-    // entry-scheme EDIT's span; default-folding reclaims it at the next turn boundary.
+    // Accepted regional EDITs return the receipt for what landed. COPY/MOVE
+    // resource effects are composed by Dispatcher after this hook returns.
     async applyResolution(args: ApplyArgs, ctx: CoreSchemeCallContext): Promise<ApplyResult> {
         const core = this.coreContext(ctx);
         const { attrs, body } = args;
@@ -571,12 +564,10 @@ export default class File extends CoreSchemeAdapterBase {
         let receipt = attrs.editReceipt;
         if (body !== undefined && body !== attrs.patched) {
             const original = existed ? await readFile(canonical, "utf8") : "";
-            const mimetype = await detectFileMimetype(canonical, core);
             const reviewed = editReceipt(
                 original,
                 patched,
                 [{ marker: { marks: [1, -1] as [number, number] }, body: patched }],
-                { unit: editReceiptUnit(MimetypeBinary.isJsonMimetype(mimetype), original, patched) },
             );
             const statementCount = attrs.editReceipt?.effects.length ?? 1;
             receipt = {
@@ -644,7 +635,7 @@ export default class File extends CoreSchemeAdapterBase {
                 },
             ) as ApplyResult;
         }
-        if (receipt === undefined) return { status: 200, body: attrs.span };
+        if (receipt === undefined) return { status: 200 };
         return { status: 200, result: { receipt: projectEditReceipt(receipt, 0), editReceipt: receipt } };
     }
 
@@ -670,5 +661,26 @@ export default class File extends CoreSchemeAdapterBase {
         const member = await core.db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: core.workspaceId, owner_id: await Owner.commonsId(core.db, core.workspaceId), scheme: "file", pathname: rel });
         if (member === undefined) return Results.failure("scheme:file", "entry-not-found", 404, `No file entry exists at ${rel}.`, {}, { target: rel }) as DeleteEntryResult;
         return { status: 202, attrs: { deletePath: rel } };
+    }
+
+    async deleteChannel(
+        pathname: string,
+        channel: string,
+        ctx: CoreSchemeCallContext,
+    ): Promise<DeleteEntryResult> {
+        if (channel !== File.manifest.defaultChannel) {
+            return Results.failure(
+                "scheme:file",
+                "channel-not-found",
+                404,
+                `No channel named #${channel} exists at ${pathname}.`,
+                {},
+                {
+                    target: pathname,
+                    channel,
+                },
+            ) as DeleteEntryResult;
+        }
+        return this.deleteEntry(pathname, ctx);
     }
 }

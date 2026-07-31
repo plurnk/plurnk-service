@@ -13,12 +13,17 @@
 // sees consistent framing across every section it might receive. Sections
 // with no content are omitted entirely (no empty headers in the wire).
 
-import { MimetypeBinary } from "../content/index.ts";
-import { Validator, type ProblemDetails } from "@plurnk/plurnk-contracts";
+import { Validator, type ProblemDetails, type TextRegion } from "@plurnk/plurnk-contracts";
+import { Results as SchemeResults } from "@plurnk/plurnk-schemes";
 import { renderAddress } from "./plurnk-uri.ts";
 import { encodePathParens } from "./path-decode.ts";
 import type { GitStatus } from "./git-state.ts";
 import LogBody from "./LogBody.ts";
+import {
+    assertEditReceipt,
+    assertResourceEffects,
+    type EditReceipt,
+} from "../content/index.ts";
 
 const editReceiptRevisionChars = (): number => {
     const raw = process.env.PLURNK_SERVICE_EDIT_RECEIPT_REVISION_CHARS;
@@ -54,7 +59,17 @@ interface ActionTarget { scheme?: string | null; hostname?: string | null; port?
 interface StatementTx {
     body?: string | { raw?: unknown } | null;
 }
-interface RxView { content?: unknown; mimetype?: unknown; startLine?: unknown; matches?: unknown; itemsTokenTotal?: unknown; omittedItems?: unknown }
+interface RxView {
+    content?: unknown;
+    mimetype?: unknown;
+    startLine?: unknown;
+    region?: unknown;
+    matches?: unknown;
+    itemsTokenTotal?: unknown;
+    omittedItems?: unknown;
+    receipt?: unknown;
+    effects?: unknown;
+}
 interface LogEntryView {
     coordinate?: unknown;
     op?: unknown;
@@ -203,24 +218,22 @@ export default class PacketWire {
     // Used for READ@200 content; index-preview numbering is the framework's
     // job now (baked into the preview string — see renderHeredoc).
     static #numberLines(body: string, start = 1): string {
-        if (!body) return "";
-        const trailingNewline = body.endsWith("\n");
-        const source = trailingNewline ? body.slice(0, -1) : body;
-        const numbered = source.split("\n").map((line, i) => `${start + i}:${line}`).join("\n");
-        return trailingNewline ? `${numbered}\n` : numbered;
+        let line = start;
+        return body.replace(
+            /(^|\r\n|\r|\n)(?=[\s\S])/g,
+            (separator) => `${separator}${line++}:`,
+        );
     }
 
     // The single content-body renderer EVERY output-emitting op routes through, so the line-number
-    // convention the model orients on can't drift: line-navigable mimetypes (text/*) get the `N:`
-    // prefix from `startLine`; tree-navigable (JSON/XML/HTML) render verbatim so jsonpath/xpath
-    // isn't shifted. Empty content ⇒ "" (the meta line stands alone). §render-rule-line-navigable-prefix
-    static #renderContentBody(fence: string, content: string, mimetype: string, startLine: number | null = 1): string {
+    // convention the model orients on can't drift. Every textual body receives
+    // the `N:` prefix from `startLine`; matchers consume canonical content before
+    // this presentation projection. Empty content produces no body.
+    static #renderContentBody(fence: string, content: string, startLine: number | null = 1): string {
         if (content.length === 0) return "";
-        // Line-navigable text gets the `N:` source-line prefix from startLine. `startLine === null`
-        // means the producer already supplied source-numbered content; re-numbering
-        // would duplicate its coordinates. Render it verbatim.
-        // §render-rule-line-navigable-prefix
-        const rendered = MimetypeBinary.isLineNavigableMimetype(mimetype) && startLine !== null
+        // `startLine === null` means the producer already supplied numbered
+        // content; re-numbering would duplicate its coordinates.
+        const rendered = startLine !== null
             ? PacketWire.#numberLines(content, startLine)
             : content;
         return PacketWire.#wrapHeredocBody(fence, rendered);
@@ -240,6 +253,16 @@ export default class PacketWire {
         const sorted: Record<string, unknown> = {};
         for (const k of keys) sorted[k] = obj[k];
         return JSON.stringify(sorted);
+    }
+
+    static #receiptMeta(value: unknown): Record<string, string> {
+        const receipt: EditReceipt = assertEditReceipt(value);
+        return {
+            rev: receipt.revision.slice(0, editReceiptRevisionChars()),
+            extent: `${receipt.unit} ${receipt.before}->${receipt.after}`,
+            change: `-${receipt.effect.removed} +${receipt.effect.inserted}`,
+            range: `${receipt.effect.requested} ${receipt.effect.source}->${receipt.effect.result}`,
+        };
     }
 
     // Wrap a body in heredoc fences. Leading `\n` always (separates the
@@ -271,9 +294,9 @@ export default class PacketWire {
     // Render one Log entry → a single bullet line carrying the meta JSON.
     // No body, no fence — every meaningful field is in the JSON. Naming
     // follows the uniform principle: `path` is identity (this log row's
-    // own URI), `target` is the URI the action acted on. COPY/MOVE add
-    // `source`; currently the engine emits target only (source plumbing
-    // pending the COPY/MOVE-specific log shape pass).
+    // own URI), `target` is the URI in the statement's target slot. COPY/MOVE
+    // expose every resource they changed through ordered `effects` instead of
+    // forcing two operands into one target field.
     //
     // On error, status >= 400 signals the failure; Problem Details live on
     // this durable row and the next packet's Errors section points here. (Forward:
@@ -367,8 +390,11 @@ export default class PacketWire {
                     const parsed = PacketWire.#safeParse(rx.content);
                     if (Array.isArray(parsed)) items = parsed.length;
                 }
-                if (op === "READ" && rx !== null && typeof rx === "object" && Array.isArray(rx.matches)) {
-                    meta.matches = rx.matches;
+                if (op === "READ" && rx !== null && typeof rx === "object" && rx.matches !== undefined) {
+                    meta.matches = SchemeResults.assertMatchEvidenceList(rx.matches);
+                }
+                if (op === "READ" && rx !== null && typeof rx === "object" && rx.region !== undefined) {
+                    meta.region = Validator.assertTextRegion(rx.region as TextRegion);
                 }
                 // The matched set's content weight (sum of the entries' live channel tokens) — the
                 // FIND self-describes its hits' READ-weight; carries the per-scheme roll-up in the foist.
@@ -377,38 +403,25 @@ export default class PacketWire {
                 }
             }
 
-            // EDIT's structured receipt contributes compact outcome metadata.
-            // Its canonical body is resolved below with every other log body.
-            if (op === "EDIT" && rx !== null && typeof rx === "object" && (rx as { receipt?: unknown }).receipt !== null && typeof (rx as { receipt?: unknown }).receipt === "object") {
-                const receipt = (rx as {
-                    receipt: {
-                        revision?: unknown;
-                        unit?: unknown;
-                        before?: unknown;
-                        after?: unknown;
-                        effect?: {
-                            requested?: unknown;
-                            source?: unknown;
-                            result?: unknown;
-                            removed?: unknown;
-                            inserted?: unknown;
-                            context?: unknown;
-                        };
-                    };
-                }).receipt;
-                const effect = receipt.effect;
-                if (typeof receipt.revision !== "string" || !/^[a-f0-9]{64}$/.test(receipt.revision)
-                    || (receipt.unit !== "lines" && receipt.unit !== "items")
-                    || typeof receipt.before !== "number" || typeof receipt.after !== "number"
-                    || effect === undefined
-                    || typeof effect.requested !== "string" || typeof effect.source !== "string" || typeof effect.result !== "string"
-                    || typeof effect.removed !== "number" || typeof effect.inserted !== "number" || typeof effect.context !== "string") {
-                    throw new Error("invalid structured EDIT receipt");
-                }
-                meta.rev = receipt.revision.slice(0, editReceiptRevisionChars());
-                meta.extent = `${receipt.unit} ${receipt.before}->${receipt.after}`;
-                meta.change = `-${effect.removed} +${effect.inserted}`;
-                meta.range = `${effect.requested} ${effect.source}->${effect.result}`;
+            // Mutations expose compact, validated outcome metadata. EDIT owns
+            // one receipt; COPY/MOVE own ordered resource effects whose
+            // optional receipts describe only textual regional mutations.
+            if (op === "EDIT" && rx !== null && typeof rx === "object" && Object.hasOwn(rx, "receipt")) {
+                Object.assign(meta, PacketWire.#receiptMeta(rx.receipt));
+            }
+            if (
+                (op === "COPY" || op === "MOVE")
+                && rx !== null
+                && typeof rx === "object"
+                && Object.hasOwn(rx, "effects")
+            ) {
+                meta.effects = assertResourceEffects(rx.effects).map((effect) => ({
+                    target: effect.target,
+                    action: effect.action,
+                    ...(effect.receipt === undefined
+                        ? {}
+                        : PacketWire.#receiptMeta(effect.receipt)),
+                }));
             }
 
             // The canonical full body is shared with READ(log://), FIND(log://),
@@ -428,7 +441,7 @@ export default class PacketWire {
                 ? { text: fullBody.content, cut: false }
                 : PacketWire.#preview(fullBody.content);
             const resourceBody = op === "READ" || op === "FIND" || op === "EDIT"
-                || op === "COPY" || op === "MOVE" || op === "prompt";
+                || op === "prompt";
             const bodyFence = resourceBody ? (target ?? path) : path;
             if (projection.cut && path === null) {
                 throw new Error("a previewed log body requires an addressable log path");
@@ -441,7 +454,6 @@ export default class PacketWire {
                 : PacketWire.#renderContentBody(
                     bodyFence ?? `log:///${coordinate}`,
                     projection.text,
-                    fullBody.mimetype,
                     fullBody.startLine,
                 );
 

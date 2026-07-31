@@ -16,9 +16,9 @@ PDF is a binary mimetype — the package declares `plurnk.binary: true`, and the
 - `extractRaw(content)` surfaces the outline (bookmark TOC) as heading symbols plus the metadata Title; empty when the PDF carries neither.
 - `deepJson(content)` returns a document model — metadata, detect-only security signals (`hasJavaScript` / `hasEmbeddedFiles`, presence only, never executed), external links, and AcroForm fields; `null` on parse failure.
 - `toText(content)` extracts page text (joined with `\n\n`) for regex/glob queries and the model-facing readable body; page-count bounded by `PLURNK_MIMETYPES_PDF_MAX_PAGES` (unset → unbounded).
-- `query(content, …)` runs jsonpath over the outline (`$['Chapter 1']`), regex/glob over `toText`.
+- `query(content, ...)` runs JSONPath over the canonical `deepJson` document model, XPath over its framework projection, and regex/glob over `toText`.
 
-Resource caps are unbounded by default; set `PLURNK_MIMETYPES_PDF_MAX_BYTES` / `PLURNK_MIMETYPES_PDF_MAX_PAGES` to a positive integer to cap (malformed → crash). See `.env.example`.
+Resource caps are unbounded by default; set `PLURNK_MIMETYPES_PDF_MAX_BYTES` / `PLURNK_MIMETYPES_PDF_MAX_PAGES` to a positive integer to cap (malformed values fail hard). See `.env.defaults`.
 
 Salvage pattern from [rummy.web/WebFetcher.js](https://github.com/possumtech/rummy.web): pdfjs configured with `isEvalSupported: false` (no PDF JS execution) and `verbosity: 0` (silences font-warning noise — we read text streams directly, not glyphs).
 

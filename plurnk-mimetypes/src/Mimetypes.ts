@@ -16,11 +16,9 @@ import type {
     DiscoverOptions,
     Discovery,
     HandlerMetadata,
-    LineSpan,
     MimeRef,
     MimeSymbol,
     QueryMatch,
-    RowSpan,
 } from "./types.ts";
 
 // SPEC §5 / §12.1 (#17, #24): channels process() can materialize, computed
@@ -81,9 +79,6 @@ export interface ProcessResult {
     // Editor-convention line count (SPEC §7); 0 for binary and every error
     // path. plurnk-service's manifest hard-depends on this (`lines`).
     totalLines: number;
-    // Addressable extent for navigation bounds (SPEC §12.5, #9): line count
-    // for text, item count for structured.
-    extent: number;
     // SPEC §7 / §13.4 (#14): missing grammar package name when process()
     // degrades to text-plain. Absent on the happy path; independent of `ok`.
     grammarMissing?: string;
@@ -106,8 +101,8 @@ export interface ProcessResult {
     // Classified symbol uses — symbol_refs raw material (SPEC §16, #16/#19).
     references?: MimeRef[];
     // Model-facing readable text, the embed-source (SPEC §18). Present only
-    // when the readable form differs from the raw body (text/html → markdown);
-    // HTML-only for now.
+    // when the readable form differs from the raw body (for example HTML
+    // markdown or PDF page text).
     content?: string;
     // Embedding vector (SPEC §17, #24): native-endian raw Float32 bytes,
     // length = 4 × dimension. Empty when no text projection / embedder missing
@@ -167,17 +162,15 @@ export default class Mimetypes {
         return result ?? this.#defaultMimetype;
     }
 
-    // Per-mimetype classification (SPEC §20, #43) — this family is the filetype
-    // authority; consumers retire their hand-maintained allowlists. An INSTALLED
-    // handler's declared facts (plurnk.binary, plurnk.navigation) win
-    // (source: "handler"); any other mimetype string gets the taxonomy heuristic
-    // (source: "heuristic") — consumers classify arbitrary stream labels, not
-    // just installed types.
+    // Per-mimetype classification (SPEC §20, #43) - this family is the filetype
+    // authority; consumers retire their hand-maintained binary allowlists. An
+    // installed handler's declared plurnk.binary value wins (source: "handler");
+    // any other mimetype string gets the taxonomy heuristic.
     async classify(mimetype: string): Promise<MimeClassification> {
         await this.ready();
         const info = this.#discovery!.handlers.get(mimetype);
         if (info === undefined) return classifyMimetype(mimetype);
-        return classifyWithHandler(mimetype, { binary: info.binary, navigation: info.navigation });
+        return classifyWithHandler(mimetype, { binary: info.binary });
     }
 
     async getHandler(mimetype: string): Promise<BaseHandler | null> {
@@ -296,15 +289,13 @@ export default class Mimetypes {
         let deepJsonValue: unknown;
         let references: MimeRef[] | undefined;
         let contentValue: string | undefined;
-        let extentValue: number;
         let deepXml: string | undefined;
         try {
-            [symbols, deepJsonValue, references, contentValue, extentValue] = await Promise.all([
+            [symbols, deepJsonValue, references, contentValue] = await Promise.all([
                 channels.has("symbols") ? handler.extractRaw(content) : undefined,
                 needsDeepJson ? handler.deepJson(content) : undefined,
                 channels.has("references") ? handler.references(content) : undefined,
                 channels.has("content") ? handler.content(content) : undefined,
-                handler.extent(content),
             ]);
             if (channels.has("deepXml")) {
                 deepXml = handler.deepXml === BaseHandler.prototype.deepXml
@@ -334,7 +325,6 @@ export default class Mimetypes {
             mimetype,
             ok: true,
             totalLines,
-            extent: extentValue,
             ...(searchExcluded !== undefined && { searchExcluded }),
             ...(channels.has("symbols") && { symbols }),
             ...(channels.has("deepJson") && { deepJson: deepJsonValue }),
@@ -413,23 +403,7 @@ export default class Mimetypes {
             throw new ReferenceError(`Mimetypes.query: registered handler unavailable for ${mimetype}`);
         }
 
-        const matches = await handler.query(content, parsed.dialect, parsed.pattern, parsed.flags);
-        return Promise.all(matches.map(async (match) => match.lines === undefined
-            ? match
-            : { ...match, rows: await handler.rowsForLines(content, match.lines) }));
-    }
-
-    // Translate source-line spans into the exact row coordinates scoped READ
-    // accepts for this mimetype.
-    async rowsForLines(input: ProcessInput, lines: ReadonlyArray<LineSpan>): Promise<ReadonlyArray<RowSpan>> {
-        const mimetype = await this.detect(input);
-        if (mimetype === null) throw new ReferenceError("Mimetypes.rowsForLines: no mimetype could be resolved for input");
-        const info = this.#discovery!.handlers.get(mimetype) ?? null;
-        const content = await this.#resolveContent(input, info?.binary ?? false);
-        if (content === null) throw new ReferenceError(`Mimetypes.rowsForLines: content unreadable for ${mimetype}`);
-        const handler = await this.getHandler(mimetype);
-        if (handler === null) throw new ReferenceError(`Mimetypes.rowsForLines: no handler discovered for ${mimetype}`);
-        return handler.rowsForLines(content, lines);
+        return handler.query(content, parsed.dialect, parsed.pattern, parsed.flags);
     }
 
     // Degraded ProcessResult when the grammar isn't installed (SPEC §7/§13.4,
@@ -454,7 +428,6 @@ export default class Mimetypes {
             mimetype,
             ok: true,
             totalLines,
-            extent: totalLines,
             grammarMissing: plurnkPackage,
             ...(searchExcluded !== undefined && { searchExcluded }),
             ...(channels.has("symbols") && { symbols: [] }),
@@ -485,7 +458,6 @@ function errorResult(mimetype: string | null): ProcessResult {
         mimetype,
         ok: false,
         totalLines: 0,
-        extent: 0,
     };
 }
 

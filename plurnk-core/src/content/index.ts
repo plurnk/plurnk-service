@@ -6,7 +6,7 @@
 export { default as MimetypeBinary } from "./mimetype-binary.ts";
 
 export { default as LineMarkerOps } from "./line-marker.ts";
-export type { EditResult as LineEditResult, JsonSliceResult, SliceResult } from "./line-marker.ts";
+export type { EditResult as LineEditResult, SliceResult } from "./line-marker.ts";
 
 export { default as PathMimetype } from "./path-mimetype.ts";
 
@@ -17,5 +17,19 @@ export { default as ReadResolve } from "./read-resolve.ts";
 export type { ReadSliceResult } from "./read-resolve.ts";
 
 export { editedSpan } from "./edited-span.ts";
-export { editReceipt, editReceiptUnit, projectEditReceipt } from "./edit-receipt.ts";
-export type { EditBatchReceipt, EditEffectReceipt, EditReceipt, ReceiptEdit } from "./edit-receipt.ts";
+export {
+    assertEditBatchReceipt,
+    assertEditReceipt,
+    assertResourceEffects,
+    editReceipt,
+    projectEditReceipt,
+} from "./edit-receipt.ts";
+export type {
+    EditBatchReceipt,
+    EditEffectReceipt,
+    EditReceipt,
+    EditReceiptUnit,
+    ReceiptEdit,
+    ResourceEffect,
+    ResourceEffectAction,
+} from "./edit-receipt.ts";

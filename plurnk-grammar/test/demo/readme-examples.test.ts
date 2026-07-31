@@ -162,8 +162,8 @@ test("ex 33: PLAN — reasoning recorded to the log", () => {
     expectOneClean("<<PLAN:Need the capital fact; discover via wiki, record to known, deliver.:PLAN");
 });
 
-test("ex 34: EDIT — decimal insert-between", () => {
-    expectOneClean("<<EDIT(known://plan)<2.5>:- [ ] Verify against a second source:EDIT");
+test("ex 34: EDIT exact insertion region", () => {
+    expectOneClean("<<EDIT(known://plan)<3,1,3,1>:- [ ] Verify against a second source\n:EDIT");
 });
 
 test("ex 35: FIND — semantic threshold via decimal", () => {

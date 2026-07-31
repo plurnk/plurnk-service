@@ -6,6 +6,21 @@ import PacketWire from "../../src/core/packet-wire.ts";
 // deterministic tokenizer satisfies renderLog's signature (tokens land on the
 // body-bearing meta lines, measured by this fn).
 const tok = (s: string): number => Math.ceil(s.length / 4);
+const revision = "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789";
+const receipt = (context: string, requested = "<2>") => ({
+    revision,
+    unit: "lines",
+    before: 4,
+    after: 5,
+    effect: {
+        requested,
+        source: "2",
+        result: "2-3",
+        removed: 1,
+        inserted: 2,
+        context,
+    },
+});
 
 // Default-channel convention: when a channel's name matches its scheme's
 // defaultChannel, the heredoc fence is path-only (no `#channel` suffix).
@@ -37,19 +52,51 @@ test("a folded-authority web URL renders https://host/... — never https:///hos
     assert.match(out, /"target":"https:\/\/en\.wikipedia\.org\/wiki\/Paris"/, "the authority form, one spelling");
 });
 
-test("COPY/MOVE into a file render their span diff like EDIT — the write is SEEN in the row (#370)", () => {
-    // #370 item 3 — a COPY/MOVE whose dest is a workspace file proposes via File.writeEntry, which
-    // now carries editedSpan like edit(); the wire renders it so the model sees what the write
-    // changed (the same 0-token bodyless gap §edit-result-render closed for EDIT).
+test("COPY/MOVE render ordered resource effects and only textual regional receipts", () => {
     const out = PacketWire.renderLog([{
         coordinate: "1/2/5",
         origin: "model",
         op: "COPY",
         status: 200,
-        target: { scheme: "worker", pathname: "/draft" },
-        rx: { status: 200, span: "1:copied content" },
+        target: { scheme: "worker", pathname: "/source" },
+        rx: {
+            status: 200,
+            effects: [{
+                target: "worker:///draft",
+                action: "update",
+                receipt: receipt("1:before\n2:copied content"),
+            }],
+        },
     }], tok);
-    assert.match(out, /<<:::worker:\/\/\/draft\n1:copied content\n:::worker:\/\/\/draft/, "the COPY row carries its resulting span, EDIT-parity");
+    assert.match(
+        out,
+        /"effects":\[\{"target":"worker:\/\/\/draft","action":"update","rev":"abcdef01","extent":"lines 4->5","change":"-1 \+2","range":"<2> 2->2-3"\}\]/,
+    );
+    assert.match(
+        out,
+        /<<:::log:\/\/\/1\/2\/5\/COPY\n1:before\n2:copied content\n:::log:\/\/\/1\/2\/5\/COPY/,
+        "the regional effect exposes its bounded resulting context",
+    );
+
+    const whole = PacketWire.renderLog([{
+        coordinate: "1/2/6",
+        origin: "model",
+        op: "MOVE",
+        status: 200,
+        target: { scheme: "worker", pathname: "/source" },
+        rx: {
+            status: 200,
+            effects: [
+                { target: "worker:///destination", action: "create" },
+                { target: "worker:///source", action: "delete" },
+            ],
+        },
+    }], tok);
+    assert.match(
+        whole,
+        /"effects":\[\{"target":"worker:\/\/\/destination","action":"create"\},\{"target":"worker:\/\/\/source","action":"delete"\}\]/,
+    );
+    assert.match(whole, /"body":"","display":"none"/, "whole-channel effects invent no text receipt");
 });
 
 test("EDIT with an accept-path span (rx.body from a proposed file edit) renders the line-numbered diff", () => {
@@ -108,6 +155,33 @@ test("log render: READ@200 with text/markdown rx body → line-numbered heredoc"
     assert.match(out, /<<:::notes\.md\n1:hello\n2:world\n:::notes\.md/);
 });
 
+test("log render: a scoped READ preserves its complete source TextRegion", () => {
+    const out = PacketWire.renderLog([{
+        coordinate: "1/1/3",
+        origin: "model",
+        op: "READ",
+        status: 200,
+        target: { scheme: "worker", pathname: "/unicode" },
+        rx: {
+            status: 200,
+            content: "😀",
+            mimetype: "text/markdown",
+            startLine: 1,
+            region: {
+                startLine: 1,
+                startColumn: 2,
+                endLine: 1,
+                endColumn: 3,
+            },
+        },
+    }], tok);
+    assert.match(
+        out,
+        /"region":\{"startLine":1,"startColumn":2,"endLine":1,"endColumn":3\}/,
+    );
+    assert.match(out, /\n1:😀\n/);
+});
+
 test("a failed content-bearing READ renders both its Problem and diagnostic body", () => {
     const out = PacketWire.renderLog([{
         coordinate: "1/2/1",
@@ -145,8 +219,8 @@ test("a failed content-bearing READ renders both its Problem and diagnostic body
 
 test("log render: a matcher READ keeps the resource body and exposes surgical coordinates", () => {
     const matches = [
-        { lineStart: 143, lineEnd: 143, rowStart: 143, rowEnd: 143 },
-        { lineStart: 617, lineEnd: 617, rowStart: 617, rowEnd: 617 },
+        { region: { startLine: 143, startColumn: 1, endLine: 143, endColumn: 8 } },
+        { region: { startLine: 617, startColumn: 4, endLine: 617, endColumn: 11 } },
     ];
     const out = PacketWire.renderLog([{
         coordinate: "1/1/3",
@@ -163,11 +237,26 @@ test("log render: a matcher READ keeps the resource body and exposes surgical co
         },
     }], tok);
     assert.match(out, /"matcher":"\/grinder\/"/);
-    assert.match(out, /"matches":\[\{"lineStart":143,"lineEnd":143,"rowStart":143,"rowEnd":143\},\{"lineStart":617,"lineEnd":617,"rowStart":617,"rowEnd":617\}\]/);
+    assert.match(out, /"matches":\[\{"region":\{"startLine":143,"startColumn":1,"endLine":143,"endColumn":8\}\},\{"region":\{"startLine":617,"startColumn":4,"endLine":617,"endColumn":11\}\}\]/);
     assert.match(out, /<<:::spec\.md\n1:intro\n2:grinder\n3:context\n:::spec\.md/);
 });
 
-test("log render: READ@200 with application/json rx body → verbatim heredoc (no N:\\t)", () => {
+test("log render: malformed matcher evidence cannot reach the model packet", () => {
+    assert.throws(() => PacketWire.renderLog([{
+        coordinate: "1/1/3",
+        origin: "model",
+        op: "READ",
+        status: 200,
+        target: { scheme: null, pathname: "/spec.md" },
+        rx: {
+            content: "text",
+            mimetype: "text/markdown",
+            matches: [{ path: "" }],
+        },
+    }], tok), /path must be a non-empty string/);
+});
+
+test("log render: READ@200 with application/json is line-addressable", () => {
     const system = {
         system_definition: "SD",
         index: [],
@@ -181,9 +270,7 @@ test("log render: READ@200 with application/json rx body → verbatim heredoc (n
         }],
     };
     const out = PacketWire.renderLog(system.log, tok);
-    // Tree-navigable mimetype → body rendered verbatim, no outer N:.
-    assert.match(out, /<<:::notes\.md\n\[\n {2}\{"line":1,"matched":"hello"\}\n\]\n:::notes\.md/);
-    assert.doesNotMatch(out, /<<:::notes\.md\n1:/);
+    assert.match(out, /<<:::notes\.md\n1:\[\n2: {2}\{"line":1,"matched":"hello"\}\n3:\]\n:::notes\.md/);
 });
 
 // EDIT log renders re-emit the model's statement as heredoc — same syntax
@@ -209,20 +296,13 @@ test("log render: EDIT@200 with rx.span → wraps the pre-numbered span verbatim
 });
 
 test("log render: model EDIT receipt renders revision and bounded join context verbatim", () => {
-    const revision = "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789";
-    const receipt = {
-        revision,
-        unit: "lines",
-        before: 4,
-        after: 5,
-        effect: { requested: "<2>", source: "2", result: "2-3", removed: 1, inserted: 2, context: "1:one\n2:TWO\n3:2.5\n4:three" },
-    };
+    const exactReceipt = receipt("1:one\n2:TWO\n3:2.5\n4:three");
     const out = PacketWire.renderLog([{
         coordinate: "1/1/3",
         origin: "model",
         op: "EDIT", status: 200,
         target: { scheme: "worker", pathname: "/draft" },
-        rx: { status: 200, receipt },
+        rx: { status: 200, receipt: exactReceipt },
     }], tok);
     assert.match(out, /"rev":"abcdef01"/);
     assert.match(out, /"extent":"lines 4->5"/);
@@ -232,10 +312,10 @@ test("log render: model EDIT receipt renders revision and bounded join context v
     assert.doesNotMatch(out, new RegExp(revision));
 });
 
-test("render guard: every content-emitting op applies the N:\\t convention uniformly (READ/FIND/EDIT/EXEC/stream/PLAN/SEND)", () => {
-    // The model orients on line numbers, so EVERY op that emits a content body must number
-    // line-navigable (text/*) bodies and leave tree-navigable (JSON) verbatim — else it has its
-    // bearings on one op's output but not another's. Pins the invariant across READ, FIND, EDIT-span,
+test("render guard: every content-emitting op applies the N: convention uniformly", () => {
+    // The model orients on line numbers, so EVERY op that emits a content body
+    // must number textual content regardless of mimetype. Pins the invariant
+    // across READ, FIND, EDIT-span,
     // EXEC-body, the foisted exec-stream delta (incl. its cross-turn startLine), and PLAN/SEND bodies —
     // which ride into the log as N: content, NEVER re-serialized as a <<OP:…:OP tag (the log mirrors
     // the model's WORK, not its emission syntax). No future content branch can silently diverge.
@@ -243,7 +323,8 @@ test("render guard: every content-emitting op applies the N:\\t convention unifo
     const execTx = (body: string) => ({ op: "EXEC", suffix: "sh", target: { kind: "url", raw: "sh:///1/1/1", scheme: "sh", pathname: "/1/1/1", fragment: null }, body, signal: null, lineMarker: null });
     const cases: Array<{ label: string; entry: unknown; want: RegExp; anti?: RegExp }> = [
         { label: "READ text → numbered", entry: { ...base, op: "READ", rx: { status: 200, mimetype: "text/markdown", content: "alpha\nbeta" } }, want: /1:alpha\n2:beta/ },
-        { label: "READ json → verbatim", entry: { ...base, op: "READ", rx: { status: 200, mimetype: "application/json", content: '{"k":1}' } }, want: /\n\{"k":1\}\n/, anti: /\d:/ },
+        { label: "READ json -> numbered", entry: { ...base, op: "READ", rx: { status: 200, mimetype: "application/json", content: '{"k":1}' } }, want: /\n1:\{"k":1\}\n/ },
+        { label: "READ mixed newlines -> every physical line numbered", entry: { ...base, op: "READ", rx: { status: 200, mimetype: "text/plain", content: "a\r\nb\rc" } }, want: /1:a\r\n2:b\r3:c/ },
         { label: "FIND text → numbered", entry: { ...base, op: "FIND", rx: { status: 200, mimetype: "text/markdown", content: "m1\nm2" } }, want: /1:m1\n2:m2/ },
         { label: "EDIT span → pre-numbered span preserved verbatim (editedSpan owns the real offsets)", entry: { ...base, op: "EDIT", rx: { status: 200, span: "5:x\n6:y" } }, want: /5:x\n6:y/, anti: /1:5:/ },
         { label: "EXEC body → numbered", entry: { ...base, op: "EXEC", target: { scheme: "sh", pathname: "/1/1/1" }, tx: execTx("ls\npwd") }, want: /1:ls\n2:pwd/ },
@@ -372,11 +453,10 @@ test("log render: FIND@200 renders its result catalog, not just the echoed query
         rx: { content: catalog, mimetype: "application/json" },
     }], tok);
     assert.match(out, /"path": "prompt:\/\/\/1\/1"/, "FIND@200 renders its result body - the model sees what the FIND returned");
-    // Tree-navigable JSON → verbatim, no N: line-number prefix.
-    assert.doesNotMatch(out, /\n1:/);
+    assert.match(out, /\n1:\[/);
 });
 
-test("log render: READ@200 with text/html rx body → verbatim heredoc (tree-navigable)", () => {
+test("log render: READ@200 with text/html is line-addressable", () => {
     const system = {
         system_definition: "SD",
         index: [],
@@ -390,8 +470,7 @@ test("log render: READ@200 with text/html rx body → verbatim heredoc (tree-nav
         }],
     };
     const out = PacketWire.renderLog(system.log, tok);
-    assert.match(out, /<<:::page\.html\n<h1>Hi<\/h1>\n:::page\.html/);
-    assert.doesNotMatch(out, /1:/);
+    assert.match(out, /<<:::page\.html\n1:<h1>Hi<\/h1>\n:::page\.html/);
 });
 
 test("a folded model row renders meta-only — the verbatim hides until OPEN", () => {
@@ -500,8 +579,8 @@ test("every non-retrieval body producer uses the same recoverable preview", () =
         { op: "FORK", origin: "model", target: null, tx: { body: long } },
         { op: "EXEC", origin: "model", target: { scheme: "sh", pathname: "/1/1/1" }, tx: { body: long } },
         { op: "EDIT", origin: "model", target: { scheme: "worker", pathname: "/a" }, rx: { span: numbered } },
-        { op: "COPY", origin: "model", target: { scheme: "worker", pathname: "/b" }, rx: { span: numbered } },
-        { op: "MOVE", origin: "model", target: { scheme: "worker", pathname: "/c" }, rx: { span: numbered } },
+        { op: "COPY", origin: "model", target: { scheme: "worker", pathname: "/b" }, rx: { effects: [{ target: "worker:///b", action: "update", receipt: receipt(numbered) }] } },
+        { op: "MOVE", origin: "model", target: { scheme: "worker", pathname: "/c" }, rx: { effects: [{ target: "worker:///c", action: "update", receipt: receipt(numbered) }] } },
         { op: "READ", origin: "plurnk", target: { scheme: "sh", pathname: "/1/1/1" }, rx: { content: long, mimetype: "text/plain" } },
         { op: "FIND", origin: "plurnk", target: { scheme: "worker", pathname: "/**" }, rx: { content: long, mimetype: "text/plain" } },
         { op: "extension", origin: "plugin", target: { scheme: "custom", pathname: "/result" }, rx: { content: long, mimetype: "text/plain" } },

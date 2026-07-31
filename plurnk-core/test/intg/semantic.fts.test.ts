@@ -245,8 +245,6 @@ test("[#fts-fallback] no embedder → ~query<K> degrades to an FTS keyword rank;
         const noEmbedder = {
             process: async () => ({}),
             embedderInfo: () => null,
-            rowsForLines: async (_input: unknown, spans: Array<{ line: number; endLine: number }>) =>
-                spans.map(({ line, endLine }) => ({ row: line, endRow: endLine })),
         } as unknown as Mimetypes;
         await SearchIndex.maintain(makeSchemeCtx({ db, workspaceId, workerId, mimetypes: noEmbedder }));
         const candidates = await searchCandidates(db, workspaceId);
@@ -271,6 +269,14 @@ test("[#fts-fallback] no embedder → ~query<K> degrades to an FTS keyword rank;
         assert.equal(exactHit.status, 200);
         assert.deepEqual(exactHit.results.map((x) => x.path), ["worker:///heavy.ts"],
             "an exact target ranks only that entry");
+        assert.deepEqual(exactHit.results[0]?.matches, [{
+            region: {
+                startLine: 1,
+                startColumn: 1,
+                endLine: 2,
+                endColumn: 5,
+            },
+        }], "FTS fallback evidence identifies the exact whole-entry searchable region");
 
         // The similarity-threshold form needs a cosine score the FTS half can't supply.
         const thresh = await EntrySemantic.rankCandidates(db, candidates, noEmbedder, "payment", { first: 0.5, last: null });

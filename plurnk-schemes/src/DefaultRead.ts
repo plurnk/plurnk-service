@@ -2,11 +2,12 @@
 // schemes#20 / service#240): generic matcher selection and `<L>` projection
 // over a produced output blob, reusing Slicer + Matcher so the logic is
 // single-sourced (not forked into BaseExecutor). A pure resolver - given the
-// stored output + the READ statement, it returns WHICH rows to serve; the
+// stored output + the READ statement, it returns which text to serve; the
 // executor-scheme delivers them. READ-purity holds: this reads already-produced
 // output, it never triggers EXEC.
 
 import type { ReadStatement } from "@plurnk/plurnk-grammar";
+import type { TextRegion } from "@plurnk/plurnk-contracts";
 import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import Slicer from "./Slicer.ts";
 import Matcher from "./Matcher.ts";
@@ -16,13 +17,15 @@ import type { SchemeResult } from "./Results.ts";
 
 export interface ReadResolution extends SchemeResult {
     readonly body?: string;
+    readonly startLine?: number;
+    readonly region?: TextRegion;
     readonly range?: RangeExtent;
 }
 
 export default class DefaultRead {
     // Resolve a READ against an output blob:
     //   matcher body present -> select the complete blob and retain coordinates
-    //   <L> line marker      -> project readable rows from the selected blob
+    //   <L> text scope       -> project text from the selected blob
     //   no <L>               -> return the complete selected blob
     static async read(
         content: string,
@@ -42,9 +45,11 @@ export default class DefaultRead {
             const s = Slicer.lines(content, statement.lineMarker);
             if (s.status >= 400) return s;
             return {
-                status: selectionFallback?.status ?? s.status,
+                status: selectionFallback?.status ?? (s.text === "" ? 204 : s.status),
                 body: s.text,
-                range: s.range,
+                ...(s.startLine === undefined ? {} : { startLine: s.startLine }),
+                ...(s.region === undefined ? {} : { region: s.region }),
+                ...(s.range === undefined ? {} : { range: s.range }),
                 ...(matches === undefined ? {} : { matches }),
                 ...(selectionFallback?.mimetype === undefined ? {} : { mimetype: selectionFallback.mimetype }),
                 ...(selectionFallback?.reason === undefined ? {} : { reason: selectionFallback.reason }),

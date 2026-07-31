@@ -58,6 +58,7 @@ const MAPPING: Record<string, SchemaMapping> = {
     Params:          { kind: "skip", reason: "embedded in entries.params + log_entries.params JSON" },
     ParsedPath:      { kind: "skip", reason: "AST shape; URL parts already decomposed at entry/log_entries level" },
     MatcherBody:     { kind: "skip", reason: "AST shape; not persisted" },
+    ResourceSelection: { kind: "skip", reason: "AST shape; COPY/MOVE source or destination selection" },
     SendBody:        { kind: "skip", reason: "AST shape; embedded in log_entries.tx for SEND rows" },
     PlurnkStatement: { kind: "skip", reason: "AST shape; embedded in turn.packet.assistant.ops JSON" },
     ClientStatement: { kind: "skip", reason: "client-tier AST (PlurnkStatement + the client-only LOOK/BUFF ops, via parseClient); never persisted — the service contract is PlurnkStatement, op.look parses a READ" },

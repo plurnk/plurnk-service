@@ -54,7 +54,6 @@ The framework instantiates one handler per mimetype, injecting `{ mimetype, glyp
 | `deepXml(content)` | `deepXml` — XML view | projects `deepJson()` for you |
 | `references(content)` | `references` — classified symbol uses (`MimeRef[]`), §16 | `[]` |
 | `content(content)` | `content` — model-facing readable text (and embed-source) | `undefined` (absent) |
-| `extent(content)` | navigation bound (lines, pages, items) | line count / `0` for binary |
 | `validate(content)` | throw on malformed input | no-op |
 | `query(...)` / `toText(content)` | body-matcher dispatch (§11) | regex/glob/jsonpath/xpath defaults |
 
@@ -108,7 +107,7 @@ const r = await m.process({ path: "src/main.py" }, { channels: ["symbols", "refe
 // r.mimetype  "text/x-python"
 // r.symbols   MimeSymbol[]   r.references MimeRef[]
 // r.deepJson  jsonpath target  r.deepXml xpath target  r.content readable text
-// r.extent    navigation bound  r.totalLines  r.ok
+// r.totalLines  source line count  r.ok
 ```
 
 Channels materialize per call — unrequested ones are never computed and their fields are absent. `channels: []` is the stat-only call (metadata, no parse). `embedding` is opt-in (model inference) and needs `@plurnk/plurnk-mimetypes-embeddings`. Body-matcher queries: `m.query(input, expr)` — regex `/p/`, glob, jsonpath `$.x` (deep-json), xpath `//x` (deep-xml). `format(r.symbols)` renders a human outline. Failure modes: [SPEC §7](SPEC.md#7-error-policy).

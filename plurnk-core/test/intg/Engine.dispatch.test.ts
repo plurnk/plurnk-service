@@ -548,7 +548,7 @@ test("Engine.dispatch: non-Error throw becomes the same generic contract Problem
     } finally { await db.close(); }
 });
 
-test("Engine.dispatch: model COPY into log:/// destination 501s — no writeEntry on Log, the gate no longer pre-empts", async () => {
+test("Engine.dispatch: COPY rejects a non-entry destination at resource resolution", async () => {
     const { db, engine, env } = await setup();
     try {
         // Source first: model creates an entry in worker:///.
@@ -563,14 +563,18 @@ test("Engine.dispatch: model COPY into log:/// destination 501s — no writeEntr
                 op: "COPY", suffix: "", signal: null,
                 target: urlPath("worker", "/src"),
                 lineMarker: null,
-                body: urlPath("log", "/dst").raw,
+                body: { target: urlPath("log", "/dst"), lineMarker: null },
                 position: { line: 1, column: 1 },
             },
             workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId,
             sequence: 2, origin: "model",
         });
-        // The gate admits the model (§model-entry-log-curation); the dest handler surface rules —
-        // Log exposes no writeEntry, so the copy 501s. Never a silent write into the log.
-        assert.equal(result.status, 501);
+        assert.equal(result.status, 400);
+        assert.equal(
+            result.problem?.type,
+            "https://problems.plurnk.dev/engine/dispatcher/entry-operation-unsupported",
+        );
+        assert.equal(result.problem?.scheme, "log");
+        assert.equal(result.problem?.category, "logging");
     } finally { await db.close(); }
 });

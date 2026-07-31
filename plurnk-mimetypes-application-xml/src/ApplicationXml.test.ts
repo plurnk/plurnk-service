@@ -114,12 +114,16 @@ describe("ApplicationXml — query (xpath against DOM, jsonpath against deepJson
         assert.ok((out[1].matched as string).includes("Two"));
     });
 
-    it("reports the real source-line span of each match (#41)", async () => {
+    it("reports an honest whole-line region for each match", async () => {
         const h = new ApplicationXml(metadata);
         const xml = "<library>\n  <book>One</book>\n  <book>Two</book>\n</library>";
         const out = await h.query(xml, "xpath", "//book");
-        assert.deepEqual(out[0].lines, [{ line: 2, endLine: 2 }]);
-        assert.deepEqual(out[1].lines, [{ line: 3, endLine: 3 }]);
+        assert.deepEqual(out[0].regions, [{
+            startLine: 2, startColumn: 1, endLine: 2, endColumn: 19,
+        }]);
+        assert.deepEqual(out[1].regions, [{
+            startLine: 3, startColumn: 1, endLine: 3, endColumn: 19,
+        }]);
     });
 
     it("a computed scalar (count) carries no lines (#41)", async () => {
@@ -127,7 +131,8 @@ describe("ApplicationXml — query (xpath against DOM, jsonpath against deepJson
         const out = await h.query("<a><b/><b/></a>", "xpath", "count(//b)");
         assert.equal(out.length, 1);
         assert.equal(out[0].matched, "2");
-        assert.equal(out[0].lines, undefined);
+        assert.equal(out[0].regions, undefined);
+        assert.equal(out[0].matching, "count(//b)");
     });
 
     it("xpath with attribute predicate returns attribute-filtered elements", async () => {

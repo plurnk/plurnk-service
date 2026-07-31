@@ -1,4 +1,10 @@
-import { BaseHandler, projectJsonToXml, queryJsonpathObject } from "@plurnk/plurnk-mimetypes";
+import {
+    BaseHandler,
+    projectJsonToXml,
+    queryJsonpathObject,
+    regionsForLineSpans,
+    TextCoordinates,
+} from "@plurnk/plurnk-mimetypes";
 import type { HandlerContent, MimeSymbol, QueryDialect, QueryMatch } from "@plurnk/plurnk-mimetypes";
 
 // text/x-ini (INI / config) handler — Tier 4, no parser dep.
@@ -57,17 +63,26 @@ export default class Ini extends BaseHandler {
         flags?: string,
     ): Promise<QueryMatch[]> {
         if (dialect === "jsonpath") {
-            const byPointer = new Map<string, number>();
-            for (const section of parseIni(toText(content))) {
+            const text = toText(content);
+            const byPointer = new Map<string, { line: number; endLine: number }>();
+            const totalLines = TextCoordinates.logicalLines(text).length;
+            if (totalLines > 0) byPointer.set("", { line: 1, endLine: totalLines });
+            for (const section of parseIni(text)) {
                 const base = section.name === null ? "" : `/${ptr(section.name)}`;
-                if (section.name !== null) byPointer.set(base, section.line);
-                for (const k of section.keys) byPointer.set(`${base}/${ptr(k.key)}`, k.line);
+                if (section.name !== null) {
+                    byPointer.set(base, { line: section.line, endLine: section.endLine });
+                }
+                for (const k of section.keys) {
+                    byPointer.set(`${base}/${ptr(k.key)}`, { line: k.line, endLine: k.line });
+                }
             }
-            const lineFor = (pointer: string): readonly { line: number; endLine: number }[] | undefined => {
-                const ln = byPointer.get(pointer);
-                return ln === undefined ? undefined : [{ line: ln, endLine: ln }];
+            const regionFor = (pointer: string) => {
+                const span = byPointer.get(pointer);
+                return span === undefined
+                    ? undefined
+                    : regionsForLineSpans(text, [span]);
             };
-            return queryJsonpathObject(this.deepJson(content), pattern, lineFor);
+            return queryJsonpathObject(this.deepJson(content), pattern, regionFor);
         }
         return super.query(content, dialect, pattern, flags);
     }
@@ -75,18 +90,24 @@ export default class Ini extends BaseHandler {
     // deep-xml carries the SAME source lines as jsonpath (#41): stamp pk:line
     // from the same parseIni positions during projection.
     override deepXml(content: HandlerContent): Promise<string> {
-        const byPointer = new Map<string, number>();
-        for (const section of parseIni(toText(content))) {
+        const text = toText(content);
+        const byPointer = new Map<string, { line: number; endLine: number }>();
+        const totalLines = TextCoordinates.logicalLines(text).length;
+        if (totalLines > 0) byPointer.set("", { line: 1, endLine: totalLines });
+        for (const section of parseIni(text)) {
             const base = section.name === null ? "" : `/${ptr(section.name)}`;
-            if (section.name !== null) byPointer.set(base, section.line);
-            for (const k of section.keys) byPointer.set(`${base}/${ptr(k.key)}`, k.line);
+            if (section.name !== null) {
+                byPointer.set(base, { line: section.line, endLine: section.endLine });
+            }
+            for (const k of section.keys) {
+                byPointer.set(`${base}/${ptr(k.key)}`, { line: k.line, endLine: k.line });
+            }
         }
-        const span = (pointer: string): { line: number; endLine: number } | undefined => {
-            if (pointer === "") return { line: 1, endLine: 1 };
-            const ln = byPointer.get(pointer);
-            return ln === undefined ? undefined : { line: ln, endLine: ln };
-        };
-        return Promise.resolve(projectJsonToXml(this.deepJson(content), "root", span));
+        return Promise.resolve(projectJsonToXml(
+            this.deepJson(content),
+            "root",
+            (pointer) => byPointer.get(pointer),
+        ));
     }
 }
 
@@ -104,7 +125,8 @@ export interface IniSection {
 }
 
 export function parseIni(text: string): IniSection[] {
-    const lines = text.split("\n");
+    const lines = TextCoordinates.logicalLines(text)
+        .map(({ start, contentEnd }) => text.slice(start, contentEnd));
     const global: IniSection = { name: null, line: 1, endLine: lines.length, keys: [] };
     const sections: IniSection[] = [global];
     let current = global;

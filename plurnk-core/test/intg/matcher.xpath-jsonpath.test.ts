@@ -1,7 +1,7 @@
 // xpath / jsonpath matcher coverage — asserts the matcher contract: status
 // mapping, dialect dispatch (through plurnk-mimetypes), and the model-facing
 // result shape. A matcher selects a resource; READ returns its complete/scoped
-// content and reports source/readable match coordinates as metadata.
+// content and reports honest readable-text regions or structural locators.
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -28,8 +28,14 @@ const readStmt = (target: ParsedPath | null, body: MatcherBody | null = null): R
     position: { line: 1, column: 1 },
 });
 
-const matchLines = (matches: ReadonlyArray<{ lineStart: number }> | undefined): number[] =>
-    (matches ?? []).map(({ lineStart }) => lineStart);
+const matchLines = (
+    matches: ReadonlyArray<{ region?: { startLine: number } }> | undefined,
+): number[] => (matches ?? []).flatMap(({ region }) =>
+    region === undefined ? [] : [region.startLine]);
+
+const matchPaths = (
+    matches: ReadonlyArray<{ path?: string }> | undefined,
+): string[] => (matches ?? []).flatMap(({ path }) => path === undefined ? [] : [path]);
 
 const setup = async () => {
     const db = await openMigrated();
@@ -168,7 +174,7 @@ test("jsonpath on text/markdown queries the marked-AST deepJson", async () => {
 
 // --- xpath ----------------------------------------------------------
 
-test("xpath //h1/text(): selects the HTML resource and reports each heading coordinate", async () => {
+test("xpath //h1/text(): selects the HTML resource and reports each canonical locator", async () => {
     const { db, workspaceId, workerId, mimetypes } = await setup();
     try {
         await seedJson(db, workspaceId, workerId, mimetypes, "/page.html",
@@ -180,12 +186,12 @@ test("xpath //h1/text(): selects the HTML resource and reports each heading coor
 
         assert.equal(r.status, 200);
         assert.equal(r.mimetype, "text/html");
-        assert.deepEqual(matchLines(r.matches), [3, 5]);
+        assert.deepEqual(matchPaths(r.matches), ["(//h1/text())[1]", "(//h1/text())[2]"]);
         assert.match(r.content ?? "", /<h1>Welcome<\/h1>.*<p>intro<\/p>.*<h1>About<\/h1>/s);
     } finally { await db.close(); }
 });
 
-test("xpath //user/@email: attribute matches identify their source elements", async () => {
+test("xpath //user/@email: attribute matches retain canonical locators", async () => {
     const { db, workspaceId, workerId, mimetypes } = await setup();
     try {
         await seedJson(db, workspaceId, workerId, mimetypes, "/users.html",
@@ -197,12 +203,12 @@ test("xpath //user/@email: attribute matches identify their source elements", as
 
         assert.equal(r.status, 200);
         assert.equal(r.mimetype, "text/html");
-        assert.deepEqual(matchLines(r.matches), [2, 3]);
+        assert.deepEqual(matchPaths(r.matches), ["(//user/@email)[1]", "(//user/@email)[2]"]);
         assert.match(r.content ?? "", /email="alice@x\.com".*email="bob@x\.com"/s);
     } finally { await db.close(); }
 });
 
-test("xpath //user node selection preserves the complete HTML resource", async () => {
+test("xpath //user node selection preserves the complete HTML resource and locators", async () => {
     const { db, workspaceId, workerId, mimetypes } = await setup();
     try {
         await seedJson(db, workspaceId, workerId, mimetypes, "/page.html",
@@ -214,12 +220,12 @@ test("xpath //user node selection preserves the complete HTML resource", async (
 
         assert.equal(r.status, 200);
         assert.equal(r.mimetype, "text/html");
-        assert.deepEqual(matchLines(r.matches), [2, 3]);
+        assert.deepEqual(matchPaths(r.matches), ["(//user)[1]", "(//user)[2]"]);
         assert.equal(r.content, "<root>\n  <user>Alice</user>\n  <user>Bob</user>\n</root>");
     } finally { await db.close(); }
 });
 
-test("xpath predicate reports selected coordinates without dropping unselected content", async () => {
+test("xpath predicate reports selected locators without dropping unselected content", async () => {
     const { db, workspaceId, workerId, mimetypes } = await setup();
     try {
         await seedJson(db, workspaceId, workerId, mimetypes, "/users.html",
@@ -230,7 +236,10 @@ test("xpath predicate reports selected coordinates without dropping unselected c
         );
 
         assert.equal(r.status, 200);
-        assert.deepEqual(matchLines(r.matches), [2, 4]);
+        assert.deepEqual(
+            matchPaths(r.matches),
+            ["(//user[@role='admin']/text())[1]", "(//user[@role='admin']/text())[2]"],
+        );
         assert.match(r.content ?? "", /Alice.*Bob.*Carol/s);
     } finally { await db.close(); }
 });
@@ -282,16 +291,32 @@ test("jsonpath match coordinates support a model-chosen surgical follow-up READ"
         });
         const rx = JSON.parse(row!.rx) as {
             content: string;
-            matches: Array<{ rowStart: number; rowEnd: number; path?: string }>;
+            matches: Array<{
+                path?: string;
+                region?: {
+                    startLine: number;
+                    startColumn: number;
+                    endLine: number;
+                    endColumn: number;
+                };
+            }>;
         };
         assert.match(rx.content, /Alice.*Bob.*Carol/s, "the initial READ does not guess which hit the model wants");
         assert.equal(rx.matches.length, 3);
 
         const bob = rx.matches[1]!;
+        assert.ok(bob.region !== undefined);
         const surgical = await new Worker().read(
             {
                 ...readStmt(urlPath("worker", "/team.json")),
-                lineMarker: { marks: [bob.rowStart, bob.rowEnd] },
+                lineMarker: {
+                    marks: [
+                        bob.region.startLine,
+                        bob.region.startColumn,
+                        bob.region.endLine,
+                        bob.region.endColumn,
+                    ],
+                },
             },
             makeSchemeCtx({ db, workspaceId, workerId, mimetypes }),
         );
@@ -318,7 +343,15 @@ test("a matcher READ stores canonical paths with its coordinate evidence", async
         assert.equal(reads.length, 1, "one selected resource produces one READ row");
         const rx = JSON.parse(reads[0]!.rx) as {
             content?: string;
-            matches?: Array<{ path?: string; lineStart: number; lineEnd: number; rowStart: number; rowEnd: number }>;
+            matches?: Array<{
+                path?: string;
+                region?: {
+                    startLine: number;
+                    startColumn: number;
+                    endLine: number;
+                    endColumn: number;
+                };
+            }>;
         };
         assert.match(rx.content ?? "", /Alice.*Bob/s);
         assert.deepEqual(

@@ -48,10 +48,12 @@ describe("BaseHandler.query — jsonpath default (against outline)", () => {
             }
         }
         const h = new WithSymbols(metadata);
-        const out = await h.query("(unused content)", "jsonpath", "$.Top.Section.Sub");
+        const out = await h.query("top\nx\nsection\nx\nsub", "jsonpath", "$.Top.Section.Sub");
         assert.equal(out.length, 1);
         assert.equal(out[0].matched, 5);
-        assert.equal(out[0].lines![0].line, 5);
+        assert.deepEqual(out[0].regions, [{
+            startLine: 5, startColumn: 1, endLine: 5, endColumn: 4,
+        }]);
     });
 
     it("returns [] when extractRaw is empty", async () => {
@@ -86,9 +88,11 @@ describe("BaseHandler.query — xpath default", () => {
             }
         }
         const h = new WithSymbols(metadata);
-        const out = await h.query("(unused content)", "xpath", "//Sub");
+        const out = await h.query("top\nx\nsection\nx\nsub", "xpath", "//Sub");
         assert.equal(out.length, 1);
-        assert.deepEqual(out[0].lines, [{ line: 5, endLine: 5 }]);
+        assert.deepEqual(out[0].regions, [{
+            startLine: 5, startColumn: 1, endLine: 5, endColumn: 4,
+        }]);
     });
 });
 

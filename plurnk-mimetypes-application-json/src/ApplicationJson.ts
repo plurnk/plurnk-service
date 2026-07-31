@@ -3,14 +3,14 @@ import {
     projectJsonToXml,
     queryJsonpathObject,
     QueryParseFailureError,
+    TextCoordinates,
 } from "@plurnk/plurnk-mimetypes";
 import type {
     HandlerContent,
     MimeSymbol,
     QueryDialect,
     QueryMatch,
-    LineSpan,
-    RowSpan,
+    TextRegion,
 } from "@plurnk/plurnk-mimetypes";
 import {
     findNodeAtLocation,
@@ -35,33 +35,6 @@ import {
 //               No regex tokenization, no escape-handling reinvention — the
 //               parser does it.
 export default class ApplicationJson extends BaseHandler {
-    override rowsForLines(content: HandlerContent, lines: ReadonlyArray<LineSpan>): ReadonlyArray<RowSpan> {
-        if (typeof content !== "string") return lines.map(({ line, endLine }) => ({ row: line, endRow: endLine }));
-        const allowsRelaxation = this.mimetype === "application/jsonc";
-        const tree = parseTree(content, [], {
-            allowTrailingComma: allowsRelaxation,
-            disallowComments: !allowsRelaxation,
-        });
-        if (tree === undefined) return lines.map(({ line, endLine }) => ({ row: line, endRow: endLine }));
-        const locate = makeOffsetLocator(content);
-        const children = tree.children ?? [];
-        if (children.length === 0) return lines.map(() => ({ row: 1, endRow: 1 }));
-        const childLines = children.map((node) => ({
-            line: locate(node.offset).line,
-            endLine: locate(node.offset + Math.max(node.length - 1, 0)).line,
-        }));
-        return lines.map(({ line, endLine }) => {
-            const rows: number[] = [];
-            for (let index = 0; index < childLines.length; index += 1) {
-                const child = childLines[index];
-                if (child.line <= endLine && child.endLine >= line) rows.push(index + 1);
-            }
-            return rows.length > 0
-                ? { row: rows[0], endRow: rows[rows.length - 1] }
-                : { row: 1, endRow: children.length };
-        });
-    }
-
     override validate(content: string): void {
         const errors: ParseError[] = [];
         const allowsRelaxation = this.mimetype === "application/jsonc";
@@ -119,8 +92,8 @@ export default class ApplicationJson extends BaseHandler {
     // positional tree: findNodeAtLocation walks segments to the result node,
     // and the node's offset maps to a source line.
     //
-    // regex/glob inherit BaseHandler's defaults (against the raw JSON text).
-    // xpath inherits the unsupported-dialect throw.
+    // regex/glob inherit BaseHandler's defaults against the raw JSON text.
+    // xpath inherits the framework's deep-xml projection.
     override async query(
         content: HandlerContent,
         dialect: QueryDialect,
@@ -149,11 +122,7 @@ export default class ApplicationJson extends BaseHandler {
                 });
             }
             const value = getNodeValue(tree) as unknown;
-            const span = spanFor(tree, content);
-            return queryJsonpathObject(value, pattern, (p) => {
-                const s = span(p);
-                return s ? [s] : undefined;
-            });
+            return queryJsonpathObject(value, pattern, regionFor(tree, content));
         }
         return super.query(content, dialect, pattern, flags);
     }
@@ -185,6 +154,23 @@ function spanFor(tree: Node, content: string): (pointer: string) => { line: numb
         const line = locate(node.offset).line;
         const endLine = locate(node.offset + Math.max(node.length - 1, 0)).line;
         return { line, endLine };
+    };
+}
+
+function regionFor(
+    tree: Node,
+    content: string,
+): (pointer: string) => readonly TextRegion[] | undefined {
+    const coordinates = new TextCoordinates(content);
+    return (pointer) => {
+        const valueNode = findNodeAtLocation(tree, pointerToSegments(pointer));
+        if (valueNode === undefined) return undefined;
+        const node = valueNode.parent?.type === "property" ? valueNode.parent : valueNode;
+        const region = coordinates.regionFromOffsets(
+            node.offset,
+            node.offset + node.length,
+        );
+        return region === null ? undefined : [region];
     };
 }
 

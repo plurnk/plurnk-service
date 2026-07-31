@@ -1,43 +1,25 @@
 import {
     BaseHandler,
-    buildJsonOutline,
-    queryJsonpathObject,
     QueryParseFailureError,
 } from "@plurnk/plurnk-mimetypes";
-import type {
-    MimeSymbol,
-    QueryDialect,
-    QueryMatch,
-} from "@plurnk/plurnk-mimetypes";
+import type { MimeSymbol } from "@plurnk/plurnk-mimetypes";
 import type { HandlerContent } from "@plurnk/plurnk-mimetypes";
 
 // application/pdf handler. Binary mimetype — receives Uint8Array content.
 //
-// validate() does a sync header-magic check; preview() walks the PDF's
-// outline (bookmark TOC) and emits each entry as a heading symbol nested by
-// outline depth. PDFs without an outline fall back to the document's
-// metadata title (if present); without that, preview is null and the
-// channel is dark in the radar.
-//
-// toText() extracts the full PDF body via pdfjs.getTextContent and joins the
-// pages. This text is used for body-matcher query operations (regex and
-// glob) — the active body-read path, NOT the passive preview/radar path.
-// The structural-only preview rule applies to preview, not query.
-//
-// We deliberately do NOT use extracted text in the preview pipeline. Per the
-// v0.5.0 framework contract, the preview is a structural signal — never a
-// body slice. A body slice would teach LLM consumers to read the preview as
-// content and skip the actual fetch. Query is different: the consumer
-// explicitly asked for the body match.
+// validate() checks header magic. extractRaw() exposes headings from the
+// logical structure tree, bookmark outline, or metadata title. content() and
+// toText() expose one extracted-page-text representation for model reads and
+// regex/glob matching. deepJson() exposes the canonical structural document
+// model used by both JSONPath and the framework-projected XPath channel.
 //
 // Why a header-magic validate and not a full parse: pdfjs transfers the
 // underlying ArrayBuffer during getDocument(), so a parse in validate()
-// would compete with the same parse in preview() and detach the buffer.
-// The header check catches non-PDF content cheaply without touching the
-// bytes preview() will need.
+// would compete with later channel materialization and detach the buffer.
+// The header check catches non-PDF content without consuming those bytes.
 //
 // Caller note: pdfjs detaches the underlying ArrayBuffer per call. Callers
-// should not reuse the same Uint8Array across preview() and query() calls;
+// should not reuse the same Uint8Array across materialization calls;
 // the framework's orchestrator reads the file fresh per call, which avoids
 // the issue.
 //
@@ -57,7 +39,7 @@ const UTF8_BOM = new Uint8Array([0xef, 0xbb, 0xbf]);
 // PLURNK_MIMETYPES_PDF_MAX_BYTES (a PDF over it never reaches the parser) or
 // PLURNK_MIMETYPES_PDF_MAX_PAGES (text extraction stops there) to a positive integer to
 // cap. Read at call time. Unset → no cap; malformed → crash, never a silent
-// revert to a guessed number. See .env.example.
+// revert to a guessed number. See .env.defaults.
 function envCap(name: string): number {
     const raw = process.env[name];
     if (raw === undefined || raw.trim() === "") return Infinity;
@@ -185,7 +167,7 @@ export default class ApplicationPdf extends BaseHandler {
     }
 
     // Deep-channel (issue #10). PDF's structural content is its outline (the
-    // bookmark TOC); pages are the atomic addressable units. We expose:
+    // bookmark TOC), whose nodes retain page provenance. We expose:
     //   { type: 'document', line: 1, endLine: <pageCount>,
     //     children: [<outline items as nested { type: 'outline_item', name, line, endLine, children? }>] }
     //
@@ -212,33 +194,21 @@ export default class ApplicationPdf extends BaseHandler {
         }
     }
 
+    // PDF page text is the readable representation used by both model-facing
+    // content and regex/glob matching. Keeping one projection makes reported
+    // TextRegion evidence directly addressable in the content channel.
+    override async content(content: HandlerContent): Promise<string | undefined> {
+        assertCapsValid();
+        try {
+            const text = await this.toText(content);
+            return text.length === 0 ? undefined : text;
+        } catch {
+            return undefined;
+        }
+    }
+
     // Override jsonpath dispatch because PDF's structural extraction is async
     // (pdfjs is async-only) and can't flow through BaseHandler's sync
-    // extractRaw → outline path. We replicate the outline + jsonpath
-    // composition directly here for the jsonpath case; everything else falls
-    // through to the inherited defaults.
-    override async query(
-        content: HandlerContent,
-        dialect: QueryDialect,
-        pattern: string,
-        flags?: string,
-    ): Promise<QueryMatch[]> {
-        assertCapsValid();
-        if (dialect === "jsonpath") {
-            // Bookmark-by-name navigation: `$['Chapter 1']['Section 1.1']`. The
-            // deepJson channel carries the richer document model (metadata +
-            // security); this path stays the ergonomic outline query.
-            const bytes = toBytes(content);
-            let symbols: MimeSymbol[];
-            try {
-                symbols = await extractStructure(bytes);
-            } catch {
-                return [];
-            }
-            return queryJsonpathObject(buildJsonOutline(symbols), pattern);
-        }
-        return super.query(content, dialect, pattern, flags);
-    }
 }
 
 function startsWith(haystack: Uint8Array, needle: Uint8Array): boolean {

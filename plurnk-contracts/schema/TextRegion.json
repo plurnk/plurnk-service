@@ -1,0 +1,31 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "https://schemas.plurnk.dev/v0/TextRegion.json",
+    "title": "TextRegion",
+    "description": "A contiguous region in a textual resource. Lines and Unicode code-point columns are 1-based; the end position is exclusive.",
+    "type": "object",
+    "required": ["startLine", "startColumn", "endLine", "endColumn"],
+    "additionalProperties": false,
+    "properties": {
+        "startLine": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+        },
+        "startColumn": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+        },
+        "endLine": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+        },
+        "endColumn": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+        }
+    }
+}

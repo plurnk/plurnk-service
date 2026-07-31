@@ -110,3 +110,64 @@ test("problem identifiers fail hard instead of minting ambiguous types", () => {
     assert.throws(() => Results.problem("Scheme:Known", "entry-not-found", 404, "Missing."), /problem owner/);
     assert.throws(() => Results.problem("scheme:known", "Entry_Not_Found", 404, "Missing."), /problem code/);
 });
+
+test("match evidence requires a locator, a complete TextRegion, or both", () => {
+    assert.deepEqual(
+        Results.assertMatchEvidence({
+            path: "$.users[0]",
+            region: { startLine: 2, startColumn: 3, endLine: 2, endColumn: 8 },
+        }),
+        {
+            path: "$.users[0]",
+            region: { startLine: 2, startColumn: 3, endLine: 2, endColumn: 8 },
+        },
+    );
+    assert.throws(
+        () => Results.assertMatchEvidence({}),
+        /expected path, region, or both/,
+    );
+    assert.throws(
+        () => Results.assertMatchEvidence({ path: "" }),
+        /path must be a non-empty string/,
+    );
+    assert.throws(
+        () => Results.assertMatchEvidence({
+            region: { startLine: 2, startColumn: 3, endLine: 1, endColumn: 8 },
+        }),
+        /TextRegion/,
+    );
+    assert.throws(
+        () => Results.assertMatchEvidence({ path: "$", confidence: 0.9 }),
+        /unexpected field "confidence"/,
+    );
+});
+
+test("match evidence lists validate every plugin-produced item", () => {
+    const evidence = [
+        { path: "//item" },
+        { region: { startLine: 1, startColumn: 1, endLine: 1, endColumn: 5 } },
+    ];
+    assert.equal(Results.assertMatchEvidenceList(evidence), evidence);
+    assert.throws(
+        () => Results.assertMatchEvidenceList({ path: "//item" }),
+        /expected an array/,
+    );
+    assert.throws(
+        () => Results.assertMatchEvidenceList([{ path: "//item" }, {}]),
+        /expected path, region, or both/,
+    );
+});
+
+test("read-result validation applies the shared evidence contracts", () => {
+    const result = {
+        status: 200,
+        content: "hello",
+        region: { startLine: 1, startColumn: 1, endLine: 1, endColumn: 6 },
+        matches: [{ path: "$.message" }],
+    };
+    assert.equal(Results.assertReadResult(result), result);
+    assert.throws(
+        () => Results.assertReadResult({ status: 200, matches: [{ region: null }] }),
+        /TextRegion/,
+    );
+});

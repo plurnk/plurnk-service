@@ -9,7 +9,7 @@
 //
 //   C1. A missing grammar is the EXPECTED normal state in the a-la-carte
 //       world, not an error. process() degrades — ok stays true, metadata
-//       (totalLines/extent) is computed, requested channels come back empty.
+//       (totalLines) is computed, requested channels come back empty.
 //   C2. The grammarMissing field carries the package name the consumer
 //       should install. No string parsing, no exception catching.
 //   C3. Consumers that NEED a specific grammar can opt into strict mode
@@ -110,11 +110,10 @@ describe("Issue #14 — C1: missing grammar degrades (not an error)", () => {
         assert.equal("references" in result, false);
     });
 
-    it("totalLines and extent are still computed on the degraded path", async () => {
+    it("totalLines is still computed on the degraded path", async () => {
         const m = makeMimetypes();
         const result = await m.process({ path: "foo.fake", content: "a\nb\nc\nd" });
         assert.equal(result.totalLines, 4);
-        assert.equal(result.extent, 4);
     });
 });
 

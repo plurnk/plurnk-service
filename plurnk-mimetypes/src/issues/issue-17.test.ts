@@ -98,7 +98,6 @@ describe("Issue #17 — C1: channel selection semantics", () => {
             mimetype: "text/x-test",
             ok: true,
             totalLines: 3,
-            extent: 3,
         });
         assert.equal(StructuredHandler.extractCalls, 0);
         assert.equal(StructuredHandler.deepJsonCalls, 0);

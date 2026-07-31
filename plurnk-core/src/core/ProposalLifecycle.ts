@@ -1,4 +1,4 @@
-import type { PlurnkStatement, ParsedPath } from "@plurnk/plurnk-grammar";
+import type { PlurnkStatement } from "@plurnk/plurnk-grammar";
 import type { Db } from "./Db.ts";
 import type SchemeRegistry from "./SchemeRegistry.ts";
 import type ExecutorRegistry from "./ExecutorRegistry.ts";
@@ -224,9 +224,14 @@ export default class ProposalLifecycle {
         // statement.target's scheme.
         // COPY/MOVE write the DEST (statement.body), not the source (target): the
         // accept must reach the dest scheme's applyResolution (File writes disk).
-        const schemeName = statement.op === "EXEC" ? "exec"
-            : (statement.op === "COPY" || statement.op === "MOVE") ? schemeNameOf(statement.body as ParsedPath | null)
-            : schemeNameOf(statement.target);
+        const routedScheme = (originalResult.attrs as { proposalScheme?: unknown } | undefined)?.proposalScheme;
+        const schemeName = typeof routedScheme === "string"
+            ? routedScheme
+            : statement.op === "EXEC"
+                ? "exec"
+                : (statement.op === "COPY" || statement.op === "MOVE")
+                    ? schemeNameOf(statement.body?.target ?? null)
+                    : schemeNameOf(statement.target);
         if (schemeName === null) return { resolution };
         const handler = this.#schemes.get(schemeName) as
             | { applyResolution?: (args: { attrs: object; body?: string }, ctx: SchemeCtx) => Promise<{ status: number; outcome?: string; body?: string; result?: object }> }

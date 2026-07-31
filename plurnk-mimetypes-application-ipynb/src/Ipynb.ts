@@ -52,15 +52,10 @@ export default class Ipynb extends BaseHandler {
         if (dialect === "jsonpath" && typeof content === "string") {
             const tree = parseTree(content);
             if (tree !== undefined) {
-                const lineFor = (pointer: string): readonly { line: number; endLine: number }[] | undefined => {
-                    const valueNode = findNodeAtLocation(tree, pointerToSegments(pointer));
-                    if (valueNode === undefined) return undefined;
-                    const node = valueNode.parent?.type === "property" ? valueNode.parent : valueNode;
-                    const line = offsetToLine(content, node.offset);
-                    const endLine = offsetToLine(content, node.offset + Math.max(node.length - 1, 0));
-                    return [{ line, endLine }];
-                };
-                return queryJsonpathObject(getNodeValue(tree) as unknown, pattern, lineFor);
+                // The model reads projected notebook markdown, not raw JSON.
+                // Retain the JSONPath locator without fabricating coordinates
+                // in a different representation.
+                return queryJsonpathObject(getNodeValue(tree) as unknown, pattern);
             }
         }
         return super.query(content, dialect, pattern, flags);
@@ -81,11 +76,6 @@ export default class Ipynb extends BaseHandler {
             return { line, endLine: offsetToLine(content, node.offset + Math.max(node.length - 1, 0)) };
         };
         return Promise.resolve(projectJsonToXml(this.deepJson(content), "root", span));
-    }
-
-    override extent(content: HandlerContent): number {
-        const nb = safeParse(content);
-        return nb ? countLines(project(nb).markdown) : 0;
     }
 
     // Strict: a malformed notebook IS a validation failure (unlike the other
@@ -259,14 +249,4 @@ function joinSource(source: string | string[] | undefined): string {
 
 function toStr(content: HandlerContent): string {
     return typeof content === "string" ? content : new TextDecoder("utf-8").decode(content);
-}
-
-// Editor-convention line count, mirroring the framework's default extent.
-function countLines(text: string): number {
-    if (text.length === 0) return 0;
-    let newlines = 0;
-    for (let i = 0; i < text.length; i += 1) {
-        if (text.charCodeAt(i) === 0x0a) newlines += 1;
-    }
-    return text.charCodeAt(text.length - 1) === 0x0a ? newlines : newlines + 1;
 }
