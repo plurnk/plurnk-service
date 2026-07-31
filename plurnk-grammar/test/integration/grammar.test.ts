@@ -1680,10 +1680,11 @@ test("#42: single-colon body-less ops no longer merge — close at newline", () 
     assert.equal(r.items.filter((i) => i.kind === "error").length, 0);
 });
 
-test("#42: single-colon body-less closes at EOF and at a glued <<", () => {
+test("#42: single-colon body-less closes at EOF and before the next operation", () => {
     assert.ok(ssClean("<<READ(t):READ"));                     // EOF boundary
     assert.equal(ssCount("<<READ(t):READ"), 1);
     assert.equal(ssCount("<<READ(a):READ<<FIND(b):FIND"), 2); // glued, next << boundary
+    assert.equal(ssCount("<<READ(a)<4,5>:READ <<READ(b)<3,9>:READ"), 2, "ordinary inter-op space does not merge adjacent READs");
 });
 
 // {§close-tag-match}

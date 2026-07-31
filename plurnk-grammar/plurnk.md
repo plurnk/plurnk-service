@@ -116,8 +116,8 @@ Text scope has one meaning for every textual mimetype:
 
 * `<line>` selects one whole physical line.
 * `<firstLine,lastLine>` selects inclusive whole physical lines.
-* `<startLine,startColumn,endLine,endColumn>` selects an exact text region.
-* Lines and Unicode code-point columns are 1-based; the end is exclusive.
+* `<startLine,startColumn,endLine,endColumn>` selects an exact text region whose end coordinate is exclusive.
+* Lines and Unicode code-point columns are 1-based.
 * Equal start and end positions insert without deleting.
 
 For EDIT and COPY/MOVE destinations, `<0>` and `<-1>` insert before the first and after the final position.

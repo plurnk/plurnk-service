@@ -104,8 +104,8 @@ private atTurnCloseTag(): boolean {
 }
 
 // Narrow single-colon empty-body close: at the post-target/modifier `:`, the stream is the
-// op's own close tag `:OP<suffix>` AND it is immediately followed by a STATEMENT BOUNDARY
-// (newline / EOF / next `<<`). So `<<READ(t):READ\n` closes empty, but a bodied op whose body
+// op's own close tag `:OP<suffix>` AND it is followed by a STATEMENT BOUNDARY
+// (newline / EOF / optional horizontal space then next `<<`). So `<<READ(t):READ\n` closes empty, but a bodied op whose body
 // starts with the op keyword (`<<EDIT(t):EDIT this:EDIT` — space follows) is NOT mis-closed.
 // Canon still prescribes `::OP`; this only forgives the HEREDOC-natural single colon.
 private atSlotsEmptyClose(): boolean {
@@ -116,8 +116,15 @@ private atSlotsEmptyClose(): boolean {
     for (let i = 0; i < tag.length; i++) {
         if (this.inputStream.LA(i + 2) !== tag.charCodeAt(i)) return false;
     }
-    const follow = this.inputStream.LA(tag.length + 2);
-    return follow <= 0 || follow === 0x0A /* \n */ || follow === 0x0D /* \r */ || follow === 0x3C /* < */;
+    let offset = tag.length + 2;
+    let follow = this.inputStream.LA(offset);
+    while (follow === 0x20 /* space */ || follow === 0x09 /* tab */) {
+        follow = this.inputStream.LA(++offset);
+    }
+    return follow <= 0
+        || follow === 0x0A /* \n */
+        || follow === 0x0D /* \r */
+        || (follow === 0x3C /* < */ && this.inputStream.LA(offset + 1) === 0x3C /* < */);
 }
 }
 
