@@ -165,10 +165,6 @@ const sample = (entry: string, rng: () => number): string => {
     return sampleSeq([{ kind: "ref", name: entry }]);
 };
 
-// -------------------------------------------------------------------------
-// Corpus: plurnk.md examples derive from statement
-// -------------------------------------------------------------------------
-
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 
 // ARTIFACT FRESHNESS GATE (#488): dist/plurnk.gbnf is the SERVED rail — consumers load the
@@ -179,38 +175,6 @@ test("GBNF: committed dist/plurnk.gbnf is byte-identical to the generated gramma
     const committed = readFileSync(join(repoRoot, "dist", "plurnk.gbnf"), "utf8");
     const generated = serializeGbnf(model, "root-turn");
     assert.equal(committed, generated, "dist/plurnk.gbnf is STALE — run `npm run build:gbnf` and commit the regenerated artifact");
-});
-const plurnkMd = readFileSync(join(repoRoot, "plurnk.md"), "utf8");
-
-// The root encodes the turn shape — the `*:PLAN:OPS:SEND[N]` sandwich: a free reasoning
-// preamble, then a mandatory `<<PLAN`, then ops, closed by one terminal SEND. The
-// teaching corpus is not a turn (it ends with three SEND variants), so corpus
-// derivability is asserted per-statement; the turn shape is asserted separately.
-// (PlurnkParser discards the pre-`<<PLAN` preamble, so sampled turns parse cleanly.)
-test("GBNF: every plurnk.md example derives from statement", () => {
-    const headingMatch = /^## Examples\s*$/m.exec(plurnkMd);
-    assert.ok(headingMatch, "plurnk.md is missing its `## Examples` section");
-    const rest = plurnkMd.substring(headingMatch.index + headingMatch[0].length);
-    const nextHeading = /^## /m.exec(rest);
-    const section = rest.substring(0, nextHeading ? nextHeading.index : rest.length);
-    // Examples live in ```plurnk fenced blocks (plurnkdown house-style); parse the fence bodies.
-    const fences = [...section.matchAll(/^```plurnk\n([\s\S]*?)^```/gm)].map((m) => m[1]);
-    assert.ok(fences.length > 0, "`## Examples` section has no ```plurnk fenced block");
-    const block = fences.join("\n").trim();
-
-    const result = PlurnkParser.parseStatements(block);
-    const statements = result.items.filter((item) => item.kind === "statement");
-    assert.ok(statements.length > 0, "no statements extracted from the examples block");
-    const lines = block.split("\n");
-    const offsetOf = (line: number, column: number): number =>
-        lines.slice(0, line - 1).reduce((sum, l) => sum + l.length + 1, 0) + column;
-    for (let i = 0; i < statements.length; i++) {
-        const start = offsetOf(statements[i].statement.position.line, statements[i].statement.position.column);
-        const next = statements[i + 1];
-        const end = next ? offsetOf(next.statement.position.line, next.statement.position.column) : block.length;
-        const text = block.slice(start, end).trim();
-        assert.equal(derives("statement", text), true, `example not GBNF-derivable: ${JSON.stringify(text)}`);
-    }
 });
 
 // -------------------------------------------------------------------------

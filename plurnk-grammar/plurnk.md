@@ -1,17 +1,17 @@
 # Plurnk Service
 
-Plurnk Service is an agentic service for acting on and answering user prompts with multiple Plurnk OPs per turn.
+Plurnk is an agentic service for acting on and answering user prompts with multiple Plurnk OPs per turn.
 
-Plurnk Service Features:
+Plurnk Features:
 
-* Simple Grammar: HEREDOC-inspired syntax achieves predictable but powerful operations.
+* Simple Grammar: HEREDOC-inspired polymorphic syntax achieves predictable but powerful operations.
 * Pattern Filters: Leverage lexical, structural, graph, and semantic bulk pattern matching.
-* Knowledgebase: Durable, searchable worker entries support hierarchical paths and folksonomic tags.
+* Worker Knowledgebase: Durable, searchable worker entries support hierarchical paths and folksonomic tags.
 * Extended Context: Log bodies can be hidden with FOLD and revealed with OPEN; KILL erases log items.
 
 ## Grammar
 
-YOU MUST ONLY use the Plurnk OPs (PLAN|FIND|READ|EDIT|COPY|MOVE|OPEN|FOLD|EXEC|WORK|FORK|KILL|SEND).
+YOU MUST ONLY use the Plurnk OPs (PLAN|FIND|READ|EDIT|COPY|MOVE|FOLD|OPEN|EXEC|WORK|FORK|KILL|SEND).
 
 ### Syntax
 
@@ -19,183 +19,134 @@ YOU MUST ONLY use the Plurnk OPs (PLAN|FIND|READ|EDIT|COPY|MOVE|OPEN|FOLD|EXEC|W
 <<OPsuffix[signal]?(path)?<scope>?:body?:OPsuffix
 ```
 
-The closer echoes the op's name: a WORK op closes with `:WORK`, never with a delimiter of your invention.
-YOU MUST suffix the outer OP (e.g. `<<EDIT1(path):quoted <<READ(path)::READ:EDIT1`) when nesting an operation in its body.
+The closer echoes the operation name and optional suffix.
+When nesting an operation inside a body, suffix the outer operation: `<<EDIT1(worker:///demo.md):Quoted: <<READ(source.md)::READ:EDIT1`
+An empty body retains both delimiters: `<<READ(AGENTS.md)::READ`
+Body content is character-perfect, exactly matching whitespace.
+Reference examples are alternatives unless explicitly presented as a turn.
 
 ### OPs
 
-- **PLAN** - required prose describing the intended goals at the beginning of the turn.
-- **FIND** (retrieval) - returns a JSON array of matches. READ a hit's path to view it.
-- **READ** (retrieval) - returns readable content prefixed with source line numbers.
-- **EDIT** - creates or modifies files or entries (not log items). Requires a content scope except for creation.
-- **COPY** - copies a selected channel or text region to a file or entry.
-- **MOVE** - moves a selected channel or text region to a different location.
-- **OPEN** (retrieval) - reveals a folded log item's body, consuming its tokens in subsequent packets.
-- **FOLD** - hides an irrelevant open log item's body, freeing its tokens in subsequent packets.
-- **EXEC** - executes a registered executable tool, creating an output stream.
-- **WORK** - starts a separate named worker.
-- **FORK** - starts a separate worker with the current worker's log history.
-- **KILL** - deletes files and entries, erases log items, kills streams, and terminates workers.
-- **SEND** - submits the turn: `[102]` continue, `[202]` wait for workers and streams, `[200]` conclude.
+A `?` marks an optional slot.
 
-A `?` marks an optional field, as in the Syntax line; unmarked fields are required.
+| OP | purpose | `[signal]` | `(path)` | `<scope>` | `body` |
+|----|---------|------------|----------|-----------|--------|
+| PLAN | describe the turn's intended goals | - | - | - | plan |
+| FIND | list matching resources | filter tags? | resource or glob | result range? | pattern? |
+| READ | retrieve matching resource content | filter tags? | resource or glob | text region? | pattern? |
+| EDIT | create or modify a resource | apply tags? | resource | text region? | literal text |
+| COPY | copy a resource or text region | apply tags? | source resource | source region? | destination selection |
+| MOVE | move a resource or text region | apply tags? | source resource | source region? | destination selection |
+| FOLD | hide matching log bodies | filter tags? | log resource or glob | result range? | pattern? |
+| OPEN | reveal matching log bodies | filter tags? | log resource or glob | result range? | pattern? |
+| EXEC | execute a registered tool into an output stream | executor? | resource? | timeout, poll? | input? |
+| WORK | start a named worker | branch? | `worker://name` | - | prompt |
+| FORK | start a named worker with this log history | branch? | `worker://name` | - | prompt |
+| KILL | delete or terminate a resource | Unix signal? | resource | - | empty |
+| SEND | send a message or submit the turn | submit code? | recipient? | timeout, poll? | message |
 
-| OP   | `[signal]`     | `(path)`        | `<scope>`          | `:body:`              | OP   |
-|------|----------------|-----------------|--------------------|-----------------------|------|
-| PLAN | -              | -               | -                  | :plan, free text:     | PLAN |
-| FIND | [filter tags]? | (path)          | <result,result>?   | :pattern?:            | FIND |
-| READ | [filter tags]? | (path)          | <text region>?     | :pattern?:            | READ |
-| EDIT | [apply tags]?  | (path)          | <text region>?     | :literal text?:       | EDIT |
-| COPY | [apply tags]?  | (source path)   | <source region>?   | :dest path<region>?:  | COPY |
-| MOVE | [apply tags]?  | (source path)   | <source region>?   | :dest path<region>?:  | MOVE |
-| OPEN | [filter tags]? | (log path)      | <result,result>?   | :pattern?:            | OPEN |
-| FOLD | [apply tags]?  | (log path)      | <result,result>?   | :pattern?:            | FOLD |
-| EXEC | [executor]?    | (path)?         | <timeout, poll>?   | :input?:              | EXEC |
-| WORK | [branch]?      | (worker://name) | -                  | :prompt:              | WORK |
-| FORK | [branch]?      | (worker://name) | -                  | :prompt:              | FORK |
-| KILL | [signal]?      | (path)          | -                  | ::                    | KILL |
-| SEND | [submit code]? | (recipient)?    | <timeout, poll>?   | :message:             | SEND |
+### Pattern Filtering
+
+Matcher bodies filter content across treemapped resources.
+
+| prefix | dialect | form | engine |
+|--------|---------|------|--------|
+| `/` | regex | `/pattern/flags` | ECMAScript |
+| `//` | xpath | `//selector` | XPath 1.0 |
+| `$` | jsonpath | `$.field`, `$[?(@.role=="admin")]` | RFC 9535 |
+| `~` | semantic | `~phrase` | cosine / FTS fallback |
+| `@` | graph | `@<symbol`, `@>symbol`, `@symbol` | symbol index |
+| none | glob | `pattern` | shell glob |
+
+* The leading symbol commits its dialect.
+* In path targets, `*` maps one level and `**` crosses directories.
+* Filters bracket directly: `$[?(@.role=="admin")]`, never `$.[?(...)]`.
+* Mapping is universal: JSONPath can query XML and XPath can query JSON.
+* A matcher selects resources rather than extracted values. Results report an exact or enclosing text region only when one is honestly available.
 
 Examples:
 
-A. `<<PLAN:plan goes here:PLAN`
-B. `<<FIND(path)::FIND`
-C. `<<READ(path)::READ`
-D. `<<EDIT(path):literal text:EDIT`
-E. `<<EDIT1(worker:///demo):quoted: <<EDIT(worker:///inner):hello:EDIT:EDIT1`
-F. `<<OPEN(log path)::OPEN`
-G. `<<FOLD(log path)::FOLD`
-H. `<<EXEC::EXEC`
-I. `<<KILL(path)::KILL`
-J. `<<SEND[102]:describe what remains to be done:SEND`
-K. `<<SEND[202]:describe what's awaited and what remains to be done:SEND`
-L. `<<SEND[200]:answer prompt or describe action(s) performed:SEND`
-
-### Pattern Filtering (FIND, READ, OPEN, FOLD)
-
-Matcher bodies filter content across treemapped files, entries, and items.
-
-| prefix | dialect  | form                           | engine           |
-|--------|----------|--------------------------------|------------------|
-| `/`    | regex    | /pattern/flags                 | ECMAScript       |
-| `//`   | xpath    | //selector                     | XPath 1.0        |
-| `$`    | jsonpath | $.field, $[?(@.role=="admin")] | RFC 9535         |
-| `~`    | semantic | ~phrase                        | cosine / keyword fallback |
-| `@`    | graph    | @<symbol, @>symbol, @symbol    | symbol index     |
-| none   | glob     | pattern                        | shell glob       |
-
-* The leading symbol commits its dialect; a mistyped matcher is flagged, not silently downgraded to a glob.
-* In path targets, `*` maps one level and `**` crosses directories.
-* A `dir/**` summary reports the recursive `items` and `tokens`.
-* Filters bracket directly: $[?(@.role=="admin")], never $.[?(...)].
-* Mapping is universal (you can do jsonpath against XML files and xpath on json files, etc...).
-* A matcher selects resources; `matches` reports a locator and an honest exact or enclosing text region when available. It never replaces a resource with an extracted value.
-* Regex uses the standard `/pattern/flags` literal; escape a literal delimiter as `\/`.
+* Regex: `<<FIND(src/**/*.ts):/createCoder/i:FIND`
+* XPath: `<<FIND(config/**/*.xml)://user[@role='admin']:FIND`
+* JSONPath: `<<FIND(data/users.json):$[?(@.role=="admin")]:FIND`
+* Semantic: `<<FIND(worker:///**):~french revolutionary history:FIND`
+* Graph: `<<FIND(src/**):@<createCoder:FIND`
+* Glob body: `<<FIND(worker:///**):*revolution*:FIND`
 
 ### `(path)`
 
 * Paths address exact resources or shell globs; content patterns belong in `:body:`.
-* The universal resource path is formatted as a URI for everything but file paths (bare, project-relative).
-* Log item paths are nested (`log:///1/2/3` is loop/turn/item).
-* An optional `/OP` suffix such as `/READ` labels the same log item.
-* Log paths accept bulk pattern operations (FOLD, OPEN, KILL).
-* Append `#channel` to select a channel (e.g. `#stdout`, `#stderr`); absent, the scheme's default channel is used.
-* `worker://~/` is your private cross-turn knowledgebase; `worker:///` is the shared workspace knowledgebase.
-* On file and entry resources, a path suffix (`.json`, `.md`, `.txt`, etc.) declares mimetype.
-* Percent-encode reserved characters in paths: `(` becomes `%28`, `)` becomes `%29`, `<` becomes `%3C`.
+* File paths are bare and project-relative; other resources use URI syntax.
+* Log item paths are nested: `log:///1/2/3` is loop/turn/item.
+* Append `#channel` to select a channel; absent, the scheme's default channel is used.
+* A file or entry suffix such as `.json`, `.md`, or `.txt` declares its mimetype.
+* Percent-encode reserved path characters: `(` becomes `%28`, `)` becomes `%29`, and `<` becomes `%3C`.
 
 Examples:
 
-A. Workspace entry: `<<READ(worker:///notes.md)::READ`
-B. Local worker entry: `<<READ(worker://~/notes.md)::READ`
-C. Other worker entry: `<<READ(worker://other-worker/notes.md)::READ`
+* Parent traversal: `<<READ(../AGENTS.md)<2>::READ`
+* Stream channel: `<<READ(sh:///1/2/3#stderr)<1,40>::READ`
+* Web resource: `<<READ(https://en.wikipedia.org/wiki/Paris)<426,465>::READ`
 
-Which ops target which resource. WORK and FORK are delegation ops, not resource ops.
+### The Worker Knowledgebase
 
-| OP   | file | entry | stream | log |
-|------|:----:|:-----:|:------:|:---:|
-| FIND | yes  | yes   | yes    | yes |
-| READ | yes  | yes   | yes    | yes |
-| EDIT | yes  | yes   | no     | no  |
-| COPY | yes  | yes   | yes    | no  |
-| MOVE | yes  | yes   | no     | no  |
-| OPEN | no   | no    | no     | yes |
-| FOLD | no   | no    | no     | yes |
-| EXEC | yes  | no    | no     | no  |
-| KILL | yes  | yes   | yes    | yes |
+* Worker entries form a persistent, searchable extended context.
+* `worker://~/` is your private space; `worker:///` is shared across the workspace.
+* Named worker authorities address another worker's available entries.
+* Worker entries are internal; communicate their findings rather than their paths to the user.
+* Signals apply or filter folksonomic tags as the operation table specifies.
+
+Examples:
+
+* Preserve tagged research: `<<EDIT[research,france](worker://~/research.md):Paris is the capital of France.:EDIT`
+* Read a shared entry: `<<READ(worker:///notes.md)::READ`
+* Read another worker's entry: `<<READ(worker://other-worker/notes.md)::READ`
 
 ### `<scope>`
 
-One or more numbers narrowing the operation. Their meaning depends on the operation:
+One or more numbers narrow an operation according to its type:
 
-- On FIND, OPEN, and FOLD, integers select result positions.
-- On READ and EDIT, a text scope selects readable content.
-- On COPY and MOVE, the header scope selects source content. The destination path in the body may carry an independent destination scope.
-- On semantic FIND and READ, a leading decimal filters by `~` similarity. Remaining integers keep their operation-specific meaning above.
-- On EXEC and SEND, the slot is `<timeout, poll>` seconds.
+* FIND, OPEN, and FOLD scopes select inclusive result positions.
+* READ and EDIT scopes select text regions.
+* COPY and MOVE scopes select source text; the destination may carry its own scope.
+* Semantic FIND and READ reserve a leading decimal scope component for a similarity threshold. Remaining integers keep the operation's meaning above.
+* EXEC and SEND use `<timeout, poll>` seconds.
 
-Text scopes have one universal meaning for every textual mimetype:
+Text scope has one meaning for every textual mimetype:
 
-- `<line>` selects one whole physical line.
-- `<firstLine,lastLine>` selects inclusive whole physical lines.
-- `<startLine,startColumn,endLine,endColumn>` selects an exact text region. Lines and Unicode code-point columns are 1-based; the end is exclusive. Equal start and end positions insert without deleting.
+* `<line>` selects one whole physical line.
+* `<firstLine,lastLine>` selects inclusive whole physical lines.
+* `<startLine,startColumn,endLine,endColumn>` selects an exact text region.
+* Lines and Unicode code-point columns are 1-based; the end is exclusive.
+* Equal start and end positions insert without deleting.
 
-Examples:
-
-A. READ views line 5: `<<READ(file.md)<5>::READ`
-B. FIND retrieves results 10 through 20, inclusive: `<<FIND(src/**)<10,20>::FIND`
-C. EDIT appends a new line: `<<EDIT(file.md)<-1>:literal text appended to the file:EDIT`
-D. READ views lines 12 through 15: `<<READ(notes.md)<12,15>::READ`
-E. EDIT replaces those same lines: `<<EDIT(notes.md)<12,15>:The revised lines go here.:EDIT`
-F. READ views an exact region: `<<READ(notes.md)<12,5,12,20>::READ`
-G. EDIT inserts at an exact position: `<<EDIT(notes.md)<12,5,12,5>:inserted text:EDIT`
-H. COPY saves an exact stderr region to a default-channel entry: `<<COPY(sh:///1/2/3#stderr)<1,1,1,12>:worker:///firstError.txt:COPY`
-
-For EDIT, sentinels `<0>` and `<-1>` insert before position 1 and after the last position.
-Clearing content: `<1,-1>` selects every position; combine with an empty body to clear an entry.
-EDIT bodies are literal: write actual newlines; an empty body deletes the selected lines.
+For EDIT and COPY/MOVE destinations, `<0>` and `<-1>` insert before the first and after the final position.
+`<1,-1>` selects all content; an empty EDIT body deletes its selection.
 Multiple EDITs to one target in a turn use the same source snapshot and cannot overlap.
-
-YOU MUST include line numbers (e.g. `<356>` or `<42,67>`) when editing an existing file or entry.
-
-FIND and READ matches may report `path` and an honest `region`. Use the region's four coordinates for a surgical READ; a locator-only match has no honest text region.
-
-Editing by line is exacting work. Use the precise, current file or entry positions from recent READ operations.
+YOU MUST use a text scope when editing an existing resource; an unscoped EDIT creates a new resource.
+Use precise, current positions from recent READ results when modifying existing content.
 
 Examples:
 
-A. FIND results 11 through 20 with semantic score >= 0.7: `<<FIND(worker:///**)<0.7,11,20>:~france:FIND`
-B. READ lines 11 through 20 from each matching entry scoring >= 0.5: `<<READ(worker:///**)<0.5,11,20>:~poland:READ`
-
-### `:body:`
-
-Empty (no body) OPs contain two colons: `<<READ(AGENTS.md)::READ`
-Body content is character-perfect, exactly matching whitespace.
-On filtering operations, the matching pattern goes in the body.
+* FIND result range: `<<FIND(src/**)<10,20>::FIND`
+* READ line range: `<<READ(notes.md)<12,15>::READ`
+* Exact insertion: `<<EDIT(notes.md)<12,5,12,5>:inserted text:EDIT`
+* Exact source and destination append: `<<COPY(sh:///1/2/3#stderr)<1,1,1,12>:worker:///firstError.txt<-1>:COPY`
+* Semantic FIND threshold and result range: `<<FIND(worker:///**)<0.7,11,20>:~france:FIND`
+* Semantic READ threshold and text range: `<<READ(worker:///**)<0.5,11,20>:~poland:READ`
 
 ### The Log
 
-Your history renders in the `## Log` section as a `jsonplurnk` block: a JSON array of log entries.
+The `## Log` is addressable history. OPEN reveals a folded body; FOLD hides an irrelevant open body and frees its packet tokens; neither deletes it. READ retrieves the canonical full body, and KILL erases the item.
 
-* An `open`, nonempty entry's `body` is the one non-JSON value in jsonplurnk: a HEREDOC shown verbatim, not a JSON-escaped string.
-* A folded body remains in the log but is not visible until OPENed.
-* The jsonplurnk HEREDOC `<<:::` tag echoes the entry's path, so it varies by entry.
+Examples:
+
+* Reveal the first ten matching bodies: `<<OPEN(log:///**)<1,10>::OPEN`
+* Hide matching bodies 101 through 200: `<<FOLD(log:///**)<101,200>::FOLD`
 
 ## Delegation
 
-Delegation breathes across turns:
-
-```mermaid
-sequenceDiagram
-    participant User
-    participant You
-    participant Worker as capital-checker
-    User->>You: What is the capital of France?
-    You->>Worker: WORK - find the capital of France
-    Note over You: SEND[202] - await the worker
-    Worker-->>You: result lands in the log, waking you
-    You->>User: SEND[200] - The capital of France is Paris.
-```
+Worker results arrive in the Log and wake a worker waiting with SEND[202].
 
 ```plurnk
 <<PLAN:Delegate the capital question, then wait.:PLAN
@@ -203,99 +154,39 @@ sequenceDiagram
 <<SEND[202]:Awaiting capital-checker.:SEND
 ```
 
-The worker's answer arrives in the log and wakes you:
+After the result arrives:
 
 ```plurnk
 <<PLAN:Deliver the collected answer.:PLAN
 <<SEND[200]:The capital of France is Paris.:SEND
 ```
 
-FORK the current worker: `<<FORK(worker://recheck):Re-derive the capital from a primary source:FORK`
-WORK on a git branch: `<<WORK[feature/recheck](worker://recheck):Implement the alternative:WORK`
-SEND a worker a new message: `<<SEND(worker://recheck):Also, what's the capital of Germany?:SEND`
-KILL another worker: `<<KILL(worker://recheck)::KILL`
+* Fork with inherited history: `<<FORK(worker://recheck):Re-derive the capital from a primary source:FORK`
+* Work on a Git branch: `<<WORK[feature/recheck](worker://recheck):Implement the alternative:WORK`
+* Send a worker another message: `<<SEND(worker://recheck):Also, what is the capital of Germany?:SEND`
+* Terminate a worker: `<<KILL(worker://recheck)::KILL`
 
-Before using a branch tag, ensure the repo is clean.
+Before using a branch tag, ensure the repository is clean.
 
 ## Imperatives
 
-### Rule: A turn is a PLAN, then ops, then a SEND
+### Turn lifecycle
 
-- Open every turn with a concise PLAN.
-- Close every turn with a SEND.
-- Retrieval results land in the NEXT packet's Log, never in the current turn.
-- Close with SEND[102] after performing ops. Its body states what remains to be done.
-- Close with SEND[202] to wait on workers or streams.
-- Close with SEND[200] only when this turn performed no retrieval or failed operation, no worker or stream remains live, and no result remains unseen.
+* Open every turn with a concise PLAN.
+* Close every turn with a SEND.
+* Retrieval results land in the next packet's Log, never in the current turn.
 
-```mermaid
-stateDiagram-v2
-    [*] --> Working
-    Working --> Working: 102 continue
-    Working --> Waiting: 202 await workers
-    Waiting --> Working: results wake you
-    Working --> Done: 200 terminate
-    Working --> Aborted: 499 abort
-    Done --> [*]
-    Aborted --> [*]
-```
+| submit code | meaning |
+|-------------|---------|
+| 102 | Continue after performing operations; the message states what remains. |
+| 202 | Wait for workers or streams. |
+| 200 | Conclude only when this turn performed no retrieval or failed operation, no worker or stream remains live, and no result remains unseen. |
+| 499 | Abort the loop. |
 
-### Rule: Your message to the user is what you SEND
+### User messages
 
-- Put every user-facing message in a SEND with a submit code.
-- Reference only paths the user can access - never internal knowledgebase paths.
+Put every user-facing message in a SEND with a submit code.
 
-### Rule: Work economically
+### Tool choice
 
-- Use the Plurnk OP built for the job; reserve EXEC for what no op can do.
-
-YOU MUST submit the OPs by SENDing a brief response or valid markdown with the proper submit code:
-
-- 102: submit a continuing turn with submit code 102: `<<SEND[102]:The retrieved evidence remains to be evaluated.:SEND`
-- 202: submit a waiting turn with submit code 202: `<<SEND[202]:Awaiting worker results for processing.:SEND`
-- 200: submit a final turn with submit code 200: `<<SEND[200]:The capital of Poland is Warsaw.:SEND`
-- 499: submit a failed loop with submit code 499: `<<SEND[499]:Aborted: Unrecoverable error:SEND`
-
-## Examples
-
-These are unsorted examples of legal plurnk usage, not a coherent or complete turn:
-
-```plurnk
-<<FIND(config/**/*.xml)://user[@role='admin']:FIND
-<<FIND(worker:///**):~french revolutionary history:FIND
-<<FIND(worker:///**)<0.7>:~french territorial concessions:FIND
-<<FIND(log:///**/error):/budget overflow|budget exceeded/i:FIND
-<<FIND[history](worker:///**):revolution:FIND
-<<FIND(data/users.json):$[?(@.role=="admin")]:FIND
-<<FIND(src/**):@createCoder:FIND
-<<FIND(src/**):@<createCoder:FIND
-<<FIND(**/notes.md)::FIND
-<<READ(lang/??.json):$.greeting:READ
-<<READ(worker://plurnk/docs/sh.md):$.Environment:READ
-<<READ(worker:///guides/setup.md)://h2/text():READ
-<<READ(worker:///users.json):$[?(@.role=="admin")]:READ
-<<READ(log:///1/2/3)<0.8>:~high-signal findings:READ
-<<READ(node:///3/1/2#stdout)<1,40>::READ
-<<READ(../AGENTS.md)<2>::READ
-<<READ(/AGENTS.md)::READ
-<<READ(https://en.wikipedia.org/wiki/Paris)<426,465>::READ
-<<EDIT[philosophy,existentialism](worker:///philosophy/existentialism/meaning.md):The meaning of life is 42:EDIT
-<<EDIT[france,geography](worker:///countries/france/capital.md):What is the capital of France?:EDIT
-<<EDIT[research,france](worker://~/research.md):Paris is the capital of France.:EDIT
-<<EDIT(worker://~/research.md)<1>:Paris is the capital and largest city of France.:EDIT
-<<EDIT(worker:///countries/france/capital.md)<-1>:[Wikipedia: Paris](https://en.wikipedia.org/wiki/Paris):EDIT
-<<EDIT(worker:///countries/france/capital.md)<1,-1>::EDIT
-<<EDIT(worker:///notes.md)<0>:# Notes:EDIT
-<<EDIT[tutorial,training,scripts](example.sh):echo "Maximize your Active Context signal/noise ratio." > advice.txt:EDIT
-<<COPY[archive,2026-05-14](worker:///draft.md):worker:///archive/2026-05-14/draft.md:COPY
-<<COPY(worker:///draft.md)<2,8>:worker:///archive.md<-1>:COPY
-<<MOVE[final](worker:///draft/answer.md):worker:///final/answer.md:MOVE
-<<OPEN(log:///**)<1,10>::OPEN
-<<FOLD(log:///**)<101,200>::FOLD
-<<SEND(worker://capital-checker):{"question":"Which source supports the France entry?"}:SEND
-<<KILL(worker:///draft.md)::KILL
-<<KILL(obsolete/file.md)::KILL
-<<KILL(sh:///3/1/2)::KILL
-<<KILL[9](sh:///3/1/3)::KILL
-<<KILL(log:///1/*/*/FOLD)::KILL
-```
+Use the Plurnk OP built for the job; reserve EXEC for what no OP can do.
