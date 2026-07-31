@@ -51,6 +51,15 @@ const parseCoordinate = (pathname: string): { loopSeq: number; turnSeq: number; 
     };
 };
 
+const canonicalCoordinate = (coordinate: string): string => coordinate.replace(/\/[A-Za-z]+$/, "");
+
+// A rendered log path appends `/OP` to the canonical loop/turn/item coordinate
+// as self-documentation. Selection honors both views: ordinary path globs map
+// the three-level resource tree, while an explicit OP segment can still filter
+// rows (`log:///**/READ`).
+const coordinateScopeMatches = (scope: ReturnType<typeof pathScope>, coordinate: string): boolean =>
+    pathScopeMatches(scope, coordinate) || pathScopeMatches(scope, canonicalCoordinate(coordinate));
+
 export default class Log extends CoreSchemeAdapterBase {
     static manifest: SchemeManifest = {
         name: "log",
@@ -259,7 +268,7 @@ export default class Log extends CoreSchemeAdapterBase {
             ? await db.log_find_candidates_tagged.all<Candidate>({ worker_id: workerId, scope_prefix: scope.candidatePrefix, tags: JSON.stringify(tags) })
             : await db.log_find_candidates.all<Candidate>({ worker_id: workerId, scope_prefix: scope.candidatePrefix });
         let rows: Candidate[];
-        try { rows = candidateRows.filter((row) => pathScopeMatches(scope, row.coordinate)); }
+        try { rows = candidateRows.filter((row) => coordinateScopeMatches(scope, row.coordinate)); }
         catch {
             return empty(
                 400,
@@ -271,7 +280,7 @@ export default class Log extends CoreSchemeAdapterBase {
                 },
             );
         }
-        const candidateByCoord = new Map(candidateRows.map((row) => [row.coordinate, row] as const));
+        const candidateByCanonicalCoord = new Map(candidateRows.map((row) => [canonicalCoordinate(row.coordinate), row] as const));
         const byCoord = new Map(rows.map((r) => [r.coordinate, r] as const));
         const projected = rows.map((r) => ({
             key: r.coordinate,
@@ -442,7 +451,7 @@ export default class Log extends CoreSchemeAdapterBase {
             matches = r.matches.map(({ key, matches: ranges }) => ({ pathname: key, matches: ranges }));
         }
         const folderSummaries = statement.body === null
-            ? pathFolderSummaries(scope, candidateRows.map((row) => row.coordinate))
+            ? pathFolderSummaries(scope, candidateRows.map((row) => canonicalCoordinate(row.coordinate)))
             : [];
         if (statement.lineMarker !== null && statement.body?.dialect !== "semantic" && folderSummaries.length === 0) {
             const page = LineMarkerOps.page(matches, statement.lineMarker);
@@ -486,7 +495,7 @@ export default class Log extends CoreSchemeAdapterBase {
             if (!seen.has(m.pathname)) { seen.add(m.pathname); seenPath.push(m.pathname); itemsTokenTotal += row.tokens; }
         }
         for (const folder of folderSummaries) {
-            const members = folder.pathnames.map((coordinate) => candidateByCoord.get(coordinate)).filter((row): row is Candidate => row !== undefined);
+            const members = folder.pathnames.map((coordinate) => candidateByCanonicalCoord.get(coordinate)).filter((row): row is Candidate => row !== undefined);
             const item: CatalogScope = {
                 path: `log:///${folder.selector}`,
                 items: members.length,
@@ -571,7 +580,7 @@ export default class Log extends CoreSchemeAdapterBase {
         const scope = pathScope(glob, false);
         const candidates = await db.log_match_coordinates.all<{ id: number; coordinate: string }>({ worker_id: workerId, scope_prefix: scope.candidatePrefix });
         let matched: Array<{ id: number; coordinate: string }>;
-        try { matched = candidates.filter((row) => pathScopeMatches(scope, row.coordinate)); }
+        try { matched = candidates.filter((row) => coordinateScopeMatches(scope, row.coordinate)); }
         catch { return { status: 400, ids: [], error: `The log glob '${glob}' is malformed.` }; }
         // Zero matches on a well-formed glob is a NO-OP SUCCESS, not an error (owner ruling): a
         // curation sweep that found nothing to curate steers nothing — 204 keeps it out of the
@@ -608,7 +617,7 @@ export default class Log extends CoreSchemeAdapterBase {
             tags: JSON.stringify(tags),
         });
         let matched: Array<{ id: number; coordinate: string }>;
-        try { matched = candidates.filter((row) => pathScopeMatches(scope, row.coordinate)); }
+        try { matched = candidates.filter((row) => coordinateScopeMatches(scope, row.coordinate)); }
         catch { return { status: 400, ids: [], error: `The log glob '${glob}' is malformed.` }; }
         if (matched.length === 0) return { status: 204, ids: [] };
         let selected = matched;

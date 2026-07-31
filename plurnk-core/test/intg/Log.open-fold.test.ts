@@ -193,6 +193,12 @@ test("log curation honors segment-local `*` and recursive `**`", async () => {
         assert.equal(shallow.status, 204, "no row lives directly at the log root");
         assert.equal(await getExpanded(db, workerId), 1, "`*` does not cross coordinate separators");
 
+        const turnRows = await log.fold(foldStmt(urlPath("log", "/1/1/*")), ctx);
+        assert.equal(turnRows.status, 200, "the documented loop/turn/item hierarchy reaches rows with one star");
+        assert.equal(turnRows.matched, 1);
+        assert.equal(await getExpanded(db, workerId), 0, "the rendered /OP decoration is not a mandatory hierarchy level");
+
+        await log.open(openStmt(urlPath("log", "/1/1/*")), ctx);
         const recursive = await log.fold(foldStmt(urlPath("log", "/**")), ctx);
         assert.equal(recursive.status, 200);
         assert.equal(await getExpanded(db, workerId), 0, "`**` reaches recursive log rows");

@@ -80,9 +80,12 @@ test("a single-star log FIND maps one coordinate level without crossing separato
         assert.ok(loop !== undefined && loop.items === 3 && (loop.tokens ?? 0) >= 0, "the loop scope summarizes its recursive rows");
         assert.deepEqual(root.matches, [], "the summary is navigation metadata, not a hidden row match");
 
-        const segmented = await log.find(findStmt(urlPath("log", "/*/*/*/*")), ctx);
-        assert.equal(segmented.results.length, 3, "one star per coordinate segment reaches the rows");
+        const segmented = await log.find(findStmt(urlPath("log", "/*/*/*")), ctx);
+        assert.equal(segmented.results.length, 3, "one star per canonical coordinate segment reaches the rows");
         assert.ok(segmented.results.every((item) => /^log:\/\/\/1\/1\/\d+\//.test(item.path)));
+
+        const turnRows = await log.find(findStmt(urlPath("log", "/1/1/*")), ctx);
+        assert.equal(turnRows.results.length, 3, "a turn-level star lists its item resources rather than /OP decorations");
 
         const recursive = await log.find(findStmt(urlPath("log", "/**")), ctx);
         assert.equal(recursive.results.length, 3, "double-star remains the direct recursive row listing");
