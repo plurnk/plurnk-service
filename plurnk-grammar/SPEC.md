@@ -325,7 +325,11 @@ mismatched-close-tag trap (`<<FIND(…):…:READ` leaving the sampler stuck
 in an unclosable body) to a single line. Content bodies
 (EDIT/COPY/MOVE/EXEC/SEND/PLAN/WORK/FORK) remain multiline. The ANTLR
 parser accepts multiline pattern bodies (forgiving ingester;
-`L(GBNF) ⊆ L(ANTLR)`). {§pattern-body-single-line}
+`L(GBNF) ⊆ L(ANTLR)`). The rail also forbids `:` as the first matcher
+body character, preventing an extra body delimiter from producing the
+common `:::OP` typo. Empty matchers and later colons remain valid; use a
+regex such as `/^:needle/` when the matcher itself must begin with a
+literal colon. {§pattern-body-single-line} {§pattern-body-leading-colon}
 
 **Deferred validation:**
 

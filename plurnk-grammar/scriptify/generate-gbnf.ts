@@ -85,6 +85,21 @@ const bodyRules = (model: GModel, name: string, close: string, singleLine = fals
     }
 };
 
+// Pattern bodies may be empty or begin with any ordinary single-line character except
+// `:`. This removes the high-probability `:::OP` typo from the local-model rail: after the
+// body delimiter, a leading `:` creates the same spelling as an accidental extra delimiter.
+// ANTLR remains permissive, and a literal leading colon is still expressible unambiguously
+// as a regex. Once one matcher character is consumed, the ordinary body automaton applies
+// and colons remain legal everywhere else.
+const patternBodyStartRule = (model: GModel, name: string): string => {
+    const rule = `${name}-pattern-start`;
+    model.set(rule, [
+        [bodyOther(":", true), ref(`${name}-b0`)],
+        [],
+    ]);
+    return rule;
+};
+
 // Non-empty body: `${name}-b0` minus its entry epsilon, so the body MUST consume at least
 // one char before the close. The two non-epsilon transitions of state 0 (`:` -> b1,
 // any-other -> b0) then hand off to the normal automaton, which keeps its epsilon, so the
@@ -257,8 +272,10 @@ export const buildModel = (): GModel => {
             const name = op.toLowerCase() + (suffix === "" ? "" : `-${suffix}`);
             const open = `<<${op}${suffix}`;
             const close = `:${op}${suffix}`;
-            bodyRules(model, name, close, PATTERN_OPS.has(op));
-            const body = [lit(":"), ref(`${name}-b0`), lit(close)];
+            const patternBody = PATTERN_OPS.has(op);
+            bodyRules(model, name, close, patternBody);
+            const bodyStart = patternBody ? patternBodyStartRule(model, name) : `${name}-b0`;
+            const body = [lit(":"), ref(bodyStart), lit(close)];
             if (op === "SEND") {
                 // A SEND is comms; the LAST SEND before EOS is the turn's disposition. Mid
                 // SENDs carry any NON-disposition 3-digit status (status-mid) or none, targeted

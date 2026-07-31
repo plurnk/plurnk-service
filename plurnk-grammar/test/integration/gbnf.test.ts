@@ -482,6 +482,28 @@ test("GBNF: pattern bodies (FIND/READ/OPEN/FOLD) forbid a literal newline — in
     assert.equal(derives("root-turn", "<<PLAN:p:PLAN\n<<SEND[200]:multi\nline:SEND"), true);
 });
 
+// {§pattern-body-leading-colon}
+test("GBNF: pattern bodies cannot begin with the close delimiter - triple-colon recovery", () => {
+    for (const op of ["FIND", "READ", "OPEN", "FOLD"]) {
+        const prefix = `<<PLAN:p:PLAN\n<<${op}(a)`;
+        assert.equal(derives("root-turn", `${prefix}::${op}\n<<SEND[102]:c:SEND`), true, `${op} keeps an empty matcher body`);
+        assert.equal(derives("root-turn", `${prefix}:::${op}\n<<SEND[102]:c:SEND`), false, `${op} rejects the triple-colon typo`);
+        assert.equal(derives("root-turn", `${prefix}::needle:${op}\n<<SEND[102]:c:SEND`), false, `${op} rejects a colon-prefixed matcher body`);
+        assert.equal(derives("root-turn", `${prefix}:a:b:${op}\n<<SEND[102]:c:SEND`), true, `${op} retains colons after the first matcher character`);
+        assert.equal(derives("root-turn", `${prefix}:/^:needle/:${op}\n<<SEND[102]:c:SEND`), true, `${op} can match a literal leading colon through regex`);
+    }
+    assert.equal(
+        derives("root-turn", "<<PLAN:p:PLAN\n<<READ(https://example.com)<17,50>:::READ\n<<SEND[102]:c:SEND"),
+        false,
+        "the scoped live-demo failure is outside the rail",
+    );
+
+    const parsed = PlurnkParser.parseStatements("<<READ(a):::READ");
+    assert.equal(parsed.items.filter((item) => item.kind === "error").length, 0, "ANTLR remains the permissive ingester");
+    assert.equal(parsed.items[0]?.kind, "statement");
+    if (parsed.items[0]?.kind === "statement") assert.deepEqual(parsed.items[0].statement.body, { dialect: "glob", raw: ":" });
+});
+
 test("GBNF: mid-batch comms SENDs derive (targeted/pathless, NON-disposition codes) before the final", () => {
     const batch = "<<PLAN:plan:PLAN\n<<SEND[400](agent://supervisor):decomposition incomplete:SEND\n<<SEND[400]:{\"reason\":\"bad op\"}:SEND\n<<SEND[102]:done:SEND";
     assert.equal(derives("root-turn", batch), true);
