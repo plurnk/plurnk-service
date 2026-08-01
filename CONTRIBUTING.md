@@ -21,6 +21,17 @@ Some integration suites require host tools. Live-model and benchmark tests are
 not part of the deterministic contributor gate and must state their external
 requirements.
 
+## Forge workflow
+
+PossumTech Gitea is the canonical working forge for maintainer development.
+GitHub is the public downstream source, external-contribution, security-report,
+and historical surface. A GitHub branch or pull request is not canonical until
+the work is accepted into Gitea through the maintained project workflow.
+
+External contributors may continue to use GitHub issues and pull requests.
+Maintainers coordinate accepted implementation work and durable development
+decisions on Gitea; ordinary maintainer pushes target Gitea only.
+
 ## Changes
 
 - Keep a change within the package that owns the behavior.

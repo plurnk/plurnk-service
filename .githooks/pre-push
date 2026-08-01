@@ -1,7 +1,8 @@
 #!/bin/sh
 # The gate: branch-name policy on EVERY push; the drill (lint+unit full; intg
 # scoped to the changed workspaces, full on a root-level change) on pushes to MAIN
-# ONLY — main is what ships and what every lane builds on. Never GitHub CI (AGENTS §one-gate).
+# ONLY — main is what ships and what every lane builds on. Never GitHub CI
+# (POSSUMTECH.md §Forge responsibilities).
 # Branches are main or type/kebab-slug; tags pass. Deletions are exempt from both
 # the name policy and the drill — a deletion pushes no code to gate and removes a
 # ref rather than naming one (so a mis-named branch can always be deleted).

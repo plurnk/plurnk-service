@@ -1,6 +1,7 @@
 #!/bin/sh
-# Doctrine gate (AGENTS §commits): a commit is ONE conventional-commit subject line,
-# ≤100 chars, no body, no Co-Authored-By/Claude-Session trailers. Merges exempt.
+# Doctrine gate (POSSUMTECH.md §Git workflow): a commit is one Conventional
+# Commit subject line, at most 80 characters, with no body or attribution
+# trailers. Merges are exempt.
 msg_file="$1"
 subject=$(sed -n '1p' "$msg_file")
 
@@ -27,7 +28,7 @@ if sed '1d' "$msg_file" | grep -vE '^\s*$' | grep -qvE '^#'; then
 fi
 
 if grep -qiE '^(Co-Authored-By|Claude-Session):' "$msg_file"; then
-    echo "commit-msg: no Co-Authored-By / Claude-Session trailers (AGENTS §commits)" >&2
+    echo "commit-msg: no Co-Authored-By / Claude-Session trailers (POSSUMTECH.md §Git workflow)" >&2
     exit 1
 fi
 

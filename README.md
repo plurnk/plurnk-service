@@ -52,6 +52,10 @@ See [ARCHITECTURE.md](./ARCHITECTURE.md) for boundaries and request flow.
 
 ## Develop
 
+PossumTech Gitea is the canonical maintainer-development forge. GitHub remains
+the public source-distribution, external-contribution, and security-reporting
+surface.
+
 ```sh
 git clone https://github.com/plurnk/plurnk-service.git
 cd plurnk-service
@@ -74,7 +78,7 @@ reproducible candidate:
 PLURNK_CANDIDATE_MODEL=<configured-alias> npm run candidate -- <client arguments>
 ```
 
-By default the launcher expects the client checkout at `../repo/plurnk`. Set
+By default the launcher expects the client checkout at `../plurnk`. Set
 `PLURNK_CLIENT_CHECKOUT` to use another checkout. It builds both projects,
 creates an isolated database, reports their provenance, and preserves a digest
 under `PLURNK_BENCHMARKS`. Repeated experiment harnesses may build both

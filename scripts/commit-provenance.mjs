@@ -4,9 +4,7 @@ const ZERO = "0".repeat(40);
 
 export const ALLOWED_AUTHORS = new Set([
     "wikitopian\0wikitopian@pm.me",
-    "Claude\0noreply@anthropic.com",
-    "Codex\0noreply@openai.com",
-    "Plurnk\0plurnk@pm.me",
+    "plurnk_codex\0wikitopian+plurnk_codex@pm.me",
 ]);
 
 export const validateCommit = ({ sha, authorName, authorEmail, committerName, committerEmail, signature }) => {
@@ -60,7 +58,7 @@ if (import.meta.main) {
     if (errors.length > 0) {
         console.error("pre-push: commit provenance rejected:");
         for (const error of errors) console.error(`  ${error}`);
-        console.error("authors may be wikitopian, Claude, Codex, or Plurnk; the committer and signer must be wikitopian");
+        console.error("authors may be plurnk_codex or wikitopian; the committer and signer must be wikitopian");
         process.exit(1);
     }
 }

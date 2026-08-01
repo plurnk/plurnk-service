@@ -1,8 +1,8 @@
 # PLURNK platform monorepo
 
-Read `../repo/AGENTS.md` first. It contains the common product and collaboration
-guidance for every PLURNK repository. This file adds only rules specific to the
-platform monorepo.
+Read `../POSSUMTECH.md` completely before this file. Stop if that central
+contract is unavailable. This file adds only rules specific to the open-source
+PLURNK platform monorepo.
 
 This repository is an npm workspace containing the daemon
 (`plurnk-core`, published as `@plurnk/plurnk-service`), the grammar, the AG-UI
