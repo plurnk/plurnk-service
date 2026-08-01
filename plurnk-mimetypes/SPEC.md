@@ -570,9 +570,53 @@ interface TreeSitterLanguageEntry {
 - **Kitchen sink:** the README carries a copy-paste `npm install` block listing every published grammar. (A `grammars-all` meta package was considered and rejected — a layer of indirection that does nothing.)
 - **Degrade, not throw (issue #14):** `detect()` is install-state-blind — it returns the source mimetype regardless of whether the grammar package is installed. When `process()` then finds the grammar missing, it degrades to a text-plain fallback with `ok: true` and surfaces the missing package name on `ProcessResult.grammarMissing` so consumers can show an actionable install hint. `process(input, { strict: true })` opts into throwing `GrammarNotInstalledError` instead.
 
-### 13.5 Reproducibility
+### 13.5 Reproducibility {§grammar-leaf-reproducibility}
 
-Each leaf rebuilds from a pinned upstream commit and verifies that the committed WASM is byte-identical.
+A grammar leaf owns one source identity and one build tool. `.grammar-source`
+is the sole upstream locator, `.grammar-pin` is its full commit object ID, and
+both are published as artifact provenance. The executable `tree-sitter-cli`
+version is exact in locked dev dependencies; `npm ci` in the leaf checkout is
+its only installation path. The leaf's project policy authorizes that exact
+package and version and enables strict allow-script enforcement, so an
+unreviewed installer fails before artifact work begins. Build and verification
+invoke only the checkout-local CLI—never an ancestor project, global install,
+floating range, or `PATH` fallback.
+
+Every build or verification initializes a disposable repository, fetches only
+the pinned commit from `.grammar-source` at depth one, and checks out
+`FETCH_HEAD` detached. The temporary repository is removed after normal
+success or failure. This keeps the source input exact without retaining
+upstream history or accumulated build products.
+
+`update:pin` reads the same locator and selects the commit of the highest exact
+stable semver tag (`v` prefix optional), dereferencing annotated tags. Its
+`--check` mode never writes; no stable tag and an already-current pin are
+successful no-ops. Git and malformed-input failures remain failures.
+
+When a pinned upstream grammar composes another JavaScript grammar, its own
+committed lockfile is installed with `npm ci --ignore-scripts --omit=dev`.
+That exception supplies grammar source modules without executing the upstream
+package's native lifecycle or introducing its development toolchain.
+
+```mermaid
+flowchart LR
+    L[leaf lock + exact CLI policy] -->|npm ci| C[checkout-local CLI]
+    S[.grammar-source] --> Q[depth-one fetch]
+    P[full commit ID in .grammar-pin] --> Q
+    Q --> U[detached commit in disposable repository]
+    C --> W[rebuilt WASM]
+    U --> W
+    W --> H{sha256 equals committed WASM?}
+    H -->|yes| A[artifact accepted]
+    H -->|no| E[verification fails]
+    A --> D[temporary repository disposed]
+    E --> D
+```
+
+`build:wasm` may replace the leaf's committed artifact; `verify:wasm` rebuilds
+only in temporary storage and positively compares both hashes. Fetch,
+dependency, generation, build, and mismatch failures remain visible with the
+failing command's output.
 
 ## 14. Query-evidence conformance
 
