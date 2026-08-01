@@ -146,15 +146,23 @@ Examples:
 
 ## Delegation
 
-Worker results arrive in the Log and wake a worker waiting with SEND[202].
+```mermaid
+sequenceDiagram
+    participant User
+    participant You
+    participant Worker as capital-checker
+    User->>You: What is the capital of France?
+    You->>Worker: WORK - find the capital of France
+    Note over You: SEND[202] - await the worker
+    Worker-->>You: result enters the Log and wakes you
+    You->>User: SEND[200] - The capital of France is Paris.
+```
 
 ```plurnk
 <<PLAN:Delegate the capital question, then wait.:PLAN
 <<WORK(worker://capital-checker):Find the capital of France from a primary source:WORK
 <<SEND[202]:Awaiting capital-checker.:SEND
 ```
-
-After the result arrives:
 
 ```plurnk
 <<PLAN:Deliver the collected answer.:PLAN
