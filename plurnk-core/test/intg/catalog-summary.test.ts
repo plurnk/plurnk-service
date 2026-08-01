@@ -3,7 +3,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import type { EditStatement, UrlPath } from "@plurnk/plurnk-contracts/grammar";
+import type { EditStatement, UrlPath } from "@plurnk/plurnk-contracts";
 import Worker from "../../src/schemes/Worker.ts";
 import EntryCrud from "../../src/schemes/_entry-crud.ts";
 import { openMigrated, insertWorkspace, insertWorker, makeHandlerCtx, makeSchemeCtx } from "./_helpers.ts";

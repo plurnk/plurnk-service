@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import type { PlurnkStatement } from "@plurnk/plurnk-contracts/grammar";
+import type { PlurnkStatement } from "@plurnk/plurnk-contracts";
 import { Results, type ProposalApplyRequest, type SchemeCtx } from "@plurnk/plurnk-schemes";
 import ProposalLifecycle from "./ProposalLifecycle.ts";
 import SchemeRegistry from "./SchemeRegistry.ts";

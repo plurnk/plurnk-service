@@ -8,8 +8,8 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { PlurnkParser } from "@plurnk/plurnk-contracts/grammar";
-import type { FindStatement, ReadStatement, EditStatement, PlurnkStatement } from "@plurnk/plurnk-contracts/grammar";
+import { PlurnkParser } from "@plurnk/plurnk-contracts";
+import type { FindStatement, ReadStatement, EditStatement, PlurnkStatement } from "@plurnk/plurnk-contracts";
 import { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";

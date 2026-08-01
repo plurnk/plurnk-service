@@ -7,7 +7,7 @@
 // structured matchers may locate content, but do not change scope coordinates.
 // Callers bind their own (content, mimetype) and wrap the result.
 
-import type { LineMarker, MatcherBody } from "@plurnk/plurnk-contracts/grammar";
+import type { LineMarker, MatcherBody } from "@plurnk/plurnk-contracts";
 import type { TextRegion } from "@plurnk/plurnk-contracts";
 import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import type { MatchEvidence, RangeExtent, SchemeResultBase } from "@plurnk/plurnk-schemes";

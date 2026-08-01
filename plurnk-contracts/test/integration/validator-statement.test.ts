@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import Validator from "../../src/GrammarValidator.ts";
-import { PlurnkParser } from "../../src/grammar.ts";
+import Validator from "../../src/Validator.ts";
+import { PlurnkParser } from "../../src/index.ts";
 
 const validateRoundTrip = (input: string) => {
     const result = PlurnkParser.parseStatements(input);

@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import ExecutorRegistry from "../../src/core/ExecutorRegistry.ts";
-import type { ExecStatement } from "@plurnk/plurnk-contracts/grammar";
+import type { ExecStatement } from "@plurnk/plurnk-contracts";
 import Results from "../../src/core/results.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, DEFAULT_MIMETYPES } from "./_helpers.ts";
 import { setTimeout as delay } from "node:timers/promises";

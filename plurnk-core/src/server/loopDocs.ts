@@ -7,7 +7,7 @@
 //      by the turn-1 FIND(plurnk://docs/**) foist (#270), the marquee first-turn feature.
 import type Engine from "../core/Engine.ts";
 import type { Db } from "../core/Db.ts";
-import type { PlurnkStatement, EditStatement } from "@plurnk/plurnk-contracts/grammar";
+import type { PlurnkStatement, EditStatement } from "@plurnk/plurnk-contracts";
 import WorkspaceSettings from "../core/workspace-settings.ts";
 import DispatchAsPlurnk from "./dispatch-as-plurnk.ts";
 

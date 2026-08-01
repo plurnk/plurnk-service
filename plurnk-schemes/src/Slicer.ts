@@ -12,7 +12,7 @@
 // specified and rejected as 416. Within a range, -1 as the M endpoint
 // means "include through the last line" (so <1,-1> is whole content).
 
-import type { LineMarker } from "@plurnk/plurnk-contracts/grammar";
+import type { LineMarker } from "@plurnk/plurnk-contracts";
 import type { TextRegion } from "@plurnk/plurnk-contracts";
 import { TextCoordinates, type TextLine } from "@plurnk/plurnk-mimetypes";
 import Results, { type SchemeResult } from "./Results.ts";

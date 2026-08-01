@@ -29,7 +29,7 @@ import type {
     ForkStatement,
     KillStatement,
     PlanStatement,
-} from "@plurnk/plurnk-contracts/grammar";
+} from "@plurnk/plurnk-contracts";
 import type { ProposalApplyRequest, ProposalApplyResult, SchemeCtx } from "./ctx.ts";
 import type { EditBatchResult } from "./edit-receipt.ts";
 import type { SchemeResult } from "./Results.ts";

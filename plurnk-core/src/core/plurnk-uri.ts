@@ -12,7 +12,7 @@
 // column. They therefore use the same mechanical fold while retaining their
 // addressed protocol as the scheme identity.
 
-import type { ParsedPath } from "@plurnk/plurnk-contracts/grammar";
+import type { ParsedPath } from "@plurnk/plurnk-contracts";
 import { decodePathParens, encodePathParens } from "./path-decode.ts";
 
 // Bare paths default to the file scheme per plurnk.md (grammar sysprompt):

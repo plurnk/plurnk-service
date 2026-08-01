@@ -10,7 +10,7 @@ import { mkdtemp, readFile, writeFile, mkdir, rm, stat } from "node:fs/promises"
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createHash } from "node:crypto";
-import type { EditStatement, ReadStatement, LineMarker } from "@plurnk/plurnk-contracts/grammar";
+import type { EditStatement, ReadStatement, LineMarker } from "@plurnk/plurnk-contracts";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import File from "../../src/schemes/File.ts";

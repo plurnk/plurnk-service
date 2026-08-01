@@ -19,7 +19,7 @@ import Results from "../../src/core/results.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { Mock } from "@plurnk/plurnk-providers";
 import type { MockResponse } from "@plurnk/plurnk-providers";
-import type { SendStatement, EditStatement, UrlPath } from "@plurnk/plurnk-contracts/grammar";
+import type { SendStatement, EditStatement, UrlPath } from "@plurnk/plurnk-contracts";
 import type { Db } from "../../src/core/Db.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, rootWorkspace } from "./_helpers.ts";
 

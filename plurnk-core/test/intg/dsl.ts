@@ -9,8 +9,8 @@
 // The path-parser helper would let us bypass HEREDOC construction; tracked
 // in the canonical contracts grammar.
 
-import { PlurnkParser } from "@plurnk/plurnk-contracts/grammar";
-import type { LineMarker, PlurnkStatement } from "@plurnk/plurnk-contracts/grammar";
+import { PlurnkParser } from "@plurnk/plurnk-contracts";
+import type { LineMarker, PlurnkStatement } from "@plurnk/plurnk-contracts";
 
 // A parse failure surfaced from raw DSL — an error item or an unterminated tail. `line`/`column`
 // are 1-based positions in the CALLER's text (PLAN-prefix de-offset applied). §methods

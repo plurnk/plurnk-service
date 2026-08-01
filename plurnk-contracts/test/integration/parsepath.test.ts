@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { AstBuilder, PlurnkParseError, PlurnkParser, WORKER_NAME, RESERVED_AUTHORITIES } from "../../src/grammar.ts";
+import { AstBuilder, PlurnkParseError, PlurnkParser, WORKER_NAME, RESERVED_AUTHORITIES } from "../../src/index.ts";
 
 // AstBuilder.parsePath was promoted from private to public in 0.3.2 (issue #7)
 // so consumer RPC layers can decompose path strings without round-tripping

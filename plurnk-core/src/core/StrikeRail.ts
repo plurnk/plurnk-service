@@ -1,4 +1,4 @@
-import type { PlurnkStatement, LineMarker } from "@plurnk/plurnk-contracts/grammar";
+import type { PlurnkStatement, LineMarker } from "@plurnk/plurnk-contracts";
 
 // Rail #38: action-entry statuses that DON'T accumulate strikes. Model adapted
 // to a finding (not_found, op_not_supported); no penalty. Rummy parallel:

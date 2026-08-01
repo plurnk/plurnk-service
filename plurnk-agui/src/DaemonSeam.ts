@@ -28,10 +28,10 @@ export interface PendingProposal {
 }
 
 // The grammar owns the protocol: the statement handed to dispatchAsClient IS
-// @plurnk/plurnk-contracts/grammar's PlurnkStatement (parsed at the module's edge). Type-only
+// @plurnk/plurnk-contracts's PlurnkStatement (parsed at the module's edge). Type-only
 // import — erased at compile, so the published package stays zero-runtime-deps.
 import type { OperationResult } from "@plurnk/plurnk-contracts";
-import type { PlurnkStatement } from "@plurnk/plurnk-contracts/grammar";
+import type { PlurnkStatement } from "@plurnk/plurnk-contracts";
 export type { PlurnkStatement };
 
 // A journal entry as the daemon ships it (readLog / the log/entry event carry this).

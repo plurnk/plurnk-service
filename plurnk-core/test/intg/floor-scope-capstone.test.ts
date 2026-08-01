@@ -3,8 +3,8 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { PlurnkParser } from "@plurnk/plurnk-contracts/grammar";
-import type { PlurnkStatement } from "@plurnk/plurnk-contracts/grammar";
+import { PlurnkParser } from "@plurnk/plurnk-contracts";
+import type { PlurnkStatement } from "@plurnk/plurnk-contracts";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { openMigrated, seedEnvelope, DEFAULT_MIMETYPES } from "./_helpers.ts";

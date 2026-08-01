@@ -1,5 +1,5 @@
 // Pack the complete contracts package, install it into a clean consumer, and
-// exercise both the lightweight wire-contract root and the grammar subpath.
+// exercise its singular code entrypoint.
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { mkdtemp, writeFile, rm, readdir, readFile } from "node:fs/promises";
@@ -53,6 +53,10 @@ try {
     process.stdout.write(`[smoke] dist/schema mirrors schema/ (${sourceSchemas.length} files)\n`);
 
     const installedRoot = join(tempDir, "node_modules", "@plurnk", "plurnk-contracts");
+    const installedPackage = JSON.parse(await readFile(join(installedRoot, "package.json"), "utf8"));
+    if (Object.hasOwn(installedPackage.exports, "./grammar")) {
+        throw new Error("installed package retains a second grammar code entrypoint");
+    }
     for (const gbnf of ["plurnk.gbnf"]) {
         const shipped = await readFile(join(installedRoot, "dist", gbnf), "utf8");
         const local = await readFile(join(contractsDir, "dist", gbnf), "utf8");
@@ -61,8 +65,7 @@ try {
     }
 
     await writeFile(join(tempDir, "consume.js"), `
-import { Problems, Validator as ContractValidator } from "@plurnk/plurnk-contracts";
-import { PlurnkParser, Validator as GrammarValidator, PlurnkParseError, parsePath } from "@plurnk/plurnk-contracts/grammar";
+import { Problems, PlurnkParser, Validator, PlurnkParseError, parsePath } from "@plurnk/plurnk-contracts";
 
 // 1. Parse a simple plurnk statement.
 const result = PlurnkParser.parseStatements("<<EDIT(worker:///foo):body content:EDIT");
@@ -72,12 +75,12 @@ if (item.statement.op !== "EDIT") throw new Error("expected EDIT, got " + item.s
 
 // 2. Validator round-trip (exercises JSON schema imports).
 const pos = item.statement.position;
-const posResult = GrammarValidator.validatePosition(pos);
+const posResult = Validator.validatePosition(pos);
 if (!posResult.valid) throw new Error("position validation failed: " + JSON.stringify(posResult.errors));
 
 // 3. Validate the runtime-neutral result contract through the package root.
 const problem = Problems.create("smoke", "missing", 404, "Missing.");
-ContractValidator.assertOperationResult({ status: 404, problem });
+Validator.assertOperationResult({ status: 404, problem });
 
 // 4. Confirm an error class is importable as a value.
 if (typeof PlurnkParseError !== "function") throw new Error("PlurnkParseError is not a class");
@@ -86,7 +89,7 @@ if (typeof PlurnkParseError !== "function") throw new Error("PlurnkParseError is
 const dest = parsePath("worker:///archive/draft");
 if (dest?.kind !== "url" || dest.scheme !== "worker" || dest.pathname !== "/archive/draft") throw new Error("parsePath export not working: " + JSON.stringify(dest));
 
-console.log("OK: wire contracts and grammar are consumable through their installed entrypoints.");
+console.log("OK: wire contracts and grammar are consumable through one installed entrypoint.");
 `);
 
     process.stdout.write(`[smoke] running consume.js...\n`);
@@ -94,31 +97,8 @@ console.log("OK: wire contracts and grammar are consumable through their install
     if (consumeErr) process.stderr.write(consumeErr);
     process.stdout.write(consumeOut);
 
-    await writeFile(join(tempDir, "consume-contracts-browser.js"), `
-import { Problems } from "@plurnk/plurnk-contracts";
-export const makeProblem = () => Problems.create("smoke", "missing", 404, "Missing.");
-`);
-    const contractsBundle = join(tempDir, "consume-contracts-browser.bundle.mjs");
-    const contractsBuild = await build({
-        absWorkingDir: tempDir,
-        entryPoints: ["consume-contracts-browser.js"],
-        outfile: contractsBundle,
-        bundle: true,
-        format: "esm",
-        platform: "browser",
-        logLevel: "silent",
-        metafile: true,
-    });
-    const grammarRuntimeInput = Object.keys(contractsBuild.metafile.inputs).find((input) =>
-        input.includes("antlr4ng") || input.includes("PlurnkParser"),
-    );
-    if (grammarRuntimeInput !== undefined) {
-        throw new Error(`wire-contract root loaded grammar runtime: ${grammarRuntimeInput}`);
-    }
-    process.stdout.write("[smoke] root entrypoint excludes the grammar runtime\n");
-
     await writeFile(join(tempDir, "consume-browser.js"), `
-import { PlurnkParser } from "@plurnk/plurnk-contracts/grammar";
+import { PlurnkParser } from "@plurnk/plurnk-contracts";
 export const parse = (input) => PlurnkParser.parse(input);
 `);
     const browserBundle = join(tempDir, "consume-browser.bundle.mjs");

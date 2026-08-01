@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { PlurnkParser, type PlurnkStatement } from "@plurnk/plurnk-contracts/grammar";
+import { PlurnkParser, type PlurnkStatement } from "@plurnk/plurnk-contracts";
 import { scheduleTurnOps } from "./turn-scheduler.ts";
 
 const statements = (source: string): PlurnkStatement[] => {

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import type { EditStatement, LineMarker, LocalPath, ParsedPath, ReadStatement } from "@plurnk/plurnk-contracts/grammar";
+import type { EditStatement, LineMarker, LocalPath, ParsedPath, ReadStatement } from "@plurnk/plurnk-contracts";
 import { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import Worker from "../../src/schemes/Worker.ts";
 import { openMigrated, insertWorkspace, insertWorker, makeSchemeCtx } from "./_helpers.ts";

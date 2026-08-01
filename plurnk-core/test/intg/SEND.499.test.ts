@@ -2,7 +2,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import type { SendStatement, EditStatement, ReadStatement, UrlPath } from "@plurnk/plurnk-contracts/grammar";
+import type { SendStatement, EditStatement, ReadStatement, UrlPath } from "@plurnk/plurnk-contracts";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Worker from "../../src/schemes/Worker.ts";

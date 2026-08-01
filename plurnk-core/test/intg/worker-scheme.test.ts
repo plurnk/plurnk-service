@@ -7,7 +7,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import type { ParsedPath, CopyStatement, WorkStatement, ForkStatement, KillStatement, ReadStatement, FindStatement } from "@plurnk/plurnk-contracts/grammar";
+import type { ParsedPath, CopyStatement, WorkStatement, ForkStatement, KillStatement, ReadStatement, FindStatement } from "@plurnk/plurnk-contracts";
 import Engine from "../../src/core/Engine.ts";
 import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";

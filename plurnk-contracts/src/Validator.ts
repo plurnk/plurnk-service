@@ -1,4 +1,16 @@
 import { Validator as CfValidator, type OutputUnit, type Schema } from "@cfworker/json-schema";
+import positionSchema from "../schema/Position.json" with { type: "json" };
+import lineMarkerSchema from "../schema/LineMarker.json" with { type: "json" };
+import paramsSchema from "../schema/Params.json" with { type: "json" };
+import channelContentSchema from "../schema/ChannelContent.json" with { type: "json" };
+import parsedPathSchema from "../schema/ParsedPath.json" with { type: "json" };
+import matcherBodySchema from "../schema/MatcherBody.json" with { type: "json" };
+import sendBodySchema from "../schema/SendBody.json" with { type: "json" };
+import resourceSelectionSchema from "../schema/ResourceSelection.json" with { type: "json" };
+import schemeRegistrationSchema from "../schema/SchemeRegistration.json" with { type: "json" };
+import providerDeclarationSchema from "../schema/ProviderDeclaration.json" with { type: "json" };
+import plurnkStatementSchema from "../schema/PlurnkStatement.json" with { type: "json" };
+import clientStatementSchema from "../schema/ClientStatement.json" with { type: "json" };
 import noticeSchema from "../schema/Notice.json" with { type: "json" };
 import problemDetailsSchema from "../schema/ProblemDetails.json" with { type: "json" };
 import operationResultSchema from "../schema/OperationResult.json" with { type: "json" };
@@ -13,6 +25,40 @@ export class InvalidOperationResultError extends TypeError {}
 export class InvalidTextRegionError extends TypeError {}
 
 export default class Validator {
+    static #position = new CfValidator(positionSchema as Schema, "2020-12");
+    static #lineMarker = new CfValidator(lineMarkerSchema as Schema, "2020-12");
+    static #params = new CfValidator(paramsSchema as Schema, "2020-12");
+    static #channelContent = new CfValidator(channelContentSchema as Schema, "2020-12");
+    static #parsedPath = Validator.#withRefs(parsedPathSchema, [paramsSchema]);
+    static #matcherBody = new CfValidator(matcherBodySchema as Schema, "2020-12");
+    static #sendBody = new CfValidator(sendBodySchema as Schema, "2020-12");
+    static #schemeRegistration = new CfValidator(schemeRegistrationSchema as Schema, "2020-12");
+    static #providerDeclaration = new CfValidator(providerDeclarationSchema as Schema, "2020-12");
+    static #plurnkStatement = Validator.#withRefs(
+        plurnkStatementSchema,
+        [
+            positionSchema,
+            lineMarkerSchema,
+            paramsSchema,
+            parsedPathSchema,
+            matcherBodySchema,
+            sendBodySchema,
+            resourceSelectionSchema,
+        ],
+    );
+    static #clientStatement = Validator.#withRefs(
+        clientStatementSchema,
+        [
+            plurnkStatementSchema,
+            positionSchema,
+            lineMarkerSchema,
+            paramsSchema,
+            parsedPathSchema,
+            matcherBodySchema,
+            sendBodySchema,
+            resourceSelectionSchema,
+        ],
+    );
     static #notice = new CfValidator(noticeSchema as Schema, "2020-12");
     static #problemDetails = new CfValidator(problemDetailsSchema as Schema, "2020-12");
     static #operationResult = Validator.#withRefs(operationResultSchema, [problemDetailsSchema]);
@@ -20,8 +66,56 @@ export default class Validator {
 
     static #withRefs(mainSchema: unknown, refSchemas: unknown[]): CfValidator {
         const validator = new CfValidator(mainSchema as Schema, "2020-12");
-        for (const ref of refSchemas) validator.addSchema(ref as Schema);
+        const mainId = (mainSchema as { $id?: string }).$id;
+        for (const ref of refSchemas) {
+            if ((ref as { $id?: string }).$id === mainId) continue;
+            validator.addSchema(ref as Schema);
+        }
         return validator;
+    }
+
+    static validatePosition(value: unknown): ValidationResult {
+        return Validator.#validate(Validator.#position, value);
+    }
+
+    static validateLineMarker(value: unknown): ValidationResult {
+        return Validator.#validate(Validator.#lineMarker, value);
+    }
+
+    static validateParams(value: unknown): ValidationResult {
+        return Validator.#validate(Validator.#params, value);
+    }
+
+    static validateChannelContent(value: unknown): ValidationResult {
+        return Validator.#validate(Validator.#channelContent, value);
+    }
+
+    static validateParsedPath(value: unknown): ValidationResult {
+        return Validator.#validate(Validator.#parsedPath, value);
+    }
+
+    static validateMatcherBody(value: unknown): ValidationResult {
+        return Validator.#validate(Validator.#matcherBody, value);
+    }
+
+    static validateSendBody(value: unknown): ValidationResult {
+        return Validator.#validate(Validator.#sendBody, value);
+    }
+
+    static validateSchemeRegistration(value: unknown): ValidationResult {
+        return Validator.#validate(Validator.#schemeRegistration, value);
+    }
+
+    static validateProviderDeclaration(value: unknown): ValidationResult {
+        return Validator.#validate(Validator.#providerDeclaration, value);
+    }
+
+    static validatePlurnkStatement(value: unknown): ValidationResult {
+        return Validator.#validate(Validator.#plurnkStatement, value);
+    }
+
+    static validateClientStatement(value: unknown): ValidationResult {
+        return Validator.#validate(Validator.#clientStatement, value);
     }
 
     static validateNotice(value: unknown): ValidationResult {

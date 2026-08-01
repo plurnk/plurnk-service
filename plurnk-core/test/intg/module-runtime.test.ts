@@ -8,7 +8,7 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import ExecutorRegistry from "../../src/core/ExecutorRegistry.ts";
 import type { Executor, RegistryEntry } from "../../src/core/ExecutorRegistry.ts";
-import type { ReadStatement, UrlPath } from "@plurnk/plurnk-contracts/grammar";
+import type { ReadStatement, UrlPath } from "@plurnk/plurnk-contracts";
 import type ExecOutputScheme from "../../src/schemes/ExecOutputScheme.ts";
 import { openMigrated, makeSchemeCtx } from "./_helpers.ts";
 

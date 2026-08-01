@@ -9,8 +9,8 @@ runtime-neutral results/failures/notices, and universal text coordinates.
   second parser or a guarantee of semantically valid model output.
 - JSON Schemas are authoritative for shared wire shapes; TypeScript types are
   generated from them.
-- The package root exposes runtime-neutral wire contracts without loading the
-  parser. The `./grammar` subpath exposes parser and AST behavior.
+- The package root is the one code API for parser, AST, schemas/types, and
+  runtime-neutral wire contracts.
 - `plurnk.md` is the concise model-facing language reference.
 - Generated parser, type, and GBNF files are artifacts; change their owning
   grammar, schema, or generator and prove regeneration identity.

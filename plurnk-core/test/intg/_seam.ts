@@ -7,7 +7,7 @@
 // The shim holds the CLIENT state a transport module holds at its edge (the attached envelope,
 // the lazily-resolved model worker) and the protocol niceties tests rely on (JSON-RPC envelopes,
 // notification fan-in via subscribeToEvents filtered to the attached workspace).
-import type { PlurnkStatement } from "@plurnk/plurnk-contracts/grammar";
+import type { PlurnkStatement } from "@plurnk/plurnk-contracts";
 import Dsl from "./dsl.ts";
 import type Daemon from "../../src/server/Daemon.ts";
 import type { ClientEnvelope } from "../../src/server/envelope.ts";

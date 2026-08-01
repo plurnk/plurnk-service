@@ -4,7 +4,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import type { EditStatement, ReadStatement, UrlPath } from "@plurnk/plurnk-contracts/grammar";
+import type { EditStatement, ReadStatement, UrlPath } from "@plurnk/plurnk-contracts";
 import { decodePathParens, encodePathParens } from "../../src/core/path-decode.ts";
 import Worker from "../../src/schemes/Worker.ts";
 import { openMigrated, insertWorkspace, insertWorker, makeSchemeCtx } from "./_helpers.ts";

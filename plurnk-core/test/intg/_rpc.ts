@@ -2,9 +2,9 @@
 // SeamSocket (the ws-mimic whose every method dispatches into the seam), so the whole intg tier
 // certifies the one client surface. Used by every Daemon.* and SEND[*] integration test.
 
-import { PlurnkParser } from "@plurnk/plurnk-contracts/grammar";
+import { PlurnkParser } from "@plurnk/plurnk-contracts";
 import type { OperationResult, ProblemDetails } from "@plurnk/plurnk-contracts";
-import type { PlurnkStatement } from "@plurnk/plurnk-contracts/grammar";
+import type { PlurnkStatement } from "@plurnk/plurnk-contracts";
 import Daemon from "../../src/server/Daemon.ts";
 import SeamSocket from "./_seam.ts";
 import type { MockResponse, Provider } from "@plurnk/plurnk-providers";

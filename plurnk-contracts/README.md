@@ -14,8 +14,6 @@ Requires Node ≥ 26.
 
 ## Wire contracts
 
-The package root is runtime-isolated from the parser:
-
 ```ts
 import {
     Problems,
@@ -31,7 +29,7 @@ Validator.assertOperationResult(result);
 ## Grammar and parser
 
 ```ts
-import { PlurnkParser } from "@plurnk/plurnk-contracts/grammar";
+import { PlurnkParser } from "@plurnk/plurnk-contracts";
 const result = PlurnkParser.parse(input);
 // result.items: Array<{kind:"statement"|"error"|"text", ...}>
 // result.unparsedTail?: { from, reason }

@@ -1,6 +1,6 @@
 import test from "node:test";
 import { strict as assert } from "node:assert";
-import type { ReadStatement, MatcherBody } from "@plurnk/plurnk-contracts/grammar";
+import type { ReadStatement, MatcherBody } from "@plurnk/plurnk-contracts";
 import { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import DefaultRead from "./DefaultRead.ts";
 

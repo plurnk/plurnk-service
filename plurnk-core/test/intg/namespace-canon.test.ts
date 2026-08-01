@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import { mkdtemp, rm, writeFile, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { ReadStatement, EditStatement, LineMarker, UrlPath } from "@plurnk/plurnk-contracts/grammar";
+import type { ReadStatement, EditStatement, LineMarker, UrlPath } from "@plurnk/plurnk-contracts";
 import File from "../../src/schemes/File.ts";
 import Namespace from "../../src/core/namespace.ts";
 import EntryCrud from "../../src/schemes/_entry-crud.ts";

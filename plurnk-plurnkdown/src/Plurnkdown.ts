@@ -1,5 +1,5 @@
 import { Lexer, type Token, type Tokens } from "marked";
-import { PlurnkParser } from "@plurnk/plurnk-contracts/grammar";
+import { PlurnkParser } from "@plurnk/plurnk-contracts";
 import type { Diagnostic } from "./types.ts";
 
 const RUNON_LIMIT = 180; // a long run-on regardless of structure

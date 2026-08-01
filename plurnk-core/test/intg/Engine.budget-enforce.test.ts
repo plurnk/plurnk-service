@@ -8,7 +8,7 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { Mock } from "@plurnk/plurnk-providers";
 import type { MockResponse } from "@plurnk/plurnk-providers";
-import type { PlurnkStatement, SendStatement } from "@plurnk/plurnk-contracts/grammar";
+import type { PlurnkStatement, SendStatement } from "@plurnk/plurnk-contracts";
 import type { Db } from "../../src/core/Db.ts";
 import ProblemLog from "../../src/core/ProblemLog.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, packetSection, seedEntryWithChannel } from "./_helpers.ts";

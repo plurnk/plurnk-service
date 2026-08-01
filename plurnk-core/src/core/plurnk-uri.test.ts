@@ -4,7 +4,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { parsePath } from "@plurnk/plurnk-contracts/grammar";
+import { parsePath } from "@plurnk/plurnk-contracts";
 import { entryPathnameOf, foldAuthorityIntoPath, renderAddress, schemeNameOf } from "./plurnk-uri.ts";
 
 test("foldAuthorityIntoPath folds a namespace authority into the canonical path", () => {

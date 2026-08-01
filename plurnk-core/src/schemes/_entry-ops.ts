@@ -1,6 +1,6 @@
 import EntrySemantic from "./_entry-semantic.ts";
 import EntryCrud from "./_entry-crud.ts";
-import type { EditStatement, ReadStatement } from "@plurnk/plurnk-contracts/grammar";
+import type { EditStatement, ReadStatement } from "@plurnk/plurnk-contracts";
 import type { Db } from "../core/Db.ts";
 import { entryPathnameOf } from "../core/plurnk-uri.ts";
 import type { PlurnkSchemeContext, SchemeManifest } from "../core/scheme-types.ts";

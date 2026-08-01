@@ -3,7 +3,7 @@ import {
     Validator,
     type OperationResult,
 } from "@plurnk/plurnk-contracts";
-import type { PlurnkOp } from "@plurnk/plurnk-contracts/grammar";
+import type { PlurnkOp } from "@plurnk/plurnk-contracts";
 
 export interface BudgetOverflowMeasurement {
     readonly usage: number;

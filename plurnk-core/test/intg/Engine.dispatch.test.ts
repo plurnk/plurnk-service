@@ -2,7 +2,7 @@ import test from "node:test";
 import Owner from "../../src/core/Owner.ts";
 import Envelope from "../../src/server/envelope.ts";
 import assert from "node:assert/strict";
-import type { EditStatement, ReadStatement, KillStatement, PlanStatement, ParsedPath, UrlPath } from "@plurnk/plurnk-contracts/grammar";
+import type { EditStatement, ReadStatement, KillStatement, PlanStatement, ParsedPath, UrlPath } from "@plurnk/plurnk-contracts";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { openMigrated, seedEnvelope } from "./_helpers.ts";

@@ -9,7 +9,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { PlurnkParser } from "../../src/grammar.ts";
+import { PlurnkParser } from "../../src/index.ts";
 
 const expectOneClean = (input: string) => {
     const result = PlurnkParser.parseStatements(input);

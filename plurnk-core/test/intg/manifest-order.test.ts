@@ -6,7 +6,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { setTimeout as sleep } from "node:timers/promises";
-import type { EditStatement, LineMarker, UrlPath } from "@plurnk/plurnk-contracts/grammar";
+import type { EditStatement, LineMarker, UrlPath } from "@plurnk/plurnk-contracts";
 import Worker from "../../src/schemes/Worker.ts";
 import EntryManifest from "../../src/schemes/_entry-manifest.ts";
 import { openMigrated, insertWorkspace, insertWorker, makeSchemeCtx } from "./_helpers.ts";

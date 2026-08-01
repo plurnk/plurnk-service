@@ -2,7 +2,7 @@
 // status codes per SPEC §send-dispatch. v0 handles 410 (Gone, delete the resource)
 // and 499 (Client Closed Request, cancel active subscription).
 
-import type { SendStatement } from "@plurnk/plurnk-contracts/grammar";
+import type { SendStatement } from "@plurnk/plurnk-contracts";
 import Owner from "../core/Owner.ts";
 import { entryPathnameOf } from "../core/plurnk-uri.ts";
 import type { PlurnkSchemeContext } from "../core/scheme-types.ts";

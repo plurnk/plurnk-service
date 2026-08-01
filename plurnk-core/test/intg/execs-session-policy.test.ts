@@ -7,7 +7,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import type { ExecStatement } from "@plurnk/plurnk-contracts/grammar";
+import type { ExecStatement } from "@plurnk/plurnk-contracts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, testExecutors } from "./_helpers.ts";
 
 const execStmt = (runtime: string): ExecStatement => ({ op: "EXEC", suffix: "", signal: runtime, target: null, lineMarker: null, body: "echo hi", position: { line: 1, column: 1 } });

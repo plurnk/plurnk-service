@@ -1,4 +1,4 @@
-import type { FindStatement, ReadStatement } from "@plurnk/plurnk-contracts/grammar";
+import type { FindStatement, ReadStatement } from "@plurnk/plurnk-contracts";
 import type { SchemeManifest } from "../core/scheme-types.ts";
 import type { Executor } from "../core/ExecutorRegistry.ts";
 import type Exec from "./Exec.ts";

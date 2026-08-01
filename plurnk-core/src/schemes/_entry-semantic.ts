@@ -3,7 +3,7 @@
 // vector in scope; FTS is only the explicit no-embedder fallback.
 
 import type { Db } from "../core/Db.ts";
-import type { LineMarker } from "@plurnk/plurnk-contracts/grammar";
+import type { LineMarker } from "@plurnk/plurnk-contracts";
 import { TextCoordinates, type Mimetypes } from "@plurnk/plurnk-mimetypes";
 
 // mimetypes' package entry doesn't re-export EmbedderInfo (asked on mimetypes#51) — project it

@@ -5,8 +5,8 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { PlurnkParser } from "@plurnk/plurnk-contracts/grammar";
-import type { ExecStatement, PlurnkStatement, ReadStatement } from "@plurnk/plurnk-contracts/grammar";
+import { PlurnkParser } from "@plurnk/plurnk-contracts";
+import type { ExecStatement, PlurnkStatement, ReadStatement } from "@plurnk/plurnk-contracts";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import type { WebFetch } from "../../src/schemes/Exec.ts";

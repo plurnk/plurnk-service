@@ -1,5 +1,5 @@
 // Provider transport contract. Providers return raw wire-level output —
-// content unparsed (consumer parses via @plurnk/plurnk-contracts/grammar), reasoning
+// content unparsed (consumer parses via @plurnk/plurnk-contracts), reasoning
 // is the wire-reported CoT only.
 
 import type { ProviderNotice } from "./notices.ts";

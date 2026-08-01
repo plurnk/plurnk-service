@@ -6,7 +6,7 @@
 // executor-scheme delivers them. READ-purity holds: this reads already-produced
 // output, it never triggers EXEC.
 
-import type { ReadStatement } from "@plurnk/plurnk-contracts/grammar";
+import type { ReadStatement } from "@plurnk/plurnk-contracts";
 import type { TextRegion } from "@plurnk/plurnk-contracts";
 import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import Slicer from "./Slicer.ts";

@@ -10,7 +10,7 @@ import type {
     ReadStatement,
     ResourceSelection,
     WorkStatement,
-} from "@plurnk/plurnk-contracts/grammar";
+} from "@plurnk/plurnk-contracts";
 import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import type { Db } from "./Db.ts";
 import Owner from "./Owner.ts";

@@ -4,14 +4,11 @@
 
 This package is the single authority for PLURNK's language, schemas, generated
 types, parser, model rail, and runtime-neutral wire envelopes. Its package root
-exposes wire contracts without loading the parser; the `./grammar` subpath
-exposes parser and AST behavior. Subpaths separate runtime loading, not
-ownership. {§contract-authority}
+is the single code API for those contracts. {§contract-authority}
 
 | Surface | Canonical export/artifact |
 |---|---|
-| Problems, results, Notices, text regions | `@plurnk/plurnk-contracts` |
-| Parser, AST, language validator | `@plurnk/plurnk-contracts/grammar` |
+| Parser, AST, validators, Problems, results, Notices, text regions | `@plurnk/plurnk-contracts` |
 | JSON Schemas | `@plurnk/plurnk-contracts/schema/*.json` |
 | Local-model rail | `@plurnk/plurnk-contracts/plurnk.gbnf` |
 | Model language reference | `plurnk.md` in the package |
@@ -831,9 +828,8 @@ Exit codes: `0` for a clean parse (no error items, no `unparsedTail`),
 
 ## 13. Runtime-neutral wire contracts
 
-The package root is the lightweight runtime entrypoint for the following
-schemas, generated types, constructors, and validators. It does not export or
-evaluate parser modules. {§wire-entrypoint}
+The package root exports the following schemas, generated types, constructors,
+and validators alongside the parser and AST. {§wire-entrypoint}
 
 ### 13.1 Text regions
 

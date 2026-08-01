@@ -5,7 +5,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import type { FindStatement, MatcherBody, UrlPath } from "@plurnk/plurnk-contracts/grammar";
+import type { FindStatement, MatcherBody, UrlPath } from "@plurnk/plurnk-contracts";
 import File from "../../src/schemes/File.ts";
 import EntryCrud from "../../src/schemes/_entry-crud.ts";
 import SearchIndex from "../../src/schemes/_search-index.ts";

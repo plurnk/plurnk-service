@@ -33,11 +33,6 @@
             "types": "./dist/src/index.d.ts",
             "default": "./dist/src/index.js"
         },
-        "./grammar": {
-            "plurnk-dev": "./src/grammar.ts",
-            "types": "./dist/src/grammar.d.ts",
-            "default": "./dist/src/grammar.js"
-        },
         "./package.json": "./package.json",
         "./plurnk.gbnf": "./dist/plurnk.gbnf",
         "./schema/*.json": {

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import type { EditStatement, PlurnkStatement, SendStatement } from "@plurnk/plurnk-contracts/grammar";
+import type { EditStatement, PlurnkStatement, SendStatement } from "@plurnk/plurnk-contracts";
 import { Mock } from "@plurnk/plurnk-providers";
 import type { MockResponse } from "@plurnk/plurnk-providers";
 

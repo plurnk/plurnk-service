@@ -18,7 +18,7 @@ Canonical meanings. When a doc, comment, test name, or commit message uses one o
 | **loop** | One model-driven or client-driven iteration within a worker. Status ∈ {100 pending · 102 running · 200 done · 202 waiting (blocked on a live obligation, §send) · 413 budget-overflow · 429 turn-ceiling · 499 cancelled · 500 failed · 504 wall-clock timeout (§operator-config-loop-timeout) · 508 runaway}. Many loops per worker. The model workers inside a loop; each client RPC has its own loop. |
 | **turn** | One engine scheduling unit (or one client RPC dispatch). A model turn sends one assembled prompt through one or more emission attempts and admits at most one response. Many turns per loop. Identity: `(loop_id, sequence)`. |
 | **op** | One DSL operation the model emits. Parsed into a `PlurnkStatement`. Examples: `EDIT`, `READ`, `SEND`, `FIND`, `COPY`, `MOVE`, `OPEN`, `FOLD`, `EXEC`. One turn produces zero or more ops. |
-| **statement** | Synonym for parsed op. The AST shape `PlurnkStatement` from `@plurnk/plurnk-contracts/grammar`. |
+| **statement** | Synonym for parsed op. The AST shape `PlurnkStatement` from `@plurnk/plurnk-contracts`. |
 | **action** | One executed op. Action and op are the same thing in different states (op = parsed; action = executed). The execution produces a log_entries row at `log:///<L>/<T>/<S>/<op>`. (The Log may also hold an *actionless* `op='error'` row for a durable engine-rail failure, §operation-results.) |
 | **dispatch** | The engine routing a statement to its scheme's op handler. |
 
@@ -122,7 +122,7 @@ Engine library + admin CLI + daemon. Four plug points:
 
 The engine dispatches ops, persists state to SQLite, orchestrates cross-scheme COPY/MOVE (§copy/§move), writes the log. Substantive behavior lives in the four plug points.
 
-The grammar subpath (`@plurnk/plurnk-contracts/grammar`) owns the parser and AST contract. Schemes receive parsed statement fragments via dispatch.
+The contracts package (`@plurnk/plurnk-contracts`) owns the parser and AST contract. Schemes receive parsed statement fragments via dispatch.
 
 Server posture: this package is the runtime. User-facing CLI lives in `plurnk` and consumes the library API (`src/index.ts` + `PATHS`).
 
@@ -392,7 +392,7 @@ Author-facing contract: [plurnk-providers#1](https://github.com/plurnk/plurnk-pr
 
 Three entry points:
 
-- `provider.generate({messages, signal})` - once per provider attempt; returns `{ assistant: { content, reasoning, usage, finishReason, model }, assistantRaw, meta? }`. **Engine parses `assistant.content`** into `PlurnkStatement[]` via `@plurnk/plurnk-contracts/grammar`. {§provider-surface-generate}
+- `provider.generate({messages, signal})` - once per provider attempt; returns `{ assistant: { content, reasoning, usage, finishReason, model }, assistantRaw, meta? }`. **Engine parses `assistant.content`** into `PlurnkStatement[]` via `@plurnk/plurnk-contracts`. {§provider-surface-generate}
 - `provider.countTokens(text)` — synchronous, called at write-time (§tokenomics) and render-time. Non-negative integer. {§provider-surface-counttokens}
 - `provider.calculateCost(usage)` - once per completed provider attempt; estimated USD. Engine aggregates every attempt into `turns.usage_cost_usd`; triggers cascade to `workers.cost_usd` / `workspaces.cost_usd`. {§provider-surface-calculate-cost}
 
@@ -791,7 +791,7 @@ Model uses state to anticipate growth between turns. Clients use state for UI (s
 
 ## §op Op Surface
 
-Per-op semantics. AST shapes come from `@plurnk/plurnk-contracts/grammar`'s `PlurnkStatement`. Engine dispatches by `op`; scheme implements per author contract (§scheme).
+Per-op semantics. AST shapes come from `@plurnk/plurnk-contracts`'s `PlurnkStatement`. Engine dispatches by `op`; scheme implements per author contract (§scheme).
 
 ### §edit EDIT
 

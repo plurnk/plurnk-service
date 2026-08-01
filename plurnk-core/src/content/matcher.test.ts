@@ -6,7 +6,7 @@
 
 import test from "node:test";
 import { strict as assert } from "node:assert";
-import type { MatcherBody } from "@plurnk/plurnk-contracts/grammar";
+import type { MatcherBody } from "@plurnk/plurnk-contracts";
 import type { Mimetypes, QueryMatch, ParsedBodyMatcher } from "@plurnk/plurnk-mimetypes";
 import { InvalidExpressionError, QueryParseFailureError } from "@plurnk/plurnk-mimetypes";
 import Matcher from "./matcher.ts";
