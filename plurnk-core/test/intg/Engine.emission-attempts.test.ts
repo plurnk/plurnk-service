@@ -175,12 +175,12 @@ test("finish=length is forensic evidence: an incomplete frame retries wholesale 
     }
 });
 
-test("a bounded malformed operation is admitted once and becomes a model-visible failed result", async () => {
+test("a GBNF-legal $fC matcher failure is bounded, admitted once, and made model-visible (#12/#16)", async () => {
     const { db, workspaceId, workerId, loopId, engine } = await setup();
     try {
         const malformed = [
             "<<PLAN:inspect relevant modules:PLAN",
-            "<<FIND(ast/**|lexer/**|parser/**|stdlib/**|util/**):/module|/require|/load|/cache/i:FIND",
+            "<<READ(worker:///x):$fC:READ",
             "<<SEND[102]:inspect the results next:SEND",
         ].join("\n");
         const provider = new AttemptWitness({
@@ -202,7 +202,7 @@ test("a bounded malformed operation is admitted once and becomes a model-visible
         assert.equal(failed.status, 102);
         assert.equal(failed.emissionAttempts, 1, "a trustworthy frame is not blindly resampled");
         assert.equal(failed.emissionExhausted, false);
-        assert.ok(failed.statuses.includes(400), "the malformed FIND becomes a failed operation");
+        assert.ok(failed.statuses.includes(400), "the malformed matcher becomes a failed operation");
         const attempts = await db.test_turn_attempts.all<{
             accepted: number;
             parse_errors: string;
@@ -241,7 +241,7 @@ test("a bounded malformed operation is admitted once and becomes a model-visible
             syntaxFailure.problem?.type,
             "https://problems.plurnk.dev/grammar/parser/invalid-operation-syntax",
         );
-        assert.match(syntaxFailure.problem?.detail ?? "", /not a valid `\/pattern\/flags` regex/);
+        assert.match(syntaxFailure.problem?.detail ?? "", /not a valid jsonpath/i);
         assert.equal(syntaxFailure.problem?.line, 2);
         assert.equal(syntaxFailure.problem?.source, "visitor");
         assert.equal(
@@ -261,7 +261,7 @@ test("a bounded malformed operation is admitted once and becomes a model-visible
         assert.match(packetSection(packet, "errors"), /400 log:\/\/\/.*\/error/);
         assert.match(
             packetSection(packet, "log"),
-            /not a valid `\/pattern\/flags` regex/,
+            /not a valid jsonpath/i,
             "the next turn receives the parser's actionable diagnostic",
         );
     } finally {

@@ -1,9 +1,4 @@
-// #488 — the GBNF rail is VERIFIABLE, never silently off. run78's failure class: the rail
-// severed upstream of the provider, the model free-decoded and fabricated a log, the loop
-// concluded 200 with no failure — green proved nothing. These tests pin the chain
-// POSITIVELY (the resolved grammar text reaches generate through a real turn) and pin the
-// silent hole closed (an unregistered provider may not guess an alias while per-alias rails
-// are configured).
+// {§rail-truth-engine-verdict} / {§gbnf-response-observation} (#488/#534).
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -15,10 +10,20 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import ProviderInstantiate from "../../src/core/ProviderInstantiate.ts";
 import { Mock } from "@plurnk/plurnk-providers";
-import type { Provider } from "@plurnk/plurnk-providers";
+import type { Provider, ProviderResponse } from "@plurnk/plurnk-providers";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop } from "./_helpers.ts";
 
 const MESSAGES = [{ role: "system" as const, content: "SD" }, { role: "user" as const, content: "go" }];
+const usage = { prompt: 1, completion: 1, reasoning: 1, cached: 0, total: 3 };
+
+const staticProvider = (response: ProviderResponse): Provider => ({
+    model: "fake",
+    contextWindow: 100000,
+    constrainsOutput: true,
+    generate: async () => response,
+    countTokens: () => 1,
+    calculateCost: () => 0,
+}) as Provider;
 
 // A Mock that RECORDS what generate receives — the end of the chain, observed directly.
 const recordingProvider = (): { provider: Provider; calls: Array<{ grammar?: string }> } => {
@@ -147,7 +152,117 @@ test("local GBNF path: the engine stamps client attachment + its own verdict (#5
         const t2 = await engine.runTurn({ provider: reject, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 2 });
         const meta2 = JSON.parse((await db.test_get_turn_meta.get<{ meta: string }>({ id: t2.turnId }))!.meta) as Record<string, unknown>;
         assert.equal(meta2.railsAttached, "client");
-        assert.equal(meta2.railsVerdict, "reject", "diverging emission grades reject — an unconstrained backend self-names per turn");
+        assert.equal(meta2.railsVerdict, "reject", "the engine independently grades the diverging observation");
+    } finally {
+        if (prior === undefined) delete process.env[key]; else process.env[key] = prior;
+        await db.close(); await rm(dir, { recursive: true, force: true });
+    }
+});
+
+test("the engine grades the exact pre-projection sentence, not projected content alone", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "rail-"));
+    const gbnfPath = join(dir, "raw-verdict.gbnf");
+    const content = "<<PLAN::PLAN\n<<SEND[200]:ok:SEND";
+    const prefix = "<|channel>thought\nconsider<channel|>";
+    const input = `${prefix}${content}`;
+    await writeFile(gbnfPath, `root ::= ${JSON.stringify(input)}\n`);
+    const db = await openMigrated();
+    const key = "PLURNK_PROVIDERS_GBNF_rawverdict";
+    const prior = process.env[key];
+    try {
+        process.env[key] = gbnfPath;
+        const provider = staticProvider({
+            assistant: { content, reasoning: "consider", usage, finishReason: "stop", model: "fake" },
+            assistantRaw: null,
+            grammarEvidence: { input, contentStart: [...prefix].length, transported: true },
+        });
+        ProviderInstantiate.registerAlias(provider, "rawverdict");
+        const engine = new Engine({ db, schemes: new SchemeRegistry() });
+        const { workspaceId, workerId, loopId } = await envelope(db);
+        const turn = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 1 });
+        const meta = JSON.parse((await db.test_get_turn_meta.get<{ meta: string }>({ id: turn.turnId }))!.meta) as Record<string, unknown>;
+        assert.equal(meta.railsVerdict, "accept");
+    } finally {
+        if (prior === undefined) delete process.env[key]; else process.env[key] = prior;
+        await db.close(); await rm(dir, { recursive: true, force: true });
+    }
+});
+
+test("raw rail positions map only from content, and debug evidence is stamped withheld", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "rail-"));
+    const content = "<<PLAN::PLAN\n<<SEND[200]:ok:SEND";
+    const prefix = "<|channel>thought\n🙂<channel|>";
+    const input = `${prefix}${content}`;
+    const contentPath = join(dir, "content-reject.gbnf");
+    const reasoningPath = join(dir, "reasoning-reject.gbnf");
+    await writeFile(contentPath, `root ::= ${JSON.stringify(`${prefix}${content.replace("ok", "ox")}`)}\n`);
+    await writeFile(reasoningPath, `root ::= ${JSON.stringify(input.replace("thought", "analysis"))}\n`);
+    const db = await openMigrated();
+    const keys = ["PLURNK_PROVIDERS_GBNF_contentreject", "PLURNK_PROVIDERS_GBNF_reasoningreject"] as const;
+    const prior = keys.map((key) => process.env[key]);
+    try {
+        process.env[keys[0]] = contentPath;
+        process.env[keys[1]] = reasoningPath;
+        const broadcasts: Array<{ notice: Record<string, unknown> }> = [];
+        const engine = new Engine({
+            db,
+            schemes: new SchemeRegistry(),
+            noticeNotify: (_workspaceId, payload) => {
+                broadcasts.push(payload as { notice: Record<string, unknown> });
+            },
+        });
+        const response = (transported: boolean): ProviderResponse => ({
+            assistant: { content, reasoning: "🙂", usage, finishReason: "stop", model: "fake" },
+            assistantRaw: null,
+            grammarEvidence: { input, contentStart: [...prefix].length, transported },
+        });
+
+        const contentProvider = staticProvider(response(false));
+        ProviderInstantiate.registerAlias(contentProvider, "contentreject");
+        const first = await envelope(db);
+        const contentTurn = await engine.runTurn({ provider: contentProvider, ...first, messages: MESSAGES, turnNumber: 1 });
+        const contentMeta = JSON.parse((await db.test_get_turn_meta.get<{ meta: string }>({ id: contentTurn.turnId }))!.meta) as Record<string, unknown>;
+        assert.equal(contentMeta.railsAttached, "withheld");
+        const firstRail = broadcasts.find(({ notice }) => notice.source === "engine:rails")?.notice;
+        assert.deepEqual(firstRail?.position, { type: "content-offset", line: 2, column: 13 });
+
+        broadcasts.length = 0;
+        const reasoningProvider = staticProvider(response(true));
+        ProviderInstantiate.registerAlias(reasoningProvider, "reasoningreject");
+        const second = await envelope(db);
+        await engine.runTurn({ provider: reasoningProvider, ...second, messages: MESSAGES, turnNumber: 1 });
+        const secondRail = broadcasts.find(({ notice }) => notice.source === "engine:rails")?.notice;
+        assert.equal(secondRail?.position, undefined, "a reasoning-prefix divergence must not fabricate a content pointer");
+    } finally {
+        for (let index = 0; index < keys.length; index++) {
+            const value = prior[index];
+            if (value === undefined) delete process.env[keys[index]]; else process.env[keys[index]] = value;
+        }
+        await db.close(); await rm(dir, { recursive: true, force: true });
+    }
+});
+
+test("a configured grammar fails hard when the provider omits its observation evidence", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "rail-"));
+    const gbnfPath = join(dir, "missing-evidence.gbnf");
+    const content = "<<PLAN::PLAN\n<<SEND[200]:ok:SEND";
+    await writeFile(gbnfPath, `root ::= ${JSON.stringify(content)}\n`);
+    const db = await openMigrated();
+    const key = "PLURNK_PROVIDERS_GBNF_noevidence";
+    const prior = process.env[key];
+    try {
+        process.env[key] = gbnfPath;
+        const provider = staticProvider({
+            assistant: { content, reasoning: null, usage, finishReason: "stop", model: "fake" },
+            assistantRaw: null,
+        });
+        ProviderInstantiate.registerAlias(provider, "noevidence");
+        const engine = new Engine({ db, schemes: new SchemeRegistry() });
+        const { workspaceId, workerId, loopId } = await envelope(db);
+        await assert.rejects(
+            () => engine.runTurn({ provider, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 1 }),
+            /configured GBNF response omitted grammar evidence/,
+        );
     } finally {
         if (prior === undefined) delete process.env[key]; else process.env[key] = prior;
         await db.close(); await rm(dir, { recursive: true, force: true });

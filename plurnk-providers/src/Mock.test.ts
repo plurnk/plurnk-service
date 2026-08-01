@@ -67,6 +67,18 @@ test("Mock: generate applies caller-supplied overrides", async () => {
     assert.deepEqual(assistantRaw, { wire: true });
 });
 
+test("Mock: a supplied grammar produces unsplit evidence unless the fixture supplies exact evidence", async () => {
+    const explicit = { input: "prefixx", contentStart: 6, transported: false } as const;
+    const m = build([
+        { assistant: { content: "x", reasoning: null } },
+        { assistant: { content: "x", reasoning: null }, grammarEvidence: explicit },
+    ]);
+    const inferred = await m.generate({ messages: [], grammar: 'root ::= "x"' });
+    const supplied = await m.generate({ messages: [], grammar: 'root ::= "prefixx"' });
+    assert.deepEqual(inferred.grammarEvidence, { input: "x", contentStart: 0, transported: true });
+    assert.deepEqual(supplied.grammarEvidence, explicit);
+});
+
 test("Mock: ops escape hatch passes through when provided", async () => {
     const ops = [{ kind: "send" }] as never;
     const m = build([{ assistant: { content: "x", reasoning: null, ops } }]);

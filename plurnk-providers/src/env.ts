@@ -164,9 +164,8 @@ export const resolveEnvelopeFromEnv = (env: NodeJS.ProcessEnv, window: number | 
 // are separate vars, so a numeric budget can never silently flip wire flags:
 //   PLURNK_PROVIDERS_REASONING           off | adaptive | on   (REQUIRED, fail-hard)
 //   PLURNK_PROVIDERS_REASONING_BUDGET  positive int, REQUIRED iff REASONING=on —
-//     the magnitude for tier/budget mapping. On llama.cpp the ENFORCEMENT is the
-//     box's --reasoning-budget launch flag (per-request numerics are ignored):
-//     env budget and launch flag are the same number, changed together.
+//     the magnitude for tier/budget mapping. On llama-server it is the explicit
+//     request-scoped allowance and cannot exceed the physical reasoning reserve.
 // The provider maps intent to the backend's mechanism; the consumer states
 // intent, never mechanism. (In-DSL PLAN reasoning is a grammar concern.)
 export type ReasoningMode = "off" | "adaptive" | "on";

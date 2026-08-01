@@ -1,22 +1,62 @@
-// §grammar-enforcement-verified-at-boot — the rails are useless if silently OFF. When the operator
-// requests a grammar (PLURNK_PROVIDERS_GBNF), boot verifies the backend ACTUALLY constrains a
-// forcing grammar; anything else fails hard rather than run unconstrained (which reads as model
-// failure and hides that the grammar contract is dark — weeks of "gemma strokes" were this).
+// {§grammar-enforcement-verified-at-boot} / {§gbnf-requires-reasoning}.
 
 import test from "node:test";
 import assert from "node:assert/strict";
 import type { Provider } from "@plurnk/plurnk-providers";
 import ProviderInstantiate from "../../src/core/ProviderInstantiate.ts";
 
-const fakeProvider = (content: string): Provider => ({
+const reasoning = "verify";
+const reasoningPrefix = `<|channel>thought\n${reasoning}<channel|>`;
+const verifyToken = "PLURNK-RAILS-LIVE";
+const verifyInput = `${reasoningPrefix}${verifyToken}`;
+
+const fakeProvider = (content: string, calls: Array<{ grammar?: string }> = []): Provider => ({
     model: "fake", contextWindow: 1000, constrainsOutput: true,
-    generate: async () => ({ assistant: { content, reasoning: null, usage: { prompt: 1, completion: 3, reasoning: 0, cached: 0, total: 4 }, finishReason: "stop", model: "fake" }, assistantRaw: null }),
+    generate: async ({ grammar }: Parameters<Provider["generate"]>[0]) => {
+        calls.push({ grammar });
+        return {
+            assistant: { content, reasoning, usage: { prompt: 1, completion: 3, reasoning: 1, cached: 0, total: 5 }, finishReason: "stop", model: "fake" },
+            assistantRaw: null,
+            grammarEvidence: {
+                input: `${reasoningPrefix}${content}`,
+                contentStart: [...reasoningPrefix].length,
+                transported: true,
+            },
+        };
+    },
     countTokens: () => 1, calculateCost: () => 0,
 }) as unknown as Provider;
 
-test("an enforcing backend passes verification", async () => {
-    await ProviderInstantiate.verifyGrammarEnforcement(fakeProvider("PLURNK-RAILS-LIVE"), { PLURNK_PROVIDERS_GBNF: "plurnk.gbnf" });
-    // no throw = pass
+test("an enforcing backend proves the required raw reasoning-plus-content sentence", async () => {
+    const calls: Array<{ grammar?: string }> = [];
+    await ProviderInstantiate.verifyGrammarEnforcement(fakeProvider(verifyToken, calls), { PLURNK_PROVIDERS_GBNF: "plurnk.gbnf" });
+    assert.equal(calls[0]?.grammar, `root ::= ${JSON.stringify(verifyInput)}`);
+});
+
+test("GBNF with reasoning explicitly off is an invalid composed PLURNK configuration", async () => {
+    const calls: Array<{ grammar?: string }> = [];
+    await assert.rejects(
+        () => ProviderInstantiate.verifyGrammarEnforcement(fakeProvider(verifyToken, calls), {
+            PLURNK_PROVIDERS_GBNF: "plurnk.gbnf",
+            PLURNK_PROVIDERS_REASONING: "off",
+        }),
+        /GBNF requires reasoning to be adaptive or on/,
+    );
+    assert.equal(calls.length, 0, "the invalid configuration fails before probing the model");
+});
+
+test("boot verification rejects a provider that cannot represent its pre-projection grammar input", async () => {
+    const provider = {
+        ...fakeProvider(verifyToken),
+        generate: async () => ({
+            assistant: { content: verifyToken, reasoning: null, usage: { prompt: 1, completion: 3, reasoning: 0, cached: 0, total: 4 }, finishReason: "stop", model: "fake" },
+            assistantRaw: null,
+        }),
+    } as unknown as Provider;
+    await assert.rejects(
+        () => ProviderInstantiate.verifyGrammarEnforcement(provider, { PLURNK_PROVIDERS_GBNF: "plurnk.gbnf" }),
+        /did not return grammar evidence/,
+    );
 });
 
 test("an UNCONSTRAINED backend fails hard — never a silent unconstrained boot", async () => {
@@ -48,19 +88,12 @@ test("a configured GBNF fails hard when the provider does not advertise local tr
     );
 });
 
-test("a PER-ALIAS grammar (bare empty) STILL verifies — the #353 regression guard", async () => {
-    // The bug this pins: after GBNF went per-alias (#352), the verify read the BARE knob (now
-    // empty), so a grammar riding a suffix (turboderp) SKIPPED verification — enforced but
-    // unconfirmed, the #34 hole reopened. The env below is the shape live/demo actually ships:
-    // bare unset, the active local alias opts in via its suffix. The verify must resolve per-alias and run.
+test("a per-alias grammar verifies when the bare setting is empty (#353)", async () => {
     const env = { PLURNK_PROVIDERS_GBNF: "", PLURNK_MODEL: "rig", PLURNK_MODEL_rig: "openai/local", PLURNK_PROVIDERS_GBNF_rig: "plurnk.gbnf" };
-    // An UNCONSTRAINED backend must now FAIL (proving the verify ran, not skipped): if it were
-    // still reading the empty bare knob it would silently return and this would not throw.
     await assert.rejects(
         () => ProviderInstantiate.verifyGrammarEnforcement(fakeProvider("I am unconstrained"), env),
         /did not honor the forcing grammar|does not enforce|unconstrained/i,
         "per-alias GBNF resolves and the end-to-end verify RUNS — a non-enforcing backend fails hard, never silently skipped",
     );
-    // And an enforcing backend passes through the per-alias path.
-    await ProviderInstantiate.verifyGrammarEnforcement(fakeProvider("PLURNK-RAILS-LIVE"), env);
+    await ProviderInstantiate.verifyGrammarEnforcement(fakeProvider(verifyToken), env);
 });

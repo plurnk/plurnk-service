@@ -48,6 +48,7 @@
     "scripts": {
         "test:lint": "tsc --noEmit",
         "test:unit": "node --conditions=plurnk-dev --test src/**/*.test.ts",
+        "test:llama": "node --conditions=plurnk-dev --test test/llama/*.test.ts",
         "test": "npm run test:lint && npm run test:unit",
         "prepublishOnly": "npm audit --audit-level=moderate && npm test",
         "build:dist": "tsc -p tsconfig.build.json",

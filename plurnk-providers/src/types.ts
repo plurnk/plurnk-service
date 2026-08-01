@@ -66,9 +66,19 @@ export interface ProviderAssistant {
     readonly meanLogprob?: number;
 }
 
+export interface GrammarEvidence {
+    // Exact sentence observed at the grammar boundary before any reasoning/content
+    // projection. Offsets are Unicode code points, matching @plurnk/gbnf verdicts.
+    readonly input: string;
+    readonly contentStart: number;
+    readonly transported: boolean;
+}
+
 export interface ProviderResponse {
     readonly assistant: ProviderAssistant;
     readonly assistantRaw: unknown;
+    // {§gbnf-response-observation} — evidence only; the consumer owns the verdict.
+    readonly grammarEvidence?: GrammarEvidence;
     // Per-turn provider→client metadata bag: the backend's non-standard top-level
     // response fields passed through verbatim. Monetary values carry their own
     // amount and currency; the provider does not reinterpret them. The consumer
@@ -84,11 +94,9 @@ export interface ProviderResponse {
     // carry it. Absent otherwise.
     readonly rawBody?: unknown;
     // Notices attached to a COMPLETED exchange (#24, SPEC §13). The model's
-    // bytes always flow through `assistant`; these observations annotate them.
-    // Today: a `grammar_unenforced` notice whenever output diverges from the grammar —
-    // transported OR withheld (filter mode) — carrying the divergence `position`.
-    // The provider never adjudicates conformance; discard/retry/escalate/
-    // self-correct is consumer policy. Absent when the turn produced no notice.
+    // bytes always flow through `assistant`; transport observations annotate them.
+    // Grammar conformance itself is consumer-owned. Absent when the turn produced
+    // no transport notice.
     readonly notices?: readonly ProviderNotice[];
 }
 

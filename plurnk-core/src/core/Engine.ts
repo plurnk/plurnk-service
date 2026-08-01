@@ -133,7 +133,7 @@ const readFilesItems = (): number | null => {
 };
 
 // Provider contract owned by @plurnk/plurnk-providers; engine is the consumer.
-import type { Provider, ProviderResponse, ProviderUsage } from "@plurnk/plurnk-providers";
+import type { GrammarEvidence, Provider, ProviderResponse, ProviderUsage } from "@plurnk/plurnk-providers";
 import { ProviderError, scopeEnvToAlias, resolveActiveAlias } from "@plurnk/plurnk-providers";
 import { validateGbnf } from "@plurnk/gbnf";
 import ProviderInstantiate from "./ProviderInstantiate.ts";
@@ -384,6 +384,22 @@ export default class Engine {
         process.stderr.write(`plurnk-engine: rail verdict unavailable — the configured grammar did not parse in @plurnk/gbnf (${message})\n`);
     }
 
+    static #requireGrammarEvidence(response: ProviderResponse): GrammarEvidence {
+        const evidence = response.grammarEvidence;
+        if (evidence === undefined) {
+            throw new Error("provider contract violation: configured GBNF response omitted grammar evidence");
+        }
+        const input = [...evidence.input];
+        if (!Number.isInteger(evidence.contentStart)
+            || evidence.contentStart < 0
+            || evidence.contentStart > input.length
+            || typeof evidence.transported !== "boolean"
+            || input.slice(evidence.contentStart).join("") !== response.assistant.content) {
+            throw new Error("provider contract violation: grammar evidence does not map exactly to assistant.content");
+        }
+        return evidence;
+    }
+
     constructor({ db, schemes, mimetypes, streamEventNotify, wakeWorkerNotify, injectWorker, branchWorker, branchCompletionGate, cancelWorker, cancelDescendants, acquireWorkspaceTurn, workspaceTurnCompleted, noticeNotify, tokenize }: {
         db: Db;
         schemes: SchemeRegistry;
@@ -482,20 +498,9 @@ export default class Engine {
     // always parsed by ANTLR; this separately supplies a GBNF artifact to a
     // backend that explicitly supports constrained sampling.
     async #grammarConstraint(provider: Provider): Promise<string | undefined> {
-        // PLURNK_PROVIDERS_GBNF SELECTS the GBNF variant to constrain sampling to (#225):
-        // a bare name (`plurnk-strict.gbnf` | `plurnk.gbnf`) is a variant shipped by
-        // @plurnk/plurnk-grammar; an absolute/relative path is a BYO grammar. Empty or "0"
-        // disables the optional constraint.
-        //
-        // PER ALIAS (#353): resolved PLURNK_PROVIDERS_GBNF_<alias> over the bare fallback (providers'
-        // scopeEnvToAlias), scoped by the alias that built this provider. GBNF only helps backends
-        // that constrain sampling (llama-server). The bare default is unset and
-        // local-model aliases opt in via a PLURNK_PROVIDERS_GBNF_<alias> suffix.
-        // #488 — the rail must be VERIFIABLE, never silently off. Two guards:
-        // (1) the alias fallback is only trusted when NO per-alias GBNF opt-ins exist: an
-        //     unregistered provider in a process that configured suffixed rails could fall back
-        //     to a DIFFERENT active alias, miss the suffix, and run unconstrained — the silent
-        //     severance class run78 demonstrated (free decode, fabricated logs, CLEAN notices).
+        // {§rail-truth-engine-verdict} (#353/#488): resolve the configured grammar
+        // through the provider's alias. A package variant or BYO path is loaded once;
+        // an ambiguous unregistered provider fails instead of guessing a suffix.
         const registered = ProviderInstantiate.aliasOf(provider);
         const fallback = registered === undefined ? resolveActiveAlias(process.env)?.alias : undefined;
         if (registered === undefined && fallback === undefined && Object.keys(process.env).some((k) => k.startsWith("PLURNK_PROVIDERS_GBNF_"))) {
@@ -553,8 +558,8 @@ export default class Engine {
         };
     }
 
-    // A @plurnk/gbnf divergence position (providers#24) is a CODE-POINT offset into the
-    // model's content; the snippet/notices surface speaks 1-based line + 0-based column.
+    // A mapped rail divergence is a CODE-POINT offset into the model's content;
+    // the snippet/notices surface speaks 1-based line + 0-based column.
     // Convert over code points (not UTF-16 units) so an astral char doesn't skew the line,
     // clamping out-of-range offsets to the content's end.
     #offsetToLineColumn(content: string, offset: number): { line: number; column: number } {
@@ -1258,6 +1263,7 @@ export default class Engine {
         let response: ProviderResponse | undefined;
         let splitResponse: SplitProviderResponse | undefined;
         let railGrammar: string | undefined;
+        let railEvidence: GrammarEvidence | undefined;
         let emissionAttempts = 0;
         const usage = { prompt: 0, completion: 0, reasoning: 0, cached: 0 };
         let usageCostUsd = 0;
@@ -1304,6 +1310,9 @@ export default class Engine {
                     turn: seq,
                 }); // §provider-surface-generate §provider-guarantees-signal-wired §provider-guarantees-serial-attempts §attribution-plurnk-namespace-reserved §client-metadata
                 providerCallInFlight = false;
+                railEvidence = railGrammar === undefined
+                    ? undefined
+                    : Engine.#requireGrammarEvidence(response);
                 emissionAttempts = attempt;
                 splitResponse = this.#splitResponse(response);
                 const attemptUsage = splitResponse.callMetadata.usage;
@@ -1334,17 +1343,11 @@ export default class Engine {
             // This handler owns only provider-call failures. Parser, cost, SQL,
             // and engine-contract failures retain their original source.
             if (!providerCallInFlight) throw err;
-            // §turn-never-blank — a ProviderError is an INFRASTRUCTURE failure (auth, network
-            // beyond retries, rate limit): no completed exchange exists. Persist its exact
-            // RFC 9457 result before propagating it to the drain. Grammar conformance never
-            // arrives here: providers 0.32 retired the
-            // constrained-path throw — a completed exchange ALWAYS returns, bytes in assistant,
-            // the conformance verdict riding response.notices as an OBSERVATION (the engine's
-            // ANTLR parse is the judge; the provider transports and observes, never adjudicates).
-            // The old fallback fabricated an empty emission here and laundered a provider
-            // adjudication into a model-behavior 422 — a state the system otherwise forbids,
-            // a record that lied, and days of forensics pointed at the wrong suspect.
-            // Cancellation is lifecycle truth, not a provider failure. Close the
+            // §turn-never-blank — a ProviderError means no completed exchange exists.
+            // Persist its exact RFC 9457 result before propagating it. Grammar evidence
+            // and its engine-owned verdict exist only on completed responses
+            // ({§rail-truth-engine-verdict}). Cancellation is lifecycle truth, not a
+            // provider failure. Close the
             // attempted turn without inventing an assistant response, then let
             // runLoop/Daemon settle the exact 504/499 loop result.
             if (providerSignal?.aborted) {
@@ -1454,10 +1457,8 @@ export default class Engine {
             this.#notices.push(workspaceId, loopId, notice);
         }
 
-        // providers#24 / #275: non-fatal provider notices on an accepted turn. In GBNF-filter
-        // mode the provider no longer THROWS grammar_unenforced — it returns the model's bytes
-        // (here, packetAssistant.content) and attaches a Notice carrying the
-        // divergence code-point position. Forward each Notice with a content-offset `line:col`;
+        // Non-fatal provider transport notices on an accepted turn. Forward each
+        // Notice with a content-offset `line:col`;
         // the model resolves it against its own emission — READ the folded `model` mirror row at the
         // cited lines (§model-entry) — not an embedded snippet that would duplicate the emission.
         for (const notice of response.notices ?? []) {
@@ -1477,23 +1478,33 @@ export default class Engine {
         // {§rail-truth-engine-verdict} (#534) — a configured local GBNF constraint is
         // independently graded by the engine. Endpoint-owned constraints arrive only
         // through provider metadata; absence of local configuration says nothing about them.
-        let railKeys: { railsAttached: "client"; railsVerdict: string } | undefined;
+        let railKeys: { railsAttached: "client" | "withheld"; railsVerdict: string } | undefined;
         if (railGrammar !== undefined) {
+            if (railEvidence === undefined) throw new Error("configured GBNF response has no final grammar evidence");
             let verdict: ReturnType<typeof validateGbnf> | null = null;
-            try { verdict = validateGbnf(railGrammar, packetAssistant.content); }
+            try { verdict = validateGbnf(railGrammar, railEvidence.input); }
             catch (cause) { Engine.#warnRailVerdictGapOnce((cause as Error).message); }
-            railKeys = { railsAttached: "client", railsVerdict: verdict?.status ?? "unverifiable" };
-            const providerGraded = (response.notices ?? []).some((e) => e.kind === "grammar_unenforced");
-            if (verdict !== null && verdict.status !== "accept" && !providerGraded) {
-                const located = this.#offsetToLineColumn(packetAssistant.content, verdict.pos);
+            railKeys = {
+                railsAttached: railEvidence.transported ? "client" : "withheld",
+                railsVerdict: verdict?.status ?? "unverifiable",
+            };
+            if (verdict !== null && verdict.status !== "accept") {
+                const contentPosition = verdict.pos >= railEvidence.contentStart
+                    ? verdict.pos - railEvidence.contentStart
+                    : null;
+                const located = contentPosition === null
+                    ? null
+                    : this.#offsetToLineColumn(packetAssistant.content, contentPosition);
                 this.#notices.push(workspaceId, loopId, {
                     source: "engine:rails",
                     kind: "grammar_unenforced",
                     message: verdict.status === "reject"
-                        ? `emission rejects the grammar at code point ${verdict.pos}`
-                        : `emission is an incomplete grammar sentence (ends mid-match at ${verdict.pos})`,
+                        ? `emission rejects the grammar at raw code point ${verdict.pos}`
+                        : `emission is an incomplete grammar sentence (ends at raw code point ${verdict.pos})`,
                     level: "warn",
-                    position: { type: "content-offset", line: located.line, column: located.column },
+                    ...(located === null
+                        ? {}
+                        : { position: { type: "content-offset" as const, line: located.line, column: located.column } }),
                 });
             }
         }

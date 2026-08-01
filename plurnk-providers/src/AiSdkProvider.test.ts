@@ -545,18 +545,29 @@ test("#477 sampling passthrough guards contract invariants: n/tools/caps strippe
     assert.equal(body.service_tier, "flex");
 });
 
-test("#488 postmortem: intent maps IDENTICALLY under a transported grammar — sanctioned channel coexists with rails", async () => {
-    // The brief rails-win-the-channel clamp is REVERTED: closing the channel starved a
-    // reasoning-tuned model into escaping mid-content (unconstrained, discarded, billed).
-    const p = new AiSdkProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "adaptive", budget: null }, retryAttempts: 0, reasoningStyle: "template", grammarStyle: "llamacpp" });
-    const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
-    const res = await p.generate({ workerId: "r", messages: [], grammar: 'root ::= "x"' });
+test("template reasoning returns the exact pre-projection grammar sentence ({§gbnf-response-observation}, #12/#16)", async () => {
+    const p = new AiSdkProvider({ model: "m", url: "http://x/v1/chat/completions", contextWindow: 640, reasoningReserve: { tokens: 64 }, completionReserve: { tokens: 160 }, fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "adaptive", budget: null }, retryAttempts: 0, reasoningStyle: "template", grammarStyle: "llamacpp" });
+    const calls = installFetch([{ choices: [{ delta: { reasoning_content: "con🙂sider", content: "x" } }] }]);
+    const grammarInput = "<|channel>thought\ncon🙂sider<channel|>x";
+    const res = await p.generate({ workerId: "r", messages: [], grammar: `root ::= ${JSON.stringify(grammarInput)}` });
     const body = JSON.parse(calls[0].init.body as string);
-    assert.deepEqual(body.chat_template_kwargs, { enable_thinking: true }); // channel stays sanctioned under the grammar
-    assert.equal(typeof body.grammar, "string"); // rails ride beside it
-    // #488 per-request loud state: rail attachment + verdict on meta, drill-readable per turn
-    assert.equal(res.meta?.railsAttached, true);
-    assert.equal(res.meta?.railsVerdict, "accept");
+    assert.deepEqual(body.chat_template_kwargs, { enable_thinking: true });
+    assert.equal(body.reasoning_format, "auto");
+    assert.equal(body.thinking_budget_tokens, 64);
+    assert.equal(body.grammar, `root ::= ${JSON.stringify(grammarInput)}`);
+    assert.deepEqual(res.grammarEvidence, {
+        input: grammarInput,
+        contentStart: [..."<|channel>thought\ncon🙂sider<channel|>"].length,
+        transported: true,
+    });
+    assert.equal(res.meta?.railsVerdict, undefined, "the provider represents evidence but does not grade itself");
+});
+
+test("template reasoning does not invent pre-projection evidence when the wire omits its reasoning field", async () => {
+    const p = new AiSdkProvider({ model: "m", url: "http://x/v1/chat/completions", contextWindow: 640, reasoningReserve: { tokens: 64 }, completionReserve: { tokens: 160 }, fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "adaptive", budget: null }, retryAttempts: 0, reasoningStyle: "template", grammarStyle: "llamacpp" });
+    installFetch([{ choices: [{ delta: { content: "x" } }] }]);
+    const res = await p.generate({ workerId: "r", messages: [], grammar: 'root ::= "x"' });
+    assert.equal(res.grammarEvidence, undefined);
 });
 
 test("#488 channel-escape detector: billed completion tokens vastly beyond visible channels attach grammar_unenforced", async () => {
@@ -568,7 +579,6 @@ test("#488 channel-escape detector: billed completion tokens vastly beyond visib
         { usage: { prompt_tokens: 10, completion_tokens: 5000, total_tokens: 5010 } },
     ]);
     const res = await p.generate({ workerId: "r", messages: [], grammar: 'root ::= "x"' });
-    assert.equal(res.meta?.railsVerdict, "accept"); // the visible fragment conforms...
     const escape = res.notices?.find((e) => e.message.includes("escaped the grammar"));
     assert.ok(escape, "escape notice attached");
     assert.equal(escape!.kind, "grammar_unenforced");
@@ -582,21 +592,41 @@ test("#488 loud state absent on grammarless calls; no escape event without a tra
         { usage: { prompt_tokens: 10, completion_tokens: 5000, total_tokens: 5010 } },
     ]);
     const res = await p.generate({ workerId: "r", messages: [] }); // no grammar arg
-    assert.equal(res.meta?.railsAttached, undefined);
+    assert.equal(res.grammarEvidence, undefined);
     assert.equal(res.notices, undefined);
 });
 
-test("reasoningStyle 'template' always emits enable_thinking mirroring budget != 0 — explicit false, never omitted", async () => {
-    const on = new AiSdkProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "adaptive", budget: null }, retryAttempts: 0, reasoningStyle: "template" });
+test("reasoningStyle 'template' sends llama-server activation, parser, and response-wide allowance", async () => {
+    const on = new AiSdkProvider({ model: "m", url: "http://x/v1/chat/completions", contextWindow: 640, reasoningReserve: { percent: 0.1 }, completionReserve: { percent: 0.25 }, fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "adaptive", budget: null }, retryAttempts: 0, reasoningStyle: "template" });
     let calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await on.generate({ workerId: "r", messages: [] });
-    assert.deepEqual(JSON.parse(calls[0].init.body as string).chat_template_kwargs, { enable_thinking: true });
+    let body = JSON.parse(calls[0].init.body as string);
+    assert.deepEqual(body.chat_template_kwargs, { enable_thinking: true });
+    assert.equal(body.reasoning_format, "auto");
+    assert.equal(body.thinking_budget_tokens, 64);
 
     mock.restoreAll();
-    const off = new AiSdkProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, reasoningStyle: "template" });
+    const off = new AiSdkProvider({ model: "m", url: "http://x/v1/chat/completions", contextWindow: 640, reasoningReserve: { percent: 0.1 }, completionReserve: { percent: 0.25 }, fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, reasoningStyle: "template" });
     calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await off.generate({ workerId: "r", messages: [] });
-    assert.deepEqual(JSON.parse(calls[0].init.body as string).chat_template_kwargs, { enable_thinking: false });
+    body = JSON.parse(calls[0].init.body as string);
+    assert.deepEqual(body.chat_template_kwargs, { enable_thinking: false });
+    assert.equal(body.reasoning_format, "auto");
+    assert.equal(body.thinking_budget_tokens, 0);
+});
+
+test("reasoningStyle 'template' explicit budget tightens the reserve and cannot exceed it", async () => {
+    const base = { model: "m", url: "http://x/v1/chat/completions", contextWindow: 640, reasoningReserve: { tokens: 64 } as const, completionReserve: { tokens: 160 } as const, fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, retryAttempts: 0, reasoningStyle: "template" as const };
+    const p = new AiSdkProvider({ ...base, reasoning: { mode: "on", budget: 32 } });
+    const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
+    await p.generate({ workerId: "r", messages: [], sampling: { thinking_budget_tokens: 999, reasoning_format: "none" } });
+    const body = JSON.parse(calls[0].init.body as string);
+    assert.equal(body.thinking_budget_tokens, 32);
+    assert.equal(body.reasoning_format, "auto");
+    assert.throws(
+        () => new AiSdkProvider({ ...base, reasoning: { mode: "on", budget: 65 } }),
+        /REASONING_BUDGET \(65\) exceeds the resolved PLURNK_PROVIDERS_REASONING_RESERVE \(64\)/,
+    );
 });
 
 test("budget 0 suppresses effort and include_reasoning", async () => {
@@ -640,106 +670,81 @@ test("grammar transport 'none' (default): the grammar is never sent — no silen
     assert.equal("response_format" in body, false);
 });
 
-// — grammar conformance OBSERVATION (SPEC §10.14, §13): a completed exchange always
-//   returns; bytes flow; a non-accept verdict rides response.notices —
+// — exact pre-projection grammar evidence ({§gbnf-response-observation}, #12/#16) —
 
 const grammarProvider = () => new AiSdkProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, grammarStyle: "llamacpp", source: "provider:test" });
 const streamingContent = (content: string) => installFetch([{ choices: [{ delta: { content }, finish_reason: "stop" }] }]);
 
-test("enforcement: conforming output passes through unchanged", async () => {
+test("an unsplit grammar response carries the exact observed sentence", async () => {
     const p = grammarProvider();
     streamingContent("ok");
-    const { assistant } = await p.generate({ workerId: "r", messages: [], grammar: 'root ::= "ok"' });
-    assert.equal(assistant.content, "ok");
+    const res = await p.generate({ workerId: "r", messages: [], grammar: 'root ::= "ok"' });
+    assert.equal(res.assistant.content, "ok");
+    assert.deepEqual(res.grammarEvidence, {
+        input: "ok",
+        contentStart: 0,
+        transported: true,
+    });
 });
 
-test("observation: REJECTED output still returns — bytes present, verdict attached with position", async () => {
+test("the provider returns rejected or incomplete bytes as evidence without grading them", async () => {
     const p = grammarProvider();
     streamingContent("no");
     const res = await p.generate({ workerId: "r", messages: [], grammar: 'root ::= "ok"' });
-    assert.equal(res.assistant.content, "no"); // bytes ALWAYS flow
-    assert.equal(res.notices?.length, 1);
-    const ev = res.notices![0];
-    assert.equal(ev.kind, "grammar_unenforced");
-    assert.equal(ev.source, "provider:test");
-    assert.match(String(ev.message), /grammar not enforced: output rejected .* at code point 0/);
-    assert.equal(ev.position, 0); // divergence offset for consumer policy
+    assert.equal(res.assistant.content, "no");
+    assert.deepEqual(res.grammarEvidence, { input: "no", contentStart: 0, transported: true });
+    assert.equal(res.notices, undefined);
+    assert.equal(res.meta?.railsVerdict, undefined);
 });
 
-test("observation: an incomplete (valid prefix, never terminated) also returns with the verdict", async () => {
+test("empty unsplit content remains exact grammar evidence", async () => {
     const p = grammarProvider();
-    streamingContent("ok");
-    const res = await p.generate({ workerId: "r", messages: [], grammar: 'root ::= "ok" "!"' });
-    assert.equal(res.assistant.content, "ok");
-    assert.equal(res.notices?.length, 1);
-    assert.match(res.notices![0].message, /incomplete match .* never terminated/);
-    assert.equal(res.notices![0].position, 2);
-});
-
-test("observation: conforming output attaches no notice", async () => {
-    const p = grammarProvider();
-    streamingContent("ok");
+    installFetch([{ choices: [{ delta: {}, finish_reason: "stop" }] }]);
     const res = await p.generate({ workerId: "r", messages: [], grammar: 'root ::= "ok"' });
+    assert.equal(res.assistant.content, "");
+    assert.deepEqual(res.grammarEvidence, { input: "", contentStart: 0, transported: true });
+});
+
+test("grammarStyle 'none' produces no grammar observation", async () => {
+    const p = new AiSdkProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0 }); // grammarStyle defaults to "none"
+    streamingContent("anything goes");
+    const res = await p.generate({ workerId: "r", messages: [], grammar: 'root ::= "ok"' });
+    assert.equal(res.assistant.content, "anything goes");
+    assert.equal(res.grammarEvidence, undefined);
+});
+
+test("provider evidence does not depend on the local validator understanding the grammar", async () => {
+    const p = grammarProvider();
+    streamingContent("whatever");
+    const res = await p.generate({ workerId: "r", messages: [], grammar: 'foo ::= "a"' });
+    assert.equal(res.assistant.content, "whatever");
+    assert.deepEqual(res.grammarEvidence, { input: "whatever", contentStart: 0, transported: true });
     assert.equal(res.notices, undefined);
 });
 
-test("observation: empty content under a non-empty grammar returns with the verdict (the 'content never arrives' leak, observed)", async () => {
-    const p = grammarProvider();
-    installFetch([{ choices: [{ delta: {}, finish_reason: "stop" }] }]); // no content delta → ""
-    const res = await p.generate({ workerId: "r", messages: [], grammar: 'root ::= "ok"' });
-    assert.equal(res.assistant.content, "");
-    assert.equal(res.notices?.[0].kind, "grammar_unenforced");
-});
+// — PLURNK_PROVIDERS_GBNF_DEBUG: validate the grammar, withhold it, and preserve the observation —
 
-test("enforcement: when no grammar is sent (grammarStyle 'none'), output is NOT validated — no wire fields, no error (SPEC )", async () => {
-    const p = new AiSdkProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0 }); // grammarStyle defaults to "none"
-    streamingContent("anything goes");
-    const { assistant } = await p.generate({ workerId: "r", messages: [], grammar: 'root ::= "ok"' }); // grammar passed but never transported
-    assert.equal(assistant.content, "anything goes"); // no enforcement check
-});
-
-test("enforcement: a grammar our validator can't parse is a NON-FATAL verify gap — warn, return content", async () => {
-    const p = grammarProvider();
-    streamingContent("whatever");
-    const warnings: Error[] = [];
-    const onWarn = (w: Error) => warnings.push(w);
-    process.on("warning", onWarn);
-    const { assistant } = await p.generate({ workerId: "r", messages: [], grammar: 'foo ::= "a"' }); // no `root` rule → validateGbnf throws
-    await flush();
-    process.off("warning", onWarn);
-    assert.equal(assistant.content, "whatever"); // transport not failed
-    assert.ok(warnings.some((w) => (w as Error & { code?: string }).code === "PLURNK_GRAMMAR_UNVERIFIABLE"), "emitted the verify-gap warning");
-});
-
-// — PLURNK_PROVIDERS_GBNF_DEBUG: run unconstrained, then verify the free output against the grammar —
-
-test("gbnfDebug: the grammar is NOT transported; conforming free output passes through with no notice", async () => {
+test("gbnfDebug marks an unconstrained observation as not transported", async () => {
     const p = new AiSdkProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, grammarStyle: "llamacpp", gbnfDebug: true, source: "provider:test" });
     const calls = installFetch([{ choices: [{ delta: { content: "ok" }, finish_reason: "stop" }] }]);
     const res = await p.generate({ workerId: "r", messages: [], grammar: 'root ::= "ok"' });
     const body = JSON.parse(calls[0].init.body as string);
-    assert.equal("grammar" in body, false);            // grammar never sent — model ran unconstrained
-    assert.equal(body.repeat_penalty, 1.15);           // #426: penalty rides even rail-off - unconstrained decode needs it MORE
-    assert.equal(res.assistant.content, "ok");         // free output happens to conform → returned
-    assert.equal(res.notices, undefined);              // conforming → no notice
+    assert.equal("grammar" in body, false);
+    assert.equal(body.repeat_penalty, 1.15);
+    assert.equal(res.assistant.content, "ok");
+    assert.deepEqual(res.grammarEvidence, { input: "ok", contentStart: 0, transported: false });
+    assert.equal(res.notices, undefined);
 });
 
-test("gbnfDebug: a conflict does NOT throw — it returns the bytes plus a grammar_unenforced notice with the divergence position (#24)", async () => {
+test("gbnfDebug preserves conflicting bytes without a provider verdict", async () => {
     const p = new AiSdkProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, grammarStyle: "llamacpp", gbnfDebug: true, source: "provider:test" });
-    const calls = installFetch([{ choices: [{ delta: { reasoning_content: "let me think about ok", content: "xon-conforming output" }, finish_reason: "stop" }] }]);
+    const calls = installFetch([{ choices: [{ delta: { content: "xon-conforming output" }, finish_reason: "stop" }] }]);
     const res = await p.generate({ workerId: "r", messages: [], grammar: 'root ::= "ok"' });
-    // The model's bytes survive — not discarded by a throw (the empty-turn cascade root cause).
     assert.equal(res.assistant.content, "xon-conforming output");
-    assert.equal(res.assistant.reasoning, "let me think about ok");
-    // The non-fatal notice carries the divergence so the consumer can self-correct.
-    assert.equal(res.notices?.length, 1);
-    const [event] = res.notices ?? [];
-    assert.equal(event.source, "provider:test");
-    assert.equal(event.kind, "grammar_unenforced");
-    assert.equal(event.position, 0);                   // 'x' rejected at code point 0
-    assert.match(event.message ?? "", /output rejected by the transported grammar at code point 0 \("x"\)/);
+    assert.deepEqual(res.grammarEvidence, { input: "xon-conforming output", contentStart: 0, transported: false });
+    assert.equal(res.notices, undefined);
     const body = JSON.parse(calls[0].init.body as string);
-    assert.equal("grammar" in body, false);            // still never sent — diagnosed, not enforced
+    assert.equal("grammar" in body, false);
 });
 
 test("gbnfDebug: an INVALID grammar throws before any wire call — it never reaches the model", async () => {

@@ -240,13 +240,6 @@ export default class Service {
             } else if (embedInfo.contextWindow === null) {
                 process.stderr.write("plurnk-service: remote embedder active but reports no input context window — set PLURNK_MIMETYPES_EMBED_CONTEXT_WINDOW to the endpoint's limit or embedding derivations will refuse\n");
             }
-            // §tokenomics-window-partition coupling (F7): this warning belongs only to a backend
-            // that advertises llama-server's unbounded-decode behavior. Cloud reasoning modes do
-            // not imply llama-server and must never receive local launch-flag advice.
-            const reasoning = process.env.PLURNK_PROVIDERS_REASONING ?? "off";
-            if (reasoning !== "off" && provider?.requiresMaxTokens === true) {
-                process.stderr.write(`plurnk-service: local reasoning is ${reasoning} — llama-server ignores per-request numeric budgets; ensure the serving box launches with --reasoning-budget ${provider.reasoningReserve ?? "?"} or the budget is not enforced.\n`);
-            }
             if (alias === null) {
                 process.stderr.write(`plurnk-service: no model configured — uncomment one of the three options (local / cloud / plurnk.ai) in ${resolve(Service.#homeDir, ".env")}. Loops fail legibly until then.\n`);
             }

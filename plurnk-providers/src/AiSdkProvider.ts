@@ -6,28 +6,18 @@
 // ordinary vendor protocol. The compatible URL path remains only for PLURNK
 // extensions and local endpoint probes the SDK cannot represent.
 
-import type { ChatMessage, FinishReason, Provider, ProviderResponse, ProviderUsage } from "./types.ts";
+import type { ChatMessage, FinishReason, GrammarEvidence, Provider, ProviderResponse, ProviderUsage } from "./types.ts";
 import type { Reasoning, ReserveSpec } from "./env.ts";
 import { executeAiSdkModel, executeOpenAICompatible } from "./aiSdkTransport.ts";
 import type { LanguageModel } from "ai";
 import { toProviderError, ProviderError } from "./errors.ts";
 import type { ProviderNotice } from "./notices.ts";
-import { validateGbnf, type Verdict } from "@plurnk/gbnf";
-import { emitWarningOnce } from "./warnings.ts";
+import { validateGbnf } from "@plurnk/gbnf";
 
 export type ProviderFetch = typeof globalThis.fetch;
 
-// How the reasoning intent (PLURNK_PROVIDERS_REASONING: off | adaptive | on, plus
-// REASONING_BUDGET iff on — #32/#33) translates to each backend's wire mechanism
-// (SPEC §4); the per-style mapping lives in #reasoningBody. Non-obvious ones:
-// "template" ALWAYS emits enable_thinking — the explicit false is llama-server's
-// only working off-switch (§13); "anthropic" uses the `thinking` object and IGNORES
-// reasoning_effort; "effort_explicit" (fireworks) sends the EXPLICIT "none" for OFF
-// instead of omitting — reason-by-DEFAULT models (DeepSeek V4 defaults
-// 'high') keep reasoning when the field is omitted, fatal under an active grammar
-// (#30). Intent maps IDENTICALLY with or without a transported grammar — fireworks
-// masks only the content channel, so reasoning and rails coexist in one call
-// (canary-verified; the #32 clamp is lifted — it caused the plan-less service#331).
+// Backend wire spellings for the resolved reasoning intent. The switch beside each
+// mapping retains any backend-specific omission/explicit-disable constraint.
 export type ReasoningStyle = "none" | "think" | "include_reasoning" | "effort" | "effort_explicit" | "template" | "anthropic";
 
 // GBNF transport is a local llama-server capability. "none" means no
@@ -174,24 +164,11 @@ const heuristicTokens = (text: string): number => (text.length === 0 ? 0 : Math.
 // sampling stay deliberately caller-overridable.
 const RESERVED_BODY_KEYS: ReadonlySet<string> = new Set([
     "model", "messages", "stream", "stream_options", "grammar", "response_format", "id_slot", "logprobs", "top_logprobs",
+    "reasoning_format", "thinking_budget_tokens",
     "n", "tools", "tool_choice", "functions", "function_call", "parallel_tool_calls",
     "modalities", "audio", "prediction", "max_tokens", "max_completion_tokens",
     "prompt_cache_key",
 ]);
-
-// Render a non-accept verdict into a terse, factual grammar_unenforced message
-// (SPEC §12 message policy: no guidance prose). `reject` names the diverging code
-// point + what the grammar would have accepted; `incomplete` names the valid-prefix
-// length that never reached a terminal state.
-const describeUnenforced = (v: Exclude<Verdict, { status: "accept" }>): string => {
-    if (v.status === "reject") {
-        const expected = v.expected.length > 0
-            ? v.expected.map((e) => `${e.rule} accepts ${e.accepts}`).join(", ")
-            : "end of input";
-        return `grammar not enforced: output rejected by the transported grammar at code point ${v.pos} (${JSON.stringify(v.char)}); expected ${expected}`;
-    }
-    return `grammar not enforced: output is an incomplete match of the transported grammar — a valid prefix of ${v.pos} code points that never terminated`;
-};
 
 export default class AiSdkProvider implements Provider {
     #model: string;
@@ -291,6 +268,13 @@ export default class AiSdkProvider implements Provider {
         this.#rawBody = config.rawBody ?? false;
         this.#servedModel = config.servedModel;
         this.#requiresMaxTokens = config.requiresMaxTokens;
+        const reasoningReserve = this.reasoningReserve;
+        if (this.#reasoningStyle === "template"
+            && this.#reasoning.mode === "on"
+            && reasoningReserve !== null
+            && this.#reasoning.budget! > reasoningReserve) {
+            throw new Error(`${this.#source}: PLURNK_PROVIDERS_REASONING_BUDGET (${this.#reasoning.budget}) exceeds the resolved PLURNK_PROVIDERS_REASONING_RESERVE (${reasoningReserve})`);
+        }
         const { tokenizeUrl } = config;
         if (tokenizeUrl !== undefined) {
             this.tokenize = async (text: string): Promise<number[]> => {
@@ -333,36 +317,22 @@ export default class AiSdkProvider implements Provider {
     countTokens(text: string): number { return this.#countTokens(text); }
     calculateCost(usage: ProviderUsage): number { return this.#calculateCost(usage); }
 
-    // Maps the reasoning INTENT (off | adaptive | on+budget, #33) to the
-    // backend's wire mechanism — including under a transported grammar. The #32
-    // clamp (force reasoning_effort "none" under response_format) is LIFTED:
-    // canary-verified live that fireworks masks ONLY the content channel — the
-    // reasoning channel rides beside it unmasked, and the plurnk grammar's
-    // reasoning?/preplan regions absorb any in-band spillover. The old measured
-    // failures (low→cycles, high→spirals) were pre-max_tokens-cap; with a bounded
-        // cap the matrix ACCEPTs across efforts (reasoning-rails matrix
-    // F9). Clamping was the root of the plan-less regression (service#331).
+    // Reasoning intent maps independently of grammar transport. The llama-server
+    // template mapping is owned by {§llama-reasoning-request}.
     #reasoningBody(): Record<string, unknown> {
         const { mode, budget } = this.#reasoning;
         const on = mode !== "off";
         switch (this.#reasoningStyle) {
-            // Native-channel styles. "template" ALWAYS emits — the explicit
-            // enable_thinking:false is the only working off-switch on llama-server
-            // (§13). Activation only; budget is enforced by the box's
-            // --reasoning-budget launch flag (per-request numerics ignored, F7).
-            //
-            // #488 postmortem: intent maps IDENTICALLY under a transported
-            // grammar. The brief rails-win-the-channel clamp (enable_thinking
-            // forced false under a grammar) is REVERTED — specimens proved the
-            // SANCTIONED think block is the protection, not the hazard: the
-            // server auto-gates the grammar around it and content decodes
-            // constrained (26-run baseline green; zero grammar rejects across
-            // the #488 "railless" specimens). Closing the channel starved a
-            // reasoning-tuned model into ESCAPING mid-content into the raw
-            // thought channel — discarded server-side, decode unconstrained,
-            // 12,288 tokens billed for 1,033 visible chars. The escape is
-            // surfaced instead (vanished-token telemetry + meta rail state).
-            case "template": return { chat_template_kwargs: { enable_thinking: on } };
+            case "template": {
+                const allowance = mode === "off"
+                    ? 0
+                    : mode === "on" ? budget : this.reasoningReserve;
+                return {
+                    chat_template_kwargs: { enable_thinking: on },
+                    reasoning_format: "auto",
+                    ...(allowance === null ? {} : { thinking_budget_tokens: allowance }),
+                };
+            }
             case "think": return on ? { think: true } : {};
             case "include_reasoning": return on ? { include_reasoning: true } : {};
             // effort tiers from the budget; off/adaptive omit the field (the
@@ -485,32 +455,6 @@ export default class AiSdkProvider implements Provider {
         return h;
     }
 
-    // Enforcement verification (SPEC §13). When a grammar was actually transported
-    // (grammarStyle !== "none"), the backend MUST have constrained the output;
-    // some silently drop the grammar field or mislabel the channel, and without
-    // this check we would return unconstrained output as if enforced. STRICT: any
-    // non-accept verdict (reject, or an incomplete/never-terminated match) is a
-    // grammar_unenforced failure. A grammar our own validator can't parse — even
-    // though the backend accepted it (a port-vs-llama.cpp gap) — is a non-fatal
-    // verify gap: warn, don't fail a transport that may have worked. This is a
-    // conformance check against the grammar we already hold, NOT a plurnk-DSL
-    // parse (§8) — it stays grammar-generic and backend-agnostic.
-    // Validate output against the grammar. Returns the verdict, or null on the
-    // verify GAP — a grammar our own validator can't parse (a port-vs-llama.cpp
-    // gap): warn, don't manufacture a conflict from a check that didn't run.
-    #grammarVerdict(grammar: string, content: string): Verdict | null {
-        try {
-            return validateGbnf(grammar, content);
-        } catch (cause) {
-            // Once per (code, message) — #40: this fires PER TURN otherwise.
-            emitWarningOnce(
-                `${this.#source}: could not verify grammar enforcement — the transported grammar did not parse in @plurnk/gbnf (${(cause as Error).message})`,
-                "PLURNK_GRAMMAR_UNVERIFIABLE",
-            );
-            return null;
-        }
-    }
-
     // PLURNK_PROVIDERS_GBNF_DEBUG (SPEC §13): validate the supplied GBNF locally and fail
     // hard if it's malformed, BEFORE any wire call — and the grammar is NOT
     // transported, so the request runs unconstrained. A debug aid to catch invalid
@@ -552,12 +496,8 @@ export default class AiSdkProvider implements Provider {
         // Reject before any wire call when already aborted (SPEC §10.8).
         signal?.throwIfAborted();
 
-        // Grammar handling (SPEC §13). PLURNK_PROVIDERS_GBNF_DEBUG validates the supplied
-        // grammar locally and throws on a malformed one, then WITHHOLDS it so the
-        // model generates UNCONSTRAINED — and the free output is still verified
-        // against the grammar (below), surfacing exactly where the model's natural
-        // output and the grammar conflict. Otherwise the grammar is sent when the
-        // backend supports it (grammarStyle !== "none").
+        // Grammar handling ({§gbnf-response-observation}). Debug validates the
+        // supplied grammar before the call but withholds it from the backend.
         const wantGrammar = grammar !== undefined && this.#grammarStyle !== "none";
         if (wantGrammar && this.#gbnfDebug) this.#assertGrammarValid(grammar!);
         const sendGrammar = wantGrammar && !this.#gbnfDebug ? grammar : undefined;
@@ -656,26 +596,33 @@ export default class AiSdkProvider implements Provider {
         // wire text for forensics.
         if (this.#eosText !== undefined) raw.content = stripTrailingSpecial(raw.content, this.#eosText);
 
-        // Grammar conformance (§13): bytes always flow; the verdict is an
-        // observation. Same check whether the grammar was transported
-        // (sendGrammar) or withheld (PLURNK_PROVIDERS_GBNF_DEBUG filter mode) — a
-        // non-accept verdict attaches a grammar_unenforced notice
-        // (message + divergence position) and the response returns normally.
-        // Discard/retry/escalate/self-correct is the consumer's policy.
-        let notices: ProviderNotice[] | undefined;
-        let railsMeta: Record<string, unknown> | undefined;
-        const usage = raw.usage;
-        const observedGrammar = sendGrammar ?? (wantGrammar && this.#gbnfDebug ? grammar : undefined);
-        if (observedGrammar !== undefined) {
-            const verdict = this.#grammarVerdict(observedGrammar, raw.content);
-            if (verdict !== null && verdict.status !== "accept") {
-                notices = [{ source: this.#source, kind: "grammar_unenforced", level: "warn", message: describeUnenforced(verdict), position: verdict.pos }];
+        // Preserve the exact sentence seen at the grammar boundary. llama-server's
+        // `reasoning_format: "auto"` projects one raw Harmony enclosure into the
+        // reasoning/content fields; the wire field's presence is the proof that the
+        // projection occurred. The provider represents this evidence and never grades it.
+        let grammarEvidence: GrammarEvidence | undefined;
+        if (wantGrammar) {
+            if (this.#reasoningStyle === "template" && this.#reasoning.mode !== "off") {
+                if (raw.reasoningProjected) {
+                    const prefix = `<|channel>thought\n${raw.reasoning}<channel|>`;
+                    grammarEvidence = {
+                        input: `${prefix}${raw.content}`,
+                        contentStart: [...prefix].length,
+                        transported: sendGrammar !== undefined,
+                    };
+                }
+            } else {
+                grammarEvidence = {
+                    input: raw.content,
+                    contentStart: 0,
+                    transported: sendGrammar !== undefined,
+                };
             }
-            // #488 per-request loud state: rail attachment + conformance verdict
-            // ride `meta` into the consumer's turn row, so a drill reads rail
-            // presence PER TURN from the run db instead of inferring it from
-            // output shape (the #488 misdiagnosis, twice).
-            railsMeta = { railsAttached: sendGrammar !== undefined, railsVerdict: verdict?.status ?? "unverifiable" };
+        }
+
+        let notices: ProviderNotice[] | undefined;
+        const usage = raw.usage;
+        if (sendGrammar !== undefined) {
             // #488 channel-escape detector (the run105 class): completion tokens
             // billed far beyond every visible channel mean the decode ESCAPED into
             // a server-discarded reasoning block mid-emission — unconstrained,
@@ -683,7 +630,7 @@ export default class AiSdkProvider implements Provider {
             // countTokens OVERCOUNTS text (chars/2 upper bound), so billed
             // exceeding visible-plus-slack is real vanishing, not estimator noise.
             const visible = this.#countTokens(raw.content) + this.#countTokens(raw.reasoning);
-            if (sendGrammar !== undefined && usage.completion > visible + 64) {
+            if (usage.completion > visible + 64) {
                 (notices ??= []).push({
                     source: this.#source,
                     kind: "grammar_unenforced",
@@ -694,8 +641,7 @@ export default class AiSdkProvider implements Provider {
             }
         }
 
-        const builtMeta = this.#buildMeta(raw.metadata);
-        const meta = railsMeta !== undefined ? { ...builtMeta, ...railsMeta } : builtMeta;
+        const meta = this.#buildMeta(raw.metadata);
         const logprobs = raw.logprobs.length > 0 ? raw.logprobs : undefined;
         const meanLogprob = logprobs !== undefined
             ? logprobs.reduce((sum, token) => sum + token.logprob, 0) / logprobs.length
@@ -714,6 +660,7 @@ export default class AiSdkProvider implements Provider {
                 ...(logprobs !== undefined ? { logprobs, meanLogprob } : {}),
             },
             assistantRaw: raw,
+            ...(grammarEvidence !== undefined ? { grammarEvidence } : {}),
             ...(raw.rawBody !== undefined ? { rawBody: raw.rawBody } : {}),
             ...(meta !== undefined ? { meta } : {}),
             ...(notices !== undefined ? { notices } : {}),

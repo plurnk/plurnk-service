@@ -6,13 +6,13 @@
  * The server's grammar parser is the authoritative format check — a malformed or
  * oversized .gbnf is rejected at request time, which is exactly what test 1 asserts.
  *
- * Sampling notes (probed against gemma-4-26B-A4B, llama.cpp b894):
+ * Sampling notes:
  * - A per-request repeat_penalty > 1.0 is required; greedy decoding under hard
  *   constraint masks degenerates into repetition loops without it.
- * - The grammar is the `*:PLAN:OPS:SEND[N]` sandwich: a FREE reasoning preamble (any
- *   format — the grammar names no reasoning delimiter, so the model's native reasoning
- *   token is never masked), then a mandatory `<<PLAN` anchors the strict turn. The model
- *   reasons naturally; PlurnkParser discards everything before the first `<<PLAN`.
+ * - The grammar constrains the raw decode to exactly one Gemma Harmony reasoning
+ *   enclosure, then `sep`, mandatory `<<PLAN`, operations, and terminal `<<SEND`.
+ *   llama-server applies `reasoning_format: "auto"` after that constrained decode,
+ *   projecting the enclosure body out of `content` into `reasoning_content`.
  */
 
 import test from "node:test";
@@ -26,8 +26,9 @@ const BASE_URL = process.env.PLURNK_LLAMA_URL ?? "http://127.0.0.1:11435";
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const grammar = readFileSync(join(repoRoot, "dist", "plurnk.gbnf"), "utf8");
 const system = readFileSync(join(repoRoot, "plurnk.md"), "utf8");
+const reasoningAllowance = 64;
 
-type Completion = { content: string; finishReason: string };
+type Completion = { content: string; reasoning: string; finishReason: string };
 
 const complete = async (userPrompt: string, maxTokens: number): Promise<Completion> => {
     const response = await fetch(`${BASE_URL}/v1/chat/completions`, {
@@ -43,13 +44,20 @@ const complete = async (userPrompt: string, maxTokens: number): Promise<Completi
             temperature: 0,
             seed: 42,
             repeat_penalty: 1.15,
+            reasoning_format: "auto",
+            thinking_budget_tokens: reasoningAllowance,
+            chat_template_kwargs: { enable_thinking: true },
             grammar,
         }),
     });
-    const json = await response.json() as { error?: unknown; choices: Array<{ message: { content: string }; finish_reason: string }> };
+    const json = await response.json() as { error?: unknown; choices: Array<{ message: { content: string; reasoning_content?: string }; finish_reason: string }> };
     assert.equal(response.ok, true, `llama-server rejected the request: ${JSON.stringify(json).slice(0, 400)}`);
     assert.equal(json.error, undefined, `llama-server returned an error: ${JSON.stringify(json).slice(0, 400)}`);
-    return { content: json.choices[0].message.content, finishReason: json.choices[0].finish_reason };
+    return {
+        content: json.choices[0].message.content,
+        reasoning: json.choices[0].message.reasoning_content ?? "",
+        finishReason: json.choices[0].finish_reason,
+    };
 };
 
 test("llama.cpp accepts the shipped plurnk.gbnf (size/format check)", async () => {
@@ -57,42 +65,35 @@ test("llama.cpp accepts the shipped plurnk.gbnf (size/format check)", async () =
     assert.equal(typeof content, "string");
 });
 
-test("PLAN-anchored turn: constrained emission opens with PLAN and closes on a terminal SEND (or rambles in the preamble to the max_tokens backstop)", async () => {
-    const { content, finishReason } = await complete(
+// {§gbnf-reasoning-boundary} — this observes the real post-grammar projection.
+test("llama projection separates reasoning and the model completes a PLAN turn", async () => {
+    const { content, reasoning, finishReason } = await complete(
         "What is the capital of France? Record the fact as a known entry, then deliver the answer.",
-        1024, // headroom: with reasoning on, the model needs room to reason AND emit the turn
+        1024,
     );
-    // PlurnkParser discards the pre-<<PLAN preamble (the turn sandwich), so feed it the
-    // raw content directly — the parse begins at the first <<PLAN anchor.
+    assert.equal(content.includes("<|channel>"), false, `reasoning opener leaked into content: ${JSON.stringify(content)}`);
+    assert.equal(content.includes("<channel|>"), false, `reasoning closer leaked into content: ${JSON.stringify(content)}`);
+    assert.equal(typeof reasoning, "string");
+    // Feed the projected content directly; parsing begins at the <<PLAN anchor.
     const result = PlurnkParser.parse(content);
     const statements = result.items.filter((item) => item.kind === "statement");
     const errors = result.items.filter((item) => item.kind === "error");
 
-    // A locally non-deterministic model can spend its whole budget reasoning and emit no
-    // actionable content within max_tokens (the #30 residual) — that's the model/budget,
-    // not the grammar. This test asserts grammar CORRECTNESS: whatever IS emitted must be
-    // a well-formed PLAN-anchored turn.
-    if (statements.length === 0) return; // nothing actionable within budget — tolerated
-
+    assert.ok(statements.length > 0, `reasoning allowance left no actionable turn: ${JSON.stringify(content)}`);
     const first = statements[0];
     assert.ok(first.kind === "statement" && first.statement.op === "PLAN", `turn did not open with PLAN: ${JSON.stringify(content)}`);
-
-    if (finishReason === "stop") {
-        // Forced EOS fired: a complete turn — clean, no tail, closing on a terminal SEND.
-        assert.equal(errors.length, 0, `constrained output produced parse errors: ${JSON.stringify(content)}`);
-        assert.equal(result.unparsedTail, undefined, `unparsed tail: ${JSON.stringify(content)}`);
-        const last = statements.at(-1)!;
-        assert.ok(last.kind === "statement" && last.statement.op === "SEND", `turn did not close with SEND: ${JSON.stringify(content)}`);
-        if (last.kind !== "statement") return;
-        assert.ok(
-            [102, 200, 202, 300, 499].includes(last.statement.signal as number),
-            `final SEND signal ${last.statement.signal} is not a terminal disposition (102/202/200/300/499)`,
-        );
-        return;
-    }
-    // finish_reason "length": truncated mid-turn — the parseable prefix must be interior-clean.
-    assert.equal(finishReason, "length", `unexpected finish reason: ${finishReason}`);
-    const trailing = result.items.at(-1);
-    const interiorErrors = errors.filter((e) => e !== trailing);
-    assert.equal(interiorErrors.length, 0, `parse errors before the truncation point: ${JSON.stringify(content)}`);
+    assert.equal(finishReason, "stop", `reasoning or content exhausted the generation envelope: ${JSON.stringify(content)}`);
+    assert.equal(
+        errors.length,
+        0,
+        `model emitted a parser-invalid operation inside the constrained frame: ${JSON.stringify(content)}`,
+    );
+    assert.equal(result.unparsedTail, undefined, `unparsed tail: ${JSON.stringify(content)}`);
+    const last = statements.at(-1)!;
+    assert.ok(last.kind === "statement" && last.statement.op === "SEND", `turn did not close with SEND: ${JSON.stringify(content)}`);
+    if (last.kind !== "statement") return;
+    assert.ok(
+        [102, 200, 202, 300, 499].includes(last.statement.signal as number),
+        `final SEND signal ${last.statement.signal} is not a terminal disposition (102/202/200/300/499)`,
+    );
 });

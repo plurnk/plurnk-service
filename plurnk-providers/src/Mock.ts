@@ -5,7 +5,7 @@
 // Provider contract. Production providers don't expose the `ops` escape
 // hatch — that's an intg-only convenience.
 
-import type { ChatMessage, FinishReason, Provider, ProviderAssistant, ProviderUsage } from "./types.ts";
+import type { ChatMessage, FinishReason, GrammarEvidence, Provider, ProviderAssistant, ProviderResponse, ProviderUsage } from "./types.ts";
 import { resolveEnvelopeFromEnv } from "./env.ts";
 
 export type MockAssistant = {
@@ -28,10 +28,12 @@ export type MockAssistant = {
 export type MockResponse = {
     assistant: MockAssistant;
     assistantRaw?: unknown;
+    grammarEvidence?: GrammarEvidence;
 };
 
 // Returned shape: ProviderAssistant + pre-parsed ops visible for tests.
 export type MockReturnedAssistant = ProviderAssistant & { ops?: unknown[] };
+export type MockReturnedResponse = ProviderResponse & { assistant: MockReturnedAssistant };
 
 const DEFAULT_USAGE: ProviderUsage = { prompt: 0, completion: 0, reasoning: 0, cached: 0, total: 0 };
 
@@ -70,7 +72,7 @@ export default class Mock implements Provider {
     // Mock is free.
     calculateCost(_usage: ProviderUsage): number { return 0; }
 
-    async generate({ signal }: { messages: ChatMessage[]; workerId?: string; signal?: AbortSignal }): Promise<{ assistant: MockReturnedAssistant; assistantRaw: unknown }> {
+    async generate({ signal, grammar }: { messages: ChatMessage[]; workerId?: string; signal?: AbortSignal; grammar?: string }): Promise<MockReturnedResponse> {
         // Honor abort before consuming the queue — an aborted call makes no
         // "wire call" and must not exhaust a queued response (SPEC §10.8).
         signal?.throwIfAborted();
@@ -86,7 +88,15 @@ export default class Mock implements Provider {
             model: a.model ?? "mock",
             ...(a.ops !== undefined ? { ops: a.ops } : {}),
         };
-        return { assistant, assistantRaw: next.assistantRaw ?? null };
+        const grammarEvidence = next.grammarEvidence
+            ?? (grammar === undefined
+                ? undefined
+                : { input: assistant.content, contentStart: 0, transported: true });
+        return {
+            assistant,
+            assistantRaw: next.assistantRaw ?? null,
+            ...(grammarEvidence !== undefined ? { grammarEvidence } : {}),
+        };
     }
 
     get remaining(): number { return this.#queue.length; }

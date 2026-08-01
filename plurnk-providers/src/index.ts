@@ -1,6 +1,7 @@
 export type {
     ChatMessage,
     FinishReason,
+    GrammarEvidence,
     Provider,
     ProviderAssistant,
     AiSdkProviderPlugin,

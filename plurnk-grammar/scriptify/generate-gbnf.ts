@@ -32,12 +32,8 @@ const OPS = ["FIND", "READ", "EDIT", "COPY", "MOVE", "OPEN", "FOLD", "SEND", "EX
 // Ops whose body is a MATCHER pattern (single-line by contract) vs a content body. Pattern
 // bodies forbid literal line terminators (the in-body quicksand fix); content bodies allow them.
 const PATTERN_OPS = new Set<string>(["FIND", "READ", "OPEN", "FOLD"]);
-// ε, 1, 2 — same-op nesting depth 1 (a credible edge case) and 2 (a possible corner
-// case). Beyond depth 2 an emission is about as likely to be degenerate as legitimate,
-// so the constrained subset stops there; a consumer with a genuinely deeper recursive
-// case supplies its own GBNF or bypasses constrained sampling. ANTLR still PARSES any
-// suffix (`[A-Za-z0-9_]+`), so L(GBNF) ⊆ L(ANTLR) holds — this only narrows what the
-// grammar DICTATES, and canon teaches `1`.
+// The lean rail offers the canonical suffix plus depths 1 and 2. The forgiving parser
+// accepts the general suffix shape; deeper generation can use a custom rail.
 //
 // IRREDUCIBLE form, do not "optimize" to `[1-2]*`: the close tag must MATCH the open
 // suffix (`<<EDITk … :EDITk`) AND the body automaton must exclude that exact close
@@ -148,76 +144,48 @@ const planBodyRules = (model: GModel, name: string, close: string): void => {
     ]);
 };
 
-// General single-literal complement automaton: any text containing no occurrence of
-// `literal`. Same shape as bodyRules but parameterized on the restart char (the literal's
-// first char). Valid when that first char does not recur inside the literal and the literal
-// is borderless (true for `</think>` and `<channel|>` — both start with `<`, no internal
-// `<`, no proper prefix==suffix). Used for the OPTIONAL reasoning enclosures: the body is a
-// complement over the CLOSER, so a `<<PLAN` (or any op) drafted INSIDE reasoning is just
-// content — never the anchor — and the closer (`</think>` / `<channel|>`) is always
-// reachable. That defuses the unclosed-enclosure trap when reasoning lands in-band.
-const forbidLiteral = (model: GModel, name: string, literal: string): void => {
-    const first = literal[0];
-    for (let k = 0; k < literal.length; k++) {
-        const expected = literal[k];
-        const alts: GRule = [];
-        if (k + 1 < literal.length) alts.push([lit(expected), ref(`${name}-b${k + 1}`)]);
-        if (k > 0 && expected !== first) alts.push([lit(first), ref(`${name}-b1`)]);
-        alts.push([bodyOther(k === 0 ? first : `${first}${expected}`), ref(`${name}-b0`)]);
-        alts.push([]);
-        model.set(`${name}-b${k}`, alts);
+// Complement automaton for a finite set of forbidden literals. State is the longest
+// consumed suffix that is also a proper prefix of a forbidden literal. Completing any
+// forbidden literal has no transition; all other characters advance to the appropriate
+// suffix state. The channel body uses this to reject both its closer (so the production
+// owns the unique close) and another opener (so nested/restarted reasoning is denied at
+// the second opener rather than after it has already poisoned the stream).
+const forbidLiterals = (model: GModel, name: string, literals: string[]): void => {
+    if (literals.length === 0 || literals.some((literal) => literal.length === 0)) {
+        throw new Error("forbidLiterals requires non-empty literals");
     }
-};
-
-// Free-text preamble before the PLAN anchor: any text completing NO `<<OP` opener
-// (FIND…PLAN…SEND) — an Aho-Corasick complement over the opener trie. Keeping the
-// preamble opener-free preserves L(GBNF) ⊆ L(ANTLR): every preamble char re-lexes as
-// TEXT, never a statement opener, so the ANTLR `turn` rule's `TEXT*` preamble accepts it.
-// Plus the `<<`-run parity the ANTLR TEXT rule demands: the preamble is followed by the
-// `<<PLAN` literal, so it must NOT end on an ODD run of trailing `<` (else `…<` + `<<PLAN`
-// merges into `<<<PLAN` and the opener is lost). The `<<` trie state splits by run parity
-// (even may end, odd may not); the lone-`<` state may not end either.
-const preplanRules = (model: GModel): void => {
-    const literals = OPS.map((op) => `<<${op}`);
-    const states: string[] = [""];
+    const states = [""];
     for (const literal of literals) {
-        for (let k = 1; k < literal.length; k++) {
-            const prefix = literal.slice(0, k);
+        for (let length = 1; length < literal.length; length++) {
+            const prefix = literal.slice(0, length);
             if (!states.includes(prefix)) states.push(prefix);
         }
     }
-    const ODD = "<<{odd-run}"; // suffix is `<<` but the trailing `<` run is odd
-    states.push(ODD);
-    const ruleOf = (state: string): string => `preplan-s${states.indexOf(state)}`;
-    const longestSuffixState = (candidate: string): string => {
-        for (let i = 1; i < candidate.length; i++) {
-            if (states.includes(candidate.slice(i))) return candidate.slice(i);
-        }
-        return "";
-    };
+    const stateIndex = new Map(states.map((state, index) => [state, index]));
+    const ruleOf = (state: string): string => `${name}-b${stateIndex.get(state)!}`;
+    const significant = [...new Set(literals.flatMap((literal) => [...literal]))];
+    const statesByLength = states.toSorted((a, b) => b.length - a.length);
+    const nextState = (candidate: string): string =>
+        statesByLength.find((state) => candidate.endsWith(state))!;
+
     for (const state of states) {
-        const trieState = state === ODD ? "<<" : state;
-        const alts: GRule = [];
-        const consumed = new Set<string>();
-        for (const literal of literals) {
-            if (!literal.startsWith(trieState)) continue;
-            const next = literal[trieState.length];
-            if (consumed.has(next)) continue;
-            consumed.add(next);
-            const candidate = trieState + next;
-            if (candidate === literal) continue; // completing an opener is forbidden — no transition
-            alts.push([lit(next), ref(ruleOf(candidate))]);
+        const transitions = new Map<string, string[]>();
+        for (const char of significant) {
+            const candidate = state + char;
+            if (literals.some((literal) => candidate.endsWith(literal))) continue;
+            const target = nextState(candidate);
+            const chars = transitions.get(target) ?? [];
+            chars.push(char);
+            transitions.set(target, chars);
         }
-        if (!consumed.has("<")) {
-            consumed.add("<");
-            const target = trieState === "<<" ? (state === ODD ? "<<" : ODD) : longestSuffixState(trieState + "<");
-            alts.push([lit("<"), ref(ruleOf(target))]);
-        }
-        alts.push([bodyOther([...consumed].join("")), ref(ruleOf(""))]);
-        if (state !== "<" && state !== ODD) alts.push([]); // odd trailing-`<` runs may not end
+        const alts: GRule = [...transitions].map(([target, chars]) => [
+            chars.length === 1 ? lit(chars[0]) : cls(C(chars.join(""))),
+            ref(ruleOf(target)),
+        ]);
+        alts.push([bodyOther(significant.join("")), ref(ruleOf(""))]);
+        alts.push([]);
         model.set(ruleOf(state), alts);
     }
-    model.set("preplan", [[ref(ruleOf(""))]]);
 };
 
 // Left-factor a set of opener literals into a shared-prefix trie. The flat form lists one
@@ -349,86 +317,31 @@ export const buildModel = (): GModel => {
         }
     }
 
-    // Turn shape — the PLAN-anchored sandwich `*:PLAN:OPS:SEND[N]`:
-    //
-    //   root-turn ::= preplan plan sep tail-0   (counted tail: the op-count bound)
-    //
-    // `preplan` is a FREE reasoning prefix — any text up to the first `<<PLAN`. The
-    // grammar names NO reasoning delimiter, so it is format-agnostic: a reasoning model
-    // emits its native channel here (the provider separates it into reasoning_content); a
-    // non-reasoning model emits nothing. Either way, because the prefix forbids no token
-    // but the `<<PLAN` literal, it does NOT mask the model's native reasoning token (the
-    // failure mode of a delimiter-specific grammar) — reasoning flows and separates. The
-    // parser discards everything before the first `<<PLAN`.
-    //
-    // A MANDATORY `<<PLAN` then anchors strict enforcement. It is the model's PUBLIC
-    // statement of intent: a reasoning model distills its private CoT into it; a
-    // non-reasoning model reasons in it. After PLAN: ops only, whitespace-separated, no
-    // prose, closed by exactly one terminal status SEND (102/200/300/499).
-    //
-    // Termination is structural (forced EOS after the final SEND). Degeneration *inside*
-    // a body — or an unbounded `preplan` ramble that never reaches `<<PLAN` — remains
-    // unboundable (content is content); the consumer max_tokens cap is the backstop.
-    //
-    // Inter-op separator is up to 7 whitespace chars (`WS{0,7}`): glued or split, but
-    // bounded, so a degenerate decoder can't stall in an unbounded whitespace run.
+    // SPEC {§gbnf-turn-shape} and {§gbnf-reasoning-boundary} (#12/#16): the grammar
+    // constrains one unsplit channel + PLURNK sentence. `sep` is bounded so whitespace
+    // cannot consume the response envelope indefinitely.
     model.set("sep", [Array.from({ length: 7 }, () => opt(WS))]);
-    // The turn opens on the harmony reasoning channel (optional) or dives straight into the
-    // `<<PLAN` anchor - NO free-text preamble (#430). The channel enclosure body is
-    // arrives wrapped: DeepSeek `<think>…</think>`, gemma `<|channel>…<channel|>`. The
-    // enclosure body is a complement over the CLOSER, so a `<<PLAN` drafted while reasoning
-    // is protected content (not the anchor) and the closer is always reachable — otherwise
-    // a drafted opener anchors mid-thought and the unclosed enclosure becomes a dead packet.
-    //
-    // THE ONLY reasoning shape is the harmony channel (#430, owner ruling 2026-07-16): the
-    // grammar is tuned for the one path that actually honors it — local llama.cpp + gemma
-    // over the raw (un-split) stream, `reasoning_format: none`. Cloud backends are unreliable
-    // about GBNF, so agnostic tolerance bought nothing; strict-to-the-enforcer buys everything.
-    // The opener is the EXACT `<|channel>thought\n`, the closer `<channel|>`, and `<channel|>`
-    // is byte-adjacent to `<<PLAN` (raw specimen). The channel is OPTIONAL and its body ADMITS
-    // EMPTY (the complement-over-closer keeps its epsilon): gemma always opens the channel but
-    // often reasons zero on trivial turns, and forcing a non-empty thought only breeds filler
-    // (smoke: the model echoed "thought\n" to satisfy a non-empty floor). So: channel-or-dive-
-    // straight-into-PLAN, nothing else - the wild-west `preplan` and the `<think>` alternative
-    // are BOTH deleted. A byte-literal CAN require the special channel token under llama.cpp
-    // (smoke-confirmed); deviate from channel-or-PLAN and the turn fails hard, by design.
-    forbidLiteral(model, "rz-chan", "<channel|>");
-    model.set("channel", [[lit("<|channel>thought\n"), ref("rz-chan-b0"), lit("<channel|>")]]);
-    // Turn fork — two structural rails on the batch, both content-agnostic:
-    //
-    // OP-COUNT BOUND (K mid-steps, then the ONLY legal continuation is a terminal SEND).
-    // Evidence, 2026-07-03 probes: unconstrained turns run 3-10 mid-steps and terminate
-    // cleanly; the live failure is a model denied an exit flailing in the legal corridor -
-    // mid-SEND spam / op repetition to the max_tokens wall (reproduced at seed 7; ×267 in
-    // service digests). The bound is the exit sign: at step K the mask force-terminates the
-    // turn with a VALID disposition instead of a wall-death. PLAN + K + terminal SEND = a
-    // 16-statement turn ceiling.
-    //
-    // The former tail-clean/tail-dirty fork (the READ->200 rail, 0.74.47-0.74.58) is DELETED
-    // (#54, ruled 2026-07-05): premature-conclude is CONTEXT, and context lives in the
-    // engine's pending-set rule (409 + steer), uniformly with streams and children. The tail
-    // counts steps only: K+1 rules, one chain. The broad 0.74.19-stripped semantic policing
-    // stays gone, and free-text/reasoning spans stay unbounded (probes show the models'
-    // preferred preamble is 0 chars - length is the sampler's concern, not the rail's).
+    // The body complement rejects both delimiters. Its epsilon keeps an empty reasoning
+    // body legal while the production still supplies exactly one opener and closer.
+    const channelOpen = "<|channel>thought\n";
+    const channelClose = "<channel|>";
+    forbidLiterals(model, "rz-chan", [channelOpen, channelClose]);
+    model.set("channel", [[lit(channelOpen), ref("rz-chan-b0"), lit(channelClose)]]);
+    // The existing tail is a cardinality rail only: at most 14 internal statements,
+    // followed by a terminal SEND. Semantic turn policy remains in core.
     const K_MID_STEPS = 14;
-    // MID-BATCH CHANNEL (#497, owner-ruled 2026-07-17): each step admits ONE optional harmony
-    // channel before its statement — think → act → think → act gets a legal home. The requiem
-    // evidence (run104/run112): denied mid-turn reasoning, models escape or narrate inside op
-    // bodies. The channel rides WITH the step (opt per position, never a standalone step), so
-    // a channel-loop is underivable — the think-spam class cannot become rail-legal. Nothing
-    // follows the terminal SEND but EOS, unchanged: the place to think is before concluding.
     for (let k = 0; k < K_MID_STEPS; k++) {
         model.set(`tail-${k}`, [
-            [opt(ref("channel")), ref("send-mid-any"), ref("sep"), ref(`tail-${k + 1}`)],
-            [opt(ref("channel")), ref("op-statement"), ref("sep"), ref(`tail-${k + 1}`)],
+            [ref("send-mid-any"), ref("sep"), ref(`tail-${k + 1}`)],
+            [ref("op-statement"), ref("sep"), ref(`tail-${k + 1}`)],
             // Position 0 exits through the no-idle trie (no [102]); every deeper
             // position has >=1 statement behind it, so the full disposition set returns.
-            [opt(ref("channel")), ref(k === 0 ? "send-final-first" : "send-final-any"), ref("sep")],
+            [ref(k === 0 ? "send-final-first" : "send-final-any"), ref("sep")],
         ]);
     }
-    // Step budget exhausted: terminal SEND is the only continuation (one last think allowed).
-    model.set(`tail-${K_MID_STEPS}`, [[opt(ref("channel")), ref("send-final-any"), ref("sep")]]);
-    model.set("root-turn", [[opt(ref("channel")), ref("plan"), ref("sep"), ref("tail-0")]]);
+    // Step budget exhausted: terminal SEND is the only continuation.
+    model.set(`tail-${K_MID_STEPS}`, [[ref("send-final-any"), ref("sep")]]);
+    model.set("root-turn", [[ref("channel"), ref("sep"), ref("plan"), ref("sep"), ref("tail-0")]]);
     trieRules(model, "op-statement", opEntries);
     trieRules(model, "send-mid-any", sendMidEntries);
     trieRules(model, "send-final-any", sendFinalEntries);
@@ -570,5 +483,5 @@ if (import.meta.main) {
     await mkdir("dist", { recursive: true });
     const model = buildModel();
     await writeFile("dist/plurnk.gbnf", serializeGbnf(model, "root-turn"));
-    process.stderr.write("Generated dist/plurnk.gbnf (PLAN-anchored turn: *:PLAN:OPS:SEND)\n");
+    process.stderr.write("Generated dist/plurnk.gbnf (raw turn: CHANNEL:PLAN:OPS:SEND)\n");
 }

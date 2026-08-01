@@ -111,15 +111,21 @@ export default class ProviderInstantiate {
     // that the provider both claims the capability and enforces a forcing grammar.
     // Endpoint-owned settings are outside this knob and outside this verification.
     static #VERIFY_TOKEN = "PLURNK-RAILS-LIVE";
+    static #VERIFY_REASONING = "verify";
+    static #VERIFY_PREFIX = `<|channel>thought\n${ProviderInstantiate.#VERIFY_REASONING}<channel|>`;
+    static #VERIFY_INPUT = `${ProviderInstantiate.#VERIFY_PREFIX}${ProviderInstantiate.#VERIFY_TOKEN}`;
     static async verifyGrammarEnforcement(provider: Provider, env: NodeJS.ProcessEnv = process.env): Promise<void> {
-        // #353 — resolve GBNF PER ALIAS, exactly as Engine.#grammarConstraint does. The per-alias
-        // move (#352) left this reading the BARE knob (now empty by default), so the boot verify
-        // was SILENTLY SKIPPED for every alias whose grammar rides a suffix (turboderp) — the rails
-        // ran UNVERIFIED, the #34 hole this method exists to close reopened. The alias is the one
-        // that built this provider (the side-table), falling back to the active alias.
+        // #353: resolve through the provider's registered alias, with the active alias
+        // retained only for the boot-global fallback.
         const alias = ProviderInstantiate.aliasOf(provider) ?? resolveActiveAlias(env)?.alias ?? "";
-        const gbnf = scopeEnvToAlias(env, alias, ["PLURNK_PROVIDERS_GBNF"]).PLURNK_PROVIDERS_GBNF;
+        const scoped = scopeEnvToAlias(env, alias, ["PLURNK_PROVIDERS_GBNF", "PLURNK_PROVIDERS_REASONING"]);
+        const gbnf = scoped.PLURNK_PROVIDERS_GBNF;
         if (gbnf === undefined || gbnf === "" || gbnf === "0") return; // rails not requested — nothing to verify
+        if (scoped.PLURNK_PROVIDERS_REASONING === "off") {
+            throw new Error(
+                `PLURNK_PROVIDERS_GBNF=${gbnf} is invalid with PLURNK_PROVIDERS_REASONING=off: the PLURNK GBNF requires reasoning to be adaptive or on ({§gbnf-requires-reasoning}).`,
+            );
+        }
         if (provider.constrainsOutput !== true) {
             throw new Error(
                 `PLURNK_PROVIDERS_GBNF=${gbnf} configures local constrained sampling, but '${provider.model}' does not advertise GBNF transport. `
@@ -127,36 +133,36 @@ export default class ProviderInstantiate {
                 + `If this is a llama-server, set PLURNK_PROVIDERS_LLAMA_SERVER_<alias>=1 when automatic detection is unavailable.`,
             );
         }
-        const forcing = `root ::= "${ProviderInstantiate.#VERIFY_TOKEN}"`;
-        let content: string;
+        const forcing = `root ::= ${JSON.stringify(ProviderInstantiate.#VERIFY_INPUT)}`;
+        let response;
         try {
-            const res = await provider.generate({
+            response = await provider.generate({
                 messages: [{ role: "user", content: "ok" }],
-                workerId: "gbnf-enforcement-verify", grammar: forcing, maxTokens: 16,
+                workerId: "gbnf-enforcement-verify", grammar: forcing, maxTokens: 32,
             });
-            // llama-server sometimes renders the end-of-sequence token as literal text after the
-            // forced string ("PLURNK-RAILS-LIVE<eos>") — that IS proof of enforcement (the grammar
-            // matched exactly, then the sampler stopped); strip one trailing eos-ish marker.
-            content = res.assistant.content.trim().replace(/(<eos>|<\/s>|<\|eot_id\|>|<\|endoftext\|>|<end_of_turn>)\s*$/, "").trim();
         } catch (cause) {
-            // The probe REQUEST was rejected (not "rails came back unconstrained"). This is loud, not
-            // the silent-off failure the verify guards against — and it will recur on every real turn,
-            // so refuse legibly and name the likely cause. The classic one: the provider sends a
-            // reasoning parameter the model rejects (a non-reasoning model + PLURNK_PROVIDERS_REASONING
-            // defaulting on → OpenAI 400 "does not support parameter reasoningEffort").
+            // A rejected probe request is distinct from a completed unconstrained response.
             const detail = cause instanceof Error ? cause.message : String(cause);
             throw new Error(
                 `grammar enforcement verification could not COMPLETE its probe against '${provider.model}' (PLURNK_PROVIDERS_GBNF=${gbnf}) — the model REJECTED the probe request. `
                 + `This is a request/config incompatibility, NOT proof the rails are dark (and it would fail every real turn too). `
-                + `Most common cause: the model does not accept a parameter the provider sends — e.g. a reasoning param on a non-reasoning model; set PLURNK_PROVIDERS_REASONING=off (or the model-appropriate posture). `
+                + `The configured rail requires a reasoning-capable model and a compatible adaptive/on reasoning posture. `
                 + `Refusing to boot until the request the daemon sends is one the model accepts. Probe error: ${detail}`,
                 { cause },
             );
         }
-        if (content !== ProviderInstantiate.#VERIFY_TOKEN) {
+        const evidence = response.grammarEvidence;
+        if (evidence === undefined) {
+            throw new Error(
+                `GBNF enforcement failed: '${provider.model}' did not return grammar evidence for the forcing probe. `
+                + `The service cannot verify the pre-projection sentence and refuses to boot.`,
+            );
+        }
+        const input = evidence.input.replace(/(<eos>|<\/s>|<\|eot_id\|>|<\|endoftext\|>|<end_of_turn>)$/, "");
+        if (!evidence.transported || input !== ProviderInstantiate.#VERIFY_INPUT) {
             throw new Error(
                 `GBNF enforcement failed: PLURNK_PROVIDERS_GBNF=${gbnf} requests constrained sampling, but '${provider.model}' returned unconstrained output to a forcing grammar `
-                + `(expected ${JSON.stringify(ProviderInstantiate.#VERIFY_TOKEN)}, got ${JSON.stringify(content.slice(0, 40))}). `
+                + `(expected ${JSON.stringify(ProviderInstantiate.#VERIFY_INPUT)}, got ${JSON.stringify(input.slice(0, 80))}; transported=${evidence.transported}). `
                 + `Refusing to boot because the configured local constraint was not enforced. `
                 + `Check the llama-server capability or remove the PLURNK_PROVIDERS_GBNF setting.`,
             );

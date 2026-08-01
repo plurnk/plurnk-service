@@ -133,6 +133,7 @@ export type AiSdkTransportResponse = {
     model: string;
     content: string;
     reasoning: string;
+    reasoningProjected: boolean;
     finishReason: FinishReason;
     usage: ProviderUsage;
     metadata: Record<string, unknown>;
@@ -228,6 +229,7 @@ const executeModel = async (
             model: result.response.modelId,
             content: result.text,
             reasoning: reasoningText,
+            reasoningProjected: evidence.reasoningProjected,
             finishReason: finishReasonOf(result.rawFinishReason),
             usage: wireUsageOf(values, reasoningText, result.text)
                 ?? usageOf(result.usage, reasoningText, result.text),
@@ -257,6 +259,7 @@ const executeModel = async (
         model: (await result.response).modelId,
         content,
         reasoning: reasoningText,
+        reasoningProjected: evidence.reasoningProjected,
         finishReason: finishReasonOf(await result.rawFinishReason),
         usage: wireUsageOf(rawChunks, reasoningText, content)
             ?? usageOf(await result.usage, reasoningText, content),
@@ -305,10 +308,12 @@ const extractEvidence = (values: unknown[]): {
     reasoningEncrypted: AiSdkTransportResponse["reasoningEncrypted"];
     logprobs: TokenLogprob[];
     reasoning: string;
+    reasoningProjected: boolean;
 } => {
     const encrypted = new Map<string, AiSdkTransportResponse["reasoningEncrypted"][number]>();
     const logprobs: TokenLogprob[] = [];
     let reasoning = "";
+    let reasoningProjected = false;
     let anonymous = 0;
     for (const value of values) {
         const choices = recordOf(value)?.choices;
@@ -336,7 +341,10 @@ const extractEvidence = (values: unknown[]): {
         }
         const message = recordOf(choice.delta) ?? recordOf(choice.message) ?? {};
         for (const key of ["reasoning_content", "reasoning", "thinking"]) { // lexicon-allow: backend wire fields
-            if (typeof message[key] === "string") reasoning += message[key];
+            if (typeof message[key] === "string") {
+                reasoningProjected = true;
+                reasoning += message[key];
+            }
         }
         if (!Array.isArray(message.reasoning_details)) continue;
         for (const value of message.reasoning_details) {
@@ -366,5 +374,6 @@ const extractEvidence = (values: unknown[]): {
         reasoningEncrypted: [...encrypted.values()],
         logprobs,
         reasoning,
+        reasoningProjected,
     };
 };

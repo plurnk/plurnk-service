@@ -41,9 +41,9 @@ const contentResponse = (content: string): MockResponse => ({
 // now explicit.
 const drainTurn = opsResponse([]);
 
-// An engine NOTICE provider (providers#24 filter mode): returns the model's bytes + a non-fatal
-// `grammar_unenforced` Notice at a code-point divergence. A Notice is ephemeral,
-// drain-on-read, and broadcast — distinct from a durable failure log item.
+// A provider transport anomaly notice. Grammar verdicts are engine-owned under
+// {§rail-truth-engine-verdict}; the provider notice path remains for observations
+// such as a decode escaping into a discarded channel.
 // `extraDrains` clean turns follow so the buffer can be observed draining.
 const NOTICE_CONTENT = "<<PLAN:reasoning:PLAN\n<<SEND[200]:noted:SEND"; // 'N' of SEND on line 2 = code point 26
 const NOTICE_POS = 26; // → content-offset line 2, column 4
@@ -57,7 +57,7 @@ const noticeProvider = (extraDrains: number) => {
         return {
             assistant: { content: NOTICE_CONTENT, reasoning: null, usage: { prompt: 5, completion: 10, reasoning: 0, cached: 0, total: 15 }, finishReason: "stop", model: "mock" },
             assistantRaw: { id: "x", filtered: true },
-            notices: [{ source: "provider:mock", kind: "grammar_unenforced", level: "warn", message: "grammar not enforced at code point 26", position: NOTICE_POS }],
+            notices: [{ source: "provider:mock", kind: "grammar_unenforced", level: "warn", message: "decode escaped into a discarded channel", position: NOTICE_POS }],
         };
     };
     return provider;
@@ -86,11 +86,13 @@ test("a content-offset NOTICE (grammar_unenforced) carries a line:col pointer, n
         const t1 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
         const t2 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
 
+        const p1 = await getPacket(db, t1.turnId) as { assistant?: { content?: string } };
+        assert.equal(p1.assistant?.content, NOTICE_CONTENT, "a transport notice does not discard completed model bytes");
         const p2 = await getPacket(db, t2.turnId);
         const notice = packetSection(p2, "notices");
         assert.equal(
             notice,
-            "* grammar_unenforced: grammar not enforced at code point 26 @ 2:4",
+            "* grammar_unenforced: decode escaped into a discarded channel @ 2:4",
             "the notice surfaced on the next packet with its bounded message and content-offset",
         );
 
@@ -101,7 +103,7 @@ test("a content-offset NOTICE (grammar_unenforced) carries a line:col pointer, n
         assert.match(wire, /## Notices/);
         assert.doesNotMatch(wire, /\{"/, "no JSON dump — the section renders terse lines, not events");
         assert.doesNotMatch(wire, /error:\/\//, "no error:// snippet fence");
-        assert.match(wire, /^\* grammar_unenforced: grammar not enforced at code point 26 @ 2:4$/m);
+        assert.match(wire, /^\* grammar_unenforced: decode escaped into a discarded channel @ 2:4$/m);
 
         // The mirror is ALWAYS folded — even on the NOTICE turn (the auto-OPEN trigger is retired);
         // the model READs the folded row at line 2 when it cares.
@@ -134,13 +136,8 @@ test("the notice buffer drains — a notice appears on exactly one packet, then 
 test("a thrown ProviderError is persisted as one exact operation failure — no turn is fabricated", async () => {
     const { db, engine, workspaceId, workerId, loopId } = await setup();
     try {
-        // Providers 0.32 retired the constrained-path throw: a completed exchange ALWAYS
-        // returns (bytes + a conformance OBSERVATION on response.notices — the #275 test
-        // below pins that path). A ProviderError reaching the engine therefore means NO
-        // completed exchange exists (auth, network, rate limit) — the engine must NOT
-        // fabricate an empty turn (the retired fallback laundered provider adjudications
-        // into model-behavior 422s): notices the cause and propagate, so the drain
-        // writes the loop terminal 500 with the message.
+        // A ProviderError means no completed exchange exists (auth, network, rate
+        // limit). The engine persists that failure and does not invent model bytes.
         const provider = new Mock({ contextWindow: 100000, responses: [drainTurn] });
         const realGenerate = provider.generate.bind(provider);
         let threw = false;
@@ -179,47 +176,6 @@ test("a thrown ProviderError is persisted as one exact operation failure — no 
         const p2 = await getPacket(db, t2.turnId);
         assert.match(packetSection(p2, "errors"), /^\* 401 log:\/\/\/.+\/error$/m);
         assert.equal(packetSection(p2, "notices").includes("unauthorized"), false, "terminal failure never masquerades as a notice");
-    } finally { await db.close(); }
-});
-
-test("#275 / providers#24 — filter-mode grammar_unenforced does NOT throw: the bytes persist and a Notice with the divergence position drains onto the next packet", async () => {
-    const { db, engine, workspaceId, workerId, loopId } = await setup();
-    try {
-        // GBNF-filter mode (providers 0.19.0): generate() returns the model's UNCONSTRAINED bytes
-        // and attaches a non-fatal grammar_unenforced Notice carrying the code-point
-        // divergence position — it does NOT throw. The engine must persist the bytes (no empty
-        // turn, the old cascade root cause) AND drain the event with a content-offset line:col the
-        // model resolves against its own (born-OPEN) emission.
-        const FREE = "<<PLAN:reasoning:PLAN\n<<SEND[102]:noted:SEND"; // 'N' of SEND on line 2 is code point 26
-        const provider = new Mock({ contextWindow: 100000, responses: [drainTurn] }); // turn 2 drains
-        const realGenerate = provider.generate.bind(provider);
-        let did = false;
-        provider.generate = async (req) => {
-            if (did) return realGenerate(req);
-            did = true;
-            return {
-                assistant: { content: FREE, reasoning: "thought about it", usage: { prompt: 5, completion: 10, reasoning: 2, cached: 0, total: 17 }, finishReason: "stop", model: "mock" },
-                assistantRaw: { id: "x", filtered: true },
-                notices: [{ source: "provider:mock", kind: "grammar_unenforced", level: "warn", message: "grammar not enforced: output rejected by the transported grammar at code point 26", position: 26 }],
-            };
-        };
-
-        const t1 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
-        const t2 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
-
-        // #24 root-cause fix: the model's bytes SURVIVE — not nulled into an empty turn.
-        const p1 = await getPacket(db, t1.turnId) as { assistant?: { content?: string }; assistantRaw?: unknown };
-        assert.equal(p1.assistant?.content, FREE, "the unconstrained emission is persisted, not discarded");
-        assert.notEqual(p1.assistantRaw, null, "assistantRaw populated — no empty-turn write");
-
-        // The conflict drains onto turn 2's packet exactly once, with the provider's own source and
-        // a real content-offset position (no embedded snippet — the model resolves it against its emission).
-        const p2 = await getPacket(db, t2.turnId);
-        assert.equal(
-            packetSection(p2, "notices"),
-            "* grammar_unenforced: grammar not enforced: output rejected by the transported grammar at code point 26 @ 2:4",
-            "grammar_unenforced drains exactly once with its explanation and content-offset",
-        );
     } finally { await db.close(); }
 });
 
@@ -364,7 +320,7 @@ test("a notice broadcasts structured and drains as its terse model-facing projec
         const p2 = await getPacket(db, t2.turnId);
         assert.equal(
             packetSection(p2, "notices"),
-            "* grammar_unenforced: grammar not enforced at code point 26 @ 2:4",
+            "* grammar_unenforced: decode escaped into a discarded channel @ 2:4",
         );
     } finally { await db.close(); }
 });
