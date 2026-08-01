@@ -5,7 +5,7 @@
 // consumer injects their implementation.
 
 import type { WriterTier } from "./types.ts";
-import type { EditStatement, FindStatement, ReadStatement, SendStatement } from "@plurnk/plurnk-grammar";
+import type { EditStatement, FindStatement, ReadStatement, SendStatement } from "@plurnk/plurnk-contracts/grammar";
 import type { TextRegion } from "@plurnk/plurnk-contracts";
 import type { MatchEvidence, SchemeResult } from "./Results.ts";
 import type { EditBatchResult } from "./edit-receipt.ts";

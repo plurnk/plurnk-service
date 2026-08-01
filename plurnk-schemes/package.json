@@ -47,7 +47,6 @@
         "prepack": "npm run build"
     },
     "peerDependencies": {
-        "@plurnk/plurnk-grammar": "^1.3.12",
         "@plurnk/plurnk-mimetypes": "^1.3.12"
     },
     "dependencies": {

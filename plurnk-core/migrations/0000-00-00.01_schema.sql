@@ -93,7 +93,7 @@ BEGIN
 END;
 
 -- turns
--- finish_reason / model: provider-call metadata (plurnk-grammar Turn.json).
+-- finish_reason / model: provider-call metadata from the provider response contract.
 -- Properties of the call, not of the model's emission payload — kept on
 -- the Turn row alongside usage rather than nested into packet.assistant.
 CREATE TABLE IF NOT EXISTS turns (

@@ -9,7 +9,7 @@ import test from "node:test";
 import { viableWindow } from "./_helpers.ts";
 import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
-import type { EditStatement } from "@plurnk/plurnk-grammar";
+import type { EditStatement } from "@plurnk/plurnk-contracts/grammar";
 import type { SchemeManifest } from "../../src/core/scheme-types.ts";
 import { rpcCall, rpcProblem, subscribeNotifications, flush, connect, withDaemon, makeMockResponse, runLoopToTerminal, waitFor } from "./_rpc.ts";
 

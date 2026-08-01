@@ -15,7 +15,7 @@ import { createServer, type IncomingMessage, type ServerResponse, type Server as
 import Portal from "./Portal.ts";
 import { stateSnapshot, parseAction, actionResult, type ActionRequest, type ActionOutcome } from "./AguiPlus.ts";
 import type { DaemonSeam, ClientEnvelope, PlurnkStatement } from "./DaemonSeam.ts";
-import { PlurnkParser } from "@plurnk/plurnk-grammar";
+import { PlurnkParser } from "@plurnk/plurnk-contracts/grammar";
 import { EventType, type AguiEvent, type RunAgentInput } from "./types.ts";
 import { RunAgentInputSchema, type Interrupt } from "@ag-ui/core";
 import { logEntryIdFromToolCallId, proposalInterrupt } from "./AguiPlus.ts";

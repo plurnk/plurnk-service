@@ -4,14 +4,14 @@
 //
 //   echo.gbnf   — a tiny hand-written grammar that pins the verdict trichotomy with
 //                 oracle-independent certainty.
-//   plurnk.gbnf — a verbatim snapshot of plurnk-grammar/dist/plurnk.gbnf, the actual
+//   plurnk.gbnf — a verbatim snapshot of plurnk-contracts/dist/plurnk.gbnf, the actual
 //                 generated grammar that constrains the live model. This is the real
 //                 situation the tooling exists for; refresh it from the sibling repo.
 //
 // Shapes are drawn from the live ecosystem: the FIND/READ/SEND heredoc form, the
 // `<think>…</think>` reasoning preamble that the grammar's root requires, terminal
 // SEND status codes, and the complement-automaton bodies that swallow text until a
-// matching close tag (see plurnk-grammar's plurnkLexer.g4 and plurnk.md).
+// matching close tag (see plurnk-contracts' plurnkLexer.g4 and plurnk.md).
 
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";

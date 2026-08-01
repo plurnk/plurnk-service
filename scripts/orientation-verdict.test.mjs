@@ -5,7 +5,7 @@ import { evaluateOrientation } from "./orientation-verdict.mjs";
 const record = {
     schemaVersion: 1,
     response: `The daemon in plurnk-core/src/service.ts orchestrates the platform, while
-plurnk-grammar/README.md owns the DSL and repo/plurnk/README.md documents the client.
+plurnk-contracts/README.md owns the DSL and repo/plurnk/README.md documents the client.
 The repository topology is a monorepo plus outside repositories. The current stabilization and
 acceptance goal is tracked in #583. A missing live issue feed is a remaining context gap.`,
     finalStatus: 200,
@@ -17,7 +17,7 @@ acceptance goal is tracked in #583. A missing live issue feed is a remaining con
         ops: [
             { op: "FIND", target: "**", status: 200 },
             { op: "READ", target: "plurnk-core/src/service.ts", status: 200 },
-            { op: "READ", target: "plurnk-grammar/README.md", status: 200 },
+            { op: "READ", target: "plurnk-contracts/README.md", status: 200 },
             { op: "READ", target: "repo/plurnk/README.md", status: 200 },
         ],
     }],

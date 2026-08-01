@@ -3,7 +3,7 @@
 // reasoning? Multi-step trap tasks, deepseek server, generous tokens, strict scorer.
 import { readFileSync } from "node:fs";
 const BASE = "http://127.0.0.1:11435";
-const G = "/home/hyzen/repo/plurnk/plurnk-service/node_modules/@plurnk/plurnk-grammar";
+const G = "/home/hyzen/repo/plurnk/plurnk-service/node_modules/@plurnk/plurnk-contracts";
 const system = readFileSync(`${G}/plurnk.md`, "utf8");
 const grammars = {
     none: null,

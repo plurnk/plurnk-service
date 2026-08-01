@@ -290,7 +290,7 @@ rewrites one.
 
 GBNF defines the accepted raw sampled text; it runs before response reasoning
 is separated from regular content. The shipped PLURNK sentence is owned by
-`plurnk-grammar` §gbnf-turn-shape and §gbnf-reasoning-boundary; this package does
+`plurnk-contracts` §gbnf-turn-shape and §gbnf-reasoning-boundary; this package does
 not restate or rewrite it.
 
 When a grammar-capable adapter receives a grammar, `ProviderResponse` carries

@@ -4,7 +4,7 @@
 // distinct rows (#526); worker auto-names are id-free ordinals (the name is the authority).
 import test from "node:test";
 import assert from "node:assert/strict";
-import type { ExecStatement, ReadStatement, UrlPath } from "@plurnk/plurnk-grammar";
+import type { ExecStatement, ReadStatement, UrlPath } from "@plurnk/plurnk-contracts/grammar";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import type Exec from "../../src/schemes/Exec.ts";

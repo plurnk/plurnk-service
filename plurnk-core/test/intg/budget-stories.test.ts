@@ -25,7 +25,7 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { Mock } from "@plurnk/plurnk-providers";
 import type { MockResponse } from "@plurnk/plurnk-providers";
-import type { PlurnkStatement } from "@plurnk/plurnk-grammar";
+import type { PlurnkStatement } from "@plurnk/plurnk-contracts/grammar";
 import type { Db } from "../../src/core/Db.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, packetSection } from "./_helpers.ts";
 import { urlPath, editStmt, readStmt, sendStmt } from "./_dsl.ts";

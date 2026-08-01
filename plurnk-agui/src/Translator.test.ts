@@ -191,8 +191,8 @@ test("runtime protocol and family dependencies are declared explicitly", async (
     const pkg = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8")) as { dependencies?: Record<string, string> };
     const deps = Object.keys(pkg.dependencies ?? {});
     assert.ok(deps.includes("@ag-ui/core"), "the standard wire types and schemas are a direct runtime dependency");
-    // Vacuous-pass guard: the grammar is a RUNTIME import (Module's op.parse) — it must
+    // Vacuous-pass guard: the grammar subpath is a runtime import (Module's op.parse) — it must
     // live in dependencies, not devDependencies (npm --save-exact updates an existing
     // devDep in place; this caught a 0.6.0 packaging bug).
-    assert.ok(deps.includes("@plurnk/plurnk-grammar"), "the grammar runtime import is declared in dependencies");
+    assert.ok(deps.includes("@plurnk/plurnk-contracts"), "the contracts and grammar runtime import is declared in dependencies");
 });

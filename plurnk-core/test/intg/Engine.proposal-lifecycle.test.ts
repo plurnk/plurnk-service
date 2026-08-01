@@ -7,7 +7,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { OperationFailureError } from "../../src/core/results.ts";
-import type { EditStatement } from "@plurnk/plurnk-grammar";
+import type { EditStatement } from "@plurnk/plurnk-contracts/grammar";
 import Engine from "../../src/core/Engine.ts";
 import type { ProposalResolution } from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";

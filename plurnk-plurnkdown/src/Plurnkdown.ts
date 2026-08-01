@@ -1,5 +1,5 @@
 import { Lexer, type Token, type Tokens } from "marked";
-import { PlurnkParser } from "@plurnk/plurnk-grammar";
+import { PlurnkParser } from "@plurnk/plurnk-contracts/grammar";
 import type { Diagnostic } from "./types.ts";
 
 const RUNON_LIMIT = 180; // a long run-on regardless of structure
@@ -7,7 +7,7 @@ const WELD_LIMIT = 120;  // a semicolon welding clauses in a non-trivial sentenc
 
 // plurnkdown linter. Structural blocks are exempt by not being prose. Ops written bare
 // in prose are flagged for fencing; ops inside a ```plurnk fence are delegated to
-// plurnk-grammar for statement-level validation; prose sentences stay atomic.
+// The contracts grammar handles statement-level validation; prose sentences stay atomic.
 export default class Plurnkdown {
     lint(source: string): Diagnostic[] {
         const diagnostics: Diagnostic[] = [];
@@ -64,7 +64,7 @@ export default class Plurnkdown {
         }
     }
 
-    // Delegate a ```plurnk fence's ops to plurnk-grammar; surface each syntax error at
+    // Delegate a ```plurnk fence's ops to the contracts grammar; surface each syntax error at
     // its absolute line. Fence content line 1 sits one line below the opening fence.
     #checkFencedOps(text: string, line: number, diagnostics: Diagnostic[]): void {
         for (const item of PlurnkParser.parseStatements(text).items) {

@@ -14,7 +14,6 @@
         "plurnk-contracts",
         "gbnf",
         "plurnk-models",
-        "plurnk-grammar",
         "plurnk-plurnkdown",
         "plurnk-mimetypes-application-json",
         "plurnk-mimetypes-application-xml",

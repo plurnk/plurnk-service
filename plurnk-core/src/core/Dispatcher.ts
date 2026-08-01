@@ -10,7 +10,7 @@ import type {
     ReadStatement,
     ResourceSelection,
     WorkStatement,
-} from "@plurnk/plurnk-grammar";
+} from "@plurnk/plurnk-contracts/grammar";
 import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import type { Db } from "./Db.ts";
 import Owner from "./Owner.ts";
@@ -1081,7 +1081,7 @@ export default class Dispatcher {
         });
     }
 
-    // KILL — scheme-polymorphic destroy (plurnk-grammar#203 / 0.28.0). Entry-KILL
+    // KILL is scheme-polymorphic; entry deletion remains one owned dispatch path.
     // permanently deletes the entry: the canonical delete now, MOVE→/dev/null
     // retired from the model's vocabulary. Process-KILL (exec:///) aborts the
     // running spawn's controller (the same teardown loop.cancel rides), addressed

@@ -3,7 +3,7 @@ import Namespace from "../core/namespace.ts";
 import Owner from "../core/Owner.ts";
 import { dirname, relative, isAbsolute, join, matchesGlob, sep } from "node:path";
 import { createPatch } from "diff";
-import type { EditStatement, ReadStatement, FindStatement, ParsedPath } from "@plurnk/plurnk-grammar";
+import type { EditStatement, ReadStatement, FindStatement, ParsedPath } from "@plurnk/plurnk-contracts/grammar";
 import type { Db } from "../core/Db.ts";
 import { decodePathParens } from "../core/path-decode.ts";
 import GitMembership from "../core/git-membership.ts";

@@ -1,12 +1,12 @@
 #!/usr/bin/env node
 import { readFileSync } from "node:fs";
 import { parseArgs } from "node:util";
-import { PlurnkParser } from "../dist/src/index.js";
+import { PlurnkParser } from "../dist/src/grammar.js";
 
 const USAGE = `Usage:
-  plurnk [file]      Parse plurnk source from a file (or stdin if omitted or '-')
+  plurnk-contracts [file]      Parse plurnk source from a file (or stdin if omitted or '-')
                      and print the result as JSON.
-  plurnk --help      Show this message.
+  plurnk-contracts --help      Show this message.
 
 Exit codes:
   0   parse succeeded with no errors and no unparsed tail

@@ -14,7 +14,7 @@ import { promisify } from "node:util";
 import { mkdtemp, rm, writeFile, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { PlurnkStatement, SendStatement, ReadStatement, EditStatement, LineMarker, ParsedPath, UrlPath } from "@plurnk/plurnk-grammar";
+import type { PlurnkStatement, SendStatement, ReadStatement, EditStatement, LineMarker, ParsedPath, UrlPath } from "@plurnk/plurnk-contracts/grammar";
 import { Mock } from "@plurnk/plurnk-providers";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";

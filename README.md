@@ -89,8 +89,7 @@ checkouts once, then set `PLURNK_CANDIDATE_SKIP_BUILD=1` for the frozen build.
 | Area | Packages |
 | --- | --- |
 | Daemon and client protocol | `plurnk-core`, `plurnk-agui` |
-| Shared runtime contracts | `plurnk-contracts` |
-| Model language | `plurnk-grammar`, `gbnf` |
+| Model language and shared contracts | `plurnk-contracts`, `gbnf` |
 | Model endpoints | `plurnk-providers*`, `plurnk-models`, `plurnk-aliases` |
 | Addressable resources | `plurnk-schemes*` |
 | Executable capabilities | `plurnk-execs*` |

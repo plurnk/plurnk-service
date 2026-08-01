@@ -23,7 +23,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import type { EditStatement, FindStatement, LineMarker, MatcherBody, ReadStatement, UrlPath } from "@plurnk/plurnk-grammar";
+import type { EditStatement, FindStatement, LineMarker, MatcherBody, ReadStatement, UrlPath } from "@plurnk/plurnk-contracts/grammar";
 import { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import Worker from "../../src/schemes/Worker.ts";
 import SearchIndex from "../../src/schemes/_search-index.ts";

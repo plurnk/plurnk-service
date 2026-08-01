@@ -115,7 +115,7 @@ depend on the grammar package.
 
 ### §2.5 Deadlines & polling — the executor stays oblivious
 
-An EXEC op may carry a `<L>` line-marker slot read as `[TIMEOUT_SECONDS, POLL_SECONDS?]` (plurnk-grammar#39, plurnk-service#277): `<1800>` hard-kills at 1800s, `<-1>` declines a per-exec deadline (still loop-life bounded), `<1800,300>` fixes a 300s loop-poll. **None of this touches the executor contract.** `run()` stays stream-only and abort-driven:
+An EXEC op may carry a `<L>` line-marker slot read as `[TIMEOUT_SECONDS, POLL_SECONDS?]` (#277): `<1800>` hard-kills at 1800s, `<-1>` declines a per-exec deadline (still loop-life bounded), `<1800,300>` fixes a 300s loop-poll. **None of this touches the executor contract.** `run()` stays stream-only and abort-driven:
 
 - The **timeout** is the consumer's: at the deadline it fires `args.signal` — arriving as an ordinary abort the executor already honors (the §4 process-group SIGHUP→grace→KILL path). No deadline awareness in the executor.
 - The **poll** is purely the consumer's loop: it wakes on a cadence while the channel is `active`, reading the partial output the executor already streams incrementally via `write`. The executor never sees a tick; it's non-destructive.

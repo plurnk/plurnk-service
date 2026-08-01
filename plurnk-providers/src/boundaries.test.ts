@@ -20,7 +20,7 @@ test("provider source does not import the PLURNK parser", () => {
     for (const file of sourceFiles()) {
         const source = readFileSync(join(root, file), "utf8");
         assert.ok(
-            !/from\s+["']@plurnk\/plurnk-grammar["']/.test(source),
+            !/from\s+["']@plurnk\/plurnk-contracts\/grammar["']/.test(source),
             `${file} imports the parser rather than the runtime-neutral contracts entrypoint`,
         );
     }

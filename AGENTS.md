@@ -5,17 +5,17 @@ contract is unavailable. This file adds only rules specific to the open-source
 PLURNK platform monorepo.
 
 This repository is an npm workspace containing the daemon
-(`plurnk-core`, published as `@plurnk/plurnk-service`), the grammar, the AG-UI
-server module, and the plugins included in the default installation. The
+(`plurnk-core`, published as `@plurnk/plurnk-service`), the contracts and
+grammar authority, the AG-UI server module, and the plugins included in the default installation. The
 command-line client and editor integrations are separate repositories.
 
 ## Package ownership
 
 - `plurnk-core` owns daemon lifecycle, persistence, workspaces, workers, loops,
   packet assembly, and orchestration.
-- `plurnk-grammar` owns the model-facing language and its syntax schemas.
-- `plurnk-contracts` owns runtime-neutral Problems, operation results, notices,
-  and their wire schemas.
+- `plurnk-contracts` owns the model-facing language, parser and AST, generated
+  GBNF rail, shared types and schemas, runtime-neutral Problems, operation
+  results, Notices, and text coordinates.
 - `plurnk-agui` owns the external client protocol and translates between AG-UI
   and daemon operations.
 - `plurnk-providers*`, `plurnk-schemes*`, `plurnk-mimetypes*`, and

@@ -13,7 +13,7 @@ import Paths from "../../src/Paths.ts";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { Mock } from "@plurnk/plurnk-providers";
-import type { PlurnkStatement } from "@plurnk/plurnk-grammar";
+import type { PlurnkStatement } from "@plurnk/plurnk-contracts/grammar";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, DEFAULT_MIMETYPES, packetSection } from "./_helpers.ts";
 import { sendStmt } from "./_dsl.ts";
 

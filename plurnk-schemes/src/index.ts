@@ -111,4 +111,4 @@ export type {
     ParsedPath,
     LocalPath,
     UrlPath,
-} from "@plurnk/plurnk-grammar";
+} from "@plurnk/plurnk-contracts/grammar";

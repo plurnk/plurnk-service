@@ -8,7 +8,7 @@ import { openMigrated } from "./_helpers.ts";
 
 // the schema DIR is derived from one exported schema (directory enumeration cannot go
 // through the export map; the anchor file can — and conditions pick src vs dist)
-const SCHEMA_DIR = dirname(fileURLToPath(import.meta.resolve("@plurnk/plurnk-grammar/schema/ChannelContent.json")));
+const SCHEMA_DIR = dirname(fileURLToPath(import.meta.resolve("@plurnk/plurnk-contracts/schema/ChannelContent.json")));
 
 type FieldStorage =
     | { kind: "direct"; column: string }
@@ -26,12 +26,10 @@ const json = (column: string): FieldStorage => ({ kind: "json", column });
 const decomposed = (...columns: string[]): FieldStorage => ({ kind: "decomposed", columns });
 const joinTable = (table: string): FieldStorage => ({ kind: "joinTable", table });
 
-// Grammar owns the model language (statements, paths, scheme/provider registration,
-// and channels) and DROPPED the persistence schemas - Entry, Workspace,
-// Run, Loop, Turn, LogEntry, Packet, Agent are gone. Those shapes are the SERVICE's now,
-// owned by our migrations + tests, not grammar. So this aligns only the protocol schemas that
-// still map to a table; the persistence tables (workspaces/runs/loops/turns/entries/log_entries)
-// are ours and validated elsewhere. Runtime-neutral envelopes live in plurnk-contracts.
+// Contracts owns the model language and runtime-neutral wire shapes. Persistence
+// remains service-owned through migrations and their tests. This census maps
+// contract shapes with relational projections and explicitly classifies shapes
+// that are transient or stored whole inside owner-defined JSON fields.
 const MAPPING: Record<string, SchemaMapping> = {
     ChannelContent: {
         kind: "embedded", table: "entry_channels", fields: {
@@ -62,6 +60,10 @@ const MAPPING: Record<string, SchemaMapping> = {
     SendBody:        { kind: "skip", reason: "AST shape; embedded in log_entries.tx for SEND rows" },
     PlurnkStatement: { kind: "skip", reason: "AST shape; embedded in turn.packet.assistant.ops JSON" },
     ClientStatement: { kind: "skip", reason: "client-tier AST (PlurnkStatement + the client-only LOOK/BUFF ops, via parseClient); never persisted — the service contract is PlurnkStatement, op.look parses a READ" },
+    Notice:          { kind: "skip", reason: "transient observation; buffered and broadcast in memory, never persisted as a structured Notice" },
+    OperationResult: { kind: "skip", reason: "wire envelope stored whole in owner-defined JSON fields, including log_entries.rx, loops.terminal_result, and subscriptions.close_result" },
+    ProblemDetails:  { kind: "skip", reason: "nested failure value inside persisted OperationResult JSON; never an independent relational record" },
+    TextRegion:      { kind: "skip", reason: "nested optional result metadata inside owner-defined JSON; never an independent relational record" },
 };
 
 const TABLE_PREP = {
@@ -112,7 +114,7 @@ const verifyField = async (db: Db, table: string, fieldName: string, storage: Fi
     return errors;
 };
 
-test("alignment: every schema in plurnk-grammar/schema/ is claimed by a mapping", async () => {
+test("alignment: every contracts schema has an explicit persistence disposition", async () => {
     const files = (await readdir(SCHEMA_DIR)).filter((f) => f.endsWith(".json"));
     const schemaNames = files.map((f) => f.replace(/\.json$/, "")).toSorted();
     const claimed = Object.keys(MAPPING).toSorted();

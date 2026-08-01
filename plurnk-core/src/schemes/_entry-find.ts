@@ -14,7 +14,7 @@
 //   signal  — tag filter: candidate entry must have ALL listed tags
 //   <L>     — results pagination: select results N..M from the matched list
 
-import type { FindStatement } from "@plurnk/plurnk-grammar";
+import type { FindStatement } from "@plurnk/plurnk-contracts/grammar";
 import { LineMarkerOps } from "../content/index.ts";
 import type { PlurnkSchemeContext, SchemeManifest } from "../core/scheme-types.ts";
 import Matcher from "../content/matcher.ts";

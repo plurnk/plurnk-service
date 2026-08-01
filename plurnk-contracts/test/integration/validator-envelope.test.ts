@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import Validator from "../../src/Validator.ts";
+import Validator from "../../src/GrammarValidator.ts";
 
 // -------------------------------------------------------------------------
 // SchemeRegistration

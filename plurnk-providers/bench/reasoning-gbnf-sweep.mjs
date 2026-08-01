@@ -1,6 +1,6 @@
 // Live config sweep on local gemma: tokens/sec + objective quality across the
 // reasoning × grammar matrix. NOT a unit test — needs llama-server at
-// PLURNK_LLAMA_URL (default 127.0.0.1:11435) and the @plurnk/plurnk-grammar
+// PLURNK_LLAMA_URL (default 127.0.0.1:11435) and the @plurnk/plurnk-contracts
 // artifacts (resolved from plurnk-service's install; dev-only, not a dep).
 //
 //   node bench/reasoning-gbnf-sweep.mjs
@@ -11,12 +11,12 @@
 import { readFileSync } from "node:fs";
 
 const BASE = process.env.PLURNK_LLAMA_URL ?? "http://127.0.0.1:11435";
-const GRAMMAR = "/home/hyzen/repo/plurnk/plurnk-service/node_modules/@plurnk/plurnk-grammar";
-const { PlurnkParser } = await import(`${GRAMMAR}/dist/src/index.js`);
+const GRAMMAR = "/home/hyzen/repo/plurnk/plurnk-service/node_modules/@plurnk/plurnk-contracts";
+const { PlurnkParser } = await import(`${GRAMMAR}/dist/src/grammar.js`);
 
 const gbnf = (name) => readFileSync(`${GRAMMAR}/dist/${name}.gbnf`, "utf8");
 const system = (() => {
-    for (const p of [`${GRAMMAR}/plurnk.md`, "/home/hyzen/repo/plurnk/plurnk-grammar/plurnk.md"]) {
+    for (const p of [`${GRAMMAR}/plurnk.md`, "/home/hyzen/ptl/plurnk-service/plurnk-contracts/plurnk.md"]) {
         try { return readFileSync(p, "utf8"); } catch { /* next */ }
     }
     throw new Error("plurnk.md not found");

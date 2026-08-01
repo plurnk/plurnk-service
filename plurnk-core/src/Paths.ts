@@ -1,9 +1,8 @@
 // Package-relative paths to non-code artifacts.
 //
 // `migrations` ships in this package's tarball.
-// `instructionsSystem` resolves to `plurnk.md` IN THE GRAMMAR PACKAGE — single
-// source of truth lives upstream. Plurnk-service doesn't carry its own copy;
-// the grammar agent owns the prose.
+// `instructionsSystem` resolves to the canonical model reference in the
+// contracts package. Plurnk-service does not carry a second copy.
 //
 // Lives at src/ (one level above the package root, like the index barrel that
 // re-exports it) so `..` resolves to PACKAGE_ROOT.
@@ -14,19 +13,19 @@ import { homedir } from "node:os";
 
 export default class Paths {
     static #PACKAGE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-    static #GRAMMAR_ROOT = dirname(fileURLToPath(import.meta.resolve("@plurnk/plurnk-grammar/package.json")));
+    static #CONTRACTS_ROOT = dirname(fileURLToPath(import.meta.resolve("@plurnk/plurnk-contracts/package.json")));
     // The teaching corpus (scheme docs, personality, requirements) lives in @plurnk/plurnk-meta —
     // the metaproject layer OWNS the family prose (owner ruling, monorepo cut); the daemon
-    // consumes it via the same single-source pull shape as GRAMMAR_ROOT.
+    // consumes it via the same single-source pull shape as CONTRACTS_ROOT.
     static #DOCS_ROOT = dirname(fileURLToPath(import.meta.resolve("@plurnk/plurnk-meta/package.json")));
 
     static migrations = resolve(Paths.#PACKAGE_ROOT, "migrations");
-    static instructionsSystem = resolve(Paths.#GRAMMAR_ROOT, "plurnk.md");
+    static instructionsSystem = resolve(Paths.#CONTRACTS_ROOT, "plurnk.md");
     // The default operating policy (seeded to ~/.plurnk/AGENTS.md) + the per-scheme teaching docs.
     static personality = resolve(Paths.#DOCS_ROOT, "PLURNK_PERSONALITY.md");
     static schemeDocs = resolve(Paths.#DOCS_ROOT, "docs");
     // (GBNF artifact resolution moved to Engine.#grammarConstraint — the env value
-    // SELECTS the variant from @plurnk/plurnk-grammar; no hardcoded default here, #225.)
+    // SELECTS the variant from @plurnk/plurnk-contracts; no hardcoded default here, #225.)
     // packet.user.system_requirements DEFAULT. Static contract appended at
     // the end of the user packet — names rules the model has to honor that
     // the grammar block doesn't cover (e.g. "loop concludes with SEND[200]").

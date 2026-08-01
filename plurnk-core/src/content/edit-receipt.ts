@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { InvalidOperationResultError } from "@plurnk/plurnk-contracts";
-import type { LineMarker } from "@plurnk/plurnk-grammar";
+import type { LineMarker } from "@plurnk/plurnk-contracts/grammar";
 import type {
     EditBatchReceipt,
     EditEffectReceipt,

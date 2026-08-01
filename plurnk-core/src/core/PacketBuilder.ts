@@ -1,5 +1,5 @@
 import type { Notice } from "@plurnk/plurnk-contracts";
-import type { PlurnkStatement } from "@plurnk/plurnk-grammar";
+import type { PlurnkStatement } from "@plurnk/plurnk-contracts/grammar";
 import type { Db } from "./Db.ts";
 import type SchemeRegistry from "./SchemeRegistry.ts";
 import type ExecutorRegistry from "./ExecutorRegistry.ts";
@@ -53,7 +53,7 @@ const readOptionalPositiveIntFrom = (env: NodeJS.ProcessEnv, name: string): numb
 
 export type ChatMessage = { role: "system" | "user" | "assistant"; content: string };
 
-// packet.assistant shape per plurnk-grammar 0.6.0 Packet.json. Wire-level
+// Packet assistant shape is part of the shared contracts boundary. Wire-level
 // call-metadata (usage, finishReason, model) is NOT here — those are
 // properties of the call and live on the Turn row, alongside Turn.usage.
 export type PacketAssistant = {

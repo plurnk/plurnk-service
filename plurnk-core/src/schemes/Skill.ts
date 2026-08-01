@@ -2,7 +2,7 @@
 // Unknown) but its semantics are NOT yet designed.
 
 import type { EntryEditResult, EntryFindResult, EntryReadResult, SchemeCtx, SchemeHandler, SchemeManifest, SchemeResult } from "@plurnk/plurnk-schemes";
-import type { EditStatement, FindStatement, ReadStatement, SendStatement } from "@plurnk/plurnk-grammar";
+import type { EditStatement, FindStatement, ReadStatement, SendStatement } from "@plurnk/plurnk-contracts/grammar";
 
 export default class Skill implements SchemeHandler {
     static manifest: SchemeManifest = {

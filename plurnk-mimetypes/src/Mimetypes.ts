@@ -497,7 +497,7 @@ function attachNotices(result: ProcessResult): ProcessResult {
 
 // Editor-convention line count (SPEC §7): `abc\ndef`→2, `abc\ndef\n`→2
 // (trailing newline terminates, doesn't add a line), `\n`→1, ""→0. Matches
-// `wc -l` and plurnk-grammar's `<L>` slot addressing.
+// `wc -l` and plurnk-contracts' `<L>` slot addressing.
 function countLines(text: string): number {
     if (text.length === 0) return 0;
     let newlines = 0;

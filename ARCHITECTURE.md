@@ -61,8 +61,7 @@ APIs. Provider-specific transport and authentication remain outside core.
 
 | Concern | Owner |
 | --- | --- |
-| Runtime-neutral problems, operation results, and notices | `plurnk-contracts` |
-| Model-facing language | `plurnk-grammar` |
+| Model language, parser/AST, schemas/types, rail, and runtime-neutral wire envelopes | `plurnk-contracts` |
 | Persistence, loops, workers, packet assembly, dispatch | `plurnk-core` |
 | External client protocol | `plurnk-agui` |
 | Model API adapters and model catalog | `plurnk-providers*`, `plurnk-models`, `plurnk-aliases` |

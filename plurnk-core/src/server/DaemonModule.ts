@@ -1,5 +1,5 @@
 import type { RuntimeAvailability, RuntimeDecl } from "@plurnk/plurnk-execs";
-import type { FindStatement, ReadStatement } from "@plurnk/plurnk-grammar";
+import type { FindStatement, ReadStatement } from "@plurnk/plurnk-contracts/grammar";
 import type { SchemeCtx, SchemeResult } from "@plurnk/plurnk-schemes";
 import type { Executor } from "../core/ExecutorRegistry.ts";
 

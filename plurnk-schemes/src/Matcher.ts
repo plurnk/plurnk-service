@@ -10,7 +10,7 @@
 // matcher requested; the model sees raw text + a `reason` and chooses
 // retry/fallback/fix-source. Choice ratified by user (#172).
 
-import type { MatcherBody } from "@plurnk/plurnk-grammar";
+import type { MatcherBody } from "@plurnk/plurnk-contracts/grammar";
 import type { Mimetypes, QueryMatch, ParsedBodyMatcher } from "@plurnk/plurnk-mimetypes";
 import {
     UnsupportedDialectError,

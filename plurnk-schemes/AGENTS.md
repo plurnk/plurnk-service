@@ -7,5 +7,5 @@ result types. Individual scheme packages own protocol- or resource-specific
 behavior.
 
 Keep URI parsing standards-compliant and preserve one owner for each registered
-scheme name. Shared wire shapes belong in `plurnk-grammar`; internal scheme
+scheme name. Shared wire shapes belong in `plurnk-contracts`; internal scheme
 implementation types remain here. `SPEC.md` defines the plugin API.

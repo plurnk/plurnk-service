@@ -10,7 +10,7 @@ import { execSync } from "node:child_process";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { EditStatement, UrlPath } from "@plurnk/plurnk-grammar";
+import type { EditStatement, UrlPath } from "@plurnk/plurnk-contracts/grammar";
 import type { MockResponse } from "@plurnk/plurnk-providers";
 import { Mock } from "@plurnk/plurnk-providers";
 import { Mimetypes } from "@plurnk/plurnk-mimetypes";

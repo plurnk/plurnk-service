@@ -1,6 +1,6 @@
 import EntrySemantic from "./_entry-semantic.ts";
 import EntryCrud from "./_entry-crud.ts";
-import type { EditStatement, ReadStatement } from "@plurnk/plurnk-grammar";
+import type { EditStatement, ReadStatement } from "@plurnk/plurnk-contracts/grammar";
 import type { Db } from "../core/Db.ts";
 import { entryPathnameOf } from "../core/plurnk-uri.ts";
 import type { PlurnkSchemeContext, SchemeManifest } from "../core/scheme-types.ts";
@@ -167,7 +167,7 @@ export default class EntryOps {
             return failure("entry-not-found", 404, `No entry exists at ${EntryManifest.toPath(scheme, pathname)}.`, { entryId: null, channel: targetChannel });
         }
 
-        // Effective mimetype for this entry. Per plurnk-grammar 0.14.0:
+        // Effective mimetype for this entry, per the shared contracts:
         // "Path suffix declares mimetype; absent suffix defers to scheme default."
         // `known:///users.json` → application/json (extension wins).
         // `known:///users`      → text/markdown (scheme manifest default).

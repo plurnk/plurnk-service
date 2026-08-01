@@ -1,1 +1,8 @@
-dist
+node_modules/
+src/generated/
+src/types.generated.ts
+dist/*
+!dist/plurnk.gbnf
+*.tokens
+*.interp
+*.tgz

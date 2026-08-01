@@ -39,7 +39,7 @@ test("[#267] an advisory rooted in a first-party direct dep is NOT routed upstre
         },
         metadata: { vulnerabilities: { info: 0, low: 0, moderate: 0, high: 1, critical: 0, total: 1 } },
     };
-    const routed = routeAdvisories(audit, new Set(["ws", "@plurnk/plurnk-grammar"]));
+    const routed = routeAdvisories(audit, new Set(["ws", "@plurnk/plurnk-contracts"]));
     assert.equal(routed.length, 1);
     assert.deepEqual(routed[0].roots, ["ws"], "ws roots in itself — a direct dep");
     assert.deepEqual(routed[0].plurnkRoots, [], "not a @plurnk chain → not routed upstream");

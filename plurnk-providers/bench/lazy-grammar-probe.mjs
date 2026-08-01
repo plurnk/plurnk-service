@@ -4,7 +4,7 @@
 // then constrain. Tries several trigger forms (the API has shifted across builds).
 import { readFileSync } from "node:fs";
 const BASE = "http://127.0.0.1:11435";
-const G = "/home/hyzen/repo/plurnk/plurnk-service/node_modules/@plurnk/plurnk-grammar";
+const G = "/home/hyzen/repo/plurnk/plurnk-service/node_modules/@plurnk/plurnk-contracts";
 const system = readFileSync(`${G}/plurnk.md`, "utf8");
 const strict = readFileSync(`${G}/dist/plurnk-strict.gbnf`, "utf8");
 

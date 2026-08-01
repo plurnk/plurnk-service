@@ -1,4 +1,4 @@
-import type { PlurnkStatement } from "@plurnk/plurnk-grammar";
+import type { PlurnkStatement } from "@plurnk/plurnk-contracts/grammar";
 
 const MUTATIONS = new Set<PlurnkStatement["op"]>(["EDIT", "COPY", "MOVE", "KILL", "FOLD"]);
 const OBSERVATIONS = new Set<PlurnkStatement["op"]>(["FIND", "READ", "OPEN"]);

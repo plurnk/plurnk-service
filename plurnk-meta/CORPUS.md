@@ -10,7 +10,7 @@ The plurnk teaching corpus. Markdown consumed by [plurnk-service](https://github
 
 ## The teaching split
 
-**Grammar teaches the language; docs teach the world.** [plurnk-grammar](https://github.com/plurnk/plurnk-grammar)'s ANTLR grammar and `plurnk.md` own op syntax and the model-facing language. This package owns scheme behavior, delegation workflow, disposition, and standing rules. Live model evidence tests whether that teaching is legible without turning telemetry into unsolicited workflow direction.
+**Contracts teach the language; docs teach the world.** [plurnk-contracts](https://github.com/plurnk/plurnk-service/tree/main/plurnk-contracts)'s ANTLR grammar and `plurnk.md` own op syntax and the model-facing language. This package owns scheme behavior, delegation workflow, disposition, and standing rules. Live model evidence tests whether that teaching is legible without turning telemetry into unsolicited workflow direction.
 
 ## Contract
 

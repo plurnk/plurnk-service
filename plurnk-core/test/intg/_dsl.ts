@@ -5,7 +5,7 @@ import type {
     EditStatement, ReadStatement, SendStatement, OpenStatement, FoldStatement,
     FindStatement, CopyStatement, MoveStatement, ExecStatement,
     LocalPath, UrlPath, ParsedPath, MatcherBody, LineMarker,
-} from "@plurnk/plurnk-grammar";
+} from "@plurnk/plurnk-contracts/grammar";
 
 export const urlPath = (scheme: string, pathname: string, fragment: string | null = null): UrlPath => ({
     kind: "url", raw: `${scheme}://${pathname}${fragment !== null ? `#${fragment}` : ""}`,

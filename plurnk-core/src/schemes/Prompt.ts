@@ -1,5 +1,5 @@
 import type { EntryEditResult, EntryFindResult, EntryReadResult, SchemeCtx, SchemeHandler, SchemeManifest } from "@plurnk/plurnk-schemes";
-import type { EditStatement, FindStatement, ReadStatement } from "@plurnk/plurnk-grammar";
+import type { EditStatement, FindStatement, ReadStatement } from "@plurnk/plurnk-contracts/grammar";
 
 // prompt:// — the worker's own task frames ({§prompt-self-only}, #527): each loop's prompt at
 // prompt:///<loopSeq>/<turnSeq>, owned by the worker via owner_id — the address carries only the

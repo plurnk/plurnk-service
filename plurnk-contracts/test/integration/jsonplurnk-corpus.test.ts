@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { Jsonplurnk } from "../../src/index.ts";
+import { Jsonplurnk } from "../../src/grammar.ts";
 
 // The magnum-opus assertion on real data (grammar#437). The corpus is the renderer's ACTUAL
 // output - run52 packet011's Log, 184 entries, 20 open bodies - and the stripper is built

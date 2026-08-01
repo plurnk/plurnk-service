@@ -22,10 +22,12 @@
         ]
     },
     "include": [
-        "src/**/*.ts"
+        "scriptify/**/*.ts",
+        "src/**/*.ts",
+        "test/**/*.ts"
     ],
     "exclude": [
         "node_modules",
-        "dist"
+        "src/generated"
     ]
 }

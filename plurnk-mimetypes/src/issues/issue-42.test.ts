@@ -7,7 +7,7 @@
 // Load-bearing claims, restated as tests of the contract (not the impl):
 //
 //   C1. Mimetypes.query accepts a parsed body `{ dialect, pattern, flags? }`
-//       (the shape @plurnk/plurnk-grammar produces) in addition to a raw string.
+//       (the shape @plurnk/plurnk-contracts/grammar produces) in addition to a raw string.
 //   C2. The parsed form and the equivalent raw string produce identical results
 //       across every dialect, and both carry m.lines (#41) uniformly.
 //   C3. The parsed form dispatches by its EXPLICIT dialect — it does NOT re-parse

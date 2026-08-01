@@ -6,7 +6,7 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import ProblemLog from "../../src/core/ProblemLog.ts";
 import { Mock } from "@plurnk/plurnk-providers";
 import type { MockResponse } from "@plurnk/plurnk-providers";
-import type { PlurnkStatement, SendStatement } from "@plurnk/plurnk-grammar";
+import type { PlurnkStatement, SendStatement } from "@plurnk/plurnk-contracts/grammar";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, packetSection } from "./_helpers.ts";
 
 test("the prompt ceiling derives from the provider window minus reserves — reserves over the window fail hard", async () => {

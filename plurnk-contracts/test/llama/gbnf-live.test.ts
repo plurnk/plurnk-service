@@ -20,7 +20,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { PlurnkParser } from "../../src/index.ts";
+import { PlurnkParser } from "../../src/grammar.ts";
 
 const BASE_URL = process.env.PLURNK_LLAMA_URL ?? "http://127.0.0.1:11435";
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..");

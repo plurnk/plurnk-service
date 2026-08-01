@@ -13,7 +13,7 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Worker from "../../src/schemes/Worker.ts";
 import type { Db } from "../../src/core/Db.ts";
-import type { ParsedPath, KillStatement } from "@plurnk/plurnk-grammar";
+import type { ParsedPath, KillStatement } from "@plurnk/plurnk-contracts/grammar";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, makeSchemeCtx, DEFAULT_MIMETYPES } from "./_helpers.ts";
 import { urlPath, localPath, editStmt, copyStmt, moveStmt } from "./_dsl.ts";
 

@@ -5,7 +5,7 @@ Framework + contract for `@plurnk/plurnk-execs-*` runtime executor packages. Con
 ## Documentation
 
 - [`SPEC.md`](./SPEC.md) — the authoritative author-facing contract. This README is the orientation and the how-to.
-- Constellation: [plurnk-grammar](https://github.com/plurnk/plurnk-grammar) (EXEC AST), [plurnk-providers](https://github.com/plurnk/plurnk-providers), [plurnk-schemes](https://github.com/plurnk/plurnk-schemes), [plurnk-mimetypes](https://github.com/plurnk/plurnk-mimetypes) (the reference family this one mirrors).
+- Constellation: [plurnk-contracts](https://github.com/plurnk/plurnk-service/tree/main/plurnk-contracts) (EXEC AST), [plurnk-providers](https://github.com/plurnk/plurnk-providers), [plurnk-schemes](https://github.com/plurnk/plurnk-schemes), [plurnk-mimetypes](https://github.com/plurnk/plurnk-mimetypes) (the reference family this one mirrors).
 
 ## Write an executor
 

@@ -1,6 +1,6 @@
 # plurnk-service — Specification
 
-Canonical contracts plurnk-service exposes, architecture it implements, promises it makes to the constellation (`plurnk-grammar`, `plurnk-providers`, `plurnk-schemes`, `plurnk-mimetypes`, `plurnk-execs`, the user-facing `plurnk` CLI). `AGENTS.md` covers process; this file covers contract.
+Canonical contracts plurnk-service exposes, architecture it implements, promises it makes to the constellation (`plurnk-contracts`, `plurnk-providers`, `plurnk-schemes`, `plurnk-mimetypes`, `plurnk-execs`, the user-facing `plurnk` CLI). `AGENTS.md` covers process; this file covers contract.
 
 ---
 
@@ -18,7 +18,7 @@ Canonical meanings. When a doc, comment, test name, or commit message uses one o
 | **loop** | One model-driven or client-driven iteration within a worker. Status ∈ {100 pending · 102 running · 200 done · 202 waiting (blocked on a live obligation, §send) · 413 budget-overflow · 429 turn-ceiling · 499 cancelled · 500 failed · 504 wall-clock timeout (§operator-config-loop-timeout) · 508 runaway}. Many loops per worker. The model workers inside a loop; each client RPC has its own loop. |
 | **turn** | One engine scheduling unit (or one client RPC dispatch). A model turn sends one assembled prompt through one or more emission attempts and admits at most one response. Many turns per loop. Identity: `(loop_id, sequence)`. |
 | **op** | One DSL operation the model emits. Parsed into a `PlurnkStatement`. Examples: `EDIT`, `READ`, `SEND`, `FIND`, `COPY`, `MOVE`, `OPEN`, `FOLD`, `EXEC`. One turn produces zero or more ops. |
-| **statement** | Synonym for parsed op. The AST shape `PlurnkStatement` from `@plurnk/plurnk-grammar`. |
+| **statement** | Synonym for parsed op. The AST shape `PlurnkStatement` from `@plurnk/plurnk-contracts/grammar`. |
 | **action** | One executed op. Action and op are the same thing in different states (op = parsed; action = executed). The execution produces a log_entries row at `log:///<L>/<T>/<S>/<op>`. (The Log may also hold an *actionless* `op='error'` row for a durable engine-rail failure, §operation-results.) |
 | **dispatch** | The engine routing a statement to its scheme's op handler. |
 
@@ -95,11 +95,11 @@ The plurnk project is a modular monorepo-of-repos in the `@plurnk/*` npm namespa
 
 Dependency direction (from root to leaf):
 
-- **`plurnk-grammar`** — owns the AST and shared wire contracts, including
+- **`plurnk-contracts`** — owns the AST and shared wire contracts, including
   universal `OperationResult`/RFC 9457 Problem Details, plus the ANTLR parser
   that turns model output into `PlurnkStatement[]`. Packet assembly is
   service-owned (§packet).
-- **Framework siblings** consume grammar and define their own author-facing contracts:
+- **Framework siblings** consume contracts and define their own author-facing contracts:
     - `plurnk-providers` — Provider/Alias types, AI SDK adaptation, Models.dev-backed provider resolution, local endpoint probes, `Mock`, and normalized usage. Ordinary vendor protocols belong to official AI SDK providers; only genuinely new protocol bindings require a provider plugin.
     - `plurnk-mimetypes` — handler base classes, discovery, the fitting algorithm, and the match primitives (`queryGlob`/`queryRegex`/`queryJsonpathObject`/`queryXpathString`) the service's matcher dispatches over (§matcher-dispatch). Handler children are per-mimetype: `plurnk-mimetypes-text-{python,typescript,markdown,html,csv,plain}`, `plurnk-mimetypes-application-{json,yaml,toml,pdf}`, …
     - `plurnk-schemes` — scheme-author types (`SchemeManifest`, `WriterTier`, `LoopFlags`), result-shape contracts (`EntryResult` / `ProposalResult` / `PassthroughResult`), slicing primitives, matcher helpers, `schemeError(...)` constructor. Future scheme children: `plurnk-schemes-http`, `plurnk-schemes-git`, …
@@ -122,7 +122,7 @@ Engine library + admin CLI + daemon. Four plug points:
 
 The engine dispatches ops, persists state to SQLite, orchestrates cross-scheme COPY/MOVE (§copy/§move), writes the log. Substantive behavior lives in the four plug points.
 
-The grammar (`@plurnk/plurnk-grammar`) owns parser + AST contract. Schemes receive parsed statement fragments via dispatch.
+The grammar subpath (`@plurnk/plurnk-contracts/grammar`) owns the parser and AST contract. Schemes receive parsed statement fragments via dispatch.
 
 Server posture: this package is the runtime. User-facing CLI lives in `plurnk` and consumes the library API (`src/index.ts` + `PATHS`).
 
@@ -392,7 +392,7 @@ Author-facing contract: [plurnk-providers#1](https://github.com/plurnk/plurnk-pr
 
 Three entry points:
 
-- `provider.generate({messages, signal})` - once per provider attempt; returns `{ assistant: { content, reasoning, usage, finishReason, model }, assistantRaw, meta? }`. **Engine parses `assistant.content`** into `PlurnkStatement[]` via `@plurnk/plurnk-grammar`. {§provider-surface-generate}
+- `provider.generate({messages, signal})` - once per provider attempt; returns `{ assistant: { content, reasoning, usage, finishReason, model }, assistantRaw, meta? }`. **Engine parses `assistant.content`** into `PlurnkStatement[]` via `@plurnk/plurnk-contracts/grammar`. {§provider-surface-generate}
 - `provider.countTokens(text)` — synchronous, called at write-time (§tokenomics) and render-time. Non-negative integer. {§provider-surface-counttokens}
 - `provider.calculateCost(usage)` - once per completed provider attempt; estimated USD. Engine aggregates every attempt into `turns.usage_cost_usd`; triggers cascade to `workers.cost_usd` / `workspaces.cost_usd`. {§provider-surface-calculate-cost}
 
@@ -791,7 +791,7 @@ Model uses state to anticipate growth between turns. Clients use state for UI (s
 
 ## §op Op Surface
 
-Per-op semantics. AST shapes from `@plurnk/plurnk-grammar`'s `PlurnkStatement`. Engine dispatches by `op`; scheme implements per author contract (§scheme).
+Per-op semantics. AST shapes come from `@plurnk/plurnk-contracts/grammar`'s `PlurnkStatement`. Engine dispatches by `op`; scheme implements per author contract (§scheme).
 
 ### §edit EDIT
 
@@ -1043,7 +1043,7 @@ No generator. SQLite-optimal: STRICT (3.37+), `INTEGER PRIMARY KEY` aliasing, ex
 - One `.sql` file per cohesive concern under `migrations/`. File names are descriptive organization only; `-- MIGRATE: <positive-integer>` versions define the authoritative order.
 - Structural DDL lives in versioned `MIGRATE` blocks. SqlRite applies every version above `PRAGMA user_version` once, in ascending order, transactionally; a failed body and its version bump roll back together. Applied migrations are immutable history.
 - `INIT` is not a schema-evolution mechanism. It is reserved for genuinely idempotent posture or seeds that must run on every open. PLURNK currently needs none.
-- **Schema-alignment test**: loads `@plurnk/plurnk-grammar/schema/*.json`, parses DDL via `node:sqlite` introspection, asserts every required schema field has a corresponding `NOT NULL` column. Grammar drift fails CI.
+- **Schema-alignment test**: loads `@plurnk/plurnk-contracts/schema/*.json`, parses DDL via `node:sqlite` introspection, asserts every required schema field has a corresponding `NOT NULL` column. Contract drift fails CI.
 - DDL = storage truth; JSON Schemas = wire truth. Tested-aligned, allowed to differ where ergonomics demand.
 - **Schema-version stamp.** {§db-schema-version-stamp} Every plurnk DB carries SqlRite's `PRAGMA user_version` (current: `11`). Versioned `MIGRATE` blocks are the sole schema-evolution history; the latest migration version is therefore also the cross-repo drift stamp. Any change to the schema's *shape* — tables, columns, identity keys — adds the next migration in the same commit. External consumers (bench's digest) read the stamp with zero table dependency and fail hard on mismatch — "schema v11 required, found v10" — instead of rotting silently against a moved schema (the pre-rename specimen class: "no such table"). `INIT` is reserved for genuinely repeatable database posture or seeds, never schema creation or a manual `user_version` assignment.
 - **Identity components are never NULL.** {§entry-identity-no-null} The entries identity tuple — (workspace, owner, scheme, pathname) — admits no NULL component, because NULLs are distinct under SQL UNIQUE and a nullable component voids the identity index entirely: the #526 disease, re-run on the scheme axis as run59/#545 (the per-turn membership upsert never conflicted — one phantom row per member per turn, 74k rows over 530 identities, null-keyed lookups landing on arbitrary rows, the sig-gate misfiring, EDIT anchors resolving against stale bytes). File members persist under the reserved **`file`** scheme (`storedScheme: "file"`; they still render as bare paths); `entries.scheme` is `NOT NULL`; a manifest declaring `storedScheme: null` is refused at registration.
@@ -1119,7 +1119,7 @@ the output-scheme adapter, not runtime implementations.
 
 ## §grammar Grammar Dependency
 
-`@plurnk/plurnk-grammar` is the contract. Authoritative; surface gaps via issue, adopt what lands. Don't redesign from this side.
+`@plurnk/plurnk-contracts` is authoritative; surface gaps through its owning issue and adopt what lands. Do not redesign the contract from core.
 
 ### §grammar-provides What grammar provides
 

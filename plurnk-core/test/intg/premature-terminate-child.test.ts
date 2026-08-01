@@ -9,7 +9,7 @@ import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { Mock } from "@plurnk/plurnk-providers";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, seedEntryWithChannel, DEFAULT_MIMETYPES } from "./_helpers.ts";
-import type { ParsedPath } from "@plurnk/plurnk-grammar";
+import type { ParsedPath } from "@plurnk/plurnk-contracts/grammar";
 import { execStmt, sendStmt, readStmt } from "./_dsl.ts";
 
 const knownPath = (pathname: string): ParsedPath => ({

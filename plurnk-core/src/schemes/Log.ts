@@ -1,4 +1,4 @@
-import type { FindStatement, FoldStatement, OpenStatement, ReadStatement } from "@plurnk/plurnk-grammar";
+import type { FindStatement, FoldStatement, OpenStatement, ReadStatement } from "@plurnk/plurnk-contracts/grammar";
 import { LineMarkerOps } from "../content/index.ts";
 import type { SchemeManifest, PlurnkSchemeContext, SchemeReadResult } from "../core/scheme-types.ts";
 import { ReadResolve } from "../content/index.ts";

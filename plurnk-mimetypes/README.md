@@ -5,7 +5,7 @@ Framework + contract for the `@plurnk/plurnk-mimetypes-*` handler packages. Cons
 ## Documentation
 
 - [`SPEC.md`](./SPEC.md) — the authoritative author-facing contract. This README is the orientation.
-- Constellation: [plurnk-grammar](https://github.com/plurnk/plurnk-grammar), [plurnk-execs](https://github.com/plurnk/plurnk-execs), [plurnk-providers](https://github.com/plurnk/plurnk-providers), [plurnk-schemes](https://github.com/plurnk/plurnk-schemes).
+- Constellation: [plurnk-contracts](https://github.com/plurnk/plurnk-service/tree/main/plurnk-contracts), [plurnk-execs](https://github.com/plurnk/plurnk-execs), [plurnk-providers](https://github.com/plurnk/plurnk-providers), [plurnk-schemes](https://github.com/plurnk/plurnk-schemes).
 
 ## Install
 

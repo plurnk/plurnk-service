@@ -9,7 +9,7 @@
 // expression; 203 = source unparseable for its mimetype → raw bytes as text so the model
 // can fall back to regex/visual parsing (SPEC §matcher-dispatch).
 
-import type { MatcherBody } from "@plurnk/plurnk-grammar";
+import type { MatcherBody } from "@plurnk/plurnk-contracts/grammar";
 import { TextCoordinates, type Mimetypes } from "@plurnk/plurnk-mimetypes";
 import {
     Matcher as SchemeMatcher,

@@ -1,7 +1,5 @@
-// Smoke test: pack the grammar package, install the tarball into a temp
-// sibling dir, and verify a real `import { PlurnkParser, Validator }` works
-// at runtime. Catches issues like #4 (npm-installed package failing because
-// of Node's node_modules type-stripping restriction).
+// Pack the complete contracts package, install it into a clean consumer, and
+// exercise both the lightweight wire-contract root and the grammar subpath.
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { mkdtemp, writeFile, rm, readdir, readFile } from "node:fs/promises";
@@ -15,7 +13,7 @@ const run = promisify(execFile);
 // inside `npm publish --workspaces` (prepublishOnly), the inner npm would inherit
 // --workspaces/omit and misread the temp consumer. The consumer gets a CLEAN npm env.
 const cleanEnv = Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith("npm_")));
-const grammarDir = process.cwd();
+const contractsDir = process.cwd();
 const tempDir = await mkdtemp(join(tmpdir(), "plurnk-smoke-"));
 let tarballPath: string | undefined;
 
@@ -25,13 +23,13 @@ const cleanup = async (): Promise<void> => {
 };
 
 try {
-    process.stdout.write(`[smoke] packing tarball in ${grammarDir}...\n`);
+    process.stdout.write(`[smoke] packing tarball in ${contractsDir}...\n`);
     // The caller built the candidate before smoke. Re-running prepack here would
     // rebuild the same artifact inside its own verification and used to compound
     // the generator's lifecycle cost.
-    const { stdout: packOut } = await run("npm", ["pack", "--json", "--silent", "--ignore-scripts"], { cwd: grammarDir, env: cleanEnv });
+    const { stdout: packOut } = await run("npm", ["pack", "--json", "--silent", "--ignore-scripts"], { cwd: contractsDir, env: cleanEnv });
     const tarballName = JSON.parse(packOut)[0].filename;
-    tarballPath = join(grammarDir, tarballName);
+    tarballPath = join(contractsDir, tarballName);
     process.stdout.write(`[smoke] tarball: ${tarballName}\n`);
 
     process.stdout.write(`[smoke] setting up consumer in ${tempDir}...\n`);
@@ -47,23 +45,24 @@ try {
 
     // Stale-artifact guard: the shipped dist/schema must mirror source schema/
     // exactly — a deleted schema surviving in dist (issue #27) fails here.
-    const sourceSchemas = (await readdir(join(grammarDir, "schema"))).sort();
-    const shippedSchemas = (await readdir(join(tempDir, "node_modules", "@plurnk", "plurnk-grammar", "dist", "schema"))).sort();
+    const sourceSchemas = (await readdir(join(contractsDir, "schema"))).sort();
+    const shippedSchemas = (await readdir(join(tempDir, "node_modules", "@plurnk", "plurnk-contracts", "dist", "schema"))).sort();
     if (JSON.stringify(sourceSchemas) !== JSON.stringify(shippedSchemas)) {
         throw new Error(`dist/schema diverges from schema/: shipped [${shippedSchemas}] vs source [${sourceSchemas}]`);
     }
     process.stdout.write(`[smoke] dist/schema mirrors schema/ (${sourceSchemas.length} files)\n`);
 
-    const installedRoot = join(tempDir, "node_modules", "@plurnk", "plurnk-grammar");
+    const installedRoot = join(tempDir, "node_modules", "@plurnk", "plurnk-contracts");
     for (const gbnf of ["plurnk.gbnf"]) {
         const shipped = await readFile(join(installedRoot, "dist", gbnf), "utf8");
-        const local = await readFile(join(grammarDir, "dist", gbnf), "utf8");
+        const local = await readFile(join(contractsDir, "dist", gbnf), "utf8");
         if (shipped !== local) throw new Error(`shipped dist/${gbnf} diverges from the local build`);
         process.stdout.write(`[smoke] dist/${gbnf} shipped intact (${shipped.length} bytes)\n`);
     }
 
     await writeFile(join(tempDir, "consume.js"), `
-import { PlurnkParser, Validator, PlurnkParseError, parsePath } from "@plurnk/plurnk-grammar";
+import { Problems, Validator as ContractValidator } from "@plurnk/plurnk-contracts";
+import { PlurnkParser, Validator as GrammarValidator, PlurnkParseError, parsePath } from "@plurnk/plurnk-contracts/grammar";
 
 // 1. Parse a simple plurnk statement.
 const result = PlurnkParser.parseStatements("<<EDIT(worker:///foo):body content:EDIT");
@@ -73,17 +72,21 @@ if (item.statement.op !== "EDIT") throw new Error("expected EDIT, got " + item.s
 
 // 2. Validator round-trip (exercises JSON schema imports).
 const pos = item.statement.position;
-const posResult = Validator.validatePosition(pos);
+const posResult = GrammarValidator.validatePosition(pos);
 if (!posResult.valid) throw new Error("position validation failed: " + JSON.stringify(posResult.errors));
 
-// 3. Confirm an error class is importable as a value.
+// 3. Validate the runtime-neutral result contract through the package root.
+const problem = Problems.create("smoke", "missing", 404, "Missing.");
+ContractValidator.assertOperationResult({ status: 404, problem });
+
+// 4. Confirm an error class is importable as a value.
 if (typeof PlurnkParseError !== "function") throw new Error("PlurnkParseError is not a class");
 
-// 4. Confirm the parsePath helper is a callable top-level export (COPY-dest recipe).
+// 5. Confirm the parsePath helper is a callable grammar export.
 const dest = parsePath("worker:///archive/draft");
 if (dest?.kind !== "url" || dest.scheme !== "worker" || dest.pathname !== "/archive/draft") throw new Error("parsePath export not working: " + JSON.stringify(dest));
 
-console.log("OK: parser, validator, error class, and parsePath all consumable from npm-installed package.");
+console.log("OK: wire contracts and grammar are consumable through their installed entrypoints.");
 `);
 
     process.stdout.write(`[smoke] running consume.js...\n`);
@@ -91,8 +94,31 @@ console.log("OK: parser, validator, error class, and parsePath all consumable fr
     if (consumeErr) process.stderr.write(consumeErr);
     process.stdout.write(consumeOut);
 
+    await writeFile(join(tempDir, "consume-contracts-browser.js"), `
+import { Problems } from "@plurnk/plurnk-contracts";
+export const makeProblem = () => Problems.create("smoke", "missing", 404, "Missing.");
+`);
+    const contractsBundle = join(tempDir, "consume-contracts-browser.bundle.mjs");
+    const contractsBuild = await build({
+        absWorkingDir: tempDir,
+        entryPoints: ["consume-contracts-browser.js"],
+        outfile: contractsBundle,
+        bundle: true,
+        format: "esm",
+        platform: "browser",
+        logLevel: "silent",
+        metafile: true,
+    });
+    const grammarRuntimeInput = Object.keys(contractsBuild.metafile.inputs).find((input) =>
+        input.includes("antlr4ng") || input.includes("PlurnkParser"),
+    );
+    if (grammarRuntimeInput !== undefined) {
+        throw new Error(`wire-contract root loaded grammar runtime: ${grammarRuntimeInput}`);
+    }
+    process.stdout.write("[smoke] root entrypoint excludes the grammar runtime\n");
+
     await writeFile(join(tempDir, "consume-browser.js"), `
-import { PlurnkParser } from "@plurnk/plurnk-grammar";
+import { PlurnkParser } from "@plurnk/plurnk-contracts/grammar";
 export const parse = (input) => PlurnkParser.parse(input);
 `);
     const browserBundle = join(tempDir, "consume-browser.bundle.mjs");

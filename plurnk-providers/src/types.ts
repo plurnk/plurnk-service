@@ -1,5 +1,5 @@
 // Provider transport contract. Providers return raw wire-level output —
-// content unparsed (consumer parses via @plurnk/plurnk-grammar), reasoning
+// content unparsed (consumer parses via @plurnk/plurnk-contracts/grammar), reasoning
 // is the wire-reported CoT only.
 
 import type { ProviderNotice } from "./notices.ts";
@@ -101,7 +101,7 @@ export interface ProviderResponse {
 }
 
 export interface Provider {
-    // `grammar` is an optional GBNF string (canonically @plurnk/plurnk-grammar's
+    // `grammar` is an optional GBNF string (canonically @plurnk/plurnk-contracts'
     // plurnk.gbnf, possibly root-substituted by the consumer). Backends that
     // support grammar-constrained sampling attach it verbatim; all others
     // ignore it. The provider never chooses or modifies the grammar — whether

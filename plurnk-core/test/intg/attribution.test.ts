@@ -11,7 +11,7 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import PluginAttribution from "../../src/core/plugin-attribution.ts";
 import { Mock } from "@plurnk/plurnk-providers";
 import type { MockResponse } from "@plurnk/plurnk-providers";
-import type { PlurnkStatement } from "@plurnk/plurnk-grammar";
+import type { PlurnkStatement } from "@plurnk/plurnk-contracts/grammar";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop } from "./_helpers.ts";
 import { parseDsl } from "./_rpc.ts";
 

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import type { ParsedPath, SendStatement, UrlPath } from "@plurnk/plurnk-grammar";
+import type { ParsedPath, SendStatement, UrlPath } from "@plurnk/plurnk-contracts/grammar";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import type { Db } from "../../src/core/Db.ts";

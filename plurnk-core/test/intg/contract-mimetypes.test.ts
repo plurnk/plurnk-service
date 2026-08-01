@@ -19,7 +19,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type {
     EditStatement, MatcherBody, ParsedPath, ReadStatement, SendStatement,
-} from "@plurnk/plurnk-grammar";
+} from "@plurnk/plurnk-contracts/grammar";
 import { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";

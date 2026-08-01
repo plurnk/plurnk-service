@@ -13,7 +13,7 @@ import type {
     PageResult,
     TextReplacement,
 } from "@plurnk/plurnk-schemes";
-import type { LineMarker } from "@plurnk/plurnk-grammar";
+import type { LineMarker } from "@plurnk/plurnk-contracts/grammar";
 
 export type { SliceResult, EditResult };
 

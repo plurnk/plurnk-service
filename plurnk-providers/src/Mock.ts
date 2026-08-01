@@ -19,7 +19,7 @@ export type MockAssistant = {
     // sealed-reasoning conformance test can drive the shape through Mock.
     reasoningEncrypted?: ReadonlyArray<{ id: string | null; subtype: string; encrypted: ReadonlyArray<{ data: string; format: string | null }> }>;
     // Pre-parsed ops — intg-only escape hatch. Typed `unknown[]` so the
-    // framework carries NO @plurnk/plurnk-grammar dependency; plurnk-service
+    // framework carries no parser dependency; plurnk-service
     // casts these to PlurnkStatement[] on its side. Production providers never
     // include this field.
     ops?: unknown[];

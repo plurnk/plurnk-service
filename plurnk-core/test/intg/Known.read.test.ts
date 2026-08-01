@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import type { EditStatement, LineMarker, LocalPath, MatcherBody, ParsedPath, ReadStatement, UrlPath } from "@plurnk/plurnk-grammar";
+import type { EditStatement, LineMarker, LocalPath, MatcherBody, ParsedPath, ReadStatement, UrlPath } from "@plurnk/plurnk-contracts/grammar";
 import Worker from "../../src/schemes/Worker.ts";
 import { openMigrated, insertWorkspace, insertWorker, makeSchemeCtx } from "./_helpers.ts";
 import { Mimetypes } from "@plurnk/plurnk-mimetypes";
@@ -282,7 +282,7 @@ test("Known.read: read against workspace A doesn't surface workspace B's entry",
     } finally { db.close(); }
 });
 
-// --- Extension-based mimetype (plurnk-grammar 0.14.0) ---------------
+// --- Extension-based mimetype ----------------------------------------
 
 test("Known: path suffix `.json` declares mimetype; READ returns application/json", async () => {
     const { db, workspaceId, workerId } = await setupContext();

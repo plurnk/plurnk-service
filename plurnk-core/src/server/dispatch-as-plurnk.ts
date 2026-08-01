@@ -6,7 +6,7 @@
 // plurnk worker's log, NOT the model's; other workers see only the resulting
 // workspace-scoped entries through the shared filesystem (§machine-processes), never the log.
 
-import type { PlurnkStatement } from "@plurnk/plurnk-grammar";
+import type { PlurnkStatement } from "@plurnk/plurnk-contracts/grammar";
 import type { Db } from "../core/Db.ts";
 import type Engine from "../core/Engine.ts";
 import Envelope from "./envelope.ts";

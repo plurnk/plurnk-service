@@ -13,7 +13,7 @@ import type { CatalogEntry } from "../../src/schemes/_entry-manifest.ts";
 import ChannelWrite from "../../src/core/ChannelWrite.ts";
 import { Mock } from "@plurnk/plurnk-providers";
 import { Results } from "@plurnk/plurnk-schemes";
-import type { PlurnkStatement } from "@plurnk/plurnk-grammar";
+import type { PlurnkStatement } from "@plurnk/plurnk-contracts/grammar";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, seedEntryWithChannel, makeSchemeCtx, DEFAULT_MIMETYPES } from "./_helpers.ts";
 
 const emptyTurn = { assistant: { content: "", ops: [] as PlurnkStatement[], reasoning: null } };

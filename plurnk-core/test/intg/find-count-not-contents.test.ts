@@ -6,7 +6,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import EntryFind from "../../src/schemes/_entry-find.ts";
 import Worker from "../../src/schemes/Worker.ts";
-import type { FindStatement } from "@plurnk/plurnk-grammar";
+import type { FindStatement } from "@plurnk/plurnk-contracts/grammar";
 import { openMigrated, insertWorkspace, insertWorker, seedEntryWithChannel, makeSchemeCtx } from "./_helpers.ts";
 
 const findAll = (): FindStatement => ({

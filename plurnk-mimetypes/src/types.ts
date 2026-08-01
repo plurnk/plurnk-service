@@ -137,7 +137,7 @@ export interface DiscoverOptions {
     env?: Record<string, string | undefined>;
 }
 
-// Body matcher dialects, dispatched by leading-prefix from plurnk-grammar's
+// Body matcher dialects, dispatched by leading-prefix from plurnk-contracts'
 // plurnk.md table: `//` xpath, `/.../flags` regex, `$` jsonpath, otherwise
 // glob (line-anchored against body text).
 export type QueryDialect = "regex" | "glob" | "xpath" | "jsonpath";

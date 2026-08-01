@@ -7,7 +7,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import type { EditStatement, FindStatement, MatcherBody, UrlPath } from "@plurnk/plurnk-grammar";
+import type { EditStatement, FindStatement, MatcherBody, UrlPath } from "@plurnk/plurnk-contracts/grammar";
 import { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import Worker from "../../src/schemes/Worker.ts";
 import EntryCrud from "../../src/schemes/_entry-crud.ts";

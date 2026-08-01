@@ -1,10 +1,10 @@
-import { PlurnkParser, PlurnkParseError } from "@plurnk/plurnk-grammar";
+import { PlurnkParser, PlurnkParseError } from "@plurnk/plurnk-contracts/grammar";
 import Owner from "./Owner.ts";
 import type { Notice } from "@plurnk/plurnk-contracts";
-import type { PlurnkStatement, EditStatement, ReadStatement, UrlPath, FindStatement } from "@plurnk/plurnk-grammar";
+import type { PlurnkStatement, EditStatement, ReadStatement, UrlPath, FindStatement } from "@plurnk/plurnk-contracts/grammar";
 
 // Internal-only — collected from PlurnkParser output, then translated to
-// Notice envelopes (per @plurnk/plurnk-grammar 0.17.0 protocol)
+// Notice envelopes are defined by @plurnk/plurnk-contracts.
 // before being pushed to the loop's notices buffer.
 type ParseErrorInfo = { message: string; line: number; column: number; source: string };
 const TERMINAL_SEND_SIGNALS = new Set([102, 200, 202, 300, 499]);
@@ -513,7 +513,7 @@ export default class Engine {
         if (hit !== undefined) return hit;
         const path = variant.startsWith("/") || variant.startsWith(".")
             ? variant
-            : fileURLToPath(import.meta.resolve(`@plurnk/plurnk-grammar/${variant}`));
+            : fileURLToPath(import.meta.resolve(`@plurnk/plurnk-contracts/${variant}`));
         const text = await readFile(path, "utf8");  // unresolvable/unreadable throws — a configured rail never silently degrades
         this.#gbnfCache.set(variant, text);
         process.stderr.write(`plurnk-engine: GBNF constraint: ${alias || "(bare)"} → ${variant} (${text.length} chars)\n`);

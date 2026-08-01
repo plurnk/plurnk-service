@@ -6,7 +6,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import type { ReadStatement, ExecStatement } from "@plurnk/plurnk-grammar";
+import type { ReadStatement, ExecStatement } from "@plurnk/plurnk-contracts/grammar";
 import Http from "@plurnk/plurnk-schemes-http";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";

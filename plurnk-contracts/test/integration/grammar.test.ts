@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { PlurnkParser, PlurnkParseError, parsePath } from "../../src/index.ts";
+import { PlurnkParser, PlurnkParseError, parsePath } from "../../src/grammar.ts";
 
 const statementsOf = (input: string) =>
     PlurnkParser.parseStatements(input).items.filter((i) => i.kind === "statement");
