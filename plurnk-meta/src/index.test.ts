@@ -20,19 +20,29 @@ test("isTrusted: gate on — @plurnk/* always, allowlist admits, everything else
     assert.equal(Meta.isTrusted("evil-plugin", { PLURNK_PLUGINS_TRUSTED_ONLY: "1" }), false, "'1' = on, zero third-party");
 });
 
-test("packageDirs: enumerates scoped + unscoped, follows symlinks, skips .bin/.cache/dotfiles", async () => {
+test("packageDirs: enumerates the fixture plus legitimate packages farther up the open ancestor chain", async () => {
     const root = await mkdtemp(join(tmpdir(), "plugins-scan-"));
     try {
-        const nm = join(root, "node_modules");
+        const outer = join(root, "node_modules");
+        const nm = join(root, "fixture", "node_modules");
+        await mkdir(join(outer, "unrelated-ancestor"), { recursive: true });
         await mkdir(join(nm, "@plurnk", "plurnk-fake"), { recursive: true });
         await mkdir(join(nm, "acme-plugin"), { recursive: true });
         await mkdir(join(nm, ".bin"), { recursive: true });
+        await mkdir(join(nm, ".cache"), { recursive: true });
         const real = join(root, "workspace-member");
         await mkdir(real);
         await writeFile(join(real, "package.json"), "{}");
         await symlink(real, join(nm, "@plurnk", "plurnk-linked"));
-        const names = (await Meta.packageDirs(nm)).map((c) => c.name).toSorted();
-        assert.deepEqual(names, ["@plurnk/plurnk-fake", "@plurnk/plurnk-linked", "acme-plugin"], "symlinked workspace member enumerated; .bin skipped");
+        const candidates = await Meta.packageDirs(nm);
+        const byName = new Map(candidates.map((candidate) => [candidate.name, candidate.dir]));
+        assert.equal(byName.size, candidates.length, "each package name has one nearest candidate");
+        assert.equal(byName.get("@plurnk/plurnk-fake"), join(nm, "@plurnk", "plurnk-fake"));
+        assert.equal(byName.get("@plurnk/plurnk-linked"), join(nm, "@plurnk", "plurnk-linked"));
+        assert.equal(byName.get("acme-plugin"), join(nm, "acme-plugin"));
+        assert.equal(byName.get("unrelated-ancestor"), join(outer, "unrelated-ancestor"));
+        assert.equal(byName.has(".bin"), false);
+        assert.equal(byName.has(".cache"), false);
     } finally {
         await rm(root, { recursive: true, force: true });
     }
@@ -49,17 +59,17 @@ test("packageDirs: merges npm's nested peer graph with ancestor packages, neares
         const inner = join(root, "packages", "service", "node_modules");
         await mkdir(join(outer, "@plurnk", "plurnk-schemes-http"), { recursive: true });
         await mkdir(join(outer, "@plurnk", "plurnk-providers"), { recursive: true });
+        await mkdir(join(outer, "unrelated-ancestor"), { recursive: true });
         await mkdir(join(inner, "@plurnk", "plurnk-providers"), { recursive: true });
         await mkdir(join(inner, "@acme", "ai-provider"), { recursive: true });
 
         const candidates = await Meta.packageDirs(inner);
-        assert.deepEqual(candidates.map((candidate) => candidate.name).toSorted(), [
-            "@acme/ai-provider",
-            "@plurnk/plurnk-providers",
-            "@plurnk/plurnk-schemes-http",
-        ]);
-        assert.equal(candidates.find((candidate) => candidate.name === "@plurnk/plurnk-providers")?.dir,
-            join(inner, "@plurnk", "plurnk-providers"));
+        const byName = new Map(candidates.map((candidate) => [candidate.name, candidate.dir]));
+        assert.equal(byName.size, candidates.length, "ancestor merging returns one nearest candidate per name");
+        assert.equal(byName.get("@acme/ai-provider"), join(inner, "@acme", "ai-provider"));
+        assert.equal(byName.get("@plurnk/plurnk-providers"), join(inner, "@plurnk", "plurnk-providers"));
+        assert.equal(byName.get("@plurnk/plurnk-schemes-http"), join(outer, "@plurnk", "plurnk-schemes-http"));
+        assert.equal(byName.get("unrelated-ancestor"), join(outer, "unrelated-ancestor"));
     } finally {
         await rm(root, { recursive: true, force: true });
     }
