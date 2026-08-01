@@ -457,12 +457,23 @@ probe (`root ::= "PLURNK-RAILS-LIVE"`) or boot fails. The setting is resolved
 per alias and is unset by default. Configuring it on a cloud or endpoint-managed
 provider is an error, not a request for best-effort filtering.
 
+The shipped PLURNK rail requires reasoning. The same alias-scoped configuration
+must resolve reasoning to `adaptive` or `on`; `off` with GBNF is rejected before
+the probe or any model generation. Reasoning-off remains valid when no GBNF rail
+is configured. {§gbnf-requires-reasoning}
+
 **Local constraint truth is independently observed.** {§rail-truth-engine-verdict}
-For a configured local GBNF, the engine independently validates every completed
-emission and stamps `railsAttached: "client"` plus `railsVerdict`. A non-accept
-verdict emits a `grammar_unenforced` notice if the provider did not already
-report it. With no local GBNF, core adds no rail state and makes no claim about
-endpoint-owned settings; endpoint diagnostics remain provider metadata.
+For a configured local GBNF, the provider returns the pre-projection sentence as
+`grammarEvidence` under `plurnk-providers` §gbnf-response-observation. The engine
+requires that evidence, independently validates `grammarEvidence.input`, and
+stamps `railsAttached: "client"` when transported or `"withheld"` in debug mode
+plus `railsVerdict`; it never validates projected
+`assistant.content` as though the required reasoning enclosure were still
+present. A non-accept verdict emits one `grammar_unenforced` notice. A raw
+position at or after `contentStart` is translated to a content offset; a failure
+inside the projected reasoning prefix has no false content pointer. With no
+local GBNF, core adds no rail state and makes no claim about endpoint-owned
+settings.
 
 ```
 PLURNK_MODEL_gemma=openai/macher.gguf
@@ -1153,7 +1164,7 @@ Model selection: separate alias cascade in `ProviderRegistry` (§provider-instan
 | `PLURNK_SERVICE_MD_<ALIAS>` | (unset) | Operator reference doc: materializes `<path>` as `plurnk:///<ALIAS>.md`, auto-READ into every model worker's turn 0 (§actor-boundary). `~` expands to home. |
 | `PLURNK_SERVICE_FILES_ITEMS` | `-1` | Turn-0 catalog preview. Folder-capable schemes render a complete one-level `*` map with `dir/**` rollups; kernel docs remain recursive. `-1` = complete maps; positive `N` caps only file-map rows; `0` / unset = off (§actor-boundary-catalog-preview). |
 | `PLURNK_SERVICE_PROPOSAL_TIMEOUT_MS` | (empty — waits indefinitely) | ms wait for a proposed entry (status=202) to be resolved before timing out. |
-| `PLURNK_PROVIDERS_REASONING` + `_BUDGET` | `adaptive` / (unset) | The activation/budget split (a numeric budget silently flipping template flags was secret flag-setting). `off | adaptive | on`; budget (tokens) REQUIRED when on. F7 coupling: llama-server honors only the box's `--reasoning-budget` launch flag (must equal the budget; boot-warned). |
+| `PLURNK_PROVIDERS_REASONING` + `_BUDGET` | `adaptive` / (unset) | The activation/budget split (a numeric budget silently flipping template flags was secret flag-setting). `off | adaptive | on`; budget (tokens) REQUIRED when on. On llama-server the provider sends one cumulative response allowance per request; an explicit budget may tighten but cannot exceed the reasoning reserve. |
 | `PLURNK_PROVIDERS_FETCH_TIMEOUT` | `600000` | Service-wide ms ceiling on any outbound request (providers, future http schemes). Module-specific overrides are allowed below the ceiling. |
 
 Every knob listed is enforced — the engine reads and acts on it; `.env.defaults` is the authoritative default (reader-declares, §operator-config-env-defaults).
@@ -1627,7 +1638,7 @@ retain distinct contracts and lifetimes.
 
 | notice `kind` | Source | Position |
 |---|---|---|
-| `grammar_unenforced` | (provider, forwarded) GBNF-filter divergence — the model's bytes diverged from the transported grammar | content-offset into the model's emission |
+| `grammar_unenforced` | engine rail verdict, or a forwarded provider transport anomaly such as a discarded-channel escape | content-offset when the observed position maps into content; none for a reasoning-prefix divergence |
 | `parse_advisory` | grammar parser — recoverable near-miss which did not invalidate the parsed statements | content-offset into the model's emission |
 | `embed_progress` | repository materialization/indexing lifecycle (§mimetype-surface); structured phase, count, and percent; `level: info` except terminal failure | none |
 | `search_progress` | aggregate search-page acquisition lifecycle; structured phase, counts, and percent; never candidate URLs or per-result notices | none |

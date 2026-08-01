@@ -64,6 +64,50 @@ that needs interpretation belongs in the runtime resolver.
 - Filter composition (how OPEN/FOLD combine path × tag × body filters).
 - Output shape returned to the model after a statement executes. The §4 Per-OP Output table documents convention, not grammar rules.
 
+## 1.2 GBNF Generation Rail
+
+The ANTLR parser and Visitor define the PLURNK language. The generated
+`dist/plurnk.gbnf` is an optional local llama.cpp sampling rail: it is kept lean
+to make useful, ANTLR-compliant turns more likely without reproducing every
+parser or semantic validator. Parse compatibility is a design goal balanced
+against rail size and sampling efficiency, not a language-subset guarantee. A
+rail-legal operation can therefore produce a parser/Visitor error; consumers
+apply their ordinary admission and bounded-operation recovery contract.
+{§gbnf-rail-purpose}
+
+The shipped raw turn has one shape:
+
+```ebnf
+root-turn ::= channel sep plan sep tail-0
+```
+
+`channel` is exactly one byte-zero Gemma Harmony enclosure beginning
+`<|channel>thought\n` and ending `<channel|>`. Its body may be empty but cannot
+contain another opener or the closer. `sep` is zero through seven whitespace
+characters. No channel is legal after the leading one. `tail-0` is unchanged
+apart from that removal: zero through fourteen internal statements, separated
+only by `sep`, followed by exactly one terminal SEND under the existing terminal
+eligibility rules. {§gbnf-turn-shape}
+
+```mermaid
+flowchart LR
+    raw["Raw constrained decode<br/>channel · sep · PLAN · sep · tail-0"]
+    split["llama.cpp<br/>reasoning_format: auto"]
+    reasoning["reasoning_content<br/>channel body"]
+    content["content<br/>PLAN through terminal SEND"]
+    parser["ANTLR + Visitor<br/>admission and diagnostics"]
+    raw --> split
+    split --> reasoning
+    split --> content
+    content --> parser
+```
+
+GBNF applies to the raw sentence on the left, before projection. The two
+projected fields are not separate GBNF languages and `content` alone is not
+revalidated as though it still contained the required channel. Provider and
+core own the projection evidence and rail-verdict boundary; this package owns
+only the raw language and the parser/Visitor result. {§gbnf-reasoning-boundary}
+
 ## 2. Canonical Statement Form
 
 ```
@@ -313,9 +357,9 @@ body fields; the lexer is unaware):
   real malformations (`$HOME`, `$.users[`) that the retired
   `jsonpath-plus` check let through leniently.
 
-Errors here are per-statement: sibling statements in the same turn
-still build, so a consumer executes the rest of the turn and relays the
-errored matcher's message as the teaching failure.
+Errors here are per-statement: sibling statements in the same turn still build.
+Consumer admission and recovery are separate contracts; the service's
+trustworthy-frame rule is `plurnk-core` §emission-admission.
 
 **GBNF note — pattern bodies are single-line at the rail.** The shipped
 `dist/plurnk.gbnf` forbids literal newlines inside FIND/READ/OPEN/FOLD
@@ -323,9 +367,8 @@ bodies (patterns are single-line by contract; a regex matching a
 newline writes the two-char escape `\n`). This collapses the
 mismatched-close-tag trap (`<<FIND(…):…:READ` leaving the sampler stuck
 in an unclosable body) to a single line. Content bodies
-(EDIT/COPY/MOVE/EXEC/SEND/PLAN/WORK/FORK) remain multiline. The ANTLR
-parser accepts multiline pattern bodies (forgiving ingester;
-`L(GBNF) ⊆ L(ANTLR)`). The rail also forbids `:` as the first matcher
+(EDIT/COPY/MOVE/EXEC/SEND/PLAN/WORK/FORK) remain multiline. The forgiving
+ANTLR ingester also accepts multiline pattern bodies. The rail forbids `:` as the first matcher
 body character, preventing an extra body delimiter from producing the
 common `:::OP` typo. Empty matchers and later colons remain valid; use a
 regex such as `/^:needle/` when the matcher itself must begin with a
@@ -586,10 +629,8 @@ The entry points are `PlurnkParser.parse` (a model turn), `PlurnkParser.parseSta
 // grammar: free text before PLAN, a required PLAN, nothing but whitespace between/after
 // ops, and a required terminal SEND. A packet without a PLAN and a terminal SEND is
 // invalid. A Plurnk packet IS a turn; there is no permissive fallback. {§turn-shape}
-// On the GBNF rail each step also admits ONE optional harmony-channel enclosure before
-// its statement (think → act → think → act; #497) — never standalone, so a channel loop
-// is underivable, and nothing follows the terminal SEND but EOS. ANTLR absorbs channels
-// as prose, so L(GBNF) ⊆ L(ANTLR) holds. {§mid-batch-channel}
+// The optional local sampling rail is specified by §gbnf-rail-purpose,
+// §gbnf-turn-shape, and §gbnf-reasoning-boundary.
 PlurnkParser.parse(input: string): ParseResult
 
 // Parse a bare sequence of statements — teaching-example collections, single ops,

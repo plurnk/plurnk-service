@@ -63,6 +63,33 @@ root overrides.
   retries, and compatibility behavior must be intentional and tested; they are
   not categorically forbidden.
 
+## Contract references and documentation hygiene
+
+- The owning package's `SPEC.md` states stable current behavior. Give every
+  referenceable invariant, boundary, or diagram a durable `{§…}` tag;
+  keep tags unambiguous and do not silently reuse one for different semantics.
+- Forge issues record observations, investigation, competing interpretations,
+  rulings, rejected alternatives, and completion evidence. Issue numbers are
+  provenance; specification tags are current authority.
+- README material teaches concise usage derived from the specification. Do not
+  turn specifications or READMEs into chronological design journals.
+- Code and coverage may cite the owning specification tag and issue numbers, but must not
+  duplicate the specification's architectural explanation or retain historical
+  essays. Keep only genuinely local implementation constraints near code.
+- Every braced specification-tag citation outside a `SPEC.md` must resolve to a
+  declaration in a `SPEC.md`; the root lint enforces this mechanically.
+- Tests enforce externally meaningful invariants through their names,
+  assertions, fixtures, and failure messages. Test comments reference the
+  owning specification instead of becoming a second specification.
+- Prefer compact Mermaid diagrams in `SPEC.md` for flows, state transitions,
+  ownership, and composition when they communicate the settled contract more
+  clearly than prose. Retain only the precise normative prose that the diagram
+  cannot express.
+- When repository teaching conflicts with observed behavior or an owner ruling,
+  stop consequential implementation. Record the contradiction in the owning
+  issue, settle it, update the tagged specification, then update implementation
+  and coverage. Remove superseded teaching instead of appending another account.
+
 ## Changes
 
 Run package-focused tests while iterating, then the root gate before publishing

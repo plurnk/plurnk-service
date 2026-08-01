@@ -6,6 +6,11 @@ The contract of the `gbnf` tool: what `validateGbnf` and the `gbnf` CLI guarante
 a faithful TypeScript port of llama.cpp's grammar engine and is differentially tested against
 the compiled C oracle.
 
+It does not split model channels, identify reasoning, assign token budgets, or
+decide when a generation backend applies a grammar. Callers pass the exact
+grammar and content to validate; provider transport and reasoning policy remain
+outside this package.
+
 ---
 
 ## Verdict

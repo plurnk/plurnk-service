@@ -42,23 +42,25 @@ These are relationships *between* flags. Set them as a unit.
   budget from those facts. Optional `PLURNK_SERVICE_PROMPT_BUDGET_<alias>`
   only tightens the model-facing gauge and grinder; it is never sent to the
   provider and never changes generation settings.
-- **Reasoning capacity stays coupled on llama-server.**
-  `PLURNK_PROVIDERS_REASONING_BUDGET_<alias>` and
-  `PLURNK_PROVIDERS_REASONING_RESERVE_<alias>` must agree with the serving
-  box's `--reasoning-budget`. llama-server ignores per-request reasoning
-  budgets, so the daemon warns when it cannot verify this coupling.
+- **Reasoning capacity is request-scoped on llama-server.**
+  `PLURNK_PROVIDERS_REASONING_RESERVE_<alias>` is the adaptive cumulative
+  response allowance. An explicit `PLURNK_PROVIDERS_REASONING_BUDGET_<alias>`
+  may tighten but cannot exceed it. The provider sends the allowance on every
+  request; no serving-box flag synchronization is required.
 - **Local GBNF is optional.** The PLURNK language is always parsed normally.
   Local llama-server users may set `PLURNK_PROVIDERS_GBNF_<alias>`; transport
   and enforcement are verified at boot. Cloud and endpoint-managed aliases
-  leave it unset. Pin `PLURNK_PROVIDERS_LLAMA_SERVER_<alias>=1` only when a
-  llama-server cannot be fingerprinted reliably.
+  leave it unset. A configured PLURNK rail requires reasoning `adaptive` or
+  `on`; pairing it with `off` is invalid. Pin
+  `PLURNK_PROVIDERS_LLAMA_SERVER_<alias>=1` only when a llama-server cannot be
+  fingerprinted reliably.
 - **A reasoning model must reason somewhere.**
   `PLURNK_PROVIDERS_REASONING_<alias>` selects `off`, `adaptive`, or `on`.
   An explicit `on` also requires a positive provider reasoning budget.
 
 ## Profiles (examples, not a decision tree — adapt to the real box)
 
-- **Local GPU (llama-server).** `PLURNK_MODEL_local="openai/<name>"`, `OPENAI_BASE_URL=http://127.0.0.1:<port>`, `PLURNK_MODEL=local`, `PLURNK_PROVIDERS_LLAMA_SERVER_local=1`, thinking `on`/`4096` **with the box launched `--reasoning-budget 4096`**. Full rails, exact tokenization.
+- **Local GPU (llama-server).** `PLURNK_MODEL_local="openai/<name>"`, `OPENAI_BASE_URL=http://127.0.0.1:<port>`, `PLURNK_MODEL=local`, `PLURNK_PROVIDERS_LLAMA_SERVER_local=1`. The provider derives a request-scoped reasoning allowance from the detected window. Full rails, exact tokenization.
 - **Cloud, bring-your-own-key.** `PLURNK_MODEL_cloud="openrouter/<model>"`, `OPENROUTER_API_KEY=…`, `PLURNK_MODEL=cloud`. No local GBNF or `LLAMA_SERVER` pin.
 - **plurnk.ai endpoint.** `PLURNK_MODEL_plurnk="plurnk/plurnk"`, `PLURNK_API_KEY=…`, `PLURNK_MODEL=plurnk`.
 - **Headless / CI / constrained container.** A CPU-only box should NOT disable semantic search — it should point derivation at a real embedder: `PLURNK_MIMETYPES_EMBED_BASE_URL` (any OpenAI-compatible `/v1/embeddings` — a host GPU turns a CPU-hours corpus grind into seconds). Weak hardware is the target workload, not a reason to shed capability; `PLURNK_SERVICE_EMBED_DISABLE=1` exists for test lanes that deterministically assert non-semantic behavior, nothing else. Consider `PLURNK_SERVICE_MAX_TURNS=<n>` as a cost cap, `PLURNK_SERVICE_GIT_ALLOWED=0` to lock out git in a sandbox.

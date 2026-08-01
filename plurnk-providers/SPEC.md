@@ -206,6 +206,7 @@ The `openai` local adapter probes `/v1/models`. A llama-server fingerprint may
 also expose:
 
 - the actual served model and per-slot context window;
+- request-scoped reasoning parsing and a cumulative response-wide allowance;
 - GBNF constrained sampling;
 - slot count and worker-sticky slot affinity;
 - EOS marker removal;
@@ -217,6 +218,27 @@ and delay are knobs. A failed probe does not silently assert capabilities.
 
 Ollama probes `/api/show` for its model context and uses its documented
 OpenAI-compatible generation endpoint through the SDK adapter.
+
+### llama-server reasoning
+
+For a detected llama-server, PLURNK sends the complete reasoning contract on
+every request:
+
+| Mode | Template activation | `thinking_budget_tokens` |
+|---|---:|---:|
+| `off` | false | `0` |
+| `adaptive` | true | resolved reasoning reserve |
+| `on` | true | explicit reasoning budget |
+
+The explicit budget may tighten but MUST NOT exceed the resolved reasoning
+reserve. `reasoning_format: "auto"` requests a separate readable reasoning
+channel. Process-wide llama-server flags are fallback server configuration, not
+part of the PLURNK contract and need not be synchronized with an alias.
+
+The allowance is cumulative across the complete response. Opening a second or
+later reasoning block does not replenish it. Template parsing, the reasoning
+sampler, normalized usage, and the returned reasoning channel MUST agree on that
+response boundary. {§llama-reasoning-request}
 
 ## §8 Request authority
 
@@ -266,10 +288,25 @@ GBNF is a local llama-server capability, not a generic provider expectation.
 The consumer chooses whether to supply a grammar. The provider never creates or
 rewrites one.
 
-When transported, output is validated locally after completion. Divergence
-attaches a `grammar_unenforced` notice with its position; the bytes still
-return. `PLURNK_PROVIDERS_GBNF_DEBUG` validates but withholds the grammar and
-compares the unconstrained result for diagnostics.
+GBNF defines the accepted raw sampled text; it runs before response reasoning
+is separated from regular content. The shipped PLURNK sentence is owned by
+`plurnk-grammar` §gbnf-turn-shape and §gbnf-reasoning-boundary; this package does
+not restate or rewrite it.
+
+When a grammar-capable adapter receives a grammar, `ProviderResponse` carries
+`grammarEvidence: { input, contentStart, transported }`. `input` is the exact
+pre-projection sentence represented by the response, `contentStart` is its
+Unicode-code-point offset to `assistant.content`, and `transported` says whether
+the grammar was actually sent. For active llama-server template reasoning, the
+adapter reconstructs the Harmony enclosure only when the response demonstrates
+that `reasoning_format: "auto"` projected it; otherwise it cannot claim evidence.
+For an unsplit response, `input` is `content` and `contentStart` is zero.
+
+The provider transports and represents; it does not grade its own enforcement.
+The consumer validates `grammarEvidence.input` outside the enforcer's failure
+domain. `PLURNK_PROVIDERS_GBNF_DEBUG` still validates grammar syntax before the
+call and sets `transported: false` for the unconstrained comparison.
+{§gbnf-response-observation}
 
 ## §11 Evidence and metadata
 
@@ -313,6 +350,7 @@ Coverage MUST prove:
 - compatible extension preservation;
 - timeout, retry, cancellation, and final-error behavior;
 - local capability probes and pins;
+- local reasoning activation, response-wide allowance, and GBNF coexistence;
 - usage, costs, evidence, metadata isolation, and grammar observation;
 - alias scoping and fail-hard invalid configuration.
 

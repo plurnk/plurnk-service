@@ -172,12 +172,9 @@ OPEN_BUFF : '<<BUFF' SUFFIX? { this.setOpenTag(); } -> mode(SLOTS) ;
 // any non-WS TEXT between ops makes the turn invalid.
 WS   : [ \t\r\n]+ -> channel(HIDDEN) ;
 
-// Optional in-band reasoning enclosures (when a model's reasoning is NOT channel-split
-// above the grammar and lands in the text stream): absorb the WHOLE `<think>…</think>` /
-// `<|channel>…<channel|>` block as one TEXT token, so a `<<PLAN` (or any op) DRAFTED while
-// reasoning is not lexed as an opener and never mis-anchors the turn. Maximal munch wins
-// over TEXT (which would stop at the inner `<<OP`); an UNCLOSED enclosure has no match and
-// falls through to TEXT. Mirrors the GBNF optional reasoning block — keeps L(GBNF) ⊆ L(ANTLR).
+// Absorb a complete native reasoning enclosure as one TEXT token so an op drafted inside
+// pre-PLAN reasoning cannot become the turn anchor. An unclosed enclosure falls through to
+// ordinary TEXT. The stricter sampling shape is specified by SPEC {§gbnf-turn-shape} (#16).
 THINK_BLOCK   : '<think>' .*? '</think>' -> type(TEXT) ;
 CHANNEL_BLOCK : '<|channel>' .*? '<channel|>' -> type(TEXT) ;
 

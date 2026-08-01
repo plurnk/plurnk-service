@@ -214,8 +214,12 @@ optional compatibility artifact, not the canonical parser and not expected of
 cloud providers. The ANTLR grammar above defines the PLURNK language. GBNF is a
 pragmatically optimized filter for healthier generation. Parse compatibility is
 a goal balanced against rail size and sampling efficiency, not an invariant.
+See SPEC {§gbnf-rail-purpose}.
 
-The preamble names **no reasoning delimiter** — it admits any text completing no `<<OP` opener. That keeps it format-agnostic across models and never masks a model's native reasoning token: the model reasons freely (a reasoning model's CoT separates into `reasoning_content`; a non-reasoning model reasons in the `<<PLAN` body, the public statement of intent), then `<<PLAN` anchors the strict turn. The **ANTLR grammar enforces the same sandwich**: `PlurnkParser.parse(input)` parses a turn — free text before PLAN, a required PLAN, nothing but whitespace between/after ops, and a required terminal SEND; a packet without a PLAN *and* a terminal SEND is invalid. A Plurnk packet IS a turn — there is no permissive fallback. `PlurnkParser.parseStatements(input)` parses a bare statement sequence (teaching-example collections, single ops); it is not for model output.
+The shipped rail constrains one raw Harmony-reasoning-plus-PLURNK sentence
+before llama.cpp projects `reasoning_content` and `content`; it is not split
+into two grammars. The exact channel, separator, tail, and projection contracts
+are SPEC {§gbnf-turn-shape} and {§gbnf-reasoning-boundary}.
 
 ```ts
 import.meta.resolve("@plurnk/plurnk-grammar/plurnk.gbnf")
