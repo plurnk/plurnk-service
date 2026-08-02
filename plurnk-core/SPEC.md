@@ -2305,26 +2305,24 @@ guessing which occurrence or context window it wants. A locator-only or
 coordinate-less valid result still selects the resource; the service never
 fabricates coordinates. {§read-selection-projection}
 
-### §text-region Universal text-region algebra
+### §text-scope-runtime Text-scope runtime projection
 
-All textual READ/EDIT/COPY/MOVE scopes use the same physical text:
+Core realizes the authored scope contract ({§text-scope-semantics}) as the
+contracts-owned `TextRegion` wire shape ({§text-region}). All textual
+READ/EDIT/COPY/MOVE scopes use the same physical text:
 
-| Scope | Retrieval | Mutation |
-|---|---|---|
-| `<N>` | whole line `N` | replace/delete whole line `N` |
-| `<N,M>` | inclusive whole lines | replace/delete inclusive whole lines |
+| Scope           | Retrieval                  | Mutation                                     |
+|-----------------|----------------------------|----------------------------------------------|
+| `<N>`           | whole line `N`             | replace/delete whole line `N`                |
+| `<N,M>`         | inclusive whole lines      | replace/delete inclusive whole lines         |
 | `<SL,SC,EL,EC>` | exact exclusive-end region | delete that region, then insert at its start |
-| `<0>` / `<-1>` | empty selection | prepend / append anchor |
+| `<0>` / `<-1>`  | empty selection            | prepend / append anchor                      |
 
-Lines and Unicode code-point columns are 1-based. Exact end positions are
-exclusive; equal endpoints are zero-length insertion points. One/two-coordinate
-line shorthand is newline-aware so deleting a line does not leave an empty line.
-LF, CRLF, and CR are physical line separators; CRLF is indivisible and
-separators are not column positions. A terminal position after a final newline
-is an exact insertion anchor, not an additional whole line. `<1,-1>` selects all
-content. Other negative values, decimal text coordinates,
-inverted regions, out-of-range coordinates, and arities other than one, two, or
-four are 416.
+One/two-coordinate line shorthand is newline-aware so deleting a line does not
+leave an empty line. A terminal position after a final newline is an exact
+insertion anchor, not an additional whole line. `<1,-1>` selects all content.
+Other negative values, decimal text coordinates, inverted regions,
+out-of-range coordinates, and arities other than one, two, or four are 416.
 
 Every successful scoped READ carries its complete resolved `region` in the
 operation result and packet metadata. The body remains line-numbered from

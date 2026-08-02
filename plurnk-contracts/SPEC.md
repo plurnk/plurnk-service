@@ -863,7 +863,7 @@ Exit codes: `0` for a clean parse (no error items, no `unparsedTail`),
 §wire-entrypoint The package root exports the following schemas, generated types, constructors,
 and validators alongside the parser and AST.
 
-### 13.1 Text regions
+### §text-region 13.1 Text regions
 
 `TextRegion` identifies one contiguous region of textual content:
 
@@ -882,7 +882,7 @@ separator, and separator code units are not column positions. The end is
 exclusive; equal start and end coordinates identify a zero-length insertion
 point. A producer supplies all four coordinates or omits the region. It never
 substitutes UTF-16 offsets, readable-row indices, or partial coordinates.
-`Validator.assertTextRegion` rejects an end before its start. {§text-region}
+`Validator.assertTextRegion` rejects an end before its start.
 
 ### 13.2 Operation results
 
