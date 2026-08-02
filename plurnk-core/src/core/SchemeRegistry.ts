@@ -20,10 +20,10 @@ import { docsExcludeSet } from "./teaching.ts";
 import type { CoreSchemeAdapter, CoreSchemeServices } from "./CoreSchemeServices.ts";
 import type { RuntimeSchemeFacet } from "../server/DaemonModule.ts";
 
-// The in-tree core-scheme depth (worker/known/unknown/log) lives in the docs corpus (docs/)
-// (Paths.schemeDocs), NOT inline — the docs agent owns the prose; loaded once at module eval.
-// teach()/docs() prefer this over a manifest's inline `documentation` (the path that stays for
-// stubs + plugin schemes). Absent dir → empty map.
+// Core-owned scheme depth may live in the metaproject teaching corpus
+// (Paths.schemeDocs), loaded once at module evaluation. docs() prefers that
+// corpus over a manifest's inline `documentation`; plugin schemes and core
+// schemes without a corpus entry use the manifest field. Absent dir → empty map.
 const SCHEME_DOCS: ReadonlyMap<string, string> = await (async () => {
     try {
         const files = (await readdir(Paths.schemeDocs)).filter((f) => f.endsWith(".md"));
@@ -171,8 +171,8 @@ export default class SchemeRegistry {
         return lines.length > 0 ? `\`\`\`plurnk\n${lines.join("\n")}\n\`\`\`` : "";
     }
 
-    // Schemes that ship a `documentation` string for materialization at
-    // worker://plurnk/docs/<name>.md. Optional; currently none in-tree.
+    // Scheme docs for materialization at worker://plurnk/docs/<name>.md.
+    // A metaproject corpus entry wins; otherwise use manifest.documentation.
     docs(): Array<{ name: string; content: string }> {
         const out: Array<{ name: string; content: string }> = [];
         const excluded = docsExcludeSet();

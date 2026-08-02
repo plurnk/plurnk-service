@@ -2154,11 +2154,11 @@ retain distinct contracts and lifetimes.
 
 §tools-capability-sheet The executable-tools capability sheet renders under `## Registered Executable Tools`, directly after the `definition` (plurnk.md) section and **above** `## Recap`. The heading defines the fenced examples as the closed set of valid executor selectors, not suggestions for an open-ended `[tag]` convention. Optional non-EXEC operations render separately under `## Enabled Optional Operations`, so the executable catalogue remains truthful. Both use `plurnk` fences (matching the Schemes catalog, #441 — one packet, one shape for op-example sheets), assembled by `PacketBuilder.#collectTools`; a prose notice (e.g. the EXEC-disabled line) stays beside the executor fence, and empty sections are omitted.
 
-**Contributors: the wired executor tags.** Each available executor tag *with an example* contributes ONE bare op — its canonical usage — into the `plurnk` fence (identical shape to the scheme directory, {§schemes}); its doc is materialized at `worker://plurnk/docs/<tag>.md` and discovered via the turn-1 `FIND(worker://plurnk/docs/**)` foist, not linked inline (#270). A tag with no example contributes nothing; `PLURNK_SERVICE_DOCS_EXCLUDE` drops a named tag's line + doc. The boot `ExecutorRegistry` probes availability per tag, retiring the model's blind `<<EXEC[sh]…`.
+**Contributors: the wired executor tags.** Each available executor tag *with an example* contributes ONE bare op — its canonical usage — into the `plurnk` fence (identical shape to the scheme directory, {§schemes}); its doc is materialized at `worker://plurnk/docs/<tag>.md` and discovered via the turn-1 `FIND(worker://plurnk/docs/**)` foist, not linked inline (#270). A tag with no example contributes nothing; `PLURNK_SERVICE_DOCS_EXCLUDE` drops a named tag's line + doc. The boot `ExecutorRegistry` probes availability per tag, so the catalogue advertises runnable selectors instead of presuming a particular runtime exists.
 
 ### §schemes user.schemes — the scheme directory
 
-§schemes-directory A `## Schemes` section renders in the system slot **after the definition (plurnk.md — grammar + imperatives) and the tools sheet** — a terse directory of the scheme families available this workspace, so the model knows what URI schemes exist before it acts. Each scheme that ships a `manifest.example` contributes ONE bare op — its canonical usage (no scheme prefix; the example self-documents) — into a `plurnk` fence ({§tools} shares the shape, #441). The doc is NOT linked inline (#270) — it is materialized at `worker://plurnk/docs/<scheme>.md` and discovered via the turn-1 `FIND(worker://plurnk/docs/**)` foist, keeping the raw packet free of doc links. The in-tree core schemes author their depth in `docs/<name>.md` (loaded at boot, shipped with the package); plugin schemes ship `manifest.documentation`. The verbose semantics live in that pull doc (materialized like any entry, READ on demand), not the hot path — terse pushes, depth pulls, the examples fenced like the tools sheet ({§tools}). A scheme with no example (provisional) is omitted; `PLURNK_SERVICE_DOCS_EXCLUDE` drops a named scheme's line + doc.
+§schemes-directory A `## Schemes` section renders in the system slot **after the definition (plurnk.md — grammar + imperatives) and the tools sheet** — a terse directory of the scheme families available this workspace, so the model knows what URI schemes exist before it acts. Each scheme that ships a `manifest.example` contributes ONE bare op — its canonical usage (no scheme prefix; the example self-documents) — into a `plurnk` fence ({§tools} shares the shape, #441). The doc is NOT linked inline (#270) — it is materialized at `worker://plurnk/docs/<scheme>.md` and discovered via the turn-1 `FIND(worker://plurnk/docs/**)` foist, keeping the raw packet free of doc links. Core-owned depth may come from the `@plurnk/plurnk-meta` teaching corpus; other core and plugin schemes supply `manifest.documentation`. `SchemeRegistry.docs()` prefers a corpus entry of the same name. The verbose semantics live in that pull doc (materialized like any entry, READ on demand), not the hot path — terse pushes, depth pulls, the examples fenced like the tools sheet ({§tools}). A scheme with no example (provisional) is omitted; `PLURNK_SERVICE_DOCS_EXCLUDE` drops a named scheme's line + doc.
 
 ### §inject system.inject — the operator injection
 
@@ -2168,7 +2168,7 @@ retain distinct contracts and lifetimes.
 
 §policy-sections Two sections ride the system slot **below the operator notes, at the slot's bottom**: `## Policy` from `PLURNK_SERVICE_POLICY` (default `~/.plurnk/AGENTS.md`) and `## Project Policy` from `PLURNK_SERVICE_PROJECT` (default `<projectRoot>/AGENTS.md`, resolved relative to the workspace root). AGENTS.md is **policy** — the client's authoritative rules promoted into the privileged zone — NOT a curatable, foldable, READ-able entry; the model cannot FOLD it away. A default-absent path is silent (the section is omitted); an explicit override (env set) that fails to read fails the turn hard — a deliberate setting with a broken path is a misconfig, surfaced not hidden. Read per-turn so edits take effect live. Reference/scratch docs are NOT policy — they ride `PLURNK_SERVICE_MD_*` (materialized as READ-able entries, {§operator-config}), which is where the dev-notes AGENTS.md used to hold belong.
 
-**The scheme self-doc contract.** `example` is the hot-path one-liner; `documentation` is the deep doc — the exact shape execs already use (`example` + `documentation`). `SchemeRegistry.teach()` renders the directory; `docEntries()` materializes the docs when core publishes capabilities for a workspace. `documentation` rides a service-side `SchemeManifest` extension until plurnk-schemes#25 lands it in the contract.
+§schemes-self-doc-materialization **The scheme self-doc contract.** `@plurnk/plurnk-schemes` owns `example` and `documentation` in `SchemeManifest` ({§manifest-self-doc}); the former is the hot-path one-liner and the latter is the deep pull doc. `SchemeRegistry.teach()` renders the directory, `SchemeRegistry.docs()` resolves corpus-or-manifest documentation, and `docEntries()` materializes the result when core publishes capabilities for a workspace.
 
 ### §requirements The requirements section — static per-turn rules
 
@@ -2178,13 +2178,13 @@ retain distinct contracts and lifetimes.
 - §requirements-requirements-omitted-when-empty The header is omitted entirely
   when the requirements string is empty.
 
-Contains rules the grammar block does not cover (canonical example: "Conclude
-the loop with `<<SEND[200]:answer:SEND`"). The op syntax leads the section. PLAN
-is mandated unconditionally by `plurnk.md` "Imperatives" (grammar 0.70 requires
-every turn to lead with `<<PLAN`), so the service injects no separate plan
-directive here.
+Contains a compact, recency-biased recap of operational law already owned by
+`plurnk.md`: the op shape, one complete turn, and the SEND[200] completion
+condition. This duplication is deliberate; it is the user-slot footer closest
+to generation, not a second contract. PLAN remains mandated by `plurnk.md`
+"Imperatives", so the service injects no additional plan directive.
 
-**Sourcing:** caller supplies the string via `runLoop({ requirements })` / `runTurn({ requirements })`. Plurnk-service exposes `PATHS.defaultRequirements` (resolves `PLURNK_SERVICE_REQUIREMENTS` env → in-package `requirements.md`). No DB cascade — same string every turn.
+**Sourcing:** a non-empty `runLoop({ requirements })` / `runTurn({ requirements })` value overrides the default. Otherwise `Paths.defaultRequirements` resolves `PLURNK_SERVICE_REQUIREMENTS` or `@plurnk/plurnk-meta/requirements.md`. The engine reads that file for every packet; requirements are not persisted or cascaded through the database.
 
 **Rationale:** the user's prompt is natural language ("Reply with just the number") and routinely conflicts with the grammar's operational contract. Without an explicit requirement block, the model obeys the prompt literally and never reaches for SEND. Requirements are the contract that wins those conflicts.
 
