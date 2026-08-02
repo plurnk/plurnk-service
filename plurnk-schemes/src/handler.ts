@@ -1,8 +1,10 @@
 // The scheme BEHAVIOR contract — the typed counterpart to SchemeManifest
 // (which types a scheme's declaration). A handler implements a method per op it
 // supports, named for the lowercased op (READ → read, SEND → send, FIND → find,
-// …). An absent method returns 501 except FIND on a data scheme, for which the
-// consumer supplies its standard entry query after optional `prepareFind`.
+// …). OPEN/FOLD are deliberately absent: core routes those curation operations
+// only to its log owner. An absent method returns 501 except FIND on a data
+// scheme, for which the consumer supplies its standard entry query after
+// optional `prepareFind`.
 // Every method is therefore OPTIONAL — a scheme implements only its distinct
 // surface. All share one shape:
 // `(statement, ctx) => Promise<SchemeResult>`.
@@ -20,8 +22,6 @@
 import type {
     FindStatement,
     ReadStatement,
-    OpenStatement,
-    FoldStatement,
     EditStatement,
     SendStatement,
     ExecStatement,
@@ -56,8 +56,6 @@ export interface SchemeHandler {
     prepareFind?(statement: FindStatement, ctx: SchemeCtx): Promise<SchemeResult>;
     read?(statement: ReadStatement, ctx: SchemeCtx): Promise<SchemeResult>;
     find?(statement: FindStatement, ctx: SchemeCtx): Promise<SchemeResult>;
-    open?(statement: OpenStatement, ctx: SchemeCtx): Promise<SchemeResult>;
-    fold?(statement: FoldStatement, ctx: SchemeCtx): Promise<SchemeResult>;
     editBatch?(statements: readonly EditStatement[], ctx: SchemeCtx): Promise<EditBatchResult>;
     send?(statement: SendStatement, ctx: SchemeCtx): Promise<SchemeResult>;
     exec?(statement: ExecStatement, ctx: SchemeCtx): Promise<SchemeResult>;

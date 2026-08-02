@@ -97,9 +97,7 @@ Multi-handler example (one package serving variants of the same content type):
 | `glyph` | string | no | Single-character display marker; defaults to empty string |
 | `extensions` | string[] | no | Mixed list: entries beginning with `.` are file extensions (lowercased on match); other entries are special filenames matched verbatim (`Dockerfile`, `Makefile`) |
 
-`discover()` scans **all of `node_modules`** — unscoped packages and every `@scope/*` — for `plurnk.kind === "mimetype"` (issue #28), so a third-party handler (`@acme/acme-mime-foo`) is discovered exactly like a first-party one, matching the executor discovery the ecosystem standardized on. `discover()` is a trust-agnostic scanner; the host (plurnk-service) applies any trust policy to its results. Last-loaded wins on mimetype/extension conflicts, and `@plurnk` is scanned last so a first-party (floor) handler wins a collision — a third party can add a new mimetype but cannot silently shadow the floor.
-
-**Trust gate (issue #29 / plurnk-service#229).** `discover()` reads `PLURNK_PLUGINS_TRUSTED_ONLY` — the ecosystem-wide host plugin posture, the same env var all four discovery surfaces honor. unset / empty / `0` → off (every discovered handler registers; default, no regression). A value → on: `@plurnk/*` is always trusted, plus a comma-separated allowlist of additionally-trusted package names (`"@acme/acme-mime-foo, mime-bar"`); setting it to `1` (no real package) means "on with zero third-party." An untrusted package is discovered-but-not-registered — skipped, never a crash.
+`discover()` scans **all of `node_modules`** — unscoped packages and every `@scope/*` — for the exact string `plurnk.kind === "mimetype"` ({§plugin-family-kind}), so a third-party handler is discovered exactly like a first-party one. It applies the shared trust predicate before any handler import and returns `{ registry, handlers, skipped }`; the composed host presents the skipped-package evidence ({§plugin-trust-boundary}). Last-loaded wins on mimetype/extension conflicts, and `@plurnk` is scanned last so a first-party floor handler wins a collision.
 
 ### 2.1 Mimetype naming convention
 
@@ -288,7 +286,7 @@ discovery; an unknown default still produces the §7 handler-missing result.
 
 ## 9. Parser backends
 
-### 9.1 Backend selection hierarchy
+### §mimetype-backend-selection 9.1 Backend selection hierarchy
 
 Handler authors choose a parser backend in this strict order. **The hierarchy is mechanical — if a higher-tier option exists and meets the quality bar, use it.**
 

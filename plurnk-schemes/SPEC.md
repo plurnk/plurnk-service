@@ -71,8 +71,6 @@ export interface SchemeHandler {
     prepareFind?(statement: FindStatement, ctx: SchemeCtx): Promise<SchemeResult>;
     read?(statement: ReadStatement, ctx: SchemeCtx): Promise<SchemeResult>;
     find?(statement: FindStatement, ctx: SchemeCtx): Promise<SchemeResult>;
-    open?(statement: OpenStatement, ctx: SchemeCtx): Promise<SchemeResult>;
-    fold?(statement: FoldStatement, ctx: SchemeCtx): Promise<SchemeResult>;
     editBatch?(statements: readonly EditStatement[], ctx: SchemeCtx): Promise<EditBatchResult>;
     send?(statement: SendStatement, ctx: SchemeCtx): Promise<SchemeResult>;
     exec?(statement: ExecStatement, ctx: SchemeCtx): Promise<SchemeResult>;
@@ -96,7 +94,7 @@ standard query through the same canonical entry identity used by
 dropped between preparation and lookup. A custom `find()` replaces the whole
 operation only where the scheme owns genuinely different candidate semantics.
 
-A sibling does `export default class X implements SchemeHandler` (with `static manifest: SchemeManifest`) and gets compile-time signature checking. Every registered handler exposes either that static manifest or an instance `manifest` for dynamically derived identities; `Manifest.of` validates the complete resolved declaration and its registration name before the handler becomes dispatchable. The op set is exactly grammar's `PlurnkStatement` dispatch union and moves with the framework's grammar bump (0.74.57 added `work?`/`fork?`; `LOOK`/`BUFF` are grammar `ClientStatement` ops, client-facing and never dispatched to a scheme, so they're intentionally absent here). **The statement + path types (`ReadStatement`, `SendStatement`, `UrlPath`, …) are re-exported from this barrel**, so a sibling depends on and peers (`^1`) ONLY `@plurnk/plurnk-schemes` — grammar rides underneath as the framework's transitive dep (§3).
+A sibling does `export default class X implements SchemeHandler` (with `static manifest: SchemeManifest`) and gets compile-time signature checking. Every registered handler exposes either that static manifest or an instance `manifest` for dynamically derived identities; `Manifest.of` validates the complete resolved declaration and its registration name before the handler becomes dispatchable. The interface is the handler-delegable subset of grammar's operation union. `LOOK`/`BUFF` are client-facing operations, while OPEN/FOLD are core-owned log curation; none is dispatchable to a plugin scheme. **The statement + path types (`ReadStatement`, `SendStatement`, `UrlPath`, …) are re-exported from this barrel**, so a sibling depends on and peers (`^1`) ONLY `@plurnk/plurnk-schemes` — grammar rides underneath as the framework's transitive dep (§3).
 
 §handler-lifecycle `close?()` is the process-lifecycle hook for handler-owned
 resources such as browser processes, sockets, client connections, caches, and
@@ -104,6 +102,9 @@ pools. The consumer calls it once per unique handler instance after in-flight
 scheme work drains and before backing stores close. Stateless handlers omit it.
 
 The entry CRUD primitives (`readEntry`/`writeEntry`/`deleteEntry`) are not handler operations; schemes use `ctx.entries`. Proposal application is the optional `applyResolution` handler hook described in §3.bis.
+
+OPEN and FOLD are not handler methods. They curate visibility and tags on the
+core-owned log; an entry scheme has no visibility state and receives 501.
 
 COPY and MOVE are not handler methods. The engine composes their source and
 destination resource selections over `ctx.entries` and uses `editBatch` for a
@@ -297,9 +298,9 @@ capability when the public surface cannot express a coherent extension.
 
 A scheme handler is discovered and registered with **zero first-party involvement** — install it, it lights up. The contract:
 
-- **Declare** `plurnk.kind: "scheme"` in `package.json` — or, for a package owning multiple capability families, an array that **includes** `"scheme"` (`kind: ["exec", "scheme"]`, #483); every family scanner accepts a package whose kind is or includes its own, string form as the single-kind sugar. Then name the scheme(s) it owns, in one of two forms: `plurnk.schemes: [{ name, export }, …]` (canonical — one entry per scheme, `export` naming the handler-class export) or `plurnk.name: "<scheme>"` (sugar for exactly one scheme, the `default` export). One package may own several names; each name has exactly one owner (#473). This mirrors execs' `plurnk.runtimes: [{ name, glyph, example }]` — `plurnk.kind` plus a plural family-noun array of named capabilities is the shared manifest covenant across families; `export` is schemes' family-specific field (a scheme instantiates a class per name, where an executor dispatches tags through one).
+- **Declare** the exact string `plurnk.kind: "scheme"` in `package.json` ({§plugin-family-kind}). Then name the scheme(s) it owns in one of two forms: `plurnk.schemes: [{ name, export }, …]` (canonical — one entry per scheme, `export` naming the handler-class export) or `plurnk.name: "<scheme>"` (one-scheme shorthand for the `default` export). One package may own several names inside this family; each name has exactly one owner.
 - **`SchemeDiscovery` owns the scan (this package).** `SchemeDiscovery.discover({ cwd? })` walks *all* of `node_modules` — scoped (`@acme/foo`) and unscoped — and returns `{ schemes: {name, packageName, exportName?, attribution?}[], skipped }` for every package declaring `plurnk.kind === "scheme"`. Scope-agnostic, so a third party under their own scope is found with no first-party allow-list (plurnk-service#227); two names claiming one prefix fail-hard (across packages or within one), as does a malformed `plurnk.schemes` (locality of error, not a silent skip). It returns **descriptors, not handlers** — contract-only, it never imports a scheme package; the consumer imports each `packageName` and registers `new mod[exportName ?? "default"]()`, applying in-tree precedence. The scan primitives — package enumeration, the `PLURNK_PLUGINS_TRUSTED_ONLY` trust gate, the deployment-root `node_modules` walk — are one implementation in `@plurnk/plurnk-meta`, shared by all four family-head scanners; `SchemeDiscovery` adds only the scheme-descriptor shape on top.
 - **`attribution` rides the descriptor verbatim.** A package may declare `plurnk.attribution` (a credit string, or an array of them); the scan passes it through untouched as `SchemeInfo.attribution` (`string | string[] | undefined`) — anything that isn't a string or string-array is dropped. The framework neither validates nor normalizes it: the `@plurnk`-tags-only-from-`@plurnk`-packages reservation policy is the **consumer's** to enforce on the surfaced credit (plurnk-service#26).
 - **The framework stays contract-only.** `@plurnk/plurnk-schemes` does not depend on scheme plugins. The daemon declares its bundled plugins as direct dependencies, and additional plugins are installed at the application root. Plugins declare the framework as a peer dependency using the repository's normal same-minor compatibility range; the framework itself is ignored by discovery because it has no `plurnk.kind`.
 - **The default bundle is the daemon's own `dependencies`**, not an aggregator package (the `-all` metapackages are retired). Installing `plurnk-core` surfaces the first-party schemes; any other leaf — first-party or third-party — is added by installing it, and scope-agnostic discovery lights it up identically. No bundle is ever a gate.
-- **Trust.** An operator can require host-level trust before a discovered plugin registers (`PLURNK_PLUGINS_TRUSTED_ONLY`, plurnk-service#229) — the scope-agnostic scan widens reach, the trust gate bounds it.
+- **Trust.** The scanner enforces the shared predicate before import and returns withheld package names in `skipped`; the host owns presentation ({§plugin-trust-boundary}).

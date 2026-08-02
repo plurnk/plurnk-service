@@ -114,15 +114,15 @@ Channels materialize per call — unrequested ones are never computed and their 
 
 ## Discovery & trust
 
-`discover(options?)` scans **every installed package** under `<cwd>/node_modules` — scope-agnostic — for `plurnk.kind === "mimetype"`, reading handler metadata from `package.json` (no handler code is imported until a mimetype is actually used).
+`discover(options?)` scans **every installed package** under `<cwd>/node_modules` — scope-agnostic — for the exact string `plurnk.kind === "mimetype"`, returning `{ registry, handlers, skipped }`. It reads handler metadata and applies trust before any handler code can be imported.
 
 - **Scope-agnostic.** Publish under your own scope and the host's scan finds it like a first-party handler — no bundle membership, no registration.
-- **Trust gate.** `PLURNK_PLUGINS_TRUSTED_ONLY` (host posture, honored by all four plugin families): unset/`""`/`0` → every package registers (default, no regression); any value → `@plurnk/*` always trusted plus a comma-separated allowlist (`1` = first-party only). An untrusted package is discovered but not registered — never a crash.
+- **Trust gate.** Discovery enforces the metaproject's shared pre-import predicate and preserves withheld package names in `skipped` for the consumer to present ({§plugin-trust-boundary}).
 - **Floor protection.** `@plurnk` is scanned **last**, so a third party can *add* a mimetype but cannot shadow a floor handler.
 
 ## Exports
 
-- `Mimetypes` — orchestrator: `process`, `detect`, `getHandler`, `query`, `embedderInfo`, `ready`.
+- `Mimetypes` — orchestrator: `process`, `detect`, `getHandler`, `query`, `embedderInfo`, `ready`, `skippedPackages`.
 - `BaseHandler` (default) / `TreeSitterExtractor` (+ `walkDeepNode`, `collectRefs`, `setQueryContext`) / `AntlrExtractor` / `withExtractor` — the handler base-class ladder.
 - `detect`, `discover`, `emptyRegistry` — detection + the scope-agnostic, trust-gated scan.
 - `collectReferences` + `format`/`buildTree`/`renderTree`/`maxDepth`/`pruneToMaxDepth` — refs engine + outline primitives.

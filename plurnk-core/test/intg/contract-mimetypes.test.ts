@@ -262,6 +262,7 @@ test("write resolves mimetype without firing the handler; explicit projection fi
                     mimetype: "text/x-spy", glyph: "🕵️", extensions: ["spy"],
                     packageName: "stub://spy", binary: false, source: "package",
                 }]]),
+                skipped: [],
             },
             loader: async () => ({ default: SpyHandler }),
         });

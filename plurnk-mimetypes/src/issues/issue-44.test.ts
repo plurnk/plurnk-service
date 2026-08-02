@@ -34,7 +34,7 @@ function makeDiscovery(): Discovery {
         byExtension: new Map([[".txt", "text/plain"]]),
         byFilename: new Map(),
     };
-    return { registry, handlers: new Map([["text/plain", INFO]]) };
+    return { registry, handlers: new Map([["text/plain", INFO]]), skipped: [] };
 }
 
 // Fake artifact: knows "gemma" only; counts words so delegation to THIS

@@ -2,7 +2,7 @@ import test from "node:test";
 import Owner from "../../src/core/Owner.ts";
 import Envelope from "../../src/server/envelope.ts";
 import assert from "node:assert/strict";
-import type { EditStatement, ReadStatement, KillStatement, PlanStatement, ParsedPath, UrlPath } from "@plurnk/plurnk-contracts";
+import type { EditStatement, ReadStatement, KillStatement, PlanStatement, OpenStatement, FoldStatement, ParsedPath, UrlPath } from "@plurnk/plurnk-contracts";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { openMigrated, seedEnvelope } from "./_helpers.ts";
@@ -47,6 +47,16 @@ const planStmt = (opts: { body?: string | null }): PlanStatement => ({
     lineMarker: null,
     body: opts.body ?? null,
     position: { line: 1, column: 1 },
+});
+
+const openStmt = (opts: { target: ParsedPath | null; tags?: string[] }): OpenStatement => ({
+    op: "OPEN", suffix: "", signal: opts.tags ?? null, target: opts.target,
+    lineMarker: null, body: null, position: { line: 1, column: 1 },
+});
+
+const foldStmt = (opts: { target: ParsedPath; tags?: string[] }): FoldStatement => ({
+    op: "FOLD", suffix: "", signal: opts.tags ?? null, target: opts.target,
+    lineMarker: null, body: null, position: { line: 1, column: 1 },
 });
 
 test("Engine.dispatch: KILL against worker:/// permanently deletes the entry (200, then READ 404)", async () => {
@@ -181,6 +191,63 @@ const setup = async () => {
     const engine = new Engine({ db, schemes: new SchemeRegistry() });
     return { db, engine, env };
 };
+
+test("Engine.dispatch: targetless OPEN[tag] routes to the log owner", async () => {
+    const { db, engine, env } = await setup();
+    try {
+        await engine.dispatch({
+            statement: planStmt({ body: "retain this working set" }),
+            ...env, sequence: 1, origin: "model",
+        });
+        const folded = await engine.dispatch({
+            statement: foldStmt({ target: urlPath("log", "/1/1/1"), tags: ["working-set"] }),
+            ...env, sequence: 2, origin: "model",
+        });
+        assert.equal(folded.status, 200);
+        const before = await db.test_get_log_expanded.get<{ expanded: number }>({
+            worker_id: env.workerId, loop_seq: 1, turn_seq: 1, sequence: 1,
+        });
+        assert.equal(before?.expanded, 0);
+
+        const opened = await engine.dispatch({
+            statement: openStmt({ target: null, tags: ["working-set"] }),
+            ...env, sequence: 3, origin: "model",
+        });
+        assert.equal(opened.status, 200);
+        assert.equal((opened as { matched?: number }).matched, 1);
+        const after = await db.test_get_log_expanded.get<{ expanded: number }>({
+            worker_id: env.workerId, loop_seq: 1, turn_seq: 1, sequence: 1,
+        });
+        assert.equal(after?.expanded, 1);
+    } finally { await db.close(); }
+});
+
+test("Engine.dispatch: an external scheme cannot acquire OPEN by defining an open method", async () => {
+    const db = await openMigrated();
+    const env = await seedEnvelope(db, `ws-${crypto.randomUUID()}`);
+    const schemes = new SchemeRegistry();
+    let invoked = false;
+    class Trap {
+        static manifest = {
+            name: "trap", channels: {}, defaultChannel: "",
+            category: "data" as const, scope: "workspace" as const,
+            writableBy: ["model" as const], volatile: false, modelVisible: true,
+        };
+        async open() { invoked = true; return { status: 200 }; }
+    }
+    schemes.register("trap", new Trap());
+    const engine = new Engine({ db, schemes });
+    try {
+        const result = await engine.dispatch({
+            statement: openStmt({ target: urlPath("trap", "/x") }),
+            ...env, sequence: 1, origin: "model",
+        });
+        assert.equal(result.status, 501);
+        assert.equal(result.problem?.operation, "OPEN");
+        assert.equal(result.problem?.scheme, "trap");
+        assert.equal(invoked, false);
+    } finally { await db.close(); }
+});
 
 test("Engine.dispatch: EDIT against worker:/// routes to Known.edit, returns 201, writes entry", async () => {
     const { db, engine, env } = await setup();

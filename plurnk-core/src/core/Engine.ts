@@ -428,7 +428,7 @@ export default class Engine {
         // raw-content fitContent fallback. Daemon-managed Engine receives a
         // production-configured Mimetypes via the constructor arg.
         this.#mimetypes = mimetypes ?? new Mimetypes({
-            discovery: { registry: emptyRegistry(), handlers: new Map() },
+            discovery: { registry: emptyRegistry(), handlers: new Map(), skipped: [] },
         });
         // Tripwire default matches the Mimetypes boot affordance (SPEC {§mimetype-surface}):
         // the divisor stands in only until the provider-backed tokenizer is

@@ -187,7 +187,7 @@ belongs in MCP, schemes, executors, or mimetypes instead.
 
 A provider plugin:
 
-1. declares `plurnk: { kind: "provider", name }` in `package.json`;
+1. declares the exact string `plurnk: { kind: "provider", name }` in `package.json` ({§plugin-family-kind});
 2. may use any npm scope;
 3. default-exports an AI SDK provider with `languageModel(modelId)`;
 4. peers on compatible `ai` and `@plurnk/plurnk-providers` majors.
@@ -196,7 +196,7 @@ PLURNK adapts the returned language model. The plugin does not implement the
 PLURNK `Provider`, read PLURNK tuning knobs, or reproduce transport policy.
 
 Discovery is scope-agnostic and memoized per process. Duplicate names fail hard.
-The common plugin trust gate applies before import. A plugin absent from
+The common plugin trust gate applies before import ({§plugin-trust-boundary}). A plugin absent from
 Models.dev requires an explicit context-window pin because PLURNK will not guess
 model physics.
 

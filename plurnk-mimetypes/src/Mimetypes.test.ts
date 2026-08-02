@@ -26,7 +26,7 @@ function makeDiscovery(handlers: HandlerInfo[]): Discovery {
         }
     }
     const registry: Registry = { byExtension, byFilename };
-    return { registry, handlers: handlerMap };
+    return { registry, handlers: handlerMap, skipped: [] };
 }
 
 // A canned handler that emits a single symbol regardless of content.
@@ -106,6 +106,14 @@ describe("Mimetypes — detection + discovery", () => {
         await m.ready();
         await m.ready();
         assert.ok(true);
+    });
+
+    it("exposes discovery's skipped-package evidence without mutable aliasing", async () => {
+        const discovery = { ...makeDiscovery([]), skipped: ["@acme/private-mime"] };
+        const m = new Mimetypes({ discovery });
+        const skipped = await m.skippedPackages();
+        assert.deepEqual(skipped, ["@acme/private-mime"]);
+        assert.notEqual(skipped, discovery.skipped);
     });
 });
 

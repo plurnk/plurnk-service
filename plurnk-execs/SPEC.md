@@ -145,7 +145,7 @@ Search acquisition emits aggregate `search_progress` notices through `emit`: a s
 
 ## §3 Discovery
 
-`discover(options?) → { registry, skipped, disabled }`. Scans **every installed package** under the nearest `node_modules` (walking up from `cwd` for workspace hoisting) — scope-agnostic (scoped and unscoped) — for those declaring `plurnk.kind === "exec"`, and registers each runtime tag from `plurnk.runtimes[]`. The scan is deliberately not limited to `@plurnk/*`: a **third party** can publish an executor under their own scope (`@acme/acme-execs-foo`) and have it discovered with no involvement from this project. (No aggregator package: the default bundle is the daemon's own dependency list, not a metapackage.)
+`discover(options?) → { registry, skipped, disabled }`. Scans **every installed package** under the nearest `node_modules` (walking up from `cwd` for workspace hoisting) — scope-agnostic (scoped and unscoped) — for the exact string `plurnk.kind === "exec"` ({§plugin-family-kind}), and registers each runtime tag from `plurnk.runtimes[]`. The scan is deliberately not limited to `@plurnk/*`: a **third party** can publish an executor under their own scope (`@acme/acme-execs-foo`) and have it discovered with no involvement from this project. (No aggregator package: the default bundle is the daemon's own dependency list, not a metapackage.)
 
 ```json
 {
@@ -185,12 +185,12 @@ The module's **`runtimes`** export (or its default export) is a hook `() => Runt
 
 Two guarantees frame the hook:
 
-- **Trust-gated execution.** The hook is imported **only for trusted packages** — the `PLURNK_PLUGINS_TRUSTED_ONLY` gate (below) runs *before* the import, so an untrusted package's code is never executed. This is the same in-process-trust posture executors already carry (their `run()` is trusted host code); dynamic discovery just extends it to scan time.
+- **Trust-gated execution.** The hook is imported only after the shared trust boundary admits its package ({§plugin-trust-boundary}), so an untrusted package's code is never executed.
 - **Fail-hard on a broken hook.** An unloadable module, a missing/non-function export, or a non-array return is a **contract violation by a trusted package** (its own packaging or config) and throws with the cause attached — surfaced, not swallowed. This is deliberately stricter than a malformed third-party `package.json`, which `discover()` silently skips: a package that *declares* a hook owns making it work.
 
 `runtimes[]` and `runtimesModule` are mutually exclusive; if both are present the **static array wins** and the hook is never loaded.
 
-**Trust gate.** `discover()` honors the host's **`PLURNK_PLUGINS_TRUSTED_ONLY`** env var (plurnk-service#229) — the one posture decided once and enforced across every scope-agnostic discovery surface (schemes/mimetypes/providers/execs). Unset/`""`/`0` → off: every installed package registers (no regression). Any value → on: `@plurnk/*` is always trusted, plus a comma-separated allowlist of additionally-trusted package names (`1` = on with zero third-party). An untrusted package is **discovered but not registered** — never a crash — and returned in **`Discovery.skipped`** (package names) so the consumer can emit a notice (`discover()` has no sink of its own). The trust predicate is the single shared implementation in **`@plurnk/plurnk-meta`** (`Meta.isTrusted`), consumed identically by the daemon and every family-head scanner — trust is defined once for the whole family, never duplicated.
+**Trust gate.** `discover()` enforces the shared predicate before importing a dynamic hook and returns withheld package names in `Discovery.skipped`; it owns no presentation sink ({§plugin-trust-boundary}).
 
 Each runtime package's **default export** is its `BaseExecutor` subclass (also a named export — `export { default as Sh }` / `export { default }`); the consumer instantiates it per matched tag with the tag + glyph from the registry.
 

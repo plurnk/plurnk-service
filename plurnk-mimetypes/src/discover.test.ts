@@ -130,6 +130,18 @@ describe("discover", () => {
         assert.equal(result.handlers.size, 0);
     });
 
+    it("treats an array kind as no mimetype-family declaration", async () => {
+        const dir = await makePackage(tmpRoot, "pkg-array-kind", {
+            name: "array-kind",
+            plurnk: {
+                kind: ["mimetype", "scheme"],
+                handlers: [{ name: "text/array", extensions: [".array"] }],
+            },
+        });
+        const result = await discover({ packageDirs: [dir], includeTreeSitter: false });
+        assert.equal(result.handlers.size, 0);
+    });
+
     it("skips packages missing the handlers array entirely", async () => {
         const dir = await makePackage(tmpRoot, "pkg-no-handlers", {
             name: "@plurnk/plurnk-mimetypes-bad",
@@ -393,6 +405,7 @@ describe("discover — plugin trust gate PLURNK_PLUGINS_TRUSTED_ONLY (issue #29)
             // @plurnk always trusted; @acme listed; mime-fortran skipped.
             assert.deepEqual([...r.handlers.keys()].sort(), ["text/plain", "text/x-cobol"]);
             assert.equal(r.handlers.has("text/x-fortran"), false, "unlisted third-party skipped");
+            assert.deepEqual(r.skipped, ["mime-fortran"]);
         } finally {
             await fs.rm(root, { recursive: true, force: true });
         }
@@ -406,18 +419,23 @@ describe("discover — plugin trust gate PLURNK_PLUGINS_TRUSTED_ONLY (issue #29)
                 env: { PLURNK_PLUGINS_TRUSTED_ONLY: "1" },
             });
             assert.deepEqual([...r.handlers.keys()], ["text/plain"]);
+            assert.deepEqual(
+                r.skipped,
+                ["@acme/acme-mime-cobol", "mime-fortran"],
+            );
         } finally {
             await fs.rm(root, { recursive: true, force: true });
         }
     });
 
-    it("does not crash on an untrusted package — it is silently unregistered", async () => {
+    it("does not crash on an untrusted package and preserves skipped evidence", async () => {
         const root = await buildNm(await fs.mkdtemp(path.join(os.tmpdir(), "plurnk-gate-nocrash-")));
         try {
-            await assert.doesNotReject(discover({
+            const result = await discover({
                 cwd: root, includeTreeSitter: false,
                 env: { PLURNK_PLUGINS_TRUSTED_ONLY: "1" },
-            }));
+            });
+            assert.deepEqual(result.skipped, ["@acme/acme-mime-cobol", "mime-fortran"]);
         } finally {
             await fs.rm(root, { recursive: true, force: true });
         }

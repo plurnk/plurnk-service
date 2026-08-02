@@ -1102,6 +1102,9 @@ export default class Daemon {
         // Mimetypes owns its own discovery scan over @plurnk/plurnk-mimetypes-*
         // packages; pre-warm it so first index render doesn't pay the cost.
         await this.#mimetypes.ready();
+        for (const name of await this.#mimetypes.skippedPackages()) {
+            console.warn(`mimetype discovery: '${name}' is discovered but untrusted (PLURNK_PLUGINS_TRUSTED_ONLY); not registered`);
+        }
 
         // Discover + probe the installed executor siblings, then hand the
         // registry to the engine for exec dispatch (plurnk-service#181). The

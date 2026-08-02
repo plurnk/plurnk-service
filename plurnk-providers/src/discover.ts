@@ -98,7 +98,7 @@ const readProviderInfo = async (dir: string): Promise<ProviderInfo | null> => {
     const plurnk = record.plurnk;
     if (typeof plurnk !== "object" || plurnk === null) return null;
     const plurnkRec = plurnk as Record<string, unknown>;
-    if (plurnkRec.kind !== "provider") return null;
+    if (!Meta.declaresKind(plurnkRec, "provider")) return null;
     if (typeof plurnkRec.name !== "string" || plurnkRec.name === "") return null;
     if (typeof record.name !== "string" || record.name === "") return null;
     const attr = plurnkRec.attribution;

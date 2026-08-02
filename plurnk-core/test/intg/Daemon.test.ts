@@ -8,6 +8,7 @@ import Dsl from "./dsl.ts";
 import type { Executor } from "../../src/core/ExecutorRegistry.ts";
 import { OperationFailureError } from "../../src/core/results.ts";
 import { Validator, type OperationResult, type ProblemDetails } from "@plurnk/plurnk-contracts";
+import { Mimetypes } from "@plurnk/plurnk-mimetypes";
 
 // A stand-in registration in the daemon-module setup shape:
 // framework types only — decl + executor + the driver's probe result. The kernel wraps the
@@ -67,6 +68,34 @@ test("Daemon: listenerless boot — the seam is live with no socket bound (#364)
         const workspaces = await daemon.listWorkspaces();
         assert.ok(Array.isArray(workspaces), "the seam answers");
     });
+});
+
+test("Daemon boot reports mimetype packages withheld by the shared trust gate", async () => {
+    const db = await openMigrated();
+    const discovery = {
+        registry: { byExtension: new Map<string, string>(), byFilename: new Map<string, string>() },
+        handlers: new Map(),
+        skipped: ["@acme/acme-mime-private"],
+    };
+    const daemon = new Daemon({
+        db,
+        provider: null,
+        mimetypes: new Mimetypes({ discovery }),
+    });
+    const warnings: string[] = [];
+    const originalWarn = console.warn;
+    console.warn = (...args: unknown[]): void => { warnings.push(args.map(String).join(" ")); };
+    try {
+        await daemon.start();
+        assert.ok(
+            warnings.some((warning) => /mimetype discovery.*@acme\/acme-mime-private.*untrusted.*not registered/.test(warning)),
+            "the composed host names the package and trust decision",
+        );
+    } finally {
+        console.warn = originalWarn;
+        await daemon.stop();
+        await db.close();
+    }
 });
 
 test("Daemon: module actions register once during setup and invoke through CoreSeam", async () => {

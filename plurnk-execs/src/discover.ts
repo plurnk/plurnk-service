@@ -111,8 +111,7 @@ export default class Discover {
     }
 
     // Read a package's `package.json` and return its manifest iff it declares
-    // `plurnk.kind === "exec"` — or an array including it, the dual-kind form for
-    // a package shipping both an exec and a scheme face (#483).
+    // the exact `plurnk.kind === "exec"` family identity.
     // Returns null for non-executor packages, a missing or malformed
     // `package.json` — discover() silently skips those (they are not "skipped by
     // trust", just not exec packages).
@@ -136,8 +135,7 @@ export default class Discover {
         const plurnk = record.plurnk;
         if (typeof plurnk !== "object" || plurnk === null) return null;
         const plurnkRec = plurnk as Record<string, unknown>;
-        const kind = plurnkRec.kind;
-        if (kind !== "exec" && !(Array.isArray(kind) && kind.includes("exec"))) return null;
+        if (!Meta.declaresKind(plurnkRec, "exec")) return null;
 
         return { packageName: typeof record.name === "string" ? record.name : "", plurnk: plurnkRec };
     }

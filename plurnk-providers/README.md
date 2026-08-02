@@ -65,7 +65,7 @@ contract, so plugins do not reproduce retries, usage normalization, envelopes,
 notices, or RFC 9457 failure normalization.
 
 Discovery is scope-agnostic and rejects duplicate names.
-`PLURNK_PLUGINS_TRUSTED_ONLY` restricts third-party discovery.
+Third-party discovery uses the shared pre-import trust contract ({§plugin-trust-boundary}).
 
 ## Local endpoints
 

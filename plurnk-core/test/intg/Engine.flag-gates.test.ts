@@ -14,7 +14,7 @@ import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn } f
 import { urlPath, localPath, editStmt, readStmt, copyStmt, moveStmt, sendStmt } from "./_dsl.ts";
 
 const makeMimetypes = (): Mimetypes => new Mimetypes({
-    discovery: { registry: emptyRegistry(), handlers: new Map() },
+    discovery: { registry: emptyRegistry(), handlers: new Map(), skipped: [] },
 });
 
 // Side-effecting scheme — opts into manifest.flags.excludedInAsk so it

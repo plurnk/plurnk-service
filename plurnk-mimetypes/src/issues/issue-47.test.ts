@@ -48,7 +48,7 @@ function mk(): Mimetypes {
         byFilename: new Map(),
     };
     return new Mimetypes({
-        discovery: { registry, handlers: new Map([["text/plain", INFO]]) } satisfies Discovery,
+        discovery: { registry, handlers: new Map([["text/plain", INFO]]), skipped: [] } satisfies Discovery,
         loader: async () => ({ default: BaseHandler }),
     });
 }

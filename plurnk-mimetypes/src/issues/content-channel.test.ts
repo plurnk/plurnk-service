@@ -36,7 +36,7 @@ function makeDiscovery(handlers: HandlerInfo[]): Discovery {
         for (const ext of info.extensions) byExtension.set(ext.toLowerCase(), info.mimetype);
     }
     const registry: Registry = { byExtension, byFilename: new Map() };
-    return { registry, handlers: handlerMap };
+    return { registry, handlers: handlerMap, skipped: [] };
 }
 
 const INFO: HandlerInfo = {

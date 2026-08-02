@@ -13,7 +13,7 @@ const EMB_PKG = "@plurnk/plurnk-mimetypes-embeddings";
 
 function emptyDiscovery(): Discovery {
     const registry: Registry = { byExtension: new Map(), byFilename: new Map() };
-    return { registry, handlers: new Map() };
+    return { registry, handlers: new Map(), skipped: [] };
 }
 
 // Deterministic embedder: vector = [text length], 4 bytes. embedBatch returns

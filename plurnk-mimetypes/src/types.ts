@@ -119,6 +119,9 @@ export interface HandlerInfo {
 export interface Discovery {
     registry: Registry;
     handlers: ReadonlyMap<string, HandlerInfo>;
+    // Package names withheld by the shared trust predicate before handler code
+    // can be imported. The consumer owns how this evidence is presented.
+    skipped: readonly string[];
 }
 
 export interface DiscoverOptions {

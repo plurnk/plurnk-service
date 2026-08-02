@@ -4,6 +4,8 @@ import type {
     ForkStatement,
     LineMarker,
     MoveStatement,
+    OpenStatement,
+    FoldStatement,
     ParsedPath,
     PlurnkOp,
     PlurnkStatement,
@@ -81,6 +83,10 @@ export type DispatchResult = SchemeResult;
 
 import type { SchemeCtx, SchemeHandler } from "@plurnk/plurnk-schemes";
 type SchemeMethod = (statement: PlurnkStatement, ctx: SchemeCtx) => Promise<DispatchResult>;
+type LogCurationHandler = {
+    open(statement: OpenStatement, ctx: SchemeCtx): Promise<DispatchResult>;
+    fold(statement: FoldStatement, ctx: SchemeCtx): Promise<DispatchResult>;
+};
 type PreparedEdit = {
     readonly first: boolean;
     readonly index: number;
@@ -538,6 +544,8 @@ export default class Dispatcher {
                     }
                 } else if (statement.op === "SEND" && statement.target === null) {
                     result = await this.#handleSendBroadcast(statement, { workspaceId, workerId, loopId, turnId, sequence });
+                } else if (statement.op === "OPEN" || statement.op === "FOLD") {
+                    result = await this.#runLogCuration(statement, schemeCtx);
                 } else if (statement.op === "FORK" || statement.op === "WORK") {
                     result = await this.#handleWorkerControl(statement, schemeCtx);
                 } else if (statement.op === "COPY") {
@@ -2769,6 +2777,35 @@ export default class Dispatcher {
             if (prepared.status >= 300) return Results.assert(prepared);
         }
         return Results.assert(await schemeCtx.entries.operations.find(statement));
+    }
+
+    async #runLogCuration(
+        statement: OpenStatement | FoldStatement,
+        ctx: PlurnkSchemeContext,
+    ): Promise<DispatchResult> {
+        const addressedScheme = schemeNameOf(statement.target);
+        if (addressedScheme !== null && addressedScheme !== "log") {
+            return Dispatcher.#failure(
+                "operation-not-implemented",
+                501,
+                `Scheme '${addressedScheme}' does not implement ${statement.op}.`,
+                {},
+                {
+                    scheme: addressedScheme,
+                    operation: statement.op,
+                    retryable: false,
+                },
+            );
+        }
+        const handler = this.#schemes.get("log") as LogCurationHandler | undefined;
+        const manifest = this.#schemes.manifestFor("log");
+        if (handler === undefined || manifest === undefined) {
+            throw new Error("the core log curation owner is not registered");
+        }
+        const schemeCtx = new SchemeCtxImpl(ctx, "log", manifest, this.#liveSubscriptions);
+        return statement.op === "OPEN"
+            ? Results.assert(await handler.open(statement, schemeCtx))
+            : Results.assert(await handler.fold(statement, schemeCtx));
     }
 
     // A status-202 result is a reviewable PROPOSAL (a side-effecting op — EDIT/EXEC/

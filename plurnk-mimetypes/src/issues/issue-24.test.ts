@@ -59,7 +59,7 @@ function makeDiscovery(handlers: HandlerInfo[]): Discovery {
         }
     }
     const registry: Registry = { byExtension, byFilename };
-    return { registry, handlers: handlerMap };
+    return { registry, handlers: handlerMap, skipped: [] };
 }
 
 const INFO: HandlerInfo = {

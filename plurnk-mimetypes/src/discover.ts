@@ -17,11 +17,10 @@ import type {
 // `plurnk.kind === "mimetype"`, NOT the `@plurnk` scope. This is the
 // third-party enabler: `@acme/acme-mime-foo` is discovered exactly like a
 // first-party handler, with zero involvement from us — matching the executor
-// discovery (`@plurnk/plurnk-execs`) the ecosystem standardized on. Trust is
-// not decided here: discover() is a dumb scanner that returns everything
-// installed; the host (plurnk-service) applies any trust policy to these
-// results (service#229). Tests and unusual layouts pass `packageDirs`
-// explicitly to skip the scan.
+// discovery (`@plurnk/plurnk-execs`) the ecosystem standardized on. The shared
+// trust predicate is enforced here before any handler import; withheld package
+// names return as `skipped` so the consumer can present the decision. Tests and
+// unusual layouts pass `packageDirs` explicitly to skip the scan.
 //
 // A package is recognized as a handler when its `package.json` declares
 // `plurnk.kind === "mimetype"` and exposes one or more handler entries via
@@ -42,15 +41,15 @@ export async function discover(options: DiscoverOptions = {}): Promise<Discovery
     const byExtension = new Map<string, string>();
     const byFilename = new Map<string, string>();
     const handlers = new Map<string, HandlerInfo>();
+    const skipped = new Set<string>();
 
     for (const dir of dirs) {
         const infos = await readHandlerInfos(dir);
+        if (infos.length > 0 && !isTrusted(infos[0].packageName)) {
+            skipped.add(infos[0].packageName);
+            continue;
+        }
         for (const info of infos) {
-            // Plugin trust gate (#29): an untrusted package is
-            // discovered-but-not-registered. Skip silently — surfacing the
-            // skip (notices) is the host's concern; discover() must never
-            // crash on an untrusted package.
-            if (!isTrusted(info.packageName)) continue;
             handlers.set(info.mimetype, info);
             for (const entry of info.extensions) {
                 if (entry.startsWith(".")) {
@@ -73,7 +72,7 @@ export async function discover(options: DiscoverOptions = {}): Promise<Discovery
     // a clean baseline. Production code never disables this.
     if (options.includeTreeSitter === false) {
         const registry: Registry = { byExtension, byFilename };
-        return { registry, handlers };
+        return { registry, handlers, skipped: [...skipped].sort() };
     }
 
     for (const entry of TREE_SITTER_REGISTRY) {
@@ -99,7 +98,7 @@ export async function discover(options: DiscoverOptions = {}): Promise<Discovery
     }
 
     const registry: Registry = { byExtension, byFilename };
-    return { registry, handlers };
+    return { registry, handlers, skipped: [...skipped].sort() };
 }
 
 // Enumerate every installed package directory under `<cwd>/node_modules` —
@@ -107,15 +106,6 @@ export async function discover(options: DiscoverOptions = {}): Promise<Discovery
 // returned LAST so first-party handlers win last-loaded collisions (see the
 // conflict note on discover()). Non-package entries (`.bin`, `.cache`,
 // dotfiles) are skipped. Failures (no node_modules) yield [].
-// Plugin trust gate (issue #29 / plurnk-service#229). Reads
-// PLURNK_PLUGINS_TRUSTED_ONLY into a per-package trust predicate, shared
-// semantics across all four discovery surfaces:
-//   unset / "" / "0"  → gate OFF — everything installed is trusted.
-//   any other value   → gate ON — `@plurnk/*` always trusted, plus a
-//                        comma-separated allowlist of additionally-trusted
-//                        package names. (Setting it to "1", which names no
-//                        real package, is "on with zero third-party".)
-
 async function defaultPackageDirs(cwd: string): Promise<string[]> {
     const nm = Meta.nearestNodeModules(cwd) ?? path.join(path.resolve(cwd), "node_modules");
     const candidates = await Meta.packageDirs(nm);
@@ -149,7 +139,7 @@ async function readHandlerInfos(dir: string): Promise<HandlerInfo[]> {
     const plurnk = record.plurnk;
     if (typeof plurnk !== "object" || plurnk === null) return [];
     const plurnkRec = plurnk as Record<string, unknown>;
-    if (plurnkRec.kind !== "mimetype") return [];
+    if (!Meta.declaresKind(plurnkRec, "mimetype")) return [];
     if (!Array.isArray(plurnkRec.handlers)) return [];
 
     const packageName = typeof record.name === "string" ? record.name : "";

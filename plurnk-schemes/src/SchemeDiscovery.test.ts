@@ -93,8 +93,7 @@ test("discover: a package's schemes each carry the package attribution", async (
     assert.equal(schemes.find((s) => s.name === "b")?.attribution, "Grace");
 });
 
-// ── array-kind: is-or-includes (#483) ─────────────────────────────────────
-test("discover: kind array including \"scheme\" is accepted (dual-faced package)", async () => {
+test("discover: an array kind claims no scheme family", async () => {
     const cwd = await makeTree([
         ["multi-family", {
             name: "multi-family",
@@ -104,7 +103,7 @@ test("discover: kind array including \"scheme\" is accepted (dual-faced package)
         ["other-kind", { name: "other-kind", plurnk: { kind: "exec", name: "nope" } }],
     ]);
     const { schemes } = await SchemeDiscovery.discover({ cwd });
-    assert.deepEqual(schemes, [{ name: "records", packageName: "multi-family", exportName: "RecordsScheme" }]);
+    assert.deepEqual(schemes, []);
 });
 
 test("discover: a malformed plurnk.schemes fails hard (never a silent skip)", async () => {

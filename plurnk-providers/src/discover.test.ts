@@ -47,6 +47,17 @@ test("discover: a provider package missing plurnk.name is ignored, not crashed",
     assert.deepEqual([...registry.keys()], ["named"]);
 });
 
+test("discover: an array kind claims no provider family", async (t) => {
+    const root = await buildModules(t, {
+        "@acme/dual": {
+            name: "@acme/dual",
+            plurnk: { kind: ["provider", "scheme"], name: "dual" },
+        },
+    });
+    const { registry } = await discover({ cwd: root });
+    assert.equal(registry.size, 0);
+});
+
 test("discover: a name claimed by two packages is a fail-hard collision", async (t) => {
     const root = await buildModules(t, {
         "@plurnk/plurnk-provider-native": { name: "@plurnk/plurnk-provider-native", plurnk: { kind: "provider", name: "native" } },

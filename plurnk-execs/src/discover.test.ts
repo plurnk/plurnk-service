@@ -89,7 +89,7 @@ test("discover: surfaces raw plurnk.attribution (string | string[]) on each tag 
     assert.ok(!("attribution" in (registry.get("bare") as object)), "no attribution key when omitted");
 });
 
-test("discover: a dual-kind package (kind array including 'exec') registers its tags (#483)", async () => {
+test("discover: an array kind claims no exec family", async () => {
     const dualDir = await makePkg({
         name: "@plurnk/plurnk-execs-dynamic-fixture",
         plurnk: { kind: ["exec", "scheme"], runtimes: [{ name: "dual", glyph: "🔌" }] },
@@ -99,8 +99,7 @@ test("discover: a dual-kind package (kind array including 'exec') registers its 
         plurnk: { kind: ["scheme"], runtimes: [{ name: "phantom" }] },
     });
     const { registry } = await Discover.scan({ packageDirs: [dualDir, schemeOnlyDir] });
-    assert.equal(registry.get("dual")?.packageName, "@plurnk/plurnk-execs-dynamic-fixture", "kind: [\"exec\", \"scheme\"] is an exec package");
-    assert.equal(registry.get("phantom"), undefined, "an array kind WITHOUT 'exec' is not");
+    assert.equal(registry.size, 0);
 });
 
 // Materialize a package whose tags come from a dynamic runtimes hook

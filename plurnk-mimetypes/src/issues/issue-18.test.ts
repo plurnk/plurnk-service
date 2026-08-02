@@ -34,7 +34,7 @@ function makeDiscovery(handlers: HandlerInfo[]): Discovery {
         }
     }
     const registry: Registry = { byExtension, byFilename };
-    return { registry, handlers: handlerMap };
+    return { registry, handlers: handlerMap, skipped: [] };
 }
 
 describe("Issue #18 — C1: container + columns flow through the symbols channel", () => {

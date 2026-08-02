@@ -20,6 +20,13 @@ test("isTrusted: gate on — @plurnk/* always, allowlist admits, everything else
     assert.equal(Meta.isTrusted("evil-plugin", { PLURNK_PLUGINS_TRUSTED_ONLY: "1" }), false, "'1' = on, zero third-party");
 });
 
+test("declaresKind: one exact string identifies one plugin family", () => {
+    assert.equal(Meta.declaresKind({ kind: "exec" }, "exec"), true);
+    assert.equal(Meta.declaresKind({ kind: "scheme" }, "exec"), false);
+    assert.equal(Meta.declaresKind({ kind: ["exec", "scheme"] }, "exec"), false);
+    assert.equal(Meta.declaresKind(null, "exec"), false);
+});
+
 test("packageDirs: enumerates the fixture plus legitimate packages farther up the open ancestor chain", async () => {
     const root = await mkdtemp(join(tmpdir(), "plugins-scan-"));
     try {

@@ -1,6 +1,6 @@
 // The metaproject layer's membership slice — the mechanics every discovery
-// surface shares (repository package ownership and core SPEC
-// {§plugin-discovery} / {§operator-config-env-defaults}):
+// surface shares ({§plugin-discovery} / {§operator-config-env-defaults}):
+//   - declaresKind:      the ONE package → capability-family representation.
 //   - isTrusted:          THE trust rule. One implementation; a second definition
 //                         of membership trust anywhere in the family is a bug.
 //   - packageDirs:        scope-agnostic, symlink-aware enumeration of the Node
@@ -24,7 +24,14 @@ export interface PackageCandidate {
     name: string;
 }
 
+export type PluginKind = "exec" | "mimetype" | "provider" | "scheme";
+
 export default class Meta {
+    static declaresKind(manifest: unknown, kind: PluginKind): boolean {
+        if (typeof manifest !== "object" || manifest === null) return false;
+        return (manifest as { kind?: unknown }).kind === kind;
+    }
+
     // unset / "" / "0" → gate OFF: everything installed is trusted.
     // any other value  → gate ON: @plurnk/* always trusted, plus a comma-separated
     //                    allowlist; "1" (naming no real package) = on, zero third-party.

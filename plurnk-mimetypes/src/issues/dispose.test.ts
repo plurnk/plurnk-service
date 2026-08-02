@@ -34,7 +34,7 @@ function makeDiscovery(): Discovery {
         byExtension: new Map([[".tst", "text/x-test"]]),
         byFilename: new Map(),
     };
-    return { registry, handlers: new Map([["text/x-test", INFO]]) };
+    return { registry, handlers: new Map([["text/x-test", INFO]]), skipped: [] };
 }
 
 // A disposable embedder that records how many times dispose() was awaited.

@@ -156,6 +156,11 @@ export default class Mimetypes {
         return this.#readyPromise;
     }
 
+    async skippedPackages(): Promise<readonly string[]> {
+        await this.ready();
+        return [...this.#discovery!.skipped];
+    }
+
     async detect(input: DetectInput): Promise<string | null> {
         await this.ready();
         const result = detect(input, this.#discovery!.registry);
