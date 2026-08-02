@@ -6,8 +6,8 @@
 // nothing of the shared WORLD — the workspace's entries and overlay are shared, never
 // copied, because a worker never owned them. But it DOES inherit the parent's worker-scope
 // SCRATCH ({§worker-scheme} — the worker's private workspace, owner-remapped parent → branch):
-// "fork = everything-in-common-but-name, then diverges". The {§env-delta} reconciliation
-// snapshot is not copied; the branch first-sights its world like any fresh worker.
+// "fork = everything-in-common-but-name, then diverges". #66 owns the
+// ambient-event cursor initialization for a fork.
 
 import type { Db } from "./Db.ts";
 

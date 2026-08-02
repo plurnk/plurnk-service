@@ -1852,21 +1852,61 @@ speculative or non-overflow trimming.
 
 ### §env-delta The environment delta: what changed since the model last looked
 
-**Question.** The manifest ({§packet}) is a live directory of what *exists*, re-derived each turn — but it carries *state*, not *events*. When a shared entry changes between a worker's turns — a sibling worker edits it, a tracked file diverges on disk ({§membership}) — the model's prior READ is now stale, and the manifest's new line count is a fact it would have to *diff against its own memory* to notice. The manifest also cannot say *who* changed it; with more than one actor in a workspace, provenance is load-bearing. What surfaces change — losslessly, attributably, without curating, and **without a per-worker shadow of the world** ({§machine-processes} forbids one)?
+The manifest ({§packet}) states what exists now. The environment delta supplies
+the events that made a worker's prior view stale without copying the shared
+world into worker-private state.
 
-**Decision — pull from the shared log; no snapshot.** Every edit is *already* a span-carrying `log_entries` row ({§edit-result-render}), so a worker needs no stored state of its own: at pre-turn it surfaces *other actors'* EDITs on shared entries **since its own last turn** (`log_entries.at` past the worker's most recent prior `turns.timestamp` — both already in the log) and materializes each as a **folded** `EDIT` in its log, reusing the originating row's span, cause, and typed attributes. "Since I last looked" is a fact about the worker's own turns, never a snapshot it cannot see ({§machine-processes}). The set is **exhaustive and unranked** — every change, no relevance order — but **not content-free**: the edited region of a change that *happened* is a faithful record, not the index regrowing. Volume is FOLD's to manage (deltas land folded) and the grinder's under budget — never the engine's to manage by gutting the payload. Preserving attributes is semantic, not incidental: an `entry_materialized` source remains identifiable after the pull, allowing its model-facing projection ({§exec-entry-sink}) to describe readable resource arrival rather than an authored mutation.
+```mermaid
+flowchart LR
+    sibling["Sibling resolves EDIT<br/>on shared entry"] --> events["Durable shared-event record"]
+    disk["Project file diverges<br/>from materialized snapshot"] --> kernel["Reserved plurnk worker<br/>records source=file EDIT"]
+    sink["Executor entry() sink<br/>materializes readable entry"] --> typed["Reserved plurnk worker<br/>records typed EDIT event"]
+    kernel --> events
+    typed --> events
+    events --> pull["Pre-turn lossless pull<br/>after observer boundary"]
+    pull --> log["Observer's self-contained log<br/>origin=plurnk; born FOLDed"]
+    log --> packet["Packet lists coordinate;<br/>OPEN recalls exact body"]
+```
 
-**Form — a folded log entry, `origin=plurnk`, carrying `source`.** A delta is a `log_entries` row: an **`EDIT`** ("an EDIT happened to X"), `origin=plurnk`, **`expanded=0`** (folded — listed, collapsed to its coordinate until the model OPENs it), carrying the **`source`** column (the cause). A log entry, not a transient frame section, because a worker's timeline must be **self-contained** — a forked worker carries everything it observed ({§machine-processes}). `source` renders under that same name in the entry object (`"source":"<worker-id>"` or `"source":"file"`) and is **omitted when the cause is the owning worker itself** — a third attribution axis, distinct from `worker_id` (whose log owns the row) and `origin` (the actor *type*).
+§env-delta-log-pull **Pull the event record, never a world snapshot.** At
+pre-turn, a worker materializes every other actor's event on shared state after
+its last completed observation boundary into its own log. The set is
+exhaustive, unranked, and exactly once; the engine makes no relevance decision.
+Each copied event retains its effect, cause, and typed attributes. The first
+turn needs no historical delta because it reads current state fresh. #66 tracks
+the current wall-clock cursor, which can omit or duplicate boundary events.
 
-**The filesystem is an actor — the `plurnk` worker.** A real cross-worker edit is a *faithful record*: the sibling issued the op, `source=<worker id>`. An out-of-band disk change is a *fiction*: no op happened, but `EDIT` is the only grammar the model has for "your world changed," so the engine narrates the drift as a `source=file` EDIT to keep the model's perspective aligned with what its own tooling would show. It has no real author, so the reserved **`plurnk` worker** ({§actor-boundary}) narrates it — at pre-turn it compares each member file to its entry (the {§membership} EMI re-read) and logs a `source=file` alignment EDIT for any divergence. Every worker pulls that through the one delta path, exactly like a sibling's edit; the fs needs no special case.
+Private worker entries are not shared-state events and never cross this door;
+an ancestry-authorized explicit READ remains their only cross-worker access.
+#62 tracks the current query's violation of that ownership boundary.
 
-**No coalescing.** The fs nets *inherently* — one fiction per file is `editedSpan(entry-as-of-last-align, disk-now)`, the net of any number of disk changes, captured by the single pre-turn pass. Sibling edits do **not** net: they are real, discrete events already in the log, replayed faithfully (folded). A "net span" across unrelated edits would destroy the record and conflate the fs state-diff with the sibling event-replay — the asymmetry is correct.
+| Producer                                                 | Durable event                                                                                                               | Observer projection                                                                                                                                    |
+| -------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| §env-delta-sibling-edit Sibling shared-entry mutation    | The sibling's successful resolved `EDIT` row and its receipt.                                                               | One folded `EDIT` retaining the exact effect and typed attributes.                                                                                     |
+| §env-delta-filesystem-narration Project-file divergence  | The reserved `plurnk` worker records one `source=file` EDIT-shaped event during pre-turn membership reconciliation.         | One folded `EDIT` naming the file and carrying the net changed span. No model operation is fabricated as having run.                                   |
+| §env-delta-entry-materialization Executor `entry()` sink | The reserved `plurnk` worker records a typed `EDIT` event with `kind="entry_materialized"` and the calling worker as cause. | One folded system `READ` projection advertising newly readable state; the durable event remains an EDIT for replay and forensics ({§exec-entry-sink}). |
 
-**Passive — computed at build, never forces a turn.** A delta materializes only while a packet assembles, so a change has nowhere to land until something else has already started a turn — it cannot wake an idle model. "Inform, never override." Urgency that genuinely needs the model routes through the *voice* door (an inject), never the environment door promoting itself to a turn.
+§env-delta-attribution **Ownership, authorship, and cause are independent.**
 
-**Rationale.** "The model knows its world moved" becomes a property of *reading the shared log at build* — 100% coverage by construction, with zero worker-private state beside the log. The engine records each change faithfully (the EDIT it was, showing its result) and hands the model the wheel; it never ranks, selects, or folds on its behalf.
+| Field       | Meaning                                                                                                                  |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `worker_id` | The worker whose self-contained log owns the materialized row.                                                           |
+| `origin`    | The actor tier that wrote the row; a materialized delta is `plurnk`.                                                     |
+| `source`    | The causal actor or `file`; self-authored rows omit it. #67 owns the unresolved model-facing spelling for worker causes. |
 
-**Migration path.** Built. The per-worker world-snapshot the architecture forbade ({§machine-processes}) is **deleted**; its {§machine-processes-worker-is-its-log} conformance test is now green. The pull + the `plurnk`-worker fs narration replace it.
+§env-delta-no-coalescing **Only filesystem observation nets.** One filesystem
+event is `editedSpan(entry-as-of-last-align, disk-now)`, inherently netting any
+number of out-of-band writes before reconciliation. Sibling edits are discrete
+events already in the log and remain discrete. Coalescing them would destroy
+the record and conflate state comparison with event replay.
+
+§env-delta-passive **Observation never forces a turn.** Deltas materialize only
+while a packet is already assembling, so an ambient change cannot wake an idle
+worker. Urgent directed communication uses the voice door
+({§actor-boundary-two-doors}). Sibling loop conclusions and owned stream
+progress reuse durable ambient log delivery under {§worker-scheme-collect} and
+{§exec-stream}; their lifecycle-specific open/fold and wake rules remain owned
+there.
 
 ### §edit-result-render Mutation log rows render truthful effects
 

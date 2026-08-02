@@ -259,18 +259,15 @@ GROUP BY e.scheme
 ORDER BY e.scheme;
 
 -- PREP: engine_worker_prior_turn_time
--- {§env-delta} — timestamp of this worker's most recent turn BEFORE the current one
--- (the "since I last looked" boundary). NULL on the worker's first turn → no deltas.
+-- Current implementation of {§env-delta-log-pull}'s observation boundary.
+-- #66 owns replacement of this wall-clock cursor with lossless progress.
 SELECT MAX(t.timestamp) AS since
 FROM turns t JOIN loops l ON l.id = t.loop_id
 WHERE l.worker_id = $worker_id AND t.id != $turn_id;
 
 -- PREP: engine_pull_env_deltas
--- {§env-delta} — other actors' resolved EDITs on shared entries since this worker last
--- looked. Real edits (origin model/client) AND the plurnk worker's fs-sync fictions
--- (origin=plurnk on the reserved 'plurnk' worker); excludes this worker's own rows and
--- other workers' already-materialized deltas (origin=plurnk on a real worker). plurnk:///
--- entries (manifest/prompt/doc) never surface. This is the environment door ({§actor-boundary-two-doors}); the voice door is inject.
+-- Materialize other actors' shared-state events ({§env-delta-log-pull}).
+-- #62, #66, and #67 own the current scope, cursor, and actor-identity defects.
 SELECT le.worker_id, le.scheme, le.pathname, le.rx, le.source, le.attrs
 FROM log_entries le
 JOIN workers r ON r.id = le.worker_id
@@ -286,9 +283,8 @@ WHERE r.workspace_id = $workspace_id
 ORDER BY le.at;
 
 -- PREP: engine_insert_env_delta
--- {§env-delta} — materialize a pulled cross-actor edit as a FOLDED delta (expanded=0)
--- in this worker's log. origin=plurnk; source carries the cause (sibling worker id or
--- 'file'); rx reuses the originating row's result span ({§edit-result-render}).
+-- {§env-delta-log-pull} — persist the observation folded in the receiving
+-- worker's log while retaining its cause, effect, and typed attributes.
 INSERT INTO log_entries (
     worker_id, loop_id, turn_id, sequence, origin, source,
     op, scheme, pathname, tx, mimetype_tx, rx, mimetype_rx, status_rx, expanded, attrs

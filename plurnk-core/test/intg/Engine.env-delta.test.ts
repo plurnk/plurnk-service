@@ -1,8 +1,5 @@
-// SPEC {§env-delta} / {§machine-processes} — the environment delta as a PULL from the
-// shared log. No per-worker snapshot: every edit is already a span-carrying log row, so
-// at pre-turn a worker surfaces other actors' edits on shared entries since its OWN last
-// turn, folded. Two producers: real cross-worker edits (a sibling's EDIT) and the
-// filesystem-as-the-plurnk-worker fs-sync fictions (source=file) for ambient disk drift.
+// Contract specimens for {§env-delta-log-pull}. #62, #66, and #67 retain the
+// known ownership, cursor, and model-facing provenance gaps.
 
 import test from "node:test";
 import { hermeticGitEnv } from "../../src/core/git-env.ts";
@@ -150,7 +147,7 @@ test("exactly two cross-worker channels — state via the env-delta, a message v
     }
 });
 
-test("an out-of-band disk change surfaces as a source=file delta — the plurnk worker narrates the fs fiction ()", async () => {
+test("an out-of-band disk change surfaces as a source=file delta narrated by the plurnk worker", async () => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-envdelta-"));
     const db = await openMigrated();
     try {
@@ -191,11 +188,11 @@ test("an out-of-band disk change surfaces as a source=file delta — the plurnk 
     }
 });
 
-// {§worker-scheme} loop-termination rides the same env-delta rail: when a sibling's loop
+// {§worker-scheme-collect} loop-termination rides the same ambient log rail: when a sibling's loop
 // reaches a terminal status, the observer pulls it at pre-turn as a FOLDED SEND from
 // worker://<name> carrying the loop's deliverable — the SEND[200] body or, for an
 // abandonment, the reason. The terminated_at trigger stamps every death-path uniformly,
-// so a graceful 200 and a grinder 499 surface the same way.
+// so a graceful 200 and a budget 413 surface through the same mechanism.
 test("a sibling's loop-termination surfaces — a 2xx deliverable born OPEN + awakening, an abandonment folded", async () => {
     const db = await openMigrated();
     try {

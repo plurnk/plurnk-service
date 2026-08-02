@@ -1125,11 +1125,9 @@ export default class Engine {
             }
         }
 
-        // {§env-delta} — pre-seed the worker's ambient observations (what changed since
-        // it last looked) as foisted rows before the packet composes; advance the action index
-        // past them so model ops continue after. Two instances of one machine: env-delta (sibling
-        // edits · timestamp cursor · always folded) and exec streams (channel bytes · byte cursor ·
-        // terminal delta opens). {§env-delta} {§exec-stream}
+        // {§env-delta-log-pull} — materialize ambient observations before packet
+        // composition and reserve their action indices. {§exec-stream} owns the
+        // distinct byte-cursor path for this worker's streams.
         // {§exec-poll} — EXEC `<0>` is turn-scoped: reap the worker's open turn-scoped streams (necessarily
         // from a prior turn — this runs before the turn's own spawns) so a `<0>` never survives into
         // the subsequent turn. The terminal output then surfaces born-OPEN via the stream-delta path.
@@ -1892,12 +1890,9 @@ export default class Engine {
         return this.#packets.docEntries(workspaceId);
     }
 
-    // {§env-delta} ({§actor-boundary-no-mutex}: workers share without locks; a conflict surfaces as a delta, never prevented) — at pre-turn build, surface what changed in the shared world since this
-    // worker last looked. No per-worker snapshot ({§machine-processes} "a worker is its log"): every
-    // edit is already a span-carrying log row, so PULL other actors' EDITs on shared
-    // entries since this worker's prior turn — real cross-worker edits and the plurnk worker's
-    // fs-sync fictions — and materialize each as a FOLDED delta reusing the row's span +
-    // cause. Returns the count so the caller advances nextActionIndex past the deltas.
+    // {§env-delta-log-pull} — copy ambient shared-state events into this
+    // worker's self-contained log. #62, #66, and #67 own the known predicate,
+    // cursor, and model-facing actor-identity violations respectively.
     async #materializeEnvironmentDeltas(args: {
         workspaceId: number; workerId: number; loopId: number; turnId: number; fromSequence: number;
     }): Promise<number> {
@@ -1910,8 +1905,7 @@ export default class Engine {
         }>({ workspace_id: workspaceId, worker_id: workerId, since });
         let written = 0;
         for (const r of rows) {
-            // source: the originating worker (a real cross-worker edit) or 'file' (an fs fiction);
-            // rx reuses the originating row's result span — the edit as it looked then.
+            // Preserve the producer's cause and effect ({§env-delta-attribution}).
             await this.#db.engine_insert_env_delta.run({
                 worker_id: workerId, loop_id: loopId, turn_id: turnId, sequence: fromSequence + written,
                 source: r.source ?? String(r.worker_id), scheme: r.scheme, pathname: r.pathname, rx: r.rx, attrs: r.attrs,
@@ -2049,13 +2043,8 @@ export default class Engine {
         return written;
     }
 
-    // {§env-delta} — the filesystem as an actor. Ambient disk divergences detected at
-    // pre-turn (git membership re-read) are logged as the plurnk worker's source=file EDIT
-    // "fictions": no op happened, but EDIT is the only grammar the model has for "your
-    // world changed," so the fiction keeps its perspective aligned with what its tooling
-    // would show. The fiction lives in the plurnk worker's log; every other worker pulls it
-    // through the one delta path, exactly like a sibling's real edit.
-    // {§membership-emi-divergence-signal} — disk divergences logged as the plurnk worker's source=file EDIT fictions
+    // {§env-delta-filesystem-narration} {§membership-emi-divergence-signal}
+    // — journal project-file divergence once through the reserved actor.
     async #logFsFictions(workspaceId: number, divergences: FsDivergence[]): Promise<void> {
         if (divergences.length === 0) return;
         const worker = await this.#db.envelope_get_worker_by_name.get<{ id: number }>({ workspace_id: workspaceId, name: "plurnk" })

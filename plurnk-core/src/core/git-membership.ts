@@ -359,9 +359,8 @@ export default class GitMembership {
             return null;
         }
         const content = buf.toString("utf8");
-        // {§env-delta} — capture an out-of-band disk change BEFORE the refresh overwrites
-        // the entry: an existing body channel whose content differs from disk is an
-        // ambient divergence (D5). writeEntry then refreshes the entry to disk truth.
+        // {§env-delta-filesystem-narration} — capture the prior snapshot before
+        // materialization replaces it, then journal the resulting net span.
         const prior = await ctx.db.ops_read_channel.get<{ content: string }>({
             workspace_id: ctx.workspaceId, owner_id: await Owner.commonsId(ctx.db, ctx.workspaceId), scheme: "file", pathname, channel: "body",
         });
