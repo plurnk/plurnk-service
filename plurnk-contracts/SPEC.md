@@ -231,8 +231,8 @@ Mutation semantics:
 | FIND | One catalog object per selected resource; matcher rows add `matches`, an array of optional structural locators and honest exact/enclosing text regions |
 | READ | One complete or explicitly scoped body per selected resource, plus the same `matches` navigation evidence |
 | EDIT | status plus a bounded receipt for the effect that landed |
-| COPY | status plus ordered applied resource effects, destination only |
-| MOVE | status plus ordered applied resource effects, destination then source |
+| COPY | source and destination selections, status, then ordered applied destination effects |
+| MOVE | source and destination selections, status, then ordered applied destination and source effects |
 | OPEN | status; list of log items opened |
 | FOLD | status; list of log items folded |
 | SEND | status; recipient ack if applicable |
@@ -241,6 +241,14 @@ Mutation semantics:
 | FORK | spawn ack; inherits the parent's context; untagged runs concurrently, while `[branch]` enters the serialized Git batch |
 | KILL | status; killed path |
 | PLAN | status; logged |
+
+COPY and MOVE log projections preserve both admitted operand selections,
+including their independent scopes, whether the result changed state, was a
+304 no-op, or failed after admission. Operands identify the request; `effects`
+describe only mutations that landed. If either operand uses textual scope,
+each landed textual create or update carries the same bounded receipt used by
+EDIT. Whole-channel and binary transfers remain bodyless structural effects.
+{§copy-move-observation}
 
 Output is delivered to the model in the next turn. The shape of "status"
 is a SEND-style status code (see §9) so that errors are uniform across

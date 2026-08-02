@@ -155,6 +155,12 @@ test("receipt and resource-effect validators reject malformed plugin results", (
     assert.equal(assertEditReceipt(receipt), receipt);
     const effects = [{ target: "worker:///notes", action: "update", receipt }] as const;
     assert.equal(assertResourceEffects(effects), effects);
+    const creation = projectEditReceipt(editReceipt("", "b", [{
+        marker: { marks: [1, -1] },
+        body: "b",
+    }]), 0);
+    const creationEffects = [{ target: "worker:///created", action: "create", receipt: creation }] as const;
+    assert.equal(assertResourceEffects(creationEffects), creationEffects);
 
     assert.throws(
         () => assertEditReceipt({ ...receipt, revision: "short" }),
@@ -179,9 +185,17 @@ test("receipt and resource-effect validators reject malformed plugin results", (
     assert.throws(
         () => assertResourceEffects([{
             target: "worker:///notes",
+            action: "delete",
+            receipt,
+        }]),
+        /Only a created or updated resource effect/,
+    );
+    assert.throws(
+        () => assertResourceEffects([{
+            target: "worker:///notes",
             action: "create",
             receipt,
         }]),
-        /Only an updated resource effect/,
+        /created resource effect receipt.*before extent of zero/,
     );
 });

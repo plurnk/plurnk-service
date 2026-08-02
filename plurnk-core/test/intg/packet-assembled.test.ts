@@ -13,8 +13,8 @@ import { join } from "node:path";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { Mock } from "@plurnk/plurnk-providers";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, seedEntryWithChannel, packetSection, DEFAULT_MIMETYPES } from "./_helpers.ts";
-import { readStmt, regex, sendStmt, urlPath } from "./_dsl.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop, seedEntryWithChannel, packetSection, logEntries, DEFAULT_MIMETYPES } from "./_helpers.ts";
+import { copyStmt, editStmt, readStmt, regex, sendStmt, urlPath } from "./_dsl.ts";
 
 const getPacket = async (db: Awaited<ReturnType<typeof openMigrated>>, turnId: number): Promise<{ sections: Array<{ name: string; slot: string }> }> =>
     JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: turnId }))!.packet);
@@ -94,6 +94,64 @@ test("assembled packet: matcher READ shows the resource and surgical coordinates
         assert.match(log, /"matcher":"\/target\/"/);
         assert.match(log, /"matches":\[\{"region":\{"startLine":2,"startColumn":1,"endLine":2,"endColumn":7\}\},\{"region":\{"startLine":4,"startColumn":1,"endLine":4,"endColumn":7\}\}\]/);
         assert.match(log, /<<:::worker:\/\/\/notes\.md\n1:heading\n2:target one\n3:context\n4:target two\n:::worker:\/\/\/notes\.md/);
+    } finally { await db.close(); }
+});
+
+test("assembled packet: scoped COPY reports both operands and its landed text materialization", async () => {
+    const db = await openMigrated();
+    try {
+        const workspaceId = await insertWorkspace(db, `pkt-copy-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const loopId = await insertLoop(db, workerId, 1, "copy the selected lines");
+        const source = urlPath("worker", "/src.md");
+        const destination = urlPath("worker", "/slice.md");
+        const scopedCopy = copyStmt(source, destination, null, { marks: [2, 3] });
+        const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
+        const provider = new Mock({
+            contextWindow: 100000,
+            responses: [
+                {
+                    assistant: {
+                        content: "",
+                        reasoning: null,
+                        ops: [
+                            editStmt(source, "one\ntwo\nthree\nfour"),
+                            scopedCopy,
+                            scopedCopy,
+                            sendStmt(102),
+                        ],
+                    },
+                },
+                { assistant: { content: "", reasoning: null, ops: [sendStmt(200)] } },
+            ],
+        });
+
+        const first = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
+        assert.deepEqual(first.statuses, [201, 201, 304, 102]);
+        const second = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
+        const packet = await getPacket(db, second.turnId);
+        const copies = logEntries(packet).filter(({ op }) => op === "COPY");
+
+        assert.equal(copies.length, 2);
+        assert.equal(copies[0]?.source, "worker:///src.md<2,3>");
+        assert.equal(copies[0]?.destination, "worker:///slice.md");
+        assert.equal(copies[0]?.status, 201);
+        assert.ok(Array.isArray(copies[0]?.effects));
+        const [effect] = copies[0].effects as Array<Record<string, unknown>>;
+        assert.equal(effect?.target, "worker:///slice.md");
+        assert.equal(effect?.action, "create");
+        assert.match(String(effect?.rev), /^[a-f0-9]{8}$/);
+        assert.equal(effect?.extent, "lines 0->2");
+        assert.equal(effect?.change, "-0 +2");
+        assert.equal(effect?.range, "<1,-1> 1^->1-2");
+        assert.equal(copies[0]?.display, "open");
+        assert.equal(copies[1]?.source, "worker:///src.md<2,3>");
+        assert.equal(copies[1]?.destination, "worker:///slice.md");
+        assert.equal(copies[1]?.status, 304);
+        assert.equal(copies[1]?.effects, undefined);
+        assert.equal(copies[1]?.display, "none");
+        assert.equal(copies[1]?.body, "");
+        assert.match(packetSection(packet, "log"), /1:two\n2:three/);
     } finally { await db.close(); }
 });
 

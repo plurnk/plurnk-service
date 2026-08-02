@@ -32,10 +32,12 @@ import {
     assertEditBatchReceipt,
     assertEditReceipt,
     assertResourceEffects,
+    editReceipt,
     LineMarkerOps,
     MimetypeBinary,
     PathMimetype,
     projectEditReceipt,
+    type EditBatchReceipt,
     type ResourceEffect,
     type ResourceEffectAction,
 } from "../content/index.ts";
@@ -1611,6 +1613,33 @@ export default class Dispatcher {
         };
     }
 
+    // {§copy-move-observation} Scoped COPY/MOVE into an unscoped channel is a
+    // text materialization even when CRUD creates the channel wholesale. Carry
+    // the ordinary EDIT receipt across both synchronous writes and proposal
+    // application; the destination scheme remains the owner of reviewed output.
+    static #withEditMaterialization(
+        result: DispatchResult,
+        receipt: EditBatchReceipt,
+    ): DispatchResult {
+        const exact = Results.assert(result);
+        if (exact.status !== 200 && exact.status !== 201 && exact.status !== 202) return exact;
+        const materialized = exact.editReceipt === undefined
+            ? assertEditBatchReceipt(receipt)
+            : assertEditBatchReceipt(exact.editReceipt);
+        return {
+            ...exact,
+            editReceipt: materialized,
+            ...(exact.status === 202
+                ? {
+                    attrs: {
+                        ...(exact.attrs as Record<string, unknown> | undefined),
+                        editReceipt: materialized,
+                    },
+                }
+                : {}),
+        };
+    }
+
     #finalizeEffects(
         result: DispatchResult,
         selection: ResolvedResourceSelection,
@@ -1927,8 +1956,23 @@ export default class Dispatcher {
             { channels, tags: mergedTags },
             ctx,
         );
+        const exactWritten = Results.assert(written);
+        const materialized = source.lineMarker === null
+            || (exactWritten.status !== 200 && exactWritten.status !== 201 && exactWritten.status !== 202)
+            ? exactWritten
+            : Dispatcher.#withEditMaterialization(
+                exactWritten,
+                editReceipt(
+                    destinationChannel?.content ?? "",
+                    source.content,
+                    [{
+                        marker: { marks: [1, -1] },
+                        body: source.content,
+                    }],
+                ),
+            );
         return this.#finalizeEffects(
-            Results.assert(written),
+            materialized,
             destination,
             [destinationEffect],
         );

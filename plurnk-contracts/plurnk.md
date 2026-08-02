@@ -140,6 +140,8 @@ Other scope examples:
 ### The Log
 
 The `## Log` is addressable history. OPEN reveals a folded body; FOLD hides an irrelevant open body and frees its packet tokens; neither deletes it. READ retrieves the canonical full body, and KILL erases the item.
+An empty log body means there is no textual projection; `status` reports success or failure.
+COPY/MOVE rows name both operand selections. Scoped text effects show bounded resulting context, while `304` means that exact transfer required no mutation.
 
 Examples:
 

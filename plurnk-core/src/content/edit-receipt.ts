@@ -144,12 +144,17 @@ export const assertResourceEffects = (value: unknown): readonly ResourceEffect[]
             );
         }
         if (Object.hasOwn(effect, "receipt")) {
-            if (effect.action !== "update") {
+            if (effect.action === "delete") {
                 throw new InvalidOperationResultError(
-                    "Only an updated resource effect may carry a text receipt.",
+                    "Only a created or updated resource effect may carry a text receipt.",
                 );
             }
-            assertEditReceipt(effect.receipt);
+            const receipt = assertEditReceipt(effect.receipt);
+            if (effect.action === "create" && receipt.before !== 0) {
+                throw new InvalidOperationResultError(
+                    "A created resource effect receipt must have a before extent of zero.",
+                );
+            }
         }
     }
     return value as readonly ResourceEffect[];

@@ -1535,14 +1535,23 @@ The target is the canonical model-facing resource address. A default channel is
 path-only; an explicitly selected non-default channel retains its fragment.
 COPY lists its destination effect. MOVE lists destination then source effects;
 same-resource MOVE may list the same target twice because insertion and removal
-are distinct effects from one atomic batch. A text-region effect carries its
-bounded EDIT receipt. Whole-channel and binary effects carry no invented text
-receipt. A 304 no-op and a rejected or cancelled proposal that landed nothing
-omit `effects`; an accepted proposal reports effects only after application. If
-a cross-resource MOVE writes its destination but source removal fails, the
-failure retains the effects that actually landed. Scheme hooks return their
-native mutation result and aggregate edit receipt; the engine validates and
-projects this resource-level contract.
+are distinct effects from one atomic batch. When either COPY/MOVE operand has a
+text scope, each landed textual create or update carries the ordinary bounded
+EDIT receipt; a creation receipt has zero prior extent. Whole-channel and binary
+effects carry no invented text receipt. Whole-resource delete effects carry no
+receipt; scoped source removal is an `update` effect with a receipt. A 304 no-op
+and a rejected or cancelled proposal that landed nothing omit `effects`; an
+accepted proposal reports effects only after application. If a cross-resource
+MOVE writes its destination but source removal fails, the failure retains the
+effects that actually landed. Scheme hooks return their native mutation result
+and aggregate edit receipt; the engine validates and projects this
+resource-level contract.
+
+The durable COPY/MOVE statement remains the sole owner of its source and
+destination selections. Packet projection renders both, with their independent
+scopes, on every admitted COPY/MOVE row; it does not infer operands from applied
+effects. This keeps a 304 self-identifying while preserving the distinction
+between what was requested and what landed. {§copy-move-observation}
 
 **Migration path.** Built with MODE scheduling and atomic resource batches; the former unbounded resulting-span confirmation is removed from model-authored EDITs.
 
@@ -1819,9 +1828,10 @@ An `EDIT` log row renders its bounded effect receipt (`rx.receipt`) as row
 metadata and join context, not its input statement. Proposal-gated file EDITs
 compute the accepted receipt from what actually lands. Environment-delta EDITs
 render their resulting `rx.span`. COPY/MOVE rows render compact ordered
-`effects` metadata and any regional receipt contexts under their `log:///`
-address, never under one operand's resource address. All generated bodies remain
-under §body-projection. {§edit-result-render}
+`source` and `destination` selections, compact ordered `effects` metadata, and
+any scoped textual receipt contexts under their `log:///` address, never under
+one operand's resource address. All generated bodies remain under
+§body-projection. {§edit-result-render}
 
 The `N:` prefix is presentation/reference per plurnk.md ("not part of the source"); stripped before any matcher operation on the log entry.
 
@@ -1852,7 +1862,9 @@ Carried from the contract walk; durable.
   through the destination scheme's `editBatch`.
 - **COPY/MOVE result effects** are engine-owned and describe only mutations that
   landed. COPY orders destination only; MOVE orders destination then source.
-  Text regions carry receipts; whole-channel changes do not.
+  Any scoped textual transfer materializes create/update receipts; whole-channel
+  and binary changes do not. Operand selections remain independently visible per
+  §copy-move-observation.
 - **READ rx** prefixes every textual line with `N:` per §render-rule.
 - **FIND body matcher** applies to entry content (all dialects), per-candidate via the in-tree `Matcher.matchAgainstContent` (§matcher-dispatch; status 200 = content hit → entry selected). Scope + tags select candidates in SQL; the path-glob is the (target).
 - **OPEN/FOLD** operate on the **log** (`log:///`), not entries (§open-fold) — FOLD collapses a log row to its path, OPEN restores its body. Aimed at an entry scheme they return 501.

@@ -21,6 +21,21 @@ const receipt = (context: string, requested = "<2>") => ({
         context,
     },
 });
+const creationReceipt = (context: string) => {
+    const base = receipt(context, "<1,-1>");
+    return {
+        ...base,
+        before: 0,
+        after: 1,
+        effect: {
+            ...base.effect,
+            source: "1^",
+            result: "1",
+            removed: 0,
+            inserted: 1,
+        },
+    };
+};
 
 test("LogBody resolves built-in result-backed bodies", () => {
     for (const op of ["READ", "FIND", "model", "prompt"]) {
@@ -63,6 +78,20 @@ test("LogBody resolves COPY/MOVE bodies only from ordered textual effects", () =
             },
         }),
         { content: "1:before\n2:copied", mimetype: "text/plain", startLine: null },
+    );
+    assert.deepEqual(
+        LogBody.resolve({
+            op: "COPY",
+            tx: "",
+            rx: {
+                effects: [{
+                    target: "worker:///created",
+                    action: "create",
+                    receipt: creationReceipt("1:copied"),
+                }],
+            },
+        }),
+        { content: "1:copied", mimetype: "text/plain", startLine: null },
     );
     assert.deepEqual(
         LogBody.resolve({

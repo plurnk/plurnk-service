@@ -95,6 +95,38 @@ test("[#2-copy-to-file] COPY worker:/// → file:/// proposes then lands the fil
     });
 });
 
+test("a scoped COPY into a new file reports the accepted creation receipt", async () => {
+    await withWorkspace(async (root, ctx) => {
+        await seedKnown(ctx, "note", "alpha\nbeta\ngamma\n");
+        const result = await proposeAndResolve(
+            ctx,
+            copyStmt(
+                urlPath("worker", "/note"),
+                urlPath("file", "/slice.md"),
+                null,
+                { marks: [2, 3] },
+            ),
+            "accept",
+        );
+        assert.equal(result.status, 200);
+        assert.equal(await readFile(join(root, "slice.md"), "utf8"), "beta\ngamma\n");
+        assert.ok(Array.isArray(result.effects));
+        const [effect] = result.effects as Array<{
+            action: string;
+            receipt?: {
+                before: number;
+                after: number;
+                effect: { requested: string; context: string };
+            };
+        }>;
+        assert.equal(effect?.action, "create");
+        assert.equal(effect?.receipt?.before, 0);
+        assert.equal(effect?.receipt?.after, 2);
+        assert.equal(effect?.receipt?.effect.requested, "<1,-1>");
+        assert.match(effect?.receipt?.effect.context ?? "", /1:beta\n2:gamma/);
+    });
+});
+
 test("[#2-copy-to-file-reject] a rejected COPY into file:/// never touches disk", async () => {
     await withWorkspace(async (root, ctx) => {
         await seedKnown(ctx, "note", "nope\n");

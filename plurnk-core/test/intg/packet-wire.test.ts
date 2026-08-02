@@ -21,6 +21,21 @@ const receipt = (context: string, requested = "<2>") => ({
         context,
     },
 });
+const creationReceipt = (context: string) => {
+    const base = receipt(context, "<1,-1>");
+    return {
+        ...base,
+        before: 0,
+        after: 2,
+        effect: {
+            ...base.effect,
+            source: "1^",
+            result: "1-2",
+            removed: 0,
+            inserted: 2,
+        },
+    };
+};
 
 // Default-channel convention: when a channel's name matches its scheme's
 // defaultChannel, the heredoc fence is path-only (no `#channel` suffix).
@@ -52,13 +67,21 @@ test("a folded-authority web URL renders https://host/... — never https:///hos
     assert.match(out, /"target":"https:\/\/en\.wikipedia\.org\/wiki\/Paris"/, "the authority form, one spelling");
 });
 
-test("COPY/MOVE render ordered resource effects and only textual regional receipts", () => {
+test("COPY/MOVE render operand selections and scoped textual materialization receipts", () => {
     const out = PacketWire.renderLog([{
         coordinate: "1/2/5",
         origin: "model",
         op: "COPY",
         status: 200,
         target: { scheme: "worker", pathname: "/source" },
+        tx: {
+            target: { scheme: "worker", pathname: "/source" },
+            lineMarker: { marks: [2, 3] },
+            body: {
+                target: { scheme: "worker", pathname: "/draft" },
+                lineMarker: { marks: [0] },
+            },
+        },
         rx: {
             status: 200,
             effects: [{
@@ -68,6 +91,9 @@ test("COPY/MOVE render ordered resource effects and only textual regional receip
             }],
         },
     }], tok);
+    assert.match(out, /"source":"worker:\/\/\/source<2,3>"/);
+    assert.match(out, /"destination":"worker:\/\/\/draft<0>"/);
+    assert.doesNotMatch(out, /"target":"worker:\/\/\/source"/);
     assert.match(
         out,
         /"effects":\[\{"target":"worker:\/\/\/draft","action":"update","rev":"abcdef01","extent":"lines 4->5","change":"-1 \+2","range":"<2> 2->2-3"\}\]/,
@@ -84,6 +110,14 @@ test("COPY/MOVE render ordered resource effects and only textual regional receip
         op: "MOVE",
         status: 200,
         target: { scheme: "worker", pathname: "/source" },
+        tx: {
+            target: { scheme: "worker", pathname: "/source" },
+            lineMarker: null,
+            body: {
+                target: { scheme: "worker", pathname: "/destination" },
+                lineMarker: null,
+            },
+        },
         rx: {
             status: 200,
             effects: [
@@ -96,7 +130,60 @@ test("COPY/MOVE render ordered resource effects and only textual regional receip
         whole,
         /"effects":\[\{"target":"worker:\/\/\/destination","action":"create"\},\{"target":"worker:\/\/\/source","action":"delete"\}\]/,
     );
-    assert.match(whole, /"body":"","display":"none"/, "whole-channel effects invent no text receipt");
+    assert.match(whole, /"source":"worker:\/\/\/source"/);
+    assert.match(whole, /"destination":"worker:\/\/\/destination"/);
+    assert.match(whole, /"body":""/);
+    assert.match(whole, /"display":"none"/, "whole-channel effects invent no text receipt");
+
+    const created = PacketWire.renderLog([{
+        coordinate: "1/2/7",
+        origin: "model",
+        op: "COPY",
+        status: 201,
+        target: { scheme: "worker", pathname: "/source" },
+        tx: {
+            target: { scheme: "worker", pathname: "/source" },
+            lineMarker: { marks: [2, 3] },
+            body: {
+                target: { scheme: "worker", pathname: "/created" },
+                lineMarker: null,
+            },
+        },
+        rx: {
+            status: 201,
+            effects: [{
+                target: "worker:///created",
+                action: "create",
+                receipt: creationReceipt("1:two\n2:three"),
+            }],
+        },
+    }], tok);
+    assert.match(created, /"source":"worker:\/\/\/source<2,3>"/);
+    assert.match(created, /"destination":"worker:\/\/\/created"/);
+    assert.match(created, /"action":"create"[^}]*"range":"<1,-1> 1\^->1-2"/);
+    assert.match(created, /1:two\n2:three/);
+
+    const unchanged = PacketWire.renderLog([{
+        coordinate: "1/2/8",
+        origin: "model",
+        op: "COPY",
+        status: 304,
+        target: { scheme: "worker", pathname: "/source" },
+        tx: {
+            target: { scheme: "worker", pathname: "/source" },
+            lineMarker: { marks: [2, 3] },
+            body: {
+                target: { scheme: "worker", pathname: "/created" },
+                lineMarker: null,
+            },
+        },
+        rx: { status: 304 },
+    }], tok);
+    assert.match(unchanged, /"source":"worker:\/\/\/source<2,3>"/);
+    assert.match(unchanged, /"destination":"worker:\/\/\/created"/);
+    assert.doesNotMatch(unchanged, /"effects"/);
+    assert.match(unchanged, /"body":""/);
+    assert.match(unchanged, /"display":"none"/);
 });
 
 test("EDIT with an accept-path span (rx.body from a proposed file edit) renders the line-numbered diff", () => {
@@ -579,8 +666,34 @@ test("every non-retrieval body producer uses the same recoverable preview", () =
         { op: "FORK", origin: "model", target: null, tx: { body: long } },
         { op: "EXEC", origin: "model", target: { scheme: "sh", pathname: "/1/1/1" }, tx: { body: long } },
         { op: "EDIT", origin: "model", target: { scheme: "worker", pathname: "/a" }, rx: { span: numbered } },
-        { op: "COPY", origin: "model", target: { scheme: "worker", pathname: "/b" }, rx: { effects: [{ target: "worker:///b", action: "update", receipt: receipt(numbered) }] } },
-        { op: "MOVE", origin: "model", target: { scheme: "worker", pathname: "/c" }, rx: { effects: [{ target: "worker:///c", action: "update", receipt: receipt(numbered) }] } },
+        {
+            op: "COPY",
+            origin: "model",
+            target: { scheme: "worker", pathname: "/b-source" },
+            tx: {
+                target: { scheme: "worker", pathname: "/b-source" },
+                lineMarker: { marks: [2] },
+                body: {
+                    target: { scheme: "worker", pathname: "/b" },
+                    lineMarker: { marks: [2] },
+                },
+            },
+            rx: { effects: [{ target: "worker:///b", action: "update", receipt: receipt(numbered) }] },
+        },
+        {
+            op: "MOVE",
+            origin: "model",
+            target: { scheme: "worker", pathname: "/c-source" },
+            tx: {
+                target: { scheme: "worker", pathname: "/c-source" },
+                lineMarker: { marks: [2] },
+                body: {
+                    target: { scheme: "worker", pathname: "/c" },
+                    lineMarker: { marks: [2] },
+                },
+            },
+            rx: { effects: [{ target: "worker:///c", action: "update", receipt: receipt(numbered) }] },
+        },
         { op: "READ", origin: "plurnk", target: { scheme: "sh", pathname: "/1/1/1" }, rx: { content: long, mimetype: "text/plain" } },
         { op: "FIND", origin: "plurnk", target: { scheme: "worker", pathname: "/**" }, rx: { content: long, mimetype: "text/plain" } },
         { op: "extension", origin: "plugin", target: { scheme: "custom", pathname: "/result" }, rx: { content: long, mimetype: "text/plain" } },

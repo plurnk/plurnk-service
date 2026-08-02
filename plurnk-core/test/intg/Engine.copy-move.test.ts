@@ -206,6 +206,20 @@ test("Engine.copy with <L> slices the source range into the dest, no N:\\t prefi
         const stmt: CopyStatement = { ...copyStmt(urlPath("worker", "/long"), urlPath("worker", "/sliced")), lineMarker: { marks: [2, 3] } };
         const r = await dispatch(engine, { workspaceId, workerId, loopId, turnId }, stmt);
         assert.equal(r.status, 201);
+        assert.ok(Array.isArray(r.effects));
+        const [effect] = r.effects as Array<{
+            action: string;
+            receipt?: {
+                before: number;
+                after: number;
+                effect: { requested: string; context: string };
+            };
+        }>;
+        assert.equal(effect?.action, "create");
+        assert.equal(effect?.receipt?.before, 0);
+        assert.equal(effect?.receipt?.after, 2);
+        assert.equal(effect?.receipt?.effect.requested, "<1,-1>");
+        assert.match(effect?.receipt?.effect.context ?? "", /1:beta\n2:gamma/);
         const entryRow = await db.test_get_entry_id_by_pathname.get<{ id: number }>({ pathname: "/sliced" });
         const dstChannel = await db.test_get_channel.get<{ content: string }>({ entry_id: entryRow?.id, name: "body" });
         assert.equal(dstChannel?.content, "beta\ngamma\n");
@@ -231,6 +245,15 @@ test("Engine.move with a source region removes only that region", async () => {
         const stmt: MoveStatement = { ...moveStmt(urlPath("worker", "/orig"), urlPath("worker", "/moved")), lineMarker: { marks: [1, 2] } };
         const r = await dispatch(engine, { workspaceId, workerId, loopId, turnId }, stmt);
         assert.equal(r.status, 201);
+        assert.ok(Array.isArray(r.effects));
+        const effects = r.effects as Array<{
+            action: string;
+            receipt?: { effect: { requested: string; context: string } };
+        }>;
+        assert.deepEqual(effects.map(({ action }) => action), ["create", "update"]);
+        assert.equal(effects[0]?.receipt?.effect.requested, "<1,-1>");
+        assert.match(effects[0]?.receipt?.effect.context ?? "", /1:first\n2:second/);
+        assert.equal(effects[1]?.receipt?.effect.requested, "<1,2>");
         const srcRemaining = await db.test_get_entry_id_by_pathname.get<{ id: number }>({ pathname: "/orig" });
         assert.notEqual(srcRemaining, undefined, "the source entry remains");
         const srcChannel = await db.test_get_channel.get<{ content: string }>({ entry_id: srcRemaining?.id, name: "body" });

@@ -13,7 +13,7 @@
 // sees consistent framing across every section it might receive. Sections
 // with no content are omitted entirely (no empty headers in the wire).
 
-import { Validator, type ProblemDetails, type TextRegion } from "@plurnk/plurnk-contracts";
+import { Validator, type LineMarker, type ProblemDetails, type TextRegion } from "@plurnk/plurnk-contracts";
 import { Results as SchemeResults } from "@plurnk/plurnk-schemes";
 import { renderAddress } from "./plurnk-uri.ts";
 import { encodePathParens } from "./path-decode.ts";
@@ -53,11 +53,25 @@ const previewBounds = (): { lines: number; chars: number } => {
 // in-memory packet AND from `turns.packet` re-parsed by the digest — re-parsed
 // leaf fields are untyped (SectionView), narrowed by the runtime `typeof`
 // checks below (boundaries validate). Engine's RequestPacket is strict.
-interface ActionTarget { scheme?: string | null; hostname?: string | null; port?: number | null; pathname?: string | null; fragment?: string | null }
-// Only `body` is read off the log row's tx now — the mirror renders the model's WORK as content
-// (PLAN/SEND bodies, EXEC commands, READ/FIND matchers), never the op's emission tag re-serialized.
+interface ActionTarget {
+    kind?: unknown;
+    raw?: unknown;
+    scheme?: string | null;
+    hostname?: string | null;
+    port?: number | null;
+    pathname?: string | null;
+    fragment?: string | null;
+}
+// The durable statement supplies operand identity and bodies without asking the
+// packet mirror to re-serialize the model's complete emission tag.
 interface StatementTx {
-    body?: string | { raw?: unknown } | null;
+    target?: ActionTarget | null;
+    lineMarker?: unknown;
+    body?: string | {
+        raw?: unknown;
+        target?: ActionTarget | null;
+        lineMarker?: unknown;
+    } | null;
 }
 interface RxView {
     content?: unknown;
@@ -76,7 +90,7 @@ interface LogEntryView {
     origin?: unknown;
     status?: unknown;
     target?: ActionTarget | null;
-    tx?: StatementTx | null;
+    tx?: StatementTx | string | null;
     mimetype_tx?: unknown;
     rx?: unknown;
     mimetype_rx?: unknown;
@@ -295,8 +309,8 @@ export default class PacketWire {
     // No body, no fence — every meaningful field is in the JSON. Naming
     // follows the uniform principle: `path` is identity (this log row's
     // own URI), `target` is the URI in the statement's target slot. COPY/MOVE
-    // expose every resource they changed through ordered `effects` instead of
-    // forcing two operands into one target field.
+    // retain their source and destination selections separately from ordered
+    // applied `effects`.
     //
     // On error, status >= 400 signals the failure; Problem Details live on
     // this durable row and the next packet's Errors section points here. (Forward:
@@ -352,8 +366,32 @@ export default class PacketWire {
             if (typeof e.source === "string" && e.source.length > 0) meta.run = e.source;
             if (renderedOp !== null) meta.op = renderedOp;
             if (typeof e.status === "number") meta.status = e.status;
+            const tx = (typeof e.tx === "string" ? PacketWire.#safeParse(e.tx) : e.tx) as StatementTx | null;
             const target = PacketWire.#renderActionTarget(e.target);
-            if (target !== null) meta.target = target;
+            if (op === "COPY" || op === "MOVE") {
+                const source = PacketWire.#renderSelection(
+                    e.target ?? tx?.target,
+                    tx?.lineMarker,
+                );
+                const destinationBody = tx?.body !== null && typeof tx?.body === "object"
+                    ? tx.body
+                    : null;
+                const destination = PacketWire.#renderSelection(
+                    destinationBody?.target,
+                    destinationBody?.lineMarker,
+                );
+                if (source !== null) meta.source = source;
+                if (destination !== null) meta.destination = destination;
+                if (
+                    typeof e.status === "number"
+                    && e.status < 400
+                    && (source === null || destination === null)
+                ) {
+                    throw new Error(`A successful ${op} log row must retain both operand selections.`);
+                }
+            } else {
+                if (target !== null) meta.target = target;
+            }
             // EXEC's output is a separate stream entry (§exec-stream); its address rides in a
             // `stream` link, distinct from `target` (the cwd / executable path it ran in).
             if (op === "EXEC" && e.attrs !== null && typeof e.attrs === "object" && typeof (e.attrs as { stream?: unknown }).stream === "string") {
@@ -380,7 +418,6 @@ export default class PacketWire {
             // surgical follow-up READ without silently narrowing this result.
             let items: number | null = null;
             if (op === "READ" || op === "FIND") {
-                const tx = e.tx;
                 if (tx !== null && tx !== undefined && typeof tx === "object" && tx.body !== null && typeof tx.body === "object") {
                     if (typeof tx.body.raw === "string") meta.matcher = tx.body.raw;
                 }
@@ -405,7 +442,7 @@ export default class PacketWire {
 
             // Mutations expose compact, validated outcome metadata. EDIT owns
             // one receipt; COPY/MOVE own ordered resource effects whose
-            // optional receipts describe only textual regional mutations.
+            // optional receipts describe scoped textual materializations.
             if (op === "EDIT" && rx !== null && typeof rx === "object" && Object.hasOwn(rx, "receipt")) {
                 Object.assign(meta, PacketWire.#receiptMeta(rx.receipt));
             }
@@ -499,6 +536,25 @@ export default class PacketWire {
         // say WHICH channel it is, not just the entry. §exec-stream
         const fragment = typeof target.fragment === "string" && target.fragment.length > 0 ? `#${target.fragment}` : "";
         return rendered + fragment;
+    }
+
+    static #renderSelection(
+        target: ActionTarget | null | undefined,
+        marker: unknown,
+    ): string | null {
+        if (target === null || target === undefined) return null;
+        const address = target.kind === "local" && typeof target.raw === "string"
+            ? target.raw
+            : target.scheme === "file"
+                ? encodePathParens(target.pathname?.replace(/^\//, "") ?? "")
+                : PacketWire.#renderActionTarget(target);
+        if (address === null || address.length === 0) return null;
+        if (marker === null || marker === undefined) return address;
+        const validation = Validator.validateLineMarker(marker);
+        if (!validation.valid) {
+            throw new TypeError("A COPY/MOVE operand contains an invalid line marker.");
+        }
+        return `${address}<${(marker as LineMarker).marks.join(",")}>`;
     }
 
     static #renderGitState(git: GitStatus): string {
