@@ -1,4 +1,4 @@
-// Tests for SPEC §copy (Engine.copy orchestration) and §move (Engine.move).
+// Tests for SPEC {§copy} (Engine.copy orchestration) and {§move} (Engine.move).
 
 import test from "node:test";
 import assert from "node:assert/strict";

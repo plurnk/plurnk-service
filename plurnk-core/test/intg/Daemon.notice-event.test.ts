@@ -1,4 +1,4 @@
-// Tests for daemon's notice/event notification. SPEC §operation-results client
+// Tests for daemon's notice/event notification. SPEC {§operation-results} client
 // surface — every Notice the engine pushes to a loop's buffer
 // also broadcasts live, scoped to the loop's workspace.
 

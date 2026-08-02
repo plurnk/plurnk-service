@@ -1,4 +1,4 @@
-// #366 — the seam's FRESH conversation door (§machine-processes: two workers are two conversations
+// #366 — the seam's FRESH conversation door ({§machine-processes}: two workers are two conversations
 // about one curated workspace). createConversationWorker mints a named, empty-log, model-origin ROOT
 // run that runLoop accepts — distinct from ensureModelWorker (the stable default, #371 find-first)
 // and forkWorker (copies history). New chat = new conversation, same workspace.

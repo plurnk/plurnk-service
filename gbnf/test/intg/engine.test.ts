@@ -1,5 +1,5 @@
 // Engine contract tests — one or more per SPEC.md anchor (§…). These exercise the native
-// TS engine directly (no oracle); the oracle equivalence is §oracle_fidelity in test/e2e.
+// TS engine directly (no oracle); the oracle equivalence is {§oracle-fidelity} in test/e2e.
 
 import test from "node:test";
 import assert from "node:assert/strict";

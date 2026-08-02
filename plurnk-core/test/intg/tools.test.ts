@@ -1,4 +1,4 @@
-// SPEC §tools — the registered executor catalogue is explicitly titled so its examples define
+// SPEC {§tools} — the registered executor catalogue is explicitly titled so its examples define
 // the closed set of valid tags, above Requirements and omitted when the list is empty.
 
 import test from "node:test";

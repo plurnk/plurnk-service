@@ -240,7 +240,7 @@ test("Known.read: edited entry round-trips through read — content matches what
         const target = urlPath("worker", "/rt");
         for (const [i, body] of bodies.entries()) {
             // First iteration creates (markerless); the rest re-edit an existing entry, which
-            // needs the deliberate full-replace marker (§edit-marker-required-on-existing).
+            // needs the deliberate full-replace marker ({§edit-marker-required-on-existing}).
             await k.edit(editStatement({ target, body, lineMarker: i === 0 ? null : fullReplace }), makeSchemeCtx({ db, workspaceId, workerId }));
             const result = await k.read(readStatement({ target }), makeSchemeCtx({ db, workspaceId }));
             assert.equal(result.status, 200);

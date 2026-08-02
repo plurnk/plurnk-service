@@ -176,7 +176,7 @@ const TURN_STATUS_IMPLICIT_CONTINUE = 102;
 
 // Status assigned to a turn that emitted NO ops at all. Strike-worthy; the
 // action routes through the durable log and packet Errors index
-// (§operation-results, §operation-result-no-error-scheme).
+// ({§operation-results}, {§operation-result-no-error-scheme}).
 const TURN_STATUS_NO_OPS = 422;
 
 const DEFAULT_MIN_CYCLES = 3;
@@ -199,7 +199,7 @@ const readEmissionAttempts = (): number => {
     return value;
 };
 
-// §operator-config-loop-timeout — the loop's wall-clock budget (PLURNK_SERVICE_LOOP_TIMEOUT).
+// {§operator-config-loop-timeout} — the loop's wall-clock budget (PLURNK_SERVICE_LOOP_TIMEOUT).
 const DEFAULT_LOOP_TIMEOUT_MS = 86400000;
 const readLoopTimeoutMs = (): number => readPositiveInt("PLURNK_SERVICE_LOOP_TIMEOUT", DEFAULT_LOOP_TIMEOUT_MS);
 // The wall's abort reason — runLoop branches a mid-turn teardown to the 504 terminal on it.
@@ -222,20 +222,20 @@ export default class Engine {
     #lifecycle: LoopLifecycle;
     #schemes: SchemeRegistry;
     #mimetypes: Mimetypes;
-    // Write-time tokenizer (SPEC §tokenomics). Synchronous per the provider
-    // contract (§provider-surface). Populated from the active provider's countTokens via
+    // Write-time tokenizer (SPEC {§tokenomics}). Synchronous per the provider
+    // contract ({§provider-surface}). Populated from the active provider's countTokens via
     // the Daemon; a divisor tripwire stands in only for bare/standalone
     // construction before a provider is wired (same boot affordance as
-    // Mimetypes, §mimetype-surface). Real counts come from provider.countTokens.
+    // Mimetypes, {§mimetype-surface}). Real counts come from provider.countTokens.
     #tokenize: (text: string) => number;
     // Boot-discovered runtime executors. Daemon builds + sets via
     // setExecutors at start(); undefined until then (and in bare tests).
     #executors: ExecutorRegistry | undefined;
-    // §send-premature-terminate/SEND[202]<T> — park deadlines by loopId, written at dispatch (the
+    // {§send-premature-terminate}/SEND[202]<T> — park deadlines by loopId, written at dispatch (the
     // marker's seconds; -1 = indefinite), consumed by the daemon's drain park-exit to schedule
     // the deadline wake. In-memory: a daemon restart drops pending deadlines (documented).
     readonly parkDeadlines: Map<number, number> = new Map();
-    // §join-blocking-collect (#354) — loops whose turn issued a READ(worker://running-child): the
+    // {§join-blocking-collect} (#354) — loops whose turn issued a READ(worker://running-child): the
     // blocking join. The dispatcher arms this on the READ; the turn's bare SEND[102] parks on it
     // (indefinite) instead of continuing, and any SEND clears it. Twin of parkDeadlines.
     readonly joinTargets: Set<number> = new Set();
@@ -246,7 +246,7 @@ export default class Engine {
     #notices: NoticeChannel;
     #problems: ProblemLog;
     #strikes: StrikeRail;
-    // §grinder-hard-413-recovery - loops granted their one over-ceiling recovery turn. Cleared on a
+    // {§grinder-hard-413-recovery} - loops granted their one over-ceiling recovery turn. Cleared on a
     // fitting turn so a later independent overflow can earn a fresh recovery, and at loop cleanup.
     #hardOverflowRecovery = new Set<number>();
     #packets: PacketBuilder;
@@ -261,7 +261,7 @@ export default class Engine {
     // Streaming schemes (exec) chain their per-spawn controllers off
     // ctx.signal so cancelled loops tear down their background spawns.
     #loopAborts = new Map<number, AbortController>();
-    // §send-premature-terminate — loops owed one idle-grace turn after a retrieval-only 409
+    // {§send-premature-terminate} — loops owed one idle-grace turn after a retrieval-only 409
     // (the steer's own advice is to wait; in-memory, fail-open on restart).
     #retrievalRefusalGrace = new Set<number>();
     // One coalesced warm per workspace. Creation/membership changes start it as soon
@@ -430,7 +430,7 @@ export default class Engine {
         this.#mimetypes = mimetypes ?? new Mimetypes({
             discovery: { registry: emptyRegistry(), handlers: new Map() },
         });
-        // Tripwire default matches the Mimetypes boot affordance (SPEC §mimetype-surface):
+        // Tripwire default matches the Mimetypes boot affordance (SPEC {§mimetype-surface}):
         // the divisor stands in only until the provider-backed tokenizer is
         // wired by the Daemon. Real counts come from provider.countTokens.
         this.#tokenize = tokenize ?? rulerCount;
@@ -521,7 +521,7 @@ export default class Engine {
     }
 
     // Per-loop usage totals (#197): SUM the loop's turns (usage is stored per
-    // turn, §tokenomics). Surfaced on loop.run + loop/terminated so clients render real
+    // turn, {§tokenomics}). Surfaced on loop.run + loop/terminated so clients render real
     // token/cost numbers. costUsd is the stored USD unit.
     // #345 — the client-facing budget denominator, ONE meaning on every surface: the prompt
     // budget the packet actually lives under, including optional virtual pressure.
@@ -610,9 +610,9 @@ export default class Engine {
         }
         this.#loopAborts.set(loopId, loopAbort);
 
-        // §operator-config-loop-timeout — the wall-clock budget. Expiry aborts the loop signal, so a
+        // {§operator-config-loop-timeout} — the wall-clock budget. Expiry aborts the loop signal, so a
         // mid-flight provider call (generate rides this signal) and in-flight spawns tear down; the
-        // loop terminates 504 (kin to the exec <T> reap's 504, §exec-timeout) — a legible engine
+        // loop terminates 504 (kin to the exec <T> reap's 504, {§exec-timeout}) — a legible engine
         // terminal, never an outside kill. unref'd: the wall never holds the process open.
         const wall = setTimeout(() => loopAbort.abort(LOOP_TIMEOUT_REASON), readLoopTimeoutMs());
         wall.unref();
@@ -661,7 +661,7 @@ export default class Engine {
             if (row.status === 100) {
                 // NOT a terminal — a wake re-queued this loop while its own live drain was
                 // between turns (a child concluded in the gap between our 202 write and this
-                // check, §worker-lifecycle-wake-requeue-not-terminal). The wake's intent is KEEP
+                // check, {§worker-lifecycle-wake-requeue-not-terminal}). The wake's intent is KEEP
                 // RUNNING: re-claim atomically and continue — the injected prompt is already
                 // this loop's next turn. Returning it as "external" broadcast a QUEUED loop
                 // as a terminal result with status 100 — the delegation-flags flake.
@@ -714,7 +714,7 @@ export default class Engine {
             // before we assemble it. A fixed grace beat, never a wait-for-completion;
             // 0/unset = off. Abortable with the loop signal.
             const execHandler = this.#schemes.get("exec") as { hasActiveSpawns?: (workerId: number) => boolean; hasActiveHoldSpawns?: (workerId: number, holdSet: ReadonlySet<string>) => boolean } | undefined;
-            // §exec-hold-until-concluded — the turn-hold exception (owner ruling): for runtimes in
+            // {§exec-hold-until-concluded} — the turn-hold exception (owner ruling): for runtimes in
             // the operator's HOLD set (the search family — streams we know and control: one final
             // JSON digest, seconds-bounded), the cycle PAUSES here until the stream concludes, so
             // the model never gets a turn it can only waste asking "are we there yet". Bounded by
@@ -780,7 +780,7 @@ export default class Engine {
                 return { turnIds, result, hitMaxTurns: false, reason: "invalid_emission" };
             }
 
-            // SPEC §grinder: budget hard-stop — packet won't fit even collapsed → abandon.
+            // SPEC {§grinder}: budget hard-stop — packet won't fit even collapsed → abandon.
             if (turn.budgetHardStop) {
                 if (turn.budget === undefined) {
                     throw new Error("a budget hard-stop requires its measured overflow");
@@ -808,7 +808,7 @@ export default class Engine {
                 minCycles, maxCyclePeriod, maxStrikes,
             });
             if (verdict.thresholdCrossed) {
-                // §loop-terminals — a cycle-driven strike is the model spinning in place
+                // {§loop-terminals} — a cycle-driven strike is the model spinning in place
                 // (508 Loop Detected); a failure/no-op strike is the model failing (500
                 // Internal Server Error). The straw that crossed the threshold picks it.
                 const status = verdict.cycleDetected ? 508 : 500;
@@ -906,16 +906,16 @@ export default class Engine {
         //     we DON'T re-foist here for N>1.
         // Model ops dispatch after these pre-model rows.
         let nextActionIndex = 1;
-        // §model-entry — the worker's first turn opens with the model's own turn-0, mirrored OPEN: a
+        // {§model-entry} — the worker's first turn opens with the model's own turn-0, mirrored OPEN: a
         // worked turn PLAN → the environment FINDs the foist ACTUALLY dispatches → SEND[102]. Built
         // from the real ops below (not a static print — we lean into the genuine echo paradigm) and
         // written at sequence 1, so it reads first as the emission with the foisted results following.
         const turnZeroMoves: string[] = [];
         if (seq === 1) {
             if (runFirstLoop) nextActionIndex = 2;  // reserve sequence 1 for the turn-0 echo
-            // Operator doc READs (PLURNK_SERVICE_MD_<ALIAS>, §actor-boundary-doc-injection). The docs were materialized
+            // Operator doc READs (PLURNK_SERVICE_MD_<ALIAS>, {§actor-boundary-doc-injection}). The docs were materialized
             // as plurnk:///<entry> entries by the plurnk worker (loop_run, via the
-            // §actor-boundary keystone); foist a READ of each into THIS turn-0 so the model
+            // {§actor-boundary} keystone); foist a READ of each into THIS turn-0 so the model
             // reads them inline. It sees only the READ — the materializing EDIT
             // lives in the plurnk worker's log, never the model's.
             // #231 — env docs (PLURNK_SERVICE_MD_*) UNION the workspace's client docs; foist a READ of
@@ -960,7 +960,7 @@ export default class Engine {
             }
         }
 
-        // §prompt-loop-containment: the loop contains every prompt that arrived
+        // {§prompt-loop-containment}: the loop contains every prompt that arrived
         // while it ran. Publish each undelivered frame as a prompt row, oldest
         // first, so rapid arrivals reach the model together exactly once.
         if (seq > 1) {
@@ -991,7 +991,7 @@ export default class Engine {
         // on demand by FIND: recursive when asked, shallow-mapped in the first turn below.
         // #312 — the turn's token gauge: the ACTIVE provider's tokenizer identity + exact counter
         // (mimetypes seam; provider upper bound surfaced as tokenizer_unavailable when inexact).
-        // SPEC §membership D4/D5 — git-ls-files workspace membership, resolved at
+        // SPEC {§membership} D4/D5 — git-ls-files workspace membership, resolved at
         // prompt-composition (EMI is eager + exhaustive — git is the only bound). When the
         // workspace's project_root is a git working tree, tracked files are
         // members without a client `add`; active members are materialized
@@ -1011,7 +1011,7 @@ export default class Engine {
         // consume the filesystem divergences a second time.
         await this.#queueWorkspaceWarm(systemCtx, true, false);
 
-        // Turn-0 catalog preview (PLURNK_SERVICE_FILES_ITEMS, §actor-boundary-catalog-preview):
+        // Turn-0 catalog preview (PLURNK_SERVICE_FILES_ITEMS, {§actor-boundary-catalog-preview}):
         // FIND surveys foisted into the worker's first model turn so it opens with its catalog.
         // Folder-capable surfaces reveal one level with `*`; each deeper directory is an
         // actionable `dir/**` aggregate. The curated kernel docs remain recursive, so the
@@ -1067,7 +1067,7 @@ export default class Engine {
                         sequence: nextActionIndex, origin: "plurnk", onDispatch,
                     });
                     nextActionIndex++;
-                    // §model-entry — the same FIND, rendered back to DSL for the turn-0 echo (the model's
+                    // {§model-entry} — the same FIND, rendered back to DSL for the turn-0 echo (the model's
                     // own survey, mirrored OPEN). The <L> cap rides as `<1,N>`, exactly as the model would type it.
                     turnZeroMoves.push(`<<FIND(${isFile ? pattern : `${schemeName}:///${pattern}`})${cap === null ? "" : `<1,${cap}>`}::FIND`);
                 }
@@ -1082,7 +1082,7 @@ export default class Engine {
                 await this.dispatch({ statement: kernelDocsFind, workspaceId, workerId, loopId, turnId, sequence: nextActionIndex, origin: "plurnk", onDispatch });
                 nextActionIndex++;
                 turnZeroMoves.push("<<FIND(worker://plurnk/docs/**)::FIND");
-                // §worker-scheme — the building worker's own scratch gets the same complete
+                // {§worker-scheme} — the building worker's own scratch gets the same complete
                 // one-level map in its perspective alone. It always executes: an empty private
                 // space is useful orientation, not grounds to hide the surface.
                 const ownFind: FindStatement = {
@@ -1092,7 +1092,7 @@ export default class Engine {
                 };
                 await this.dispatch({ statement: ownFind, workspaceId, workerId, loopId, turnId, sequence: nextActionIndex, origin: "plurnk", onDispatch });
                 nextActionIndex++;
-                turnZeroMoves.push("<<FIND(worker://~/*)::FIND");  // §model-entry — the own-space survey, into the turn-0 echo
+                turnZeroMoves.push("<<FIND(worker://~/*)::FIND");  // {§model-entry} — the own-space survey, into the turn-0 echo
             }
             // #260 — foist a turn-0 READ of each client-passed @file path so its content sits in front
             // of the model. Daemon owns the workspace → a normal file:/// member READ; a missing or
@@ -1115,7 +1115,7 @@ export default class Engine {
                 });
                 nextActionIndex++;
             }
-            // §model-entry — mirror the model's turn-0 OPEN at sequence 1: PLAN → the FINDs actually
+            // {§model-entry} — mirror the model's turn-0 OPEN at sequence 1: PLAN → the FINDs actually
             // foisted above (real, their results already in the log) → SEND[102]. Dynamic — it reflects
             // the true survey, never a frozen print — and OPEN: the worked example the model orients on,
             // so the grammar can stay thin. Subsequent turns mirror the model's real output, folded.
@@ -1125,12 +1125,12 @@ export default class Engine {
             }
         }
 
-        // §env-delta — pre-seed the worker's ambient observations (what changed since
+        // {§env-delta} — pre-seed the worker's ambient observations (what changed since
         // it last looked) as foisted rows before the packet composes; advance the action index
         // past them so model ops continue after. Two instances of one machine: env-delta (sibling
         // edits · timestamp cursor · always folded) and exec streams (channel bytes · byte cursor ·
-        // terminal delta opens). §env-delta §exec-stream
-        // §exec-poll — EXEC `<0>` is turn-scoped: reap the worker's open turn-scoped streams (necessarily
+        // terminal delta opens). {§env-delta} {§exec-stream}
+        // {§exec-poll} — EXEC `<0>` is turn-scoped: reap the worker's open turn-scoped streams (necessarily
         // from a prior turn — this runs before the turn's own spawns) so a `<0>` never survives into
         // the subsequent turn. The terminal output then surfaces born-OPEN via the stream-delta path.
         await this.#reapTurnScopedStreams(workerId);
@@ -1153,7 +1153,7 @@ export default class Engine {
             initialMessages: messages, requirements, workspaceId, workerId, loopId,
             currentTurnSeq: seq, provider, gitStatus, notices,
         });
-        // SPEC §grinder — budget grinder, pre-LLM: reclaim window on actual overflow.
+        // SPEC {§grinder} — budget grinder, pre-LLM: reclaim window on actual overflow.
         const enforced = await this.#packets.enforceBudget({
             packet: requestPacket, provider, workerId, loopId, turnId,
             // The overflow error row is minted at the turn's running sequence (nextActionIndex), pre-generate;
@@ -1170,9 +1170,9 @@ export default class Engine {
         requestPacket = enforced.packet;
         let operationConstraint: DispatchContext["operationConstraint"];
         if (!enforced.fit) {
-            // §grinder-hard-413-recovery (Q4, owner ruling: recoverable strike, NO margin) — the
+            // {§grinder-hard-413-recovery} (Q4, owner ruling: recoverable strike, NO margin) — the
             // overflow lives in foldable HISTORY the model owns, and the grinder won't touch
-            // history (§grinder-layer1-rollback doctrine). So the first hard overflow is a
+            // history ({§grinder-layer1-rollback} doctrine). So the first hard overflow is a
             // RECOVERY TURN, not death: the packet is over the POLICY ceiling but usually well
             // within PHYSICS (the jumbo pin: ceiling 13k, real window 49k) — send it once, with a
             // exact measurements and an enforced allowed-operation set, plus a strike
@@ -1277,11 +1277,11 @@ export default class Engine {
         // #249 — workspace-stable frontend id, forwarded as Plurnk-Client by the plurnk provider only.
         const { client } = await WorkspaceSettings.read(this.#db, workspaceId);
         try {
-            // §turn-lifecycle (#301) — the provider call is the long, opaque window (submit → first
+            // {§turn-lifecycle} (#301) — the provider call is the long, opaque window (submit → first
             // committed op is provider latency + a full first-turn generation, ~70s local): a static
             // screen there is indistinguishable from a hang. Bracket generate() with two notices beats
             // so a client can show "awaiting model" the instant the turn starts and flip to "parsing" when
-            // ops are about to land. Base notice/event channel (the embed_progress precedent, §tokenomics
+            // ops are about to land. Base notice/event channel (the embed_progress precedent, {§tokenomics}
             // clients already render it unconditionally); the abort guard keeps a cancelled loop silent.
             if (!signal?.aborted) this.#notices.push(workspaceId, loopId, { source: "engine:turn", kind: "turn_awaiting_model", level: "info", message: "awaiting model response" });
             const loopSeq = (await this.#db.engine_loop_sequence.get<{ sequence: number }>({ loop_id: loopId }))?.sequence ?? loopId;
@@ -1308,7 +1308,7 @@ export default class Engine {
                     workspaceId: String(workspaceId),
                     loop: loopSeq,
                     turn: seq,
-                }); // §provider-surface-generate §provider-guarantees-signal-wired §provider-guarantees-serial-attempts §attribution-plurnk-namespace-reserved §client-metadata
+                }); // {§provider-surface-generate} {§provider-guarantees-signal-wired} {§provider-guarantees-serial-attempts} {§attribution-plurnk-namespace-reserved} {§client-metadata}
                 providerCallInFlight = false;
                 railEvidence = railGrammar === undefined
                     ? undefined
@@ -1343,7 +1343,7 @@ export default class Engine {
             // This handler owns only provider-call failures. Parser, cost, SQL,
             // and engine-contract failures retain their original source.
             if (!providerCallInFlight) throw err;
-            // §turn-never-blank — a ProviderError means no completed exchange exists.
+            // {§turn-never-blank} — a ProviderError means no completed exchange exists.
             // Persist its exact RFC 9457 result before propagating it. Grammar evidence
             // and its engine-owned verdict exist only on completed responses
             // ({§rail-truth-engine-verdict}). Cancellation is lifecycle truth, not a
@@ -1452,7 +1452,7 @@ export default class Engine {
             callMetadata,
             parseNotices,
             recoverableParseErrors,
-        } = splitResponse; // raw assistant content is opaque — split, never interpreted — §provider-guarantees-assistantraw-opaque
+        } = splitResponse; // raw assistant content is opaque — split, never interpreted — {§provider-guarantees-assistantraw-opaque}
         for (const notice of parseNotices) {
             this.#notices.push(workspaceId, loopId, notice);
         }
@@ -1460,7 +1460,7 @@ export default class Engine {
         // Non-fatal provider transport notices on an accepted turn. Forward each
         // Notice with a content-offset `line:col`;
         // the model resolves it against its own emission — READ the folded `model` mirror row at the
-        // cited lines (§model-entry) — not an embedded snippet that would duplicate the emission.
+        // cited lines ({§model-entry}) — not an embedded snippet that would duplicate the emission.
         for (const notice of response.notices ?? []) {
             const located = typeof notice.position === "number"
                 ? this.#offsetToLineColumn(packetAssistant.content, notice.position)
@@ -1516,16 +1516,16 @@ export default class Engine {
             (op): op is PlurnkStatement & { op: "SEND"; signal: number } =>
                 op.op === "SEND" && typeof op.signal === "number" && op.signal >= 200,
         );
-        // §send the terminal contract — two engine error states verify a terminal claim against run
+        // {§send} the terminal contract — two engine error states verify a terminal claim against run
         // state, never trusting the model's code. Both strike via turn.steerStruck (turnErrors,
-        // §grinder-strike-coupling): the loop continues, the model sees the steering hint not the strike
+        // {§grinder-strike-coupling}): the loop continues, the model sees the steering hint not the strike
         // count, and a non-resolver spins out to the engine's 500.
         let steerStruck = false;
         // Engine errors raised this turn, minted as op='error' log rows after dispatch (they share the
-        // post-dispatch sequence counter). §operation-result-uniform-error-channel
+        // post-dispatch sequence counter). {§operation-result-uniform-error-channel}
         const pendingEngineErrors: EngineProblemKind[] = [];
 
-        // Terminal adjudication moved to the DISPATCHER (§send-premature-terminate, the unified
+        // Terminal adjudication moved to the DISPATCHER ({§send-premature-terminate}, the unified
         // pending set): the terminal SEND is judged AT ITS OWN DISPATCH — after the emission's
         // earlier ops executed — so a same-turn KILL+[200] repairs in one turn and a same-turn
         // WORK+[200] is caught. A refused terminal (409) strikes via the dispatch-loop check below.
@@ -1742,13 +1742,13 @@ export default class Engine {
                 ),
             });
         }
-        // §log-row-self-explains (Q2, owner-clarified) — a model-op failure is the MODEL'S OWN op
+        // {§log-row-self-explains} (Q2, owner-clarified) — a model-op failure is the MODEL'S OWN op
         // result: the op row carries its failure message on its meta line (packet-wire), and the
         // errors section points at the row. No separate minted item (the retired action_failure
         // mint dressed op results as source:"engine" faults — the jumbo model chased a phantom
         // "engine run 400 error" off a message-less item). Genuine engine-internal faults CRASH
-        // (fail-hard, §turn-never-blank) and never mint model-facing rows.
-        // §model-entry — mirror this turn's verbatim emission back as a `model` row, so the NEXT
+        // (fail-hard, {§turn-never-blank}) and never mint model-facing rows.
+        // {§model-entry} — mirror this turn's verbatim emission back as a `model` row, so the NEXT
         // packet shows the model exactly what it last produced. ALWAYS born FOLDED — the old
         // born-OPEN-on-error auto-trigger was conditional helpfulness that bred its own hazards
         // (a 24k-char ramble mirrored open re-injects itself into the next packet: cost,
@@ -1764,7 +1764,7 @@ export default class Engine {
         // Zero ops is NOT an error to report — the model knows it emitted
         // nothing. Strike accounting (engine-internal) treats it as a
         // struck turn; the model just sees an empty packet next turn.
-        // Per SPEC §operation-results gamification policy.
+        // Per SPEC {§operation-results} gamification policy.
 
         return {
             turnId,
@@ -1782,7 +1782,7 @@ export default class Engine {
     // Split the wire-level ProviderResponse into the two destinations:
     // packet.assistant gets the model's emission (content, ops, reasoning);
     // Turn columns get the call-metadata (usage, finishReason, model).
-    // SPEC §provider-surface / plurnk-providers#1: text-fragment scraping policy lives
+    // SPEC {§provider-surface} / plurnk-providers#1: text-fragment scraping policy lives
     // here — engine owns the parse and the scraping rule, providers stay
     // grammar-unaware.
     //
@@ -1892,8 +1892,8 @@ export default class Engine {
         return this.#packets.docEntries(workspaceId);
     }
 
-    // §env-delta (§actor-boundary-no-mutex: runs share without locks; a conflict surfaces as a delta, never prevented) — at pre-turn build, surface what changed in the shared world since this
-    // run last looked. No per-worker snapshot (§machine-processes "a worker is its log"): every
+    // {§env-delta} ({§actor-boundary-no-mutex}: runs share without locks; a conflict surfaces as a delta, never prevented) — at pre-turn build, surface what changed in the shared world since this
+    // run last looked. No per-worker snapshot ({§machine-processes} "a worker is its log"): every
     // edit is already a span-carrying log row, so PULL other actors' EDITs on shared
     // entries since this worker's prior turn — real cross-worker edits and the plurnk worker's
     // fs-sync fictions — and materialize each as a FOLDED delta reusing the row's span +
@@ -1918,7 +1918,7 @@ export default class Engine {
             });
             written++;
         }
-        // §worker-scheme — loop-terminations: a sibling's loop reaching terminal surfaces the
+        // {§worker-scheme} — loop-terminations: a sibling's loop reaching terminal surfaces the
         // same way an entry-change does, carrying its deliverable (the SEND body) or the
         // abandonment reason. Folded, attributed to the terminated run.
         const terms = await this.#db.engine_pull_loop_terminations.all<{
@@ -1937,11 +1937,11 @@ export default class Engine {
         return written;
     }
 
-    // §exec-poll — EXEC `<0>` is turn-scoped: abort the worker's open turn-scoped streams via their
+    // {§exec-poll} — EXEC `<0>` is turn-scoped: abort the worker's open turn-scoped streams via their
     // owning scheme (the same registry-routed abort the total reap uses). Called at each pre-turn
     // before the turn's own spawns, so every open turn-scoped sub here is from a prior turn — it
     // never survives into the subsequent turn. Fire-and-forget: the spawn finalizes async and its
-    // terminal output surfaces born-OPEN through the stream-delta path (§exec-stream).
+    // terminal output surfaces born-OPEN through the stream-delta path ({§exec-stream}).
     async #reapTurnScopedStreams(workerId: number): Promise<void> {
         const open = await this.#db.find_open_turn_scoped_subscriptions_for_worker.all<{ id: number }>({ worker_id: workerId });
         await Promise.all(open.map(({ id }) => this.#liveSubscriptions.cancel(id)));
@@ -1951,12 +1951,12 @@ export default class Engine {
         return this.#liveSubscriptions.cancel(subscriptionId);
     }
 
-    // §env-delta — exec streams as an instance of the ambient-observe machine:
+    // {§env-delta} — exec streams as an instance of the ambient-observe machine:
     // each turn, emit each owned channel's unshown byte-delta as a foisted READ row. It is 200
     // while the channel streams and preserves the exact terminal result when closed. Ongoing
     // deltas fold; the terminal delta auto-OPENs. The cursor is the
     // streamEnd recorded on the channel's prior delta — no exec-specific surfacing, just the
-    // env-observe loop with a byte cursor where env-delta uses a timestamp. §exec-stream
+    // env-observe loop with a byte cursor where env-delta uses a timestamp. {§exec-stream}
     async #materializeStreamDeltas(args: {
         workerId: number; loopId: number; turnId: number; fromSequence: number;
     }): Promise<number> {
@@ -2008,7 +2008,7 @@ export default class Engine {
                 // the conclusion of a stream whose result it already holds folded. The same
                 // observation is required when the stream produced zero bytes: completion is
                 // information independently of payload. Emit the terminal marker ONCE: open,
-                // terse, carrying the close status (§tokenomics-fetch-fits-free).
+                // terse, carrying the close status ({§tokenomics-fetch-fits-free}).
                 if (closed && priorAttrs.terminal !== true) {
                     const pointer = cursor > 0
                         ? `full output already delivered above; READ ${ch.runtime}://${ch.coord}${visibleFragment === null ? "" : `#${visibleFragment}`} to revisit`
@@ -2030,7 +2030,7 @@ export default class Engine {
                 continue;
             }
             // startLine continues the line count across turns: a multi-turn stream's deltas number
-            // into one sequence (lines N..M, then M+1..), not N independent "1:" restarts. §exec-stream
+            // into one sequence (lines N..M, then M+1..), not N independent "1:" restarts. {§exec-stream}
             const startLine = (ch.content.slice(0, cursor).match(/\n/g)?.length ?? 0) + 1;
             const sequence = fromSequence + written;
             const result = closed
@@ -2042,20 +2042,20 @@ export default class Engine {
                 rx: JSON.stringify(result),
                 status: result.status,
                 attrs: JSON.stringify({ streamEnd: ch.content.length, terminal: closed }),
-                expanded: closed ? 1 : 0,  // §exec-stream — terminal delta auto-OPENs; ongoing folds
+                expanded: closed ? 1 : 0,  // {§exec-stream} — terminal delta auto-OPENs; ongoing folds
             });
             written++;
         }
         return written;
     }
 
-    // §env-delta — the filesystem as an actor. Ambient disk divergences detected at
+    // {§env-delta} — the filesystem as an actor. Ambient disk divergences detected at
     // pre-turn (git membership re-read) are logged as the plurnk worker's source=file EDIT
     // "fictions": no op happened, but EDIT is the only grammar the model has for "your
     // world changed," so the fiction keeps its perspective aligned with what its tooling
     // would show. The fiction lives in the plurnk worker's log; every other run pulls it
     // through the one delta path, exactly like a sibling's real edit.
-    // §membership-emi-divergence-signal — disk divergences logged as the plurnk worker's source=file EDIT fictions
+    // {§membership-emi-divergence-signal} — disk divergences logged as the plurnk worker's source=file EDIT fictions
     async #logFsFictions(workspaceId: number, divergences: FsDivergence[]): Promise<void> {
         if (divergences.length === 0) return;
         const run = await this.#db.envelope_get_worker_by_name.get<{ id: number }>({ workspace_id: workspaceId, name: "plurnk" })
@@ -2153,7 +2153,7 @@ export default class Engine {
     // External API to feed a resolution into a pending proposal — the loop/resolve
     // RPC handler, the in-tree auto listener, or the timeout watcher.
     // Shutdown lane: settle every pending proposal with a cancel so a stopped world can never
-    // deadlock the stop (§proposal-cancel-aborts; the #344 wedge class).
+    // deadlock the stop ({§proposal-cancel-aborts}; the #344 wedge class).
     cancelAllProposals(outcome: string): void {
         this.#proposals.cancelAll(outcome);
     }
@@ -2247,13 +2247,13 @@ export default class Engine {
 
     //  — can this op open a wake edge mid-turn? The grounding scan for a
     // same-turn spawn-then-hibernate: an EXEC (stream conclusion / poll cadence wakes), a COPY to
-    // worker:// (child-conclusion wake, §worker-lifecycle-child-wake), a directed SEND to worker:// (irc — the
+    // worker:// (child-conclusion wake, {§worker-lifecycle-child-wake}), a directed SEND to worker:// (irc — the
     // addressee can act and conclude back), or an http READ (a web fetch streams into a subscription).
     // Conservative on purpose: a false PERMIT risks a dead park only in the spawn-failed corner; a
     // false REFUSE breaks legitimate hibernation.
 
     // A worker "holds a live thing" iff it has an open stream/spawn (subscription registry or an
     // exec spawn) OR a non-terminal child worker — the structured-concurrency invariant a terminal
-    // SEND must respect (§send-premature-terminate,  §run-lifecycle:
+    // SEND must respect ({§send-premature-terminate},  {§run-lifecycle}:
     // children and streams are the same kind of live thing a worker holds).
 }

@@ -1,4 +1,4 @@
--- Entry CRUD primitives (SPEC §crud). Used by entry-bearing schemes
+-- Entry CRUD primitives (SPEC {§crud}). Used by entry-bearing schemes
 -- (known/unknown/skill) and the engine for cross-scheme COPY/MOVE/SEND[410].
 
 -- PREP: crud_find_workspace_entry
@@ -19,7 +19,7 @@ VALUES ($workspace_id, $owner_id, $scheme, $pathname)
 RETURNING id;
 
 -- PREP: crud_register_workspace_member
--- Idempotent bare-membership insert (SPEC §membership D4 — git ls-files membership).
+-- Idempotent bare-membership insert (SPEC {§membership} D4 — git ls-files membership).
 -- A git-tracked file is a workspace member by virtue of being tracked; the row
 -- is the membership marker the File read-gate checks and FIND globs by path.
 -- Channel-less by design — disk stays the truth (D3). ON CONFLICT no-ops so
@@ -31,7 +31,7 @@ DO NOTHING
 RETURNING id;
 
 -- PREP: crud_get_member_sig
--- SPEC §membership-change-gated-sync — the member's last-synced disk signature
+-- SPEC {§membership-change-gated-sync} — the member's last-synced disk signature
 -- (mtime:size), read before materializing so an unchanged file short-circuits
 -- before any content read. File members store scheme='file' ({§entry-identity-no-null}).
 SELECT id, synced_sig, membership_origin FROM entries
@@ -75,7 +75,7 @@ SELECT id, pathname FROM entries
 WHERE workspace_id = $workspace_id AND scheme = 'file' AND membership_origin IN ('git', 'constraint');
 
 -- PREP: crud_insert_workspace_constraint
--- SPEC §membership constraint overlay — the client supersede. Idempotent per
+-- SPEC {§membership} constraint overlay — the client supersede. Idempotent per
 -- (workspace, effect, glob); effect ∈ {add, ignore, read-only}.
 INSERT OR IGNORE INTO workspace_constraints (workspace_id, effect, glob)
 VALUES ($workspace_id, $effect, $glob);

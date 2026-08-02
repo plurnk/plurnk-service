@@ -1,4 +1,4 @@
-// SPEC §grinder — the budget grinder. The model "behaves" here (a clean SEND each
+// SPEC {§grinder} — the budget grinder. The model "behaves" here (a clean SEND each
 // turn); these tests exercise the engine's enforcement, not the model. An
 // absolute ceiling far below any real packet forces overflow deterministically.
 
@@ -198,7 +198,7 @@ test("turn-1 overflow folds the turn's own foists and STRIKES — no soft exempt
         let t1: Awaited<ReturnType<Engine["runTurn"]>>;
         try { t1 = await engine.runTurn({ provider: mockAt(4094, okSends(1)), workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 1 }); } finally { restore(); }
         assert.equal(t1.budgetStruck, true, "every grinder fold strikes - turn 1 is not exempt");
-        // §grinder-hard-413-recovery: the first hard overflow is now the RECOVERY turn (sendable
+        // {§grinder-hard-413-recovery}: the first hard overflow is now the RECOVERY turn (sendable
         // within the 4096 window), not a hard stop — the strike above is what this test pins.
         assert.equal(t1.budgetHardStop, false, "first overflow → recovery turn, not death");
     } finally { await db.close(); }
@@ -295,7 +295,7 @@ test("the ceiling is the real window partition (window − reserves), no calibra
         const b = new PacketBuilder({ db, schemes: new SchemeRegistry(), problems: new ProblemLog(db), executors: () => undefined });
         // #507 — the provider window drives; reserves 1+1 (parseReserve floor) → ceiling 9998.
         // No ratio: the model-facing measure is the chars/2 ruler, and comparing ruler-weight to
-        // this real-token ceiling is the conservative bias (§tokenomics-agnostic-ruler).
+        // this real-token ceiling is the conservative bias ({§tokenomics-agnostic-ruler}).
         const provider = mockAt(9998, [], 10_000);
         assert.equal(b.ceilingFor(provider), 9998, "ceiling = provider window − reserves, verbatim");
     } finally { await db.close(); }

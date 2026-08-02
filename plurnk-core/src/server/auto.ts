@@ -23,7 +23,7 @@
 //     - The wire roundtrip still happens; the daemon stays unaware that
 //       no human reviewed.
 //     - Use cases: real users who want "stop bothering me" ergonomics
-//       across an interactive workspace. Documented in client SPEC §open-fold.
+//       across an interactive workspace. Documented by the client.
 //
 // Listener fires BEFORE ProposalLifecycle.awaitResolution awaits the waiter, so a
 // synchronous resolveProposal here is delivered to the awaiting dispatch
@@ -38,7 +38,7 @@ import type { Db } from "../core/Db.ts";
 
 export default class Auto {
     static attach(engine: Engine, _db: Db): void {
-        // §proposal-ownership-loop-auto
+        // {§proposal-ownership-loop-auto}
         engine.onProposalPending((event: ProposalPendingEvent) => {
             if (!event.flags.auto) return;
             // A [300] question is NOT automatic (#346): it exists precisely to stop the world

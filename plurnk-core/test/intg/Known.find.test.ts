@@ -1,4 +1,4 @@
-// Tests for FIND on entry-bearing schemes (SPEC §find).
+// Tests for FIND on entry-bearing schemes (SPEC {§find}).
 
 import test from "node:test";
 import assert from "node:assert/strict";

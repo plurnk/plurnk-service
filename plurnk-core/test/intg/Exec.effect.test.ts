@@ -2,7 +2,7 @@
 // service owns the policy. `host` runtimes (sh/node/python, file-backed
 // sqlite) propose — a human gate. `read`/`pure` runtimes (search, :memory:
 // sqlite) auto-run ungated: no proposal, no notification — but, like every
-// exec, they background and stream their output (§exec-stream), not in-band.
+// exec, they background and stream their output ({§exec-stream}), not in-band.
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -56,7 +56,7 @@ test("effect-gating: sqlite :memory: (pure) auto-runs ungated — no proposal, n
         });
         assert.notEqual(result.status, 202, "a pure runtime must not leave a pending proposal — it skips the gate");
         assert.ok(result.status < 400, `auto-run resolved cleanly; got ${result.status}`);
-        // No in-band receipt: like every exec it backgrounds + streams (§exec-stream); the output
+        // No in-band receipt: like every exec it backgrounds + streams ({§exec-stream}); the output
         // reaches the model via the env-observation injector next turn, not here.
         assert.equal(result.body, undefined, "pure auto-run returns no in-band body — it streams");
         await exec.idle();
@@ -79,7 +79,7 @@ test("sqlite EXEC in a workspace workspace: a project_root cwd no longer 500s th
         assert.notEqual(result.status, 202, "pure runtime auto-runs ungated, no proposal");
         assert.ok(result.status < 400, `resolved cleanly with a project_root cwd; got ${result.status}`);
         // A clean resolve (not 202, < 400) is the #216 signal: the db opened + the query ran with
-        // a DIRECTORY cwd. The output then streams like any exec (§exec-stream), no in-band body.
+        // a DIRECTORY cwd. The output then streams like any exec ({§exec-stream}), no in-band body.
         await exec.idle();
     } finally { await db.close(); await rm(root, { recursive: true, force: true }); }
 });

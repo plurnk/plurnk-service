@@ -441,7 +441,7 @@ export default class ClientInput {
             }
             out.git = r.git;
         }
-        // §send-300-choices — operator questions: the client AFFIRMATIVELY requests them per
+        // {§send-300-choices} — operator questions: the client AFFIRMATIVELY requests them per
         // workspace (its own PLURNK_QUESTIONS=1 forwarded); enabled = allowed (service env) AND this.
         if (r.questions !== undefined) {
             if (typeof r.questions !== "boolean") {

@@ -1,4 +1,4 @@
--- Envelope lifecycle queries. SPEC §connection-lifecycle.
+-- Envelope lifecycle queries. SPEC {§connection-lifecycle}.
 
 -- PREP: envelope_insert_workspace
 INSERT INTO workspaces (name, project_root, settings)
@@ -16,7 +16,7 @@ SELECT id FROM workspaces WHERE name = $name;
 
 -- PREP: envelope_set_workspace_name
 -- Used by workspace.rename. The workspace name is a MUTABLE handle (vs a worker's
--- immutable name, §machine-processes). Returns the updated row to refresh the
+-- immutable name, {§machine-processes}). Returns the updated row to refresh the
 -- caller's ClientEnvelope copy.
 UPDATE workspaces SET name = $name
 WHERE id = $id
@@ -27,7 +27,7 @@ WHERE id = $id
 RETURNING id, name;
 
 -- PREP: envelope_insert_worker
--- origin is the worker's actor (§machine-processes): 'model' (the conversation),
+-- origin is the worker's actor ({§machine-processes}): 'model' (the conversation),
 -- 'client' (a connection's own worker), or 'plurnk' (the runtime self-hosting worker).
 INSERT INTO workers (workspace_id, name, origin)
 VALUES ($workspace_id, $name, $origin)

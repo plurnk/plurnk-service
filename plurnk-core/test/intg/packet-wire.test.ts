@@ -190,7 +190,7 @@ test("EDIT with an accept-path span (rx.body from a proposed file edit) renders 
     // A PROPOSED file EDIT's accept delivers its editedSpan under rx.body (the generic accept-rx key),
     // where the inline entry-scheme EDIT delivers the same span under rx.span. Both must render — the
     // model has to SEE what its write changed in the EDIT row itself, or it re-EDITs the file across
-    // turns (the observed 0-token bodyless-EDIT gap). §edit-result-render.
+    // turns (the observed 0-token bodyless-EDIT gap). {§edit-result-render}.
     const out = PacketWire.renderLog([{
         coordinate: "1/4/2",
         origin: "model",
@@ -506,7 +506,7 @@ test("requirements renders LAST in the user slot, under its own header", () => {
         { name: "errors", slot: "user", header: "Plurnk Service Errors", content: PacketWire.renderFailurePointers([{ status: 409, coordinate: "1/1/1/error" }]), tokens: 0 },
         { name: "requirements", slot: "user", header: "Plurnk Service Requirements", content: "Conclude the loop with <<SEND[200]:answer:SEND", tokens: 0 },
     ], "user");
-    // §requirements: requirements is the contract that must win conflicts with the
+    // {§requirements}: requirements is the contract that must win conflicts with the
     // natural-language prompt, so it renders closest to the assistant turn —
     // after the prompt, budget, and errors, with nothing following it.
     assert.match(out, /## Plurnk Service Requirements\n\nConclude the loop with <<SEND\[200\]:answer:SEND$/,

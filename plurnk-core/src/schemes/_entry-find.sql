@@ -1,12 +1,12 @@
 -- FIND / multi-entry OPEN / FOLD candidate selection for entry-bearing
--- schemes (SPEC §find; plurnk.md FIND row).
+-- schemes (SPEC {§find}; plurnk.md FIND row).
 --
 -- Scope (target) + tag filters ONLY. The body matcher does NOT belong here:
--- per plurnk.md §"Body matcher dispatch" it runs against entry CONTENT, which
+-- per plurnk.md "Pattern Filtering" it runs against entry CONTENT, which
 -- needs the mimetypes plugin (xpath/jsonpath/regex/glob over structured
 -- content) — so the body match runs in JS (Matcher.matchAgainstContent) over
 -- the default-channel content this query returns. Static query handles every
--- filter combination via IS-NULL guards (per SqlRite LLMS.md §channels).
+-- filter combination via IS-NULL guards.
 
 -- PREP: find_workspace_entry_candidates
 -- $channel: default-channel name whose content the body matcher runs against

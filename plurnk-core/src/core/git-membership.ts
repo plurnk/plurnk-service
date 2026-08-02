@@ -1,4 +1,4 @@
-// SPEC §membership D4 — git-ls-files workspace membership. §membership-git-membership
+// SPEC {§membership} D4 — git-ls-files workspace membership. {§membership-git-membership}
 //
 // When a workspace's `project_root` is a git working tree, the git-tracked
 // files (`git ls-files`) are workspace MEMBERS without any explicit client
@@ -38,7 +38,7 @@ import Owner from "./Owner.ts";
 import EntryCrud from "../schemes/_entry-crud.ts";
 import WorkspaceSettings from "./workspace-settings.ts";
 
-// §env-delta — an ambient disk divergence captured at pre-turn: the entry's content
+// {§env-delta} — an ambient disk divergence captured at pre-turn: the entry's content
 // before the git-membership re-read vs the disk content after. The plurnk worker narrates
 // it as a source=file EDIT so every worker pulls it through the one delta path.
 export interface FsDivergence {
@@ -97,7 +97,7 @@ export default class GitMembership {
         return files;
     }
 
-    // Untracked-but-not-ignored files of one repo (SPEC §membership-auto-add) —
+    // Untracked-but-not-ignored files of one repo (SPEC {§membership-auto-add}) —
     // GitIso.untrackedFiles (the differential-gated pruning ignore-walk) or native `git ls-files
     // --others --exclude-standard -z`. A model-created file is a repo
     // member the moment it exists — no git-stage required — while `.gitignore` still filters it.
@@ -188,12 +188,12 @@ export default class GitMembership {
 
         // `pick` overlay — a targeted, client-dictated scan for untracked matches
         // (node:fs glob over the client's pattern, never a blind walk).
-        const picked = pickGlobs.length === 0 ? [] : await GitMembership.#scanPickMembers(root, pickGlobs, signal); // §membership-overlay-pick
+        const picked = pickGlobs.length === 0 ? [] : await GitMembership.#scanPickMembers(root, pickGlobs, signal); // {§membership-overlay-pick}
         return { root, gitMembers, picked, hideGlobs, viewGlobs };
     }
 
     // Resolve a workspace's file membership: the desired set is (git ls-files ∪ pick
-    // globs) − hide globs (SPEC §membership overlay), reconciled against the registered
+    // globs) − hide globs (SPEC {§membership} overlay), reconciled against the registered
     // overlay-owned members so entries == members. Channel-less rows — disk is the
     // truth (D3); the row is the membership marker File.read gates on. Returns the
     // desired pathnames so the caller can materialize them through writeEntry.
@@ -209,7 +209,7 @@ export default class GitMembership {
         if (inputs === null) return [];   // headless — no disk surface to resolve
         const { gitMembers: members, picked, hideGlobs } = inputs;
 
-        // Compose: (git ∪ pick) − hide (§membership-overlay-hide), tracking origin for reconciliation — a path
+        // Compose: (git ∪ pick) − hide ({§membership-overlay-hide}), tracking origin for reconciliation — a path
         // in `members` is 'git', a pick-only match is 'constraint'.
         const memberSet = new Set(members);
         const passesHide = (p: string): boolean => hideGlobs.length === 0 || !hideGlobs.some((g) => matchesGlob(p, g));
@@ -245,7 +245,7 @@ export default class GitMembership {
     // plurnk.nvim gutter signs): the same (git ∪ pick) / hide / view resolution resolveGitMembership
     // composes, surfaced per-file so a client signs member/view/hidden with ZERO glob-matching of
     // its own. `members` are (git ∪ pick) − hide, each tagged `view` (read-only, refused at the
-    // File edit gate §membership-overlay-view) or plain `member`; `hidden` are candidates a `hide`
+    // File edit gate {§membership-overlay-view}) or plain `member`; `hidden` are candidates a `hide`
     // glob excludes (project files absent from the manifest). Paths namespace-absolute, matching
     // the manifest + storage. Headless → empty. {§membership-resolved-effects}
     static async resolveMembershipEffects(
@@ -272,7 +272,7 @@ export default class GitMembership {
         return { members, hidden };
     }
 
-    // Targeted client-dictated scan (SPEC §membership `pick`) — enumerate disk files
+    // Targeted client-dictated scan (SPEC {§membership} `pick`) — enumerate disk files
     // matching the client's pick-globs via node:fs glob (the pattern bounds the
     // traversal; never a blind fs-walk). Files only — directories aren't members.
     // Workspace-relative paths, the same shape as git ls-files.
@@ -310,7 +310,7 @@ export default class GitMembership {
         ctx: PlurnkSchemeContext,
     ): Promise<FsDivergence | null> {
         const canonical = join(root, pathname);  // pathname is namespace-absolute (`/src/foo.ts`); join roots it at the workspace
-        // SPEC §membership-change-gated-sync — the cheap detect is a stat (mtime:size),
+        // SPEC {§membership-change-gated-sync} — the cheap detect is a stat (mtime:size),
         // never a content read: a member whose signature matches its last sync is a
         // no-op (not re-read, re-tokenized, or rewritten). Coverage stays exhaustive
         // (every member is stat'd); work is proportional to change.
@@ -347,7 +347,7 @@ export default class GitMembership {
             if ((err as NodeJS.ErrnoException).code === "ENOENT") return null;
             throw err;
         }
-        // §membership-binary-sniff (#320) — the extension map can lie (.wasm fell through to
+        // {§membership-binary-sniff} (#320) — the extension map can lie (.wasm fell through to
         // the markdown DEFAULT and a 3.3MB blob entered the corpus as prose, three copies,
         // ~10M tokens). NUL bytes in the head are binary truth regardless of the label:
         // re-stamp octet-stream and take the binary arm (empty body, READ-415, never
@@ -358,7 +358,7 @@ export default class GitMembership {
             return null;
         }
         const content = buf.toString("utf8");
-        // §env-delta — capture an out-of-band disk change BEFORE the refresh overwrites
+        // {§env-delta} — capture an out-of-band disk change BEFORE the refresh overwrites
         // the entry: an existing body channel whose content differs from disk is an
         // ambient divergence (D5). writeEntry then refreshes the entry to disk truth.
         const prior = await ctx.db.ops_read_channel.get<{ content: string }>({

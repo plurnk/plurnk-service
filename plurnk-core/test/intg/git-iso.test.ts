@@ -1,4 +1,4 @@
-// [§git-isomorphic-opt-in] (#461) - differential coverage for the optional
+// {§git-isomorphic-opt-in} (#461) - differential coverage for the optional
 // GitIso backend. Fixtures are seeded with native Git, then read through both
 // backends. Native is the production default; isomorphic Git must be selected.
 

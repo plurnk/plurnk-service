@@ -1,4 +1,4 @@
-// SPEC §env-delta / §machine-processes — the environment delta as a PULL from the
+// SPEC {§env-delta} / {§machine-processes} — the environment delta as a PULL from the
 // shared log. No per-worker snapshot: every edit is already a span-carrying log row, so
 // at pre-turn a worker surfaces other actors' edits on shared entries since its OWN last
 // turn, folded. Two producers: real cross-worker edits (a sibling's EDIT) and the
@@ -184,14 +184,14 @@ test("an out-of-band disk change surfaces as a source=file delta — the plurnk 
         assert.ok(delta, "the out-of-band disk change surfaced as a source=file delta");
         assert.equal(delta!.pathname, "notes.md", "the delta names the diverged file");
         assert.equal(delta!.expanded, 0, "the fs delta lands folded");
-        assert.match(JSON.parse(delta!.rx).span as string, /line3-external/, "the delta carries the changed span (§edit-result-render)");
+        assert.match(JSON.parse(delta!.rx).span as string, /line3-external/, "the delta carries the changed span ({§edit-result-render})");
     } finally {
         await db.close();
         await rm(root, { recursive: true, force: true });
     }
 });
 
-// §worker-scheme loop-termination rides the same env-delta rail: when a sibling's loop
+// {§worker-scheme} loop-termination rides the same env-delta rail: when a sibling's loop
 // reaches a terminal status, the observer pulls it at pre-turn as a FOLDED SEND from
 // worker://<name> carrying the loop's deliverable — the SEND[200] body or, for an
 // abandonment, the reason. The terminated_at trigger stamps every death-path uniformly,

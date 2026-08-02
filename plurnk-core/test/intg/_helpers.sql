@@ -105,7 +105,7 @@ WHERE e.workspace_id = $workspace_id AND s.scheme = $scheme AND s.closed_at IS N
 
 -- PREP: test_exec_close_status_by_session
 -- The close_status the registry recorded for a workspace's most-recently-closed
--- stream of a scheme — proves the registry-routed reap (§worker-lifecycle-total-reap)
+-- stream of a scheme — proves the registry-routed reap ({§worker-lifecycle-total-reap})
 -- closed the subscription at 499, not just that a notification fired.
 SELECT s.close_status FROM subscriptions s
 JOIN entries e ON e.id = s.entry_id
@@ -143,7 +143,7 @@ SELECT id, op, pathname, scheme, sequence, turn_id, loop_id, status_rx
 FROM log_entries WHERE worker_id = $worker_id ORDER BY id;
 
 -- PREP: test_log_tags_by_run
--- §log-region-tagging — a worker's log tags with the coordinate they sit on (fork-copy assertions).
+-- {§log-region-tagging} — a worker's log tags with the coordinate they sit on (fork-copy assertions).
 SELECT (l.sequence || '/' || t.sequence || '/' || le.sequence) AS coordinate, lt.tag
 FROM log_tags lt
 JOIN log_entries le ON le.id = lt.log_entry_id
@@ -153,7 +153,7 @@ WHERE l.worker_id = $worker_id ORDER BY coordinate, lt.tag;
 
 -- PREP: test_log_entries_by_loop
 -- The model loop's own entries — robust to which run holds the loop (the model
--- runs in its OWN run now, §connection-lifecycle), so a test queries by the loopId it holds.
+-- runs in its OWN run now, {§connection-lifecycle}), so a test queries by the loopId it holds.
 -- origin is the writer tier (model | client | plurnk) — lets a test assert an engine foist
 -- (origin='plurnk') vs a model op without a second query.
 SELECT id, op, pathname, scheme, hostname, sequence, turn_id, loop_id, status_rx, rx, expanded, origin, lineMarker
@@ -310,7 +310,7 @@ SELECT cosine($a, $b) AS sim;
 
 
 -- PREP: test_all_loops
--- [§worker-delegation-inherits-flags] — every loop's persisted flags, delegation-tree-wide.
+-- {§worker-delegation-inherits-flags} — every loop's persisted flags, delegation-tree-wide.
 SELECT id, worker_id, flags FROM loops ORDER BY id;
 
 -- PREP: test_workers_with_parent
@@ -318,12 +318,12 @@ SELECT id, worker_id, flags FROM loops ORDER BY id;
 SELECT id, name, parent_worker_id, origin FROM workers ORDER BY id;
 
 -- PREP: test_edit_states
--- [§worker-delegation-inherits-flags] — EDIT rows' proposal states: a delegated child's EDIT
+-- {§worker-delegation-inherits-flags} — EDIT rows' proposal states: a delegated child's EDIT
 -- must land resolved (inherited auto), never proposed/cancelled into the void.
 SELECT pathname, state FROM log_entries WHERE op = 'EDIT' AND origin = 'model' ORDER BY id;
 
 -- PREP: test_all_packets
--- [§strikes-first-party-metadata] — every stored packet, to prove no section carries strike state.
+-- {§strikes-first-party-metadata} — every stored packet, to prove no section carries strike state.
 SELECT packet FROM turns WHERE packet IS NOT NULL;
 
 -- PREP: test_deep_hash
@@ -331,7 +331,7 @@ SELECT packet FROM turns WHERE packet IS NOT NULL;
 SELECT deep_hash FROM entries WHERE workspace_id = $workspace_id AND deep_hash IS NOT NULL LIMIT 1;
 
 -- PREP: test_ops_by_loop
--- [§fold-open-meta-operations] — every model-origin op row with its status.
+-- {§fold-open-meta-operations} — every model-origin op row with its status.
 SELECT op, status_rx FROM log_entries WHERE origin = 'model' ORDER BY id;
 
 -- PREP: test_set_session_settings

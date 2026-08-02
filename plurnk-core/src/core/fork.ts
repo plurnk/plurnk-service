@@ -1,18 +1,18 @@
-// Fork a worker — branch the log, share the workspace (SPEC §machine-processes).
+// Fork a worker — branch the log, share the workspace (SPEC {§machine-processes}).
 //
 // A fork is a NEW run in the SAME workspace (`parent_worker_id` records the lineage),
 // holding a deep copy of the parent's log: loops → turns → entries, with their
 // fold-state (`expanded`) and attribution (`origin`/`source`) intact. It copies
 // nothing of the shared WORLD — the workspace's entries and overlay are shared, never
 // copied, because a worker never owned them. But it DOES inherit the parent's worker-scope
-// SCRATCH (§worker-scheme — the worker's private workspace, owner-remapped parent → branch):
-// "fork = everything-in-common-but-name, then diverges". The §env-delta reconciliation
+// SCRATCH ({§worker-scheme} — the worker's private workspace, owner-remapped parent → branch):
+// "fork = everything-in-common-but-name, then diverges". The {§env-delta} reconciliation
 // snapshot is not copied; the branch first-sights its world like any fresh run.
 
 import type { Db } from "./Db.ts";
 
 export default class Fork {
-    // Terminal loop statuses (§lifecycle-terms) — inherited loops outside this set are clamped to 200.
+    // Terminal loop statuses ({§lifecycle-terms}) — inherited loops outside this set are clamped to 200.
     static #TERMINAL_LOOP = new Set([200, 413, 429, 499, 500, 504, 508]);
 
     static async fork(db: Db, parentWorkerId: number, name?: string): Promise<number> {
@@ -21,7 +21,7 @@ export default class Fork {
 
         // #248 — name the branch at instantiation (immutable after). An explicit name wins; the default
         // is `<parent>-fork-<N>` (N = next free), so N self-forks of one parent are individually
-        // addressable instead of all colliding on a single `<parent>-fork` (§worker-scheme-fork).
+        // addressable instead of all colliding on a single `<parent>-fork` ({§worker-scheme-fork}).
         let branchName = name;
         if (branchName === undefined) {
             const existing = await db.fork_count_branches.get<{ n: number }>({ parent_worker_id: parentWorkerId, name_prefix: `${parent.name}-fork%` });
@@ -37,7 +37,7 @@ export default class Fork {
         // branch's live work (its own loop is enqueued fresh by injectWorker) — so a non-terminal status
         // is clamped to terminal (200). Otherwise a fork taken while the parent's loop is mid-flight (102)
         // would carry a frozen-live loop no drain ever advances, falsely marking the branch forever-live
-        // to any liveness check (§worker-scheme-fork, the premature-terminate gate §send-premature-terminate).
+        // to any liveness check ({§worker-scheme-fork}, the premature-terminate gate {§send-premature-terminate}).
         const loops = await db.fork_get_loops.all<{
             id: number;
             sequence: number;
@@ -91,11 +91,11 @@ export default class Fork {
             const { id: oldLogId, ...row } = e;
             const ne = await db.fork_insert_log_entry.get<{ id: number }>({ ...row, worker_id: branchWorkerId, loop_id: loopMap.get(e.loop_id), turn_id: turnMap.get(e.turn_id) });
             if (ne === undefined) throw new Error("fork: log entry copy returned no row");
-            // §log-region-tagging — carry the row's region tags onto the copy (no-op when untagged).
+            // {§log-region-tagging} — carry the row's region tags onto the copy (no-op when untagged).
             await db.fork_copy_log_tags.run({ old_log_id: oldLogId, new_log_id: ne.id });
         }
 
-        // §worker-scheme — inherit the parent's private scratch: same pathnames, the BRANCH as owner
+        // {§worker-scheme} — inherit the parent's private scratch: same pathnames, the BRANCH as owner
         // ({§entry-owner} — ownership is the column, never the pathname), so the branch's private
         // workspace is independent and diverges on its own edits.
         const scratch = await db.fork_get_worker_scope_entries.all<{ id: number; scheme: string; pathname: string; deep_hash: string | null; attributes: string }>(

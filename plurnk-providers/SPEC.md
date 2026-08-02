@@ -235,10 +235,10 @@ reserve. `reasoning_format: "auto"` requests a separate readable reasoning
 channel. Process-wide llama-server flags are fallback server configuration, not
 part of the PLURNK contract and need not be synchronized with an alias.
 
-The allowance is cumulative across the complete response. Opening a second or
+§llama-reasoning-request The allowance is cumulative across the complete response. Opening a second or
 later reasoning block does not replenish it. Template parsing, the reasoning
 sampler, normalized usage, and the returned reasoning channel MUST agree on that
-response boundary. {§llama-reasoning-request}
+response boundary.
 
 ## §8 Request authority
 
@@ -290,7 +290,7 @@ rewrites one.
 
 GBNF defines the accepted raw sampled text; it runs before response reasoning
 is separated from regular content. The shipped PLURNK sentence is owned by
-`plurnk-contracts` §gbnf-turn-shape and §gbnf-reasoning-boundary; this package does
+`plurnk-contracts` {§gbnf-turn-shape} and {§gbnf-reasoning-boundary}; this package does
 not restate or rewrite it.
 
 When a grammar-capable adapter receives a grammar, `ProviderResponse` carries
@@ -302,11 +302,11 @@ adapter reconstructs the Harmony enclosure only when the response demonstrates
 that `reasoning_format: "auto"` projected it; otherwise it cannot claim evidence.
 For an unsplit response, `input` is `content` and `contentStart` is zero.
 
-The provider transports and represents; it does not grade its own enforcement.
+§gbnf-response-observation The provider transports and represents; it does not grade its own enforcement.
 The consumer validates `grammarEvidence.input` outside the enforcer's failure
 domain. `PLURNK_PROVIDERS_GBNF_DEBUG` still validates grammar syntax before the
 call and sets `transported: false` for the unconstrained comparison.
-{§gbnf-response-observation}
+
 
 ## §11 Evidence and metadata
 

@@ -1,4 +1,4 @@
-// Tests for daemon's stream/event notification. SPEC §live-updates + §notifications.
+// Tests for daemon's stream/event notification. SPEC {§live-updates} + {§notifications}.
 
 import test from "node:test";
 import assert from "node:assert/strict";

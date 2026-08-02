@@ -162,7 +162,7 @@ export default class Module {
             res.setHeader("access-control-allow-origin", "*");
             res.setHeader("access-control-allow-headers", "content-type, authorization");
             if (req.method === "OPTIONS") { res.writeHead(204).end(); return; }
-            // The perimeter (§governance): bearer check before any body read.
+            // The perimeter ({§agui-http-authorization}): bearer check before any body read.
             const token = this.#opts.token ?? "";
             if (token.length > 0 && req.headers.authorization !== `Bearer ${token}`) {
                 writeHttpProblem(res, httpProblem(

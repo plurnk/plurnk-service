@@ -1,9 +1,9 @@
-// SPEC §decisions architectural-decision contract tests.
+// SPEC {§decisions} architectural-decision contract tests.
 //
-//   The built core passes: git-substrate membership (§membership-git-membership), the
-//   membership-bound edit (§membership-edit-membership-gate), the pick/hide/view overlay
-//   (§membership-overlay-pick / -hide / -view), and the divergence signal
-//   (§membership-emi-divergence-signal).
+//   The built core passes: git-substrate membership ({§membership-git-membership}), the
+//   membership-bound edit ({§membership-edit-membership-gate}), the pick/hide/view overlay
+//   ({§membership-overlay-pick} / -hide / -view), and the divergence signal
+//   ({§membership-emi-divergence-signal}).
 
 import test from "node:test";
 import Owner from "../../src/core/Owner.ts";
@@ -56,14 +56,14 @@ const mockResponse = (ops: PlurnkStatement[]) => ({
     assistant: { content: "", ops, reasoning: null },
 });
 
-// ───────────────────────────── §membership ─────────────────────────────
+// ───────────────────────────── {§membership} ─────────────────────────────
 //
-// git-substrate membership (§membership-git-membership) is BUILT — these two pass.
+// git-substrate membership ({§membership-git-membership}) is BUILT — these two pass.
 // The two deferred reds (overlay, divergence signal) follow at the bottom.
 
 // Set up a workspace whose project_root is a freshly `git init`'d repo holding
 // one COMMITTED, git-tracked file that is NEVER added via
-// crud_insert_workspace_entry. Per §membership D4 it should be a member by virtue of
+// crud_insert_workspace_entry. Per {§membership} D4 it should be a member by virtue of
 // `git ls-files`.
 const withGitWorkspace = async (
     fn: (root: string, ctx: PlurnkSchemeContext, db: Db, trackedPath: string) => Promise<void>,
@@ -130,14 +130,14 @@ test("an untracked-but-not-ignored file is a member the moment it exists; .gitig
 test("git-tracked file (never client-added) is a workspace member via git ls-files", async () => {
     await withGitWorkspace(async (_root, ctx, db, trackedPath) => {
         // The file is committed in git but NO crud_insert_workspace_entry was
-        // issued for it. Under §membership D4 (git present → ls-files membership),
+        // issued for it. Under {§membership} D4 (git present → ls-files membership),
         // it MUST register as a member of the workspace.
         const member = await db.crud_find_workspace_entry.get<{ id: number }>({
             workspace_id: ctx.workspaceId, owner_id: await Owner.commonsId(db, ctx.workspaceId), scheme: "file", pathname: `${trackedPath}`,
         });
         assert.notEqual(
             member, undefined,
-            "git-tracked file must be a workspace member via `git ls-files` (SPEC §membership)",
+            "git-tracked file must be a workspace member via `git ls-files` (SPEC {§membership})",
         );
 
         // And the membership gate in File.read must therefore admit it (200),
@@ -275,7 +275,7 @@ test("membership is the workspace's — one overlay, identical for every worker"
         // The overlay is keyed by SESSION, never run: resolveMembershipEffects and crud_find_workspace_entry
         // both take workspace_id ONLY (membership lives on workspace_constraints.workspace_id / entries.workspace_id —
         // there is no worker_id anywhere in it). So both workers resolve the IDENTICAL member set; there is no
-        // per-worker overlay to diverge. Divergent membership is a different workspace (§machine-processes).
+        // per-worker overlay to diverge. Divergent membership is a different workspace ({§machine-processes}).
         const { members } = await GitMembership.resolveMembershipEffects(db, ctx.workspaceId, undefined);
         assert.ok(members.some((m) => m.path === trackedPath && m.effect === "member"), "the git-tracked file is a member of the workspace (not of a worker)");
         const entry = await db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: ctx.workspaceId, owner_id: await Owner.commonsId(db, ctx.workspaceId), scheme: "file", pathname: `${trackedPath}` });
@@ -283,7 +283,7 @@ test("membership is the workspace's — one overlay, identical for every worker"
     });
 });
 
-// ───────────── §membership deferred — `{ todo }` until built ─────────────
+// ───────────── {§membership} deferred — `{ todo }` until built ─────────────
 // The deferral ledger: each asserts the promised behaviour and is EXPECTED TO
 // FAIL until the feature lands. Marked `{ todo }` (not hard-red): the assertion
 // still RUNS — it's the coverage — and reports as a known not-yet-passing, not a
@@ -360,7 +360,7 @@ test("out-of-band change to a member surfaces as a system delta-EDIT", async () 
     });
 });
 
-// ─────────────── §membership deferral ledger (the new contract) ───────────────
+// ─────────────── {§membership} deferral ledger (the new contract) ───────────────
 //
 // Each asserts a promised-but-unbuilt behavior and is EXPECTED TO FAIL until the
 // feature lands — `{ todo }`, so the assertion RUNS (the coverage) and reports a

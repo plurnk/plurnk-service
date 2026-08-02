@@ -1,4 +1,4 @@
-// §send-undelivered-child-term — the 1ms fan-out race (the recurring "heavy-topo variance",
+// {§send-undelivered-child-term} — the 1ms fan-out race (the recurring "heavy-topo variance",
 // root-caused): workers concluding DURING the parent's generation are no longer live (the wait's
 // J leg misses them) but their collect deltas are queued for the NEXT packet. An empty-join
 // conclusion here would discard the delivered results;

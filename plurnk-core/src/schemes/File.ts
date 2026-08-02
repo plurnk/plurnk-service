@@ -20,7 +20,7 @@ import ErrorDetail from "../core/ErrorDetail.ts";
 import Results, { type SchemeResultBase } from "../core/results.ts";
 import { InvalidOperationResultError } from "@plurnk/plurnk-schemes";
 
-// Resolved + §membership-change-gated-sync disk-write target, or the error status to return.
+// Resolved + {§membership-change-gated-sync} disk-write target, or the error status to return.
 type WriteTarget =
     | { ok: true; canonical: string; rel: string; fileExists: boolean; original: string; mimetype: string; baseSig: string | null; admittedBy?: "client" | "git" }
     | {
@@ -68,11 +68,11 @@ const detectFileMimetype = async (canonical: string, ctx: PlurnkSchemeContext): 
 // entry, so read/find/readEntry 404 it for free, the same invariant Known runs on
 // (a gitignored `.env` is never a member → never an entry → never readable). Disk
 // I/O is confined to the two edges that own it: the git-membership materialize-IN
-// and edit()/applyResolution()'s proposal-gated write-OUT (§membership), where the
+// and edit()/applyResolution()'s proposal-gated write-OUT ({§membership}), where the
 // containment/traversal checks live.
 //
 // writeEntry() is the proposal-gated write-back: a COPY/MOVE *into* file:/// is a disk
-// write, so it flows through the SAME §membership gate as EDIT (#resolveWriteTarget) — a
+// write, so it flows through the SAME {§membership} gate as EDIT (#resolveWriteTarget) — a
 // 202 proposal, then applyResolution() writes on accept — never an ungated overwrite (the
 // `.env`-wipe this guard prevents). COPY/MOVE *from* file:/// is readEntry (read-only).
 export default class File extends CoreSchemeAdapterBase {
@@ -124,7 +124,7 @@ export default class File extends CoreSchemeAdapterBase {
         return statement; // regex — not a path
     }
 
-    // Folderhood survives canonicalization (§find-scope-prefix-filter) — the shared
+    // Folderhood survives canonicalization ({§find-scope-prefix-filter}) — the shared
     // spelling canon lives on Namespace (the Dispatcher's log columns use the same one).
     static #canonSpelling(raw: string, root: string | null): string | null {
         return Namespace.canonicalizeSpelling(raw, root);
@@ -143,7 +143,7 @@ export default class File extends CoreSchemeAdapterBase {
     // see the SECURITY note above.
     async readEntry(pathname: string, ctx: CoreSchemeCallContext): Promise<ReadEntryResult> {
         const core = this.coreContext(ctx);
-        // §scheme-address — normalize the model-typed path (bare `brief.md`) to its `/rel` member key,
+        // {§scheme-address} — normalize the model-typed path (bare `brief.md`) to its `/rel` member key,
         // the same parity READ/EDIT/deleteEntry have. Without it a COPY/MOVE FROM a bare file path
         // misses the canonical-stored member and 404s a source that plainly exists.
         const root = await loadWorkspaceRoot(core.db, core.workspaceId);
@@ -151,13 +151,13 @@ export default class File extends CoreSchemeAdapterBase {
         return EntryCrud.readEntry(key ?? pathname, core, "file");
     }
 
-    // §membership disk-write gate, shared by edit() and writeEntry() (the COPY/MOVE
+    // {§membership} disk-write gate, shared by edit() and writeEntry() (the COPY/MOVE
     // dest). Resolves the canonical path; enforces containment (traversal → 403),
     // membership (existing non-member → 403, the `.env` protection), the read-only
     // overlay (→ 403), and binary (→ 415); reads current content for the diff. A
     // not-found path is fine — we propose to CREATE. ONE home for the gate: an edit
     // and a copy into file:/// are the same disk write under the same review.
-    // §membership-edit-membership-gate — membership/containment/read-only/binary gate before any disk write
+    // {§membership-edit-membership-gate} — membership/containment/read-only/binary gate before any disk write
     async #resolveWriteTarget(pathname: string, ctx: PlurnkSchemeContext): Promise<WriteTarget> {
         const root = await loadWorkspaceRoot(ctx.db, ctx.workspaceId);
         if (root === null) {
@@ -271,11 +271,11 @@ export default class File extends CoreSchemeAdapterBase {
                     detail: `The member '${rel}' is read-only.`,
                     extensions: { path: rel, retryable: false },
                 };
-            } // view = read-only member, 403 on edit - §membership-overlay-view
+            } // view = read-only member, 403 on edit - {§membership-overlay-view}
             // The diff base is the entry's snapshot — the body channel the model READ — not a fresh
             // disk read. EDIT is naive against the view the model saw; the write-side CAS (applyResolution)
             // guards the landing. baseSig is that snapshot's stat, carried with the proposal so a sibling
-            // worker's reconcile can't advance it under the paused proposal. §membership-edit-write-cas
+            // worker's reconcile can't advance it under the paused proposal. {§membership-edit-write-cas}
             const snapshot = await ctx.db.ops_read_channel.get<{ content: string }>({ workspace_id: ctx.workspaceId, owner_id: await Owner.commonsId(ctx.db, ctx.workspaceId), scheme: "file", pathname: rel, channel: "body" });
             original = snapshot?.content ?? "";
             baseSig = member.synced_sig;
@@ -426,7 +426,7 @@ export default class File extends CoreSchemeAdapterBase {
             patched = statement.body ?? "";
         }
 
-        if (fileExists && patched === original) return { status: 304 };  // §edit-noop-304
+        if (fileExists && patched === original) return { status: 304 };  // {§edit-noop-304}
 
         const patch = createPatch(rel, original, patched, "current", "proposed");
         const receiptEdits = fileExists
@@ -445,7 +445,7 @@ export default class File extends CoreSchemeAdapterBase {
         return this.editBatch([statement], ctx);
     }
 
-    // COPY/MOVE INTO file:/// — the dest write. Same §membership gate as edit, same 202
+    // COPY/MOVE INTO file:/// — the dest write. Same {§membership} gate as edit, same 202
     // proposal + applyResolution path: a copy onto disk is a disk write and earns
     // the identical human review. Dispatcher.#copyOrchestration propagates this 202;
     // ProposalLifecycle.workerApply routes the accept back here via the dest scheme;
@@ -534,7 +534,7 @@ export default class File extends CoreSchemeAdapterBase {
         // proposal was computed against the snapshot (body + baseSig); if disk drifted out-of-band
         // since propose, the full-blob write would clobber it. Refuse and surface a write_conflict —
         // the next reconcile narrates disk truth via FsDivergence; the model re-reads + re-proposes.
-        // No clever re-diff, no clobber. §membership-edit-write-cas
+        // No clever re-diff, no clobber. {§membership-edit-write-cas}
         const baseSig = (args.attrs.baseSig ?? null) as string | null;
         const existed = args.attrs.existed === true;  // proposal targeted an existing member (edit) vs a fresh create
         let currentSig: string | null = null;
@@ -641,7 +641,7 @@ export default class File extends CoreSchemeAdapterBase {
 
     // deleteEntry — the KILL / MOVE-source counterpart of writeEntry. Deleting a host file is
     // DESTRUCTIVE, so it PROPOSES for review (202), exactly as edit() does — never an ungated unlink.
-    // §membership — only a MEMBER reaches the proposal; a non-member is invisible (404), so untracked
+    // {§membership} — only a MEMBER reaches the proposal; a non-member is invisible (404), so untracked
     // disk is never probed or touched. applyResolution unlinks + deregisters on accept.
     async deleteEntry(pathname: string, ctx: CoreSchemeCallContext): Promise<DeleteEntryResult> {
         const core = this.coreContext(ctx);

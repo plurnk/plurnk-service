@@ -92,7 +92,7 @@ test("cancelling a PARKED (202) loop terminalizes it — no dead-park at 202 for
             assert.equal(row!.terminated_by, "cancel");
             assert.equal(row!.terminal_message, "shutting down the request");
             const sh = await db.test_count_open_subs_by_scheme.get<{ n: number }>({ workspace_id: workspaceId, scheme: "sh" });
-            assert.ok(sh !== undefined, "workspace still readable"); // the reap itself is pinned elsewhere (§notifications-stream-concluded)
+            assert.ok(sh !== undefined, "workspace still readable"); // the reap itself is pinned elsewhere ({§notifications-stream-concluded})
         } finally { ws.close(); }
     });
 });

@@ -1,4 +1,4 @@
-// [§lexicon] the providers-lane standing guard (#472/#477, owner-ruled OpenAI
+// {§lexicon} the providers-lane standing guard (#472/#477, owner-ruled OpenAI
 // lexicon). Retired terms fail CI here, not at the next audit — the mirror of
 // core's plurnk-core guard, tuned to what PROVIDERS retired. Scope: src/ non-test
 // + SPEC.md. A `lexicon-allow` line marker exempts the shed's own call sites

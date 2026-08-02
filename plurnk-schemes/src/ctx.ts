@@ -202,7 +202,7 @@ export interface SubscriptionHandle {
 
 // ── the context ──────────────────────────────────────────────────────────
 // Fresh per op-call. A sibling MUST NOT retain it past the handler return
-// (SPEC §forbidden). Identity/lifecycle fields carry the engine's per-dispatch
+// ({§scheme-ctx-lifetime}). Identity/lifecycle fields carry the engine's per-dispatch
 // coordinates; capability namespaces replace raw `db`.
 export interface SchemeCtx {
     readonly workspaceId: number;

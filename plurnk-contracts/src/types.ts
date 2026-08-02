@@ -18,7 +18,7 @@ export const PLURNK_OPS = [
 
 export type PlurnkOp = (typeof PLURNK_OPS)[number];
 
-// The worker-name (URI authority) contract (#527, §worker-name) — the SINGLE source for what
+// The worker-name (URI authority) contract (#527, {§worker-name}) — the SINGLE source for what
 // a mintable worker name is; core's auto-namer and schemes' registry derive from THIS instead
 // of hand-copying. A lowercase DNS label (LDH): the authority slot looks like a hostname, so
 // names ARE hostname-shaped — the exact pretraining prior the slot rides. Lowercase-ONLY is

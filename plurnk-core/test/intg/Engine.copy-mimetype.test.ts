@@ -1,4 +1,4 @@
-// SPEC §channel-mimetype — cross-mimetype COPY/MOVE → 415. A destination scheme fixes its
+// SPEC {§channel-mimetype} — cross-mimetype COPY/MOVE → 415. A destination scheme fixes its
 // channel mimetypes via its manifest (Known: body=text/markdown); a source
 // channel of a different mimetype can't be copied in. Seed a known entry with a
 // json body (the seed bypasses write-time markdown enforcement) to get the

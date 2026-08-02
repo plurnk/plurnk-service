@@ -32,7 +32,7 @@ export type SchemeReadResult = SchemeResultBase & {
     startLine?: number | null;
     region?: TextRegion;
     matches?: ReadonlyArray<MatchEvidence>;
-    // §join-blocking-collect (#354) — a READ(worker://running-child) sets this to the worker name it is
+    // {§join-blocking-collect} (#354) — a READ(worker://running-child) sets this to the worker name it is
     // blocked on; the dispatcher arms a join so the turn's bare SEND[102] parks (the blocking collect).
     awaitWorker?: string;
 };
@@ -61,8 +61,8 @@ export interface PlurnkSchemeContext {
     // populated; absent in bare test fixtures. Exec dispatch fail-hards if
     // absent rather than silently falling back to a default runtime.
     readonly executors?: ExecutorRegistry;
-    // Write-time tokenizer (SPEC §tokenomics). Synchronous per the provider
-    // contract (§provider-surface). Engine populates it from its configured tokenizer;
+    // Write-time tokenizer (SPEC {§tokenomics}). Synchronous per the provider
+    // contract ({§provider-surface}). Engine populates it from its configured tokenizer;
     // the entry/log write helpers count content tokens through it at write
     // time and store the count on entry_channels.tokens / log_entries.tokens.
     // Optional like the other engine-populated capabilities (absent in bare
@@ -78,7 +78,7 @@ export interface PlurnkSchemeContext {
     readonly pushNotice?: (notice: Notice) => void;
 }
 
-// Optional packet hook (§packet-assembly). A scheme implements this to rewrite
+// Optional packet hook ({§packet-assembly}). A scheme implements this to rewrite
 // the engine's default section list — add, remove, reorder — by returning a new
 // list. The trusted, in-process seam for plugin packet control: list in, list
 // out, applied in registration order after the kernel builds its defaults. The

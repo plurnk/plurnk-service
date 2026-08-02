@@ -1,6 +1,6 @@
-// Path-extension mimetype resolver for entry schemes per plurnk-contracts
-// 0.14.0 §Paths: "Path suffix (`.json`, `.md`, `.txt`, etc.) declares
-// mimetype; absent suffix defers to scheme default."
+// Path-extension mimetype resolver for entry schemes ({§path-extension-mimetype}):
+// a path suffix (`.json`, `.md`, `.txt`, etc.) declares the
+// mimetype; an absent suffix defers to the scheme default.
 //
 // Plurnk-service implements this uniformly across entry schemes: a
 // pathname's extension drives the effective mimetype (via the sibling

@@ -1,4 +1,4 @@
-// [§find-count-not-contents] #418 — a FIND whose match set exceeds the render budget returns a
+// {§find-count-not-contents} #418 — a FIND whose match set exceeds the render budget returns a
 // COUNT + narrow-your-query steer instead of enumerating every match (a repo-scale FIND(**) over
 // a huge workspace grinds clean, not crash-and-recover). The meta line still self-describes the
 // full count.

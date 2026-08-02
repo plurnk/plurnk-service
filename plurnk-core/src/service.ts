@@ -34,7 +34,7 @@ export default class Service {
     static #ensureHome(): void {
         // Seed ONCE, on first run (the home is absent). After that the user owns ~/.plurnk —
         // edits and deletions stick, no silent re-seed. The assembled floor is in-memory
-        // (§operator-config-env-defaults); `~/.plurnk/.env.defaults` is its rendered catalog,
+        // ({§operator-config-env-defaults}); `~/.plurnk/.env.defaults` is its rendered catalog,
         // machine-owned and regenerated each boot. Wiping the whole dir is a deliberate reset.
         if (existsSync(Service.#homeDir)) return;
         mkdirSync(Service.#homeDir, { recursive: true });
@@ -260,7 +260,7 @@ export default class Service {
         if (!process.argv.includes("--help") && !process.argv.includes("-h")) { Service.#ensureHome(); Service.#syncReferenceFiles(); }
         // Env cascade — first write wins (loadEnvFile is set-if-unset), so load highest first.
         // Precedence high→low: CLI --flags > shell env > --env-file/--config > ./.env >
-        // ~/.plurnk/.env > the assembled .env.defaults floor (§operator-config-env-defaults:
+        // ~/.plurnk/.env > the assembled .env.defaults floor ({§operator-config-env-defaults}:
         // this package's file + every installed member's, uniqueness-checked).
         for (const { path: envFile, required } of Service.#envFileArgs()) Service.#loadEnv(envFile, required);
 

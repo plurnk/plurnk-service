@@ -1,4 +1,4 @@
-// {§sealed-reasoning-carrier} → [§sealed-reasoning-carrier] (#482) — a provider's SEALED reasoning
+// {§sealed-reasoning-carrier} (#482) — a provider's SEALED reasoning
 // (o-class encrypted items, normalized by providers as assistant.reasoningEncrypted) rides the
 // model mirror row's `attrs.reasoning` VERBATIM as the OpenAI/AG-UI item LIST: per-turn on the
 // log/entry broadcast + readLog (agui's seam), never decoded, and NEVER rendered into a packet — a

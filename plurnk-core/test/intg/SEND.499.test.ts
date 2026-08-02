@@ -1,4 +1,4 @@
-// Tests for SEND[499] cancellation propagation (SPEC §send-dispatch, §stream-control).
+// Tests for SEND[499] cancellation propagation (SPEC {§send-dispatch}, {§stream-control}).
 
 import test from "node:test";
 import assert from "node:assert/strict";

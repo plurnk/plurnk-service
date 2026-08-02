@@ -1,4 +1,4 @@
-// SPEC §exec {§exec-env-scoped} — the environment an EXEC subprocess receives.
+// SPEC {§exec} {§exec-env-scoped} — the environment an EXEC subprocess receives.
 //
 // It gets the *project's* environment (its `.env`, the standard shell vars like PATH
 // and HOME) so the model's commands run as the project expects — but never plurnk's

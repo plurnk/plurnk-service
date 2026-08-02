@@ -1,4 +1,4 @@
--- Workspace-entry op handlers for entry-bearing schemes (SPEC §scheme, §channel-selection).
+-- Workspace-entry op handlers for entry-bearing schemes (SPEC {§scheme}, {§channel-selection}).
 -- Some queries reuse PREPs declared in _entry-crud.sql:
 --   crud_find_workspace_entry, crud_write_tag
 

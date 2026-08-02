@@ -1,4 +1,4 @@
-// Wake-on-completion daemon decision tree (§worker-lifecycle-wake-liveness). When an exec
+// Wake-on-completion daemon decision tree ({§worker-lifecycle-wake-liveness}). When an exec
 // spawn concludes (an OPEN stream-status transition), Daemon.#handleWakeWorker picks one of:
 //   - "no-op-active-loop" — the worker has a live drain; the conclusion folds into its next turn
 //   - "resumed-loop" — the worker is parked at a slept (202) loop; that SAME loop resumes in place
@@ -181,7 +181,7 @@ test("#598: a parked loop retains its provider across daemon restart", async () 
 test("wake-on-completion: a slept (202) loop resumes IN PLACE — no new loop, no summary-as-prompt", async () => {
     // First loop: EXEC echo + SEND[202] (Accepted) — the loop SLEEPS while the
     // spawn runs on. When the spawn concludes (an OPEN stream-status transition,
-    // §actor-boundary-passive-wake), the daemon AWAKENS that same loop in place —
+    // {§actor-boundary-passive-wake}), the daemon AWAKENS that same loop in place —
     // never a fresh loop with a synthetic summary prompt. The resumed loop reads
     // the concluded stream's own state and finishes on its own.
     const mock = new Mock({
@@ -203,7 +203,7 @@ test("wake-on-completion: a slept (202) loop resumes IN PLACE — no new loop, n
             // the loop's lifecycle. A parked loop awaits an external event (here the spawn's
             // conclusion; in general a user reply), so loop.run cannot resolve on it without
             // deadlocking the very client that must send that event. Park, resume, and the
-            // true terminal all arrive via events. §worker-lifecycle-wake-liveness.
+            // true terminal all arrive via events. {§worker-lifecycle-wake-liveness}.
             const firstWorker = await rpcCall(ws, 2, "loop.run", { prompt: "kick off exec then park", flags: { auto: true } });
             const parkedLoop = (firstWorker.result as { loopId: number }).loopId;
             assert.equal((firstWorker.result as { status: number }).status, 100, "loop.run returns immediately (100 accepted) — never a fake 200/202 standing in for the loop's real outcome");

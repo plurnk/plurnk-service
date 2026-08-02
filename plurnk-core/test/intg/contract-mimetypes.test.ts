@@ -1,15 +1,15 @@
 // Integration coverage for previously-untagged SPEC.md contract anchors that
-// concentrate around the mimetype seam: matcher soft-fallback (§matcher-dispatch),
-// matcher navigation (§slice-semantics), 410 channel-delete
-// (§send-dispatch), the Mimetypes.process entry point (§mimetype-methods), and
-// the write-time vs explicit-projection handler boundary (§mimetype - schemes
+// concentrate around the mimetype seam: matcher soft-fallback ({§matcher-dispatch}),
+// matcher navigation ({§slice-semantics-compose-pattern}), 410 channel-delete
+// ({§send-dispatch}), the Mimetypes.process entry point ({§mimetype-methods}), and
+// the write-time vs explicit-projection handler boundary ({§mimetype} - schemes
 // do not invoke handlers).
 //
 // Vehicles are the real production paths:
-//   - §matcher-dispatch / §slice-semantics - Known.read matcher dispatch
+//   - {§matcher-dispatch} / {§slice-semantics-compose-pattern} - Known.read matcher dispatch
 //                     (Matcher.matchAgainstContent -> 203) plus coordinate-guided READ.
-//   - §send-dispatch - _entry-send.sendToWorkspaceEntry 410-with-fragment over Engine.dispatch.
-//   - §mimetype-methods / §mimetype - Mimetypes.process shape + a spy handler
+//   - {§send-dispatch} - _entry-send.sendToWorkspaceEntry 410-with-fragment over Engine.dispatch.
+//   - {§mimetype-methods} / {§mimetype} - Mimetypes.process shape + a spy handler
 //                 proving write (detect) never fires a content projection.
 
 import test from "node:test";
@@ -44,7 +44,7 @@ const setup = async () => {
     return { db, workspaceId, workerId, mimetypes };
 };
 
-// --- §matcher-dispatch matcher 203 soft-fallback ---------------------------------------
+// --- {§matcher-dispatch} matcher 203 soft-fallback ---------------------------------------
 // jsonpath against a `.json` entry whose body is malformed JSON: the json
 // handler's parseTree fails → QueryParseFailureError → Matcher.matchAgainstContent
 // maps to 203, returning the RAW bytes as the text primitive plus `reason`.
@@ -105,7 +105,7 @@ test("jsonpath on malformed-JSON entry returns 203 with raw bytes as text/markdo
     } finally { await db.close(); }
 });
 
-// --- §slice-semantics: matcher evidence guides a later <L> -----------------------------
+// --- {§slice-semantics-compose-pattern}: matcher evidence guides a later <L> -------------
 
 test("a matcher READ returns one resource and coordinates for a surgical follow-up READ", async () => {
     const { db, workspaceId, workerId, mimetypes } = await setup();
@@ -168,7 +168,7 @@ test("a matcher READ returns one resource and coordinates for a surgical follow-
     } finally { await db.close(); }
 });
 
-// --- §send-dispatch SEND[410](path#fragment) deletes only the named channel ----------
+// --- {§send-dispatch} SEND[410](path#fragment) deletes only the named channel ----------
 // Multi-channel entry: 410 with a #fragment must delete exactly that channel
 // and leave the other channel (and the entry row) intact.
 
@@ -207,7 +207,7 @@ test("SEND[410](path#fragment) deletes only the named channel; siblings remain (
     } finally { await db.close(); }
 });
 
-// --- §mimetype-methods Mimetypes.process is the projection entry point -------------------
+// --- {§mimetype-methods} Mimetypes.process is the projection entry point -------------------
 // process(input, { channels }) returns metadata plus requested projections
 // ({ mimetype, ok, totalLines, symbols?/deepJson?/deepXml? }) - no preview
 // post-0.15. Assert the shape against the real auto-discovered service for a
@@ -227,7 +227,7 @@ test("Mimetypes.process returns metadata plus requested projections", async () =
     assert.equal(unknown.ok, false, "ok:false signals the handler-miss");
 });
 
-// --- §mimetype schemes do NOT invoke mimetype handlers at write time --------------
+// --- {§mimetype} schemes do NOT invoke mimetype handlers at write time --------------
 // A spy handler instrumented on content/query. Writing resolves the mimetype
 // via Mimetypes.detect and must not fire either channel. An explicit content
 // projection does fire content(). Same handler, separate phases.
@@ -277,8 +277,8 @@ test("write resolves mimetype without firing the handler; explicit projection fi
         // Confirm the write resolved the spy mimetype (detect ran, not the handler).
         const channel = await db.test_get_channel.get<{ mimetype: string; content: string }>({ entry_id: edited.entryId, name: "body" });
         assert.equal(channel?.mimetype, "text/x-spy", "write-time detect resolved the spy mimetype");
-        assert.equal(projectionCalls.length, 0, "§mimetype: scheme write did not invoke the handler's content projection");
-        assert.equal(queryCalls.length, 0, "§mimetype: scheme write did NOT invoke the handler's query");
+        assert.equal(projectionCalls.length, 0, "{§mimetype}: scheme write did not invoke the handler's content projection");
+        assert.equal(queryCalls.length, 0, "{§mimetype}: scheme write did NOT invoke the handler's query");
 
         await mimetypes.process(
             { content: channel?.content ?? "", hint: channel?.mimetype },

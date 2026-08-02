@@ -38,14 +38,14 @@ export default class SchemeRegistry {
     #handlers = new Map<string, object>();
     #coreServices: CoreSchemeServices | undefined;
     #attributions: string[] = []; // #249 — declared attribution tags of discovered external schemes
-    // §exec — runtime-tag schemes (sh/node/…) that ALIAS the exec handler for output-entry
+    // {§exec} — runtime-tag schemes (sh/node/…) that ALIAS the exec handler for output-entry
     // addressing (sh:///l/t/s). Routable via get(), but NOT separately taught or doc-materialized
     // (exec is taught once); else the catalog + docs bloat by one redundant line/entry per tag.
     #runtimeSchemes = new Set<string>();
     // #240 — built-in scheme names (captured at construction), reserved namespace-wide.
     #reserved: ReadonlySet<string> = new Set();
 
-    // `fetchWeb` (§exec-entry-sink / #455) is forwarded to the exec handler's content:null sink; default
+    // `fetchWeb` ({§exec-entry-sink} / #455) is forwarded to the exec handler's content:null sink; default
     // = schemes-http's guarded WebFetcher, injectable so tests substitute the network the guard would block.
     constructor(opts?: { fetchWeb?: WebFetch }) {
         this.register("log",    new Log());
@@ -80,7 +80,7 @@ export default class SchemeRegistry {
         }
     }
 
-    // §exec / #240 — exec OUTPUT entries address by their runtime TAG as authority
+    // {§exec} / #240 — exec OUTPUT entries address by their runtime TAG as authority
     // (sh:///l/t/s). Register each discovered executor as its OWN per-tag scheme face
     // (ExecOutputScheme): READ/FIND tag-scoped via the executor's manifest, process-KILL
     // delegated to the shared Exec handler. Minted from the boot ExecutorRegistry; in-tree
@@ -160,14 +160,14 @@ export default class SchemeRegistry {
         const lines: string[] = [];
         const excluded = docsExcludeSet();
         for (const [name, handler] of this.#handlers) {
-            if (this.#runtimeSchemes.has(name)) continue; // §exec — runtime aliases route, but exec is taught once
+            if (this.#runtimeSchemes.has(name)) continue; // {§exec} — runtime aliases route, but exec is taught once
             if (excluded.has(name)) continue; // #240 — PLURNK_SERVICE_DOCS_EXCLUDE drops the oneliner + the doc
             const manifest = this.manifestFor(name);
             const example = manifest?.example;
             if (typeof example !== "string" || example.length === 0) continue;
             lines.push(example); // bare op — the Schemes catalog is fenced, not bulleted (#436); doc links removed (#270)
         }
-        // §PACKET Schemes — a fenced `plurnk` catalog, validatable by the same op-fence as the doc (not a bullet list).
+        // PACKET.md "Schemes" — a fenced `plurnk` catalog, validatable by the same op-fence as the doc (not a bullet list).
         return lines.length > 0 ? `\`\`\`plurnk\n${lines.join("\n")}\n\`\`\`` : "";
     }
 
@@ -177,7 +177,7 @@ export default class SchemeRegistry {
         const out: Array<{ name: string; content: string }> = [];
         const excluded = docsExcludeSet();
         for (const [name, handler] of this.#handlers) {
-            if (this.#runtimeSchemes.has(name)) continue; // §exec — runtime aliases share exec's doc, not their own
+            if (this.#runtimeSchemes.has(name)) continue; // {§exec} — runtime aliases share exec's doc, not their own
             if (excluded.has(name)) continue; // #240 — PLURNK_SERVICE_DOCS_EXCLUDE drops the doc
             const inline = this.manifestFor(name)?.documentation;
             const content = SCHEME_DOCS.get(name) ?? (typeof inline === "string" && inline.length > 0 ? inline : undefined);
@@ -186,7 +186,7 @@ export default class SchemeRegistry {
         return out;
     }
 
-    // Plugin packet control (§packet-assembly): pipe the engine's default
+    // Plugin packet control ({§packet-assembly}): pipe the engine's default
     // section list through every registered scheme that implements
     // transformSections, in registration order. A scheme returns whatever list it
     // wants — add, remove, reorder. The trusted in-process seam; the client wire
@@ -230,7 +230,7 @@ export default class SchemeRegistry {
     // engine unions these across plugin families onto the generate() `attributions` wire).
     attributions(): string[] { return [...this.#attributions]; }
 
-    // Active set under the given loop flags (SPEC §engine-rails). Delegates to
+    // Active set under the given loop flags (SPEC {§engine-rails}). Delegates to
     // the in-tree ResolveForLoop utility.
     resolveForLoop(flags: LoopFlags): Set<string> {
         return ResolveForLoop.resolveForLoop(this.#handlers, flags);

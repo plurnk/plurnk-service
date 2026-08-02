@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import Meta from "@plurnk/plurnk-meta";
 
-// The .env.defaults standard (§operator-config-env-defaults, owner design): every package in the
+// The .env.defaults standard ({§operator-config-env-defaults}, owner design): every package in the
 // daemon's ecosystem — internal or third-party — ships a `.env.defaults` at its package root
 // declaring ITS OWN knobs (prefix = its name), with the file itself as the documentation. The
 // daemon assembles every installed member's file into ONE floor, applied set-if-unset under the

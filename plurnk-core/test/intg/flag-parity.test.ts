@@ -1,4 +1,4 @@
-// §operator-config-flag-parity — every PLURNK_SERVICE_* flag the code reads has a matching
+// {§operator-config-flag-parity} — every PLURNK_SERVICE_* flag the code reads has a matching
 // .env.defaults line and vice versa. A half-landed rename (code moved, template didn't, or a
 // script-glob missed a file) fails HERE instead of silently at a user's boot — the exact class
 // that let PLURNK_GBNF_DEBUG and the package.json prefixes drift during the family-prefix sweep.

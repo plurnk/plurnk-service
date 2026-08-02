@@ -1,4 +1,4 @@
-// §run-lifecycle topology join — a child worker finishing is a WAKE EDGE for a parent that parked
+// {§run-lifecycle} topology join — a child worker finishing is a WAKE EDGE for a parent that parked
 // (SEND[202]) awaiting it. Without it, a parent that spawns work and hibernates would dead-park.
 // The proof: the parent concludes at all — a non-woken 202 would hang (runLoopToTerminal times out).
 
@@ -180,7 +180,7 @@ test("a parent wakes across SEQUENTIAL children (multiple wakes)", async () => {
 });
 
 test("an irc (SEND worker://name) wakes a CONCLUDED sibling — the voice door mints a fresh loop", async () => {
-    // Under §worker-lifecycle-idle-is-concluded, an actor with nothing to wait on CONCLUDES — it does not
+    // Under {§worker-lifecycle-idle-is-concluded}, an actor with nothing to wait on CONCLUDES — it does not
     // park awaiting voice. So the voice door (a sibling's irc) reawakens it as a NEW loop carrying the
     // message as its prompt (the same wake `loop.inject` proves for the operator voice), never a
     // resume-in-place of a slept loop — there is no slept loop to resume.
@@ -273,7 +273,7 @@ test("a wake re-queue (100) mid-drain is re-claimed and continued — never retu
     // The delegation-flags flake: a conclusion-wake re-queues a parent's loop (202→100) between its
     // turn-end and its drain's next status check; pre-fix, runLoop read the queued 100 as an external
     // terminal and broadcast a QUEUED loop as loop/terminated{100}.
-    // Under §wait-obligation-matrix a loop blocks at 202 only on a live obligation, so the wake is a
+    // Under {§wait-obligation-matrix} a loop blocks at 202 only on a live obligation, so the wake is a
     // REAL child-wake: the parent blocks on a spawned child, the child's conclusion re-queues the parent
     // (202→100) and the drain re-claims it (100→102). Exactly one terminal must fire for the parent, 200.
     const mock = new Mock({ contextWindow: 100000, responses: [
@@ -308,7 +308,7 @@ test("OPEN/FOLD are recorded in the DB, suppressed from the render; a failed one
     // invisible. A FAILED FOLD still renders — errors are signals.
     const mock = new Mock({ contextWindow: 16384, responses: [
         makeMockResponse("<<EDIT(worker:///note):some content worth folding:EDIT\n<<SEND[102]:wrote:SEND", 10),
-        // The phantom FOLD fails (400) — §send-200-failed-ops refuses the same-turn [200], so the
+        // The phantom FOLD fails (400) — {§send-premature-terminate} refuses the same-turn [200], so the
         // curation turn continues and the loop concludes NEXT turn, failure weighed.
         makeMockResponse("<<FOLD(log:///1/2/1)::FOLD\n<<FOLD(log:///9/9/9)::FOLD\n<<SEND[102]:curated:SEND", 10),
         makeMockResponse("<<SEND[200]:the phantom FOLD failed; curation done:SEND", 10),

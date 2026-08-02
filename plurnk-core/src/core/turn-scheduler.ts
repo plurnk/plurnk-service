@@ -11,7 +11,7 @@ const phaseOf = (statement: PlurnkStatement): number => {
     return 3;
 };
 
-// §op-mode-phases — Array#sort is stable, so authored order survives inside
+// {§op-mode-phases} — Array#sort is stable, so authored order survives inside
 // each phase while observations move behind the turn's settled mutations.
 export const scheduleTurnOps = (statements: readonly PlurnkStatement[]): PlurnkStatement[] =>
     statements

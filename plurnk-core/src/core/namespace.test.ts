@@ -1,4 +1,4 @@
-// [§fs-namei] [§fs-canonical-name] [§fs-namespace] — the pure resolver, table-driven over
+// {§fs-namei} {§fs-canonical-name} {§fs-namespace} — the pure resolver, table-driven over
 // every spelling class the model produces plus the adversarial set (traversal, NUL, the
 // out-and-back-in aliasing, the root-mount degenerates). The aliasing property rides the
 // table: every spelling of one file maps to ONE canonical key, and canon is a fixpoint.

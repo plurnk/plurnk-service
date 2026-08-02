@@ -1,4 +1,4 @@
-// The ONE model-facing token ruler (§tokenomics-agnostic-ruler, owner ruling 2026-07-13).
+// The ONE model-facing token ruler ({§tokenomics-agnostic-ruler}, owner ruling 2026-07-13).
 //
 // The daemon runs many runs on DIFFERENT models in one workspace at once (per-loop model selection,
 // #414), and token accounting is workspace-wide (the catalog lists every workspace entry). A single

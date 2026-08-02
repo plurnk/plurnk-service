@@ -1,4 +1,4 @@
-// §exec-entry-sink (#340) — the executor's entry() materialization request: the consumer creates
+// {§exec-entry-sink} (#340) — the executor's entry() materialization request: the consumer creates
 // the entry (upsert, tags UNIONED), and the AMBIENCE announces it — one EDIT row in the reserved
 // plurnk worker's log (the fs-fiction pattern) that env-delta folds into every worker's next packet.
 // A stub runtime drives the REAL dispatch path; nothing is mocked below the executor.
@@ -134,7 +134,7 @@ test("entry() materializes a tagged https entry (upsert UNIONS tags) and the plu
 
         // The row is a FULL fiction — the journal records the write itself, not just that one happened:
         // tx carries the statement with the written content (replay/fork-complete), rx carries the
-        // full-content span (§edit-result-render — a wholesale write's span IS the content, numbered).
+        // full-content span ({§edit-result-render} — a wholesale write's span IS the content, numbered).
         const full = await db.test_log_entries_by_run_op_full.all<{ pathname: string; tx: string; rx: string }>({ worker_id: plurnkWorker.id, op: "EDIT" });
         const second = full.filter((r) => r.pathname === "/example.org/turkeys")[1];
         assert.ok(second !== undefined, "the second narration row is present");

@@ -1,5 +1,5 @@
 -- PREP: proposal_list_pending
--- §proposal-list — every stopped-world proposal in the workspace (state='proposed'): file edits,
+-- {§proposal-list} — every stopped-world proposal in the workspace (state='proposed'): file edits,
 -- [300] questions. The ruling's mandatory companion ({§proposal-timeout-cancels}
 -- ships indefinite): a world that can stay stopped for days MUST be discoverable by a
 -- reconnecting client, or granted patience reads as a mystery hang.

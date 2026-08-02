@@ -54,7 +54,7 @@ const tableCells = (line: string): string[] | null => {
 const isTableDivider = (cells: readonly string[]): boolean =>
     cells.length > 0 && cells.every((cell) => /^:?-{3,}:?$/u.test(trimHorizontal(cell)));
 
-// §definition-table-projection — plurnk.md remains spacious for human editing;
+// {§definition-table-projection} — plurnk.md remains spacious for human editing;
 // only its well-formed Markdown tables lose authoring alignment on the packet wire.
 const compactDefinitionTables = (markdown: string): string => {
     const lines = markdown.split("\n");
@@ -103,7 +103,7 @@ const compactDefinitionTables = (markdown: string): string => {
     }).join("\n");
 };
 
-// §tokenomics-window-partition — the four partition numbers. REQUIRED (fail-hard, the
+// {§tokenomics-window-partition} — the four partition numbers. REQUIRED (fail-hard, the
 // providers-env convention): the ceiling is DERIVED from these, never set directly
 // (PLURNK_BUDGET_CEILING is retired — a settable ceiling let policy contradict physics).
 const readPartitionIntFrom = (env: NodeJS.ProcessEnv, name: string, min: number): number => {
@@ -143,7 +143,7 @@ export type RequestPacket = {
     sections: PacketSection[];
 };
 
-// Packet assembly (SPEC §packet-assembly) + the budget grinder (§grinder):
+// Packet assembly (SPEC {§packet-assembly}) + the budget grinder ({§grinder}):
 // builds the spec'd request packet, measures it, and reclaims window on overflow.
 export default class PacketBuilder {
 
@@ -153,7 +153,7 @@ export default class PacketBuilder {
     // Boot-discovered runtime executors, late-injected on Engine after daemon
     // start() — read through a thunk so the post-construction set is visible.
     #executors: () => ExecutorRegistry | undefined;
-    // §tokenomics-window-partition — the partition is PER-ALIAS (#352), resolved per provider in
+    // {§tokenomics-window-partition} — the partition is PER-ALIAS (#352), resolved per provider in
     // #partitionFor and cached by alias; no boot-time global read.
 
     constructor({ db, schemes, problems, executors }: {
@@ -212,7 +212,7 @@ export default class PacketBuilder {
     }
 
     // The generation envelope — REASONING + COMPLETION, one undifferentiated pool, passed on
-    // every generate({maxTokens}): no decode is unbounded (§tokenomics-window-partition). Per
+    // every generate({maxTokens}): no decode is unbounded ({§tokenomics-window-partition}). Per
     // alias (#352): gemma's measured envelope; a cloud alias's generous default the backend clamps.
     maxTokensFor(provider: Provider): number | null {
         const { reasoning, completion } = this.#partitionFor(provider);
@@ -220,7 +220,7 @@ export default class PacketBuilder {
         return reasoning + completion;
     }
 
-    // §tokenomics-window-partition — the natural prompt ceiling is the provider's
+    // {§tokenomics-window-partition} — the natural prompt ceiling is the provider's
     // effective context window minus its response reserves and the service's ruler
     // safety. An optional service prompt budget may only tighten that result. It is
     // model-facing grinder policy, never provider physics or a generation setting.
@@ -229,7 +229,7 @@ export default class PacketBuilder {
         return this.ceilingFor(provider); // ONE derivation — the gauge denominator IS the grinder ceiling
     }
 
-    // §tokenomics-agnostic-ruler — the ceiling is the real window partition (window − reserves),
+    // {§tokenomics-agnostic-ruler} — the ceiling is the real window partition (window − reserves),
     // NO calibration ratio: the model-facing measure is the chars/2 ruler (an over-count for
     // typical text), so comparing ruler-weight to the real-token ceiling is itself the conservative
     // bias - the packet reports less room than the provider usually has; the exact provider count
@@ -252,7 +252,7 @@ export default class PacketBuilder {
     }
 
     // Assemble the request half of the spec'd packet (Packet.json system
-    // and §user) BEFORE the provider call. The same packet object is then
+    // and user) BEFORE the provider call. The same packet object is then
     // completed with assistant + assistantRaw after the model responds, so
     // the stored packet and the wire payload share one source of truth.
     async buildRequestPacket({
@@ -275,7 +275,7 @@ export default class PacketBuilder {
         const byRole = (role: ChatMessage["role"]): string =>
             initialMessages.filter((m) => m.role === role).map((m) => m.content).join("\n\n");
         // plurnk.md (grammar/dialects) ONLY — the definition is the hot-path grammar.
-        // The scheme catalogue is its own `schemes` section below tools (§schemes-directory),
+        // The scheme catalogue is its own `schemes` section below tools ({§schemes-directory}),
         // NOT appended here: grammar 0.49+ is scheme-agnostic, so the service advertises
         // the scheme set at packet-time (grammar#239 item 7) via SchemeRegistry.teach().
         const system_definition = compactDefinitionTables(byRole("system"));
@@ -298,24 +298,24 @@ export default class PacketBuilder {
         // requirements). Read Paths.defaultRequirements (PLURNK_SERVICE_REQUIREMENTS env →
         // requirements.md) fresh each build so edits take effect; a non-empty param wins.
         const baseRequirements = requirements.length > 0 ? requirements : await readFile(Paths.defaultRequirements, "utf8");
-        // No injected syntax line: the grammar already headlines the system definition (§Syntax) and
+        // No injected syntax line: the grammar already headlines the system definition ("Syntax") and
         // leads requirements.md, so a third copy here was pure duplication in the model's packet. PLAN
-        // is mandated unconditionally by plurnk.md §Imperatives (grammar 0.70 requires every turn to
+        // is mandated unconditionally by plurnk.md "Imperatives" (grammar 0.70 requires every turn to
         // lead with PLAN), so the service injects no separate plan directive either.
         const log = await this.#buildLog(workerId);
         const failures = await this.buildFailurePointers(loopId, currentTurnSeq);
-        const countTokens = rulerCount; // §tokenomics-agnostic-ruler — the ONE model-facing ruler (chars/2), not the provider
+        const countTokens = rulerCount; // {§tokenomics-agnostic-ruler} — the ONE model-facing ruler (chars/2), not the provider
         // #367 — the capability sheet must reflect the LOOP MODE, not just workspace-enablement: an
         // ask-mode loop advertises only what its dispatch gate (resolveForLoop) will accept, so the
         // model is never taught a tag it'll then be 403'd on (the taught→emitted→rejected→508 spiral).
         const activeSchemes = this.#schemes.resolveForLoop(await this.#loadLoopFlags(loopId));
         const tools = this.#collectTools(await this.#workspaceEnabled(workspaceId), await WorkspaceSettings.questionsEnabled(this.#db, workspaceId), activeSchemes);
-        // Budget readout (SPEC.md §tokenomics). Two-pass: render the headline
+        // Budget readout (SPEC.md {§tokenomics}). Two-pass: render the headline
         // with placeholders, build the section list, measure the assembled total,
         // then substitute usage, percent, and free.
         const ceiling = this.ceilingFor(provider);
         const budgetReadout = this.#renderBudget(ceiling);
-        // The default packet: an ordered list of addressable sections (§packet-assembly).
+        // The default packet: an ordered list of addressable sections ({§packet-assembly}).
         // `slot` is the MESSAGE boundary — and therefore the cache breakpoint every serving
         // stack keys on. The wire is monotone in volatility ({§packet-cache-monotone}, #531):
         // system = the timeless (definition/tools/schemes/policy — byte-stable doctrine), user
@@ -329,7 +329,7 @@ export default class PacketBuilder {
         const workspaceRoot = (await this.#db.envelope_get_workspace.get<{ project_root: string | null }>({ id: workspaceId }))?.project_root ?? null;
         const systemPolicy = await readSystemPolicy();              // ~/.plurnk/AGENTS.md (or PLURNK_SERVICE_POLICY)
         const projectPolicy = await readProjectPolicy(workspaceRoot); // <projectRoot>/AGENTS.md (or PLURNK_SERVICE_PROJECT)
-        // Child-orientation (§child-orientation): the live things THIS run holds — open streams +
+        // Child-orientation ({§child-orientation}): the live things THIS run holds — open streams +
         // unconcluded child workers — surfaced every turn as terse `* <status> <path>` pointers (same shape
         // as errors) just above the errors section. Orienting STATE so the model never loses track of
         // what it's holding (the premature-terminate trap), never advice on what to do. Empty → omitted.
@@ -357,7 +357,7 @@ export default class PacketBuilder {
             // user slot is the legal trust direction; errors are uri+status POINTERS (the item +
             // body live in the log), git is counts — no injection surface either way.
             // child-orientation: what THIS run holds live — streams then runs — just above errors. Terse
-            // pointers (the path is the actionable address the model READs/OPENs/KILLs), never advice. §child-orientation
+            // pointers (the path is the actionable address the model READs/OPENs/KILLs), never advice. {§child-orientation}
             { name: "child-streams", slot: "user", header: "Child Streams", content: PacketWire.renderChildPointers(childStreams), tokens: 0 },
             { name: "child-workers", slot: "user", header: "Active Child Workers", content: PacketWire.renderChildPointers(childWorkers), tokens: 0 },
             { name: "errors", slot: "user", header: "Errors", content: PacketWire.renderFailurePointers(failures), tokens: 0 },
@@ -371,7 +371,7 @@ export default class PacketBuilder {
             // requirements renders LAST — the user-slot footer, the syntax contract closest to the model's turn (a recency carve-out for weak models).
             { name: "requirements", slot: "user", header: "Recap", content: baseRequirements, tokens: 0 },
         ];
-        // Plugin packet control (§packet-assembly): trusted schemes rewrite the
+        // Plugin packet control ({§packet-assembly}): trusted schemes rewrite the
         // default list — add, remove, reorder — in-process, before measurement.
         const sections = await this.#schemes.transformSections(defaults);
         // Pass 1: measure the assembled total with the placeholder budget in
@@ -382,8 +382,8 @@ export default class PacketBuilder {
             // A null ceiling (#421 - unbounded window) has no headline to calibrate and therefore no
             // percent/free substitution. #renderBudget already omitted the headline.
             if (budgetSec && ceiling !== null) {
-                const tokensFree = Math.max(0, ceiling - total); // free floors at 0 on overshoot — §tokenomics-over-budget-floor
-                const percent = (total / ceiling) * 100; // usage as % of the ceiling — §tokenomics-context-percent
+                const tokensFree = Math.max(0, ceiling - total); // free floors at 0 on overshoot — {§tokenomics-over-budget-floor}
+                const percent = (total / ceiling) * 100; // usage as % of the ceiling — {§tokenomics-context-percent}
                 budgetSec.content = budgetSec.content
                     .replace(TOKEN_USAGE_PLACEHOLDER, String(total))
                     // Any nonzero usage under 1% is "<1" — Math.round alone claimed "1%" from 0.51%,
@@ -415,9 +415,9 @@ export default class PacketBuilder {
         return (tag: string) => Policy.isEnabled(tag, execs);
     }
 
-    // The ## Registered Executable Tools capability sheet (SPEC §tools). Each available executor
+    // The ## Registered Executable Tools capability sheet (SPEC {§tools}). Each available executor
     // tag contributes its self-documenting example (plurnk-execs#7); the closed heading distinguishes
-    // registered selectors from the open-ended general examples above it. §tools-capability-sheet
+    // registered selectors from the open-ended general examples above it. {§tools-capability-sheet}
     // Mirror of Dispatcher.#loadLoopFlags — the packet reads the SAME persisted flags the gate does.
     async #loadLoopFlags(loopId: number): Promise<LoopFlags> {
         const row = await this.#db.engine_get_loop_flags.get<{ flags: string }>({ loop_id: loopId });
@@ -431,11 +431,11 @@ export default class PacketBuilder {
         questionsOn = false,
         activeSchemes?: Set<string>,
     ): { executors: string; optionalOperations: string } {
-        // §PACKET Tools (#441) — registered executor examples form a closed, explicitly titled
+        // PACKET.md "Tools" (#441) — registered executor examples form a closed, explicitly titled
         // catalogue. Optional non-EXEC operations are separate so the heading remains truthful.
         const executorOps: string[] = [];
         const notices: string[] = [];
-        // §send-300-choices — the one-liner rides ONLY where questions are enabled (allowed +
+        // {§send-300-choices} — the one-liner rides ONLY where questions are enabled (allowed +
         // client-requested); the fuller questions.md doc injects through docEntries the same way.
         const optionalOperations = questionsOn
             ? "```plurnk\n<<SEND[300]:Deploy where?;staging;production:SEND\n```"
@@ -471,7 +471,7 @@ export default class PacketBuilder {
     // catalogue's doc-links READ and the manifest carries each doc's token weight.
     async docEntries(workspaceId: number): Promise<Array<{ name: string; content: string }>> {
         const out = this.#schemes.docs(); // scheme docs already drop PLURNK_SERVICE_DOCS_EXCLUDE names
-        // §send-300-choices — the conditional teaching: questions.md (from the docs corpus)
+        // {§send-300-choices} — the conditional teaching: questions.md (from the docs corpus)
         // materializes ONLY for enabled workspaces — the same conditional-doc mechanism as the EXEC
         // plugin docs below. An un-enabled workspace is never taught the op it can't use.
         if (await WorkspaceSettings.questionsEnabled(this.#db, workspaceId)) {
@@ -494,12 +494,12 @@ export default class PacketBuilder {
         return out;
     }
 
-    // SPEC §grinder — the budget grinder. Runs pre-LLM (in runTurn, after the packet
+    // SPEC {§grinder} — the budget grinder. Runs pre-LLM (in runTurn, after the packet
     // is built, before provider.generate); fires only on actual overflow. One rule:
     // fold the NEWEST turn boundary's open rows (errors exempt) — never history —
     // strike, rebuild, re-measure. Folds (never deletes). The strike it raises and
     // the hard-stop it can signal are returned to runLoop, which owns abandonment.
-    // §grinder-overflow-only — fires only on actual overflow, never speculatively
+    // {§grinder-overflow-only} — fires only on actual overflow, never speculatively
     async enforceBudget({ packet, provider, workerId, loopId, turnId, mintSequence, rebuild }: {
         packet: RequestPacket; provider: Provider;
         workerId: number; loopId: number; turnId: number; mintSequence: number;
@@ -513,12 +513,12 @@ export default class PacketBuilder {
             return { packet, fit: true, struck: false, recorded: false };
         }
 
-        // ONE rule, every turn — turn 1 and turn 101 alike (§grinder-layer1-rollback): fold the
+        // ONE rule, every turn — turn 1 and turn 101 alike ({§grinder-layer1-rollback}): fold the
         // NEWEST turn boundary's still-open rows (the prior turn's emissions + this turn's
         // pre-model rows; errors exempt) in one set-op, strike once, rebuild, re-measure.
         // The model owns history visibility. The grinder never reaches back; it folds only the
         // newest boundary required to produce a physically valid packet. Continued overflow
-        // follows the explicit recovery/hard-stop contract (§grinder-fold-strikes).
+        // follows the explicit recovery/hard-stop contract ({§grinder-fold-strikes}).
         const usage = measure(packet);
         await this.#db.engine_grinder_fold_newest_turn({ loop_id: loopId, turn_id: turnId });
         let current = await rebuild();
@@ -549,7 +549,7 @@ export default class PacketBuilder {
         };
     }
 
-    // §tokenomics-agnostic-ruler — the EXACT materialization measure: the provider's own token
+    // {§tokenomics-agnostic-ruler} — the EXACT materialization measure: the provider's own token
     // count of the assembled packet, the ONE place per-model exactness is used (once per turn, at
     // the fit-gate). The model-facing render-weight (packet.tokens) stays the ruler; this is the
     // physics check that the real bytes fit the real window.
@@ -561,7 +561,7 @@ export default class PacketBuilder {
     // Complete the packet by adding the model's response. After this the
     // packet matches Packet.json fully and is ready for storage.
     completePacket(requestPacket: RequestPacket, assistant: PacketAssistant, assistantRaw: unknown, provider: Provider): object {
-        const assistantTokens = rulerCount(assistant.content); // §tokenomics-agnostic-ruler — render-weight in ruler units (usage_* keep the provider's real count)
+        const assistantTokens = rulerCount(assistant.content); // {§tokenomics-agnostic-ruler} — render-weight in ruler units (usage_* keep the provider's real count)
         return {
             tokens: requestPacket.tokens + assistantTokens,
             sections: requestPacket.sections,
@@ -587,12 +587,12 @@ export default class PacketBuilder {
         }));
     }
 
-    // SPEC §packet the log section — chronological action-entries for the loop.
+    // SPEC {§packet} the log section — chronological action-entries for the loop.
     // Snapshot is taken at packet build (pre-dispatch this turn), so it
     // reflects "what has happened before this turn." Each row carries a
     // log:///<loop_seq>/<turn_seq>/<sequence> coordinate the model can READ.
     async #buildLog(workerId: number): Promise<object[]> {
-        // SPEC §packet-terms: runs own log entries — log is the worker's history,
+        // SPEC {§packet-terms}: runs own log entries — log is the worker's history,
         // not the loop's. Span all loops in the worker so the model sees
         // earlier loops' work as conversational memory.
         //

@@ -38,7 +38,7 @@ interface ExecAttrs {
     cwd: string | null;     // process working directory = the workspace workspace (project_root), or null (headless). A relative target resolves against it. (execs 0.4.26 §2)
     target: string | null;  // the parsed (target) slot — the executor's DATA SOURCE (jq input file / sqlite db / wasm module); null = no source (subprocess ignores it). (#15)
     command: string;        // body of the EXEC op
-    pathname: string;       // stamped by Dispatcher.#writeLog as /<loop>/<turn>/<seq>; entry persists under the RUNTIME TAG scheme — <runtime>:///<pathname> (e.g. sh:///1/1/2), §exec/#240. exec:// is process-control only.
+    pathname: string;       // stamped by Dispatcher.#writeLog as /<loop>/<turn>/<seq>; entry persists under the RUNTIME TAG scheme — <runtime>:///<pathname> (e.g. sh:///1/1/2), {§exec}/#240. exec:// is process-control only.
     inline?: boolean;       // effect=read/pure → auto-run (no human gate); output streams like any exec
     schemeTarget?: { scheme: string; pathname: string; fragment: string | null };  // #201 — a plurnk-scheme target resolved to content at apply-time (empty body → run-as-command; non-empty body → temp-materialize to cwd)
     timeoutSec?: number;    // `<T,P>` mark[0] > 0: kill the spawn after T seconds (504). Absent/-1 = unbounded.
@@ -103,7 +103,7 @@ export const resolveStreamStatement = async <S extends { target: ReadStatement["
     return { statement: { ...statement, target: { ...t, hostname: null } }, ownerId };
 };
 
-// §exec-entry-sink / #455 — the guarded web-fetch the sink calls when the executor hands content:null:
+// {§exec-entry-sink} / #455 — the guarded web-fetch the sink calls when the executor hands content:null:
 // schemes-http's WebFetcher (SSRF-guarded byte acquisition + lazy browser
 // fallback, dead-as-null). Injectable because the guard refuses localhost.
 export type WebFetch = (url: string, opts?: { signal?: AbortSignal }) => Promise<WebFetchResult | null>;
@@ -125,7 +125,7 @@ export default class Exec extends CoreSchemeAdapterBase {
         },
     };
 
-    // The web-fetch the entry sink calls on content:null (§exec-entry-sink / #455). Default = schemes-http's
+    // The web-fetch the entry sink calls on content:null ({§exec-entry-sink} / #455). Default = schemes-http's
     // guarded WebFetcher over one warm-Chromium pool shared across this handler's
     // fallback renders; injectable so tests substitute the network.
     readonly #fetchWeb: WebFetch;
@@ -159,7 +159,7 @@ export default class Exec extends CoreSchemeAdapterBase {
         return false;
     }
 
-    // §exec-hold-until-concluded — does the worker hold an in-flight spawn whose RUNTIME is in the
+    // {§exec-hold-until-concluded} — does the worker hold an in-flight spawn whose RUNTIME is in the
     // operator's hold set? The turn-hold exception (owner ruling): for streams we know and
     // control (the search family — one final JSON digest, seconds-bounded), the engine holds
     // the next packet until conclusion instead of giving the model a turn it can only waste.
@@ -237,7 +237,7 @@ export default class Exec extends CoreSchemeAdapterBase {
     // Proposes (status=202) with attrs={runtime, cwd, command, pathname}.
     // applyResolution spawns the subprocess; output streams into the
     // coordinate-stamped <runtime>:///<pathname> entry's stdout/stderr channels
-    // (e.g. sh:///1/1/2, §exec/#240). The model READs that entry on a subsequent turn.
+    // (e.g. sh:///1/1/2, {§exec}/#240). The model READs that entry on a subsequent turn.
     async exec(statement: ExecStatement, ctx: CoreSchemeCallContext): Promise<ExecResult> {
         const core = this.coreContext(ctx);
         let command = statement.body ?? "";
@@ -278,7 +278,7 @@ export default class Exec extends CoreSchemeAdapterBase {
         const runtime = requested === "" ? "sh" : requested; // empty signal = default shell
         if (core.executors === undefined) throw new Error("exec dispatched without an executor registry");
         const workspaceExecs = (await WorkspaceSettings.read(core.db, core.workspaceId)).execs;
-        // §exec-registry-resolves — a non-empty tag selects exactly one registered executable
+        // {§exec-registry-resolves} — a non-empty tag selects exactly one registered executable
         // tool. Unknown tags are not reinterpreted as shell command words: that would make the
         // executed command differ from the authored body. Bare EXEC remains the default-shell form.
         const resolved = core.executors.entry(runtime);
@@ -356,7 +356,7 @@ export default class Exec extends CoreSchemeAdapterBase {
         // `pathname` is stamped into attrs at log-write time; applyResolution
         // reads it back here.
         // EXEC repurposes the `<L>` slot as `<timeout, poll>` (seconds): mark[0] caps the spawn's
-        // lifetime, mark[1] sets the hibernation poll-wake cadence (§exec-poll). N>0 → deadline (504);
+        // lifetime, mark[1] sets the hibernation poll-wake cadence ({§exec-poll}). N>0 → deadline (504);
         // -1 / absent → unbounded (loop-life bounded); 0 → turn-scoped (reaped at the next pre-turn,
         // never surviving into the subsequent turn).
         const marks = statement.lineMarker?.marks;
@@ -373,7 +373,7 @@ export default class Exec extends CoreSchemeAdapterBase {
         // Body shown to client during proposal review — `$ command` is the
         // most-readable summary regardless of runtime.
         const preview = runtime !== "" ? `[${runtime}] ${command}` : `$ ${command}`;
-        return { status: 202, body: preview, attrs };  // host runtime proposes with 202 — §exec-host-proposes
+        return { status: 202, body: preview, attrs };  // host runtime proposes with 202 — {§exec-host-proposes}
     }
 
     async applyResolution(
@@ -410,7 +410,7 @@ export default class Exec extends CoreSchemeAdapterBase {
             const channels = read.entry.channels;
             const channelName = fragment ?? (channels.body !== undefined ? "body" : Object.keys(channels)[0]);
             const content = channelName === undefined ? undefined : channels[channelName]?.content;
-            // §channel-selection-unknown-channel-400 sibling fact — the miss names what exists.
+            // {§channel-selection-unknown-channel-400} sibling fact — the miss names what exists.
             if (content === undefined) {
                 const availableChannels = Object.keys(channels);
                 const requestedChannel = channelName ?? fragment ?? "";
@@ -469,7 +469,7 @@ export default class Exec extends CoreSchemeAdapterBase {
             };
         }
         const seed: EntryData = { channels: seedChannels, tags: [] };
-        // §exec — the stream entry's scheme IS the runtime tag (sh/node), so it addresses by
+        // {§exec} — the stream entry's scheme IS the runtime tag (sh/node), so it addresses by
         // tag authority (sh:///l/t/s). The engine registers each runtime tag → this handler.
         const { entryId } = await EntryCrud.writeEntry(pathname, seed, core, runtime, core.workerId);
         if (entryId === null) {
@@ -485,8 +485,8 @@ export default class Exec extends CoreSchemeAdapterBase {
         const subscriptionId = await ChannelWrite.openSubscription(core.db, {
             workerId: core.workerId, entryId, scheme: runtime,
             handle: runtime !== "" ? `${runtime}: ${command}` : command,
-            pollSeconds: typeof attrs.pollSec === "number" ? attrs.pollSec : null, // §exec-poll — hibernation wake cadence
-            turnScoped: attrs.turnScoped === true, // §exec-poll — `<0>` reaped at the next pre-turn
+            pollSeconds: typeof attrs.pollSec === "number" ? attrs.pollSec : null, // {§exec-poll} — hibernation wake cadence
+            turnScoped: attrs.turnScoped === true, // {§exec-poll} — `<0>` reaped at the next pre-turn
         });
 
         const controller = new AbortController();
@@ -500,7 +500,7 @@ export default class Exec extends CoreSchemeAdapterBase {
             // then re-check `aborted`: a listener added to an already-aborted signal never
             // fires, so a check-then-attach order LOSES an abort that lands in the gap (R1's
             // TOCTOU leak). Attach-then-check closes it; controller.abort is idempotent, so a
-            // doubled fire is harmless. §exec-timeout
+            // doubled fire is harmless. {§exec-timeout}
             const onParentAbort = (): void => controller.abort(ExecAbort.teardownReason());
             parent.addEventListener("abort", onParentAbort, { once: true });
             unlink = (): void => parent.removeEventListener("abort", onParentAbort);
@@ -518,7 +518,7 @@ export default class Exec extends CoreSchemeAdapterBase {
             timeoutSec: typeof attrs.timeoutSec === "number" ? attrs.timeoutSec : null,
         });
 
-        // Every exec backgrounds + streams (§exec-stream): no same-turn receipt — the output
+        // Every exec backgrounds + streams ({§exec-stream}): no same-turn receipt — the output
         // surfaces as the environment-observation injector's delta on the next turn (folded while
         // it runs, opened when it finishes). Pure/read commands still auto-accept (attrs.inline =
         // no human gate); they just resolve a turn later, uniformly with host streams.
@@ -573,13 +573,13 @@ export default class Exec extends CoreSchemeAdapterBase {
         let exitLabel = "did not conclude";
         let stdoutLength = 0;
         let stderrLength = 0;
-        // §exec-entry-sink (#340) — the executor's entry() materialization request. The executor
+        // {§exec-entry-sink} (#340) — the executor's entry() materialization request. The executor
         // owns zero substrate: it hands us (path, content, {tags, mimetype}) and WE create/update
         // the entry (writeEntry upsert; tags UNIONED — writeEntry alone replaces), then narrate ONE
         // EDIT row in the reserved plurnk worker's log (the fs-fiction pattern, source = the calling
         // run) — the existing env-delta ambience folds it into every worker's next packet. The row is a
         // FULL fiction: tx carries the statement (body = the written content — the journal records
-        // the write, replay/fork-complete), rx carries the span (§edit-result-render, the whole
+        // the write, replay/fork-complete), rx carries the span ({§edit-result-render}, the whole
         // content numbered — a wholesale write's span IS the content; no diff, which would be a
         // pathological cost against a rewritten multi-MB page). Rendered folded by default, so no
         // body rides a packet uninvited — the meta line carries the honest OPEN weight.
@@ -599,7 +599,7 @@ export default class Exec extends CoreSchemeAdapterBase {
             const parsed = parsePath(path);
             if (parsed === null || parsed.kind !== "url" || parsed.scheme === null) return Promise.reject(new Error(`entry(): '${path.slice(0, 80)}' is not a URL`));
             if (content !== null && opts.mimetype === undefined) return Promise.reject(new Error("entry(): mimetype is required when content is provided"));
-            // §exec-entry-sink / #455 — content:null ⇒ core fetches the page through schemes-http's guarded
+            // {§exec-entry-sink} / #455 — content:null ⇒ core fetches the page through schemes-http's guarded
             // primitive. The fetch STARTS HERE, OFF the write-serialization chain, so concurrent entry() calls
             // fetch in PARALLEL (owner ruling: search fetches must not freeze the agent); only the entry WRITE
             // serializes on entryChain (db-write ordering). A null fetch is dead (guard-refused / unreachable /
@@ -708,7 +708,7 @@ export default class Exec extends CoreSchemeAdapterBase {
                 const reported: ExecutorResult = await executor.run({
                     runtime, command, cwd, target, signal,
                     entry: entrySink,
-                    env: ExecEnv.scoped(),  // SPEC §exec {§exec-env-scoped} — never plurnk's own secrets
+                    env: ExecEnv.scoped(),  // SPEC {§exec} {§exec-env-scoped} — never plurnk's own secrets
                     write: (channel, chunk) => enqueue(() => ChannelWrite.appendToChannel(db, {
                         entryId, channel, chunk, notify: ctx.streamEventNotify, coordinate,
                     })),
@@ -807,7 +807,7 @@ export default class Exec extends CoreSchemeAdapterBase {
             stdoutLength = stdoutMeta?.contentLength ?? 0;
             stderrLength = stderrMeta?.contentLength ?? 0;
         } finally {
-            // §exec-entry-sink — drain the entry()/narration writes so the tail (hence idle()) is a
+            // {§exec-entry-sink} — drain the entry()/narration writes so the tail (hence idle()) is a
             // COMPLETE quiescence barrier: a consumer woken below, or a teardown awaiting idle(), must
             // not race an in-flight entry() write into a closing db (#432 teardown race). Each op is
             // enqueued as `.then(op, op)`, so entryChain never rejects — awaiting it in finally is safe.
@@ -821,7 +821,7 @@ export default class Exec extends CoreSchemeAdapterBase {
             this.liveSubscriptions().unregister(subscriptionId);
             this.#activeSpawns.delete(subscriptionId);
 
-            // Every worker backgrounds now (§exec-stream) — wake a parked loop on completion so the
+            // Every worker backgrounds now ({§exec-stream}) — wake a parked loop on completion so the
             // run resumes to the turn where the stream's terminal delta surfaces.
             if (ctx.wakeWorkerNotify !== undefined) {
                 ctx.wakeWorkerNotify({

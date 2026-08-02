@@ -1,4 +1,4 @@
-// The teardown-reap half of the KILL wire onto @plurnk/plurnk-execs (§worker-lifecycle-total-reap).
+// The teardown-reap half of the KILL wire onto @plurnk/plurnk-execs ({§worker-lifecycle-total-reap}).
 // A background exec that IGNORES the polite signals (HUP/TERM) is endable ONLY by the bounded
 // housekeeping SIGKILL — so this is the positive proof that the service hands the executor
 // `{ housekeeping, graceMs }` on teardown, not a bare abort the executor can't escalate past SIGHUP.

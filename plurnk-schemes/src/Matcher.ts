@@ -4,7 +4,7 @@
 // per-mimetype handlers; this maps its typed errors to the HTTP-shaped status
 // codes the model acts on.
 //
-// The full status mapping is the contract: SPEC §matcher-dispatch. One
+// The full status mapping is the contract: SPEC {§matcher-dispatch}. One
 // rationale that doesn't live there: 203 is HTTP-creative ("Non-Authoritative
 // Information") — content was produced, but not in the structured form the
 // matcher requested; the model sees raw text + a `reason` and chooses

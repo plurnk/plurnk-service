@@ -59,7 +59,7 @@ export function renderAddress(scheme: string, pathname: string): string {
     if (scheme === "plurnk" && pathname.split("/").filter((s) => s.length > 0).length >= 2) {
         return `plurnk://${encoded.replace(/^\//, "")}`;
     }
-    // #370 — the worker IS the authority (§worker-scheme): a stored row whose authority was folded into
+    // #370 — the worker IS the authority ({§worker-scheme}): a stored row whose authority was folded into
     // Web URLs carry a real host in the pathname's first segment — render it as the authority
     // (run42 sweep: the entry-sink's materialized pages rendered https:///en.wikipedia.org/...).
     // worker:// renders :/// — the owner rides owner_id ({§entry-owner}), so empty authority IS

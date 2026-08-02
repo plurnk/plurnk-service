@@ -447,7 +447,7 @@ test("the client-interface seam — runLoop drives a loop end to end on the daem
             const publicationRows = async () => db.test_log_entries_by_run.all<{ op: string; status_rx: number }>({ worker_id: plurnkWorker!.id });
             const publishedCount = (await publicationRows()).length;
 
-            // §machine-processes — loops run in the MODEL run the seam resolves; a client worker is
+            // {§machine-processes} — loops run in the MODEL run the seam resolves; a client worker is
             // refused loudly (the module's envelope workerId is the client worker — never the loop home).
             const clientWorker = (await db.test_get_run_by_session.get<{ id: number }>({ workspace_id: created.id }))!;
             const problem = await rejectedProblem(() => daemon.runLoop({

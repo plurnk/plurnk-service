@@ -169,7 +169,7 @@ export const parseDsl = (text: string): PlurnkStatement[] => {
 };
 
 export const makeMockResponse = (dsl: string, completion: number = 0): MockResponse => {
-    // Every turn leads with PLAN (plurnk.md §Imperatives). The mock emits what a
+    // Every turn leads with PLAN (plurnk.md "Imperatives"). The mock emits what a
     // compliant model emits; PLAN and SEND flow through as ordinary dispatched ops.
     const turn = dsl.startsWith("<<PLAN") ? dsl : `<<PLAN::PLAN\n${dsl}`;
     return {

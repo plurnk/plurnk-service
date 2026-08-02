@@ -2,9 +2,9 @@
 
 ## 1. Overview
 
-This package is the single authority for PLURNK's language, schemas, generated
+§contract-authority This package is the single authority for PLURNK's language, schemas, generated
 types, parser, model rail, and runtime-neutral wire envelopes. Its package root
-is the single code API for those contracts. {§contract-authority}
+is the single code API for those contracts.
 
 | Surface | Canonical export/artifact |
 |---|---|
@@ -13,10 +13,10 @@ is the single code API for those contracts. {§contract-authority}
 | Local-model rail | `@plurnk/plurnk-contracts/plurnk.gbnf` |
 | Model language reference | `plurnk.md` in the package |
 
-JSON Schema is authoritative for shared data shapes. TypeScript types are
+§contract-representations JSON Schema is authoritative for shared data shapes. TypeScript types are
 generated from the schemas; ANTLR is authoritative for accepted model-language
 syntax; GBNF remains the bounded generation aid described in §1.2.
-{§contract-representations}
+
 
 Plurnk extends HEREDOC formatting into a state-machine grammar for LLM
 agents. Every plurnk statement is a single self-contained operation: a
@@ -82,14 +82,14 @@ that needs interpretation belongs in the runtime resolver.
 
 ## 1.2 GBNF Generation Rail
 
-The ANTLR parser and Visitor define the PLURNK language. The generated
+§gbnf-rail-purpose The ANTLR parser and Visitor define the PLURNK language. The generated
 `dist/plurnk.gbnf` is an optional local llama.cpp sampling rail: it is kept lean
 to make useful, ANTLR-compliant turns more likely without reproducing every
 parser or semantic validator. Parse compatibility is a design goal balanced
 against rail size and sampling efficiency, not a language-subset guarantee. A
 rail-legal operation can therefore produce a parser/Visitor error; consumers
 apply their ordinary admission and bounded-operation recovery contract.
-{§gbnf-rail-purpose}
+
 
 The shipped raw turn has one shape:
 
@@ -97,13 +97,13 @@ The shipped raw turn has one shape:
 root-turn ::= channel sep plan sep tail-0
 ```
 
-`channel` is exactly one byte-zero Gemma Harmony enclosure beginning
+§gbnf-turn-shape `channel` is exactly one byte-zero Gemma Harmony enclosure beginning
 `<|channel>thought\n` and ending `<channel|>`. Its body may be empty but cannot
 contain another opener or the closer. `sep` is zero through seven whitespace
 characters. No channel is legal after the leading one. `tail-0` is unchanged
 apart from that removal: zero through fourteen internal statements, separated
 only by `sep`, followed by exactly one terminal SEND under the existing terminal
-eligibility rules. {§gbnf-turn-shape}
+eligibility rules.
 
 ```mermaid
 flowchart LR
@@ -118,11 +118,11 @@ flowchart LR
     content --> parser
 ```
 
-GBNF applies to the raw sentence on the left, before projection. The two
+§gbnf-reasoning-boundary GBNF applies to the raw sentence on the left, before projection. The two
 projected fields are not separate GBNF languages and `content` alone is not
 revalidated as though it still contained the required channel. Provider and
 core own the projection evidence and rail-verdict boundary; this package owns
-only the raw language and the parser/Visitor result. {§gbnf-reasoning-boundary}
+only the raw language and the parser/Visitor result.
 
 ## 2. Canonical Statement Form
 
@@ -152,7 +152,7 @@ Optionality:
 
 Hard constraints:
 
-- Close-tag `:OPsuffix` must character-match the open tag's `OPsuffix`. {§close-tag-match}
+- §close-tag-match Close-tag `:OPsuffix` must character-match the open tag's `OPsuffix`.
 - Header elements appear in the order shown above (signal, then path, then `<L>`, then `:`).
 
 The per-operation grammar omits slots that do not exist for that operation;
@@ -189,11 +189,11 @@ restrictions are runtime concerns.
 | KILL   | operation code (optional integer; target-specific) | required | opaque annotation (logged, no runtime meaning) | not applicable |
 | PLAN   | tag filter (CSV; parse-side, canon is slotless) | optional (parse-side; canon is slotless) | intended goals {§plan-intended-goals} | parse-side only |
 
-SEND and KILL share a numeric wire slot, not one universal numeric vocabulary.
+§operation-code-polymorphism SEND and KILL share a numeric wire slot, not one universal numeric vocabulary.
 For pathless terminal SEND, the code is the loop disposition defined in §9.
 Directed SEND and KILL delegate any present code to the addressed target's
 operation contract; a live process may interpret a KILL code as a Unix signal,
-but that interpretation does not define KILL generally. {§operation-code-polymorphism}
+but that interpretation does not define KILL generally.
 
 §plan-intended-goals **PLAN records intended goals.** The PLAN body is the model's
 concise statement of intended goals. It is public, durable log content—not provider
@@ -209,12 +209,12 @@ MOVE use one universal text algebra independent of mimetype:
 | two integers | whole physical lines `firstLine..lastLine` | both lines are included |
 | four integers | exact `startLine,startColumn,endLine,endColumn` region | start included, end excluded; equality is zero-width |
 
-Exact regions use 1-based lines and Unicode code-point columns. One- and
+§text-scope-semantics Exact regions use 1-based lines and Unicode code-point columns. One- and
 two-integer line selections normalize to the same exclusive-end `TextRegion`
 used by four-coordinate selections. Whole-line replacement deliberately
 accounts for newline separators; it is an ergonomic projection over exact
 replacement, not a different mimetype navigation mode. Other arities and
-decimal text coordinates are runtime 416 failures. {§text-scope-semantics}
+decimal text coordinates are runtime 416 failures.
 
 For READ, a body matcher selects resources against their complete readable
 content. A non-semantic `<L>` then projects text from each selected
@@ -227,7 +227,7 @@ integer belongs to READ projection and selection uses the configured default.
 Mutation semantics:
 
 - No `<L>`, target does NOT exist: CREATE - the body becomes the new file/entry contents (an empty body creates an empty resource). This is the only unscoped EDIT.
-- No `<L>`, target EXISTS: REFUSED - an unscoped EDIT must never modify existing content. Use a text scope or `<1,-1>` to replace wholesale. The parser cannot know whether the target exists, so core owns this decision. {§unscoped-edit-create-only}
+- §unscoped-edit-create-only No `<L>`, target EXISTS: REFUSED - an unscoped EDIT must never modify existing content. Use a text scope or `<1,-1>` to replace wholesale. The parser cannot know whether the target exists, so core owns this decision.
 - `<N>` (single position) + body: replace the single line at `N` with body.
 - `<N-M>` (range) + body: replace lines `N..M` inclusive with body.
 - A selected position or range + empty body: delete the selection.
@@ -254,13 +254,13 @@ Mutation semantics:
 | KILL | status; killed path |
 | PLAN | status; logged |
 
-COPY and MOVE log projections preserve both admitted operand selections,
+§copy-move-observation COPY and MOVE log projections preserve both admitted operand selections,
 including their independent scopes, whether the result changed state, was a
 304 no-op, or failed after admission. Operands identify the request; `effects`
 describe only mutations that landed. If either operand uses textual scope,
 each landed textual create or update carries the same bounded receipt used by
 EDIT. Whole-channel and binary transfers remain bodyless structural effects.
-{§copy-move-observation}
+
 
 Output is delivered to the model in the next turn. The shape of "status"
 is a SEND-style status code (see §9) so that errors are uniform across
@@ -270,7 +270,7 @@ all OPs.
 
 Paths are URI-shaped, drawn from RFC 3986 in spirit but not strictly.
 
-**Worker names as URI authorities (#527).** Under the actor addressing
+§worker-name **Worker names as URI authorities (#527).** Under the actor addressing
 model the authority slot names a worker (`worker://alice/…`,
 `jq://child3/…`). The mintable-name contract is the exported
 `WORKER_NAME` constant — a lowercase DNS label (LDH:
@@ -285,7 +285,7 @@ construction — outside the alphabet. Id-freedom is the GENERATOR's
 contract (core), not the charset's: no alphabet distinguishes
 hash-like. The parser stays permissive — it decomposes ANY authority
 (http hosts are arbitrary); this contract governs minting and registry
-validation, not ingestion. {§worker-name}
+validation, not ingestion.
 
 Two RFC concessions justify the relaxation:
 
@@ -325,7 +325,7 @@ Runtime-enforced semantics:
 
 ## 6. Bulk Pattern Matching
 
-For FIND, READ, OPEN, and FOLD, `body` is an optional pattern matcher.
+§matcher-prefix-claims For FIND, READ, OPEN, and FOLD, `body` is an optional pattern matcher.
 The lexer captures the body opaquely (between the `:body:` fences) —
 dialect dispatch is not a lexer concern. Dialect is determined by the
 body's leading characters and validated by the Visitor using native
@@ -333,7 +333,7 @@ JS facilities where applicable. **The leading prefix CLAIMS its
 dialect** (#59): a claimed body that fails its dialect's parse is a
 positioned `"visitor"` error, never a silent glob fallback — the
 fallback converted a model's syntax fumble into a lying no-matches
-result. Glob is the no-prefix dialect only. {§matcher-prefix-claims}
+result. Glob is the no-prefix dialect only.
 
 | Leading prefix | Dialect   | Canonical form            | Validation         |
 |----------------|-----------|---------------------------|--------------------|
@@ -395,20 +395,22 @@ body fields; the lexer is unaware):
 
 Errors here are per-statement: sibling statements in the same turn still build.
 Consumer admission and recovery are separate contracts; the service's
-trustworthy-frame rule is `plurnk-core` §emission-admission.
+trustworthy-frame rule is `plurnk-core` {§emission-admission}.
 
-**GBNF note — pattern bodies are single-line at the rail.** The shipped
-`dist/plurnk.gbnf` forbids literal newlines inside FIND/READ/OPEN/FOLD
-bodies (patterns are single-line by contract; a regex matching a
-newline writes the two-char escape `\n`). This collapses the
-mismatched-close-tag trap (`<<FIND(…):…:READ` leaving the sampler stuck
-in an unclosable body) to a single line. Content bodies
-(EDIT/COPY/MOVE/EXEC/SEND/PLAN/WORK/FORK) remain multiline. The forgiving
-ANTLR ingester also accepts multiline pattern bodies. The rail forbids `:` as the first matcher
-body character, preventing an extra body delimiter from producing the
-common `:::OP` typo. Empty matchers and later colons remain valid; use a
-regex such as `/^:needle/` when the matcher itself must begin with a
-literal colon. {§pattern-body-single-line} {§pattern-body-leading-colon}
+**GBNF notes:**
+
+- §pattern-body-single-line **Pattern bodies are single-line at the rail.**
+  The shipped `dist/plurnk.gbnf` forbids literal newlines inside
+  FIND/READ/OPEN/FOLD bodies (patterns are single-line by contract; a regex
+  matching a newline writes the two-char escape `\n`). This collapses the
+  mismatched-close-tag trap (`<<FIND(…):…:READ` leaving the sampler stuck in
+  an unclosable body) to a single line. Content bodies
+  (EDIT/COPY/MOVE/EXEC/SEND/PLAN/WORK/FORK) remain multiline. The forgiving
+  ANTLR ingester also accepts multiline pattern bodies.
+- §pattern-body-leading-colon **A matcher body cannot begin with `:` at the
+  rail.** This prevents an extra body delimiter from producing the common
+  `:::OP` typo. Empty matchers and later colons remain valid; use a regex such
+  as `/^:needle/` when the matcher itself must begin with a literal colon.
 
 **Deferred validation:**
 
@@ -461,12 +463,12 @@ Examples involving negative integers:
 - `<0,-5>` — `[0, -5]` (comma separator admits a negative second number)
 - `<-3,-1>` — `[-3, -1]`
 
-**Parsing rule:** greedy. Each component consumes a leading `-` and
+§scope-marker-forms **Parsing rule:** greedy. Each component consumes a leading `-` and
 digits (plus an optional `.`-fraction) maximally; a `-` or `,`(` `?)
 then separates the next. So `<-1-5>` parses as `[-1, 5]` — the first
 `-` is the sign of -1, the second `-` is the separator. This falls out
 of standard ANTLR longest-match. The dash separator is parse-side only;
-the GBNF dictates the comma form. {§scope-marker-forms}
+the GBNF dictates the comma form.
 
 **Runtime concerns** (not enforced by the parser):
 
@@ -482,7 +484,7 @@ the GBNF dictates the comma form. {§scope-marker-forms}
 deterministic order so that `<N-M>` pagination is reproducible. The
 choice of ordering is a runtime guarantee, not a parser concern.
 
-## 8. Suffix Discipline {§suffix-discipline}
+## §suffix-discipline 8. Suffix Discipline
 
 The `:body:` fencing handles the vast majority of grammatical-enclosure
 concerns: body content is fully opaque to OP keywords and modifier-like
@@ -535,7 +537,7 @@ transfers directly:
 - `4xx` Client Error — model-side failure (malformed plurnk, missing path, contract violation); `499` is the model's give-up.
 - `5xx` Server Error — runtime or infrastructure failure. Never model-emitted as a terminal: "failed" is an engine verdict.
 
-### The terminal contract (waitpid) {§waitpid-dispositions}
+### §waitpid-dispositions The terminal contract (waitpid)
 
 The model signals one intention per turn — **continue (102)**, **done
 (200)**, **wait (202)**, or **give up (499)**, plus the operator-facing
@@ -544,22 +546,22 @@ loop's live obligations (spawned children, open streams, pending
 retrievals); the grammar polices *shape* only. The shape rules ARE
 structural:
 
-- The five disposition codes `{102, 200, 202, 300, 499}` lex as a
+- §send-mid-reservation The five disposition codes `{102, 200, 202, 300, 499}` lex as a
   distinct `DISPOSITION` token, making a disposition-coded SEND
   **structurally terminal**: a statement after it is a parse error
   (the mid-termination rule), and the GBNF reserves the five from
   mid-position SENDs (`status-mid` is their complement over `DDD`).
   This keeps the grammar's last-SEND model and the dispatcher's
-  first-disposition model coincident. {§send-mid-reservation}
+  first-disposition model coincident.
 - A **mid** SEND (before the terminal) is comms: statusless, or any
   non-disposition code, targeted or pathless, empty body allowed.
-- The **terminal** SEND requires a non-empty body — a turn must not
-  end empty-handed. {§terminal-body-nonempty}
-- The **park** rides `[202]` only: `<T>` (wait up to T seconds),
+- §terminal-body-nonempty The **terminal** SEND requires a non-empty body — a turn must not
+  end empty-handed.
+- §park-202-only The **park** rides `[202]` only: `<T>` (wait up to T seconds),
   `<T,P>` (adds a poll cadence, mirroring EXEC's slot), `<-1>`
   (indefinite; the join's own liveness bounds it). See §7 for the
-  GBNF-strict / ANTLR-tolerant split. {§park-202-only}
-- A **zero-statement turn may not conclude `[102]`** — "continue"
+  GBNF-strict / ANTLR-tolerant split.
+- §no-idle-102 A **zero-statement turn may not conclude `[102]`** — "continue"
   with nothing submitted is a spin. The GBNF's `tail-0` exits through
   a terminal trie without the `[102]` tail, so the idle turn (`PLAN`
   straight into `SEND[102]`) is unemittable; one statement restores
@@ -567,7 +569,7 @@ structural:
   `[202]` is the engine's obligation check). ANTLR stays tolerant
   (ingest side). A dispatch-emptied turn — ops emitted but failing
   downstream validation — survives the rail by nature; the engine's
-  idle-turn 409 backstops that class. {§no-idle-102}
+  idle-turn 409 backstops that class.
 
 SEND with no `(path)` broadcasts to the default control channel — the
 turn's disposition. SEND with `(path)` directs the message at a
@@ -660,13 +662,21 @@ not source-shaped. To leave a self-documenting breadcrumb, use
 
 The entry points are `PlurnkParser.parse` (a model turn), `PlurnkParser.parseStatements` (a bare statement sequence), `PlurnkParser.parseLog` (a multi-turn log), and `PlurnkParser.parseClient` (the client tier — protocol ops plus the client-only utility ops LOOK and BUFF), alongside the AST type union and a top-level `parsePath` helper. The parse surface area:
 
+§turn-shape `PlurnkParser.parse` accepts one model turn: free text before a
+required PLAN, only whitespace between and after operations, and a required
+terminal SEND. A packet without both anchors is invalid; there is no permissive
+fallback. The optional local sampling rail is governed by
+{§gbnf-rail-purpose}, {§gbnf-turn-shape}, and {§gbnf-reasoning-boundary}.
+
+§tier-entrypoints `PlurnkParser.parseClient` is the topmost parser tier. It
+accepts protocol operations plus the client-only LOOK and BUFF utilities; the
+model, statement-sequence, and log entry points reject those utilities.
+
 ```typescript
 // Parse a model TURN — the `*:PLAN:OPS:SEND[N]` sandwich, enforced entirely by the
 // grammar: free text before PLAN, a required PLAN, nothing but whitespace between/after
 // ops, and a required terminal SEND. A packet without a PLAN and a terminal SEND is
-// invalid. A Plurnk packet IS a turn; there is no permissive fallback. {§turn-shape}
-// The optional local sampling rail is specified by §gbnf-rail-purpose,
-// §gbnf-turn-shape, and §gbnf-reasoning-boundary.
+// invalid. A Plurnk packet IS a turn; there is no permissive fallback.
 PlurnkParser.parse(input: string): ParseResult
 
 // Parse a bare sequence of statements — teaching-example collections, single ops,
@@ -678,7 +688,7 @@ PlurnkParser.parseStatements(input: string): ParseResult
 // utility ops, LOOK (READ minus the log side effect) and BUFF (pull an editable entry into a
 // buffer; the write-back is a later plain EDIT). The topmost subset, one above the model/script
 // tiers; never used for model output. The other entry points reject LOOK/BUFF, so a client op
-// only parses here. Returns ParseResult<ClientStatement>. {§tier-entrypoints}
+// only parses here. Returns ParseResult<ClientStatement>.
 PlurnkParser.parseClient(input: string): ParseResult<ClientStatement>
 
 // Parse a multi-turn LOG — each turn REQUIRES the `<<TURN: … :TURN` wrapping around
@@ -814,13 +824,15 @@ interface ForkStatement extends StatementBase<string> { op: "FORK"; body: string
 // KILL — signal is an optional target-specific numeric code; body is an opaque annotation. Raw.
 interface KillStatement extends StatementBase<number> { op: "KILL"; body: string | null; }
 
-// PLAN — body is intended-goals text, recorded to the log. Raw. On the GBNF rail the body
-// additionally excludes the literal `<<` (#502): PLAN is suffix-less, so no op-quoting
-// device exists for it — the plan ends where the acting begins, and an omitted `:PLAN`
-// is auto-corrected by the mask instead of swallowing the turn's ops. A single `<`
-// stays legal. ANTLR stays tolerant; see the §14 advisory. {§plan-body-no-openers}
+// PLAN — body is intended-goals text, recorded to the log. Raw.
 interface PlanStatement extends StatementBase<string[]> { op: "PLAN"; body: string | null; }
 ```
+
+§plan-body-no-openers On the GBNF rail, the PLAN body excludes the literal
+`<<` (#502). PLAN is suffix-less, so no operation-quoting device exists for it:
+the plan ends where the acting begins, and an omitted `:PLAN` is auto-corrected
+by the mask instead of swallowing the turn's operations. A single `<` stays
+legal. ANTLR stays tolerant; see the §14 advisory.
 
 The `op` field is the discriminator. TypeScript narrows the statement
 type per-branch: `switch (s.op) { case "EDIT": /* s is EditStatement */ }`.
@@ -848,8 +860,8 @@ Exit codes: `0` for a clean parse (no error items, no `unparsedTail`),
 
 ## 13. Runtime-neutral wire contracts
 
-The package root exports the following schemas, generated types, constructors,
-and validators alongside the parser and AST. {§wire-entrypoint}
+§wire-entrypoint The package root exports the following schemas, generated types, constructors,
+and validators alongside the parser and AST.
 
 ### 13.1 Text regions
 
@@ -874,7 +886,7 @@ substitutes UTF-16 offsets, readable-row indices, or partial coordinates.
 
 ### 13.2 Operation results
 
-Every public PLURNK operation returns one `OperationResult`: {§operation-result}
+§operation-result Every public PLURNK operation returns one `OperationResult`:
 
 | Status | Required shape |
 |---|---|
@@ -888,9 +900,9 @@ model-facing failure envelope.
 
 ### 13.3 Problem Details
 
-`ProblemDetails` requires `type`, `title`, `status`, and `detail`;
+§problem-details `ProblemDetails` requires `type`, `title`, `status`, and `detail`;
 `instance` is optional until a durable host can attach the occurrence URI.
-{§problem-details}
+
 
 | Field | Contract |
 |---|---|
@@ -919,9 +931,9 @@ or from the canonical Problem without creating another PLURNK failure contract.
 
 ### 13.4 Notices
 
-A `Notice` is a transient, nonterminal observation. It cannot determine durable
+§notice A `Notice` is a transient, nonterminal observation. It cannot determine durable
 failure truth, lifecycle, scheduling, or recovery. Sharing a renderer with
-Problems does not merge their semantics. {§notice}
+Problems does not merge their semantics.
 
 ## 14. Parse error format
 
@@ -946,7 +958,51 @@ The three sources distinguish:
 - **`"parser"`** — structural failures at parse-tree level (missing close tag, wrong token order, etc.).
 - **`"visitor"`** — semantic failures during AST construction (SEND signal not an integer, EXEC signal with multiple values, etc.).
 
-`severity` distinguishes a hard error from a non-fatal advisory. The parser is the sole and complete owner of syntax-error messaging (it holds the parse state, lexer mode, and expected-token set that no consumer has), so it produces the final diagnostic message plus value-adds: deduped expected-token lists, turn-shape imperatives (begin with `<<PLAN`, end with a terminal `<<SEND`), and `warning`-severity near-miss advisories when the forgiving parser swallows a `<<Word…:Word` heredoc whose keyword is a known op confusion (`<<CLOSE` → did you mean `<<FOLD`), plus the invented-closer diagnostic on a never-closed body: when the swallowed text carries a `:ALLCAPS` tag that is not the op's closer, the unparsedTail reason names it (`found \`:COMPARISON_TASK\`, which is body text - the closer echoes the op's name`) so a cap-cut runaway's recovery turn learns what happened, not just that something did. {§invented-closer-advisory} A lexer-side redirect fires when EXEC's `[signal]` slot (executor-ident mode) hits a leading `-` or digit — mark-shaped `<timeout, poll>` scope content mistyped into the brackets: the message becomes `timeout/poll ride the \`<scope>\` slot; try \`EXEC<-1,300>\`` instead of a raw `unrecognized character`, teaching at the parse where a model that has the vocabulary but missed the delimiter is reachable. EXEC-scoped (its signal mode is exclusive), so SEND/KILL are untouched. {§signal-scope-redirect} A sibling lexer-side redirect fires when the slot region (post-target) begins with `$`, `~`, or `@`: the model put an unambiguous body matcher where a slot goes, so the message redirects it into `:body:` instead of returning the generic slot list. Slash-led regex and XPath are excluded because the same character can be a forgotten target wrap. {§matcher-body-redirect} A sibling advisory fires when an unsuffixed PLAN body contains op-shaped text (`<<EXEC`…): it is almost always an omitted `:PLAN` whose body swallowed the turn's ops (`ops belong after the plan closes; did you omit \`:PLAN\`?`). A non-empty suffix deliberately invokes §suffix-discipline and suppresses this advisory. {§plan-body-op-advisory} A sibling advisory fires when a mutating op (EDIT/COPY/MOVE) parses with a null `(target)` and a path-shaped `[signal]` element (a `/` or a dotted extension): the model read `[signal](target)` as a markdown `[label](url)` link and routed a plain file path — which does not look like a URL — into the tag slot, leaving nothing to edit. The message redirects the path into `(…)` (`\`<<EDIT\` has no \`(target)\` - that path sits in the \`[…]\` tag slot; a target goes in \`(…)\`. Try \`EDIT(path):…\``), teaching at the parse where the engine returns only a bare 400. Gated on a path-shaped signal so a genuine tags-only slip is not mis-steered toward a path it lacks. {§misplaced-target-advisory} Consumers map hard parse errors bounded to a trustworthy model-turn frame to durable failed operation results and may project warnings as Notices with `level: "warn"`. An `unparsedTail` makes everything beyond its boundary undefined and cannot be recovered this way. Packet presentation may normalize and bound the producer-owned message without changing its meaning.
+`severity` distinguishes a hard error from a non-fatal advisory. The parser is
+the sole and complete owner of syntax-error messaging because it holds the
+parse state, lexer mode, and expected-token set that no consumer has. It
+produces the final diagnostic message, deduplicated expected-token lists,
+turn-shape imperatives (begin with `<<PLAN`, end with a terminal `<<SEND`), and
+these targeted diagnostics:
+
+- §invented-closer-advisory **Invented closer.** When the forgiving parser
+  swallows a `<<Word…:Word` heredoc whose keyword is a known op confusion
+  (`<<CLOSE` → did you mean `<<FOLD`), it emits a `warning`-severity near-miss
+  advisory. On a never-closed body, when the swallowed text carries an
+  `:ALLCAPS` tag that is not the op's closer, the `unparsedTail` reason names it
+  (`found \`:COMPARISON_TASK\`, which is body text - the closer echoes the op's
+  name`) so a cap-cut runaway's recovery turn learns what happened, not just
+  that something did.
+- §signal-scope-redirect **EXEC scope in the signal slot.** When EXEC's
+  `[signal]` slot (executor-ident mode) hits a leading `-` or digit —
+  mark-shaped `<timeout, poll>` scope content mistyped into the brackets — the
+  lexer message becomes `timeout/poll ride the \`<scope>\` slot; try
+  \`EXEC<-1,300>\`` instead of a raw `unrecognized character`. The redirect is
+  EXEC-scoped because its signal mode is exclusive; SEND/KILL are untouched.
+- §matcher-body-redirect **Matcher body in the slot region.** When the
+  post-target slot region begins with `$`, `~`, or `@`, the lexer redirects the
+  unambiguous body matcher into `:body:` instead of returning the generic slot
+  list. Slash-led regex and XPath are excluded because the same character can
+  be a forgotten target wrap.
+- §plan-body-op-advisory **Operation text swallowed by PLAN.** When an
+  unsuffixed PLAN body contains op-shaped text (`<<EXEC`…), an advisory reports
+  that the likely omitted `:PLAN` swallowed the turn's ops (`ops belong after
+  the plan closes; did you omit \`:PLAN\`?`). A non-empty suffix deliberately
+  invokes {§suffix-discipline} and suppresses this advisory.
+- §misplaced-target-advisory **Mutation target in the signal slot.** When a
+  mutating op (EDIT/COPY/MOVE) parses with a null `(target)` and a path-shaped
+  `[signal]` element (a `/` or a dotted extension), the message redirects the
+  path into `(…)` (`\`<<EDIT\` has no \`(target)\` - that path sits in the
+  \`[…]\` tag slot; a target goes in \`(…)\`. Try \`EDIT(path):…\``). This
+  catches the markdown `[label](url)` reading at the parse where the engine
+  otherwise returns only a bare 400. It is gated on a path-shaped signal so a
+  genuine tags-only slip is not mis-steered toward a path it lacks.
+
+Consumers map hard parse errors bounded to a trustworthy model-turn frame to
+durable failed operation results and may project warnings as Notices with
+`level: "warn"`. An `unparsedTail` makes everything beyond its boundary
+undefined and cannot be recovered this way. Packet presentation may normalize
+and bound the producer-owned message without changing its meaning.
 
 Serialization convention for transmission to the model (the agent
 runtime constructs this; the parser provides the fields):
@@ -961,8 +1017,8 @@ runtime constructs this; the parser provides the fields):
 }
 ```
 
-**Message style rules** (enforced by `PlurnkErrorStrategy` and the
-lexer message translator): {§error-shape}
+§error-shape **Message style rules** (enforced by `PlurnkErrorStrategy` and the
+lexer message translator):
 
 - **Protocol vocabulary only.** Messages refer to plurnk concepts (open
   tag, close tag, signal, path, line marker, body, statement header,

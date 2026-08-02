@@ -230,7 +230,7 @@ export default class SearchIndex {
             }
         };
 
-        // §derivation-dedup-parallel (#416) — each content+mimetype+configuration identity builds
+        // {§derivation-dedup-parallel} (#416) — each content+mimetype+configuration identity builds
         // one shared artifact while distinct artifacts run with bounded concurrency.
         const groups = new Map<string, Array<{ r: DerivationRow; hash: string; searchExcluded: string | undefined }>>();
         for (const p of pending) {

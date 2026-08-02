@@ -1,7 +1,7 @@
-// §strikes-first-party-metadata (#313) — the loop's current strike streak rides
+// {§strikes-first-party-metadata} (#313) — the loop's current strike streak rides
 // generate({strikes}): 0 sent explicitly on clean turns, the live streak after struck
 // ones, zeroed by recovery. Assessment lives in runLoop (rail #38), so the proof drives
-// the REAL loop via the daemon. The model-facing packet NEVER carries it (§engine-rails).
+// the REAL loop via the daemon. The model-facing packet NEVER carries it ({§engine-rails}).
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -30,7 +30,7 @@ test("generate carries the live streak — 0 explicit, bumped by a struck turn, 
             const { finalStatus } = await runLoopToTerminal(ws, 2, { prompt: "go", maxTurns: 8 });
             assert.equal(finalStatus, 200, "the loop concluded through the struck turn");
             assert.deepEqual(mock.seen, [0, 1, 2, 0], "explicit 0 at start → 1 after the idle strike → 2 after no-ops → the working turn zeroes it");
-            // The model-facing packets never carry it (§engine-rails: no metric to game).
+            // The model-facing packets never carry it ({§engine-rails}: no metric to game).
             for (const row of await db.test_all_packets.all<{ packet: string }>({})) {
                 const sections = (JSON.parse(row.packet) as { sections?: object[] }).sections ?? [];
                 assert.ok(!/strike/i.test(JSON.stringify(sections)), "no packet section mentions strikes");

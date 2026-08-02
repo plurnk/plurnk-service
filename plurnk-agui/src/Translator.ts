@@ -1,6 +1,6 @@
 // The projection — plurnk's log-shaped wire onto AG-UI's event vocabulary. PURE: one daemon
 // notification in, zero-or-more AG-UI events out, with per-worker turn tracking as the only state.
-// The mapping (§agui-projection):
+// The mapping ({§agui-projection}):
 //   log/entry op=PLAN  (model)  → ACTIVITY_SNAPSHOT (the model's stated goals)
 //   log/entry op=SEND  (model)  → TEXT_MESSAGE triple (assistant speech; the signal rides plurnk.send)
 //   log/entry other    (model)  → TOOL_CALL_START/ARGS/END + TOOL_CALL_RESULT (an op row IS a
@@ -11,7 +11,7 @@
 //   loop/proposal               → owned by ProposalHitl (tool call + AG-UI interrupt)
 //   loop/terminated             → STATE_DELTA (budget truth) + RUN_FINISHED or RUN_ERROR
 // Numbers are passed through verbatim, never recomputed — the daemon's gauge is the gauge
-// (§agui-numbers-passthrough).
+// ({§agui-numbers-passthrough}).
 
 import {
     EventType,
@@ -47,7 +47,7 @@ export default class Translator {
     logEntry(n: LogEntryNotification): AguiEvent[] {
         const e = n.entry;
         const events: AguiEvent[] = [];
-        // §agui-topology-scope — the workspace broadcast carries EVERY worker's rows (workers, the
+        // {§agui-topology-scope} — the workspace broadcast carries EVERY worker's rows (workers, the
         // plurnk worker, siblings); only the THREAD's model worker projects onto the core vocabulary.
         // Everything else rides plurnk.row/plurnk.ambient — visible to rich clients as topology,
         // never interleaved into the conversation a generic frontend renders.
@@ -57,7 +57,7 @@ export default class Translator {
         // model worker (workers spawn FROM it later; reattach seeds it from workspace.workers instead).
         if (this.#modelWorkerId === null && e.origin === "model" && typeof workerId === "number") this.#modelWorkerId = workerId;
         const foreign = this.#modelWorkerId !== null && typeof workerId === "number" && workerId !== this.#modelWorkerId;
-        // §agui-row-channel — the FULL wire row rides plurnk.row alongside the core projection:
+        // {§agui-row-channel} — the FULL wire row rides plurnk.row alongside the core projection:
         // fold state, tags-in-signal, tokens, coordinates — everything the TUI/nvim render that
         // the core vocabulary can't hold. Rich clients render from plurnk.row; generic clients
         // never see the difference. This is the metadata channel the exclusive-portal migration
@@ -146,7 +146,7 @@ export default class Translator {
         // (loopId, turnIds, costUsd, usage meta) PLUS the daemon workspaceId, so a
         // plurnk client rebuilds its json record from the stream with ONE schema
         // across transports (WS or bridge) — no second round-trip. Numbers verbatim
-        // (§agui-numbers-passthrough). Generic frontends ignore it; the RUN_FINISHED/
+        // ({§agui-numbers-passthrough}). Generic frontends ignore it; the RUN_FINISHED/
         // RUN_ERROR below is their terminal signal.
         events.push({ type: EventType.CUSTOM, name: "plurnk.terminated", value: { ...n, workspaceId: this.#workspaceId } });
         // The standard RAW channel (§475): the provider's NATIVE completion frame rides
@@ -168,7 +168,7 @@ export default class Translator {
         return events;
     }
 
-    // §agui-replay — the workspace log as AG-UI history: model PLANs retain their
+    // {§agui-replay} — the workspace log as AG-UI history: model PLANs retain their
     // activity identity and model SENDs become assistant messages. Everything else
     // stays reachable through live plurnk.row rendering. Wire rows arrive as the
     // log.read projection (tx parsed).

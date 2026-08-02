@@ -1,4 +1,4 @@
--- loop.run RPC queries. SPEC §rpc.
+-- loop.run RPC queries. SPEC {§rpc}.
 
 -- PREP: loop_run_next_sequence
 SELECT COALESCE(MAX(sequence), 0) + 1 AS next FROM loops WHERE worker_id = $worker_id;

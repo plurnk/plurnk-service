@@ -1,4 +1,4 @@
-// COPY/MOVE INTO file:/// — a disk write under the §membership proposal gate (#2).
+// COPY/MOVE INTO file:/// — a disk write under the {§membership} proposal gate (#2).
 // The dest write proposes (202); on accept the file lands + an entry registers.
 // MOVE's source-delete is DEFERRED to after the accept, so a rejected MOVE leaves
 // the source intact (no data loss behind a pending review).

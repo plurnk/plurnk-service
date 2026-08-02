@@ -15,7 +15,7 @@ import { dirname, resolve } from "node:path";
 if (import.meta.main) {
     void (async () => {
         try {
-            // The assembled .env.defaults floor (§operator-config-env-defaults) — the requiem
+            // The assembled .env.defaults floor ({§operator-config-env-defaults}) — the requiem
             // interview instantiates the active provider, whose knob defaults live in ITS file.
             const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
             EnvDefaults.apply(EnvDefaults.merge(await EnvDefaults.collect(root, resolve(root, "..", "node_modules"))));

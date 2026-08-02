@@ -48,7 +48,7 @@ import WebFetcher from "./WebFetcher.ts";
 const BODY = "body";
 const HEADER = "header";
 // Materialization stamp line in the HEADER channel — the ONE timestamp the
-// freshness predicate reads (SPEC §revalidation). Namespaced so it can never
+// freshness predicate reads (SPEC {§revalidation}). Namespaced so it can never
 // collide with a real response header.
 const FETCHED_AT = "x-plurnk-fetched-at";
 
@@ -269,7 +269,7 @@ export default class Http implements SchemeHandler {
         return this.#fetchStream(statement.target, ctx, "DELETE", statement.body ?? undefined);
     }
 
-    // SEND dispatch — status-code-as-verb (SPEC §op-surface).
+    // SEND dispatch — status-code-as-verb (SPEC {§op-surface}).
     //   200 -> request with body (POST), stream response
     //   410 -> delete the cached entry
     //   499 -> cancel in-flight (handled by the subscription's force-cancel;
@@ -343,7 +343,7 @@ export default class Http implements SchemeHandler {
         // fetch's validators + body from THIS scheme's own stored entry (entries
         // cap, own namespace — sanctioned). If the origin answers 304, we re-serve
         // the cached body and skip the expensive render. Freshness is decided ONLY
-        // by #storedCopyServable (SPEC §revalidation): within the operator TTL
+        // by #storedCopyServable (SPEC {§revalidation}): within the operator TTL
         // window the stored copy serves with zero round-trips; past it, the
         // conditional GET revalidates (service#333/#405 landed the TTL). Captured
         // BEFORE the seed write below overwrites the entry.
@@ -449,7 +449,7 @@ export default class Http implements SchemeHandler {
                 return { shape: "passthrough", status: 102 };
             }
 
-            // SSE: an event stream is parsed into its `data` payloads (SPEC §sse),
+            // SSE: an event stream is parsed into its `data` payloads (SPEC {§sse}),
             // one notifyChunk per event with the `data:`/comment framing stripped,
             // so the model reads event content and not the transport. A long-lived
             // GET; events land in the body channel as they arrive across turns,
@@ -585,7 +585,7 @@ export default class Http implements SchemeHandler {
     }
 
     // Known-hostile-host rewrite — the ONE bounded, first-party exception
-    // (SPEC §host-rewrite, schemes-http#4). A GitHub blob page is a CSP-locked JS SPA that renders
+    // (SPEC {§host-rewrite}, schemes-http#4). A GitHub blob page is a CSP-locked JS SPA that renders
     // nothing useful, and code wants SOURCE (line-navigable) not markdown pulled
     // from a rendered code-viewer; raw.githubusercontent serves the exact bytes
     // on the byte path. Measured through the extractor: blob → SPA/JSON noise,

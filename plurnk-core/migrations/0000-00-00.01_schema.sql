@@ -28,7 +28,7 @@ CREATE TABLE IF NOT EXISTS workers (
     workspace_id    INTEGER NOT NULL,
     name          TEXT    NOT NULL CHECK (length(name) > 0),
     created_at    TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
-    -- runs fork via parent_worker_id; workspaces carry no parent — §machine-processes-no-fork-workspace
+    -- runs fork via parent_worker_id; workspaces carry no parent — {§machine-processes-no-fork-workspace}
     parent_worker_id INTEGER          CHECK (parent_worker_id IS NULL OR parent_worker_id != id),
     cost_pico     INTEGER NOT NULL DEFAULT 0 CHECK (cost_pico >= 0),
     origin        TEXT    NOT NULL DEFAULT 'client' CHECK (origin IN ('model', 'client', 'plurnk')),
@@ -38,7 +38,7 @@ CREATE TABLE IF NOT EXISTS workers (
 
 CREATE        INDEX IF NOT EXISTS workers_workspace_id_created_at ON workers (workspace_id, created_at);
 CREATE        INDEX IF NOT EXISTS workers_parent_worker_id         ON workers (parent_worker_id);
--- NOT unique: a name is frozen per worker (§machine-processes-worker-origin) but RECLAIMABLE across
+-- NOT unique: a name is frozen per worker ({§machine-processes-worker-origin}) but RECLAIMABLE across
 -- time — a terminated run keeps its name in permanent history while a fresh spawn reuses it;
 -- worker_resolve_by_name picks the newest. A LIVE collision is refused at the spawn gate (Run.edit
 -- → worker_live_by_name → 409), never by this index. Indexed for the by-name resolve/spawn lookup.
@@ -63,7 +63,7 @@ CREATE TABLE IF NOT EXISTS loops (
     -- #260 — client-passed @file paths foisted as turn-0 READs (string[] JSON). The daemon owns the
     -- workspace, so it READs them in instead of the client inlining bytes (co-location law).
     open_paths TEXT NOT NULL DEFAULT '[]' CHECK (json_valid(open_paths)),
-    -- §worker-scheme loop-termination delta: terminated_at is stamped by the trigger
+    -- {§worker-scheme} loop-termination delta: terminated_at is stamped by the trigger
     -- below when status crosses into terminal (every death-path, uniformly);
     -- terminal_message is the deliverable — the SEND[200] body or the abandonment
     -- reason — set by the guarded terminal lifecycle transition.
@@ -80,7 +80,7 @@ CREATE TABLE IF NOT EXISTS loops (
 
 CREATE UNIQUE INDEX IF NOT EXISTS loops_worker_id_sequence ON loops (worker_id, sequence);
 
--- §worker-scheme: a loop crossing into a terminal status stamps terminated_at, so sibling
+-- {§worker-scheme}: a loop crossing into a terminal status stamps terminated_at, so sibling
 -- runs pull the termination as a folded ambient delta — caught uniformly across every
 -- death-path (SEND, grinder, max-turns, strike, KILL). The stamp updates terminated_at,
 -- never status, so it cannot re-fire this trigger. Terminals: 200 done · 413 budget ·
@@ -163,9 +163,9 @@ CREATE TABLE IF NOT EXISTS entries (
     owner_id   INTEGER NOT NULL,
     params     TEXT                         CHECK (params IS NULL OR json_valid(params)),
     attributes TEXT    NOT NULL DEFAULT '{}' CHECK (json_valid(attributes)),
-    -- SPEC §membership — how a file member entered the curated surface. 'git' rows are
+    -- SPEC {§membership} — how a file member entered the curated surface. 'git' rows are
     -- reconciled against the repo's members each turn — tracked ls-files PLUS untracked-
-    -- but-not-ignored files (§membership-auto-add) — registered + un-registered so entries
+    -- but-not-ignored files ({§membership-auto-add}) — registered + un-registered so entries
     -- == members; 'client'/'constraint' (model-created, add-glob) are not git's to reclaim.
     -- NULL = not a file member (other schemes don't carry origin).
     membership_origin TEXT                   CHECK (membership_origin IS NULL OR membership_origin IN ('git', 'client', 'constraint')),
@@ -174,7 +174,7 @@ CREATE TABLE IF NOT EXISTS entries (
     -- embeddings, later) ONLY when this differs from the current body hash — an
     -- unchanged entry is skipped, never re-metadatafied every turn.
     deep_hash TEXT,
-    -- SPEC §membership-change-gated-sync — the per-member sync stat-detect:
+    -- SPEC {§membership-change-gated-sync} — the per-member sync stat-detect:
     -- "<mtimeMs>:<size>" of the disk file at its last materialization. The pre-turn
     -- sync stat()s every member but re-reads/re-tokenizes/rewrites only one whose
     -- signature changed; an unchanged member is a no-op. NULL = never synced.
@@ -207,7 +207,7 @@ UPDATE entries SET scheme = 'file' WHERE scheme IS NULL;
 -- both spellings of one member fails HERE on the identity index, loudly (fresh-db recovery).
 UPDATE entries SET pathname = substr(pathname, 2) WHERE scheme = 'file' AND pathname LIKE '/%';
 
--- The ONE engine-imposed constraint (SPEC §stream-constraints, §stream-constraints-engine-one-cap): 100 MiB char-length cap
+-- The ONE engine-imposed constraint (SPEC {§stream-constraints}, {§stream-constraints-engine-one-cap}): 100 MiB char-length cap
 -- per channel content body. All other limits are extrinsic.
 CREATE TABLE IF NOT EXISTS entry_channels (
     entry_id INTEGER NOT NULL,
@@ -216,7 +216,7 @@ CREATE TABLE IF NOT EXISTS entry_channels (
     mimetype TEXT    NOT NULL             CHECK (length(mimetype) > 0),
     tokens   INTEGER NOT NULL DEFAULT 0   CHECK (tokens >= 0),
     -- content identity: sha256 of content, stamped at static writes (streamed appends leave it
-    -- NULL). The per-tokenizer token cache it once keyed was retired — §tokenomics-agnostic-ruler.
+    -- NULL). The per-tokenizer token cache it once keyed was retired — {§tokenomics-agnostic-ruler}.
     content_hash TEXT,
     state    TEXT    NOT NULL DEFAULT 'static' CHECK (state IN ('static', 'active', 'closed', 'errored')),
     PRIMARY KEY (entry_id, name),
@@ -323,14 +323,14 @@ CREATE TABLE IF NOT EXISTS log_entries (
     sequence        INTEGER NOT NULL           CHECK (sequence >= 1),
     at              TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
     origin          TEXT    NOT NULL           CHECK (origin IN ('model', 'client', 'plurnk', 'plugin')),
-    -- §env-delta environment-delta cause: a sibling run-id or a scheme ('file');
+    -- {§env-delta} environment-delta cause: a sibling run-id or a scheme ('file');
     -- NULL = the owning run itself (self), rendered without a worker= label.
     source          TEXT,
 
-    -- 'error' is an ACTIONLESS row (§operation-results — errors are log items): a parse failure that
+    -- 'error' is an ACTIONLESS row ({§operation-results} — errors are log items): a parse failure that
     -- produced no op still records a log entry (op='error', status_rx≥400, no target) so the model
     -- can fold/kill/recall its own mistakes like any other log row — one budget surface, the log.
-    -- 'model' is an ACTIONLESS row too (§model-entry): the model's own verbatim emission, mirrored
+    -- 'model' is an ACTIONLESS row too ({§model-entry}): the model's own verbatim emission, mirrored
     -- back as a foldable log item so it can finally SEE its prior output (born folded; the turn-0
     -- exemplar is born open). text/vnd.plurnk-typed; OPEN/FOLD/KILL-able like any row.
     -- No op enum here: the grammar op set is grammar's contract (PlurnkOp), and this column is written
@@ -378,7 +378,7 @@ CREATE        INDEX IF NOT EXISTS log_entries_worker_id           ON log_entries
 CREATE        INDEX IF NOT EXISTS log_entries_loop_id          ON log_entries (loop_id);
 CREATE        INDEX IF NOT EXISTS log_entries_at               ON log_entries (at);
 
--- §log-region-tagging — named log-region curation. FOLD is the log's write-op (EDIT can't
+-- {§log-region-tagging} — named log-region curation. FOLD is the log's write-op (EDIT can't
 -- reach engine-written rows): FOLD[tag] stamps a tag on a region; OPEN[tag]/FIND[tag] filter
 -- by it. Mirrors entry_tags (apply additive / filter ALL-tags AND); CASCADE with the row on KILL.
 CREATE TABLE IF NOT EXISTS log_tags (
@@ -482,7 +482,7 @@ BEGIN
 END;
 
 -- subscriptions
--- Durable subscription lifecycle per SPEC §subscriptions. The row records what
+-- Durable subscription lifecycle per SPEC {§subscriptions}. The row records what
 -- the worker holds and routes cancellation to a separate process-local callable;
 -- it never serializes that callable. Closed rows persist for forensics; partial
 -- unique index enforces one active subscription per (worker, entry).
@@ -495,10 +495,10 @@ CREATE TABLE IF NOT EXISTS subscriptions (
     handle       TEXT    NOT NULL CHECK (length(handle) > 0),
     opened_at    TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
     -- grammar 0.74.20 EXEC `<T,P>` poll cadence (seconds). NULL = not polled. While the owning
-    -- loop hibernates (202), the daemon wakes it every poll_seconds to inspect this stream (§exec-poll).
+    -- loop hibernates (202), the daemon wakes it every poll_seconds to inspect this stream ({§exec-poll}).
     poll_seconds INTEGER          CHECK (poll_seconds IS NULL OR poll_seconds > 0),
     -- EXEC `<0>` — turn-scoped: the stream is reaped at the worker's next pre-turn so it never survives
-    -- into the subsequent turn; its terminal output surfaces born-OPEN like any conclusion. §exec-poll
+    -- into the subsequent turn; its terminal output surfaces born-OPEN like any conclusion. {§exec-poll}
     turn_scoped  INTEGER NOT NULL DEFAULT 0 CHECK (turn_scoped IN (0, 1)),
     closed_at    TEXT,
     close_status INTEGER          CHECK (close_status IS NULL OR (close_status BETWEEN 100 AND 599)),
@@ -518,10 +518,10 @@ CREATE INDEX IF NOT EXISTS subscriptions_scheme_active
 
 CREATE INDEX IF NOT EXISTS subscriptions_opened_at ON subscriptions (opened_at);
 
--- (worker_watermarks removed — §env-delta is now pull-from-log, no per-worker snapshot.)
+-- (worker_watermarks removed — {§env-delta} is now pull-from-log, no per-worker snapshot.)
 
 -- workspace_constraints
--- SPEC §membership constraint overlay — the client's supersede over git membership.
+-- SPEC {§membership} constraint overlay — the client's supersede over git membership.
 -- Per (workspace, effect, glob/target): `pick` (members git misses, resolved by a
 -- targeted client-dictated scan), `hide` (drop git-tracked matches), `view` (member
 -- for read; File.edit rejects the write). git-absent, `pick` rows are the sole substrate

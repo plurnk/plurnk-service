@@ -1,4 +1,4 @@
-// Envelope lifecycle helpers for client connections. SPEC §connection-lifecycle.
+// Envelope lifecycle helpers for client connections. SPEC {§connection-lifecycle}.
 //
 // Every connected client gets a (workspace, run, client-loop) envelope. Either
 // the client picks the workspace explicitly (workspace.create / workspace.attach)
@@ -39,7 +39,7 @@ export interface WorkerRow {
 }
 
 // Per-connection envelope. `workerId` is the connection's own worker — the client
-// actor's: `op.*` and `log.read` live there (§connection-lifecycle, §machine-processes). `modelWorkerId` is the
+// actor's: `op.*` and `log.read` live there ({§connection-lifecycle}, {§machine-processes}). `modelWorkerId` is the
 // model's separate run (the conversation); `loop.run`/`loop.cancel` target it and
 // the packet renders it, so client ops are absent from what the model sees with no
 // filter. Both `modelWorkerId` and `clientLoopId` are lazily allocated on first use —
@@ -57,9 +57,9 @@ export interface ClientEnvelope {
 export default class Envelope {
     // Run names reserved for non-client actors: a client must not create OR
     // attach to a worker under a reserved name (origin-impersonation — `plurnk`
-    // is the runtime actor, §authority-terms/§actor-boundary). Checked case-insensitively, before
-    // lookup, so a client can neither forge nor hijack one (SPEC §methods).
-    static readonly RESERVED_RUN_NAMES: ReadonlySet<string> = Owner.RESERVED; // §methods-worker-name-reserved + {§entry-owner} (commons/plurnk rows, ~ self-sigil)
+    // is the runtime actor, {§authority-terms}/{§actor-boundary}). Checked case-insensitively, before
+    // lookup, so a client can neither forge nor hijack one (SPEC {§methods}).
+    static readonly RESERVED_RUN_NAMES: ReadonlySet<string> = Owner.RESERVED; // {§methods-worker-name-reserved} + {§entry-owner} (commons/plurnk rows, ~ self-sigil)
 
     // Grammar 0.5.0 (#10): Workspace and Run carry user-renameable string names.
     // Defaults are `workspace-{unixtime}` and `run-{unixtime}`; random suffix avoids
@@ -99,7 +99,7 @@ export default class Envelope {
                 },
             );
         }
-        // SPEC §membership D4 — establish git-ls-files membership at workspace setup so
+        // SPEC {§membership} D4 — establish git-ls-files membership at workspace setup so
         // tracked files are members before the first op. No-op when projectRoot is
         // null (headless) or not a git working tree.
         await GitMembership.resolveGitMembership(db, workspace.id, undefined);
@@ -216,11 +216,11 @@ export default class Envelope {
         return loop.id;
     }
 
-    // Lazy model-run allocator (§connection-lifecycle, §machine-processes — the client writes to its own worker).
+    // Lazy model-run allocator ({§connection-lifecycle}, {§machine-processes} — the client writes to its own worker).
     // The model's conversation lives in its OWN run, distinct from the connection's
     // (client) run, so the packet — rendered from the model's run — never carries
     // the client's op.*. Created on the first loop.run; reused for the connection.
-    // #366 — a FRESH conversation over the same world (§machine-processes: two workers are two
+    // #366 — a FRESH conversation over the same world ({§machine-processes}: two workers are two
     // conversations about one curated workspace): a named, empty-log, model-origin ROOT run.
     // Distinct from ensureModelWorker (the stable default conversation) and forkWorker (copies history).
     static async createModelWorker(db: Db, workspaceId: number, name?: string): Promise<{ id: number; name: string }> {
@@ -250,7 +250,7 @@ export default class Envelope {
         return run.id;
     }
 
-    // Self-hosting keystone (§actor-boundary): the workspace's reserved `plurnk` run, where the
+    // Self-hosting keystone ({§actor-boundary}): the workspace's reserved `plurnk` run, where the
     // runtime acts as an ordinary actor (doc materialization today; fs/git work
     // later). One per workspace, reused; its log is the runtime's own — invisible
     // to other workers except through the shared workspace filesystem.
@@ -292,7 +292,7 @@ export default class Envelope {
     }
 
     // workspace.rename — the workspace name is a mutable handle (vs a worker's immutable
-    // name, §machine-processes). Mutates workspaces.name only; the UNIQUE constraint is
+    // name, {§machine-processes}). Mutates workspaces.name only; the UNIQUE constraint is
     // the real guard against collision (the handler pre-checks for a clean error).
     static async updateWorkspaceName(db: Db, workspaceId: number, name: string): Promise<string> {
         const row = await db.envelope_set_workspace_name.get<{ id: number; name: string }>({ id: workspaceId, name });

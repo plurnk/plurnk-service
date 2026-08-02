@@ -237,7 +237,7 @@ test("parsePath: the ws op trio (READ open+stream, SEND push, KILL close) parses
     assert.deepEqual(schemes, ["ws", "wss", "ws"]);
 });
 
-// #527 (§worker-name): the mintable worker-name contract — a lowercase DNS label. The single
+// #527 ({§worker-name}): the mintable worker-name contract — a lowercase DNS label. The single
 // source core's auto-namer and schemes' registry derive from. The parser stays permissive
 // (any authority decomposes); this pins the CONTRACT constant, not ingestion behavior.
 test("worker-name contract (): WORKER_NAME is a lowercase DNS label", () => {

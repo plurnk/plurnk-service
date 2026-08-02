@@ -1,6 +1,6 @@
 // Workspace documentation reconciliation. It runs when the daemon boots an existing workspace
 // and when a new workspace is created, never as a per-worker or per-loop ritual. Two sets, both
-// idempotent EDITs through the workspace's reserved plurnk worker (§actor-boundary):
+// idempotent EDITs through the workspace's reserved plurnk worker ({§actor-boundary}):
 //   1. operator/client reference docs (PLURNK_SERVICE_MD_* ∪ settings.mdDocs, client wins on
 //      collision) at plurnk:///<alias>.md — Engine.runTurn foists their READs at turn 0 (#231);
 //   2. the plugin scheme/exec reference docs (#note12) at plurnk://docs/<name>.md — discovered

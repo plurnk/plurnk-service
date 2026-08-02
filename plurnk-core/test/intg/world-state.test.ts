@@ -1,4 +1,4 @@
-// [§fs-world-state] — the harness proves BOTH directions: a lawful world reports zero
+// {§fs-world-state} — the harness proves BOTH directions: a lawful world reports zero
 // violations, and a manufactured breach is DETECTED (a detector nobody has seen catch
 // anything is a guard nobody can trust). The soak half runs the run59 shape in miniature:
 // turn boundaries over one workspace, zero entry growth on read-only turns.
@@ -49,6 +49,6 @@ test("the detector CATCHES: a non-canon stored key and an alien grantor both sel
 
         const violations = await WorldState.check(db);
         const laws = violations.map((v) => v.invariant).toSorted();
-        assert.ok(laws.includes("§fs-canonical-name"), `the non-canon key is caught: ${JSON.stringify(violations)}`);
+        assert.ok(laws.includes("{§fs-canonical-name}"), `the non-canon key is caught: ${JSON.stringify(violations)}`);
     } finally { await db.close(); await rm(root, { recursive: true, force: true }); }
 });

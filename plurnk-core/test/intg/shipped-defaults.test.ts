@@ -1,4 +1,4 @@
-// §operator-config-shipped-defaults — the shipped .env.defaults is ITSELF under test. Every other
+// {§operator-config-shipped-defaults} — the shipped .env.defaults is ITSELF under test. Every other
 // tier overlays either the committed Mock fixture or the real-model profile, which makes shipped-
 // default regressions structurally invisible to it: the POLICY.md
 // double-injection (a stale PLURNK_SERVICE_MD_POLICY default alongside the policy section) and the
@@ -36,7 +36,7 @@ test("the template ships no double policy, no active model, ONLY service-owned k
     assert.deepEqual(mdKeys, [], `no active PLURNK_SERVICE_MD_* doc default ships; got ${mdKeys.join(", ")}`);
     // No active model — the local/cloud/plurnk.ai selection is the user's (#307).
     assert.equal(env.get("PLURNK_MODEL"), undefined, "no active PLURNK_MODEL ships");
-    // §operator-config-env-defaults — a knob has exactly one owner, and this file declares ONLY
+    // {§operator-config-env-defaults} — a knob has exactly one owner, and this file declares ONLY
     // the service's: PLURNK_SERVICE_* plus the daemon's own unprefixed surface (HOST/PORT, the
     // QUESTIONS ceiling, the PLUGINS trust gate). Sibling knobs (PROVIDERS/EXECS/SCHEMES/
     // MIMETYPES/AGUI/MODEL/BASE) live in the owning packages' shipped .env.defaults — a stray

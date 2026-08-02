@@ -90,7 +90,7 @@ const runExec = async (tag: string, body: string, cwd: string | null): Promise<{
 const tmp = mkdtempSync(join(tmpdir(), "plurnk-batt-"));
 
 // Each batteries-included tag with a deterministic, self-contained one-liner, its exact output, and
-// its GATE — the effect→proposal classification that is the executor security boundary (§exec, #182):
+// its GATE — the effect→proposal classification that is the executor security boundary ({§exec}, #182):
 //   "propose" = effect `host` (arbitrary host code/disk mutation) → human/policy review before it runs
 //   "inline"  = effect `pure`/`read` (sandboxed compute, at most a host FS read) → auto-run, ungated
 // Bodies mirror each executor package's own declared usage example where one exists, so a drift in the

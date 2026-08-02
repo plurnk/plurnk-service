@@ -249,7 +249,7 @@ export const buildModel = (): GModel => {
                 // SENDs carry any NON-disposition 3-digit status (status-mid) or none, targeted
                 // or pathless, empty body allowed. The TERMINAL SEND requires a disposition code
                 // and a non-empty body - a turn must not end empty-handed. Terminal set (waitpid
-                // contract, service SPEC §wait-obligation-matrix): 102 continue, 200 done,
+                // contract, service SPEC {§wait-obligation-matrix}): 102 continue, 200 done,
                 // 202 wait (obligation-checked; the engine verifies against live spawns/streams/
                 // retrievals), 300 stop-the-world question, 499 abandon. The park `<T>`/`<T,P>`/
                 // `<-1>` rides [202] ONLY - waiting is 202's meaning, so [102] is a pure continue
@@ -354,7 +354,7 @@ export const buildModel = (): GModel => {
     // fuzz tests; unreachable from root-turn, so pruned from the shipped artifact.
     model.set("send-statement", [[ref("send-mid-any")], [ref("send-final-any")]]);
     model.set("statement", [[ref("op-statement")], [ref("send-statement")]]);
-    // Terminal set (waitpid contract, service SPEC §wait-obligation-matrix): 102 continue,
+    // Terminal set (waitpid contract, service SPEC {§wait-obligation-matrix}): 102 continue,
     // 200 done, 202 wait (back on the menu 2026-07-09 with a NEW meaning - obligation-checked,
     // the engine verifies it against live spawns/streams/retrievals; a wait on nothing resolves
     // like 200, so the old groundless-hibernate fumble cannot recur), 300 = a stop-the-world

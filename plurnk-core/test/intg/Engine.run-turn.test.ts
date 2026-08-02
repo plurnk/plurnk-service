@@ -54,7 +54,7 @@ const response = (ops: PlurnkStatement[], content: string = "", completion: numb
 });
 
 // The deterministic HARD-failure (403 writableBy) generator for the strike/notice tests:
-// a scheme the model can't write. Log no longer serves this role — §model-entry-log-curation
+// a scheme the model can't write. Log no longer serves this role — {§model-entry-log-curation}
 // admits the model through its gate for the KILL curation lever (other ops 501, a SOFT failure).
 class Sealed {
     static manifest = {
@@ -204,7 +204,7 @@ test("Engine.runTurn: multi-op turn - first-class prompt precedes model ops", as
         assert.deepEqual(
             indices.map((r) => ({ idx: r.sequence, op: r.op })),
             [
-                { idx: 1, op: "model" }, // the turn-0 exemplar, mirrored OPEN at sequence 1 (§model-entry)
+                { idx: 1, op: "model" }, // the turn-0 exemplar, mirrored OPEN at sequence 1 ({§model-entry})
                 { idx: 2, op: "prompt" }, // the prompt (prompt:///<loop>/1, owner-keyed)
                 { idx: 3, op: "EDIT" },
                 { idx: 4, op: "EDIT" },
@@ -250,7 +250,7 @@ test("Engine.runTurn: zero-ops turn completes at status 422; failure is recorded
 });
 
 test("Engine.runTurn: empty-ops turn does not leak strike bookkeeping as a notice", async () => {
-    // Per SPEC §operation-results gamification policy: zero ops is the model's emission
+    // Per SPEC {§operation-results} gamification policy: zero ops is the model's emission
     // choice, not an error to report. Engine still treats it as a struck
     // turn internally (strike accounting), but no model-facing notice.
     const { db, engine, workspaceId, workerId, loopId } = await setup();
@@ -376,12 +376,12 @@ test("Engine.runLoop: hitting maxTurns terminates the loop at 429 (max_turns)", 
         const result = await engine.runLoop({ provider, workspaceId, workerId, loopId, messages: [], maxTurns: 3 });
         assert.equal(result.hitMaxTurns, true);
         assert.equal(result.reason, "max_turns");
-        assert.equal(result.result.status, 429, "the turn ceiling terminates the loop at 429 Too Many Requests [§loop-terminals]");
+        assert.equal(result.result.status, 429, "the turn ceiling terminates the loop at 429 Too Many Requests {§loop-terminals}");
     } finally { await db.close(); }
 });
 
 test("Engine.runLoop: sudden_death is engine-internal — NOT surfaced to model", async () => {
-    // Per SPEC §operation-results gamification policy: telling the model "you're near
+    // Per SPEC {§operation-results} gamification policy: telling the model "you're near
     // my abandonment threshold" is engine bookkeeping, not an error. The
     // loop still abandons at maxTurns; the model just doesn't see warnings.
     const { db, engine, workspaceId, workerId, loopId } = await setup();
@@ -454,7 +454,7 @@ test("Engine.runLoop: soft failures (404) do NOT accumulate strikes", async () =
                 response([readMissing("c"), sendStmt(102, "3")]),
                 response([readMissing("d"), sendStmt(102, "4")]),
                 // terminate on a clean turn — a READ + same-turn SEND[200] is itself a strike
-                // (§send-premature-terminate), which would confound this 404-soft-failure assertion.
+                // ({§send-premature-terminate}), which would confound this 404-soft-failure assertion.
                 response([sendStmt(200, "done")]),
             ],
         });
@@ -519,7 +519,7 @@ test("Engine.runLoop: no_ops turn counts as a hard strike", async () => {
 });
 
 test("Engine.runLoop: strike is engine-internal — model sees action_failure but NOT a strike notice", async () => {
-    // Per SPEC §operation-results gamification policy: model sees the failed action
+    // Per SPEC {§operation-results} gamification policy: model sees the failed action
     // (action_failure surfaces the 403), never the engine's strike
     // counter. Telling the model "strike 1 of 5" would let it optimize
     // for the meter instead of the task.
@@ -657,7 +657,7 @@ test("Engine.runLoop: sudden_death never surfaces to model", async () => {
         const provider = new Mock({
             contextWindow: 100000,
             // Non-terminal turns carry a work op so they're real continues, not idle-strikes
-            // (§send the terminal contract) — else the two would strike out at maxStrikes:2 before SEND[200].
+            // ({§send} the terminal contract) — else the two would strike out at maxStrikes:2 before SEND[200].
             responses: [
                 response([editStmt("/1", "x"), sendStmt(102, "1")]),
                 response([editStmt("/2", "x"), sendStmt(102, "2")]),
@@ -768,7 +768,7 @@ test("Engine.runTurn: multi-SEND turn — last SEND wins on turn.status", async 
     } finally { await db.close(); }
 });
 
-// SPEC §packet packet.system.log — chronological action-entries for the loop.
+// SPEC {§packet} packet.system.log — chronological action-entries for the loop.
 // Task #44.
 
 test("Engine.runTurn: packet.system.log on first turn contains the prompt entry", async () => {
@@ -788,7 +788,7 @@ test("Engine.runTurn: packet.system.log on first turn contains the prompt entry"
         const log = logEntries(JSON.parse(row?.packet ?? "{}"));
         // The prompt is one actionless plurnk-origin row against prompt:///<loop>/1.
         // Found by its stable identity (origin + target),
-        // robust to the turn-0 `model` exemplar at 1/1/1 (§model-entry) and any
+        // robust to the turn-0 `model` exemplar at 1/1/1 ({§model-entry}) and any
         // manifest-preview READ that shift its coordinate.
         const prompt = log.find((e) => e.origin === "plurnk" && e.op === "prompt" && e.target === "prompt:///1/1");
         assert.ok(prompt, "first-class prompt row logged against prompt:///1/1");
@@ -814,7 +814,7 @@ test("Engine.runTurn: packet.system.log captures prior turn's actions on second 
         const log = logEntries(JSON.parse(row?.packet ?? "{}"));
         // Turn 2 packet sees the prompt row + the prior turn's two model ops (an
         // EDIT and a SEND). Found by identity (origin + op + target), robust to the
-        // turn-0 `model` exemplar (§model-entry) and a manifest-preview foist that
+        // turn-0 `model` exemplar ({§model-entry}) and a manifest-preview foist that
         // shift coordinates between the prompt and the model's ops.
         assert.ok(log.find((e) => e.origin === "plurnk" && e.op === "prompt" && typeof e.target === "string" && e.target.startsWith("prompt:///")), "prompt row logged");
         const edit = log.find((e) => e.origin === "model" && e.op === "EDIT");
@@ -890,7 +890,7 @@ test("Engine.runTurn: previous-turn 403 surfaces in the next packet's Errors sec
         const t2 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
         const row = await db.test_get_packet.get<{ packet: string }>({ id: t2.turnId });
         const packet = JSON.parse(row?.packet ?? "{}");
-        // §log-row-self-explains: the pointer targets the OP ROW — the row carries its own
+        // {§log-row-self-explains}: the pointer targets the OP ROW — the row carries its own
         // failure message on its meta line, so the pointer leads to a record that states its why.
         // Turn-as-container, 1-based: model exemplar 1/1/1, prompt 1/1/2,
         // then the model's denied EDIT at 1/1/3.

@@ -7,7 +7,7 @@ import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, DE
 import { Mock } from "@plurnk/plurnk-providers";
 import { sendStmt } from "./_dsl.ts";
 
-// Tokenomics Phase 1: real token counts are stored at write time (SPEC §tokenomics).
+// Tokenomics Phase 1: real token counts are stored at write time (SPEC {§tokenomics}).
 // entry_channels.tokens comes from the entry write helpers via ctx.tokenize;
 // log_entries.tokens from Engine.#writeLog over tx+rx. Both route through the
 // engine's #tokenize — here the divisor tripwire default (no provider wired in
@@ -46,7 +46,7 @@ test("EDIT stores entry_channels.tokens from the model-agnostic ruler", async ()
         assert.equal(result.status, 201);
         assert.ok(result.entryId !== null);
         const ch = await db.tok_channel_tokens.get<{ tokens: number }>({ entry_id: result.entryId, name: "body" });
-        // The write-time stamp is the model-agnostic ruler (§tokenomics-agnostic-ruler): ceil(len/2).
+        // The write-time stamp is the model-agnostic ruler ({§tokenomics-agnostic-ruler}): ceil(len/2).
         assert.equal(ch?.tokens, Math.ceil(content.length / 2));
         assert.ok((ch?.tokens ?? 0) > 0, "tokens populated at write, not the old hardcoded 0");
     } finally { await db.close(); }

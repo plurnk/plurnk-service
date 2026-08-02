@@ -1,4 +1,4 @@
-// Proposal lifecycle (SPEC.md §engine-rails + §methods). When a scheme returns
+// Proposal lifecycle (SPEC.md {§engine-rails} + {§methods}). When a scheme returns
 // status 202, the engine writes a state='proposed' log entry and pauses
 // dispatch until Engine.resolveProposal feeds back a decision. These tests
 // exercise the pause/resume machinery + the log-render visibility filter
@@ -162,7 +162,7 @@ test("proposal: status=202 + state='proposed' rows hidden from the log section r
         const logEntryId = await idDeferred.promise;
 
         // Render the log — proposed entry should be invisible.
-        // engine_render_log is worker-scoped per SPEC §packet-terms (runs own log entries).
+        // engine_render_log is worker-scoped per SPEC {§packet-terms} (runs own log entries).
         const rendered = await db.engine_render_log.all<{ status_rx: number; state: string }>({ worker_id: ctx.workerId });
         const proposedVisible = rendered.find((r) => r.status_rx === 202 && r.state === "proposed");
         assert.equal(proposedVisible, undefined, "proposed entries must be invisible to log render");

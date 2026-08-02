@@ -1,4 +1,4 @@
-// Tests for SPEC §scheme-manifest channel manifest + §channel-selection fragment-as-channel-selector.
+// Tests for SPEC {§scheme-manifest} channel manifest + {§channel-selection} fragment-as-channel-selector.
 
 import test from "node:test";
 import assert from "node:assert/strict";

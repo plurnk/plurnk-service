@@ -1,8 +1,8 @@
-// Channel-write helpers for streaming schemes. SPEC §channel-state (channel state),
-// §subscriptions (subscription registry), §notifications (stream/event notification).
+// Channel-write helpers for streaming schemes. SPEC {§channel-state} (channel state),
+// {§subscriptions} (subscription registry), {§notifications} (stream/event notification).
 //
 // Schemes import these and call them as their connection lifecycle progresses; the
-// engine has no stream/transaction abstraction (§stream-no-engine-transaction-abstraction).
+// engine has no stream/transaction abstraction ({§stream-no-engine-transaction-abstraction}).
 // Helpers update entry_channels (content / state) and subscriptions, and emit
 // stream/event notifications scoped to the entry's workspace via an optional
 // callback the daemon wires in.
@@ -13,7 +13,7 @@ import { Results, type SchemeResult } from "@plurnk/plurnk-schemes";
 import type { Notice } from "@plurnk/plurnk-contracts";
 import { renderAddress } from "./plurnk-uri.ts";
 
-export type ChannelState = "static" | "active" | "closed" | "errored"; // render metadata, never a read gate — §channel-state-state-is-metadata
+export type ChannelState = "static" | "active" | "closed" | "errored"; // render metadata, never a read gate — {§channel-state-state-is-metadata}
 
 // The loop/turn/sequence coordinate of the entry, mirrored onto stream payloads
 // so clients read it as fields instead of re-parsing the exec URI's trailing
@@ -62,7 +62,7 @@ export interface WakeWorkerPayload {
 export type WakeWorkerNotify = (payload: WakeWorkerPayload) => void;
 
 // Start/deliver-to a sister worker — the worker:// op family's loop-start primitive
-// (spawn/fork/irc; SPEC §machine-processes, §actor-boundary-two-doors voice
+// (spawn/fork/irc; SPEC {§machine-processes}, {§actor-boundary-two-doors} voice
 // door). The daemon wires this to Daemon.inject: an active sister folds the
 // prompt into its next turn; an idle sister enqueues a fresh loop and a drain
 // claims it. spawn/fork create/branch the worker first, then call this to start
@@ -73,7 +73,7 @@ export type InjectWorkerNotify = (args: {
     workspaceId: number;
     workerId: number;
     prompt: string;
-    // §worker-delegation-inherits-flags — the SENDING loop's flags. Authority flows down the
+    // {§worker-delegation-inherits-flags} — the SENDING loop's flags. Authority flows down the
     // delegation edge: a spawned/forked child's live loop runs with its delegator's flags,
     // or a non-auto child's every side-effecting op proposes into a resolver-less void
     // (300s auto-cancel per attempt — the fan-out wedge). Resume-in-place ignores this
@@ -145,9 +145,9 @@ export default class ChannelWrite {
         return renderAddress(scheme === null ? "file" : scheme, pathname);
     }
 
-    // A stream chunk accumulates into the channel's content (§chunk-accumulation-chunks-accumulate)
-    // and fires a stream/event (§live-updates-stream-event-fires-on-chunk); the log carries the
-    // stream's lifecycle, never per-chunk rows (§no-chunk-rows-log-captures-lifecycle-only).
+    // A stream chunk accumulates into the channel's content ({§chunk-accumulation-chunks-accumulate})
+    // and fires a stream/event ({§live-updates-stream-event-fires-on-chunk}); the log carries the
+    // stream's lifecycle, never per-chunk rows ({§no-chunk-rows-log-captures-lifecycle-only}).
     static async appendToChannel(
         db: Db,
         { entryId, channel, chunk, notify, coordinate, mimetype }: { entryId: number; channel: string; chunk: string; notify?: StreamEventNotify; coordinate?: StreamCoordinate; mimetype?: string },
@@ -165,7 +165,7 @@ export default class ChannelWrite {
     }
 
     // Schemes drive channel state transitions as their connection lifecycle progresses.
-    // §channel-state-schemes-own-state-transitions
+    // {§channel-state-schemes-own-state-transitions}
     static async setChannelState(
         db: Db,
         { entryId, channel, state, notify, coordinate }: { entryId: number; channel: string; state: ChannelState; notify?: StreamEventNotify; coordinate?: StreamCoordinate },
@@ -181,7 +181,7 @@ export default class ChannelWrite {
     // The durable half of subscription ownership. Its row identifies what is
     // open; the process-local LiveSubscriptions registry owns the exact callable
     // used by SEND[499] / KILL.
-    // §subscriptions-subscription-registry-routes-cancellation
+    // {§subscriptions-subscription-registry-routes-cancellation}
     static async openSubscription(
         db: Db,
         { workerId, entryId, scheme, handle, pollSeconds, turnScoped, publishedChannel }: {
@@ -235,7 +235,7 @@ export default class ChannelWrite {
     }
 
     // The worker's still-open subscriptions — the registry-routed reap
-    // (§worker-lifecycle-total-reap). A cancel iterates these durable identities
+    // ({§worker-lifecycle-total-reap}). A cancel iterates these durable identities
     // and invokes each exact callable through LiveSubscriptions, so a
     // backgrounded exec is reaped regardless of AbortSignal-listener timing.
     static async findOpenSubscriptionsForWorker(
@@ -246,7 +246,7 @@ export default class ChannelWrite {
     }
 
     // The worker's open turn-scoped (EXEC `<0>`) subscriptions — reaped at the worker's next pre-turn so a
-    // `<0>` stream never survives into the subsequent turn (§exec-poll). Any open turn-scoped sub at
+    // `<0>` stream never survives into the subsequent turn ({§exec-poll}). Any open turn-scoped sub at
     // pre-turn is necessarily from a prior turn (the reap runs before this turn's own spawns).
     static async findOpenTurnScopedSubscriptionsForWorker(
         db: Db,

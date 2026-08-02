@@ -1,5 +1,5 @@
-// File scheme as the canonical proposal consumer (SPEC.md §engine-rails + §methods
-// + §membership D3 — disk co-location). EDIT against file:/// returns status=202 with a udiff body
+// File scheme as the canonical proposal consumer (SPEC.md {§engine-rails} + {§methods}
+// + {§membership} D3 — disk co-location). EDIT against file:/// returns status=202 with a udiff body
 // and {path, canonical, patch, patched} attrs; on accept the engine calls
 // File.applyResolution which writes patched content to disk.
 
@@ -83,7 +83,7 @@ test("file.edit: writes file on accept via applyResolution", async () => {
     await withWorkspaceRoot(async (root, ctx) => {
         // Pre-seed an existing file so the EDIT computes a real diff.
         const target = "src/hello.txt";
-        // File.edit gates on membership (SPEC §membership): a pre-existing file must be a
+        // File.edit gates on membership (SPEC {§membership}): a pre-existing file must be a
         // member (git-tracked or client-added) to be editable — register it, the same
         // way READ's gate is satisfied below. A NEW path needs no prior member.
         await mkdir(join(root, "src"), { recursive: true });
@@ -199,7 +199,7 @@ test("file.edit: an unchanged file is a 304 no-op and never becomes a proposal",
 test("file.edit: rejection leaves file untouched; the rx carries a durable Problem Details result", async () => {
     await withWorkspaceRoot(async (root, ctx) => {
         const target = "untouched.txt";
-        // pre-existing file must be a member to be editable (SPEC §membership edit gate)
+        // pre-existing file must be a member to be editable (SPEC {§membership} edit gate)
         await ctx.db.crud_insert_workspace_entry.get({ workspace_id: ctx.workspaceId, owner_id: await Owner.commonsId(ctx.db, ctx.workspaceId), scheme: "file", pathname: `${target}` });
         await writeFile(join(root, target), "original\n", "utf8");
 
@@ -345,14 +345,14 @@ test("file.edit: refuses traversal escape", async () => {
 test("bare target: EDIT(relative/path) routes to file scheme (no scheme prefix)", async () => {
     await withWorkspaceRoot(async (root, ctx) => {
         const target = "from-bare.txt";
-        // pre-existing file must be a member to be editable (SPEC §membership edit gate);
+        // pre-existing file must be a member to be editable (SPEC {§membership} edit gate);
         // materialize the body channel too — the marker math below reads `original`.
         await writeFile(join(root, target), "original\n", "utf8");
         const seeded = await ctx.db.crud_insert_workspace_entry.get<{ id: number }>({ workspace_id: ctx.workspaceId, owner_id: await Owner.commonsId(ctx.db, ctx.workspaceId), scheme: "file", pathname: target });
         await ctx.db.ops_upsert_channel.run({ entry_id: seeded?.id, name: "body", content: "original\n", mimetype: "text/plain", tokens: 0 });
 
         // No file:/// prefix — the form the sysprompt teaches. The file exists, so the
-        // marker is required (§edit-marker-required-on-existing).
+        // marker is required ({§edit-marker-required-on-existing}).
         const stmt = bareEditStmt(target, "bare-path edit\n", fullReplace);
         const idDeferred = deferred<number>();
         const dispatchPromise = ctx.engine.dispatch({

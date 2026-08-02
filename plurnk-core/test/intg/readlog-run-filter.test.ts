@@ -1,5 +1,5 @@
 // #376 — the seam's readLog honors its workerId filter: two workers, one row each, each read returns
-// ONLY its own worker's rows (the worker is the isolation boundary, §machine-processes). Pinned after a
+// ONLY its own worker's rows (the worker is the isolation boundary, {§machine-processes}). Pinned after a
 // client report of workerId being ignored live — the in-tree seam was exonerated by this exact test.
 import test from "node:test";
 import assert from "node:assert/strict";

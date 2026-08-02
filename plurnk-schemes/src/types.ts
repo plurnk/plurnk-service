@@ -39,14 +39,14 @@ export interface SchemeManifest {
     readonly folderScopes?: boolean;
     // Entries land FOLDED, off the ranked manifest surface (READable by address,
     // not poured into the ranked view). Absent/false → first-class ranked.
-    // Full contract + containment rationale: SPEC §manifest (foldedByDefault).
+    // Full contract + containment rationale: SPEC {§manifest} (foldedByDefault).
     readonly foldedByDefault?: boolean;
     readonly flags?: SchemeFlagAffinity;
     // Self-doc, mirroring the exec contract: terse pushes, depth pulls (#25).
     // example = terse hot-path usage line (rendered every turn); documentation =
     // deep doc the consumer materializes as a pull-able plurnk://docs/<name>.md;
     // glyph = display icon (consumer renders `glyph ?? name`). Field-by-field
-    // contract: SPEC §manifest-self-doc.
+    // contract: SPEC {§manifest-self-doc}.
     readonly example?: string;
     readonly documentation?: string;
     readonly glyph?: string;

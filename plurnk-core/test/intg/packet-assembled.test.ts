@@ -40,7 +40,7 @@ test("assembled packet: the turn-0 catalog foist renders its entries into the lo
         const log = packetSection(packet, "log");
 
         // THE REGRESSION GUARD: the foisted FIND(worker:///*) renders its RESULT into the
-        // log (§render-rule-find-renders-result) — the model SEES the catalog rows, not just
+        // log ({§render-rule-find-renders-result}) — the model SEES the catalog rows, not just
         // its own echoed query. The invisible-catalog bug rendered only `<<FIND(...)::FIND`.
         assert.match(log, /worker:\/\/\/note\.md/, "the foisted catalog FIND renders a direct entry into the packet's log");
         assert.match(log, /worker:\/\/\/\.env\.defaults/, "the complete one-level map includes direct dot entries");
@@ -294,7 +294,7 @@ test("the live things a worker holds — child workers — surface as terse poin
 
         // The live child surfaces as a terse `* <status> worker://<name>` pointer — orienting state, not advice.
         assert.match(packetSection(packet, "child-workers"), /^\* 102 worker:\/\/worker-x$/m, "the live child worker is a status+path pointer the model READs/KILLs itself");
-        // Framework status in the user slot's clump ([§packet-cache-monotone]), above budget-the-law.
+        // Framework status in the user slot's clump ({§packet-cache-monotone}), above budget-the-law.
         const usr = packet.sections.filter((x) => x.slot === "user").map((x) => x.name);
         assert.ok(usr.includes("child-workers"), "child-workers rides the status clump");
         assert.ok(usr.indexOf("log") < usr.indexOf("child-workers") && usr.indexOf("child-workers") < usr.indexOf("budget"), "the clump sits after the log, child-workers above budget-the-law");

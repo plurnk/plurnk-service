@@ -40,7 +40,7 @@ const seed = async () => {
     for (const [pathname, content] of FILES) {
         await EntryCrud.writeEntry(`${pathname}`, { channels: { body: { content, mimetype: "text/typescript" } }, tags: [] }, ctx, "file");
     }
-    // @graph derives at manifest-add (§mimetype) — build the manifest to populate the index.
+    // @graph derives at manifest-add ({§mimetype}) — build the manifest to populate the index.
     await SearchIndex.maintain(ctx);
     return { db, workspaceId, workerId };
 };

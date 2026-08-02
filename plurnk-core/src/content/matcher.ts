@@ -7,7 +7,7 @@
 //
 // Status: 200 = matches; 204 = matcher applied, zero results; 400 = malformed matcher
 // expression; 203 = source unparseable for its mimetype → raw bytes as text so the model
-// can fall back to regex/visual parsing (SPEC §matcher-dispatch).
+// can fall back to regex/visual parsing (SPEC {§matcher-dispatch}).
 
 import type { MatcherBody } from "@plurnk/plurnk-contracts";
 import { TextCoordinates, type Mimetypes } from "@plurnk/plurnk-mimetypes";
@@ -34,7 +34,7 @@ export default class Matcher {
         return SchemeMatcher.matchAgainstContent(body, content, mimetype, mimetypes);
     }
 
-    // §find-source-agnostic — apply a content matcher to a list of candidates from ANY source
+    // {§find-source-agnostic} — apply a content matcher to a list of candidates from ANY source
     // (entries, log rows, ...), returning one selection per resource keyed by the
     // caller's own identity, with all addressable evidence grouped on it. The
     // matcher never cares what table content came from; this is

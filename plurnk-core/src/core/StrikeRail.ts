@@ -9,7 +9,7 @@ import type { PlurnkStatement, LineMarker } from "@plurnk/plurnk-contracts";
 // the surgical behavior under budget pressure). One simple set, evenly applied.
 // 409 (premature-terminate refusal) is SOFT here: whether it strikes is decided by steerStruck
 // (Engine sets it true for a stream/child refusal — discarding live work IS serious — and false
-// for a retrievals-only refusal, which teaches without striking, §send-premature-terminate/#346).
+// for a retrievals-only refusal, which teaches without striking, {§send-premature-terminate}/#346).
 // Counting the raw 409 status ALSO would double-strike the stream/child case and WRONGLY strike
 // the retrieval-only case (a cloud atomic-turn model repeating read+conclude struck out 500 on
 // firefast despite the ruling). The cycle detector remains the backstop for a genuinely-spinning
@@ -71,7 +71,7 @@ const fingerprintOp = (stmt: PlurnkStatement): string => {
 // Rails #38 (strikes) + #39 (cycle detection): the per-loop failure-streak
 // accounting that decides abandonment. Strike accounting is engine-internal
 // bookkeeping. Per rummy precedent (plugins/error/error.js#verdict) and SPEC
-// §operation-results policy: model sees failures from admitted operations and
+// {§operation-results} policy: model sees failures from admitted operations and
 // engine rails, never the engine's accounting about them (strike counts,
 // cycle detection, sudden-death threshold). Surfacing internal state to the
 // model creates a gamification surface — model optimizes for engine metrics
@@ -116,7 +116,7 @@ export default class StrikeRail {
 
     // The loop's CURRENT strike streak — the same figure the 500-threshold compares. Rides
     // generate({strikes}) as first-party outbound metadata (Plurnk-Strikes, #313): the hosted
-    // router's escalation signal. NEVER model-facing (§engine-rails — a surfaced count is a
+    // router's escalation signal. NEVER model-facing ({§engine-rails} — a surfaced count is a
     // metric to game); the packet does not carry it.
     streak(loopId: number): number {
         return this.#state.get(loopId)?.streak ?? 0;
@@ -152,9 +152,9 @@ export default class StrikeRail {
         state.history.push(turn.fingerprint);
         const cycle = StrikeRail.detectCycle(state.history, turn.minCycles, turn.maxCyclePeriod);
         if (cycle.detected) state.turnErrors++;
-        // SPEC §grinder: a non-soft grinder fire counts toward the strike streak.
-        if (turn.budgetStruck) state.turnErrors++; // a grinder fire bumps the strike streak — §grinder-strike-coupling
-        if (turn.steerStruck) state.turnErrors++; // idle / premature-terminate steer struck — §send the terminal contract
+        // SPEC {§grinder}: a non-soft grinder fire counts toward the strike streak.
+        if (turn.budgetStruck) state.turnErrors++; // a grinder fire bumps the strike streak — {§grinder-strike-coupling}
+        if (turn.steerStruck) state.turnErrors++; // idle / premature-terminate steer struck — {§send} the terminal contract
         const recordedFailed = turn.statuses.some((s) => s >= 400 && !SOFT_FAILURE_STATUSES.has(s));
         const struck = turn.noOps || recordedFailed || state.turnErrors > 0;
         let thresholdCrossed = false;

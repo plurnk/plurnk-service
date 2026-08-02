@@ -1,5 +1,5 @@
 // worker:// scheme — spawn + fork (COPY), irc (SEND), terminate (KILL). Same-workspace sisters
-// (SPEC §machine-processes, §actor-boundary). injectWorker is the daemon's
+// (SPEC {§machine-processes}, {§actor-boundary}). injectWorker is the daemon's
 // loop-start seam; here it's a recording stub (Daemon.inject's drain has its own
 // tests), so these assert the run-scheme's OWN work: the run-table effect + the
 // exact inject call. The dispatch gates (#checkWritable run-copy branch, the
@@ -16,7 +16,7 @@ import Fork from "../../src/core/fork.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, makeSchemeCtx } from "./_helpers.ts";
 import { editStmt, sendStmt, readStmt, fullReplace } from "./_dsl.ts";
 
-// §worker-scheme — the worker is the AUTHORITY: worker://<name> (name in hostname), worker://self for the current run.
+// {§worker-scheme} — the worker is the AUTHORITY: worker://<name> (name in hostname), worker://self for the current run.
 // worker://self is the self-marker; the control ops (spawn/irc/fork/kill) carry no entry path.
 const workerPath = (name: string): ParsedPath => ({
     kind: "url", raw: `worker://${name}`, scheme: "worker",
@@ -159,7 +159,7 @@ test("WORK(worker://name):task spawns a same-workspace sister, seeded via inject
         assert.equal(calls.length, 1, "exactly one injectWorker call");
         const { flags: spawnFlags, ...spawnRest } = calls[0] as { flags?: object; workspaceId: number; workerId: number; prompt: string };
         assert.deepEqual(spawnRest, { workspaceId, workerId: worker.id, prompt: "investigate the bug" }, "the new run is started with the prompt");
-        assert.equal((spawnFlags as { auto?: boolean } | undefined)?.auto, false, "the delegating loop's flags ride the injection (§worker-delegation-inherits-flags)");
+        assert.equal((spawnFlags as { auto?: boolean } | undefined)?.auto, false, "the delegating loop's flags ride the injection ({§worker-delegation-inherits-flags})");
     } finally { await db.close(); }
 });
 
@@ -293,7 +293,7 @@ test("SEND(worker://name):msg delivers to a sister; a missing sister is 404", as
         assert.equal(ok.status, 200, "irc to an existing sister returns 200");
         const { flags: ircFlags, ...ircRest } = calls.at(-1) as { flags?: { auto?: boolean }; workspaceId: number; workerId: number; prompt: string };
         assert.deepEqual(ircRest, { workspaceId, workerId: sisterId, prompt: "what's your status?" }, "the message is delivered to the named sister");
-        assert.equal(ircFlags?.auto, false, "the sender's flags ride the irc (§worker-delegation-inherits-flags)");
+        assert.equal(ircFlags?.auto, false, "the sender's flags ride the irc ({§worker-delegation-inherits-flags})");
 
         const missing = await engine.dispatch({
             statement: sendStmt(null, workerPath("ghost"), "anyone there?"),
@@ -364,7 +364,7 @@ test("FORK(worker://name):task forks a NAMED branch — started via injectWorker
         assert.notEqual(branch.id, workerId, "the branch is a distinct run");
         const { flags: forkFlags, ...forkRest } = calls.at(-1) as { flags?: { auto?: boolean }; workspaceId: number; workerId: number; prompt: string };
         assert.deepEqual(forkRest, { workspaceId, workerId: branch.id, prompt: "take the other branch" }, "the branch is continued with the fork prompt");
-        assert.equal(forkFlags?.auto, false, "the forking loop's flags ride the injection (§worker-delegation-inherits-flags)");
+        assert.equal(forkFlags?.auto, false, "the forking loop's flags ride the injection ({§worker-delegation-inherits-flags})");
     } finally { await db.close(); }
 });
 

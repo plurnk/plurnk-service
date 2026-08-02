@@ -581,7 +581,7 @@ test("GBNF: PLAN has no numeric suffix — the malformed <<PLAN1 is not derivabl
     assert.equal(derives("statement", "<<PLAN1:nested thought:PLAN1"), false);
 });
 
-// #502 (§plan-body-no-openers): PLAN's body excludes `<<` — the plan ends where the acting
+// #502 ({§plan-body-no-openers}): PLAN's body excludes `<<` — the plan ends where the acting
 // begins. run113: an omitted `:PLAN` let the body swallow EXEC+SEND to the NEXT plan's closer,
 // silently and in-rail. With `<<` unsampleable in-body, the mask denies the trap at one token
 // and the shortest legal path to the intended op is emitting `:PLAN` first.

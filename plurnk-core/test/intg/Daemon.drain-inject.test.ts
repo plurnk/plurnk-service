@@ -228,7 +228,7 @@ test("loop ends before consuming an injected prompt → reconciled into a fresh 
     const mock = new Mock({
         contextWindow: 16384,
         responses: [
-            // The rejected EXEC is a same-turn failure — §send-200-failed-ops refuses a [200] over
+            // The rejected EXEC is a same-turn failure — {§send-premature-terminate} refuses a [200] over
             // it, so loop 1 ends turn 1 by ABANDON (499, never gated): the orphan premise holds.
             sendOnly("<<EXEC[sh]:true:EXEC\n<<SEND[499]:loop 1 abandons at turn 1:SEND"),  // pause, then end
             sendOnly("<<SEND[200]:reconciled loop ran:SEND"),                              // the promoted loop

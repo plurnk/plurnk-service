@@ -49,7 +49,7 @@ test("every ```plurnk fenced turn in plurnk.md parses clean", () => {
     assert.equal(failures.length, 0, `plurnk fenced blocks that do not parse:\n${failures.join("\n")}`);
 });
 
-// The atomic-sentence standard (#453, PACKET.md §Prose): canon prose stays short and
+// The atomic-sentence standard (#453, PACKET.md "Prose — atomic sentences"): canon prose stays short and
 // single-idea. A run-on is a sentence >=180 chars, or >=120 chars welded with a `;`. Gate it
 // here so the next weld is caught at the source, before it ships - not after, in a sibling's
 // linter against a stale copy. The canonical rule lives in PACKET.md; this mirrors its shape.

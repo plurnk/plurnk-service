@@ -1,4 +1,4 @@
-// DSL helpers — clean-shape params → HEREDOC → PlurnkStatement. §methods-op-mirror
+// DSL helpers — clean-shape params → HEREDOC → PlurnkStatement. {§methods-op-mirror}
 //
 // Per the "Speak in DSL, not plumbing" Standing Rule: every op.* RPC method
 // constructs a HEREDOC string from clean-shape params and parses it via the
@@ -13,7 +13,7 @@ import { PlurnkParser } from "@plurnk/plurnk-contracts";
 import type { LineMarker, PlurnkStatement } from "@plurnk/plurnk-contracts";
 
 // A parse failure surfaced from raw DSL — an error item or an unterminated tail. `line`/`column`
-// are 1-based positions in the CALLER's text (PLAN-prefix de-offset applied). §methods
+// are 1-based positions in the CALLER's text (PLAN-prefix de-offset applied). {§methods}
 export type ParseFailure = { message: string; line: number; column: number };
 
 interface OpWithMatcher {
@@ -94,7 +94,7 @@ export default class Dsl {
         return `<<${op}${suffix}${signal}${target}${lineMarker}:${body}:${op}${suffix}`;
     }
 
-    // grammar 0.70: a turn must lead with PLAN (plurnk.md §Imperatives), so the
+    // grammar 0.70: a turn must lead with PLAN (plurnk.md "Imperatives"), so the
     // canonical parse of an op.*-built HEREDOC needs a PLAN prefix; we add it (when
     // absent) and strip the PLAN back out, returning only the real op(s).
     static #planPrefixed(text: string): string {

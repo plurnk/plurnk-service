@@ -1,11 +1,11 @@
-// SPEC §actor-boundary — the actor boundary (isolation by worker, two doors, self-hosting).
+// SPEC {§actor-boundary} — the actor boundary (isolation by worker, two doors, self-hosting).
 //
 // The contract landed (Phase 0); this is its rule-C skeleton. One invariant is
 // already true and pinned for real (no-mutex); the rest are deferred-red until
 // the self-hosting refactor builds the machinery they assert — each cites its
 // anchor (so the spec-anchor guard is satisfied) and names the phase that turns
-// it green. A red test for an unbuilt contract is the point: it stops §actor-boundary
-// shipping as a façade, the way §membership membership once did.
+// it green. A red test for an unbuilt contract is the point: it stops {§actor-boundary}
+// shipping as a façade, the way {§membership} membership once did.
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -94,14 +94,14 @@ test("origin is attribution (provenance), never read to hide a row at render", a
     } finally { db.close(); }
 });
 
-// [§actor-boundary-two-doors] is a REAL test now in Engine.env-delta.test.ts (both doors —
+// {§actor-boundary-two-doors} is a REAL test now in Engine.env-delta.test.ts (both doors —
 // state-via-delta + message-via-inject). The stale "voice door unbuilt" stub is retired: the
 // voice door (inject), and irc through it, resume parked runs in place (#55).
 
 // The voice door (inject) and the negative (a delta must not wake) are locked here;
 // the stream-status door — a slept (202) loop's stream concluding RESUMES it in place,
 // an active loop folds the conclusion into its next turn — is locked in
-// Daemon.exec-wake.test.ts. Together they discharge §actor-boundary-passive-wake's two-trigger contract.
+// Daemon.exec-wake.test.ts. Together they discharge {§actor-boundary-passive-wake}'s two-trigger contract.
 test("an idle run wakes on an inject (voice), never on a delta (a sibling's shared-entry edit)", async () => {
     const mock = new Mock({ contextWindow: 8192, responses: [
         makeMockResponse("<<SEND[200]:first done:SEND", 10),
@@ -119,7 +119,7 @@ test("an idle run wakes on an inject (voice), never on a delta (a sibling's shar
             const loopsIdle = (await db.test_count_loops_by_run.get<{ n: number }>({ worker_id: modelWorkerId }))!.n;
 
             // A DELTA: a client op.edit runs in the connection's OWN (client) run — a
-            // sibling of the model worker (§connection-lifecycle) — touching a shared entry.
+            // sibling of the model worker ({§connection-lifecycle}) — touching a shared entry.
             // This is the environment door; it must NOT wake the idle model worker.
             await rpcCall(ws, 3, "op.edit", { target: "worker:///shared.md", content: "a sibling edit — ambient, not addressed to the model worker" });
             const loopsAfterDelta = (await db.test_count_loops_by_run.get<{ n: number }>({ worker_id: modelWorkerId }))!.n;
@@ -142,7 +142,7 @@ test("runtime work is an ephemeral plurnk worker firing ops — the EDIT lands i
     // model's log; the model sees only the READ). Here we pin the POSITIVE structure the anchor states:
     // the EDIT is IN the plurnk worker's log (origin=plurnk), and the model worker reaches the resulting entry
     // through the shared filesystem — the environment door — exactly as it would any sibling actor's edit.
-    // (The §env-delta materialization + git auto-add legs repatriate onto this same seam later, gated on
+    // (The {§env-delta} materialization + git auto-add legs repatriate onto this same seam later, gated on
     // the Multi-repo membership change-detector; this proves the seam itself, decoupled from that.)
     const dir = await mkdtemp(join(tmpdir(), "plurnk-selfhost-"));
     const docPath = join(dir, "selfhost.md");

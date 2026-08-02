@@ -1,5 +1,5 @@
 // Shared CRUD primitives for entry-bearing schemes (Known, Unknown, Skill).
-// Per SPEC §crud — uniform read/write/delete that the engine drives for
+// Per SPEC {§crud} — uniform read/write/delete that the engine drives for
 // cross-scheme orchestration of COPY/MOVE/SEND[410].
 
 import { contentHash } from "../core/content-hash.ts";
@@ -9,7 +9,7 @@ import Results, { type SchemeResultBase } from "../core/results.ts";
 
 export type ChannelState = "static" | "active" | "closed" | "errored";
 
-// §channels-channels-append-only: channels are content stores keyed by (entry_id, name)
+// {§channels-channels-append-only}: channels are content stores keyed by (entry_id, name)
 export interface EntryData {
     channels: Record<string, { content: string; mimetype: string; state?: ChannelState }>;
     tags: string[];
@@ -22,7 +22,7 @@ export interface ReadEntryResult extends SchemeResultBase {
 export interface WriteEntryResult extends SchemeResultBase {
     created: boolean;
     entryId: number | null;
-    // 202 proposal: a write INTO file:/// is a disk write under §membership review —
+    // 202 proposal: a write INTO file:/// is a disk write under {§membership} review —
     // carries the udiff for the client + the applyResolution inputs. Absent for
     // synchronous entry schemes (known/unknown/skill write directly).
     body?: string;
@@ -96,7 +96,7 @@ export default class EntryCrud {
         for (const [channelName, channelData] of Object.entries(entry.channels)) {
             await db.crud_write_channel.run({
                 entry_id: entryId, name: channelName, content: channelData.content, mimetype: channelData.mimetype,
-                tokens: tokenize(channelData.content), // the model-agnostic ruler stamp (§tokenomics-agnostic-ruler, §tokenomics-tokens-stored-at-write)
+                tokens: tokenize(channelData.content), // the model-agnostic ruler stamp ({§tokenomics-agnostic-ruler}, {§tokenomics-tokens-stored-at-write})
                 content_hash: contentHash(channelData.content),
                 state: channelData.state ?? "static",
             });

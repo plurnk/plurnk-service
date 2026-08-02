@@ -1,4 +1,4 @@
-// §exec-hold-until-concluded — the turn-hold exception (owner ruling): runtimes in
+// {§exec-hold-until-concluded} — the turn-hold exception (owner ruling): runtimes in
 // PLURNK_SERVICE_EXEC_HOLD pause the cycle until their stream concludes, so the model never
 // burns a turn waiting on a result the engine controls end-to-end. Bounded + fail-open.
 
@@ -100,7 +100,7 @@ test("a runtime OUTSIDE the hold set keeps the standard cycle — turn 2 sees th
     }
 });
 
-// §exec-hold-until-concluded per-tool refinement (#485) — a suffixed hold entry `<runtime>:<effect>`
+// {§exec-hold-until-concluded} per-tool refinement (#485) — a suffixed hold entry `<runtime>:<effect>`
 // holds only that effect-class. An MCP server is one runtime whose tools split (a read `get_issue`
 // vs a host `run_migration`); the operator opts the read-class in without parking on the mutation.
 test("a `:read` suffix holds a read-effect spawn — the effect-class opt-in (#485)", async () => {

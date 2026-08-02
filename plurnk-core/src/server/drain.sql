@@ -112,7 +112,7 @@ LIMIT 1;
 
 -- PREP: drain_find_slept_loop
 -- A worker's parked (slept) loop — SEND[202] suspends it at status 202, resumable by a wake
--- (§worker-lifecycle-wake-liveness). A worker parks one at a time; take the most recent.
+-- ({§worker-lifecycle-wake-liveness}). A worker parks one at a time; take the most recent.
 SELECT id FROM loops WHERE worker_id = $worker_id AND status = 202 ORDER BY sequence DESC LIMIT 1;
 
 -- PREP: drain_loop_provider_spec
@@ -126,6 +126,6 @@ SELECT COUNT(*) AS open_count, MIN(poll_seconds) AS poll_seconds
 FROM subscriptions WHERE worker_id = $worker_id AND closed_at IS NULL;
 
 -- PREP: worker_parent_id
--- A worker's parent (worker:// spawn / fork set parent_worker_id, §lifecycle-terms). NULL = a root run.
--- Used at drain-exit to wake a parent that parked awaiting this child (§run-lifecycle topology join).
+-- A worker's parent (worker:// spawn / fork set parent_worker_id, {§lifecycle-terms}). NULL = a root run.
+-- Used at drain-exit to wake a parent that parked awaiting this child ({§run-lifecycle} topology join).
 SELECT parent_worker_id FROM workers WHERE id = $worker_id;

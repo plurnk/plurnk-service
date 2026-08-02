@@ -48,7 +48,7 @@ export default class PlurnkParser {
         return result;
     }
 
-    // The terminal disposition set (waitpid contract, service SPEC §wait-obligation-matrix):
+    // The terminal disposition set (waitpid contract, service SPEC {§wait-obligation-matrix}):
     // 102 continue, 200 done, 202 wait (obligation-checked), 300 stop-the-world question,
     // 499 abandon.
     static #DISPOSITIONS = new Set([102, 200, 202, 300, 499]);

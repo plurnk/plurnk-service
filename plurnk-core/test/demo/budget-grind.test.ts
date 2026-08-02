@@ -32,7 +32,7 @@ test("demo: complete a multi-source briefing under a tight prompt budget", async
             // fields are gone — reading them silently measured 0, making this assertion vacuous until
             // 2026-06-25, then over-strict (peak <= communicated-ceiling) until 2026-06-30.
             // The DELIVERED REQUEST half only (sections sum): the stored packet.tokens gained the
-            // emission half when §turn-never-blank made rambles recordable — an honest record of a
+            // emission half when {§turn-never-blank} made rambles recordable — an honest record of a
             // fat emission is not a budget violation; only the request the grinder governs is.
             let peak = 0;
             for (const tid of turnIds) {

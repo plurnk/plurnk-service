@@ -1,6 +1,6 @@
 // Top-level daemon orchestrator. Owns the DB connection, engine, registries,
 // the plugin-module seam (#364: the daemon owns no transport).
-// SPEC §rpc.
+// SPEC {§rpc}.
 
 import { readFile } from "node:fs/promises";
 import { resolve, dirname } from "node:path";
@@ -80,7 +80,7 @@ const daemonFailure = (
 );
 
 // A stopped-world proposal a transport module renders as a TOOL_CALL (#355 seam read). The raw
-// `state='proposed'` row shape (§proposal-list); the module reshapes it at its edge.
+// `state='proposed'` row shape ({§proposal-list}); the module reshapes it at its edge.
 export interface PendingProposal {
     logEntryId: number;
     workerId: number;
@@ -146,14 +146,14 @@ export default class Daemon {
     // aborted so a later loop.run isn't born cancelled.
     #workerAborts = new Map<number, AbortController>();
     // grammar 0.74.20 EXEC `<T,P>` — per-worker hibernation poll-wake timer. When a loop parks at
-    // a park with a polled stream, a timer fires every P seconds to resume it (§exec-poll). One
+    // a park with a polled stream, a timer fires every P seconds to resume it ({§exec-poll}). One
     // per worker (the tightest cadence); cleared/replaced on each park and on cancel.
     #parkTimers: Map<number, NodeJS.Timeout> = new Map();
     #pollTimers = new Map<number, ReturnType<typeof setTimeout>>();
     #pollBackoff = new Map<number, number>(); // #521 — the exec-poll backoff step per worker (nth wake)
-    // Per-run drain-transition lock — see #withDrainLock (R4 / §worker-lifecycle-single-drain).
+    // Per-run drain-transition lock — see #withDrainLock (R4 / {§worker-lifecycle-single-drain}).
     #drainLocks = new Map<number, Promise<unknown>>();
-    // §worker-lifecycle-child-wake — runs OWED a wake: a child/stream conclusion fired while the worker was
+    // {§worker-lifecycle-child-wake} — runs OWED a wake: a child/stream conclusion fired while the worker was
     // mid-turn (not yet slept), so #wakeParkedWorker could not resume it. A worker-run conclusion is a
     // BOUNDED, lossless wake (a worker always concludes), so a hibernation awaiting one MUST return —
     // never deadlock. The drain honors the owed wake at the worker's next park, closing the conclude-
@@ -180,7 +180,7 @@ export default class Daemon {
         this.#nodeModulesPath = nodeModulesPath ?? resolve(process.cwd(), "node_modules");
         this.#discoveryCwd = dirname(this.#nodeModulesPath);
         // Mimetypes owns discovery + detection; default mimetype text/markdown. (Token counting
-        // is NOT wired here — the engine's ruler below is §tokenomics-agnostic-ruler.)
+        // is NOT wired here — the engine's ruler below is {§tokenomics-agnostic-ruler}.)
         this.#mimetypes = mimetypes ?? new Mimetypes({
             defaultMimetype: "text/markdown",
             discoverOptions: { cwd: this.#discoveryCwd },
@@ -238,7 +238,7 @@ export default class Daemon {
         });
         this.#engine = new Engine({
             db, schemes: this.#schemes, mimetypes: this.#mimetypes,
-            // §tokenomics-agnostic-ruler — the ONE model-facing token ruler (chars/2), NOT the
+            // {§tokenomics-agnostic-ruler} — the ONE model-facing token ruler (chars/2), NOT the
             // boot provider: token accounting is workspace-wide across many concurrent models, so
             // the write-time + catalog counts must be model-independent. Exact per-model counting
             // lives only at the packet-materialization fit-gate.
@@ -249,7 +249,7 @@ export default class Daemon {
             // Daemon.inject (active sister → fold; idle → enqueue + drain). The
             // daemon owns provider + the law-file system prompt; the worker scheme
             // handler carries neither. Fire-and-forget: the returned drain runs
-            // independently (the sister is its own worker). §machine-processes
+            // independently (the sister is its own worker). {§machine-processes}
             injectWorker: async ({ workspaceId, workerId, prompt, flags }) => {
                 if (this.#provider === null) throw new Error("injectWorker: no provider configured");
                 const systemPrompt = await readFile(Paths.instructionsSystem, "utf8");
@@ -354,7 +354,7 @@ export default class Daemon {
             ));
         }
         const systemPrompt = await readFile(Paths.instructionsSystem, "utf8");
-        // §machine-processes — the model NEVER runs in a client-origin run (its packets would carry
+        // {§machine-processes} — the model NEVER runs in a client-origin run (its packets would carry
         // client op.* rows). The module resolves the model worker via ensureModelWorker and passes it (or a
         // fork); a client worker here is a caller error, refused loudly rather than silently rehomed.
         const target = await this.#db.envelope_get_worker_by_id.get<{ workspace_id: number; origin: string }>({ id: workerId });
@@ -394,7 +394,7 @@ export default class Daemon {
                 },
             );
         }
-        // §operator-config-max-turns-ceiling — the operator ceiling clamps a per-call maxTurns; a
+        // {§operator-config-max-turns-ceiling} — the operator ceiling clamps a per-call maxTurns; a
         // seam caller must not bypass operator policy (inject only DEFAULTS from env, never clamps).
         const ceiling = Number(process.env.PLURNK_SERVICE_MAX_TURNS ?? "-1");
         const requested = requestedMaxTurns ?? ceiling;
@@ -521,7 +521,7 @@ export default class Daemon {
         }
     }
 
-    // §machine-processes — the workspace's model worker (created on first use), distinct from the client
+    // {§machine-processes} — the workspace's model worker (created on first use), distinct from the client
     // run so the model's packets never carry client op.* rows. The module binds its threads to this.
     ensureModelWorker(workspaceId: number): Promise<number> {
         return Envelope.ensureModelWorker(
@@ -946,7 +946,7 @@ export default class Daemon {
     // The fork hook (#355) — branch a worker's log into a new worker in the same workspace (#228), sharing the
     // workspace's world (entries + overlay), copying nothing of it. The module resolves the default (the
     // workspace's model worker) from its own connection state and passes the concrete workerId; the seam owns the
-    // #366 — a fresh conversation worker: AG-UI threads map to RUNS (§machine-processes — the workspace
+    // #366 — a fresh conversation worker: AG-UI threads map to RUNS ({§machine-processes} — the workspace
     // is the workspace, the worker is the conversation). ensureModelWorker is the stable DEFAULT door,
     // forkWorker the branching door (copies history); this is the fresh door — a named, empty-log,
     // model-origin root that runLoop accepts. New chat = new conversation, same workspace.
@@ -1108,7 +1108,7 @@ export default class Daemon {
         // shell is the default runtime, so its executor must boot usable.
         const executors = await ExecutorRegistry.build({ defaultRuntime: "sh", cwd: this.#discoveryCwd });
         this.#engine.setExecutors(executors);
-        // §exec — mint a scheme per runtime tag so exec output entries address by tag
+        // {§exec} — mint a scheme per runtime tag so exec output entries address by tag
         // authority (sh:///l/t/s). The "exec" scheme stays for the EXEC op dispatch.
         this.#schemes.registerRuntimeSchemes(executors);
         // Discover external @plurnk/plurnk-schemes-* siblings + register them
@@ -1240,7 +1240,7 @@ export default class Daemon {
     /**
      * Emit a stream/event notification scoped to the workspace containing the
      * entry. ChannelWrite helpers (src/core/ChannelWrite.ts) invoke this when
-     * they update channel content or state. SPEC §notifications.
+     * they update channel content or state. SPEC {§notifications}.
      */
     notifyStreamEvent(workspaceId: number, event: { entryId: number; channel: string; state: string; contentLength: number }): void {
         this.#broadcast({ workspaceId }, "stream/event", event);
@@ -1263,7 +1263,7 @@ export default class Daemon {
      *     caller can await full completion.
      *
      * Rummy parallel: AgentLoop.inject(). Unified surface — both `loop.run`
-     * and wake-on-completion go through this method. §actor-boundary-passive-wake
+     * and wake-on-completion go through this method. {§actor-boundary-passive-wake}
      */
     // #368 — flags are LOOP-scoped (persisted per loop row; the packet's teaching follows them), so a
     // prompt folding into a live/parked loop cannot re-flag it mid-flight — and it must never PRETEND
@@ -1326,7 +1326,7 @@ export default class Daemon {
         // is a wake edge like a stream/child conclusion, not a fresh loop that orphans the parked one
         // (which would leave the worker non-quiescent forever). engine.inject writes the message as the
         // slept loop's next-turn prompt (the directed message — distinct from the env door, which
-        // resumes promptless); then re-queue + drain it. §worker-lifecycle-wake-liveness.
+        // resumes promptless); then re-queue + drain it. {§worker-lifecycle-wake-liveness}.
         if (!this.#activeDrains.has(workerId)) {
             const slept = await this.#db.drain_find_slept_loop.get<{ id: number }>({ worker_id: workerId });
             if (slept !== undefined) {
@@ -1352,7 +1352,7 @@ export default class Daemon {
         });
 
         // Guarantee a drain claims the loop we just enqueued. #ensureDrain runs its
-        // check-and-start UNDER the per-worker drain lock (§worker-lifecycle-single-drain),
+        // check-and-start UNDER the per-worker drain lock ({§worker-lifecycle-single-drain}),
         // serialized against a draining sibling's teardown relinquish so the two can't
         // both register a drain (R4). A live drain re-claims the loop in its own
         // iteration or its lock-held exit re-claim, so it's never stranded.
@@ -1489,9 +1489,9 @@ export default class Daemon {
                         // The loop slept via SEND[202] — suspended, not terminated. Leave it at 202
                         // (resumable); no loop/terminated, no orphan-reconcile. A stream conclusion
                         // (#handleWakeWorker) re-queues it; and if it holds a polled stream, a poll timer
-                        // wakes it every P to inspect (§exec-poll). §worker-lifecycle-wake-liveness.
+                        // wakes it every P to inspect ({§exec-poll}). {§worker-lifecycle-wake-liveness}.
                         void this.#schedulePollWake(workspaceId, workerId, systemPrompt).catch((err: unknown) => console.error("poll-wake scheduling failed:", err instanceof Error ? err.message : String(err)));
-                        // §send-premature-terminate/SEND[202]<T> — the park deadline:
+                        // {§send-premature-terminate}/SEND[202]<T> — the park deadline:
                         // dispatcher recorded the marker's seconds; a bounded park is woken at T
                         // regardless of arrivals, so a park always has a next turn. -1 (indefinite:
                         // the butler, a [300] ask) schedules nothing — irc/inject/conclusions wake it.
@@ -1510,7 +1510,7 @@ export default class Daemon {
                                 this.#parkTimers.set(workerId, t);
                             }
                         }
-                        // Honor an OWED wake (§worker-lifecycle-child-wake): a child/stream concluded while
+                        // Honor an OWED wake ({§worker-lifecycle-child-wake}): a child/stream concluded while
                         // this worker was mid-turn, before it slept — resume in place rather than park blind,
                         // so a worker-run hibernation always returns. The loop is 202 here; reset to
                         // claimable and the drain re-runs it on the next claim below.
@@ -1519,7 +1519,7 @@ export default class Daemon {
                             currentLoopId = null;
                             continue;
                         }
-                        // The loop is blocked at 202 on a live obligation (§wait-obligation-matrix);
+                        // The loop is blocked at 202 on a live obligation ({§wait-obligation-matrix});
                         // that obligation's conclusion is its wake edge (the owed-wake above covers the
                         // conclude-before-block race). An idle wait never reaches here — it concluded at dispatch.
                         currentLoopId = null;
@@ -1691,7 +1691,7 @@ export default class Daemon {
 
         handle.promise = drainPromise;
         this.#activeDrains.set(workerId, handle);
-        // Topology join (§run-lifecycle): when this drain exits having CONCLUDED the worker, wake its parent
+        // Topology join ({§run-lifecycle}): when this drain exits having CONCLUDED the worker, wake its parent
         // if parked. Runs after the drain fully tears down (settled promise) so the quiescence check sees
         // final state; speculative (#onDrainExit no-ops unless the worker concluded AND the parent is parked).
         void drainPromise.then(
@@ -1707,7 +1707,7 @@ export default class Daemon {
         return { firstLoopPromise, drainPromise };
     }
 
-    // Per-run drain-transition lock (R4 / §worker-lifecycle-single-drain). #ensureDrain's
+    // Per-run drain-transition lock (R4 / {§worker-lifecycle-single-drain}). #ensureDrain's
     // start and a drain's teardown relinquish both run under it, serialized, so the two
     // can't interleave and register two drains for one worker. The critical section is the
     // registry decision only (never a loop's work) — a sub-ms hop at drain boundaries.
@@ -1842,7 +1842,7 @@ export default class Daemon {
         return exec?.hasActiveSpawns?.(workerId) ?? false;
     }
 
-    // The contract-routed reap (§worker-lifecycle-total-reap): durable rows enumerate
+    // The contract-routed reap ({§worker-lifecycle-total-reap}): durable rows enumerate
     // every open subscription; the live registry invokes its exact callable owner.
     // The worker signal is only the fast path. An exec mid-spawn or a background exec
     // from a past loop is caught regardless of listener timing. Idempotent — a stream
@@ -1866,7 +1866,7 @@ export default class Daemon {
      * Rummy parallel: plugins/stream/stream.js stream/completed wake:true.
      */
     async #handleWakeWorker(payload: WakeWorkerPayload): Promise<void> {
-        // §search-gate — settle the dedup registration: promote on a 200 conclusion, drop on
+        // {§search-gate} — settle the dedup registration: promote on a 200 conclusion, drop on
         // failure (a dead search must never serve as a duplicate). No-op for non-search streams.
         this.#engine.searchGate.settle(payload.target.replace(/^[a-z+.-]+:\/\//, "/").replace(/^\/+/, "/"), payload.result.status);
         // Aborted streams don't wake — the abort was deliberate.
@@ -1877,10 +1877,10 @@ export default class Daemon {
             return;
         }
 
-        // No resurrection (§worker-lifecycle-no-resurrection): a non-499 completion whose
+        // No resurrection ({§worker-lifecycle-no-resurrection}): a non-499 completion whose
         // run was CANCELLED (idle + its scope aborted) must not start a fresh drain —
         // the cancel was deliberate. The deliverable is already in the channel/log and
-        // surfaces as a `collect` environment delta (§env-delta) if the worker is read or
+        // surfaces as a `collect` environment delta ({§env-delta}) if the worker is read or
         // resumed; we just don't inject a turn. (An active run folds the wake into its
         // next turn via inject below; a resumed run is active, never aborted, so it is
         // unaffected.)
@@ -1900,7 +1900,7 @@ export default class Daemon {
             // FIRST: the slept status is the worker's true disposition regardless of a draining
             // sibling mid-teardown (the #ensureDrain lock serializes the re-claim). No fresh loop,
             // no summary-as-prompt — the resumed loop reads the concluded stream's own state from
-            // the manifest. §worker-lifecycle-wake-liveness.
+            // the manifest. {§worker-lifecycle-wake-liveness}.
             const slept = await this.#db.drain_find_slept_loop.get<{ id: number }>({ worker_id: payload.workerId });
             if (slept !== undefined) {
                 await this.#lifecycle.wake(slept.id);
@@ -1918,7 +1918,7 @@ export default class Daemon {
             }
 
             // No slept loop. A live loop surfaces the concluded stream ambiently via the
-            // environment-observation injector (§exec-stream) on its next turn — there is no prompt
+            // environment-observation injector ({§exec-stream}) on its next turn — there is no prompt
             // to inject and NO task to overwrite. The obsolete "automated environment update"
             // synthesis (which clobbered the model's actual goal) is retired; just tell the client.
             if (this.#activeDrains.has(payload.workerId)) {
@@ -1942,8 +1942,8 @@ export default class Daemon {
      * grammar 0.74.20 EXEC `<T,P>` — schedule a hibernation poll-wake. Called when a loop parks at
      * a park; if the worker holds an open polled stream, arm a timer for its tightest cadence P that
      * resumes the slept loop so the model inspects progress. While the loop is ACTIVE there is no
-     * poll work — ambient folded stream deltas already surface progress (§exec-stream); the wake
-     * matters only across hibernation. A wake-edge-less 202 (no polled stream) gets no timer. §exec-poll
+     * poll work — ambient folded stream deltas already surface progress ({§exec-stream}); the wake
+     * matters only across hibernation. A wake-edge-less 202 (no polled stream) gets no timer. {§exec-poll}
      */
     async #schedulePollWake(workspaceId: number, workerId: number, systemPrompt: string): Promise<void> {
         const existing = this.#pollTimers.get(workerId);
@@ -1954,7 +1954,7 @@ export default class Daemon {
             return;
         }
         const pollSec = row?.poll_seconds ?? null;
-        // #521 (§exec-poll, owner-ruled) — the poll cadence for a parked exec stream:
+        // #521 ({§exec-poll}, owner-ruled) — the poll cadence for a parked exec stream:
         //   explicit <,P> (P>0)  → fixed cadence P, reset the backoff (today's behavior).
         //   explicit <,0>        → poll_seconds=0 stored → blind opt-out (an exec a model wants unwatched).
         //   absent <,P> + a LIVE stream → EXPONENTIAL BACKOFF (base*2^min(step,turns-1)), so a hung
@@ -1979,7 +1979,7 @@ export default class Daemon {
             this.#pollBackoff.set(workerId, step + 1);
         }
         // Floored by the post-EXEC breath (PLURNK_SERVICE_EXEC_WAIT_MS) so a `<…,1>` can't wake the loop
-        // faster than a turn settles — §exec-poll.
+        // faster than a turn settles — {§exec-poll}.
         const execWaitMs = Number(process.env.PLURNK_SERVICE_EXEC_WAIT_MS ?? "0");
         const timer = setTimeout(() => {
             this.#pollTimers.delete(workerId);
@@ -1990,8 +1990,8 @@ export default class Daemon {
     }
 
     /** Resume `workerId`'s slept (202) loop in place — the same 202→100 resume #handleWakeWorker uses, minus a
-     *  wake payload. The shared wake primitive: a poll cadence (§exec-poll), a watched stream concluding,
-     *  or a child worker finishing (§run-lifecycle topology join) all call this. A no-op if the worker was
+     *  wake payload. The shared wake primitive: a poll cadence ({§exec-poll}), a watched stream concluding,
+     *  or a child worker finishing ({§run-lifecycle} topology join) all call this. A no-op if the worker was
      *  cancelled or isn't actually parked (no slept loop) — so calling it speculatively is safe. */
     async #wakeParkedWorker(workspaceId: number, workerId: number, systemPrompt: string, oweIfActive = true): Promise<void> {
         const scope = this.#workerAborts.get(workerId);
@@ -2016,9 +2016,9 @@ export default class Daemon {
 
     /** A worker's drain exited. If the worker truly CONCLUDED — no 202-blocked loop, no open stream — then
      *  wake its PARENT in place if the parent is blocked on the join (the structured-concurrency join — a
-     *  child finishing is the wake edge for a parent that waited on it, §worker-lifecycle-child-wake). A worker
+     *  child finishing is the wake edge for a parent that waited on it, {§worker-lifecycle-child-wake}). A worker
      *  blocked at 202, or still holding a stream, is NOT concluded — its own wake edges drive it, not this.
-     *  The parent reads the child's deliverable from its own log (the §worker-scheme-collect delta) on
+     *  The parent reads the child's deliverable from its own log (the {§worker-scheme-collect} delta) on
      *  resume — control edge here, never an injected prompt. Recurses up via the parent's own drain-exit. */
     async #onDrainExit(workspaceId: number, workerId: number, systemPrompt: string): Promise<void> {
         const slept = await this.#db.drain_find_slept_loop.get<{ id: number }>({ worker_id: workerId });
@@ -2049,7 +2049,7 @@ export default class Daemon {
         }
         // Publish the raw event to the in-process source first (#355) — transport modules subscribe
         // here (plurnk-agui renders to AG-UI+). Each subscriber owns its own fan-out; core just emits.
-        // Scope-stamping onto the notification envelope (§notifications-envelope-carries-workspaceid)
+        // Scope-stamping onto the notification envelope ({§notifications-envelope-carries-workspaceid})
         // is each subscriber's edge concern now — the seam hands (workspaceId, method, params) raw.
         this.#emitTo(target.workspaceId, method, params);
     }

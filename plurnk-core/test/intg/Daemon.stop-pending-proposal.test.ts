@@ -2,7 +2,7 @@
 // resolution that never arrives once clients are gone — Daemon.stop's allSettled(drains)
 // deadlocked forever (a daemon with a pending HITL proposal could not shut down; any test that
 // failed while one was pending wedged its whole runner child). stop() now settles the stopped
-// world first (§proposal-cancel-aborts, outcome 'daemon_stopping').
+// world first ({§proposal-cancel-aborts}, outcome 'daemon_stopping').
 import test from "node:test";
 import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";

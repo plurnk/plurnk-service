@@ -1,5 +1,5 @@
 // SPEC contract coverage for the user-packet notices and prompt-row
-// surface (§packet / §operation-results). One test per contract tag. Every assertion is
+// surface ({§packet} / {§operation-results}). One test per contract tag. Every assertion is
 // against real DB artifacts and the real wire render — no stand-ins.
 
 import test from "node:test";
@@ -79,7 +79,7 @@ const getPacket = async (db: Awaited<ReturnType<typeof openMigrated>>, turnId: n
 
 test("a content-offset NOTICE (grammar_unenforced) carries a line:col pointer, no embedded snippet", async () => {
     // A NOTICE points the model at a line in its own emission; the mirror row is ALWAYS folded
-    // (§model-entry) — the model READs it at the cited lines. No snippet duplicating the bytes.
+    // ({§model-entry}) — the model READs it at the cited lines. No snippet duplicating the bytes.
     const { db, engine, workspaceId, workerId, loopId } = await setup();
     try {
         const provider = noticeProvider(1);
@@ -98,7 +98,7 @@ test("a content-offset NOTICE (grammar_unenforced) carries a line:col pointer, n
 
         // The wire: a meta line carrying the position, no snippet / error:// fence. The Errors
         // section is framework status (uri+status pointers) in the user slot's status clump
-        // ([§packet-cache-monotone]); render it alone so the log's JSON rows don't blur the assertions.
+        // ({§packet-cache-monotone}); render it alone so the log's JSON rows don't blur the assertions.
         const wire = PacketWire.renderSection(p2.sections.find((s) => s.name === "notices")!);
         assert.match(wire, /## Notices/);
         assert.doesNotMatch(wire, /\{"/, "no JSON dump — the section renders terse lines, not events");

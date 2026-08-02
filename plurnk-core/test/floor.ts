@@ -1,4 +1,4 @@
-// The assembled .env.defaults floor (§operator-config-env-defaults) for test tiers, loaded via
+// The assembled .env.defaults floor ({§operator-config-env-defaults}) for test tiers, loaded via
 // `node --import=./test/floor.ts`. Production parity: the daemon boots on this package's
 // .env.defaults plus every installed member's; the tiers do too. Set-if-unset — the --env-file
 // cascade (.env / .env.test) and the shell always win; only genuinely-unset knobs (siblings'

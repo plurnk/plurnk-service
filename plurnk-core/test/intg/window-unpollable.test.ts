@@ -1,4 +1,4 @@
-// #421/#507 — §tokenomics-window-unpollable-deliberate: an unpollable window (provider.contextWindow
+// #421/#507 — {§tokenomics-window-unpollable-deliberate}: an unpollable window (provider.contextWindow
 // null after the provider tier's env/probe/catalog all miss) is genuinely-unknown — nobody chose an
 // envelope — and is treated as NO-CAP: the prompt is unbounded, the budget/ceiling are null, and the
 // gauge omits its headline (never a stand-in the operator never chose; a probe blip degrades, never

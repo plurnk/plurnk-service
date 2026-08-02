@@ -40,7 +40,7 @@ test("regression: a model's EXEC result surfaces OPEN in the NEXT turn without a
                 entries.some((e) => String(e.stream ?? "").startsWith("sh:///")),
                 `turn-2 log must link the exec result via stream=; got ${JSON.stringify(entries.map((e) => e.stream))}`,
             );
-            // §exec-stream — the environment-observation machine foists a READ of the exec stream
+            // {§exec-stream} — the environment-observation machine foists a READ of the exec stream
             // into the NEXT turn (origin=plurnk), OPEN because the channel closed: the model SEES
             // its output, it never has to find+pull it. This is the loop the live demo exposed.
             assert.ok(

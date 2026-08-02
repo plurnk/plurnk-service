@@ -66,8 +66,19 @@ root overrides.
 ## Contract references and documentation hygiene
 
 - The owning package's `SPEC.md` states stable current behavior. Give every
-  referenceable invariant, boundary, or diagram a durable `{§…}` tag;
-  keep tags unambiguous and do not silently reuse one for different semantics.
+  referenceable invariant, boundary, or diagram a durable named tag. Named
+  specification tags use one repository-wide syntax:
+
+  | Use | Form | Rule |
+  |-----|------|------|
+  | Declaration | `§lowercase-kebab` | Exactly one at the first semantic position of a `SPEC.md` heading, paragraph, list item, or table row. |
+  | Citation | `{§lowercase-kebab}` | Required everywhere outside the declaring block, including other specifications, code, coverage, and diagnostics. |
+  | Presentation | `§3`, `§3.bis` | Numeric document navigation is not a named contract tag. |
+
+  Fenced, inline, and indented code examples are inert. Keep declarations
+  globally unambiguous and do not silently reuse one for different semantics.
+  A declaration must share its Markdown block with the contract it names; a
+  tag-only block is invalid.
 - Forge issues record observations, investigation, competing interpretations,
   rulings, rejected alternatives, and completion evidence. Issue numbers are
   provenance; specification tags are current authority.
@@ -76,8 +87,9 @@ root overrides.
 - Code and coverage may cite the owning specification tag and issue numbers, but must not
   duplicate the specification's architectural explanation or retain historical
   essays. Keep only genuinely local implementation constraints near code.
-- Every braced specification-tag citation outside a `SPEC.md` must resolve to a
-  declaration in a `SPEC.md`; the root lint enforces this mechanically.
+- Every named specification-tag citation must resolve to one declaration in a
+  `SPEC.md`; the root lint enforces declarations, citations, uniqueness, and
+  resolution mechanically.
 - Tests enforce externally meaningful invariants through their names,
   assertions, fixtures, and failure messages. Test comments reference the
   owning specification instead of becoming a second specification.

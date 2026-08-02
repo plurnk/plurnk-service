@@ -81,7 +81,7 @@ const readProposalTimeoutMs = (): number | null => {
     return n;
 };
 
-// The proposal lifecycle (SPEC.md §engine-rails + §methods loop.resolve): a
+// The proposal lifecycle (SPEC.md {§engine-rails} + {§methods} loop.resolve): a
 // side-effecting op that returns 202 pauses in dispatch until a resolution
 // arrives — from the loop/resolve RPC, the in-tree auto listener, or the
 // timeout — then the scheme's applyResolution hook applies the accept.
@@ -101,7 +101,7 @@ export default class ProposalLifecycle {
     // Proposal lifecycle: pending dispatch pauses waiting for resolution.
     // Dispatch awaits the promise when a scheme returns status 202;
     // Engine.resolveProposal feeds the resolution back in. Map is per-log-
-    // entry-id; entries clear on resolution. SPEC.md §engine-rails + §methods (loop.resolve).
+    // entry-id; entries clear on resolution. SPEC.md {§engine-rails} + {§methods} (loop.resolve).
     #pending = new Map<number, ProposalWaiter>();
     // External observers of proposal lifecycle events. Daemon subscribes
     // here to push `loop/proposal` notifications when an entry enters
@@ -170,7 +170,7 @@ export default class ProposalLifecycle {
     // Daemon shutdown: settle EVERY pending waiter with a cancel so the stopped world can't
     // deadlock the stop — a drain paused inside dispatch awaiting a resolution that will never
     // come held Promise.allSettled(drains) open forever (a daemon with a pending HITL proposal
-    // could not shut down; the #344 wedge class). §proposal-cancel-aborts — same cancel lane as
+    // could not shut down; the #344 wedge class). {§proposal-cancel-aborts} — same cancel lane as
     // a timeout, outcome names the cause.
     cancelAll(outcome: string): void {
         for (const [logEntryId, waiter] of [...this.#pending.entries()]) {
@@ -203,14 +203,14 @@ export default class ProposalLifecycle {
                 // path as any other. State transitions to cancelled with outcome='timeout'.
                 if (this.#pending.has(logEntryId)) {
                     this.#pending.delete(logEntryId);
-                    resolve({ decision: "cancel", outcome: "timeout" }); // §proposal-timeout-cancels
+                    resolve({ decision: "cancel", outcome: "timeout" }); // {§proposal-timeout-cancels}
                 }
             }, timeoutMs);
             this.#pending.set(logEntryId, { resolve, timeoutHandle });
         });
     }
 
-    // On accept, run the scheme's applyResolution — File writes disk, Exec spawns. §proposal-accept-applies
+    // On accept, run the scheme's applyResolution — File writes disk, Exec spawns. {§proposal-accept-applies}
     async workerApply(
         statement: PlurnkStatement,
         originalResult: DispatchResult,
@@ -271,7 +271,7 @@ export default class ProposalLifecycle {
             // Propagate applyResolution.outcome onto the accepted resolution
             // (operational metadata, e.g. exec's "started") AND its body — the applied result the
             // model must see THIS turn: a file EDIT's line-numbered diff, a [300] answer. EXEC
-            // never uses the body rail — its output streams uniformly (§exec-stream, NO same-turn
+            // never uses the body rail — its output streams uniformly ({§exec-stream}, NO same-turn
             // in-body exception; inline only skips the review pause) and is READ next turn.
             const withOutcome = applyResult.outcome !== undefined && resolution.outcome === undefined
                 ? { ...resolution, outcome: applyResult.outcome }
@@ -307,8 +307,8 @@ export default class ProposalLifecycle {
         const { resolution, applied } = settlement;
         // Map decision → terminal state + HTTP-aligned status:
         //   accept  → state='resolved', status=200
-        //   reject  → state='failed',   status=400, outcome='rejected' (default) §proposal-reject-fails
-        //   cancel  → state='cancelled',status=499, outcome='loop_aborted' (default) §proposal-cancel-aborts
+        //   reject  → state='failed',   status=400, outcome='rejected' (default) {§proposal-reject-fails}
+        //   cancel  → state='cancelled',status=499, outcome='loop_aborted' (default) {§proposal-cancel-aborts}
         // resolution.outcome wins over the default when supplied; this is how
         // veto filters (Phase E.2 proposal.accepting) can specify a more
         // precise outcome string like 'policy_veto' or 'timeout'.

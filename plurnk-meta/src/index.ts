@@ -1,6 +1,6 @@
 // The metaproject layer's membership slice — the mechanics every discovery
-// surface shares (AGENTS §topology, core SPEC
-// §plugin-discovery / §operator-config-env-defaults):
+// surface shares (repository package ownership and core SPEC
+// {§plugin-discovery} / {§operator-config-env-defaults}):
 //   - isTrusted:          THE trust rule. One implementation; a second definition
 //                         of membership trust anywhere in the family is a bug.
 //   - packageDirs:        scope-agnostic, symlink-aware enumeration of the Node

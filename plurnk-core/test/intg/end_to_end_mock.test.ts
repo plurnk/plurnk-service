@@ -126,7 +126,7 @@ test("e2e: cross-turn state — turn 2 sees entry written in turn 1", async () =
             contextWindow: 100000,
             responses: [
                 response([editStmt("/state", "from turn 1"), sendStmt(102, "continuing")]),
-                // The pending set (§send-premature-terminate) forbids READ + [200] in one turn —
+                // The pending set ({§send-premature-terminate}) forbids READ + [200] in one turn —
                 // the retrieval's result folds back next packet. Read, continue, THEN conclude.
                 response([readStmt("/state"), sendStmt(102, "reading")]),
                 response([sendStmt(200, "done")]),

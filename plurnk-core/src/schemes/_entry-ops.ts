@@ -14,10 +14,10 @@ import Results, { type MatchEvidence, type SchemeResultBase } from "../core/resu
 // Shared static-method helpers for workspace-scope entry-bearing schemes
 // (Known, Unknown, Skill). Each scheme passes its manifest; helpers
 // extract scheme name + channels + defaultChannel. Channel routing
-// follows SPEC §channel-selection: path.fragment ?? manifest.defaultChannel.
+// follows SPEC {§channel-selection}: path.fragment ?? manifest.defaultChannel.
 
 // The model sees an EDIT effect receipt: revision identity, extent changes,
-// source→result range mappings, and bounded join context (§edit-result-render).
+// source→result range mappings, and bounded join context ({§edit-result-render}).
 export type EditResult = SchemeResultBase & { entryId: number | null; channel: string | null; editReceipt?: EditBatchReceipt | null };
 // startLine = 1-indexed position the content starts at in the original
 // source. Lets the render layer prefix N: correctly for both full
@@ -55,16 +55,16 @@ export default class EntryOps {
     }
 
     static #resolveChannel(fragment: string | null, channels: Record<string, string>, defaultChannel: string): string | null {
-        const target = fragment ?? defaultChannel; // fragment selects the named channel; absent → default — §channel-selection-fragment-selects-named-channel §channel-selection-fragmentless-targets-default-channel
+        const target = fragment ?? defaultChannel; // fragment selects the named channel; absent → default — {§channel-selection-fragment-selects-named-channel} {§channel-selection-fragmentless-targets-default-channel}
         // The default channel is always valid — dynamic-channel schemes (File:
         // channels={}, mimetype derived per-file) declare none, but their body
         // channel still exists. A non-default fragment must be a declared channel.
         if (target === defaultChannel) return target;
-        if (!(target in channels)) return null; // unknown channel name → null → 400 at the caller — §channel-selection-unknown-channel-400
+        if (!(target in channels)) return null; // unknown channel name → null → 400 at the caller — {§channel-selection-unknown-channel-400}
         return target;
     }
 
-    // §channel-selection-unknown-channel-400 — the 400 carries its fact: the tried fragment and
+    // {§channel-selection-unknown-channel-400} — the 400 carries its fact: the tried fragment and
     // the declared universe, so one miss teaches the topology instead of forcing a guessing walk
     // (run-sweep: a model probed #stdout/#stderr/#body against a results-channel search stream,
     // each miss a bare 400 that taught nothing).
@@ -162,7 +162,7 @@ export default class EntryOps {
         const ownerId = await EntryOps.#ownerOf(explicitOwnerId, ctx);
         const existing = await db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: workspaceId, owner_id: ownerId, scheme, pathname });
 
-        // Non-default channel write requires the entry to exist (§channel-selection-fragment-on-nonexistent-404).
+        // Non-default channel write requires the entry to exist ({§channel-selection-fragment-on-nonexistent-404}).
         if (existing === undefined && fragment !== null) {
             return failure("entry-not-found", 404, `No entry exists at ${EntryManifest.toPath(scheme, pathname)}.`, { entryId: null, channel: targetChannel });
         }
@@ -174,7 +174,7 @@ export default class EntryOps {
         const channelManifestDefault = channels[targetChannel];
         const effectiveMimetype = await PathMimetype.resolveEntryMimetype(pathname, channelManifestDefault, ctx.mimetypes);
 
-        // 415 on binary entries (SPEC.md §op-invariants).
+        // 415 on binary entries (SPEC.md {§op-invariants}).
         if (existing !== undefined) {
             const channel = await db.ops_read_channel.get<{ mimetype: string }>({ ...{ workspace_id: workspaceId, scheme, pathname, channel: targetChannel }, owner_id: ownerId });
             if (channel !== undefined && MimetypeBinary.isBinaryMimetype(channel.mimetype)) {
@@ -242,7 +242,7 @@ export default class EntryOps {
             newContent = statement.body ?? "";
         }
 
-        // 304 no-op (SPEC §edit): an existing entry whose write would change nothing —
+        // 304 no-op (SPEC {§edit}): an existing entry whose write would change nothing —
         // identical content and no new tag. Mirrors OPEN/FOLD's idempotence; hands the
         // model a "you already did this" signal instead of a phantom 200 it can't
         // distinguish from a real update.
@@ -255,7 +255,7 @@ export default class EntryOps {
                 );
                 addsTag = signalTags.some((t) => !have.has(t));
             }
-            if (!addsTag) return { status: 304, entryId: existing.id, channel: targetChannel };  // §edit-noop-304
+            if (!addsTag) return { status: 304, entryId: existing.id, channel: targetChannel };  // {§edit-noop-304}
         }
 
         let entryId: number;
@@ -271,11 +271,11 @@ export default class EntryOps {
         }
 
         if (ctx.tokenize === undefined) throw new Error("editWorkspaceEntry: ctx.tokenize is required for token accounting");
-        await db.ops_upsert_channel.run({ entry_id: entryId, name: targetChannel, content: newContent, mimetype: effectiveMimetype, tokens: ctx.tokenize(newContent) }); // EDIT writes exactly the one resolved channel — §per-entry-channels-edit-writes-only-body
+        await db.ops_upsert_channel.run({ entry_id: entryId, name: targetChannel, content: newContent, mimetype: effectiveMimetype, tokens: ctx.tokenize(newContent) }); // EDIT writes exactly the one resolved channel — {§per-entry-channels-edit-writes-only-body}
         // Search derivation is not a write concern. SearchIndex attaches the
         // updated readable projection before the next model execution.
 
-        // Tags apply additively — each signal tag is written, never replacing existing ones. §edit-tags-additive
+        // Tags apply additively — each signal tag is written, never replacing existing ones. {§edit-tags-additive}
         for (const candidate of statements) {
             if (!Array.isArray(candidate.signal)) continue;
             for (const tag of candidate.signal) {
@@ -291,7 +291,7 @@ export default class EntryOps {
             entryId,
             channel: targetChannel,
             editReceipt: editReceipt(originalContent, newContent, receiptEdits),
-        };  // §edit-status-201-200
+        };  // {§edit-status-201-200}
     }
 
     // Scope-aware entry delete — the KILL counterpart of editWorkspaceEntry. Resolves the
@@ -373,7 +373,7 @@ export default class EntryOps {
             if (html !== undefined) readChannel = "html";
         }
         const row = await db.ops_read_channel.get<{ content: string; mimetype: string }>({ ...{ workspace_id: workspaceId, scheme, pathname, channel: readChannel }, owner_id: ownerId });
-        // §read-read-404 + {§fs-errno} — ENOENT carries its fact, the RESOLVED name in wire
+        // {§read-read-404} + {§fs-errno} — ENOENT carries its fact, the RESOLVED name in wire
         // canon: the model distinguishes wrong-address from wrong-range by the strings alone.
         if (row === undefined) return failure("entry-not-found", 404, `No entry exists at ${EntryManifest.toPath(scheme, pathname)}.`, { content: null, mimetype: null, channel: targetChannel });
 
@@ -435,6 +435,6 @@ export default class EntryOps {
                 },
             );
         }
-        return { ...r, channel: readChannel }; // READ returns the resolved channel's content + mimetype — §read-read-content
+        return { ...r, channel: readChannel }; // READ returns the resolved channel's content + mimetype — {§read-read-content}
     }
 }

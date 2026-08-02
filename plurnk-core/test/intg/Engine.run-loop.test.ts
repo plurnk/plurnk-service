@@ -73,7 +73,7 @@ test("Engine.runLoop: maxTurns hit — force-terminate with 429 and hitMaxTurns 
         const provider = new Mock({
             contextWindow: 100000,
             // Each turn does real work (distinct EDIT) then continues — a bare SEND[102] is now an
-            // idle-strike (§send the terminal contract); distinct paths keep the cycle rail quiet too.
+            // idle-strike ({§send} the terminal contract); distinct paths keep the cycle rail quiet too.
             responses: Array.from({ length: 10 }, (_, i) => response([editStmt(`/t${i}`, "x"), sendStmt(102, "more")])),
         });
         const result = await engine.runLoop({
@@ -98,7 +98,7 @@ test("maxTurns=-1 disables the turn terminator — loop ends on SEND, not a cap"
         const provider = new Mock({
             contextWindow: 100000,
             // Non-terminal turns carry a work op (distinct EDIT) so they're real continues, not
-            // idle-strikes (§send the terminal contract); the final turn terminates on SEND[200].
+            // idle-strikes ({§send} the terminal contract); the final turn terminates on SEND[200].
             responses: [
                 response([editStmt("/1", "x"), sendStmt(102, "1")]),
                 response([editStmt("/2", "x"), sendStmt(102, "2")]),
@@ -120,7 +120,7 @@ test("maxTurns=-1 disables the turn terminator — loop ends on SEND, not a cap"
 test("Engine.runLoop: idle turn (102, no work op) steers and strikes — spins out to the engine's 500", async () => {
     const { db, engine, workspaceId, workerId, loopId } = await setup();
     try {
-        // A bare SEND[102] is a continue that did no work — an idle turn (§send the terminal contract).
+        // A bare SEND[102] is a continue that did no work — an idle turn ({§send} the terminal contract).
         // It steers the model (a hint) and strikes (silently); a model that keeps idling spins out to
         // the engine's 500, never its own 499.
         const provider = new Mock({ contextWindow: 100000, responses: Array.from({ length: 5 }, () => response([sendStmt(102, "idling")])) });

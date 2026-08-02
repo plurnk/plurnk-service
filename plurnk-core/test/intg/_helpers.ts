@@ -39,7 +39,7 @@ export const makeSchemeCtx = (overrides: Partial<PlurnkSchemeContext> = {}): Plu
     writer: "model",
     signal: undefined,
     mimetypes: DEFAULT_MIMETYPES,
-    // Write-time token accounting (SPEC §tokenomics). Divisor stand-in mirrors the
+    // Write-time token accounting (SPEC {§tokenomics}). Divisor stand-in mirrors the
     // production boot tripwire; the entry/log write helpers require it.
     tokenize: (text: string) => Math.ceil(text.length / 4),
     ...overrides,
@@ -113,7 +113,7 @@ export const quiesceExecs = async (schemes: { get(name: string): unknown }): Pro
 // plus the generation reserves; a docs-foisting turn roughly doubles it (the teaching-docs catalog
 // is ~law-sized). A hardcoded window (the old `8192`) silently drifts UNDER that floor as the
 // definition grows and the turn hard-413s instead of concluding (#433/#355). This tracks it: measure
-// the authored law ONCE at module load (a conservative upper bound after §definition-table-projection),
+// the authored law ONCE at module load (a conservative upper bound after {§definition-table-projection}),
 // ×2 to cover the docs catalog + headroom. Tight relative to a real model's window (the grinder still
 // engages on large content), but never impossible. Use it wherever a test runs a loop to CONCLUSION
 // and just needs the packet to fit — NOT for grinder/overflow tests, which deliberately pick a
@@ -166,7 +166,7 @@ export const packetSection = (packet: unknown, name: string): string =>
 // tests assert on the model's actual log VIEW with field precision (coordinate via `path`, the
 // model-facing `target` URI, op, status, origin, display). Strips the ONE deviation (a `body` value
 // is a raw <<:::tag … :::tag heredoc) to recover strict JSON — the same content-agnostic,
-// TAG-anchored transform the plurnkdown linter applies (§jsonplurnk).
+// TAG-anchored transform the plurnkdown linter applies ({§jsonplurnk}).
 export const logEntries = (packet: unknown): Array<Record<string, unknown>> => {
     const fence = /(`{3,})jsonplurnk\n([\s\S]*?)\n\1(?:\n|$)/.exec(packetSection(packet, "log"));
     if (fence === null) return [];

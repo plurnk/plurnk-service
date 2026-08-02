@@ -8,7 +8,7 @@ export interface ParsedBodyMatcher {
 }
 
 // Dispatches a body-matcher expression to its dialect using the leading-
-// prefix table from plurnk-contracts (plurnk.md §"Body matcher dispatch"):
+// prefix table from plurnk-contracts (plurnk.md "Pattern Filtering"):
 //
 //   //...       → xpath
 //   /pat/flags  → regex (flags optional; escapes `\/` allowed inside pat)

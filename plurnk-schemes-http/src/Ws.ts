@@ -13,12 +13,10 @@
 //                               which closes the socket (scheme-level no-op).
 //   KILL(wss://...)           - close the open socket.
 //
-// Stateful exception: every other scheme is stateless per the schemes SPEC
-// §forbidden "no state past a handler return" rule. A live socket IS per-workspace
-// state, so this engine holds open sockets in an in-instance registry across op
-// invocations (keyed workspace+pathname) - the ONE sanctioned exception (SPEC "ws"),
-// because that persistence is the whole point of a WebSocket. Entries live only
-// while the socket is open; every terminal path (close/error/KILL/cancel) removes.
+// Under the schemes lifecycle contract {§handler-lifecycle}, this handler holds
+// live sockets in an in-instance registry across op invocations, keyed by
+// workspace+pathname. Entries live only while the socket is open; every terminal
+// path (close/error/KILL/cancel) removes them, and close() releases any remainder.
 //
 // The SSRF Guard re-checks the target before connecting (a ws into private space
 // is the same attack as a fetch). Node ≥22 global `WebSocket` at runtime; tests

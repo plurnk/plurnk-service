@@ -1,4 +1,4 @@
-// CLI contract tests — spawn bin/gbnf.ts and assert the §cli_* promises in SPEC.md.
+// CLI contract tests — spawn bin/gbnf.ts and assert {§cli}.
 
 import test from "node:test";
 import assert from "node:assert/strict";

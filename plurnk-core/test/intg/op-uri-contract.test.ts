@@ -132,7 +132,7 @@ test("contract: a hash-shaped target addresses that literal path, never a pathna
     });
 });
 
-// §matcher-result: matchers select resources and expose navigation coordinates.
+// {§matcher-result}: matchers select resources and expose navigation coordinates.
 
 test("a regex READ returns the selected resource and its match coordinate", async () => {
     await withWorkspaceRoot(async (root, ctx) => {

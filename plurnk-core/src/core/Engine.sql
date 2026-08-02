@@ -1,15 +1,15 @@
--- Engine SQL. SPEC §arch (architecture), §scheme (op dispatch + log).
+-- Engine SQL. SPEC {§arch} (architecture), {§scheme} (op dispatch + log).
 
 -- PREP: engine_loop_status
 SELECT status FROM loops WHERE id = $loop_id;
 
 -- PREP: engine_worker_has_live_child
 -- A non-terminal CHILD run (worker:// spawn/fork set parent_worker_id) — a "live thing the worker holds",
--- like an open stream. A SEND[200] while one exists is a premature-terminate (§send-premature-terminate).
+-- like an open stream. A SEND[200] while one exists is a premature-terminate ({§send-premature-terminate}).
 -- Live = a child whose LATEST loop is still pending/running/parked (100/102/202) — the SAME definition
 -- engine_child_workers_live uses for the Child Runs orientation, so the 409 gate and the section the model
 -- reads NEVER disagree: a refused termination is always backed by a child the model can SEE and KILL
--- (§child-orientation). An inherited/historical loop (a fork copies the parent's loops) is not the
+-- ({§child-orientation}). An inherited/historical loop (a fork copies the parent's loops) is not the
 -- latest, so it never makes a concluded child look forever-live.
 SELECT 1 AS live FROM workers r
 JOIN loops l ON l.id = (SELECT id FROM loops WHERE worker_id = r.id ORDER BY sequence DESC, id DESC LIMIT 1)
@@ -51,7 +51,7 @@ SELECT open_paths FROM loops WHERE id = $loop_id;
 SELECT prompt, sequence FROM loops WHERE id = $loop_id;
 
 -- PREP: engine_reclaim_queued_loop
--- §worker-lifecycle-wake-requeue-not-terminal — atomic 100→102 re-claim by loop id. A wake
+-- {§worker-lifecycle-wake-requeue-not-terminal} — atomic 100→102 re-claim by loop id. A wake
 -- re-queued this loop while ITS OWN live drain was between turns; the drain re-claims and
 -- keeps running (the injected prompt is already the next turn). Conditional so a racing
 -- claimant can never double-claim.
@@ -115,7 +115,7 @@ ORDER BY et.entry_id, et.tag;
 SELECT COALESCE(MAX(sequence), 0) + 1 AS next FROM turns WHERE loop_id = $loop_id;
 
 -- PREP: engine_loop_usage
--- Per-loop usage totals — SUM the loop's turns (§tokenomics stores usage per turn).
+-- Per-loop usage totals — SUM the loop's turns ({§tokenomics} stores usage per turn).
 -- Surfaced on loop.run + loop/terminated (#197). `context` is the LAST turn's prompt tokens — the
 -- latest provider attempt's honest window-occupancy numerator (#263), distinct from the summed
 -- `prompt` (which includes every billed retry and overcounts a context that grows across turns).
@@ -235,7 +235,7 @@ LEFT JOIN subscriptions s ON s.id = (
     ORDER BY latest.id DESC
     LIMIT 1
 )
--- entries are workspace-scoped, shared across runs — §machine-processes-one-filesystem
+-- entries are workspace-scoped, shared across runs — {§machine-processes-one-filesystem}
 WHERE e.workspace_id = $workspace_id
 -- User Note 5 — mtime-ascending: dormant entries hold the stable prompt-cache prefix; churn clusters at the tail.
 ORDER BY e.updated_at ASC, e.id ASC, ec.name;
@@ -259,18 +259,18 @@ GROUP BY e.scheme
 ORDER BY e.scheme;
 
 -- PREP: engine_worker_prior_turn_time
--- §env-delta — timestamp of this worker's most recent turn BEFORE the current one
+-- {§env-delta} — timestamp of this worker's most recent turn BEFORE the current one
 -- (the "since I last looked" boundary). NULL on the worker's first turn → no deltas.
 SELECT MAX(t.timestamp) AS since
 FROM turns t JOIN loops l ON l.id = t.loop_id
 WHERE l.worker_id = $worker_id AND t.id != $turn_id;
 
 -- PREP: engine_pull_env_deltas
--- §env-delta — other actors' resolved EDITs on shared entries since this worker last
+-- {§env-delta} — other actors' resolved EDITs on shared entries since this worker last
 -- looked. Real edits (origin model/client) AND the plurnk worker's fs-sync fictions
 -- (origin=plurnk on the reserved 'plurnk' run); excludes this worker's own rows and
 -- other workers' already-materialized deltas (origin=plurnk on a real run). plurnk:///
--- entries (manifest/prompt/doc) never surface. This is the environment door (§actor-boundary-two-doors); the voice door is inject.
+-- entries (manifest/prompt/doc) never surface. This is the environment door ({§actor-boundary-two-doors}); the voice door is inject.
 SELECT le.worker_id, le.scheme, le.pathname, le.rx, le.source, le.attrs
 FROM log_entries le
 JOIN workers r ON r.id = le.worker_id
@@ -286,9 +286,9 @@ WHERE r.workspace_id = $workspace_id
 ORDER BY le.at;
 
 -- PREP: engine_insert_env_delta
--- §env-delta — materialize a pulled cross-actor edit as a FOLDED delta (expanded=0)
+-- {§env-delta} — materialize a pulled cross-actor edit as a FOLDED delta (expanded=0)
 -- in this worker's log. origin=plurnk; source carries the cause (sibling worker id or
--- 'file'); rx reuses the originating row's result span (§edit-result-render).
+-- 'file'); rx reuses the originating row's result span ({§edit-result-render}).
 INSERT INTO log_entries (
     worker_id, loop_id, turn_id, sequence, origin, source,
     op, scheme, pathname, tx, mimetype_tx, rx, mimetype_rx, status_rx, expanded, attrs
@@ -298,7 +298,7 @@ INSERT INTO log_entries (
 );
 
 -- PREP: engine_worker_stream_channels
--- §exec-stream — every stream channel the worker owns (an EXEC's stdout/stderr live on the
+-- {§exec-stream} — every stream channel the worker owns (an EXEC's stdout/stderr live on the
 -- runtime-tag entry), with content + state + coordinate, so the per-turn injector can emit the
 -- channel's unshown byte-delta. Stays listed until its last delta is shown (cursor == content len).
 SELECT s.id AS subscription_id, e.scheme AS runtime, e.pathname AS coord,
@@ -312,7 +312,7 @@ WHERE s.worker_id = $worker_id
 ORDER BY s.id, ec.name;
 
 -- PREP: engine_stream_cursor
--- §exec-stream — bytes of this channel already shown to the worker: the streamEnd recorded on its
+-- {§exec-stream} — bytes of this channel already shown to the worker: the streamEnd recorded on its
 -- latest foisted delta (the caller defaults to 0 when none exists yet).
 SELECT attrs
 FROM log_entries
@@ -321,10 +321,10 @@ WHERE worker_id = $worker_id AND origin = 'plurnk' AND op = 'READ'
 ORDER BY id DESC LIMIT 1;
 
 -- PREP: engine_insert_stream_delta
--- §exec-stream / §env-delta — materialize a channel's unshown byte-delta as a
+-- {§exec-stream} / {§env-delta} — materialize a channel's unshown byte-delta as a
 -- foisted READ row (the model READs the stream it never typed). origin=plurnk; fragment is
 -- the channel; attrs.streamEnd is the next turn's cursor; expanded=1 when the channel has CLOSED
--- (the terminal delta auto-OPENs), 0 while it streams (ongoing deltas fold). §exec-stream
+-- (the terminal delta auto-OPENs), 0 while it streams (ongoing deltas fold). {§exec-stream}
 INSERT INTO log_entries (
     worker_id, loop_id, turn_id, sequence, origin, source,
     op, scheme, pathname, fragment, tx, mimetype_tx, rx, mimetype_rx, status_rx, attrs, expanded
@@ -334,7 +334,7 @@ INSERT INTO log_entries (
 );
 
 -- PREP: engine_pull_loop_terminations
--- §worker-scheme — sibling runs' loops that reached a terminal status since this worker last
+-- {§worker-scheme} — sibling runs' loops that reached a terminal status since this worker last
 -- looked (the loop-termination ambient delta). Carries terminal_message — the SEND[200]
 -- deliverable or the abandonment reason — plus terminated_by so a cancellation renders
 -- its marker (#379). Excludes this worker's own loops.
@@ -348,7 +348,7 @@ WHERE r.workspace_id = $workspace_id
 ORDER BY l.terminated_at;
 
 -- PREP: engine_insert_loop_termination_delta
--- §worker-scheme — materialize a sibling's loop-termination as a delta: a SEND from
+-- {§worker-scheme} — materialize a sibling's loop-termination as a delta: a SEND from
 -- worker:///<name> carrying the terminal status + message (the deliverable). origin=plurnk,
 -- source=the terminated run — uniform with the env-delta. Born OPEN for a 2xx deliverable
 -- (a child's success must reach the parent open + awakening), folded otherwise.
@@ -366,7 +366,7 @@ SELECT tag FROM entry_tags WHERE entry_id = $entry_id ORDER BY tag;
 
 -- PREP: engine_child_workers_live
 -- The worker's LIVE child workers — latest loop non-terminal (100 pending / 102 processing / 202 parked).
--- Powers the Child Runs orienting section (§child-orientation): terse `* <status> worker://<name>`
+-- Powers the Child Runs orienting section ({§child-orientation}): terse `* <status> worker://<name>`
 -- pointers so the model SEES what it holds live and reasons for itself (READ/KILL), never told to.
 -- Empty → section omitted.
 SELECT r.name, l.status
@@ -377,7 +377,7 @@ ORDER BY r.name;
 
 -- PREP: engine_child_streams_open
 -- The worker's OPEN streams (subscriptions not yet closed) — their addressable coord. Powers the Child
--- Streams orienting section (§child-orientation): terse `* active <runtime>:///<coord>` pointers the
+-- Streams orienting section ({§child-orientation}): terse `* active <runtime>:///<coord>` pointers the
 -- model OPENs/READs/KILLs. Empty → section omitted.
 SELECT s.scheme, e.pathname
 FROM subscriptions s
@@ -386,13 +386,13 @@ WHERE s.worker_id = $worker_id AND s.closed_at IS NULL
 ORDER BY e.pathname;
 
 -- PREP: engine_render_errors
--- SPEC §operation-results: 4xx/5xx log rows are indexed in the packet's errors as
+-- SPEC {§operation-results}: 4xx/5xx log rows are indexed in the packet's errors as
 -- LogCoordinate pointers, forcing the model to confront failures instead of letting
 -- them rot in log:///. Window = the current turn AND the immediately-prior one
 -- (>= current_turn_seq - 1): prior-turn for action failures the model just caused,
 -- current-turn so a same-turn engine error (the grinder's budget-overflow row, minted
 -- pre-generate then re-derived) surfaces THIS turn rather than a turn late.
--- §operation-result-uniform-error-channel
+-- {§operation-result-uniform-error-channel}
 SELECT
     le.op, le.sequence, le.status_rx, le.rx, le.mimetype_rx,
     le.scheme, le.pathname,
@@ -402,18 +402,18 @@ JOIN turns t ON t.id = le.turn_id
 JOIN loops l ON l.id = le.loop_id
 WHERE le.loop_id = $loop_id
   AND le.status_rx >= 400
-  -- §log-row-self-explains: every >=400 row points at ITSELF — the op row carries its failure
+  -- {§log-row-self-explains}: every >=400 row points at ITSELF — the op row carries its failure
   -- message on its meta line (packet-wire), so the pointer leads to a record that states its why.
   AND t.sequence >= $current_turn_seq - 1
 ORDER BY t.sequence, le.sequence;
 
 -- TX: engine_grinder_fold_newest_turn
--- §grinder-layer1-rollback — THE DOCTRINE: the log is the model's memory and the model ALONE
+-- {§grinder-layer1-rollback} — THE DOCTRINE: the log is the model's memory and the model ALONE
 -- curates it (FOLD/KILL). The grinder never touches history — it only blocks NEW memories from
 -- landing when there is no room: one set-op folds the still-open rows of the newest turn
 -- boundary — the immediately-prior turn's emissions and the current turn's pre-model rows
 -- (foists, wake surfaces). Turn 1 is the same rule (no prior turn; its foists are the newest).
--- Folded, never deleted; THREE exemptions (§grinder-errors-exempt): op='error' rows, the
+-- Folded, never deleted; THREE exemptions ({§grinder-errors-exempt}): op='error' rows, the
 -- user PROMPT (#382 - the task frame is not ordinary model-authored memory;
 -- the engine never reclaims the definition of the task it set), and PLAN rows (#465, owner
 -- ruling — the checklist is the model's orientation surface at exactly the moment the grinder
@@ -443,18 +443,18 @@ DELETE FROM engine_grinder_fold_set;
 UPDATE log_entries SET expanded = 0 WHERE id = $id;
 
 -- PREP: engine_render_log
--- Render-time log assembly (SPEC §packet packet.system.log).
+-- Render-time log assembly (SPEC {§packet} packet.system.log).
 -- Yields log_entries for the whole RUN — the conversation's working
 -- memory carries across loops within a workspace's run, not just the
 -- current loop. Coordinate is log:///<loop_seq>/<turn_seq>/<sequence>/<op>.
 -- Status 202 entries in state='proposed' are model-invisible until resolved.
 -- `expanded = 0` rows are FOLDED — listed but collapsed to their coordinate
--- (FOLD); the renderer elides the body. §open-fold: folded rows stay listed, re-OPENable.
+-- (FOLD); the renderer elides the body. {§open-fold}: folded rows stay listed, re-OPENable.
 SELECT
     l.sequence  AS loop_seq,
     t.sequence  AS turn_seq,
     le.sequence,
-    -- le.origin is attribution, never a render filter; the worker's actor — §actor-boundary-origin-not-filter §machine-processes-worker-origin
+    -- le.origin is attribution, never a render filter; the worker's actor — {§actor-boundary-origin-not-filter} {§machine-processes-worker-origin}
     le.origin,
     le.op, le.suffix, le.signal,
     le.scheme, le.username, le.password,
@@ -466,8 +466,8 @@ SELECT
 FROM log_entries le
 JOIN turns t ON t.id = le.turn_id
 JOIN loops l ON l.id = le.loop_id
--- WHERE renders exactly one worker's log — §actor-boundary-isolation §machine-processes-worker-is-its-log
--- the AND NOT clauses keep proposed (202) rows hidden until resolved (§proposal-proposed-hidden),
+-- WHERE renders exactly one worker's log — {§actor-boundary-isolation} {§machine-processes-worker-is-its-log}
+-- the AND NOT clauses keep proposed (202) rows hidden until resolved ({§proposal-proposed-hidden}),
 -- and SUCCESSFUL log-curation receipts out of the packet (#382 — recorded in the DB for forensics,
 -- suppressed from materialization so a curation act rents zero packet space; the successful fold
 -- that hid the task frame in run43 left NO trace, the database dig). Two receipts, one principle:
@@ -477,7 +477,7 @@ JOIN loops l ON l.id = le.loop_id
 --   ~130-char meta-lines apiece — became 95% of its packet, a self-growing curation trap). SCOPED
 --   to le.scheme='log': a KILL of a worker:// note / sh:// stream is a world mutation, NOT log
 --   housekeeping, and stays visible. A FAILED op of any kind still renders — errors are signals
---   (§operation-result-uniform-error-channel).
+--   ({§operation-result-uniform-error-channel}).
 WHERE le.worker_id = $worker_id
   AND NOT (le.status_rx = 202 AND le.state = 'proposed')
   AND NOT (le.op IN ('OPEN', 'FOLD') AND le.status_rx < 400)
@@ -533,7 +533,7 @@ SELECT l.sequence AS loop_seq,
  WHERE le.id = $id;
 
 -- PREP: engine_turn_retrievals
--- §send-premature-terminate — the pending set's retrieval leg: THIS turn's READ/FIND/OPEN rows,
+-- {§send-premature-terminate} — the pending set's retrieval leg: THIS turn's READ/FIND/OPEN rows,
 -- whose results the model cannot have seen (they fold back next packet). A [200] over them is
 -- discarding answers it asked for.
 SELECT id FROM log_entries
@@ -563,12 +563,12 @@ WHERE s.worker_id = $worker_id
 LIMIT 1;
 
 -- PREP: engine_turn_failures
--- §send-200-failed-ops — THIS turn's failed op results (the model's own ops, status >= 400), whose
+-- {§send-premature-terminate} — THIS turn's failed op results (the model's own ops, status >= 400), whose
 -- errors the model cannot have seen (they land next packet). A [200] or already-drained [202] over
 -- them concludes blind past a failure — refused 409; [499] abandons regardless (declaring failure
 -- IS weighing it).
 -- Actionless engine errors are excluded: the grinder's overflow row mints pre-packet, so the
--- recovery turn already saw it (§grinder-hard-413-recovery). A model-authored statement that
+-- recovery turn already saw it ({§grinder-hard-413-recovery}). A model-authored statement that
 -- failed grammar parsing is different: source='grammar' records a bounded operation failure
 -- from the accepted emission, unseen until the next packet, so it gates completion like every
 -- other failed model operation.
@@ -606,7 +606,7 @@ SELECT id FROM lineage WHERE parent_worker_id IS NULL;
 
 -- PREP: engine_worker_has_undelivered_child_term
 -- A child worker whose loop TERMINATED after the current turn's timestamp — its deliverable
--- (the §worker-scheme collect delta) is queued for the NEXT packet build and has not been seen.
+-- (the {§worker-scheme} collect delta) is queued for the NEXT packet build and has not been seen.
 -- The 1ms-wide fan-out race: workers concluding DURING the parent's generation are not "live"
 -- (the wait's J leg misses them) but their results are pending — concluding or ∅-collapsing
 -- over them silently discards deliverables the model spawned. {§send-undelivered-child-term}

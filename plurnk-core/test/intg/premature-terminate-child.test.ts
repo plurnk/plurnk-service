@@ -1,6 +1,6 @@
-// §send-premature-terminate extended to CHILD RUNS — a SEND[200] while a spawned child is still
+// {§send-premature-terminate} extended to CHILD RUNS — a SEND[200] while a spawned child is still
 // live is premature exactly as a SEND[200] with an open stream is (children and streams are the same
-// kind of "live thing the worker holds", §run-lifecycle). Engine-level A/B so it's race-free.
+// kind of "live thing the worker holds", {§run-lifecycle}). Engine-level A/B so it's race-free.
 
 import test from "node:test";
 import assert from "node:assert/strict";

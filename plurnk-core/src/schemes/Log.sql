@@ -37,12 +37,12 @@ ORDER BY l.sequence, t.sequence, le.sequence;
 UPDATE log_entries SET expanded = $expanded WHERE id = $id;
 
 -- PREP: log_delete_by_id
--- §model-entry-log-curation — permanent row deletion; the derived errors pointer for an
+-- {§model-entry-log-curation} — permanent row deletion; the derived errors pointer for an
 -- `op='error'` row vanishes with it.
 DELETE FROM log_entries WHERE id = $id;
 
 -- PREP: log_find_candidates
--- §find-source-agnostic ÷ §log-coordinate-hierarchy — the worker's log rows as FIND candidates,
+-- {§find-source-agnostic} ÷ {§log-coordinate-hierarchy} — the worker's log rows as FIND candidates,
 -- coordinate-prefix-scoped (the same candidate semantics log_match_coordinates curates by), each with the
 -- fields Log's rx projection renders (FIND must match exactly what READ shows). Coordinate-ordered.
 SELECT
@@ -60,13 +60,13 @@ WHERE l.worker_id = $worker_id
 ORDER BY l.sequence, t.sequence, le.sequence;
 
 -- PREP: log_write_tag
--- §log-region-tagging — FOLD is the log's write-op (EDIT can't reach engine-written rows). FOLD[tag]
--- stamps a tag on the folded rows, additively (§edit-tags-additive) — re-tagging is a no-op.
+-- {§log-region-tagging} — FOLD is the log's write-op (EDIT can't reach engine-written rows). FOLD[tag]
+-- stamps a tag on the folded rows, additively ({§edit-tags-additive}) — re-tagging is a no-op.
 INSERT OR IGNORE INTO log_tags (log_entry_id, tag) VALUES ($log_entry_id, $tag);
 
 -- PREP: log_match_coordinates_tagged
--- §log-region-tagging — OPEN[tag]'s resolution: log_match_coordinates PLUS an ALL-tags AND filter
--- (§find-tag-filter-and-semantics), so OPEN[tag] recalls only rows carrying EVERY listed tag. A
+-- {§log-region-tagging} — OPEN[tag]'s resolution: log_match_coordinates PLUS an ALL-tags AND filter
+-- ({§find-tag-filter-and-semantics}), so OPEN[tag] recalls only rows carrying EVERY listed tag. A
 -- targetless OPEN[tag] rides glob '*' (the whole run).
 SELECT le.id, (l.sequence || '/' || t.sequence || '/' || le.sequence || '/' || le.op) AS coordinate
 FROM log_entries le
@@ -87,7 +87,7 @@ WHERE l.worker_id = $worker_id
 ORDER BY l.sequence, t.sequence, le.sequence;
 
 -- PREP: log_find_candidates_tagged
--- §log-region-tagging — FIND[tag](log): log_find_candidates PLUS the same ALL-tags AND filter.
+-- {§log-region-tagging} — FIND[tag](log): log_find_candidates PLUS the same ALL-tags AND filter.
 SELECT
     (l.sequence || '/' || t.sequence || '/' || le.sequence || '/' || le.op) AS coordinate,
     le.op, le.tx, le.mimetype_tx, le.rx, le.mimetype_rx, le.tokens, le.deep_hash

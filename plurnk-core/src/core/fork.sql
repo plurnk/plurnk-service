@@ -1,15 +1,15 @@
--- Fork a worker: deep-copy its log into a NEW run in the SAME workspace (SPEC §machine-processes —
+-- Fork a worker: deep-copy its log into a NEW run in the SAME workspace (SPEC {§machine-processes} —
 -- branch the log, share the world). loops → turns → entries are copied with their
 -- fold-state (expanded) and attribution (origin/source) intact; only the worker/loop/
--- turn ids are remapped. Nothing of the world is copied (§machine-processes-fork-shares-the-world) — the workspace's entries and
--- overlay are shared. The §env-delta reconciliation snapshot (worker_watermarks) is NOT
+-- turn ids are remapped. Nothing of the world is copied ({§machine-processes-fork-shares-the-world}) — the workspace's entries and
+-- overlay are shared. The {§env-delta} reconciliation snapshot (worker_watermarks) is NOT
 -- copied; the branch first-sights its world like any fresh run.
 
 -- PREP: fork_get_worker
 SELECT workspace_id, name, origin FROM workers WHERE id = $id;
 
 -- PREP: fork_insert_worker
--- A new worker in the parent's workspace; lineage recorded via parent_worker_id (§lifecycle-terms).
+-- A new worker in the parent's workspace; lineage recorded via parent_worker_id ({§lifecycle-terms}).
 INSERT INTO workers (workspace_id, name, parent_worker_id, origin)
 VALUES ($workspace_id, $name, $parent_worker_id, $origin)
 RETURNING id;
@@ -17,7 +17,7 @@ RETURNING id;
 -- PREP: fork_count_branches
 -- How many fork branches the parent already has — for a UNIQUE `<parent>-fork-<N>` default name, so N
 -- self-forks of one parent are individually addressable (KILL/SEND/READ by name) instead of colliding
--- on a single `<parent>-fork` that worker_resolve_by_name would resolve to the newest only (§worker-scheme-fork).
+-- on a single `<parent>-fork` that worker_resolve_by_name would resolve to the newest only ({§worker-scheme-fork}).
 SELECT COUNT(*) AS n FROM workers WHERE parent_worker_id = $parent_worker_id AND name LIKE $name_prefix;
 
 -- PREP: fork_get_loops
@@ -56,8 +56,8 @@ RETURNING id;
 
 -- PREP: fork_get_log_entries
 -- worker_id is the branch's; loop_id/turn_id are remapped by the caller. The source `id` rides along so
--- the caller can carry §log-region-tagging tags across (old id → new id). origin/source (attribution)
--- and expanded (fold-state) ride along too. §machine-processes-fork-copies-the-log
+-- the caller can carry {§log-region-tagging} tags across (old id → new id). origin/source (attribution)
+-- and expanded (fold-state) ride along too. {§machine-processes-fork-copies-the-log}
 SELECT id, loop_id, turn_id, sequence, at, origin, source, op, suffix, signal,
        scheme, username, password, hostname, port, pathname, params, fragment,
        lineMarker, tx, mimetype_tx, rx, mimetype_rx, status_rx, tokens,
@@ -65,18 +65,18 @@ SELECT id, loop_id, turn_id, sequence, at, origin, source, op, suffix, signal,
 FROM log_entries WHERE worker_id = $worker_id ORDER BY id;
 
 -- PREP: fork_insert_log_entry
--- RETURNING the new id so the caller can copy the row's region tags onto it (§log-region-tagging).
+-- RETURNING the new id so the caller can copy the row's region tags onto it ({§log-region-tagging}).
 INSERT INTO log_entries (worker_id, loop_id, turn_id, sequence, at, origin, source, op, suffix, signal, scheme, username, password, hostname, port, pathname, params, fragment, lineMarker, tx, mimetype_tx, rx, mimetype_rx, status_rx, tokens, state, outcome, attrs, expanded)
 VALUES ($worker_id, $loop_id, $turn_id, $sequence, $at, $origin, $source, $op, $suffix, $signal, $scheme, $username, $password, $hostname, $port, $pathname, $params, $fragment, $lineMarker, $tx, $mimetype_tx, $rx, $mimetype_rx, $status_rx, $tokens, $state, $outcome, $attrs, $expanded)
 RETURNING id;
 
 -- PREP: fork_copy_log_tags
--- §log-region-tagging + §machine-processes-fork-copies-the-log — a forked log row keeps its region
+-- {§log-region-tagging} + {§machine-processes-fork-copies-the-log} — a forked log row keeps its region
 -- tags along with its fold-state, so a branch inherits the parent's named working-sets.
 INSERT INTO log_tags (log_entry_id, tag)
 SELECT $new_log_id, tag FROM log_tags WHERE log_entry_id = $old_log_id;
 
--- §worker-scheme — a fork inherits the parent's worker-scope SCRATCH (its private workspace), distinct
+-- {§worker-scheme} — a fork inherits the parent's worker-scope SCRATCH (its private workspace), distinct
 -- from the shared workspace world above: "fork = everything-in-common-but-name, then diverges". The
 -- entries are deep-copied (new ids) with the owner remapped in the pathname (parent → branch), so
 -- the branch's scratch is independent — it edits its own without touching the parent's.

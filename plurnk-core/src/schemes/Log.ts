@@ -25,12 +25,12 @@ type OpenFoldResult = SchemeResultBase & { matched?: number };
 // a `[A-Z]+`-only suffix silently rejected FOLD(log:///1/6/2/error), so the model
 // could not reclaim budget by folding its own error rows and spiralled to 413 (jumbo).
 const COORDINATE = /^(\d+)\/(\d+)\/(\d+)(?:\/([A-Za-z]+))?$/;
-// §log-coordinate-hierarchy — a log coordinate is a HIERARCHICAL PREFIX: `1` selects loop 1's rows,
+// {§log-coordinate-hierarchy} — a log coordinate is a HIERARCHICAL PREFIX: `1` selects loop 1's rows,
 // `1/2` turn 1/2's rows, `1/2/3` the one row. A full coordinate is always 3 parts, so a 1- or 2-part
 // path is unambiguously a prefix — the trailing slash is OPTIONAL (`log:///1/2` ≡ `log:///1/2/`).
 const PARTIAL_COORDINATE = /^\d+(?:\/\d+)?\/?$/;
 
-// A log target pathname → the coordinate GLOB it scopes (§log-coordinate-hierarchy): a partial
+// A log target pathname → the coordinate GLOB it scopes ({§log-coordinate-hierarchy}): a partial
 // coordinate (`1`, `1/2`, with or without slash) is a prefix over its descendants; a trailing
 // slash is the folder idiom; a full coordinate/glob passes through. null = malformed.
 const coordinateGlob = (pathname: string): string | null => {
@@ -103,7 +103,7 @@ export default class Log extends CoreSchemeAdapterBase {
                 },
             );
         }
-        // READ is exact — one coordinate, one row. Tag recall is OPEN[tag]/FIND[tag]'s job (§log-region-tagging),
+        // READ is exact — one coordinate, one row. Tag recall is OPEN[tag]/FIND[tag]'s job ({§log-region-tagging}),
         // not a filter on a single-row read.
         if (Array.isArray(statement.signal) && statement.signal.length > 0) {
             return failure(
@@ -197,8 +197,8 @@ export default class Log extends CoreSchemeAdapterBase {
         return { ...resolved };
     }
 
-    // §log-uniform-query — FIND over the worker's log rows, on the SAME source-agnostic primitive
-    // every entry scheme runs (Matcher.matchCandidates, §find-source-agnostic): candidates are the
+    // {§log-uniform-query} — FIND over the worker's log rows, on the SAME source-agnostic primitive
+    // every entry scheme runs (Matcher.matchCandidates, {§find-source-agnostic}): candidates are the
     // coordinate-scoped rows resolved by LogBody exactly as READ shows them, so every content
     // dialect works on log BY CONSTRUCTION and FIND(log)->READ(coordinate) composes like any scheme.
     async find(statement: FindStatement, ctx: CoreSchemeCallContext): Promise<FindResult> {
@@ -259,7 +259,7 @@ export default class Log extends CoreSchemeAdapterBase {
             );
         }
         const scope = pathScope(glob, false);
-        // §log-region-tagging — a tag signal AND-filters the candidates (§find-tag-filter-and-semantics):
+        // {§log-region-tagging} — a tag signal AND-filters the candidates ({§find-tag-filter-and-semantics}):
         // a row survives only if it carries EVERY listed tag. No signal → the plain coordinate scope.
         const tags = Array.isArray(statement.signal) ? statement.signal : [];
         type Candidate = {
@@ -539,7 +539,7 @@ export default class Log extends CoreSchemeAdapterBase {
             }
         }
         if (results.length === 0) return empty(204);
-        // §find-count-not-contents is source-agnostic. Count the rendered
+        // {§find-count-not-contents} is source-agnostic. Count the rendered
         // catalog items; a shallow map's folder summaries replace, rather than
         // conceal, their descendants.
         const budget = Number.parseInt(process.env.PLURNK_SERVICE_FIND_MAX_MATCHES ?? "0", 10);
@@ -567,7 +567,7 @@ export default class Log extends CoreSchemeAdapterBase {
         return this.#setExpanded(statement, this.coreContext(ctx), 1);
     }
 
-    // FOLD toggles the expanded bit only — an active subscription stays alive. §subscriptions-fold-keeps-subscription
+    // FOLD toggles the expanded bit only — an active subscription stays alive. {§subscriptions-fold-keeps-subscription}
     async fold(statement: FoldStatement, ctx: CoreSchemeCallContext): Promise<OpenFoldResult> {
         return this.#setExpanded(statement, this.coreContext(ctx), 0);
     }
@@ -581,7 +581,7 @@ export default class Log extends CoreSchemeAdapterBase {
             const row = await db.log_id_by_coordinate.get<{ id: number }>({ worker_id: workerId, loop_seq: coord.loopSeq, turn_seq: coord.turnSeq, sequence: coord.sequence });
             return row === undefined ? { status: 404, ids: [] } : { status: 200, ids: [row.id] };
         }
-        // §log-coordinate-hierarchy — one resolution for every consumer (curation here, find below).
+        // {§log-coordinate-hierarchy} — one resolution for every consumer (curation here, find below).
         const glob = coordinateGlob(pathname);
         if (glob === null) return { status: 400, ids: [], error: `The log target '${pathname}' is malformed.` };
         const scope = pathScope(glob, false);
@@ -596,7 +596,7 @@ export default class Log extends CoreSchemeAdapterBase {
         return { status: 200, ids: matched.map((row) => row.id) };
     }
 
-    // §log-region-tagging — resolve OPEN[tag] to ids: candidates are the target's glob scope (the
+    // {§log-region-tagging} — resolve OPEN[tag] to ids: candidates are the target's glob scope (the
     // whole run when targetless — a bare OPEN[tag] recalls the entire tagged working-set),
     // AND-filtered to rows carrying EVERY listed tag. Zero matches is a no-op success (204), mirroring
     // #resolveIds — recalling a name that tags nothing steers nothing.
@@ -687,7 +687,7 @@ export default class Log extends CoreSchemeAdapterBase {
             return this.#applyExpanded(matched.ids, expanded, signal, ctx);
         }
 
-        // §log-region-tagging — OPEN[tag] is the READ side: recall rows by tag, target optional (a bare
+        // {§log-region-tagging} — OPEN[tag] is the READ side: recall rows by tag, target optional (a bare
         // OPEN[tag] recalls the whole tagged working-set). FOLD never resolves by tag — it is the WRITE
         // side (it stamps the tag below), always scoped to the target region it folds.
         if (expanded === 1 && signal.length > 0) {

@@ -1,10 +1,10 @@
-// Self-hosting keystone (SPEC §actor-boundary, §actor-boundary-self-hosting): the runtime acting as an ordinary `plurnk`
+// Self-hosting keystone (SPEC {§actor-boundary}, {§actor-boundary-self-hosting}): the runtime acting as an ordinary `plurnk`
 // actor. Uses the workspace's reserved plurnk worker, opens an ephemeral loop+turn,
 // and fires ops through Engine.dispatch with origin=plurnk — the same path the
 // model and clients use. Mirrors _dispatchAsClient, but the work is the
 // runtime's own (e.g. materializing operator doc entries). The ops land in the
 // plurnk worker's log, NOT the model's; other workers see only the resulting
-// workspace-scoped entries through the shared filesystem (§machine-processes), never the log.
+// workspace-scoped entries through the shared filesystem ({§machine-processes}), never the log.
 
 import type { PlurnkStatement } from "@plurnk/plurnk-contracts";
 import type { Db } from "../core/Db.ts";

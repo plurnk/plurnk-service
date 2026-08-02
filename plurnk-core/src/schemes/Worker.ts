@@ -263,7 +263,7 @@ export default class Worker extends CoreSchemeAdapterBase {
             );
         }
         const entryPath = Worker.#entryPath(statement.target);
-        // Path-absent READ(worker://<name>) COLLECTS the worker's deliverable (§worker-scheme-collect, pull side):
+        // Path-absent READ(worker://<name>) COLLECTS the worker's deliverable ({§worker-scheme-collect}, pull side):
         // its latest loop's terminal message — the SEND[200] result, or an abandonment reason. A worker
         // still running hasn't delivered yet → 425 steers the model to park until it does (the
         // same deliverable the wake/collect-delta will push). The pull complements the push; neither is lost.
@@ -293,7 +293,7 @@ export default class Worker extends CoreSchemeAdapterBase {
                     },
                 );
             }
-            // §join-blocking-collect (#354) — a still-running worker is a BLOCKING JOIN: the READ
+            // {§join-blocking-collect} (#354) — a still-running worker is a BLOCKING JOIN: the READ
             // arms the join (awaitWorker), and the turn's bare SEND[102] parks until the worker delivers.
             // The model doesn't drive the park — the engine does (a blocking read() hiding the scheduler).
             if (!Worker.#TERMINAL_LOOP.has(row.status)) {
@@ -334,7 +334,7 @@ export default class Worker extends CoreSchemeAdapterBase {
         return EntryOps.readWorkspaceEntry(Worker.#stripAuthority(statement), core, Worker.manifest, resolved.ownerId);
     }
 
-    // Terminal loop statuses (§lifecycle-terms) — a loop here has DELIVERED; anything else is still running.
+    // Terminal loop statuses ({§lifecycle-terms}) — a loop here has DELIVERED; anything else is still running.
     static #TERMINAL_LOOP = new Set([200, 413, 429, 499, 500, 504, 508]);
 
     // FIND draws from the resolved principal's space alone: worker:///** the commons,
@@ -466,7 +466,7 @@ export default class Worker extends CoreSchemeAdapterBase {
         }
         const body = statement.body;
         const prompt = body === null ? "" : typeof body === "string" ? body : body.raw;
-        // §worker-delegation-inherits-flags — an irc that RESUMES a parked loop keeps that loop's
+        // {§worker-delegation-inherits-flags} — an irc that RESUMES a parked loop keeps that loop's
         // own flags (inject ignores these there); a fresh loop raised by the message acts on
         // the sender's behalf and carries the sender's authority.
         const row = await core.db.engine_get_loop_flags.get<{ flags: string }>({ loop_id: core.loopId });

@@ -24,7 +24,7 @@ import { classifyMimetype } from "@plurnk/plurnk-mimetypes";
 export const TEXT_PRIMITIVE_MIMETYPE = "text/markdown";
 
 export default class MimetypeClassifier {
-    // 415 boundary on binary entries (SPEC §mimetype-classifier).
+    // 415 boundary on binary entries (SPEC {§mimetype-classifier}).
     static isBinary(mimetype: string): boolean {
         return classifyMimetype(mimetype).binary;
     }

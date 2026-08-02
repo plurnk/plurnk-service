@@ -1,4 +1,4 @@
-// [§fs-world-state] the SOAK — the run59 shape in miniature: repeated turn boundaries over
+// {§fs-world-state} the SOAK — the run59 shape in miniature: repeated turn boundaries over
 // ONE rooted workspace with real membership, the invariant harness at every boundary, and
 // the delta law: read-only turns grow the entries table by ZERO. run59's fragmentation
 // (one phantom row per member per turn) trips this on turn two — no benchmark required.

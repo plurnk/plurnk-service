@@ -30,7 +30,7 @@ export default class SeamSocket {
             if (this.#closed) return;
             if (workspaceId !== null && this.#workspace !== null && workspaceId !== this.#workspace.workspaceId) return;
             if (workspaceId !== null && this.#workspace === null) return;
-            // §notifications-envelope-carries-workspaceid — the envelope stamps the scope, as the WS did.
+            // {§notifications-envelope-carries-workspaceid} — the envelope stamps the scope, as the WS did.
             const scoped = workspaceId !== null && params !== null && typeof params === "object" ? { ...params, workspaceId } : params;
             this.#emit("message", JSON.stringify({ jsonrpc: "2.0", method, params: scoped }));
         });
@@ -154,7 +154,7 @@ export default class SeamSocket {
                 return { resolved: true };
             }
             case "proposal.list": {
-                // The seam hands RAW state='proposed' rows (§proposal-list) — the module reshapes at
+                // The seam hands RAW state='proposed' rows ({§proposal-list}) — the module reshapes at
                 // its edge. Mirror the retired WS handler's shape: parsed attrs/flags, tx body lifted.
                 const s = this.#attached();
                 const rows = await daemon.pendingProposals(s.workspaceId) as unknown as Array<Record<string, unknown>>;
@@ -178,7 +178,7 @@ export default class SeamSocket {
                 })) };
             }
             case "log.read": {
-                // Default = the connection's OWN (client) run — §machine-processes; the model worker is
+                // Default = the connection's OWN (client) run — {§machine-processes}; the model worker is
                 // read by explicit workerId (loop.run returns modelWorkerId for exactly that).
                 const s = this.#attached();
                 const workerId = (p.workerId as number | undefined) ?? s.workerId;

@@ -1,4 +1,4 @@
-// {§lexicon} → [§lexicon] (#477, #472, #486) — the standing guard: retired and misleading terms
+// {§lexicon} (#477, #472, #486) — the standing guard: retired and misleading terms
 // fail CI here, not the next audit. TWO STANDARDS BY LAYER: the operator/wire/storage layers
 // follow the industry lexicon (OpenAI where the concept is standard); the MODEL-FACING packet
 // follows the training distribution (ops mirror HTTP/shell, display mirrors CSS) and is OUT OF

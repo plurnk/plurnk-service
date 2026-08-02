@@ -1,4 +1,4 @@
-// PLURNK_SERVICE_FILES_ITEMS — turn-0 catalog preview foist (§actor-boundary). A plurnk-origin
+// PLURNK_SERVICE_FILES_ITEMS — turn-0 catalog preview foist ({§actor-boundary}). A plurnk-origin
 // FIND(scheme:///*) is foisted into the model's turn 0 for folder-capable schemes: direct
 // entries plus complete `dir/**` summaries. Kernel docs remain recursively enumerated. The
 // first-N cap applies only to file rows; 0/unset turns the preview off.

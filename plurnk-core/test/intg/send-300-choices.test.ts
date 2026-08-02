@@ -1,4 +1,4 @@
-// §send-300-choices — SEND[300]:question;choice;… asks the operator and parks the loop; the parsed
+// {§send-300-choices} — SEND[300]:question;choice;… asks the operator and parks the loop; the parsed
 // choice set rides the log row's attrs; the answer returns via the existing inject → wake path.
 
 import test from "node:test";

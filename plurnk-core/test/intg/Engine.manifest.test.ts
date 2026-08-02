@@ -1,4 +1,4 @@
-// SPEC §packet — plurnk:///manifest.json is the complete, unranked directory of the
+// SPEC {§packet} — plurnk:///manifest.json is the complete, unranked directory of the
 // workspace's entries, rewritten every turn by Engine.runTurn. This drives the
 // LIVE path: a real turn materializes the manifest; we parse its body and assert
 // the directory contract — every entry listed, NO `shown`/relevance field, the
@@ -115,7 +115,7 @@ test("a JSON entry large enough to tile builds through the live embedder — the
     } finally { await db.close(); }
 });
 
-test("[§stream-catalog-lifecycle] catalog distinguishes active, closed, killed, failed, and static entries", async () => {
+test("{§stream-catalog-lifecycle} catalog distinguishes active, closed, killed, failed, and static entries", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `manifest-stream-state-${crypto.randomUUID()}`);

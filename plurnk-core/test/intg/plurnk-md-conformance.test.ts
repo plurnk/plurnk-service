@@ -7,7 +7,7 @@
 // "match the content" return DISJOINT results. An implementation that matches
 // the wrong field cannot pass by accident.
 //
-// Contract (plurnk.md §"Pattern Filtering"): the
+// Contract (plurnk.md "Pattern Filtering"): the
 // (target) selects WHICH entries are candidates; the body matcher runs against
 // the entry CONTENT. The canonical examples are unambiguous about this:
 //   <<FIND(config/**/*.xml)://user[@role='admin']:FIND   — xpath over XML content

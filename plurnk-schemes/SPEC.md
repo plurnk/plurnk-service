@@ -2,7 +2,7 @@
 
 Contract for `@plurnk/plurnk-schemes-*` sibling packages. Audience: implementer of a URI scheme handler. Consumer: [plurnk-service](https://github.com/plurnk/plurnk-service) (SPEC.md §3).
 
-## §1 Manifest {§manifest}
+## §manifest §1 Manifest
 
 ```json
 {
@@ -49,7 +49,7 @@ class Known {
 | `foldedByDefault?` | Entries land FOLDED, off the ranked manifest surface (READable via address, not poured into the ranked view). For executor-output streams (`<tag>://`) — containment one level up (schemes#20/service#240). Absent/false → ranked/first-class. |
 | `storedScheme?` | Value persisted to `entries.scheme`, which may differ from the addressing `name`. Absent defaults to `name`. It must be a non-null string because every persisted identity component is non-null. |
 
-**Self-doc split (terse pushes, depth pulls).** {§manifest-self-doc} `example` + `glyph` are the hot-path listing rendered every turn — keep them terse. `documentation` is the deep prose (every op, channel, status code, gotcha); the consumer materializes it as a pull-able **`worker://plurnk/docs/<name>.md`** entry the model READs on demand, off the hot path. Both live on the manifest; the consumer decides what's pushed vs pulled.
+§manifest-self-doc **Self-doc split (terse pushes, depth pulls).** `example` + `glyph` are the hot-path listing rendered every turn — keep them terse. `documentation` is the deep prose (every op, channel, status code, gotcha); the consumer materializes it as a pull-able **`worker://plurnk/docs/<name>.md`** entry the model READs on demand, off the hot path. Both live on the manifest; the consumer decides what's pushed vs pulled.
 
 **Authoring convention — `docs/<name>.md`.** The contract field stays a plain `string`, but a sibling SHOULD keep the deep doc in a **`docs/<name>.md`** file at the package root rather than inline, and load it into the manifest at module init — e.g. `documentation: await readFile(new URL("../docs/<name>.md", import.meta.url), "utf-8")` (top-level await; `../` resolves identically from `src/` in test and `dist/` once built). Ship it by adding `docs/**/*` to `files`. This keeps prose out of the handler source and gives editors real Markdown; the contract and the consumer's `worker://plurnk/docs/<name>.md` materialization are unchanged. A missing file fails-hard at import (no silent empty doc).
 
@@ -98,7 +98,10 @@ operation only where the scheme owns genuinely different candidate semantics.
 
 A sibling does `export default class X implements SchemeHandler` (with `static manifest: SchemeManifest`) and gets compile-time signature checking. Every registered handler exposes either that static manifest or an instance `manifest` for dynamically derived identities; `Manifest.of` validates the complete resolved declaration and its registration name before the handler becomes dispatchable. The op set is exactly grammar's `PlurnkStatement` dispatch union and moves with the framework's grammar bump (0.74.57 added `work?`/`fork?`; `LOOK`/`BUFF` are grammar `ClientStatement` ops, client-facing and never dispatched to a scheme, so they're intentionally absent here). **The statement + path types (`ReadStatement`, `SendStatement`, `UrlPath`, …) are re-exported from this barrel**, so a sibling depends on and peers (`^1`) ONLY `@plurnk/plurnk-schemes` — grammar rides underneath as the framework's transitive dep (§3).
 
-`close?()` is the process-lifecycle hook for pooled resources such as browser processes, sockets, and client connections. The consumer calls it once per unique handler instance after in-flight scheme work drains and before backing stores close. Stateless handlers omit it.
+§handler-lifecycle `close?()` is the process-lifecycle hook for handler-owned
+resources such as browser processes, sockets, client connections, caches, and
+pools. The consumer calls it once per unique handler instance after in-flight
+scheme work drains and before backing stores close. Stateless handlers omit it.
 
 The entry CRUD primitives (`readEntry`/`writeEntry`/`deleteEntry`) are not handler operations; schemes use `ctx.entries`. Proposal application is the optional `applyResolution` handler hook described in §3.bis.
 
@@ -157,7 +160,7 @@ Behavior ships as `export default class` (one class per file, static methods) �
 
 - `SchemeResolver.forLoop(handlers: ReadonlyMap<string, object>, flags: LoopFlags): Set<string>` — applies `manifest.flags` affinity to each handler and returns names of schemes active under the loop's flags.
 
-### Mimetype classification — `MimetypeClassifier` {§mimetype-classifier}
+### §mimetype-classifier Mimetype classification — `MimetypeClassifier`
 
 - `MimetypeClassifier.isBinary(mimetype)` — enforces 415 boundary on binary entries. Delegates to `classifyMimetype` from @plurnk/plurnk-mimetypes (the framework owns the text/binary taxonomy — mimetypes#43; the former local allowlists were absorbed upstream verbatim and retired).
 - `MimetypeClassifier.isJson(mimetype)` - `application/json` plus `+json` variants, used only by result summarization.
@@ -192,7 +195,7 @@ available: { first, last, total } }`. An exact-region 416 carries the four
 `requestedCoordinates` and `columnKind: "unicodeCodePoints"`. Empty sources use
 `null` line-range endpoints and `total: 0`.
 
-### Path-extension mimetype — `PathMimetype`
+### §path-extension-mimetype Path-extension mimetype — `PathMimetype`
 
 - `PathMimetype.resolve(pathname, defaultMimetype, mimetypes)` — pathname extension → `Mimetypes.detect({ ext })`; falls back to `defaultMimetype` when no extension. text/plain auto-normalizes to text/markdown.
 
@@ -227,7 +230,7 @@ entries, channels, and tags never return a bare failure status.
 - Empty results return 204 with `matches: []`; `UnsupportedDialectError` maps to 415; `InvalidExpressionError` maps to 400; `QueryParseFailureError` maps to 203 with raw content, text/markdown, and `reason`.
 - A multi-resource matcher omits candidates that return 415 when at least one candidate supports the dialect. If no candidate supports it, the matcher returns the first exact 415 Problem. An unreadable binary marker therefore cannot poison a repository-wide text search or masquerade as a match.
 
-### §3.bis Capability ctx — the stable trusted-extension surface {§capability-ctx}
+### §capability-ctx §3.bis Capability ctx — the stable trusted-extension surface
 
 Scheme plugins are trusted in-process Node.js code. `SchemeCtx` is not a
 sandbox or a security boundary; an installed plugin already has the process's
@@ -260,6 +263,12 @@ collaborators separately at construction or binding time; consumers must not
 decorate `SchemeCtx` with database handles, registries, tokenizers, notifier
 callbacks, or other private service state.
 
+§scheme-ctx-lifetime `SchemeCtx` belongs to one operation call. A handler may
+use it for the duration of that call, including asynchronous work awaited by
+the call, but must not retain the context after the handler returns. Retained
+handler-owned resources follow {§handler-lifecycle}; they are not retained
+contexts.
+
 **Proposals are not a capability.** A side-effecting scheme proposes by *returning* a `ProposalResult` (status 202); the engine owns the resolution lifecycle. On acceptance it calls the handler's optional `applyResolution({ attrs, body }, ctx)` hook. `attrs` is the payload returned by the proposing operation and `body` is the resolver-approved body, when present. The hook returns a `SchemeResult`: a status below 400 completes the accept; a failure preserves the applying scheme's Problem Details as the proposal's final result.
 
 ## §4 What's NOT in this repo
@@ -271,7 +280,7 @@ Raw CRUD methods are not a parallel handler protocol. For `data` schemes whose
 handlers omit resource-specific storage hooks, engine-owned COPY/MOVE/KILL
 orchestration uses the manifest-bound `ctx.entries` implementation.
 
-## §5 Trusted extension contract {§trusted-extension}
+## §trusted-extension §5 Trusted extension contract
 
 Installed schemes may legitimately own network connections, subprocesses,
 caches, pools, or other host resources. Use `close()` to release resources

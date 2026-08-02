@@ -1,4 +1,4 @@
-// SPEC §membership constraint-overlay client tooling (F.3). The membership EFFECTS are
+// SPEC {§membership} constraint-overlay client tooling (F.3). The membership EFFECTS are
 // proven in contract-workspace.test.ts; this is the RPC wire round-trip:
 // workspace.constrain / .constraints / .unconstrain, and input validation.
 

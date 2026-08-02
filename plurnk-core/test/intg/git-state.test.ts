@@ -1,4 +1,4 @@
-// SPEC §client-metadata — git working-tree state in the client metadata section. GitState shells
+// SPEC {§client-metadata} — git working-tree state in the client metadata section. GitState shells
 // `git status` (service-side, the same surface membership uses), gated by
 // PLURNK_SERVICE_GIT_ALLOWED (the hard service ceiling) + a git worktree.
 

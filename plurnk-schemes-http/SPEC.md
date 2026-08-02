@@ -29,7 +29,7 @@ Entry identity is the resolved URL path, not its grammar-safe spelling. `%28` an
 `%29` materialized from search or received in a model address canonicalize to
 literal parentheses in storage; model-facing renderers encode them again.
 
-## §2 Op surface {§op-surface}
+## §op-surface §2 Op surface
 
 Implemented against the DB-free `SchemeCtx` (no `ctx.db`):
 
@@ -94,21 +94,21 @@ The **render path** takes one runtime dependency, `playwright`, **lazy-imported*
 
 `PLURNK_SCHEMES_HTTP_PLAYWRIGHT_METHOD` maps directly to Playwright's BrowserType surface: `launch` (default), `connect`, `connectOverCDP`, or `disabled`. Launch uses the provisioned Chromium unless the operator selects a supported installed-browser `CHANNEL` or exact `EXECUTABLE_PATH`. `connect` uses the full Playwright protocol; `connectOverCDP` attaches to a running Chromium browser with Playwright's documented lower-fidelity CDP path. Both require `PLAYWRIGHT_ENDPOINT`. Disabled rendering fails clearly rather than treating raw HTML as equivalent. Contradictory selections fail boot; methods never fall back into one another.
 
-## §6 Render lifecycle {§render-lifecycle}
+## §render-lifecycle §6 Render lifecycle
 
 `Browser` (`export default class`, barrel-exported as a standalone foundation) is the headless-Chromium render engine — ported from rummy.web's WebFetcher, render-only.
 
 - **Gate:** a GET whose response `Content-Type` is `text/html` / `application/xhtml+xml` renders; the probe-fetch body is discarded and the browser does its own navigation. POST never renders.
 - **Render:** warm chromium (one per `Browser`), per-worker `BrowserContext` keyed on `ctx.workerId`, **mobile-emulated by default** (Pixel-5-class viewport + UA — responsive sites serve lighter layouts; `PLURNK_SCHEMES_HTTP_MOBILE=0` renders desktop), navigate with `waitUntil: "networkidle"` + a salvage path (timed-out-but-rendered pages with substantive body text), serialize the final DOM via `page.content()`.
 - **Body:** the consumer's configured mimetype family projects the serialized DOM. Its readable markdown is the decisive `body` used by READ, FIND, embeddings, weights, and the model; the faithful final DOM is archived under `html` for XPath and inspection. Direct READ and search prefetch therefore expose the same kind of model-facing content.
-- **Host rewrite (bounded, first-party):** {§host-rewrite} a GitHub `…/blob/…` URL is fetched as its `raw.githubusercontent.com` source (line-navigable, exact) — the blob page is a CSP-locked JS SPA and code wants source, not a rendered viewer. This is the ONLY host rewrite; Wikipedia was measured through the extractor and deliberately gets none (desktop already extracts the full clean article; rewrites regressed it — schemes-http#4).
-- **Config:** `.env.defaults` at the package root is the authoritative list (family-namespaced `PLURNK_SCHEMES_HTTP_*`), shipped in the tarball; the daemon assembles it into the boot floor set-if-unset (service SPEC §operator-config-env-defaults, schemes#31). Required numerics - `FETCH_TIMEOUT`, `SALVAGE_MIN_BODY_CHARS`, `IDLE_TIMEOUT`, `PLAYWRIGHT_TIMEOUT`, `SSE_MAX_BUFFER_CHARS`, and `ERROR_DETAIL_LIMIT` - fail hard when unset (no in-code defaults). `PLAYWRIGHT_METHOD`, `PLAYWRIGHT_HEADLESS`, `PLAYWRIGHT_CHROMIUM_SANDBOX`, and `MOBILE` are floor-defaulted and required reads. `PLAYWRIGHT_ENDPOINT` belongs only to `connect`/`connectOverCDP`; `PLAYWRIGHT_CHANNEL` and `PLAYWRIGHT_EXECUTABLE_PATH` belong only to `launch` and are mutually exclusive. `CHROMIUM_HEAP_MB` remains an optional local-launch control.
-- **Freshness (READ):** {§revalidation} one predicate (`#storedCopyServable`), two phases. Pre-fetch: a stored copy whose materialization stamp (`x-plurnk-fetched-at`, HEADER channel) is inside `PLURNK_SCHEMES_HTTP_TTL_MS` serves with zero round-trips — identical for model READs and lane-1 prefetch (#405). The shipped five-minute window makes a just-materialized search result immediately readable as an ordinary entry; `0` explicitly opts into revalidation on every read. The stamp resets only when the origin vouches (fetch or 304), never on a cache serve. Past the window a repeat READ recovers the prior fetch's validators from its own stored entry (`ETag`→`If-None-Match`, `Last-Modified`→`If-Modified-Since`) and revalidates. A `304` re-serves the stored body and **skips the render** — a first-class READ (the model sees an ordinary streaming result, never a cache status; `revalidated 304` rides the close summary). The TTL is the #333 milestone landed at that same one-predicate boundary (blessed by service#341; delivered per #405). `SEND[410]` drops the stored copy, forcing the next READ to full-fetch.
+- §host-rewrite **Host rewrite (bounded, first-party):** a GitHub `…/blob/…` URL is fetched as its `raw.githubusercontent.com` source (line-navigable, exact) — the blob page is a CSP-locked JS SPA and code wants source, not a rendered viewer. This is the ONLY host rewrite; Wikipedia was measured through the extractor and deliberately gets none (desktop already extracts the full clean article; rewrites regressed it — schemes-http#4).
+- **Config:** `.env.defaults` at the package root is the authoritative list (family-namespaced `PLURNK_SCHEMES_HTTP_*`), shipped in the tarball; the daemon assembles it into the boot floor set-if-unset (service SPEC {§operator-config-env-defaults}, schemes#31). Required numerics - `FETCH_TIMEOUT`, `SALVAGE_MIN_BODY_CHARS`, `IDLE_TIMEOUT`, `PLAYWRIGHT_TIMEOUT`, `SSE_MAX_BUFFER_CHARS`, and `ERROR_DETAIL_LIMIT` - fail hard when unset (no in-code defaults). `PLAYWRIGHT_METHOD`, `PLAYWRIGHT_HEADLESS`, `PLAYWRIGHT_CHROMIUM_SANDBOX`, and `MOBILE` are floor-defaulted and required reads. `PLAYWRIGHT_ENDPOINT` belongs only to `connect`/`connectOverCDP`; `PLAYWRIGHT_CHANNEL` and `PLAYWRIGHT_EXECUTABLE_PATH` belong only to `launch` and are mutually exclusive. `CHROMIUM_HEAP_MB` remains an optional local-launch control.
+- §revalidation **Freshness (READ):** one predicate (`#storedCopyServable`), two phases. Pre-fetch: a stored copy whose materialization stamp (`x-plurnk-fetched-at`, HEADER channel) is inside `PLURNK_SCHEMES_HTTP_TTL_MS` serves with zero round-trips — identical for model READs and lane-1 prefetch (#405). The shipped five-minute window makes a just-materialized search result immediately readable as an ordinary entry; `0` explicitly opts into revalidation on every read. The stamp resets only when the origin vouches (fetch or 304), never on a cache serve. Past the window a repeat READ recovers the prior fetch's validators from its own stored entry (`ETag`→`If-None-Match`, `Last-Modified`→`If-Modified-Since`) and revalidates. A `304` re-serves the stored body and **skips the render** — a first-class READ (the model sees an ordinary streaming result, never a cache status; `revalidated 304` rides the close summary). The TTL is the #333 milestone landed at that same one-predicate boundary (blessed by service#341; delivered per #405). `SEND[410]` drops the stored copy, forcing the next READ to full-fetch.
 - **Cancel:** the composed `AbortSignal` / SEND[499] handle aborts the render by closing the page (in-flight `goto` rejects promptly).
 
-- **SSE (READ):** {§sse} a GET whose response is `text/event-stream` is parsed by `eventsource-parser`, not streamed raw. Each event's joined `data` value dispatches as one `notifyChunk("body", …, "text/plain")`; the model reads event payloads, not framing. Comments and `event`/`id`/`retry` metadata do not enter the body. `SSE_MAX_BUFFER_CHARS` bounds an incomplete remote event; exhaustion fails the stream. Reconnection (`Last-Event-ID`) is a follow-up (#468). Events from a long-lived GET land across turns until the origin closes; the close summary counts them.
+- §sse **SSE (READ):** a GET whose response is `text/event-stream` is parsed by `eventsource-parser`, not streamed raw. Each event's joined `data` value dispatches as one `notifyChunk("body", …, "text/plain")`; the model reads event payloads, not framing. Comments and `event`/`id`/`retry` metadata do not enter the body. `SSE_MAX_BUFFER_CHARS` bounds an incomplete remote event; exhaustion fails the stream. Reconnection (`Last-Event-ID`) is a follow-up (#468). Events from a long-lived GET land across turns until the origin closes; the close summary counts them.
 
-## §7 Prefetch primitive {§prefetch}
+## §prefetch §7 Prefetch primitive
 
 `WebFetcher` is the guarded acquisition seam core's entry-materialization calls (#454):
 
@@ -130,13 +130,19 @@ new WebFetcher().fetch(url, opts): Promise<{
 - **SSRF guard** (`Guard`): http(s) only, no localhost, every resolved address public (RFC-reserved v4/v6 ranges blocked), with **manual per-hop redirect re-guarding**; the chromium render is guarded too via request interception. Hops capped by `PLURNK_SCHEMES_HTTP_REDIRECTS`. Residual DNS-rebinding sliver (runtime re-resolves after the check) accepted day-one.
 - **Textual set**: `text/*`, `application/{json,xml,xhtml+xml}`, `+json`/`+xml` suffixes.
 
-## §8 WebSocket {§ws}
+## §ws §8 WebSocket
 
-`Ws` is this package's **second first-class scheme** (#468, #473): registered `wss` via `package.json` `plurnk.schemes` (`{ name: "wss", export: "Ws" }`), with the `ws` prefix riding it in core's `schemeNameOf` exactly as `https` rides `http`. WebSocket is a distinct protocol — bidirectional, stateful, full-duplex, its own URI scheme — not an http content-type (that's SSE, §sse), so it has its own manifest (🔌, `messages` channel, `docs/wss.md`) and its own directory entry the model discovers natively. Op → socket lifecycle:
+`Ws` is this package's **second first-class scheme** (#468, #473): registered `wss` via `package.json` `plurnk.schemes` (`{ name: "wss", export: "Ws" }`), with the `ws` prefix riding it in core's `schemeNameOf` exactly as `https` rides `http`. WebSocket is a distinct protocol — bidirectional, stateful, full-duplex, its own URI scheme — not an http content-type (that's SSE, {§sse}), so it has its own manifest (🔌, `messages` channel, `docs/wss.md`) and its own directory entry the model discovers natively. Op → socket lifecycle:
 
 - **`READ(wss://…)`** — open the socket, guard the target through `Guard.isPublicUrl` (extended to `ws:`/`wss:`), seed + subscribe (create-then-subscribe, http#3), stream each inbound frame into the `messages` channel (`notifyChunk`, text/plain). Returns `102`; the op **holds until the socket closes** (mirrors the streaming lifecycle — the worker wakes on close, summary counts messages).
 - **`SEND[200](wss://…):msg:`** — push `msg` onto the open socket. No open socket → `409` (`kind: no_open_socket`) — READ opens the connection SEND rides.
 - **`SEND[499](wss://…)`** — cancel; engine routes teardown to the READ's handle (which closes the socket), scheme-level `200` no-op.
 - **`KILL(wss://…)`** — close the open socket (`404` if none open).
 
-**Stateless-contract exception:** every other scheme is stateless per schemes SPEC §forbidden ("no state past a handler return"). A live socket IS per-workspace state, so `Ws` holds open sockets in an **in-instance registry** across op invocations — keyed `workspace:pathname`, entries present only while the socket is open (every terminal path — close/error/KILL/cancel — removes). This is the ONE sanctioned exception, because that persistence is the whole point of a WebSocket. Day-one limits: text frames only, no reconnection, default handshake identity (custom headers pending) — all #468 follow-ups.
+Under the schemes lifecycle contract {§handler-lifecycle}, `Ws` holds live
+sockets in an **in-instance registry** across op invocations, keyed by
+`workspace:pathname`. Entries exist only while the socket is open: every
+terminal path — close, error, KILL, or cancel — removes them, and handler
+shutdown closes any remaining sockets. Day-one limits: text frames only, no
+reconnection, default handshake identity (custom headers pending) — all #468
+follow-ups.

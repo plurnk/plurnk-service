@@ -47,7 +47,7 @@ const seed = async () => {
     for (const [pathname, body] of FILES) {
         await k.edit(editStmt(url(pathname), body), makeSchemeCtx({ db, workspaceId, workerId }));
     }
-    // @graph derives at manifest-add (engine-side, §mimetype) — building the manifest
+    // @graph derives at manifest-add (engine-side, {§mimetype}) — building the manifest
     // walks every entry and populates the symbol index from its content.
     await SearchIndex.maintain(makeSchemeCtx({ db, workspaceId, workerId }));
     return { db, workspaceId, workerId };

@@ -1,4 +1,4 @@
-// SPEC §machine-processes — the machine and its processes (workspace = world, run = log, fork).
+// SPEC {§machine-processes} — the machine and its processes (workspace = world, run = log, fork).
 //
 // These prove the ownership line through BEHAVIOR on the real op surface — never
 // by reflecting the schema catalog (no sqlite_master, no PRAGMA: that reaches
@@ -51,7 +51,7 @@ test("the entries are the workspace's — a second run writing the same path upd
     } finally { db.close(); }
 });
 
-// [§machine-processes-one-overlay] is a REAL test now in contract-workspace.test.ts (two workers on one
+// {§machine-processes-one-overlay} is a REAL test now in contract-workspace.test.ts (two workers on one
 // workspace resolve the IDENTICAL git-member overlay — membership is workspace-keyed, no worker_id). It lives
 // there for the git-fixture deps (withGitWorkspace); the stub here is retired.
 

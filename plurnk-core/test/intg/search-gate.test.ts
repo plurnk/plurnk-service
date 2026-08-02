@@ -1,4 +1,4 @@
-// [§search-gate] intg tier — the DISPATCH wiring (#406, owner ruling): an identical duplicate
+// {§search-gate} intg tier — the DISPATCH wiring (#406, owner ruling): an identical duplicate
 // search strikes-and-serves (409 carrying the prior digest, no re-run), the per-turn cap 429s,
 // and a failed spawn never poisons the retry. Drives the REAL exec scheme with a stub search
 // executor through the runtime registry - no network, no SearXNG.

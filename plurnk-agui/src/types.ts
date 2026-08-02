@@ -3,7 +3,7 @@
 //
 // Plurnk-specific richness the core vocabulary can't hold (fold state, coordinates, tags,
 // proposals) rides CUSTOM events under the `plurnk.` namespace — generic frontends skip them,
-// plurnk-aware frontends render them richly (§agui-custom-namespace).
+// plurnk-aware frontends render them richly ({§agui-custom-namespace}).
 
 export { EventType } from "@ag-ui/core";
 export type {

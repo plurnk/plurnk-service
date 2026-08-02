@@ -20,7 +20,7 @@ export type WorkspaceOpenContext = {
     git: boolean | null;          // ceiling — env AND workspace; false denies git; null = unset (#232)
     client: string | null;        // #249 — workspace-stable frontend id, forwarded as Plurnk-Client (plurnk provider only); null = unset
     execs: Record<string, string> | null; // #328 — the client's PLURNK_EXECS_* policy layer; null = unset. Subtractive per-workspace narrowing over the boot registry.
-    questions: boolean | null;    // §send-300-choices — the client's affirmative per-workspace request for operator questions ([300]); enabled = allowed (PLURNK_QUESTIONS != 0) AND requested.
+    questions: boolean | null;    // {§send-300-choices} — the client's affirmative per-workspace request for operator questions ([300]); enabled = allowed (PLURNK_QUESTIONS != 0) AND requested.
 };
 
 export default class WorkspaceSettings {
@@ -41,7 +41,7 @@ export default class WorkspaceSettings {
         return { filesItems, mdDocs, maxCommands, git, client, execs, questions };
     }
 
-    // §send-300-choices — the three-state cascade resolved: ALLOWED servicewide (PLURNK_QUESTIONS
+    // {§send-300-choices} — the three-state cascade resolved: ALLOWED servicewide (PLURNK_QUESTIONS
     // != "0") AND affirmatively REQUESTED by the client for this workspace. One predicate, shared by
     // the dispatch gate and the teaching injection so capability and teaching can never desync.
     static async questionsEnabled(db: Db, workspaceId: number): Promise<boolean> {

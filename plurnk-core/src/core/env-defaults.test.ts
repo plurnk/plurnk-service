@@ -1,4 +1,4 @@
-// [§operator-config-env-defaults] — the .env.defaults assembly: every package owns its knobs,
+// {§operator-config-env-defaults} — the .env.defaults assembly: every package owns its knobs,
 // one floor, one law (global key uniqueness), rendered to a machine-owned catalog.
 import test from "node:test";
 import assert from "node:assert/strict";

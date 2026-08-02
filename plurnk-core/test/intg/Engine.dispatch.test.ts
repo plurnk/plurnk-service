@@ -336,7 +336,7 @@ test("Engine.dispatch: origin field captured in log", async () => {
     } finally { await db.close(); }
 });
 
-// SPEC §scheme-surface: writer must be in target scheme's manifest.writableBy or dispatch
+// SPEC {§scheme-surface}: writer must be in target scheme's manifest.writableBy or dispatch
 // returns 403 without invoking the handler.
 
 test("Engine.dispatch: a writer outside writableBy is rejected 403 without invoking the handler", async () => {
@@ -361,7 +361,7 @@ test("Engine.dispatch: a writer outside writableBy is rejected 403 without invok
 });
 
 test("Engine.dispatch: model EDIT log:/// clears the gate but 501s — Log's handler surface (kill only) is the op-level truth", async () => {
-    // §model-entry-log-curation admits the model through Log's writableBy for its KILL curation
+    // {§model-entry-log-curation} admits the model through Log's writableBy for its KILL curation
     // lever; every other mutating op still lands on a handler Log doesn't expose (no edit) → 501,
     // matching plurnk.md's "Do not attempt to edit log items."
     const { db, engine, env } = await setup();
@@ -476,7 +476,7 @@ test("Engine.dispatch: model SEND with null path (broadcast) is NOT gated", asyn
     } finally { await db.close(); }
 });
 
-// SPEC §scheme-surface / plurnk-schemes#1: action-entry-as-outcome — scheme-handler
+// SPEC {§scheme-surface} / plurnk-schemes#1: action-entry-as-outcome — scheme-handler
 // exceptions finalize the action-entry at 500, not bubble up.
 
 test("Engine.dispatch: scheme handler that throws → action-entry at status 500 (action-entry-as-outcome)", async () => {

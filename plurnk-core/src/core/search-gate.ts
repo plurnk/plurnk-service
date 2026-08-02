@@ -1,4 +1,4 @@
-// §search-gate (#406, owner ruling) — the search cost gates, rail-family shape: in-memory
+// {§search-gate} (#406, owner ruling) — the search cost gates, rail-family shape: in-memory
 // per-loop accounting cleaned at the same seam as strikes/notices, restart-drop accepted
 // (a post-restart duplicate just re-fetches; the TTL makes that cheap).
 //

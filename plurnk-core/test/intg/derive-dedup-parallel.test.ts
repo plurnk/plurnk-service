@@ -1,4 +1,4 @@
-// [§derivation-dedup-parallel] #416 — the pump groups pending entries by content_hash so each
+// {§derivation-dedup-parallel} #416 — the pump groups pending entries by content_hash so each
 // unique content derives once (dedup preserved under concurrency), runs unique reps with bounded
 // concurrency, and releases each rep's duplicates immediately. This pins the SCHEDULING contract:
 // every pending entry is fully derived exactly once, without a global tail barrier.

@@ -1,4 +1,4 @@
-// the retired rpc-timeout contract + §operator-config-loop-timeout — the two operator wall-clocks.
+// the retired rpc-timeout contract + {§operator-config-loop-timeout} — the two operator wall-clocks.
 // The RPC deadline answers -32007 for a non-longRunning handler that never returns; the loop
 // wall rules a legible 504 terminal instead of leaving a worker to an outside kill.
 

@@ -1,4 +1,4 @@
-// PLURNK_SERVICE_MD_<ALIAS> doc injection (self-hosting keystone, §actor-boundary). An operator
+// PLURNK_SERVICE_MD_<ALIAS> doc injection (self-hosting keystone, {§actor-boundary}). An operator
 // doc declared via env is materialized as a worker://plurnk/<ALIAS>.md entry by the
 // plurnk worker (DispatchAsPlurnk) and foisted as a READ into the model's turn 0.
 // The model sees only the READ; the materializing EDIT lives in the plurnk worker.

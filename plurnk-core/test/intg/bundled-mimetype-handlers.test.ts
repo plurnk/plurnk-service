@@ -12,7 +12,7 @@
 //
 // NOTE: tree-sitter-backed languages (python, typescript, toml, yaml, …) are
 // NOT standalone deps — the 0.10.0 framework absorbed them into its internal
-// TREE_SITTER_REGISTRY (SPEC §plugin-discovery Tier 1), so they're covered by
+// TREE_SITTER_REGISTRY (SPEC {§plugin-discovery} Tier 1), so they're covered by
 // @plurnk/plurnk-mimetypes' own suite, not here. Only bespoke standalone
 // handlers (json/html/markdown/csv/plain/pdf) belong in CASES.
 

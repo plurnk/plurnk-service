@@ -175,7 +175,7 @@ export default class PacketWire {
         }).join("\n");
     }
 
-    // The Child Streams / Child Runs sections (§child-orientation) — the OPPOSITE of advice: terse
+    // The Child Streams / Child Runs sections ({§child-orientation}) — the OPPOSITE of advice: terse
     // `* <status> <path>` pointers (same shape as the errors section) to the live things the worker holds,
     // so the model SEES its open streams + unconcluded workers each turn and reasons for itself (READ /
     // OPEN / KILL via the path). Orienting state, never an instruction. "" when none → section omitted.
@@ -189,7 +189,7 @@ export default class PacketWire {
         return git === null || git === undefined ? "" : PacketWire.#renderGitState(git as GitStatus);
     }
 
-    // The log section's content: the model's curated rows as a fenced `jsonplurnk` array (§jsonplurnk).
+    // The log section's content: the model's curated rows as a fenced `jsonplurnk` array ({§jsonplurnk}).
     // Data only — no prose leads the fence (the log carries rules for no one). Empty log → ""
     // (the section is omitted).
     static renderLog(entries: unknown, countTokens: CountTokens): string {
@@ -198,7 +198,7 @@ export default class PacketWire {
         const items = PacketWire.#renderLogEntries(log, countTokens);
         // The opening fence is DYNAMIC — one backtick longer than the longest run in any body — so a
         // code sample inside a body can never close the block early (CommonMark closes a fence only on
-        // a line of ≥ its own length). §jsonplurnk-dynamic-fence
+        // a line of ≥ its own length). {§jsonplurnk-dynamic-fence}
         const longestTicks = Math.max(0, ...[...items.matchAll(/`+/g)].map((m) => m[0].length));
         const fence = "`".repeat(Math.max(3, longestTicks + 1));
         return `${fence}jsonplurnk\n[\n${items}\n]\n${fence}`;
@@ -321,7 +321,7 @@ export default class PacketWire {
     // LogBody owns tx/rx storage interpretation; packet projection owns only
     // visibility, previewing, mimetype rendering, and metadata.
     // The log:/// handle the model sees for an entry.
-    // (§open-fold).
+    // ({§open-fold}).
     static #entryPath(coordinate: string | null, op: string | null): string | null {
         if (coordinate === null) return null;
         return op !== null ? `log:///${coordinate}/${op}` : `log:///${coordinate}`;
@@ -361,7 +361,7 @@ export default class PacketWire {
             const path = PacketWire.#entryPath(coordinate, renderedOp);
             if (path !== null) meta.path = path;
             if (typeof e.origin === "string") meta.origin = e.origin;
-            // §env-delta: the environment-delta cause (a sibling run or a scheme),
+            // {§env-delta}: the environment-delta cause (a sibling run or a scheme),
             // rendered when present; absent ⇒ the owning run itself (self).
             if (typeof e.source === "string" && e.source.length > 0) meta.run = e.source;
             if (renderedOp !== null) meta.op = renderedOp;
@@ -392,7 +392,7 @@ export default class PacketWire {
             } else {
                 if (target !== null) meta.target = target;
             }
-            // EXEC's output is a separate stream entry (§exec-stream); its address rides in a
+            // EXEC's output is a separate stream entry ({§exec-stream}); its address rides in a
             // `stream` link, distinct from `target` (the cwd / executable path it ran in).
             if (op === "EXEC" && e.attrs !== null && typeof e.attrs === "object" && typeof (e.attrs as { stream?: unknown }).stream === "string") {
                 meta.stream = (e.attrs as { stream: string }).stream;
@@ -401,7 +401,7 @@ export default class PacketWire {
             // Parse rx once — reused for the matcher/items enrichment and the body.
             const rx = (typeof e.rx === "string" ? PacketWire.#safeParse(e.rx) : e.rx) as RxView | null;
 
-            // §log-row-self-explains - a FAILED op row carries its exact RFC 9457 Problem ON THE META LINE,
+            // {§log-row-self-explains} - a FAILED op row carries its exact RFC 9457 Problem ON THE META LINE,
             // so the record explains itself in every packet, folded or open. The old shape (a bare
             // status or a lossy error string; the Problem buried in an rx no render shows) sent the wildcard model
             // theorizing "SEND[409] probably means bad request?" for 201s, and the jumbo model
@@ -422,7 +422,7 @@ export default class PacketWire {
                     if (typeof tx.body.raw === "string") meta.matcher = tx.body.raw;
                 }
                 if (op === "FIND" && rx !== null && typeof rx === "object" && typeof rx.omittedItems === "number") {
-                    items = rx.omittedItems; // §find-count-not-contents - selected-resource count, though rows were not enumerated
+                    items = rx.omittedItems; // {§find-count-not-contents} - selected-resource count, though rows were not enumerated
                 } else if (op === "FIND" && rx !== null && typeof rx === "object" && typeof rx.content === "string") {
                     const parsed = PacketWire.#safeParse(rx.content);
                     if (Array.isArray(parsed)) items = parsed.length;
@@ -508,7 +508,7 @@ export default class PacketWire {
                 if (navigable > 0) meta.lines = navigable;
             }
 
-            // §jsonplurnk — `display` describes the three body states: `none` carries an explicit
+            // {§jsonplurnk} — `display` describes the three body states: `none` carries an explicit
             // empty JSON string, `folded` withholds an existing body, and `open` appends that body as
             // the format's one non-JSON value (a raw, tagged heredoc). The explicit empty body keeps
             // every state self-describing; OPEN/FOLD remain friendly no-ops on `none`.
@@ -522,7 +522,7 @@ export default class PacketWire {
 
     static #renderActionTarget(target: ActionTarget | null | undefined): string | null {
         if (target === null || target === undefined) return null;
-        // An authority-bearing target (worker://<name> — the worker IS the authority, §worker-scheme;
+        // An authority-bearing target (worker://<name> — the worker IS the authority, {§worker-scheme};
         // a web host http://host/path) keeps its name in `hostname`. Without it a spawn renders
         // as a bare `worker://`, indistinguishable across workers — the model goes blind to what it
         // spawned and re-spawns. Reconstruct the authority form when a hostname is present;
@@ -533,7 +533,7 @@ export default class PacketWire {
             : PacketWire.#renderModelUri(target.scheme, target.pathname);
         if (rendered.length === 0) return null;
         // The channel fragment (#stdout/#stderr) is part of the address — a stream delta has to
-        // say WHICH channel it is, not just the entry. §exec-stream
+        // say WHICH channel it is, not just the entry. {§exec-stream}
         const fragment = typeof target.fragment === "string" && target.fragment.length > 0 ? `#${target.fragment}` : "";
         return rendered + fragment;
     }

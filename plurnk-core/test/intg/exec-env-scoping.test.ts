@@ -1,4 +1,4 @@
-// SPEC §exec {§exec-env-scoped} — an EXEC subprocess must NOT inherit plurnk's own
+// SPEC {§exec} {§exec-env-scoped} — an EXEC subprocess must NOT inherit plurnk's own
 // secrets (provider keys, PLURNK_* config). The service scopes the env (ExecEnv.scoped:
 // drop PLURNK_* + the provider key-vars) and hands it to the executor, which spawns with
 // it (plurnk-execs 0.4.5+ ExecArgs.env). The canary is a PLURNK_*-shaped var, so the
@@ -19,7 +19,7 @@ const deferred = <T>(): { promise: Promise<T>; resolve: (v: T) => void } => {
 };
 
 test(
-    "[§exec-env-scoped] an EXEC subprocess does not inherit plurnk's own env (provider keys / PLURNK_*)",
+    "{§exec-env-scoped} an EXEC subprocess does not inherit plurnk's own env (provider keys / PLURNK_*)",
     async () => {
         const CANARY = "PLURNK_ENV_LEAK_CANARY";
         const prev = process.env[CANARY];

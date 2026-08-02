@@ -1,10 +1,10 @@
-// #194 / §connection-lifecycle / §machine-processes — the client writes to its own worker, end-to-end.
+// #194 / {§connection-lifecycle} / {§machine-processes} — the client writes to its own worker, end-to-end.
 //
 // A client `op.*` lands in the connection's CLIENT run; `loop.run` runs the model
 // in its OWN run; the packet renders the model's run, so no client-origin row ever
 // reaches the model's conversation — invisibility by run, no origin filter. This
 // proves the server wiring (op.* → client worker, loop.run → model worker) that the
-// engine-level §actor-boundary-isolation guarantee rests on.
+// engine-level {§actor-boundary-isolation} guarantee rests on.
 //
 // The converse direction (#214): a conversation client READS the model worker by id —
 // loop.run returns its modelWorkerId and log.read({ workerId }) targets it, ownership-gated.

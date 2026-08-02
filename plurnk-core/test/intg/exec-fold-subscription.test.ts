@@ -1,4 +1,4 @@
-// §subscriptions — FOLD/OPEN is render-only (toggles log_entries.expanded); it must
+// {§subscriptions} — FOLD/OPEN is render-only (toggles log_entries.expanded); it must
 // NOT cancel a live stream's subscription. A streaming exec, FOLDed mid-stream,
 // keeps emitting and closes on its own exit, never on the FOLD.
 

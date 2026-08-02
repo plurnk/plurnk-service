@@ -1,7 +1,7 @@
 // The address-canon acceptance set (#546 iteration two; grammar's #545 pin matrix 1–3).
-// [§fs-answer-in-canon] — every engine-authored address renders the one wire-canon form
+// {§fs-answer-in-canon} — every engine-authored address renders the one wire-canon form
 // (bare git-pathspec); the log-COLUMN half of the law rides the Dispatcher chunk of the
-// same epic. [§fs-canonical-name]'s storage half is asserted via the fixpoint on rows.
+// same epic. {§fs-canonical-name}'s storage half is asserted via the fixpoint on rows.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp, rm, writeFile, mkdir } from "node:fs/promises";

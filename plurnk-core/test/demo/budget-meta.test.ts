@@ -132,7 +132,7 @@ test("budget-meta: the config-host storyline still completes under a tight ceili
 });
 
 // 3 — THE MARQUEE (owner): a jumbo prompt (SPEC.md, ~42k) under a tight ceiling. The
-// fact lives deep in §grinder; the doc cannot be held whole, so the model must read
+// fact lives deep in {§grinder}; the doc cannot be held whole, so the model must read
 // patterns/chunks — and if it reads broadly first, the grinder auto-folds that read
 // and the model recovers with a sliced/matched re-read. Outcome: it finds that the
 // grinder reverts the PRIOR turn first.

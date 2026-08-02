@@ -570,7 +570,7 @@ interface TreeSitterLanguageEntry {
 - **Kitchen sink:** the README carries a copy-paste `npm install` block listing every published grammar. (A `grammars-all` meta package was considered and rejected — a layer of indirection that does nothing.)
 - **Degrade, not throw (issue #14):** `detect()` is install-state-blind — it returns the source mimetype regardless of whether the grammar package is installed. When `process()` then finds the grammar missing, it degrades to a text-plain fallback with `ok: true` and surfaces the missing package name on `ProcessResult.grammarMissing` so consumers can show an actionable install hint. `process(input, { strict: true })` opts into throwing `GrammarNotInstalledError` instead.
 
-### 13.5 Reproducibility {§grammar-leaf-reproducibility}
+### §grammar-leaf-reproducibility 13.5 Reproducibility
 
 A grammar leaf owns one source identity and one build tool. `.grammar-source`
 is the sole upstream locator, `.grammar-pin` is its full commit object ID, and

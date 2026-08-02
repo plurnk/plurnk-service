@@ -13,13 +13,13 @@ export default class WorldState {
 
         const dups = await db.ws_dup_identities.all<{ workspace_id: number; owner_id: number; scheme: string; pathname: string; n: number }>({});
         for (const d of dups) {
-            violations.push({ invariant: "§entry-identity-no-null", detail: `identity (ws ${d.workspace_id}, owner ${d.owner_id}, ${d.scheme}, ${d.pathname}) holds ${d.n} rows` });
+            violations.push({ invariant: "{§entry-identity-no-null}", detail: `identity (ws ${d.workspace_id}, owner ${d.owner_id}, ${d.scheme}, ${d.pathname}) holds ${d.n} rows` });
         }
 
         const keys = await db.ws_file_keys.all<{ workspace_id: number; pathname: string; project_root: string | null }>({});
         for (const k of keys) {
             if (!Namespace.isCanonical(k.pathname, k.project_root)) {
-                violations.push({ invariant: "§fs-canonical-name", detail: `ws ${k.workspace_id}: stored key '${k.pathname}' is not its own canon` });
+                violations.push({ invariant: "{§fs-canonical-name}", detail: `ws ${k.workspace_id}: stored key '${k.pathname}' is not its own canon` });
             }
         }
 
@@ -30,7 +30,7 @@ export default class WorldState {
 
         const alien = await db.ws_alien_origin.all<{ workspace_id: number; pathname: string; membership_origin: string }>({});
         for (const a of alien) {
-            violations.push({ invariant: "§fs-write-surface admission", detail: `ws ${a.workspace_id}: '${a.pathname}' carries alien grantor '${a.membership_origin}'` });
+            violations.push({ invariant: "{§fs-write-surface} admission", detail: `ws ${a.workspace_id}: '${a.pathname}' carries alien grantor '${a.membership_origin}'` });
         }
 
         const sigLeak = await db.ws_sig_on_nonfile.get<{ n: number }>({});

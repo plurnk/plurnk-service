@@ -54,7 +54,7 @@ export default class PlurnkErrorStrategy extends DefaultErrorStrategy {
         const modeName = lexer.modeNames[lexer.mode] ?? "DEFAULT_MODE";
         const context = PlurnkErrorStrategy.#LEXER_MODE_CONTEXT[modeName] ?? "between statements";
         const ch = PlurnkErrorStrategy.#extractOffendingChar(originalMsg);
-        // Redirect the mark-shaped-in-brackets slip (§signal-scope-redirect, #516/run56): EXEC's
+        // Redirect the mark-shaped-in-brackets slip ({§signal-scope-redirect}, #516/run56): EXEC's
         // signal slot expects an executor ident, so a LEADING `-` or digit there is `<timeout,poll>`
         // scope content put in the `[…]` slot (`EXEC[-1,300]`). It must be leading: an executor
         // ident never starts with `-`/digit (so they fail immediately, unambiguous), whereas a `,`

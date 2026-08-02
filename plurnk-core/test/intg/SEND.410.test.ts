@@ -1,4 +1,4 @@
-// Tests for SEND[410] → scheme.delete pattern (SPEC §send-dispatch, §send).
+// Tests for SEND[410] → scheme.delete pattern (SPEC {§send-dispatch}, {§send}).
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -20,7 +20,7 @@ const dispatch = (engine: Engine, env: { workspaceId: number; workerId: number; 
     engine.dispatch({ statement, ...env, sequence: 1, origin: "client" });
 
 // De-anchored: SEND[410]-delete is an implemented side-effect, not a model-facing
-// promise (delete idiom is MOVE to /dev/null, §move). Kept as engine regression coverage.
+// promise (delete idiom is MOVE to /dev/null, {§move}). Kept as engine regression coverage.
 test("SEND[410](worker:///x) deletes the entry (side-effect; not model-facing)", async () => {
     const { db, workspaceId, workerId, loopId, turnId, engine } = await setup();
     try {
@@ -76,7 +76,7 @@ test("SEND[200] on entry scheme returns 501 (entry schemes don't interpret 200 d
     } finally { await db.close(); }
 });
 
-// SPEC.md §send-status-policy — directed-SEND status code policy. Entry schemes interpret
+// SPEC.md {§send-status-policy} — directed-SEND status code policy. Entry schemes interpret
 // 410 (Gone → delete) and 499 (Client Closed Request → cancel subscription).
 // Every other status code returns 501 by default. New per-scheme overrides
 // land when concrete use cases arise; the default stays 501.

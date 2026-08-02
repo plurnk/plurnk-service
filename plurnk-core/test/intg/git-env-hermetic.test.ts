@@ -1,4 +1,4 @@
-// [§membership-git-hermetic] — #401: a process launched from a git hook inherits GIT_DIR
+// {§membership-git-hermetic} — #401: a process launched from a git hook inherits GIT_DIR
 // (ABSOLUTE in a worktree checkout), which retargets every child git at the enclosing repo
 // regardless of cwd. The providers lane's pre-push drill stacked 16 fixture 'seed' commits onto
 // her lane branch and deleted tracked files. This pin runs the two spawn classes — a fixture

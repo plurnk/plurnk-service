@@ -642,7 +642,7 @@ test("#494: RFC 9535 bare filter form ($[?@.role==\"admin\"]) is accepted", () =
     assert.equal(result.items.filter((i) => i.kind === "statement").length, 1);
 });
 
-// #497 (§invented-closer-advisory): the run111 class — a model closes an op with a tag of its
+// #497 ({§invented-closer-advisory}): the run111 class — a model closes an op with a tag of its
 // own invention (bash-heredoc prior); the body legally swallows it and the emission runs to
 // the cap. The cut tail's unparsedTail reason must name the imposter so the recovery turn
 // learns WHAT happened, not just that something did.
@@ -662,7 +662,7 @@ test("invented closer: a never-closed body with NO imposter tag keeps the plain 
     assert.doesNotMatch(result.unparsedTail!.reason, /which is body text/);
 });
 
-// #502 (§plan-body-op-advisory): the ingest-side twin of the GBNF `<<`-exclusion. An omitted
+// #502 ({§plan-body-op-advisory}): the ingest-side twin of the GBNF `<<`-exclusion. An omitted
 // `:PLAN` swallows the turn's ops into the plan body and the parse SUCCEEDS (run113) — the
 // advisory makes the silent swallow visible on unrailed paths.
 test("plan-body advisory (): op-shaped text in a parsed PLAN body warns", () => {

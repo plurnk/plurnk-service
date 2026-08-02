@@ -161,7 +161,7 @@ test("budget: folding the prior turn reclaims room and the turn delivers (200, n
         const t2 = await wide.runTurn({ provider: tightP, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 2 });
         assert.equal(t2.status, 200, "the turn delivers after the grinder folds prior-turn logs to fit");
         assert.equal(t2.budgetHardStop, false, "fold-to-fit, not a hard-413");
-        assert.equal(t2.budgetStruck, true, "a grinder fire past turn 1 still strikes (§grinder-strike-coupling)");
+        assert.equal(t2.budgetStruck, true, "a grinder fire past turn 1 still strikes ({§grinder-strike-coupling})");
     } finally { await db.close(); }
 });
 
@@ -208,7 +208,7 @@ test("budget: an un-foldable hard-413 short-circuits dispatch — the model is n
     try {
         const { workspaceId, workerId, loopId } = await envelope(db);
         const engine = engineAt(db);
-        // §grinder-hard-413-recovery: the first overflow is the recovery turn (consumes the one
+        // {§grinder-hard-413-recovery}: the first overflow is the recovery turn (consumes the one
         // grant + the one Mock response); the SECOND is the hard-413 this test pins.
         await engine.runTurn({ provider: mockCeiling(TINY, [response([sendStmt(102, null, "on it")])]), workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 2 });
         const t = await engine.runTurn({ provider: mockCeiling(TINY, []), workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 3 });
@@ -252,7 +252,7 @@ test("budget: the grinder folds the immediately-prior turn each time, never olde
         await wide.runTurn({ provider, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 1 });
         const tightP = mockCeiling(Math.floor((floor + expanded) / 2), [...fatReads(FAT, 2), ...okSends(2)]);
         await wide.runTurn({ provider: tightP, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 2 });
-        // op='error' rows (the grinder's own overflow row) are exempt from folding (§grinder-errors-exempt),
+        // op='error' rows (the grinder's own overflow row) are exempt from folding ({§grinder-errors-exempt}),
         // so the "all folded" invariant is over the non-error rows.
         const folded = (rows: Array<{ turn_seq: number; expanded: number; op: string; pathname: string | null }>, t: number): boolean =>
             rows.filter((r) => r.turn_seq === t && r.op !== "error" && !isPrompt(r)).every((r) => r.expanded === 0);
@@ -286,7 +286,7 @@ test("the grinder folds turn-2's content but never its op='error' overflow row",
 });
 
 // 9 — the overflow error (op='error', 413) surfaces as a terse LogCoordinate pointer on a
-// fold-to-FIT recovery, not only on the hard-413 path. Same-turn (§grinder-overflow-error-row):
+// fold-to-FIT recovery, not only on the hard-413 path. Same-turn ({§grinder-overflow-error-row}):
 // it lands on turn 2's OWN packet — the turn whose assembly overflowed — not a turn late.
 test("budget: the overflow error surfaces on the fold-to-fit recovery turn (same-turn)", async () => {
     const db = await openMigrated();

@@ -1,4 +1,4 @@
-// FIND helper for entry-bearing schemes (SPEC §find; plurnk.md FIND row).
+// FIND helper for entry-bearing schemes (SPEC {§find}; plurnk.md FIND row).
 // FIND resolves to the scheme's CATALOG ROWS — the very rows the manifest catalogs —
 // filtered to the statement's matches. A matcher (glob/regex/jsonpath/xpath/~semantic/
 // @graph) decides WHICH entries appear. Each selected entry appears once; its
@@ -45,7 +45,7 @@ export type MatchItem = CatalogMatch | CatalogScope;
 
 // FIND result ordinals are also packet line coordinates. Keep each top-level
 // item compact, adding only the boundary newline that makes row N addressable
-// as line N while retaining one valid JSON array. §find-result-catalog-rows
+// as line N while retaining one valid JSON array. {§find-result-catalog-rows}
 export const renderFindContent = (results: readonly MatchItem[]): string =>
     `[${results.map((result) => JSON.stringify(result)).join(",\n")}]`;
 
@@ -56,7 +56,7 @@ export interface FindResult extends SchemeResultBase {
     itemsTokenTotal: number;  // content weight of the matched set, summed per UNIQUE entry
     pathnames: string[];      // unique matched pathnames, in result order — the set a multi-file READ fans out over
     matches: Match[];         // one per selected resource, in result order
-    omittedItems?: number;    // §find-count-not-contents - N selected items omitted from an over-budget result
+    omittedItems?: number;    // {§find-count-not-contents} - N selected items omitted from an over-budget result
     maximumItems?: number;
 }
 
@@ -120,7 +120,7 @@ export default class EntryFind {
         // {§fs-errno} — the green-lie pin (#545): a FIND whose target is an EXACT path (no glob,
         // no folder scope) that resolves to NO entry is ENOENT with its fact — certifying empty
         // over nothing taught run59's model that a real function did not exist. A glob/folder
-        // scope with zero matches stays the blessed orienting empty (§render-rule, owner: an
+        // scope with zero matches stays the blessed orienting empty ({§render-rule}, owner: an
         // empty survey says "don't look here").
         if (scope?.kind === "exact" && scope.pathname.length > 0) {
             const exact = await ctx.db.crud_find_workspace_entry.get<{ id: number }>({
@@ -140,12 +140,12 @@ export default class EntryFind {
         // SQL receives only the literal prefix and returns a safe superset. Node's
         // path matcher owns the shell-glob truth below: unlike SQLite GLOB, `*`
         // cannot cross `/`, while `**` can. A declared folder scope remains a
-        // recursive prefix independent of glob syntax. §find-scope-prefix-filter
-        const tags = Array.isArray(statement.signal) ? statement.signal : []; // tag filter, AND semantics — §find-tag-filter-and-semantics
+        // recursive prefix independent of glob syntax. {§find-scope-prefix-filter}
+        const tags = Array.isArray(statement.signal) ? statement.signal : []; // tag filter, AND semantics — {§find-tag-filter-and-semantics}
         const tagsParam = tags.length > 0 ? JSON.stringify(tags) : "[]";
 
         const { db, workspaceId } = ctx;
-        // Candidates are workspace-scoped — a FIND never reaches across workspaces (§find-scoped-isolation)
+        // Candidates are workspace-scoped — a FIND never reaches across workspaces ({§find-scoped-isolation})
         // — and owner-keyed ({§entry-owner}): an owner-carved face passes its resolved owner; every
         // other scheme draws from the commons.
         type Candidate = { entry_id: number; pathname: string; deep_hash: string | null; content?: string; mimetype?: string };
@@ -328,7 +328,7 @@ export default class EntryFind {
         } else {
             const { mimetypes } = ctx;
             if (mimetypes === undefined) throw new Error("EntryFind.#matchPathnames: body matcher requires the mimetypes capability in ctx");
-            // §find-source-agnostic — the shared content-matcher primitive (Log.find runs the same
+            // {§find-source-agnostic} — the shared content-matcher primitive (Log.find runs the same
             // one over log rows). Candidates key by pathname; each hit becomes a Match.
             const r = await Matcher.matchCandidates(statement.body, candidates.map((c) => {
                 if (c.content === undefined || c.mimetype === undefined) throw new Error("EntryFind.#matchPathnames: content candidate is incomplete");
@@ -416,7 +416,7 @@ export default class EntryFind {
     // FIND result = the scheme's catalog rows, filtered to the matched entries and kept in
     // match order. A catalog row is exactly what the manifest catalogs (path + per-channel
     // {mimetype, tokens, lines}, tags, stream lifecycle) — FIND is the filtered, navigable slice of
-    // that catalog, rendered as a JSON array (application/json). §find-result-catalog-rows
+    // that catalog, rendered as a JSON array (application/json). {§find-result-catalog-rows}
     static async findWorkspaceEntries(statement: FindStatement, ctx: PlurnkSchemeContext, manifest: SchemeManifest, explicitOwnerId?: number): Promise<FindResult> {
         const match = await EntryFind.#matchPathnames(statement, ctx, manifest, explicitOwnerId);
         if (match.status !== 200) {
@@ -512,7 +512,7 @@ export default class EntryFind {
                 ), 0);
             }
         }
-        // §find-count-not-contents (#418) — a repo-scale FIND(**) over a 19k-entry workspace can't
+        // {§find-count-not-contents} (#418) — a repo-scale FIND(**) over a 19k-entry workspace can't
         // enumerate: materializing every match overflows the window (a clean grind should not be a
         // crash-and-recover). Over the render budget, the result is a COUNT + narrow steer instead
         // of the rows — the model sees "N match, too broad, narrow it" and adapts. INDEPENDENT of
