@@ -624,10 +624,7 @@ test("#59: invalid jsonpath body (unclosed paren) is a visitor ERROR, not a sile
     assert.match(errors[0]!.error.message, /leads with `\$` but is not a valid jsonpath/);
 });
 
-// #494: the validity check converged to RFC 9535 (json-p3) — the engine the runtime
-// dispatches — replacing the lenient jsonpath-plus check. Pins the strictness delta:
-// malformations that used to slide through now flag, and the RFC's bare filter form parses.
-test("#494: RFC 9535 strictness — lenient-era malformations now flag as visitor errors", () => {
+test("RFC 9535 rejects non-path variables and unclosed selectors", () => {
     for (const body of ["$HOME", "$.users["]) {
         const result = PlurnkParser.parseStatements(`<<READ(data.json):${body}:READ`);
         const errors = result.items.filter((i) => i.kind === "error");
@@ -636,7 +633,7 @@ test("#494: RFC 9535 strictness — lenient-era malformations now flag as visito
     }
 });
 
-test("#494: RFC 9535 bare filter form ($[?@.role==\"admin\"]) is accepted", () => {
+test("RFC 9535 bare filter form ($[?@.role==\"admin\"]) is accepted", () => {
     const result = PlurnkParser.parseStatements('<<READ(users.json):$[?@.role=="admin"]:READ');
     assert.equal(result.items.filter((i) => i.kind === "error").length, 0);
     assert.equal(result.items.filter((i) => i.kind === "statement").length, 1);
@@ -1023,7 +1020,7 @@ test("ParsedPath cleavage: file:// stays authority-bearing", () => {
 // Typed body: MatcherBody, ParsedPath (COPY/MOVE destination), SendBody
 // -------------------------------------------------------------------------
 
-test("MatcherBody: regex returns dialect + compiled regexp", () => {
+test("MatcherBody: regex returns its dialect, pattern, and flags", () => {
     const result = PlurnkParser.parseStatements("<<FIND(log://x):/foo|bar/i:FIND");
     const item = result.items[0];
     if (item.kind !== "statement" || item.statement.op !== "FIND") return;

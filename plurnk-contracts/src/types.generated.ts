@@ -25,7 +25,7 @@ export type PlurnkStatement = (FindStatement | ReadStatement | OpenStatement | F
 
 export type ParsedPath = (LocalPath | UrlPath)
 /**
- * Parsed body of a FIND/READ/OPEN/FOLD statement, discriminated on `dialect`. The dialect is determined by the body's leading characters (`//` xpath, `/` regex, `$` jsonpath, `~` semantic, `@` graph, else glob). The regex variant carries pattern/flags split out of the `/pattern/flags` literal; the compiled `RegExp` object on the in-memory AST is a runtime ergonomic only and is not part of the persisted/wire contract.
+ * Parsed body of a FIND/READ/OPEN/FOLD statement, discriminated on `dialect`. The dialect is determined by the body's leading characters (`//` xpath, `/` regex, `$` jsonpath, `~` semantic, `@` graph, else glob). The regex variant carries pattern and flags split out of the `/pattern/flags` literal; every variant remains JSON-serializable.
  */
 
 export type MatcherBody = (XPathBody | RegexBody | JsonPathBody | SemanticBody | GraphBody | GlobBody)
@@ -111,7 +111,7 @@ pattern: string
 flags: string
 }
 /**
- * JSONPath expression. Validated at parse time via jsonpath-plus.
+ * RFC 9535 JSONPath expression. Compiled at parse time with json-p3, the same engine used for runtime matching.
  */
 
 export interface JsonPathBody {
@@ -119,7 +119,7 @@ dialect: "jsonpath"
 raw: string
 }
 /**
- * Semantic similarity query. Body is `~phrase` — natural language after the tilde, no parse step. Resolution happens service-side via the deep-embed channel; omitted `<Result>` uses the consumer's default count, while an explicit value narrows the results.
+ * Semantic similarity query. Body is `~phrase`: natural language after the tilde, with no parse step. Similarity thresholds and result ranges belong to the statement's scope; resolution happens service-side through the configured embedding implementation.
  */
 
 export interface SemanticBody {
@@ -127,7 +127,7 @@ dialect: "semantic"
 raw: string
 }
 /**
- * Code-graph reference query. Body is `@symbol` (neighborhood — both inbound and outbound edges), `@<symbol` (inbound — who references this), or `@>symbol` (outbound — what this references). Resolution happens service-side via a deep-graph channel; no parse step in grammar.
+ * Code-graph reference query. Body is `@symbol` for a neighborhood, `@<symbol` for inbound references, or `@>symbol` for outbound references. Resolution happens service-side through the symbol index; no parse step occurs in the language parser.
  */
 
 export interface GraphBody {
