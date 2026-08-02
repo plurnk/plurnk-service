@@ -1083,15 +1083,8 @@ export default class Dispatcher {
         });
     }
 
-    // KILL is scheme-polymorphic; entry deletion remains one owned dispatch path.
-    // permanently deletes the entry: the canonical delete now, MOVE→/dev/null
-    // retired from the model's vocabulary. Process-KILL (exec:///) aborts the
-    // running spawn's controller (the same teardown loop.cancel rides), addressed
-    // by coordinate pathname (#203). The KILL body is an opaque
-    // annotation with no runtime meaning; it survives into the log row's tx for
-    // free via the statement serialization. Status: 200 killed · 404 unknown ·
-    // 405 log:/// (append-only) · 403 writableBy (the #checkWritable gate, KILL ∈
-    // MUTATING_OPS) · 200/410/409/404 exec (killed / killed-earlier / terminal / unknown) · 501 no-kill/delete scheme.
+    // KILL is target-polymorphic. Scheme handlers own the optional numeric code's
+    // meaning; core retains worker and entry dispatch. {§operation-code-polymorphism}
     async #handleKill(statement: PlurnkStatement, ctx: PlurnkSchemeContext): Promise<DispatchResult> {
         if (statement.op !== "KILL") throw new Error("unreachable");
         const path = statement.target;
@@ -1108,9 +1101,8 @@ export default class Dispatcher {
                 { retryable: false },
             );
         }
-        // KILL on log:/// erases the log row(s) — the model's DB-storage curation lever
-        // (plurnk.md:36, :98), routed to Log.kill below via the killable.kill path. The old
-        // "append-only" 405 forbade what the grammar requires; FOLD only collapses the render.
+        // Log targets use the same killable dispatch as streams; erasure is their
+        // permanent curation operation. {§model-entry-log-curation}
         // Process-KILL: any scheme whose handler exposes kill() aborts a live stream — the
         // exec handler, registered as "exec" + under every runtime tag (sh/node), so a tag-
         // addressed stream (sh:///l/t/s) routes here, not to deleteEntry. §exec

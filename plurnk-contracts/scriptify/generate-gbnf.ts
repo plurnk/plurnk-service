@@ -298,7 +298,7 @@ export const buildModel = (): GModel => {
                 const bodyNE = [lit(":"), ref(`${name}-b0ne`), lit(close)];
                 model.set("plan", [[lit(open), ...bodyNE]]);
             } else if (op === "KILL") {
-                // Signal (unix signal number) is wired but untaught — canon shows bare KILL.
+                // Target-specific numeric code is wired but untaught — canon shows bare KILL.
                 opEntries.push({ literal: open, tails: [[opt(ref("kill-sig")), ref("target"), ...body]] });
             } else if (op === "WORK" || op === "FORK") {
                 // Delegation verbs: optional single Git branch ref in the signal/tag slot,

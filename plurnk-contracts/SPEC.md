@@ -182,12 +182,18 @@ restrictions are runtime concerns.
 | MOVE   | tags to apply (CSV) | required | destination `ResourceSelection` | source text region |
 | OPEN   | tag filter (CSV)  | required | optional pattern matcher | none |
 | FOLD   | tags to apply (CSV) | required | optional pattern matcher | none |
-| SEND   | submit code (single integer; see §9) | optional (recipient) | message payload (JSON by convention for structured responses) | `<timeout, poll>` — the wait park on a terminal `[202]` (see §7, §9) |
+| SEND   | operation code (optional integer; pathless terminal dispositions use §9) | optional (recipient) | message payload (JSON by convention for structured responses) | `<timeout, poll>` — the wait park on a terminal `[202]` (see §7, §9) |
 | EXEC   | registered executable tool (single string; `sh` default) | optional (cwd) | executor-specific input | `<timeout, poll>` — spawn lifetime cap + poll cadence |
 | WORK   | optional Git branch ref (single string) | required `worker://` target naming the fresh worker | task prompt for the worker's first loop | none (parses as null) |
 | FORK   | optional Git branch ref (single string) | required `worker://` target naming the context branch | prompt for the context-inheriting worker | none (parses as null) |
-| KILL   | unix signal (single integer; taught in canon, e.g. `KILL[9]`) | required | opaque annotation (logged, no runtime meaning) | not applicable |
+| KILL   | operation code (optional integer; target-specific) | required | opaque annotation (logged, no runtime meaning) | not applicable |
 | PLAN   | tag filter (CSV; parse-side, canon is slotless) | optional (parse-side; canon is slotless) | reasoning text (recorded to the log; no other effect) | parse-side only |
+
+SEND and KILL share a numeric wire slot, not one universal numeric vocabulary.
+For pathless terminal SEND, the code is the loop disposition defined in §9.
+Directed SEND and KILL delegate any present code to the addressed target's
+operation contract; a live process may interpret a KILL code as a Unix signal,
+but that interpretation does not define KILL generally. {§operation-code-polymorphism}
 
 The `<L>` slot is optional where admitted and its domain is OP-specific. FIND
 scopes ordered results. EXEC and SEND scope timing. READ, EDIT, COPY, and
@@ -514,9 +520,9 @@ The inner's `:SEND` close is ordinary body text because the outer close
 is `:SEND1`. This rule belongs to the body fence and applies to every
 operation, not to EDIT semantics.
 
-## 9. SEND Status Codes
+## 9. SEND Codes
 
-SEND submit codes align with HTTP semantics so that model training
+Pathless terminal SEND disposition codes align with HTTP semantics so that model training
 transfers directly:
 
 - `1xx` Informational — continuation; `102 Processing` is the canonical loop-continuation code. Its body states what the model will do next with the submitted operations' results.
@@ -801,7 +807,7 @@ interface WorkStatement extends StatementBase<string> { op: "WORK"; body: string
 // signal optionally names its Git branch; body is the required prompt.
 interface ForkStatement extends StatementBase<string> { op: "FORK"; body: string; }
 
-// KILL — signal is a unix signal number; body is an opaque annotation. Raw.
+// KILL — signal is an optional target-specific numeric code; body is an opaque annotation. Raw.
 interface KillStatement extends StatementBase<number> { op: "KILL"; body: string | null; }
 
 // PLAN — body is reasoning text, recorded to the log. Raw. On the GBNF rail the body

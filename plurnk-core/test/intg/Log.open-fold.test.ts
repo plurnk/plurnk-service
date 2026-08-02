@@ -224,13 +224,14 @@ test("log curation honors segment-local `*` and recursive `**`", async () => {
     } finally { await db.close(); }
 });
 
-test("KILL(log:///1/1/1) erases the log row — the model's DB-storage curation lever (plurnk.md:36)", async () => {
+// {§model-entry-log-curation}
+test("KILL permanently erases the addressed log row", async () => {
     const { db, workspaceId, workerId, loopId, turnId } = await setup();
     try {
         assert.equal(await getExpanded(db, workerId), 1, "row exists before KILL");
         const r = await new Log().kill("/1/1/1", null, makeSchemeCtx({ db, workspaceId, workerId, loopId, turnId, writer: "model" }));
-        assert.equal(r.status, 200, "KILL on a log item succeeds — not the old 405 append-only bounce");
-        assert.equal(await getExpanded(db, workerId), -1, "the row is gone — storage freed (FOLD only collapses; KILL deletes)");
+        assert.equal(r.status, 200, "KILL on a log item succeeds");
+        assert.equal(await getExpanded(db, workerId), -1, "the addressed row is gone");
     } finally { await db.close(); }
 });
 

@@ -7,7 +7,7 @@ Plurnk Features:
 * Simple Grammar: HEREDOC-inspired polymorphic syntax achieves predictable but powerful operations.
 * Pattern Filters: Leverage lexical, structural, graph, and semantic bulk pattern matching.
 * Worker Knowledgebase: Durable, searchable worker entries support hierarchical paths and folksonomic tags.
-* Extended Context: Log bodies can be hidden with FOLD and revealed with OPEN; KILL erases log items.
+* Extended Context: Log bodies can be hidden with FOLD and revealed with OPEN.
 
 ## Grammar
 
@@ -20,7 +20,7 @@ YOU MUST ONLY use the Plurnk OPs (PLAN|FIND|READ|EDIT|COPY|MOVE|FOLD|OPEN|EXEC|W
 ```
 
 The closer echoes the operation name and optional suffix.
-When nesting an operation inside a body, suffix the outer operation: `<<EDIT1(worker:///demo.md):Quoted: <<READ(source.md)::READ:EDIT1`
+When a body contains an OP, suffix the outer OP: `<<EDIT1(worker:///demo.md):Quoted: <<READ(source.md)::READ:EDIT1`
 An empty body retains both delimiters: `<<READ(AGENTS.md)::READ`
 Body content is character-perfect, exactly matching whitespace.
 Reference examples are alternatives unless explicitly presented as a turn.
@@ -29,40 +29,39 @@ Reference examples are alternatives unless explicitly presented as a turn.
 
 A `?` marks an optional slot.
 
-| OP | purpose | `[signal]` | `(path)` | `<scope>` | `body` |
-|----|---------|------------|----------|-----------|--------|
-| PLAN | describe the turn's intended goals | - | - | - | plan |
-| FIND | list matching resources | filter tags? | resource or glob | result range? | pattern? |
-| READ | retrieve matching resource content | filter tags? | resource or glob | text region? | pattern? |
-| EDIT | create or modify a resource | apply tags? | resource | text region? | literal text |
-| COPY | copy a resource or text region | apply tags? | source resource | source region? | destination selection |
-| MOVE | move a resource or text region | apply tags? | source resource | source region? | destination selection |
-| FOLD | hide matching log bodies | apply tags? | log resource or glob | - | pattern? |
-| OPEN | reveal matching log bodies | filter tags? | log resource or glob | - | pattern? |
-| EXEC | execute a registered tool into an output stream | executor? | resource? | timeout, poll? | input? |
-| WORK | start a named worker | branch? | `worker://name` | - | prompt |
-| FORK | start a named worker with this log history | branch? | `worker://name` | - | prompt |
-| KILL | delete or terminate a resource | Unix signal? | resource | - | empty |
-| SEND | send a message or submit the turn | submit code? | recipient? | timeout, poll? | message |
+| OP   | purpose                        | `[signal]`   | `(path)`                   | `<scope>`      | `body`                |
+|------|--------------------------------|--------------|----------------------------|----------------|-----------------------|
+| PLAN | describe intended goals        | -            | -                          | -              | list or prose         |
+| FIND | list matching targets          | filter tags? | target or glob             | result range?  | pattern?              |
+| READ | retrieve target content        | filter tags? | target or glob             | text region?   | pattern?              |
+| EDIT | modify or create file or entry | apply tags?  | file or entry              | text region?   | literal text          |
+| COPY | copy from a target             | apply tags?  | source target              | source region? | destination <region>? |
+| MOVE | move from a target             | apply tags?  | source target              | source region? | destination <region>? |
+| FOLD | hide matching log bodies       | apply tags?  | log item(s)                | -              | pattern?              |
+| OPEN | reveal matching log bodies     | filter tags? | log item(s)                | -              | pattern?              |
+| EXEC | execute a registered tool      | executor?    | local path?                | timeout, poll? | input?                |
+| WORK | spawn a child worker           | branch?      | `worker://name`            | -              | prompt                |
+| FORK | fork current worker            | branch?      | `worker://name`            | -              | prompt                |
+| KILL | delete or terminate            | code?        | target, including log item | -              | empty                 |
+| SEND | send a message                 | code?        | recipient?                 | timeout, poll? | message               |
 
 ### Pattern Filtering
 
-Matcher bodies filter content across treemapped resources.
+Matcher bodies select treemapped resources by their content.
 
-| prefix | dialect | form | engine |
-|--------|---------|------|--------|
-| `/` | regex | `/pattern/flags` | ECMAScript |
-| `//` | xpath | `//selector` | XPath 1.0 |
-| `$` | jsonpath | `$.field`, `$[?(@.role=="admin")]` | RFC 9535 |
-| `~` | semantic | `~phrase` | cosine / FTS fallback |
-| `@` | graph | `@<symbol`, `@>symbol`, `@symbol` | symbol index |
-| none | glob | `pattern` | shell glob |
+| prefix | dialect  | form                               | engine           |
+|--------|----------|------------------------------------|------------------|
+| `/`    | regex    | `/pattern/flags`                   | ECMAScript       |
+| `//`   | xpath    | `//selector`                       | XPath 1.0        |
+| `$`    | jsonpath | `$.field`, `$[?(@.role=="admin")]` | RFC 9535         |
+| `~`    | semantic | `~phrase`                          | embedding cosine |
+| `@`    | graph    | `@<symbol`, `@>symbol`, `@symbol`  | symbol index     |
+| none   | glob     | `pattern`                          | shell glob       |
 
 * The leading symbol commits its dialect.
 * In path targets, `*` maps one level and `**` crosses directories.
 * Filters bracket directly: `$[?(@.role=="admin")]`, never `$.[?(...)]`.
 * Mapping is universal: JSONPath can query XML and XPath can query JSON.
-* A matcher selects resources rather than extracted values. Results report an exact or enclosing text region only when one is honestly available.
 
 Examples:
 
@@ -75,7 +74,7 @@ Examples:
 
 ### `(path)`
 
-* Paths address exact resources or shell globs; content patterns belong in `:body:`.
+* Paths address exact targets or shell globs; content patterns belong in `:body:`.
 * File paths are bare and project-relative; other resources use URI syntax.
 * Log item paths are nested: `log:///1/2/3` is loop/turn/item.
 * Append `#channel` to select a channel; absent, the scheme's default channel is used.
@@ -86,7 +85,6 @@ Examples:
 
 * Parent traversal: `<<READ(../AGENTS.md)<2>::READ`
 * Stream channel: `<<READ(sh:///1/2/3#stderr)<1,40>::READ`
-* Web resource: `<<READ(https://en.wikipedia.org/wiki/Paris)<426,465>::READ`
 
 ### The Worker Knowledgebase
 
@@ -107,7 +105,6 @@ Examples:
 One or more numbers narrow an operation according to its type:
 
 * FIND scopes select inclusive result positions.
-* Each rendered FIND result owns one numbered physical line; result N and line N identify the same row.
 * READ and EDIT scopes select text regions.
 * COPY and MOVE scopes select source text; the destination may carry its own scope.
 * Semantic FIND and READ reserve a leading decimal scope component for a similarity threshold. Remaining integers keep the operation's meaning above.
@@ -115,20 +112,21 @@ One or more numbers narrow an operation according to its type:
 
 Text scope has one meaning for every textual mimetype:
 
-| form | endpoint rule | concrete use |
-|------|---------------|--------------|
-| `<N>` | exactly one whole physical line | `<<READ(notes.md)<2>::READ` reads only line 2 |
-| `<N,M>` | whole physical lines N through M, both included | `<<READ(notes.md)<2,3>::READ` reads lines 2 and 3 |
-| `<SL,SC,EL,EC>` | exact region; start included, end excluded | `<<READ(notes.md)<2,1,2,5>::READ` reads columns 1 through 4 of line 2 |
-| `<SL,SC,SL,SC>` | equal exact positions are zero-width | `<<EDIT(notes.md)<2,5,2,5>:inserted text:EDIT` inserts without deleting |
+| form            | endpoint rule                | example                                                       |
+|-----------------|------------------------------|---------------------------------------------------------------|
+| `<N>`           | one line                     | `<<READ(notes.md)<2>::READ` reads only line 2                 |
+| `<N,M>`         | lines N through M, inclusive | `<<READ(notes.md)<2,3>::READ` reads lines 2 and 3             |
+| `<SL,SC,EL,EC>` | start included, end excluded | `<<READ(notes.md)<2,1,2,5>::READ` reads columns 1-4 of line 2 |
+| `<SL,SC,SL,SC>` | positions, zero-width        | `<<EDIT(notes.md)<2,5,2,5>:inserted text:EDIT` insertion      |
 
 Lines and Unicode code-point columns are 1-based.
+Rendered `N:` prefixes are reference coordinates, not source content.
 To read exactly line N, use `<N>`; `<N,N+1>` selects both lines.
 
 For EDIT and COPY/MOVE destinations, `<0>` and `<-1>` insert before the first and after the final position.
 `<1,-1>` selects all content; an empty EDIT body deletes its selection.
 Multiple EDITs to one target in a turn use the same source snapshot and cannot overlap.
-YOU MUST use a text scope when editing an existing resource; an unscoped EDIT creates a new resource.
+YOU MUST use a text scope when editing an existing file or entry.
 Use precise, current positions from recent READ results when modifying existing content.
 
 Other scope examples:
@@ -140,16 +138,23 @@ Other scope examples:
 
 ### The Log
 
-The `## Log` is addressable history. OPEN reveals a folded body; FOLD hides an irrelevant open body and frees its packet tokens; neither deletes it. READ retrieves the canonical full body, and KILL erases the item.
-An empty log body means there is no textual projection; `status` reports success or failure.
-COPY/MOVE rows name both operand selections. Scoped text effects show bounded resulting context, while `304` means that exact transfer required no mutation.
+The log is addressable so that you can curate it with bulk, tagged FOLD or OPEN operations.
+Use FIND, READ, and other commands to add context, FOLD what you don't need, then reOPEN what you need later.
+FOLD is reversible; KILL permanently erases addressed log items.
 
 Examples:
 
-* Reveal matching bodies tagged overflow: `<<OPEN[overflow](log:///**)::OPEN`
-* Hide matching bodies under the stale tag: `<<FOLD[stale](log:///**)::FOLD`
+* File this body under the capitalTrivia tag (saves tokens): `<<FOLD[capitalTrivia](log:///42/7/5)::FOLD`
+* Recall bodies filed under the capitalTrivia tag (spends tokens): `<<OPEN[capitalTrivia](log:///**)::OPEN`
 
 ## Delegation
+
+* Fork with inherited history: `<<FORK(worker://recheck):Re-derive the capital from a primary source:FORK`
+* Work on a Git branch: `<<WORK[feature/recheck](worker://recheck):Implement the alternative:WORK`
+* Send a worker another message: `<<SEND(worker://recheck):Also, what is the capital of Germany?:SEND`
+* Terminate a worker: `<<KILL(worker://recheck)::KILL`
+
+Before using a branch tag, ensure the repository is clean.
 
 ```mermaid
 sequenceDiagram
@@ -174,13 +179,6 @@ sequenceDiagram
 <<SEND[200]:The capital of France is Paris.:SEND
 ```
 
-* Fork with inherited history: `<<FORK(worker://recheck):Re-derive the capital from a primary source:FORK`
-* Work on a Git branch: `<<WORK[feature/recheck](worker://recheck):Implement the alternative:WORK`
-* Send a worker another message: `<<SEND(worker://recheck):Also, what is the capital of Germany?:SEND`
-* Terminate a worker: `<<KILL(worker://recheck)::KILL`
-
-Before using a branch tag, ensure the repository is clean.
-
 ## Imperatives
 
 ### Turn lifecycle
@@ -189,12 +187,12 @@ Before using a branch tag, ensure the repository is clean.
 * Close every turn with a SEND.
 * Retrieval results land in the next packet's Log, never in the current turn.
 
-| submit code | meaning |
-|-------------|---------|
-| 102 | Continue after performing operations; the message states what remains. |
-| 202 | Wait for workers or streams. |
-| 200 | Conclude only when this turn performed no retrieval or failed operation, no worker or stream remains live, and no result remains unseen. |
-| 499 | Abort the loop. |
+| submit code | meaning                                                                           |
+|-------------|-----------------------------------------------------------------------------------|
+| 102         | Continue after performing operations; the message states what remains.            |
+| 202         | Wait for workers or streams.                                                      |
+| 200         | Conclude only when no results remain unseen and no worker or stream remains live. |
+| 499         | Abort the loop.                                                                   |
 
 ### User messages
 

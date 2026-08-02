@@ -125,24 +125,19 @@ test("Engine.dispatch: KILL against a non-running exec:/// returns 404 (nothing 
     } finally { await db.close(); }
 });
 
-test("Engine.dispatch: KILL against log:/// is allowed (erases the row) — a missing coordinate 404s, not 405", async () => {
+// {§model-entry-log-curation}
+test("Engine.dispatch preserves log KILL's missing-coordinate failure", async () => {
     const { db, engine, env } = await setup();
     try {
         const kill = await engine.dispatch({
             statement: killStmt({ target: urlPath("log", "/1/1/0") }),
             workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId, sequence: 1, origin: "plurnk",
         });
-        // KILL erases log items (plurnk.md:36, :98) — routed to Log.kill, which 404s a missing
-        // coordinate. The old "append-only" 405 is gone (it forbade what the grammar requires;
-        // the successful-erase path is covered in Log.open-fold).
-        assert.equal(kill.status, 404);
+        assert.equal(kill.status, 404, "a missing log coordinate remains not found");
     } finally { await db.close(); }
 });
 
-test("MODEL-origin KILL(log:///…) clears the writableBy gate and erases the row — the taught curation lever, through the REAL dispatch path", async () => {
-    // Log.kill worked when called directly, but writableBy gated KILL ∈ MUTATING_OPS to plurnk-only —
-    // the model's own budget-recovery lever 403'd at dispatch (surfaced by the budget-grind digests:
-    // the model reaches for KILL(log:///…) under a pinned ceiling and was refused).
+test("model-origin KILL passes the log write gate and erases the addressed row", async () => {
     const { db, engine, env } = await setup();
     try {
         // A real model-origin row at coordinate /1/1/1 (loop seq 1, turn seq 1, sequence 1).
@@ -155,12 +150,12 @@ test("MODEL-origin KILL(log:///…) clears the writableBy gate and erases the ro
             statement: killStmt({ target: urlPath("log", "/1/1/1") }),
             workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId, sequence: 2, origin: "model",
         });
-        assert.equal(kill.status, 200, "the model's log-KILL clears the gate — never a 403");
+        assert.equal(kill.status, 200, "the model is authorized to erase its log item");
         const gone = await engine.dispatch({
             statement: killStmt({ target: urlPath("log", "/1/1/1") }),
             workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId, sequence: 3, origin: "model",
         });
-        assert.equal(gone.status, 404, "the row was erased — a re-KILL finds nothing");
+        assert.equal(gone.status, 404, "a second KILL proves the row was erased");
     } finally { await db.close(); }
 });
 

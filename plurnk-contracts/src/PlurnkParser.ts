@@ -30,7 +30,7 @@ const CONTAINER_RULES = new Set<number>([
 
 export default class PlurnkParser {
     // Parse a model TURN. Two hard requirements: a PLAN anchor (first op, only free-text
-    // preamble may precede it) and a terminal SEND (carries the submit code). A PLAN-less
+    // preamble may precede it) and a terminal SEND (carries the disposition code). A PLAN-less
     // or SEND-less packet does NOT parse and surfaces as error items. Prose is tolerated
     // anywhere else (preamble, between ops, trailing) and surfaces as text items - in Plurnk
     // Script that prose is the comment mechanism. The GBNF rail already requires PLAN, so the

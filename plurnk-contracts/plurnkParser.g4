@@ -108,7 +108,7 @@ foldStatement : OPEN_FOLD curationModifiers? COLON? body? CLOSE_TAG ;
 // disposition-coded SEND IS the turn terminal (sendStatement), so turnContent ends on it and
 // a statement after it is a genuine parse error — mid-turn terminations are ILLEGAL, not
 // demoted to a mid comms. A mid-comms SEND (midSend) carries a plain INT code or none. EXEC/KILL
-// keep the permissive int signal (a KILL's unix signal may coincide with a disposition number).
+// keep the permissive int signal (a KILL's target-specific code may coincide with a disposition number).
 sendStatement : OPEN_SEND termModifiers COLON? body? CLOSE_TAG ;
 midSend       : OPEN_SEND midModifiers? COLON? body? CLOSE_TAG ;
 execStatement : OPEN_EXEC execModifiers? COLON? body? CLOSE_TAG ;
@@ -178,7 +178,7 @@ execModifiers
 // Signal productions — permissive where the interpretation is deterministic.
 tagSignal   : LBRACKET (TAG | COMMA)* RBRACKET ;
 branchSignal: LBRACKET TAG RBRACKET ;
-intSignal   : LBRACKET (INT | DISPOSITION)? RBRACKET ;   // KILL: permissive (a unix signal may be a disposition number)
+intSignal   : LBRACKET (INT | DISPOSITION)? RBRACKET ;   // KILL: permissive (its target-specific code may be a disposition number)
 midSignal   : LBRACKET INT? RBRACKET ;                   // mid-comms SEND: a plain integer code (or empty), never a DISPOSITION
 dispSignal  : LBRACKET DISPOSITION RBRACKET ;            // terminal SEND: a disposition code
 identSignal : LBRACKET IDENT? RBRACKET ;

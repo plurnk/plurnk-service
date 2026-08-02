@@ -65,21 +65,21 @@ Exit `0` on clean parse, `1` on any error or unparsed tail.
 | `<L>`    | optional numeric scope; one/two integers select positions, four integers select an exact text region, and a leading decimal may be a semantic threshold; parses to `marks: number[]` |
 | `:body:` | optional; opaque between fences                    |
 
-| OP   | signal           | body                  | line marker        |
-|------|------------------|-----------------------|--------------------|
-| FIND | tag filter       | matcher               | result-set range   |
-| READ | tag filter       | matcher               | text region        |
-| EDIT | tags             | content (empty=clear) | text region        |
-| COPY | tags-to-apply    | destination selection | source region      |
-| MOVE | tags-to-apply    | destination selection | source region      |
-| OPEN | tag filter       | matcher               | n/a                |
-| FOLD | tags-to-apply    | matcher               | n/a                |
-| SEND | HTTP status int  | payload (JSON conv.)  | n/a                |
-| EXEC | executor         | executor-specific input | n/a              |
-| WORK | optional Git branch | required prompt    | n/a                |
-| FORK | optional Git branch | required prompt    | n/a                |
-| KILL | unix signal int  | annotation (opaque)   | n/a                |
-| PLAN | tags             | reasoning text        | n/a                |
+| OP   | signal                 | body                    | line marker      |
+|------|------------------------|-------------------------|------------------|
+| FIND | tag filter             | matcher                 | result-set range |
+| READ | tag filter             | matcher                 | text region      |
+| EDIT | tags                   | content (empty=clear)   | text region      |
+| COPY | tags-to-apply          | destination selection   | source region    |
+| MOVE | tags-to-apply          | destination selection   | source region    |
+| OPEN | tag filter             | matcher                 | n/a              |
+| FOLD | tags-to-apply          | matcher                 | n/a              |
+| SEND | numeric operation code | payload (JSON conv.)    | n/a              |
+| EXEC | executor               | executor-specific input | n/a              |
+| WORK | optional Git branch    | required prompt         | n/a              |
+| FORK | optional Git branch    | required prompt         | n/a              |
+| KILL | numeric operation code | annotation (opaque)     | n/a              |
+| PLAN | tags                   | reasoning text          | n/a              |
 
 On READ, a matcher selects resources against their full readable content and
 the line marker projects text from every selected resource. Without one, READ

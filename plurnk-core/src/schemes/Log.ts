@@ -67,10 +67,8 @@ export default class Log extends CoreSchemeAdapterBase {
         defaultChannel: "",
         category: "logging",
         scope: "workspace",
-        // Engine-only WRITES — but KILL ∈ MUTATING_OPS rides this same gate, and log-KILL is the
-        // model's DB-storage curation lever (plurnk.md:10/:47 + the OP×resource matrix; §model-entry-log-curation).
-        // The model clears the gate; Log's handler surface (kill only — no edit/writeEntry) is the
-        // op-level truth, so every other mutating op still 501s.
+        // Log KILL is model-authorized curation. Other mutations remain unavailable
+        // because Log exposes no edit/writeEntry handler. {§model-entry-log-curation}
         writableBy: ["plurnk", "model"],
         volatile: false,
         modelVisible: true,
@@ -753,10 +751,8 @@ export default class Log extends CoreSchemeAdapterBase {
         return this.#applyExpanded(r.ids, expanded, signal, ctx);
     }
 
-    // KILL erases log items (plurnk.md:36, :98) — the model's DB-storage curation lever and
-    // the only way to shed accumulated log rows in a long workspace (FOLD only collapses the
-    // render; the row persists). Same resolution as OPEN/FOLD, DELETE instead of flip. KILL
-    // carries no <L> result slot, so no pagination — a concrete coordinate or a path-glob.
+    // KILL shares OPEN/FOLD's address resolution, deletes instead of flipping visibility,
+    // and carries no positional scope. {§model-entry-log-curation} {§log-curation-set-selection}
     async kill(pathname: string, _signal: number | null, ctx: CoreSchemeCallContext): Promise<SchemeResultBase> {
         const core = this.coreContext(ctx);
         const r = await this.#resolveIds(pathname.replace(/^\//, ""), core);

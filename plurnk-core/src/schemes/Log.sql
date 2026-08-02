@@ -37,10 +37,8 @@ ORDER BY l.sequence, t.sequence, le.sequence;
 UPDATE log_entries SET expanded = $expanded WHERE id = $id;
 
 -- PREP: log_delete_by_id
--- KILL erases a log item (plurnk.md:36, :98) — the model's DB-storage curation lever,
--- the only way to shed accumulated log rows in a long workspace (FOLD only collapses the
--- render). A hard delete: the row is gone, freeing storage; the derived errors pointer
--- for an `op='error'` row vanishes with it.
+-- §model-entry-log-curation — permanent row deletion; the derived errors pointer for an
+-- `op='error'` row vanishes with it.
 DELETE FROM log_entries WHERE id = $id;
 
 -- PREP: log_find_candidates
