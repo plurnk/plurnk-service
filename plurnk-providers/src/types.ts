@@ -115,13 +115,13 @@ export interface Provider {
     // its content. The consumer never sees or chooses backend resources
     // (slot integers, connections); the *mechanism* is the provider's (#11).
     //
-    // `attributions` (per-turn, runtime-observed) and `client` (workspace-stable,
-    // self-identified) are first-party telemetry the consumer hands down: which
-    // installed plugin packages dispatched this turn, and which frontend
-    // originated the worker. They are forwarded ONLY by a provider whose spec opts
-    // in (the first-party `plurnk` endpoint, via `Plurnk-Attribution` /
-    // `Plurnk-Client` headers); every other provider DROPS them — the gate is
-    // structural so first-party metadata can never leak to a third-party backend.
+    // `attributions` is opaque consumer-supplied creator telemetry; the consumer
+    // owns what contribution that set claims (#81). `client` is the consumer's
+    // workspace-stable, self-identified frontend. They are forwarded ONLY by a
+    // provider whose spec opts in (the first-party `plurnk` endpoint, via
+    // `Plurnk-Attribution` / `Plurnk-Client` headers); every other provider DROPS
+    // them — the gate is structural so first-party metadata can never leak to a
+    // third-party backend.
     //
     // `sampling` is an optional bag of standard OpenAI-compat sampling params
     // (temperature, top_p, top_k, min_p, penalties, stop, seed, …) forwarded into

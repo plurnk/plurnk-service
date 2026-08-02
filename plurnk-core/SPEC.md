@@ -41,12 +41,12 @@ flowchart LR
 
 | Term | Meaning |
 |---|---|
-| **entry** | The unit of canonical state. Identity: `(scope, scheme, pathname)`. Holds one or more `channels` of content plus `tags` and `attributes`. |
+| **entry** | The unit of canonical state. Identity: `(workspace, owner, scheme, pathname)` ({§entry-identity-no-null}). Holds one or more `channels` of content plus `tags` and `attributes`. |
 | **channel** | A named content buffer on an entry. Examples: `body`, `stdout`, `stderr`, `headers`, `symbols`. Each channel has `content`, `mimetype`, `tokens`, `state`. |
-| **scope** | `"workspace"` or `"worker"`. Determines who reads: workspace-scope entries are the shared world (every worker in the workspace), worker-scope entries are a worker's private scratch ({§machine-processes}). |
-| **scheme** | A URI prefix + handler. `known`, `unknown`, `file`, `https`, `exec`. The scheme handler interprets paths under its prefix and implements the op surface. Consumption surface {§scheme-surface}; author contract: [plurnk-schemes](https://github.com/plurnk/plurnk-schemes). |
+| **scope** | A scheme-manifest declaration. Core persists only `workspace` registrations; entry sharing and privacy are owner-based. The unresolved `worker` alternative is tracked in #80. |
+| **scheme** | An addressed capability family + handler. Built-ins include `worker`, `prompt`, `log`, and bare/file paths; discovered schemes and executor-runtime tags extend that set. Internal `exec` routes the EXEC op but is not an addressable model namespace. Consumption surface {§scheme-surface}; author contract: [plurnk-schemes](https://github.com/plurnk/plurnk-schemes). |
 | **mimetype** | A channel's content type. Drives the handler that produces the structural projections (`symbols`, `deepJson`, `deepXml`). Consumption surface {§mimetype-surface}; author contract: [plurnk-mimetypes](https://github.com/plurnk/plurnk-mimetypes). |
-| **provider** | An LLM transport. Implements `generate({messages, signal})` against a wire protocol. Consumption surface {§provider}; author contract: [plurnk-providers](https://github.com/plurnk/plurnk-providers). |
+| **provider** | An LLM transport implementing the `@plurnk/plurnk-providers` `Provider` interface. Core supplies an assembled request and generation context; the provider owns endpoint adaptation and normalized response evidence. Consumption surface {§provider}; author contract: [plurnk-providers](https://github.com/plurnk/plurnk-providers). |
 
 ### §state-terms State / status
 
@@ -76,7 +76,7 @@ Independent axes on entries and channels. Confusion across them is a recurring s
 | **emission attempt**         | One completed provider exchange beneath an engine turn. ANTLR admits it when it has a trustworthy PLAN...SEND frame and no boundary-destroying tail. A hard error bounded to an interior statement becomes a failed operation inside the admitted turn; a rejected attempt is forensic evidence, not another turn or an engine strike. |
 | **cycle**                    | A repeated turn fingerprint across consecutive turns. Detected silently; model never sees the trigger. Strike accumulates internally. |
 | **sudden death**             | The last `MAX_STRIKES` turns of a loop's `MAX_LOOP_TURNS` window emit soft 429 warnings so the model can wrap up cleanly. `soft=true`: no strike, no streak increment. |
-| §mode-ask-read-only **mode** | `"ask" \| "act"`. Per-loop. Ask = read-only: the dispatch gate refuses every side-effecting op (a filesystem write — EDIT/COPY-dest/MOVE/KILL on the `file` scheme — or an EXEC host runtime); reads of the workspace stay open. `act` = full surface. The ancient contract: ask never changes the world. |
+| §mode-ask-read-only **mode** | `"ask" \| "act"`. Per-loop. Ask = read-only: the dispatch gate refuses every side-effecting op (a filesystem write — EDIT/COPY-dest/MOVE/KILL on the `file` scheme — or an EXEC host runtime); reads of the workspace stay open. `act` = full surface. Ask never changes the world. |
 | **flag**                     | Per-loop value shaping authority or toolset: `auto` (resolve proposals inside the loop), `noWeb`, `noInteraction`, `noProposals`, `mode`. |
 | **proposal**                 | A deferred side-effecting action. State machine: `proposed → resolved` (accept), `→ failed` (reject), or `→ cancelled` (cancel). With `flags.auto=true`, authority remains inside the loop and resolution is immediate. |
 | **resolution**               | Accept, reject, or cancel of a durable proposal. Client-owned authority enters core through `resolveProposal`; AG-UI carries it in standard resume entries ({§methods-proposal-resolve}, {§agui-proposal-resolve}). |
@@ -106,40 +106,42 @@ The ecosystem and the in-process shape ({§ecosystem}–{§in-process}), then th
 
 ### §ecosystem Ecosystem
 
-The plurnk project is a modular monorepo-of-repos in the `@plurnk/*` npm namespace. Each repo has one published package and one agent who owns it; cross-repo coordination happens through issues, not shared code. This service sits in the middle of that ecosystem and is its **runtime substrate** — the daemon other repos plug into.
+The root [`ARCHITECTURE.md`](../ARCHITECTURE.md) owns the platform process and
+package map. The daemon, contracts, AG-UI module, and bundled capability
+families are independently published npm workspaces in this monorepo; the CLI,
+TUI, and editor clients are separate repositories.
 
-Dependency direction (from root to leaf):
+```mermaid
+flowchart LR
+    contracts["plurnk-contracts<br/>language + shared wire"] --> frameworks["providers / schemes<br/>mimetypes / executors"]
+    meta["plurnk-meta<br/>discovery + teaching corpus"] --> frameworks
+    contracts --> core["plurnk-core<br/>@plurnk/plurnk-service"]
+    frameworks --> core
+    meta --> core
+    core --> agui["plurnk-agui<br/>external protocol"]
+    agui --> clients["CLI / TUI / editor clients"]
+```
 
-- **`plurnk-contracts`** — owns the AST and shared wire contracts, including
-  universal `OperationResult`/RFC 9457 Problem Details, plus the ANTLR parser
-  that turns model output into `PlurnkStatement[]`. Packet assembly is
-  service-owned ({§packet}).
-- **Framework siblings** consume contracts and define their own author-facing contracts:
-    - `plurnk-providers` — Provider/Alias types, AI SDK adaptation, Models.dev-backed provider resolution, local endpoint probes, `Mock`, and normalized usage. Ordinary vendor protocols belong to official AI SDK providers; only genuinely new protocol bindings require a provider plugin.
-    - `plurnk-mimetypes` — handler base classes, discovery, the fitting algorithm, and the match primitives (`queryGlob`/`queryRegex`/`queryJsonpathObject`/`queryXpathString`) the service's matcher dispatches over (§matcher-dispatch). Handler children are per-mimetype: `plurnk-mimetypes-text-{python,typescript,markdown,html,csv,plain}`, `plurnk-mimetypes-application-{json,yaml,toml,pdf}`, …
-    - `plurnk-schemes` — scheme-author types (`SchemeManifest`, `WriterTier`, `LoopFlags`), result-shape contracts (`EntryResult` / `ProposalResult` / `PassthroughResult`), slicing primitives, matcher helpers, `schemeError(...)` constructor. Future scheme children: `plurnk-schemes-http`, `plurnk-schemes-git`, …
-    - `plurnk-execs` — `BaseExecutor`, `SubprocessExecutor`, runtime resolver, discovery. Children declare runtimes: `plurnk-execs-sh`, future `plurnk-execs-search`, `plurnk-execs-node`, …
-- **`plurnk-service`** (this repo) — consumes all of the above. Implements the engine, dispatches ops through scheme handlers, hosts the in-tree set of schemes (`plurnk`, `log`, `exec`, `known`, `unknown`, `skill`, `file`), resolves model providers, discovers installed mimetype handlers and executor siblings at boot, and exposes an in-process seam to client-interface modules. Packet assembly is service-owned ({§packet}).
-- **`plurnk`** (client) — terminal UI consuming the AG-UI+ client surface. Renders daemon events and contains no engine logic.
-
-The grammar is the contract. The frameworks consume the contract and add author-facing surfaces. The service consumes the frameworks and runs the engine. The client consumes the service and renders to humans. Each tier is its own published package; each tier's evolution happens in its own repo.
-
-**This service's central role:** sole consumer of every author-facing framework contract (one set of integrations across the ecosystem), sole producer of the engine's runtime behavior (one canonical implementation of dispatch, log, packet wire), and sole orchestrator of cross-scheme operations (COPY/MOVE flow through engine-mediated `readEntry` / `writeEntry` / `deleteEntry`, never scheme-to-scheme). Most cross-repo coordination flows through us — we file the consumer-need issues at upstream repos, adopt their decisions, document the surface in SPEC.
+§ecosystem-composed-host Core is the composed runtime: it owns persistence,
+scheduling, packet assembly, dispatch, and cross-capability orchestration while
+consuming the language and each capability family's author contract. Domain
+logic stays with its owning package. AG-UI projects that runtime to clients;
+clients render and submit actions but contain no engine logic.
 
 ### §in-process In-process architecture
 
 Engine library + admin CLI + daemon. Four plug points:
 
 - **Providers** ({§provider}) — LLM transports. Engine sends a turn's messages, receives raw content + usage; engine parses the content into `PlurnkStatement[]`.
-- **Schemes** ({§scheme}) — addressable resources. Every op targets a URI; scheme handler interprets paths under its prefix and owns its storage substrate.
+- **Schemes** ({§scheme}) — addressed capabilities. A scheme handler interprets targets under its prefix and owns its storage substrate.
 - **Mimetypes** ({§mimetype}) — content interpretation. Render-time handlers consume channel content; framework owns the dispatch.
-- **Executors** ({§exec} / {§bundled-set}) — EXEC runtime dispatch. Subprocess shells, search backends, future tool runtimes.
+- **Executors** ({§exec} / {§bundled-set}) — EXEC runtime dispatch for subprocess, search, data, and pure-computation runtimes.
 
-The engine dispatches ops, persists state to SQLite, orchestrates cross-scheme COPY/MOVE ({§copy}/{§move}), writes the log. Substantive behavior lives in the four plug points.
+The engine dispatches ops, persists state to SQLite, orchestrates cross-scheme COPY/MOVE ({§copy}/{§move}), and writes the log. Capability-specific behavior remains with the owning plug point.
 
 The contracts package (`@plurnk/plurnk-contracts`) owns the parser and AST contract. Schemes receive parsed statement fragments via dispatch.
 
-Server posture: this package is the runtime. User-facing CLI lives in `plurnk` and consumes the library API (`src/index.ts` + `PATHS`).
+Server posture: this package is the one long-running runtime process. `plurnk-agui` exposes its external protocol; user-facing clients run separately and do not call core's in-process seam directly.
 
 ### §actor-boundary The actor boundary: isolation by worker, two doors, self-hosting
 
@@ -536,11 +538,11 @@ Author-facing contract: [plurnk-providers#1](https://github.com/plurnk/plurnk-pr
 
 Three entry points:
 
-- §provider-surface-generate `provider.generate({messages, signal})` — once per provider attempt; returns `{ assistant: { content, reasoning, usage, finishReason, model }, assistantRaw, meta? }`. **Engine parses `assistant.content`** into `PlurnkStatement[]` via `@plurnk/plurnk-contracts`.
-- §provider-surface-counttokens `provider.countTokens(text)` — synchronous, called at write-time ({§tokenomics}) and render-time. Non-negative integer.
+- §provider-surface-generate `provider.generate(args)` — once per provider attempt. Core supplies the complete messages, worker/turn coordinates, generation envelope, optional local grammar, and first-party metadata. It consumes the framework's `ProviderResponse`: **engine parses `assistant.content`** into `PlurnkStatement[]`, persists normalized call metadata and forensic response fields, and relays provider-normalized encrypted-reasoning items without interpreting them ({§encrypted-reasoning-carrier}).
+- §provider-surface-counttokens `provider.countTokens(text)` — synchronous, non-negative, and used for the provider-physical packet check ({§tokenomics-physical-admission}); model-facing stored and rendered weights use the provider-agnostic ruler.
 - §provider-surface-calculate-cost `provider.calculateCost(usage)` — once per completed provider attempt; estimated USD. Engine aggregates every attempt into `turns.usage_cost_usd`; triggers cascade to `workers.cost_usd` / `workspaces.cost_usd`.
 
-§provider-surface-identity Plus immutable identity: `provider.contextWindow` (physical token total, or `null` when unknown), used only to derive natural prompt capacity; and `provider.model` — the instance identity the deferred model-switch recompute compares ({§tokenomics}), exposed but not yet consumed here.
+§provider-surface-identity Provider capacity and identity are immutable for one instance. `contextWindow` (physical token total, or `null` when unknown) and the optional reasoning/completion reserves define the natural prompt partition and physical admission check ({§tokenomics}); `model` identifies persisted turn/provider evidence. Local GBNF boot verification also consumes `constrainsOutput` ({§grammar-enforcement-verified-at-boot}).
 
 §meta-passthrough **Metadata passthrough (provider → client).** `generate` may return an open `meta: Record<string, unknown>` bag. The service stores it unenforced per turn (`turns.meta`, `json_valid` only — no schema) and forwards the latest turn's blob in `loop/terminated.usage` ({§notifications}). The service never reads a field within it. Providers own their metadata shapes; monetary values carry an explicit amount and currency rather than an implied unit. Absent → `{}`. The mirror direction (client → provider, the self-identified `client` id) rides `generate({client})` ({§attribution}).
 
@@ -581,15 +583,19 @@ A plugin declares an opaque attribution tag in its `package.json` so the creator
 { "plurnk": { "attribution": "@acme/widgets" } }   // a string, or string[]
 ```
 
-The engine unions the declared tags of the active plugin families (schemes, execs) onto `generate({ attributions })`, deduped + stable, per turn; an empty set is omitted. The service does not interpret a tag; richer creator identities (`@plurnk/creators/<name>`) ride the same namespace later.
+§attribution-discovery-placeholder The engine currently unions the declared
+tags of every discovered external scheme and executor package onto
+`generate({ attributions })`, deduped and sorted; an empty set is omitted. This
+is registry membership, not evidence that a capability contributed to the
+turn. Mimetype and provider declarations are not collected. #81 owns replacing
+this placeholder with grounded value-flow attribution. The service otherwise
+treats each tag as opaque.
 
 §strikes-first-party-metadata The loop's **current strike streak** rides `generate({ strikes })` the same way — first-party outbound metadata (`Plurnk-Strikes` under the `firstPartyMetadata` gate, providers 0.30, #313): the hosted router's escalation signal (route-after-strike). The shape is a bare number — the streak at generate-time, the same figure the 500-threshold compares; a clean turn zeroes it, every loop starts at 0, and `0` is sent explicitly (clean ≠ unreported). It is NEVER model-facing ({§engine-rails}: a surfaced count is a metric to game) — headers only, the packet never carries it.
 
 §attribution-plurnk-namespace-reserved **The `@plurnk/` namespace is reserved.** A package may declare an `@plurnk/` tag only if it is itself `@plurnk/`-scoped (npm enforces scope ownership at publish); otherwise it fails hard.
 
 §client-metadata **The workspace's `client` id rides the same wire.** A frontend self-identifies (e.g. `plurnk.nvim/1.4.0`) at `workspace.create({ settings: { client } })`; the engine forwards it per turn on `generate({ client })`, which only the `plurnk` provider emits (as `Plurnk-Client`). Workspace-stable and self-reported — distinct from attribution's install-grounded tags — and omitted when unset.
-
-Deferred (#249): grounding the attribution value in real per-turn value flow rather than the active-plugin placeholder, token-weighting, and entry-level attribution. Native surfacing of the field in each framework's `discover()` supersedes the service-side manifest read and extends collection to mimetype + provider plugins.
 
 ### §provider-instantiation Provider instantiation
 
@@ -809,13 +815,14 @@ Cross-cutting promises service relies on:
 
 ### §handler-bounds What handlers do NOT do
 
-- **Tokenization** — provider-bound ({§provider}).
+- **Tokenization** — outside the mimetype projection pipeline; core owns packet and stored-weight accounting ({§tokenomics-agnostic-ruler}).
 - **Storage** — pure functions over content strings.
 - **Streaming** — handlers see whatever content is current; subscription registry lives between schemes and {§stream}.
 
 ### §handler-bundling Bundled vs sibling handlers
 
-No mimetype handlers ship in-tree. Framework + every handler are siblings.
+No format handler ships inside `@plurnk/plurnk-service`; the framework and
+format handlers are sibling workspaces and independently published packages.
 
 ### §mimetype-surface Consumption surface
 
@@ -831,16 +838,11 @@ plurnk-service is mimetype-illiterate. Engine hands channel content + mimetype l
 
 These ride in via the framework — `@plurnk/plurnk-mimetypes` pins the core set (markdown / plain / json / xml / csv / html) as its own dependencies, so the service's exact-pin on the framework pins them transitively rather than redeclaring each. Boot relies on them (markdown is the `defaultMimetype`); their loss would be a framework-contract break. Everything else is opt-in; framework's `discover()` picks up installed packages automatically.
 
-**Tokenize injection.** Daemon constructs `Mimetypes` with a `tokenize` lambda capturing the active provider's `countTokens`:
-
-```ts
-new Mimetypes({
-    tokenize: async (text) => this.#provider?.countTokens(text) ?? Math.ceil(text.length / 4),
-    defaultMimetype: "text/markdown",
-});
-```
-
-Fallback heuristic is a boot-before-provider-resolved tripwire.
+**Token accounting.** The daemon injects no tokenizer into `Mimetypes`; content
+projection is independent of packet budgeting. Core uses the stable
+model-independent ruler for stored/catalog weights and the model-facing budget
+({§tokenomics-agnostic-ruler}). The provider's counter is confined to the
+provider-physical packet check ({§tokenomics-physical-admission}).
 
 **Persistent search index.** `SearchIndex.maintain` is the pre-model engine pass. Each searchable resource supplies an address and the exact readable body its READ exposes. Entries supply their default body; `LogBody` resolves each log row's canonical full body from its durable tx/rx envelope. Acquisition schemes project remote source material before storing that body; search never introduces a second hidden text projection. The readable body, mimetype, reader configuration, embedder configuration, and applicable search exclusion form a content hash. Complete artifacts own FTS, vectors, symbol definitions, and references; resource rows hold only the attachment hash.
 
@@ -1665,12 +1667,12 @@ grinding and folding remain closed engine concerns.
 Token accounting distinguishes the artifact being measured, the unit, and the
 time of measurement.
 
-| Quantity                    | Source and unit                                      | When                         | Contract |
-|:----------------------------|:-----------------------------------------------------|:-----------------------------|:---------|
-| Provider usage              | Provider-reported prompt/completion/reasoning tokens | After generation             | Durable cost and transport forensics; never the pre-call packet budget. |
-| Packet render-weight        | `rulerCount = ceil(chars/2)` over rendered slots     | Every packet build           | Drives the Budget readout and grinder. |
-| Stored content-depth        | The same ruler over entry/log content                | When content is written      | Weights catalog and log rows without per-model workspace state. |
-| Physical recovery admission | `provider.countTokens` over both rendered slots      | Only when the grinder cannot satisfy policy | Exact when the provider owns an exact counter; otherwise the provider's conservative chars/2 upper bound. Never model-facing. |
+| Quantity                                                   | Source and unit                                      | When                                        | Contract |
+|:-----------------------------------------------------------|:-----------------------------------------------------|:--------------------------------------------|:---------|
+| Provider usage                                             | Provider-reported prompt/completion/reasoning tokens | After generation                            | Durable cost and transport forensics; never the pre-call packet budget. |
+| Packet render-weight                                       | `rulerCount = ceil(chars/2)` over rendered slots     | Every packet build                          | Drives the Budget readout and grinder. |
+| Stored content-depth                                       | The same ruler over entry/log content                | When content is written                     | Weights catalog and log rows without per-model workspace state. |
+| §tokenomics-physical-admission Physical recovery admission | `provider.countTokens` over both rendered slots      | Only when the grinder cannot satisfy policy | Exact when the provider owns an exact counter; otherwise the provider's conservative chars/2 upper bound. Never model-facing. |
 
 - §tokenomics-tokens-stored-at-write **Ruler tokens, stored at write.** `entry_channels.tokens` and `log_entries.tokens` are populated with the model-independent `rulerCount` when their content is written. The stored number is a stable content-depth measurement, not a provider-specific prediction.
 - §tokenomics-render-weight-budget **Render-weight budget.** The budget headline — `ceiling`, `tokenUsage`, `tokensFree` — is the ruler measurement of the *assembled packet* after section transforms and budget substitution. A `SUM` of stored content-depth would measure different artifacts and cannot substitute for packet render-weight.

@@ -345,7 +345,7 @@ For the rare format where neither tree-sitter nor grammars-v4 has coverage and t
 
 ## 10. Tokenization — a consumer concern
 
-The framework neither tokenizes nor budgets content for its own pipeline. Token counting is wholly a consumer concern — the service tokenizes content with its live provider at render time and never trusts write-time counts. The opt-in `Tokenizers` seam (§19) exposes exact model-vocab counting *for consumers that want it*; the framework never calls it for its own budgeting.
+The framework neither tokenizes nor budgets content for its own projection pipeline. Token counting is wholly a consumer concern. Plurnk-service uses one stable model-independent ruler for stored, catalog, and model-facing packet weights ({§tokenomics-agnostic-ruler}); a provider's counter is confined to its physical packet-admission check. The opt-in `Tokenizers` seam (§19) exposes exact model-vocabulary counting *for consumers that want it*; the framework never calls it for its own budgeting.
 
 ## 11. Body-matcher query
 

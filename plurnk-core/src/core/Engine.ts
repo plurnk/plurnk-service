@@ -222,11 +222,8 @@ export default class Engine {
     #lifecycle: LoopLifecycle;
     #schemes: SchemeRegistry;
     #mimetypes: Mimetypes;
-    // Write-time tokenizer (SPEC {§tokenomics}). Synchronous per the provider
-    // contract ({§provider-surface}). Populated from the active provider's countTokens via
-    // the Daemon; a divisor tripwire stands in only for bare/standalone
-    // construction before a provider is wired (same boot affordance as
-    // Mimetypes, {§mimetype-surface}). Real counts come from provider.countTokens.
+    // {§tokenomics-agnostic-ruler} — the stable model-independent ruler used
+    // for write-time, catalog, receipt, and packet weights.
     #tokenize: (text: string) => number;
     // Boot-discovered runtime executors. Daemon builds + sets via
     // setExecutors at start(); undefined until then (and in bare tests).
@@ -430,9 +427,8 @@ export default class Engine {
         this.#mimetypes = mimetypes ?? new Mimetypes({
             discovery: { registry: emptyRegistry(), handlers: new Map(), skipped: [] },
         });
-        // Tripwire default matches the Mimetypes boot affordance (SPEC {§mimetype-surface}):
-        // the divisor stands in only until the provider-backed tokenizer is
-        // wired by the Daemon. Real counts come from provider.countTokens.
+        // {§tokenomics-agnostic-ruler} — standalone construction and the daemon
+        // use the same default; provider counting is confined to physical admission.
         this.#tokenize = tokenize ?? rulerCount;
 
         const executors = (): ExecutorRegistry | undefined => this.#executors;
@@ -1749,10 +1745,11 @@ export default class Engine {
         // born-OPEN-on-error auto-trigger was conditional helpfulness that bred its own hazards
         // (a 24k-char ramble mirrored open re-injects itself into the next packet: cost,
         // contamination, pressure feedback).
-        const sealed = (response.assistant as { reasoningEncrypted?: ReadonlyArray<{ id: string | null; subtype: string; encrypted: ReadonlyArray<{ data: string; format: string | null }> }> }).reasoningEncrypted;
         // {§encrypted-reasoning-carrier} — core relays every provider-normalized
         // item unchanged; #44 owns the upstream normalization rule.
-        const reasoningItems = sealed !== undefined && sealed.length > 0 ? sealed : undefined;
+        const reasoningItems = response.assistant.reasoningEncrypted?.length
+            ? response.assistant.reasoningEncrypted
+            : undefined;
         if (packetAssistant.content.trim().length > 0 || reasoningItems !== undefined) {
             await this.#dispatcher.writeModelEntry({ verbatim: packetAssistant.content, workerId, loopId, turnId, sequence: errSeq++, folded: true, ...(reasoningItems !== undefined ? { reasoningItems } : {}) });
         }
