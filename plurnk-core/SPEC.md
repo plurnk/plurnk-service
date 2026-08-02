@@ -306,9 +306,10 @@ Untagged worker control rides the daemon's inject seam (active→fold, idle→en
 
 ### §worker-branch-batch Serialized Git branch batches
 
-**Question.** Worker fan-out is useful for parallel reasoning, but several filesystem-writing workers sharing one checkout cannot safely develop independent changes at once. Worktrees solve that with additional checkouts and path identity; for plurnk they also duplicate a large workspace, complicate membership, and make the model's one-root filesystem contract untrue. What is the smallest branch isolation that preserves ordinary Git and a legible parent/child topology?
+Branch-tagged WORK/FORK serializes ordinary Git branches over the one project
+checkout. It creates no worktrees, alternate roots, hidden merges, or stashes.
 
-§worker-branch-batch-exclusive **Decision — stop the workspace, serialize
+§worker-branch-batch-exclusive **Stop the workspace; serialize
 ordinary branches.** A branch signal on WORK/FORK creates a durable batch keyed
 to the parent turn. The batch queues one exclusive workspace gate before that
 parent releases its turn. Turns already in flight drain; every later model turn
@@ -1698,13 +1699,34 @@ time of measurement.
 
 ### §membership Workspace identity, membership, disk co-location
 
-**Question.** How does plurnk represent the project a workspace works on? Where does file membership come from? Does writing an entry imply writing to disk?
+The project-file path has two explicit reconciliation gates. Internal entries do
+not participate in this disk loop.
 
-**The boundary is the client's.** The client owns the model's filesystem access in both directions: reads are membership-gated (a file is invisible to the model unless it is a member), and writes are proposals the client accepts or rejects (client `--yolo` auto-accepts). Writing an entry never implies writing to disk — entries are canonical in the store; disk only moves when the client accepts a side-effecting proposal, and only where `project_root` is set (null = headless, client owns materialization).
+```mermaid
+flowchart LR
+    git["Git tracked +<br/>untracked-not-ignored"] --> resolve["Resolve workspace membership"]
+    pick["pick"] --> resolve
+    hide["hide"] -->|subtract| resolve
+    resolve --> materialize["Pre-turn materialize<br/>disk → file snapshot"]
+    materialize --> read["READ snapshot"]
+    materialize --> edit["EDIT against snapshot"]
+    edit --> gate{"view?"}
+    view["view"] -->|marks member read-only| gate
+    gate -->|yes| refused["403; no proposal"]
+    gate -->|no| proposal["Proposal"]
+    proposal -->|"client accepts or loop auto"| cas["synced_sig compare-and-swap"]
+    cas -->|"file snapshot → disk"| project["Project file"]
+    project --> materialize
+```
 
-**Tier — workspace is the world; permissions are the workspace's.** Membership, the overlay, and the git flags are **workspace-tier** (`workspace_constraints.workspace_id`, service/workspace config) — never per-worker. Every worker in a workspace shares one world ({§machine-processes}: one filesystem, one overlay); a worker is a *log* — a perspective over that world — owning no membership of its own. A declaration reshapes the one world for every worker, never per-client binding. `workers.origin` is attribution (whose perspective), not a permission.
-
-**Workspace identity.** No `projects` table; `workspaces.project_root TEXT` (nullable = headless) anchors the workspace. `entries.scope ∈ {'workspace','worker'}` (agent-scope retired). Workspace = workspace; no users/auth/multi-tenant.
+| Concern            | Owner and representation                                                                                                                    |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| Workspace identity | `workspaces.project_root`; null is headless. There is no separate project entity.                                                           |
+| File visibility    | Workspace-tier resolved membership: `(repository files ∪ pick) − hide`, with `view` read-only. Every worker sees the same result.           |
+| File reads         | READ returns the materialized file snapshot stored in the entry body channel; it does not read disk directly.                               |
+| File writes        | EDIT proposes against that snapshot. Only accepted resolution with the captured `synced_sig` writes the project file.                       |
+| Internal entries   | Workspace or worker entries are canonical store state. Writing one never implies a project-file write.                                      |
+| Authority          | Service flags set the membership ceiling; workspace constraints narrow it; client or loop auto resolves proposals. `origin` is attribution. |
 
 §web-search-retrieval **Web search and retrieval are one first-class composition.** A search runtime enumerates a configured maximum of candidate URLs and hands each to the engine as a `content: null` `entry()` request ({§exec-entry-sink}): the guarded `WebFetcher` sink fetches candidates in parallel, off the write-serialization chain, and materializes successful bodies as ordinary HTTP entries. SearXNG owns membership and rank; Plurnk does not rerank or classify sources. Failed materializations are mechanically omitted from the model-facing result directory, while survivors retain upstream order. The compact directory carries `title/url/snippet/publishedDate/materialized`; it locates readable resources and is not a substitute for their contents. Without an entry sink the executor cannot test materialization and omits the verdict.
 
@@ -1771,13 +1793,41 @@ The CAS is the **hard backstop**, at the moment of writing, on every accept path
 
 ### §grinder Budget enforcement: the grinder
 
-**Question.** {§tokenomics} reports the packet and its capacity honestly. What happens when newly arriving content makes the assembled packet exceed that capacity?
+The grinder is the one pre-provider enforcement path for the model-facing prompt
+ceiling. Its sequence is deterministic:
 
-§grinder-overflow-only **Decision — a pre-LLM grinder, fired only on actual overflow.** In `Engine.runTurn`, after the packet is assembled (`PacketBuilder.buildRequestPacket`) and before `provider.generate`, the assembled render-weight ({§tokenomics}) is measured against the ceiling. At or under → the packet ships untouched; the grinder never trims speculatively or "helpfully." On overflow it folds the newest turn boundary's rows (errors exempt), then hard-stops if that isn't enough:
+```mermaid
+flowchart TD
+    assemble["Assemble and measure<br/>request packet"] --> policy{"Within policy ceiling?"}
+    policy -->|yes| unchanged["Provider generate<br/>packet unchanged"]
+    policy -->|no| fold["FOLD newest boundary<br/>tag overflow; mark budget strike"]
+    fold --> rebuild["Rebuild and remeasure"]
+    rebuild --> folded{"Within policy ceiling?"}
+    folded -->|yes| receipt["Record fold-to-fit Problem<br/>rebuild and remeasure"]
+    receipt --> finalPolicy{"Still within policy ceiling?"}
+    finalPolicy -->|yes| recovered["Provider generate<br/>with recovered packet"]
+    folded -->|no| candidate["Hard-recovery candidate"]
+    finalPolicy -->|no| candidate
+    candidate --> physical{"Candidate physically sendable?"}
+    physical -->|no| stop["413 hard stop<br/>no provider call"]
+    physical -->|yes| grant{"Recovery grant unused?"}
+    grant -->|no| stop
+    grant -->|yes| steer["Record recovery Problem<br/>allow PLAN / FOLD / KILL / SEND<br/>rebuild"]
+    steer --> finalPhysical{"Final packet physically sendable?"}
+    finalPhysical -->|yes| recovery["One constrained<br/>provider call"]
+    finalPhysical -->|no| stop
+```
+
+§grinder-overflow-only **The grinder fires only on actual overflow.** In
+`Engine.runTurn`, after `PacketBuilder.buildRequestPacket` assembles the request
+and before `provider.generate`, it compares the packet's render-weight
+({§tokenomics}) with the policy ceiling. At or under the ceiling, the packet
+ships untouched and the recovery grant clears. The grinder never trims
+speculatively or "helpfully."
 
 - §grinder-layer1-rollback **One rule, every turn: fold only the newest boundary.** The model owns context visibility. The grinder makes no relevance judgment and never reaches backward into older history. On overflow it folds, in one set operation, the still-open rows of the newest turn boundary: the immediately prior turn's emissions and the current turn's pre-model rows (foists and wake surfaces; every current-turn row at grind time is engine-written). Turn 1 follows the same rule: no prior turn exists, so its foists are the newest material. The same atomic set operation additively applies the `overflow` tag to every row it folds, so `OPEN[overflow]` can recall automatic curation through the ordinary log contract. Rows and bodies persist and remain re-OPENable.
 - §grinder-errors-exempt **Errors, the prompt, AND the plan are exempt.** The grinder never folds an `op='error'` row (for example budget overflow or another engine rail): errors are the model's durable, curatable record of what went wrong. Nor does it fold the actionless **user prompt** row (`prompt:///<loop>/<N>`, #382): the task frame is not ordinary model-authored memory. Nor a **PLAN row** (#465): the checklist is the model's orientation surface when the grinder fires. All three stay OPEN until the model itself FOLDs or KILLs them.
-- §grinder-hard-413-recovery **The hard overflow is a recovery turn first.** When the packet remains over the policy ceiling but is still within the provider's physical window, it is sent once with exact `usage`, `ceiling`, and `deficit` measurements from overflow detection. The recovery turn physically admits only `PLAN`, `FOLD`, `KILL`, and `SEND`; every other authored op resolves 409 without executing. Its Problem directs the model to curate context by FOLDing or KILLing irrelevant log items without selecting those items for it. A next fitting turn clears the recovery state, and a later independent overflow can earn a new recovery. A recovery turn that concludes is a legitimate 200. The boundary is exactly 100% of the policy budget; provider decode capacity is reserved separately.
+- §grinder-hard-413-recovery **The hard overflow is a recovery turn first.** When the packet remains over the policy ceiling but the exact final recovery packet is still within the provider's physical window, it is sent once with exact `usage`, `ceiling`, and `deficit` measurements from overflow detection. The recovery turn physically admits only `PLAN`, `FOLD`, `KILL`, and `SEND`; every other authored op resolves 409 without executing. Its Problem directs the model to curate context by FOLDing or KILLing irrelevant log items without selecting those items for it. A next fitting turn clears the recovery state, and a later independent overflow can earn a new recovery. A recovery turn that concludes is a legitimate 200. The boundary is exactly 100% of the policy budget; provider decode capacity is reserved separately. The physical check applies after every row and section in the sent packet exists; #65 tracks the implementation's current pre-recovery-row check.
 - §grinder-hard-413-abort **Hard stop.** A physically unsendable packet, or a second consecutive hard overflow after the constrained recovery turn, abandons the loop at **413 Content Too Large**. Its sibling engine-imposed terminals are HTTP-precise too: `maxTurns` -> 429 and a strike-out -> 500 (508 when cycle-driven). No catch-all 499 and no further passes.
 
 - §tokenomics-fetch-fits-free **A retrieval larger than the available packet room arrives folded.** The result lands in the next build; if that build exceeds the ceiling, the grinder folds the newest boundary, which contains the result. Its row and exact body remain durable and re-OPENable. If the packet still cannot fit, the recovery turn reports exact measurements and the allowed operation set. No ambient packet text prescribes an ordering strategy.
@@ -1795,9 +1845,10 @@ repeated overflow can legitimately reach the strike threshold.
 
 §grinder-overflow-error-row **What the model sees.** The overflow is an exact RFC 9457 Problem on an `op='error'` log row. Its stable type/title state the broken contract; `detail` and numeric extensions report Token Usage, Token Ceiling, and the positive deficit at the labeled `stage: "overflow-detection"` snapshot. When folding recovered the packet, the Problem also states that resolution and directs the model to keep irrelevant items folded or use smaller retrieval ranges; it never claims that no working room remains after the Budget section has measured a fitting rebuild. A hard recovery occurrence instead carries the enforced `allowedOperations` and its generally valid curation instruction. The packet rebuild that adds either Problem can make the neutral Budget section's current usage larger without contradicting the occurrence snapshot. The Problem is minted before the rebuild, so its derived `log:///<coord>` pointer surfaces in the errors section ({§operation-results}) on that turn. The strike counter stays engine-internal.
 
-**Rationale.** The model controls its context; the engine enforces packet physics without choosing what older history matters. The complete deterministic sequence is: *overflow -> fold the newest turn boundary -> strike -> recovery if physically sendable -> still over -> 413.* The same boundary applies on turn 1 and turn 101. The grinder only folds reversibly and never deletes.
-
-**Migration path.** None on mechanism. Speculative or non-overflow trimming is a different feature, deliberately excluded — the grinder fires only in response to actual overflow.
+The model controls its context; the engine enforces packet physics without
+choosing what older history matters. The same boundary applies on turn 1 and
+turn 101. The grinder folds reversibly, never deletes, and never performs
+speculative or non-overflow trimming.
 
 ### §env-delta The environment delta: what changed since the model last looked
 
