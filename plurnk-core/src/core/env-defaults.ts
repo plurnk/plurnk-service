@@ -3,17 +3,10 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import Meta from "@plurnk/plurnk-meta";
 
-// The .env.defaults standard ({§operator-config-env-defaults}, owner design): every package in the
-// daemon's ecosystem — internal or third-party — ships a `.env.defaults` at its package root
-// declaring ITS OWN knobs (prefix = its name), with the file itself as the documentation. The
-// daemon assembles every installed member's file into ONE floor, applied set-if-unset under the
-// operator's env (shell > ~/.plurnk/.env > ./.env > this floor), and renders the assembled
-// catalog to ~/.plurnk/.env.defaults each boot — a machine-owned legend, never read back.
-//
-// ONE physical law, everything else convention: a key claimed by two packages CRASHES boot
-// naming both. With the reader-declares discipline (every knob a package reads appears in its
-// own file) squatting is structurally impossible, and knob-reading code needs no inline
-// fallback — the floor guarantees the value exists.
+// Each package owns its configuration keys and declares them in its package-root `.env.defaults`
+// ({§operator-config-env-defaults}). The daemon assembles those files into the lowest-precedence
+// floor and renders the same sources to ~/.plurnk/.env.defaults as a catalog, never an input.
+// Duplicate ownership fails boot naming both packages.
 //
 // Membership = the `@plurnk/*` scope OR a `plurnk` field in package.json (the same marker the
 // exec/scheme discovery keys on), gated by PLURNK_PLUGINS_TRUSTED_ONLY exactly like

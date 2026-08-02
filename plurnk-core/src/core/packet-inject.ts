@@ -2,11 +2,8 @@ import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 
-// #240 — PLURNK_SERVICE_PACKET_INJECT: an operator markdown file injected as a system-slot section after
-// the teaching (the cached prefix). The operator-side complement to the plugin `transformSections`
-// hook — a pressure valve so "improve the packet" reshapes operator content, not the core. Read
-// PER-TURN (live edits, least surprise); a set-but-unreadable path FAILS HARD (a deliberate setting
-// with a broken path is a misconfig, surfaced not hidden). Unset/empty → no section.
+// {§inject} Operator packet injection is read per turn. An explicit unreadable path fails;
+// unset or empty configuration contributes no section.
 export const resolveInjectPath = (raw: string): string =>
     raw.startsWith("~/") ? join(homedir(), raw.slice(2)) : raw;
 
@@ -16,10 +13,9 @@ export const readPacketInject = async (): Promise<string | null> => {
     return readFile(resolveInjectPath(raw), "utf8");
 };
 
-// Policy sections (## Plurnk Service Policy / ## Project Policy) — the client's foot in the privileged
-// system zone, distinct from the freeform PLURNK_SERVICE_PACKET_INJECT. A DEFAULT path that's absent is fine
-// (no section); an EXPLICIT env override that can't be read FAILS HARD (a deliberate-but-broken
-// setting is a misconfig). Read per-turn for live edits.
+// {§policy-sections} ## Policy and ## Project Policy occupy the privileged system zone,
+// distinct from freeform packet injection. A missing default contributes no section; an explicit
+// unreadable override fails. Both are read per turn.
 const readPolicy = async (path: string, explicit: boolean): Promise<string | null> => {
     try { return (await readFile(path, "utf8")).trim() || null; }
     catch (err) { if (explicit) throw err; return null; }

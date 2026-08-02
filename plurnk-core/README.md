@@ -7,9 +7,14 @@ operation dispatch. Its client surface is AG-UI over HTTP/SSE through
 
 ## What an agent can do
 
-Grammar ops: `PLAN` goals · `READ`/`EDIT` files · `FIND` search · `EXEC` run shell/code · `SEND` message or conclude · `COPY`/`MOVE`/`KILL` manage · `OPEN`/`FOLD` curate its own context.
+The exact model-facing language and operation set are owned by
+[`plurnk.md`](https://github.com/plurnk/plurnk-service/blob/main/plurnk-contracts/plurnk.md). In brief, an agent can:
 
-Over schemes: `file://` project files · `exec://` command output · `http(s)://` web fetch · `worker://` scratch + sibling workers (commons/own-space/spawn/fork/message) · `prompt://` the task frame · `skill://` bundled reference · `log://` own history.
+- inspect and modify admitted project files and durable worker entries;
+- search lexical, structural, graph, and embedding-derived indexes;
+- run registered executors and observe their runtime-named streams;
+- delegate to workers, communicate, and collect their results; and
+- curate its addressable log with tagged `FOLD`, `OPEN`, and `KILL` operations.
 
 ## Lifecycle model
 
@@ -25,10 +30,11 @@ a second client transport.
 
 ```
 npm install -g @plurnk/plurnk-service
-plurnk-service start      # daemon (`migrate` initializes the DB)
+plurnk-service migrate    # apply the disposable version-1 schema baseline
+plurnk-service start      # daemon
 ```
 
-Config + state live in `~/.plurnk/` (created on first start): put your config in `~/.plurnk/.env` (yours, seeded once); the DB defaults to `~/.plurnk/plurnk.db`. Provider-agnostic — point `PLURNK_MODEL` at any vendor. **[`INSTALL.md`](./INSTALL.md) is the config guide** — the cascade, the prefix taxonomy, the coupling matrix, and profiles for common deployments; `.env.defaults` is the terse machine floor it breaks down (per-package, assembled at boot). Also exports `{ Engine, Daemon, SchemeRegistry }` for in-process embedding.
+Config + state live in `~/.plurnk/` (created on first start): put your config in `~/.plurnk/.env` (yours, seeded once); the DB defaults to `~/.plurnk/plurnk.db`. Declare a provider/model as `PLURNK_MODEL_<alias>=<provider>/<model-id>`, then select that alias with `PLURNK_MODEL=<alias>`. **[`INSTALL.md`](./INSTALL.md) is the config guide** — the cascade, prefix ownership, coupled settings, and profiles; each installed package's `.env.defaults` supplies its exact machine floor. Also exports `{ Engine, Daemon, SchemeRegistry }` for in-process embedding.
 
 ## Contract & siblings
 
@@ -40,11 +46,11 @@ Config + state live in `~/.plurnk/` (created on first start): put your config in
 
 ## Semantic search
 
-`FIND`'s `~query` ranks semantically via an optional embedder peer, `@plurnk/plurnk-mimetypes-embeddings` (heavy native deps; not installed by default). Absent → `~query` falls back to FTS keyword ranking and `start` prints an `embedder inactive` notice. Enable vector search: `npm i @plurnk/plurnk-mimetypes-embeddings`.
+The default service installation includes `@plurnk/plurnk-mimetypes-embeddings`, so `FIND`'s `~query` uses embedding cosine ranking without a separate package install. An explicitly disabled or unavailable embedder falls back to FTS keyword ranking and produces an `embedder inactive` startup notice. A remote OpenAI-compatible embedder can replace the included local path; see [`INSTALL.md`](./INSTALL.md).
 
 ## The file sandbox
 
-Plurnk sees what git sees. The model's file surface is defined by three external grantors — your explicit client adds, your git's own inclusion rules (tracked plus untracked-not-ignored, minus ignored), and the AGENTS.md policy knob — and by nothing else: a file inside the project that none of these admit does not exist for the model, and your gitignored secrets can be neither read nor overwritten. Writes are narrower still: create-only inside the project (and only where the result will be visible), proposal-gated edits on members, read-only beyond the root unless you explicitly grant otherwise. The shell (EXEC) deliberately reaches beyond this sandbox — gate it accordingly; it is your machine's perimeter, not the grammar's. Details: SPEC {§scheme-address} ({§fs-namespace} through {§fs-world-state}).
+Plurnk sees what Git or the client explicitly admits. The AGENTS.md policy path is injected separately as privileged policy, not as a file entry. A project file admitted by neither Git nor the client does not exist to the model, and an ignored secret can be neither read nor overwritten. New files can be created only inside the project and only where the result will remain visible; member edits are proposal-gated; an outside-root member is read-only unless the client explicitly granted it. `EXEC` deliberately reaches beyond this file sandbox, so its proposal policy is the machine perimeter. Details: SPEC {§scheme-address} ({§fs-namespace} through {§fs-world-state}).
 
 ## Tests
 

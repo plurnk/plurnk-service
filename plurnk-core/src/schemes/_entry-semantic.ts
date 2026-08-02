@@ -196,12 +196,10 @@ export default class EntrySemantic {
     }
 
     // The embedder capability surface (plugin window + tokenizer + model id), probed
-    // through the Mimetypes handle. null until an embedder is installed.
+    // through the Mimetypes handle. null means semantic derivation is unavailable.
     static async #embedderInfo(mimetypes: Mimetypes): Promise<EmbedderInfo | null> {
-        // PLURNK_SERVICE_EMBED_DISABLE=1 forces the no-embedder path even when the optional embeddings package
-        // IS installed — the whole semantic stack (deriveEmbeddings, exhaustive ~query cosine rank, the
-        // deep_hash config) funnels through here, so one gate makes everything FTS-only. The fast lane
-        // (mock-provider tests) sets it so the suite doesn't spin up the MiniLM worker pool for nothing.
+        // PLURNK_SERVICE_EMBED_DISABLE=1 forces the no-embedder path even though the default service
+        // includes one. The semantic stack funnels through this gate, so disabling it is wholly FTS-only.
         if (process.env.PLURNK_SERVICE_EMBED_DISABLE === "1") return null;
         return await mimetypes.embedderInfo();
     }

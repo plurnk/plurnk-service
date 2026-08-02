@@ -1,10 +1,5 @@
-// {§operator-config-shipped-defaults} — the shipped .env.defaults is ITSELF under test. Every other
-// tier overlays either the committed Mock fixture or the real-model profile, which makes shipped-
-// default regressions structurally invisible to it: the POLICY.md
-// double-injection (a stale PLURNK_SERVICE_MD_POLICY default alongside the policy section) and the
-// silently-commented PLURNK_PROVIDERS_GBNF both shipped through fully-green tiers. This file
-// asserts the template's contract directly, then builds one packet UNDER the shipped policy
-// wiring and proves the policy renders exactly once.
+// {§operator-config-shipped-defaults} The shipped floor is a direct test subject because other
+// test tiers overlay it. The composed check also proves the seeded policy has one packet owner.
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -21,7 +16,7 @@ const shippedEnv = async (): Promise<Map<string, string>> => {
     const raw = await readFile(new URL("../../.env.defaults", import.meta.url), "utf8");
     const env = new Map<string, string>();
     for (const line of raw.split("\n")) {
-        const m = /^([A-Z_][A-Za-z0-9_]*)=(.*)$/.exec(line);  // alias suffixes are lowercase (PLURNK_PROVIDERS_GBNF_<alias>)
+        const m = /^([A-Z_][A-Za-z0-9_]*)=(.*)$/.exec(line);  // configured alias suffixes may be lowercase
         if (m) env.set(m[1], m[2].replace(/^"|"$/g, ""));
     }
     return env;
@@ -29,9 +24,7 @@ const shippedEnv = async (): Promise<Map<string, string>> => {
 
 test("the template ships no double policy, no active model, ONLY service-owned knobs", async () => {
     const env = await shippedEnv();
-    // The operating policy is a packet SECTION (readSystemPolicy) — a PLURNK_SERVICE_MD_* default pointing
-    // at the same file injects it twice (once as ## Plurnk Service Policy, once as a foisted
-    // plurnk:///<ALIAS>.md READ). The template must ship NO active doc aliases.
+    // Policy is a privileged section; shipping the same content as an MD entry would duplicate it.
     const mdKeys = [...env.keys()].filter((k) => k.startsWith("PLURNK_SERVICE_MD_"));
     assert.deepEqual(mdKeys, [], `no active PLURNK_SERVICE_MD_* doc default ships; got ${mdKeys.join(", ")}`);
     // No active model — the local/cloud/plurnk.ai selection is the user's (#307).
@@ -96,7 +89,7 @@ test("under the shipped policy wiring, the personality renders in the packet exa
         );
         // And the turn-0 foists contain no POLICY doc READ — the doc path is retired for the policy.
         const rows = await db.test_log_sequencees_by_turn.all<{ op: string; pathname: string | null }>({ turn_id: result.turnId });
-        assert.ok(!rows.some((r) => r.op === "READ" && (r.pathname ?? "").includes("POLICY")), "no foisted plurnk:///POLICY.md READ");
+        assert.ok(!rows.some((r) => r.op === "READ" && (r.pathname ?? "").includes("POLICY")), "no foisted worker://plurnk/POLICY.md READ");
     } finally {
         if (prevPolicy === undefined) delete process.env.PLURNK_SERVICE_POLICY; else process.env.PLURNK_SERVICE_POLICY = prevPolicy;
         if (prevMd !== undefined) process.env.PLURNK_SERVICE_MD_POLICY = prevMd;

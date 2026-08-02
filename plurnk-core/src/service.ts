@@ -62,9 +62,8 @@ export default class Service {
             "# PLURNK_MODEL=plurnk",
             "",
         ].join("\n"));
-        // Seed the default operating policy → ~/.plurnk/AGENTS.md, foisted as ## Plurnk Service Policy
-        // (readSystemPolicy). A new install opens with a sane disposition, not a blank policy; the user
-        // owns + edits it after — a deleted policy stays deleted, like the .env floor.
+        // Seed the default operating policy rendered as ## Policy. The user owns the seeded file;
+        // later edits or deletion persist.
         const shippedPolicy = Paths.personality; // the docs corpus ships the default policy
         if (existsSync(shippedPolicy)) copyFileSync(shippedPolicy, resolve(Service.#homeDir, "AGENTS.md"));
         process.stderr.write(`plurnk-service: created ${Service.#homeDir} — config in ${resolve(Service.#homeDir, ".env")}\n`);
@@ -113,7 +112,7 @@ export default class Service {
     // node-style env-file flags: --env-file=<path> (required) / --env-file-if-exists=<path>
     // (skip if missing), repeatable, in command-line order. node only loads pre-script files;
     // a published `plurnk-service --env-file=…` needs this post-script loader.
-    // PRECEDENCE CAUTION (#501): this post-script cascade is FIRST-wins (highest-priority file
+    // PRECEDENCE CAUTION (#84): this post-script cascade is FIRST-wins (highest-priority file
     // first); node's own pre-script parsing of the same flags is LAST-wins. The same flag
     // obeys opposite precedence depending on argv position relative to the script path.
     static #envFileArgs(): Array<{ path: string; required: boolean }> {
@@ -233,7 +232,7 @@ export default class Service {
             // self-report returns info with the unknowns explicitly null — say which case this is).
             const embedInfo = await daemon.mimetypes.embedderInfo();
             if (embedInfo === null) {
-                process.stderr.write("plurnk-service: embedder inactive — semantic ~query falls back to FTS keyword ranking. Install @plurnk/plurnk-mimetypes-embeddings for vector search, or see README.md#semantic-search\n");
+                process.stderr.write("plurnk-service: embedder inactive — semantic ~query falls back to FTS keyword ranking. Check PLURNK_SERVICE_EMBED_DISABLE or configure PLURNK_MIMETYPES_EMBED_BASE_URL; see README.md#semantic-search\n");
             } else if (embedInfo.contextWindow === null) {
                 process.stderr.write("plurnk-service: remote embedder active but reports no input context window — set PLURNK_MIMETYPES_EMBED_CONTEXT_WINDOW to the endpoint's limit or embedding derivations will refuse\n");
             }
