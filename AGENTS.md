@@ -81,11 +81,12 @@ root overrides.
 - Tests enforce externally meaningful invariants through their names,
   assertions, fixtures, and failure messages. Test comments reference the
   owning specification instead of becoming a second specification.
-- Prefer tables for exact mappings and comparisons, and compact Mermaid
-  diagrams in `SPEC.md` for flows, state transitions, ownership, and
-  composition, when they communicate the settled contract more clearly than
-  prose. Retain only the precise normative prose that the table or diagram
-  cannot express.
+- Choose documentation form in this order: use a compact Mermaid diagram when
+  the material is naturally a flow, state transition, ownership relationship,
+  or composition; otherwise use a table when it is naturally an exact mapping
+  or comparison; otherwise use an itemized list when it is naturally a set of
+  distinct items; use prose only when none of those forms fits. Retain only the
+  precise normative prose that the chosen form cannot express.
 - When repository teaching conflicts with observed behavior or an owner ruling,
   stop consequential implementation. Record the contradiction in the owning
   issue, settle it, update the tagged specification, then update implementation
