@@ -4,3 +4,4 @@ preserved-runs/
 *.tsbuildinfo
 .env
 .env.test
+!/plurnk-core/.env.test

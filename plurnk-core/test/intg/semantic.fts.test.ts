@@ -13,7 +13,7 @@ import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import { openMigrated, insertWorkspace, insertWorker, makeSchemeCtx } from "./_helpers.ts";
 
 // Despite the name, this suite includes chunked-embedding e2e cases that assert REAL vector ranking —
-// re-enable the embedder the fast lane turns off (.env.test PLURNK_SERVICE_EMBED_DISABLE=1); per-file isolation.
+// re-enable the embedder the Mock bootstrap turns off; per-file isolation.
 process.env.PLURNK_SERVICE_EMBED_DISABLE = "0";
 
 const url = (pathname: string): UrlPath => ({

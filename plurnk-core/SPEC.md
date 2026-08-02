@@ -1175,6 +1175,18 @@ Every knob listed is enforced — the engine reads and acts on it; `.env.default
 
 **The shipped `.env.defaults` is itself under test** (no active `PLURNK_SERVICE_MD_*` doc alias — the policy is a SECTION, a doc default double-injects it; no active `PLURNK_MODEL`; no active local GBNF constraint; the policy renders in exactly one packet section): every other tier runs the test cascade, so shipped-default regressions are invisible to it by construction. {§operator-config-shipped-defaults} Its companion **flag-parity** check binds code and template both ways: every `PLURNK_SERVICE_*` the service reads has a `.env.defaults` line (a floor, a `--flag`, a legend entry) and every declared `PLURNK_SERVICE_*` is read — so a half-landed rename (a missed file, a script-glob gap) fails a test instead of a user's boot, and a dead knob can't ship. {§operator-config-flag-parity}
 
+**Real-model gate profile.** {§operator-config-real-model-profile} `plurnk-core/.env.test` is committed source and is the single shared profile for live, demo, and the candidate daemon used by benchlets. Live/demo load it after operator files; the candidate daemon loads it below its inherited environment. Direct shell/benchmark overrides win in both paths. Its exact allowlist is limited to gate-wide service posture: semantic search enabled, complete catalog orientation, automatic Git membership when the operator ceiling permits Git, and ambient operator-file docs/packet notes cleared. Configuration with a narrower or variable owner stays outside it:
+
+| Owner | Configuration |
+|---|---|
+| `.env.test` | Universal real-model gate posture only; no aliases, routes, secrets, model tuning, or cost/sandbox ceilings. |
+| Live/demo scripts | The repository personality path and runner topology. |
+| Benchlets | Their snapshotted policy, workspace restrictions, and task-specific exceptions; direct env wins over the profile. |
+| Operator env/shell | Model selection, provider capability such as GBNF, endpoints, credentials, tuning, and deliberate ceiling overrides. |
+| `test/setup.ts` | Mock-only alias, envelope, resource, storage, and isolation fixtures; unit/integration never consume the real-model profile. |
+
+The profile does not repeat `NODE_OPTIONS`: runner selection belongs to the invoking command, and a process-global Node option would leak into the daemon and its children. Hard ceilings such as max turns, max commands, and Git denial remain operator-owned; harnesses bound paid experiments through their per-call contract and never widen a configured ceiling here.
+
 Enforcement is per-use-site — no central most-restrictive pass; each ceiling is checked where it bites. `PLURNK_SERVICE_MAX_TURNS` ships **off** (`-1` = no cap; the loop ends via SEND, budget, strikes, or cycle detection) and, when an operator sets a positive value, the per-call request is `min()`-capped against it. {§operator-config-max-turns-ceiling}
 
 **Client open-context (per workspace).** `workspace.create({settings})` carries per-workspace overrides, persisted on `workspaces.settings` and composed against env at each knob's read-site. Two families, kept distinct so neither semantic leaks into the other; operator-arcane knobs stay env-only — this is the narrow client surface.

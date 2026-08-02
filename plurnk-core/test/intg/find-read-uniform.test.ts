@@ -19,7 +19,7 @@ import type { Db } from "../../src/core/Db.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, makeSchemeCtx } from "./_helpers.ts";
 
 // A ~semantic READ-honors-FIND case (#286) asserts REAL vector ranking — re-enable the embedder the
-// fast lane turns off (.env.test PLURNK_SERVICE_EMBED_DISABLE=1); --test-isolation scopes this to this file.
+// Mock bootstrap turns off; --test-isolation scopes this to this file.
 process.env.PLURNK_SERVICE_EMBED_DISABLE = "0";
 
 const parseOp = <T extends PlurnkStatement>(dsl: string, op: T["op"]): T => {

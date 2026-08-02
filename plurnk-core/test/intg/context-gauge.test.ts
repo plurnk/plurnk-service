@@ -115,7 +115,7 @@ test("loopUsage does not reuse an earlier turn's context when the latest provide
 });
 
 test("[#274] runTurn stores the PROMPT BUDGET, not the raw window — the client gauge never overstates room", async () => {
-    // .env.test partition: REASONING=256 COMPLETION=1024 SAFETY=64. A 8192-window model's stored
+    // Mock-bootstrap partition: REASONING=256 COMPLETION=1024 SAFETY=64. A 8192-window model's stored
     // denominator = 8192 - 1344 = 6848 — the room the packet actually lives under.
     const db = await openMigrated();
     try {

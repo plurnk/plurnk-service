@@ -4,11 +4,11 @@
 // exercise the budget grinder and overflow paths. That is a TEST-FIXTURE concern, NOT a model
 // config: it needs small reserves so a fake 8192 window has prompt room, and it must be identical
 // on every checkout. So it lives here — committed and authoritative (an --import module runs AFTER
-// --env-file, so it wins) — never in .env.test (operator-local, and it would collide with the real
-// model's own reserves) and never hardcoded per-tier in package.json.
+// --env-file, so it wins) — never in the real-model .env.test profile (it would collide with the
+// selected model's own reserves) and never hardcoded per-tier in package.json.
 //
 // The REAL models (turboderp, gbuild) carry their ONE real config as PLURNK_*_<alias> knobs in
-// .env; the live/demo tiers select one via PLURNK_MODEL in .env.test and pivot casually. This
+// operator env or the shell; the committed .env.test deliberately contains no model selection. This
 // bootstrap is the Mock tier's parallel: a fake `mocktest` alias (Mocks are injected, so it's never
 // dialed) with fixture-scaled reserves that no real model ever sees.
 const fixture = {

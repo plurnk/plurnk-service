@@ -1,6 +1,7 @@
 import { spawn, spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { candidateDaemonArgs } from "./candidate-daemon.mjs";
 import { resolveCandidateModel } from "./candidate-model.mjs";
 import { parseCandidateClientEnv } from "./candidate-env.mjs";
 
@@ -34,7 +35,7 @@ if (process.env.PLURNK_CANDIDATE_SKIP_BUILD !== "1") {
 
 const daemon = spawn(
     process.execPath,
-    [resolve(root, "plurnk-core", "dist", "service.js"), "start"],
+    candidateDaemonArgs(root),
     {
         cwd: root,
         env: {

@@ -1,6 +1,6 @@
 // §operator-config-shipped-defaults — the shipped .env.defaults is ITSELF under test. Every other
-// tier runs the TEST cascade (.env.test deliberately blanks the policy surfaces, pins its own
-// knobs), which means shipped-default regressions are structurally invisible to it: the POLICY.md
+// tier overlays either the committed Mock fixture or the real-model profile, which makes shipped-
+// default regressions structurally invisible to it: the POLICY.md
 // double-injection (a stale PLURNK_SERVICE_MD_POLICY default alongside the policy section) and the
 // silently-commented PLURNK_PROVIDERS_GBNF both shipped through fully-green tiers. This file
 // asserts the template's contract directly, then builds one packet UNDER the shipped policy
