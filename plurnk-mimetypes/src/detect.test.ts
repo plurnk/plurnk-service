@@ -1,4 +1,4 @@
-// Coverage: SPEC §8 (detection priority).
+// Contract: {§mimetype-detection}.
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { detect, emptyRegistry } from "./detect.ts";

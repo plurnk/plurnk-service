@@ -1,16 +1,4 @@
-// Coverage: SPEC §19 (tokenizer seam).
-// Issue #44 (providers agent): the tokenizer seam — exact LLM token counting
-// on the embeddings pattern. Mimetypes.tokenizer(modelRef) resolves through the
-// opt-in @plurnk/plurnk-mimetypes-tokenizers artifact:
-//
-//   T1. bundled match → exact:true, artifact's countTokens + vocab-sha id.
-//   T2. package missing → chars/2 upper bound, exact:false, tokenizer_unavailable
-//       warn naming the model + plurnkPackage install hint. Never silent.
-//   T3. package present but no bundled match → same degrade, no install hint.
-//   T4. strict throws instead of degrading (both flavors).
-//   T5. present-but-broken artifact rethrows (never downgraded to "absent" —
-//       the Embeddings loader lesson).
-//   T6. artifact loads once per orchestrator lifetime (primed-promise cache).
+// Contract: {§mimetype-tokenizer}. Issue #44 is provenance.
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
@@ -80,7 +68,7 @@ describe("Issue #44 — T1: bundled match resolves exact", () => {
 });
 
 describe("Issue #44 — T2: missing package degrades honestly", () => {
-    it("chars/2 upper bound + tokenizer_unavailable warn with install hint", async () => {
+    it("chars/2 estimate + tokenizer_unavailable warn with install hint", async () => {
         const { m } = mk(null);
         const r = await m.tokenizer("gemma-4-26b");
         assert.equal(r.exact, false);
@@ -94,6 +82,8 @@ describe("Issue #44 — T2: missing package degrades honestly", () => {
         assert.equal(ev.source, "tokenizer");
         assert.equal(ev.model, "gemma-4-26b");
         assert.equal(ev.plurnkPackage, TOK_PKG);
+        assert.match(String(ev.message), /degraded chars\/2 estimate/);
+        assert.doesNotMatch(String(ev.message), /upper bound/);
     });
 });
 

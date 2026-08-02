@@ -64,10 +64,8 @@ export {
 } from "./QueryError.ts";
 export { GrammarNotInstalledError } from "./treesitter/handler.ts";
 
-// References-channel engine primitives (issue #19 / #23 boundary). Exported
-// so Tier 2 handler packages (terraform, dockerfile, …) implement
-// references() with the same capture conventions and container resolution
-// the in-registry languages use — queries stay data, the engine stays one.
+// Shared references engine for dedicated handler packages
+// ({§mimetype-references}).
 export { collectReferences } from "./treesitter/refsEngine.ts";
 export type { RefsCaptureNode, RefsQuery, RefsQueryCapture } from "./treesitter/refsEngine.ts";
 export type {
@@ -77,21 +75,17 @@ export type {
     NoticeLevel,
 } from "./Notice.ts";
 
-// Per-mimetype classification authority (SPEC §20, #43) — the pure taxonomy
-// heuristic; Mimetypes.classify() is the registry-aware form.
+// Registry-free half of {§mimetype-classification}.
 export { classifyMimetype } from "./classify.ts";
 export type { MimeClassification } from "./classify.ts";
 
-// Search-index exclusion (SPEC §21, #47) — the
-// PLURNK_MIMETYPES_SEARCH_EXCLUDE matcher, also surfaced as ProcessResult.searchExcluded.
+// Current path matcher ({§mimetype-search-exclusion}); #91 owns consolidation.
 export { matchSearchExclusion } from "./searchExcluded.ts";
 
-// Embedder seam types (SPEC §17, #50/#51) — the contract front door; consumers
-// import EmbedderInfo instead of projecting it off the method signature.
+// Public embedding seam types ({§mimetype-embedding}).
 export type { EmbedderInfo, EmbedProgress, EmbedBatchOptions } from "./Embeddings.ts";
 
-// Tokenizer seam (SPEC §19, #44) — exact LLM token counting via the opt-in
-// @plurnk/plurnk-mimetypes-tokenizers artifact package.
+// Public tokenizer seam type ({§mimetype-tokenizer}).
 export type { TokenizerResolution } from "./Tokenizers.ts";
 
 // Grammar compilation utilities (for handler authors building their own pipeline)

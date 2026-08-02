@@ -1,57 +1,66 @@
 # @plurnk/plurnk-mimetypes — Specification
 
-This document defines the duck contract, pipeline, data shapes, and policies that the framework owns. Per-mimetype handler repos consume this spec; plurnk-service consumes the pipeline.
+This document defines the handler contract, pipeline, data shapes, and policies
+owned by the framework. Handler packages implement it; plurnk-service consumes
+the composed projection service.
 
 TypeScript exports define the executable API. This document defines the
 behavioral contract for handler authors and consumers.
 
 ---
 
-## 1. Duck contract
+## §mimetype-handler-contract 1. Handler contract
 
-A handler is any class instance whose shape matches:
+The exported `BaseHandler`, `HandlerContent`, `HandlerMetadata`, and channel
+types own the executable TypeScript surface. Handler packages normally extend
+`BaseHandler`, `TreeSitterExtractor`, or `AntlrExtractor` and override only the
+behavior their content algebra supports.
 
-```ts
-type HandlerContent = string | Uint8Array;
+| Surface                   | Default                                         | Handler responsibility                                                        |
+|---------------------------|-------------------------------------------------|-------------------------------------------------------------------------------|
+| `extractRaw(content)`     | `[]`                                            | Emit structured definitions for the `symbols` channel.                        |
+| `deepJson(content)`       | `null`                                          | Emit the algebra's faithful structural value for JSONPath.                    |
+| `deepXml(content)`        | Project `deepJson`, then the symbol outline.    | Override only when native markup is more faithful.                            |
+| `references(content)`     | `[]`                                            | Emit classified symbol uses, never definitions.                               |
+| `content(content)`        | `undefined`                                     | Emit readable text only when it differs from the raw body.                    |
+| `validate(content)`       | No-op                                           | Reject content only when the mimetype has a meaningful validity check.        |
+| `query(...)`              | Text and structural dialect dispatch.           | Override when native parsing can provide more faithful evidence.              |
+| `symbolsRaw(content)`     | `format(await extractRaw(content))`             | Human/diagnostic outline; not a model-facing projection channel.              |
+| `toText(content)`         | String passthrough; binary content unsupported. | Supply readable text for binary regex/glob matching and embedding when valid. |
 
-interface Handler {
-    readonly mimetype: string;
-    readonly glyph: string;
-    readonly extensions: readonly string[];
-    validate(content: HandlerContent): void | Promise<void>;
-    // Structural channels (§12): extractRaw feeds the symbols channel
-    // (definitions); deepJson/deepXml are the jsonpath/xpath query targets;
-    // references carries classified symbol uses (§16). Default deepXml =
-    // projectJsonToXml(deepJson) — handlers never write XML serialization.
-    extractRaw(content: HandlerContent): MimeSymbol[] | Promise<MimeSymbol[]>;
-    deepJson(content: HandlerContent): unknown | Promise<unknown>;
-    deepXml(content: HandlerContent): Promise<string>;
-    references(content: HandlerContent): MimeRef[] | Promise<MimeRef[]>;
-    // Model-facing readable text (§18). Default undefined; only handlers that
-    // transform an already-textual-but-noisy body override it (text/html →
-    // markdown).
-    content(content: HandlerContent): string | undefined | Promise<string | undefined>;
-    // Body-matcher dispatch (§11). Default implementation on BaseHandler.
-    query(content: HandlerContent, dialect: QueryDialect, pattern: string, flags?: string): Promise<QueryMatch[]>;
-    // Rendered outline — format(extractRaw). Diagnostic / human surface.
-    symbolsRaw(content: HandlerContent): Promise<string>;
-}
+§mimetype-handler-authority The handler owns the material in each projection.
+The framework owns detection, handler routing, channel selection, the default
+JSON-to-XML projection, and shared references/query engines. Consumers own
+storage, packet rendering, and token budgets.
+
+§mimetype-handler-content A package-level `plurnk.binary: true` declaration
+selects `Uint8Array` rather than UTF-8 decoding when the framework reads a
+filesystem path. Text handlers otherwise receive a `string`. Inline callers
+supply `ProcessInput.content` in the declared shape; the framework does not
+coerce an explicitly supplied value.
+
+Handler identity (`mimetype`, `glyph`, and `extensions`) is injected from the
+discovered package declaration at construction.
+
+### §mimetype-lifecycle 1.1 Orchestrator lifecycle
+
+```mermaid
+flowchart LR
+    N["new Mimetypes()"] --> R["ready(): one shared discovery"]
+    R --> H["process/query/classify: lazy handler cache"]
+    R --> A["embedding/tokenizer calls: lazy artifact caches"]
+    H --> D["dispose()"]
+    A --> D
+    D --> X["artifact teardown + handler cache cleared"]
+    X --> H
+    X --> A
 ```
 
-**Authority split.** The handler is the sole authority on each channel's material; the framework owns channel selection (§5), routing, the default deep-xml projection, and the references query-file engine (§16). There is no token budget anywhere in the framework — budgeting, rendering, and tokenization are consumer concerns.
-
-**Content shape.** Text mimetypes receive `string` (utf-8 decoded). Binary mimetypes (PDF, images, archives) receive `Uint8Array`. Handlers signal which they expect via `plurnk.binary: true` at the top of the package's `plurnk` block — applies to all handler entries in the package. The framework reads files (or routes inline content) to the appropriate shape per handler.
-
-**Outline rendering.** `symbolsRaw` (= `format(await extractRaw(content))`) renders the structured symbols as an indented outline for humans and diagnostics. It is not budgeted and not part of the consumer pipeline — `Mimetypes.process` returns the structured `MimeSymbol[]` directly.
-
-In practice handlers extend `BaseHandler` (or `TreeSitterExtractor` / `AntlrExtractor`) and override the channels their algebra supports:
-
-- **Structured handlers** (JSON, YAML, TOML, CSV, source code) implement `extractRaw` and `deepJson`.
-- **Markup handlers** (HTML, XML) additionally override `deepXml` and/or `query` to serve real source markup for xpath.
-- **Flat handlers** (`text/plain`, `text/stream`) override nothing - empty symbols and null deepJson are the honest channels for unstructured content; such entries contribute `totalLines` metadata only.
-- **Binary handlers** (PDF) override `toText` for regex/glob query support and `content` when they provide model-readable text.
-
-Identity (`mimetype`, `glyph`, `extensions`) is injected at construction time from the handler's `package.json` `plurnk` block.
+Every discovery-dependent public method awaits `ready()` internally, and
+concurrent first calls share the same discovery promise. `dispose()` is
+idempotent: it releases the embedding/tokenizer seams and drops handler
+instances while retaining discovery. A disposed orchestrator may be used again;
+handlers and artifacts then resolve lazily.
 
 ## 2. `package.json` `plurnk` discovery block
 
@@ -82,22 +91,44 @@ Multi-handler example (one package serving variants of the same content type):
 }
 ```
 
-| Field | Type | Required | Notes |
-|---|---|---|---|
-| `kind` | `"mimetype"` | yes | Distinguishes mimetype handlers from `"provider"` and `"scheme"` siblings in the plurnk family |
-| `binary` | boolean | no | `true` if all handlers in the package consume `Uint8Array` content. Default `false` (utf-8 string). |
-| `attribution` | string \| string[] | no | Opaque creator tags normalized to non-empty strings and surfaced on each discovered handler's `HandlerInfo.attribution`. The family does not interpret or claim use of them; host attribution policy is outside this contract (#81). Absent for framework tree-sitter entries. |
-| `handlers` | HandlerDecl[] | yes | One or more handler entries (canonical shape) |
+| Field         | Type               | Required | Contract                                                                                                                                                 |
+|---------------|--------------------|----------|----------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `kind`        | `"mimetype"`       | yes      | Selects this plugin family ({§plugin-family-kind}).                                                                                                      |
+| `binary`      | boolean            | no       | `true` when every handler entry consumes `Uint8Array`; default `false`.                                                                                  |
+| `attribution` | string \| string[] | no       | Normalized non-empty creator tags on each package-sourced `HandlerInfo`; the family does not interpret them and framework tree-sitter entries omit them. |
+| `handlers`    | `HandlerDecl[]`    | yes      | One or more peer handler entries.                                                                                                                        |
 
 `HandlerDecl`:
 
-| Field | Type | Required | Notes |
-|---|---|---|---|
-| `name` | string | yes | The mimetype this entry registers (`text/markdown`, `application/json`, …) |
-| `glyph` | string | no | Display marker; defaults to empty string |
-| `extensions` | string[] | no | Mixed list: entries beginning with `.` are file extensions (lowercased on match); other entries are special filenames matched verbatim (`Dockerfile`, `Makefile`) |
+| Field        | Type     | Required | Contract                                                                                                        |
+|--------------|----------|----------|-----------------------------------------------------------------------------------------------------------------|
+| `name`       | string   | yes      | Mimetype registered by this entry (`text/markdown`, `application/json`, …).                                     |
+| `glyph`      | string   | no       | Display marker; defaults to an empty string.                                                                    |
+| `extensions` | string[] | no       | Dotted entries are case-insensitive extensions; bare entries are case-sensitive filenames such as `Dockerfile`. |
 
-§mimetype-discovery `discover()` scans **all of `node_modules`** — unscoped packages and every `@scope/*` — for the exact string `plurnk.kind === "mimetype"` ({§plugin-family-kind}), so third-party and first-party declarations share one discovery path. It applies the shared trust predicate before any handler import and returns `{ registry, handlers, skipped }`; the composed host presents the skipped-package evidence ({§plugin-trust-boundary}). Last-loaded declarations win mimetype/extension conflicts. The default enumeration orders `@plurnk` packages last; an explicit `packageDirs` list retains caller order. A framework tree-sitter entry is omitted when a package claimed its mimetype; otherwise its extensions fill only unclaimed registry keys.
+§mimetype-discovery `discover()` uses one scope-agnostic, trust-gated path for
+first- and third-party packages:
+
+```mermaid
+flowchart TD
+    I{"packageDirs supplied?"}
+    I -->|yes| E["caller order"]
+    I -->|no| N["enumerate all node_modules packages"]
+    N --> O["third-party sorted, then @plurnk sorted"]
+    E --> M["read plurnk.kind + handlers"]
+    O --> M
+    M --> K{"valid mimetype declaration?"}
+    K -->|no| Z["ignore package"]
+    K -->|yes| T{"trusted?"}
+    T -->|no| S["record package in skipped"]
+    T -->|yes| G["register entries; later claims win"]
+    G --> B["add unclaimed tree-sitter entries/keys"]
+```
+
+The trust predicate runs before handler code import and withheld package names
+remain observable in `skipped` ({§plugin-trust-boundary}). A package claim for a
+tree-sitter mimetype suppresses that built-in entry; otherwise the built-in
+entry fills only unclaimed extension/filename keys.
 
 ### 2.1 Mimetype naming convention
 
@@ -125,7 +156,7 @@ The family follows a single resolution order. Authors of new handlers MUST consu
 **Do not:**
 - Use `text/{lang}` without the `x-` prefix unless the format is IANA-registered (`text/markdown`, `text/csv`, `text/javascript` are fine — they're registered; `text/python` is not registered, so use `text/x-python`).
 - Append `-sql`, `-cli`, `-script`, etc. to differentiate dialects. The bare dialect name is the convention: `text/x-sqlite`, `text/x-pgsql`, `text/x-redis` — not `text/x-sqlite-sql`, `text/x-redis-cli`.
-- Keep pre-IANA-registration legacy names as aliases. When IANA registers a name, drop the legacy `x-` form on the next minor bump.
+- Retain a superseded pre-registration alias past the next semver-major boundary.
 
 **SQL dialect summary:** `text/x-sqlite`, `text/x-pgsql`, `text/x-mysql` (covers MariaDB-compat too), `text/x-tsql`, `text/x-plsql`. Generic / dialect-agnostic SQL is IANA's `application/sql` (RFC 6922) — reserved for cases where the dialect truly isn't known.
 
@@ -133,28 +164,21 @@ The family follows a single resolution order. Authors of new handlers MUST consu
 
 **Handler instantiation for multi-handler packages.** Each registered name produces its own handler instance with its own metadata. Handlers may branch behavior on `this.mimetype` — e.g., `validate()` can be strict for `application/json` and permissive for `application/jsonc`. The handler class is the same across all entries; only the per-instance metadata differs.
 
-## 3. `MimeSymbol` and `SymbolKind`
+## §mimetype-symbol 3. `MimeSymbol`
 
-```ts
-interface MimeSymbol {
-    name: string;
-    kind: SymbolKind;
-    line: number;        // 1-indexed start
-    endLine: number;     // 1-indexed end (== line for single-line symbols)
-    column?: number;     // 1-indexed start column (issue #18); emitted by
-    endColumn?: number;  //   tree-sitter and ANTLR extraction
-    params?: string[];   // present on functions and methods when names are available
-    level?: number;      // present on heading kinds; 1-6
-    container?: string;  // qualified path of enclosing named symbols (issue #18)
-}
+The exported `MimeSymbol` and `SymbolKind` types own the executable shape and
+closed kind vocabulary. Their behavioral invariants are:
 
-type SymbolKind =
-    | "class" | "function" | "method" | "field"
-    | "interface" | "enum" | "type" | "module"
-    | "variable" | "constant" | "heading";
-```
+| Field group           | Invariant                                                                             |
+|-----------------------|---------------------------------------------------------------------------------------|
+| `name`, `kind`        | Identify one named structural definition using the exported `SymbolKind` vocabulary.  |
+| `line`, `endLine`     | Required, 1-based, inclusive source lines with `endLine >= line`.                     |
+| `column`, `endColumn` | Optional together; 1-based Unicode code-point columns with an exclusive end.          |
+| `params`              | Function/method parameter spellings when the grammar exposes them; omitted otherwise. |
+| `level`               | Heading depth from 1 through 6; meaningful only for `heading`.                        |
+| `container`           | Qualified path of enclosing emitted definitions; absent at top level.                 |
 
-### Container (issue #18)
+### §mimetype-symbol-container 3.1 Container
 
 `container` is the dot-joined path of the enclosing *emitted* named symbols: `parse` inside class `Parser` carries `container: "Parser"`; a method on a nested class carries `"Outer.Inner"`. Absent (not empty-string) for top-level symbols. Rules:
 
@@ -162,16 +186,21 @@ type SymbolKind =
 - A segment whose own name is dotted (Elixir `defmodule Foo.Bar`, TOML `[database.options]`) is used verbatim as one segment; consumers must not assume segments are dot-free.
 - `container` is extraction-time truth and the def-side identity the code graph links on: `(entry, container, name)`. `buildTree`'s line-range containment remains the render-time nesting mechanism; the two usually agree but `container` wins when they don't.
 
-Columns follow the family convention: 1-indexed, `endColumn` is the position just past the last character on `endLine` (tree-sitter `endPosition.column + 1`).
+Columns follow the universal text-region convention ({§text-region}).
 
 ### Inclusion policy
 
-Handlers include symbols that are **defined in the content and not confirmed invisible outside their declaring scope**.
+Handlers emit named declarations that provide stable structural navigation and
+graph identity:
 
-- Include: classes, functions, methods, fields, interfaces, enums, types, modules, exported variables/constants, markdown headings.
-- Exclude: imports, exports as standalone symbols, local variables inside function bodies, unexported module-scope variables (in languages with module privacy), function calls, control flow, comments, magic numbers, anonymous declarations.
-- Class members (methods, fields) are always included — they're the API surface even though syntactically inside a class body.
-- When in doubt, include. Only exclude when the language semantics *confirm* the symbol is inaccessible from outside the file.
+- Include top-level, module, type, and class declarations; class members remain
+  structural even when language visibility marks them private.
+- Include durable data/document structure such as headings, CSV fields, and
+  object keys when the handler's algebra defines them as symbols.
+- Exclude function-local variables, control flow, comments, literals, and
+  anonymous declarations.
+- Imports and other symbol uses belong in `references`; exports do not become
+  standalone definitions merely because they re-expose another declaration.
 
 ### Parameters
 
@@ -184,7 +213,7 @@ Functions and methods include `params` when the grammar exposes them:
 
 Omit `params` entirely when the language doesn't expose named parameters.
 
-## 4. Outline format (`symbolsRaw` / `format`)
+## §mimetype-outline 4. Outline format (`symbolsRaw` / `format`)
 
 The framework owns outline rendering. Handlers produce structured `MimeSymbol[]`; `format(symbols)` turns it into a string. `BaseHandler.symbolsRaw` is the default `format(extractRaw(content))` composition.
 
@@ -213,9 +242,9 @@ function topLevel(a, b) [50-60]
 type Channel = "symbols" | "deepJson" | "deepXml" | "references" | "content" | "embedding";
 ```
 
-- **Default set: `symbols`, `deepJson`, `deepXml`, `references`, `content`** (five). `content` (§18) is cheap pure-JS and ships by default; `embedding` (§17) is model inference and is **opt-in only** — never in the default set. `process()` remains the universal projection surface (#11); callers that want less say less.
+- **Default set: `symbols`, `deepJson`, `deepXml`, `references`, `content`** (five). `content` performs no model inference ({§mimetype-content}); `embedding` does and is opt-in ({§mimetype-embedding}).
 - **Unrequested channels are not computed and their fields are absent** from `ProcessResult`. A channel an entry legitimately lacks (flat text has no deep tree) comes back *present but empty* (`[]` / `null` / `""`) — absence means "not asked," emptiness means "asked, nothing there."
-- **`channels: []` is valid** - metadata only (`mimetype`, `ok`, `totalLines`), no parse paid. This is the cheap stat call (plurnk-service's manifest uses it for line counts).
+- **`channels: []` is valid** — metadata only (`mimetype`, `ok`, `totalLines`), with no projection parse.
 - The default deep-xml projection consumes the deep-json value; when `deepXml` alone is requested the framework computes deep-json internally without exposing it.
 
 Current plurnk-service consumers:
@@ -232,7 +261,7 @@ Current plurnk-service consumers:
 The framework performs no packet budgeting and renders no preview. `format()`
 is the unbudgeted human/diagnostic renderer for structured symbols.
 
-## 6. `validate`
+## §mimetype-validation 6. `validate`
 
 Default: no-op. Override only for mimetypes with a real syntax check that can fail (e.g., `application/json` throws on malformed JSON).
 
@@ -240,45 +269,33 @@ When `validate` throws inside `Mimetypes.process`, the error propagates to the c
 
 ## §mimetype-error-policy 7. Error policy
 
-`ProcessResult`:
+The exported `ProcessResult` type owns the executable field shape.
 
-```ts
-interface ProcessResult {
-    // always-on metadata
-    mimetype: string | null;
-    ok: boolean;
-    totalLines: number;
-    grammarMissing?: string;   // §13.4
-    searchExcluded?: string;          // §21 — matched SEARCH_EXCLUDE pattern
-    notices?: readonly Notice[];   // non-fatal degradation observations — §11.5
-    // channels — present iff requested (§5)
-    symbols?: MimeSymbol[];    // structured definitions; render via format() if needed
-    deepJson?: unknown;
-    deepXml?: string;
-    references?: MimeRef[];    // §16
-    content?: string;          // §18 — model-facing readable projection (HTML → markdown)
-    embedding?: Uint8Array;    // §17 — Float32 bytes; opt-in
-    embeddingMissing?: string; // §17 — install hint when the embedder package is absent
-    embeddingModel?: string;   // §17 — vector identity (staleness detector)
-}
-```
+| Field family                         | Presence contract                                                                                  |
+|--------------------------------------|----------------------------------------------------------------------------------------------------|
+| `mimetype`, `ok`, `totalLines`       | Present on every returned result.                                                                  |
+| Projection channel fields            | Present exactly when requested; an honest empty projection differs from an unrequested field (§5). |
+| `grammarMissing`, `embeddingMissing` | Present only for the corresponding non-strict degradation.                                         |
+| `embeddingModel`                     | Present only when the returned vector carries a model-space identity.                              |
+| `searchExcluded`                     | Present when the current path matched the configured exclusion helper (§21).                       |
+| `notices`                            | Present only when a successful result carries one or more non-fatal degradations ({§notice}).      |
 
 `totalLines` is the editor-convention line count of the source content. Conventions:
 
-- `wc -l`-style — `abc\ndef` → `2`, `abc\ndef\n` → `2` (trailing newline is line terminator, not new line), `"\n"` → `1`, `""` → `0`.
+- Logical editor lines: `abc\ndef` → `2`, `abc\ndef\n` → `2` (the trailing newline terminates rather than adds a line), `"\n"` → `1`, and `""` → `0`.
 - **Binary content** (mimetypes flagged `binary: true` in their `plurnk` block - PDF, future images/archives): `totalLines: 0`. Lines are not a meaningful unit for the source bytes. A handler's readable `content` projection is independently line-addressable; `totalLines` does not describe that derived text.
-- `0` on every error path (detection null, content unreadable, handler missing).
+- `0` on every returned error result (detection null, content unreadable, or handler missing). A propagated exception returns no `ProcessResult`.
 
-| Failure | Behavior |
-|---|---|
-| Detection returns null | `{ mimetype: null, ok: false, totalLines: 0 }` - no channel fields |
-| Content read fails (path missing/unreadable) | `{ mimetype, ok: false, totalLines: 0 }` - no channel fields |
-| Handler package not loadable | `{ mimetype, ok: false, totalLines: 0 }` - no channel fields |
-| Grammar package not installed (#14) | Degrades: `ok: true`, real `totalLines`, requested channels present but empty, `grammarMissing` set to the package name. `{ strict: true }` throws `GrammarNotInstalledError` instead. |
-| `validate()` throws | **Propagates** to the caller — contract violation |
-| Channel method throws inside handler | Contained per handler discipline (`AntlrExtractor`/`TreeSitterExtractor` catch parse failures inside `extractRaw`/`deepJson` and return empty/null). Framework does not catch. |
+| Failure                             | Current behavior                                                                                                                               |
+|-------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------|
+| Detection returns null              | `{ mimetype: null, ok: false, totalLines: 0 }`; no channel fields.                                                                             |
+| Content path cannot be read         | `{ mimetype, ok: false, totalLines: 0 }`; no channel fields.                                                                                   |
+| Registered handler cannot be loaded | `{ mimetype, ok: false, totalLines: 0 }`; no channel fields.                                                                                   |
+| Tree-sitter grammar leaf is absent  | Non-strict mode preserves the mimetype and extent, returns empty requested structural channels, and sets `grammarMissing`; strict mode throws. |
+| `validate()` throws                 | Propagates to the caller.                                                                                                                      |
+| Handler channel method throws       | Propagates unless the selected extractor explicitly classifies the failure as an empty/null parse result.                                      |
 
-## 8. Detection priority
+## §mimetype-detection 8. Detection priority
 
 `detect({ path?, ext?, hint? }, registry)` resolves in strict priority order,
 highest wins:
@@ -298,25 +315,29 @@ discovery; an unknown default still produces the §7 handler-missing result.
 
 ### §mimetype-backend-selection 9.1 Backend selection hierarchy
 
-Handler authors choose a parser backend in this strict order. **The hierarchy is mechanical — if a higher-tier option exists and meets the quality bar, use it.**
+Handler authors select the first backend that can meet the extraction and
+portability contract:
 
-1. **Tree-sitter registry.** Languages with a complete, faithful upstream grammar live in `TREE_SITTER_REGISTRY`; the corresponding `@plurnk/plurnk-mimetypes-grammar-{slug}` leaf supplies its reproducibly built WASM.
-2. **Dedicated handler.** Languages without a faithful Tree-sitter grammar use a separate handler package only when another parser can satisfy the same quality bar.
-3. **Tier 3 — `antlr4ng` + grammars-v4 in `@plurnk/plurnk-mimetypes-{lang}` package.** When no tree-sitter grammar exists at all (Tier 1 and Tier 2 both unavailable). Pure JS, no native deps. Follows the existing AntlrExtractor pattern.
-4. **Tier 4 — hand-rolled scanner in `@plurnk/plurnk-mimetypes-{lang}` package.** True last resort, only when none of the above has the language and the syntax is simple enough that a focused scanner is honestly cleaner than vendoring an alternative grammar. Handler README must justify why Tiers 1–3 weren't viable. Zero deps.
+| Priority | Backend                        | Selection rule                                                                                     | Published runtime                                     |
+|----------|--------------------------------|----------------------------------------------------------------------------------------------------|-------------------------------------------------------|
+| 1        | Framework tree-sitter registry | A faithful upstream grammar can build as clean WASM and use the shared mapping/runtime.            | Framework mapping plus one reproducible grammar leaf. |
+| 2        | Dedicated portable parser      | Registry tree-sitter cannot meet the contract, but another parser or independently built WASM can. | Separate handler package with prebuilt artifacts.     |
+| 3        | `antlr4ng` + grammars-v4       | No higher-priority backend is viable and a maintained ANTLR grammar satisfies extraction quality.  | Separate handler package; pure JavaScript runtime.    |
+| 4        | Focused hand-written extractor | No maintained grammar is viable and the syntax is simple enough for a small, reviewable scanner.   | Separate zero-dependency handler package.             |
 
 **Forbidden backends (apply across all tiers):**
 - Native `tree-sitter` (node-gyp-based). Requires Python + C compiler at install time — fails on Alpine, on bare Lambda, on Cloudflare Workers, on minimal containers. Not portable.
 - Any package requiring native FFI bindings or platform-specific binaries at install.
 - Pushing emscripten/toolchain requirements onto the consumer at install time. Tier 2's emscripten dependency lives in the handler package's CI / publish pipeline; what ships to npm is pre-built `.wasm`.
 
-**Coverage breadth is not a goal that overrides extraction quality.** If the best available backend for a language can't produce a complete, faithful extraction (correct symbol kinds across the language's full surface, no silent corruption on common idioms, no whole-class gaps like "we don't handle classes with type parameters"), the language **defers** — it stays out of the registry and out of `@plurnk` packages until a proper solution is available. We do not ship marquee-language handlers that document known limitations as caveats; if the implementation isn't enterprise-grade, the absence is more honest than the half-measure.
-
-Examples of legitimate deferrals: a language whose tree-sitter grammar (whether clean-WASM or build-from-source) lacks an idiomatic construct that real-world code uses heavily; a language where the grammar exists but parses 70% of typical files. These wait for the right backend rather than getting a partial handler with a README disclaimer. **The decision rule for promoting a deferred language *to* Tier 2 is "would we be embarrassed not to ship this language."** Marquee languages (Swift, Dockerfile) qualify; obscure DSLs typically don't.
+Coverage breadth does not override extraction honesty. A language remains
+unregistered when no backend can represent its ordinary syntax without silent
+structural gaps; a partial parser is not advertised as supported coverage.
 
 **Dispatch precedence at runtime:** `@plurnk/plurnk-mimetypes-{lang}` packages (Tiers 2/3/4) win conflicts against the Tier 1 registry. This lets a Tier 1 entry get promoted to Tier 2 (e.g., to override a buggy upstream grammar with a forked build) without ceremony — the package's presence in node_modules takes precedence.
 
-The portability rule preserves the original premise of the ecosystem: every handler installs cleanly with `npm install` on any platform Node runs on. The quality rule preserves the credibility of the registry as a coverage claim. The four-tier model means coverage can grow without sacrificing either.
+Every published handler must install without a compiler, native FFI, or a
+consumer-side grammar toolchain.
 
 ### 9.2 ANTLR extractor
 
@@ -369,12 +390,12 @@ already-parsed dialect to the resolved handler's
 
 ### 11.1 Dialect dispatch
 
-| Leading prefix | Dialect | Form |
-|---|---|---|
-| `//` | xpath | `//selector` |
-| `/` | regex | `/pattern/flags` (ECMAScript flags; escape `\/` inside the pattern) |
-| `$` | jsonpath | `$.field` |
-| otherwise | glob | `pattern` |
+| Leading prefix | Dialect  | Form                                                                   |
+|----------------|----------|------------------------------------------------------------------------|
+| `//`           | xpath    | `//selector`                                                           |
+| `/`            | regex    | `/pattern/flags` (ECMAScript flags; escape `\/` inside the pattern).   |
+| `$`            | jsonpath | `$.field`                                                              |
+| otherwise      | glob     | `pattern`                                                              |
 
 Implemented by the framework's `parseBodyMatcher(expr)`. Order matters — `//` is tested before `/` because both begin with `/`.
 
@@ -388,13 +409,7 @@ per-dialect dispatch and evidence contract.
 
 ### 11.2 Per-match return shape
 
-```ts
-interface QueryMatch {
-    readonly matched: unknown;
-    readonly matching?: string;
-    readonly regions?: ReadonlyArray<TextRegion>;
-}
-```
+The exported `QueryMatch` type owns the executable shape.
 
 `matched` is the extractor's internal result value. It proves the predicate and
 is available to consumers, but PLURNK's resource matcher does not substitute it
@@ -425,50 +440,54 @@ enforces this matrix.
 
 `matched` is polymorphic by extractor:
 
-| Dialect | Extractor variant | `matched` shape |
-|---|---|---|
-| regex | bare (no captures) | string (the full match) |
-| regex | anonymous captures | array `[c1, c2, ...]` |
-| regex | named (and mixed) captures | object `{name: value, ..., "1": ..., "2": ...}` |
-| glob | line-anchored | string (the matching line) |
-| jsonpath | any | the JSON value at the resolved path (any shape) |
-| xpath | text/attribute node | string |
-| xpath | element node | serialized XML string |
+| Dialect  | Extractor variant          | `matched` shape                                      |
+|----------|----------------------------|------------------------------------------------------|
+| regex    | Bare (no captures)         | Full matched string.                                 |
+| regex    | Anonymous captures         | Positional array `[c1, c2, ...]`.                    |
+| regex    | Named or mixed captures    | Object with named and numeric capture keys.          |
+| glob     | Line-anchored              | Matching line.                                       |
+| jsonpath | Any                        | JSON value at the resolved path.                     |
+| xpath    | Text or attribute node     | String value.                                        |
+| xpath    | Element node               | Serialized XML string.                               |
 
 `matching` is the resolved locator for multi-match dialects: jsonpath wildcards emit `$.users[0].name` etc.; xpath multi-match emits `(//user)[1]` etc.; regex and glob omit it.
 
 ### 11.3 Handler defaults
 
-`BaseHandler.query` provides defaults:
+`BaseHandler.query` supplies one symmetric default dispatch:
 
-- **regex / glob** — apply against `toText(content)`. Default `toText` returns string content as-is; for binary content it throws `UnsupportedDialectError`. Handlers with binary content (PDF) override `toText` to provide a text projection (e.g. extracted page text).
-- **jsonpath** - apply against the **deep-json** channel (`handler.deepJson(content)`) per issue #10. Handlers whose mimetype has a native JSON-shaped representation (`application/json`, `application/yaml`, `application/toml`, `text/csv`) override `query` to dispatch jsonpath with handler-specific region resolution. When `deepJson()` is absent, the handler's symbol outline is its canonical structural projection.
-- **xpath** — apply against the **deep-xml** channel (`handler.deepXml(content)`, default = `projectJsonToXml(await this.deepJson(content))`) per issue #10. Every handler that emits a structural tree automatically gets xpath dispatch — xpath-on-JSON, xpath-on-code, xpath-on-markdown all work via the projection. **Symbols-only handlers** (no `deepJson`) still answer xpath: when `deepJson()` is null, `deepXml` falls back to projecting the **same bare-number symbol outline** the jsonpath default uses (`buildJsonOutline(extractRaw)`), with an outline line-resolver so the projected elements carry the same real lines — so a handler that answers jsonpath answers xpath too, over the same entries, with the same spans (#41 symmetry). Handlers that want source-position accuracy (`text/html`, `application/xml`) override `query` to dispatch xpath against the real parsed DOM. `UnsupportedDialectError` is thrown only when there is **neither a deep tree nor any symbol** to project (`deepXml()` is empty).
+| Dialect     | Projection                                                                | Unsupported condition                                |
+|-------------|---------------------------------------------------------------------------|------------------------------------------------------|
+| regex, glob | `toText(content)`; strings pass through and binary handlers may override. | Binary content has no readable text projection.      |
+| jsonpath    | `deepJson(content)`, falling back to the symbol outline.                  | The expression/dialect itself is unsupported.        |
+| xpath       | `deepXml(content)`, which projects deep JSON or the same symbol outline.  | Neither a deep tree nor any symbol can be projected. |
 
-This is the symmetric design promised in issue #10: jsonpath dispatches against deep-json on any entry; xpath dispatches against deep-xml on any entry. The cross cases (xpath-on-JSON, jsonpath-on-XML, both on code) all work.
+Handlers with a native structural parser may override `query` to provide more
+precise source evidence while preserving the same result contract.
 
 ### 11.4 Error policy
 
-| Condition | Behavior |
-|---|---|
-| Detection returns null | `Mimetypes.query` throws `ReferenceError` |
-| Content unreadable | `Mimetypes.query` throws `ReferenceError` |
-| Resolved mimetype has no registered handler | `UnsupportedDialectError` -> consumer maps to 415 |
-| Registered handler cannot be loaded | `Mimetypes.query` throws `ReferenceError` |
-| Dialect unsupported for resolved mimetype | `UnsupportedDialectError` → consumer maps to 415 |
-| Body-glob (grammar #17) | glob-on-body returns line matches; no 415 |
-| Malformed expression | `InvalidExpressionError` → consumer maps to 400 |
-| Content can't be parsed for the dialect | `QueryParseFailureError`; the standard scheme adapter returns a 203 raw-content fallback |
-| Zero matches | returns `[]` → consumer maps to 204 |
+| Condition                                   | Framework behavior        | Standard scheme-adapter result |
+|---------------------------------------------|---------------------------|--------------------------------|
+| Detection returns null                      | `ReferenceError`          | Propagates                     |
+| Content is unreadable                       | `ReferenceError`          | Propagates                     |
+| Resolved mimetype has no registered handler | `UnsupportedDialectError` | 415                            |
+| Registered handler cannot be loaded         | `ReferenceError`          | Propagates                     |
+| Dialect is unsupported                      | `UnsupportedDialectError` | 415                            |
+| Expression is malformed                     | `InvalidExpressionError`  | 400                            |
+| Content cannot be parsed for the dialect    | `QueryParseFailureError`  | 203 with readable content      |
+| Matcher succeeds with zero findings         | `[]`                      | 204                            |
 
 ### 11.5 Notices and failures
 
-`Notice` is reserved for a successful operation's non-fatal degradation. When
-the default (non-strict) path degrades, `process()` attaches one warning Notice
-per degradation to `ProcessResult.notices[]`: `grammar_degraded` when
-`grammarMissing` is set and `embedding_degraded` when `embeddingMissing` is
-set. Each names the relevant `plurnkPackage`; the array is absent on the happy
-path.
+The runtime-neutral `Notice` shape and transient/nonterminal meaning are owned
+by `@plurnk/plurnk-contracts` ({§notice}). `process()` emits one warning per
+successful non-strict degradation:
+
+| Result signal       | Notice kind           | Required family data                         |
+|---------------------|-----------------------|----------------------------------------------|
+| `grammarMissing`    | `grammar_degraded`    | Mimetype and missing grammar package.        |
+| `embeddingMissing`  | `embedding_degraded`  | Mimetype and missing embedding package.      |
 
 Hard failures are not Notices. `UnsupportedDialectError`,
 `InvalidExpressionError`, and strict `GrammarNotInstalledError` remain typed
@@ -482,18 +501,19 @@ Notice sources use `mimetype:<normalized-type>`, with invalid runs normalized to
 `warn`. Consumers may present or forward them, but cannot use them as durable
 failure truth.
 
-## 12. Channel architecture
+## §mimetype-channel-architecture 12. Channel architecture
 
-Per plurnk-mimetypes#10 and #17, `ProcessResult` carries up to six channels, materialized per the caller's `channels` selection (§5): the four **structural** channels below, plus `content` (the readable projection — §18) and `embedding` (the vector — §17), which have their own sections.
+`ProcessResult` carries up to six caller-selected channels (§5). The four
+structural channels are:
 
 ### 12.1 The channels
 
-| Channel | Field on `ProcessResult` | Purpose | Authored by |
-|---|---|---|---|
-| `symbols` | `symbols` (`MimeSymbol[]`) | Structured definitions — `symbol_defs` raw material for the graph (`@` dialect), chunk boundaries for semantic embedding, outline source (`format()`). | Handler via `extractRaw()`. |
-| `deep-json` | `deepJson` (unknown) | Query target for the jsonpath body-matcher tool. Full structural tree, idiomatic per the entry's native algebra. | Handler via `deepJson()`. |
-| `deep-xml` | `deepXml` (string) | Query target for the xpath body-matcher tool. Default: mechanical projection of `deep-json` via the framework's `projectJsonToXml()` — same conceptual tree, different syntax, drift-impossible by construction. When `deep-json` is null but the handler emits symbols, the projection target is instead the **bare-number symbol outline** (the same shape jsonpath falls back to), so symbols-only handlers stay xpath-queryable with real lines (#41). | Framework by default. Handlers whose algebra *is* XML (text-html, application-xml) may override `deepXml()` to serve real source markup; `process()` honors the override so the persisted channel and live `query()` xpath target always agree. |
-| `references` | `references` (`MimeRef[]`) | Classified symbol uses — `symbol_refs` raw material for the graph. §16. | Handler via `references()`; tree-sitter handlers via the framework's query-file engine. |
+| Channel      | Result field            | Owner                            | Consumer purpose                                   |
+|--------------|-------------------------|----------------------------------|----------------------------------------------------|
+| `symbols`    | `symbols: MimeSymbol[]` | Handler `extractRaw()`           | Definition graph, chunk boundaries, human outline. |
+| `deep-json`  | `deepJson: unknown`     | Handler `deepJson()`             | JSONPath structural query target.                  |
+| `deep-xml`   | `deepXml: string`       | Framework projection or override | XPath structural query target.                     |
+| `references` | `references: MimeRef[]` | Handler/shared references engine | Classified-use graph edges.                        |
 
 Different masters, different fidelity. The deep channels serve query dispatch; symbols + references serve the service's graph and semantic machinery.
 
@@ -507,17 +527,9 @@ Native vocabulary per algebra — we lean on community conventions rather than i
 - **Markdown** — the markdown AST (heading, paragraph, link, code_block, etc.).
 - **ANTLR / hand-rolled handlers** — handler authors as appropriate for the algebra.
 
-Node-shape convention used by the tree-sitter walker (other handlers should follow analogously):
-
-```ts
-interface DeepTreeNode {
-    type: string;          // native node type per algebra
-    line: number;          // 1-indexed source line
-    endLine: number;       // 1-indexed inclusive; endLine >= line always
-    text?: string;         // present on leaves (no children); source slice
-    children?: DeepTreeNode[];
-}
-```
+The exported `DeepTreeNode` type owns the tree-sitter walker shape. Nodes carry
+their native `type`, 1-based inclusive line range, optional columns, leaf text,
+and recursive named children.
 
 `endLine >= line` is an invariant, never an inverted span. The ANTLR walker enforces it explicitly: an epsilon/empty-match rule context has its `stop` token set *before* its `start` (so `stop.line < start.line`), and the walker clamps `endLine` to `start.line` rather than emit `endLine < line`. The query line resolvers rely on this (`endLine` defaults to `line` whenever a stored `endLine` is missing or smaller).
 
@@ -549,7 +561,7 @@ Channels are built **per request** (§5): a requested channel is computed eagerl
 
 The deep channels are **never model-visible**. They are consumed exclusively by the jsonpath and xpath body-matcher tool implementations.
 
-## 13. Per-grammar package architecture
+## §mimetype-grammar-leaves 13. Per-grammar package architecture
 
 ### 13.1 Runtime boundary
 
@@ -646,32 +658,32 @@ only in temporary storage and positively compares both hashes. Fetch,
 dependency, generation, build, and mismatch failures remain visible with the
 failing command's output.
 
-## 14. Query-evidence conformance
+## §mimetype-query-conformance 14. Query-evidence conformance
 
 `@plurnk/plurnk-mimetypes/conformance` exports
 `assertQueryEvidenceConformance(handler, cases)`. Every case declares its
 expected verdict:
 
-| Verdict | Required result |
-|---|---|
-| `exact` | one or more complete `TextRegion` values equal the declared exact coordinates |
-| `enclosing` | one or more complete `TextRegion` values equal the declared nearest honest enclosing coordinates |
-| `locator-only` | a nonempty canonical `matching` value and no fabricated region |
-| `unsupported` | `UnsupportedDialectError` |
+| Verdict        | Required result                                                                        |
+|----------------|----------------------------------------------------------------------------------------|
+| `exact`        | Complete `TextRegion` values equal the declared exact coordinates.                     |
+| `enclosing`    | Complete `TextRegion` values equal the declared nearest honest enclosing coordinates.  |
+| `locator-only` | Nonempty canonical `matching` value and no fabricated region.                          |
+| `unsupported`  | `UnsupportedDialectError`.                                                             |
 
 The expected verdict follows from the available mapping, not from the mimetype
 name:
 
-| Matcher result and readable representation | Verdict |
-|---|---|
-| Regex offset on readable text | `exact`, or `enclosing` when an offset bisects a Unicode code point or CRLF |
-| Glob match on a readable line | `exact` |
-| Structural node with complete coordinates in readable text | `exact` |
-| Structural node with honest but coarser source coordinates | `enclosing` |
-| Structural node over a synthetic or transformed representation with no source map | `locator-only` |
-| Computed structural scalar | `locator-only` |
-| Text matcher with no readable text projection | `unsupported` |
-| Structural matcher with neither a deep channel nor symbols | `unsupported` |
+| Matcher result and readable representation                                       | Verdict                                                       |
+|----------------------------------------------------------------------------------|---------------------------------------------------------------|
+| Regex offset on readable text                                                    | `exact`, or `enclosing` at an indivisible code point or CRLF. |
+| Glob match on a readable line                                                    | `exact`.                                                      |
+| Structural node with complete coordinates in readable text                       | `exact`.                                                      |
+| Structural node with honest but coarser source coordinates                       | `enclosing`.                                                  |
+| Structural node over a synthetic/transformed representation without a source map | `locator-only`.                                               |
+| Computed structural scalar                                                       | `locator-only`.                                               |
+| Text matcher without a readable text projection                                  | `unsupported`.                                                |
+| Structural matcher with neither a deep channel nor symbols                       | `unsupported`.                                                |
 
 Exact and enclosing cases must declare complete expected regions; a start line
 alone is not positional proof. Locator-only cases fail if any coordinates
@@ -685,101 +697,113 @@ assert either exact coordinates in their readable projection or an honest
 locator-only verdict. The harness validates every reported region through the
 shared `TextRegion` contract before comparing it with the declared verdict.
 
-## 15. Public API stability
+## §mimetype-public-api 15. Public API stability
 
-All exports from `@plurnk/plurnk-mimetypes/index` are the stable API surface under semver; a breaking change to them is a platform MAJOR (announced, rare). Internal modules (those not re-exported from `index.ts`) are not part of the stable API and may change freely.
+All exports from the `@plurnk/plurnk-mimetypes` package root and its declared
+`./conformance` subpath are stable under semver. Internal modules absent from
+the package `exports` map are not public entry points.
 
-## 16. References channel (issues #16/#19)
+## §mimetype-references 16. References channel
 
-The references channel carries **classified symbol uses** — never definitions (those are the symbols channel's job). It is the raw material for plurnk-service's content-addressed `symbol_refs` graph artifacts; linking, traversal, and cross-entry identity are entirely service-side SQL.
+The exported `MimeRef` and `RefKind` types own the executable shape. References
+are classified symbol uses, never definitions; core owns persistence, linking,
+and graph traversal.
 
-```ts
-type RefKind = "import" | "call" | "instantiate" | "inherit" | "type" | "use";
+| `RefKind`     | Meaning                                                                 |
+|---------------|-------------------------------------------------------------------------|
+| `import`      | Name bound from another module; path-only imports emit no guessed name. |
+| `call`        | Invoked callable name, including member-call property names.            |
+| `instantiate` | Syntactically distinct construction of a type/value.                    |
+| `inherit`     | Base type, implemented interface, trait, or analogous relation.         |
+| `type`        | Name used in a type position.                                           |
+| `use`         | Explicit language use that fits none of the narrower kinds.             |
 
-interface MimeRef {
-    name: string;
-    kind: RefKind;
-    line: number;        // 1-indexed
-    column: number;      // 1-indexed
-    endLine: number;
-    endColumn: number;
-    container?: string;  // enclosing definition's qualified path — the edge's source node
-}
-```
+Traversal is kind-agnostic; `kind` remains edge metadata. A language omits a
+classification it cannot determine syntactically instead of guessing. Bare
+identifier reads are not emitted.
 
-**The `RefKind` taxonomy is FROZEN** (2026-06-10, against plurnk-service's `symbol_defs`/`symbol_refs` schema and the worked `@<` / `@>` / `@` queries — plurnk-service#186): `import | call | instantiate | inherit | type | use`. Traversal is kind-agnostic (every ref is an edge); `kind` rides as edge metadata and the seam for future kind-filtered dialect forms.
+§mimetype-reference-container `MimeRef.container` is the full qualified path
+of the innermost enclosing emitted definition. A call inside `Parser.parse`
+therefore carries `container: "Parser.parse"`; module-top-level references omit
+the field. The value must equal a path produced from that entry's symbols.
 
-**`ref.container` is the enclosing definition's FULL qualified path** — a call inside method `parse` of class `Parser` carries `container: "Parser.parse"`, exactly equal to the source def's composed `container + "." + name`. That equality is the join key for `@>` (edge source → def) — emitting only the immediate class would break it. Module-top-level references omit the key.
+| Extractor family              | References implementation                                                                        |
+|-------------------------------|--------------------------------------------------------------------------------------------------|
+| Framework tree-sitter mapping | Embedded query source plus the shared query engine and symbol-containment resolver.              |
+| Dedicated tree-sitter handler | `setQueryContext(...)` once during parser load, then `collectRefs(...)` through the same engine. |
+| ANTLR handler                 | Visitor-side `withExtractor.addRef(...)` and `gateContainer(...)`.                               |
+| Hand-written handler          | Direct deterministic `MimeRef[]` projection.                                                     |
+| References-free handler       | Inherited empty array.                                                                           |
 
-**Extraction mechanism (issue #19).** Tree-sitter-backed languages declare per-language queries in `src/treesitter/queries/{slug}.ts` — the `.scm` S-expression source embedded as an exported string (reviewable query content without a build-time copy step), re-exported as `refsQuery` from the mapping module. One framework engine (`refsEngine.ts`) executes them via web-tree-sitter's Query API and resolves each ref's `container` against the symbols channel by line containment (innermost emitted def; equal spans go to the later emission, i.e. the deeper scope). ANTLR and hand-rolled handlers implement `references()` visitor-side (`withExtractor.addRef` + `gateContainer`, or a direct `MimeRef[]` scan); `withExtractor.refs` returns document order to match the engine. Default everywhere: `[]`.
+All references satisfy these invariants:
 
-Coverage: every code language in the registry ships a conformance-gated query (23 in-registry suites), and the standalone handler packages (the DSLs — terraform/dockerfile/protobuf/graphql/cmake/SQL — plus the standalone languages — swift/r/nix/perl/erlang/prolog/datalog/clojure/common-lisp/sparql/csharp/vim) emits conformance-gated references too. Data formats (YAML, TOML, CSS, JSON, CSV, INI, dotenv, …) and Redis are refs-free by design — references are a code-graph concept. Languages whose syntax can't honestly support a kind omit it rather than guess (Haskell emits no `instantiate` — constructor application is syntactically identical to pattern deconstruction; Lua emits `call` only).
+- Positions are complete, 1-based text regions with `endLine >= line`.
+- `container`, when present, names an emitted definition path from the same
+  entry.
+- Definitions, string/comment decoys, and function-local identifier noise do
+  not appear as references.
+- Output is in deterministic document order.
 
-Query conventions:
-- `import` refs capture **bound symbol names** (name-join-resolvable), never module-path strings; aliased imports capture the original exported name. Languages whose imports are paths only (Go) emit no import refs.
-- `call` refs capture the callee **name node** (property/attribute name for member calls), not the expression root.
-- Languages where instantiation is syntactically a call (Python) classify it as `call`.
-- `use` is reserved: bare identifier reads are not emitted — precision over recall.
+The public `@plurnk/plurnk-mimetypes/conformance` subpath owns the one
+`assertHandlerConformance` implementation used by framework and third-party
+handlers. A references-emitting handler certifies a real-world-shaped fixture,
+string/comment decoys, at least one local join, and expected spot checks. A
+references-free handler does not fabricate rows merely to satisfy the harness.
 
-**Invariants (conformance-enforced per language, issue #20):**
-- All positions 1-indexed; `endLine >= line`; columns always present.
-- Every `container` names an enclosing definition emitted by the same entry's symbols channel.
-- No ref whose position falls inside a string literal or comment.
-- No definitions — every row is a use.
-- Deterministic document order.
-
-A language participates in the service's graph only when its conformance suite is green.
-
-**Third-party conformance harness (issue #32).** The invariants above are not framework-internal — a third-party handler whose `references()` emits rows certifies it against the **same** harness the in-registry languages run, exposed at the `@plurnk/plurnk-mimetypes/conformance` subpath (kept off the main entry so `node:assert` stays out of the runtime bundle). There is one invariant implementation; the registry suites and an external author both call it.
-
-```ts
-import { assertHandlerConformance } from "@plurnk/plurnk-mimetypes/conformance";
-import { it } from "node:test";
-
-it("acme-mime-foo refs are conformant", async () => {
-    await assertHandlerConformance(new AcmeFooHandler(metadata), {
-        source: REAL_WORLD_FIXTURE,          // not a synthetic snippet
-        decoyNames: ["secret", "TODO note"], // strings/comments that must NOT surface as refs
-        expectJoins: [{ refName: "Helper", container: "Foo.run" }], // ≥1 join that resolves to a local def
-        expectRefs: [{ name: "Helper", kind: "instantiate" }],
-    });
-});
-```
-
-`assertHandlerConformance(handler, fixture)` drives a minimal duck surface (`extractRaw` + `references`), so it works for any tier — tree-sitter, ANTLR, or hand-rolled — and throws an `AssertionError` on the first violation. **Checklist a refs-emitting handler must satisfy:** (1) at least one ref; (2) every position 1-indexed with `endColumn` present and `endLine >= line`; (3) every `container` equals an emitted def path; (4) no ref at a def's own name position; (5) deterministic document order; (6) no `decoyNames` (string/comment content) surfacing; (7) every `expectJoins` entry resolves (ref name is a local def AND container is its path); (8) every `expectRefs` spot-check present. **Refs-free handlers** (data formats, symbols-only hand-rolls) do not run this — an empty references channel is honest, not a failure.
-
-**Tier 2 authoring (out-of-registry tree-sitter handlers, issue #26).** A handler package that brings its own WASM grammar implements `references()` through the same engine via two `TreeSitterExtractor` affordances, so it never reimplements the priming dance:
-- `loadParser()` calls `this.setQueryContext(language, QueryCtor)` after `Language.load()` — it owns the WASM path, so it is the only place holding the `Language` and the web-tree-sitter `Query` constructor.
-- `references()` is one call to `this.collectRefs(content, querySource, extractDefs, wrap?)`, which owns parse → compile-and-cache query → run `collectReferences` against `extractDefs`'s symbols → cleanup, plus the shared error policy (`GrammarNotInstalledError` propagates for the #14 degrade; parse/query failures → empty channel). The in-registry `TreeSitterLanguageHandler` uses the identical helper — one priming implementation.
-- A language needing **match-level composition** the engine's flat `captures()` can't express (HCL names defs `TYPE.NAME`) passes `wrap` to adapt the raw compiled query, and composes the qualified name into a `RefsCaptureNode` (`{text, startPosition, endPosition}` — the exact, blessed surface the engine reads off a capture, so no cast through `TreeSitterNode`).
+Dedicated tree-sitter handlers may pass a `wrap` adapter to `collectRefs` when
+flat captures cannot express a qualified reference. The adapter constructs only
+the exported `RefsCaptureNode` surface consumed by the shared engine.
 
 ## §mimetype-embedding 17. Embedding channel
 
-The `embedding` channel supplies vectors for plurnk-service's `~semantic` dialect: **native-endian raw Float32 bytes** (`Uint8Array`, length = 4 × dimension). The service stores those bytes verbatim in content-addressed derivation artifacts and cosine-ranks over a `Float32Array` view — no JSON round-trip. Query text uses the per-call channel; corpus chunks use `embedBatch`. Both resolve through the same embedder seam and model-space identity.
+The framework exposes one lazily resolved embedding seam. Embedding inference is
+never in the default channel set; callers request it explicitly.
 
-- **Opt-in only.** `"embedding"` is never in the default channel set — it is a model inference, orders of magnitude costlier than parsing. Request it explicitly: `process(input, { channels: ["embedding"] })`.
-- **Artifact seam.** The published framework currently includes `@plurnk/plurnk-mimetypes-embeddings` and resolves it lazily through one fixed loader seam. The artifact owns its model, vector dimension, reproducibility, and local/remote configuration; the framework owns channel selection, lifecycle, and result shape.
-- **What gets embedded.** The handler's `content()` projection wins when present; otherwise `toText()` supplies string passthrough or a binary-readable projection such as PDF page text. No projection or empty text yields empty bytes with no fabricated vector.
-- **Unavailable artifact.** A loader that cannot resolve the artifact returns `embedding: new Uint8Array(0)` plus `embeddingMissing`, with `ok` still true; `{ strict: true }` throws. #85 owns whether that state remains valid for the published default bundle.
-- **Grammar-degrade still embeds**: a grammar-missing entry is still semantically searchable text; `grammarMissing` and a real vector coexist.
-- The dimension is **fixed per deployment** — changing the model/dimension invalidates stored vectors and requires consumer re-derivation. The embedder declares its model-space identity on `ProcessResult.embeddingModel`; consumers persist it with vectors so incompatible spaces cannot be silently compared.
-- **Lossless chunking facts** (`embedderInfo()`): an embedder may export its input `contextWindow`, an untruncated `countTokens(text): Promise<number>` using the model's own tokenizer, and its `model` identity. The framework surfaces `{ dimension, contextWindow: number | null, countTokens: fn | null, model? }`; `null` from `embedderInfo()` means no embedder resolves, while null fields mean a present embedder does not know those optional facts. Remote deployments declare the input window with `PLURNK_MIMETYPES_EMBED_CONTEXT_WINDOW`. The host uses these facts to tile text into chunks whose token counts do not exceed the input window and folds the model identity into derivation state. The framework owns no chunking logic.
+| Surface                    | Input and result                                                                                          | Artifact unavailable                                                   |
+|----------------------------|-----------------------------------------------------------------------------------------------------------|------------------------------------------------------------------------|
+| `process(...embedding...)` | Embeds `content()` when present, then `toText()`; empty/unavailable readable text yields empty bytes.     | Non-strict returns empty bytes plus `embeddingMissing`; strict throws. |
+| `embedBatch(texts, ...)`   | Returns one vector per input in input order and honors progress/cancellation through the artifact.        | Throws.                                                                |
+| `embedderInfo()`           | Returns dimension plus optional model, context-window, and exact-counter facts; unknown facts are `null`. | Returns `null`.                                                        |
 
-- **Bulk embedding** (`embedBatch()`, plurnk-service#272): `mimetypes.embedBatch(texts, { onProgress?, signal? }): Promise<Uint8Array[]>` — one vector per input text, **input order**, bit-identical to embedding each text through the channel (so nothing already stored re-embeds). The single framework seam for corpus ingest: resolution + model identity stay framework-owned (pair with `embedderInfo()` for chunk budgeting), so the host never reaches into the embeddings package directly. Delegates to the embedder's data-parallel `embedBatch` (a work-stealing worker pool, `PLURNK_MIMETYPES_EMBED_WORKERS`-tunable — benched ~7× across cores on a saturating batch); falls back to a sequential `embed()` loop for an embedder without the pool, still firing `onProgress({ completed, total })` and honoring `signal`. Throughput scales with batch size: a one-text batch uses one worker, so consumers saturate the pool by batching across entries, not per-entry (#420). Unlike the per-entry channel (which degrades to empty bytes when the package is absent), this is an explicit bulk call — a missing embedder **throws** rather than silently storing empties.
+An artifact without `embedBatch()` is driven sequentially through `embed()`.
+The framework owns artifact resolution, lifecycle, and result shape; the
+artifact owns model execution, model-space identity, dimension, and optional
+token-counting facts. Chunk planning, persistence, and re-derivation policy are
+consumer responsibilities.
 
-## 18. Content channel
+§mimetype-embedding-wire A nonempty vector is currently a `Uint8Array` of raw
+native-endian `Float32` values, so its byte length is four times the artifact's
+declared dimension. `ProcessResult.embeddingModel`, when present, identifies the
+model space. Consumers preserve that identity with stored vectors and never
+compare vectors from different spaces.
 
-The `content` channel is a consumer-ready readable projection - the markup-free text a host may materialize for model-facing information and the per-handler **embed-source** (the embedding channel embeds `content` over the raw bytes). `ProcessResult.content?: string`. Addressable hosts decide whether to store that projection or preserve source bytes; the handler does not silently redefine their coordinate space.
+A missing tree-sitter grammar does not prevent embedding readable string input:
+the result may carry both `grammarMissing` and a real vector. Other unexpected
+artifact load errors propagate. A readable-projection exception currently
+produces empty embedding bytes rather than an `embeddingMissing` signal.
 
-**Present iff the readable form differs from the raw body.** Sort every mimetype by one question — *is the readable text the same as the bytes?*
+## §mimetype-content 18. Content channel
 
-- **Directly-readable formats** (code, markdown, JSON, plain text): `content` is **absent**. The raw body already is the readable text; the model reads the bytes directly; a `content` channel would just duplicate the body.
-- **Binary with a readable projection** (PDF, ...): `content` is the handler's extracted text. The same projection serves regex/glob matching, so any reported text region addresses exactly what the model can read.
-- **text/html**: `content` = **Readability + turndown markdown** - main-content extraction (strips nav/ads/chrome) into clean markdown. Projected prose is wrapped at `PLURNK_MIMETYPES_HTML_WRAP_COLUMNS` (default `100`; `0` disables) so line scopes bound ordinary reading work instead of inheriting a page's arbitrary source density. Wrapping breaks only at whitespace and preserves Markdown structures: fenced/indented code, headings, tables, inline code, links, and retained raw tags are never split merely to satisfy the column target. The source HTML and structural channels remain untouched. HTML is the only case transforming an already-textual-but-noisy body into a cleaner read. (Email/EPUB are HTML-shaped and would reuse the pattern when they land - built then, not speculatively.)
+`ProcessResult.content` is a consumer-ready readable projection. It is present
+only when that representation differs from the raw body:
 
-**Always-on and source-agnostic.** `content` is in the default processing channel set (it's cheap - pure JS, no model). text/html computes it from whatever HTML bytes arrive: a local file can be projected to document markdown; bytes a browser scheme rendered and serialized can become a live page's readable content. The handler is a pure function of bytes and cannot tell which (see the HTML rendering split - rendering is the http scheme's job; `content` projects whatever it is handed).
+| Input family                      | `content` result                     | Model-readable body            |
+|-----------------------------------|--------------------------------------|--------------------------------|
+| Already-readable text             | Absent.                              | Raw string.                    |
+| Text requiring transformation     | Handler's derived readable string.   | Derived string.                |
+| Binary with a readable projection | Handler's extracted readable string. | Derived string.                |
+| No readable projection            | Absent.                              | None supplied by this channel. |
 
-**Relationship to `toText`.** A handler that overrides `content` routes `toText` (the regex/glob query surface) through the same projection, so there is one readable-text implementation per handler. The framework's embed-source resolves as `content() ?? toText()`: projected readable text, then the passthrough body.
+The channel is in the default set because it performs no model inference. A
+handler is a pure projection of supplied bytes/content and does not infer the
+source scheme. The consumer decides whether to store a derived projection or
+the source body and treats their coordinate spaces separately unless the
+handler supplies an honest mapping.
+
+Regex/glob query uses `toText()`. Embedding tries `content()` first and then
+`toText()`. A handler that implements both surfaces for the same readable form
+uses one underlying projection so query evidence and model-visible text do not
+diverge.
 
 ## §mimetype-tokenizer 19. Tokenizer seam
 
@@ -789,62 +813,72 @@ need one. The current framework includes the independently published
 artifact owns vocabulary data and reproducibility; the framework owns
 resolution, lifecycle, and explicit degradation.
 
-### 19.1 Surface
+The exported `TokenizerResolution` type owns the surface:
 
-`mimetypes.tokenizer(modelRef, { strict? }): Promise<TokenizerResolution>`
+| Resolution                  | `countTokens`                     | `tokenizerId`        | `exact` | `notices`                         |
+|-----------------------------|-----------------------------------|----------------------|---------|-----------------------------------|
+| Artifact matches `modelRef` | Matching vocabulary counter.      | Vocabulary identity. | `true`  | Absent.                           |
+| Artifact absent or no match | `ceil(text.length / 2)` estimate. | `heuristic:chars2`   | `false` | One `tokenizer_unavailable` warn. |
 
-```ts
-interface TokenizerResolution {
-    countTokens(text: string): Promise<number>;
-    tokenizerId: string;   // vocab identity, NOT model id
-    exact: boolean;
-    notices?: readonly Notice[];  // present iff degraded
-}
-```
+The fallback is an empirical estimate, not an exact count or a proven upper
+bound for arbitrary content and vocabularies. Correctness-sensitive consumers
+must branch on `exact`; `{ strict: true }` rejects either degradation instead.
+Provider packet admission uses the provider's separate physical-counting
+contract ({§tokenomics-physical-admission}).
 
-Resolution is exact when the artifact matches `modelRef`. An unavailable
-artifact or unmatched model returns the conservative chars/2 counter with
-`exact: false`, `tokenizerId: "heuristic:chars2"`, and one
-`tokenizer_unavailable` warning; `{ strict: true }` throws instead. The estimate
-is therefore never presented as exact.
+`tokenizerId` identifies vocabulary bytes rather than a model name. Exact
+resolutions sharing a vocabulary therefore share the identity. A persisted
+tokenizer-dependent derivation must include it in its derivation key.
 
-The chars/2 fallback deliberately over-reserves relative to measured agentic
-text. Core uses this seam only when an embedder lacks its own counter while
-planning lossless embedding chunks. Provider packet admission uses the
-provider's separate counting contract ({§tokenomics-physical-admission}).
+The artifact exposes `resolve(modelRef)` and may expose `dispose()`. A `null`
+resolution means no bundled vocabulary matches. Module-not-found or a module
+without the required `resolve()` surface is treated as artifact absence; any
+other load error propagates. `Mimetypes.dispose()` forwards artifact disposal
+and clears the lazy cache.
 
-### 19.2 `tokenizerId` is the vocab, not the model
+## §mimetype-classification 20. Binary classification
 
-For exact resolutions the id derives from the `tokenizer.json` bytes (sha256 prefix). Two model refs sharing a vocabulary share the id, so a model swap that keeps the vocabulary need not invalidate counts derived and stored against it. A consumer that persists tokenizer-dependent derivations must include this identity in its derivation key; #87 tracks core's current omission on the remote-embedder fallback path.
+Binary classification has two layers:
 
-### 19.3 Artifact duck contract
+| Surface                        | Authority                                                             | `source`                 |
+|--------------------------------|-----------------------------------------------------------------------|--------------------------|
+| `classifyMimetype(mimetype)`   | Pure taxonomy for registry-free boundaries.                           | `heuristic`              |
+| `Mimetypes.classify(mimetype)` | Installed handler declaration when available, otherwise the taxonomy. | `handler` or `heuristic` |
 
-The tokenizers package default-exports (or exports) `resolve(modelRef) → Promise<{ countTokens, tokenizerId } | null>` — null meaning "no bundled tokenizer matches this ref" (a data gap, not an error; the seam degrades). Optional `dispose()` releases engine state, forwarded from `Mimetypes.dispose()`. Loader errors follow the §17 rule: `ERR_MODULE_NOT_FOUND`/`MODULE_NOT_FOUND` → absent; anything else → a misconfigured-but-present artifact and rethrows.
+An installed handler's package-level `plurnk.binary` declaration is
+authoritative. The pure taxonomy applies these rules in order:
 
-## 20. Classification authority (issue #43)
+| Input class                                            | `binary` |
+|--------------------------------------------------------|----------|
+| Empty string                                           | `false`  |
+| Value without `/`                                      | `true`   |
+| `text/*`                                               | `false`  |
+| Known textual `application/*` formats                  | `false`  |
+| Structured suffix `+json`, `+xml`, `+yaml`, or `+toml` | `false`  |
+| Any other value                                        | `true`   |
 
-This family is the single source of **binary-vs-text** truth, so consumers retire hand-maintained allowlists (the `application/jsonl` -> 415 drift, schemes#28, is the motivating bug). Navigation is not a mimetype property: every readable projection uses the universal text-region algebra, while jsonpath and xpath are matcher locators.
+Navigation is not a classification property. Readable projections use the
+universal text-region algebra, while JSONPath and XPath are structural
+locators.
 
-### 20.1 Surface
+## §mimetype-search-exclusion 21. Search-exclusion signal
 
-```ts
-interface MimeClassification {
-    binary: boolean;
-    source: "handler" | "heuristic";        // which layer decided
-}
-classifyMimetype(mimetype): MimeClassification            // pure taxonomy heuristic, sync
-mimetypes.classify(mimetype): Promise<MimeClassification> // registry-aware
-```
+`PLURNK_MIMETYPES_SEARCH_EXCLUDE` is a comma-separated list interpreted by the
+exported `matchSearchExclusion(path)` helper:
 
-### 20.2 Two layers
+| Pattern form        | Match target | Rule                                |
+|---------------------|--------------|-------------------------------------|
+| Contains `/`        | Full path.   | Body-matcher glob syntax; anchored. |
+| Contains no `/`     | Basename.    | Body-matcher glob syntax; anchored. |
+| Empty configuration | None.        | No hidden code fallback.            |
 
-- **Taxonomy heuristic** (`classifyMimetype`, exported): answers for any mimetype string so consumers can classify stream labels with no installed handler. Rules: `text/*` -> text; a known text-application set (json/yaml/toml/xml/javascript/ecmascript/typescript/sql/jsonl/x-ndjson) -> text; RFC 6839 suffixes `+json/+xml/+yaml/+toml` -> text; everything else is binary; a slash-less value is binary; `""` is not binary.
-- **Registry refinement** (`Mimetypes.classify`): an installed handler's declared `plurnk.binary` value is authoritative. `source: "handler"` marks registry-decided answers.
+Whitespace around entries is ignored, `*` crosses `/`, and the first match is
+returned verbatim as the observable reason. The standard defaults live in this
+package's `.env.defaults`.
 
-## 21. Embedding-eligibility suppression (issue #47)
-
-Machine-generated project content (minified bundles, lockfiles, sourcemaps) is honest bytes but semantic-derivation waste — a minified vuepress bundle chunked to 2,162 embeddings wall-clocked a CPU run (service#337). The eligibility decision for the **file scheme** is **operator configuration, not code**: `PLURNK_MIMETYPES_SEARCH_EXCLUDE` is a comma-separated pattern list — an entry without `/` matches the **basename**, an entry with `/` matches the **full path** (directory drawers like `*/dist/*`; hashed bundle names defeat basename rules — the run18 offender was `dist/assets/js/12.5188bb.js`). URI paths in other schemes are resource identities rather than repository layout and do not consume this file policy: `https://host/dist/index.json` remains searchable. glob syntax is the body-matcher dialect's engine (§11.3 `globToRegex` — `*` crosses `/`, `?`, `[...]`; one glob engine per family, never a second variant); no wildcard = exact; first match wins. The sane default ships in this package's `.env.defaults` (the shipped operator floor, #52). The knob IS the file classification — tunable per deployment, extensible without a release, and the matched pattern is the observable reason.
-
-- `ProcessResult.searchExcluded?: string` — the matched pattern, present iff matched (also on the grammar-degraded path); consumers keep the entry directly readable but exclude it from graph, lexical, and vector search.
-- `matchSearchExclusion(path)` — the exported matcher, read at call time from the host env like the pdf caps. Unset/empty → nothing suppressed; **no code fallback carries a hidden default**.
-- Name-based suppression remains this framework's reader-declared mechanism. A host may additionally impose an explicit, observable vector-workload size ceiling; that is host policy, not a mimetype content classification.
+`Mimetypes.process()` currently evaluates every supplied `input.path` without
+scheme identity and surfaces the match as `ProcessResult.searchExcluded`,
+including on grammar-degraded results. The signal never changes direct
+readability. The standard core search pipeline separately limits its use to
+file-scheme entries and omits matching entries from graph, lexical, and vector
+derivations.

@@ -1,47 +1,35 @@
 import type { HandlerLoader } from "./Mimetypes.ts";
 import type { Notice } from "./Notice.ts";
 
-// Opt-in tokenizer artifact package (SPEC §19, #44): resolved lazily via the
-// same loader handler packages use — the framework ships no vocab data. Kept
-// separate from the embeddings package so window math never forces a deployment
-// to carry MiniLM ONNX weights (the providers#27 weight-granularity lesson).
+// Fixed tokenizer artifact seam, resolved lazily ({§mimetype-tokenizer}).
 const TOKENIZERS_PACKAGE = "@plurnk/plurnk-mimetypes-tokenizers";
 
-// The duck surface the tokenizers package must export (SPEC §19).
+// Internal artifact boundary; the public surface is TokenizerResolution.
 interface TokenizersArtifact {
-    // modelRef → exact counter, or null when no bundled tokenizer matches the
-    // ref (an unknown model is a DATA gap, not an error — the seam degrades).
+    // null means the artifact has no matching vocabulary.
     resolve(modelRef: string): Promise<{ countTokens(text: string): Promise<number>; tokenizerId: string } | null>;
-    // Release any native/WASM engine state; absent → nothing to tear down.
     dispose?(): Promise<void> | void;
 }
 
-// What tokenizer() hands the host (SPEC §19, #44). ALWAYS returns a usable
-// counter — exact when a bundled tokenizer matches, else the chars/2 upper
-// bound with `exact: false` and a `tokenizer_unavailable` warn event. Never a
-// silent estimate: a degraded resolution is visibly degraded on the shape.
+// Exactness and vocabulary identity remain explicit on every resolution
+// ({§mimetype-tokenizer}).
 export interface TokenizerResolution {
     countTokens(text: string): Promise<number>;
-    // Identity of the VOCAB, not the model (#44): sha256 of the tokenizer.json
-    // for exact resolutions (two models sharing a vocab share the id, so a
-    // model swap that keeps the vocab never invalidates derived counts);
-    // "heuristic:chars2" for the degraded upper bound.
+    // Vocabulary identity, or the stable degraded-estimator identity.
     readonly tokenizerId: string;
     readonly exact: boolean;
-    // Present iff degraded — the host forwards into packet notices (SPEC §11.5).
+    // Present iff degraded.
     readonly notices?: readonly Notice[];
 }
 
-// chars/2 upper bound (providers#44 measurement: real agentic text runs
-// 2.9–3.2 chars/token, so /2 over-reserves — the SAFE direction for window
-// math; the old /4 silently under-counted 20–27%, the dangerous direction).
-function charsUpperBound(text: string): number {
+// Empirical fallback only; #95 owns a correctness-safe chunk-admission policy.
+function charsEstimate(text: string): number {
     return Math.ceil(text.length / 2);
 }
 
 function degraded(modelRef: string, reason: string, extra: Record<string, unknown>): TokenizerResolution {
     return {
-        countTokens: (text) => Promise.resolve(charsUpperBound(text)),
+        countTokens: (text) => Promise.resolve(charsEstimate(text)),
         tokenizerId: "heuristic:chars2",
         exact: false,
         notices: [{
@@ -49,7 +37,7 @@ function degraded(modelRef: string, reason: string, extra: Record<string, unknow
             kind: "tokenizer_unavailable",
             level: "warn",
             message: `No exact tokenizer for ${JSON.stringify(modelRef)} (${reason}); `
-                + `counting with the chars/2 upper bound.`,
+                + `counting with the degraded chars/2 estimate.`,
             position: null,
             model: modelRef,
             ...extra,
@@ -57,11 +45,7 @@ function degraded(modelRef: string, reason: string, extra: Record<string, unknow
     };
 }
 
-// The framework's single tokenizer seam (SPEC §19, #44), parallel to
-// Embeddings.ts: owns the opt-in tokenizers package's lifecycle — lazy
-// resolution, per-model exact counters, the honest degrade — so the host
-// (which composes this after the provider's own tokenize() capability)
-// never reaches the package directly.
+// Owns lazy artifact resolution and lifecycle ({§mimetype-tokenizer}).
 export default class Tokenizers {
     readonly #loader: HandlerLoader;
     // Primed-promise cache: null result = package not installed; the promise is
@@ -72,10 +56,7 @@ export default class Tokenizers {
         this.#loader = loader;
     }
 
-    // modelRef → TokenizerResolution (SPEC §19). Resolution chain per #44:
-    // bundled tokenizer.json matched by model ref → exact counter + vocab-sha
-    // id; package missing OR no match → chars/2 upper bound + a
-    // `tokenizer_unavailable` warn event naming the model (strict throws).
+    // Match exactly or return an explicit estimate; strict rejects degradation.
     async tokenizer(modelRef: string, options: { strict?: boolean } = {}): Promise<TokenizerResolution> {
         const artifact = await this.#resolve();
         if (artifact === null) {
@@ -110,10 +91,7 @@ export default class Tokenizers {
             try {
                 mod = await this.#loader(TOKENIZERS_PACKAGE);
             } catch (err) {
-                // Package genuinely absent → null → chars/2 degrade. Any OTHER
-                // load error means the artifact IS installed but threw on import
-                // — a misconfiguration, never silently downgraded to "absent"
-                // (the Embeddings.ts lesson, verbatim).
+                // Only module absence selects degradation; import defects surface.
                 const code = (err as { code?: string })?.code;
                 if (code === "ERR_MODULE_NOT_FOUND" || code === "MODULE_NOT_FOUND") return null;
                 throw err;
@@ -126,8 +104,7 @@ export default class Tokenizers {
         return this.#promise;
     }
 
-    // Release the artifact's engine state (if it holds any); idempotent,
-    // re-lazy-inits if used again. Forwarded from Mimetypes.dispose().
+    // Idempotent cache teardown; later use resolves lazily again.
     async dispose(): Promise<void> {
         if (this.#promise === null) return;
         const pending = this.#promise;
@@ -136,7 +113,7 @@ export default class Tokenizers {
             const artifact = await pending;
             if (artifact && typeof artifact.dispose === "function") await artifact.dispose();
         } catch {
-            // artifact never loaded (package absent / load failed) — nothing to release.
+            // #89 records the unresolved aggregate-disposal failure policy.
         }
     }
 }

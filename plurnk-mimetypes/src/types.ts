@@ -16,20 +16,14 @@ export type SymbolKind =
 export interface MimeSymbol {
     name: string;
     kind: SymbolKind;
-    line: number;        // 1-indexed
+    line: number;
     endLine: number;
-    // 1-indexed start/end columns (issue #18). Emitted by tree-sitter and
-    // ANTLR extraction (both expose positions); optional because hand-rolled
-    // scanners may not track columns.
+    // Optional together under {§text-region}.
     column?: number;
     endColumn?: number;
     params?: string[];
     level?: number;
-    // Qualified path of the enclosing named symbols, dot-joined — `parse`
-    // inside class `Parser` carries container "Parser"; a method on a nested
-    // class carries "Outer.Inner". Absent for top-level symbols. This is the
-    // def-side identity the graph links on (issue #16 D3); line-range nesting
-    // (buildTree) remains the render-time mechanism.
+    // Qualified enclosing definition path ({§mimetype-symbol-container}).
     container?: string;
 }
 
@@ -42,16 +36,11 @@ export interface HandlerMetadata {
 export interface ExtractionVisitor {
     visit(tree: unknown): unknown;
     readonly symbols: MimeSymbol[];
-    // Classified symbol uses collected during the same visit (issue #16 D4 /
-    // ANTLR references grind). Optional for back-compat — a visitor that only
-    // emits definitions omits it, and AntlrExtractor.references() returns [].
+    // Optional classified uses from the same traversal.
     readonly refs?: MimeRef[];
 }
 
-// Classified reference kinds for the references channel (issue #19). Working
-// set — the taxonomy freezes against plurnk-service's symbol_refs schema and
-// the concrete @-dialect queries it must answer (plurnk-service#186) before
-// any extraction engine ships.
+// Closed reference vocabulary ({§mimetype-references}).
 export type RefKind =
     | "import"
     | "call"
@@ -60,16 +49,13 @@ export type RefKind =
     | "type"
     | "use";
 
-// One symbol *use* (never a definition — defs live in the symbols channel).
-// Produced by the references channel (issue #16 D4): the per-entry raw
-// material for plurnk-service's symbol_refs rows. `container` is the
-// qualified path of the enclosing definition — the source node of the graph
-// edge; absent for module-top-level references.
+// One symbol use, with an optional enclosing definition path
+// ({§mimetype-references}, {§mimetype-reference-container}).
 export interface MimeRef {
     name: string;
     kind: RefKind;
-    line: number;       // 1-indexed
-    column: number;     // 1-indexed
+    line: number;
+    column: number;
     endLine: number;
     endColumn: number;
     container?: string;
@@ -91,22 +77,11 @@ export interface HandlerInfo {
     glyph: string;
     packageName: string;
     extensions: readonly string[];
-    // When true, the framework reads file content as Uint8Array (not utf-8
-    // string) before passing to handler methods. Set via `plurnk.binary: true`
-    // at the top of the package's plurnk block — applies to all handler
-    // entries in the package.
+    // Package-level file-decoding declaration ({§mimetype-handler-content}).
     binary: boolean;
-    // Where this handler came from. "package" → discovered from a @plurnk/*
-    // npm package via discover(); resolved by importing packageName.
-    // "treesitter" → built into the framework's tree-sitter registry
-    // (SPEC §9.4); resolved by looking up TREE_SITTER_REGISTRY by mimetype
-    // and instantiating TreeSitterLanguageHandler with the registry entry.
-    // @plurnk packages take precedence — tree-sitter entries only fill in
-    // mimetypes that no @plurnk package claims.
+    // Package-discovered handler or framework tree-sitter registry entry.
     source: "package" | "treesitter";
-    // Normalized package-level creator attribution, copied to every declared
-    // handler. This family neither interprets nor claims use of it; host
-    // attribution policy is tracked by #81. Framework tree-sitter entries omit it.
+    // Normalized package attribution; framework registry entries omit it.
     attribution?: string | string[];
 }
 
@@ -126,52 +101,25 @@ export interface DiscoverOptions {
     // (only @plurnk handler discovery, no tree-sitter defaults) pass
     // false. Production code should leave it default.
     includeTreeSitter?: boolean;
-    // Environment for the plugin trust gate (issue #29 / plurnk-service#229).
-    // Defaults to process.env. discover() reads PLURNK_PLUGINS_TRUSTED_ONLY:
-    // unset/empty/"0" → gate off (every discovered handler registers);
-    // a value → gate on, @plurnk/* always trusted plus a comma-separated
-    // allowlist of additionally-trusted package names. Injectable for tests.
+    // Injectable trust environment ({§plugin-trust-boundary}); defaults to
+    // process.env.
     env?: Record<string, string | undefined>;
 }
 
-// Body matcher dialects, dispatched by leading-prefix from plurnk-contracts'
-// plurnk.md table: `//` xpath, `/.../flags` regex, `$` jsonpath, otherwise
-// glob (line-anchored against body text).
+// Parsed body-matcher dialect vocabulary ({§mimetype-query}).
 export type QueryDialect = "regex" | "glob" | "xpath" | "jsonpath";
 
-// Per-match result shape, per grammar #17. Returned by Handler.query for every
-// dialect. Empty result set is `[]` (consumer maps to 204).
-//
-// `matched` is polymorphic by extractor:
-//   - regex bare        → string (the full match)
-//   - regex anon captures → readonly string[] (positional captures)
-//   - regex named captures → readonly { [name]: string } (named captures; mixed
-//     includes positional "1", "2", ... keys)
-//   - glob              → string (the matching line)
-//   - jsonpath          → the matched value (any JSON shape)
-//   - xpath text/attr   → string
-//   - xpath element     → string (serialized XML)
-//
-// `matching` is the resolved canonical locator for multi-match dialects:
-//   - jsonpath wildcards → `$.users[0].name` per match
-//   - xpath multi-match → `(//user)[1]` per match
-//   - omitted otherwise.
-// Internal 1-indexed, inclusive parser provenance. Query adapters translate
-// these spans into honest exact or enclosing TextRegion evidence when they map
-// into the readable representation.
+// Internal inclusive parser provenance used to derive query evidence.
 export interface LineSpan {
     readonly line: number;
     readonly endLine: number;
 }
 
 export interface QueryMatch {
-    // The structured value at the hit — always present (issue #41).
+    // Extractor result value; always present.
     readonly matched: unknown;
-    // The locus: jsonpath path or xpath expression. Present when meaningful.
+    // Canonical structural locator when meaningful.
     readonly matching?: string;
-    // Contiguous regions in the exact text the model can READ. Each region is
-    // complete and uses 1-based Unicode code-point columns with an exclusive
-    // end. Omitted when a structural or computed match has no honest mapping
-    // into the readable text.
+    // Honest readable-text evidence ({§mimetype-query-conformance}).
     readonly regions?: ReadonlyArray<TextRegion>;
 }

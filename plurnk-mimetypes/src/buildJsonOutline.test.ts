@@ -1,4 +1,4 @@
-// Coverage: SPEC §11 (bare-leaves outline fallback).
+// Contract: {§mimetype-query}.
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { buildJsonOutline } from "./buildJsonOutline.ts";

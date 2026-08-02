@@ -1,12 +1,4 @@
-// Coverage: SPEC §17 (embedderInfo contract).
-// embeddings#1: mimetypes.embedderInfo() surfaces the embedder's pure model
-// facts (input context window + the model's own counter) for plurnk-service's
-// lossless chunker.
-//
-//   E1. null when no embedder package is installed.
-//   E2. Unknown optional facts are explicit nulls on a present embedder.
-//   E3. {contextWindow, countTokens} when the embedder exposes them; countTokens
-//       delegates to the embedder's own tokenizer.
+// Contract: {§mimetype-embedding}. embeddings#1 is provenance.
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";

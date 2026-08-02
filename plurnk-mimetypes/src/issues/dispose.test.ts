@@ -1,16 +1,4 @@
-// Coverage: SPEC §17 (embedder teardown).
-// #36: Mimetypes.dispose() releases the embedder's native runtime so a consumer
-// process can drain its event loop and exit. The embeddings package's
-// onnxruntime worker pool holds active+referenced libuv handles; without a way
-// to tear it down, a host that ever embedded wedges at exit (plurnk-service
-// worked around it with --test-force-exit). dispose() awaits the embedder's own
-// dispose() and drops the cached instances.
-//
-//   D1. awaits the embedder's dispose() when one was loaded.
-//   D2. no-op (no throw) when no embedder was ever loaded.
-//   D3. swallows a load failure — nothing to release, nothing to surface.
-//   D4. idempotent + re-lazy-inits: a second dispose() and subsequent use work.
-//   D5. clears cached handler instances (channels re-resolve afterward).
+// Contract: {§mimetype-lifecycle}. Issue #36 is provenance.
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";

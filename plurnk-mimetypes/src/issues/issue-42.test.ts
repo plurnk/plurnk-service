@@ -1,22 +1,4 @@
-// Coverage: SPEC §11 (parsed-form matcher).
-// Issue #42: Mimetypes.query accepts a parsed-form matcher, not only a raw
-// string — consume the grammar's already-parsed { dialect, pattern, flags } so
-// there's no second parser for the matcher syntax (no drift).
-// https://github.com/plurnk/plurnk-mimetypes/issues/42
-//
-// Load-bearing claims, restated as tests of the contract (not the impl):
-//
-//   C1. Mimetypes.query accepts a parsed body `{ dialect, pattern, flags? }`
-//       (the shape @plurnk/plurnk-contracts produces) in addition to a raw string.
-//   C2. The parsed form and the equivalent raw string produce identical results
-//       across every dialect, and both carry m.lines (#41) uniformly.
-//   C3. The parsed form dispatches by its EXPLICIT dialect — it does NOT re-parse
-//       the pattern by leading prefix. A pattern that the prefix-parser would
-//       classify as another dialect (e.g. "//foo" → xpath) still runs under the
-//       dialect the caller declared (regex). This is the anti-drift guarantee.
-//
-// These enforce the promise, not the wiring: a future change that re-derives the
-// dialect from the parsed pattern, or drops the parsed-form overload, fails here.
+// Contract: {§mimetype-query-input}. Issue #42 is provenance.
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";

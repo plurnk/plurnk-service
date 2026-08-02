@@ -1,10 +1,12 @@
+import type { Notice as ContractNotice } from "@plurnk/plurnk-contracts";
+
 export type {
     ContentOffset,
     LogCoordinate,
     Notice,
 } from "@plurnk/plurnk-contracts";
 
-export type NoticeLevel = "error" | "warn" | "info";
+export type NoticeLevel = ContractNotice["level"];
 
 // Build a `mimetype:<type>` source token for Notice envelopes. The
 // grammar's source pattern is `^[a-z]+(:[a-z][a-z0-9-]*)?$`, which doesn't admit

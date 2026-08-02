@@ -1,16 +1,4 @@
-// Coverage: SPEC §20 (classification authority).
-// Issue #43 (schemes, via the owner): per-mimetype classification authority.
-// The truth table below is absorbed from plurnk-schemes' retiring
-// MimetypeClassifier tests - the contract this API exists to own so consumer
-// allowlists stop drifting (the application/jsonl -> 415 bug,
-// schemes#28).
-//
-//   C1. taxonomy heuristic: binary axis (type prefix, text-application set,
-//       RFC 6839 suffixes, jsonl family, malformed strings).
-//   C2. registry wins: an installed handler's declared binary value overrides
-//       the heuristic; source says which decided.
-//   C3. unregistered mimetypes still classify (heuristic), so stream labels
-//       with no installed handler get answers.
+// Contract: {§mimetype-classification}. Issue #43 is provenance.
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";

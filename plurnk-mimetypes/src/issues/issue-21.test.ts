@@ -1,16 +1,5 @@
-// Coverage: SPEC §1 (duck contract, 0.15 floor).
-// Issue #21: process({channels:["deepXml"]}) threw "handler.deepXml is not a
-// function" when the resolved handler came from a pre-0.15 package (whose
-// bundled BaseHandler predates the channel methods).
-// https://github.com/plurnk/plurnk-mimetypes/issues/21
-//
-// Load-bearing claims, restated as testable contracts:
-//
-//   C1. A handler that cannot serve a requested channel is a CONTRACT error:
-//       process() throws a TypeError naming the mimetype, the missing method,
-//       and the fix — never a bare "undefined is not a function".
-//   C2. The same handler still serves the channels it does implement —
-//       incompatibility is per-channel, not per-handler.
+// Contract: {§mimetype-handler-contract}. Issue #21 is provenance; #88 owns
+// replacement of the version-specific compatibility branch.
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";

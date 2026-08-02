@@ -1,14 +1,4 @@
-// Coverage: SPEC §18 (content channel).
-// Content channel — model-facing readable text projection (HTML-only for now).
-// Design conversation 2026-06-14; see SPEC §18.
-//
-//   C1. content is absent by default — directly-readable formats (whose raw
-//       body IS the content) populate nothing.
-//   C2. content is in the DEFAULT channel set (cheap, model-facing) but absent
-//       from the result when the handler returns undefined.
-//   C3. a handler that overrides content() surfaces it on the requested channel.
-//   C4. embedding embeds content() when present (HTML markdown), not the raw
-//       bytes — and falls back to toText/body when content() is undefined.
+// Contracts: {§mimetype-content}, {§mimetype-embedding}.
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";

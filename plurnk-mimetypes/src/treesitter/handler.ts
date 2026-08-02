@@ -3,13 +3,7 @@ import type { QueryConstructor, TreeSitterParser, TreeSitterTree } from "../Tree
 import type { HandlerMetadata, MimeRef, MimeSymbol } from "../types.ts";
 import type { TreeSitterLanguageEntry, TreeSitterLanguageMapping } from "./registry.ts";
 
-// Bridges a registry entry to a runtime handler. The framework instantiates
-// one of these per mimetype lookup. WASM grammar + mapping module are both
-// lazy-loaded.
-//
-// Constructed by the framework's handler-routing path; not exported as a
-// public class (consumers don't author these — they author per-language
-// mapping files in src/treesitter/ via PR to the framework).
+// Internal registry-entry adapter; parser and mapping are lazy-loaded together.
 export default class TreeSitterLanguageHandler extends TreeSitterExtractor {
     readonly #entry: TreeSitterLanguageEntry;
     #mappingPromise: Promise<TreeSitterLanguageMapping> | null = null;
@@ -20,9 +14,7 @@ export default class TreeSitterLanguageHandler extends TreeSitterExtractor {
     }
 
     protected override async loadParser(): Promise<TreeSitterParser> {
-        // Dynamic-import web-tree-sitter so the framework doesn't pull it
-        // in at module load — only handlers that actually parse pay the
-        // cost. Same pattern as antlr4ng peer-dep loading.
+        // Parsing requests alone pay runtime initialization.
         const ts = await import("web-tree-sitter" as string) as {
             Parser: {
                 init(): Promise<void>;
@@ -36,18 +28,14 @@ export default class TreeSitterLanguageHandler extends TreeSitterExtractor {
         await ts.Parser.init();
         const wasmPath = await resolveWasmPath(this.#entry);
         const lang = await ts.Language.load(wasmPath);
-        // Hand the Language + Query ctor to the base so collectRefs() can
-        // compile the refs query (issue #26 — one priming impl, not two).
+        // Prime the shared references engine with the loaded language.
         this.setQueryContext(lang, ts.Query);
         const parser = new ts.Parser();
         parser.setLanguage(lang);
         return parser as unknown as TreeSitterParser;
     }
 
-    // References channel (issue #19). Languages opt in by exporting a
-    // refsQuery from their mapping module; the base collectRefs() helper runs
-    // it and resolves containers against the same symbols the mapping emits.
-    // No query → empty channel. Parse/grammar error policy lives in the base.
+    // Mapping-owned query through the shared engine ({§mimetype-references}).
     override async references(content: import("../BaseHandler.ts").HandlerContent): Promise<MimeRef[]> {
         if (typeof content !== "string") return [];
         const mapping = await this.#getMappingCached();
@@ -62,23 +50,19 @@ export default class TreeSitterLanguageHandler extends TreeSitterExtractor {
         throw new Error("internal: TreeSitterLanguageHandler uses async extractRaw override");
     }
 
-    // Override extractRaw entirely so we can await both the parser and the
-    // mapping import in a single coordinated path.
+    // Parser and mapping imports form one coordinated extraction boundary.
     override async extractRaw(content: import("../BaseHandler.ts").HandlerContent): Promise<MimeSymbol[]> {
         if (typeof content !== "string") return [];
         let parser: TreeSitterParser;
         let mapping: TreeSitterLanguageMapping;
         try {
-            // The base's primed-promise parser cache + the lazy mapping import,
-            // awaited together.
             [parser, mapping] = await Promise.all([
                 this.getParser(),
                 this.#getMappingCached(),
             ]);
         } catch (err) {
-            // GrammarNotInstalledError propagates so Mimetypes.process() can
-            // degrade to text-plain per #14. Other errors route to empty
-            // symbols per the long-standing handler error policy.
+            // Missing grammar selects explicit structural degradation; #92
+            // owns separating every other import/parse defect.
             if (err instanceof GrammarNotInstalledError) throw err;
             return [];
         }
@@ -98,14 +82,8 @@ export default class TreeSitterLanguageHandler extends TreeSitterExtractor {
         }
     }
 
-    // Deep-channel walk. Reuses the same primed-promise parser cache so we
-    // don't reload WASM per channel; the symbols + deep paths each parse the
-    // content once on first invocation, then share the parser.
-    //
-    // When the mapping module exports its own deepJson() function, we delegate
-    // to it instead of walking the AST — used for data formats (YAML, TOML,
-    // JSON-shaped) where the algebra-natural deep-json is the parsed value
-    // rather than the parse tree.
+    // Reuse the parser cache; an algebra-specific mapping projection wins over
+    // the generic named-node walk ({§mimetype-channel-architecture}).
     override async deepJson(content: import("../BaseHandler.ts").HandlerContent): Promise<unknown> {
         if (typeof content !== "string") return null;
         const mapping = await this.#getMappingCached();
@@ -147,8 +125,7 @@ export default class TreeSitterLanguageHandler extends TreeSitterExtractor {
     }
 }
 
-// Grammar leaves are the portability boundary: upstream source is compiled
-// there, and the framework consumes only their pre-built WASM.
+// Resolve only the reproducible leaf artifact ({§mimetype-grammar-leaves}).
 async function resolveWasmPath(entry: TreeSitterLanguageEntry): Promise<string> {
     const { createRequire } = await import("node:module");
     const require = createRequire(import.meta.url);

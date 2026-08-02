@@ -1,4 +1,4 @@
-// Coverage: SPEC §9 (ANTLR backend).
+// Contract: {§mimetype-backend-selection}.
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import AntlrExtractor from "./AntlrExtractor.ts";
@@ -117,7 +117,7 @@ describe("AntlrExtractor", () => {
         assert.deepEqual(visitedTree, { tag: "root" });
     });
 
-    it("inherits BaseHandler symbolsRaw/preview behavior via extractRaw output", async () => {
+    it("inherits BaseHandler symbolsRaw behavior via extractRaw output", async () => {
         class Extractor extends AntlrExtractor {
             protected parseTree(_content: string): unknown {
                 return { fake: "tree" };

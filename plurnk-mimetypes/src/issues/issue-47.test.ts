@@ -1,13 +1,5 @@
-// Coverage: SPEC §21 (search-index exclusion).
-// Issue #47 (service#337): search-index exclusion via PLURNK_MIMETYPES_SEARCH_EXCLUDE
-// — the operator's pattern list IS the classification (owner paradigm: the
-// decision table lives in .env.defaults, no code fallback, no hidden heuristic).
-//
-//   N1. pattern semantics: globs, exact basenames, first-match reason.
-//   N2. NO code fallback: knob unset → nothing suppressed, even package-lock.
-//   N3. the shipped .env.defaults default catches the service#337 offenders and
-//       spares legitimate long content (novel, JSONL, wide CSV).
-//   N4. surfaced on process(): present iff matched, absent otherwise.
+// Contract: {§mimetype-search-exclusion}. Issue #47 is provenance; #91 owns
+// scheme-aware consolidation.
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";

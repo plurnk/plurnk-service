@@ -1,15 +1,4 @@
-// Coverage: SPEC §11 (source-line footprint).
-// Issue #41: structural-query matches report the SOURCE-LINE footprint.
-// https://github.com/plurnk/plurnk-mimetypes/issues/41
-//
-// Contracts:
-//   C1. jsonpath match on a node with explicit line/endLine → that span.
-//   C2. jsonpath match on a PRIMITIVE resolves to the nearest enclosing
-//       line-annotated node (walk-up via the JSON pointer).
-//   C3. a handler-supplied lineFor (source-position fidelity) wins, by pointer.
-//   C4. xpath node match → [pk:line .. pk:endLine] span.
-//   C5. xpath computed scalar (count/string/…) → no lines (node-less).
-//   C6. the value is always reported, regardless of line resolution.
+// Contract: {§mimetype-query-conformance}. Issue #41 is provenance.
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";

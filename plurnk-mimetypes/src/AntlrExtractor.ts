@@ -2,15 +2,8 @@ import BaseHandler from "./BaseHandler.ts";
 import type { HandlerContent } from "./BaseHandler.ts";
 import type { ExtractionVisitor, MimeRef, MimeSymbol } from "./types.ts";
 
-// Abstract base for grammar-backed mimetype handlers. Subclasses supply two
-// methods:
-//   parseTree(content) — construct lexer/parser, return the entry-rule tree.
-//   createVisitor()    — return an ExtractionVisitor (typically built via
-//                        withExtractor(GeneratedVisitor)).
-// extractRaw() orchestrates: parseTree -> createVisitor -> visit -> visitor.symbols.
-// Parse and visit errors are caught and converted to an empty symbol list;
-// preview() inherits BaseHandler's default (symbols-kind from extractRaw),
-// which becomes an empty preview when extraction yields nothing.
+// ANTLR handler adapter ({§mimetype-backend-selection}). Subclasses supply the
+// entry parse and visitor; current failure collapsing is tracked in #92.
 export default abstract class AntlrExtractor extends BaseHandler {
     protected abstract parseTree(content: string): unknown;
     protected abstract createVisitor(): ExtractionVisitor;
@@ -33,11 +26,7 @@ export default abstract class AntlrExtractor extends BaseHandler {
         return visitor.symbols;
     }
 
-    // References channel (ANTLR references grind). Mirrors extractRaw but
-    // returns the visitor's `refs` — the classified symbol uses it collected
-    // during the same kind of visit. Visitors that emit no refs (the default,
-    // and every ANTLR handler before its refs turn) yield []. Same parse/visit
-    // error policy as extractRaw.
+    // Classified uses from the same visitor contract ({§mimetype-references}).
     override references(content: HandlerContent): MimeRef[] {
         if (typeof content !== "string") return [];
         let tree: unknown;
@@ -57,16 +46,8 @@ export default abstract class AntlrExtractor extends BaseHandler {
         return visitor.refs ?? [];
     }
 
-    // Deep-channel walk per issue #10. Walks the ANTLR parse tree returned by
-    // parseTree() and emits the full named-children tree with native rule and
-    // token names. Each node carries `type` (derived from the antlr4ng
-    // ParserRuleContext class name, stripped of the "Context" suffix and
-    // lowercased — matches the grammar's rule name), `line`, `endLine`, plus
-    // `text` on terminal nodes (literal source slice).
-    //
-    // Failures (parse error, walk exception) route to null, mirroring
-    // extractRaw's empty-symbols policy. Handlers needing a custom shape
-    // override this entirely.
+    // Native-rule structural walk ({§mimetype-channel-architecture}); #92 owns
+    // distinguishing malformed input from internal walk defects.
     override deepJson(content: HandlerContent): unknown {
         if (typeof content !== "string") return null;
         let tree: unknown;

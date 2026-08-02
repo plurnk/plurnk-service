@@ -1,22 +1,5 @@
-// Coverage: SPEC §17 (embedding channel).
-// Issue #24: embedding channel — Float32-bytes Uint8Array, scalar per entry
-// (plurnk-service ~semantic).
-// https://github.com/plurnk/plurnk-mimetypes/issues/24
-//
-// Load-bearing claims, restated as testable contracts:
-//
-//   C1. "embedding" is NEVER materialized unless explicitly requested — the
-//       default channel set excludes it (model inference is not a default).
-//   C2. Requested with the embedder package present: ProcessResult.embedding
-//       is a Uint8Array of native-endian Float32 bytes (4 × dimension). The
-//       same channel embeds arbitrary text — an entry body and a ~query's
-//       query text ride the identical path.
-//   C3. Requested with the package missing: degrade per #14 — empty bytes +
-//       embeddingMissing install hint, ok stays true; strict: true throws.
-//   C4. Honest empties: empty content and binary content without a toText
-//       projection embed to empty bytes with NO missing-hint.
-//   C5. The grammar-degrade path still embeds — a grammar-missing entry is
-//       still semantically searchable text.
+// Contracts: {§mimetype-embedding}, {§mimetype-embedding-wire}.
+// Issue #24 is provenance.
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";

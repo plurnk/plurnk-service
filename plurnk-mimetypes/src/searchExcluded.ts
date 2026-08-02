@@ -1,24 +1,5 @@
-// Search-index exclusion (SPEC §21, #47): PLURNK_MIMETYPES_SEARCH_EXCLUDE is a
-// comma-separated list of path patterns naming generated/noisy content that
-// remains directly readable but must not pollute graph, lexical, or vector recall.
-//
-// The knob IS the classification — owner paradigm: the decision table lives in
-// .env.example (sane defaults shipped there, operator-tunable per deployment,
-// extensible without a code release), never as heuristics or hardcoded sets in
-// code. There is NO code fallback: unset/empty → nothing is suppressed. A
-// content heuristic (line-length ratios) was deliberately rejected — it
-// false-positives on line-record data (large-record JSONL, wide CSV), silently
-// excluding real searchable data, and its thresholds would be exactly the
-// hidden magic this family forbids.
-//
-// Pattern semantics: an entry WITHOUT `/` matches the path's BASENAME; an
-// entry WITH `/` matches the FULL PATH (directory junk-drawers like */dist/*
-// — hashed bundle names defeat basename patterns; the run18 offender was
-// dist/assets/js/12.5188bb.js). Glob syntax is the FAMILY's one engine — the
-// body-matcher dialect's globToRegex (SPEC §11.3): `*` (crosses `/`), `?`,
-// `[...]` classes, anchored; an entry without wildcards is an exact match.
-// Whitespace around entries is trimmed. First match wins and is returned
-// verbatim — the matched pattern is the observable reason.
+// Operator path matcher ({§mimetype-search-exclusion}). This layer has no
+// scheme identity; #91 owns moving file-search policy to one scheme-aware path.
 
 import { globToRegex } from "./query.ts";
 
@@ -35,9 +16,7 @@ function compile(raw: string): { source: string; regex: RegExp }[] {
     return patterns;
 }
 
-// The matched pattern for a path under the current PLURNK_MIMETYPES_SEARCH_EXCLUDE,
-// or undefined (no path / knob unset or empty / no match). Read at call time,
-// like the pdf caps — the host's env is the contract.
+// Read at call time so host environment changes are immediately observable.
 export function matchSearchExclusion(path: string | undefined): string | undefined {
     if (path === undefined) return undefined;
     const raw = process.env.PLURNK_MIMETYPES_SEARCH_EXCLUDE;

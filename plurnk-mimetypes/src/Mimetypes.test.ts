@@ -1,4 +1,5 @@
-// Coverage: SPEC §5 (channel selection), §6 (validate), §7 (error policy).
+// Contracts: {§mimetype-channel-selection}, {§mimetype-validation},
+// {§mimetype-error-policy}.
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
@@ -250,7 +251,7 @@ describe("Mimetypes — process: metadata + error paths", () => {
 });
 
 describe("Mimetypes — process: channel selection (#17)", () => {
-    it("default materializes all four channels", async () => {
+    it("default selects every structural channel", async () => {
         const m = new Mimetypes({
             discovery: makeDiscovery([plainInfo]),
             loader: async () => ({ default: FakePlainHandler }),

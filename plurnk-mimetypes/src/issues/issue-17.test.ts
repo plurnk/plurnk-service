@@ -1,20 +1,5 @@
-// Coverage: SPEC §5 (channel selection).
-// Issue #17: 0.15 P1 — channel-selective process() + preview-ectomy
-// (ProcessResult v2). https://github.com/plurnk/plurnk-mimetypes/issues/17
-//
-// Load-bearing claims, restated as testable contracts:
-//
-//   C1. process(input, { channels }) materializes exactly the requested
-//       channels: default is all four; a subset yields exactly that subset;
-//       [] yields metadata only and pays no extraction work.
-//   C2. The symbols channel is structured MimeSymbol[] — there is no rendered
-//       preview string and no previewTokens anywhere on ProcessResult.
-//   C3. The references channel exists with the final field shape and returns
-//       [] until the extraction engine lands (#19) — consumers can build
-//       against the shape today.
-//   C4. The budget/fitting layer is gone from the public API: no fitPreview,
-//       fitSymbols, fitContent, or defaultTokenize exports. The outline
-//       primitives (format, buildTree, renderTree) survive.
+// Contracts: {§mimetype-channel-selection}, {§mimetype-public-api}.
+// Issue #17 is provenance.
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
@@ -68,7 +53,7 @@ function makeMimetypes() {
 }
 
 describe("Issue #17 — C1: channel selection semantics", () => {
-    it("default materializes all four channels", async () => {
+    it("default selects every structural channel", async () => {
         const m = makeMimetypes();
         const r = await m.process({ path: "a.tst", content: "x\ny" });
         assert.ok(Array.isArray(r.symbols));

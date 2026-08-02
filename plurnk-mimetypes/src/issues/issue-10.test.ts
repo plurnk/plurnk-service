@@ -1,25 +1,5 @@
-// Coverage: SPEC §12 (channel architecture).
-// Issue #10: Three internal channels per entry — deep-json, deep-xml, symbols.
-// https://github.com/plurnk/plurnk-mimetypes/issues/10
-//
-// Issue #10's load-bearing promises, restated as testable claims:
-//
-//   C1. Every ProcessResult exposes three channels: symbols (preview),
-//       deep-json (queryable tree), deep-xml (queryable XML projection).
-//   C2. Deep channels are eagerly built — not lazy. Every process() call
-//       materializes them.
-//   C3. jsonpath dispatches against deep-json on ANY entry, regardless of
-//       source mimetype. xpath dispatches against deep-xml on ANY entry,
-//       regardless of source mimetype. Cross-cases (xpath on JSON,
-//       jsonpath on XML, both on code) work.
-//   C4. The two deep views are congruent — same conceptual tree, different
-//       syntax. projectJsonToXml() owns the translation; handlers don't
-//       write XML serialization logic.
-//
-// These tests exist to enforce the contract, not the implementation. If a
-// future refactor breaks any claim, the corresponding test fails — even if
-// the underlying handler tests still pass. This is the "tests prove what
-// was promised, not what was written" discipline.
+// Contracts: {§mimetype-channel-architecture}, {§mimetype-materialization}.
+// Issue #10 is provenance.
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";

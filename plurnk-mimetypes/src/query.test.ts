@@ -1,4 +1,4 @@
-// Coverage: SPEC §11 (dialect primitives).
+// Contracts: {§mimetype-query}, {§mimetype-query-conformance}.
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { outlineLineFor, queryGlob, queryJsonpathObject, queryRegex, queryXpathString } from "./query.ts";

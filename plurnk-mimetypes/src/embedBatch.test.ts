@@ -1,8 +1,4 @@
-// Coverage: SPEC §17 (bulk embedding).
-// Mimetypes.embedBatch — framework bulk-embedding entry for the host's corpus
-// ingest (plurnk-service#272). Single embedder seam: resolution stays
-// framework-owned; delegates to the embedder's data-parallel embedBatch when
-// present, falls back to a sequential embed() loop otherwise.
+// Contract: {§mimetype-embedding}. plurnk-service#272 is provenance.
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";

@@ -1,18 +1,5 @@
-// Coverage: SPEC §3 (MimeSymbol container).
-// Issue #18: 0.15 P2 — MimeSymbol v2: container (qualified path) + column
-// positions. https://github.com/plurnk/plurnk-mimetypes/issues/18
-//
-// Load-bearing claims, restated as testable contracts:
-//
-//   C1. MimeSymbol carries 1-indexed column/endColumn and a `container`
-//       qualified path; container is ABSENT (not "") on top-level symbols.
-//       The fields flow through process()'s symbols channel untouched.
-//   C2. Containers nest by dotted path of enclosing emitted symbols —
-//       grounded here on the python reference mapping (per-language
-//       assertions live in each mapping's own test file).
-//   C3. The ANTLR mixin (withExtractor) supports the same contract:
-//       addSymbol stamps 1-indexed columns and the active gateContainer
-//       path; gateContainer scopes nest and unwind.
+// Contracts: {§mimetype-symbol}, {§mimetype-symbol-container}.
+// Issue #18 is provenance.
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";

@@ -7,11 +7,11 @@
 //
 // Duck contract consumed by the framework's Tokenizers seam:
 //   resolve(modelRef) → Promise<{ countTokens(text), tokenizerId } | null>
-// null = no bundled vocab matches the ref (a data gap; the seam degrades to its
-// chars/2 upper bound with a Notice). tokenizerId is the VOCAB identity — the
-// tokenizer.json sha256 prefix from the manifest — never a model id, so model
-// refs sharing a vocabulary share the id and a vocab-preserving model swap
-// never invalidates counts derived against it.
+// null = no bundled vocab matches the ref (a data gap; the framework degrades
+// explicitly according to {§mimetype-tokenizer}). tokenizerId is the VOCAB
+// identity — the tokenizer.json sha256 prefix from the manifest — never a model
+// id, so refs sharing a vocabulary share the id and a vocab-preserving model
+// swap never invalidates counts derived against it.
 //
 // countTokens counts CONTENT tokens (add_special_tokens: false) — the same
 // semantics as llama-server's /tokenize, which the #44 measurements used.

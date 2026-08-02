@@ -1,24 +1,4 @@
-// Coverage: SPEC §7 (grammar-missing degradation).
-// Issue #14: Framework should own its runtime dependency surface (grammars +
-// loaders), not offload it onto consumers.
-// https://github.com/plurnk/plurnk-mimetypes/issues/14
-//
-// Load-bearing claims, restated as testable contracts (re-grounded for the
-// 0.15 channel architecture, issue #17 — the degrade contract survives the
-// preview removal: a degraded result is honest metadata + empty channels):
-//
-//   C1. A missing grammar is the EXPECTED normal state in the a-la-carte
-//       world, not an error. process() degrades — ok stays true, metadata
-//       (totalLines) is computed, requested channels come back empty.
-//   C2. The grammarMissing field carries the package name the consumer
-//       should install. No string parsing, no exception catching.
-//   C3. Consumers that NEED a specific grammar can opt into strict mode
-//       (process(input, { strict: true })) which throws
-//       GrammarNotInstalledError on missing-grammar paths.
-//
-//   (The original C4 — "text-plain floor always exists for degradation" —
-//   is moot since 0.15: the degraded result is built from metadata alone
-//   and no longer routes through the text/plain handler.)
+// Contract: {§mimetype-error-policy}. Issue #14 is provenance.
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
@@ -132,6 +112,15 @@ describe("Issue #14 — C2: grammarMissing surfaces the install hint as data", (
         });
         const result = await m.process({ path: "foo.fake", content: "plain content" });
         assert.equal(result.grammarMissing, undefined);
+    });
+
+    it("the Notice preserves the detected mimetype instead of claiming substitution", async () => {
+        const result = await makeMimetypes().process({ path: "foo.fake", content: "x" });
+        const notice = result.notices?.find(({ kind }) => kind === "grammar_degraded");
+        assert.ok(notice);
+        assert.equal(notice.mimetype, "text/x-fake");
+        assert.match(String(notice.message), /structural channels/i);
+        assert.doesNotMatch(String(notice.message), /text[- ]plain/i);
     });
 });
 

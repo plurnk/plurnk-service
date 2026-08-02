@@ -35,29 +35,11 @@ export interface TreeSitterNode {
     descendantsOfType(types: string | string[]): TreeSitterNode[];
 }
 
-// Abstract base for tree-sitter-backed handlers. Subclasses supply two
-// methods:
-//   - loadParser() — async; returns a ready Parser bound to a Language.
-//                    Typically:
-//                       const { Parser, Language } = await import("web-tree-sitter");
-//                       await Parser.init();
-//                       const parser = new Parser();
-//                       parser.setLanguage(await Language.load(grammarWasmPath));
-//                       return parser;
-//   - extractFromTree(tree, content) — sync; walk the parsed tree, return
-//                    MimeSymbol[]. The base class hands you the tree and
-//                    the original content for source-range slicing.
-//
-// extractRaw() orchestrates: lazy-load parser (cached), parse, dispatch to
-// extractFromTree. Parse and visit errors are caught and converted to an
-// empty symbol list, mirroring AntlrExtractor.
+// Shared tree-sitter adapter ({§mimetype-backend-selection}). Subclasses supply
+// parser loading and symbol projection; current failure collapsing is #92.
 export default abstract class TreeSitterExtractor extends BaseHandler {
     #parserPromise: Promise<unknown> | null = null;
-    // References-engine priming state (issue #26). loadParser() owns the WASM
-    // path, so it is the only place that holds the Language object and the
-    // Query constructor; it hands them to the base via setQueryContext() so
-    // collectRefs() can compile queries without every subclass reimplementing
-    // the retain-and-compile dance.
+    // loadParser() primes the language/query pair used by the shared engine.
     #language: unknown = null;
     #QueryCtor: QueryConstructor | null = null;
     #refsQuery: RefsQuery | null = null;
@@ -65,26 +47,14 @@ export default abstract class TreeSitterExtractor extends BaseHandler {
     protected abstract loadParser(): Promise<TreeSitterParser>;
     protected abstract extractFromTree(tree: TreeSitterTree, content: string): MimeSymbol[];
 
-    // Called by loadParser() after Language.load(), handing the base the two
-    // objects Query compilation needs. Required before collectRefs() — a
-    // subclass that implements references() via collectRefs() MUST call this
-    // in its loadParser().
+    // Required before collectRefs() so query compilation shares parser state.
     protected setQueryContext(language: unknown, QueryCtor: QueryConstructor): void {
         this.#language = language;
         this.#QueryCtor = QueryCtor;
     }
 
-    // The whole references() body, owned once: lazy-load the parser (shared
-    // cache), compile + cache the query (priming guaranteed by getParser →
-    // loadParser → setQueryContext), parse, run the engine against the defs
-    // `extractDefs` emits, clean up. Error policy matches the other channels:
-    // GrammarNotInstalledError propagates for the #14 degrade path; parse and
-    // query failures route to an empty channel.
-    //
-    // `wrap` adapts the raw compiled query when a language needs match-level
-    // composition the engine's flat captures() can't express (HCL TYPE.NAME).
-    // Omitted, the raw query is used directly (it already exposes captures()).
-    // A Tier 2 references() collapses to ~3 lines around this call.
+    // One parser/query/cache path for dedicated references handlers
+    // ({§mimetype-references}). `wrap` adapts match-level composition.
     protected async collectRefs(
         content: HandlerContent,
         querySource: string,
@@ -116,8 +86,7 @@ export default abstract class TreeSitterExtractor extends BaseHandler {
         }
     }
 
-    // Compile-once cache for the refs query. The source is constant per
-    // handler, so we compile on first use and reuse for the handler lifetime.
+    // Query source is constant per handler instance.
     #primeRefsQuery(source: string, wrap?: (rawQuery: unknown) => RefsQuery): RefsQuery {
         if (this.#refsQuery === null) {
             if (this.#language === null || this.#QueryCtor === null) {
@@ -135,12 +104,8 @@ export default abstract class TreeSitterExtractor extends BaseHandler {
         try {
             parser = await this.getParser();
         } catch (err) {
-            // GrammarNotInstalledError is signal-bearing — propagates so
-            // Mimetypes.process() can degrade to text-plain with a
-            // grammarMissing hint per issue #14. Other parser-load errors
-            // (corrupt WASM, web-tree-sitter init failure) are silently
-            // routed to empty symbols per the long-standing handler error
-            // policy.
+            // Missing grammar selects the explicit structural degradation;
+            // #92 owns separating every other load/parse defect.
             if (isGrammarNotInstalled(err)) throw err;
             return [];
         }
@@ -160,11 +125,7 @@ export default abstract class TreeSitterExtractor extends BaseHandler {
         }
     }
 
-    // Deep-channel walk per issue #10. Returns the full named-children tree of
-    // the parsed AST with native tree-sitter node types. Each node carries
-    // `type`, `line`, `endLine`. Leaves (no named children) additionally carry
-    // `text` — the source slice for that node. Internal nodes have `children`.
-    // Failures route to null (empty deep-json) matching extractRaw's policy.
+    // Native named-node structural walk ({§mimetype-channel-architecture}).
     override async deepJson(content: HandlerContent): Promise<unknown> {
         if (typeof content !== "string") return null;
         let parser: TreeSitterParser;
@@ -190,11 +151,7 @@ export default abstract class TreeSitterExtractor extends BaseHandler {
         }
     }
 
-    // Primed-promise cache: subsequent calls reuse the parser. The parser
-    // owns the WASM grammar; we keep it alive for the handler's lifetime.
-    // Protected so subclasses that override extractRaw/deepJson (e.g.
-    // TreeSitterLanguageHandler) share the same cache instead of growing
-    // their own.
+    // One parser/WASM instance per handler lifetime.
     protected getParser(): Promise<TreeSitterParser> {
         this.#parserPromise ??= this.loadParser();
         return this.#parserPromise as Promise<TreeSitterParser>;
