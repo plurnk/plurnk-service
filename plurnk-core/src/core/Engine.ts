@@ -550,7 +550,7 @@ export default class Engine {
             // #263 — the last turn's prompt tokens = current window occupancy (gauge numerator), NOT the
             // summed promptTokens above, which overcounts a context that grows across turns.
             contextTokens: row?.context ?? 0,
-            // #274 — the last turn's model window (denominator); null when the provider reports none.
+            // #274 — the last turn's effective prompt budget (denominator); null when uncapped.
             promptBudget: row?.context_size ?? null,
             // #252 — the latest turn's opaque provider blob, parsed for the wire. Empty {} when the
             // provider returned no meta. The service forwards it; it never reads a field within.

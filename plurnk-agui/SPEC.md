@@ -84,10 +84,17 @@ same log identity and verbatim goals:
   `plurnk.notice`, `plurnk.stream`, `plurnk.branch_batch`, `plurnk.terminated` — the full loop
   outcome the budget `STATE_DELTA` can't hold). Generic frontends skip unknown customs; plurnk-aware frontends render
   them richly. Nothing plurnk-specific ever masquerades as a core event.
-- §agui-numbers-passthrough **Numbers pass through verbatim** — the budget `STATE_DELTA`
-  carries the daemon's own usage figures (`contextTokens`, `contextSize` = the effective
-  prompt budget, service#345). The module never recomputes a number; the daemon's gauge is
-  the gauge.
+
+§agui-numbers-passthrough **Usage numbers pass through verbatim.** The module
+never recomputes the daemon's gauge.
+
+| AG-UI state location                        | Daemon source                            | Meaning |
+|:--------------------------------------------|:-----------------------------------------|:--------|
+| `snapshot.plurnk.providers[*].promptBudget` | `providers.list.aliases[*]`              | Each provider alias's effective model-facing prompt ceiling, or `null` when unknown. |
+| `STATE_DELTA /budget/contextTokens`         | `loop/terminated.usage.contextTokens`    | Latest turn's provider-reported prompt occupancy. |
+| `STATE_DELTA /budget/promptBudget`          | `loop/terminated.usage.promptBudget`     | Latest turn's effective model-facing prompt ceiling, or `null` when unknown. |
+| `STATE_DELTA /budget/promptTokens`          | `loop/terminated.usage.promptTokens`     | Loop-total provider-reported prompt usage. |
+| `STATE_DELTA /budget/completionTokens`      | `loop/terminated.usage.completionTokens` | Loop-total provider-reported completion usage. |
 
 - §agui-row-channel **The row channel** — every log row ALSO rides `CUSTOM plurnk.row`
   carrying the full wire entry (fold state, tags-in-signal, tokens, coordinate) alongside its

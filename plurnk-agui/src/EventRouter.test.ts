@@ -75,14 +75,14 @@ test("stream events serve the standard ACTIVITY channel AND plurnk.stream (compl
     assert.deepEqual(custom?.value?.result, { status: 502, problem }, "AG-UI preserves the exact terminal Problem");
 });
 
-test("terminated serves the standard RAW channel — the provider's native completion frame ()", () => {
+test("terminated serves the standard RAW channel — the provider's native completion frame", () => {
     const meta = { model: "gemma-4-26B.gguf", finish_reason: "stop", timings: { predicted_ms: 900 } };
-    const ev = router().route("loop/terminated", { loopId: 1, result: { status: 200 }, hitMaxTurns: false, turnIds: [1], usage: { promptTokens: 5, completionTokens: 6, costUsd: 0, contextTokens: 11, contextSize: 200000, meta } });
+    const ev = router().route("loop/terminated", { loopId: 1, result: { status: 200 }, hitMaxTurns: false, turnIds: [1], usage: { promptTokens: 5, completionTokens: 6, costUsd: 0, contextTokens: 11, promptBudget: 200000, meta } });
     const raw = ev.find((e) => e.type === "RAW") as { event: unknown; source?: string } | undefined;
     assert.ok(raw !== undefined, "the provider frame rides RAW");
     assert.deepEqual(raw.event, meta, "the native completion object, verbatim");
     assert.equal(raw.source, "provider");
     // Empty meta → no RAW (never an empty passthrough).
-    const bare = router().route("loop/terminated", { loopId: 1, result: { status: 200 }, hitMaxTurns: false, turnIds: [1], usage: { promptTokens: 5, completionTokens: 6, costUsd: 0, contextTokens: 11, contextSize: 200000, meta: {} } });
+    const bare = router().route("loop/terminated", { loopId: 1, result: { status: 200 }, hitMaxTurns: false, turnIds: [1], usage: { promptTokens: 5, completionTokens: 6, costUsd: 0, contextTokens: 11, promptBudget: 200000, meta: {} } });
     assert.equal(bare.find((e) => e.type === "RAW"), undefined, "empty meta → no RAW");
 });

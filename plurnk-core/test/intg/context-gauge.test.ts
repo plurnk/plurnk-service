@@ -40,7 +40,7 @@ test("[#263] loopUsage.contextTokens is the last turn's prompt, not the summed t
 // (effective window minus the partition reserves — owner ruling: the raw n_ctx overstates the
 // usable room by the reserve total). A /model-switched loop reports the budget of the model
 // that actually ran (not the stale active one).
-test("[#274] loopUsage.promptBudget is the last turn's model window — survives a model switch", async () => {
+test("[#274] loopUsage.promptBudget is the last turn's effective prompt ceiling — survives a model switch", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `ctx-size-${crypto.randomUUID()}`);
@@ -63,7 +63,7 @@ test("[#274] loopUsage.promptBudget is the last turn's model window — survives
         await db.test_context_insert_attempt.run({ turn_id: second!.id, prompt: 250 });
 
         const usage = await new Engine({ db, schemes: new SchemeRegistry() }).loopUsage(loopId);
-        assert.equal(usage.promptBudget, 200000, "promptBudget is the LAST turn's window — the switched-to model, not the stale default");
+        assert.equal(usage.promptBudget, 200000, "promptBudget is the LAST turn's effective ceiling — the switched-to model's policy, not the stale default");
         assert.equal(usage.contextTokens, 250, "numerator + denominator come from the same (last) turn/model");
     } finally { await db.close(); }
 });

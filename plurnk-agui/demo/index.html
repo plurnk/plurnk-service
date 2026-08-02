@@ -75,11 +75,15 @@ const handle = (e) => {
         case "THINKING_TEXT_MESSAGE_CONTENT": block("thinking", e.delta); break;
         case "TOOL_CALL_START": block("tool", `⚙ ${e.toolCallName} …`); break;
         case "MESSAGES_SNAPSHOT": for (const m of e.messages) block("", m.content); break;
-        case "STATE_SNAPSHOT": budget.textContent = e.snapshot?.model?.alias ? `${e.snapshot.model.alias} · budget ${e.snapshot.budget?.contextSize ?? "?"}` : ""; break;
+        case "STATE_SNAPSHOT": {
+            const active = e.snapshot?.plurnk?.providers?.find((provider) => provider.active);
+            budget.textContent = active ? `${active.alias} · budget ${active.promptBudget ?? "?"}` : "";
+            break;
+        }
         case "STATE_DELTA": {
             const used = e.delta.find((d) => d.path === "/budget/contextTokens")?.value;
-            const size = e.delta.find((d) => d.path === "/budget/contextSize")?.value;
-            if (used !== undefined && size) budget.textContent = `ctx ${Math.round(used / size * 100)}% of ${size}`;
+            const size = e.delta.find((d) => d.path === "/budget/promptBudget")?.value;
+            if (typeof used === "number" && typeof size === "number" && size > 0) budget.textContent = `ctx ${Math.round(used / size * 100)}% of ${size}`;
             break;
         }
         case "RUN_ERROR": block("proposal", `run error: ${e.message}`); break;

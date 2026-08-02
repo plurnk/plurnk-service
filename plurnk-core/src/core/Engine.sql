@@ -135,8 +135,8 @@ SELECT COALESCE(SUM(usage_prompt), 0)     AS prompt,
            ORDER BY a.sequence DESC
            LIMIT 1
        ) AS context,
-       -- #274 — the LAST turn's model window (denominator), so numerator + denominator come from
-       -- the same loop/model; NULL when the provider reports no window.
+       -- #274 — the LAST turn's effective prompt budget (denominator), so numerator + denominator
+       -- come from the same loop/model policy; NULL when no ceiling was available.
        (SELECT usage_prompt_budget FROM turns WHERE loop_id = $loop_id ORDER BY sequence DESC LIMIT 1) AS context_size,
        -- #252 — the opaque provider meta blob from the LATEST turn (for example, a
        -- point-in-time snapshot; latest wins). Service-unenforced passthrough to the client.
