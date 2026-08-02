@@ -32,9 +32,8 @@ test("PLURNK_PROVIDERS_GBNF is PER ALIAS — the active alias's suffix wins over
     // knob. Bare is the fallback: GBNF is optional local constrained sampling, so
     // it is unset by default and a local alias opts in with its suffix.
     const dsl = "<<SEND[200]:ok:SEND";
-    // Alias-agnostic: resolve whichever alias the test cascade selected (.env.test's PLURNK_MODEL,
-    // over .env's alias defs) and set ITS GBNF suffix — never a hardcoded name, so this holds
-    // whatever model the operator's .env/​.env.test cascade names. The Mock carries no side-table
+    // Alias-agnostic: resolve the Mock bootstrap's active alias and set ITS GBNF suffix — never a
+    // hardcoded name, so this remains valid if the fixture alias changes. The Mock carries no side-table
     // alias, so #grammarConstraint resolves the knob via resolveActiveAlias.
     const alias = resolveActiveAlias(process.env)?.alias ?? "";
     const suffixKey = `PLURNK_PROVIDERS_GBNF_${alias}`;

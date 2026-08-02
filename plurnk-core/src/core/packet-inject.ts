@@ -26,8 +26,8 @@ const readPolicy = async (path: string, explicit: boolean): Promise<string | nul
 };
 
 // System Policy: PLURNK_SERVICE_POLICY (~-expanded) or the default ~/.plurnk/AGENTS.md. An EXPLICITLY-empty
-// PLURNK_SERVICE_POLICY disables it (undefined → default; "" → off; a path → that file). The test cascade
-// (.env.test) sets it empty so test/demo/live packets never foist the operator's dogfooding policy.
+// PLURNK_SERVICE_POLICY disables it (undefined → default; "" → off; a path → that file). The Mock
+// fixture clears the ambient default; each real-model harness names its exact higher-precedence policy.
 export const readSystemPolicy = async (): Promise<string | null> => {
     const raw = process.env.PLURNK_SERVICE_POLICY;
     if (raw !== undefined && raw.trim() === "") return null; // explicit empty → off (test isolation)

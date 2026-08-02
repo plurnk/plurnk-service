@@ -14,8 +14,8 @@ import EntryCrud from "../../src/schemes/_entry-crud.ts";
 import SearchIndex from "../../src/schemes/_search-index.ts";
 import { openMigrated, insertWorkspace, insertWorker, makeSchemeCtx } from "./_helpers.ts";
 
-// This suite asserts REAL vector ranking, so it re-enables the embedder the fast lane turns off
-// (.env.test PLURNK_SERVICE_EMBED_DISABLE=1). --test-isolation=process scopes this to this file's process.
+// This suite asserts REAL vector ranking, so it re-enables the embedder the Mock bootstrap turns off.
+// --test-isolation=process scopes this to this file's process.
 process.env.PLURNK_SERVICE_EMBED_DISABLE = "0";
 
 const url = (pathname: string): UrlPath => ({

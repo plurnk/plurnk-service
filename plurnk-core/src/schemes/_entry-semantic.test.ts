@@ -4,7 +4,7 @@ import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import EntrySemantic from "./_entry-semantic.ts";
 
 // These exercise the CAPABLE-embedder path (via a stub embedder), so the embedder must be ON —
-// the fast lane disables it in .env.test (PLURNK_SERVICE_EMBED_DISABLE=1), which would force #embedderInfo
+// the Mock bootstrap disables it (PLURNK_SERVICE_EMBED_DISABLE=1), which would force #embedderInfo
 // to null and collapse every assertion to the FTS fallback. Re-enable it for this file.
 process.env.PLURNK_SERVICE_EMBED_DISABLE = "0";
 
