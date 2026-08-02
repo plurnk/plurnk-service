@@ -1,9 +1,7 @@
-// Body-matcher filtering. The mimetypes plugin owns dialect dispatch,
-// projection, and honest locator/TextRegion evidence. We hand it the matcher
-// the grammar already parsed plus the content; no second parser reclassifies
-// the dialect. Matching is a resource predicate: locations are evidence for a
-// later surgical READ, not an instruction to replace the resource with an
-// extracted value.
+// {§matcher-dispatch} Core candidate-set composition over the public schemes
+// matcher adapter. Mimetypes owns content-dialect execution and evidence; the
+// adapter owns operation-result mapping; this layer preserves caller identity
+// across heterogeneous entry/log candidate sets.
 //
 // Status: 200 = matches; 204 = matcher applied, zero results; 400 = malformed matcher
 // expression; 203 = source unparseable for its mimetype → raw bytes as text so the model

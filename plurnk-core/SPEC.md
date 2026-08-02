@@ -811,39 +811,57 @@ Engine → scheme guarantees:
 - `ctx.signal` is wired to the worker's AbortController ({§provider-guarantees-signal-wired}).
 - §scheme-surface-exception-500 Scheme exceptions are contract violations. Core records their complete cause in daemon diagnostics, closes the action with a generic core-owned 500 Problem, and surfaces that durable row in the next turn's `errors` section ({§operation-results}). Implementation exception text is not repurposed as a model recovery instruction.
 
-**Tokenization participation.** Schemes route writes through the shared `_entry-crud.ts` write helper (in plurnk-service today; migrates to plurnk-schemes). Helper populates `entry_channels.tokens` at write time via `ctx.tokenize` ({§tokenomics-tokens-stored-at-write}). Raw DB writes bypass tokenization — out of API scope.
+**Tokenization participation.** Core's shared `_entry-crud.ts` write helper
+populates `entry_channels.tokens` at write time through `ctx.tokenize`
+({§tokenomics-tokens-stored-at-write}). Scheme handlers reach that path through
+the public `ctx.entries` capability. Raw database writes are outside the scheme
+API and receive no implicit token accounting.
 
 ---
 
 ## §mimetype Mimetype Contract
 
-Author-facing contract: [plurnk-mimetypes](https://github.com/plurnk/plurnk-mimetypes). Below: firing semantics + consumption surface.
+Author-facing contract: [`@plurnk/plurnk-mimetypes`](../plurnk-mimetypes/SPEC.md). Below: firing semantics + core's consumption surface.
 
 §mimetype-schemes-do-not-invoke-handlers **Firing semantics.** Scheme writes are verbatim and do not invoke mimetype handlers. `SearchIndex.maintain` processes the current readable projections before model execution and attaches complete search artifacts. Catalog rendering independently asks handlers for extents. Fetch-time materialization is earlier still: the web-fetch sink converts guarded HTTP HTML into the sanitized markdown body that READ serves and search indexes, retaining faithful DOM only as an explicit auxiliary channel. An authored workspace HTML file remains verbatim; its markup is data.
 
 ### §mimetype-manifest Manifest
 
-Per author contract. Manifest declares `kind: "mimetype"`; handler class declares `mimetype` (matches manifest name) and `glyph` (single emoji). Collisions fail-hard at boot per {§plugin-discovery}.
+Per the author contract, a package declares `kind: "mimetype"` and one or more
+handler entries with a name plus optional glyph and extensions. Discovery
+injects that metadata into one handler instance per declared mimetype.
+Discovery order and collisions follow {§mimetype-discovery}; resolution
+failures follow {§mimetype-error-policy}.
 
 ### §mimetype-methods Methods
 
-Author contract owned by plurnk-mimetypes. plurnk-service consumes ONE entry point:
+The author contract is owned by plurnk-mimetypes. Core and its sibling adapters
+consume these public methods:
 
-- §mimetype-methods-process-entry-point `Mimetypes.process(input)` — the projection entry point; returns requested projections (`deepJson` / `deepXml` / `symbols` / `references` / `content`) plus the source `totalLines`.
+| Method / surface                          | Core-side use                                                                                                               |
+|-------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------|
+| `ready`, `skippedPackages`                | Complete trust-gated discovery and present withheld-package evidence at daemon boot.                                        |
+| `detect`, `process`                       | Resolve mimetypes, extents, readable content, symbols, and references.                                                      |
+| `query`                                   | Execute glob/regex/JSONPath/XPath through `@plurnk/plurnk-schemes/Matcher`, which maps typed outcomes to operation results. |
+| `embedderInfo`, `embedBatch`, `tokenizer` | Plan and derive semantic-search chunks without reaching into artifact packages.                                             |
 
-**The plugin projects; the service queries.** `Mimetypes.query()` exists in the author contract, but plurnk-service does NOT consume it. The service owns **all** dialect matching — glob, regex, jsonpath, xpath, `@graph`, `~semantic` — resolved in-tree over those projections plus its own indexes (`symbol_defs`/`symbol_refs`, FTS5, vectors). mimetypes is mimetype-*literate* (content→structure); the service is dialect-*literate* (structure→matches). The pattern-matching DSL is plurnk's defining surface — the service's authority, never a plugin's.
+`@plurnk/plurnk-contracts` owns model-facing matcher syntax; parsed content
+dialects pass to `Mimetypes.query` without reclassification. Mimetype handlers
+own content-to-structure interpretation. Core owns candidate-set composition
+and the persistent semantic/graph relation indexes.
 
 Cross-cutting promises service relies on:
 
-- Render-time only. Schemes do not invoke.
-- Deterministic for a given (content, mimetype) tuple.
+- Storage writes do not implicitly project; query, indexing, and presentation
+  invoke the exact public surface they need.
+- Handler projections are deterministic for a given `(content, mimetype)` pair.
 - Validation errors propagate (fail-hard).
 - Degraded projection (a `grammarMissing` marker) rather than throw when a grammar is absent.
 
 ### §handler-bounds What handlers do NOT do
 
 - **Tokenization** — outside the mimetype projection pipeline; core owns packet and stored-weight accounting ({§tokenomics-agnostic-ruler}).
-- **Storage** — pure functions over content strings.
+- **Storage** — handlers receive content values and own no entry persistence.
 - **Streaming** — handlers see whatever content is current; subscription registry lives between schemes and {§stream}.
 
 ### §handler-bundling Bundled vs sibling handlers
@@ -855,15 +873,13 @@ format handlers are sibling workspaces and independently published packages.
 
 plurnk-service is mimetype-illiterate. Engine hands channel content + mimetype label to `Mimetypes.process({content, hint})`; the manifest build uses `result.totalLines` for each channel's `lines`. Content reaches the model on READ, not as a rendered preview.
 
-**Required handlers** (boot-critical, provided via the framework):
-
-| Package | Mimetype | Why required |
-|---|---|---|
-| `@plurnk/plurnk-mimetypes-text-markdown` | `text/markdown` | LLM emission default; configured as `defaultMimetype` on the `Mimetypes` orchestrator. |
-| `@plurnk/plurnk-mimetypes-text-plain` | `text/plain` | Canonical EXEC stdout/stderr channel mimetype. |
-| `@plurnk/plurnk-mimetypes-application-json` | `application/json`, `application/jsonc` | Service emits JSON for `log_entries` rx/tx, notices, and packet serialization. |
-
-These ride in via the framework — `@plurnk/plurnk-mimetypes` pins the core set (markdown / plain / json / xml / csv / html) as its own dependencies, so the service's exact-pin on the framework pins them transitively rather than redeclaring each. Boot relies on them (markdown is the `defaultMimetype`); their loss would be a framework-contract break. Everything else is opt-in; framework's `discover()` picks up installed packages automatically.
+The current framework package directly includes its standard structured,
+document, embedding, and tokenizer packages. Tree-sitter grammar WASM leaves
+remain independently installable and resolve through the framework registry;
+third-party handler packages register through trust-gated discovery
+({§mimetype-discovery}). #85 owns the unresolved question of which package
+should ultimately declare the default bundle; core does not invent a second
+behavioral contract while that topology is open.
 
 **Token accounting.** The daemon injects no tokenizer into `Mimetypes`; content
 projection is independent of packet budgeting. Core uses the stable
@@ -2224,14 +2240,19 @@ dialect (`//` xpath, `/` regex, `$` jsonpath, otherwise glob); they select
 resources and report evidence. A text scope always addresses the exact readable
 text, regardless of mimetype.
 
-### §matcher-dispatch Matcher dispatch (service-owned, over plugin primitives)
+### §matcher-dispatch Matcher dispatch
 
-`Matcher.matchCandidates` (in-tree, `src/content/matcher.ts`) applies a parsed
-content dialect over caller-supplied `{key, content, mimetype}` candidates.
-Glob and regex inspect readable text; JSONPath uses `deepJson`; XPath uses
-`deepXml`. `~semantic` and `@graph` are indexed relation dialects and never
-route through the content matcher. The matcher has no dependency on the table
-that stored a resource.
+One parsed content matcher crosses three ownership layers:
+
+| Layer                            | Responsibility                                                                                                          |
+|----------------------------------|-------------------------------------------------------------------------------------------------------------------------|
+| `@plurnk/plurnk-mimetypes`       | Resolve the handler and execute glob, regex, JSONPath, or XPath with honest evidence.                                   |
+| `@plurnk/plurnk-schemes/Matcher` | Map framework results and typed failures to the universal scheme-result contract.                                       |
+| Core `Matcher.matchCandidates`   | Apply that operation adapter across caller-supplied `{key, content, mimetype}` candidates and preserve source identity. |
+
+`~semantic` and `@graph` are indexed relation dialects and never route through
+the content matcher. Candidate composition has no dependency on the table that
+stored a resource.
 
 | Result | HTTP status |
 |---|---|

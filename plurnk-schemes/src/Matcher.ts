@@ -1,14 +1,11 @@
-// Body-matcher adapter — delegates to @plurnk/plurnk-mimetypes for the actual
-// dialect dispatch. The framework parses the matcher's leading prefix internally
-// (xpath `//`, jsonpath `$`, regex `/.../`, glob otherwise) and routes to
-// per-mimetype handlers; this maps its typed errors to the HTTP-shaped status
-// codes the model acts on.
+// {§matcher-dispatch} Body-matcher operation adapter. Mimetypes owns handler
+// resolution, dialect execution, and evidence; this layer maps its typed
+// outcomes to the universal scheme-result contract. PLURNK callers pass the
+// grammar's parsed dialect, while standalone raw strings retain framework
+// classification.
 //
-// The full status mapping is the contract: SPEC {§matcher-dispatch}. One
-// rationale that doesn't live there: 203 is HTTP-creative ("Non-Authoritative
-// Information") — content was produced, but not in the structured form the
-// matcher requested; the model sees raw text + a `reason` and chooses
-// retry/fallback/fix-source. Choice ratified by user (#172).
+// Status 203 preserves readable content when its requested structural
+// projection cannot be parsed; the owning mapping lives in {§matcher-dispatch}.
 
 import type { MatcherBody } from "@plurnk/plurnk-contracts";
 import type { Mimetypes, QueryMatch, ParsedBodyMatcher } from "@plurnk/plurnk-mimetypes";

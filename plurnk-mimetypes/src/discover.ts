@@ -12,15 +12,10 @@ import type {
 // Scan installed handler packages and build the registry that detect() consumes
 // and the orchestrator uses to instantiate handlers.
 //
-// Scope-agnostic scan of `<cwd>/node_modules` (issue #28): every installed
-// package — unscoped (`name`) and under every scope (`@scope/name`) — keyed on
-// `plurnk.kind === "mimetype"`, NOT the `@plurnk` scope. This is the
-// third-party enabler: `@acme/acme-mime-foo` is discovered exactly like a
-// first-party handler, with zero involvement from us — matching the executor
-// discovery (`@plurnk/plurnk-execs`) the ecosystem standardized on. The shared
-// trust predicate is enforced here before any handler import; withheld package
-// names return as `skipped` so the consumer can present the decision. Tests and
-// unusual layouts pass `packageDirs` explicitly to skip the scan.
+// {§mimetype-discovery} Scope-agnostic scan of `<cwd>/node_modules`, keyed on
+// `plurnk.kind === "mimetype"`. The shared trust predicate runs before handler
+// import; withheld package names return as `skipped` for consumer presentation.
+// Tests and unusual layouts may provide package directories explicitly.
 //
 // A package is recognized as a handler when its `package.json` declares
 // `plurnk.kind === "mimetype"` and exposes one or more handler entries via
@@ -61,12 +56,8 @@ export async function discover(options: DiscoverOptions = {}): Promise<Discovery
         }
     }
 
-    // Seed tree-sitter registry entries. @plurnk packages win on conflicts —
-    // we only set a mimetype/extension when no @plurnk handler has already
-    // claimed it. This means during the deprecation transition, a user with
-    // an old @plurnk/plurnk-mimetypes-text-python installed continues to use
-    // that handler; once they uninstall it, the framework's built-in tree-
-    // sitter entry takes over.
+    // A package claim suppresses the same tree-sitter mimetype entirely.
+    // Otherwise the built-in entry fills only registry keys still unclaimed.
     //
     // Opt-out via `includeTreeSitter: false` — primarily for tests that need
     // a clean baseline. Production code never disables this.
@@ -143,11 +134,9 @@ async function readHandlerInfos(dir: string): Promise<HandlerInfo[]> {
     if (!Array.isArray(plurnkRec.handlers)) return [];
 
     const packageName = typeof record.name === "string" ? record.name : "";
-    // Package-level `binary: true` flag applies to every handler in the
-    // package — typical for whole-package binary handlers (PDF, images).
+    // Package-level `binary: true` applies to every handler in the package.
     const binary = plurnkRec.binary === true;
-    // Package-level attribution tags (issue #37). Like `binary`, declared once
-    // and applied to every handler entry. Pass-through — the host owns policy.
+    // Normalized package-level attribution is copied to every handler; the host owns policy.
     const attribution = normalizeAttribution(plurnkRec.attribution);
     const infos: HandlerInfo[] = [];
 
@@ -169,11 +158,7 @@ async function readHandlerInfos(dir: string): Promise<HandlerInfo[]> {
     return infos;
 }
 
-// Normalize `plurnk.attribution` to string | string[] | undefined (issue #37).
-// A dumb scanner: a single non-empty string passes through; an array is
-// filtered to its non-empty strings (undefined if none survive); anything else
-// (number, object, "", []) is treated as absent. Validation/reservation policy
-// is the host's concern, not ours.
+// Normalize the pass-through shape without imposing host attribution policy.
 function normalizeAttribution(raw: unknown): string | string[] | undefined {
     if (typeof raw === "string") return raw === "" ? undefined : raw;
     if (Array.isArray(raw)) {

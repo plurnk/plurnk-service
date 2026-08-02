@@ -86,7 +86,7 @@ Multi-handler example (one package serving variants of the same content type):
 |---|---|---|---|
 | `kind` | `"mimetype"` | yes | Distinguishes mimetype handlers from `"provider"` and `"scheme"` siblings in the plurnk family |
 | `binary` | boolean | no | `true` if all handlers in the package consume `Uint8Array` content. Default `false` (utf-8 string). |
-| `attribution` | string \| string[] | no | Plugin attribution tags (issue #37). Surfaced raw on every discovered handler's `HandlerInfo.attribution`; the host unions active plugins' tags onto model `generate({ attributions })` calls. `discover()` passes it through verbatim — the host owns the reservation policy (`@plurnk/` tags allowed only from `@plurnk/`-scoped packages). Absent for framework tree-sitter built-ins. |
+| `attribution` | string \| string[] | no | Opaque creator tags normalized to non-empty strings and surfaced on each discovered handler's `HandlerInfo.attribution`. The family does not interpret or claim use of them; host attribution policy is outside this contract (#81). Absent for framework tree-sitter entries. |
 | `handlers` | HandlerDecl[] | yes | One or more handler entries (canonical shape) |
 
 `HandlerDecl`:
@@ -94,10 +94,10 @@ Multi-handler example (one package serving variants of the same content type):
 | Field | Type | Required | Notes |
 |---|---|---|---|
 | `name` | string | yes | The mimetype this entry registers (`text/markdown`, `application/json`, …) |
-| `glyph` | string | no | Single-character display marker; defaults to empty string |
+| `glyph` | string | no | Display marker; defaults to empty string |
 | `extensions` | string[] | no | Mixed list: entries beginning with `.` are file extensions (lowercased on match); other entries are special filenames matched verbatim (`Dockerfile`, `Makefile`) |
 
-`discover()` scans **all of `node_modules`** — unscoped packages and every `@scope/*` — for the exact string `plurnk.kind === "mimetype"` ({§plugin-family-kind}), so a third-party handler is discovered exactly like a first-party one. It applies the shared trust predicate before any handler import and returns `{ registry, handlers, skipped }`; the composed host presents the skipped-package evidence ({§plugin-trust-boundary}). Last-loaded wins on mimetype/extension conflicts, and `@plurnk` is scanned last so a first-party floor handler wins a collision.
+§mimetype-discovery `discover()` scans **all of `node_modules`** — unscoped packages and every `@scope/*` — for the exact string `plurnk.kind === "mimetype"` ({§plugin-family-kind}), so third-party and first-party declarations share one discovery path. It applies the shared trust predicate before any handler import and returns `{ registry, handlers, skipped }`; the composed host presents the skipped-package evidence ({§plugin-trust-boundary}). Last-loaded declarations win mimetype/extension conflicts. The default enumeration orders `@plurnk` packages last; an explicit `packageDirs` list retains caller order. A framework tree-sitter entry is omitted when a package claimed its mimetype; otherwise its extensions fill only unclaimed registry keys.
 
 ### 2.1 Mimetype naming convention
 
@@ -205,7 +205,7 @@ class Parser [5-47]
 function topLevel(a, b) [50-60]
 ```
 
-## 5. Channel selection (issue #17)
+## §mimetype-channel-selection 5. Channel selection
 
 `Mimetypes.process(input, { channels? })` materializes exactly the requested channels:
 
@@ -218,9 +218,19 @@ type Channel = "symbols" | "deepJson" | "deepXml" | "references" | "content" | "
 - **`channels: []` is valid** - metadata only (`mimetype`, `ok`, `totalLines`), no parse paid. This is the cheap stat call (plurnk-service's manifest uses it for line counts).
 - The default deep-xml projection consumes the deep-json value; when `deepXml` alone is requested the framework computes deep-json internally without exposing it.
 
-Known consumer selections (plurnk-service): manifest → `[]`; body-matcher plugin → `["deepJson", "deepXml"]`; graph/semantic add-time pipeline → `["symbols", "references"]`.
+Current plurnk-service consumers:
 
-There is no token budget, no tokenizer, and no rendered preview anywhere in the pipeline. The pre-0.15 fitting layer (`fitPreview`/`fitSymbols`/`fitContent`, `TokenizeFn`, truncation markers, head/tail orientation) was removed with its only consumer, plurnk-service's index. Rendering structured symbols for humans is `format()` (§4), unbudgeted.
+| Consumer                           | Framework call / selection                              |
+|------------------------------------|---------------------------------------------------------|
+| Entry extent                       | `process(..., { channels: [] })`                        |
+| Readable content projection        | `process(..., { channels: ["content"] })`               |
+| Search-index structural derivation | `process(..., { channels: ["symbols", "references"] })` |
+| Content matcher                    | `query(...)`; not a `process()` channel request         |
+| Query-text embedding               | `process(..., { channels: ["embedding"] })`             |
+| Bulk corpus embedding              | `embedBatch(...)`                                       |
+
+The framework performs no packet budgeting and renders no preview. `format()`
+is the unbudgeted human/diagnostic renderer for structured symbols.
 
 ## 6. `validate`
 
@@ -228,7 +238,7 @@ Default: no-op. Override only for mimetypes with a real syntax check that can fa
 
 When `validate` throws inside `Mimetypes.process`, the error propagates to the caller per the error policy (§7).
 
-## 7. Error policy
+## §mimetype-error-policy 7. Error policy
 
 `ProcessResult`:
 
@@ -345,14 +355,17 @@ For the rare format where neither tree-sitter nor grammars-v4 has coverage and t
 
 ## 10. Tokenization — a consumer concern
 
-The framework neither tokenizes nor budgets content for its own projection pipeline. Token counting is wholly a consumer concern. Plurnk-service uses one stable model-independent ruler for stored, catalog, and model-facing packet weights ({§tokenomics-agnostic-ruler}); a provider's counter is confined to its physical packet-admission check. The opt-in `Tokenizers` seam (§19) exposes exact model-vocabulary counting *for consumers that want it*; the framework never calls it for its own budgeting.
+The framework neither tokenizes nor budgets content for its own projection pipeline. Token counting is wholly a consumer concern. Plurnk-service uses one stable model-independent ruler for stored, catalog, and model-facing packet weights ({§tokenomics-agnostic-ruler}); a provider's counter is confined to its physical packet-admission check. The `Mimetypes.tokenizer()` seam (§19) supplies model-vocabulary counting to consumers but never participates in the framework's own projection budgeting.
 
-## 11. Body-matcher query
+## §mimetype-query 11. Body-matcher query
 
-Plurnk-service dispatches FIND and READ body matchers through
-`Mimetypes.query(input, expression)`. Standalone consumers may pass raw matcher
-syntax for framework classification; PLURNK passes the grammar's already-parsed
-dialect to the resolved handler's `query(content, dialect, pattern, flags?)`.
+The standard `@plurnk/plurnk-schemes` matcher adapter dispatches FIND and READ
+content matchers through `Mimetypes.query(input, matcher)` and maps typed
+framework outcomes into operation results. Core composes that adapter across
+candidate sets and owns the indexed semantic/graph dialects. Standalone
+framework consumers may pass raw matcher syntax; PLURNK passes the grammar's
+already-parsed dialect to the resolved handler's
+`query(content, dialect, pattern, flags?)`.
 
 ### 11.1 Dialect dispatch
 
@@ -365,7 +378,13 @@ dialect to the resolved handler's `query(content, dialect, pattern, flags?)`.
 
 Implemented by the framework's `parseBodyMatcher(expr)`. Order matters — `//` is tested before `/` because both begin with `/`.
 
-**Parsed-form entry (#42).** `Mimetypes.query(input, matcher)` accepts `matcher` as **either** a raw string (classified by the table above) **or** an already-parsed `ParsedBodyMatcher { dialect, pattern, flags? }` - the same shape `@plurnk/plurnk-contracts` produces when it parses the model-facing matcher syntax. A caller that already holds the parsed body (plurnk-service receives it from the grammar) passes the object and the framework dispatches it **verbatim** - `parseBodyMatcher` is skipped entirely. This is deliberate: the contracts grammar owns the matcher syntax, so re-deriving the dialect inside mimetypes would be a second parser for one syntax and a silent drift surface. The parsed form's declared dialect is authoritative. Both forms converge on the same per-dialect dispatch and evidence contract.
+§mimetype-query-input `Mimetypes.query(input, matcher)` accepts either a raw
+string classified by the table above or an already-parsed
+`ParsedBodyMatcher { dialect, pattern, flags? }`. A parsed matcher dispatches
+verbatim; `parseBodyMatcher` is not called again. The grammar therefore remains
+the sole parser for model-authored matcher syntax while standalone consumers
+retain the raw-string convenience surface. Both forms converge on the same
+per-dialect dispatch and evidence contract.
 
 ### 11.2 Per-match return shape
 
@@ -524,9 +543,9 @@ Example: `{ type: "function_definition", line: 5, endLine: 10, name: "greet", pa
 </function_definition>
 ```
 
-### 12.4 Materialization policy
+### §mimetype-materialization 12.4 Materialization policy
 
-Channels are built **per request** (§5): a requested channel is computed eagerly within the call; an unrequested channel costs nothing. The caller owns persistence and refresh policy — plurnk-service's body-matcher plugin re-projects per query (content can't go stale), while its graph/semantic pipeline materializes at manifest-add time and caches in sqlite.
+Channels are built **per request** (§5): a requested channel is computed eagerly within the call; an unrequested channel costs nothing. The caller owns persistence and refresh policy. The standard content matcher queries the current readable body through `Mimetypes.query`. Core's eager `SearchIndex` maintenance requests symbols and references before model dispatch and attaches content-addressed FTS, graph, and vector artifacts to each current readable projection. Bulk vectors are produced through `embedBatch`, not by persisting the per-entry `embedding` process channel.
 
 The deep channels are **never model-visible**. They are consumed exclusively by the jsonpath and xpath body-matcher tool implementations.
 
@@ -563,10 +582,21 @@ interface TreeSitterLanguageEntry {
 
 ### 13.4 Install patterns
 
-- **Floor:** `npm i @plurnk/plurnk-mimetypes` alone gives a working framework for the floor types (`text/plain`, `text/markdown`, `application/json`, `application/xml`, `text/html`, `text/csv`) — the floor handler packages and both parser loaders are direct dependencies (issue #14).
-- **Slim:** add only the grammars you need (e.g. `npm i @plurnk/plurnk-mimetypes-grammar-python @plurnk/plurnk-mimetypes-grammar-rust`).
-- **Kitchen sink:** the README carries a copy-paste `npm install` block listing every published grammar. (A `grammars-all` meta package was considered and rejected — a layer of indirection that does nothing.)
-- **Degrade, not throw (issue #14):** `detect()` is install-state-blind — it returns the source mimetype regardless of whether the grammar package is installed. When `process()` then finds the grammar missing, it degrades to a text-plain fallback with `ok: true` and surfaces the missing package name on `ProcessResult.grammarMissing` so consumers can show an actionable install hint. `process(input, { strict: true })` opts into throwing `GrammarNotInstalledError` instead.
+The current published framework has normal dependencies on its standard format
+handlers and on the embedding/tokenizer artifacts. Its built-in tree-sitter
+registry is different: language detection metadata lives in the framework, but
+each grammar WASM remains an independently installed leaf.
+
+| Installation state                         | Behavior                                                                                                                                              |
+|--------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------|
+| Framework only                             | Standard JSON/JSONC/JSONL/IPYNB/PDF/XML/CSV/diff/dotenv/HTML/INI/Markdown/plain handlers plus embedding and tokenizer artifacts are installed.        |
+| Framework plus selected grammar leaves     | Only those language WASM packages add structural parsing; for example Python and Rust leaves.                                                         |
+| Additional third-party handler packages    | Discovery registers their declared mimetypes subject to {§plugin-trust-boundary}.                                                                     |
+| Detected language with absent grammar leaf | `process()` returns honest metadata, empty requested structural channels, and `grammarMissing`; `{ strict: true }` throws `GrammarNotInstalledError`. |
+
+`detect()` is install-state-blind for tree-sitter grammar leaves: it returns the
+registered source mimetype whether or not that leaf is installed. Missing
+grammar degradation does not substitute a different mimetype or body.
 
 ### §grammar-leaf-reproducibility 13.5 Reproducibility
 
@@ -723,16 +753,16 @@ it("acme-mime-foo refs are conformant", async () => {
 - `references()` is one call to `this.collectRefs(content, querySource, extractDefs, wrap?)`, which owns parse → compile-and-cache query → run `collectReferences` against `extractDefs`'s symbols → cleanup, plus the shared error policy (`GrammarNotInstalledError` propagates for the #14 degrade; parse/query failures → empty channel). The in-registry `TreeSitterLanguageHandler` uses the identical helper — one priming implementation.
 - A language needing **match-level composition** the engine's flat `captures()` can't express (HCL names defs `TYPE.NAME`) passes `wrap` to adapt the raw compiled query, and composes the qualified name into a `RefsCaptureNode` (`{text, startPosition, endPosition}` — the exact, blessed surface the engine reads off a capture, so no cast through `TreeSitterNode`).
 
-## 17. Embedding channel (issue #24)
+## §mimetype-embedding 17. Embedding channel
 
-The `embedding` channel supplies vectors for plurnk-service's `~semantic` dialect: **native-endian raw Float32 bytes** (`Uint8Array`, length = 4 × dimension). The service stores those bytes verbatim in content-addressed derivation artifacts and cosine-ranks over a `Float32Array` view — no JSON round-trip. The same channel embeds arbitrary text: derived body chunks and a `~query`'s query text ride the identical path.
+The `embedding` channel supplies vectors for plurnk-service's `~semantic` dialect: **native-endian raw Float32 bytes** (`Uint8Array`, length = 4 × dimension). The service stores those bytes verbatim in content-addressed derivation artifacts and cosine-ranks over a `Float32Array` view — no JSON round-trip. Query text uses the per-call channel; corpus chunks use `embedBatch`. Both resolve through the same embedder seam and model-space identity.
 
 - **Opt-in only.** `"embedding"` is never in the default channel set — it is a model inference, orders of magnitude costlier than parsing. Request it explicitly: `process(input, { channels: ["embedding"] })`.
-- **The embedder is an opt-in artifact package**: `@plurnk/plurnk-mimetypes-embeddings` (per-grammar-package precedent — the framework ships no model weights). It exports `embed(text): Promise<Uint8Array>` and `dimension: number`. Model: MiniLM-class `all-MiniLM-L6-v2`, **dimension 384** (1536 bytes), quantized ONNX bundled in the package (hermetic; pinned revision; fetch + verify scripts). Vectors are mean-pooled and L2-normalized.
-- **What gets embedded**: string content verbatim; binary content via the handler's `toText()` projection (PDF page text). No projection / empty text → empty bytes (length 0), no hint — the honest channel.
-- **Missing package degrades per #14**: requested embedding with the package absent → `embedding: new Uint8Array(0)` + `embeddingMissing` install hint, `ok` stays true; `strict: true` throws.
+- **Artifact seam.** The published framework currently includes `@plurnk/plurnk-mimetypes-embeddings` and resolves it lazily through one fixed loader seam. The artifact owns its model, vector dimension, reproducibility, and local/remote configuration; the framework owns channel selection, lifecycle, and result shape.
+- **What gets embedded.** The handler's `content()` projection wins when present; otherwise `toText()` supplies string passthrough or a binary-readable projection such as PDF page text. No projection or empty text yields empty bytes with no fabricated vector.
+- **Unavailable artifact.** A loader that cannot resolve the artifact returns `embedding: new Uint8Array(0)` plus `embeddingMissing`, with `ok` still true; `{ strict: true }` throws. #85 owns whether that state remains valid for the published default bundle.
 - **Grammar-degrade still embeds**: a grammar-missing entry is still semantically searchable text; `grammarMissing` and a real vector coexist.
-- The dimension is **fixed per deployment** — changing the model/dimension invalidates the service's stored vectors; that is a consumer-side migration, not a framework concern. The embedder declares its identity (`model`, e.g. `"Xenova/all-MiniLM-L6-v2@751bff37+q8"`), surfaced as `ProcessResult.embeddingModel` — store it alongside each BLOB; it is the staleness detector that makes the migration detectable. The identity encodes **both** the model revision and the quantization, since either changes the vectors; the embedder derives it from its pin, never a hand-synced literal.
+- The dimension is **fixed per deployment** — changing the model/dimension invalidates stored vectors and requires consumer re-derivation. The embedder declares its model-space identity on `ProcessResult.embeddingModel`; consumers persist it with vectors so incompatible spaces cannot be silently compared.
 - **Lossless chunking facts** (`embedderInfo()`): an embedder may export its input `contextWindow`, an untruncated `countTokens(text): Promise<number>` using the model's own tokenizer, and its `model` identity. The framework surfaces `{ dimension, contextWindow: number | null, countTokens: fn | null, model? }`; `null` from `embedderInfo()` means no embedder resolves, while null fields mean a present embedder does not know those optional facts. Remote deployments declare the input window with `PLURNK_MIMETYPES_EMBED_CONTEXT_WINDOW`. The host uses these facts to tile text into chunks whose token counts do not exceed the input window and folds the model identity into derivation state. The framework owns no chunking logic.
 
 - **Bulk embedding** (`embedBatch()`, plurnk-service#272): `mimetypes.embedBatch(texts, { onProgress?, signal? }): Promise<Uint8Array[]>` — one vector per input text, **input order**, bit-identical to embedding each text through the channel (so nothing already stored re-embeds). The single framework seam for corpus ingest: resolution + model identity stay framework-owned (pair with `embedderInfo()` for chunk budgeting), so the host never reaches into the embeddings package directly. Delegates to the embedder's data-parallel `embedBatch` (a work-stealing worker pool, `PLURNK_MIMETYPES_EMBED_WORKERS`-tunable — benched ~7× across cores on a saturating batch); falls back to a sequential `embed()` loop for an embedder without the pool, still firing `onProgress({ completed, total })` and honoring `signal`. Throughput scales with batch size: a one-text batch uses one worker, so consumers saturate the pool by batching across entries, not per-entry (#420). Unlike the per-entry channel (which degrades to empty bytes when the package is absent), this is an explicit bulk call — a missing embedder **throws** rather than silently storing empties.
@@ -751,9 +781,13 @@ The `content` channel is a consumer-ready readable projection - the markup-free 
 
 **Relationship to `toText`.** A handler that overrides `content` routes `toText` (the regex/glob query surface) through the same projection, so there is one readable-text implementation per handler. The framework's embed-source resolves as `content() ?? toText()`: projected readable text, then the passthrough body.
 
-## 19. Tokenizer seam (issue #44)
+## §mimetype-tokenizer 19. Tokenizer seam
 
-Exact LLM token counting for the host's window math, on the embeddings pattern (§17). The framework runs the universal engine question; per-model vocabularies are pure data in ONE opt-in artifact package — `@plurnk/plurnk-mimetypes-tokenizers` — under the pin/sha256/fetch-verify discipline. Kept separate from the embeddings package so a deployment wanting window math never carries MiniLM ONNX weights.
+`Mimetypes.tokenizer()` supplies a model-vocabulary counter for consumers that
+need one. The current framework includes the independently published
+`@plurnk/plurnk-mimetypes-tokenizers` artifact and resolves it lazily. The
+artifact owns vocabulary data and reproducibility; the framework owns
+resolution, lifecycle, and explicit degradation.
 
 ### 19.1 Surface
 
@@ -768,13 +802,20 @@ interface TokenizerResolution {
 }
 ```
 
-**Resolution chain (#44).** The full chain is host-composed: (1) the provider's own `tokenize()` capability when the backend serves one (providers 0.26.0; the model's OWN vocab, zero bundled data) — outside this seam; (2) a bundled `tokenizer.json` matched by model ref → `exact: true`, the artifact's counter; (3) the **chars/2 upper bound** → `exact: false`, `tokenizerId: "heuristic:chars2"`, one `tokenizer_unavailable` warn event (source `tokenizer`) naming the model — plus `plurnkPackage` when the artifact package itself is absent. `strict: true` throws at (3) instead. **Never a silent estimate**: a degraded resolution is visibly degraded on the shape.
+Resolution is exact when the artifact matches `modelRef`. An unavailable
+artifact or unmatched model returns the conservative chars/2 counter with
+`exact: false`, `tokenizerId: "heuristic:chars2"`, and one
+`tokenizer_unavailable` warning; `{ strict: true }` throws instead. The estimate
+is therefore never presented as exact.
 
-chars/2 is the SAFE direction: measured agentic text runs 2.9–3.2 chars/token (#44), so /2 over-reserves; the old /4 under-counted 20–27% and blew window math silently.
+The chars/2 fallback deliberately over-reserves relative to measured agentic
+text. Core uses this seam only when an embedder lacks its own counter while
+planning lossless embedding chunks. Provider packet admission uses the
+provider's separate counting contract ({§tokenomics-physical-admission}).
 
 ### 19.2 `tokenizerId` is the vocab, not the model
 
-For exact resolutions the id derives from the `tokenizer.json` bytes (sha256 prefix). Two model refs sharing a vocabulary (deepseek pro↔flash) share the id, so a model swap that keeps the vocab never invalidates counts derived and stored against it. The host keys derivations on `(content_hash, tokenizer_id)`.
+For exact resolutions the id derives from the `tokenizer.json` bytes (sha256 prefix). Two model refs sharing a vocabulary share the id, so a model swap that keeps the vocabulary need not invalidate counts derived and stored against it. A consumer that persists tokenizer-dependent derivations must include this identity in its derivation key; #87 tracks core's current omission on the remote-embedder fallback path.
 
 ### 19.3 Artifact duck contract
 

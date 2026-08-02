@@ -13,16 +13,32 @@ Framework + contract for the `@plurnk/plurnk-mimetypes-*` handler packages. Cons
 npm install @plurnk/plurnk-mimetypes
 ```
 
-Node ≥ 26, ESM. The framework ships the **floor** as direct deps — `text/plain`, `text/markdown`, `application/json`, `application/xml`, `text/html`, `text/csv` — so one install parses those. Everything else is opt-in: install exactly the handlers you use.
+Node ≥ 26, ESM. The current framework package installs its standard handler
+and artifact bundle as normal dependencies:
+
+| Family     | Included capability                                         |
+|------------|-------------------------------------------------------------|
+| Structured | JSON/JSONC, JSONL, IPYNB, XML, CSV, INI, dotenv             |
+| Documents  | Markdown, HTML, PDF, plain/stream text, diff                |
+| Semantic   | Local/remote embedding seam and model-vocabulary tokenizers |
+
+Tree-sitter language grammars remain independent WASM leaves. Install only the
+languages you need; discovery already carries their detection metadata.
 
 ```
 npm install @plurnk/plurnk-mimetypes-grammar-python   # one language
-npm install @plurnk/plurnk-mimetypes-embeddings       # the embedding channel
 ```
 
-There is no aggregate meta-package — the default bundle is defined in exactly one place (the daemon's own dependency set). Add capability by installing the leaf; discovery lights it up with no code change.
+Third-party handler packages are independent in the same way: installing a leaf
+is sufficient for discovery to register its declarations, subject to the shared
+trust gate.
 
-Detection auto-finds installed grammars — no code changes when you add or remove one. A detected mimetype whose grammar isn't installed **degrades**: `ok` stays true, metadata is real, requested channels come back empty, and the missing package is on `ProcessResult.grammarMissing`. Pass `{ strict: true }` to throw `GrammarNotInstalledError` instead.
+Detection recognizes registry languages independently of grammar-leaf
+installation. Adding or removing a leaf changes structural availability without
+changing detection code. A detected mimetype whose grammar isn't installed
+**degrades**: `ok` stays true, metadata is real, requested channels come back
+empty, and the missing package is on `ProcessResult.grammarMissing`. Pass
+`{ strict: true }` to throw `GrammarNotInstalledError` instead.
 
 ## Write a handler
 
@@ -110,7 +126,7 @@ const r = await m.process({ path: "src/main.py" }, { channels: ["symbols", "refe
 // r.totalLines  source line count  r.ok
 ```
 
-Channels materialize per call — unrequested ones are never computed and their fields are absent. `channels: []` is the stat-only call (metadata, no parse). `embedding` is opt-in (model inference) and needs `@plurnk/plurnk-mimetypes-embeddings`. Body-matcher queries: `m.query(input, expr)` — regex `/p/`, glob, jsonpath `$.x` (deep-json), xpath `//x` (deep-xml). `format(r.symbols)` renders a human outline. Failure modes: [SPEC §7](SPEC.md#7-error-policy).
+Channels materialize per call — unrequested ones are never computed and their fields are absent. `channels: []` is the stat-only call (metadata, no parse). `embedding` computation is opt-in even though the current framework distribution includes its local artifact. Body-matcher queries use `m.query(input, expr)` — regex `/p/`, glob, jsonpath `$.x` (deep-json), and xpath `//x` (deep-xml). `format(r.symbols)` renders a human outline. Failure modes: [SPEC §7](SPEC.md#7-error-policy).
 
 ## Discovery & trust
 
