@@ -521,7 +521,7 @@ export default class BranchBatches {
                         {},
                         {
                             branch: item.branch,
-                            stage: "child-run",
+                            stage: "child-loop",
                             retryable: false,
                         },
                     );
@@ -644,7 +644,7 @@ export default class BranchBatches {
                     {
                         branch: item.branch,
                         batchId: batch.id,
-                        stage: "child-run",
+                        stage: "child-loop",
                         recovery: "Review the preserved branch tip before deciding how to continue.",
                         retryable: false,
                     },

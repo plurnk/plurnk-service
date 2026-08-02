@@ -51,7 +51,7 @@ test("DbSubscriptionCaps: open binds + composes abort, notifyChunk streams, clos
         assert.equal((await entries.read("/run")).entry?.channels.stderr.content, "diagnostic", "unpublished auxiliary content is still durable");
         assert.ok(streamEvents.length >= 2, "each chunk fired a stream/event");
 
-        // close(result) → channel terminal, exact result persisted, run woken with the summary
+        // close(result) → channel terminal, exact result persisted, worker woken with the summary
         await subs.close({ status: 200 }, "exit 0; 11 bytes");
         assert.ok(streamEvents.every((event) => event.channel === "stdout"), "only the selected default channel is published");
         const meta = await db.channel_meta.get<{ state: string }>({ entry_id: entryId, channel: "stdout" });

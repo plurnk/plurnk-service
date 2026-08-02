@@ -117,11 +117,11 @@ export const runLoopToTerminal = async (
     hitMaxTurns?: boolean; turnIds?: number[]; usage?: { promptTokens: number; completionTokens: number; costUsd: number };
 }> => {
     const terminated = subscribeNotifications(ws, "loop/terminated");
-    const run = await rpcCall(ws, id, "loop.run", params);
-    if (run.error !== undefined) {
-        throw new Error(`loop.run RPC failed (${run.error.code}): ${run.error.message}`);
+    const response = await rpcCall(ws, id, "loop.run", params);
+    if (response.error !== undefined) {
+        throw new Error(`loop.run RPC failed (${response.error.code}): ${response.error.message}`);
     }
-    const { loopId, status: accepted, action, modelWorkerId } = run.result as OperationResult & { loopId: number; action?: string; modelWorkerId?: number };
+    const { loopId, status: accepted, action, modelWorkerId } = response.result as OperationResult & { loopId: number; action?: string; modelWorkerId?: number };
     const seen = await waitFor(
         () => terminated() as Array<{ loopId: number }>,
         (ts) => ts.some((t) => t.loopId === loopId),
