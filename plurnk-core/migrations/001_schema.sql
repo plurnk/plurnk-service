@@ -255,9 +255,8 @@ CREATE TABLE IF NOT EXISTS derivations (
 -- entries
 -- The canonical addressable store. (workspace, owner, scheme, pathname) is the identity
 -- tuple, and NO component may be NULL: NULLs are distinct under SQL UNIQUE, so a nullable
--- component voids the identity index — the #526 disease, re-run on this axis as run59/#545
--- (one phantom member row per turn; 74k rows for 530 identities). Bare/file paths persist
--- under the reserved 'file' scheme; they still RENDER as bare paths. {§entry-identity-no-null}
+-- component voids the identity index. Bare/file paths persist under the reserved `file`
+-- scheme; they still render as bare paths. {§entry-identity-no-null}
 CREATE TABLE IF NOT EXISTS entries (
     id         INTEGER NOT NULL PRIMARY KEY,
     version    INTEGER NOT NULL DEFAULT 0   CHECK (version >= 0),

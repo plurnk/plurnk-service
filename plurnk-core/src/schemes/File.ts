@@ -78,7 +78,7 @@ const detectFileMimetype = async (canonical: string, ctx: PlurnkSchemeContext): 
 export default class File extends CoreSchemeAdapterBase {
     static manifest: SchemeManifest = {
         name: "file",
-        storedScheme: "file",  // {§entry-identity-no-null} — file rows persist under the reserved 'file' scheme (a NULL identity component voids the UNIQUE index; run59/#545); renders as a bare path
+        storedScheme: "file",  // {§entry-identity-no-null} — durable identity; file addresses still render as bare paths
         channels: {},  // dynamic mimetype per file extension
         defaultChannel: "body",
         category: "data",
