@@ -50,6 +50,8 @@ export default class LogBody {
     }
 
     static #receiptBody(receipts: readonly EditReceipt[]): ResolvedLogBody {
+        // {§edit-result-receipt-projection} — the canonical row body is the
+        // bounded landed context, not the authored mutation text.
         if (receipts.length === 0) return EMPTY_BODY;
         return {
             content: receipts.map(({ effect }) => effect.context).join("\n\n"),

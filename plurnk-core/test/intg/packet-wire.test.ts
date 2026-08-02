@@ -201,10 +201,9 @@ test("COPY/MOVE render operand selections and scoped textual materialization rec
 });
 
 test("EDIT with an accept-path span (rx.body from a proposed file edit) renders the line-numbered diff", () => {
-    // A PROPOSED file EDIT's accept delivers its editedSpan under rx.body (the generic accept-rx key),
-    // where the inline entry-scheme EDIT delivers the same span under rx.span. Both must render — the
-    // model has to SEE what its write changed in the EDIT row itself, or it re-EDITs the file across
-    // turns (the observed 0-token bodyless-EDIT gap). {§edit-result-render}.
+    // #69 tracks this obsolete rx.body compatibility fixture. Current authored
+    // EDITs use {§edit-result-receipt-projection}; filesystem narration uses
+    // {§env-delta-filesystem-narration}.
     const out = PacketWire.renderLog([{
         coordinate: "1/4/2",
         origin: "model",

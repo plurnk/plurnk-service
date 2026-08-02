@@ -1910,53 +1910,75 @@ there.
 
 ### §edit-result-render Mutation log rows render truthful effects
 
-**Question.** An EDIT's log row exists so the model has a record of what it did. Re-emitting the model's *input* statement (the tx heredoc) records the *intent* but not the *outcome* — the model still has to READ the entry back to confirm "did it land, what does it look like now." And a system delta-EDIT ({§env-delta}) has no input statement at all. What should an EDIT row's body be?
+A mutation row keeps request and outcome separate: `tx` is the admitted
+statement; `rx` is its resolved result. Only state that actually landed may
+appear there as an effect.
 
-**Decision — effect, revision, and bounded join context.** A model-authored EDIT row renders compact metadata (`rev`, `extent`, `change`, and `range`) plus bounded numbered context around that edit's resulting join. The durable result retains the full SHA-256 revision; `rev` abbreviates it to `PLURNK_SERVICE_EDIT_RECEIPT_REVISION_CHARS` for display correlation only and is never an identity, lookup key, or compare-and-swap token. Every row in one resource batch carries the same revision and extent but its own requested marker, normalized source/result ranges, removed/inserted counts, and context. The receipt proves what landed without copying an arbitrarily large changed region into the next packet. A deliberate READ in the same turn is scheduled after mutation ({§op-mode-phases}) and remains the universal way to request arbitrary current content.
-
-**Scope.** The receipt is computed from the one pre-turn snapshot and committed
-result and stored structurally on the EDIT's `rx`; reviewer-modified proposals
-recompute it from the content that actually lands. Whole-line edits report line
-extent; any exact-region edit reports Unicode code-point extent. There is no
-JSON row/item receipt mode. `PLURNK_SERVICE_EDIT_RECEIPT_CONTEXT_LINES` bounds
-neighboring physical lines independently for each receipt. Environment-delta
-EDITs remain factual state-diff events and carry their resulting span
-({§env-delta}).
-
-**COPY/MOVE effects.** A landed COPY or MOVE returns a non-empty ordered
-`effects` array:
-
-```ts
-interface ResourceEffect {
-    target: string;
-    action: "create" | "update" | "delete";
-    receipt?: EditReceipt;
-}
+```mermaid
+flowchart LR
+    authored["Authored EDIT / COPY / MOVE"] --> snapshot["Resolve addressed channel(s)<br/>against pre-mutation snapshots"]
+    snapshot --> apply["Apply synchronously<br/>or settle proposal"]
+    apply --> landed{"Did state land?"}
+    landed -->|no| rx["Persist structured rx"]
+    landed -->|yes| kind{"Operation?"}
+    kind -->|EDIT| receipt["Project one EDIT receipt<br/>for this authored row"]
+    kind -->|COPY / MOVE| effects["Compose ordered effects<br/>after application"]
+    receipt --> rx
+    effects --> rx
+    rx --> meta["Packet projection<br/>status · operands · optional effect metadata"]
+    rx --> body["Canonical log body<br/>bounded receipt context or empty"]
+    body --> recall["READ log:///…<br/>recalls canonical body"]
 ```
 
-The target is the canonical model-facing resource address. A default channel is
-path-only; an explicitly selected non-default channel retains its fragment.
-COPY lists its destination effect. MOVE lists destination then source effects;
-same-resource MOVE may list the same target twice because insertion and removal
-are distinct effects from one atomic batch. When either COPY/MOVE operand has a
-text scope, each landed textual create or update carries the ordinary bounded
-EDIT receipt; a creation receipt has zero prior extent. Whole-channel and binary
-effects carry no invented text receipt. Whole-resource delete effects carry no
-receipt; scoped source removal is an `update` effect with a receipt. A 304 no-op
-and a rejected or cancelled proposal that landed nothing omit `effects`; an
-accepted proposal reports effects only after application. If a cross-resource
-MOVE writes its destination but source removal fails, the failure retains the
-effects that actually landed. Scheme hooks return their native mutation result
-and aggregate edit receipt; the engine validates and projects this
-resource-level contract.
+§edit-result-receipt-projection **EDIT projects the scheme-owned batch
+receipt.** The scheme framework owns the exact aggregate shape
+({§scheme-edit-batch-receipt}). Core validates it, projects the effect matching
+each authored EDIT's batch index, and stores that receipt structurally on the
+row's `rx`.
 
-The durable COPY/MOVE statement remains the sole owner of its source and
-destination selections. Packet projection renders both, with their independent
-scopes, on every admitted COPY/MOVE row; it does not infer operands from applied
-effects. This keeps a 304 self-identifying while preserving the distinction
-between what was requested and what landed. {§copy-move-observation}
+| Durable receipt fact                   | Packet projection                                                 | Meaning                                                                                                                   |
+| -------------------------------------- | ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| Full `revision`                        | `rev` abbreviated to `PLURNK_SERVICE_EDIT_RECEIPT_REVISION_CHARS` | SHA-256 identity of the complete landed channel body; display correlation only, never a lookup or compare-and-swap token. |
+| `unit`, `before`, `after`              | `extent`                                                          | Whole-line batches use line counts. A batch containing any exact four-coordinate edit uses Unicode code-point counts.     |
+| `effect.requested`, `source`, `result` | `range`                                                           | The admitted marker and its normalized mapping from the common source snapshot into the landed body.                      |
+| `effect.removed`, `inserted`           | `change`                                                          | Removed and inserted counts in the receipt unit.                                                                          |
+| `effect.context`                       | Canonical row body                                                | Numbered physical lines around the landed join, bounded by `PLURNK_SERVICE_EDIT_RECEIPT_CONTEXT_LINES`.                   |
 
-**Migration path.** Built with MODE scheduling and atomic resource batches; the former unbounded resulting-span confirmation is removed from model-authored EDITs.
+§edit-result-receipt-truth **Receipts describe committed state.** Every row in
+one resource-channel EDIT batch carries the same landed revision and extent but
+its own requested marker, source/result mapping, counts, and context. A proposal whose
+reviewer changes the body must recompute from the bytes that actually land
+without inventing per-row effects; #68 tracks the current multi-EDIT violation.
+There is no JSON row/item receipt mode. A deliberate same-turn READ executes
+after mutation ({§op-mode-phases}) and remains the universal request for
+arbitrary current content.
+
+System-narrated environment EDITs are state-diff events rather than authored
+mutation receipts. They carry the resulting span defined by
+{§env-delta-filesystem-narration}.
+
+§edit-result-copy-move-effects **Core composes COPY/MOVE effects only after
+application.** Operands remain owned by the durable statement and render
+independently under {§copy-move-observation}; effects describe only state that
+landed.
+
+| Durable effect field | Contract                                                                                                                           |
+| -------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `target`             | Canonical model-facing address. The default channel is path-only; an explicitly selected non-default channel retains its fragment. |
+| `action`             | Exactly `create`, `update`, or `delete`.                                                                                           |
+| `receipt`            | Optional ordinary EDIT receipt. Only textual `create` and `update` effects may carry one; a creation receipt has `before=0`.       |
+
+| Outcome                                                                       | Ordered `effects`                                                                                         |
+| ----------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| Landed COPY                                                                   | Its destination effect.                                                                                   |
+| Landed MOVE between different resource-channel selections                     | Any destination effect, then any source effect.                                                           |
+| Landed regional MOVE within one resource channel                              | Insertion, then removal; both name the same target because they are distinct effects in one atomic batch. |
+| Textual create/update caused by a scope on either operand                     | The effect carries the ordinary bounded EDIT receipt.                                                     |
+| Textual create/update with no scoped operand; binary mutation; channel delete | Structural effect only; no invented text receipt. Scoped source removal is an `update` with a receipt.    |
+| `304`, rejection, or cancellation with no landed mutation                     | `effects` omitted.                                                                                        |
+| Cross-selection MOVE source failure after destination success                 | The failure retains every destination effect that landed.                                                 |
+
+Core validates the complete ordered array before exposing it.
 
 ### §proposal-ownership Loop auto and client YOLO
 

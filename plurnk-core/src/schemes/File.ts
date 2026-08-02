@@ -490,8 +490,8 @@ export default class File extends CoreSchemeAdapterBase {
     //   1. Write the patched content to disk.
     //   2. Register the file as an entry so it appears in the manifest and the
     //      model can READ its full landed work.
-    // Accepted regional EDITs return the receipt for what landed. COPY/MOVE
-    // resource effects are composed by Dispatcher after this hook returns.
+    // {§edit-result-receipt-truth} — accepted EDITs return the receipt for what
+    // landed. Dispatcher composes COPY/MOVE effects after this hook returns.
     async applyResolution(args: ApplyArgs, ctx: CoreSchemeCallContext): Promise<ApplyResult> {
         const core = this.coreContext(ctx);
         const { attrs, body } = args;

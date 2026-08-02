@@ -16,8 +16,9 @@ import Results, { type MatchEvidence, type SchemeResultBase } from "../core/resu
 // extract scheme name + channels + defaultChannel. Channel routing
 // follows SPEC {§channel-selection}: path.fragment ?? manifest.defaultChannel.
 
-// The model sees an EDIT effect receipt: revision identity, extent changes,
-// source→result range mappings, and bounded join context ({§edit-result-render}).
+// Produce the aggregate scheme receipt owned by
+// {§scheme-edit-batch-receipt}; core projects each authored row under
+// {§edit-result-receipt-projection}.
 export type EditResult = SchemeResultBase & { entryId: number | null; channel: string | null; editReceipt?: EditBatchReceipt | null };
 // startLine = 1-indexed position the content starts at in the original
 // source. Lets the render layer prefix N: correctly for both full

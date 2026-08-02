@@ -313,9 +313,7 @@ export default class PacketWire {
     // applied `effects`.
     //
     // On error, status >= 400 signals the failure; Problem Details live on
-    // this durable row and the next packet's Errors section points here. (Forward:
-    // meta will gain tokensBefore/After + linesBefore/After to convey
-    // change scope without carrying the body content.)
+    // this durable row and the next packet's Errors section points here.
     //
     // Per-entry render: one meta JSON line plus the row's canonical body.
     // LogBody owns tx/rx storage interpretation; packet projection owns only
@@ -440,6 +438,7 @@ export default class PacketWire {
                 }
             }
 
+            // {§edit-result-receipt-projection} {§edit-result-copy-move-effects}
             // Mutations expose compact, validated outcome metadata. EDIT owns
             // one receipt; COPY/MOVE own ordered resource effects whose
             // optional receipts describe scoped textual materializations.

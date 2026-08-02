@@ -132,9 +132,8 @@ test("entry() materializes a tagged https entry (upsert UNIONS tags) and the plu
         assert.ok(/turkeys_query/.test(narrations[0]?.attrs ?? ""), "attrs carry the slug tags for the meta line");
         assert.equal(JSON.parse(narrations[0]?.attrs ?? "{}").kind, "entry_materialized", "machine acquisition is typed so live clients compact it without erasing durable history");
 
-        // The row is a FULL fiction — the journal records the write itself, not just that one happened:
-        // tx carries the statement with the written content (replay/fork-complete), rx carries the
-        // full-content span ({§edit-result-render} — a wholesale write's span IS the content, numbered).
+        // {§env-delta-entry-materialization} — durable narration retains the
+        // write statement and its source-numbered resulting span.
         const full = await db.test_log_entries_by_worker_op_full.all<{ pathname: string; tx: string; rx: string }>({ worker_id: plurnkWorker.id, op: "EDIT" });
         const second = full.filter((r) => r.pathname === "/example.org/turkeys")[1];
         assert.ok(second !== undefined, "the second narration row is present");

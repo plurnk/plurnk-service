@@ -106,7 +106,8 @@ The entry CRUD primitives (`readEntry`/`writeEntry`/`deleteEntry`) are not handl
 OPEN and FOLD are not handler methods. They curate visibility and tags on the
 core-owned log; an entry scheme has no visibility state and receives 501.
 
-COPY and MOVE are not handler methods. The engine composes their source and
+§scheme-edit-batch-receipt **Regional mutation receipts.** COPY and MOVE are not
+handler methods. The engine composes their source and
 destination resource selections over `ctx.entries` and uses `editBatch` for a
 scoped destination or source mutation. This keeps channel selection, snapshot
 ordering, cross-scheme failures, and proposal sequencing uniform for every data

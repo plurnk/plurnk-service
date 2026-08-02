@@ -181,7 +181,7 @@ test("an out-of-band disk change surfaces as a source=file delta narrated by the
         assert.ok(delta, "the out-of-band disk change surfaced as a source=file delta");
         assert.equal(delta!.pathname, "notes.md", "the delta names the diverged file");
         assert.equal(delta!.expanded, 0, "the fs delta lands folded");
-        assert.match(JSON.parse(delta!.rx).span as string, /line3-external/, "the delta carries the changed span ({§edit-result-render})");
+        assert.match(JSON.parse(delta!.rx).span as string, /line3-external/, "the delta carries the changed span ({§env-delta-filesystem-narration})");
     } finally {
         await db.close();
         await rm(root, { recursive: true, force: true });

@@ -573,19 +573,9 @@ export default class Exec extends CoreSchemeAdapterBase {
         let exitLabel = "did not conclude";
         let stdoutLength = 0;
         let stderrLength = 0;
-        // {§exec-entry-sink} (#340) — the executor's entry() materialization request. The executor
-        // owns zero substrate: it hands us (path, content, {tags, mimetype}) and WE create/update
-        // the entry (writeEntry upsert; tags UNIONED — writeEntry alone replaces), then narrate ONE
-        // EDIT row in the reserved plurnk worker's log (the fs-fiction pattern, source = the calling
-        // worker) — the existing env-delta ambience folds it into every worker's next packet. The row is a
-        // FULL fiction: tx carries the statement (body = the written content — the journal records
-        // the write, replay/fork-complete), rx carries the span ({§edit-result-render}, the whole
-        // content numbered — a wholesale write's span IS the content; no diff, which would be a
-        // pathological cost against a rewritten multi-MB page). Rendered folded by default, so no
-        // body rides a packet uninvited — the meta line carries the honest OPEN weight.
-        // Serialized: parallel entry() calls (allSettled) write in order; a rejection prunes that
-        // survivor executor-side without breaking the chain. Lazy narration context: one plurnk-worker
-        // turn per spawn, not per entry.
+        // {§exec-entry-sink} {§env-delta-entry-materialization} — serialize
+        // executor entry() materializations and narrate them through the one
+        // reserved-worker turn owned by this spawn.
         let entryChain: Promise<unknown> = Promise.resolve();
         let narration: {
             workerId: number;

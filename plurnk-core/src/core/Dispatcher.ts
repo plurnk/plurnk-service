@@ -1570,6 +1570,8 @@ export default class Dispatcher {
         result: DispatchResult,
         pending: readonly PendingResourceEffect[],
     ): DispatchResult {
+        // {§edit-result-copy-move-effects} — only an applied mutation earns
+        // engine-composed effects; native scheme receipts remain internal input.
         const exact = Results.assert(result);
         if (exact.status === 304 || exact.status === 202 || exact.status >= 300) return exact;
         if (exact.effects !== undefined) {
@@ -1613,10 +1615,10 @@ export default class Dispatcher {
         };
     }
 
-    // {§copy-move-observation} Scoped COPY/MOVE into an unscoped channel is a
-    // text materialization even when CRUD creates the channel wholesale. Carry
-    // the ordinary EDIT receipt across both synchronous writes and proposal
-    // application; the destination scheme remains the owner of reviewed output.
+    // {§copy-move-observation} {§edit-result-copy-move-effects} — scoped
+    // COPY/MOVE into an unscoped channel is a text materialization even when
+    // CRUD creates the channel wholesale. Carry the receipt through synchronous
+    // writes and proposals; the destination scheme owns reviewed output.
     static #withEditMaterialization(
         result: DispatchResult,
         receipt: EditBatchReceipt,

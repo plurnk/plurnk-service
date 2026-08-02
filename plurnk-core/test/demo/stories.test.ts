@@ -418,8 +418,8 @@ test("story: report the number of files in a directory", { timeout: TIMEOUT }, a
 
 test("story: draft a brief, tighten it, then file it away", { timeout: TIMEOUT }, async () => {
     // Authoring → refinement → reorganization in ONE workspace. The model creates prose (brief.md),
-    // then must re-READ its OWN prior work and EDIT it shorter (the refine turn renders the
-    // line-numbered diff of what changed — {§edit-result-render}), then MOVE it out of the root.
+    // then must re-READ its OWN prior work and EDIT it shorter (the refine turn renders its
+    // bounded landed receipt — {§edit-result-receipt-projection}), then MOVE it out of the root.
     // Outcome asserts on disk, snapshotting size BEFORE the move. All natural prompts.
     const sizes: number[] = [];
     const chain = await runStoryChain({
