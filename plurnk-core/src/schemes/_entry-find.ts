@@ -5,7 +5,7 @@
 // optional `matches` metadata records every addressable source/readable range.
 // The content itself remains a READ.
 //
-// Slot semantics (plurnk.md §"Body matcher dispatch (FIND, READ, OPEN, FOLD)"):
+// FIND slot semantics (contracts SPEC §4/§7):
 //   target  — required scope (path or glob); selects which entries are candidates
 //   body    — matcher (glob/regex/jsonpath/xpath/~semantic/@graph). A content matcher
 //             runs against the entry's default-channel CONTENT (Matcher.matchAgainstContent

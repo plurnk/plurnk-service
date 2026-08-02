@@ -23,6 +23,12 @@ interface OpWithMatcher {
     lineRange?: LineMarker;
 }
 
+interface OpCuration {
+    target: string;
+    matcher?: string;
+    tags?: string[];
+}
+
 interface OpEditParams {
     target: string;
     content?: string;
@@ -167,22 +173,22 @@ export default class Dsl {
         }));
     }
 
-    static buildOpen(p: OpWithMatcher): PlurnkStatement {
+    static buildOpen(p: OpCuration): PlurnkStatement {
         return Dsl.parseSingleStatement(Dsl.#buildHeredoc({
             op: "OPEN", suffix: Dsl.#randomSuffix(),
             signal: Dsl.#formatTags(p.tags),
             target: Dsl.#formatPath(p.target),
-            lineMarker: Dsl.#formatLineMarker(p.lineRange),
+            lineMarker: "",
             body: p.matcher ?? "",
         }));
     }
 
-    static buildFold(p: OpWithMatcher): PlurnkStatement {
+    static buildFold(p: OpCuration): PlurnkStatement {
         return Dsl.parseSingleStatement(Dsl.#buildHeredoc({
             op: "FOLD", suffix: Dsl.#randomSuffix(),
             signal: Dsl.#formatTags(p.tags),
             target: Dsl.#formatPath(p.target),
-            lineMarker: Dsl.#formatLineMarker(p.lineRange),
+            lineMarker: "",
             body: p.matcher ?? "",
         }));
     }

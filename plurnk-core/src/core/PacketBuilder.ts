@@ -450,7 +450,7 @@ export default class PacketBuilder {
         // newest boundary required to produce a physically valid packet. Continued overflow
         // follows the explicit recovery/hard-stop contract (§grinder-fold-strikes).
         const usage = measure(packet);
-        await this.#db.engine_grinder_fold_newest_turn.run({ loop_id: loopId, turn_id: turnId });
+        await this.#db.engine_grinder_fold_newest_turn({ loop_id: loopId, turn_id: turnId });
         let current = await rebuild();
         if (measure(current) > ceiling) {
             // Engine owns the hard-overflow branch and records its one occurrence with

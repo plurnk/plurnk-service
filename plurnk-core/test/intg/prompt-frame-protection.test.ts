@@ -88,9 +88,27 @@ test("the grinder never folds the prompt frame — even on overflow (#382)", asy
         const { workspaceId, workerId, loopId } = await seedPromptWorker(db);
         // Fire the grinder's fold directly (as enforceBudget does on overflow) against turn 1.
         const t1 = await db.test_turn_id_by_seq.get<{ id: number }>({ loop_id: loopId, sequence: 1 });
-        await db.engine_grinder_fold_newest_turn.run({ loop_id: loopId, turn_id: t1!.id });
+        const before = await db.engine_render_log.all<{
+            loop_seq: number;
+            turn_seq: number;
+            sequence: number;
+            op: string;
+            scheme: string | null;
+            expanded: number;
+        }>({ worker_id: workerId });
+        await db.engine_grinder_fold_newest_turn({ loop_id: loopId, turn_id: t1!.id });
         const exp = await db.test_prompt_expanded.get<{ expanded: number }>({});
         assert.equal(exp?.expanded, 1, "the grinder skipped the prompt — the task frame survives its reclamation");
+
+        const expected = before
+            .filter((row) => row.expanded === 1 && row.op !== "error" && row.op !== "PLAN" && row.scheme !== "prompt")
+            .map((row) => `${row.loop_seq}/${row.turn_seq}/${row.sequence}`)
+            .sort();
+        const overflowTags = (await db.test_log_tags_by_run.all<{ coordinate: string; tag: string }>({ worker_id: workerId }))
+            .filter(({ tag }) => tag === "overflow")
+            .map(({ coordinate }) => coordinate)
+            .sort();
+        assert.deepEqual(overflowTags, expected, "the grinder tags exactly the rows it folds as overflow");
     } finally { await db.close(); }
 });
 

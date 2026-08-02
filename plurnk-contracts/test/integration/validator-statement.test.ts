@@ -36,6 +36,24 @@ test("PlurnkStatement: FOLD with jsonpath matcher", () => {
     assert.equal(r!.valid, true, JSON.stringify(r!.errors));
 });
 
+test("PlurnkStatement: OPEN and FOLD have no positional line marker", () => {
+    for (const op of ["OPEN", "FOLD"] as const) {
+        const parsed = PlurnkParser.parseStatements(`<<${op}[memory](log://**)::${op}`);
+        const item = parsed.items[0];
+        assert.equal(item.kind, "statement");
+        if (item.kind !== "statement") continue;
+        assert.equal(item.statement.op, op);
+        assert.equal(item.statement.lineMarker, null);
+
+        const invalid = Validator.validatePlurnkStatement({
+            ...JSON.parse(JSON.stringify(item.statement)),
+            lineMarker: { marks: [1] },
+        });
+        assert.equal(invalid.valid, false, `${op} schema must reject a positional line marker`);
+        assert.ok(invalid.errors.some(({ instanceLocation }) => instanceLocation.endsWith("/lineMarker")));
+    }
+});
+
 test("PlurnkStatement: EDIT with raw markdown body", () => {
     const r = validateRoundTrip("<<EDIT[philosophy](known://meaning):The meaning of life is 42:EDIT");
     assert.equal(r!.valid, true, JSON.stringify(r!.errors));

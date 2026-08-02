@@ -1121,6 +1121,22 @@ test("MatcherBody: semantic accepts arbitrary text after tilde (no parse step)",
     assert.equal(b.dialect, "semantic");
 });
 
+test("OPEN and FOLD reject positional scope", () => {
+    for (const op of ["OPEN", "FOLD"] as const) {
+        const result = PlurnkParser.parseStatements(`<<${op}[memory](log:///**)<1,2>::${op}`);
+        assert.equal(
+            result.items.some((item) => item.kind === "statement"),
+            false,
+            `${op}<scope> must not recover into an executable statement`,
+        );
+        const error = result.items.find((item) => item.kind === "error");
+        assert.equal(error?.kind, "error", `${op}<scope> must surface a parse failure`);
+        if (error?.kind !== "error") continue;
+        assert.equal(error.error.source, "parser");
+        assert.match(error.error.message, /unexpected `<L>` line marker/);
+    }
+});
+
 test("MatcherBody: graph inbound query (@<symbol) dispatches graph", () => {
     const result = PlurnkParser.parseStatements("<<FIND(src/**):@<createCoder:FIND");
     const item = result.items[0];

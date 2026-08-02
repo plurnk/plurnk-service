@@ -434,6 +434,21 @@ test("GBNF: pattern bodies (FIND/READ/OPEN/FOLD) forbid a literal newline — in
     assert.equal(derivesTurn("<<PLAN:p:PLAN\n<<SEND[200]:multi\nline:SEND"), true);
 });
 
+test("GBNF: OPEN and FOLD admit tagged set selection but no positional scope", () => {
+    for (const op of ["OPEN", "FOLD"]) {
+        assert.equal(
+            derivesTurn(`<<PLAN:p:PLAN\n<<${op}[memory](log:///**):needle:${op}\n<<SEND[102]:c:SEND`),
+            true,
+            `${op} retains tags, target, and matcher selection`,
+        );
+        assert.equal(
+            derivesTurn(`<<PLAN:p:PLAN\n<<${op}[memory](log:///**)<1,2>:needle:${op}\n<<SEND[102]:c:SEND`),
+            false,
+            `${op} must not expose positional scope`,
+        );
+    }
+});
+
 // {§pattern-body-leading-colon}
 test("GBNF: pattern bodies cannot begin with the close delimiter - triple-colon recovery", () => {
     for (const op of ["FIND", "READ", "OPEN", "FOLD"]) {

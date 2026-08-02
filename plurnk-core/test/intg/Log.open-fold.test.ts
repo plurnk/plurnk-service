@@ -152,34 +152,53 @@ test("engine_render_log carries the delta source; self-authored entries stay nul
     } finally { await db.close(); }
 });
 
-test("FOLD(log:///**/READ)<1> folds the first matching READ row — glob + pagination", async () => {
+test("FOLD matcher selects the tagged set and OPEN filters that set by tag + matcher", async () => {
     const { db, workspaceId, workerId, loopId, turnId } = await setup();
     try {
-        // setup seeds 1/1/1 EDIT; add READ rows at 1/1/2 and 1/1/3.
-        const seedRead = async (sequence: number): Promise<void> => {
+        // setup seeds bodyless 1/1/1 EDIT; add discriminating READ bodies at 1/1/2 and 1/1/3.
+        const seedRead = async (sequence: number, content: string): Promise<void> => {
             await db.engine_insert_log_entry.get({
                 worker_id: workerId, loop_id: loopId, turn_id: turnId, sequence,
                 origin: "model", source: null, op: "READ", suffix: "", signal: null,
                 scheme: "worker", username: null, password: null, hostname: null, port: null,
                 pathname: "/doc", params: null, fragment: null, lineMarker: null,
                 tx: "<<READ(worker:///doc)::READ", mimetype_tx: "text/vnd.plurnk",
-                rx: JSON.stringify({ status: 200 }), mimetype_rx: "application/json",
+                rx: JSON.stringify({ status: 200, content, mimetype: "text/plain", startLine: 1 }), mimetype_rx: "application/json",
                 status_rx: 200, tokens: 0, state: "resolved", outcome: null, attrs: "{}",
             });
         };
-        await seedRead(2);
-        await seedRead(3);
+        await seedRead(2, "retain this row");
+        await seedRead(3, "discard this row");
         const expandedAt = async (sequence: number): Promise<number> =>
             (await db.test_get_log_expanded.get<{ expanded: number }>({
                 worker_id: workerId, loop_seq: 1, turn_seq: 1, sequence,
             }))?.expanded ?? -1;
 
-        const stmt: ReturnType<typeof foldStmt> = { ...foldStmt(urlPath("log", "/**/READ")), lineMarker: { marks: [1, 1] } };
-        const r = await new Log().fold(stmt, makeSchemeCtx({ db, workspaceId, workerId, loopId, turnId, writer: "model" }));
-        assert.equal(r.status, 200);
-        assert.equal(await expandedAt(2), 0, "the 1st matched READ (1/1/2) is folded");
-        assert.equal(await expandedAt(3), 1, "the 2nd READ (1/1/3) is untouched by <1>");
+        const ctx = makeSchemeCtx({ db, workspaceId, workerId, loopId, turnId, writer: "model" });
+        const matcher = { dialect: "regex" as const, raw: "/retain/", pattern: "retain", flags: "" };
+        const fold = await new Log().fold({
+            ...foldStmt(urlPath("log", "/**/READ")),
+            signal: ["memory"],
+            body: matcher,
+        }, ctx);
+        assert.equal(fold.status, 200);
+        assert.equal(fold.matched, 1);
+        assert.equal(await expandedAt(2), 0, "the matching READ row is folded");
+        assert.equal(await expandedAt(3), 1, "the non-matching READ row remains open");
         assert.equal(await expandedAt(1), 1, "the non-matching EDIT (1/1/1) is untouched");
+
+        const tags = await db.test_log_tags_by_run.all<{ coordinate: string; tag: string }>({ worker_id: workerId });
+        assert.deepEqual(tags, [{ coordinate: "1/1/2", tag: "memory" }], "FOLD applies the tag only to its selected set");
+
+        const open = await new Log().open({
+            ...openStmt(null),
+            signal: ["memory"],
+            body: matcher,
+        }, ctx);
+        assert.equal(open.status, 200);
+        assert.equal(open.matched, 1);
+        assert.equal(await expandedAt(2), 1, "targetless OPEN filters the worker log by tag + matcher");
+        assert.equal(await expandedAt(3), 1, "OPEN does not broaden the tagged set");
     } finally { await db.close(); }
 });
 

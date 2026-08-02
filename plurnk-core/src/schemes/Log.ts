@@ -9,7 +9,6 @@ import type { FindResult, MatchItem, Match, CatalogScope, CatalogMatch } from ".
 import { CoreSchemeAdapterBase } from "../core/CoreSchemeServices.ts";
 import type { CoreSchemeCallContext } from "../core/CoreSchemeServices.ts";
 import Results, { type ProblemDetails, type SchemeResultBase } from "../core/results.ts";
-import type { RangeExtent } from "@plurnk/plurnk-schemes";
 import LogBody from "../core/LogBody.ts";
 import EntrySemantic from "./_entry-semantic.ts";
 import EntryGraph from "./_entry-graph.ts";
@@ -205,7 +204,15 @@ export default class Log extends CoreSchemeAdapterBase {
     // coordinate-scoped rows resolved by LogBody exactly as READ shows them, so every content
     // dialect works on log BY CONSTRUCTION and FIND(log)->READ(coordinate) composes like any scheme.
     async find(statement: FindStatement, ctx: CoreSchemeCallContext): Promise<FindResult> {
-        const core = this.coreContext(ctx);
+        return this.#find(statement, this.coreContext(ctx), true);
+    }
+
+    async #find(
+        statement: FindStatement,
+        core: PlurnkSchemeContext,
+        enforceRenderBudget: boolean,
+        allowTargetless = false,
+    ): Promise<FindResult> {
         const { db, workerId, mimetypes } = core;
         const empty = (
             status: number,
@@ -227,7 +234,7 @@ export default class Log extends CoreSchemeAdapterBase {
                 ) as FindResult
                 : { status, ...fields };
         };
-        if (statement.target === null) {
+        if (statement.target === null && !allowTargetless) {
             return empty(
                 400,
                 "FIND requires a log target.",
@@ -238,7 +245,9 @@ export default class Log extends CoreSchemeAdapterBase {
             );
         }
 
-        const pathname = (statement.target.kind === "url" ? statement.target.pathname : statement.target.raw).replace(/^\//, "");
+        const pathname = statement.target === null
+            ? ""
+            : (statement.target.kind === "url" ? statement.target.pathname : statement.target.raw).replace(/^\//, "");
         const glob = coordinateGlob(pathname);
         if (glob === null) {
             return empty(
@@ -536,7 +545,7 @@ export default class Log extends CoreSchemeAdapterBase {
         // catalog items; a shallow map's folder summaries replace, rather than
         // conceal, their descendants.
         const budget = Number.parseInt(process.env.PLURNK_SERVICE_FIND_MAX_MATCHES ?? "0", 10);
-        if (budget > 0 && results.length > budget) {
+        if (enforceRenderBudget && budget > 0 && results.length > budget) {
             const noun = results.some((item) => item.items !== undefined) ? "catalog items" : "entries";
             return {
                 status: 200,
@@ -565,13 +574,12 @@ export default class Log extends CoreSchemeAdapterBase {
         return this.#setExpanded(statement, this.coreContext(ctx), 0);
     }
 
-    // Resolve a log:/// target — a concrete coordinate, or a path-glob optionally paginated
-    // by <L> (OPEN/FOLD only) — to the matched row ids. The ONE resolution OPEN/FOLD and
-    // KILL share: fold flips `expanded` on the ids, kill deletes them.
-    async #resolveIds(pathname: string, lineMarker: OpenStatement["lineMarker"], ctx: PlurnkSchemeContext): Promise<{ status: number; ids: number[]; error?: string; problem?: ProblemDetails; range?: RangeExtent }> {
+    // Resolve a log:/// target — a concrete coordinate or path-glob — to the matched row ids.
+    // OPEN/FOLD/KILL share this one path selection; log curation has no positional pagination.
+    async #resolveIds(pathname: string, ctx: PlurnkSchemeContext): Promise<{ status: number; ids: number[]; error?: string }> {
         const { db, workerId } = ctx;
         const coord = parseCoordinate(pathname);
-        if (coord !== null && lineMarker === null) {
+        if (coord !== null) {
             const row = await db.log_id_by_coordinate.get<{ id: number }>({ worker_id: workerId, loop_seq: coord.loopSeq, turn_seq: coord.turnSeq, sequence: coord.sequence });
             return row === undefined ? { status: 404, ids: [] } : { status: 200, ids: [row.id] };
         }
@@ -587,26 +595,14 @@ export default class Log extends CoreSchemeAdapterBase {
         // curation sweep that found nothing to curate steers nothing — 204 keeps it out of the
         // errors surface (>= 400), and the rx carries matched: 0, clearly shown.
         if (matched.length === 0) return { status: 204, ids: [] };
-        let selected = matched;
-        if (lineMarker !== null) {
-            const page = LineMarkerOps.page(matched, lineMarker);
-            if (page.status !== 200) return {
-                status: page.status,
-                ids: [],
-                problem: page.problem,
-                range: page.range,
-            };
-            selected = page.items ?? [];
-        }
-        if (selected.length === 0) return { status: 404, ids: [] };
-        return { status: 200, ids: selected.map((s) => s.id) };
+        return { status: 200, ids: matched.map((row) => row.id) };
     }
 
     // §log-region-tagging — resolve OPEN[tag] to ids: candidates are the target's glob scope (the
     // whole run when targetless — a bare OPEN[tag] recalls the entire tagged working-set),
     // AND-filtered to rows carrying EVERY listed tag. Zero matches is a no-op success (204), mirroring
     // #resolveIds — recalling a name that tags nothing steers nothing.
-    async #resolveByTags(statement: OpenStatement | FoldStatement, tags: string[], ctx: PlurnkSchemeContext): Promise<{ status: number; ids: number[]; error?: string; problem?: ProblemDetails; range?: RangeExtent }> {
+    async #resolveByTags(statement: OpenStatement | FoldStatement, tags: string[], ctx: PlurnkSchemeContext): Promise<{ status: number; ids: number[]; error?: string }> {
         const { db, workerId } = ctx;
         const pathname = statement.target === null ? "" : (statement.target.kind === "url" ? statement.target.pathname : statement.target.raw).replace(/^\//, "");
         const glob = coordinateGlob(pathname);
@@ -621,23 +617,78 @@ export default class Log extends CoreSchemeAdapterBase {
         try { matched = candidates.filter((row) => coordinateScopeMatches(scope, row.coordinate)); }
         catch { return { status: 400, ids: [], error: `The log glob '${glob}' is malformed.` }; }
         if (matched.length === 0) return { status: 204, ids: [] };
-        let selected = matched;
-        if (statement.lineMarker !== null) {
-            const page = LineMarkerOps.page(matched, statement.lineMarker);
-            if (page.status !== 200) return {
-                status: page.status,
-                ids: [],
-                problem: page.problem,
-                range: page.range,
-            };
-            selected = page.items ?? [];
+        return { status: 200, ids: matched.map((row) => row.id) };
+    }
+
+    // A matcher-bearing curation op reuses FIND's complete source-agnostic selector with
+    // rendering disabled. OPEN's tags filter candidates; FOLD's tags are withheld until
+    // after selection because they apply to the rows being folded.
+    async #resolveByMatcher(
+        statement: OpenStatement | FoldStatement,
+        filterTags: boolean,
+        ctx: PlurnkSchemeContext,
+    ): Promise<{ status: number; ids: number[]; problem?: ProblemDetails }> {
+        const selected = await this.#find(
+            {
+                ...statement,
+                op: "FIND",
+                signal: filterTags ? statement.signal : null,
+                lineMarker: null,
+            },
+            ctx,
+            false,
+            filterTags && Array.isArray(statement.signal) && statement.signal.length > 0 && statement.target === null,
+        );
+        if (selected.status !== 200) return { status: selected.status, ids: [], problem: selected.problem };
+
+        const ids: number[] = [];
+        for (const { pathname } of selected.matches) {
+            const coordinate = parseCoordinate(pathname.replace(/^\//, ""));
+            if (coordinate === null) throw new Error(`Log matcher selected malformed coordinate '${pathname}'`);
+            const row = await ctx.db.log_id_by_coordinate.get<{ id: number }>({
+                worker_id: ctx.workerId,
+                loop_seq: coordinate.loopSeq,
+                turn_seq: coordinate.turnSeq,
+                sequence: coordinate.sequence,
+            });
+            if (row === undefined) return { status: 404, ids: [] };
+            ids.push(row.id);
         }
-        if (selected.length === 0) return { status: 404, ids: [] };
-        return { status: 200, ids: selected.map((s) => s.id) };
+        return ids.length === 0 ? { status: 204, ids: [] } : { status: 200, ids };
+    }
+
+    async #applyExpanded(
+        ids: number[],
+        expanded: 0 | 1,
+        tags: string[],
+        ctx: PlurnkSchemeContext,
+    ): Promise<OpenFoldResult> {
+        for (const id of ids) await ctx.db.log_set_expanded_by_id.run({ id, expanded });
+        if (expanded === 0) {
+            for (const id of ids) for (const tag of tags) await ctx.db.log_write_tag.run({ log_entry_id: id, tag });
+        }
+        return { status: 200, matched: ids.length };
     }
 
     async #setExpanded(statement: OpenStatement | FoldStatement, ctx: PlurnkSchemeContext, expanded: 0 | 1): Promise<OpenFoldResult> {
         const signal = Array.isArray(statement.signal) ? statement.signal : [];
+        if (statement.body !== null) {
+            const matched = await this.#resolveByMatcher(statement, expanded === 1, ctx);
+            if (matched.status === 204) return { status: 204, matched: 0 };
+            if (matched.status !== 200) {
+                if (matched.problem !== undefined) {
+                    return Results.assert({ status: matched.status, problem: matched.problem }) as OpenFoldResult;
+                }
+                return Results.failure(
+                    "scheme:log",
+                    matched.status === 404 ? "entry-not-found" : "curation-failed",
+                    matched.status,
+                    "No log entry matches the requested selection.",
+                ) as OpenFoldResult;
+            }
+            return this.#applyExpanded(matched.ids, expanded, signal, ctx);
+        }
+
         // §log-region-tagging — OPEN[tag] is the READ side: recall rows by tag, target optional (a bare
         // OPEN[tag] recalls the whole tagged working-set). FOLD never resolves by tag — it is the WRITE
         // side (it stamps the tag below), always scoped to the target region it folds.
@@ -645,18 +696,14 @@ export default class Log extends CoreSchemeAdapterBase {
             const rt = await this.#resolveByTags(statement, signal, ctx);
             if (rt.status === 204) return { status: 204, matched: 0 };
             if (rt.status !== 200) {
-                if (rt.problem !== undefined) {
-                    return Results.assert({ status: rt.status, problem: rt.problem }) as OpenFoldResult;
-                }
                 return Results.failure(
                     "scheme:log",
-                    rt.status === 416 ? "range-not-satisfiable" : "open-failed",
+                    "open-failed",
                     rt.status,
                     rt.error ?? "No log entry matches the requested selection.",
                     {},
                     {
                         target: statement.target?.raw ?? null,
-                        ...(rt.range === undefined ? {} : { range: rt.range }),
                         ...(rt.status === 400
                             ? {
                                 recovery: "Use a log coordinate, prefix, or glob.",
@@ -666,8 +713,7 @@ export default class Log extends CoreSchemeAdapterBase {
                     },
                 ) as OpenFoldResult;
             }
-            for (const id of rt.ids) await ctx.db.log_set_expanded_by_id.run({ id, expanded: 1 });
-            return { status: 200, matched: rt.ids.length };
+            return this.#applyExpanded(rt.ids, 1, signal, ctx);
         }
 
         if (statement.target === null) {
@@ -684,21 +730,17 @@ export default class Log extends CoreSchemeAdapterBase {
             ) as OpenFoldResult;
         }
         const pathname = (statement.target.kind === "url" ? statement.target.pathname : statement.target.raw).replace(/^\//, "");
-        const r = await this.#resolveIds(pathname, statement.lineMarker, ctx);
+        const r = await this.#resolveIds(pathname, ctx);
         if (r.status === 204) return { status: 204, matched: 0 };
         if (r.status !== 200) {
-            if (r.problem !== undefined) {
-                return Results.assert({ status: r.status, problem: r.problem }) as OpenFoldResult;
-            }
             return Results.failure(
                 "scheme:log",
-                r.status === 416 ? "range-not-satisfiable" : r.status === 404 ? "entry-not-found" : "curation-failed",
+                r.status === 404 ? "entry-not-found" : "curation-failed",
                 r.status,
                 r.error ?? `No log entry matches '${pathname}'.`,
                 {},
                 {
                     target: pathname,
-                    ...(r.range === undefined ? {} : { range: r.range }),
                     ...(r.status === 400
                         ? {
                             recovery: "Use a log coordinate, prefix, or glob.",
@@ -708,14 +750,7 @@ export default class Log extends CoreSchemeAdapterBase {
                 },
             ) as OpenFoldResult;
         }
-        const ids = r.ids;
-        for (const id of ids) await ctx.db.log_set_expanded_by_id.run({ id, expanded });
-        // §log-region-tagging — FOLD[tag] is the log's write-op: stamp the tags on the folded rows,
-        // additively (§edit-tags-additive). OPEN with a signal never reaches here.
-        if (expanded === 0 && signal.length > 0) {
-            for (const id of ids) for (const tag of signal) await ctx.db.log_write_tag.run({ log_entry_id: id, tag });
-        }
-        return { status: 200, matched: ids.length };
+        return this.#applyExpanded(r.ids, expanded, signal, ctx);
     }
 
     // KILL erases log items (plurnk.md:36, :98) — the model's DB-storage curation lever and
@@ -724,10 +759,9 @@ export default class Log extends CoreSchemeAdapterBase {
     // carries no <L> result slot, so no pagination — a concrete coordinate or a path-glob.
     async kill(pathname: string, _signal: number | null, ctx: CoreSchemeCallContext): Promise<SchemeResultBase> {
         const core = this.coreContext(ctx);
-        const r = await this.#resolveIds(pathname.replace(/^\//, ""), null, core);
+        const r = await this.#resolveIds(pathname.replace(/^\//, ""), core);
         if (r.status === 204) return { status: 204 };
         if (r.status !== 200) {
-            if (r.problem !== undefined) return Results.assert({ status: r.status, problem: r.problem });
             return Results.failure(
                 "scheme:log",
                 r.status === 404 ? "entry-not-found" : "kill-failed",

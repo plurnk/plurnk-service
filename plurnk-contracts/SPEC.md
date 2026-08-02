@@ -155,7 +155,9 @@ Hard constraints:
 - Close-tag `:OPsuffix` must character-match the open tag's `OPsuffix`. {§close-tag-match}
 - Header elements appear in the order shown above (signal, then path, then `<L>`, then `:`).
 
-All other restrictions are runtime concerns, not grammar concerns.
+The per-operation grammar omits slots that do not exist for that operation;
+OPEN, FOLD, WORK, FORK, and KILL admit no `<L>` marker. Other value-domain
+restrictions are runtime concerns.
 
 ## 3. Lexical Elements
 
@@ -178,8 +180,8 @@ All other restrictions are runtime concerns, not grammar concerns.
 | EDIT   | tags (CSV)        | required | content (empty body deletes the selected region) | text region |
 | COPY   | tags to apply (CSV) | required | destination `ResourceSelection` | source text region |
 | MOVE   | tags to apply (CSV) | required | destination `ResourceSelection` | source text region |
-| OPEN   | tag filter (CSV)  | required | optional pattern matcher | result-set pagination |
-| FOLD   | tag filter (CSV)  | required | optional pattern matcher | result-set pagination |
+| OPEN   | tag filter (CSV)  | required | optional pattern matcher | none |
+| FOLD   | tags to apply (CSV) | required | optional pattern matcher | none |
 | SEND   | submit code (single integer; see §9) | optional (recipient) | message payload (JSON by convention for structured responses) | `<timeout, poll>` — the wait park on a terminal `[202]` (see §7, §9) |
 | EXEC   | registered executable tool (single string; `sh` default) | optional (cwd) | executor-specific input | `<timeout, poll>` — spawn lifetime cap + poll cadence |
 | WORK   | optional Git branch ref (single string) | required `worker://` target naming the fresh worker | task prompt for the worker's first loop | none (parses as null) |
@@ -187,8 +189,8 @@ All other restrictions are runtime concerns, not grammar concerns.
 | KILL   | unix signal (single integer; taught in canon, e.g. `KILL[9]`) | required | opaque annotation (logged, no runtime meaning) | not applicable |
 | PLAN   | tag filter (CSV; parse-side, canon is slotless) | optional (parse-side; canon is slotless) | reasoning text (recorded to the log; no other effect) | parse-side only |
 
-The `<L>` slot is optional and its domain is OP-specific. FIND, OPEN, and
-FOLD scope ordered results. EXEC and SEND scope timing. READ, EDIT, COPY, and
+The `<L>` slot is optional where admitted and its domain is OP-specific. FIND
+scopes ordered results. EXEC and SEND scope timing. READ, EDIT, COPY, and
 MOVE use one universal text algebra independent of mimetype:
 
 | Arity | Surface meaning | Endpoint rule |
@@ -417,7 +419,7 @@ slot `<scope>`; the AST field remains `lineMarker` (a deliberate
 vocabulary divergence: the canon is the model's language, the schema is
 the versioned wire contract). The referent is OP-specific (see §4
 per-OP table): text for READ/EDIT/COPY/MOVE, positions in the matched
-result set for FIND/OPEN/FOLD, and
+result set for FIND, and
 `<timeout, poll>` seconds for EXEC (spawn lifetime cap + poll cadence)
 and for SEND (the wait park on a terminal `[202]`, §9: `<T>` bounded,
 `<T,P>` adds a poll cadence, `<-1>` indefinite). The shipped GBNF
@@ -466,7 +468,7 @@ the GBNF dictates the comma form. {§scope-marker-forms}
   integers; a decimal text coordinate is answered with 416 rather than
   rounded or reinterpreted.
 
-**Result-set ordering** (FIND, OPEN, FOLD): the runtime must produce a
+**Result-set ordering** (FIND): the runtime must produce a
 deterministic order so that `<N-M>` pagination is reproducible. The
 choice of ordering is a runtime guarantee, not a parser concern.
 

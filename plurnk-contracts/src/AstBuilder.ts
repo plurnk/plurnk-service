@@ -44,6 +44,7 @@ import type {
     WorkStatementContext,
     ForkStatementContext,
     BranchModifiersContext,
+    CurationModifiersContext,
     LookStatementContext,
     MoveStatementContext,
     ReadStatementContext,
@@ -73,6 +74,7 @@ declare module "xpath" {
 type Ctor<T> = new (...args: any[]) => T;
 
 type TagSlots = { signal: string[] | null; target: ParsedPath | null; lineMarker: LineMarker | null };
+type CurationSlots = { signal: string[] | null; target: ParsedPath | null; lineMarker: null };
 type IntSlots = { signal: number | null; target: ParsedPath | null };
 type ExecSlots = { signal: string | null; target: ParsedPath | null; lineMarker: LineMarker | null };
 
@@ -179,7 +181,7 @@ export default class AstBuilder {
 
     static #buildOpen(ctx: OpenStatementContext): OpenStatement {
         const position = AstBuilder.#positionOf(ctx);
-        const slots = AstBuilder.#extractTagSlots(ctx.tagOpModifiers(), position);
+        const slots = AstBuilder.#extractCurationSlots(ctx.curationModifiers(), position);
         const raw = AstBuilder.#bodyTextOf(ctx);
         return {
             op: "OPEN",
@@ -192,7 +194,7 @@ export default class AstBuilder {
 
     static #buildFold(ctx: FoldStatementContext): FoldStatement {
         const position = AstBuilder.#positionOf(ctx);
-        const slots = AstBuilder.#extractTagSlots(ctx.tagOpModifiers(), position);
+        const slots = AstBuilder.#extractCurationSlots(ctx.curationModifiers(), position);
         const raw = AstBuilder.#bodyTextOf(ctx);
         return {
             op: "FOLD",
@@ -336,6 +338,14 @@ export default class AstBuilder {
             signal: AstBuilder.#tagsFromSignal(AstBuilder.#findFirst(modCtx, TagSignalContext)),
             target: AstBuilder.#targetFromCtx(AstBuilder.#findFirst(modCtx, TargetContext), pos),
             lineMarker: AstBuilder.#lineMarkerFromCtx(AstBuilder.#findFirst(modCtx, LineMarkerContext)),
+        };
+    }
+
+    static #extractCurationSlots(modCtx: CurationModifiersContext | null, pos: Position): CurationSlots {
+        return {
+            signal: AstBuilder.#tagsFromSignal(AstBuilder.#findFirst(modCtx, TagSignalContext)),
+            target: AstBuilder.#targetFromCtx(AstBuilder.#findFirst(modCtx, TargetContext), pos),
+            lineMarker: null,
         };
     }
 

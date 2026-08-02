@@ -76,7 +76,7 @@ test("ex 12: EDIT — clear entry contents (empty body)", () => {
 });
 
 test("ex 13: FOLD — collapse every distilled fetch-log row", () => {
-    expectOneClean("<<FOLD(log://1/*/*/get)::FOLD");
+    expectOneClean("<<FOLD[distilled](log://1/*/*/get)::FOLD");
 });
 
 test("ex 14: OPEN — restore collapsed log rows by tag filter", () => {
@@ -130,8 +130,8 @@ test("ex 25: OPEN — combined filters (tag + body)", () => {
     expectOneClean("<<OPEN[france](log://**):Paris*:OPEN");
 });
 
-test("ex 26: FOLD — paginated collapse", () => {
-    expectOneClean("<<FOLD(log://**/get)<101-200>::FOLD");
+test("ex 26: FOLD — tagged collapse", () => {
+    expectOneClean("<<FOLD[stale](log://**/get)::FOLD");
 });
 
 test("ex 27: SEND — structured JSON answer", () => {

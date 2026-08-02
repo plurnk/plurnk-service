@@ -72,8 +72,8 @@ Exit `0` on clean parse, `1` on any error or unparsed tail.
 | EDIT | tags             | content (empty=clear) | text region        |
 | COPY | tags-to-apply    | destination selection | source region      |
 | MOVE | tags-to-apply    | destination selection | source region      |
-| OPEN | tag filter       | matcher               | result-set range   |
-| FOLD | tag filter       | matcher               | result-set range   |
+| OPEN | tag filter       | matcher               | n/a                |
+| FOLD | tags-to-apply    | matcher               | n/a                |
 | SEND | HTTP status int  | payload (JSON conv.)  | n/a                |
 | EXEC | executor         | executor-specific input | n/a              |
 | WORK | optional Git branch | required prompt    | n/a                |
@@ -137,8 +137,8 @@ Nesting: outer body may contain inner `<<OP:…:OP` statements; outer must use a
 12. Clear entry contents (empty body between two colons)
 	<<EDIT(worker:///countries/france/capital)::EDIT
 
-13. Collapse every distilled fetch-log row
-	<<FOLD(log:///1/*/*/get)::FOLD
+13. Collapse every distilled fetch-log row under a tag
+	<<FOLD[distilled](log:///1/*/*/get)::FOLD
 
 14. Restore collapsed log rows by tag filter
 	<<OPEN[france](log:///**)::OPEN
@@ -179,8 +179,8 @@ Nesting: outer body may contain inner `<<OP:…:OP` statements; outer must use a
 25. Restore log rows tagged france whose content matches (combined filters)
 	<<OPEN[france](log:///**):Paris*:OPEN
 
-26. Collapse the second hundred of stale fetch-log rows (pagination)
-	<<FOLD(log:///**/get)<101-200>::FOLD
+26. Collapse stale fetch-log rows under a tag
+	<<FOLD[stale](log:///**/get)::FOLD
 
 27. Deliver a structured answer (JSON body)
 	<<SEND[200]:{"answer":"Paris","confidence":0.95}:SEND

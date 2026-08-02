@@ -37,8 +37,8 @@ A `?` marks an optional slot.
 | EDIT | create or modify a resource | apply tags? | resource | text region? | literal text |
 | COPY | copy a resource or text region | apply tags? | source resource | source region? | destination selection |
 | MOVE | move a resource or text region | apply tags? | source resource | source region? | destination selection |
-| FOLD | hide matching log bodies | filter tags? | log resource or glob | result range? | pattern? |
-| OPEN | reveal matching log bodies | filter tags? | log resource or glob | result range? | pattern? |
+| FOLD | hide matching log bodies | apply tags? | log resource or glob | - | pattern? |
+| OPEN | reveal matching log bodies | filter tags? | log resource or glob | - | pattern? |
 | EXEC | execute a registered tool into an output stream | executor? | resource? | timeout, poll? | input? |
 | WORK | start a named worker | branch? | `worker://name` | - | prompt |
 | FORK | start a named worker with this log history | branch? | `worker://name` | - | prompt |
@@ -106,7 +106,7 @@ Examples:
 
 One or more numbers narrow an operation according to its type:
 
-* FIND, OPEN, and FOLD scopes select inclusive result positions.
+* FIND scopes select inclusive result positions.
 * Each rendered FIND result owns one numbered physical line; result N and line N identify the same row.
 * READ and EDIT scopes select text regions.
 * COPY and MOVE scopes select source text; the destination may carry its own scope.
@@ -146,8 +146,8 @@ COPY/MOVE rows name both operand selections. Scoped text effects show bounded re
 
 Examples:
 
-* Reveal the first ten matching bodies: `<<OPEN(log:///**)<1,10>::OPEN`
-* Hide matching bodies 101 through 200: `<<FOLD(log:///**)<101,200>::FOLD`
+* Reveal matching bodies tagged overflow: `<<OPEN[overflow](log:///**)::OPEN`
+* Hide matching bodies under the stale tag: `<<FOLD[stale](log:///**)::FOLD`
 
 ## Delegation
 

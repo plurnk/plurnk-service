@@ -91,15 +91,18 @@ midStatement
     | killStatement
     ;
 
-// 7 tag-CSV ops share the same modifier permutation: tagSignal, target, lineMarker
-// in any order, each appearing at most once.
+// Scoped tag-CSV ops share the same modifier permutation: tagSignal, target,
+// lineMarker in any order, each appearing at most once.
 findStatement : OPEN_FIND tagOpModifiers? COLON? body? CLOSE_TAG ;
 readStatement : OPEN_READ tagOpModifiers? COLON? body? CLOSE_TAG ;
 editStatement : OPEN_EDIT tagOpModifiers? COLON? body? CLOSE_TAG ;
 copyStatement : OPEN_COPY tagOpModifiers? COLON? body? CLOSE_TAG ;
 moveStatement : OPEN_MOVE tagOpModifiers? COLON? body? CLOSE_TAG ;
-openStatement : OPEN_OPEN tagOpModifiers? COLON? body? CLOSE_TAG ;
-foldStatement : OPEN_FOLD tagOpModifiers? COLON? body? CLOSE_TAG ;
+
+// Log curation is set-based: tags + target + matcher select rows. OPEN/FOLD
+// deliberately have no positional lineMarker slot.
+openStatement : OPEN_OPEN curationModifiers? COLON? body? CLOSE_TAG ;
+foldStatement : OPEN_FOLD curationModifiers? COLON? body? CLOSE_TAG ;
 
 // SEND splits by signal kind (the lexer emits DISPOSITION for {102,200,202,300,499}): a
 // disposition-coded SEND IS the turn terminal (sendStatement), so turnContent ends on it and
@@ -133,6 +136,11 @@ tagOpModifiers
     : tagSignal (target lineMarker? | lineMarker target?)?
     | target (tagSignal lineMarker? | lineMarker tagSignal?)?
     | lineMarker (tagSignal target? | target tagSignal?)?
+    ;
+
+curationModifiers
+    : tagSignal target?
+    | target tagSignal?
     ;
 
 intOpModifiers

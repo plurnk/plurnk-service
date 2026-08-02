@@ -307,8 +307,12 @@ export const buildModel = (): GModel => {
                 bodyRulesNonEmpty(model, name, close);
                 const bodyNE = [lit(":"), ref(`${name}-b0ne`), lit(close)];
                 opEntries.push({ literal: open, tails: [[opt(ref("branch")), ref("target"), ...bodyNE]] });
+            } else if (op === "OPEN" || op === "FOLD") {
+                // Log curation selects sets by tags + target + matcher. It has no positional
+                // line slot; FIND alone paginates selected results.
+                opEntries.push({ literal: open, tails: [[opt(ref("tags")), ref("target"), ...body]] });
             } else {
-                // Tag-CSV ops (FIND/READ/EDIT/COPY/MOVE/OPEN/FOLD) share one shape. The former
+                // Scoped tag-CSV ops (FIND/READ/EDIT/COPY/MOVE) share one shape. The former
                 // READ/FIND retrieval routing (the READ->200 rail, 0.74.47-0.74.58) is DELETED
                 // (#54, ruled 2026-07-05): premature-conclude is CONTEXT, and context lives in
                 // the engine's pending-set rule (409 + steer), uniformly with streams/children.

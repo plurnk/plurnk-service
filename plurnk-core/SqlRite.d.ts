@@ -52,6 +52,7 @@ export class SqlRiteSync {
 	static open(options?: SqlRiteOptions): Promise<SqlRiteSync>;
 	close(): void;
 	[Symbol.dispose](): void;
+	engine_grinder_fold_newest_turn(params?: Record<string, unknown>): SqlRiteResult;
 	crud_find_workspace_entry: SqlRiteSyncPreparedStatements;
 	crud_read_channels: SqlRiteSyncPreparedStatements;
 	crud_read_tags: SqlRiteSyncPreparedStatements;
@@ -186,7 +187,6 @@ export class SqlRiteSync {
 	engine_child_workers_live: SqlRiteSyncPreparedStatements;
 	engine_child_streams_open: SqlRiteSyncPreparedStatements;
 	engine_render_errors: SqlRiteSyncPreparedStatements;
-	engine_grinder_fold_newest_turn: SqlRiteSyncPreparedStatements;
 	engine_fold_log_entry: SqlRiteSyncPreparedStatements;
 	engine_render_log: SqlRiteSyncPreparedStatements;
 	engine_insert_log_entry: SqlRiteSyncPreparedStatements;
@@ -281,6 +281,7 @@ export default class SqlRite {
 	ready(): Promise<SqlRite>;
 	close(): Promise<void>;
 	[Symbol.asyncDispose](): Promise<void>;
+	engine_grinder_fold_newest_turn(params?: Record<string, unknown>): Promise<SqlRiteResult>;
 	crud_find_workspace_entry: SqlRitePreparedStatements;
 	crud_read_channels: SqlRitePreparedStatements;
 	crud_read_tags: SqlRitePreparedStatements;
@@ -415,7 +416,6 @@ export default class SqlRite {
 	engine_child_workers_live: SqlRitePreparedStatements;
 	engine_child_streams_open: SqlRitePreparedStatements;
 	engine_render_errors: SqlRitePreparedStatements;
-	engine_grinder_fold_newest_turn: SqlRitePreparedStatements;
 	engine_fold_log_entry: SqlRitePreparedStatements;
 	engine_render_log: SqlRitePreparedStatements;
 	engine_insert_log_entry: SqlRitePreparedStatements;

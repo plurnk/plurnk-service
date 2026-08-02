@@ -407,7 +407,7 @@ WHERE le.loop_id = $loop_id
   AND t.sequence >= $current_turn_seq - 1
 ORDER BY t.sequence, le.sequence;
 
--- PREP: engine_grinder_fold_newest_turn
+-- TX: engine_grinder_fold_newest_turn
 -- §grinder-layer1-rollback — THE DOCTRINE: the log is the model's memory and the model ALONE
 -- curates it (FOLD/KILL). The grinder never touches history — it only blocks NEW memories from
 -- landing when there is no room: one set-op folds the still-open rows of the newest turn
@@ -418,12 +418,24 @@ ORDER BY t.sequence, le.sequence;
 -- the engine never reclaims the definition of the task it set), and PLAN rows (#465, owner
 -- ruling — the checklist is the model's orientation surface at exactly the moment the grinder
 -- fires; plans are concise by rule, so exempting them reclaims almost nothing and preserves
--- the reasoning thread a recovery turn steers by).
-UPDATE log_entries SET expanded = 0
+-- the reasoning thread a recovery turn steers by). The temporary set captures the
+-- selection once so folding and additive `overflow` tagging cannot diverge.
+CREATE TEMP TABLE IF NOT EXISTS engine_grinder_fold_set (id INTEGER PRIMARY KEY);
+DELETE FROM engine_grinder_fold_set;
+INSERT INTO engine_grinder_fold_set (id)
+SELECT id FROM log_entries
 WHERE loop_id = $loop_id AND expanded = 1 AND op NOT IN ('error', 'PLAN')
   AND COALESCE(scheme, '') != 'prompt'  -- the task frame ({§prompt-self-only}); NULL-safe: a model row's scheme is NULL
   AND (turn_id = $turn_id
        OR turn_id = (SELECT MAX(id) FROM turns WHERE loop_id = $loop_id AND id < $turn_id));
+
+UPDATE log_entries SET expanded = 0
+WHERE id IN (SELECT id FROM engine_grinder_fold_set);
+
+INSERT OR IGNORE INTO log_tags (log_entry_id, tag)
+SELECT id, 'overflow' FROM engine_grinder_fold_set;
+
+DELETE FROM engine_grinder_fold_set;
 
 -- PREP: engine_fold_log_entry
 -- Fold one known log row by id. Model mirror rows use this after insertion so
