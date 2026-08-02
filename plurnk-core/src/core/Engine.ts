@@ -710,14 +710,9 @@ export default class Engine {
             // before we assemble it. A fixed grace beat, never a wait-for-completion;
             // 0/unset = off. Abortable with the loop signal.
             const execHandler = this.#schemes.get("exec") as { hasActiveSpawns?: (workerId: number) => boolean; hasActiveHoldSpawns?: (workerId: number, holdSet: ReadonlySet<string>) => boolean } | undefined;
-            // {§exec-hold-until-concluded} — the turn-hold exception (owner ruling): for runtimes in
-            // the operator's HOLD set (the search family — streams we know and control: one final
-            // JSON digest, seconds-bounded), the cycle PAUSES here until the stream concludes, so
-            // the model never gets a turn it can only waste asking "are we there yet". Bounded by
-            // PLURNK_SERVICE_EXEC_HOLD_MS and FAIL-OPEN: at the cap the standard cycle resumes
-            // (the stream stays live; parks/wakes/polls all still apply). Zero grammar or teaching
-            // change — the model emits EXEC + SEND[102] as ever; the next packet simply contains
-            // the finished digest, open and final.
+            // {§exec-hold-until-concluded} — hold matching runtime/effect
+            // streams until conclusion or the fail-open cap, then resume the
+            // ordinary cycle without altering stream state.
             const holdSet = new Set((process.env.PLURNK_SERVICE_EXEC_HOLD ?? "").split(",").map((x) => x.trim()).filter((x) => x.length > 0));
             const holdCapMs = Number(process.env.PLURNK_SERVICE_EXEC_HOLD_MS ?? "300000");
             if (holdSet.size > 0 && holdCapMs > 0 && execHandler?.hasActiveHoldSpawns !== undefined) {
@@ -1164,16 +1159,9 @@ export default class Engine {
         requestPacket = enforced.packet;
         let operationConstraint: DispatchContext["operationConstraint"];
         if (!enforced.fit) {
-            // {§grinder-hard-413-recovery} (Q4, owner ruling: recoverable strike, NO margin) — the
-            // overflow lives in foldable HISTORY the model owns, and the grinder won't touch
-            // history ({§grinder-layer1-rollback} doctrine). So the first hard overflow is a
-            // RECOVERY TURN, not death: the packet is over the POLICY ceiling but usually well
-            // within PHYSICS (the jumbo pin: ceiling 13k, real window 49k) — send it once, with
-            // ruler measurements and an enforced allowed-operation set, plus a strike
-            // (budgetStruck). A fitting next turn clears the grant; a second consecutive
-            // overflow terminates 413. Physically
-            // unsendable (over the provider's real window too) → 413 immediately; physics
-            // doesn't negotiate. The pointer stays at 100% of budget — a margin would mask it.
+            // {§grinder-hard-413-recovery}/{§grinder-hard-413-abort} — admit
+            // one physically sendable constrained recovery turn; a physical
+            // overflow or consecutive policy overflow terminates immediately.
             const physicallySendable = provider.contextWindow === null
                 ? true
                 : this.#packets.providerPacketTokens(requestPacket, provider) <= provider.contextWindow - (this.#packets.maxTokensFor(provider) ?? 0);
@@ -1659,14 +1647,9 @@ export default class Engine {
                 origin, onDispatch,
             });
             statuses.push(result.status);
-            // A refused terminal (the pending-set 409) demotes the turn to a continue: the loop
-            // never went terminal, so the turn didn't either (the close persisted the provisional
-            // status BEFORE dispatch — run20's T3 stored 200 with a 409-refused SEND). Whether it
-            // ALSO strikes is kind-specific (owner ruling): a retrievals-only refusal teaches
-            // without striking — atomic-turn-pretrained models pair fetch-and-answer by habit,
-            // the refusal is correct each time, and maxTurns bounds the walk; striking executed
-            // converging behavior (jumbo/admins specimens: 3 correct refusals → 500 mid-adapt).
-            // Streams/children refusals keep the strike — discarding live work stays serious.
+            // {§send-premature-terminate} — a refused terminal leaves both
+            // loop and turn continuing. #83 owns the current retrieval-only
+            // strike and following-idle-grace exception.
             if (statement === sendOp && result.status === 409) {
                 if ((result.attrs as { retrievalOnly?: boolean } | undefined)?.retrievalOnly !== true) steerStruck = true;
                 else this.#retrievalRefusalGrace.add(loopId); // the steer says "continuing to receive" — the NEXT turn's obedient wait must not idle-strike
@@ -1734,12 +1717,8 @@ export default class Engine {
                 ),
             });
         }
-        // {§log-row-self-explains} (Q2, owner-clarified) — a model-op failure is the MODEL'S OWN op
-        // result: the op row carries its failure message on its meta line (packet-wire), and the
-        // errors section points at the row. No separate minted item (the retired action_failure
-        // mint dressed op results as source:"engine" faults — the jumbo model chased a phantom
-        // "engine 400 error" off a message-less item). Genuine engine-internal faults CRASH
-        // (fail-hard, {§turn-never-blank}) and never mint model-facing rows.
+        // {§log-row-self-explains} — model-operation failures remain on their
+        // own rows; genuine engine faults fail hard and mint no substitute row.
         // {§model-entry} — mirror this turn's verbatim emission back as a `model` row, so the NEXT
         // packet shows the model exactly what it last produced. ALWAYS born FOLDED — the old
         // born-OPEN-on-error auto-trigger was conditional helpfulness that bred its own hazards

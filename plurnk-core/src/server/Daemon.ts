@@ -1569,11 +1569,8 @@ export default class Daemon {
                     const message = ErrorDetail.preview(controller.signal.reason ?? "user_cancelled")
                         || "no reason was supplied";
                     if (currentLoopId !== null) {
-                        // #380 (owner ruling) — the cancel is allowed but provenanced: the ROW goes
-                        // terminal 499 (a dead loop must never read as live 102, #311) carrying
-                        // terminated_by='cancel' + the abort reason as the abandonment message, and
-                        // the broadcast carries the same message. The abort reason is the client's
-                        // loop.cancel reason (cancelDrain threads it through scope.abort).
+                        // {§methods-loop-cancel}/{§worker-lifecycle-terminal-result} —
+                        // persist the exact 499 cancellation result before broadcasting it.
                         const cancelled = await this.#lifecycle.finish(
                             currentLoopId,
                             Results.failure(
@@ -1637,15 +1634,9 @@ export default class Daemon {
                         });
                     }
                 } else {
-                    // #265 — a genuine (non-abort) loop error must still reach the client. runLoop only
-                    // acknowledged queueing, so loop/terminated is the sole outcome channel; the rejection
-                    // alone reaches no one (firstLoopPromise/drainPromise are .catch()'d). Broadcast 500
-                    // (failed) — distinct from an abort's 499 — for every error, not just the pre-first one.
-                    // #506 — the WHY must reach every forensic channel, not one. The old handler
-                    // fed only the loop row + broadcast; run54 died with the daemon log silent and
-                    // a bare 500 — the cause (a stack) reachable nowhere. The daemon-log line still
-                    // fires when currentLoopId is null or the row-write itself failed; otherwise the
-                    // durable loop result and loop/terminated notification preserve the exact Problem.
+                    // {§worker-lifecycle-terminal-result} — a non-abort drain
+                    // failure becomes an exact durable 500 and terminal notification;
+                    // daemon diagnostics retain the complete caught error.
                     console.error(`drain error (workspace ${workspaceId}, worker ${workerId}, loop ${currentLoopId ?? "?"}):`, err);
                     if (currentLoopId !== null) {
                         const failure = err instanceof OperationFailureError
@@ -1958,14 +1949,8 @@ export default class Daemon {
             return;
         }
         const pollSec = row?.poll_seconds ?? null;
-        // #521 ({§exec-poll}, owner-ruled) — the poll cadence for a parked exec stream:
-        //   explicit <,P> (P>0)  → fixed cadence P, reset the backoff (today's behavior).
-        //   explicit <,0>        → poll_seconds=0 stored → blind opt-out (an exec a model wants unwatched).
-        //   absent <,P> + a LIVE stream → EXPONENTIAL BACKOFF (base*2^min(step,turns-1)), so a hung
-        //     exec is no longer park-blind-forever: the model regains a turn every tick to read
-        //     partial output and re-park a slow long-runner or KILL a stuck one (no auto-kill — only
-        //     the model tells a silent deadlock from a silent `cargo build`).
-        //   no open stream at all → nothing to poll (a child-join park is woken by the child terminal).
+        // {§exec-poll} — a positive explicit cadence wins, zero opts out,
+        // and an absent cadence uses the worker's exponential-backoff step.
         let delayMs: number;
         if (pollSec !== null && pollSec > 0) {
             this.#pollBackoff.delete(workerId);
@@ -2034,10 +2019,8 @@ export default class Daemon {
         await this.#wakeParkedWorker(workspaceId, parent.parent_worker_id, systemPrompt);
     }
 
-    // #506 — a SUBSCRIBER throw must never propagate into engine control flow: a transport
-    // module's bad socket rethrowing through the emitter was the run54/55 death class (an
-    // unhandled rejection in the one then-uncaught dispatch void). The transport's failure is
-    // its own — logged loudly per event, never the engine's crash.
+    // {§methods-event-subscribe} — subscriber failures are transport-local:
+    // log them at this boundary and never re-enter engine control flow.
     #emitTo(workspaceId: number | null, method: string, params?: unknown): void {
         for (const sub of this.#eventSubscribers) {
             try { sub(workspaceId, method, params); }

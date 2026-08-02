@@ -68,11 +68,8 @@ export interface ProposalPendingEvent {
     staleClobberRisk: boolean;
 }
 
-// Resolution timeout — OFF by default (owner ruling, the AG-UI migration's first surfaced
-// decision): a stopped world awaiting a human WAITS — the human's absence is not an answer,
-// and a silent five-minute cancel is the machine deciding it was. SEND[202]<-1>'s
-// sibling: waiting is a mode of continuing. An operator whose deployment needs a bound sets
-// PLURNK_SERVICE_PROPOSAL_TIMEOUT_MS explicitly (the decision table); empty = indefinite.
+// {§proposal-timeout-cancels} — empty means an indefinite wait; a positive
+// millisecond value opts into a bound. #82 owns invalid explicit values.
 const readProposalTimeoutMs = (): number | null => {
     const raw = process.env.PLURNK_SERVICE_PROPOSAL_TIMEOUT_MS;
     if (raw === undefined || raw.length === 0) return null;

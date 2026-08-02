@@ -214,10 +214,8 @@ export default class SearchIndex {
                 searchExcluded: undefined,
             });
         }
-        // Smallest-first (owner ruling, service#337 follow-up): a fat outlier (a minified bundle,
-        // a lockfile that slipped classification) derives LAST, so the corpus is mostly-warm early
-        // and the hot path never queues behind the whale. Pure scheduling — nothing is skipped,
-        // nothing is lazy; the whale still derives to full depth, just at the back of the line.
+        // {§derivation-dedup-parallel} — warm smaller projections before an
+        // expensive outlier; ordering never changes exhaustive derivation.
         pending.sort((a, b) => a.r.content.length - b.r.content.length);
         const total = pending.length;
         const step = total > 1 ? Math.max(1, Math.floor(total / progressSteps)) : 0;

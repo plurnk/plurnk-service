@@ -1,14 +1,6 @@
-// {§search-gate} (#406, owner ruling) — the search cost gates, rail-family shape: in-memory
-// per-loop accounting cleaned at the same seam as strikes/notices, restart-drop accepted
-// (a post-restart duplicate just re-fetches; the TTL makes that cheap).
-//
-//   Dedup — an IDENTICAL (runtime, command) already run in this loop STRIKES and SERVES: the
-//   result is status 409 (a turn failure — the strike rail counts it, the failed-ops gate holds
-//   the terminal a turn) CARRYING the prior ranked digest, re-read live from the original
-//   exec entry so it includes final materialization verdicts. No provenance prose, no re-fetch (owner:
-//   "strike on identical, duplicate searches, and return the same results").
-//
-//   Cap — the (N+1)th search in one TURN is flood control: 429, a legible steer, nothing served.
+// {§search-gate} — per-loop duplicate accounting and per-turn flood control.
+// Duplicate runtime+command pairs serve the prior durable result; over-cap
+// searches are refused without execution.
 const DEDUP_KEY = (runtime: string, command: string): string => `${runtime}\0${command}`;
 
 export type GateVerdict =

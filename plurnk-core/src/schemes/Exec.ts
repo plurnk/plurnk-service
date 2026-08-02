@@ -159,22 +159,15 @@ export default class Exec extends CoreSchemeAdapterBase {
         return false;
     }
 
-    // {§exec-hold-until-concluded} — does the worker hold an in-flight spawn whose RUNTIME is in the
-    // operator's hold set? The turn-hold exception (owner ruling): for streams we know and
-    // control (the search family — one final JSON digest, seconds-bounded), the engine holds
-    // the next packet until conclusion instead of giving the model a turn it can only waste.
+    // {§exec-hold-until-concluded} — match active spawns against the
+    // operator's runtime or runtime:effect hold selectors.
     hasActiveHoldSpawns(workerId: number, holdSet: ReadonlySet<string>): boolean {
         for (const { workerId: r, runtime, effect } of this.#activeAborts.values()) if (r === workerId && (holdSet.has(runtime) || holdSet.has(`${runtime}:${effect}`))) return true;
         return false;
     }
 
-    // Process-KILL (plurnk-service#203). A running (host/background) exec is
-    // addressable by its coordinate pathname; KILL aborts that spawn's controller with
-    // the model's signal — KILL[code] → exactly that signal once (KILL[9] = SIGKILL), a
-    // bare KILL → the executor's SIGHUP default. The model owns escalation, so there
-    // is no auto-escalation here. The full #203 status matrix: 200 killed (in-flight) · 410
-    // killed-earlier (a prior abort closed the stream 499) · 409 already-terminal
-    // (closed with any other terminal status) · 404 unknown.
+    // {§stream-control} — active KILL routes through the live controller;
+    // terminal and missing outcomes resolve from the durable subscription.
     async kill(pathname: string, signal: number | null, ctx: CoreSchemeCallContext, scheme = "exec"): Promise<SchemeResultBase> {
         const core = this.coreContext(ctx);
         for (const entry of this.#activeAborts.values()) {
@@ -438,10 +431,8 @@ export default class Exec extends CoreSchemeAdapterBase {
                 target = tempPath;
             }
         }
-        // #500 — the accept-half mirrors the propose-half's #462 stat-route: an empty body with a
-        // LOCAL FILE target is legal (the target IS the program — the executor runs it as its script
-        // positional, transient exec per the owner ruling). Empty body with no target of any kind
-        // remains the contradiction.
+        // {§exec-target-routing} — a local file target is itself the program, so
+        // its body may be empty; no target and no command remains invalid.
         if (command.length === 0 && target === null) {
             throw new InvalidOperationResultError("The accepted EXEC proposal has neither a command nor a target.");
         }
@@ -589,12 +580,9 @@ export default class Exec extends CoreSchemeAdapterBase {
             const parsed = parsePath(path);
             if (parsed === null || parsed.kind !== "url" || parsed.scheme === null) return Promise.reject(new Error(`entry(): '${path.slice(0, 80)}' is not a URL`));
             if (content !== null && opts.mimetype === undefined) return Promise.reject(new Error("entry(): mimetype is required when content is provided"));
-            // {§exec-entry-sink} / #455 — content:null ⇒ core fetches the page through schemes-http's guarded
-            // primitive. The fetch STARTS HERE, OFF the write-serialization chain, so concurrent entry() calls
-            // fetch in PARALLEL (owner ruling: search fetches must not freeze the agent); only the entry WRITE
-            // serializes on entryChain (db-write ordering). A null fetch is dead (guard-refused / unreachable /
-            // non-2xx / non-textual / empty) and REJECTS, so the executor prunes that survivor. Non-null content
-            // is the materialize-given-body path — the caller already holds the bytes and states their mimetype.
+            // {§exec-entry-sink}/{§web-search-retrieval} — start content:null
+            // acquisition before the write chain so fetches run in parallel;
+            // only durable entry writes serialize. A null result rejects the sink.
             const materialized: Promise<WebFetchResult | null> = content === null
                 ? this.#fetchWeb(path, { signal })
                 : Promise.resolve({ body: content, mimetype: opts.mimetype as string });

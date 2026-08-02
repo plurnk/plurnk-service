@@ -39,8 +39,7 @@ test("renderAddress keeps a single-segment plurnk singleton at empty-authority r
 
 test("renderAddress: known keeps empty-authority :///; url schemes take the authority form (#370)", () => {
     assert.equal(renderAddress("known", "/france/capital"), "known:///france/capital");
-    // A folded-authority web address renders the authority form — the first segment IS the host
-    // (the run42 sweep caught https:///en.wikipedia.org minted into packets).
+    // {§scheme-address} — the folded first segment renders as the network host.
     assert.equal(renderAddress("http", "/en.wikipedia.org/wiki/Paris"), "http://en.wikipedia.org/wiki/Paris");
     assert.equal(
         renderAddress("https", "/en.wikipedia.org/wiki/Igor_Smirnov_(politician)"),

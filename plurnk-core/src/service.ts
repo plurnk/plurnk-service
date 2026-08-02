@@ -197,11 +197,8 @@ export default class Service {
         const port = Number(Service.#requireEnv("PLURNK_PORT"));
 
         const alias = resolveActiveAlias();
-        // #501 (owner ruling, gates 1.0.6) — SET-but-unresolvable is the silent-absence class, never
-        // a modelless boot: PLURNK_MODEL=plurnk/jennifer (a provider/model PATH where an ALIAS name
-        // belongs) resolved to null and the daemon booted modelless behind a warning claiming the
-        // knob was unset. Fail hard naming the violated contract; UNSET stays the legal modelless
-        // boot (clients may supply per-request models).
+        // {§operator-config} — an explicit boot alias must resolve; only an
+        // unset selector permits modelless boot for per-request selection.
         const selectedModel = process.env.PLURNK_MODEL ?? "";
         if (alias === null && selectedModel !== "") {
             const declared = parseAliasesFromEnv(process.env).map((a) => a.alias).join(", ");

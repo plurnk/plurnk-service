@@ -31,13 +31,12 @@ export interface WriteEntryResult extends SchemeResultBase {
 
 export interface DeleteEntryResult extends SchemeResultBase {
     // A host-effecting delete (file) returns 202 to PROPOSE for review; attrs carry the target so
-    // applyResolution can unlink on accept. Plurnk-internal deletes (known://) execute inline (200).
+    // applyResolution can unlink on accept. Internal entry deletes execute inline (200).
     attrs?: object;
 }
 
 export default class EntryCrud {
-    // {§entry-identity-no-null} — the identity scheme a manifest persists under. Explicit
-    // null is ILLEGAL: a NULL identity component voids the entries UNIQUE index (run59/#545).
+    // {§entry-identity-no-null} — the non-null identity scheme persisted by a manifest.
     static identityScheme(manifest: { name: string; storedScheme?: string }): string {
         return manifest.storedScheme ?? manifest.name;
     }

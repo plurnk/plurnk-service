@@ -1531,7 +1531,7 @@ Its function names are transport-neutral library calls, not public wire names.
 
 | Area                                              | Function | Core contract |
 |---------------------------------------------------|----------|---------------|
-| Events                                            | `subscribeToEvents(handler) -> unsubscribe` | Subscribes to the raw event source in {§notifications}. A subscriber failure is logged and cannot re-enter engine control flow. |
+| §methods-event-subscribe Events                   | `subscribeToEvents(handler) -> unsubscribe` | Subscribes to the raw event source in {§notifications}. A subscriber failure is logged and cannot re-enter engine control flow. |
 | §proposal-list Proposals                          | `pendingProposals(workspaceId)` | Returns every durable `state='proposed'` row in the workspace so a reconnecting client interface can resurface stopped work. |
 | §methods-proposal-resolve Proposals               | `resolveProposal(logEntryId, resolution)` | Validates and delivers one accept, reject, or cancel decision to the engine. An unknown or already-resolved id fails; the client protocol owns how the decision arrived. |
 | §methods-loop-run Loops                           | `runLoop({ workspaceId, workerId, prompt, maxTurns?, flags?, openPaths?, alias?, model? })` | Validates a model worker and provider selection, persists the effective turn ceiling, then returns an immediate status-100 acknowledgement with `loopId` and `action`. The exact terminal result arrives only through `loop/terminated`; parking and resuming do not replace the loop. |

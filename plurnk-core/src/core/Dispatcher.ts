@@ -584,10 +584,8 @@ export default class Dispatcher {
                     );
             }
         }
-        // {§fold-open-meta-operations} — OPEN/FOLD are render directives, not actions. They ARE
-        // recorded (#382 — a curation act with no forensic trace is how run43's task-frame fold
-        // stayed invisible), but engine_render_log suppresses them from the packet, so the receipt
-        // rents zero model-facing space — the original clutter concern, resolved by hide-not-drop.
+        // {§fold-open-meta-operations} — persist OPEN/FOLD for forensics;
+        // packet rendering suppresses their successful receipts.
         // {§join-blocking-collect} (#354) — Worker.read on a still-running child returns an awaitWorker signal;
         // arm the join so THIS turn's bare SEND[102] parks (the blocking collect) instead of spinning.
         if (typeof (result as { awaitWorker?: unknown }).awaitWorker === "string") this.#joinTargets.add(loopId);
@@ -781,11 +779,8 @@ export default class Dispatcher {
         return this.#denyIfDisallowed(target, origin);
     }
 
-    // {§search-gate} (#406, owner ruling) — search runtimes only; everything else dispatches
-    // untouched. A DUPLICATE (same runtime+command this loop) STRIKES AND SERVES: 409 (the
-    // strike rail counts the turn failure; the failed-ops gate holds the terminal a turn)
-    // carrying the prior ranked digest re-read live — the model sees its results again, the
-    // engine never re-fetches, no provenance prose. The per-turn CAP is flood control: 429.
+    // {§search-gate} — gate only configured search runtimes; duplicates serve
+    // the prior durable digest and the per-turn cap refuses without execution.
     async #gatedExec(statement: PlurnkStatement, ctx: PlurnkSchemeContext, loopId: number, turnId: number): Promise<DispatchResult> {
         const runtime = ("signal" in statement && typeof statement.signal === "string" && statement.signal.length > 0) ? statement.signal : "sh";
         const command = ("body" in statement && typeof statement.body === "string") ? statement.body : "";
@@ -2592,12 +2587,8 @@ export default class Dispatcher {
                     },
                 );
             }
-            // Owner ruling (#346): the question rides the same stop-the-world proposal system as
-            // file edits. Returning 202 here routes through the proposal seam
-            // (#isProposal admits signal-300 SENDs): loop/proposal carries {question, choices},
-            // The accepted proposal body IS the answer, and applyResolution writes it into the
-            // model-facing rx — the answer arrives as the result of the ask itself. Timeout is
-            // the standard {§proposal-timeout-cancels}. Zero options = an open question.
+            // {§send-300-choices} — return a proposal whose accepted body becomes
+            // the answer; zero choices denotes an open question.
             const parts = raw.split(";").map((x) => x.trim()).filter((x) => x.length > 0);
             const [question = "", ...choices] = parts;
             return { status: 202, attrs: choices.length > 0 ? { question, choices } : { question } };
@@ -2607,10 +2598,8 @@ export default class Dispatcher {
         // attempt faithfully (status_rx=409, never erased); the loop stays a continue; the strike
         // couples in runTurn. [499] abandons and cancels the descendant scope.
         if (status === 200) {
-            // {§send-premature-terminate} (#363, owner ruling: never 200 over a failed op) — this turn's
-            // failed operation results are UNSEEN until the next packet, so concluding over them
-            // is concluding blind. Bounded syntax failures enter the same gate as model-origin
-            // grammar error rows; boundary-destroying emissions never reach dispatch.
+            // {§send-premature-terminate} — same-turn failures are unobserved
+            // pending results and therefore refuse completion.
             const failCount = await this.#unobservedFailureCount(turnId);
             if (failCount > 0) return Dispatcher.#unobservedFailures(failCount);
             const pending = await this.#pendingSet(workerId, turnId);
@@ -2620,15 +2609,8 @@ export default class Dispatcher {
                 // KILL/park advice only muddies it. Streams/children keep the remedy steer.
                 const retrievalsOnly = pending.every((k) => k.startsWith("this turn's retrieval results"));
                 if (retrievalsOnly) {
-                    // attrs.retrievalOnly — the strike decoupler (owner ruling): atomic-turn-
-                    // pretrained models pair fetch-and-answer by habit; the refusal teaches,
-                    // the strike executed. Engine reads this to skip the strike.
-                    // #384 (owner wording, run48 requiem) — three lessons in one steer: it narrates
-                    // "last turn" as HISTORY (the model reads log rows in the third person and never
-                    // took "you"-steers as self-addressed), states the mechanism as law (retrievals
-                    // FORCE an additional turn — not blame, physics), and prescribes the concluding
-                    // emission's legal SHAPE (PLAN + SEND[200] only — no room for the justify-READ
-                    // that re-armed this gate four times while she held the correct answer).
+                    // #83 — current retrieval-only refusal marker and factual
+                    // observation-boundary steer; the issue owns its unsettled rail policy.
                     return Dispatcher.#failure(
                         "retrieval-results-unobserved",
                         409,
@@ -2805,15 +2787,10 @@ export default class Dispatcher {
             : Results.assert(await handler.fold(statement, schemeCtx));
     }
 
-    // A status-202 result is a reviewable PROPOSAL (a side-effecting op — EDIT/EXEC/
-    // directed write — paused for client resolution) UNLESS it is a broadcast SEND.
-    // A broadcast SEND[202] is the model PARKING the loop (a terminal disposition,
-    // plurnk.md), never a side-effect — #255: gating the propose/await path on the
-    // bare 202 surfaced model speech as a loop/proposal and froze clients. The 202
-    // is overloaded (proposal-pause vs parked-terminal); the op disambiguates it.
+    // {§proposal}/{§send} — status 202 is a proposal except for broadcast
+    // SEND[202], which parks the loop. The operation disambiguates the status.
     static #isProposal(statement: PlurnkStatement, result: DispatchResult): boolean {
-        // A broadcast SEND park is model speech, not a proposal (#255) — EXCEPT a [300] question,
-        // which IS a proposal by owner ruling (#346: the same stop-the-world system as file edits).
+        // {§send-300-choices} — SEND[300] is the proposal exception.
         if (result.status !== 202) return false;
         if (statement.op === "SEND" && statement.signal === 300) return true;
         return !(statement.op === "SEND" && statement.target === null);

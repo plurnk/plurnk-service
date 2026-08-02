@@ -14,9 +14,8 @@ import { homedir } from "node:os";
 export default class Paths {
     static #PACKAGE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
     static #CONTRACTS_ROOT = dirname(fileURLToPath(import.meta.resolve("@plurnk/plurnk-contracts/package.json")));
-    // The teaching corpus (scheme docs, personality, requirements) lives in @plurnk/plurnk-meta —
-    // the metaproject layer OWNS the family prose (owner ruling, monorepo cut); the daemon
-    // consumes it via the same single-source pull shape as CONTRACTS_ROOT.
+    // {§schemes-self-doc-materialization}/{§requirements} — core consumes the
+    // teaching corpus owned by @plurnk/plurnk-meta.
     static #DOCS_ROOT = dirname(fileURLToPath(import.meta.resolve("@plurnk/plurnk-meta/package.json")));
 
     static migrations = resolve(Paths.#PACKAGE_ROOT, "migrations");

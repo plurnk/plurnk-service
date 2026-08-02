@@ -21,9 +21,7 @@ type OpenFoldResult = SchemeResultBase & { matched?: number };
 // is wire-rendering self-documentation derived from the row's `op` field;
 // parsing accepts it (or omits it) and identifies the row by coordinate. The op
 // suffix is case-INSENSITIVE: model ops render UPPERCASE (READ/EDIT/FIND) but the
-// engine-minted rows are lowercase (`error`, `model`), and those are curatable too —
-// a `[A-Z]+`-only suffix silently rejected FOLD(log:///1/6/2/error), so the model
-// could not reclaim budget by folding its own error rows and spiralled to 413 (jumbo).
+// engine-minted rows are lowercase (`error`, `model`), and both are curatable.
 const COORDINATE = /^(\d+)\/(\d+)\/(\d+)(?:\/([A-Za-z]+))?$/;
 // {§log-coordinate-hierarchy} — a log coordinate is a HIERARCHICAL PREFIX: `1` selects loop 1's rows,
 // `1/2` turn 1/2's rows, `1/2/3` the one row. A full coordinate is always 3 parts, so a 1- or 2-part
@@ -589,9 +587,8 @@ export default class Log extends CoreSchemeAdapterBase {
         let matched: Array<{ id: number; coordinate: string }>;
         try { matched = candidates.filter((row) => coordinateScopeMatches(scope, row.coordinate)); }
         catch { return { status: 400, ids: [], error: `The log glob '${glob}' is malformed.` }; }
-        // Zero matches on a well-formed glob is a NO-OP SUCCESS, not an error (owner ruling): a
-        // curation sweep that found nothing to curate steers nothing — 204 keeps it out of the
-        // errors surface (>= 400), and the rx carries matched: 0, clearly shown.
+        // {§log-curation-folder-idiom} — a well-formed empty selection is a
+        // successful no-op and remains outside the error surface.
         if (matched.length === 0) return { status: 204, ids: [] };
         return { status: 200, ids: matched.map((row) => row.id) };
     }

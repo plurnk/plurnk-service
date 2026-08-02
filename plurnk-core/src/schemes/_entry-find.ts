@@ -117,11 +117,8 @@ export default class EntryFind {
         const scope = scopePathname === null
             ? null
             : pathScope(scopePathname, manifest.folderScopes === true);
-        // {§fs-errno} — the green-lie pin (#545): a FIND whose target is an EXACT path (no glob,
-        // no folder scope) that resolves to NO entry is ENOENT with its fact — certifying empty
-        // over nothing taught run59's model that a real function did not exist. A glob/folder
-        // scope with zero matches stays the blessed orienting empty ({§render-rule}, owner: an
-        // empty survey says "don't look here").
+        // {§fs-errno} — an exact-path miss is ENOENT; an empty glob or folder
+        // survey is a successful empty result.
         if (scope?.kind === "exact" && scope.pathname.length > 0) {
             const exact = await ctx.db.crud_find_workspace_entry.get<{ id: number }>({
                 workspace_id: ctx.workspaceId,

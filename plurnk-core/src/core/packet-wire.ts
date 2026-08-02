@@ -397,12 +397,8 @@ export default class PacketWire {
             // Parse rx once — reused for the matcher/items enrichment and the body.
             const rx = (typeof e.rx === "string" ? PacketWire.#safeParse(e.rx) : e.rx) as RxView | null;
 
-            // {§log-row-self-explains} - a FAILED op row carries its exact RFC 9457 Problem ON THE META LINE,
-            // so the record explains itself in every packet, folded or open. The old shape (a bare
-            // status or a lossy error string; the Problem buried in an rx no render shows) sent the wildcard model
-            // theorizing "SEND[409] probably means bad request?" for 201s, and the jumbo model
-            // chasing a phantom "engine error" off a message-less item. The row IS the model's op
-            // result: one standard, pretrained failure object. The Errors section stays a terse pointer.
+            // {§log-row-self-explains} — a failed operation projects its exact
+            // Problem on the row meta line; Errors remains only an index.
             if (typeof e.status === "number" && e.status >= 400 && rx !== null && typeof rx === "object") {
                 const problem = (rx as { problem?: unknown }).problem;
                 Validator.assertProblemDetails(problem as ProblemDetails);

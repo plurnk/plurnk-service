@@ -1,5 +1,4 @@
-// {§search-gate} unit tier — the gate's accounting logic (#406, owner ruling: duplicates
-// strike-and-serve; the per-turn cap refuses; rail-family lifecycle).
+// {§search-gate} — duplicate reuse, per-turn refusal, and rail lifecycle.
 import test from "node:test";
 import assert from "node:assert/strict";
 import SearchGate from "./search-gate.ts";

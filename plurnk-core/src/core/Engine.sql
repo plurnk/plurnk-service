@@ -464,16 +464,10 @@ JOIN turns t ON t.id = le.turn_id
 JOIN loops l ON l.id = le.loop_id
 -- WHERE renders exactly one worker's log — {§actor-boundary-isolation} {§machine-processes-worker-is-its-log}
 -- the AND NOT clauses keep proposed (202) rows hidden until resolved ({§proposal-proposed-hidden}),
--- and SUCCESSFUL log-curation receipts out of the packet (#382 — recorded in the DB for forensics,
--- suppressed from materialization so a curation act rents zero packet space; the successful fold
--- that hid the task frame in run43 left NO trace, the database dig). Two receipts, one principle:
---   OPEN/FOLD — render directives, always log-targeted, suppressed on success.
---   KILL of a LOG item — a real deletion whose tombstone is spent once executed; suppressed on
---   success too (run61: a floor model KILLed log rows ~2000×, and the tombstones — bodyless, but
---   ~130-char meta-lines apiece — became 95% of its packet, a self-growing curation trap). SCOPED
---   to le.scheme='log': a KILL of a worker:// note / sh:// stream is a world mutation, NOT log
---   housekeeping, and stays visible. A FAILED op of any kind still renders — errors are signals
---   ({§operation-result-uniform-error-channel}).
+-- and successful log-curation receipts out of the packet. OPEN/FOLD follow
+-- {§fold-open-meta-operations}; only log-target KILL follows
+-- {§kill-log-receipt-suppressed}. Every failed operation remains visible through
+-- {§operation-result-uniform-error-channel}.
 WHERE le.worker_id = $worker_id
   AND NOT (le.status_rx = 202 AND le.state = 'proposed')
   AND NOT (le.op IN ('OPEN', 'FOLD') AND le.status_rx < 400)

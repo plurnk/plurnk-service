@@ -91,15 +91,13 @@ export default class File extends CoreSchemeAdapterBase {
         documentation: "The project's workspace files (git-tracked members, shown as bare paths) — THE TASK'S FILES: when asked to change the project, EDIT these, not your notes or scratch. READ and FIND them like any entry; EDIT proposes a diff for review and only writes to disk once accepted — the review is normal, not a refusal, so propose the edit rather than working around it. Non-members are invisible, so you can't read or clobber a file outside the tracked surface.",
     };
 
-    // Entry-backed, identical to Known (the unified-addressing promise): read the
-    // membership-materialized entry (scheme=null) through the shared helper. <L> /
-    // body / binary-415 / tag-404 are all handled there; a non-member has no entry
-    // → 404, the same gate Known runs on. Disk is reached only at the materialize
-    // and write-back edges (git-membership, applyResolution) — never on a read.
+    // {§membership} — read the membership-materialized `file` entry through the
+    // shared entry helper. Disk is touched only at materialization and accepted
+    // write-back boundaries, never by READ itself.
     async read(statement: ReadStatement, ctx: CoreSchemeCallContext): Promise<ReadResult> {
         const core = this.coreContext(ctx);
-        // {§fs-namei} — canonicalize ONCE, up front: resolution never depends on what exists
-        // (the old fold-on-miss retry was existence-dependent meaning, run59's disease class).
+        // {§fs-namei} — canonicalize once, before the entry-existence gate;
+        // resolution never depends on whether the target currently exists.
         const canon = File.#canonTarget(statement, await loadWorkspaceRoot(core.db, core.workspaceId));
         return EntryOps.readWorkspaceEntry(canon ?? statement, core, File.manifest);
     }
@@ -387,14 +385,8 @@ export default class File extends CoreSchemeAdapterBase {
             }
         }
 
-        // `<scope>` always addresses the file's textual representation. A CREATE has
-        // nothing to scope into, so a markerless body becomes the new file's content.
-        // {§edit-marker-required-on-existing} (#571) — an EXISTING file has no easy-clobber
-        // path: a marker is REQUIRED, even for a deliberate full rewrite (`<1,-1>` states
-        // that intent explicitly). run126: an omitted marker (a misplaced `<356>` landed
-        // in the body, not the marker slot) silently replaced a 1,693-line file with 2 —
-        // the model's own subsequent reads told it so, repeatedly, and it never noticed.
-        // Refusing the omission converts a silent accident into a loud, immediate one.
+        // {§edit-marker-required-on-existing} — markerless content creates a new
+        // file; every existing-file rewrite states its range explicitly.
         let patched: string;
         if (fileExists) {
             if (statements.some(({ lineMarker }) => lineMarker === null)) {

@@ -59,9 +59,8 @@ export function renderAddress(scheme: string, pathname: string): string {
     if (scheme === "plurnk" && pathname.split("/").filter((s) => s.length > 0).length >= 2) {
         return `plurnk://${encoded.replace(/^\//, "")}`;
     }
-    // #370 — the worker IS the authority ({§worker-scheme}): a stored row whose authority was folded into
-    // Web URLs carry a real host in the pathname's first segment — render it as the authority
-    // (run42 sweep: the entry-sink's materialized pages rendered https:///en.wikipedia.org/...).
+    // {§scheme-address} — network storage folds the host into the pathname and
+    // model-facing rendering restores it to the authority slot.
     // worker:// renders :/// — the owner rides owner_id ({§entry-owner}), so empty authority IS
     // the canonical stored form; a querying face re-applies its authority (~/name) for display.
     if (scheme === "http" || scheme === "https" || scheme === "ws" || scheme === "wss") return `${scheme}://${encoded.replace(/^\//, "")}`;
