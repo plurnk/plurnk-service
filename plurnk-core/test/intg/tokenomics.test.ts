@@ -7,11 +7,9 @@ import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, DE
 import { Mock } from "@plurnk/plurnk-providers";
 import { sendStmt } from "./_dsl.ts";
 
-// Tokenomics Phase 1: real token counts are stored at write time (SPEC {§tokenomics}).
-// entry_channels.tokens comes from the entry write helpers via ctx.tokenize;
-// log_entries.tokens from Engine.#writeLog over tx+rx. Both route through the
-// engine's #tokenize — here the divisor tripwire default (no provider wired in
-// the bare Engine), so the expected counts are deterministic: ceil(len/4).
+// {§tokenomics}: entry and log content-depth is stamped at write time in the
+// model-independent ruler used by production: ceil(chars/2). Provider-reported
+// usage and provider-owned physical recovery admission are separate quantities.
 
 const urlPath = (pathname: string): UrlPath => ({
     kind: "url", raw: `worker:///${pathname}`, scheme: "worker",
@@ -85,7 +83,7 @@ test("entry_channels.tokens honors an injected ruler override (test seam)", asyn
     } finally { await db.close(); }
 });
 
-test("budget headline shows ceiling/usage/free, measured from the assembled packet", async () => {
+test("budget headline carries a populated ceiling/usage/free ledger", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `tok-bud-${crypto.randomUUID()}`);
@@ -100,7 +98,7 @@ test("budget headline shows ceiling/usage/free, measured from the assembled pack
         assert.ok(m, `budget headline carries ceiling/usage/free; got: ${budget}`);
         assert.equal(budget.split("\n").length, 1, "the model-facing budget is one line");
         const ceiling = Number(m![1]); const usage = Number(m![2]); const free = Number(m![3]);
-        assert.ok(usage > 0, "usage is the measured render-weight, not zero or a leftover placeholder");
+        assert.ok(usage > 0, "usage is populated, not zero or a leftover placeholder");
         assert.equal(usage + free, ceiling, "usage + free = ceiling (the accounting closes)");
     } finally { await db.close(); }
 });

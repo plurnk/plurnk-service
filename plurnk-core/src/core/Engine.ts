@@ -1174,15 +1174,15 @@ export default class Engine {
             // overflow lives in foldable HISTORY the model owns, and the grinder won't touch
             // history ({§grinder-layer1-rollback} doctrine). So the first hard overflow is a
             // RECOVERY TURN, not death: the packet is over the POLICY ceiling but usually well
-            // within PHYSICS (the jumbo pin: ceiling 13k, real window 49k) — send it once, with a
-            // exact measurements and an enforced allowed-operation set, plus a strike
+            // within PHYSICS (the jumbo pin: ceiling 13k, real window 49k) — send it once, with
+            // ruler measurements and an enforced allowed-operation set, plus a strike
             // (budgetStruck). A fitting next turn clears the grant; a second consecutive
             // overflow terminates 413. Physically
             // unsendable (over the provider's real window too) → 413 immediately; physics
             // doesn't negotiate. The pointer stays at 100% of budget — a margin would mask it.
             const physicallySendable = provider.contextWindow === null
                 ? true
-                : this.#packets.exactPacketTokens(requestPacket, provider) <= provider.contextWindow - (this.#packets.maxTokensFor(provider) ?? 0);
+                : this.#packets.providerPacketTokens(requestPacket, provider) <= provider.contextWindow - (this.#packets.maxTokensFor(provider) ?? 0);
             if (physicallySendable && !this.#hardOverflowRecovery.has(loopId)) {
                 const ceiling = this.#packets.ceilingFor(provider);
                 if (ceiling === null) {

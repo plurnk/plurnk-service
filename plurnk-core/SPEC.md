@@ -1589,53 +1589,82 @@ owned by the client-interface module that publishes it.
 
 ## §decisions Architectural decisions
 
-Each entry: question, answer, rationale, migration path.
+Tagged decisions state the durable contract and the reason for it. Investigation,
+implementation status, and superseded alternatives belong in forge issues.
 
 ### §packet-assembly Packet assembly: engine builds the default list, plugins transform it
 
-**Question.** Rummy uses priority-ordered filter chains for packet assembly. Plurnk builds a default ordered section list directly in `PacketBuilder.buildRequestPacket`, then lets trusted plugins rewrite it.
+`PacketBuilder.buildRequestPacket` owns the engine's default ordered section
+list. Trusted scheme plugins may transform that first-class list before it is
+rendered or measured; the grinder remains an engine-owned post-build rail.
 
-**Decision — two stages:**
+```mermaid
+flowchart LR
+    defaults[Engine default sections] --> transforms[Trusted scheme transforms<br/>in registration order]
+    transforms --> render[Render system and user slots]
+    render --> measure[Ruler measurement and<br/>budget substitution]
+    measure --> rail[Engine grinder and dispatch]
+```
 
-1. §packet-cache-monotone The engine builds the default section list,
-   **monotone in volatility end to end**. Every prompt-cache scheme in
-   production — prefix, paged, radix, or breakpoint — reuses up to the first
-   changed byte, so the wire orders immutable → append-mostly →
-   per-turn-volatile and the cache prefix survives through the log's frozen
-   head instead of dying at the first gauge digit. The system slot is the
-   **timeless**: `definition`, `tools`, `schemes`, and the policy sections
-   `system-policy`/`project-policy` form a byte-stable system message. The user
-   slot is the **situated**: `log` (READ results, exec output, prompt rows, and
-   the model's own mirror), then the status clump —
-   `child-streams`/`child-workers`, `errors`, `git`, `budget`, and the
-   prompt-entry pointer list — nearest the generation point, then the
-   `requirements` footer. Trust is the one-way admission rule, not the slot:
-   the system slot admits only framework-authored, non-injectable content;
-   engine-authored status may ride the user slot, and attacker-reachable text
-   never rides system.
-2. §packet-plugin-transform `SchemeRegistry.transformSections` pipes that list
-   through every registered scheme that implements
-   `transformSections(sections) -> sections`, in registration order, before the
-   engine measures. A plugin returns whatever list it wants: add, remove, or
-   reorder.
+#### §packet-cache-monotone Default order and cache locality
 
-**Why a whole-list transform, not a per-section hook.** It is the legible, fork-avoiding seam: a plugin that can reshape the packet to its needs never has a reason to fork the engine ({§ecosystem}). And it is **strictly in-process and trusted** (behind `PLURNK_PLUGINS_TRUSTED_ONLY`) — the client/RPC wire never reaches the packet, because handing an untrusted connection the model's entire context is exactly the actor-boundary violation the engine exists to prevent. Pure list-in/list-out; no context is handed to plugins.
+Conditional absence never reorders the surviving default sections.
 
-**Rationale.** The section list is first-class data (not two hardcoded render functions), so the transform is a few lines over the existing registry-pull pattern (the engine already pulls the scheme catalogue and the tools sheet from the registries). The grinder/fold ({§grinder}) stays engine-owned — a closed build-time concern, never a plugin seam.
+| Order | Slot   | Section               | Wire contract |
+|------:|:-------|:----------------------|:--------------|
+|     1 | system | `definition`          | Framework definition; leads the most stable prefix. |
+|     2 | system | `tools`               | Executable capability sheet for this loop. |
+|     3 | system | `optional-operations` | Present only when optional operations are enabled. |
+|     4 | system | `schemes`             | Active scheme catalogue. |
+|     5 | system | `inject`              | Present only when operator notes are configured. |
+|     6 | system | `system-policy`       | Operator policy; empty content is omitted on the wire. |
+|     7 | system | `project-policy`      | Project policy; empty content is omitted on the wire. |
+|     8 | user   | `log`                 | Append-mostly model-visible history. |
+|     9 | user   | `child-streams`       | Per-turn status; empty content is omitted. |
+|    10 | user   | `child-workers`       | Per-turn status; empty content is omitted. |
+|    11 | user   | `errors`              | Per-turn failure pointers; empty content is omitted. |
+|    12 | user   | `notices`             | Per-turn observations; empty content is omitted. |
+|    13 | user   | `git`                 | Per-turn workspace status; empty content is omitted. |
+|    14 | user   | `budget`              | Model-facing packet pressure; omitted when capacity is unknown. |
+|    15 | user   | `prompt`              | Current prompt-entry pointers. |
+|    16 | user   | `requirements`        | Syntax recap deliberately nearest generation. |
 
-### §tokenomics Tokenomics: real provider tokens, render-weight budget, and entry weights
+The order favors prefix-cache locality where semantics permit: the definition
+leads capability and privileged policy, while the append-mostly log leads the
+volatile user-status clump. It does **not** claim that every system byte is
+immutable or that the complete packet is globally monotone in volatility:
+capabilities, operator notes, and policies can change, and the stable recap is
+deliberately last for model recency. Trust is a separate admission rule. The
+system slot contains trusted control-plane material; attacker-reachable content
+stays in the user slot.
 
-**Question.** How does plurnk report packet size accurately enough for the model to understand its available context and the effects of OPEN and FOLD?
+#### §packet-plugin-transform Trusted whole-list extension seam
 
-**Two measures, never conflated:**
+`SchemeRegistry.transformSections` pipes the complete default list through
+every registered scheme implementing `transformSections(sections) -> sections`,
+in registration order, before rendering and measurement. Each transformer may
+inspect the section content and add, remove, or reorder sections. It receives no
+separate engine, database, actor, or request context.
 
-- **render-weight** — the tokens the model actually processes this turn (the assembled packet — manifest, log, system sections — plus meta + fences). The budget is about this.
-- **content-depth** — an entry's full content size (`entry_channels.tokens`). The manifest's `tokens` is this.
+This is strictly a trusted in-process seam, admitted through the common plugin
+trust gate; the client/RPC wire cannot invoke it. Whole-list transformation is
+the fork-avoidance valve for alternate packet shapes ({§ecosystem}), while
+grinding and folding remain closed engine concerns.
 
-**Built.**
+### §tokenomics Tokenomics: four quantities, one model-facing ruler
+
+Token accounting distinguishes the artifact being measured, the unit, and the
+time of measurement.
+
+| Quantity                    | Source and unit                                      | When                         | Contract |
+|:----------------------------|:-----------------------------------------------------|:-----------------------------|:---------|
+| Provider usage              | Provider-reported prompt/completion/reasoning tokens | After generation             | Durable cost and transport forensics; never the pre-call packet budget. |
+| Packet render-weight        | `rulerCount = ceil(chars/2)` over rendered slots     | Every packet build           | Drives the Budget readout and grinder. |
+| Stored content-depth        | The same ruler over entry/log content                | When content is written      | Weights catalog and log rows without per-model workspace state. |
+| Physical recovery admission | `provider.countTokens` over both rendered slots      | Only when the grinder cannot satisfy policy | Exact when the provider owns an exact counter; otherwise the provider's conservative chars/2 upper bound. Never model-facing. |
 
 - §tokenomics-tokens-stored-at-write **Ruler tokens, stored at write.** `entry_channels.tokens` and `log_entries.tokens` are populated with the model-independent `rulerCount` when their content is written. The stored number is a stable content-depth measurement, not a provider-specific prediction.
-- §tokenomics-render-weight-budget **Render-weight budget.** The budget headline — `ceiling`, `tokenUsage`, `tokensFree` — is measured from the *assembled packet* (placeholders substituted after measuring), so it reflects what the model actually receives. A `SUM` of stored content-depth would mis-weigh the rendered packet; render-weight is the accurate measure.
+- §tokenomics-render-weight-budget **Render-weight budget.** The budget headline — `ceiling`, `tokenUsage`, `tokensFree` — is the ruler measurement of the *assembled packet* after section transforms and budget substitution. A `SUM` of stored content-depth would measure different artifacts and cannot substitute for packet render-weight.
 - §tokenomics-context-percent **Prompt-budget percent.** The headline carries usage as a percent of the enforced model-facing budget — `usage Y (P%)` — beside the absolutes. It reads the ceiling already in hand; no extra provider call.
 - §tokenomics-window-partition **Provider capacity and virtual pressure are
   separate.** The provider owns physical context and generation settings. Core
@@ -1653,19 +1682,11 @@ Each entry: question, answer, rationale, migration path.
   to describe provider physics.
 - **Derivation is eager and exhaustive.** Workspace creation and searchable-resource changes start one coalesced warm. The first model turn joins that warm; later turns derive intervening changes before dispatch. No model operation observes partial graph or vector coverage. A semantic query ranks every eligible candidate in scope, so lexical overlap never gates vector recall. With no embedder, readable-content FTS is the explicit keyword fallback. Progress notices make the wait visible; latency is never hidden by partial semantics. {§derivation-exhaustive}
 - §membership-binary-sniff **Binary truth beats the label; no entry dominates the corpus.** A tracked member whose HEAD bytes contain NUL is materialized as a binary marker (empty body, `application/octet-stream`, READ-415) **regardless of what extension-based detection claims** — the markdown default for unmapped extensions once shipped a 3.3MB `.wasm` blob into the semantic corpus as prose, three copies, ~10M tokens (#320). Every eligible text is tiled losslessly to the embedder window and every tile is embedded before its derivation attaches; semantic ranking max-pools the best chunk per candidate.
-- §tokenomics-agnostic-ruler **One model-agnostic ruler.** The daemon runs workers on different models in one workspace concurrently (#414), while catalog and log accounting are workspace-wide. The complete model-facing ledger therefore uses one model-independent ruler: `rulerCount = ceil(chars/2)`. One content has one number regardless of which model reads it; there is no per-model workspace state or recount pass. The estimate is deliberately conservative for typical source text. When a ruler-measured packet exceeds policy and is considered for a physically sendable recovery turn, `exactPacketTokens` compares the assembled packet with the shipping model's physical window. Under-policy packets rely on the ruler. The retired per-alias calibration ratio and `(content_hash, tokenizer_id)` cache attempted per-model precision that the concurrent mixed-model workspace cannot consistently represent.
+- §tokenomics-agnostic-ruler **One model-agnostic ruler.** The daemon runs workers on different models in one workspace concurrently (#414), while catalog and log accounting are workspace-wide. The complete model-facing ledger therefore uses `rulerCount = ceil(chars/2)`: one content has one number regardless of which model reads it, with no per-model workspace state or recount pass. Under-policy packets rely on that ruler. Only an over-policy packet being considered for a recovery turn uses `providerPacketTokens` to test the shipping provider's physical window.
 - §tokenomics-neutral-telemetry **Budget telemetry is state, not instruction.** The model-facing Budget is exactly one line: token ceiling, current usage and percentage, and free tokens. Per-entry weights remain on log rows where they describe the entries themselves. Packet-level composition, rankings, and visualizations are absent because their salience can redirect the model toward context gardening. OPEN/FOLD/KILL remain documented capabilities; recovery directs the model only after overflow. The model receives enough state to own its context decisions without a competing dashboard.
 - §tokenomics-content-hash-identity **Content identity, not per-tokenizer counts.** Static channel writes stamp `content_hash` (SHA-256) as a stable per-content identity. `tokens` is stored in ruler units beside that content and is never keyed or recomputed by model.
+- §tokenomics-provider-usage **Provider usage is transport and cost evidence, not curation state.** Completed turns preserve provider-reported prompt, completion, reasoning, cached, and cost fields. Reasoning and completion are outputs the model cannot FOLD, so they never alter the model-facing Budget ledger.
 - §tokenomics-over-budget-floor **The delivered packet is never over budget.** The readout shows the state of the packet the model actually has, and the grinder ({§grinder}) folds the newest turn boundary of an over-ceiling packet before it is sent. A delivered budget headline therefore always has usage <= ceiling, percent <= 100, and free >= 0. The percent describes the post-fold packet. If that one deterministic boundary fold cannot make the packet fit, the recovery/hard-413 contract applies; the engine never reaches backward and chooses older history to hide. The stored failure record renders an overshoot honestly - free floors at zero and percent may exceed 100 - but that record is never sent as an over-budget reasoning surface.
-
-**Rejected / obviated.**
-
-- **Hot model-switch recompute** - *obviated* by the model-independent ruler. A model change cannot stale a model-specific count because none is stored.
-- **Reasoning-token surfacing** — *rejected* for the model-facing budget: reasoning is *output*, not window-context, and the model can't FOLD it. The reasoning-vs-output distinction is cost-forensics (the usage breakdown is stored on every packet), not a curation signal.
-
-**Rationale.** Rummy used chars/DIVISOR + compute-at-SELECT only because its sync-only SQL could not call a tokenizer. Plurnk stores content tokens once at write (depth) and measures the rendered packet for the budget (weight). The packet gives the model one internally consistent ledger.
-
-**Migration path.** None. Schema unchanged.
 
 ### §membership Workspace identity, membership, disk co-location
 

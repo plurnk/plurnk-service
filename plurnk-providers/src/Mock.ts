@@ -63,8 +63,8 @@ export default class Mock implements Provider {
     get completionReserve(): number | null { return this.#completionReserve; }
     get model(): string { return "mock"; }
 
-    // Heuristic tokenizer (chars/2 upper bound, matching the framework's
-    // fallback). Mock is test-only; real provider siblings ship exact counts.
+    // Provider count fallback: the same conservative chars/2 upper bound used
+    // when a production provider has no exact synchronous counter.
     countTokens(text: string): number {
         return text.length === 0 ? 0 : Math.ceil(text.length / 2);
     }

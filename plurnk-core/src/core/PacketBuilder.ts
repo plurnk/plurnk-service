@@ -315,16 +315,9 @@ export default class PacketBuilder {
         // then substitute usage, percent, and free.
         const ceiling = this.ceilingFor(provider);
         const budgetReadout = this.#renderBudget(ceiling);
-        // The default packet: an ordered list of addressable sections ({§packet-assembly}).
-        // `slot` is the MESSAGE boundary — and therefore the cache breakpoint every serving
-        // stack keys on. The wire is monotone in volatility ({§packet-cache-monotone}, #531):
-        // system = the timeless (definition/tools/schemes/policy — byte-stable doctrine), user
-        // = the situated (append-mostly log → per-turn status clump → recap), so the prefix
-        // cache survives through the log's frozen head instead of dying at the first gauge
-        // digit. Trust is the one-way ADMISSION rule, not the slot: system admits only
-        // framework-authored, non-injectable content; engine-authored status may ride user;
-        // attacker-reachable text may never ride system. The budget section carries its
-        // {{tokensFree}} placeholders here; they resolve below once the assembled total is known.
+        // The canonical default order, trust boundary, and cache-locality bias are
+        // specified at {§packet-cache-monotone}. Budget placeholders resolve only
+        // after trusted whole-list transforms establish the packet being measured.
         const inject = await readPacketInject(); // #240 — operator section, per-turn, fail-hard on a broken path
         const workspaceRoot = (await this.#db.envelope_get_workspace.get<{ project_root: string | null }>({ id: workspaceId }))?.project_root ?? null;
         const systemPolicy = await readSystemPolicy();              // ~/.plurnk/AGENTS.md (or PLURNK_SERVICE_POLICY)
@@ -348,14 +341,9 @@ export default class PacketBuilder {
             // policy: the client's privileged rules — ~/.plurnk/AGENTS.md (system) then <root>/AGENTS.md (project) — below grammar/tools/schemes, above budget-the-law. AGENTS is POLICY here, never a curatable READable entry. Empty content ⇒ section omitted.
             { name: "system-policy", slot: "system", header: "Policy", content: systemPolicy ?? "", tokens: 0 },
             { name: "project-policy", slot: "system", header: "Project Policy", content: projectPolicy ?? "", tokens: 0 },
-            // log leads the user slot: injectable content (READ results, exec output, the model's own mirror) — data, never rules — its frozen head extends the cache prefix ({§packet-cache-monotone}).
+            // The append-mostly log leads volatile user status ({§packet-cache-monotone}).
             { name: "log", slot: "user", header: "Log", content: PacketWire.renderLog(log, countTokens), tokens: 0 },
-            // The status clump — every per-turn-volatile section, quarantined between the log and
-            // the recap ({§packet-cache-monotone}, #531): after the append-only log so its churn
-            // never invalidates the log's cache prefix, and nearest the generation point (the
-            // dashboard reads freshest exactly where the model acts). Engine-authored riding the
-            // user slot is the legal trust direction; errors are uri+status POINTERS (the item +
-            // body live in the log), git is counts — no injection surface either way.
+            // The per-turn status clump sits between log and recap ({§packet-cache-monotone}).
             // child-orientation: what this worker holds live — streams then child workers — just above errors. Terse
             // pointers (the path is the actionable address the model READs/OPENs/KILLs), never advice. {§child-orientation}
             { name: "child-streams", slot: "user", header: "Child Streams", content: PacketWire.renderChildPointers(childStreams), tokens: 0 },
@@ -549,11 +537,10 @@ export default class PacketBuilder {
         };
     }
 
-    // {§tokenomics-agnostic-ruler} — the EXACT materialization measure: the provider's own token
-    // count of the assembled packet, the ONE place per-model exactness is used (once per turn, at
-    // the fit-gate). The model-facing render-weight (packet.tokens) stays the ruler; this is the
-    // physics check that the real bytes fit the real window.
-    exactPacketTokens(packet: RequestPacket, provider: Provider): number {
+    // {§tokenomics-agnostic-ruler}: provider-owned physical-window count for an
+    // over-policy recovery candidate. It may be exact or the provider contract's
+    // conservative fallback; the model-facing packet weight remains ruler-based.
+    providerPacketTokens(packet: RequestPacket, provider: Provider): number {
         return provider.countTokens(PacketWire.renderSlot(packet.sections, "system"))
             + provider.countTokens(PacketWire.renderSlot(packet.sections, "user"));
     }

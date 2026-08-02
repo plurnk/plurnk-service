@@ -165,7 +165,7 @@ test("assembled packet: scoped COPY reports both operands and its landed text ma
     } finally { await db.close(); }
 });
 
-test("the wire is monotone in volatility — byte-stable system; user: log → status clump → recap", async () => {
+test("the default wire preserves canonical trust and cache-locality order", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `pkt-monotone-${crypto.randomUUID()}`);
@@ -177,13 +177,10 @@ test("the wire is monotone in volatility — byte-stable system; user: log → s
         const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
         const packet = await getPacket(db, result.turnId);
 
-        // (#531, owner ruling) system = the timeless (byte-stable doctrine, the message-granular
-        // cache breakpoint); user = the situated — append-mostly log first (its frozen head extends
-        // the cache prefix), then the per-turn status clump nearest the generation point, then the
-        // recap footer. Trust is the one-way admission rule: system admits only framework-authored,
-        // non-injectable content — NO log.
+        // {§packet-cache-monotone}: trusted control-plane sections precede the user slot;
+        // append-mostly log precedes per-turn status, and the recap remains last for recency.
         const slot = (s: string): string[] => packet.sections.filter((x) => x.slot === s).map((x) => x.name);
-        assert.deepEqual(slot("system"), ["definition", "tools", "schemes", "system-policy", "project-policy"], "system slot is the byte-stable doctrine, in teaching order, nothing volatile");
+        assert.deepEqual(slot("system"), ["definition", "tools", "schemes", "system-policy", "project-policy"], "system slot carries trusted control-plane sections in canonical order");
         assert.deepEqual(slot("user"), ["log", "child-streams", "child-workers", "errors", "notices", "git", "budget", "prompt", "requirements"], "user slot: log -> status clump -> recap; the prompt paths list closes the clump");
         assert.ok(packetSection(packet, "requirements").length > 0, "requirements section carries content");
     } finally { await db.close(); }
