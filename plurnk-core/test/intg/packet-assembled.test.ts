@@ -12,11 +12,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
+import { rulerCount } from "../../src/core/token-ruler.ts";
 import { Mock } from "@plurnk/plurnk-providers";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, seedEntryWithChannel, packetSection, logEntries, DEFAULT_MIMETYPES } from "./_helpers.ts";
 import { copyStmt, editStmt, readStmt, regex, sendStmt, urlPath } from "./_dsl.ts";
 
-const getPacket = async (db: Awaited<ReturnType<typeof openMigrated>>, turnId: number): Promise<{ sections: Array<{ name: string; slot: string }> }> =>
+const getPacket = async (db: Awaited<ReturnType<typeof openMigrated>>, turnId: number): Promise<{ sections: Array<{ name: string; slot: string; content: string; tokens: number }> }> =>
     JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: turnId }))!.packet);
 
 test("assembled packet: the turn-0 catalog foist renders its entries into the log", async () => {
@@ -314,6 +315,53 @@ test("no live children or streams → the orientation sections are omitted (like
         const packet = await getPacket(db, result.turnId);
         assert.equal(packetSection(packet, "child-workers"), "", "no live child workers → child-runs renders nothing");
         assert.equal(packetSection(packet, "child-streams"), "", "no open streams → child-streams renders nothing");
+    } finally { await db.close(); }
+});
+
+test("assembled packet: definition tables compact without changing other whitespace", async () => {
+    const db = await openMigrated();
+    try {
+        const workspaceId = await insertWorkspace(db, `pkt-definition-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const loopId = await insertLoop(db, workerId, 1, "go");
+        const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
+        const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(200)] } }] });
+        const definition = [
+            "# Definition",
+            "",
+            "| OP     | purpose                 |",
+            "|:-------|------------------------:|",
+            "| FIND   | list matching paths     |",
+            "| `A \\| B` | preserve escaped pipes |",
+            "| ------- | data dashes stay intact  |",
+            "",
+            "```text",
+            "| fenced   | content   |",
+            "```",
+            "",
+            "Prose  spacing remains exact.",
+        ].join("\n");
+        const expected = [
+            "# Definition",
+            "",
+            "| OP | purpose |",
+            "|:---|---:|",
+            "| FIND | list matching paths |",
+            "| `A \\| B` | preserve escaped pipes |",
+            "| ------- | data dashes stay intact |",
+            "",
+            "```text",
+            "| fenced   | content   |",
+            "```",
+            "",
+            "Prose  spacing remains exact.",
+        ].join("\n");
+
+        const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "system", content: definition }, { role: "user", content: "go" }] });
+        const packet = await getPacket(db, result.turnId);
+
+        assert.equal(packetSection(packet, "definition"), expected, "the stored model-facing definition is the compact projection");
+        assert.equal(packet.sections.find((section) => section.name === "definition")?.tokens, rulerCount(expected), "definition render-weight measures the compact projection");
     } finally { await db.close(); }
 });
 

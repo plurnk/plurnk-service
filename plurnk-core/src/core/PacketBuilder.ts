@@ -33,6 +33,76 @@ const TOKENS_FREE_PLACEHOLDER = "{{tokensFree}}";
 const TOKEN_USAGE_PLACEHOLDER = "{{tokenUsage}}";
 const TOKEN_PERCENT_PLACEHOLDER = "{{tokenPercent}}";
 
+const trimHorizontal = (value: string): string => value.replace(/^[\t ]+|[\t ]+$/gu, "");
+
+const tableCells = (line: string): string[] | null => {
+    if (!line.startsWith("|") || !line.endsWith("|")) return null;
+    const cells: string[] = [];
+    let start = 1;
+    for (let index = 1; index < line.length - 1; index += 1) {
+        if (line[index] !== "|") continue;
+        let escapes = 0;
+        for (let previous = index - 1; previous >= start && line[previous] === "\\"; previous -= 1) escapes += 1;
+        if (escapes % 2 === 1) continue;
+        cells.push(line.slice(start, index));
+        start = index + 1;
+    }
+    cells.push(line.slice(start, -1));
+    return cells;
+};
+
+const isTableDivider = (cells: readonly string[]): boolean =>
+    cells.length > 0 && cells.every((cell) => /^:?-{3,}:?$/u.test(trimHorizontal(cell)));
+
+// §definition-table-projection — plurnk.md remains spacious for human editing;
+// only its well-formed Markdown tables lose authoring alignment on the packet wire.
+const compactDefinitionTables = (markdown: string): string => {
+    const lines = markdown.split("\n");
+    let fence: { marker: "`" | "~"; length: number } | null = null;
+    let inTable = false;
+    let dividerIndex = -1;
+
+    return lines.map((rawLine, index) => {
+        const carriageReturn = rawLine.endsWith("\r") ? "\r" : "";
+        const line = carriageReturn.length > 0 ? rawLine.slice(0, -1) : rawLine;
+        const fenceRun = line.match(/^ {0,3}(`{3,}|~{3,})/u)?.[1];
+        if (fence !== null) {
+            const closingRun = line.match(/^ {0,3}(`+|~+)[\t ]*$/u)?.[1];
+            if (closingRun?.[0] === fence.marker && closingRun.length >= fence.length) fence = null;
+            return rawLine;
+        }
+        if (fenceRun !== undefined) {
+            fence = { marker: fenceRun[0] as "`" | "~", length: fenceRun.length };
+            inTable = false;
+            dividerIndex = -1;
+            return rawLine;
+        }
+
+        const cells = tableCells(line);
+        if (!inTable) {
+            const nextRawLine = lines[index + 1] ?? "";
+            const nextLine = nextRawLine.endsWith("\r") ? nextRawLine.slice(0, -1) : nextRawLine;
+            const dividerCells = tableCells(nextLine);
+            if (cells === null || dividerCells === null || cells.length !== dividerCells.length || !isTableDivider(dividerCells)) return rawLine;
+            inTable = true;
+            dividerIndex = index + 1;
+        } else if (cells === null) {
+            inTable = false;
+            dividerIndex = -1;
+            return rawLine;
+        }
+
+        if (index === dividerIndex) {
+            const divider = cells.map((cell) => {
+                const value = trimHorizontal(cell);
+                return `${value.startsWith(":") ? ":" : ""}---${value.endsWith(":") ? ":" : ""}`;
+            });
+            return `|${divider.join("|")}|${carriageReturn}`;
+        }
+        return `| ${cells.map(trimHorizontal).join(" | ")} |${carriageReturn}`;
+    }).join("\n");
+};
+
 // §tokenomics-window-partition — the four partition numbers. REQUIRED (fail-hard, the
 // providers-env convention): the ceiling is DERIVED from these, never set directly
 // (PLURNK_BUDGET_CEILING is retired — a settable ceiling let policy contradict physics).
@@ -208,7 +278,7 @@ export default class PacketBuilder {
         // The scheme catalogue is its own `schemes` section below tools (§schemes-directory),
         // NOT appended here: grammar 0.49+ is scheme-agnostic, so the service advertises
         // the scheme set at packet-time (grammar#239 item 7) via SchemeRegistry.teach().
-        const system_definition = byRole("system");
+        const system_definition = compactDefinitionTables(byRole("system"));
         // The prompt section sources the loop's prompt:///<loop>/<N> entries.
         // Inject and turn-1 initialization write them. Bare callers that
         // bypass prompt persistence fall back to messages.user.
