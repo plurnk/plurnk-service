@@ -107,6 +107,7 @@ Examples:
 One or more numbers narrow an operation according to its type:
 
 * FIND, OPEN, and FOLD scopes select inclusive result positions.
+* Each rendered FIND result owns one numbered physical line; result N and line N identify the same row.
 * READ and EDIT scopes select text regions.
 * COPY and MOVE scopes select source text; the destination may carry its own scope.
 * Semantic FIND and READ reserve a leading decimal scope component for a similarity threshold. Remaining integers keep the operation's meaning above.

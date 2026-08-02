@@ -46,6 +46,15 @@ test("assembled packet: the turn-0 catalog foist renders its entries into the lo
         assert.match(log, /"path":"worker:\/\/\/\.github\/\*\*","items":1,"tokens":\d+/, "a dot directory renders as an actionable recursive summary");
         assert.match(log, /"path":"worker:\/\/\/nested\/\*\*","items":1,"tokens":\d+/, "a directory renders as an actionable recursive summary");
         assert.doesNotMatch(log, /worker:\/\/\/nested\/deep\.md/, "the opening map does not dump a summarized descendant");
+        for (const path of [".env.defaults", ".github/**", "nested/**", "note.md"]) {
+            const target = `worker:///${path}`;
+            const escaped = target.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+            assert.match(
+                log,
+                new RegExp(`\\n\\d+:\\[?\\{"path":"${escaped}`),
+                `${target} begins its own universally numbered FIND row`,
+            );
+        }
         assert.match(log, /"op":"FIND"/, "the catalog foist appears as a FIND op in the log");
         assert.match(
             log,

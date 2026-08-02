@@ -4,6 +4,7 @@ import type { SchemeManifest, PlurnkSchemeContext, SchemeReadResult } from "../c
 import { ReadResolve } from "../content/index.ts";
 import Matcher from "../content/matcher.ts";
 import type { SourceCandidateMatch } from "../content/matcher.ts";
+import { renderFindContent } from "./_entry-find.ts";
 import type { FindResult, MatchItem, Match, CatalogScope, CatalogMatch } from "./_entry-find.ts";
 import { CoreSchemeAdapterBase } from "../core/CoreSchemeServices.ts";
 import type { CoreSchemeCallContext } from "../core/CoreSchemeServices.ts";
@@ -552,7 +553,7 @@ export default class Log extends CoreSchemeAdapterBase {
         // matches[].pathname is the fan-out's retarget key — `/loop/turn/seq/OP` re-parses as a
         // coordinate (the /OP suffix is accepted), so READ(log://)<matcher> fan-out delivers rows.
         const fanMatches = matches.map((m) => ({ ...m, pathname: `/${m.pathname}` }));
-        return { status: 200, content: JSON.stringify(results), mimetype: "application/json", results, itemsTokenTotal, pathnames: seenPath.map((p) => `/${p}`), matches: fanMatches };
+        return { status: 200, content: renderFindContent(results), mimetype: "application/json", results, itemsTokenTotal, pathnames: seenPath.map((p) => `/${p}`), matches: fanMatches };
     }
 
     async open(statement: OpenStatement, ctx: CoreSchemeCallContext): Promise<OpenFoldResult> {

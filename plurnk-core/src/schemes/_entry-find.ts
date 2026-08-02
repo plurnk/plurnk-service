@@ -43,6 +43,12 @@ export type CatalogScope = {
 export type CatalogMatch = CatalogEntry & { matches?: MatchEvidence[]; items?: never; tokens?: never };
 export type MatchItem = CatalogMatch | CatalogScope;
 
+// FIND result ordinals are also packet line coordinates. Keep each top-level
+// item compact, adding only the boundary newline that makes row N addressable
+// as line N while retaining one valid JSON array. §find-result-catalog-rows
+export const renderFindContent = (results: readonly MatchItem[]): string =>
+    `[${results.map((result) => JSON.stringify(result)).join(",\n")}]`;
+
 export interface FindResult extends SchemeResultBase {
     content: string | null;
     mimetype: string | null;
@@ -533,11 +539,11 @@ export default class EntryFind {
                 maximumItems: budget,
             };
         }
-        // Compact JSON — the model parses it natively; the `null, 2` pretty-print was ~36%
-        // whitespace of the catalog body, tokens the wire doesn't need.
+        // Compact within rows; the single top-level boundary newline makes
+        // result ordinal N the universally numbered packet line N.
         return {
             status: 200,
-            content: JSON.stringify(results),
+            content: renderFindContent(results),
             mimetype: "application/json",
             results,
             itemsTokenTotal,

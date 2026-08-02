@@ -62,6 +62,8 @@ test("a body-less FIND(log:///1/1) lists the turn's rows — the hierarchy is th
         const r = await new Log().find(findStmt(urlPath("log", "/1/1")), makeSchemeCtx({ db, workerId, mimetypes: DEFAULT_MIMETYPES }));
         assert.equal(r.status, 200);
         assert.equal(r.results.length, 3, "the turn's three rows, catalog-shaped");
+        assert.deepEqual(JSON.parse(r.content!), r.results, "line-addressable content remains the exact JSON result array");
+        assert.equal(r.content!.split("\n").length, r.results.length, "log FIND uses the same one-item-per-line rendering as entry FIND");
         assert.ok(r.results.every((x) => /^log:\/\/\/1\/1\/\d+\//.test(x.path)), "each item keyed log:///loop/turn/seq/OP");
         assert.ok(r.results.every((x) => x.channels !== undefined && Object.values(x.channels)[0]!.tokens >= 0), "each carries {mimetype, tokens, lines} — the model budgets its READs");
     } finally { await db.close(); }

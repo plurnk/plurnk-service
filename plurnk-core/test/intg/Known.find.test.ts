@@ -52,6 +52,11 @@ test("Known.find returns the scheme's catalog rows (JSON), filtered to matches",
         assert.equal(r.mimetype, "application/json");
         assert.deepEqual(r.results.map((row) => row.path), ["worker:///a", "worker:///b", "worker:///c"]);
         assert.deepEqual(JSON.parse(r.content!), r.results, "content is the JSON serialization of the catalog rows");
+        const renderedRows = r.content!.split("\n");
+        assert.equal(renderedRows.length, r.results.length, "each FIND result ordinal owns one physical JSON line");
+        assert.match(renderedRows[0], /^\[\{"path":"worker:\/\/\/a"/);
+        assert.match(renderedRows[1], /^\{"path":"worker:\/\/\/b"/);
+        assert.match(renderedRows[2], /^\{"path":"worker:\/\/\/c".*\}\]$/);
         const [first] = r.results;
         assert.ok(first !== undefined && first.channels !== undefined);
         assert.equal(first.path, "worker:///a");
@@ -318,6 +323,12 @@ test("Known.find with <L> paginates results", async () => {
         const r = await new Worker().find(stmt, makeSchemeCtx({ db, workspaceId, workerId, loopId: 0, turnId: 0 }));
         assert.equal(r.status, 200);
         assert.deepEqual([...new Set(r.results.map((f) => f.path))], ["worker:///b", "worker:///c"]);
+        const one = await new Worker().find(
+            { ...findStmt(url(""), null), lineMarker: { marks: [2] } },
+            makeSchemeCtx({ db, workspaceId, workerId, loopId: 0, turnId: 0 }),
+        );
+        assert.equal(one.results.length, 1);
+        assert.doesNotMatch(one.content!, /\n/, "a single result remains one compact JSON line");
     } finally { db.close(); }
 });
 
