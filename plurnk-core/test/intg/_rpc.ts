@@ -169,10 +169,8 @@ export const parseDsl = (text: string): PlurnkStatement[] => {
 };
 
 export const makeMockResponse = (dsl: string, completion: number = 0): MockResponse => {
-    // grammar 0.70: every turn must lead with PLAN (plurnk.md §Imperatives). The mock
-    // emits what a compliant model emits; the Engine hoists the PLAN body into the
-    // reasoning field before dispatch (#plan-reasoning), so PLAN never reaches the
-    // dispatched ops — no special-casing, PLAN/SEND flow as ordinary tags.
+    // Every turn leads with PLAN (plurnk.md §Imperatives). The mock emits what a
+    // compliant model emits; PLAN and SEND flow through as ordinary dispatched ops.
     const turn = dsl.startsWith("<<PLAN") ? dsl : `<<PLAN::PLAN\n${dsl}`;
     return {
         assistant: {

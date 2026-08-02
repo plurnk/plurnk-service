@@ -1586,7 +1586,7 @@ export default class Engine {
         // model gets one notices signal next packet.
         // #232 — a workspace's maxCommands is a tighten-only ceiling: min() the env ceiling.
         const maxCommands = Math.min(readMaxCommands(), (await WorkspaceSettings.read(this.#db, workspaceId)).maxCommands ?? Number.POSITIVE_INFINITY);
-        // PLAN (reasoning) and a terminal SEND (signal ≥ 200, the conclusion) are not
+        // PLAN (intended goals) and a terminal SEND (signal ≥ 200, the conclusion) are not
         // actions — they always dispatch and never count against the cap. maxCommands
         // bounds real actions only; maxCommands:0 still admits a plan and a conclusion
         // (the PLAN/SEND ops, zero actions), which is its only coherent meaning.

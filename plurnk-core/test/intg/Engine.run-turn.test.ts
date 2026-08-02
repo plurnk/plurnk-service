@@ -941,12 +941,12 @@ test("Engine.runTurn: free text before an op is tolerated — the trailing op st
     } finally { await db.close(); }
 });
 
-test("Engine.runTurn: PLAN dispatches as an ordinary log op — passed through, not hoisted to reasoning", async () => {
+test("Engine.runTurn: PLAN dispatches as an ordinary durable intended-goals op", async () => {
     const { db, engine, workspaceId, workerId, loopId } = await setup();
     try {
         const provider = new Mock({
             contextWindow: 100000,
-            responses: [response([planStmt("FIND before READ — the marker reasoning"), sendStmt(200, "done")], "", 10)],
+            responses: [response([planStmt("FIND before READ — the intended goals"), sendStmt(200, "done")], "", 10)],
         });
         const result = await engine.runTurn({
             provider, workspaceId, workerId, loopId,
@@ -954,8 +954,8 @@ test("Engine.runTurn: PLAN dispatches as an ordinary log op — passed through, 
         });
         // PLAN dispatches like any op (a no-op for state) → both PLAN and the SEND in statuses.
         assert.deepEqual(result.statuses, [200, 200], "PLAN dispatched as a log op, then the SEND");
-        // The PLAN body is a real log row (passed to the client), NOT swallowed into reasoning.
+        // The PLAN body is a real log row passed to the client, separate from provider reasoning.
         const ops = await db.test_log_entries_by_loop.all<{ op: string }>({ loop_id: loopId });
-        assert.ok(ops.some((o) => o.op === "PLAN"), "PLAN is logged as an op, not hoisted to reasoning");
+        assert.ok(ops.some((o) => o.op === "PLAN"), "PLAN is logged as a durable op");
     } finally { await db.close(); }
 });

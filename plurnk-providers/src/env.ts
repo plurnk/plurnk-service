@@ -167,7 +167,7 @@ export const resolveEnvelopeFromEnv = (env: NodeJS.ProcessEnv, window: number | 
 //     the magnitude for tier/budget mapping. On llama-server it is the explicit
 //     request-scoped allowance and cannot exceed the physical reasoning reserve.
 // The provider maps intent to the backend's mechanism; the consumer states
-// intent, never mechanism. (In-DSL PLAN reasoning is a grammar concern.)
+// intent, never mechanism. PLAN is a separate public intended-goals record.
 export type ReasoningMode = "off" | "adaptive" | "on";
 export type Reasoning = { mode: ReasoningMode; budget: number | null };
 

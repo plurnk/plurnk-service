@@ -187,7 +187,7 @@ test("the turn-0 exemplar mirrors the REAL foisted survey — dynamic, not a sta
                 const content = (JSON.parse(row!.rx) as { content: string }).content;
                 // Dynamic - it carries the FIND the foist ACTUALLY dispatched (worker:///*), rendered to
                 // DSL and framed PLAN → SEND. Not a frozen print: feed-as-turn-0, show-in-turn-1 are one act.
-                assert.match(content, /^<<PLAN:Initialize:PLAN/, "opens with the reasoning move");
+                assert.match(content, /^<<PLAN:Initialize:PLAN/, "opens with intended goals");
                 assert.match(content, /<<FIND\(worker:\/\/\/\*\)::FIND/, "the real shallow survey, rendered back to DSL");
                 assert.match(
                     content,

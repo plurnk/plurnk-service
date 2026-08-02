@@ -39,7 +39,7 @@ One daemon notification in, zero-or-more AG-UI events out (`Translator`, pure):
 |---|---|
 | `loop.run` accepted | `RUN_STARTED` |
 | `log/entry` turn boundary | `STEP_FINISHED` + `STEP_STARTED` (`turn-<id>`) |
-| `log/entry` op=PLAN (model) | `REASONING_START` + `REASONING_MESSAGE_START/CONTENT/END` + `REASONING_END` (§475: current AG-UI reasoning; the deprecated THINKING_* is retired) |
+| `log/entry` op=PLAN (model) | `ACTIVITY_SNAPSHOT` {§agui-plan-activity} |
 | `log/entry` op=SEND (model) | `TEXT_MESSAGE_START/CONTENT/END` + `CUSTOM plurnk.send` (signal/status) |
 | `log/entry` other op (model) | `TOOL_CALL_START/ARGS/END` (+ `TOOL_CALL_RESULT` when rx exists) |
 | `log/entry` op=model (mirror) | a correlated `REASONING_START` / `REASONING_ENCRYPTED_VALUE`* / `REASONING_END` span when the reasoning-item `attrs.reasoning` is present (see §agui-sealed-reasoning); otherwise nothing — forensic |
@@ -51,6 +51,16 @@ One daemon notification in, zero-or-more AG-UI events out (`Translator`, pure):
 | `stream/event` + `stream/concluded` | `CUSTOM plurnk.stream` + `ACTIVITY_SNAPSHOT` (the standard background-activity channel: `activityType` = the scheme, replace-snapshot, §475). A conclusion preserves its exact universal `result`, including RFC 9457 Problem Details; AG-UI does not reconstruct failure from a status or summary. |
 | `workspace/branch-batch` | `CUSTOM plurnk.branch_batch` with the daemon's full queued/running/completed/failed/recovery-required lifecycle payload |
 | `loop/quiesced` | `CUSTOM plurnk.quiesced` |
+
+§agui-plan-activity **PLAN is activity, not reasoning.** PLAN is the model's public,
+durable statement of intended goals. Provider reasoning is a separate channel, so PLAN
+never projects into AG-UI `REASONING_*` events. Live delivery and reattach preserve the
+same log identity and verbatim goals:
+
+| Projection | Standard representation |
+|---|---|
+| live | `ACTIVITY_SNAPSHOT { messageId: coordinate ?? id, activityType: "PLAN", content: { goals: body }, replace: true }` |
+| reattach | `ActivityMessage { id: coordinate ?? id, role: "activity", activityType: "PLAN", content: { goals: body } }` inside `MESSAGES_SNAPSHOT` |
 
 - **An op row IS a tool call** — its `coordinate` is the `toolCallId`, its tx the args (one
   delta: a dispatched plurnk op is atomic), its rx the result. The log-shaped richness the
@@ -92,8 +102,8 @@ One daemon notification in, zero-or-more AG-UI events out (`Translator`, pure):
 
 - **Reattach replays** {§agui-replay} — a rediscovered thread (the module restarted, a second
   frontend arrived) attaches to its existing workspace by name→id and opens ORIENTED: the model
-  worker's SENDs replay as `MESSAGES_SNAPSHOT` (the conversation spine; everything else stays
-  reachable via live `plurnk.row`). Pending proposals remain durable and are presented as
+  worker's PLAN activities and SEND speech replay as `MESSAGES_SNAPSHOT`; everything else stays
+  reachable via live `plurnk.row`. Pending proposals remain durable and are presented as
   interrupts when the owning conversation is resumed; a days-old question is discoverable,
   never converted into a mystery hang.
 

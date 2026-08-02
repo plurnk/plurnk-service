@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { ActivitySnapshotEventSchema, MessagesSnapshotEventSchema } from "@ag-ui/core";
 import Translator from "./Translator.ts";
 import type { LogEntryNotification, TerminatedNotification } from "./types.ts";
 
@@ -21,10 +22,18 @@ test("a model op row is a TOOL_CALL triple with its rx as the RESULT", () => {
     assert.match(args.delta, /known:\/\/\/notes\.md/, "the target rides the args");
 });
 
-test("PLAN is thinking; SEND is assistant speech with the signal on plurnk.send", () => {
+test("PLAN is a durable goals activity; SEND is assistant speech with the signal on plurnk.send", () => {
     const tr = t();
-    const plan = tr.logEntry(entry({ op: "PLAN", tx: JSON.stringify({ body: { raw: "do the thing" } }) }));
-    assert.deepEqual(plan.map((e) => e.type), ["CUSTOM", "STEP_STARTED", "REASONING_START", "REASONING_MESSAGE_START", "REASONING_MESSAGE_CONTENT", "REASONING_MESSAGE_END", "REASONING_END"]);
+    const plan = tr.logEntry(entry({ op: "PLAN", coordinate: "1/1/3/PLAN", tx: JSON.stringify({ body: { raw: "do the thing" } }) }));
+    assert.deepEqual(plan.map((e) => e.type), ["CUSTOM", "STEP_STARTED", "ACTIVITY_SNAPSHOT"]);
+    assert.deepEqual(plan[2], {
+        type: "ACTIVITY_SNAPSHOT",
+        messageId: "1/1/3/PLAN",
+        activityType: "PLAN",
+        content: { goals: "do the thing" },
+        replace: true,
+    });
+    assert.doesNotThrow(() => ActivitySnapshotEventSchema.parse(plan[2]), "PLAN uses the standard AG-UI activity event");
     const send = tr.logEntry(entry({ op: "SEND", signal: 200, status_rx: 200, tx: JSON.stringify({ body: "done and dusted" }) }));
     assert.deepEqual(send.map((e) => e.type), ["CUSTOM", "TEXT_MESSAGE_START", "TEXT_MESSAGE_CONTENT", "TEXT_MESSAGE_END", "CUSTOM"]);
     const custom = send[4] as { name: string; value: { signal: unknown } };
@@ -165,25 +174,29 @@ test("a failed termination without a Problem is rejected instead of synthesized 
 test("a FOREIGN worker's rows never enter the core stream — plurnk.row/ambient only", () => {
     const tr = new Translator({ threadId: "th", runId: "r", modelWorkerId: 2 });
     const own = tr.logEntry({ entry: { id: 1, op: "PLAN", origin: "model", turn_id: 1, tx: JSON.stringify({ body: "mine" }), ...( { worker_id: 2 } as object) } as never });
-    assert.ok(own.some((e) => e.type === "REASONING_MESSAGE_START"), "the thread's model worker projects");
+    assert.ok(own.some((e) => e.type === "ACTIVITY_SNAPSHOT"), "the thread's model worker projects");
     const worker = tr.logEntry({ entry: { id: 9, op: "SEND", origin: "model", turn_id: 7, tx: JSON.stringify({ body: "worker speech" }), ...( { worker_id: 5 } as object) } as never });
     assert.deepEqual(worker.map((e) => e.type), ["CUSTOM", "CUSTOM"], "a worker's rows ride plurnk.row + plurnk.ambient — visible topology, never conversation");
     assert.ok(!worker.some((e) => e.type === "TEXT_MESSAGE_START"), "a worker's SEND never masquerades as the assistant speaking");
 });
 
-test("the workspace log replays as MESSAGES_SNAPSHOT — model SENDs are the conversation spine", () => {
+test("the workspace log replays PLAN activities and model SEND speech through one MESSAGES_SNAPSHOT", () => {
     const tr = new Translator({ threadId: "th", runId: "r" });
     const events = tr.replay([
-        { id: 1, op: "PLAN", origin: "model", tx: { body: "think" } },
+        { id: 1, op: "PLAN", origin: "model", coordinate: "1/1/1/PLAN", tx: { body: "orient" } },
         { id: 2, op: "SEND", origin: "model", coordinate: "1/1/9/SEND", tx: { body: "The answer is 42." } },
         { id: 3, op: "EDIT", origin: "plurnk", tx: { body: "ambient" } },
         { id: 4, op: "SEND", origin: "model", tx: { body: "And done." } },
     ]);
     assert.equal(events.length, 1);
-    const snap = events[0] as { type: string; messages: Array<{ role: string; content: string }> };
+    const snap = events[0] as { type: string; messages: Array<{ id: string; role: string; activityType?: string; content: unknown }> };
     assert.equal(snap.type, "MESSAGES_SNAPSHOT");
-    assert.deepEqual(snap.messages.map((m) => m.content), ["The answer is 42.", "And done."], "SENDs only — everything else stays reachable via live plurnk.row, never duplicated into history");
-    assert.ok(snap.messages.every((m) => m.role === "assistant"));
+    assert.deepEqual(snap.messages, [
+        { id: "1/1/1/PLAN", role: "activity", activityType: "PLAN", content: { goals: "orient" } },
+        { id: "1/1/9/SEND", role: "assistant", content: "The answer is 42." },
+        { id: "4", role: "assistant", content: "And done." },
+    ]);
+    assert.doesNotThrow(() => MessagesSnapshotEventSchema.parse(snap), "reattach uses the standard AG-UI message snapshot");
 });
 
 test("runtime protocol and family dependencies are declared explicitly", async () => {

@@ -6,7 +6,12 @@
 // plurnk-aware frontends render them richly (§agui-custom-namespace).
 
 export { EventType } from "@ag-ui/core";
-export type { AGUIEvent as AguiEvent, RunAgentInput } from "@ag-ui/core";
+export type {
+    AGUIEvent as AguiEvent,
+    ActivityMessage,
+    AssistantMessage,
+    RunAgentInput,
+} from "@ag-ui/core";
 import type { OperationResult } from "@plurnk/plurnk-contracts";
 
 // The daemon wire — the slice of the plurnk JSON-RPC protocol this bridge consumes.

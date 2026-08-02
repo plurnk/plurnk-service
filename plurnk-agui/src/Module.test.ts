@@ -401,6 +401,34 @@ test("PLURNK PARADIGM: the name IS the identity — no prefix, no forging, attac
     } finally { await mod.close(); }
 });
 
+test("reattach replays PLAN as activity and SEND as speech through the thread router", async () => {
+    const { seam, finish } = mockSeam();
+    seam.listWorkspaces = async () => [{ id: 3, name: "workspace" }];
+    seam.attachWorkspace = async () => ({ workspaceId: 3, workspaceName: "workspace", projectRoot: null, workerId: 10, workerName: "client-1", modelWorkerId: 20, clientLoopId: null });
+    seam.readLog = async () => [
+        { id: 1, coordinate: "1/1/1/PLAN", op: "PLAN", origin: "model", tx: { body: "inspect, repair, verify" } },
+        { id: 2, coordinate: "1/1/2/SEND", op: "SEND", origin: "model", tx: { body: "checkpoint complete" } },
+    ];
+    seam.runLoop = async (args) => {
+        finish(args.workspaceId);
+        return { status: 100, action: "enqueued_new_loop", loopId: 9 };
+    };
+    const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
+    try {
+        const events = await post(mod.address().port, {
+            threadId: "workspace",
+            runId: "reattach-1",
+            messages: [{ role: "user", content: "continue" }],
+            forwardedProps: { plurnk: { workspace: "workspace" } },
+        });
+        const snapshot = events.find((event) => event.type === "MESSAGES_SNAPSHOT") as { messages?: unknown[] } | undefined;
+        assert.deepEqual(snapshot?.messages, [
+            { id: "1/1/1/PLAN", role: "activity", activityType: "PLAN", content: { goals: "inspect, repair, verify" } },
+            { id: "1/1/2/SEND", role: "assistant", content: "checkpoint complete" },
+        ]);
+    } finally { await mod.close(); }
+});
+
 test("SESSION=WORKSPACE, THREAD=CONVERSATION: the workspace prop selects the world; the thread is a worker over it (svc#366 landed — the interim bind-the-model-run behavior is retired)", async () => {
     const attaches: number[] = [];
     const created: Array<{ name?: string; projectRoot?: string | null }> = [];

@@ -109,6 +109,10 @@ export default class Portal {
 
     closeRun(workspaceId: number, t: unknown): void { this.#threads.get(workspaceId)?.delete(t as Thread); }
 
+    replay(thread: unknown, entries: Array<Record<string, unknown>>): AguiEvent[] {
+        return (thread as Thread).router.replay(entries);
+    }
+
     #finishThread(thread: Thread, events: AguiEvent[]): void {
         thread.emit([...events, { type: EventType.RUN_FINISHED, threadId: thread.threadId, runId: thread.inputRunId, outcome: { type: "success" } }]);
     }

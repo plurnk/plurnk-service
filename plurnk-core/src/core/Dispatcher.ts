@@ -1369,7 +1369,7 @@ export default class Dispatcher {
         return row.id;
     }
 
-    // PLAN — the model's reasoning op (the 11th op). An ordinary op: dispatched like any
+    // PLAN — the model's intended-goals op. An ordinary op: dispatched like any
     // other, logged, and broadcast to the client as a log entry — but a pure no-op for
     // state (PLAN ∉ MUTATING_OPS); its body serializes into the log row's tx, no effect.
     #handlePlan(statement: PlurnkStatement): DispatchResult {

@@ -432,7 +432,7 @@ export default class Module {
 
         if (reattached) {
             const history = await this.#seam.readLog({ workspaceId, workerId, limit: 1000 }).catch(() => null);
-            if (history !== null) emit([...this.#threadRouterReplay(workspaceId, history)]);
+            if (history !== null) emit(this.#portal.replay(boundRun, history));
         }
         await this.#portal.run(boundRun, {
             workspaceId, workerId, prompt,
@@ -803,19 +803,6 @@ export default class Module {
             console.error(`AG-UI action '${a.kind}' failed:`, err);
             return actionFailure("action-failed", "The action failed unexpectedly.", 500);
         }
-    }
-
-    #threadRouterReplay(workspaceId: number, entries: Array<Record<string, unknown>>): AguiEvent[] {
-        // Replay via the thread's own router (MESSAGES_SNAPSHOT of the model SENDs).
-        const messages: Array<{ id: string; role: "assistant"; content: string }> = [];
-        for (const e of entries) {
-            if (e.op === "SEND" && e.origin === "model") {
-                const tx = e.tx as { body?: unknown } | null | undefined;
-                const body = tx !== null && typeof tx === "object" && typeof tx.body === "string" ? tx.body : "";
-                if (body.length > 0) messages.push({ id: String(e.coordinate ?? e.id), role: "assistant", content: body });
-            }
-        }
-        return [{ type: EventType.MESSAGES_SNAPSHOT, messages }];
     }
 
     static #body(req: IncomingMessage): Promise<string> {

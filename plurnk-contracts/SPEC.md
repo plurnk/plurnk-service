@@ -187,13 +187,17 @@ restrictions are runtime concerns.
 | WORK   | optional Git branch ref (single string) | required `worker://` target naming the fresh worker | task prompt for the worker's first loop | none (parses as null) |
 | FORK   | optional Git branch ref (single string) | required `worker://` target naming the context branch | prompt for the context-inheriting worker | none (parses as null) |
 | KILL   | operation code (optional integer; target-specific) | required | opaque annotation (logged, no runtime meaning) | not applicable |
-| PLAN   | tag filter (CSV; parse-side, canon is slotless) | optional (parse-side; canon is slotless) | reasoning text (recorded to the log; no other effect) | parse-side only |
+| PLAN   | tag filter (CSV; parse-side, canon is slotless) | optional (parse-side; canon is slotless) | intended goals {§plan-intended-goals} | parse-side only |
 
 SEND and KILL share a numeric wire slot, not one universal numeric vocabulary.
 For pathless terminal SEND, the code is the loop disposition defined in §9.
 Directed SEND and KILL delegate any present code to the addressed target's
 operation contract; a live process may interpret a KILL code as a Unix signal,
 but that interpretation does not define KILL generally. {§operation-code-polymorphism}
+
+§plan-intended-goals **PLAN records intended goals.** The PLAN body is the model's
+concise statement of intended goals. It is public, durable log content—not provider
+reasoning. Dispatch records it and has no other runtime effect.
 
 The `<L>` slot is optional where admitted and its domain is OP-specific. FIND
 scopes ordered results. EXEC and SEND scope timing. READ, EDIT, COPY, and
@@ -810,7 +814,7 @@ interface ForkStatement extends StatementBase<string> { op: "FORK"; body: string
 // KILL — signal is an optional target-specific numeric code; body is an opaque annotation. Raw.
 interface KillStatement extends StatementBase<number> { op: "KILL"; body: string | null; }
 
-// PLAN — body is reasoning text, recorded to the log. Raw. On the GBNF rail the body
+// PLAN — body is intended-goals text, recorded to the log. Raw. On the GBNF rail the body
 // additionally excludes the literal `<<` (#502): PLAN is suffix-less, so no op-quoting
 // device exists for it — the plan ends where the acting begins, and an omitted `:PLAN`
 // is auto-corrected by the mask instead of swallowing the turn's ops. A single `<`

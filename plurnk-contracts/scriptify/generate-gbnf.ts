@@ -234,8 +234,8 @@ export const buildModel = (): GModel => {
     for (const op of OPS) {
         for (const suffix of SUFFIXES) {
             // PLAN is allowed but inert: bare `<<PLAN` only, no numeric suffix (a suffix
-            // would let a model emit the malformed `<<PLAN1`). Reasoning lives in the
-            // <think> preamble now, not a mandated or depth-nested PLAN.
+            // would let a model emit the malformed `<<PLAN1`). Provider reasoning lives
+            // in the <think> preamble, not in the public PLAN record.
             if (op === "PLAN" && suffix !== "") continue;
             const name = op.toLowerCase() + (suffix === "" ? "" : `-${suffix}`);
             const open = `<<${op}${suffix}`;
@@ -288,7 +288,7 @@ export const buildModel = (): GModel => {
                 // EXEC's optional `<timeout,poll>` rides the shared `line` slot (numbers; runtime-interpreted).
                 opEntries.push({ literal: open, tails: [[opt(ref("exec-sig")), opt(ref("target")), opt(ref("line")), ...body]] });
             } else if (op === "PLAN") {
-                // Slotless bare reasoning body, REQUIRED non-empty (no blank statement of
+                // Slotless bare intended-goals body, REQUIRED non-empty (no blank statement of
                 // intent). PLAN is the MANDATORY turn anchor and the FIRST op only — root-turn
                 // references the standalone `plan` rule and PLAN is NOT in the op-statement
                 // trie, so a second PLAN cannot appear mid-batch. The body additionally

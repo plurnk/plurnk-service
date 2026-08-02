@@ -158,7 +158,7 @@ test("ex 32: KILL — permanently delete an entry", () => {
     expectOneClean("<<KILL(known://obsolete/note)::KILL");
 });
 
-test("ex 33: PLAN — reasoning recorded to the log", () => {
+test("ex 33: PLAN — intended goals recorded to the log", () => {
     expectOneClean("<<PLAN:Need the capital fact; discover via wiki, record to known, deliver.:PLAN");
 });
 

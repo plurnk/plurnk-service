@@ -99,7 +99,7 @@ test("PlurnkStatement: FIND with threshold-prefixed result range", () => {
     assert.equal(r!.valid, true, JSON.stringify(r!.errors));
 });
 
-test("PlurnkStatement: PLAN with bare reasoning body", () => {
+test("PlurnkStatement: PLAN with bare intended-goals body", () => {
     const r = validateRoundTrip("<<PLAN:Decompose the prompt; discover, record, deliver.:PLAN");
     assert.equal(r!.valid, true, JSON.stringify(r!.errors));
 });

@@ -274,7 +274,7 @@ test("PlurnkParser.parse discards the pre-<<PLAN preamble (turn sandwich)", () =
 test("channel enclosure protects a drafted <<PLAN; parse anchors on the real one (#430)", () => {
     // A <<PLAN drafted WHILE reasoning (inside the channel body, a complement over the closer)
     // is protected content, not the anchor. GBNF derives it; parse anchors on the REAL PLAN
-    // after <channel|>. PLAN's body is a plain string (reasoning text), not a {raw} object.
+    // after <channel|>. PLAN's body is plain intended-goals text, not a {raw} object.
     const turn = `${channel("my plan: <<PLAN:draft:PLAN then verify")}<<PLAN:real intent:PLAN\n<<SEND[200]:done:SEND`;
     assert.equal(derives("root-turn", turn), true, "GBNF should derive the channel-enclosure turn");
     const r = PlurnkParser.parse(turn);

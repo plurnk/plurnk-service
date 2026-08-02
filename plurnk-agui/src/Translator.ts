@@ -1,7 +1,7 @@
 // The projection — plurnk's log-shaped wire onto AG-UI's event vocabulary. PURE: one daemon
 // notification in, zero-or-more AG-UI events out, with per-worker turn tracking as the only state.
 // The mapping (§agui-projection):
-//   log/entry op=PLAN  (model)  → REASONING_MESSAGE triple (the model's stated intent)
+//   log/entry op=PLAN  (model)  → ACTIVITY_SNAPSHOT (the model's stated goals)
 //   log/entry op=SEND  (model)  → TEXT_MESSAGE triple (assistant speech; the signal rides plurnk.send)
 //   log/entry other    (model)  → TOOL_CALL_START/ARGS/END + TOOL_CALL_RESULT (an op row IS a
 //                                 tool call: tx is the args, rx the result, coordinate the id)
@@ -13,7 +13,14 @@
 // Numbers are passed through verbatim, never recomputed — the daemon's gauge is the gauge
 // (§agui-numbers-passthrough).
 
-import { EventType, type AguiEvent, type LogEntryNotification, type TerminatedNotification } from "./types.ts";
+import {
+    EventType,
+    type ActivityMessage,
+    type AguiEvent,
+    type AssistantMessage,
+    type LogEntryNotification,
+    type TerminatedNotification,
+} from "./types.ts";
 import { Validator } from "@plurnk/plurnk-contracts";
 
 export default class Translator {
@@ -71,16 +78,14 @@ export default class Translator {
         }
         const id = e.coordinate ?? String(e.id);
         if (e.op === "PLAN") {
-            // The model's reasoning (§475: current AG-UI — THINKING_* was deprecated for
-            // REASONING_*, removed at 1.0.0). The message triple lives inside a
-            // REASONING_START/END span; every reasoning event carries a messageId tying
-            // the span together (the coordinate/id of the PLAN row).
             const text = Translator.#txBody(e.tx);
-            events.push({ type: EventType.REASONING_START, messageId: id });
-            events.push({ type: EventType.REASONING_MESSAGE_START, messageId: id, role: "reasoning" });
-            if (text.length > 0) events.push({ type: EventType.REASONING_MESSAGE_CONTENT, messageId: id, delta: text });
-            events.push({ type: EventType.REASONING_MESSAGE_END, messageId: id });
-            events.push({ type: EventType.REASONING_END, messageId: id });
+            events.push({
+                type: EventType.ACTIVITY_SNAPSHOT,
+                messageId: id,
+                activityType: "PLAN",
+                content: { goals: text },
+                replace: true,
+            });
             return events;
         }
         if (e.op === "SEND") {
@@ -163,19 +168,20 @@ export default class Translator {
         return events;
     }
 
-    // §agui-replay — the workspace log as AG-UI history: model SENDs become assistant messages
-    // (the conversation's spine); everything else stays reachable through live plurnk.row
-    // rendering, not duplicated into message history. Wire rows arrive as the log.read
-    // projection (tx parsed).
+    // §agui-replay — the workspace log as AG-UI history: model PLANs retain their
+    // activity identity and model SENDs become assistant messages. Everything else
+    // stays reachable through live plurnk.row rendering. Wire rows arrive as the
+    // log.read projection (tx parsed).
     replay(entries: Array<Record<string, unknown>>): AguiEvent[] {
-        const messages: Array<{ id: string; role: string; content: string }> = [];
+        const messages: Array<ActivityMessage | AssistantMessage> = [];
         for (const e of entries) {
-            if (e.op === "SEND" && e.origin === "model") {
-                const text = Translator.#txBody(e.tx);
-                if (text.length > 0) messages.push({ id: String(e.coordinate ?? e.id), role: "assistant", content: text });
-            }
+            if (e.origin !== "model") continue;
+            const id = String(e.coordinate ?? e.id);
+            const text = Translator.#txBody(e.tx);
+            if (e.op === "PLAN") messages.push({ id, role: "activity", activityType: "PLAN", content: { goals: text } });
+            if (e.op === "SEND" && text.length > 0) messages.push({ id, role: "assistant", content: text });
         }
-        return [{ type: EventType.MESSAGES_SNAPSHOT, messages } as AguiEvent];
+        return [{ type: EventType.MESSAGES_SNAPSHOT, messages }];
     }
 
     notice(notice: unknown): AguiEvent[] {

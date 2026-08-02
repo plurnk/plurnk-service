@@ -142,7 +142,7 @@ test("model-origin KILL passes the log write gate and erases the addressed row",
     try {
         // A real model-origin row at coordinate /1/1/1 (loop seq 1, turn seq 1, sequence 1).
         const plan = await engine.dispatch({
-            statement: planStmt({ body: "stale reasoning to curate away" }),
+            statement: planStmt({ body: "obsolete goals to curate away" }),
             workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId, sequence: 1, origin: "model",
         });
         assert.equal(plan.status, 200);
@@ -159,7 +159,7 @@ test("model-origin KILL passes the log write gate and erases the addressed row",
     } finally { await db.close(); }
 });
 
-test("Engine.dispatch: PLAN is a logged no-op (200) whose reasoning body survives into the log row's tx", async () => {
+test("Engine.dispatch: PLAN is a logged no-op (200) whose intended goals survive into the log row's tx", async () => {
     const { db, engine, env } = await setup();
     try {
         const plan = await engine.dispatch({

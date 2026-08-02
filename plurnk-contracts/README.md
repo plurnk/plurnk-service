@@ -79,7 +79,7 @@ Exit `0` on clean parse, `1` on any error or unparsed tail.
 | WORK | optional Git branch    | required prompt         | n/a              |
 | FORK | optional Git branch    | required prompt         | n/a              |
 | KILL | numeric operation code | annotation (opaque)     | n/a              |
-| PLAN | tags                   | reasoning text          | n/a              |
+| PLAN | tags                   | intended goals          | n/a              |
 
 On READ, a matcher selects resources against their full readable content and
 the line marker projects text from every selected resource. Without one, READ
@@ -200,7 +200,7 @@ Nesting: outer body may contain inner `<<OP:…:OP` statements; outer must use a
 32. Permanently delete an entry
 	<<KILL(worker:///obsolete/note)::KILL
 
-33. Think aloud — reasoning recorded to the log
+33. Record intended goals in the log
 	<<PLAN:Need the capital fact; discover via wiki, record to known, deliver.:PLAN
 
 34. Insert text at line 3, column 1 (equal exact endpoints replace nothing)
