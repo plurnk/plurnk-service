@@ -1,11 +1,6 @@
 // SPEC {§actor-boundary} — the actor boundary (isolation by worker, two doors, self-hosting).
-//
-// The contract landed (Phase 0); this is its rule-C skeleton. One invariant is
-// already true and pinned for real (no-mutex); the rest are deferred-red until
-// the self-hosting refactor builds the machinery they assert — each cites its
-// anchor (so the spec-anchor guard is satisfied) and names the phase that turns
-// it green. A red test for an unbuilt contract is the point: it stops {§actor-boundary}
-// shipping as a façade, the way {§membership} membership once did.
+// Composed coverage for structural log isolation, the environment/voice doors,
+// and ordinary runtime-owned operations through the reserved plurnk worker.
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -135,15 +130,10 @@ test("an idle worker wakes on an inject (voice), never on a delta (a sibling's s
     });
 });
 
-test("runtime work is an ephemeral plurnk worker firing ops — the EDIT lands in the plurnk worker's log; a sibling reaches the result through the environment door", async () => {
-    // The keystone (dispatchAsPlurnk) is BUILT, and its proven use — materializing a PLURNK_SERVICE_MD_<ALIAS>
-    // doc — IS the self-hosting contract: a runtime op runs as the reserved `plurnk` actor, not a
-    // privileged engine write. doc-injection.test.ts pins the negatives (the EDIT is absent from the
-    // model's log; the model sees only the READ). Here we pin the POSITIVE structure the anchor states:
-    // the EDIT is IN the plurnk worker's log (origin=plurnk), and the model worker reaches the resulting entry
-    // through the shared filesystem — the environment door — exactly as it would any sibling actor's edit.
-    // (The {§env-delta} materialization + git auto-add legs repatriate onto this same seam later, gated on
-    // the Multi-repo membership change-detector; this proves the seam itself, decoupled from that.)
+test("runtime-owned entry work uses the durable plurnk worker and an ephemeral loop", async () => {
+    // PLURNK_SERVICE_MD_<ALIAS> is operation-shaped runtime work, so it uses
+    // DispatchAsPlurnk. The EDIT belongs to the reserved worker's fresh loop;
+    // the model reaches only the resulting shared entry through its own READ.
     const dir = await mkdtemp(join(tmpdir(), "plurnk-selfhost-"));
     const docPath = join(dir, "selfhost.md");
     await writeFile(docPath, "# Self-hosting\nThe runtime is an actor.\n", "utf8");
@@ -161,7 +151,7 @@ test("runtime work is an ephemeral plurnk worker firing ops — the EDIT lands i
                 // 1. The reserved plurnk worker exists, is distinct from the model worker, and OWNS the
                 //    materializing EDIT — an ordinary actor doing ops, not the engine writing privileged.
                 const plurnkWorker = (await db.envelope_get_worker_by_name.get<{ id: number }>({ workspace_id: workspaceId, name: "plurnk" }))!;
-                assert.ok(plurnkWorker !== undefined, "the reserved plurnk worker was spawned to do the runtime work");
+                assert.ok(plurnkWorker !== undefined, "the reserved plurnk worker exists for runtime-owned operations");
                 assert.notEqual(plurnkWorker.id, modelWorkerId, "the plurnk worker is a sibling actor, distinct from the model worker");
                 const plurnkLoop = await db.test_get_loop_by_worker.get<{ id: number }>({ worker_id: plurnkWorker.id });
                 const plurnkLoopStatus = await db.test_get_loop_status.get<{ status: number }>({ id: plurnkLoop?.id });

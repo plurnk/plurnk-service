@@ -444,7 +444,7 @@ export default class PacketBuilder {
                     if (!workspaceEnabled(tag)) continue; // #328 — workspace-disabled tags aren't advertised
                     const entry = executors.entry(tag);
                     // #240 — the example IS the oneliner (a bare op, fenced below); the fuller doc
-                    // materializes at plurnk://docs/<tag>.md. No example → no line.
+                    // materializes at worker://plurnk/docs/<tag>.md. No example → no line.
                     if (entry?.example) executorOps.push(entry.example);
                 }
             }
@@ -455,8 +455,8 @@ export default class PacketBuilder {
     }
 
     // #note12 — the plugin-provided reference docs (schemes' + execs' `documentation`),
-    // materialized at plurnk:///docs/<name>.md by loop_run (like operator docs) so the
-    // catalogue's doc-links READ and the manifest carries each doc's token weight.
+    // materialized at worker://plurnk/docs/<name>.md by LoopDocs (like operator
+    // docs) so the catalog can expose each doc's token weight.
     async docEntries(workspaceId: number): Promise<Array<{ name: string; content: string }>> {
         const out = this.#schemes.docs(); // scheme docs already drop PLURNK_SERVICE_DOCS_EXCLUDE names
         // {§send-300-choices} — the conditional teaching: questions.md (from the docs corpus)

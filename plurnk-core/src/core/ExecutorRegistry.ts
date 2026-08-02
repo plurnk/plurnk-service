@@ -29,8 +29,8 @@ export interface RegistryEntry {
     // One-line self-documenting usage example for the tag (plurnk-execs#7),
     // surfaced in the ## Registered Executable Tools sheet. "" when the package omits it.
     readonly example: string;
-    // Fuller reference doc for the tag (plurnk-execs ExecInfo.documentation), materialized
-    // at plurnk:///docs/<tag>.md and linked from the tools sheet. "" when the package omits it. #note12
+    // Fuller reference doc for the tag (plurnk-execs ExecInfo.documentation),
+    // materialized at worker://plurnk/docs/<tag>.md. "" when omitted.
     readonly documentation: string;
     readonly available: boolean;
     readonly detail: string | undefined;

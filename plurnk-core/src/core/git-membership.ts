@@ -62,7 +62,8 @@ export default class GitMembership {
 
     // {§fs-write-surface} — the blind-write closure git half: would git ADMIT a create at
     // key (untracked-not-ignored)? check-ignore exit 0 = ignored (refuse), 1 = clean
-    // (admit via auto-add), anything else (128, no repo) = git grants nothing here.
+    // (automatic membership admission, never `git add`), anything else (128, no
+    // repo) = git grants nothing here.
     static async wouldGitAdmit(root: string, key: string, signal?: AbortSignal): Promise<boolean> {
         try {
             await GitMembership.#execFileP("git", ["check-ignore", "-q", "--", key], { cwd: root, signal, env: hermeticGitEnv() });
@@ -97,7 +98,7 @@ export default class GitMembership {
         return files;
     }
 
-    // Untracked-but-not-ignored files of one repo (SPEC {§membership-auto-add}) —
+    // Untracked-but-not-ignored members of one repo ({§membership-auto-add}) —
     // GitIso.untrackedFiles (the differential-gated pruning ignore-walk) or native `git ls-files
     // --others --exclude-standard -z`. A model-created file is a repo
     // member the moment it exists — no git-stage required — while `.gitignore` still filters it.

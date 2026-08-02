@@ -143,9 +143,15 @@ Server posture: this package is the runtime. User-facing CLI lives in `plurnk` a
 
 ### §actor-boundary The actor boundary: isolation by worker, two doors, self-hosting
 
-**Question.** A workspace holds many workers — model, client, plurnk ({§lifecycle-terms}, {§authority-terms}) — over one shared manifest. What keeps one worker's activity out of another's conversation; what are the *only* ways a worker's work reaches another; and does the engine's own work obey the boundary or get a privileged back channel?
+```mermaid
+flowchart LR
+    actor["Worker A"] -->|"shared file or shared entry op"| state["Shared project files<br/>and shared workspace entries"]
+    state -->|"folded attributed delta<br/>environment door"| log["Worker B log"]
+    actor -->|"SEND(worker://B)<br/>voice door"| log
+    client["User / client"] -->|"loop.inject<br/>voice door"| log
+```
 
-§actor-boundary-isolation **Decision — isolation by worker; the model is not
+§actor-boundary-isolation **Isolation is by worker; the model is not
 privileged.** A packet renders exactly one worker's log — the assembling
 worker's — against the workspace's shared manifest ({§packet}). A worker cannot
 see another's log: isolation is *structural*, a consequence of "a worker owns
@@ -156,33 +162,98 @@ render-time filter.
 **attribution** — the delta's provenance ({§env-delta}) — and is never read to
 filter a row.
 
-§actor-boundary-two-doors **Two doors, and only two.** A worker's work reaches another worker by exactly two channels, and a private log is reachable no other way:
-- the **environment door** — a write to a *shared entry* surfaces to every worker sharing it as a folded, attributed delta ({§env-delta}). *State.*
-- the **voice door** — an **inject** delivers a turn into a *specific* worker's log; `btw` is the user's mid-loop inject. *Message.*
+§actor-boundary-two-doors **Cross-worker arrival is limited to two doors.**
+An explicit READ is not an arrival: the reading worker deliberately addresses a
+file or ancestry-authorized entry through ordinary dispatch ({§worker-read-scope}).
+
+| Door        | Carries                                                                                 | Wake behavior                                                    |
+| ----------- | --------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| Environment | A change to a shared project file or shared worker entry, as a folded attributed delta. | Ambient state never wakes an idle worker ({§env-delta}).         |
+| Voice       | A directed `loop.inject` or `SEND(worker://name)` message.                              | An active worker folds it into its next turn; an idle one wakes. |
 
 §actor-boundary-no-mutex **Wild west by default; explicit branch batches are the exception.** Ordinary workers share the manifest without locks. Coordination is cooperative and softly fenced (the {§membership} `read-only` overlay, a workspace policy, bounds every worker's writable surface uniformly — {§machine-processes}); a conflict *surfaces* as a delta rather than being prevented. A branch-tagged WORK/FORK opts the whole workspace into the bounded, exclusive Git transaction in {§worker-branch-batch}. It is not a general entry mutex or a hidden per-worker filesystem.
 
-§actor-boundary-passive-wake **Passive wake.** An idle worker wakes on exactly two events, both *directed at the worker*: a prompt injected into it — the **voice door** (a user/system `loop.inject`, and once `worker://` lands a sibling's `SEND(worker://<name>)`) — or a **stream-status transition** on a subscription it opened ({§channel-state}). Everything ambient is a delta — a sibling's edit to a shared entry, an out-of-band disk change — and a delta **never** wakes; it queues and drains at the next turn one of those two events produces ({§env-delta}).
+§actor-boundary-passive-wake **Passive wake follows ownership.** A directed
+voice wakes an idle worker. A parked continuation resumes when an obligation it
+owns — a child or stream — reaches an observable transition ({§worker-loop-lifecycle}).
+An ambient environment delta never wakes; it queues until one of those directed
+events produces a turn ({§env-delta}). The obligation edge is continuation
+control, not a third door through which arbitrary sibling state can enter.
 
-§actor-boundary-self-hosting **Self-hosting — the runtime is an actor, not a back channel.** Runtime-initiated work (fs reconciliation {§membership}, git auto-add) is an **ephemeral `plurnk` worker** firing ordinary ops, seen by other workers through the environment door like any actor's — not a privileged engine pathway. The engine keeps only the irreducible kernel workers stand on (spawn, dispatch, packet assembly, the budget rails {§grinder}, the fs-watch); everything expressible as ops on workspace entries is a worker doing ops through the same engine dispatch path client actions use ({§methods-op-mirror}). Dogfooding is the architecture, not a test mode.
+§actor-boundary-self-hosting **Use the actor path when the work has an
+operation; retain irreducible rails in the kernel.** The workspace has one
+reserved `plurnk` worker. It is durable; `DispatchAsPlurnk` opens a fresh
+administrative loop and turn for each ordinary operation batch. Other workers
+never receive its private log. They deliberately READ its published entries;
+ambient shared-state changes still cross only through the environment door.
 
-**Migration path.** Largely realized: `Engine.dispatch` is origin-agnostic; client actions run in a client worker through `dispatchClientAction`; plurnk EDITs already carry `origin=plurnk`. The keystone is **built** — `dispatchAsPlurnk` spawns the workspace's reserved `plurnk` worker and fires ops through dispatch; its uses so far (operator docs below; the fs-divergence narration) land in the plurnk worker's log. The line that remains is one of *kind*, not a list of pending dispatches: work **expressible as an op** belongs on the keystone; work that is **not** stays kernel. Disk→entry materialization is the latter — *ingestion* is the inverse of an EDIT (which proposes egress to disk, {§membership-edit-membership-gate}), so it has no actor op and remains fs-watch kernel, paired with the plurnk worker's filtered `source=file` narration ({§env-delta}) so a sibling pulls only true divergences, not every re-sync. Search-index maintenance is likewise pre-model kernel work, not an entry-creating op; catalog rendering remains an independent read-only projection. The one outstanding *expressible* piece is **git auto-add** — a model-created file surfaced as a plurnk-worker op — gated on the {§membership} repo-overlay still being built.
+| Work                                    | Owning path                                                         | Why                                                                                 |
+| --------------------------------------- | ------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| Operator/client reference documents     | Reserved `plurnk` worker; ordinary EDIT through engine dispatch.    | Creating or replacing an entry is already an operation.                             |
+| Git membership and disk materialization | Kernel `GitMembership` / entry CRUD.                                | Ingesting existing disk state is not a model-authored EDIT.                         |
+| Disk-divergence narration               | Kernel writes an EDIT-shaped `source=file` row to the `plurnk` log. | It reports an environment event honestly; no operation is fabricated as having run. |
+| Search derivation and catalog render    | Kernel.                                                             | They are indexes and read-only projections, not entry operations.                   |
+| Packet assembly and budget rails        | Kernel.                                                             | They are the execution substrate on which actor operations depend.                  |
 
-§actor-boundary-doc-injection **The keystone's first use: operator reference docs.** `PLURNK_SERVICE_MD_<ALIAS>=<path>` ({§operator-config}) materializes `<path>` as a `plurnk:///<ALIAS>.md` entry — a `dispatchAsPlurnk` EDIT in the plurnk worker, **not** the model's — and the model's turn-0 foists a READ of it. The model reads the doc inline while the materializing EDIT stays out of its log: idiomatic context injection, an ordinary entry + READ rather than a bespoke packet section. The same `PLURNK_SERVICE_MD_*` convention cascades to clients.
+Git membership includes tracked and untracked-but-not-ignored project files
+({§membership-auto-add}); it does not stage them or run `git add`.
+
+§actor-boundary-doc-injection **Operator reference documents use the actor
+path.** `PLURNK_SERVICE_MD_<ALIAS>=<path>` ({§operator-config}) materializes
+`<path>` as `worker://plurnk/<ALIAS>.md` through a `DispatchAsPlurnk` EDIT, then
+foists a READ into each model worker's turn 0. The materializing EDIT remains in
+the `plurnk` worker's log; the model sees the shared entry through its own READ.
+Client-provided workspace documents union with the operator set at the same
+entry surface.
 
 §actor-boundary-catalog-preview **Catalog preview.** `PLURNK_SERVICE_FILES_ITEMS` foists turn-0 FINDs into the worker's first turn, so a worker opens with a navigable map instead of blank. An enabled preview always executes four orienting surveys: project files (`FIND(*)`), workspace commons (`FIND(worker:///*)`), the worker's own space (`FIND(worker://~/*)`), and kernel docs (`FIND(worker://plurnk/docs/**)`). Folder-capable entry plugins use the same shallow form; a scheme without folder scopes remains recursive. A shallow result is complete, not truncated: direct entries render normally and every deeper first-segment directory renders as an actionable `dir/**` summary with its recursive `items` and `tokens`. The small curated kernel-doc surface remains recursively enumerated, so the opening exemplar demonstrates both `*` and `**`. Every survey executes even when empty because zero results are useful orientation. A positive `N` caps only the file map's rendered rows, using the map's actual direct-entry-plus-directory count; `-1` renders the complete shallow map; unset / `0` disables previews. `log://` is absent because the current worker's log already renders in present mode.
 
 ### §machine-processes The machine and its processes: workspace, worker, fork
 
-**Question.** {§actor-boundary} isolates workers and lets the runtime self-host, but it stands on an ownership model it never states: what does a *workspace* own versus a *worker*; what is shared versus private; and what does a fork carry? Unstated, the downstream questions — which worker `log.read` reads, what a fork copies, where a per-client window onto the workspace would live — grow subtle, then metastasize. Drawn once, they vanish.
+A workspace owns the shared world; a worker owns one history and one private
+entry space on that world.
 
-**Decision — the workspace is the world; a worker is a log on it.** A **workspace** is the world: one shared filesystem — the `workspace`-scoped entries, surfaced as the per-scheme catalog (`FIND(scheme:///**)`, {§packet}) — under one membership overlay ({§membership}). Exactly one filesystem and one overlay per workspace; neither is per-worker. A **worker** is a process whose private memory is its **log** ({§lifecycle-terms}) — its loops, turns, and rows, each row carrying its own content, attribution (`origin`/`source`, {§env-delta}), and fold-state (`expanded`). A worker owns **no membership**; even its visibility is not a possession but a bit on its own rows. It is a *history over the shared world, not a world*.
+```mermaid
+flowchart TB
+    workspace["Workspace"] --> files["Project files"]
+    workspace --> commons["Shared worker entries<br/>worker:///..."]
+    workspace --> overlay["One membership overlay"]
+    workspace --> parent["Worker A"]
+    parent --> parentLog["Private log"]
+    parent --> parentEntries["Private worker entries<br/>worker://~/..."]
+    parent --> parentWork["Loops, turns, cancellation scope"]
+    parent -->|FORK| child["Worker B"]
+    parentLog -.->|"copy rows, tags, fold state"| childLog["Private log copy"]
+    parentEntries -.->|"copy; remap owner"| childEntries["Private worker entries copy"]
+    files -->|"shared live"| child
+    commons -->|"shared live"| child
+    overlay -->|"shared policy"| child
+```
 
-§machine-processes-one-filesystem **One filesystem.** The entries are the workspace's: `entries.workspace_id`, never a worker. A write by any worker is a write to the one filesystem every worker reads; there is no per-worker entry set.
+§machine-processes-one-filesystem **Each workspace has one project filesystem.**
 
-§machine-processes-one-overlay **One overlay.** Membership — `git ls-files ∪ pick − hide` with `view` read-only ({§membership}) — is the workspace's: `workspace_constraints.workspace_id`, never a worker. It is workspace *curation*, and the workspace *is* the workspace; two workers are two conversations about one curated workspace and see the same one. Divergent membership is a different workspace, never a per-worker overlay.
+§machine-processes-one-overlay **Each workspace has one membership overlay.**
 
-§machine-processes-worker-is-its-log **A worker's memory of the world is its log — no shadow beside it.** A worker's view of the shared world is the log and only the log — never a per-worker snapshot. *What I am looking at* (OPEN/FOLD) is `log_entries.expanded`, a bit on the worker's own rows, toggled by ordinary `log:///` ops — not a second store, and never membership ({§open-fold}). *What I last saw* needs no shadow either: a worker learns its world moved through log entries ({§env-delta}) — a sibling's write broadcast into its log, an out-of-band disk change detected against the entry's own content and broadcast the same way — never through a per-worker snapshot the worker cannot see. (Its private **scratch** — worker-scope entries, {§worker-scheme} — is the worker's own evolving workspace, owned not shadowed: a store it writes and reads deliberately, not a hidden mirror of the shared world. The doctrine is *no shadow of the world*, not *no private state*.)
+§machine-processes-fork-copies-the-log **A fork copies the parent's log as
+terminal history.**
+
+| State                                                 | Owner             | Fork behavior                                                                               |
+| ----------------------------------------------------- | ----------------- | ------------------------------------------------------------------------------------------- |
+| Project files ({§machine-processes-one-filesystem})   | Workspace         | Shared live; a fork does not create another checkout.                                       |
+| Shared worker entries (`worker:///...`)               | Workspace commons | Shared live.                                                                                |
+| Membership overlay ({§machine-processes-one-overlay}) | Workspace         | Shared unchanged; divergent membership requires another workspace.                          |
+| Log items ({§machine-processes-fork-copies-the-log})  | Worker            | Rows, tags, and fold state are copied as terminal history.                                  |
+| Private worker entries (`worker://~/...`)             | Worker            | Deep-copied with ownership remapped; parent and child then diverge.                         |
+| Active loops, turns, and cancellation                 | Worker            | Never copied as live work; inherited structure is terminal history, then a new loop starts. |
+
+§machine-processes-worker-is-its-log **A worker's conversational memory of
+the shared world is its log, with no hidden per-worker snapshot beside it.**
+OPEN/FOLD changes `log_entries.expanded` on that worker's rows ({§open-fold});
+environment changes arrive as attributed log entries ({§env-delta}). Private
+worker entries are deliberate scratch that the worker reads and writes through
+`worker://~/...`, not an invisible mirror of shared state. The environment door
+therefore carries only shared project-file and shared-entry changes; #62 tracks
+the implementation defect that currently admits private scratch deltas.
 
 §machine-processes-model-worker-readable **A worker's log is private to packets, not to the workspace.** Isolation ({§actor-boundary}) governs what an *actor* sees — its own worker, never a sibling's. It does not wall off the client interface: `readLog({ workspaceId, workerId })` may read any ownership-verified worker in that workspace, and `listWorkers` enumerates them. A client-interface module chooses the default worker from its own conversation binding. The read is observation, never packet membership — no actor sees it.
 
@@ -190,22 +261,15 @@ filter a row.
 
 §worker-primary **The primary worker is the lineage root.** The PRIMARY worker of a turn's lineage is the no-parent root reached by walking `parent_worker_id` up; a no-parent worker is its own primary. Core supplies it on the first-party metadata channel alongside `Worker-Id` (same gate, computed per turn), stamped on EVERY turn including the primary's own (where it equals `Worker-Id`) — absent-with-a-Worker-Id is a contract violation, never a silent "assume primary." An unresolvable root (a corrupt/cyclic parent chain the `parent != id` CHECK forbids) fails hard. Providers emits it as `Plurnk-Worker-Primary`; a consumer routes primary-vs-spawned by equality (`Worker-Primary == Worker-Id` ⇒ the primary; `!=` ⇒ any-depth spawn, no depth math) and groups the worker tree by the shared root (#522).
 
-**Fork — copy the log, share the world.** A fork is a new worker in the *same*
-workspace (`workers.parent_worker_id`, {§lifecycle-terms}).
+§machine-processes-fork-shares-the-world **A fork copies worker-owned history
+and scratch while sharing workspace-owned state.** It is a new worker in the
+same workspace (`workers.parent_worker_id`, {§lifecycle-terms}); project files,
+shared entries, and membership remain live and uncopied.
 
-- §machine-processes-fork-copies-the-log **Copy the log.** Its rows and their
-  fold-state ride along, so the branch inherits everything the parent observed
-  ({§env-delta} makes a worker's timeline self-contained for exactly this) and
-  diverges freely after.
-- §machine-processes-fork-shares-the-world **Share the world.** The one
-  filesystem and one overlay remain live and uncopied because the worker never
-  owned them.
-
-§machine-processes-no-fork-workspace **A workspace cannot be forked.** There is nothing to branch — a workspace *is* the shared ground. `workers` carries `parent_worker_id`; `workspaces` carries no parent. Parallel histories over one workspace are forks of its workers; a divergent workspace is a new workspace.
-
-**Rationale.** The model falls out of one correction: *a worker is a history over a shared world, not a world.* Entries are the world (workspace); the log is the history (worker); forking a history need not copy the world, and a worker accumulates nothing the log does not already hold. The overlay's workspace home is forced the same way — it is the world's curation, and the world is shared; per-worker it fragments the one manifest, forks the membership read-gate (the {§membership} security line), and duplicates what FOLD already does at the right level. Every "which worker / what's copied / where's the per-client window" answers itself once the world/log line is drawn.
-
-**Migration path.** Mostly stating what the schema already carries: `workers.parent_worker_id` and the parentless `workspaces` exist ({§lifecycle-terms}); `workspace_constraints` is workspace-level ({§membership}); {§env-delta} already makes a worker's timeline self-contained, so a fork's log copy suffices. Additive: `worker.fork` over the wire (the engine fork is built). Two repatriations: {§actor-boundary}'s "read-only overlay scopes a worker's writable surface" becomes a *workspace* policy bounding every worker uniformly; and the {§env-delta} environment door has shed its per-worker snapshot — a worker's only memory is its log, so drift is pulled from the shared log (other actors' edits since the worker's last turn) and the filesystem narrates its own through the `plurnk` worker, both already log entries, never a per-worker shadow.
+§machine-processes-no-fork-workspace **A workspace cannot be forked.**
+`workers` carries `parent_worker_id`; `workspaces` carries no parent. Parallel
+histories over one workspace are worker forks. A divergent project filesystem
+or membership overlay requires a new workspace.
 
 ### §worker-scheme The worker:// scheme — the knowledgebase (commons, own space, named spaces, the kernel surface) and worker control (spawn, irc, fork, terminate, cap, collect)
 
@@ -1331,7 +1395,7 @@ Model selection: separate alias cascade in `ProviderRegistry` ({§provider-insta
 | `PLURNK_SERVICE_PREVIEW_CHARS`                              | `1280` | Maximum characters in an ordinary bounded log-body projection; independently contains single-line bodies ({§body-projection}). |
 | `PLURNK_SERVICE_MIN_CYCLES`                                 | `3` | Min repetitions before cycle detection fires ({§engine-rails}). |
 | `PLURNK_SERVICE_MAX_CYCLE_PERIOD`                           | `4` | Max period length cycle detection examines ({§engine-rails}). |
-| `PLURNK_SERVICE_MD_<ALIAS>`                                 | (unset) | Operator reference doc: materializes `<path>` as `plurnk:///<ALIAS>.md`, auto-READ into every model worker's turn 0 ({§actor-boundary}). `~` expands to home. |
+| `PLURNK_SERVICE_MD_<ALIAS>`                                 | (unset) | Operator reference doc: materializes `<path>` as `worker://plurnk/<ALIAS>.md`, auto-READ into every model worker's turn 0 ({§actor-boundary-doc-injection}). `~` expands to home. |
 | `PLURNK_SERVICE_FILES_ITEMS`                                | `-1` | Turn-0 catalog preview. Folder-capable schemes render a complete one-level `*` map with `dir/**` rollups; kernel docs remain recursive. `-1` = complete maps; positive `N` caps only file-map rows; `0` / unset = off ({§actor-boundary-catalog-preview}). |
 | `PLURNK_SERVICE_PROPOSAL_TIMEOUT_MS`                        | (empty — waits indefinitely) | ms wait for a proposed entry (status=202) to be resolved before timing out. |
 | `PLURNK_PROVIDERS_REASONING` + `_BUDGET`                    | `adaptive` / (unset) | The activation/budget split (a numeric budget silently flipping template flags was secret flag-setting). `off | adaptive | on`; budget (tokens) REQUIRED when on. On llama-server the provider sends one cumulative response allowance per request; an explicit budget may tighten but cannot exceed the reasoning reserve. |
@@ -1965,11 +2029,11 @@ retain distinct contracts and lifetimes.
 
 §tools-capability-sheet The executable-tools capability sheet renders under `## Registered Executable Tools`, directly after the `definition` (plurnk.md) section and **above** `## Recap`. The heading defines the fenced examples as the closed set of valid executor selectors, not suggestions for an open-ended `[tag]` convention. Optional non-EXEC operations render separately under `## Enabled Optional Operations`, so the executable catalogue remains truthful. Both use `plurnk` fences (matching the Schemes catalog, #441 — one packet, one shape for op-example sheets), assembled by `PacketBuilder.#collectTools`; a prose notice (e.g. the EXEC-disabled line) stays beside the executor fence, and empty sections are omitted.
 
-**Contributors: the wired executor tags.** Each available executor tag *with an example* contributes ONE bare op — its canonical usage — into the `plurnk` fence (identical shape to the scheme directory, {§schemes}); its doc is materialized at `plurnk://docs/<tag>.md` and discovered via the turn-1 `FIND(plurnk://docs/**)` foist, not linked inline (#270). A tag with no example contributes nothing; `PLURNK_SERVICE_DOCS_EXCLUDE` drops a named tag's line + doc. The boot `ExecutorRegistry` probes availability per tag, retiring the model's blind `<<EXEC[sh]…`.
+**Contributors: the wired executor tags.** Each available executor tag *with an example* contributes ONE bare op — its canonical usage — into the `plurnk` fence (identical shape to the scheme directory, {§schemes}); its doc is materialized at `worker://plurnk/docs/<tag>.md` and discovered via the turn-1 `FIND(worker://plurnk/docs/**)` foist, not linked inline (#270). A tag with no example contributes nothing; `PLURNK_SERVICE_DOCS_EXCLUDE` drops a named tag's line + doc. The boot `ExecutorRegistry` probes availability per tag, retiring the model's blind `<<EXEC[sh]…`.
 
 ### §schemes user.schemes — the scheme directory
 
-§schemes-directory A `## Schemes` section renders in the system slot **after the definition (plurnk.md — grammar + imperatives) and the tools sheet** — a terse directory of the scheme families available this workspace, so the model knows what URI schemes exist before it acts. Each scheme that ships a `manifest.example` contributes ONE bare op — its canonical usage (no scheme prefix; the example self-documents) — into a `plurnk` fence ({§tools} shares the shape, #441). The doc is NOT linked inline (#270) — it is materialized at `plurnk://docs/<scheme>.md` and discovered via the turn-1 `FIND(plurnk://docs/**)` foist, keeping the raw packet free of doc links. The in-tree core schemes author their depth in `docs/<name>.md` (loaded at boot, shipped with the package); plugin schemes ship `manifest.documentation`. The verbose semantics live in that pull doc (materialized like any entry, READ on demand), not the hot path — terse pushes, depth pulls, the examples fenced like the tools sheet ({§tools}). A scheme with no example (provisional) is omitted; `PLURNK_SERVICE_DOCS_EXCLUDE` drops a named scheme's line + doc.
+§schemes-directory A `## Schemes` section renders in the system slot **after the definition (plurnk.md — grammar + imperatives) and the tools sheet** — a terse directory of the scheme families available this workspace, so the model knows what URI schemes exist before it acts. Each scheme that ships a `manifest.example` contributes ONE bare op — its canonical usage (no scheme prefix; the example self-documents) — into a `plurnk` fence ({§tools} shares the shape, #441). The doc is NOT linked inline (#270) — it is materialized at `worker://plurnk/docs/<scheme>.md` and discovered via the turn-1 `FIND(worker://plurnk/docs/**)` foist, keeping the raw packet free of doc links. The in-tree core schemes author their depth in `docs/<name>.md` (loaded at boot, shipped with the package); plugin schemes ship `manifest.documentation`. The verbose semantics live in that pull doc (materialized like any entry, READ on demand), not the hot path — terse pushes, depth pulls, the examples fenced like the tools sheet ({§tools}). A scheme with no example (provisional) is omitted; `PLURNK_SERVICE_DOCS_EXCLUDE` drops a named scheme's line + doc.
 
 ### §inject system.inject — the operator injection
 

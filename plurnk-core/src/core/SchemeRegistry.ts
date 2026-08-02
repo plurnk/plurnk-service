@@ -151,8 +151,8 @@ export default class SchemeRegistry {
     // 0.49+ teaches grammar/dialects only, not the scheme set (grammar#239), so the
     // service advertises what schemes exist at packet-time. Each handler that ships a
     // `manifest.example` contributes ONE terse line — its canonical usage — plus a
-    // doc-link when it ships `manifest.documentation` (materialized at
-    // plurnk://docs/<name>.md by loop_run, READ on demand). The verbose semantics live
+    // pull doc when it ships `manifest.documentation` (materialized at
+    // worker://plurnk/docs/<name>.md by LoopDocs, READ on demand). The verbose semantics live
     // in that pull doc, not here: terse pushes, depth pulls — exactly the exec tools
     // sheet's shape (#collectTools). Insertion order; a scheme with no example
     // (provisional, e.g. skill) is omitted. The doc's token weight rides its manifest entry.
@@ -171,8 +171,8 @@ export default class SchemeRegistry {
         return lines.length > 0 ? `\`\`\`plurnk\n${lines.join("\n")}\n\`\`\`` : "";
     }
 
-    // #note12 — schemes that ship a `documentation` string, for materialization at
-    // plurnk:///docs/<name>.md. Optional + currently none in-tree; future-proofs the link.
+    // Schemes that ship a `documentation` string for materialization at
+    // worker://plurnk/docs/<name>.md. Optional; currently none in-tree.
     docs(): Array<{ name: string; content: string }> {
         const out: Array<{ name: string; content: string }> = [];
         const excluded = docsExcludeSet();

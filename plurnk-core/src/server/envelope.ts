@@ -246,10 +246,9 @@ export default class Envelope {
         return worker.id;
     }
 
-    // Self-hosting keystone ({§actor-boundary}): the workspace's reserved `plurnk` worker, where the
-    // runtime acts as an ordinary actor (doc materialization today; fs/git work
-    // later). One per workspace, reused; its log is the runtime's own — invisible
-    // to other workers except through the shared workspace filesystem.
+    // Self-hosting keystone ({§actor-boundary-self-hosting}): the workspace's
+    // reserved `plurnk` worker. One durable worker per workspace, reused across
+    // the ephemeral administrative loops that dispatch ordinary runtime-owned ops.
     static async ensurePlurnkWorker(db: Db, workspaceId: number): Promise<number> {
         const existing = await db.envelope_get_worker_by_name.get<{ id: number }>({ workspace_id: workspaceId, name: "plurnk" });
         if (existing !== undefined) return existing.id;

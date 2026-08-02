@@ -1,12 +1,6 @@
-// SPEC {§machine-processes} — the machine and its processes (workspace = world, worker = log, fork).
-//
-// These prove the ownership line through BEHAVIOR on the real op surface — never
-// by reflecting the schema catalog (no sqlite_master, no PRAGMA: that reaches
-// around SqlRite and tests shape instead of conduct). One invariant is true today
-// and asserted for real; the rest are deferred-red conformance targets for the epic
-// this section defines. {§machine-processes-worker-is-its-log} is now GREEN — worker_watermarks is
-// gone, and the proof (a worker learns a sibling's edit purely through its pulled log, no
-// shadow) lives in Engine.env-delta.test.ts where the runTurn harness exercises the pull.
+// SPEC {§machine-processes} — behavioral ownership at the real operation seam:
+// shared workspace entries, worker-owned logs, and fork topology. Dedicated
+// membership and worker-entry specimens own the overlay and private-scratch rows.
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -27,7 +21,7 @@ const editStmt = (target: UrlPath, body: string, marker: LineMarker | null = nul
     position: { line: 1, column: 1 },
 });
 
-test("the entries are the workspace's — a second worker writing the same path updates the one shared entry, it does not mint a second", async () => {
+test("a workspace-commons entry is shared — a second worker updates it rather than minting another", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `ws-${crypto.randomUUID()}`);
@@ -43,11 +37,11 @@ test("the entries are the workspace's — a second worker writing the same path 
         const target = urlPath("worker", "/shared.md");
         const resultA = await engine.dispatch({ statement: editStmt(target, "from worker A"), workspaceId, workerId: a.workerId, loopId: a.loopId, turnId: a.turnId, sequence: 1, origin: "model" });
         const resultB = await engine.dispatch({ statement: editStmt(target, "from worker B", fullReplace), workspaceId, workerId: b.workerId, loopId: b.loopId, turnId: b.turnId, sequence: 1, origin: "model" });
-        // A creates the entry (201) in the workspace's one filesystem; B, a different
-        // worker at the same (scope, scheme, pathname), UPDATES that one entry (200).
-        // A per-worker filesystem would have minted a second entry and 201'd again.
-        assert.equal(resultA.status, 201, "worker A creates the entry in the workspace's filesystem");
-        assert.equal(resultB.status, 200, "worker B writing the SAME path updates the one shared entry — the filesystem is the workspace's, not the worker's");
+        // A creates one commons entry (201); B addresses the same commons identity
+        // and updates it (200). Private worker entries use an owner authority and
+        // are deliberately a different contract.
+        assert.equal(resultA.status, 201, "worker A creates the workspace-commons entry");
+        assert.equal(resultB.status, 200, "worker B updates the same shared entry instead of minting another");
     } finally { db.close(); }
 });
 
@@ -99,7 +93,7 @@ test("a fork carries a log row's region tags along with its fold-state", async (
     } finally { db.close(); }
 });
 
-test("a fork shares the workspace's filesystem and overlay, live and uncopied", async () => {
+test("a fork shares workspace-commons entries live and uncopied", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `ws-${crypto.randomUUID()}`);
@@ -114,8 +108,8 @@ test("a fork shares the workspace's filesystem and overlay, live and uncopied", 
 
         const after = (await db.engine_list_workspace_entries.all<{ entry_id: number }>({ workspace_id: workspaceId })).length;
         const branch = await db.test_worker_lineage.get<{ workspace_id: number }>({ id: branchWorkerId });
-        assert.equal(branch!.workspace_id, workspaceId, "the branch lives in the parent's workspace — one shared world");
-        assert.equal(after, before, "the fork copied no entries — the filesystem is shared, not duplicated");
+        assert.equal(branch!.workspace_id, workspaceId, "the branch lives in the parent's workspace");
+        assert.equal(after, before, "the fork did not duplicate the workspace-commons entry");
     } finally { db.close(); }
 });
 

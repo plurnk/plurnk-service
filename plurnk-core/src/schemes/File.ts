@@ -281,8 +281,9 @@ export default class File extends CoreSchemeAdapterBase {
             baseSig = member.synced_sig;
         } else {
             // {§fs-write-surface} 1 — the blind-write closure: an exclusive CREATE is legal only
-            // where the RESULT will be a member. A client pick admits it; else git's auto-add
-            // must (untracked-not-ignored). A non-git root grants nothing by itself.
+            // where the RESULT will be a member. A client pick admits it; otherwise
+            // Git's untracked-not-ignored membership must ({§membership-auto-add}).
+            // No staging occurs. A non-git root grants nothing by itself.
             const picks = (await ctx.db.crud_list_workspace_constraints.all<{ effect: string; glob: string }>({ workspace_id: ctx.workspaceId }))
                 .filter((c) => c.effect === "pick").map((c) => c.glob);
             const clientAdmits = picks.some((g) => matchesGlob(rel, g));

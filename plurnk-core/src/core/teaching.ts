@@ -1,7 +1,7 @@
 // #240 — the shared teaching-line shape for the System Tools (exec tags) + System Schemes
 // directories: a terse `* <oneliner>`, rendered IDENTICALLY for execs and schemes. The example
 // self-documents its tag/scheme, so no service-added prefix. Reference docs are NOT linked inline
-// (#270): they're materialized at plurnk://docs/<name>.md and discovered via the turn-1
+// (#270): they're materialized at worker://plurnk/docs/<name>.md and discovered via the turn-1
 // FIND(worker://plurnk/docs/**) foist, keeping the raw packet free of doc links. `* ` bullets + bare op
 // forms match the packet's list/op rendering (no `- `, no backticks).
 export const teachingLine = (oneliner: string): string => `* ${oneliner}`;

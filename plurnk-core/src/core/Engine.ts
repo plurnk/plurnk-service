@@ -914,12 +914,12 @@ export default class Engine {
         if (seq === 1) {
             if (workerFirstLoop) nextActionIndex = 2;  // reserve sequence 1 for the turn-0 echo
             // Operator doc READs (PLURNK_SERVICE_MD_<ALIAS>, {§actor-boundary-doc-injection}). The docs were materialized
-            // as plurnk:///<entry> entries by the plurnk worker (loop_run, via the
+            // as worker://plurnk/<entry> entries by the plurnk worker (LoopDocs, via the
             // {§actor-boundary} keystone); foist a READ of each into THIS turn-0 so the model
             // reads them inline. It sees only the READ — the materializing EDIT
             // lives in the plurnk worker's log, never the model's.
             // #231 — env docs (PLURNK_SERVICE_MD_*) UNION the workspace's client docs; foist a READ of
-            // each materialized plurnk:///<alias>.md (loop_run materialized the same set).
+            // each materialized worker://plurnk/<alias>.md (LoopDocs materialized the same set).
             const { mdDocs } = await WorkspaceSettings.read(this.#db, workspaceId);
             // #269 — operator docs appear once per worker, on its first loop.
             for (const doc of workerFirstLoop ? await WorkspaceSettings.resolveDocs(mdDocs) : []) {
@@ -987,8 +987,8 @@ export default class Engine {
         // The persistent search-index pass (_search-index.maintain) attaches
         // every readable entry/log projection to complete graph/FTS/vector derivations.
         // NOT an action: no log entry, no sequence slot,
-        // not dispatched. There is no plurnk:///manifest.json entry — the catalog is served
-        // on demand by FIND: recursive when asked, shallow-mapped in the first turn below.
+        // not dispatched. There is no materialized manifest entry — the catalog
+        // is served on demand by FIND: recursive when asked, shallow-mapped below.
         // #312 — the turn's token gauge: the ACTIVE provider's tokenizer identity + exact counter
         // (mimetypes seam; provider upper bound surfaced as tokenizer_unavailable when inexact).
         // SPEC {§membership} D4/D5 — git-ls-files workspace membership, resolved at
@@ -1887,7 +1887,7 @@ export default class Engine {
     }
 
     // #note12 — the plugin-provided reference docs (schemes' + execs' `documentation`),
-    // materialized at plurnk:///docs/<name>.md by loop_run (like operator docs).
+    // materialized at worker://plurnk/docs/<name>.md by LoopDocs (like operator docs).
     docEntries(workspaceId: number): Promise<Array<{ name: string; content: string }>> {
         return this.#packets.docEntries(workspaceId);
     }
