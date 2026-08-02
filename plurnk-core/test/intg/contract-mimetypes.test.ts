@@ -181,7 +181,7 @@ test("SEND[410](path#fragment) deletes only the named channel; siblings remain (
 
         // Seed a two-channel entry directly (production Known is single-channel;
         // the 410-fragment path is channel-generic, so seed both channels).
-        const entry = await db.test_seed_entry_session.get<{ id: number }>({
+        const entry = await db.test_seed_entry_workspace.get<{ id: number }>({
             workspace_id: workspaceId, owner_id: await Owner.commonsId(db, workspaceId), scheme: "worker", pathname: "/multi",
         });
         const entryId = entry!.id;

@@ -531,7 +531,7 @@ test("GBNF: EXEC accepts an optional <timeout,poll> line slot (canonical signal,
 });
 
 test("GBNF: WORK/FORK require a worker target and non-empty prompt", () => {
-    // WORK spawns a fresh named worker; FORK branches the current run into a named child.
+    // WORK spawns a fresh named worker; FORK branches the current worker into a named child.
     assert.equal(derives("op-statement", "<<WORK(worker://worker-db):resolve the db field:WORK"), true);
     assert.equal(derives("op-statement", "<<FORK(worker://recheck):re-derive from a primary source:FORK"), true);
     // The rail REQUIRES the target — a nameless worker/branch can't be addressed.

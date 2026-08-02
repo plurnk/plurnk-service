@@ -44,7 +44,7 @@ export default class ProposalHitl {
             if (method !== "loop/proposal" || workspaceId === null) return;
             // Server-owned stopped-worlds (flags.auto / noProposals
             // auto-reject) settle in-process moments later — the loop continues on this
-            // same run. Emitting a tool-call would TERMINATE the worker and orphan that
+            // same AG-UI Run. Emitting a tool-call would terminate the AG-UI Run and orphan that
             // continuation, so a tool-call strictly means client-owned.
             const flags = (params as ProposalNotification).flags as Record<string, unknown> | undefined;
             if (flags?.auto === true || flags?.noProposals === true) return;
@@ -66,7 +66,7 @@ export default class ProposalHitl {
         return pending.flatMap((p) => proposalToolCall(ProposalHitl.#normalize(p)));
     }
 
-    // A standard AG-UI resume run must address every pending interrupt for its
+    // A standard AG-UI resume Run must address every pending interrupt for its
     // exact worker before any proposal is released.
     async resolve(workspaceId: number, entries: ResumeEntry[]): Promise<{ loopId: number; workerId: number }> {
         const allPending = await this.#seam.pendingProposals(workspaceId);

@@ -66,7 +66,7 @@ const withWorkspaceRoot = async <T>(fn: (root: string, ctx: { db: Db; engine: En
     try {
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         const workspaceId = await insertWorkspace(db, `file-${crypto.randomUUID()}`);
-        await db.test_set_session_project_root.run({ id: workspaceId, project_root: root });
+        await db.test_set_workspace_project_root.run({ id: workspaceId, project_root: root });
         // {§fs-write-surface} — a non-git root grants nothing; the fixture is the CLIENT granting creates.
         await db.crud_insert_workspace_constraint.run({ workspace_id: workspaceId, effect: "pick", glob: "**" });
         const workerId = await insertWorker(db, workspaceId);

@@ -597,7 +597,7 @@ export default class Log extends CoreSchemeAdapterBase {
     }
 
     // {§log-region-tagging} — resolve OPEN[tag] to ids: candidates are the target's glob scope (the
-    // whole run when targetless — a bare OPEN[tag] recalls the entire tagged working-set),
+    // whole worker log when targetless — a bare OPEN[tag] recalls the entire tagged working-set),
     // AND-filtered to rows carrying EVERY listed tag. Zero matches is a no-op success (204), mirroring
     // #resolveIds — recalling a name that tags nothing steers nothing.
     async #resolveByTags(statement: OpenStatement | FoldStatement, tags: string[], ctx: PlurnkSchemeContext): Promise<{ status: number; ids: number[]; error?: string }> {

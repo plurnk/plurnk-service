@@ -4,7 +4,7 @@ The plurnk teaching corpus. Markdown consumed by [plurnk-service](https://github
 
 ## Contents
 
-- `docs/<scheme>.md` — per-scheme long-form teaching, materialized as `plurnk://docs/<scheme>.md` entries the model READs (known, unknown, run, log).
+- `docs/<scheme>.md` — per-scheme long-form teaching, materialized as `plurnk://docs/<scheme>.md` entries the model READs (known, unknown, worker, log).
 - `PLURNK_PERSONALITY.md` — the default operating policy, seeded once to `~/.plurnk/AGENTS.md` and foisted as `## Plurnk Service Policy`.
 - `requirements.md` — the static contract appended to every user packet (`system_requirements` default).
 

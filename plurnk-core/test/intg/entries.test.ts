@@ -4,7 +4,7 @@ import type { Db } from "../../src/core/Db.ts";
 import { openMigrated, insertWorkspace } from "./_helpers.ts";
 
 const insertWorkspaceEntry = async (db: Db, workspaceId: number, scheme: string | null, pathname: string): Promise<number> => {
-    const row = await db.test_entries_insert_session.get<{ id: number }>({ workspace_id: workspaceId, scheme, pathname });
+    const row = await db.test_entries_insert_workspace.get<{ id: number }>({ workspace_id: workspaceId, scheme, pathname });
     if (row === undefined) throw new Error("workspace entry insert returned no row");
     return row.id;
 };
@@ -29,7 +29,7 @@ test("entries: insert — workspace_id + owner_id populate", async () => {
     try {
         const workspaceId = await insertWorkspace(db, "ws-entries-workspace");
         await insertWorkspaceEntry(db, workspaceId, "worker", "foo");
-        const row = await db.test_entries_get_first_scope_session.get<{ workspace_id: number; owner_id: number }>();
+        const row = await db.test_entries_get_first_scope_workspace.get<{ workspace_id: number; owner_id: number }>();
         assert.equal(row?.workspace_id, workspaceId);
         assert.ok((row?.owner_id ?? 0) >= 1, "the commons owner is stamped ({§entry-owner})");
     } finally { await db.close(); }
@@ -40,7 +40,7 @@ test("entries: null workspace_id rejected", async () => {
     try {
         await insertWorkspace(db, `ws-${crypto.randomUUID()}`); // a commons owner exists → the constraint under test is the one that fires
         await assert.rejects(
-            () => db.test_entries_insert_session_no_workspace_id(),
+            () => db.test_entries_insert_workspace_no_workspace_id(),
             /CHECK constraint failed/,
         );
     } finally { await db.close(); }
@@ -88,7 +88,7 @@ test("entries: ON DELETE CASCADE via workspace", async () => {
         await insertWorkspaceEntry(db, workspaceId, "worker", "a");
         await insertWorkspaceEntry(db, workspaceId, "worker", "b");
         await insertEntry(db, "worker", "c");
-        await db.test_sessions_delete.run({ id: workspaceId });
+        await db.test_workspaces_delete.run({ id: workspaceId });
         const remaining = (await db.test_entries_count_all.get<{ n: number }>())?.n;
         assert.equal(remaining, 1);
     } finally { await db.close(); }
@@ -321,7 +321,7 @@ test("entry_channels: CASCADE chain workspace→entries→entry_channels", async
         const workspaceId = await insertWorkspace(db, "ws-channels-chain");
         const entryId = await insertWorkspaceEntry(db, workspaceId, "worker", "a");
         await db.test_entry_channels_insert_default.run({ entry_id: entryId, name: "body", content: "x", mimetype: "text/plain" });
-        await db.test_sessions_delete.run({ id: workspaceId });
+        await db.test_workspaces_delete.run({ id: workspaceId });
         const remaining = (await db.test_entry_channels_count_all.get<{ n: number }>())?.n;
         assert.equal(remaining, 0);
     } finally { await db.close(); }

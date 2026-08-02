@@ -11,7 +11,7 @@ this package's public behavior.
 Core owns:
 
 - daemon startup and shutdown;
-- SQLite persistence and migrations;
+- SQLite persistence and schema initialization;
 - workspaces, workers, loops, turns, and log entries;
 - packet assembly and model-loop orchestration;
 - operation dispatch and proposal lifecycle;
@@ -44,7 +44,8 @@ resources in `finally` blocks or test hooks.
 
 ## Boundaries
 
-- Treat database migrations and shared wire shapes as compatibility-sensitive.
+- Follow the repository's **No Migrations Yet** baseline rule for every SQLite
+  shape change; do not infer upgrade compatibility from SqlRite's terminology.
 - Put shared wire and model-language shapes in `plurnk-contracts`, and
   persistence-only types in core.
 - Keep AG-UI transport and event translation in `plurnk-agui`.

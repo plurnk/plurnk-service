@@ -54,7 +54,7 @@ ORDER BY created_at DESC;
 -- PREP: envelope_list_workspace_prompts
 -- #238 — a workspace's user prompts for client up/down history: the conversation worker's
 -- non-empty loop seeds, newest-first, capped. The conversation worker is origin='model' +
--- parentless; spawned/forked worker:// sub-runs (parent_worker_id set) are excluded — their
+-- parentless; spawned/forked child workers (parent_worker_id set) are excluded — their
 -- seed prompts are not user input.
 SELECT l.prompt
 FROM loops l
@@ -68,7 +68,7 @@ LIMIT $limit;
 
 -- PREP: envelope_insert_client_loop
 -- sequence is auto-computed: 1 + max(existing sequence in this worker) so
--- multiple client connections attaching to the same run get distinct loops.
+-- multiple client connections attaching to the same worker get distinct loops.
 INSERT INTO loops (worker_id, sequence, status, prompt)
 VALUES ($worker_id, COALESCE((SELECT MAX(sequence) FROM loops WHERE worker_id = $worker_id), 0) + 1, 102, '')
 RETURNING id, sequence;
@@ -86,7 +86,7 @@ FROM workspaces
 ORDER BY created_at DESC;
 
 -- PREP: envelope_get_model_worker
--- #371 — the workspace's canonical model CONVERSATION run: the earliest model-origin ROOT run
+-- #371 — the workspace's canonical conversation worker: the earliest model-origin root worker
 -- (parent_worker_id NULL excludes forks and spawned workers, which inherit origin='model').
 -- ensureModelWorker finds this first; only a workspace with none mints one.
 SELECT id FROM workers WHERE workspace_id = $workspace_id AND origin = 'model' AND parent_worker_id IS NULL ORDER BY id LIMIT 1;

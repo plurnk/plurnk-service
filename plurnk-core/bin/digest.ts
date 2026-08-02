@@ -27,7 +27,7 @@ if (import.meta.main) {
             Digest.run(opts);
             if (requiem) {
                 const { path, reportPath, workers } = await Digest.requiem(opts);
-                process.stdout.write(`requiem: interviewed ${workers} run(s) -> ${path}, ${reportPath}\n`);
+                process.stdout.write(`requiem: interviewed ${workers} worker(s) -> ${path}, ${reportPath}\n`);
             }
         } catch (err) {
             process.stderr.write(`${(err as Error).message}\n`);

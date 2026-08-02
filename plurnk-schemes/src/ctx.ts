@@ -127,10 +127,10 @@ export interface TagCaps {
 // the next boundary (service SPEC: between-turn notify). `streamEvent` is metadata-only (never
 // content).
 //
-// There is no `wakeWorker` here. The run-wake carries subscription-close
+// There is no `wakeWorker` here. The worker wake carries subscription-close
 // context (entryId / subscriptionId / exact result / scheme / summary) that
 // only exists at stream completion, so it belongs to `subscriptions.close`,
-// which already composites it (channel state + registry close + run wake).
+// which already composites it (channel state + registry close + worker wake).
 // Only streaming schemes wake a worker, and always via close; synchronous entry
 // schemes return their turn and never wake. (plurnk-service#180.)
 export interface NotifyCaps {

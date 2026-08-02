@@ -11,10 +11,10 @@ VALUES ($worker_id, $sequence, $status, $prompt, $terminal_result);
 -- PREP: test_loops_insert_with_version
 INSERT INTO loops (worker_id, sequence, version, prompt) VALUES ($worker_id, $sequence, $version, $prompt);
 
--- PREP: test_loops_get_by_run
+-- PREP: test_loops_get_by_worker
 SELECT id, version, worker_id, sequence, status, prompt FROM loops WHERE worker_id = $worker_id LIMIT 1;
 
--- PREP: test_loops_statuses_by_run
+-- PREP: test_loops_statuses_by_worker
 SELECT status FROM loops WHERE worker_id = $worker_id ORDER BY sequence;
 
 -- PREP: test_loops_count

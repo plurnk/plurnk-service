@@ -1,5 +1,5 @@
 // TWO CONVERSATIONS OVER ONE WORLD (the machine model's core split, svc#366 landed):
-// two threads name the same workspace; each gets its OWN run (its own history), and the
+// two threads name the same workspace; each gets its OWN worker (its own history), and the
 // world — the workspace filesystem — is SHARED: an EDIT made through thread A is READable
 // through thread B (the environment door). No model needed: client ops (op.parse)
 // exercise the routing and the shared world against a REAL daemon; skips clean when
@@ -28,7 +28,7 @@ const action = async (port: number, threadId: string, workspace: string, kind: s
     return r.value;
 };
 
-test("two threads, one world: distinct runs, shared filesystem (the environment door)", { skip: gated, timeout: 60_000 }, async () => {
+test("two threads, one world: distinct workers, shared filesystem (the environment door)", { skip: gated, timeout: 60_000 }, async () => {
     // The service's shipped env floor (partition integers etc.) — the daemon fails
     // hard without it, and this test boots one in-process.
     process.loadEnvFile(join(SERVICE, ".env.defaults"));
@@ -65,23 +65,23 @@ test("two threads, one world: distinct runs, shared filesystem (the environment 
         // named for it, alongside the model worker — histories split, world shared.
         const workers = await action(port, "second-look", "shared-world", "workspace.workers");
         assert.equal(workers.ok, true);
-        const runList = (workers.result as { workers: Array<{ id: number; name: string }> }).workers;
-        const names = runList.map((r) => r.name);
+        const workerList = (workers.result as { workers: Array<{ id: number; name: string }> }).workers;
+        const names = workerList.map((worker) => worker.name);
         assert.ok(names.includes("second-look"), `thread B's conversation worker exists by ITS name: ${names.join(", ")}`);
 
         // #376 isolation — the workerId filter through module HEAD + the REAL seam: the
-        // client ops journaled in each thread's CLIENT run; per-worker reads must differ.
-        // (The service's readlog-run-filter pin exonerates the seam in isolation; this
+        // client ops journaled in each thread's client worker; per-worker reads must differ.
+        // (The service's readlog-worker-filter pin exonerates the seam in isolation; this
         // pins the full module→seam path with live params.)
-        const perRun = new Map<number, number>();
-        for (const r of runList) {
-            const read = await action(port, "second-look", "shared-world", "log.read", { workerId: r.id });
-            assert.equal(read.ok, true, `log.read workerId=${r.id}: ${read.error ?? ""}`);
-            perRun.set(r.id, (read.result as { entries: unknown[] }).entries.length);
+        const perWorker = new Map<number, number>();
+        for (const worker of workerList) {
+            const read = await action(port, "second-look", "shared-world", "log.read", { workerId: worker.id });
+            assert.equal(read.ok, true, `log.read workerId=${worker.id}: ${read.error ?? ""}`);
+            perWorker.set(worker.id, (read.result as { entries: unknown[] }).entries.length);
         }
-        const counts = [...perRun.values()];
+        const counts = [...perWorker.values()];
         assert.ok(new Set(counts).size > 1 || counts.every((c) => c === 0) === false,
-            `per-worker reads are DISTINGUISHABLE (a uniform answer for every workerId is the #376 signature): ${JSON.stringify([...perRun])}`);
+            `per-worker reads are DISTINGUISHABLE (a uniform answer for every workerId is the #376 signature): ${JSON.stringify([...perWorker])}`);
     } finally {
         await (module as Module | null)?.close();
         await daemon.stop();

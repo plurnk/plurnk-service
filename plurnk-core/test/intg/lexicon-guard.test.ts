@@ -27,7 +27,7 @@ const walk = (d: string, a: string[] = []): string[] => {
 // Each entry: the banned pattern and the canonical term the violation must become.
 const BANNED: Array<{ label: string; re: RegExp; canon: string }> = [
     { label: "thinking", re: /\bthinking\b/i, canon: "reasoning (the #472 lexicon ruling)" },
-    { label: "session (noun)", re: /\bsessions?\b/i, canon: "workspace — retired EMPTY by #486; never reuse" },
+    { label: "session (noun)", re: /\bsessions?\b/i, canon: "the exact workspace / worker / loop noun from {§lifecycle-terms}" },
     { label: "contextSize", re: /contextSize/, canon: "contextWindow (the provider window) or promptBudget (the derived denominator) — #472/#481" },
     { label: "decodeBudget", re: /decodeBudget/, canon: "maxTokensFor — it IS the standard max_tokens concept (#477)" },
     { label: "usage_context_size", re: /usage_context_size/, canon: "usage_prompt_budget (#477)" },

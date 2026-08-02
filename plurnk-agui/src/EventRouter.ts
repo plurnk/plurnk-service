@@ -1,7 +1,7 @@
 // The module's per-worker render core (plurnk-agui#2). Routes a daemon event
 // (method, params) from the seam's event source → AG-UI events, composing the proven
 // projections: log/entry → core vocab, loop/terminated → RUN_FINISHED + budget STATE,
-// notices/stream → CUSTOM. Per-run state (turn tracking, model-run binding) lives in
+// notices/stream → CUSTOM. Per-AG-UI-Run state (turn tracking, model-worker binding) lives in
 // the Translator. Proposals are ProposalHitl's domain (the terminate-resume tool-call),
 // so this router deliberately leaves loop/proposal to it — one owner per concern.
 

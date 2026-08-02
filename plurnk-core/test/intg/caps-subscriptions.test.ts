@@ -1,7 +1,7 @@
 // Conformance: the db-backed SubscriptionCaps (keystone PR-2, #180) — the
 // streaming open → notifyChunk → close lifecycle a sibling drives, against real
 // SQLite: content appends + stream/events, terminal channel state, registry
-// close, run wake with the summary, and run-abort → signal + handle cancel.
+// close, worker wake with the summary, and worker abort → signal + handle cancel.
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -70,8 +70,8 @@ test("DbSubscriptionCaps: open binds + composes abort, notifyChunk streams, clos
         const cancelledId = sub2.at(-1)?.id;
         assert.ok(cancelledId !== undefined);
         parentAbort.abort();
-        assert.equal(signal2.aborted, true, "run abort propagates to the subscription signal");
-        assert.equal(cancelCalls, 1, "run abort force-cancels the sibling handle");
+        assert.equal(signal2.aborted, true, "worker abort propagates to the subscription signal");
+        assert.equal(cancelCalls, 1, "worker abort force-cancels the sibling handle");
         assert.equal(await liveSubscriptions.cancel(cancelledId), true);
         assert.equal(cancelCalls, 1, "the registry reap coalesces with signal cancellation");
         const cancelledResult = Results.failure("scheme:exec", "cancelled", 499, "The worker cancelled the stream.");

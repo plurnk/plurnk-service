@@ -329,7 +329,7 @@ export default class PacketBuilder {
         const workspaceRoot = (await this.#db.envelope_get_workspace.get<{ project_root: string | null }>({ id: workspaceId }))?.project_root ?? null;
         const systemPolicy = await readSystemPolicy();              // ~/.plurnk/AGENTS.md (or PLURNK_SERVICE_POLICY)
         const projectPolicy = await readProjectPolicy(workspaceRoot); // <projectRoot>/AGENTS.md (or PLURNK_SERVICE_PROJECT)
-        // Child-orientation ({§child-orientation}): the live things THIS run holds — open streams +
+        // Child-orientation ({§child-orientation}): the live things this worker holds — open streams +
         // unconcluded child workers — surfaced every turn as terse `* <status> <path>` pointers (same shape
         // as errors) just above the errors section. Orienting STATE so the model never loses track of
         // what it's holding (the premature-terminate trap), never advice on what to do. Empty → omitted.
@@ -356,7 +356,7 @@ export default class PacketBuilder {
             // dashboard reads freshest exactly where the model acts). Engine-authored riding the
             // user slot is the legal trust direction; errors are uri+status POINTERS (the item +
             // body live in the log), git is counts — no injection surface either way.
-            // child-orientation: what THIS run holds live — streams then runs — just above errors. Terse
+            // child-orientation: what this worker holds live — streams then child workers — just above errors. Terse
             // pointers (the path is the actionable address the model READs/OPENs/KILLs), never advice. {§child-orientation}
             { name: "child-streams", slot: "user", header: "Child Streams", content: PacketWire.renderChildPointers(childStreams), tokens: 0 },
             { name: "child-workers", slot: "user", header: "Active Child Workers", content: PacketWire.renderChildPointers(childWorkers), tokens: 0 },
@@ -592,7 +592,7 @@ export default class PacketBuilder {
     // reflects "what has happened before this turn." Each row carries a
     // log:///<loop_seq>/<turn_seq>/<sequence> coordinate the model can READ.
     async #buildLog(workerId: number): Promise<object[]> {
-        // SPEC {§packet-terms}: runs own log entries — log is the worker's history,
+        // SPEC {§packet-terms}: workers own log entries — log is the worker's history,
         // not the loop's. Span all loops in the worker so the model sees
         // earlier loops' work as conversational memory.
         //

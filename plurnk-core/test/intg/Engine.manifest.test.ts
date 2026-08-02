@@ -89,7 +89,7 @@ test("manifest build survives a malformed application/json entry — degrades to
     } finally { await db.close(); }
 });
 
-test("a JSON entry large enough to tile builds through the live embedder — the every-run crash, end-to-end", async () => {
+test("a JSON entry large enough to tile builds through the live embedder — the every-worker crash, end-to-end", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `manifest-jsontile-${crypto.randomUUID()}`);

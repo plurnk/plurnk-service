@@ -38,7 +38,7 @@ test("the item list lands verbatim on attrs.reasoning AND agui projects a correl
         const t1 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 1 });
 
         // 1. The carrier: attrs.reasoning is the item LIST, blobs verbatim.
-        const rows = await db.test_log_entries_by_run_op.all<{ attrs: string }>({ worker_id: workerId, op: "model" });
+        const rows = await db.test_log_entries_by_worker_op.all<{ attrs: string }>({ worker_id: workerId, op: "model" });
         const row = rows.find((r) => (JSON.parse(r.attrs) as { reasoning?: unknown }).reasoning !== undefined);
         assert.ok(row, "the mirror row carries attrs.reasoning");
         const list = (JSON.parse(row!.attrs) as { reasoning: Array<{ id: string | null; subtype: string; encrypted: Array<{ data: string; format: string | null }> }> }).reasoning;
@@ -78,7 +78,7 @@ test("a MULTI-item turn serves N correlated spans — the array residual is clos
         ] as never });
         await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 1 });
 
-        const rows = await db.test_log_entries_by_run_op.all<{ attrs: string }>({ worker_id: workerId, op: "model" });
+        const rows = await db.test_log_entries_by_worker_op.all<{ attrs: string }>({ worker_id: workerId, op: "model" });
         const row = rows.find((r) => (JSON.parse(r.attrs) as { reasoning?: unknown }).reasoning !== undefined)!;
         // core relays BOTH items (not a collapsed first) → agui projects TWO correlated sealed values.
         const values = projectThroughAgui(workerId, row.attrs)

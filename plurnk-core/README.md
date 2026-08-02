@@ -9,26 +9,26 @@ operation dispatch. Its client surface is AG-UI over HTTP/SSE through
 
 Grammar ops: `PLAN` goals · `READ`/`EDIT` files · `FIND` search · `EXEC` run shell/code · `SEND` message or conclude · `COPY`/`MOVE`/`KILL` manage · `OPEN`/`FOLD` curate its own context.
 
-Over schemes: `file://` project files · `exec://` command output · `http(s)://` web fetch · `worker://` scratch + sibling agent runs (commons/own-space/spawn/fork/message) · `prompt://` the task frame · `skill://` bundled reference · `log://` own history.
+Over schemes: `file://` project files · `exec://` command output · `http(s)://` web fetch · `worker://` scratch + sibling workers (commons/own-space/spawn/fork/message) · `prompt://` the task frame · `skill://` bundled reference · `log://` own history.
 
-## Loop model
+## Lifecycle model
 
-Workspace = the shared world (one filesystem + membership overlay). Run = one agent's private log. Loop = one `prompt → ops → SEND[terminal]` cycle; every turn leads with `PLAN`. Runs fork and message each other — many clients, many runs, one workspace.
+Workspace = the shared world (one filesystem + membership overlay). Worker = one actor and its private history over that world. Loop = one queued-to-terminal unit of work within a worker; each loop contains turns, and every model turn leads with `PLAN`. Workers fork and message each other — many clients, many workers, one workspace.
 
 ## Integration
 
-Clients use AG-UI management actions and run streams exposed by
+Clients use AG-UI management actions and AG-UI Run streams exposed by
 `@plurnk/plurnk-agui`. Core supplies an in-process daemon seam; it does not open
 a second client transport.
 
-## Run
+## Start
 
 ```
 npm install -g @plurnk/plurnk-service
 plurnk-service start      # daemon (`migrate` initializes the DB)
 ```
 
-Config + state live in `~/.plurnk/` (created on first run): put your config in `~/.plurnk/.env` (yours, seeded once); the DB defaults to `~/.plurnk/plurnk.db`. Provider-agnostic — point `PLURNK_MODEL` at any vendor. **[`INSTALL.md`](./INSTALL.md) is the config guide** — the cascade, the prefix taxonomy, the coupling matrix, and profiles for common deployments; `.env.defaults` is the terse machine floor it breaks down (per-package, assembled at boot). Also exports `{ Engine, Daemon, SchemeRegistry }` for in-process embedding.
+Config + state live in `~/.plurnk/` (created on first start): put your config in `~/.plurnk/.env` (yours, seeded once); the DB defaults to `~/.plurnk/plurnk.db`. Provider-agnostic — point `PLURNK_MODEL` at any vendor. **[`INSTALL.md`](./INSTALL.md) is the config guide** — the cascade, the prefix taxonomy, the coupling matrix, and profiles for common deployments; `.env.defaults` is the terse machine floor it breaks down (per-package, assembled at boot). Also exports `{ Engine, Daemon, SchemeRegistry }` for in-process embedding.
 
 ## Contract & siblings
 

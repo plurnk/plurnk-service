@@ -577,14 +577,14 @@ export default class Exec extends CoreSchemeAdapterBase {
         // owns zero substrate: it hands us (path, content, {tags, mimetype}) and WE create/update
         // the entry (writeEntry upsert; tags UNIONED — writeEntry alone replaces), then narrate ONE
         // EDIT row in the reserved plurnk worker's log (the fs-fiction pattern, source = the calling
-        // run) — the existing env-delta ambience folds it into every worker's next packet. The row is a
+        // worker) — the existing env-delta ambience folds it into every worker's next packet. The row is a
         // FULL fiction: tx carries the statement (body = the written content — the journal records
         // the write, replay/fork-complete), rx carries the span ({§edit-result-render}, the whole
         // content numbered — a wholesale write's span IS the content; no diff, which would be a
         // pathological cost against a rewritten multi-MB page). Rendered folded by default, so no
         // body rides a packet uninvited — the meta line carries the honest OPEN weight.
         // Serialized: parallel entry() calls (allSettled) write in order; a rejection prunes that
-        // survivor executor-side without breaking the chain. Lazy narration context: one plurnk-run
+        // survivor executor-side without breaking the chain. Lazy narration context: one plurnk-worker
         // turn per spawn, not per entry.
         let entryChain: Promise<unknown> = Promise.resolve();
         let narration: {
@@ -651,16 +651,16 @@ export default class Exec extends CoreSchemeAdapterBase {
                     await EntryCrud.writeEntry(pathname, { channels, tags }, ctx, parsed.scheme),
                 );
                 if (narration === null) {
-                    const run = await db.envelope_get_worker_by_name.get<{ id: number }>({ workspace_id: ctx.workspaceId, name: "plurnk" })
+                    const worker = await db.envelope_get_worker_by_name.get<{ id: number }>({ workspace_id: ctx.workspaceId, name: "plurnk" })
                         ?? await db.envelope_insert_worker.get<{ id: number }>({ workspace_id: ctx.workspaceId, name: "plurnk", origin: "plurnk" });
-                    if (run === undefined) throw new Error("entry(): plurnk worker resolution returned no row");
-                    const loop = await db.envelope_insert_client_loop.get<{ id: number; sequence: number }>({ worker_id: run.id });
+                    if (worker === undefined) throw new Error("entry(): plurnk worker resolution returned no row");
+                    const loop = await db.envelope_insert_client_loop.get<{ id: number; sequence: number }>({ worker_id: worker.id });
                     if (loop === undefined) throw new Error("entry(): loop insert returned no row");
                     const seqRow = await db.client_turn_next_sequence.get<{ next: number }>({ loop_id: loop.id });
                     const turn = await db.client_turn_insert.get<{ id: number; sequence: number }>({ loop_id: loop.id, sequence: seqRow?.next ?? 1, packet: "{}" });
                     if (turn === undefined) throw new Error("entry(): turn insert returned no row");
                     narration = {
-                        workerId: run.id,
+                        workerId: worker.id,
                         loopId: loop.id,
                         loopSeq: loop.sequence,
                         turnId: turn.id,
@@ -822,7 +822,7 @@ export default class Exec extends CoreSchemeAdapterBase {
             this.#activeSpawns.delete(subscriptionId);
 
             // Every worker backgrounds now ({§exec-stream}) — wake a parked loop on completion so the
-            // run resumes to the turn where the stream's terminal delta surfaces.
+            // worker resumes to the turn where the stream's terminal delta surfaces.
             if (ctx.wakeWorkerNotify !== undefined) {
                 ctx.wakeWorkerNotify({
                     workspaceId: ctx.workspaceId, workerId: ctx.workerId,

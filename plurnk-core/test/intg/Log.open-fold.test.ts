@@ -147,7 +147,7 @@ test("engine_render_log carries the delta source; self-authored entries stay nul
             status_rx: 200, tokens: 0, state: "resolved", outcome: null, attrs: "{}",
         });
         const rows = await db.engine_render_log.all<{ sequence: number; source: string | null }>({ worker_id: workerId });
-        assert.equal(rows.find((r) => r.sequence === 2)?.source, "file", "the delta's cause round-trips the render query → packet-wire renders run=\"file\"");
+        assert.equal(rows.find((r) => r.sequence === 2)?.source, "file", "the delta's cause round-trips the render query → packet-wire renders source=\"file\"");
         assert.equal(rows.find((r) => r.sequence === 1)?.source, null, "a self-authored entry has null source — rendered without a worker= label");
     } finally { await db.close(); }
 });
@@ -187,7 +187,7 @@ test("FOLD matcher selects the tagged set and OPEN filters that set by tag + mat
         assert.equal(await expandedAt(3), 1, "the non-matching READ row remains open");
         assert.equal(await expandedAt(1), 1, "the non-matching EDIT (1/1/1) is untouched");
 
-        const tags = await db.test_log_tags_by_run.all<{ coordinate: string; tag: string }>({ worker_id: workerId });
+        const tags = await db.test_log_tags_by_worker.all<{ coordinate: string; tag: string }>({ worker_id: workerId });
         assert.deepEqual(tags, [{ coordinate: "1/1/2", tag: "memory" }], "FOLD applies the tag only to its selected set");
 
         const open = await new Log().open({

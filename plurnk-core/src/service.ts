@@ -19,7 +19,7 @@ import { Module as AguiModule } from "@plurnk/plurnk-agui";
 import { Module as McpModule } from "@plurnk/plurnk-mcp";
 import { formatBuildInfo, getBuildInfo } from "./build-info.ts";
 
-// The `plurnk-service` executable: launches the daemon (start) or runs migrations.
+// The `plurnk-service` executable: launches the daemon (start) or applies the schema baseline.
 // Not the user-facing client — that is the separate `plurnk` project.
 export default class Service {
     // This file's own directory holds the runtime code + its .sql (src/ in dev, dist/ in a

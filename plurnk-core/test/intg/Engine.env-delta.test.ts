@@ -2,7 +2,7 @@
 // shared log. No per-worker snapshot: every edit is already a span-carrying log row, so
 // at pre-turn a worker surfaces other actors' edits on shared entries since its OWN last
 // turn, folded. Two producers: real cross-worker edits (a sibling's EDIT) and the
-// filesystem-as-the-plurnk-run fs-sync fictions (source=file) for ambient disk drift.
+// filesystem-as-the-plurnk-worker fs-sync fictions (source=file) for ambient disk drift.
 
 import test from "node:test";
 import { hermeticGitEnv } from "../../src/core/git-env.ts";
@@ -51,9 +51,9 @@ test("a worker learns a sibling's edit through its own log — pulled from the s
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `xrun-${crypto.randomUUID()}`);
-        const workerA = await insertWorker(db, workspaceId);            // the model's run
+        const workerA = await insertWorker(db, workspaceId);            // the model worker
         const loopA = await insertLoop(db, workerA, 1, "go");
-        const workerB = await insertWorker(db, workspaceId);            // a sibling run on the same world
+        const workerB = await insertWorker(db, workspaceId);            // a sibling worker on the same world
         const loopB = await insertLoop(db, workerB, 1);
         const turnB = await insertTurn(db, loopB, 1);
         const eng = makeEngine(db);
@@ -73,7 +73,7 @@ test("a worker learns a sibling's edit through its own log — pulled from the s
         const rows = await db.engine_render_log.all<{ scheme: string | null; origin: string; op: string; pathname: string; source: string | null; expanded: number }>({ worker_id: workerA });
         const delta = rows.find((r) => r.op === "EDIT" && r.origin === "plurnk" && r.scheme === "worker" && r.pathname === "/shared.md");
         assert.ok(delta, "A's turn-2 log carries a delta for B's edit");
-        assert.equal(delta!.source, String(workerB), "the delta is attributed to the sibling run that caused it");
+        assert.equal(delta!.source, String(workerB), "the delta is attributed to the sibling worker that caused it");
         assert.equal(delta!.expanded, 0, "the broadcast delta lands FOLDED — listed, collapsed until the model OPENs it");
     } finally {
         await db.close();
@@ -116,7 +116,7 @@ test("an environment delta preserves typed source attributes for model-facing pr
 
 test("exactly two cross-worker channels — state via the env-delta, a message via inject", async () => {
     // Both doors in one place. (Was a stale `unbuilt` todo stub — the voice door IS built: inject,
-    // and irc through it, resume parked runs in place, #55.) No third channel — by design.
+    // and IRC through it, resume parked workers in place, #55.) No third channel — by design.
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `two-doors-${crypto.randomUUID()}`);
@@ -232,7 +232,7 @@ test("a sibling's loop-termination surfaces — a 2xx deliverable born OPEN + aw
         const rows = await db.engine_render_log.all<{ scheme: string | null; origin: string; op: string; pathname: string; source: string | null; status_rx: number | null; rx: string; expanded: number }>({ worker_id: workerA });
 
         const win = rows.find((r) => r.op === "SEND" && r.scheme === "worker" && r.pathname === "/worker");
-        assert.ok(win, "worker's SEND[200] termination surfaced as a run-delta in A's log");
+        assert.ok(win, "worker's SEND[200] termination surfaced as a worker delta in A's log");
         assert.equal(win!.origin, "plurnk", "the termination delta is the engine's narration");
         assert.equal(win!.source, String(worker), "attributed to the worker that terminated");
         assert.equal(win!.status_rx, 200, "the terminal status rides");
@@ -243,7 +243,7 @@ test("a sibling's loop-termination surfaces — a 2xx deliverable born OPEN + aw
         assert.ok(grind, "the abandoned loop surfaced too — every death-path stamps terminated_at uniformly");
         assert.equal(grind!.status_rx, 413, "budget abandonment is a 413 Content Too Large termination");
         assert.equal(grind!.rx, "budget_overflow", "the abandon reason rides as the terminal message");
-        assert.equal(grind!.source, String(grinder), "attributed to the abandoned run");
+        assert.equal(grind!.source, String(grinder), "attributed to the abandoned worker");
         assert.equal(grind!.expanded, 0, "an abandonment (non-2xx) stays folded — only a 2xx deliverable is born open");
     } finally {
         await db.close();

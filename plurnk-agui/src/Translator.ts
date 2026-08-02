@@ -25,7 +25,7 @@ import { Validator } from "@plurnk/plurnk-contracts";
 
 export default class Translator {
     #threadId: string;
-    #runId: string;   // AG-UI's run id (echoed from RunAgentInput.runId) — the standard face
+    #runId: string;   // AG-UI's Run id (echoed from RunAgentInput.runId) — the standard face
     #currentTurn: number | null = null;
     #modelWorkerId: number | null;
     #workspaceId: number | null;
@@ -53,7 +53,7 @@ export default class Translator {
         // never interleaved into the conversation a generic frontend renders.
         const workerId = (e as { worker_id?: number }).worker_id;
         // Lazy binding: workspace.create returns the CLIENT worker's id — the model worker is born at
-        // loop.worker's drain, so a fresh thread adopts its FIRST model-origin row's run as the
+        // loop worker's drain, so a fresh thread adopts its first model-origin row's worker as the
         // model worker (workers spawn FROM it later; reattach seeds it from workspace.workers instead).
         if (this.#modelWorkerId === null && e.origin === "model" && typeof workerId === "number") this.#modelWorkerId = workerId;
         const foreign = this.#modelWorkerId !== null && typeof workerId === "number" && workerId !== this.#modelWorkerId;

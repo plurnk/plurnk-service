@@ -11,8 +11,8 @@ import type { Interrupt, ResumeEntry } from "@ag-ui/core";
 import type { ProblemDetails } from "@plurnk/plurnk-contracts";
 
 // ── §1 — stop-the-world → tool-call ──────────────────────────────────
-// toolCallId correlates the terminating run's TOOL_CALL and interrupt with the next
-// run's ResumeEntry → the exact pending proposal. Encodes the logEntryId: `prop:<id>`.
+// toolCallId correlates the terminating AG-UI Run's TOOL_CALL and interrupt with the next
+// AG-UI Run's ResumeEntry → the exact pending proposal. Encodes the logEntryId: `prop:<id>`.
 export const proposalToolCallId = (logEntryId: number): string => `prop:${logEntryId}`;
 export const logEntryIdFromToolCallId = (toolCallId: string): number | null => {
     const m = /^prop:(\d+)$/.exec(toolCallId);

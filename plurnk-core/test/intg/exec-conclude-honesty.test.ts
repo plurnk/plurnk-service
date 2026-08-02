@@ -1,7 +1,7 @@
 // Stream-conclude honesty (execs-search#3's service half, found in a dogfood hang): a driver that
 // REJECTS must still conclude its stream (uncaught, the subscription sat open forever and the
 // floating spawn promise was an unhandled rejection), and a driver that resolves 2xx UNDER ABORT
-// must not be believed — the service's own abort knowledge outranks the claim (a reaped run is not
+// must not be believed — the service's own abort knowledge outranks the claim (a reaped execution is not
 // a success). A stub runtime drives the REAL dispatch path; nothing is mocked below the executor.
 
 import test from "node:test";
@@ -52,7 +52,7 @@ test("a rejecting driver still concludes its stream with an exact Problem, never
         const result = await engine.dispatch({ statement: execStmt(tag, "go"), workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model" });
         assert.equal(result.status, 200, `the spawn started; got ${result.status}`);
         const concluded = await waitFor(() => wakes, (w) => w.length > 0, { timeoutMs: 4000 });
-        assert.equal(concluded[0].result.status, 500, "the rejected run concluded as a FAILURE, not an open subscription");
+        assert.equal(concluded[0].result.status, 500, "the rejected execution concluded as a FAILURE, not an open subscription");
         assert.equal(concluded[0].result.problem?.type, "https://problems.plurnk.dev/scheme/exec/executor-threw");
         assert.match(concluded[0].summary, /executor threw/, "the summary reflects the structured executor-threw result");
     } finally { await db.close(); }
@@ -94,11 +94,11 @@ test("a driver resolving 200 under abort is replaced by a 499 Problem — servic
     try {
         const result = await engine.dispatch({ statement: execStmt(tag, "go"), workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model" });
         assert.equal(result.status, 200, `the spawn started; got ${result.status}`);
-        const sub = await db.test_open_subscription_for_run.get<{ id: number }>({ worker_id: workerId });
+        const sub = await db.test_open_subscription_for_worker.get<{ id: number }>({ worker_id: workerId });
         assert.ok(sub !== undefined, "the spawn's subscription is open");
         await engine.cancelSubscription(sub.id);
         const concluded = await waitFor(() => wakes.filter((w) => w.result !== undefined), (w) => w.length > 0, { timeoutMs: 4000 });
-        assert.equal(concluded[0].result.status, 499, "the reaped run concluded 499, not the driver's claimed 200");
+        assert.equal(concluded[0].result.status, 499, "the reaped execution concluded 499, not the driver's claimed 200");
         assert.equal(concluded[0].result.problem?.type, "https://problems.plurnk.dev/scheme/exec/execution-cancelled");
         assert.match(concluded[0].summary, /aborted/, "the summary reflects the structured cancellation result");
     } finally { await db.close(); }

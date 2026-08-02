@@ -58,19 +58,19 @@ ORDER BY sequence;
 SELECT id, status_rx, state, outcome, attrs, rx
 FROM log_entries WHERE id = $id;
 
--- PREP: test_get_session_cost
+-- PREP: test_get_workspace_cost
 SELECT cost_usd FROM workspaces WHERE id = $id;
 
--- PREP: test_get_run_cost
+-- PREP: test_get_worker_cost
 SELECT cost_usd FROM workers WHERE id = $id;
 
 -- PREP: test_count_turns
 SELECT COUNT(*) AS n FROM turns;
 
--- PREP: test_count_entries_by_session
+-- PREP: test_count_entries_by_workspace
 SELECT COUNT(*) AS n FROM entries WHERE workspace_id = $workspace_id;
 
--- PREP: test_count_entries_by_session_scheme
+-- PREP: test_count_entries_by_workspace_scheme
 SELECT COUNT(*) AS n FROM entries WHERE workspace_id = $workspace_id AND scheme = $scheme;
 
 -- PREP: test_get_entry_by_path
@@ -103,7 +103,7 @@ SELECT COUNT(*) AS n FROM subscriptions s
 JOIN entries e ON e.id = s.entry_id
 WHERE e.workspace_id = $workspace_id AND s.scheme = $scheme AND s.closed_at IS NULL;
 
--- PREP: test_exec_close_status_by_session
+-- PREP: test_exec_close_status_by_workspace
 -- The close_status the registry recorded for a workspace's most-recently-closed
 -- stream of a scheme — proves the registry-routed reap ({§worker-lifecycle-total-reap})
 -- closed the subscription at 499, not just that a notification fired.
@@ -112,7 +112,7 @@ JOIN entries e ON e.id = s.entry_id
 WHERE e.workspace_id = $workspace_id AND s.scheme = $scheme AND s.closed_at IS NOT NULL
 ORDER BY s.closed_at DESC LIMIT 1;
 
--- PREP: test_seed_entry_session
+-- PREP: test_seed_entry_workspace
 -- Tests bypass scheme handlers when seeding state for visibility / render tests.
 INSERT INTO entries (workspace_id, owner_id, scheme, pathname)
 VALUES ($workspace_id, $owner_id, $scheme, $pathname)
@@ -138,11 +138,11 @@ SELECT id, sequence, status, packet FROM turns WHERE loop_id = $loop_id ORDER BY
 SELECT sequence, status_rx, pathname, scheme, fragment, op, origin, signal, rx
 FROM log_entries WHERE turn_id = $turn_id ORDER BY sequence;
 
--- PREP: test_log_entries_by_run
+-- PREP: test_log_entries_by_worker
 SELECT id, op, pathname, scheme, sequence, turn_id, loop_id, status_rx
 FROM log_entries WHERE worker_id = $worker_id ORDER BY id;
 
--- PREP: test_log_tags_by_run
+-- PREP: test_log_tags_by_worker
 -- {§log-region-tagging} — a worker's log tags with the coordinate they sit on (fork-copy assertions).
 SELECT (l.sequence || '/' || t.sequence || '/' || le.sequence) AS coordinate, lt.tag
 FROM log_tags lt
@@ -152,22 +152,22 @@ JOIN loops l ON l.id = t.loop_id
 WHERE l.worker_id = $worker_id ORDER BY coordinate, lt.tag;
 
 -- PREP: test_log_entries_by_loop
--- The model loop's own entries — robust to which run holds the loop (the model
--- runs in its OWN run now, {§connection-lifecycle}), so a test queries by the loopId it holds.
+-- The model loop's own entries, independent of which worker owns it
+-- ({§connection-lifecycle}), so a test queries by the loopId it holds.
 -- origin is the writer tier (model | client | plurnk) — lets a test assert an engine foist
 -- (origin='plurnk') vs a model op without a second query.
 SELECT id, op, pathname, scheme, hostname, sequence, turn_id, loop_id, status_rx, rx, expanded, origin, lineMarker
 FROM log_entries WHERE loop_id = $loop_id ORDER BY id;
 
 -- PREP: test_get_worker_id_by_loop
--- Resolve which run a loop lives in — the model loop is in the model's own worker.
+-- Resolve which worker owns a loop — model loops belong to model workers.
 SELECT worker_id FROM loops WHERE id = $loop_id;
 
--- PREP: test_run_lineage
+-- PREP: test_worker_lineage
 -- A worker's workspace + fork parent — for proving a fork is a new worker in the same workspace.
 SELECT workspace_id, parent_worker_id FROM workers WHERE id = $id;
 
--- PREP: test_get_log_rx_by_run_op
+-- PREP: test_get_log_rx_by_worker_op
 -- Forensic read-back for read-only ops in live tests: the latest rx the engine
 -- recorded for a given op in a worker (e.g. what a READ<L> actually sliced).
 SELECT rx FROM log_entries WHERE worker_id = $worker_id AND op = $op ORDER BY id DESC LIMIT 1;
@@ -184,7 +184,7 @@ SELECT COUNT(*) AS n FROM entry_channels WHERE entry_id = $entry_id;
 -- PREP: test_list_channels_for_entry
 SELECT name, content, mimetype, state FROM entry_channels WHERE entry_id = $entry_id ORDER BY name;
 
--- PREP: test_count_log_entries_by_run
+-- PREP: test_count_log_entries_by_worker
 SELECT COUNT(*) AS n FROM log_entries WHERE worker_id = $worker_id;
 
 -- PREP: test_get_entry_by_id
@@ -199,7 +199,7 @@ SET status = $status,
     terminal_result = $terminal_result
 WHERE id = $id;
 
--- PREP: test_set_session_project_root
+-- PREP: test_set_workspace_project_root
 -- Sets workspaces.project_root for File-scheme intg tests. F.1 added the
 -- column; F.5 made the File scheme read from it instead of an env var.
 UPDATE workspaces SET project_root = $project_root WHERE id = $id;
@@ -210,13 +210,13 @@ SELECT status_rx FROM log_entries WHERE turn_id = $turn_id AND op = $op;
 -- PREP: test_delete_entry
 DELETE FROM entries WHERE id = $id;
 
--- PREP: test_delete_run
+-- PREP: test_delete_worker
 DELETE FROM workers WHERE id = $id;
 
 -- PREP: test_count_subscriptions_for_entry
 SELECT COUNT(*) AS n FROM subscriptions WHERE entry_id = $entry_id;
 
--- PREP: test_count_subscriptions_for_run
+-- PREP: test_count_subscriptions_for_worker
 SELECT COUNT(*) AS n FROM subscriptions WHERE worker_id = $worker_id;
 
 -- PREP: test_get_entry_id_by_pathname
@@ -272,18 +272,18 @@ FROM entry_channels ec
 JOIN entries e ON e.id = ec.entry_id
 WHERE e.pathname = $pathname AND ec.name = 'body';
 
--- PREP: test_list_sessions
+-- PREP: test_list_workspaces
 SELECT name FROM workspaces;
 
--- PREP: test_get_run_by_session
+-- PREP: test_get_client_worker_by_workspace
 SELECT id FROM workers
 WHERE workspace_id = $workspace_id AND origin = 'client'
 ORDER BY id LIMIT 1;
 
--- PREP: test_get_loop_by_run
+-- PREP: test_get_loop_by_worker
 SELECT id FROM loops WHERE worker_id = $worker_id LIMIT 1;
 
--- PREP: test_count_loops_by_run
+-- PREP: test_count_loops_by_worker
 SELECT COUNT(*) AS n FROM loops WHERE worker_id = $worker_id;
 
 -- PREP: test_list_channel_names
@@ -295,7 +295,7 @@ SELECT id FROM entries WHERE scheme = $scheme AND pathname = $pathname;
 -- PREP: test_list_entries_by_workspace_workspace_pathname
 SELECT scheme, pathname FROM entries WHERE workspace_id = $workspace_id ORDER BY scheme, pathname;
 
--- PREP: test_count_log_entries_run_origin
+-- PREP: test_count_log_entries_worker_origin
 SELECT COUNT(*) AS n FROM log_entries WHERE worker_id = $worker_id AND origin = $origin;
 
 -- PREP: test_fts_search
@@ -334,11 +334,11 @@ SELECT deep_hash FROM entries WHERE workspace_id = $workspace_id AND deep_hash I
 -- {§fold-open-meta-operations} — every model-origin op row with its status.
 SELECT op, status_rx FROM log_entries WHERE origin = 'model' ORDER BY id;
 
--- PREP: test_set_session_settings
+-- PREP: test_set_workspace_settings
 -- Set the workspaces.settings JSON bag (client open-context) for a test.
 UPDATE workspaces SET settings = $settings WHERE id = $id;
 
--- PREP: test_open_subscription_for_run
+-- PREP: test_open_subscription_for_worker
 -- ($worker_id unused: the honesty tests' db holds exactly one spawn)
 SELECT s.id FROM subscriptions s WHERE s.closed_at IS NULL AND $worker_id IS NOT NULL LIMIT 1;
 
@@ -393,7 +393,7 @@ JOIN derivations d ON d.id = ee.derivation_id
 JOIN entries e ON e.deep_hash = d.deep_hash
 GROUP BY e.pathname;
 
--- PREP: test_log_entries_by_run_op
+-- PREP: test_log_entries_by_worker_op
 SELECT pathname, source, tokens, attrs FROM log_entries WHERE worker_id = $worker_id AND op = $op ORDER BY id;
 
 -- PREP: test_count_entries_by_scheme
@@ -402,19 +402,19 @@ SELECT count(*) AS n FROM entries WHERE scheme = $scheme;
 -- PREP: test_subscription_published_channel
 SELECT published_channel FROM subscriptions WHERE id = $id;
 
--- PREP: test_log_entries_by_run_op_signal
+-- PREP: test_log_entries_by_worker_op_signal
 SELECT signal FROM log_entries WHERE worker_id = $worker_id AND op = $op ORDER BY id;
 
--- PREP: test_log_entries_by_run_op_full
+-- PREP: test_log_entries_by_worker_op_full
 SELECT pathname, tx, rx, status_rx FROM log_entries WHERE worker_id = $worker_id AND op = $op ORDER BY id;
 
--- PREP: test_error_rows_for_run
+-- PREP: test_error_rows_for_worker
 SELECT rx FROM log_entries WHERE worker_id = $worker_id AND op = 'error';
 
--- PREP: test_send_rows_for_run
+-- PREP: test_send_rows_for_worker
 SELECT rx, status_rx FROM log_entries WHERE worker_id = $worker_id AND op = 'SEND';
 
--- PREP: test_runs_by_session
+-- PREP: test_workers_by_workspace
 SELECT id, name, origin, parent_worker_id FROM workers WHERE workspace_id = $workspace_id ORDER BY id;
 
 -- PREP: test_first_turn_for_loop
@@ -448,7 +448,7 @@ SELECT (SELECT timestamp FROM turns WHERE id = $turn_id) AS tts,
 UPDATE loops SET terminated_at = strftime('%Y-%m-%dT%H:%M:%fZ', (SELECT timestamp FROM turns WHERE id = $turn_id), '+2 seconds')
 WHERE id = $loop_id;
 
--- PREP: test_set_session_root
+-- PREP: test_set_workspace_root
 UPDATE workspaces SET project_root = $project_root WHERE id = $id;
 
 -- PREP: test_count_null_scheme_entries

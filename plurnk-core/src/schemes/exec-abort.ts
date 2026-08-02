@@ -1,6 +1,6 @@
 // The abort-reason protocol @plurnk/plurnk-execs' SubprocessExecutor reads off `signal.reason`:
 //   { signal }                       → deliver exactly that Unix signal, once, no escalation.
-//   { housekeeping: true, graceMs }  → loop/run teardown: the polite signal, then SIGKILL after graceMs.
+//   { housekeeping: true, graceMs }  → loop/worker teardown: the polite signal, then SIGKILL after graceMs.
 // A { signal: null } reason (a bare KILL) carries no override, so the executor applies its own
 // polite default, SIGHUP — the gentlest rung; the model escalates with explicit codes.
 export default class ExecAbort {
@@ -11,7 +11,7 @@ export default class ExecAbort {
         return Number(process.env.PLURNK_SERVICE_EXEC_KILL_GRACE_MS ?? "2000");
     }
 
-    // Loop/run teardown — a BOUNDED reap, so Exec.idle() can't wedge on a signal-ignoring spawn.
+    // Loop/worker teardown — a bounded reap, so Exec.idle() can't wedge on a signal-ignoring spawn.
     static teardownReason(): { housekeeping: true; graceMs: number } {
         return { housekeeping: true, graceMs: ExecAbort.graceMs };
     }

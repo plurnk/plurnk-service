@@ -445,7 +445,7 @@ export default class Worker extends CoreSchemeAdapterBase {
                 },
             );
         }
-        if (core.injectWorker === undefined) throw new Error("run.send: injectWorker capability absent");
+        if (core.injectWorker === undefined) throw new Error("worker.send: injectWorker capability absent");
         let workerId = core.workerId;
         if (authority !== "~") {
             const row = await core.db.worker_resolve_by_name.get<{ id: number }>({ workspace_id: core.workspaceId, name: authority });

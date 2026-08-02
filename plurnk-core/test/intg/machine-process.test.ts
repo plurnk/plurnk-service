@@ -1,4 +1,4 @@
-// SPEC {§machine-processes} — the machine and its processes (workspace = world, run = log, fork).
+// SPEC {§machine-processes} — the machine and its processes (workspace = world, worker = log, fork).
 //
 // These prove the ownership line through BEHAVIOR on the real op surface — never
 // by reflecting the schema catalog (no sqlite_master, no PRAGMA: that reaches
@@ -27,7 +27,7 @@ const editStmt = (target: UrlPath, body: string, marker: LineMarker | null = nul
     position: { line: 1, column: 1 },
 });
 
-test("the entries are the workspace's — a second run writing the same path updates the one shared entry, it does not mint a second", async () => {
+test("the entries are the workspace's — a second worker writing the same path updates the one shared entry, it does not mint a second", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `ws-${crypto.randomUUID()}`);
@@ -41,13 +41,13 @@ test("the entries are the workspace's — a second run writing the same path upd
         const a = await spawn();
         const b = await spawn();
         const target = urlPath("worker", "/shared.md");
-        const ra = await engine.dispatch({ statement: editStmt(target, "from run A"), workspaceId, workerId: a.workerId, loopId: a.loopId, turnId: a.turnId, sequence: 1, origin: "model" });
-        const rb = await engine.dispatch({ statement: editStmt(target, "from run B", fullReplace), workspaceId, workerId: b.workerId, loopId: b.loopId, turnId: b.turnId, sequence: 1, origin: "model" });
+        const resultA = await engine.dispatch({ statement: editStmt(target, "from worker A"), workspaceId, workerId: a.workerId, loopId: a.loopId, turnId: a.turnId, sequence: 1, origin: "model" });
+        const resultB = await engine.dispatch({ statement: editStmt(target, "from worker B", fullReplace), workspaceId, workerId: b.workerId, loopId: b.loopId, turnId: b.turnId, sequence: 1, origin: "model" });
         // A creates the entry (201) in the workspace's one filesystem; B, a different
-        // run at the same (scope, scheme, pathname), UPDATES that one entry (200).
+        // worker at the same (scope, scheme, pathname), UPDATES that one entry (200).
         // A per-worker filesystem would have minted a second entry and 201'd again.
-        assert.equal(ra.status, 201, "run A creates the entry in the workspace's filesystem");
-        assert.equal(rb.status, 200, "run B writing the SAME path updates the one shared entry — the filesystem is the workspace's, not the worker's");
+        assert.equal(resultA.status, 201, "worker A creates the entry in the workspace's filesystem");
+        assert.equal(resultB.status, 200, "worker B writing the SAME path updates the one shared entry — the filesystem is the workspace's, not the worker's");
     } finally { db.close(); }
 });
 
@@ -66,7 +66,7 @@ test("a fork copies the parent's log (rows + their fold-state)", async () => {
         await engine.dispatch({ statement: editStmt(urlPath("worker", "/a.md"), "first"), workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model" });
         await engine.dispatch({ statement: editStmt(urlPath("worker", "/b.md"), "second"), workspaceId, workerId, loopId, turnId, sequence: 2, origin: "model" });
         // Fold the first row — a fold-state bit on the parent's own log.
-        const ids = await db.test_log_entries_by_run.all<{ id: number }>({ worker_id: workerId });
+        const ids = await db.test_log_entries_by_worker.all<{ id: number }>({ worker_id: workerId });
         await db.log_set_expanded_by_id.run({ id: ids[0].id, expanded: 0 });
 
         const branchWorkerId = await Fork.fork(db, workerId);
@@ -89,12 +89,12 @@ test("a fork carries a log row's region tags along with its fold-state", async (
         const turnId = await insertTurn(db, loopId, 1);
         await engine.dispatch({ statement: editStmt(urlPath("worker", "/a.md"), "first"), workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model" });
         // Tag the parent's row (the write FOLD[tag] performs), directly — to isolate the fork-copy.
-        const ids = await db.test_log_entries_by_run.all<{ id: number }>({ worker_id: workerId });
+        const ids = await db.test_log_entries_by_worker.all<{ id: number }>({ worker_id: workerId });
         await db.log_write_tag.run({ log_entry_id: ids[0].id, tag: "projectB" });
 
         const branchWorkerId = await Fork.fork(db, workerId);
 
-        const branchTags = await db.test_log_tags_by_run.all<{ coordinate: string; tag: string }>({ worker_id: branchWorkerId });
+        const branchTags = await db.test_log_tags_by_worker.all<{ coordinate: string; tag: string }>({ worker_id: branchWorkerId });
         assert.deepEqual(branchTags.map((r) => r.tag), ["projectB"], "the branch inherited the parent's region tag — a named working-set survives the fork");
     } finally { db.close(); }
 });
@@ -113,7 +113,7 @@ test("a fork shares the workspace's filesystem and overlay, live and uncopied", 
         const branchWorkerId = await Fork.fork(db, workerId);
 
         const after = (await db.engine_list_workspace_entries.all<{ entry_id: number }>({ workspace_id: workspaceId })).length;
-        const branch = await db.test_run_lineage.get<{ workspace_id: number }>({ id: branchWorkerId });
+        const branch = await db.test_worker_lineage.get<{ workspace_id: number }>({ id: branchWorkerId });
         assert.equal(branch!.workspace_id, workspaceId, "the branch lives in the parent's workspace — one shared world");
         assert.equal(after, before, "the fork copied no entries — the filesystem is shared, not duplicated");
     } finally { db.close(); }
@@ -125,10 +125,10 @@ test("a workspace cannot be forked; the fork is worker-scoped", async () => {
         const workspaceId = await insertWorkspace(db, `ws-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
         const branchWorkerId = await Fork.fork(db, workerId);
-        assert.notEqual(branchWorkerId, workerId, "a fork is a new run");
-        const lineage = await db.test_run_lineage.get<{ workspace_id: number; parent_worker_id: number | null }>({ id: branchWorkerId });
+        assert.notEqual(branchWorkerId, workerId, "a fork is a new worker");
+        const lineage = await db.test_worker_lineage.get<{ workspace_id: number; parent_worker_id: number | null }>({ id: branchWorkerId });
         assert.equal(lineage!.workspace_id, workspaceId, "the branch is in the parent's workspace — the workspace is shared, never forked");
-        assert.equal(lineage!.parent_worker_id, workerId, "the branch's lineage points at the parent run");
+        assert.equal(lineage!.parent_worker_id, workerId, "the branch's lineage points at the parent worker");
     } finally { db.close(); }
 });
 
@@ -139,7 +139,7 @@ test("#254 — a fork inherits the log but spends no new money: workspace cost i
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1);
         const turnId = await insertTurn(db, loopId, 1);
-        // Give the parent turn a real cost — the rollup triggers carry it to run + workspace.
+        // Give the parent turn a real cost — the rollup triggers carry it to worker + workspace.
         await db.engine_close_turn.run({
             id: turnId, status: 200, packet: "{}",
             usage_prompt: 100, usage_completion: 50, usage_reasoning: 0, usage_cached: 0, usage_cost_usd: 1000,
@@ -151,7 +151,7 @@ test("#254 — a fork inherits the log but spends no new money: workspace cost i
             (await db.envelope_list_workers_for_workspace.all<{ id: number; cost_usd: number }>({ workspace_id: workspaceId })).find((r) => r.id === rid)?.cost_usd;
 
         assert.equal(await workspaceCost(), 1000, "baseline: the parent turn's cost rolled up to the workspace");
-        assert.equal(await workerCost(workerId), 1000, "baseline: and to the parent run");
+        assert.equal(await workerCost(workerId), 1000, "baseline: and to the parent worker");
 
         const branchWorkerId = await Fork.fork(db, workerId);
 

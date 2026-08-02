@@ -27,7 +27,7 @@ const decomposed = (...columns: string[]): FieldStorage => ({ kind: "decomposed"
 const joinTable = (table: string): FieldStorage => ({ kind: "joinTable", table });
 
 // Contracts owns the model language and runtime-neutral wire shapes. Persistence
-// remains service-owned through migrations and their tests. This census maps
+// remains service-owned through the schema baseline and its tests. This census maps
 // contract shapes with relational projections and explicitly classifies shapes
 // that are transient or stored whole inside owner-defined JSON fields.
 const MAPPING: Record<string, SchemaMapping> = {
@@ -67,8 +67,8 @@ const MAPPING: Record<string, SchemaMapping> = {
 };
 
 const TABLE_PREP = {
-    workspaces: "test_align_cols_sessions",
-    runs: "test_align_cols_runs",
+    workspaces: "test_align_cols_workspaces",
+    workers: "test_align_cols_workers",
     loops: "test_align_cols_loops",
     turns: "test_align_cols_turns",
     entries: "test_align_cols_entries",

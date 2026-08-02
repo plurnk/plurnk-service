@@ -175,7 +175,7 @@ export default class PacketWire {
         }).join("\n");
     }
 
-    // The Child Streams / Child Runs sections ({§child-orientation}) — the OPPOSITE of advice: terse
+    // The Child Streams / Active Child Workers sections ({§child-orientation}) — the OPPOSITE of advice: terse
     // `* <status> <path>` pointers (same shape as the errors section) to the live things the worker holds,
     // so the model SEES its open streams + unconcluded workers each turn and reasons for itself (READ /
     // OPEN / KILL via the path). Orienting state, never an instruction. "" when none → section omitted.
@@ -361,9 +361,9 @@ export default class PacketWire {
             const path = PacketWire.#entryPath(coordinate, renderedOp);
             if (path !== null) meta.path = path;
             if (typeof e.origin === "string") meta.origin = e.origin;
-            // {§env-delta}: the environment-delta cause (a sibling run or a scheme),
-            // rendered when present; absent ⇒ the owning run itself (self).
-            if (typeof e.source === "string" && e.source.length > 0) meta.run = e.source;
+            // {§env-delta}: the environment-delta cause (a sibling worker or a scheme),
+            // rendered when present; absent means the owning worker itself (self).
+            if (typeof e.source === "string" && e.source.length > 0) meta.source = e.source;
             if (renderedOp !== null) meta.op = renderedOp;
             if (typeof e.status === "number") meta.status = e.status;
             const tx = (typeof e.tx === "string" ? PacketWire.#safeParse(e.tx) : e.tx) as StatementTx | null;

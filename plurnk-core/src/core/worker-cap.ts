@@ -7,8 +7,8 @@ import Results from "./results.ts";
 // knob; -1 / unset / invalid = no cap. Only concurrency is bounded, never lifetime:
 // workspaces persist for months, so a total-created cap would punish longevity. A
 // spawn/fork past the ceiling fails hard (508) — no queue, no retry. Checked at the
-// single run-creation site (Dispatcher.#handleWorkerCopy, which both spawns and forks); irc is
-// exempt — it targets an existing run and creates nothing.
+// single worker-creation site (Dispatcher.#handleWorkerControl, which both spawns and forks); IRC is
+// exempt — it targets an existing worker and creates nothing.
 export default class WorkerCap {
     static async deny(db: Db, workspaceId: number): Promise<SchemeResult | null> {
         const raw = process.env.PLURNK_SERVICE_WORKSPACE_WORKERS_MAX_ACTIVE;

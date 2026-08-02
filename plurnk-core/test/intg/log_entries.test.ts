@@ -216,7 +216,7 @@ test("log_entries: full CASCADE chain", async () => {
     try {
         const ctx = await seedEnvelope(db, "ws-log-fullchain");
         await minimalLog(db, ctx);
-        await db.test_sessions_delete.run({ id: ctx.workspaceId });
+        await db.test_workspaces_delete.run({ id: ctx.workspaceId });
         const remaining = (await db.test_log_entries_count_all.get<{ n: number }>())?.n;
         assert.equal(remaining, 0);
     } finally { await db.close(); }
@@ -227,9 +227,7 @@ test("log_entries: immutability trigger — UPDATE of core fields rejected", asy
     try {
         const ctx = await seedEnvelope(db, "ws-log-immut");
         const id = await minimalLog(db, ctx);
-        // Updating `tx` (an immutable core field) must abort. Migration 013
-        // relaxed the original blanket-block trigger to a column-scoped one;
-        // lifecycle columns (state/outcome/status_rx/rx) are updateable for
+        // Lifecycle columns (state/outcome/status_rx/rx) are updateable for
         // the proposal lifecycle, but the original action's identity stays
         // pinned forever.
         await assert.rejects(

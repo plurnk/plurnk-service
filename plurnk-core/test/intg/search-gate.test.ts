@@ -90,7 +90,7 @@ test("an identical duplicate strikes and serves — 409 carrying the prior diges
         assert.equal(dup.status, 409, "the duplicate is a strike (409 — the rail counts it)");
         assert.deepEqual(dup.results, DIGEST, "…and SERVES the same results, verbatim, no prose");
         // the model-facing record: the 409 row exists with the results in its rx
-        const rows = await db.test_send_rows_for_run.all<{ rx: string; status_rx: number }>({ worker_id: workerId }).catch(() => []);
+        const rows = await db.test_send_rows_for_worker.all<{ rx: string; status_rx: number }>({ worker_id: workerId }).catch(() => []);
         const struck = await db.test_count_op.get<{ n: number }>({ op: "EXEC" });
         assert.ok((struck?.n ?? 0) >= 2, "both EXEC attempts are on the log — the duplicate is recorded, never erased");
     } finally { await settle(db, workspaceId).catch(() => {}); await db.close(); }

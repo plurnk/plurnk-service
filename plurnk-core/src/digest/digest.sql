@@ -1,5 +1,5 @@
 -- Forensic read queries for bin/digest.ts. Opened via SqlRiteSync against an
--- existing plurnk*.db the daemon already migrated — NO `-- INIT:` blocks, these
+-- existing plurnk*.db initialized from the schema baseline — NO `-- INIT:` blocks, these
 -- compile against its schema and never alter it. The digest reads a quiescent
 -- DB (a kept test .db or a post-workspace plurnk.db), so each PREP is its own read
 -- — sqlrite 5 dropped the JS transaction composer and these never needed it.
@@ -36,8 +36,8 @@ SELECT id, worker_id, loop_id, turn_id, sequence, at, origin,
 FROM log_entries ORDER BY loop_id, turn_id, sequence;
 
 -- PREP: digest_worker_rollups
--- Per-run aggregates (token/cost SUMs, loop/turn COUNTs, last-turn status) —
--- the run-summary data-ops, computed in SQL rather than rolled up in JS.
+-- Per-worker aggregates (token/cost SUMs, loop/turn COUNTs, last-turn status) —
+-- the worker-summary data, computed in SQL rather than rolled up in JS.
 SELECT
     r.id AS worker_id,
     COUNT(DISTINCT l.id) AS loops,
@@ -56,7 +56,7 @@ GROUP BY r.id
 ORDER BY r.id;
 
 -- PREP: digest_worker_op_mix
--- Per-run op histogram (GROUP BY run, op), pre-sorted by frequency.
+-- Per-worker op histogram (GROUP BY worker, op), pre-sorted by frequency.
 SELECT worker_id, op, COUNT(*) AS n
 FROM log_entries
 GROUP BY worker_id, op

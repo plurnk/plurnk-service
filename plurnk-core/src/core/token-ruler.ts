@@ -1,6 +1,6 @@
 // The ONE model-facing token ruler ({§tokenomics-agnostic-ruler}, owner ruling 2026-07-13).
 //
-// The daemon runs many runs on DIFFERENT models in one workspace at once (per-loop model selection,
+// The daemon runs many workers on different models in one workspace at once (per-loop model selection,
 // #414), and token accounting is workspace-wide (the catalog lists every workspace entry). A single
 // "true" per-entry count is therefore a fiction — there is no one model to be true to — and
 // exact tokenizers exist only for models with a bundled tokenizer.json (most frontier models

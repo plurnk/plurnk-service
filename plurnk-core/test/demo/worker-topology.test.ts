@@ -39,7 +39,7 @@ const runStory = async (opts: { label: string; prompt: string; maxTurns?: number
     const delegatedWorkers = Math.max(0, modelWorkers.length - 1);
     console.error(`[topo:${opts.label}] turns=${turnIds.length} finalStatus=${finalStatus} hitMaxTurns=${hitMaxTurns} delegatedWorkers=${delegatedWorkers} delegation=${delegatedWorkers > 0 ? "observed" : "not-observed"}`);
     const dump = async (): Promise<void> => {
-        // All runs in the workspace — see the children too, not just the parent.
+        // All workers in the workspace — see the children too, not just the parent.
         console.error(`workers: ${workers.map((r) => `${r.id}:${r.name}`).join(", ")}`);
         for (const turnId of turnIds) {
             const row = await s.db.test_get_turn.get<{ packet: string; status: number }>({ id: turnId });

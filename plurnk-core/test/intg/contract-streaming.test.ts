@@ -189,7 +189,7 @@ test("100 MiB channel-body CHECK rejects over-cap; engine caps nothing below it"
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `cap-${crypto.randomUUID()}`);
-        const entry = await db.test_seed_entry_session.get<{ id: number }>({
+        const entry = await db.test_seed_entry_workspace.get<{ id: number }>({
             workspace_id: workspaceId, owner_id: await Owner.commonsId(db, workspaceId), scheme: "worker", pathname: "/cap",
         });
         const entryId = entry!.id;
@@ -250,7 +250,7 @@ test("daemon fires stream/event per chunk with growing contentLength", async () 
 });
 
 // {§stream} — No engine-level transaction abstraction; schemes own connection
-// lifecycle. Structural: the Engine exposes dispatch/run loops but NO
+// lifecycle. Structural: the Engine exposes dispatch and turn orchestration but NO
 // connection/transaction surface (begin/commit/rollback/open/close). And
 // to the engine, channels are static storage — content arrives by a scheme
 // calling appendToChannel directly, with zero engine brokering.

@@ -36,7 +36,7 @@ class Known {
 | `name` | Matches `package.json#plurnk.name`. Addressing/routing identity (the URI prefix). |
 | `channels` | `Record<channelName, mimetype>`. Channel names lowercase. Empty = dynamic per-call. |
 | `defaultChannel` | Channel targeted when path has no `#fragment`. Dynamic-channel schemes may name it without fixing a mimetype; empty means no default. |
-| `category` | `"data"` (entry-bearing) \| `"logging"` (`log://` rows) \| `"control"` (addresses sister processes/runs, owns no entries — e.g. `worker://`). |
+| `category` | `"data"` (entry-bearing) \| `"logging"` (`log://` rows) \| `"control"` (addresses sister workers, owns no entries — e.g. `worker://`). |
 | `scope` | `"workspace"` \| `"worker"` (grammar 0.67 `default_scope`; `worker` = per-worker scratch backing `worker://`). |
 | `writableBy` | Subset of `["model", "client", "plurnk", "plugin"]`; empty declares an immutable scheme. Consumer returns 403 for outside-set writes. |
 | `volatile` | Boolean. |
@@ -251,7 +251,7 @@ its implementation.
   fan-out; one without it receives the standard stored-entry behavior.
 - `channels` — content writes + state (`append`/`replace`/`setState`).
 - `tags` — entry tags (`add`/`remove`/`list`).
-- `notify` — between-turn client signal (`streamEvent`, metadata-only); not model-facing. (No `wakeWorker`: the run-wake carries subscription-close context that only exists at stream completion, so it lives on `subscriptions.close`. Only streaming schemes wake a worker, always via close.)
+- `notify` — between-turn client signal (`streamEvent`, metadata-only); not model-facing. (No `wakeWorker`: the worker wake carries subscription-close context that only exists at stream completion, so it lives on `subscriptions.close`. Only streaming schemes wake a worker, always via close.)
 - `projection` — `readable(content, mimetype)` asks the consumer's configured mimetype family for the model-facing text projection. Acquisition schemes own bytes/DOM; they do not instantiate or second-guess the reader family. `null` means no readable projection.
 - `subscriptions` — streaming lifecycle: `open(pathname, handle)` atomically binds durable subscription identity to the consumer's process-local live-handle registry, returns a worker+teardown-composed `AbortSignal`, and takes a force-cancel `SubscriptionHandle`; routed cancellation both invokes the handle and aborts that signal. `notifyChunk(channel, chunk, mimetype?)` is **fused** (append + stream/event in one call), with an optional per-call `mimetype` that retypes the channel to the content's actual type (passed statelessly per chunk; the impl writes only on change; the manifest channel mimetype is the pre-fetch seed default — plurnk-service#226). `close(result, summary?)` validates and persists the exact universal `SchemeResult`, composites channel state, unregisters the live handle, and wakes the worker. `summary` is presentation only; it never replaces or reconstructs the result. Designed against Exec (two-channel, cancel-tested).
 

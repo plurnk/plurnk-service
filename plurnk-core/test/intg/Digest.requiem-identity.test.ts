@@ -1,4 +1,4 @@
-// #561 - the requiem is a synthetic out-of-band model call (the exit interview, after the run,
+// #561 - the requiem is a synthetic out-of-band model call (the exit interview, after the loop,
 // outside any live worker turn). A plurnk-endpoint witness requires FULL turn identity on every
 // call - Plurnk-Worker-Id AND Plurnk-Worker-Primary - and rejects an identity-less call 400. The
 // interview has no live worker tree, so it identifies as its OWN root (primaryWorkerId == workerId):

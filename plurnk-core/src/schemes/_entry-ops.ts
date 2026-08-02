@@ -66,7 +66,7 @@ export default class EntryOps {
 
     // {§channel-selection-unknown-channel-400} — the 400 carries its fact: the tried fragment and
     // the declared universe, so one miss teaches the topology instead of forcing a guessing walk
-    // (run-sweep: a model probed #stdout/#stderr/#body against a results-channel search stream,
+    // (failure specimen: a model probed #stdout/#stderr/#body against a results-channel search stream,
     // each miss a bare 400 that taught nothing).
     static #channelMiss(
         fragment: string | null,

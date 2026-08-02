@@ -1,6 +1,6 @@
 -- MIGRATE: 1 baseline
--- The complete v3 schema baseline. SqlRite owns PRAGMA user_version: subsequent
--- MIGRATE blocks are both the evolution history and the external schema stamp.
+-- The single current pre-release schema baseline. Shape changes replace it;
+-- existing development databases are deleted and recreated, never upgraded.
 
 -- workspaces
 -- project_root: workspace pointer. NULL = headless (no disk side-effects);
@@ -11,7 +11,7 @@ CREATE TABLE IF NOT EXISTS workspaces (
     version                   INTEGER NOT NULL DEFAULT 0 CHECK (version >= 0),
     name                      TEXT    NOT NULL UNIQUE CHECK (length(name) > 0),
     created_at                TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
-    cost_pico                 INTEGER NOT NULL DEFAULT 0 CHECK (cost_pico >= 0),
+    cost_usd                  REAL    NOT NULL DEFAULT 0 CHECK (cost_usd >= 0),
     scheme_registry_additions TEXT    NOT NULL DEFAULT '[]' CHECK (json_valid(scheme_registry_additions)),
     project_root              TEXT,
     -- #231 client-chosen workspace-open context: { manifestItems?, mdDocs? }, read at turn-0
@@ -19,18 +19,18 @@ CREATE TABLE IF NOT EXISTS workspaces (
     settings                  TEXT    NOT NULL DEFAULT '{}' CHECK (json_valid(settings))
 ) STRICT;
 
-CREATE INDEX IF NOT EXISTS sessions_created_at ON workspaces (created_at);
+CREATE INDEX IF NOT EXISTS workspaces_created_at ON workspaces (created_at);
 
--- runs
+-- workers
 CREATE TABLE IF NOT EXISTS workers (
     id            INTEGER NOT NULL PRIMARY KEY,
     version       INTEGER NOT NULL DEFAULT 0 CHECK (version >= 0),
     workspace_id    INTEGER NOT NULL,
     name          TEXT    NOT NULL CHECK (length(name) > 0),
     created_at    TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
-    -- runs fork via parent_worker_id; workspaces carry no parent — {§machine-processes-no-fork-workspace}
+    -- workers fork via parent_worker_id; workspaces carry no parent — {§machine-processes-no-fork-workspace}
     parent_worker_id INTEGER          CHECK (parent_worker_id IS NULL OR parent_worker_id != id),
-    cost_pico     INTEGER NOT NULL DEFAULT 0 CHECK (cost_pico >= 0),
+    cost_usd      REAL    NOT NULL DEFAULT 0 CHECK (cost_usd >= 0),
     origin        TEXT    NOT NULL DEFAULT 'client' CHECK (origin IN ('model', 'client', 'plurnk')),
     FOREIGN KEY (workspace_id)    REFERENCES workspaces(id) ON DELETE CASCADE,
     FOREIGN KEY (parent_worker_id) REFERENCES workers(id)     ON DELETE CASCADE
@@ -39,8 +39,8 @@ CREATE TABLE IF NOT EXISTS workers (
 CREATE        INDEX IF NOT EXISTS workers_workspace_id_created_at ON workers (workspace_id, created_at);
 CREATE        INDEX IF NOT EXISTS workers_parent_worker_id         ON workers (parent_worker_id);
 -- NOT unique: a name is frozen per worker ({§machine-processes-worker-origin}) but RECLAIMABLE across
--- time — a terminated run keeps its name in permanent history while a fresh spawn reuses it;
--- worker_resolve_by_name picks the newest. A LIVE collision is refused at the spawn gate (Run.edit
+-- time — a terminated worker keeps its name in permanent history while a fresh spawn reuses it;
+-- worker_resolve_by_name picks the newest. A LIVE collision is refused at the spawn gate (Worker.edit
 -- → worker_live_by_name → 409), never by this index. Indexed for the by-name resolve/spawn lookup.
 CREATE        INDEX IF NOT EXISTS workers_workspace_name          ON workers (workspace_id, name);
 
@@ -57,6 +57,8 @@ CREATE TABLE IF NOT EXISTS loops (
     status   INTEGER NOT NULL DEFAULT 102 CHECK (status IN (100, 102, 200, 202, 413, 429, 499, 500, 504, 508)),
     prompt   TEXT    NOT NULL,
     flags    TEXT    NOT NULL DEFAULT '{}' CHECK (json_valid(flags)),
+    provider_spec TEXT NOT NULL DEFAULT 'null' CHECK (json_valid(provider_spec)),
+    max_turns INTEGER NOT NULL DEFAULT 50 CHECK (max_turns >= -1),
     -- #249 — attribution tags of the loop's active plugins (string[] JSON); the activity tagged
     -- with what its plugins offer. Same set the engine rides on each turn's generate() wire.
     attributions TEXT NOT NULL DEFAULT '[]' CHECK (json_valid(attributions)),
@@ -69,6 +71,7 @@ CREATE TABLE IF NOT EXISTS loops (
     -- reason — set by the guarded terminal lifecycle transition.
     terminated_at    TEXT,
     terminal_message TEXT,
+    terminal_result  TEXT                      CHECK (terminal_result IS NULL OR json_valid(terminal_result)),
     -- Who ended the loop when it wasn't the model's own deliberate terminal: 'collapse' (the
     -- ∅-wait conclude, #379) or 'cancel' (an external loop.cancel, #380). NULL = the model's own
     -- SEND / the engine's budget-strike terminals, whose status already carries the story. The
@@ -81,7 +84,7 @@ CREATE TABLE IF NOT EXISTS loops (
 CREATE UNIQUE INDEX IF NOT EXISTS loops_worker_id_sequence ON loops (worker_id, sequence);
 
 -- {§worker-scheme}: a loop crossing into a terminal status stamps terminated_at, so sibling
--- runs pull the termination as a folded ambient delta — caught uniformly across every
+-- workers pull the termination as a folded ambient delta — caught uniformly across every
 -- death-path (SEND, grinder, max-turns, strike, KILL). The stamp updates terminated_at,
 -- never status, so it cannot re-fire this trigger. Terminals: 200 done · 413 budget ·
 -- 429 turn-ceiling · 499 cancel · 500 fail · 504 wall-clock timeout · 508 runaway. (202 = parked/sleeping, NOT terminal.)
@@ -90,6 +93,88 @@ AFTER UPDATE OF status ON loops
 WHEN NEW.status IN (200, 413, 429, 499, 500, 504, 508) AND OLD.status NOT IN (200, 413, 429, 499, 500, 504, 508)
 BEGIN
     UPDATE loops SET terminated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = NEW.id;
+END;
+
+CREATE TRIGGER IF NOT EXISTS loops_result_contract_insert
+BEFORE INSERT ON loops
+WHEN NEW.status IN (100, 102, 200, 202, 413, 429, 499, 500, 504, 508)
+AND NOT (
+    (NEW.status IN (100, 102, 202) AND NEW.terminal_result IS NULL)
+    OR (
+        NEW.status IN (200, 413, 429, 499, 500, 504, 508)
+        AND NEW.terminal_result IS NOT NULL
+        AND json_valid(NEW.terminal_result)
+        AND json_type(NEW.terminal_result, '$.status') = 'integer'
+        AND (
+            json_extract(NEW.terminal_result, '$.status') = NEW.status
+            OR (
+                NEW.status = 200
+                AND json_extract(NEW.terminal_result, '$.status') BETWEEN 200 AND 399
+                AND json_extract(NEW.terminal_result, '$.status') != 202
+            )
+            OR (
+                NEW.status = 500
+                AND json_extract(NEW.terminal_result, '$.status') BETWEEN 400 AND 599
+            )
+        )
+        AND (
+            (NEW.status < 400 AND json_type(NEW.terminal_result, '$.problem') IS NULL)
+            OR (
+                NEW.status >= 400
+                AND json_type(NEW.terminal_result, '$.problem') = 'object'
+                AND json_extract(NEW.terminal_result, '$.problem.status')
+                    = json_extract(NEW.terminal_result, '$.status')
+                AND length(json_extract(NEW.terminal_result, '$.problem.type')) > 0
+                AND length(json_extract(NEW.terminal_result, '$.problem.title')) > 0
+                AND length(json_extract(NEW.terminal_result, '$.problem.detail')) > 0
+                AND length(json_extract(NEW.terminal_result, '$.problem.instance')) > 0
+            )
+        )
+    )
+)
+BEGIN
+    SELECT RAISE(ABORT, 'loop terminal result violates the operation-result contract');
+END;
+
+CREATE TRIGGER IF NOT EXISTS loops_result_contract_update
+BEFORE UPDATE OF status, terminal_result ON loops
+WHEN NEW.status IN (100, 102, 200, 202, 413, 429, 499, 500, 504, 508)
+AND NOT (
+    (NEW.status IN (100, 102, 202) AND NEW.terminal_result IS NULL)
+    OR (
+        NEW.status IN (200, 413, 429, 499, 500, 504, 508)
+        AND NEW.terminal_result IS NOT NULL
+        AND json_valid(NEW.terminal_result)
+        AND json_type(NEW.terminal_result, '$.status') = 'integer'
+        AND (
+            json_extract(NEW.terminal_result, '$.status') = NEW.status
+            OR (
+                NEW.status = 200
+                AND json_extract(NEW.terminal_result, '$.status') BETWEEN 200 AND 399
+                AND json_extract(NEW.terminal_result, '$.status') != 202
+            )
+            OR (
+                NEW.status = 500
+                AND json_extract(NEW.terminal_result, '$.status') BETWEEN 400 AND 599
+            )
+        )
+        AND (
+            (NEW.status < 400 AND json_type(NEW.terminal_result, '$.problem') IS NULL)
+            OR (
+                NEW.status >= 400
+                AND json_type(NEW.terminal_result, '$.problem') = 'object'
+                AND json_extract(NEW.terminal_result, '$.problem.status')
+                    = json_extract(NEW.terminal_result, '$.status')
+                AND length(json_extract(NEW.terminal_result, '$.problem.type')) > 0
+                AND length(json_extract(NEW.terminal_result, '$.problem.title')) > 0
+                AND length(json_extract(NEW.terminal_result, '$.problem.detail')) > 0
+                AND length(json_extract(NEW.terminal_result, '$.problem.instance')) > 0
+            )
+        )
+    )
+)
+BEGIN
+    SELECT RAISE(ABORT, 'loop terminal result violates the operation-result contract');
 END;
 
 -- turns
@@ -107,7 +192,7 @@ CREATE TABLE IF NOT EXISTS turns (
     usage_completion INTEGER NOT NULL DEFAULT 0 CHECK (usage_completion >= 0),
     usage_reasoning  INTEGER NOT NULL DEFAULT 0 CHECK (usage_reasoning >= 0),
     usage_cached     INTEGER NOT NULL DEFAULT 0 CHECK (usage_cached >= 0),
-    usage_cost_pico  INTEGER NOT NULL DEFAULT 0 CHECK (usage_cost_pico >= 0),
+    usage_cost_usd   REAL    NOT NULL DEFAULT 0 CHECK (usage_cost_usd >= 0),
     -- #274 — the context window of the model that RAN this turn (provider.contextSize), so the
     -- gauge denominator matches the loop's actual model under any /model switch. NULL = the
     -- provider can't report a window (the client omits the gauge).
@@ -125,6 +210,33 @@ CREATE TABLE IF NOT EXISTS turns (
 
 CREATE UNIQUE INDEX IF NOT EXISTS turns_loop_id_sequence ON turns (loop_id, sequence);
 CREATE        INDEX IF NOT EXISTS turns_timestamp        ON turns (timestamp);
+
+-- Provider calls are attempts beneath one engine turn. A syntactically invalid
+-- emission may be retried against the identical packet without becoming a turn
+-- or entering model-visible history.
+CREATE TABLE IF NOT EXISTS turn_attempts (
+    id               INTEGER NOT NULL PRIMARY KEY,
+    turn_id          INTEGER NOT NULL,
+    sequence         INTEGER NOT NULL CHECK (sequence >= 1),
+    accepted         INTEGER NOT NULL CHECK (accepted IN (0, 1)),
+    response         TEXT    NOT NULL CHECK (json_valid(response)),
+    parse_errors     TEXT    NOT NULL DEFAULT '[]' CHECK (json_valid(parse_errors)),
+    usage_prompt     INTEGER NOT NULL DEFAULT 0 CHECK (usage_prompt >= 0),
+    usage_completion INTEGER NOT NULL DEFAULT 0 CHECK (usage_completion >= 0),
+    usage_reasoning  INTEGER NOT NULL DEFAULT 0 CHECK (usage_reasoning >= 0),
+    usage_cached     INTEGER NOT NULL DEFAULT 0 CHECK (usage_cached >= 0),
+    usage_cost_usd   REAL    NOT NULL DEFAULT 0 CHECK (usage_cost_usd >= 0),
+    finish_reason    TEXT,
+    model            TEXT    NOT NULL CHECK (length(model) >= 1),
+    timestamp        TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+    UNIQUE (turn_id, sequence),
+    FOREIGN KEY (turn_id) REFERENCES turns(id) ON DELETE CASCADE
+) STRICT;
+
+CREATE INDEX IF NOT EXISTS turn_attempts_turn_id ON turn_attempts (turn_id);
+CREATE UNIQUE INDEX IF NOT EXISTS turn_attempts_one_accepted_per_turn
+    ON turn_attempts (turn_id)
+    WHERE accepted = 1;
 
 -- derivations
 -- Content-addressed deep projections. Entries point at a COMPLETE artifact by
@@ -193,19 +305,6 @@ CREATE TABLE IF NOT EXISTS entries (
 -- Concurrent workers' capability streams share the loop-relative coordinate (every worker's first
 -- loop is seq 1), so identity keys on the owner and identical coordinates are DISTINCT rows (#526).
 CREATE UNIQUE INDEX IF NOT EXISTS entries_identity ON entries (workspace_id, owner_id, scheme, pathname);
-
--- entries_scheme_heal
--- v1→v2 in-place heal ({§entry-identity-no-null}): fold legacy NULL-scheme member rows onto
--- the reserved 'file' scheme. Idempotent — a second pass updates zero rows. A v1 db already
--- fragmented by the #545 duplicate class fails HERE on the identity index, loudly and by
--- design: a fragmented store has no safe automatic merge; recover via a fresh db.
-UPDATE entries SET scheme = 'file' WHERE scheme IS NULL;
-
--- entries_pathname_heal
--- v2→v3 in-place heal ({§fs-canonical-name}): file-class keys migrate to the bare git-pathspec
--- form — the leading slash was the retired namespace-origin notation. Idempotent; a db holding
--- both spellings of one member fails HERE on the identity index, loudly (fresh-db recovery).
-UPDATE entries SET pathname = substr(pathname, 2) WHERE scheme = 'file' AND pathname LIKE '/%';
 
 -- The ONE engine-imposed constraint (SPEC {§stream-constraints}, {§stream-constraints-engine-one-cap}): 100 MiB char-length cap
 -- per channel content body. All other limits are extrinsic.
@@ -277,13 +376,13 @@ CREATE TABLE IF NOT EXISTS symbol_refs (
 CREATE INDEX IF NOT EXISTS symbol_refs_name   ON symbol_refs (name);
 CREATE INDEX IF NOT EXISTS symbol_refs_source ON symbol_refs (derivation_id, container);
 
--- entry_fts (~semantic FTS half — plurnk-service#186)
+-- derivation_fts (~semantic FTS half — plurnk-service#186)
 -- Keyword/content index over a derivation's readable content; rowid IS derivations.id.
 -- Explicit keyword fallback when no embedder is installed. Vector search never
 -- consults this table: semantic recall is exhaustive over complete vectors.
-CREATE VIRTUAL TABLE IF NOT EXISTS entry_fts USING fts5(content);
+CREATE VIRTUAL TABLE IF NOT EXISTS derivation_fts USING fts5(content);
 
--- entry_embeddings (~semantic vector half — plurnk-service#186; Project
+-- derivation_embeddings (~semantic vector half — plurnk-service#186; Project
 -- Semantics chunking). One Float32 vector per CHUNK: a derivation tiles into N chunks,
 -- each addressed by its <L> line range (line_start..line_end) and embedded
 -- separately, so a large body is fully searchable instead of truncated at the
@@ -291,7 +390,7 @@ CREATE VIRTUAL TABLE IF NOT EXISTS entry_fts USING fts5(content);
 -- the rank currently max-pools a derivation's chunks, then projects every attached
 -- pathname. semantic_rank exhaustively cosine-ranks these.
 -- CASCADE-deleted with the derivation artifact.
-CREATE TABLE IF NOT EXISTS entry_embeddings (
+CREATE TABLE IF NOT EXISTS derivation_embeddings (
     derivation_id   INTEGER NOT NULL,
     chunk_seq       INTEGER NOT NULL,
     line_start      INTEGER NOT NULL,
@@ -323,9 +422,11 @@ CREATE TABLE IF NOT EXISTS log_entries (
     sequence        INTEGER NOT NULL           CHECK (sequence >= 1),
     at              TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
     origin          TEXT    NOT NULL           CHECK (origin IN ('model', 'client', 'plurnk', 'plugin')),
-    -- {§env-delta} environment-delta cause: a sibling run-id or a scheme ('file');
-    -- NULL = the owning run itself (self), rendered without a worker= label.
+    -- {§env-delta} environment-delta cause: a sibling worker id or a scheme ('file');
+    -- NULL = the owning worker itself (self), rendered without a worker= label.
     source          TEXT,
+    -- Search derivation attached to this durable log result, when available.
+    deep_hash       TEXT                       REFERENCES derivations(deep_hash),
 
     -- 'error' is an ACTIONLESS row ({§operation-results} — errors are log items): a parse failure that
     -- produced no op still records a log entry (op='error', status_rx≥400, no target) so the model
@@ -434,14 +535,14 @@ CREATE TABLE IF NOT EXISTS providers (
 CREATE INDEX IF NOT EXISTS providers_created_at ON providers (created_at);
 
 -- cost_rollups
--- Triggers maintaining denormalized cost_pico totals on runs and workspaces
+-- Triggers maintaining denormalized USD totals on workers and workspaces
 -- as turns insert/update. Pure denormalization (textbook trigger use);
 -- no branching state-machine logic lives here.
 CREATE TRIGGER IF NOT EXISTS turns_cost_rollup_insert_worker
 AFTER INSERT ON turns
 BEGIN
     UPDATE workers
-       SET cost_pico = cost_pico + NEW.usage_cost_pico
+       SET cost_usd = cost_usd + NEW.usage_cost_usd
      WHERE id = (SELECT worker_id FROM loops WHERE id = NEW.loop_id);
 END;
 
@@ -449,7 +550,7 @@ CREATE TRIGGER IF NOT EXISTS turns_cost_rollup_insert_workspace
 AFTER INSERT ON turns
 BEGIN
     UPDATE workspaces
-       SET cost_pico = cost_pico + NEW.usage_cost_pico
+       SET cost_usd = cost_usd + NEW.usage_cost_usd
      WHERE id = (
          SELECT r.workspace_id
            FROM workers r
@@ -459,20 +560,20 @@ BEGIN
 END;
 
 CREATE TRIGGER IF NOT EXISTS turns_cost_rollup_update_worker
-AFTER UPDATE OF usage_cost_pico ON turns
-WHEN NEW.usage_cost_pico != OLD.usage_cost_pico
+AFTER UPDATE OF usage_cost_usd ON turns
+WHEN NEW.usage_cost_usd != OLD.usage_cost_usd
 BEGIN
     UPDATE workers
-       SET cost_pico = cost_pico + NEW.usage_cost_pico - OLD.usage_cost_pico
+       SET cost_usd = cost_usd + NEW.usage_cost_usd - OLD.usage_cost_usd
      WHERE id = (SELECT worker_id FROM loops WHERE id = NEW.loop_id);
 END;
 
 CREATE TRIGGER IF NOT EXISTS turns_cost_rollup_update_workspace
-AFTER UPDATE OF usage_cost_pico ON turns
-WHEN NEW.usage_cost_pico != OLD.usage_cost_pico
+AFTER UPDATE OF usage_cost_usd ON turns
+WHEN NEW.usage_cost_usd != OLD.usage_cost_usd
 BEGIN
     UPDATE workspaces
-       SET cost_pico = cost_pico + NEW.usage_cost_pico - OLD.usage_cost_pico
+       SET cost_usd = cost_usd + NEW.usage_cost_usd - OLD.usage_cost_usd
      WHERE id = (
          SELECT r.workspace_id
            FROM workers r
@@ -493,6 +594,7 @@ CREATE TABLE IF NOT EXISTS subscriptions (
     entry_id     INTEGER NOT NULL,
     scheme       TEXT    NOT NULL CHECK (length(scheme) > 0),
     handle       TEXT    NOT NULL CHECK (length(handle) > 0),
+    published_channel TEXT          CHECK (published_channel IS NULL OR length(published_channel) > 0),
     opened_at    TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
     -- grammar 0.74.20 EXEC `<T,P>` poll cadence (seconds). NULL = not polled. While the owning
     -- loop hibernates (202), the daemon wakes it every poll_seconds to inspect this stream ({§exec-poll}).
@@ -502,6 +604,7 @@ CREATE TABLE IF NOT EXISTS subscriptions (
     turn_scoped  INTEGER NOT NULL DEFAULT 0 CHECK (turn_scoped IN (0, 1)),
     closed_at    TEXT,
     close_status INTEGER          CHECK (close_status IS NULL OR (close_status BETWEEN 100 AND 599)),
+    close_result TEXT             CHECK (close_result IS NULL OR json_valid(close_result)),
     CHECK ((closed_at IS NULL AND close_status IS NULL)
         OR (closed_at IS NOT NULL AND close_status IS NOT NULL)),
     FOREIGN KEY (worker_id)   REFERENCES workers(id)    ON DELETE CASCADE,
@@ -518,6 +621,56 @@ CREATE INDEX IF NOT EXISTS subscriptions_scheme_active
 
 CREATE INDEX IF NOT EXISTS subscriptions_opened_at ON subscriptions (opened_at);
 
+CREATE TRIGGER IF NOT EXISTS subscriptions_result_contract_insert
+BEFORE INSERT ON subscriptions
+WHEN NOT (
+    (NEW.closed_at IS NULL AND NEW.close_status IS NULL AND NEW.close_result IS NULL)
+    OR (
+        NEW.closed_at IS NOT NULL
+        AND NEW.close_status IS NOT NULL
+        AND NEW.close_result IS NOT NULL
+        AND json_valid(NEW.close_result)
+        AND json_type(NEW.close_result, '$.status') = 'integer'
+        AND json_extract(NEW.close_result, '$.status') = NEW.close_status
+        AND (
+            (NEW.close_status < 400 AND json_type(NEW.close_result, '$.problem') IS NULL)
+            OR (
+                NEW.close_status >= 400
+                AND json_type(NEW.close_result, '$.problem') = 'object'
+                AND json_extract(NEW.close_result, '$.problem.status') = NEW.close_status
+            )
+        )
+    )
+)
+BEGIN
+    SELECT RAISE(ABORT, 'subscription terminal result violates the operation-result contract');
+END;
+
+CREATE TRIGGER IF NOT EXISTS subscriptions_result_contract_update
+BEFORE UPDATE OF closed_at, close_status, close_result ON subscriptions
+WHEN NOT (
+    (NEW.closed_at IS NULL AND NEW.close_status IS NULL AND NEW.close_result IS NULL)
+    OR (
+        NEW.closed_at IS NOT NULL
+        AND NEW.close_status IS NOT NULL
+        AND NEW.close_result IS NOT NULL
+        AND json_valid(NEW.close_result)
+        AND json_type(NEW.close_result, '$.status') = 'integer'
+        AND json_extract(NEW.close_result, '$.status') = NEW.close_status
+        AND (
+            (NEW.close_status < 400 AND json_type(NEW.close_result, '$.problem') IS NULL)
+            OR (
+                NEW.close_status >= 400
+                AND json_type(NEW.close_result, '$.problem') = 'object'
+                AND json_extract(NEW.close_result, '$.problem.status') = NEW.close_status
+            )
+        )
+    )
+)
+BEGIN
+    SELECT RAISE(ABORT, 'subscription terminal result violates the operation-result contract');
+END;
+
 -- (worker_watermarks removed — {§env-delta} is now pull-from-log, no per-worker snapshot.)
 
 -- workspace_constraints
@@ -533,3 +686,55 @@ CREATE TABLE IF NOT EXISTS workspace_constraints (
     PRIMARY KEY (workspace_id, effect, glob),
     FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE
 ) STRICT, WITHOUT ROWID;
+
+-- A branch batch is a durable exclusive transaction over the privileged
+-- project repository.
+CREATE TABLE IF NOT EXISTS branch_batches (
+    id                INTEGER NOT NULL PRIMARY KEY,
+    workspace_id      INTEGER NOT NULL,
+    parent_worker_id  INTEGER NOT NULL,
+    parent_loop_id    INTEGER NOT NULL,
+    parent_turn_id    INTEGER NOT NULL UNIQUE,
+    state             TEXT    NOT NULL DEFAULT 'collecting'
+                      CHECK (state IN ('collecting', 'queued', 'running', 'completed', 'failed', 'recovery_required')),
+    active_sequence   INTEGER CHECK (active_sequence IS NULL OR active_sequence >= 1),
+    repository_path   TEXT CHECK (repository_path IS NULL OR length(repository_path) > 0),
+    original_ref      TEXT,
+    original_commit   TEXT CHECK (original_commit IS NULL OR length(original_commit) > 0),
+    problem           TEXT CHECK (problem IS NULL OR json_valid(problem)),
+    created_at        TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+    completed_at      TEXT,
+    CHECK (
+        (repository_path IS NULL AND original_commit IS NULL)
+        OR (repository_path IS NOT NULL AND original_commit IS NOT NULL)
+    ),
+    FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
+    FOREIGN KEY (parent_worker_id) REFERENCES workers(id) ON DELETE CASCADE,
+    FOREIGN KEY (parent_loop_id) REFERENCES loops(id) ON DELETE CASCADE,
+    FOREIGN KEY (parent_turn_id) REFERENCES turns(id) ON DELETE CASCADE
+) STRICT;
+
+CREATE UNIQUE INDEX IF NOT EXISTS branch_batches_one_active_per_workspace
+    ON branch_batches (workspace_id)
+    WHERE state IN ('collecting', 'queued', 'running', 'recovery_required');
+
+CREATE TABLE IF NOT EXISTS branch_batch_items (
+    id            INTEGER NOT NULL PRIMARY KEY,
+    batch_id      INTEGER NOT NULL,
+    sequence      INTEGER NOT NULL CHECK (sequence >= 1),
+    worker_id     INTEGER NOT NULL,
+    loop_id       INTEGER NOT NULL,
+    branch        TEXT    NOT NULL CHECK (length(branch) > 0),
+    state         TEXT    NOT NULL DEFAULT 'queued'
+                  CHECK (state IN ('queued', 'running', 'succeeded', 'failed', 'recovery_required')),
+    result        TEXT CHECK (result IS NULL OR json_valid(result)),
+    result_commit TEXT CHECK (result_commit IS NULL OR length(result_commit) > 0),
+    changed       INTEGER CHECK (changed IS NULL OR changed IN (0, 1)),
+    started_at    TEXT,
+    completed_at  TEXT,
+    UNIQUE (batch_id, sequence),
+    UNIQUE (batch_id, branch),
+    FOREIGN KEY (batch_id) REFERENCES branch_batches(id) ON DELETE CASCADE,
+    FOREIGN KEY (worker_id) REFERENCES workers(id) ON DELETE CASCADE,
+    FOREIGN KEY (loop_id) REFERENCES loops(id) ON DELETE CASCADE
+) STRICT;

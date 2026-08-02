@@ -249,8 +249,8 @@ Mutation semantics:
 | FOLD | status; list of log items folded |
 | SEND | status; recipient ack if applicable |
 | EXEC | output stream channels (`#stdout`, `#stderr`), arriving on later turns |
-| WORK | spawn ack; untagged workers run concurrently, while `[branch]` workers enter the service's serialized Git batch; the deliverable arrives as a log delta |
-| FORK | spawn ack; inherits the parent's context; untagged runs concurrently, while `[branch]` enters the serialized Git batch |
+| WORK | spawn ack; untagged workers execute concurrently, while `[branch]` workers enter the service's serialized Git batch; the deliverable arrives as a log delta |
+| FORK | spawn ack; inherits the parent's context; an untagged worker executes concurrently, while `[branch]` enters the serialized Git batch |
 | KILL | status; killed path |
 | PLAN | status; logged |
 

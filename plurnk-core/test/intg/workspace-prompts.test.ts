@@ -1,5 +1,5 @@
 // #238 — workspace.prompts: a workspace's prior user prompts, newest-first, for a client's
-// up/down readline history. One RPC over loops.prompt, replacing the log-archaeology path
+// up/down readline history. One RPC queries loops.prompt, replacing the log-archaeology path
 // (workspace.workers → log.read → filter prompt entries → dig tx.body).
 
 import test from "node:test";

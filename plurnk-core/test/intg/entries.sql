@@ -1,13 +1,13 @@
 -- PREP: test_entries_table_sql
 SELECT sql FROM sqlite_master WHERE name = $name;
 
--- PREP: test_entries_insert_session
+-- PREP: test_entries_insert_workspace
 INSERT INTO entries (workspace_id, owner_id, scheme, pathname) VALUES ($workspace_id, (SELECT id FROM workers WHERE workspace_id = $workspace_id ORDER BY id LIMIT 1), $scheme, $pathname) RETURNING id;
 
 -- PREP: test_entries_get_first
 SELECT id, version, workspace_id, owner_id, scheme, pathname, attributes FROM entries LIMIT 1;
 
--- PREP: test_entries_get_first_scope_session
+-- PREP: test_entries_get_first_scope_workspace
 SELECT workspace_id, owner_id FROM entries LIMIT 1;
 
 -- PREP: test_entries_insert_with_workspace_id_only
@@ -64,7 +64,7 @@ SELECT entry_id FROM entry_tags WHERE tag = $tag ORDER BY entry_id;
 -- PREP: test_entry_tags_index
 SELECT name FROM sqlite_master WHERE type='index' AND name='entry_tags_tag';
 
--- EXEC: test_entries_insert_session_no_workspace_id
+-- EXEC: test_entries_insert_workspace_no_workspace_id
 INSERT INTO entries (owner_id, scheme, pathname) VALUES ((SELECT id FROM workers ORDER BY id LIMIT 1), 'x', '/x');
 
 

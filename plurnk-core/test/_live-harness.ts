@@ -162,7 +162,7 @@ export const readBody = async (db: Db, pathname: string): Promise<string | undef
 // (what a READ actually sliced / a FIND actually matched). modelWorkerId rides the
 // loop/terminated event (liveLoop returns it).
 export const lastRx = async (db: Db, modelWorkerId: number, op: string): Promise<string> => {
-    const row = await db.test_get_log_rx_by_run_op.get<{ rx: string }>({ worker_id: modelWorkerId, op });
+    const row = await db.test_get_log_rx_by_worker_op.get<{ rx: string }>({ worker_id: modelWorkerId, op });
     return row?.rx ?? "";
 };
 

@@ -277,7 +277,7 @@ test("a parser warning remains an advisory — valid statements complete and no 
             "the Notice retains the parser's typed source position",
         );
         assert.deepEqual(
-            await db.test_error_rows_for_run.all({ worker_id: workerId }),
+            await db.test_error_rows_for_worker.all({ worker_id: workerId }),
             [],
             "an advisory cannot become durable failure truth",
         );

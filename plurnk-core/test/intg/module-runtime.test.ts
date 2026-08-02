@@ -90,7 +90,7 @@ test("module runtime registration preserves one-name-one-owner atomicity", async
         // Re-registering a live tag is a caller error, not a silent overwrite.
         assert.throws(() => engine.registerRuntime("myserver", fakeEntry("myserver")), /already/i, "dup tag rejected");
 
-        // A reserved built-in scheme name (known/exec/run/…) is rejected by the scheme-first arbitration
+        // A reserved built-in scheme name (known/exec/worker/…) is rejected by the scheme-first arbitration
         // gate - and because the face is registered BEFORE the executor, the executor registry is never
         // touched on a rejected tag (no half-write).
         assert.throws(() => engine.registerRuntime("worker", fakeEntry("worker")), /reserved/i, "reserved name rejected");

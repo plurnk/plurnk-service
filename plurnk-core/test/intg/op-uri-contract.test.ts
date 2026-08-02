@@ -47,7 +47,7 @@ const withWorkspaceRoot = async (fn: (root: string, ctx: PlurnkSchemeContext, db
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `uri-${crypto.randomUUID()}`);
-        await db.test_set_session_project_root.run({ id: workspaceId, project_root: root });
+        await db.test_set_workspace_project_root.run({ id: workspaceId, project_root: root });
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1);
         const turnId = await insertTurn(db, loopId, 1, 102);

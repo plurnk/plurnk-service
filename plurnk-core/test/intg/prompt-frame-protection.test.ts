@@ -104,7 +104,7 @@ test("the grinder never folds the prompt frame — even on overflow (#382)", asy
             .filter((row) => row.expanded === 1 && row.op !== "error" && row.op !== "PLAN" && row.scheme !== "prompt")
             .map((row) => `${row.loop_seq}/${row.turn_seq}/${row.sequence}`)
             .sort();
-        const overflowTags = (await db.test_log_tags_by_run.all<{ coordinate: string; tag: string }>({ worker_id: workerId }))
+        const overflowTags = (await db.test_log_tags_by_worker.all<{ coordinate: string; tag: string }>({ worker_id: workerId }))
             .filter(({ tag }) => tag === "overflow")
             .map(({ coordinate }) => coordinate)
             .sort();
@@ -114,7 +114,7 @@ test("the grinder never folds the prompt frame — even on overflow (#382)", asy
 
 test("sister workers' turn-1 prompts are DISTINCT rows at the same coordinate — owner-keyed, no clobber (#382 fault-1)", async () => {
     // run43: exactly two writes hit /1/1 — the model worker's task foist and a WORK-spawned
-    // worker's — and the worker's DESTROYED the parent's task. Run-qualified paths keep one
+    // worker's — and the worker's DESTROYED the parent's task. Owner-keyed rows keep one
     // filesystem with collision-free coordinates (/proc/<pid>-style).
     const db = await openMigrated();
     try {

@@ -59,7 +59,7 @@ test("demo: 'write a script that greets me and run it' — script lands in works
             // A filesystem outcome alone is not enough: the prior broken fixture
             // passed after two refused EDITs because the model used shell
             // redirection. Pin the model-facing authoring contract itself.
-            const edits = await s.db.test_log_entries_by_run_op_full.all<{
+            const edits = await s.db.test_log_entries_by_worker_op_full.all<{
                 pathname: string;
                 status_rx: number;
             }>({ worker_id: modelWorkerId, op: "EDIT" });

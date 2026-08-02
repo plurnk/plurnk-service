@@ -1,6 +1,6 @@
 // db-backed NotifyCaps (@plurnk/plurnk-schemes 0.4.3) — keystone PR-2 seam (#180).
 // streamEvent fires a stream/event notification for a channel transition.
-// (wakeWorker was dropped in 0.4.3 — the rich run-wake lives on subscriptions.close,
+// (wakeWorker was dropped in 0.4.3 — the rich worker wake lives on subscriptions.close,
 // the only place with the close context to populate it.)
 //
 // streamEvent is sync per the cap contract, but the StreamEventPayload's entryId

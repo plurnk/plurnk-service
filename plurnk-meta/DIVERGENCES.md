@@ -36,7 +36,7 @@ MCP, AG-UI, or provider wire protocols.
 
 ## AG-UI management extensions
 
-AG-UI defines agent runs but not all workspace-management operations PLURNK
+AG-UI defines agent Runs but not all workspace-management operations PLURNK
 requires. Management actions therefore use AG-UI's extension fields and custom
 events on the same authenticated endpoint.
 

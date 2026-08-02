@@ -31,7 +31,7 @@ test("SchemeRegistry.discoverExternal registers the http sibling (#195)", async 
 
 // #240 — the built-in scheme names are reserved namespace-wide; a discovered executor
 // claiming one fails the boot HARD rather than being silently shadowed (in-tree precedence
-// hid a collision that, for a security-relevant name like file/run, must surface loudly).
+// hid a collision that, for a security-relevant name like file/worker, must surface loudly).
 type RegistryArg = Parameters<SchemeRegistry["registerRuntimeSchemes"]>[0];
 
 test("registerRuntimeSchemes: an executor tag shadowing a reserved built-in fails hard (#240)", () => {

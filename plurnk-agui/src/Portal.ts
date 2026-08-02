@@ -23,14 +23,14 @@ interface Thread {
     pendingTerminations: unknown[];
 }
 
-// The engine needs only the run-flow slice of the seam (workspace-lifecycle and reads
+// The engine needs only the AG-UI Run-flow slice of the seam (workspace lifecycle and reads
 // belong to the Module edge above it) — declare exactly that.
 type PortalSeam = Pick<DaemonSeam, "subscribeToEvents" | "pendingProposals" | "resolveProposal" | "runLoop" | "cancelDrain">;
 
 export default class Portal {
     #seam: PortalSeam;
     // Broadcast semantics (the WS wire fanned to every connection): a workspace fans to
-    // ALL its open runs — concurrent action runs must not clobber each other's gates.
+    // all its open AG-UI Runs — concurrent action Runs must not clobber each other's gates.
     #threads = new Map<number, Set<Thread>>();
     #hitl: ProposalHitl;
     #off: (() => void) | null = null;
@@ -82,11 +82,11 @@ export default class Portal {
         }
     }
 
-    // Bind a client's SSE to a workspace/run. The emit consumer ends its stream when it
+    // Bind a client's SSE to a workspace and AG-UI Run. The emit consumer ends its stream when it
     // sees RUN_FINISHED / RUN_ERROR (the router's terminal projection) — the engine
-    // just fans; the edge owns the socket lifecycle. `workerId` is the DRIVE run (the
+    // just fans; the edge owns the socket lifecycle. `workerId` is the driving worker (the
     // client envelope's); `modelWorkerId` binds the render (null → the router lazily
-    // adopts the first model-origin row's run — a fresh workspace's model worker is born
+    // adopts the first model-origin row's worker — a fresh workspace's model worker is born
     // at the drain).
     openThread(args: { workspaceId: number; workerId: number; threadId: string; emit: (events: AguiEvent[]) => void; modelWorkerId?: number | null; inputRunId?: string }): unknown {
         const router = new EventRouter({ threadId: args.threadId, runId: args.inputRunId ?? String(args.workerId), modelWorkerId: args.modelWorkerId ?? null, workspaceId: args.workspaceId });
@@ -127,7 +127,7 @@ export default class Portal {
     }
 
     // Emit extra events + RUN_FINISHED through the workspace's CURRENT thread binding —
-    // an action that paused on a proposal completes AFTER the resume run rebound the
+    // an action that paused on a proposal completes after the resume AG-UI Run rebound the
     // stream, so its result must ride whichever response is live now, never the
     // closure of the request that spawned it.
     finishRun(workspaceId: number, events: AguiEvent[]): void {
@@ -160,7 +160,7 @@ export default class Portal {
 
     cancel(workerId: number): boolean { return this.#seam.cancelDrain(workerId); }
 
-    // A standard resume run binds to the persisted continuation before
+    // A standard resume AG-UI Run binds to the persisted continuation before
     // releasing every addressed interrupt.
     async resolve(workspaceId: number, thread: unknown, entries: ResumeEntry[]): Promise<void> {
         const resolution = await this.#hitl.resolve(workspaceId, entries);

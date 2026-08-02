@@ -1,5 +1,5 @@
 // Daemon workspace-lifecycle methods: result shapes + connection re-binding.
-// #199 (create surfaces the auto-created run), #196 (re-attach without reconnect).
+// #199 (create surfaces the auto-created worker), #196 (re-attach without reconnect).
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -82,7 +82,7 @@ test("workspace.rename mutates the workspace name; rejects collision + empty (#2
             // Rename the attached workspace — same id (immutable identity), new handle.
             const renamed = await rpcCall(ws, 2, "workspace.rename", { name: "rename-b" });
             const rr = renamed.result as { id: number; name: string };
-            assert.equal(rr.id, id, "same workspace — the run-immutable name a workspace is NOT; only the handle changed");
+            assert.equal(rr.id, id, "same workspace — its mutable name changed, not its identity");
             assert.equal(rr.name, "rename-b", "the workspace name is mutated");
 
             // The old name is freed — a new workspace can take it (and re-binds this connection).

@@ -33,18 +33,18 @@ export interface CannedWeb {
 }
 
 export const cannedWeb = async (): Promise<CannedWeb> => {
-    const run = crypto.randomUUID().toUpperCase();
+    const sentinel = crypto.randomUUID().toUpperCase();
     const facts = {
         version: "24.4.1",
         savings: "37 percent",
         quote: "the bottleneck is power, not demand",
     };
     const evidence = {
-        node: `NODE-${run}`,
-        aurora: `AURORA-${run}`,
-        rowan: `ROWAN-${run}`,
+        node: `NODE-${sentinel}`,
+        aurora: `AURORA-${sentinel}`,
+        rowan: `ROWAN-${sentinel}`,
     };
-    // Search summaries intentionally omit both answers and per-run evidence.
+    // Search summaries intentionally omit both answers and per-fixture evidence.
     // The only route to a sentinel is the primary page's materialized body.
     const pages: Record<string, string> = {
         "https://nodejs.example/blog/release": `# Node.js v${facts.version} (LTS)\n\nThe latest stable Node.js release is v${facts.version}, published this week. Primary-source evidence code: ${evidence.node}.`,

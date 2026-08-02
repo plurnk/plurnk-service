@@ -280,7 +280,7 @@ test("tagged sibling workers execute through the complete daemon topology", asyn
                     ],
                 );
                 assert.ok(result.modelWorkerId);
-                const sends = await db.test_log_entries_by_run_op_full.all<{
+                const sends = await db.test_log_entries_by_worker_op_full.all<{
                     rx: string;
                 }>({ worker_id: result.modelWorkerId, op: "SEND" });
                 assert.ok(

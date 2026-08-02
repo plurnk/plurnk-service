@@ -4,10 +4,10 @@
 SELECT status FROM loops WHERE id = $loop_id;
 
 -- PREP: engine_worker_has_live_child
--- A non-terminal CHILD run (worker:// spawn/fork set parent_worker_id) — a "live thing the worker holds",
+-- A non-terminal child worker (worker:// spawn/fork set parent_worker_id) — a "live thing the worker holds",
 -- like an open stream. A SEND[200] while one exists is a premature-terminate ({§send-premature-terminate}).
 -- Live = a child whose LATEST loop is still pending/running/parked (100/102/202) — the SAME definition
--- engine_child_workers_live uses for the Child Runs orientation, so the 409 gate and the section the model
+-- engine_child_workers_live uses for the Active Child Workers orientation, so the 409 gate and the section the model
 -- reads NEVER disagree: a refused termination is always backed by a child the model can SEE and KILL
 -- ({§child-orientation}). An inherited/historical loop (a fork copies the parent's loops) is not the
 -- latest, so it never makes a concluded child look forever-live.
@@ -24,7 +24,7 @@ SELECT COUNT(*) AS n FROM loops WHERE worker_id = $worker_id AND status = 102;
 -- PREP: engine_get_loop_flags
 -- Loads the loop's persisted flags (json). Default '{}'; auto listener and
 -- SchemeRegistry.resolveForLoop merge over DEFAULT_LOOP_FLAGS for missing
--- fields. Migration 014.
+-- fields.
 SELECT flags FROM loops WHERE id = $loop_id;
 
 -- PREP: engine_set_loop_flags
@@ -215,7 +215,7 @@ VALUES (
 -- PREP: engine_list_workspace_entries
 -- Every entry of a workspace — all schemes, all channels — the source behind the entry
 -- catalog (catalogRowsFor / FIND) and the persistent search-index pass.
--- Workspace-scoped (persists across runs); FOLD doesn't drop from the catalog.
+-- Workspace-scoped (persists across workers); FOLD doesn't drop from the catalog.
 -- The latest subscription carries stream lifecycle into the catalog. `seconds`
 -- is the live age of an open stream; close_status is the exact terminal status
 -- of a closed one. Entries with no subscription remain ordinary static entries.
@@ -235,7 +235,7 @@ LEFT JOIN subscriptions s ON s.id = (
     ORDER BY latest.id DESC
     LIMIT 1
 )
--- entries are workspace-scoped, shared across runs — {§machine-processes-one-filesystem}
+-- entries are workspace-scoped, shared across workers — {§machine-processes-one-filesystem}
 WHERE e.workspace_id = $workspace_id
 -- User Note 5 — mtime-ascending: dormant entries hold the stable prompt-cache prefix; churn clusters at the tail.
 ORDER BY e.updated_at ASC, e.id ASC, ec.name;
@@ -268,8 +268,8 @@ WHERE l.worker_id = $worker_id AND t.id != $turn_id;
 -- PREP: engine_pull_env_deltas
 -- {§env-delta} — other actors' resolved EDITs on shared entries since this worker last
 -- looked. Real edits (origin model/client) AND the plurnk worker's fs-sync fictions
--- (origin=plurnk on the reserved 'plurnk' run); excludes this worker's own rows and
--- other workers' already-materialized deltas (origin=plurnk on a real run). plurnk:///
+-- (origin=plurnk on the reserved 'plurnk' worker); excludes this worker's own rows and
+-- other workers' already-materialized deltas (origin=plurnk on a real worker). plurnk:///
 -- entries (manifest/prompt/doc) never surface. This is the environment door ({§actor-boundary-two-doors}); the voice door is inject.
 SELECT le.worker_id, le.scheme, le.pathname, le.rx, le.source, le.attrs
 FROM log_entries le
@@ -334,7 +334,7 @@ INSERT INTO log_entries (
 );
 
 -- PREP: engine_pull_loop_terminations
--- {§worker-scheme} — sibling runs' loops that reached a terminal status since this worker last
+-- {§worker-scheme} — sibling workers' loops that reached a terminal status since this worker last
 -- looked (the loop-termination ambient delta). Carries terminal_message — the SEND[200]
 -- deliverable or the abandonment reason — plus terminated_by so a cancellation renders
 -- its marker (#379). Excludes this worker's own loops.
@@ -350,7 +350,7 @@ ORDER BY l.terminated_at;
 -- PREP: engine_insert_loop_termination_delta
 -- {§worker-scheme} — materialize a sibling's loop-termination as a delta: a SEND from
 -- worker:///<name> carrying the terminal status + message (the deliverable). origin=plurnk,
--- source=the terminated run — uniform with the env-delta. Born OPEN for a 2xx deliverable
+-- source=the terminated worker — uniform with the env-delta. Born OPEN for a 2xx deliverable
 -- (a child's success must reach the parent open + awakening), folded otherwise.
 INSERT INTO log_entries (
     worker_id, loop_id, turn_id, sequence, origin, source,
@@ -366,7 +366,7 @@ SELECT tag FROM entry_tags WHERE entry_id = $entry_id ORDER BY tag;
 
 -- PREP: engine_child_workers_live
 -- The worker's LIVE child workers — latest loop non-terminal (100 pending / 102 processing / 202 parked).
--- Powers the Child Runs orienting section ({§child-orientation}): terse `* <status> worker://<name>`
+-- Powers the Active Child Workers orienting section ({§child-orientation}): terse `* <status> worker://<name>`
 -- pointers so the model SEES what it holds live and reasons for itself (READ/KILL), never told to.
 -- Empty → section omitted.
 SELECT r.name, l.status
@@ -444,8 +444,8 @@ UPDATE log_entries SET expanded = 0 WHERE id = $id;
 
 -- PREP: engine_render_log
 -- Render-time log assembly (SPEC {§packet} packet.system.log).
--- Yields log_entries for the whole RUN — the conversation's working
--- memory carries across loops within a workspace's run, not just the
+-- Yields log_entries for the whole worker — the conversation's working
+-- memory carries across loops within a worker, not just the
 -- current loop. Coordinate is log:///<loop_seq>/<turn_seq>/<sequence>/<op>.
 -- Status 202 entries in state='proposed' are model-invisible until resolved.
 -- `expanded = 0` rows are FOLDED — listed but collapsed to their coordinate
@@ -587,7 +587,7 @@ UPDATE turns SET status = $status WHERE id = $id;
 
 
 -- PREP: engine_loop_sequence
--- The loop's PER-RUN sequence — the model-facing coordinate (prompt/<run>/<loop-seq>/<turn-seq>,
+-- The loop's per-worker sequence — the model-facing coordinate (prompt/<worker>/<loop-seq>/<turn-seq>,
 -- matching the log's loop-relative numbering). The raw db id leaked into prompt paths and the
 -- model's first loop read as prompt/2/1 (the docs loop holds id 1). Owner: minor but annoying.
 SELECT sequence FROM loops WHERE id = $loop_id;

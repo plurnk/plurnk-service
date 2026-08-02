@@ -55,7 +55,7 @@ test("cancelling a LIVE loop writes the provenanced 499 row — who/why on the r
             assert.equal(cancelled?.result.problem?.retryable, false);
             const worker = await db.test_get_worker_id_by_loop.get<{ worker_id: number }>({ loop_id: row!.id });
             assert.deepEqual(
-                await db.test_error_rows_for_run.all({ worker_id: worker!.worker_id }),
+                await db.test_error_rows_for_worker.all({ worker_id: worker!.worker_id }),
                 [],
                 "lifecycle cancellation never fabricates a provider failure",
             );

@@ -104,7 +104,7 @@ test("e2e: three EDITs in one turn — sequence 1/2/3, three entries written", a
         const result = await dispatchTurn(engine, provider, db, env);
         assert.deepEqual(result.statuses, [201, 201, 201, 102]);
 
-        const count = (await db.test_count_entries_by_session.get<{ n: number }>({ workspace_id: env.workspaceId }))?.n;
+        const count = (await db.test_count_entries_by_workspace.get<{ n: number }>({ workspace_id: env.workspaceId }))?.n;
         assert.equal(count, 3);
 
         const indices = await db.test_log_entries_by_turn.all<{ sequence: number }>({ turn_id: result.turnId });
@@ -150,7 +150,7 @@ test("e2e: cross-turn state — turn 2 sees entry written in turn 1", async () =
     } finally { await db.close(); }
 });
 
-test("e2e: Mock queue exhaustion throws after expected runs", async () => {
+test("e2e: Mock queue exhaustion throws after the expected provider call", async () => {
     const db = await openMigrated();
     try {
         const env = await seedEnvelopeNoTurn(db, "ws-e2e-exhaust");

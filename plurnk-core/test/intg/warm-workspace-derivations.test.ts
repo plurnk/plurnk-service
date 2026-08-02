@@ -1,4 +1,4 @@
-// #290 — Engine.warmWorkspaceDerivations runs the derivation pump at SESSION scope (no loop), so a
+// #290 — Engine.warmWorkspaceDerivations runs the derivation pump at workspace scope (no loop), so a
 // freshly-created workspace's corpus warms during the client's startup window instead of freezing the
 // first loop.run. workspace.create fires it fire-and-forget; here we drive the seam directly and assert
 // it (1) derives the deep channels (FTS proves the pump ran with no loopId) and (2) live-fans-out the

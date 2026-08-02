@@ -13,7 +13,7 @@ const seedEntryWithChannel = async (channelName: string, channelMime: string, in
     const db = await openMigrated();
     const workspaceId = await insertWorkspace(db, `ws-${crypto.randomUUID()}`);
     const workerId = await insertWorker(db, workspaceId);
-    const entry = await db.test_seed_entry_session.get<{ id: number }>({
+    const entry = await db.test_seed_entry_workspace.get<{ id: number }>({
         workspace_id: workspaceId, owner_id: await Owner.commonsId(db, workspaceId), scheme: "worker", pathname: "/x",
     });
     if (entry === undefined) throw new Error("seed entry failed");
@@ -90,7 +90,7 @@ test("openSubscription: inserts a row and returns its id", async () => {
     } finally { await db.close(); }
 });
 
-test("openSubscription: rejects duplicate active subscription for same (run, entry)", async () => {
+test("openSubscription: rejects duplicate active subscription for same (worker, entry)", async () => {
     const { db, workerId, entryId } = await seedEntryWithChannel("body", "text/plain", "");
     try {
         await ChannelWrite.openSubscription(db, { workerId, entryId, scheme: "sse", handle: "h1" });
@@ -145,9 +145,9 @@ test("findOpenTurnScopedSubscriptionsForWorker selects only turn-scoped (<0>) su
     const { db, workspaceId, workerId, entryId } = await seedEntryWithChannel("body", "text/plain", "");
     try {
         // A turn-scoped (`<0>`) sub and an ordinary (unbounded) sub — on different entries, since
-        // there's one active sub per (run, entry). Only the turn-scoped one is reaped at pre-turn.
+        // there's one active sub per (worker, entry). Only the turn-scoped one is reaped at pre-turn.
         const scoped = await ChannelWrite.openSubscription(db, { workerId, entryId, scheme: "sh", handle: "scoped", turnScoped: true });
-        const e2 = await db.test_seed_entry_session.get<{ id: number }>({ workspace_id: workspaceId, owner_id: await Owner.commonsId(db, workspaceId), scheme: "worker", pathname: "/y" });
+        const e2 = await db.test_seed_entry_workspace.get<{ id: number }>({ workspace_id: workspaceId, owner_id: await Owner.commonsId(db, workspaceId), scheme: "worker", pathname: "/y" });
         if (e2 === undefined) throw new Error("seed entry 2 failed");
         const ordinary = await ChannelWrite.openSubscription(db, { workerId, entryId: e2.id, scheme: "sh", handle: "ordinary" });
 
@@ -164,7 +164,7 @@ test("findOpenTurnScopedSubscriptionsForWorker selects only turn-scoped (<0>) su
     } finally { await db.close(); }
 });
 
-test("findActiveSubscription: returns active sub for (run, entry)", async () => {
+test("findActiveSubscription: returns active sub for (worker, entry)", async () => {
     const { db, workerId, entryId } = await seedEntryWithChannel("body", "text/plain", "");
     try {
         const subId = await ChannelWrite.openSubscription(db, { workerId, entryId, scheme: "sse", handle: "h-abc" });
@@ -186,7 +186,7 @@ test("findActiveSubscription: returns null when nothing active", async () => {
     } finally { await db.close(); }
 });
 
-test("findActiveSubscription: returns null for unknown (run, entry)", async () => {
+test("findActiveSubscription: returns null for unknown (worker, entry)", async () => {
     const { db, workerId, entryId } = await seedEntryWithChannel("body", "text/plain", "");
     try {
         const found = await ChannelWrite.findActiveSubscription(db, { workerId, entryId });
@@ -204,12 +204,12 @@ test("subscriptions CASCADE on entry delete", async () => {
     } finally { await db.close(); }
 });
 
-test("subscriptions CASCADE on run delete", async () => {
+test("subscriptions CASCADE on worker delete", async () => {
     const { db, workerId, entryId } = await seedEntryWithChannel("body", "text/plain", "");
     try {
         await ChannelWrite.openSubscription(db, { workerId, entryId, scheme: "sse", handle: "h" });
-        await db.test_delete_run.run({ id: workerId });
-        const count = (await db.test_count_subscriptions_for_run.get<{ n: number }>({ worker_id: workerId }))?.n;
+        await db.test_delete_worker.run({ id: workerId });
+        const count = (await db.test_count_subscriptions_for_worker.get<{ n: number }>({ worker_id: workerId }))?.n;
         assert.equal(count, 0);
     } finally { await db.close(); }
 });

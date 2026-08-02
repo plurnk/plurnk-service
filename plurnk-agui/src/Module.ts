@@ -5,11 +5,11 @@
 // This is the single external client interface:
 //   POST /  — the only endpoint. A worker streams SSE. HITL is terminate-resume: a
 //   stopped-world emits a request_approval/request_user_input TOOL_CALL and finishes
-//   with an AG-UI interrupt outcome (the loop stays paused in-engine); the next run's
+//   with an AG-UI interrupt outcome (the loop stays paused in-engine); the next AG-UI Run's
 //   standard resume entries resolve the durable proposal and continue the exact loop.
 //   Reads ride STATE_SNAPSHOT on RUN_STARTED; no /plurnk/rpc, no /resolve.
-// An AG-UI threadId IS a plurnk workspace (`<prefix>-<threadId>`); the envelope's
-// modelWorkerId binds the thread (no lazy inference — createWorkspace returns it).
+// An AG-UI threadId names one conversation worker inside the explicitly forwarded
+// workspace ({§agui-thread-binding}); no prefix or inferred workspace is minted.
 
 import { createServer, type IncomingMessage, type ServerResponse, type Server as HttpServer } from "node:http";
 import Portal from "./Portal.ts";
@@ -109,9 +109,9 @@ export default class Module {
     #portal: Portal;
     #http: HttpServer;
     #threads = new Map<string, ClientEnvelope>(); // threadId → envelope
-    #threadRuns = new Map<string, number>();      // threadId → conversation workerId
+    #threadWorkers = new Map<string, number>();   // threadId → conversation workerId
 
-    // The control plane vs the world. A RUN lives in a world (a conversation, or an action
+    // The control plane vs the world. An AG-UI Run lives in a world (a conversation, or an action
     // that reads/writes a workspace's log); a control-plane action (list/create/attach/discover/
     // auth) does NOT — so it must not bind or forge a workspace (operator ruling 2026-07-10:
     // "every worker/thread requires a world, not everything"). Only these kinds bind a workspace.
@@ -213,13 +213,13 @@ export default class Module {
     }
 
     // THE PLURNK PARADIGM (operator ruling 2026-07-10): the name IS the identity,
-    // verbatim. The SESSION is the WORLD (service SPEC, machine-processes) — selected by name via
+    // verbatim. The workspace is the world ({§agui-thread-binding}) — selected by name via
     // `forwardedProps.plurnk.workspace`; attach it if it exists, create it with EXACTLY that
     // name if it doesn't. No prefixes, no forged names, no dual lookup. The workspace is
     // REQUIRED: a worker has no existence without a world, so its absence is a contract
     // violation the client must fix — never a workspace forged from the threadId.
     // The threadId is the CONVERSATION over that world — resolved to a worker by
-    // #conversationRun (svc#366 landed: the three doors are ensureModelWorker, forkWorker,
+    // #conversationWorker (svc#366 landed: the three doors are ensureModelWorker, forkWorker,
     // createConversationWorker).
     async #envelope(threadId: string, forwarded?: Record<string, unknown>): Promise<{ env: ClientEnvelope; reattached: boolean }> {
         const workspace = forwarded?.workspace;
@@ -264,14 +264,14 @@ export default class Module {
 
     // Resolve the thread's conversation worker within its world. Cached per threadId;
     // worker names are immutable so the binding can't rot.
-    async #conversationRun(threadId: string, env: ClientEnvelope): Promise<number> {
-        const cached = this.#threadRuns.get(threadId);
+    async #conversationWorker(threadId: string, env: ClientEnvelope): Promise<number> {
+        const cached = this.#threadWorkers.get(threadId);
         if (cached !== undefined) return cached;
         const workerId = threadId === env.workspaceName
             ? await this.#seam.ensureModelWorker(env.workspaceId)
             : (await this.#seam.listWorkers(env.workspaceId)).find((r) => r.name === threadId)?.id
                 ?? (await this.#seam.createConversationWorker({ workspaceId: env.workspaceId, name: threadId })).workerId;
-        this.#threadRuns.set(threadId, workerId);
+        this.#threadWorkers.set(threadId, workerId);
         return workerId;
     }
 
@@ -316,7 +316,7 @@ export default class Module {
                 throw new HttpProblemError(httpProblem(
                     "user-message-required",
                     400,
-                    "A new run requires a non-empty textual user message.",
+                    "A new AG-UI Run requires a non-empty textual user message.",
                     {
                         stage: "request-validation",
                         recovery: "Provide a non-empty user message.",
@@ -329,11 +329,11 @@ export default class Module {
 
         const { env, reattached } = await this.#envelope(input.threadId, forwarded);
         const workspaceId = env.workspaceId;
-        // THREAD ↔ RUN (svc#366): the threadId is the CONVERSATION — a worker over the
+        // AG-UI thread ↔ worker (svc#366): the threadId is the conversation over the
         // world. threadId == workspace name binds the model worker (the default conversation);
         // a distinct threadId names its own worker: found by name, else minted via
         // createConversationWorker. The name is the identity at BOTH levels.
-        const workerId = await this.#conversationRun(input.threadId, env);
+        const workerId = await this.#conversationWorker(input.threadId, env);
 
         res.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-cache", "connection": "keep-alive" });
         let finished = false;
@@ -355,7 +355,7 @@ export default class Module {
             for (const e of events) {
                 res.write(`data: ${JSON.stringify(e)}\n\n`);
                 // Terminate-resume, the terminate half: a proposal tool-call ENDS this
-                // run (the loop stays paused in-engine awaiting the resume run).
+                // AG-UI Run (the loop stays paused in-engine awaiting the resume Run).
                 if (e.type === "TOOL_CALL_END") {
                     const logEntryId = logEntryIdFromToolCallId((e as { toolCallId: string }).toolCallId);
                     if (logEntryId !== null) interrupts.push(proposalInterrupt(logEntryId));
@@ -382,17 +382,17 @@ export default class Module {
         if (finished) return;
 
         try {
-        // §3 — a management ACTION run (forwardedProps.plurnk.action): execute via the
+        // §3 — a management-action AG-UI Run (forwardedProps.plurnk.action): execute via the
         // seam; the outcome rides the workspace's CURRENT thread binding (Portal.finishRun),
         // never this closure — a proposal-gated action (op.exec → 202) terminates THIS
-        // run and completes after the resume run rebinds the stream.
+        // AG-UI Run and completes after the resume AG-UI Run rebinds the stream.
         if (action !== null) {
             const finishAction = (outcome: ActionOutcome): void => {
                 const events = [actionResult(action.kind, outcome)];
                 // Plain action (stream still open): answer on OUR OWN stream — concurrent
                 // actions share a workspace, and the workspace binding is whoever bound last
                 // (results would cross streams). Only a proposal-pause (this stream already
-                // terminated) hands off to the workspace binding, which the resume run rebinds.
+                // terminated) hands off to the workspace binding, which the resume AG-UI Run rebinds.
                 if (!finished) {
                     this.#portal.finishThread(boundRun, events);
                     return;
@@ -420,15 +420,15 @@ export default class Module {
             return;
         }
 
-        // AG-UI interrupt resume: this is a NEW run on the same thread. Bind it
+        // AG-UI interrupt resume: this is a new AG-UI Run on the same thread. Bind it
         // to the durable continuation before releasing the proposal.
         if (input.resume !== undefined) {
             await this.#portal.resolve(workspaceId, boundRun, input.resume);
-            res.on("close", finish); // client hangup on a resume just detaches; the loop already runs
+            res.on("close", finish); // client hangup on a resume just detaches; the loop is already active
             return;
         }
 
-        if (prompt === null) throw new Error("conversation run reached dispatch without a validated prompt");
+        if (prompt === null) throw new Error("conversation AG-UI Run reached dispatch without a validated prompt");
 
         if (reattached) {
             const history = await this.#seam.readLog({ workspaceId, workerId, limit: 1000 }).catch(() => null);
@@ -455,25 +455,25 @@ export default class Module {
                 ? { model: forwarded.model as string }
                 : {}),
         });
-        // A dropped SSE on a LIVE run cancels the loop (hangup is the abort). A worker we
+        // A dropped SSE on a live AG-UI Run cancels the loop (hangup is the abort). A stream we
         // finished ourselves — terminal event or proposal-terminate — leaves the engine
-        // alone (the paused loop is exactly what the resume run needs).
+        // alone (the paused loop is exactly what the resume AG-UI Run needs).
         res.on("close", () => {
             if (finished) return;
             this.#seam.cancelDrain(workerId, "client_disconnected");
             finish();
         });
         } catch (err) {
-            // Post-headers throw INSIDE the run (svc#480, completed): the frame alone is
+            // Post-headers throw inside the AG-UI Run (svc#480, completed): the frame alone is
             // not enough — the heartbeat interval and the Portal binding are live, and a
             // throw that escapes past finish() leaks them forever (the drill-hang). emit()
             // writes the terminal frame AND finish()es on RUN_ERROR — one door out.
             const exactProblem = problemFromError(err);
-            if (exactProblem === null) console.error("AG-UI run failed:", err);
+            if (exactProblem === null) console.error("AG-UI Run failed:", err);
             const problem = exactProblem ?? httpProblem(
                 "run-failed",
                 500,
-                "The run failed unexpectedly.",
+                "The AG-UI Run failed unexpectedly.",
                 {
                     stage: "run",
                     retryable: false,
@@ -483,7 +483,7 @@ export default class Module {
         }
     }
 
-    // A control-plane run: no world bound. Open the SSE, run the worldless verb, answer on
+    // A control-plane AG-UI Run: no world bound. Open the SSE, execute the worldless verb, answer on
     // our own stream. No Portal thread, no model worker — nothing to forge (operator ruling:
     // workspace-plane actions must not spin an ephemeral workspace).
     async #controlRun(action: ActionRequest, input: RunAgentInput, res: ServerResponse): Promise<void> {
@@ -525,7 +525,7 @@ export default class Module {
     // below the guard operates within a bound workspace. An unknown kind is an honest error,
     // never a silent pass-through. loop.inject rides here too (§4): the seam's unified
     // runLoop folds a prompt into the active drain; the steered effect streams on the SSE.
-    async #action(a: ActionRequest, env: ClientEnvelope | null, convRun?: number): Promise<ActionOutcome> {
+    async #action(a: ActionRequest, env: ClientEnvelope | null, conversationWorkerId?: number): Promise<ActionOutcome> {
         const p = a.params;
         try {
             // The control plane — worldless verbs (no bound workspace; #WORLD_SCOPED gates this).
@@ -605,11 +605,11 @@ export default class Module {
             switch (a.kind) {
                 case "workspace.workers": return { ok: true, result: { workers: await this.#seam.listWorkers(typeof p.id === "number" ? p.id : env.workspaceId) } };
                 case "log.read": {
-                    // Default run: the conversation (model worker); p.workerId pins another.
-                    const readRun = typeof p.workerId === "number" ? p.workerId : convRun ?? await this.#seam.ensureModelWorker(env.workspaceId);
+                    // Default worker: the conversation; p.workerId pins another.
+                    const readWorkerId = typeof p.workerId === "number" ? p.workerId : conversationWorkerId ?? await this.#seam.ensureModelWorker(env.workspaceId);
                     const entries = await this.#seam.readLog({
                         workspaceId: env.workspaceId,
-                        workerId: readRun,
+                        workerId: readWorkerId,
                         ...(Object.hasOwn(p, "limit") ? { limit: p.limit as number } : {}),
                         ...(Object.hasOwn(p, "sinceId") ? { sinceId: p.sinceId as number } : {}),
                         ...(Object.hasOwn(p, "loopId") ? { loopId: p.loopId as number } : {}),
@@ -629,12 +629,12 @@ export default class Module {
                             { field: "prompt", recovery: "Provide the prompt to inject." },
                         );
                     }
-                    const ack = await this.#seam.runLoop({ workspaceId: env.workspaceId, workerId: convRun ?? await this.#seam.ensureModelWorker(env.workspaceId), prompt: p.prompt });
+                    const ack = await this.#seam.runLoop({ workspaceId: env.workspaceId, workerId: conversationWorkerId ?? await this.#seam.ensureModelWorker(env.workspaceId), prompt: p.prompt });
                     return operationOutcome(ack);
                 }
                 // The stop button (TUI /stop + Ctrl-C, nvim :PlurnkStop): abort the model
                 // worker's active drain. Mirrors the SSE-hangup abort, addressable as a verb.
-                case "loop.cancel": return { ok: true, result: { cancelled: this.#seam.cancelDrain(convRun ?? await this.#seam.ensureModelWorker(env.workspaceId)) } };
+                case "loop.cancel": return { ok: true, result: { cancelled: this.#seam.cancelDrain(conversationWorkerId ?? await this.#seam.ensureModelWorker(env.workspaceId)) } };
                 case "workspace.prompts": return {
                     ok: true,
                     result: {
@@ -707,7 +707,7 @@ export default class Module {
                         );
                     }
                     const statement = { op: "EXEC", suffix: "", signal: null, target: null, lineMarker: null, body: p.command, position: { line: 1, col: 1 } } as unknown as PlurnkStatement;
-                    // Client ops journal as client-origin turns in the CLIENT run (run-split:
+                    // Client ops journal as client-origin turns in the client worker (worker split:
                     // only LOOPS live in the model worker).
                     const [result] = await this.#seam.dispatchClientAction({ workspaceId: env.workspaceId, workerId: env.workerId, statements: [statement] });
                     if (result === undefined) throw new Error("op.exec dispatch returned no operation result");
@@ -786,7 +786,7 @@ export default class Module {
                     const statement = { ...(item.statement as unknown as Record<string, unknown>), op: "READ" } as unknown as PlurnkStatement;
                     return operationOutcome(await this.#seam.look({ workspaceId: env.workspaceId, workerId: env.workerId, statement }));
                 }
-                case "run.fork": return { ok: true, result: await this.#seam.forkWorker({ workspaceId: env.workspaceId, workerId: convRun ?? await this.#seam.ensureModelWorker(env.workspaceId), ...(typeof p.name === "string" ? { name: p.name } : {}) }) };
+                case "run.fork": return { ok: true, result: await this.#seam.forkWorker({ workspaceId: env.workspaceId, workerId: conversationWorkerId ?? await this.#seam.ensureModelWorker(env.workspaceId), ...(typeof p.name === "string" ? { name: p.name } : {}) }) };
                 default: return actionFailure(
                     "unknown-action",
                     `Action '${a.kind}' is not registered.`,

@@ -44,12 +44,12 @@ test("two workers in one workspace both write the same shared entry — no lock"
         const a = await spawn();
         const b = await spawn();
         const target = urlPath("worker", "/shared.md");
-        const ra = await engine.dispatch({ statement: editStmt(target, "from run A"), workspaceId, workerId: a.workerId, loopId: a.loopId, turnId: a.turnId, sequence: 1, origin: "model" });
-        const rb = await engine.dispatch({ statement: editStmt(target, "from run B", fullReplace), workspaceId, workerId: b.workerId, loopId: b.loopId, turnId: b.turnId, sequence: 1, origin: "model" });
+        const resultA = await engine.dispatch({ statement: editStmt(target, "from worker A"), workspaceId, workerId: a.workerId, loopId: a.loopId, turnId: a.turnId, sequence: 1, origin: "model" });
+        const resultB = await engine.dispatch({ statement: editStmt(target, "from worker B", fullReplace), workspaceId, workerId: b.workerId, loopId: b.loopId, turnId: b.turnId, sequence: 1, origin: "model" });
         // Wild west = both writers succeed (no lock rejects the second). A creates
         // the shared entry (201), B updates it (200); neither is a 409/lock refusal.
-        assert.ok([200, 201].includes(ra.status), `run A's write to the shared entry succeeds (got ${ra.status})`);
-        assert.ok([200, 201].includes(rb.status), `run B's write to the SAME entry also succeeds — no mutual exclusion (got ${rb.status})`);
+        assert.ok([200, 201].includes(resultA.status), `worker A's write to the shared entry succeeds (got ${resultA.status})`);
+        assert.ok([200, 201].includes(resultB.status), `worker B's write to the SAME entry also succeeds — no mutual exclusion (got ${resultB.status})`);
     } finally { db.close(); }
 });
 
@@ -64,15 +64,15 @@ test("a packet renders one worker's log; a sibling worker's log is absent", asyn
             const turnId = await insertTurn(db, loopId, 1);
             return { workerId, loopId, turnId };
         };
-        // Two sibling runs in one workspace — e.g. the model's run and a client's.
+        // Two sibling workers in one workspace — e.g. the model worker and a client worker.
         const a = await spawn();
         const b = await spawn();
         await engine.dispatch({ statement: editStmt(urlPath("worker", "/from-a.md"), "a"), workspaceId, workerId: a.workerId, loopId: a.loopId, turnId: a.turnId, sequence: 1, origin: "model" });
         await engine.dispatch({ statement: editStmt(urlPath("worker", "/from-b.md"), "b"), workspaceId, workerId: b.workerId, loopId: b.loopId, turnId: b.turnId, sequence: 1, origin: "model" });
-        // run A's packet is rendered from run A's log alone.
+        // Worker A's packet is rendered from worker A's log alone.
         const packetA = await db.engine_render_log.all<{ pathname: string }>({ worker_id: a.workerId });
-        assert.ok(packetA.some((r) => r.pathname.includes("from-a")), "run A's own log renders in its packet");
-        assert.ok(packetA.every((r) => !r.pathname.includes("from-b")), "the sibling run B's log never enters run A's packet — invisibility is by run, no origin filter");
+        assert.ok(packetA.some((r) => r.pathname.includes("from-a")), "worker A's own log renders in its packet");
+        assert.ok(packetA.every((r) => !r.pathname.includes("from-b")), "sibling worker B's log never enters worker A's packet — invisibility is by worker, no origin filter");
     } finally { db.close(); }
 });
 
@@ -85,10 +85,10 @@ test("origin is attribution (provenance), never read to hide a row at render", a
         const loopId = await insertLoop(db, workerId, 1);
         const turnId = await insertTurn(db, loopId, 1);
         // A CLIENT-origin row living IN this worker must still render: the renderer
-        // scopes by run, never hides by origin.
-        await engine.dispatch({ statement: editStmt(urlPath("worker", "/in-run.md"), "x"), workspaceId, workerId, loopId, turnId, sequence: 1, origin: "client" });
+        // scopes by worker, never hides by origin.
+        await engine.dispatch({ statement: editStmt(urlPath("worker", "/in-worker.md"), "x"), workspaceId, workerId, loopId, turnId, sequence: 1, origin: "client" });
         const packet = await db.engine_render_log.all<{ pathname: string; origin: string }>({ worker_id: workerId });
-        const row = packet.find((r) => r.pathname.includes("in-run"));
+        const row = packet.find((r) => r.pathname.includes("in-worker"));
         assert.ok(row !== undefined, "an in-worker row renders regardless of origin");
         assert.equal(row!.origin, "client", "origin is carried as attribution, not consumed to hide the row");
     } finally { db.close(); }
@@ -96,13 +96,13 @@ test("origin is attribution (provenance), never read to hide a row at render", a
 
 // {§actor-boundary-two-doors} is a REAL test now in Engine.env-delta.test.ts (both doors —
 // state-via-delta + message-via-inject). The stale "voice door unbuilt" stub is retired: the
-// voice door (inject), and irc through it, resume parked runs in place (#55).
+// voice door (inject), and IRC through it, resume parked workers in place (#55).
 
 // The voice door (inject) and the negative (a delta must not wake) are locked here;
 // the stream-status door — a slept (202) loop's stream concluding RESUMES it in place,
 // an active loop folds the conclusion into its next turn — is locked in
 // Daemon.exec-wake.test.ts. Together they discharge {§actor-boundary-passive-wake}'s two-trigger contract.
-test("an idle run wakes on an inject (voice), never on a delta (a sibling's shared-entry edit)", async () => {
+test("an idle worker wakes on an inject (voice), never on a delta (a sibling's shared-entry edit)", async () => {
     const mock = new Mock({ contextWindow: 8192, responses: [
         makeMockResponse("<<SEND[200]:first done:SEND", 10),
         makeMockResponse("<<SEND[200]:woke done:SEND", 10),
@@ -116,20 +116,20 @@ test("an idle run wakes on an inject (voice), never on a delta (a sibling's shar
             const ran = await runLoopToTerminal(ws, 2, { prompt: "first", flags: { auto: true } });
             const { loopId } = ran as { loopId: number };
             const modelWorkerId = (await db.test_get_worker_id_by_loop.get<{ worker_id: number }>({ loop_id: loopId }))!.worker_id;
-            const loopsIdle = (await db.test_count_loops_by_run.get<{ n: number }>({ worker_id: modelWorkerId }))!.n;
+            const loopsIdle = (await db.test_count_loops_by_worker.get<{ n: number }>({ worker_id: modelWorkerId }))!.n;
 
-            // A DELTA: a client op.edit runs in the connection's OWN (client) run — a
+            // A delta: a client op.edit runs in the connection's own client worker — a
             // sibling of the model worker ({§connection-lifecycle}) — touching a shared entry.
             // This is the environment door; it must NOT wake the idle model worker.
             await rpcCall(ws, 3, "op.edit", { target: "worker:///shared.md", content: "a sibling edit — ambient, not addressed to the model worker" });
-            const loopsAfterDelta = (await db.test_count_loops_by_run.get<{ n: number }>({ worker_id: modelWorkerId }))!.n;
-            assert.equal(loopsAfterDelta, loopsIdle, "a delta (sibling shared-entry edit) does NOT wake the idle run — no new loop enqueued");
+            const loopsAfterDelta = (await db.test_count_loops_by_worker.get<{ n: number }>({ worker_id: modelWorkerId }))!.n;
+            assert.equal(loopsAfterDelta, loopsIdle, "a delta (sibling shared-entry edit) does NOT wake the idle worker — no new loop enqueued");
 
-            // The VOICE door: inject a prompt into the same idle run → it wakes, a fresh
+            // The VOICE door: inject a prompt into the same idle worker → it wakes, a fresh
             // loop is enqueued on the model worker.
             const injected = await rpcCall(ws, 4, "loop.inject", { prompt: "BTW — wake up" });
-            assert.equal((injected.result as { action: string }).action, "enqueued_new_loop", "an inject (voice) wakes the idle run");
-            const loopsAfterInject = (await db.test_count_loops_by_run.get<{ n: number }>({ worker_id: modelWorkerId }))!.n;
+            assert.equal((injected.result as { action: string }).action, "enqueued_new_loop", "an inject (voice) wakes the idle worker");
+            const loopsAfterInject = (await db.test_count_loops_by_worker.get<{ n: number }>({ worker_id: modelWorkerId }))!.n;
             assert.equal(loopsAfterInject, loopsIdle + 1, "the inject enqueued exactly one new loop — the wake the delta did not cause");
         } finally { ws.close(); }
     });
@@ -163,7 +163,7 @@ test("runtime work is an ephemeral plurnk worker firing ops — the EDIT lands i
                 const plurnkWorker = (await db.envelope_get_worker_by_name.get<{ id: number }>({ workspace_id: workspaceId, name: "plurnk" }))!;
                 assert.ok(plurnkWorker !== undefined, "the reserved plurnk worker was spawned to do the runtime work");
                 assert.notEqual(plurnkWorker.id, modelWorkerId, "the plurnk worker is a sibling actor, distinct from the model worker");
-                const plurnkLoop = await db.test_get_loop_by_run.get<{ id: number }>({ worker_id: plurnkWorker.id });
+                const plurnkLoop = await db.test_get_loop_by_worker.get<{ id: number }>({ worker_id: plurnkWorker.id });
                 const plurnkLoopStatus = await db.test_get_loop_status.get<{ status: number }>({ id: plurnkLoop?.id });
                 assert.equal(plurnkLoopStatus?.status, 200, "the runtime actor's ephemeral loop is terminal after its batch");
                 const plurnkLog = await db.engine_render_log.all<{ op: string; scheme: string; pathname: string; origin: string }>({ worker_id: plurnkWorker.id });

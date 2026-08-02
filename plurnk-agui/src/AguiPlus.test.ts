@@ -1,6 +1,6 @@
 // The AG-UI+ choreography, unit-tested as logic (plurnk-agui#2, WS-1) — de-risks the
 // terminate-resume HITL before any module code. The load-bearing assertion is the
-// two-run round-trip: a proposal terminates run N as a tool-call, and run N+1's
+// two-Run round-trip: a proposal terminates AG-UI Run N as a tool-call, and AG-UI Run N+1's
 // tool-result maps back to the EXACT pending proposal via the toolCallId.
 
 import { test } from "node:test";
@@ -33,15 +33,15 @@ test("AG-UI-conventional names: a [300] question elicits input, a side-effect re
     assert.equal((proposalToolCall(proposal({ op: "SEND" }))[0] as { toolCallName: string }).toolCallName, "request_user_input");
 });
 
-test("THE round-trip: run N's interrupt → run N+1's resume maps back to the exact proposal", () => {
-    // Run N: two concurrent stopped worlds terminate their runs as tool-calls.
+test("the round-trip: AG-UI Run N's interrupt → AG-UI Run N+1's resume maps back to the exact proposal", () => {
+    // AG-UI Run N: two concurrent stopped worlds terminate their Runs as tool-calls.
     const a = proposalToolCall(proposal({ logEntryId: 42, op: "EDIT" }));
     const b = proposalToolCall(proposal({ logEntryId: 99, op: "EXEC" }));
     const idA = (a[0] as { toolCallId: string }).toolCallId;
     const idB = (b[0] as { toolCallId: string }).toolCallId;
     assert.notEqual(idA, idB, "distinct proposals get distinct toolCallIds");
 
-    // Run N+1 for each: the frontend resumes the exact interrupt.
+    // AG-UI Run N+1 for each: the frontend resumes the exact interrupt.
     const resA = resolutionFromResume({ interruptId: idA, status: "resolved", payload: { decision: "accept" } });
     const resB = resolutionFromResume({ interruptId: idB, status: "resolved", payload: { decision: "reject" } });
     assert.deepEqual(resA, { logEntryId: 42, decision: "accept" }, "id → the right paused proposal, accepted");

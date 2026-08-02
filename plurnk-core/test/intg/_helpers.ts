@@ -132,7 +132,7 @@ export const insertWorkspace = async (db: Db, name: string): Promise<number> => 
 let workerCounter = 0;
 export const insertWorker = async (db: Db, workspaceId: number, parentWorkerId: number | null = null, name?: string): Promise<number> => {
     const row = await db.test_insert_worker.get<{ id: number }>({
-        workspace_id: workspaceId, name: name ?? `run-test-${++workerCounter}-${Math.random().toString(36).slice(2, 8)}`, parent_worker_id: parentWorkerId,
+        workspace_id: workspaceId, name: name ?? `worker-test-${++workerCounter}-${Math.random().toString(36).slice(2, 8)}`, parent_worker_id: parentWorkerId,
     });
     if (row === undefined) throw new Error("insertWorker: insert returned no row");
     return row.id;
@@ -178,7 +178,7 @@ export const logEntries = (packet: unknown): Array<Record<string, unknown>> => {
 // workspace.create; tests that build workspaces piecemeal root them here — a direct UPDATE plus the
 // same creation-time membership resolve createClientEnvelope performs).
 export const rootWorkspace = async (db: Db, workspaceId: number, root: string): Promise<void> => {
-    await db.test_set_session_root.run({ id: workspaceId, project_root: root });
+    await db.test_set_workspace_root.run({ id: workspaceId, project_root: root });
     await GitMembership.resolveGitMembership(db, workspaceId, undefined);
 };
 
@@ -219,7 +219,7 @@ export const seedEntryWithChannel = async (
         state?: "static" | "active" | "closed" | "errored";
     },
 ): Promise<number> => {
-    const entry = await db.test_seed_entry_session.get<{ id: number }>({
+    const entry = await db.test_seed_entry_workspace.get<{ id: number }>({
         workspace_id: opts.workspaceId,
         owner_id: opts.ownerId ?? await Owner.commonsId(db, opts.workspaceId),
         scheme: opts.scheme ?? "worker",

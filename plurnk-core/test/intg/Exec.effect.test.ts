@@ -142,7 +142,7 @@ test("effect is command-aware (#289): the EXEC command body is passed to effect(
 test("bare EXEC resolves to sh and respects the workspace's sh policy gate", async () => {
     const { db, engine, exec, workspaceId, workerId, loopId, turnId } = await wire();
     try {
-        await db.test_set_session_settings.run({ id: workspaceId, settings: JSON.stringify({ execs: { PLURNK_EXECS_SH: "0" } }) });
+        await db.test_set_workspace_settings.run({ id: workspaceId, settings: JSON.stringify({ execs: { PLURNK_EXECS_SH: "0" } }) });
         const result = await engine.dispatch({
             statement: execStmt("", null, "echo hi"),
             workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",

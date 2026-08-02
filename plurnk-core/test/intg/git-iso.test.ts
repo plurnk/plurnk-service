@@ -175,7 +175,7 @@ test("an unsupported isomorphic-git repository fails with the native-backend rem
         const workspaceId = await insertWorkspace(db, `iso-v3-${crypto.randomUUID()}`);
         // Do not use rootWorkspace: it deliberately performs creation-time
         // membership resolution, which is one of the failures asserted below.
-        await db.test_set_session_root.run({ id: workspaceId, project_root: root });
+        await db.test_set_workspace_root.run({ id: workspaceId, project_root: root });
         process.env.PLURNK_SERVICE_GIT_ISO = "1";
 
         const actionable = (error: unknown): boolean => {

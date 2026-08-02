@@ -872,12 +872,12 @@ export default class Engine {
         const seqRow = await this.#db.engine_next_turn_sequence.get<{ next: number }>({ loop_id: loopId });
         const seq = (seqRow as { next: number }).next;
         // #269 — loops.sequence is the loop's ordinal WITHIN the worker. Turn-0 foists that belong to the
-        // RUN (manifest preview, AGENTS, operator docs) gate on the worker's FIRST loop, not every loop's
+        // WORKER (manifest preview, AGENTS, operator docs) gate on the worker's first loop, not every loop's
         // first turn; per-loop foists (the prompt, @file) still fire each loop. Read once, turn-1 only.
         const loopRow = seq === 1
             ? await this.#db.engine_get_loop_prompt.get<{ prompt: string; sequence: number }>({ loop_id: loopId })
             : undefined;
-        const runFirstLoop = (loopRow?.sequence ?? 0) === 1;
+        const workerFirstLoop = (loopRow?.sequence ?? 0) === 1;
         const openRow = await this.#db.engine_open_turn.get<{ id: number }>({
             loop_id: loopId, sequence: seq,
         });
@@ -912,7 +912,7 @@ export default class Engine {
         // written at sequence 1, so it reads first as the emission with the foisted results following.
         const turnZeroMoves: string[] = [];
         if (seq === 1) {
-            if (runFirstLoop) nextActionIndex = 2;  // reserve sequence 1 for the turn-0 echo
+            if (workerFirstLoop) nextActionIndex = 2;  // reserve sequence 1 for the turn-0 echo
             // Operator doc READs (PLURNK_SERVICE_MD_<ALIAS>, {§actor-boundary-doc-injection}). The docs were materialized
             // as plurnk:///<entry> entries by the plurnk worker (loop_run, via the
             // {§actor-boundary} keystone); foist a READ of each into THIS turn-0 so the model
@@ -921,8 +921,8 @@ export default class Engine {
             // #231 — env docs (PLURNK_SERVICE_MD_*) UNION the workspace's client docs; foist a READ of
             // each materialized plurnk:///<alias>.md (loop_run materialized the same set).
             const { mdDocs } = await WorkspaceSettings.read(this.#db, workspaceId);
-            // #269 — operator docs are run-once; foist them only on the worker's first loop.
-            for (const doc of runFirstLoop ? await WorkspaceSettings.resolveDocs(mdDocs) : []) {
+            // #269 — operator docs appear once per worker, on its first loop.
+            for (const doc of workerFirstLoop ? await WorkspaceSettings.resolveDocs(mdDocs) : []) {
                 const docTarget: UrlPath = {
                     kind: "url", raw: `worker://plurnk/${doc.entryName}`, scheme: "worker",
                     username: null, password: null, hostname: "plurnk", port: null,
@@ -940,7 +940,7 @@ export default class Engine {
             }
             const promptRow = loopRow; // #269 — already read above (per-loop; fires every loop's turn 1)
             if (promptRow !== undefined && typeof promptRow.prompt === "string" && promptRow.prompt.length > 0) {
-                const promptLoopSeq = promptRow.sequence; // the loop's PER-RUN sequence — model-facing, matching log coordinates (owner: the db id read as prompt/2/1)
+                const promptLoopSeq = promptRow.sequence; // the loop's per-worker sequence — model-facing, matching log coordinates (owner: the db id read as prompt/2/1)
                 const promptPath = promptTarget(promptLoopSeq, seq);
                 const entry: EntryData = {
                     channels: { body: { content: promptRow.prompt, mimetype: "text/markdown" } },
@@ -1020,7 +1020,7 @@ export default class Engine {
             // #231 — a workspace's client-chosen filesItems REPLACES the env default outright.
             const { filesItems: workspaceMI } = await WorkspaceSettings.read(this.#db, workspaceId);
             const filesItems = workspaceMI !== null ? normalizeFilesItems(workspaceMI) : readFilesItems();
-            if (filesItems !== null && runFirstLoop) { // #269 — catalog preview is run-once
+            if (filesItems !== null && workerFirstLoop) { // #269 — catalog preview appears once per worker
                 // engine_scheme_catalog_summary is the scheme source: workspace-scoped, ordered,
                 // one row per scheme that has entries (scheme=null → file). log:// is absent —
                 // it lives in log_entries, not the catalog (present-mode, the # Log section).
@@ -1119,7 +1119,7 @@ export default class Engine {
             // foisted above (real, their results already in the log) → SEND[102]. Dynamic — it reflects
             // the true survey, never a frozen print — and OPEN: the worked example the model orients on,
             // so the grammar can stay thin. Subsequent turns mirror the model's real output, folded.
-            if (runFirstLoop) {
+            if (workerFirstLoop) {
                 const emission = ["<<PLAN:Initialize:PLAN", ...turnZeroMoves, "<<SEND[102]:Next, address the prompt from the initialized context.:SEND"].join("\n");
                 await this.#dispatcher.writeModelEntry({ verbatim: emission, workerId, loopId, turnId, sequence: 1, folded: false, origin: "plurnk" });
             }
@@ -1516,7 +1516,7 @@ export default class Engine {
             (op): op is PlurnkStatement & { op: "SEND"; signal: number } =>
                 op.op === "SEND" && typeof op.signal === "number" && op.signal >= 200,
         );
-        // {§send} the terminal contract — two engine error states verify a terminal claim against run
+        // {§send} the terminal contract — two engine error states verify a terminal claim against loop
         // state, never trusting the model's code. Both strike via turn.steerStruck (turnErrors,
         // {§grinder-strike-coupling}): the loop continues, the model sees the steering hint not the strike
         // count, and a non-resolver spins out to the engine's 500.
@@ -1746,7 +1746,7 @@ export default class Engine {
         // result: the op row carries its failure message on its meta line (packet-wire), and the
         // errors section points at the row. No separate minted item (the retired action_failure
         // mint dressed op results as source:"engine" faults — the jumbo model chased a phantom
-        // "engine run 400 error" off a message-less item). Genuine engine-internal faults CRASH
+        // "engine 400 error" off a message-less item). Genuine engine-internal faults CRASH
         // (fail-hard, {§turn-never-blank}) and never mint model-facing rows.
         // {§model-entry} — mirror this turn's verbatim emission back as a `model` row, so the NEXT
         // packet shows the model exactly what it last produced. ALWAYS born FOLDED — the old
@@ -1892,8 +1892,8 @@ export default class Engine {
         return this.#packets.docEntries(workspaceId);
     }
 
-    // {§env-delta} ({§actor-boundary-no-mutex}: runs share without locks; a conflict surfaces as a delta, never prevented) — at pre-turn build, surface what changed in the shared world since this
-    // run last looked. No per-worker snapshot ({§machine-processes} "a worker is its log"): every
+    // {§env-delta} ({§actor-boundary-no-mutex}: workers share without locks; a conflict surfaces as a delta, never prevented) — at pre-turn build, surface what changed in the shared world since this
+    // worker last looked. No per-worker snapshot ({§machine-processes} "a worker is its log"): every
     // edit is already a span-carrying log row, so PULL other actors' EDITs on shared
     // entries since this worker's prior turn — real cross-worker edits and the plurnk worker's
     // fs-sync fictions — and materialize each as a FOLDED delta reusing the row's span +
@@ -1910,7 +1910,7 @@ export default class Engine {
         }>({ workspace_id: workspaceId, worker_id: workerId, since });
         let written = 0;
         for (const r of rows) {
-            // source: the originating run (a real cross-worker edit) or 'file' (an fs fiction);
+            // source: the originating worker (a real cross-worker edit) or 'file' (an fs fiction);
             // rx reuses the originating row's result span — the edit as it looked then.
             await this.#db.engine_insert_env_delta.run({
                 worker_id: workerId, loop_id: loopId, turn_id: turnId, sequence: fromSequence + written,
@@ -1920,7 +1920,7 @@ export default class Engine {
         }
         // {§worker-scheme} — loop-terminations: a sibling's loop reaching terminal surfaces the
         // same way an entry-change does, carrying its deliverable (the SEND body) or the
-        // abandonment reason. Folded, attributed to the terminated run.
+        // abandonment reason. Folded, attributed to the terminated worker.
         const terms = await this.#db.engine_pull_loop_terminations.all<{
             worker_id: number; worker_name: string; status: number; prompt: string; terminal_message: string | null; terminated_by: string | null;
         }>({ workspace_id: workspaceId, worker_id: workerId, since });
@@ -2053,15 +2053,15 @@ export default class Engine {
     // pre-turn (git membership re-read) are logged as the plurnk worker's source=file EDIT
     // "fictions": no op happened, but EDIT is the only grammar the model has for "your
     // world changed," so the fiction keeps its perspective aligned with what its tooling
-    // would show. The fiction lives in the plurnk worker's log; every other run pulls it
+    // would show. The fiction lives in the plurnk worker's log; every other worker pulls it
     // through the one delta path, exactly like a sibling's real edit.
     // {§membership-emi-divergence-signal} — disk divergences logged as the plurnk worker's source=file EDIT fictions
     async #logFsFictions(workspaceId: number, divergences: FsDivergence[]): Promise<void> {
         if (divergences.length === 0) return;
-        const run = await this.#db.envelope_get_worker_by_name.get<{ id: number }>({ workspace_id: workspaceId, name: "plurnk" })
+        const worker = await this.#db.envelope_get_worker_by_name.get<{ id: number }>({ workspace_id: workspaceId, name: "plurnk" })
             ?? await this.#db.envelope_insert_worker.get<{ id: number }>({ workspace_id: workspaceId, name: "plurnk", origin: "plurnk" });
-        if (run === undefined) throw new Error("logFsFictions: plurnk worker resolution returned no row");
-        const loop = await this.#db.envelope_insert_client_loop.get<{ id: number }>({ worker_id: run.id });
+        if (worker === undefined) throw new Error("logFsFictions: plurnk worker resolution returned no row");
+        const loop = await this.#db.envelope_insert_client_loop.get<{ id: number }>({ worker_id: worker.id });
         if (loop === undefined) throw new Error("logFsFictions: loop insert returned no row");
         const seq = await this.#db.client_turn_next_sequence.get<{ next: number }>({ loop_id: loop.id });
         const turn = await this.#db.client_turn_insert.get<{ id: number }>({ loop_id: loop.id, sequence: seq?.next ?? 1, packet: "{}" });
@@ -2070,7 +2070,7 @@ export default class Engine {
         for (const d of divergences) {
             const span = editedSpan(d.before, d.after);
             await this.#db.engine_insert_log_entry.get({
-                worker_id: run.id, loop_id: loop.id, turn_id: turn.id, sequence: sequence++,
+                worker_id: worker.id, loop_id: loop.id, turn_id: turn.id, sequence: sequence++,
                 origin: "plurnk", source: "file", op: "EDIT", suffix: "", signal: null,
                 // `file` is an entry-routing scheme, never a stored log scheme. Match
                 // Dispatcher.#extractTarget so the fiction and a model's file EDIT
@@ -2093,7 +2093,7 @@ export default class Engine {
     }
 
     // op.look (#283) — resolve a READ and return its content WITHOUT writing a
-    // log_entries row: the client's off-run inspection primitive. {§op-look}
+    // log_entries row: the client's out-of-band inspection primitive. {§op-look}
     async look(context: {
         statement: PlurnkStatement;
         workspaceId: number; workerId: number; loopId: number;
@@ -2175,7 +2175,7 @@ export default class Engine {
     }
 
     // Used by wake-on-completion (daemon side): "is there any loop in this
-    // run still accepting turns?" If yes, skip the wake — the active loop
+    // worker still accepting turns?" If yes, skip the wake — the active loop
     // will pick up the channel transition at its next turn boundary. If no,
     // the daemon opens a fresh loop with the wake prompt.
     async hasActiveLoopForWorker(workerId: number): Promise<boolean> {
@@ -2222,7 +2222,7 @@ export default class Engine {
         const turnRow = await this.#db.drain_next_turn_seq_for_loop.get<{ next: number }>({ loop_id: loopId });
         const turnSeq = turnRow?.next ?? 1;
         const workspaceRow = await this.#db.drain_get_worker_workspace.get<{ workspace_id: number }>({ worker_id: workerId });
-        if (workspaceRow === undefined) throw new Error(`Engine.inject: run ${workerId} not found`);
+        if (workspaceRow === undefined) throw new Error(`Engine.inject: worker ${workerId} not found`);
         // {§prompt-loop-containment} — the frame is the loop's NEXT prompt ordinal, never a turn
         // slot: rapid arrivals land as N and N+1, both contained, nothing superseded.
         const countRow = await this.#db.drain_count_prompts_for_loop.get<{ n: number }>({ owner_id: workerId, pattern: `${promptLoopPrefix(loopRow.sequence)}%` });
@@ -2254,6 +2254,6 @@ export default class Engine {
 
     // A worker "holds a live thing" iff it has an open stream/spawn (subscription registry or an
     // exec spawn) OR a non-terminal child worker — the structured-concurrency invariant a terminal
-    // SEND must respect ({§send-premature-terminate},  {§run-lifecycle}:
+    // SEND must respect ({§send-premature-terminate}, {§worker-loop-lifecycle}:
     // children and streams are the same kind of live thing a worker holds).
 }

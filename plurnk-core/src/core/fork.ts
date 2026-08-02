@@ -1,13 +1,13 @@
 // Fork a worker — branch the log, share the workspace (SPEC {§machine-processes}).
 //
-// A fork is a NEW run in the SAME workspace (`parent_worker_id` records the lineage),
+// A fork is a new worker in the same workspace (`parent_worker_id` records the lineage),
 // holding a deep copy of the parent's log: loops → turns → entries, with their
 // fold-state (`expanded`) and attribution (`origin`/`source`) intact. It copies
 // nothing of the shared WORLD — the workspace's entries and overlay are shared, never
 // copied, because a worker never owned them. But it DOES inherit the parent's worker-scope
 // SCRATCH ({§worker-scheme} — the worker's private workspace, owner-remapped parent → branch):
 // "fork = everything-in-common-but-name, then diverges". The {§env-delta} reconciliation
-// snapshot is not copied; the branch first-sights its world like any fresh run.
+// snapshot is not copied; the branch first-sights its world like any fresh worker.
 
 import type { Db } from "./Db.ts";
 
@@ -17,7 +17,7 @@ export default class Fork {
 
     static async fork(db: Db, parentWorkerId: number, name?: string): Promise<number> {
         const parent = await db.fork_get_worker.get<{ workspace_id: number; name: string; origin: string }>({ id: parentWorkerId });
-        if (parent === undefined) throw new Error(`fork: run ${parentWorkerId} not found`);
+        if (parent === undefined) throw new Error(`fork: worker ${parentWorkerId} not found`);
 
         // #248 — name the branch at instantiation (immutable after). An explicit name wins; the default
         // is `<parent>-fork-<N>` (N = next free), so N self-forks of one parent are individually
@@ -30,7 +30,7 @@ export default class Fork {
         const branch = await db.fork_insert_worker.get<{ id: number }>({
             workspace_id: parent.workspace_id, name: branchName, parent_worker_id: parentWorkerId, origin: parent.origin,
         });
-        if (branch === undefined) throw new Error("fork: branch run insert returned no row");
+        if (branch === undefined) throw new Error("fork: branch worker insert returned no row");
         const branchWorkerId = branch.id;
 
         // loops → new loops, mapping old id → new id. A copied loop is INHERITED HISTORY, never the
@@ -84,7 +84,7 @@ export default class Fork {
             turnMap.set(id, nt.id);
         }
 
-        // entries → new entries: run/loop/turn ids remapped; fold-state and
+        // entries → new entries: worker/loop/turn ids remapped; fold-state and
         // attribution and content all preserved.
         const entries = await db.fork_get_log_entries.all<{ id: number; loop_id: number; turn_id: number; [k: string]: unknown }>({ worker_id: parentWorkerId });
         for (const e of entries) {

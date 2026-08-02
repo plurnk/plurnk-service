@@ -18,7 +18,7 @@ const runDisabled = async (execsPolicy: Record<string, string>, runtime: string)
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         engine.setExecutors(await testExecutors());
         const workspaceId = await insertWorkspace(db, `sp-${crypto.randomUUID()}`);
-        await db.test_set_session_settings.run({ id: workspaceId, settings: JSON.stringify({ execs: execsPolicy }) });
+        await db.test_set_workspace_settings.run({ id: workspaceId, settings: JSON.stringify({ execs: execsPolicy }) });
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1, "policy");
         const turnId = await insertTurn(db, loopId, 1, 102);
@@ -54,7 +54,7 @@ test("#328 render filter: a workspace-disabled tag is absent from docEntries —
         const before = await engine.docEntries(workspaceId);
         assert.ok(before.some((d) => d.name === "node"), "baseline: node's reference doc renders");
         // Disable node for the workspace → its doc drops.
-        await db.test_set_session_settings.run({ id: workspaceId, settings: JSON.stringify({ execs: { PLURNK_EXECS_NODE: "0" } }) });
+        await db.test_set_workspace_settings.run({ id: workspaceId, settings: JSON.stringify({ execs: { PLURNK_EXECS_NODE: "0" } }) });
         const after = await engine.docEntries(workspaceId);
         assert.ok(!after.some((d) => d.name === "node"), "node disabled by workspace policy → no doc materialized");
         assert.ok(after.some((d) => d.name === "sh"), "other tags' docs survive the filter");

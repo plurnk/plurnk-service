@@ -357,7 +357,7 @@ test("a hard parse error outside the PLAN...SEND frame retries wholesale", async
     }
 });
 
-test("three invalid emissions fail the run below the strike rail", async () => {
+test("three invalid emissions fail the loop below the strike rail", async () => {
     const dir = await mkdtemp(join(tmpdir(), "plurnk-invalid-emission-"));
     const dbPath = join(dir, "plurnk.db");
     const digestDir = join(dir, "digest");

@@ -303,7 +303,7 @@ test("Engine.runTurn: PLURNK_SERVICE_MAX_COMMANDS caps dispatched ops; overflow 
 
             // Confirm only 3 model EDITs landed — overflow didn't sneak through.
             // Scope to scheme='worker' to exclude the engine's prompt:/// entry.
-            const known = await db.test_count_entries_by_session_scheme.get<{ n: number }>({
+            const known = await db.test_count_entries_by_workspace_scheme.get<{ n: number }>({
                 workspace_id: workspaceId, scheme: "worker",
             });
             assert.equal(known?.n, 3, "3 worker:/// entries; overflow ops never reached schemes");
@@ -345,7 +345,7 @@ test("Engine.runTurn: PLURNK_SERVICE_MAX_COMMANDS=-1 (default) leaves the op cei
             });
             const t1 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
             assert.equal(t1.statuses.length, 5, "all 5 ops dispatched — no cap");
-            const known = await db.test_count_entries_by_session_scheme.get<{ n: number }>({
+            const known = await db.test_count_entries_by_workspace_scheme.get<{ n: number }>({
                 workspace_id: workspaceId, scheme: "worker",
             });
             assert.equal(known?.n, 5, "5 worker:/// entries; nothing dropped");

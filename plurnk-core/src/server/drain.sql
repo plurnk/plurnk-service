@@ -42,7 +42,7 @@ SELECT COALESCE(MAX(sequence), 0) + 1 AS next FROM turns WHERE loop_id = $loop_i
 
 -- PREP: drain_get_worker_workspace
 -- Resolve workerId → workspaceId. Needed when wake/inject paths only have the
--- workerId (e.g., a stream concluded in run X; daemon needs the workspace
+-- workerId (e.g., a stream concluded in worker X; daemon needs the workspace
 -- context to write entries under the worker's workspace scope).
 SELECT workspace_id FROM workers WHERE id = $worker_id;
 
@@ -126,6 +126,6 @@ SELECT COUNT(*) AS open_count, MIN(poll_seconds) AS poll_seconds
 FROM subscriptions WHERE worker_id = $worker_id AND closed_at IS NULL;
 
 -- PREP: worker_parent_id
--- A worker's parent (worker:// spawn / fork set parent_worker_id, {§lifecycle-terms}). NULL = a root run.
--- Used at drain-exit to wake a parent that parked awaiting this child ({§run-lifecycle} topology join).
+-- A worker's parent (worker:// spawn / fork set parent_worker_id, {§lifecycle-terms}). NULL = a root worker.
+-- Used at drain-exit to wake a parent that parked awaiting this child ({§worker-loop-lifecycle} topology join).
 SELECT parent_worker_id FROM workers WHERE id = $worker_id;

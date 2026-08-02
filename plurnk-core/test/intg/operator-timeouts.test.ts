@@ -60,7 +60,7 @@ test("the wall rules a legible 504 loop_timeout terminal", async (t) => {
         assert.ok(Array.isArray(packet.sections), "the interrupted attempt retains its exact request packet");
         assert.equal(packet.assistant, undefined, "the timeout never fabricates an assistant response");
         assert.deepEqual(
-            await db.test_error_rows_for_run.all({ worker_id: workerId }),
+            await db.test_error_rows_for_worker.all({ worker_id: workerId }),
             [],
             "the lifecycle timeout never fabricates a provider failure",
         );

@@ -232,14 +232,14 @@ test("op.send broadcast with terminal status updates loop status", async () => {
         try {
             const workspace = await rpcCall(ws, 1, "workspace.create", { name: "send-test" });
             const workspaceId = (workspace.result as { id: number }).id;
-            const run = await db.test_get_run_by_session.get<{ id: number }>({ workspace_id: workspaceId });
+            const clientWorker = await db.test_get_client_worker_by_workspace.get<{ id: number }>({ workspace_id: workspaceId });
 
             // op.send is the first client op — it lazily creates the
             // client loop. After it runs we can look up that loop.
             const response = await rpcCall(ws, 2, "op.send", { status: 200 });
             assert.equal((response.result as { status: number }).status, 200);
 
-            const clientLoop = await db.test_get_loop_by_run.get<{ id: number }>({ worker_id: run?.id });
+            const clientLoop = await db.test_get_loop_by_worker.get<{ id: number }>({ worker_id: clientWorker?.id });
             const loop = await db.test_get_loop_status.get<{ status: number }>({ id: clientLoop?.id });
             assert.equal(loop?.status, 200);
         } finally { ws.close(); }

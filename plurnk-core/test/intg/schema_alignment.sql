@@ -6,10 +6,10 @@
 -- PREP: test_align_table_exists
 SELECT name FROM sqlite_master WHERE type = 'table' AND name = $name;
 
--- PREP: test_align_cols_sessions
+-- PREP: test_align_cols_workspaces
 SELECT name, type FROM pragma_table_info('workspaces');
 
--- PREP: test_align_cols_runs
+-- PREP: test_align_cols_workers
 SELECT name, type FROM pragma_table_info('workers');
 
 -- PREP: test_align_cols_loops

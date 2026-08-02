@@ -1,9 +1,9 @@
 // worker:// scheme — spawn + fork (COPY), irc (SEND), terminate (KILL). Same-workspace sisters
 // (SPEC {§machine-processes}, {§actor-boundary}). injectWorker is the daemon's
 // loop-start seam; here it's a recording stub (Daemon.inject's drain has its own
-// tests), so these assert the run-scheme's OWN work: the run-table effect + the
-// exact inject call. The dispatch gates (#checkWritable run-copy branch, the
-// #handleCopy run-copy routing) are exercised end-to-end.
+// tests), so these assert the worker scheme's own work: the worker-table effect + the
+// exact inject call. The dispatch gates (#checkWritable worker-control branch and
+// #handleWorkerControl routing) are exercised end-to-end.
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -16,7 +16,7 @@ import Fork from "../../src/core/fork.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, makeSchemeCtx } from "./_helpers.ts";
 import { editStmt, sendStmt, readStmt, fullReplace } from "./_dsl.ts";
 
-// {§worker-scheme} — the worker is the AUTHORITY: worker://<name> (name in hostname), worker://self for the current run.
+// {§worker-scheme} — the worker is the authority: worker://<name> (name in hostname), worker://self for the current worker.
 // worker://self is the self-marker; the control ops (spawn/irc/fork/kill) carry no entry path.
 const workerPath = (name: string): ParsedPath => ({
     kind: "url", raw: `worker://${name}`, scheme: "worker",
@@ -24,15 +24,15 @@ const workerPath = (name: string): ParsedPath => ({
     pathname: "", params: {}, fragment: null,
 });
 
-// A worker-scope STORAGE address: worker://<owner>/<path> (owner "self" = the current run), entry path present.
+// A worker-scope storage address: worker://<owner>/<path> (owner "self" = the current worker), entry path present.
 const workerEntry = (owner: string, path: string): ParsedPath => ({
     kind: "url", raw: `worker://${owner}/${path}`, scheme: "worker",
     username: null, password: null, hostname: owner, port: null,
     pathname: `/${path}`, params: {}, fragment: null,
 });
 
-// Run control (grammar 0.74.55): WORK(worker://<name>):task spawns a fresh worker; FORK(worker://<name>):task
-// branches the current run into a named sister. The body is the seed task, not a dst path.
+// Worker control (grammar 0.74.55): WORK(worker://<name>):task spawns a fresh worker; FORK(worker://<name>):task
+// branches the current worker into a named sister. The body is the seed task, not a destination path.
 const spawnedWorker = (name: string, prompt: string): WorkStatement => ({
     op: "WORK", suffix: "", signal: null, target: workerPath(name),
     lineMarker: null, body: prompt, position: { line: 1, column: 1 },
@@ -56,14 +56,14 @@ const recordingInjectWorker = () => {
 
 const tokenize = (text: string): number => Math.ceil(text.length / 4);
 
-// A worker-scope FIND: worker://<owner>/<glob> (owner "self" = the current run).
+// A worker-scope FIND: worker://<owner>/<glob> (owner "self" = the current worker).
 const findEntry = (owner: string, glob: string): FindStatement => ({
     op: "FIND", suffix: "", signal: null,
     target: { kind: "url", raw: `worker://${owner}/${glob}`, scheme: "worker", username: null, password: null, hostname: owner, port: null, pathname: `/${glob}`, params: {}, fragment: null },
     lineMarker: null, body: null, position: { line: 1, column: 1 },
 });
 
-// A worker-scope READ: worker://<owner>/<path> (owner "self" = the current run).
+// A worker-scope READ: worker://<owner>/<path> (owner "self" = the current worker).
 const readEntry = (owner: string, path: string): ReadStatement => ({
     op: "READ", suffix: "", signal: null,
     target: { kind: "url", raw: `worker://${owner}/${path}`, scheme: "worker", username: null, password: null, hostname: owner, port: null, pathname: `/${path}`, params: {}, fragment: null },
@@ -83,53 +83,53 @@ test("a fork inherits the parent's worker-scope scratch (owner-remapped), then d
         const workspaceId = await insertWorkspace(db, `fork-scratch-${crypto.randomUUID()}`);
         const parent = await insertWorker(db, workspaceId, null, "alpha");
         const ctxP = makeSchemeCtx({ db, workspaceId, workerId: parent, loopId: 0, turnId: 0 });
-        const run = new Worker();
-        await run.edit(editStmt(workerEntry("~", "todo.md"), "parent note"), ctxP);
+        const workerScheme = new Worker();
+        await workerScheme.edit(editStmt(workerEntry("~", "todo.md"), "parent note"), ctxP);
 
         // Fork the parent — the branch must open with the parent's scratch as its OWN ({§entry-owner}).
         const forkId = await Fork.fork(db, parent, "alpha-fork");
         const ctxF = makeSchemeCtx({ db, workspaceId, workerId: forkId, loopId: 0, turnId: 0 });
 
-        const inherited = await run.find(findEntry("~", "**"), ctxF);
+        const inherited = await workerScheme.find(findEntry("~", "**"), ctxF);
         assert.deepEqual(inherited.results.map((r) => r.path), ["worker://~/todo.md"], "the fork's own-space FIND holds the inherited scratch, addressed as its own");
-        const fRead = await run.read(readEntry("~", "todo.md"), ctxF);
+        const fRead = await workerScheme.read(readEntry("~", "todo.md"), ctxF);
         assert.equal(fRead.content, "parent note", "the inherited scratch content is copied");
 
         // Divergence: the fork edits its scratch; the parent's copy is independent + untouched.
-        await run.edit(editStmt(workerEntry("~", "todo.md"), "fork note", null, fullReplace), ctxF);
-        assert.equal((await run.read(readEntry("~", "todo.md"), ctxF)).content, "fork note", "the fork's edit lands on its own copy");
-        assert.equal((await run.read(readEntry("~", "todo.md"), ctxP)).content, "parent note", "the parent's scratch is untouched — independent copies, diverged");
+        await workerScheme.edit(editStmt(workerEntry("~", "todo.md"), "fork note", null, fullReplace), ctxF);
+        assert.equal((await workerScheme.read(readEntry("~", "todo.md"), ctxF)).content, "fork note", "the fork's edit lands on its own copy");
+        assert.equal((await workerScheme.read(readEntry("~", "todo.md"), ctxP)).content, "parent note", "the parent's scratch is untouched — independent copies, diverged");
     } finally { await db.close(); }
 });
 
 test("FIND draws from the resolved principal alone — ~ is own space, a name is ancestry-gated, perspectives never bleed", async () => {
     const db = await openMigrated();
     try {
-        const workspaceId = await insertWorkspace(db, `run-find-${crypto.randomUUID()}`);
+        const workspaceId = await insertWorkspace(db, `worker-find-${crypto.randomUUID()}`);
         const alpha = await insertWorker(db, workspaceId, null, "alpha");
         const beta = await insertWorker(db, workspaceId, alpha, "beta"); // beta is alpha's CHILD (ancestry gates the named read)
         const ctxA = makeSchemeCtx({ db, workspaceId, workerId: alpha, loopId: 0, turnId: 0 });
         const ctxB = makeSchemeCtx({ db, workspaceId, workerId: beta, loopId: 0, turnId: 0 });
-        const run = new Worker();
+        const workerScheme = new Worker();
 
         // Each worker writes its OWN space (worker://~).
-        await run.edit(editStmt(workerEntry("~", "todo.md"), "alpha note"), ctxA);
-        await run.edit(editStmt(workerEntry("~", "plan.md"), "beta note"), ctxB);
+        await workerScheme.edit(editStmt(workerEntry("~", "todo.md"), "alpha note"), ctxA);
+        await workerScheme.edit(editStmt(workerEntry("~", "plan.md"), "beta note"), ctxB);
 
         // alpha's own-space FIND sees ONLY alpha's entries, addressed as its own.
-        const own = await run.find(findEntry("~", "**"), ctxA);
+        const own = await workerScheme.find(findEntry("~", "**"), ctxA);
         assert.equal(own.status, 200);
         assert.deepEqual(own.results.map((r) => r.path), ["worker://~/todo.md"], "FIND(worker://~/**) returns only the caller's own space ({§entry-owner})");
 
         // beta's perspective excludes alpha's — isolation is structural (the owner column).
-        const betaOwn = await run.find(findEntry("~", "**"), ctxB);
+        const betaOwn = await workerScheme.find(findEntry("~", "**"), ctxB);
         assert.deepEqual(betaOwn.results.map((r) => r.path), ["worker://~/plan.md"], "a sibling never sees another's space in its own perspective");
 
         // {§worker-read-scope} — the PARENT reads its child's space by name (oversight flows down)…
-        const child = await run.find(findEntry("beta", "**"), ctxA);
+        const child = await workerScheme.find(findEntry("beta", "**"), ctxA);
         assert.deepEqual(child.results.map((r) => r.path), ["worker://beta/plan.md"], "FIND(worker://beta/**) reaches the named child's space");
         // …but a child cannot snoop upward: the parent's space 404s from below, no existence leak.
-        const upward = await run.find(findEntry("alpha", "**"), ctxB);
+        const upward = await workerScheme.find(findEntry("alpha", "**"), ctxB);
         assert.equal(upward.status, 404, "a non-ancestor naming a space is 404 — the reader must be the owner or an ancestor");
     } finally { await db.close(); }
 });
@@ -139,7 +139,7 @@ test("WORK(worker://name):task spawns a same-workspace sister, seeded via inject
     try {
         const { calls, injectWorker } = recordingInjectWorker();
         const engine = new Engine({ db, schemes: new SchemeRegistry(), injectWorker, tokenize });
-        const workspaceId = await insertWorkspace(db, `run-spawn-${crypto.randomUUID()}`);
+        const workspaceId = await insertWorkspace(db, `worker-spawn-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1, "go");
         const turnId = await insertTurn(db, loopId, 1, 102);
@@ -154,11 +154,11 @@ test("WORK(worker://name):task spawns a same-workspace sister, seeded via inject
         if (worker === undefined) throw new Error("spawn must create a worker named 'worker' in the workspace");
         const meta = await db.fork_get_worker.get<{ workspace_id: number; origin: string }>({ id: worker.id });
         assert.equal(meta?.origin, "model", "spawned worker's origin is the spawning writer");
-        assert.equal(meta?.workspace_id, workspaceId, "spawned run shares the workspace (sisters)");
+        assert.equal(meta?.workspace_id, workspaceId, "spawned worker shares the workspace (sisters)");
 
         assert.equal(calls.length, 1, "exactly one injectWorker call");
         const { flags: spawnFlags, ...spawnRest } = calls[0] as { flags?: object; workspaceId: number; workerId: number; prompt: string };
-        assert.deepEqual(spawnRest, { workspaceId, workerId: worker.id, prompt: "investigate the bug" }, "the new run is started with the prompt");
+        assert.deepEqual(spawnRest, { workspaceId, workerId: worker.id, prompt: "investigate the bug" }, "the new worker is started with the prompt");
         assert.equal((spawnFlags as { auto?: boolean } | undefined)?.auto, false, "the delegating loop's flags ride the injection ({§worker-delegation-inherits-flags})");
     } finally { await db.close(); }
 });
@@ -168,7 +168,7 @@ test("WORK-spawning a name a LIVE sister holds is refused 409 — legible, never
     try {
         const { calls, injectWorker } = recordingInjectWorker();
         const engine = new Engine({ db, schemes: new SchemeRegistry(), injectWorker, tokenize });
-        const workspaceId = await insertWorkspace(db, `run-spawn-live-${crypto.randomUUID()}`);
+        const workspaceId = await insertWorkspace(db, `worker-spawn-live-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1, "go");
         const turnId = await insertTurn(db, loopId, 1, 102);
@@ -181,7 +181,7 @@ test("WORK-spawning a name a LIVE sister holds is refused 409 — legible, never
             workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
         });
         assert.equal(result.status, 409, "a live name-collision is a legible 409, not a 500");
-        assert.match(result.problem?.detail ?? "", /worker.*already running|already running/, "the message names the live run");
+        assert.match(result.problem?.detail ?? "", /worker.*already running|already running/, "the message names the live worker");
         assert.equal(calls.length, 0, "no inject on a refused spawn");
     } finally { await db.close(); }
 });
@@ -191,7 +191,7 @@ test("a TERMINATED sister's name is reclaimed — spawn succeeds, newest wins", 
     try {
         const { calls, injectWorker } = recordingInjectWorker();
         const engine = new Engine({ db, schemes: new SchemeRegistry(), injectWorker, tokenize });
-        const workspaceId = await insertWorkspace(db, `run-spawn-reclaim-${crypto.randomUUID()}`);
+        const workspaceId = await insertWorkspace(db, `worker-spawn-reclaim-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1, "go");
         const turnId = await insertTurn(db, loopId, 1, 102);
@@ -210,30 +210,30 @@ test("a TERMINATED sister's name is reclaimed — spawn succeeds, newest wins", 
         });
         assert.equal(result.status, 200, "a terminated name is free to reclaim");
         assert.equal(calls.length, 1, "the reclaimed spawn injects its fresh prompt");
-        // The frozen-name/permanent-history invariant: the dead run keeps its name (a new row holds it
-        // too) and resolution picks the NEWEST — the reclaimed run, not the corpse.
+        // The frozen-name/permanent-history invariant: the dead worker keeps its name (a new row holds it
+        // too) and resolution picks the newest — the reclaimed worker, not the corpse.
         const resolved = await db.worker_resolve_by_name.get<{ id: number }>({ workspace_id: workspaceId, name: "worker" });
-        assert.notEqual(resolved?.id, dead, "worker_resolve_by_name resolves the fresh run, never the terminated one");
-        assert.equal(calls[0]?.workerId, resolved?.id, "inject targets the reclaimed run");
+        assert.notEqual(resolved?.id, dead, "worker_resolve_by_name resolves the fresh worker, never the terminated one");
+        assert.equal(calls[0]?.workerId, resolved?.id, "inject targets the reclaimed worker");
     } finally { await db.close(); }
 });
 
 test("READ(worker://name) collects the deliverable — message done, 425 running, 404 absent", async () => {
     const db = await openMigrated();
     try {
-        const workspaceId = await insertWorkspace(db, `run-collect-${crypto.randomUUID()}`);
+        const workspaceId = await insertWorkspace(db, `worker-collect-${crypto.randomUUID()}`);
         const reader = await insertWorker(db, workspaceId); // the sister doing the collection
         const ctx = makeSchemeCtx({ db, workspaceId, workerId: reader });
-        const run = new Worker();
+        const workerScheme = new Worker();
 
-        // No such run → 404 (not a bare 400 the model can't read).
-        const missing = await run.read(readStmt(workerPath("ghost")), ctx);
+        // No such worker → 404 (not a bare 400 the model can't read).
+        const missing = await workerScheme.read(readStmt(workerPath("ghost")), ctx);
         assert.equal(missing.status, 404, "a name with no worker is 404");
 
         // A worker still running (its loop at the default live status 102) hasn't delivered → 425, steer to 202.
         const worker = await insertWorker(db, workspaceId, null, "worker-db");
         const wLoop = await insertLoop(db, worker, 1, "find db");
-        const running = await run.read(readStmt(workerPath("worker-db")), ctx);
+        const running = await workerScheme.read(readStmt(workerPath("worker-db")), ctx);
         assert.equal(running.status, 425, "a still-running worker hasn't delivered — 425, not its result");
         assert.match(String(running.content), /still running|SEND\[202\]/, "the 425 steers the model to hibernate and await");
 
@@ -242,7 +242,7 @@ test("READ(worker://name) collects the deliverable — message done, 425 running
             await new LoopLifecycle(db).finish(wLoop, { status: 200 }, { message: "postgres" }),
             { status: 200 },
         );
-        const done = await run.read(readStmt(workerPath("worker-db")), ctx);
+        const done = await workerScheme.read(readStmt(workerPath("worker-db")), ctx);
         assert.equal(done.status, 200, "a concluded worker's READ succeeds");
         assert.equal(done.content, "postgres", "the deliverable (terminal message) is collected by READing the worker itself — no scratch-path guessing");
     } finally { await db.close(); }
@@ -253,7 +253,7 @@ test("EDIT on the bare worker entity is rejected — WORK spawns, not EDIT (400,
     try {
         const { calls, injectWorker } = recordingInjectWorker();
         const engine = new Engine({ db, schemes: new SchemeRegistry(), injectWorker, tokenize });
-        const workspaceId = await insertWorkspace(db, `run-edit-entity-${crypto.randomUUID()}`);
+        const workspaceId = await insertWorkspace(db, `worker-edit-entity-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1, "go");
         const turnId = await insertTurn(db, loopId, 1, 102);
@@ -280,7 +280,7 @@ test("SEND(worker://name):msg delivers to a sister; a missing sister is 404", as
     try {
         const { calls, injectWorker } = recordingInjectWorker();
         const engine = new Engine({ db, schemes: new SchemeRegistry(), injectWorker, tokenize });
-        const workspaceId = await insertWorkspace(db, `run-irc-${crypto.randomUUID()}`);
+        const workspaceId = await insertWorkspace(db, `worker-irc-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1, "go");
         const turnId = await insertTurn(db, loopId, 1, 102);
@@ -306,13 +306,13 @@ test("SEND(worker://name):msg delivers to a sister; a missing sister is 404", as
 
 // Dispatch-path coverage (#282): KILL of a worker-scope ENTRY must DELETE the entry, NOT
 // cancel the worker — and stay self-only. Driven through engine.dispatch (the real routing),
-// not a bare Run instance, because the bug lived in Engine.#handleKill's run branch.
+// not a bare Worker instance, because the bug lived in Dispatcher.#handleKill's worker branch.
 test("entry KILL: a child naming upward is 404 (no existence leak); an ancestor sees but cannot write (403); the worker survives — #282", async () => {
     const db = await openMigrated();
     try {
         const { injectWorker } = recordingInjectWorker();
         const engine = new Engine({ db, schemes: new SchemeRegistry(), injectWorker, tokenize });
-        const workspaceId = await insertWorkspace(db, `run-kill-entry-${crypto.randomUUID()}`);
+        const workspaceId = await insertWorkspace(db, `worker-kill-entry-${crypto.randomUUID()}`);
         const alpha = await insertWorker(db, workspaceId, null, "alpha");
         const beta = await insertWorker(db, workspaceId, alpha, "beta"); // beta is alpha's child
         const loopA = await insertLoop(db, alpha, 1, "go");
@@ -336,8 +336,8 @@ test("entry KILL: a child naming upward is 404 (no existence leak); an ancestor 
         assert.equal(killed.status, 200, "KILL(worker://alpha/note.md) deletes the scratch entry");
         const gone = await engine.dispatch({ statement: readEntry("alpha", "note.md"), workspaceId, workerId: alpha, loopId: loopA, turnId: turnA, sequence: 4, origin: "model" });
         assert.equal(gone.status, 404, "the killed scratch entry is gone");
-        const runStill = await db.worker_resolve_by_name.get<{ id: number }>({ workspace_id: workspaceId, name: "alpha" });
-        assert.notEqual(runStill, undefined, "the worker alpha survives — KILL of an entry PATH is entry-delete, not run cancellation");
+        const workerStillExists = await db.worker_resolve_by_name.get<{ id: number }>({ workspace_id: workspaceId, name: "alpha" });
+        assert.notEqual(workerStillExists, undefined, "the worker alpha survives — KILL of an entry path is entry-delete, not worker cancellation");
     } finally { await db.close(); }
 });
 
@@ -346,7 +346,7 @@ test("FORK(worker://name):task forks a NAMED branch — started via injectWorker
     try {
         const { calls, injectWorker } = recordingInjectWorker();
         const engine = new Engine({ db, schemes: new SchemeRegistry(), injectWorker, tokenize });
-        const workspaceId = await insertWorkspace(db, `run-fork-${crypto.randomUUID()}`);
+        const workspaceId = await insertWorkspace(db, `worker-fork-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId, null, "explorer");
         const loopId = await insertLoop(db, workerId, 1, "go");
         const turnId = await insertTurn(db, loopId, 1, 102);
@@ -360,8 +360,8 @@ test("FORK(worker://name):task forks a NAMED branch — started via injectWorker
         assert.equal(branchName, "recheck", "the branch carries the explicit name FORK gave it");
 
         const branch = await db.worker_resolve_by_name.get<{ id: number }>({ workspace_id: workspaceId, name: branchName });
-        if (branch === undefined) throw new Error("fork must create the branch run in the workspace");
-        assert.notEqual(branch.id, workerId, "the branch is a distinct run");
+        if (branch === undefined) throw new Error("fork must create the branch worker in the workspace");
+        assert.notEqual(branch.id, workerId, "the branch is a distinct worker");
         const { flags: forkFlags, ...forkRest } = calls.at(-1) as { flags?: { auto?: boolean }; workspaceId: number; workerId: number; prompt: string };
         assert.deepEqual(forkRest, { workspaceId, workerId: branch.id, prompt: "take the other branch" }, "the branch is continued with the fork prompt");
         assert.equal(forkFlags?.auto, false, "the forking loop's flags ride the injection ({§worker-delegation-inherits-flags})");
@@ -371,12 +371,12 @@ test("FORK(worker://name):task forks a NAMED branch — started via injectWorker
 test("spawn AND fork past PLURNK_SERVICE_WORKSPACE_WORKERS_MAX_ACTIVE fail hard (508), create nothing", async () => {
     const db = await openMigrated();
     const prior = process.env.PLURNK_SERVICE_WORKSPACE_WORKERS_MAX_ACTIVE;
-    process.env.PLURNK_SERVICE_WORKSPACE_WORKERS_MAX_ACTIVE = "1"; // ceiling of 1 active run
+    process.env.PLURNK_SERVICE_WORKSPACE_WORKERS_MAX_ACTIVE = "1"; // ceiling of one active worker
     try {
         const { calls, injectWorker } = recordingInjectWorker();
         const engine = new Engine({ db, schemes: new SchemeRegistry(), injectWorker, tokenize });
-        const workspaceId = await insertWorkspace(db, `run-cap-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);        // the acting run, its loop 102 = 1 active = the ceiling
+        const workspaceId = await insertWorkspace(db, `worker-cap-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);        // the acting worker, its loop 102 = 1 active = the ceiling
         const loopId = await insertLoop(db, workerId, 1, "go");
         const turnId = await insertTurn(db, loopId, 1, 102);
 
@@ -407,7 +407,7 @@ test("KILL(worker://name) aborts a sister by address; a missing sister is 404", 
         const killed: number[] = [];
         const cancelWorker = async (workerId: number): Promise<void> => { killed.push(workerId); };
         const engine = new Engine({ db, schemes: new SchemeRegistry(), cancelWorker, tokenize });
-        const workspaceId = await insertWorkspace(db, `run-kill-${crypto.randomUUID()}`);
+        const workspaceId = await insertWorkspace(db, `worker-kill-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1, "go");
         const turnId = await insertTurn(db, loopId, 1, 102);
@@ -416,7 +416,7 @@ test("KILL(worker://name) aborts a sister by address; a missing sister is 404", 
         const killWorker: KillStatement = { op: "KILL", suffix: "", signal: null, target: workerPath("worker"), lineMarker: null, body: null, position: { line: 1, column: 1 } };
         const ok = await engine.dispatch({ statement: killWorker, workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model" });
         assert.equal(ok.status, 200, "KILL of an existing sister returns 200");
-        assert.deepEqual(killed, [sisterId], "the named sister's run is aborted by id");
+        assert.deepEqual(killed, [sisterId], "the named sister worker is aborted by id");
 
         const killGhost: KillStatement = { op: "KILL", suffix: "", signal: null, target: workerPath("ghost"), lineMarker: null, body: null, position: { line: 1, column: 1 } };
         const missing = await engine.dispatch({ statement: killGhost, workspaceId, workerId, loopId, turnId, sequence: 2, origin: "model" });
@@ -429,7 +429,7 @@ test("own-space EDIT lands owner-keyed; an ancestor READs the child's space; eve
     const db = await openMigrated();
     try {
         const engine = new Engine({ db, schemes: new SchemeRegistry(), tokenize });
-        const workspaceId = await insertWorkspace(db, `run-store-${crypto.randomUUID()}`);
+        const workspaceId = await insertWorkspace(db, `worker-store-${crypto.randomUUID()}`);
         const meId = await insertWorker(db, workspaceId, null, "me");
         const childId = await insertWorker(db, workspaceId, meId, "child"); // me's child: me may read down into it
         const loopId = await insertLoop(db, meId, 1, "go");
@@ -502,18 +502,18 @@ test("a bare SEND[102] with NO armed join continues normally — the park is joi
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `join-none-${crypto.randomUUID()}`);
-        const run = await insertWorker(db, workspaceId);
-        const loop = await insertLoop(db, run, 1, "go");
+        const worker = await insertWorker(db, workspaceId);
+        const loop = await insertLoop(db, worker, 1, "go");
         const turn = await insertTurn(db, loop, 1, 200);
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
-        const send = await engine.dispatch({ statement: sendStmt(102, null, null), workspaceId, workerId: run, loopId: loop, turnId: turn, sequence: 1, origin: "model" });
+        const send = await engine.dispatch({ statement: sendStmt(102, null, null), workspaceId, workerId: worker, loopId: loop, turnId: turn, sequence: 1, origin: "model" });
         assert.notEqual((send.attrs as { join?: boolean } | undefined)?.join, true, "no READ armed a join — a plain continue");
         const status = await db.test_get_loop_status.get<{ status: number }>({ id: loop });
         assert.notEqual(status?.status, 202, "the loop did not park — a bare continue without a join stays live");
     } finally { await db.close(); }
 });
 
-test("KILL(run) is decisive — a same-turn KILL then SEND[200] concludes, no premature-terminate 409 (#354)", async () => {
+test("KILL(worker) is decisive — a same-turn KILL then SEND[200] concludes, no premature-terminate 409 (#354)", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `kill-sync-${crypto.randomUUID()}`);
@@ -560,11 +560,11 @@ test("SEND[202]: a live obligation blocks; an empty join completes immediately",
 
         // 202 + ∅ (no live work) → successful completion.
         const s2 = await insertWorkspace(db, `wait-void-${crypto.randomUUID()}`);
-        const run = await insertWorker(db, s2);
-        const loop = await insertLoop(db, run, 1, "solo");
+        const worker = await insertWorker(db, s2);
+        const loop = await insertLoop(db, worker, 1, "solo");
         const turn = await insertTurn(db, loop, 1, 200);
         const eng2 = new Engine({ db, schemes: new SchemeRegistry() });
-        const satisfied = await eng2.dispatch({ statement: sendStmt(202, null, "standing by"), workspaceId: s2, workerId: run, loopId: loop, turnId: turn, sequence: 1, origin: "model" });
+        const satisfied = await eng2.dispatch({ statement: sendStmt(202, null, "standing by"), workspaceId: s2, workerId: worker, loopId: loop, turnId: turn, sequence: 1, origin: "model" });
         assert.equal(satisfied.status, 200, "202 on an empty task group completes");
         assert.equal((await db.test_get_loop_status.get<{ status: number }>({ id: loop }))?.status, 200, "the empty join is terminal");
 
@@ -603,11 +603,11 @@ test("an idle join completes in the same turn", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `idle-concludes-${crypto.randomUUID()}`);
-        const run = await insertWorker(db, workspaceId);
-        const loop = await insertLoop(db, run, 1, "nothing to do");
+        const worker = await insertWorker(db, workspaceId);
+        const loop = await insertLoop(db, worker, 1, "nothing to do");
         const turn = await insertTurn(db, loop, 1, 200);
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
-        const r = await engine.dispatch({ statement: sendStmt(202, null, "idle"), workspaceId, workerId: run, loopId: loop, turnId: turn, sequence: 1, origin: "model" });
+        const r = await engine.dispatch({ statement: sendStmt(202, null, "idle"), workspaceId, workerId: worker, loopId: loop, turnId: turn, sequence: 1, origin: "model" });
         assert.equal(r.status, 200, "the already-drained join completes");
         assert.equal((await db.test_get_loop_status.get<{ status: number }>({ id: loop }))?.status, 200, "no held-open 202");
     } finally { await db.close(); }

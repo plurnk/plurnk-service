@@ -46,7 +46,7 @@ test("a worker without pending interrupts drives the loop, then live events fan 
     assert.ok(seen.some((e) => e.type === "TEXT_MESSAGE_CONTENT"), "live speech rendered to the bound thread");
 
     // Workspace topology is visible, but another loop's terminal must never
-    // conclude this AG-UI run.
+    // conclude this AG-UI Run.
     seen.length = 0;
     m.fire(3, "loop/terminated", {
         loopId: 88,
@@ -64,13 +64,13 @@ test("a worker without pending interrupts drives the loop, then live events fan 
         turnIds: [],
         usage: { promptTokens: 0, completionTokens: 0, costUsd: 0, contextTokens: 0, promptBudget: 1000, meta: {} },
     });
-    assert.equal(seen.length, 0, "a foreign loop terminal cannot end this run");
+    assert.equal(seen.length, 0, "a foreign loop terminal cannot end this AG-UI Run");
 
     m.fire(3, "loop/terminated", {
         loopId: 77, result: { status: 200 }, hitMaxTurns: false, turnIds: [1],
         usage: { promptTokens: 1, completionTokens: 1, costUsd: 0, contextTokens: 2, promptBudget: 1000, meta: {} },
     });
-    assert.ok(seen.some((e) => e.type === "RUN_FINISHED"), "the bound loop terminal ends this run");
+    assert.ok(seen.some((e) => e.type === "RUN_FINISHED"), "the bound loop terminal ends this AG-UI Run");
 
     // An event for an UNbound workspace is dropped, not misrouted.
     seen.length = 0;
@@ -79,7 +79,7 @@ test("a worker without pending interrupts drives the loop, then live events fan 
     portal.stop();
 });
 
-test("a terminal arriving before the loop acknowledgement settles only its matching run", async () => {
+test("a terminal arriving before the loop acknowledgement settles only its matching AG-UI Run", async () => {
     const m = mockSeam();
     let acknowledge!: (value: { status: number; action: "enqueued_new_loop"; loopId: number }) => void;
     m.seam.runLoop = async () => new Promise((resolve) => { acknowledge = resolve; });
@@ -101,7 +101,7 @@ test("a terminal arriving before the loop acknowledgement settles only its match
 
     acknowledge({ status: 100, action: "enqueued_new_loop", loopId: 77 });
     assert.deepEqual(await running, { loopId: 77 });
-    assert.equal(seen.filter((event) => event.type === "RUN_FINISHED").length, 1, "only the acknowledged loop settles the run");
+    assert.equal(seen.filter((event) => event.type === "RUN_FINISHED").length, 1, "only the acknowledged loop settles the AG-UI Run");
     portal.stop();
 });
 

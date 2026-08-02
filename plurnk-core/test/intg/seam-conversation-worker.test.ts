@@ -1,6 +1,6 @@
 // #366 — the seam's FRESH conversation door ({§machine-processes}: two workers are two conversations
 // about one curated workspace). createConversationWorker mints a named, empty-log, model-origin ROOT
-// run that runLoop accepts — distinct from ensureModelWorker (the stable default, #371 find-first)
+// worker that runLoop accepts — distinct from ensureModelWorker (the stable default, #371 find-first)
 // and forkWorker (copies history). New chat = new conversation, same workspace.
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -23,11 +23,11 @@ test("createConversationWorker: fresh named conversation — empty log, runLoop 
             assert.equal(conv.workerName, "thread-2", "the client's name IS the worker name");
             assert.equal((await daemon.readLog({ workspaceId, workerId: conv.workerId })).length, 0, "an EMPTY log — fork copies history, this must not");
 
-            // runLoop accepts it (model-origin) — a full loop runs in the new conversation.
+            // runLoop accepts it (model-origin) — a full loop executes in the new conversation worker.
             const term = await runLoopToTerminal(ws, 2, { prompt: "hi" }).catch(() => null);
-            void term; // the default-run loop; the direct seam check below is the #366 assertion
-            const run = await daemon.runLoop({ workspaceId, workerId: conv.workerId, prompt: "start thread 2" });
-            assert.ok(run.loopId > 0, "runLoop accepts the fresh conversation worker");
+            void term; // the default-worker loop; the direct seam check below is the #366 assertion
+            const accepted = await daemon.runLoop({ workspaceId, workerId: conv.workerId, prompt: "start thread 2" });
+            assert.ok(accepted.loopId > 0, "runLoop accepts the fresh conversation worker");
 
             // The stable door still finds the ORIGINAL root — fresh conversations never shadow it (#371).
             assert.equal(await daemon.ensureModelWorker(workspaceId), stable, "ensureModelWorker is unmoved by fresh conversations");
@@ -56,7 +56,7 @@ test("createConversationWorker: fresh named conversation — empty log, runLoop 
             );
             // A default name mints distinct model-<ts> conversations.
             const anon = await daemon.createConversationWorker({ workspaceId });
-            assert.match(anon.workerName, /^model-/, "default name follows the model-run convention");
+            assert.match(anon.workerName, /^model-/, "default name follows the model-worker convention");
         } finally { ws.close(); }
     });
 });

@@ -86,7 +86,7 @@ const logRows = async (db: Db, workerId: number): Promise<Array<{ turn_seq: numb
 // #382 - the prompt:// frame is grinder-exempt; the grinder folds work, never the task.
 const isPrompt = (r: { scheme?: string | null; pathname: string | null }): boolean => (r as { scheme?: string | null }).scheme === "prompt";
 
-// Two reference measurements on throwaway runs (deterministic FAT body), so the
+// Two reference measurements on throwaway workers (deterministic FAT body), so the
 // fold-to-fit ceilings track the real assembly and never magic numbers:
 //   floor    = bare scaffolding (turn 1's pre-emission packet, no prior log)
 //   expanded = floor + a fat READ log from the prior turn, all expanded

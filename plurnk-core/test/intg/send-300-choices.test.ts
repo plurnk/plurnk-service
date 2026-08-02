@@ -13,7 +13,7 @@ import { sendStmt } from "./_dsl.ts";
 // affirmatively requests per workspace (settings.questions) — the enabled-path tests do exactly
 // what a real interactive client does.
 const enableQuestions = async (db: Awaited<ReturnType<typeof openMigrated>>, workspaceId: number): Promise<void> => {
-    await db.test_set_session_settings.run({ id: workspaceId, settings: JSON.stringify({ questions: true }) });
+    await db.test_set_workspace_settings.run({ id: workspaceId, settings: JSON.stringify({ questions: true }) });
 };
 const withAsk = async <T>(fn: () => Promise<T>): Promise<T> => fn(); // enabled per-workspace now — wrapper retired in place
 
@@ -48,7 +48,7 @@ test("SEND[300] is a PROPOSAL — stop the world; the accept body IS the answer,
         const parsed = JSON.parse(attrs?.attrs ?? "{}") as { question?: string; choices?: string[] };
         assert.equal(parsed.question, "Which environment?", "attrs carry the question");
         assert.deepEqual(parsed.choices, ["production", "staging", "local"], "attrs carry the choice set — the client's chooser reads the loop/proposal it already renders");
-        const sendRow = await db.test_send_rows_for_run.all<{ rx: string; status_rx: number }>({ worker_id: workerId });
+        const sendRow = await db.test_send_rows_for_worker.all<{ rx: string; status_rx: number }>({ worker_id: workerId });
         assert.match(sendRow.find((x) => x.status_rx === 200)?.rx ?? "", /staging/, "the ANSWER rides the ask's own rx — the model reads it next packet");
         const stored = await db.test_get_packet.get<{ packet: string }>({ id: r.turnId });
         const packet = JSON.parse(stored?.packet ?? "{}") as { sections?: Array<{ name?: string; header?: string; content?: string }> };
@@ -80,7 +80,7 @@ test("a bare [300] with no choices is an OPEN QUESTION — same proposal, never 
         const parsed = JSON.parse(attrs?.attrs ?? "{}") as { question?: string; choices?: string[] };
         assert.equal(parsed.question, "What should the deploy tag be?", "the whole body is the question");
         assert.equal(parsed.choices, undefined, "no choices — the client renders free response only");
-        const sendRow = await db.test_send_rows_for_run.all<{ rx: string; status_rx: number }>({ worker_id: workerId });
+        const sendRow = await db.test_send_rows_for_worker.all<{ rx: string; status_rx: number }>({ worker_id: workerId });
         assert.match(sendRow.find((x) => x.status_rx === 200)?.rx ?? "", /v2\.1\.0/, "the freeform answer rides the rx");
     } finally { await db.close(); }
 }); });
@@ -142,7 +142,7 @@ test("settings.questions=true (the client's affirmative request) enables the wor
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `c300on-${crypto.randomUUID()}`);
-        await db.test_set_session_settings.run({ id: workspaceId, settings: JSON.stringify({ questions: true }) });
+        await db.test_set_workspace_settings.run({ id: workspaceId, settings: JSON.stringify({ questions: true }) });
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1, "ask");
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
@@ -154,7 +154,7 @@ test("settings.questions=true (the client's affirmative request) enables the wor
             workspaceId, workerId, loopId,
             messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }],
         });
-        const answered = await db.test_send_rows_for_run.all<{ rx: string; status_rx: number }>({ worker_id: workerId });
+        const answered = await db.test_send_rows_for_worker.all<{ rx: string; status_rx: number }>({ worker_id: workerId });
         assert.match(answered.find((x) => x.status_rx === 200)?.rx ?? "", /prod/, "the interactive workspace's ask STOPPED THE WORLD and got its answer — the client enabled it");
     } finally { await db.close(); }
 });

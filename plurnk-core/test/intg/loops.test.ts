@@ -36,7 +36,7 @@ test("loops: insert with required fields — status defaults to 102", async () =
     try {
         const workerId = await seedWorker(db, "ws-loops-default");
         await db.test_loops_insert.run({ worker_id: workerId, sequence: 1, prompt: "decompose the prompt" });
-        const row = await db.test_loops_get_by_run.get<{ id: number; version: number; worker_id: number; sequence: number; status: number; prompt: string }>({ worker_id: workerId });
+        const row = await db.test_loops_get_by_worker.get<{ id: number; version: number; worker_id: number; sequence: number; status: number; prompt: string }>({ worker_id: workerId });
         assert.ok((row?.id ?? 0) >= 1);
         assert.equal(row?.version, 0);
         assert.equal(row?.worker_id, workerId);
@@ -63,7 +63,7 @@ test("loops: status enum — 102, 200, 413, 429, 499, 500, 508 all accepted", as
                 terminal_result: terminalResult(status, i + 1),
             });
         }
-        const rows = await db.test_loops_statuses_by_run.all<{ status: number }>({ worker_id: workerId });
+        const rows = await db.test_loops_statuses_by_worker.all<{ status: number }>({ worker_id: workerId });
         assert.deepEqual(rows.map((r) => r.status), valid);
     } finally { await db.close(); }
 });
@@ -82,7 +82,7 @@ test("loops: status enum accepts 100 (queued) — drain prerequisite", async () 
             prompt: "queued",
             terminal_result: null,
         });
-        const rows = await db.test_loops_statuses_by_run.all<{ status: number }>({ worker_id: workerId });
+        const rows = await db.test_loops_statuses_by_worker.all<{ status: number }>({ worker_id: workerId });
         assert.deepEqual(rows.map((r) => r.status), [100]);
     } finally { await db.close(); }
 });
@@ -123,7 +123,7 @@ test("loops: sequence < 1 rejected by CHECK", async () => {
     } finally { await db.close(); }
 });
 
-test("loops: (worker_id, sequence) UNIQUE — duplicate within run rejected", async () => {
+test("loops: (worker_id, sequence) UNIQUE — duplicate within worker rejected", async () => {
     const db = await openMigrated();
     try {
         const workerId = await seedWorker(db, "ws-loops-uniq");
@@ -135,7 +135,7 @@ test("loops: (worker_id, sequence) UNIQUE — duplicate within run rejected", as
     } finally { await db.close(); }
 });
 
-test("loops: same sequence number across different runs is fine", async () => {
+test("loops: same sequence number across different workers is fine", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, "ws-loops-crossrun");
@@ -168,7 +168,7 @@ test("loops: empty prompt is allowed", async () => {
     } finally { await db.close(); }
 });
 
-test("loops: worker_id FK — insert against non-existent run rejected", async () => {
+test("loops: worker_id FK — insert against non-existent worker rejected", async () => {
     const db = await openMigrated();
     try {
         await assert.rejects(
@@ -178,25 +178,25 @@ test("loops: worker_id FK — insert against non-existent run rejected", async (
     } finally { await db.close(); }
 });
 
-test("loops: ON DELETE CASCADE via run — deleting run removes its loops", async () => {
+test("loops: ON DELETE CASCADE via worker — deleting worker removes its loops", async () => {
     const db = await openMigrated();
     try {
         const workerId = await seedWorker(db, "ws-loops-runcascade");
         await db.test_loops_insert.run({ worker_id: workerId, sequence: 1, prompt: "a" });
         await db.test_loops_insert.run({ worker_id: workerId, sequence: 2, prompt: "b" });
-        await db.test_runs_delete.run({ id: workerId });
+        await db.test_workers_delete.run({ id: workerId });
         const remaining = (await db.test_loops_count.get<{ n: number }>())?.n;
         assert.equal(remaining, 0);
     } finally { await db.close(); }
 });
 
-test("loops: CASCADE chain via workspace→runs→loops", async () => {
+test("loops: CASCADE chain via workspace→workers→loops", async () => {
     const db = await openMigrated();
     try {
-        const workspaceId = await insertWorkspace(db, "ws-loops-sessioncascade");
+        const workspaceId = await insertWorkspace(db, "ws-loops-workspacecascade");
         const workerId = await insertWorker(db, workspaceId);
         await db.test_loops_insert.run({ worker_id: workerId, sequence: 1, prompt: "a" });
-        await db.test_sessions_delete.run({ id: workspaceId });
+        await db.test_workspaces_delete.run({ id: workspaceId });
         const remaining = (await db.test_loops_count.get<{ n: number }>())?.n;
         assert.equal(remaining, 0);
     } finally { await db.close(); }

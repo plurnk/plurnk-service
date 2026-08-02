@@ -36,7 +36,7 @@ test("loop.run accepts immediately (100); the loop's outcome arrives via loop/te
     });
 });
 
-test("loop.inject speaks into an existing run; errors when there's none (#193)", async () => {
+test("loop.inject speaks into an existing worker; errors when there's none (#193)", async () => {
     const mock = new Mock({ contextWindow: 16384, responses: [
         makeMockResponse("<<SEND[200]:first done:SEND", 10),
         makeMockResponse("<<SEND[200]:injected done:SEND", 10),
@@ -58,10 +58,10 @@ test("loop.inject speaks into an existing run; errors when there's none (#193)",
             // (loop.run no longer blocks) so the worker is genuinely idle before we inject.
             await runLoopToTerminal(ws, 3, { prompt: "first", flags: { auto: true } });
 
-            // Inject into the idle run → enqueues a fresh loop, returns immediately.
+            // Inject into the idle worker → enqueues a fresh loop, returns immediately.
             const injected = await rpcCall(ws, 4, "loop.inject", { prompt: "BTW, the config is TOML" });
             const result = injected.result as { action: string; loopId: number; modelWorkerId: number };
-            assert.equal(result.action, "enqueued_new_loop", "idle run → a fresh enqueued loop");
+            assert.equal(result.action, "enqueued_new_loop", "idle worker → a fresh enqueued loop");
             assert.ok(typeof result.loopId === "number", "returns the loopId");
             assert.ok(typeof result.modelWorkerId === "number", "returns the worker it spoke into");
 
@@ -74,7 +74,7 @@ test("loop.inject speaks into an existing run; errors when there's none (#193)",
     });
 });
 
-test("run.fork branches the model worker into a new -fork run; names it at instantiation; errors with no worker (#228, #248)", async () => {
+test("run.fork branches the model worker into a new -fork worker; names it at instantiation; errors with no worker (#228, #248)", async () => {
     const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse("<<EDIT(worker:///x):hi:EDIT\n<<SEND[200]:done:SEND", 10)] });
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -93,8 +93,8 @@ test("run.fork branches the model worker into a new -fork run; names it at insta
             await runLoopToTerminal(ws, 3, { prompt: "do a thing" });
             const fork = await rpcCall(ws, 4, "run.fork", {});
             const r = fork.result as { workerId: number; workerName: string | null; parentWorkerId: number };
-            assert.ok(typeof r.workerId === "number" && typeof r.parentWorkerId === "number", "returns new + parent run ids");
-            assert.notEqual(r.workerId, r.parentWorkerId, "the fork is a distinct run");
+            assert.ok(typeof r.workerId === "number" && typeof r.parentWorkerId === "number", "returns new and parent worker ids");
+            assert.notEqual(r.workerId, r.parentWorkerId, "the fork is a distinct worker");
             assert.match(r.workerName ?? "", /-fork-\d+$/, "the fork is named <parent>-fork-<N> by default (unique per fork)");
 
             // #248 — an explicit name names the branch at instantiation (immutable after; no rename).
@@ -194,7 +194,7 @@ test("loop.run still fires loop/terminated when the loop throws — no client ha
     // already-.catch()'d promise and broadcast nothing, leaving the client hung.
     const dsl = "<<EDIT(worker:///x):iter:EDIT\n<<SEND[102]:continue:SEND";
     const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse(dsl, 10)] });
-    // #506 — the death must reach the daemon log too. Capture stderr around the run.
+    // #506 — the death must reach the daemon log too. Capture stderr around the loop.
     const logged: string[] = [];
     const realErr = console.error;
     console.error = (...a: unknown[]) => { logged.push(a.map((x) => x instanceof Error ? x.stack ?? x.message : String(x)).join(" ")); };

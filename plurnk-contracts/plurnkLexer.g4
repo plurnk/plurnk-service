@@ -149,7 +149,7 @@ OPEN_OPEN : '<<OPEN' SUFFIX? { this.setOpenTag(); } -> mode(SLOTS) ;
 OPEN_FOLD : '<<FOLD' SUFFIX? { this.setOpenTag(); } -> mode(SLOTS) ;
 OPEN_SEND : '<<SEND' SUFFIX? { this.setOpenTag(); } -> mode(SLOTS) ;
 OPEN_EXEC : '<<EXEC' SUFFIX? { this.setOpenTag(); } -> mode(SLOTS) ;
-// Delegation verbs: WORK spawns a fresh named worker, FORK branches the current run into a
+// Delegation verbs: WORK spawns a fresh named worker, FORK branches the current worker into a
 // named child. Their optional single Git branch ref uses the tag-token lexer mode; the parser
 // narrows that mode to exactly one TAG, while ordinary tag-bearing ops retain CSV signals.
 OPEN_WORK : '<<WORK' SUFFIX? { this.setOpenTag(); } -> mode(SLOTS) ;

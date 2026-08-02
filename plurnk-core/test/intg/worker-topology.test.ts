@@ -1,4 +1,4 @@
-// {§run-lifecycle} topology join — a child worker finishing is a WAKE EDGE for a parent that parked
+// {§worker-loop-lifecycle} topology join — a child worker finishing is a WAKE EDGE for a parent that parked
 // (SEND[202]) awaiting it. Without it, a parent that spawns work and hibernates would dead-park.
 // The proof: the parent concludes at all — a non-woken 202 would hang (runLoopToTerminal times out).
 
@@ -26,7 +26,7 @@ test("a child worker concluding wakes a parent parked at 202", async () => {
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
-            await rpcCall(ws, 1, "workspace.create", { name: "run-topology" });
+            await rpcCall(ws, 1, "workspace.create", { name: "worker-topology" });
             const terminated = subscribeNotifications(ws, "loop/terminated");
             // runLoopToTerminal awaits the PARENT's loop/terminated. If the child-wake doesn't fire,
             // the parent stays parked at 202 forever and this times out — so reaching 200 IS the proof.
@@ -34,7 +34,7 @@ test("a child worker concluding wakes a parent parked at 202", async () => {
             assert.equal(finalStatus, 200, "the parent resumed from 202 (woken by the child) and concluded");
             assert.equal(turnIds?.length, 2, "the terminal event accounts for the complete durable loop across park/resume");
             await flush();
-            // Both runs concluded 200 — the worker's terminal and the parent's resumed terminal.
+            // Both workers concluded 200 — the child's terminal and the parent's resumed terminal.
             const concluded = (terminated() as Array<{ result: { status: number } }>).filter((t) => t.result.status === 200);
             assert.ok(concluded.length >= 2, `parent + child both conclude 200; saw ${JSON.stringify((terminated() as Array<{ result: { status: number } }>).map((t) => t.result.status))}`);
         } finally { ws.close(); }
@@ -193,18 +193,18 @@ test("an irc (SEND worker://name) wakes a CONCLUDED sibling — the voice door m
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "irc-wake" });
             const terminated = subscribeNotifications(ws, "loop/terminated");
-            const run = await rpcCall(ws, 2, "loop.run", { prompt: "be a butler; await the entry code", flags: { auto: true } });
-            const modelWorkerId = (run.result as { modelWorkerId: number }).modelWorkerId;
-            const loopId = (run.result as { loopId: number }).loopId;
+            const response = await rpcCall(ws, 2, "loop.run", { prompt: "be a butler; await the entry code", flags: { auto: true } });
+            const modelWorkerId = (response.result as { modelWorkerId: number }).modelWorkerId;
+            const loopId = (response.result as { loopId: number }).loopId;
             // The actor concludes its first (idle) loop — nothing to wait on.
             await waitFor(() => terminated() as Array<{ loopId: number }>, (ts) => ts.some((t) => t.loopId === loopId), { timeoutMs: 8000 });
-            const before = (await db.test_count_loops_by_run.get<{ n: number }>({ worker_id: modelWorkerId }))!.n;
+            const before = (await db.test_count_loops_by_worker.get<{ n: number }>({ worker_id: modelWorkerId }))!.n;
             // Address the concluded actor by name, then irc it — the voice door.
             const workers = ((await rpcCall(ws, 3, "workspace.workers", {})).result as { workers: Array<{ name: string; origin: string }> }).workers;
             const actor = workers.find((r) => r.origin === "model")!;
             await rpcCall(ws, 4, "op.send", { status: 200, recipient: `worker://${actor.name}`, body: "the entry code is 4815" });
             // A FRESH loop is minted (there was no slept loop to resume).
-            const after = await waitForDb(() => db.test_count_loops_by_run.get<{ n: number }>({ worker_id: modelWorkerId }), (r) => (r?.n ?? 0) > before, { timeoutMs: 8000 });
+            const after = await waitForDb(() => db.test_count_loops_by_worker.get<{ n: number }>({ worker_id: modelWorkerId }), (r) => (r?.n ?? 0) > before, { timeoutMs: 8000 });
             assert.ok((after?.n ?? 0) > before, "the irc reawakened the concluded actor as a FRESH loop — the voice door mints a new loop, never resumes a park");
         } finally { ws.close(); }
     });
@@ -222,7 +222,7 @@ test("an idle join completes immediately through the real loop", async () => {
             const terminated = subscribeNotifications(ws, "loop/terminated");
             await rpcCall(ws, 2, "loop.run", { prompt: "nothing to do", flags: { auto: true } });
             const t = await waitFor(() => terminated() as Array<{ result: { status: number }; loopId?: number }>, (items) => items.length > 0, { timeoutMs: 8000 });
-            assert.equal(t.length, 1, "the run concluded — one loop/terminated, no held-open 202");
+            assert.equal(t.length, 1, "the loop concluded — one loop/terminated, no held-open 202");
             assert.equal(t[0].result.status, 200, "the already-drained join is the model's successful terminal");
             const rows = await db.test_log_entries_by_loop.all<{ op: string; status_rx: number }>({ loop_id: (t[0] as { loopId?: number }).loopId ?? 1 });
             assert.ok(rows.some((r) => r.op === "SEND" && r.status_rx === 200), "the join records successful completion");
@@ -236,8 +236,8 @@ test("spawn and fork carry the delegating loop's flags — an auto parent's chil
     // Proof is behavioral AND through the real dispatch path: the child's EDIT must land
     // state='resolved' (auto resolution inherited), never state='proposed'/'cancelled'.
     // 16Ki (not the 8Ki the sibling tests use): a topology packet carries the child-orientation
-    // section for the spawned + forked runs on top of the base system prompt, so it sits well above a
-    // single-run packet. At 8Ki it rode the budget edge (a ~50% 413/200 flake) and grammar 0.74.55's
+    // section for the spawned + forked workers on top of the base system prompt, so it sits well above a
+    // single-worker packet. At 8Ki it rode the budget edge (a ~50% 413/200 flake) and grammar 0.74.55's
     // larger delegation teaching tipped it consistently over — the headroom is the fix, not a race.
     const mock = new Mock({ contextWindow: 16384, responses: [
         // Parent turn 1: spawn a worker AND fork self, then park awaiting them.

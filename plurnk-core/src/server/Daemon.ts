@@ -130,7 +130,7 @@ export default class Daemon {
     // client transport or connection state.
     #eventSubscribers = new Set<(workspaceId: number | null, method: string, params: unknown) => void>();
 
-    // Run-level drain registry. At most one drain per worker. The stored object
+    // Worker-level drain registry. At most one drain per worker. The stored object
     // is the drain's identity handle: start/exit compare it by reference so a
     // drain exiting never clobbers a successor that raced in, and a loop
     // enqueued during teardown is never stranded. A drain is a pure queue
@@ -138,7 +138,7 @@ export default class Daemon {
     // (subscriptions + Exec.idle), and a concluding stream routes through
     // inject() like any other loop source.
     #activeDrains = new Map<number, { controller: AbortController; promise: Promise<unknown> }>();
-    // Per-run cancellation scope. Loops AND the streams they spawn (execs)
+    // Per-worker cancellation scope. Loops AND the streams they spawn (execs)
     // share this signal, so loop.cancel / shutdown abort it once and every
     // in-flight subscription tears down — even a spawn that registers AFTER the
     // cancel self-aborts against the already-aborted signal (no race). Outlives
@@ -151,10 +151,10 @@ export default class Daemon {
     #parkTimers: Map<number, NodeJS.Timeout> = new Map();
     #pollTimers = new Map<number, ReturnType<typeof setTimeout>>();
     #pollBackoff = new Map<number, number>(); // #521 — the exec-poll backoff step per worker (nth wake)
-    // Per-run drain-transition lock — see #withDrainLock (R4 / {§worker-lifecycle-single-drain}).
+    // Per-worker drain-transition lock — see #withDrainLock (R4 / {§worker-lifecycle-single-drain}).
     #drainLocks = new Map<number, Promise<unknown>>();
-    // {§worker-lifecycle-child-wake} — runs OWED a wake: a child/stream conclusion fired while the worker was
-    // mid-turn (not yet slept), so #wakeParkedWorker could not resume it. A worker-run conclusion is a
+    // {§worker-lifecycle-child-wake} — workers owed a wake: a child/stream conclusion fired while the worker was
+    // mid-turn (not yet slept), so #wakeParkedWorker could not resume it. A child-worker conclusion is a
     // BOUNDED, lossless wake (a worker always concludes), so a hibernation awaiting one MUST return —
     // never deadlock. The drain honors the owed wake at the worker's next park, closing the conclude-
     // before-park race. (Only a live exec stream, unbounded absent a timeout, may hold a park open.)
@@ -321,7 +321,7 @@ export default class Daemon {
         this.#engine.resolveProposal(checkedLogEntryId, checkedResolution);
     }
 
-    // The client-interface seam (#355) — drive/steer a loop. The module supplies only workspace/run/prompt;
+    // The client-interface seam (#355) — drive/steer a loop. The module supplies only workspace/worker/prompt;
     // the provider and the law-file system prompt are core's and stay inside. Returns immediately — the
     // loop runs async and its outcome arrives on the event source (loop/terminated). `cancelDrain` (public)
     // is the cancel hook. Both funnel through the unified `inject`, which owns the drain lifecycle.
@@ -354,7 +354,7 @@ export default class Daemon {
             ));
         }
         const systemPrompt = await readFile(Paths.instructionsSystem, "utf8");
-        // {§machine-processes} — the model NEVER runs in a client-origin run (its packets would carry
+        // {§machine-processes} — the model NEVER runs in a client-origin worker (its packets would carry
         // client op.* rows). The module resolves the model worker via ensureModelWorker and passes it (or a
         // fork); a client worker here is a caller error, refused loudly rather than silently rehomed.
         const target = await this.#db.envelope_get_worker_by_id.get<{ workspace_id: number; origin: string }>({ id: workerId });
@@ -522,7 +522,7 @@ export default class Daemon {
     }
 
     // {§machine-processes} — the workspace's model worker (created on first use), distinct from the client
-    // run so the model's packets never carry client op.* rows. The module binds its threads to this.
+    // worker so the model's packets never carry client op.* rows. The module binds its threads to this.
     ensureModelWorker(workspaceId: number): Promise<number> {
         return Envelope.ensureModelWorker(
             this.#db,
@@ -595,7 +595,7 @@ export default class Daemon {
     }
 
     // op.look (#283/#358) — the pure READ-projection query on the seam: resolve a READ through the
-    // full scheme resolver and return its content, writing NO log row — the client's off-run
+    // full scheme resolver and return its content, writing NO log row — the client's out-of-band
     // inspection primitive (the module rewrites LOOK→READ and parses at its edge, exactly like
     // dispatchClientAction). Its closed observation segment supplies the numeric loop coordinate
     // required by plugin context and relative log:/// addresses without impersonating an active
@@ -619,7 +619,7 @@ export default class Daemon {
     }
 
     // The log-read hook (#355) — a workspace's journal, the module's primary render input. The worker is
-    // ownership-verified against the workspace (a workspace reads only its own runs — the model worker included,
+    // ownership-verified against the workspace (a workspace reads only its own workers — the model worker included,
     // #214); entries filter by loop/turn/since-id or the full L/T/S display coordinate. Core owns the
     // journal + the invariant; the module shapes the entries into AG-UI messages at its edge.
     async readLog(args: {
@@ -777,7 +777,7 @@ export default class Daemon {
     }
 
     async attachWorkspace(args: { workspaceId: number; workerId?: number; workerName?: string }): Promise<ClientEnvelope> {
-        // attachToWorkspace owns the reserved-name + run-ownership invariants; the seam just delegates + warms.
+        // attachToWorkspace owns the reserved-name + worker-ownership invariants; the seam just delegates + warms.
         const workspaceId = ClientInput.assertId("workspace.attach", "workspaceId", args.workspaceId);
         const workerId = args.workerId === undefined
             ? undefined
@@ -946,7 +946,7 @@ export default class Daemon {
     // The fork hook (#355) — branch a worker's log into a new worker in the same workspace (#228), sharing the
     // workspace's world (entries + overlay), copying nothing of it. The module resolves the default (the
     // workspace's model worker) from its own connection state and passes the concrete workerId; the seam owns the
-    // #366 — a fresh conversation worker: AG-UI threads map to RUNS ({§machine-processes} — the workspace
+    // #366 — a fresh conversation worker: AG-UI threads map to workers ({§machine-processes} — the workspace
     // is the workspace, the worker is the conversation). ensureModelWorker is the stable DEFAULT door,
     // forkWorker the branching door (copies history); this is the fresh door — a named, empty-log,
     // model-origin root that runLoop accepts. New chat = new conversation, same workspace.
@@ -964,7 +964,7 @@ export default class Daemon {
             );
         }
         if (name !== undefined) {
-            if (Envelope.RESERVED_RUN_NAMES.has(name.toLowerCase())) {
+            if (Envelope.RESERVED_WORKER_NAMES.has(name.toLowerCase())) {
                 throw daemonFailure(
                     "daemon:worker",
                     "name-reserved",
@@ -984,11 +984,11 @@ export default class Daemon {
                 );
             }
         }
-        const run = await Envelope.createModelWorker(this.#db, workspaceId, name);
-        return { workerId: run.id, workerName: run.name };
+        const worker = await Envelope.createModelWorker(this.#db, workspaceId, name);
+        return { workerId: worker.id, workerName: worker.name };
     }
 
-    // ownership check and the run-name namespace + uniqueness invariants (names are immutable — no rename).
+    // ownership check and the worker-name namespace + uniqueness invariants (names are immutable — no rename).
     async forkWorker(args: { workspaceId: number; workerId: number; name?: string }): Promise<{ workerId: number; workerName: string | null; parentWorkerId: number }> {
         const workspaceId = ClientInput.assertId("worker.fork", "workspaceId", args.workspaceId);
         const workerId = ClientInput.assertId("worker.fork", "workerId", args.workerId);
@@ -1018,7 +1018,7 @@ export default class Daemon {
             );
         }
         if (name !== undefined) {
-            if (Envelope.RESERVED_RUN_NAMES.has(name.toLowerCase())) {
+            if (Envelope.RESERVED_WORKER_NAMES.has(name.toLowerCase())) {
                 throw daemonFailure(
                     "daemon:worker",
                     "name-reserved",
@@ -1183,8 +1183,8 @@ export default class Daemon {
         this.#started = false;
 
         // Stop accepting external work immediately, but do not await listener
-        // closure before cancelling active runs: an SSE connection may itself be
-        // waiting for the run cancellation that follows.
+        // closure before cancelling active workers: an SSE connection may itself be
+        // waiting for the worker cancellation that follows.
         const moduleClose = Promise.allSettled(
             this.#moduleClosers
                 .toReversed()
@@ -1199,7 +1199,7 @@ export default class Daemon {
         // upstream — drain queries hit the DB right up until they exit.
         // Abort every worker's cancellation scope — stops in-flight loops AND the
         // streams (background execs) linked to them, so idle() doesn't block on
-        // a long-running command. Covers runs whose drain already exited but
+        // a long-running command. Covers workers whose drain already exited but
         // whose exec is still in flight.
         // Settle the stopped world FIRST: a drain paused at a pending proposal awaits a resolution
         // that will never arrive once clients are gone — allSettled(drains) below would deadlock
@@ -1400,7 +1400,7 @@ export default class Daemon {
     }
 
     /**
-     * Start a drain for the given run. The drain claims queued loops via
+     * Start a drain for the given worker. The drain claims queued loops via
      * drain_claim_next_loop (atomic 100→102 flip), executes each via
      * Engine.runLoop, and re-checks. Stream-aware: when the queue is empty
      * but the worker has active subscriptions, the drain parks on a
@@ -1512,7 +1512,7 @@ export default class Daemon {
                         }
                         // Honor an OWED wake ({§worker-lifecycle-child-wake}): a child/stream concluded while
                         // this worker was mid-turn, before it slept — resume in place rather than park blind,
-                        // so a worker-run hibernation always returns. The loop is 202 here; reset to
+                        // so a worker hibernation always returns. The loop is 202 here; reset to
                         // claimable and the drain re-runs it on the next claim below.
                         if (this.#owedWakes.delete(workerId)) {
                             await this.#lifecycle.wake(loopRow.id);
@@ -1691,7 +1691,7 @@ export default class Daemon {
 
         handle.promise = drainPromise;
         this.#activeDrains.set(workerId, handle);
-        // Topology join ({§run-lifecycle}): when this drain exits having CONCLUDED the worker, wake its parent
+        // Topology join ({§worker-loop-lifecycle}): when this drain exits having CONCLUDED the worker, wake its parent
         // if parked. Runs after the drain fully tears down (settled promise) so the quiescence check sees
         // final state; speculative (#onDrainExit no-ops unless the worker concluded AND the parent is parked).
         void drainPromise.then(
@@ -1707,12 +1707,12 @@ export default class Daemon {
         return { firstLoopPromise, drainPromise };
     }
 
-    // Per-run drain-transition lock (R4 / {§worker-lifecycle-single-drain}). #ensureDrain's
+    // Per-worker drain-transition lock (R4 / {§worker-lifecycle-single-drain}). #ensureDrain's
     // start and a drain's teardown relinquish both run under it, serialized, so the two
     // can't interleave and register two drains for one worker. The critical section is the
     // registry decision only (never a loop's work) — a sub-ms hop at drain boundaries.
     // A promise-chain mutex: each caller awaits the prior holder; the tail self-prunes
-    // when idle so the Map stays bounded to runs mid-transition.
+    // when idle so the Map stays bounded to workers mid-transition.
     #withDrainLock<T>(workerId: number, fn: () => Promise<T>): Promise<T> {
         const prev = this.#drainLocks.get(workerId) ?? Promise.resolve();
         const run = prev.then(fn, fn);
@@ -1813,7 +1813,7 @@ export default class Daemon {
 
     /**
      * Cancel the worker's in-flight work (loop.cancel). One abort, one scope: the
-     * run signal stops the running loop's turn generation AND tears down every
+     * worker signal stops the running loop's turn generation AND tears down every
      * stream linked to it — a background exec that outlived its loop, or even a
      * spawn that registers after this abort (it self-aborts against the aborted
      * signal). Returns cancelled iff there was work. Queued loops stay enqueued.
@@ -1836,7 +1836,7 @@ export default class Daemon {
 
     // Does the worker have an in-flight stream (a background exec)? Used only for
     // loop.cancel's cancelled=true/false answer; the teardown itself rides the
-    // run signal. Duck-typed like #drainStreamingSchemes.
+    // worker signal. Duck-typed like #drainStreamingSchemes.
     #workerHasActiveStreams(workerId: number): boolean {
         const exec = this.#schemes.get("exec") as { hasActiveSpawns?: (workerId: number) => boolean } | undefined;
         return exec?.hasActiveSpawns?.(workerId) ?? false;
@@ -1878,11 +1878,11 @@ export default class Daemon {
         }
 
         // No resurrection ({§worker-lifecycle-no-resurrection}): a non-499 completion whose
-        // run was CANCELLED (idle + its scope aborted) must not start a fresh drain —
+        // worker was cancelled (idle + its scope aborted) must not start a fresh drain —
         // the cancel was deliberate. The deliverable is already in the channel/log and
         // surfaces as a `collect` environment delta ({§env-delta}) if the worker is read or
-        // resumed; we just don't inject a turn. (An active run folds the wake into its
-        // next turn via inject below; a resumed run is active, never aborted, so it is
+        // resumed; we just don't inject a turn. (An active worker folds the wake into its
+        // next turn via inject below; a resumed worker is active, never aborted, so it is
         // unaffected.)
         const scope = this.#workerAborts.get(payload.workerId);
         if (scope?.signal.aborted === true && !this.#activeDrains.has(payload.workerId)) {
@@ -1928,7 +1928,7 @@ export default class Daemon {
                 return;
             }
 
-            // No slept loop, no active drain — nothing to resume (e.g. a SEND[200]-done run whose
+            // No slept loop, no active drain — nothing to resume (e.g. a SEND[200]-done worker whose
             // streams were swept). Surface the conclusion without opening a loop.
             this.#broadcast({ workspaceId: payload.workspaceId }, "stream/concluded", {
                 ...payload, wakeAction: "no-loop",
@@ -1991,7 +1991,7 @@ export default class Daemon {
 
     /** Resume `workerId`'s slept (202) loop in place — the same 202→100 resume #handleWakeWorker uses, minus a
      *  wake payload. The shared wake primitive: a poll cadence ({§exec-poll}), a watched stream concluding,
-     *  or a child worker finishing ({§run-lifecycle} topology join) all call this. A no-op if the worker was
+     *  or a child worker finishing ({§worker-loop-lifecycle} topology join) all call this. A no-op if the worker was
      *  cancelled or isn't actually parked (no slept loop) — so calling it speculatively is safe. */
     async #wakeParkedWorker(workspaceId: number, workerId: number, systemPrompt: string, oweIfActive = true): Promise<void> {
         const scope = this.#workerAborts.get(workerId);
@@ -2000,7 +2000,7 @@ export default class Daemon {
         if (slept === undefined) {
             // Not parked. If a drain is still ACTIVE, the worker is mid-turn and about to park — the
             // conclusion that fired this wake arrived before the 202 committed (the conclude-before-park
-            // race). OWE the wake: the drain honors it at park so a worker-run hibernation never deadlocks.
+            // race). Owe the wake: the drain honors it at park so a worker hibernation never deadlocks.
             // (No active drain → already concluded/running; nothing to wake.)
             if (oweIfActive && this.#activeDrains.has(workerId)) this.#owedWakes.add(workerId);
             return;
@@ -2026,7 +2026,7 @@ export default class Daemon {
         const openSubs = await this.#db.find_open_subscriptions_for_worker.all<{ id: number }>({ worker_id: workerId });
         if (openSubs.length > 0) return; // a stream still runs — its conclusion re-evaluates, not this exit
         const parent = await this.#db.worker_parent_id.get<{ parent_worker_id: number | null }>({ worker_id: workerId });
-        if (parent?.parent_worker_id == null) return; // a root run — nobody to wake
+        if (parent?.parent_worker_id == null) return; // a root worker — nobody to wake
         await this.#wakeParkedWorker(workspaceId, parent.parent_worker_id, systemPrompt);
     }
 

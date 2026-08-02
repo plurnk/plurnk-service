@@ -19,7 +19,7 @@ const execStmt = (runtime: string, body: string): ExecStatement => ({
 let wireN = 0;
 const wire = async (finishAfterMs: number, effect: "read" | "host" | "pure" = "pure") => {
     // unique tag per wiring: testExecutors() is a shared cached registry — a duplicate
-    // runtime registration throws and leaks the just-opened db, wedging the file run.
+    // runtime registration throws and leaks the just-opened db, wedging the test file.
     const tag = `holdstub${++wireN}`;
     const db = await openMigrated();
     const schemes = new SchemeRegistry();

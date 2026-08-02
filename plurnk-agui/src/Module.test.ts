@@ -1,4 +1,4 @@
-// The module's HTTP surface against a mock seam (no daemon): §3 action runs execute
+// The module's HTTP surface against a mock seam (no daemon): §3 management-action AG-UI Runs execute
 // via the seam and finish clean; unknown kinds error honestly; a resume tool-result
 // resolves without driving a loop.
 
@@ -69,39 +69,39 @@ const post = async (port: number, body: Record<string, unknown>): Promise<AguiEv
 };
 
 // A streaming reader that stays OPEN, collecting events until the connection ends —
-// lets a test hold two concurrent runs on one workspace and observe fan-out live.
+// lets a test hold two concurrent AG-UI Runs on one workspace and observe fan-out live.
 const openStream = (port: number, body: Record<string, unknown>): Promise<AguiEvent[]> =>
     fetch(`http://127.0.0.1:${port}/`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(standardInput(body)) })
         .then((res) => res.text())
         .then((text) => text.split("\n\n").filter((f) => f.startsWith("data: ")).map((f) => JSON.parse(f.slice(6)) as AguiEvent));
 
-test("a workspace's stream events FAN to every open run (never last-binder-wins) — svc#504", async () => {
+test("a workspace's stream events fan to every open AG-UI Run (never last-binder-wins) — svc#504", async () => {
     const { seam, emit } = mockSeam();
     seam.listWorkspaces = async () => [{ id: 3, name: "w" }];
     seam.attachWorkspace = async () => ({ workspaceId: 3, workspaceName: "w", projectRoot: null, workerId: 10, workerName: "c", modelWorkerId: 20, clientLoopId: null });
     seam.listWorkers = async () => [{ id: 20, name: "model-1" }];
     seam.createConversationWorker = async (a) => ({ workerId: a.name === "chat-a" ? 77 : 78, workerName: a.name ?? "x" });
     // runLoop does NOT finish here: both streams stay open so the injected stream event
-    // races them exactly as concurrent nvim action runs do against a resumed exec.
+    // races them exactly as concurrent nvim management-action AG-UI Runs do against a resumed exec.
     seam.runLoop = async () => ({ status: 100, action: "enqueued_new_loop" as const, loopId: 9 });
     const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
     try {
         const port = mod.address().port;
         const a = openStream(port, { threadId: "chat-a", messages: [{ role: "user", content: "hi" }], forwardedProps: { plurnk: { workspace: "w" } } });
         const b = openStream(port, { threadId: "chat-b", messages: [{ role: "user", content: "hi" }], forwardedProps: { plurnk: { workspace: "w" } } });
-        // Let both runs bind their threads to workspace 3 before the event races them.
+        // Let both AG-UI Runs bind their threads to workspace 3 before the event races them.
         await new Promise((r) => setTimeout(r, 60));
         emit(3, "stream/event", { entryId: 5, scheme: "exec", content: "alpha" });
         emit(3, "stream/concluded", { entryId: 5, result: { status: 200 } });
         emit(3, "loop/terminated", { loopId: 9, result: { status: 200 }, hitMaxTurns: false, turnIds: [1], usage: { promptTokens: 1, completionTokens: 1, costUsd: 0, contextTokens: 2, promptBudget: 1000, meta: {} } });
         const [ea, eb] = await Promise.all([a, b]);
         const hasExecActivity = (evs: AguiEvent[]) => evs.some((e) => e.type === "ACTIVITY_SNAPSHOT" && (e as { messageId?: string }).messageId === "stream-5");
-        assert.ok(hasExecActivity(ea), "run A received the exec stream activity");
-        assert.ok(hasExecActivity(eb), "run B received it TOO — the fan is a broadcast, not a single binding");
+        assert.ok(hasExecActivity(ea), "AG-UI Run A received the exec stream activity");
+        assert.ok(hasExecActivity(eb), "AG-UI Run B received it TOO — the fan is a broadcast, not a single binding");
     } finally { await mod.close(); }
 });
 
-test("an action run executes via the seam: result custom + RUN_FINISHED, no loop", async () => {
+test("a management-action AG-UI Run executes via the seam: result custom + RUN_FINISHED, no loop", async () => {
     const { seam } = mockSeam();
     const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
     try {
@@ -109,7 +109,7 @@ test("an action run executes via the seam: result custom + RUN_FINISHED, no loop
         const result = events.find((e) => e.type === "CUSTOM" && (e as { name: string }).name === "plurnk.action.result") as { value: { kind: string; ok: boolean; result: { aliases: Array<{ alias: string }> } } };
         assert.equal(result.value.ok, true);
         assert.equal(result.value.result.aliases[0].alias, "opus");
-        assert.equal(events[events.length - 1].type, "RUN_FINISHED", "action run finishes clean");
+        assert.equal(events[events.length - 1].type, "RUN_FINISHED", "management-action AG-UI Run finishes clean");
         // inject rides the same surface
         const inj = await post(mod.address().port, { threadId: "t1", workerId: "r2", forwardedProps: { plurnk: { workspace: "t1", action: { kind: "loop.inject", prompt: "steer" } } } });
         const ack = inj.find((e) => e.type === "CUSTOM" && (e as { name: string }).name === "plurnk.action.result") as { value: { ok: boolean; result: { action: string } } };
@@ -309,7 +309,7 @@ test("a streaming action remains open until its stream concludes", async () => {
         release();
         await new Promise((resolve) => setImmediate(resolve));
         await new Promise((resolve) => setImmediate(resolve));
-        assert.equal(settled, false, "the action result cannot terminate its AG-UI run while its spawned stream is active");
+        assert.equal(settled, false, "the action result cannot terminate its AG-UI Run while its spawned stream is active");
 
         emit(3, "stream/concluded", { entryId: 81, scheme: "sh", result: { status: 200 }, summary: "done" });
         const events = await run;
@@ -429,7 +429,7 @@ test("reattach replays PLAN as activity and SEND as speech through the thread ro
     } finally { await mod.close(); }
 });
 
-test("SESSION=WORKSPACE, THREAD=CONVERSATION: the workspace prop selects the world; the thread is a worker over it (svc#366 landed — the interim bind-the-model-run behavior is retired)", async () => {
+test("WORKSPACE=WORLD, AG-UI THREAD=CONVERSATION: the workspace prop selects the world; the thread resolves to a worker (svc#366)", async () => {
     const attaches: number[] = [];
     const created: Array<{ name?: string; projectRoot?: string | null }> = [];
     const ensured: number[] = [];
@@ -580,7 +580,7 @@ test("loop.cancel is a REAL action kind — cancels the model worker's drain (bo
     } finally { await mod.close(); }
 });
 
-// ── THREAD ↔ RUN (svc#366 landed): the threadId is the CONVERSATION ──────────
+// ── AG-UI THREAD ↔ CORE WORKER (svc#366): threadId is the conversation ───────
 // threadId == workspace name → the model worker (the default conversation, unchanged).
 // A DISTINCT threadId names its own conversation worker within the world: found by
 // name if it exists, minted via createConversationWorker if it doesn't — the name is
@@ -603,7 +603,7 @@ test("a distinct threadId MINTS a conversation worker named for it, and the loop
     } finally { await mod.close(); }
 });
 
-test("a threadId naming an EXISTING run (a fork, a prior conversation) binds it — no mint", async () => {
+test("a threadId naming an existing worker (a fork or prior conversation) binds it — no mint", async () => {
     let created = 0;
     const driven: number[] = [];
     const { seam, finish } = mockSeam();
@@ -615,12 +615,12 @@ test("a threadId naming an EXISTING run (a fork, a prior conversation) binds it 
     const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
     try {
         await post(mod.address().port, { threadId: "spike", workerId: "r1", messages: [{ role: "user", content: "hi" }], forwardedProps: { plurnk: { workspace: "workspace" } } });
-        assert.deepEqual(driven, [44], "the existing run 'spike' is the conversation");
+        assert.deepEqual(driven, [44], "the existing worker 'spike' is the conversation");
         assert.equal(created, 0, "no duplicate conversation minted");
     } finally { await mod.close(); }
 });
 
-test("threadId == workspace name stays the MODEL run (the default conversation)", async () => {
+test("threadId == workspace name stays on the model worker (the default conversation)", async () => {
     let minted = 0;
     const driven: number[] = [];
     const { seam, finish } = mockSeam();
@@ -633,7 +633,7 @@ test("threadId == workspace name stays the MODEL run (the default conversation)"
     try {
         await post(mod.address().port, { threadId: "workspace", workerId: "r1", messages: [{ role: "user", content: "hi" }], forwardedProps: { plurnk: { workspace: "workspace" } } });
         assert.deepEqual(driven, [20], "the default conversation is the model worker");
-        assert.equal(minted, 0, "no fresh run for the default thread");
+        assert.equal(minted, 0, "no fresh worker for the default thread");
     } finally { await mod.close(); }
 });
 
@@ -651,7 +651,7 @@ test("loop.inject on a distinct thread folds into THAT conversation, never the m
     } finally { await mod.close(); }
 });
 
-test("SSE heartbeat: a silent run stays alive — comment frames flow between events (agui#3: undici bodyTimeout kills silent streams)", async () => {
+test("SSE heartbeat: a silent AG-UI Run stays alive — comment frames flow between events (agui#3: undici bodyTimeout kills silent streams)", async () => {
     const { seam, finish } = mockSeam();
     seam.listWorkspaces = async () => [{ id: 3, name: "w" }];
     seam.attachWorkspace = async () => ({ workspaceId: 3, workspaceName: "w", projectRoot: null, workerId: 10, workerName: "c", modelWorkerId: 20, clientLoopId: null });
@@ -669,7 +669,7 @@ test("SSE heartbeat: a silent run stays alive — comment frames flow between ev
 });
 
 
-test("a message run forwards forwardedProps.plurnk alias+model into runLoop (#414 per-loop model selection)", async () => {
+test("a message AG-UI Run forwards forwardedProps.plurnk alias+model into runLoop (#414 per-loop model selection)", async () => {
     const { seam, loopRuns, finish } = mockSeam();
     // The worker self-completes: the runLoop override closes the stream for its workspace (the working
     // message-drive pattern above), so the POST resolves.
@@ -696,7 +696,7 @@ test("a post-headers runLoop failure preserves its exact Problem in the terminal
         "daemon:provider",
         "not-configured",
         501,
-        "No model provider is configured for this run.",
+        "No model provider is configured for this AG-UI Run.",
         {
             stage: "provider-selection",
             recovery: "Configure or select an available model provider.",
@@ -722,11 +722,11 @@ test("a post-headers runLoop failure preserves its exact Problem in the terminal
             value?: typeof problem;
         } | undefined;
         assert.deepEqual(exact?.value, problem, "the lossless custom event preserves every Problem field");
-        // The leak pin: the error path must release the run's handles (heartbeat
+        // The leak pin: the error path must release the AG-UI Run's handles (heartbeat
         // interval, portal binding) — a survivor here wedges `node --test` (no
         // force-exit in the drill) forever.
         const timeouts = process.getActiveResourcesInfo().filter((r) => r === "Timeout").length;
-        assert.equal(timeouts, before, "no timer survives the errored run");
+        assert.equal(timeouts, before, "no timer survives the errored AG-UI Run");
     } finally { await mod.close(); }
 });
 
@@ -749,7 +749,7 @@ test("an unexpected post-headers runLoop exception becomes one generic Problem w
             value?: { type?: string; detail?: string; stage?: string };
         } | undefined;
         assert.equal(exact?.value?.type, "https://problems.plurnk.dev/agui/http/run-failed");
-        assert.equal(exact?.value?.detail, "The run failed unexpectedly.");
+        assert.equal(exact?.value?.detail, "The AG-UI Run failed unexpectedly.");
         assert.equal(exact?.value?.stage, "run");
         assert.doesNotMatch(JSON.stringify(events), /secret internal failure/);
     } finally { await mod.close(); }

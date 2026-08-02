@@ -321,7 +321,7 @@ test("EXEC: cwd defaults to workspace.project_root when statement target is null
     const marker = `cwd-default-${crypto.randomUUID().slice(0, 6)}.txt`;
     try {
         await withWorkspace(async (ctx) => {
-            await ctx.db.test_set_session_project_root.run({
+            await ctx.db.test_set_workspace_project_root.run({
                 id: ctx.workspaceId, project_root: workspace,
             });
             const idDeferred = deferred<number>();

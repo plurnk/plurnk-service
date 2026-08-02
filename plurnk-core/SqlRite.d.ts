@@ -254,11 +254,6 @@ export class SqlRiteSync {
 	lifecycle_worker_tree: SqlRiteSyncPreparedStatements;
 	lifecycle_cancel_worker_tree: SqlRiteSyncPreparedStatements;
 	owner_is_ancestor_or_self: SqlRiteSyncPreparedStatements;
-	worker_resolve_by_name: SqlRiteSyncPreparedStatements;
-	worker_name_by_id: SqlRiteSyncPreparedStatements;
-	worker_deliverable_by_name: SqlRiteSyncPreparedStatements;
-	worker_live_by_name: SqlRiteSyncPreparedStatements;
-	worker_count_active: SqlRiteSyncPreparedStatements;
 	entry_read_lookup: SqlRiteSyncPreparedStatements;
 	entry_read_channels: SqlRiteSyncPreparedStatements;
 	entry_read_channel_slice: SqlRiteSyncPreparedStatements;
@@ -266,6 +261,11 @@ export class SqlRiteSync {
 	loop_run_next_sequence: SqlRiteSyncPreparedStatements;
 	loop_run_insert_loop: SqlRiteSyncPreparedStatements;
 	proposal_list_pending: SqlRiteSyncPreparedStatements;
+	worker_resolve_by_name: SqlRiteSyncPreparedStatements;
+	worker_name_by_id: SqlRiteSyncPreparedStatements;
+	worker_deliverable_by_name: SqlRiteSyncPreparedStatements;
+	worker_live_by_name: SqlRiteSyncPreparedStatements;
+	worker_count_active: SqlRiteSyncPreparedStatements;
 	ws_dup_identities: SqlRiteSyncPreparedStatements;
 	ws_file_keys: SqlRiteSyncPreparedStatements;
 	ws_orphan_channels: SqlRiteSyncPreparedStatements;
@@ -483,11 +483,6 @@ export default class SqlRite {
 	lifecycle_worker_tree: SqlRitePreparedStatements;
 	lifecycle_cancel_worker_tree: SqlRitePreparedStatements;
 	owner_is_ancestor_or_self: SqlRitePreparedStatements;
-	worker_resolve_by_name: SqlRitePreparedStatements;
-	worker_name_by_id: SqlRitePreparedStatements;
-	worker_deliverable_by_name: SqlRitePreparedStatements;
-	worker_live_by_name: SqlRitePreparedStatements;
-	worker_count_active: SqlRitePreparedStatements;
 	entry_read_lookup: SqlRitePreparedStatements;
 	entry_read_channels: SqlRitePreparedStatements;
 	entry_read_channel_slice: SqlRitePreparedStatements;
@@ -495,6 +490,11 @@ export default class SqlRite {
 	loop_run_next_sequence: SqlRitePreparedStatements;
 	loop_run_insert_loop: SqlRitePreparedStatements;
 	proposal_list_pending: SqlRitePreparedStatements;
+	worker_resolve_by_name: SqlRitePreparedStatements;
+	worker_name_by_id: SqlRitePreparedStatements;
+	worker_deliverable_by_name: SqlRitePreparedStatements;
+	worker_live_by_name: SqlRitePreparedStatements;
+	worker_count_active: SqlRitePreparedStatements;
 	ws_dup_identities: SqlRitePreparedStatements;
 	ws_file_keys: SqlRitePreparedStatements;
 	ws_orphan_channels: SqlRitePreparedStatements;

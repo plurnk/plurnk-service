@@ -313,7 +313,7 @@ test("no live children or streams → the orientation sections are omitted (like
         // Empty content ⇒ the section renders to nothing (renderSlot drops zero-length sections), so the
         // model never sees a bare header — same as the errors section when there are no errors.
         const packet = await getPacket(db, result.turnId);
-        assert.equal(packetSection(packet, "child-workers"), "", "no live child workers → child-runs renders nothing");
+        assert.equal(packetSection(packet, "child-workers"), "", "no live child workers → child-workers renders nothing");
         assert.equal(packetSection(packet, "child-streams"), "", "no open streams → child-streams renders nothing");
     } finally { await db.close(); }
 });

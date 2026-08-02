@@ -67,7 +67,7 @@ INSERT OR IGNORE INTO log_tags (log_entry_id, tag) VALUES ($log_entry_id, $tag);
 -- PREP: log_match_coordinates_tagged
 -- {§log-region-tagging} — OPEN[tag]'s resolution: log_match_coordinates PLUS an ALL-tags AND filter
 -- ({§find-tag-filter-and-semantics}), so OPEN[tag] recalls only rows carrying EVERY listed tag. A
--- targetless OPEN[tag] rides glob '*' (the whole run).
+-- targetless OPEN[tag] rides glob '*' (the whole worker log).
 SELECT le.id, (l.sequence || '/' || t.sequence || '/' || le.sequence || '/' || le.op) AS coordinate
 FROM log_entries le
 JOIN turns t ON t.id = le.turn_id

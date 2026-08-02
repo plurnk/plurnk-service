@@ -208,7 +208,7 @@ test("an out-of-band disk change between propose and accept is a write conflict,
         const proposal = await file.edit(editStmt(urlPath("file", `/${trackedPath}`), "# Tracked by git\n\nthe model's revision.\n", fullReplace), ctx);
         assert.equal(proposal.status, 202, "edit proposes (202)");
 
-        // An ambient writer (the user's editor, a build step, a sibling run) changes the file on
+        // An ambient writer (the user's editor, a build step, a sibling worker) changes the file on
         // disk AFTER the proposal was computed — exactly the drift the CAS must catch.
         const ambient = "# Tracked by git\n\nAMBIENT out-of-band change — written under the paused proposal, clearly a different size.\n";
         await writeFile(join(root, trackedPath), ambient, "utf8");
@@ -268,18 +268,18 @@ test("resolveMembershipEffects tags each file member / view / hidden", async () 
 
 test("membership is the workspace's — one overlay, identical for every worker", async () => {
     await withGitWorkspace(async (_root, ctx, db, trackedPath) => {
-        // ctx.workerId is run A. Spin a SECOND run on the same workspace.
+        // ctx.workerId is worker A. Create a second worker on the same workspace.
         const workerB = await insertWorker(db, ctx.workspaceId);
-        assert.notEqual(ctx.workerId, workerB, "two distinct runs on one workspace");
+        assert.notEqual(ctx.workerId, workerB, "two distinct workers on one workspace");
 
-        // The overlay is keyed by SESSION, never run: resolveMembershipEffects and crud_find_workspace_entry
+        // The overlay is keyed by workspace, never worker: resolveMembershipEffects and crud_find_workspace_entry
         // both take workspace_id ONLY (membership lives on workspace_constraints.workspace_id / entries.workspace_id —
         // there is no worker_id anywhere in it). So both workers resolve the IDENTICAL member set; there is no
         // per-worker overlay to diverge. Divergent membership is a different workspace ({§machine-processes}).
         const { members } = await GitMembership.resolveMembershipEffects(db, ctx.workspaceId, undefined);
         assert.ok(members.some((m) => m.path === trackedPath && m.effect === "member"), "the git-tracked file is a member of the workspace (not of a worker)");
         const entry = await db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: ctx.workspaceId, owner_id: await Owner.commonsId(db, ctx.workspaceId), scheme: "file", pathname: `${trackedPath}` });
-        assert.ok(entry, "the member entry is workspace-scoped — run A and run B see the identical row (one filesystem)");
+        assert.ok(entry, "the member entry is workspace-scoped — worker A and worker B see the identical row (one filesystem)");
     });
 });
 

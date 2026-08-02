@@ -48,7 +48,7 @@ test("ProblemLog persists one self-identifying RFC 9457 operation failure", asyn
                 instance: "log:///3/4/5/error",
             },
         });
-        const [row] = await db.test_error_rows_for_run.all<{ rx: string }>({ worker_id: workerId });
+        const [row] = await db.test_error_rows_for_worker.all<{ rx: string }>({ worker_id: workerId });
         assert.deepEqual(JSON.parse(row!.rx), minted.result, "the returned and durable failure are identical");
         Digest.run({ dbPath, digestDir });
         const digest = JSON.parse(await readFile(join(digestDir, "digest.json"), "utf8")) as {

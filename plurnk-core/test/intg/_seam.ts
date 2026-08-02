@@ -101,7 +101,7 @@ export default class SeamSocket {
             case "loop.run": {
                 const s = this.#attached();
                 if (s.modelWorkerId === null) s.modelWorkerId = await daemon.ensureModelWorker(s.workspaceId);
-                const run = await daemon.runLoop({
+                const loop = await daemon.runLoop({
                     workspaceId: s.workspaceId, workerId: s.modelWorkerId, prompt: p.prompt as string,
                     ...(p.maxTurns !== undefined ? { maxTurns: p.maxTurns as number } : {}),
                     ...(p.flags !== undefined ? { flags: p.flags as { auto?: boolean } } : {}),
@@ -109,11 +109,11 @@ export default class SeamSocket {
                     ...(p.alias !== undefined ? { alias: p.alias as string } : {}),
                     ...(p.model !== undefined ? { model: p.model as string } : {}),
                 });
-                return { ...run, modelWorkerId: s.modelWorkerId };
+                return { ...loop, modelWorkerId: s.modelWorkerId };
             }
             case "loop.inject": {
                 // inject speaks to an EXISTING model worker; the seam's runLoop injects into a live
-                // drain identically (daemon.inject under both) — refusing only the run-start.
+                // drain identically (daemon.inject under both) — refusing only a new loop start.
                 const s = this.#attached();
                 if (s.modelWorkerId === null) {
                     throw new OperationFailureError(Results.failure(
@@ -129,14 +129,14 @@ export default class SeamSocket {
                         },
                     ));
                 }
-                const run = await daemon.runLoop({
+                const result = await daemon.runLoop({
                     workspaceId: s.workspaceId, workerId: s.modelWorkerId, prompt: p.prompt as string,
                     ...(p.maxTurns !== undefined ? { maxTurns: p.maxTurns as number } : {}),
                     ...(p.flags !== undefined ? { flags: p.flags as { auto?: boolean } } : {}),
                     ...(p.alias !== undefined ? { alias: p.alias as string } : {}),
                     ...(p.model !== undefined ? { model: p.model as string } : {}),
                 });
-                return { ...run, modelWorkerId: s.modelWorkerId };
+                return { ...result, modelWorkerId: s.modelWorkerId };
             }
             case "loop.cancel": {
                 const s = this.#attached();
@@ -178,7 +178,7 @@ export default class SeamSocket {
                 })) };
             }
             case "log.read": {
-                // Default = the connection's OWN (client) run — {§machine-processes}; the model worker is
+                // Default = the connection's own client worker — {§machine-processes}; the model worker is
                 // read by explicit workerId (loop.run returns modelWorkerId for exactly that).
                 const s = this.#attached();
                 const workerId = (p.workerId as number | undefined) ?? s.workerId;

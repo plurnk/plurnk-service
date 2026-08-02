@@ -24,7 +24,7 @@ export interface SchemeManifest {
     // name it without declaring a fixed mimetype; empty means no default.
     readonly defaultChannel: string;
     // data: entry-bearing content. logging: log:// rows. control: addresses
-    // sister processes/runs and owns no entries (worker://: spawn/fork/irc).
+    // sister workers and owns no entries (worker://: spawn/fork/irc).
     readonly category: "data" | "logging" | "control";
     // Matches grammar's SchemeRegistration.default_scope enum (0.67: `agent`
     // dropped — nothing used it — `worker` added for per-worker scratch backing

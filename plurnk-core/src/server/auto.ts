@@ -28,7 +28,7 @@
 // Listener fires BEFORE ProposalLifecycle.awaitResolution awaits the waiter, so a
 // synchronous resolveProposal here is delivered to the awaiting dispatch
 // without yielding. The loop/proposal broadcast still goes out (listeners
-// fan out independently) — clients in auto runs may see a brief
+// fan out independently) — clients observing auto loops may see a brief
 // proposed-then-resolved blink in their UI. The carried event.flags.auto
 // lets clients suppress review-UI rendering for those entries.
 

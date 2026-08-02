@@ -44,7 +44,7 @@ boundaries.
 The `plurnk` CLI/TUI and editor integrations are separate processes. They:
 
 - collect user input and local terminal/editor state;
-- call the AG-UI management and run endpoints;
+- call the AG-UI management and Run endpoints;
 - render events and results;
 - present proposals and send the user's decision.
 
@@ -156,8 +156,8 @@ flowchart TD
     L -. advanced by .-> D["Drain + cancellation scope<br/>process-local; one per worker"]
     S -. torn down by .-> H["Cancellation callable<br/>process-local; one per open row"]
 
-    A["AG-UI run<br/>process-local client stream"] --> B["Exact workspace + worker + loop binding"]
-    B --> X["Matching terminal event<br/>controls the run"]
+    A["AG-UI Run<br/>process-local client stream"] --> B["Exact workspace + worker + loop binding"]
+    B --> X["Matching terminal event<br/>controls the AG-UI Run"]
     B --> O["Other workspace events<br/>ambient observation only"]
 ```
 
@@ -170,7 +170,7 @@ flowchart TD
 | Terminal loop | Final status, message, usage, turns | None |
 | Open subscription | Entry, channels, owner worker, scheme, handle description | One registered cancellation callable |
 | Closed subscription | Close status (`200`, `499`, or failure), terminal channel state | None |
-| AG-UI run | No durable control authority | Portal thread bound to one exact worker and loop |
+| AG-UI Run | No durable control authority | Portal thread bound to one exact worker and loop |
 
 ```mermaid
 stateDiagram-v2
@@ -188,7 +188,7 @@ The durable subscription row answers *what the worker holds*. The live registry
 answers *how this daemon process tears it down*. Neither substitutes for the
 other. Likewise, workspace-scoped event fan-out is observational: it may show
 topology, streams, and sibling activity, but it cannot terminate or relabel an
-AG-UI run. Only the terminal event carrying that run's exact worker and loop
+AG-UI Run. Only the terminal event carrying that Run's exact worker and loop
 coordinate controls it.
 
 Payload and lifecycle are also separate. A stream may succeed or fail after
@@ -197,7 +197,7 @@ receive before concluding. A parked loop resumes in place when a stream or
 child settles. An active loop records that concurrent settlement as an owed
 wake and crosses the same observation boundary before it can terminate. The
 complete state and wait matrices are normative in
-[`plurnk-core/SPEC.md`](./plurnk-core/SPEC.md) under `§run-lifecycle`.
+[`plurnk-core/SPEC.md`](./plurnk-core/SPEC.md) under `§worker-loop-lifecycle`.
 
 ### Restart recovery
 

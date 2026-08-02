@@ -267,7 +267,7 @@ test("a huge ENGINE-WRITTEN row on the current turn is part of the newest bounda
         const bigRow = rows.find((r) => r.turn_seq === 2 && r.op === "READ");
         assert.ok(bigRow !== undefined, "the wake row is still LISTED (folded, not deleted)");
         assert.equal(bigRow.expanded, 0, "the wake row is FOLDED (re-OPENable) — and not fatal");
-        const errorRows = await db.test_error_rows_for_run.all<{ rx: string }>({ worker_id: workerId });
+        const errorRows = await db.test_error_rows_for_worker.all<{ rx: string }>({ worker_id: workerId });
         const overflow = errorRows
             .map(({ rx }) => JSON.parse(rx) as {
                 problem?: {
@@ -313,7 +313,7 @@ test("the 413 row reports the exact measured budget violation", async () => {
         const row = await db.test_get_packet.get<{ packet: string }>({ id: t2.turnId });
         const packet = JSON.parse(row!.packet);
         assert.match(packetSection(packet, "errors"), /^\* 413 log:\/\/\/.+\/error$/m, "the overflow pointer surfaced (terse LogCoordinate)");
-        const errRow = await db.test_error_rows_for_run.all<{ rx: string }>({ worker_id: workerId });
+        const errRow = await db.test_error_rows_for_worker.all<{ rx: string }>({ worker_id: workerId });
         const overflow = errRow
             .map((row) => JSON.parse(row.rx) as {
                 problem?: {
@@ -433,7 +433,7 @@ test("the FIRST hard overflow is a constrained RECOVERY TURN; the SECOND termina
             "the complete recovery instruction appears once on the inline error row",
         );
         assert.match(recoveryLog, /"stage":"overflow-detection"/);
-        const errs = await db.test_error_rows_for_run.all<{ rx: string }>({ worker_id: workerId });
+        const errs = await db.test_error_rows_for_worker.all<{ rx: string }>({ worker_id: workerId });
         const recovery = errs
             .map((e) => JSON.parse(e.rx) as {
                 problem?: {
@@ -508,7 +508,7 @@ test("budget recovery rejects a forbidden op on its own row before scheme dispat
         } finally {
             restore();
         }
-        const rows = await db.test_log_entries_by_run_op_full.all<{
+        const rows = await db.test_log_entries_by_worker_op_full.all<{
             rx: string;
             status_rx: number;
         }>({

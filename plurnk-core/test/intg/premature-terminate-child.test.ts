@@ -1,6 +1,6 @@
-// {§send-premature-terminate} extended to CHILD RUNS — a SEND[200] while a spawned child is still
+// {§send-premature-terminate} extended to child workers — a SEND[200] while a spawned child is still
 // live is premature exactly as a SEND[200] with an open stream is (children and streams are the same
-// kind of "live thing the worker holds", {§run-lifecycle}). Engine-level A/B so it's race-free.
+// kind of "live thing the worker holds", {§worker-loop-lifecycle}). Engine-level A/B so it's race-free.
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -17,7 +17,7 @@ const knownPath = (pathname: string): ParsedPath => ({
     username: null, password: null, hostname: null, port: null, pathname, params: {}, fragment: null,
 });
 
-test("SEND[200] with a live CHILD run is refused 409 on the record (no erasure) + steers", async () => {
+test("SEND[200] with a live child worker is refused 409 on the record (no erasure) + steers", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `prem-child-${crypto.randomUUID()}`);
@@ -128,7 +128,7 @@ test("SEND[102] rejects a wait scope instead of preserving the retired dual spel
         const loopStatus = (await db.test_get_loop_status.get<{ status: number }>({ id: loopId }))?.status;
         assert.equal(result.status, 102, "the failed disposition leaves the loop available to observe and repair");
         assert.equal(loopStatus, 102, "the invalid wait never parks or concludes the loop");
-        const row = await db.test_send_rows_for_run.all<{ status_rx: number; rx: string }>({ worker_id: workerId });
+        const row = await db.test_send_rows_for_worker.all<{ status_rx: number; rx: string }>({ worker_id: workerId });
         const rejected = row.find((r) => r.status_rx === 400);
         assert.ok(rejected, "the SEND records the contract failure");
         assert.match(rejected.rx, /SEND\[202\].*wait/, "the failure points to the one wait spelling");
@@ -262,7 +262,7 @@ test("a retrievals-ONLY refusal states the continuation, not a remedy menu (owne
             workspaceId, workerId, loopId,
             messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }],
         });
-        const refusals = await db.test_send_rows_for_run.all<{ rx: string; status_rx: number }>({ worker_id: workerId });
+        const refusals = await db.test_send_rows_for_worker.all<{ rx: string; status_rx: number }>({ worker_id: workerId });
         const refused = refusals.find((r) => r.status_rx === 409);
         assert.ok(refused, "the retrieval gate refused");
         const problem = (JSON.parse(refused!.rx) as { problem?: Record<string, unknown> }).problem;
@@ -292,7 +292,7 @@ test("retrieval preemies NEVER strike — repeated refusals teach without execut
         const readAndConclude = () => ({ assistant: { content: "", reasoning: null, ops: [readStmt(knownPath("/page.html")), sendStmt(200, null, "the answer is Hi")] } });
         const provider = new Mock({ contextWindow: 100000, responses: [readAndConclude(), readAndConclude(), readAndConclude(), readAndConclude()] });
         for (let i = 0; i < 4; i++) await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
-        const refusals = await db.test_send_rows_for_run.all<{ status_rx: number }>({ worker_id: workerId });
+        const refusals = await db.test_send_rows_for_worker.all<{ status_rx: number }>({ worker_id: workerId });
         assert.equal(refusals.filter((r) => r.status_rx === 409).length, 4, "all four conclude-attempts refused — the gate never weakened");
         const loopStatus = (await db.test_get_loop_status.get<{ status: number }>({ id: loopId }))?.status;
         assert.notEqual(loopStatus, 500, "the loop is NOT struck out — retrieval preemies never strike");
@@ -324,7 +324,7 @@ test("one idle-grace turn after a retrieval-409 — obeying the steer never stri
             statuses.push(r.status);
             if ((await db.test_get_loop_status.get<{ status: number }>({ id: loopId }))?.status === 500) break;
         }
-        const errRows = await db.test_error_rows_for_run.all<{ rx: string }>({ worker_id: workerId });
+        const errRows = await db.test_error_rows_for_worker.all<{ rx: string }>({ worker_id: workerId });
         const idleStrikes = errRows.filter((r) => /engine\/rail\/idle-turn/.test(r.rx)).length;
         assert.ok(idleStrikes >= 1, "later idles still strike — the rail is intact");
         const graceCovered = 5 - 1 - idleStrikes; // turns minus the refused turn minus struck idles
@@ -365,7 +365,7 @@ test("a FAILED op row carries its failure message on its META LINE — the recor
         assert.ok(metaLine !== undefined, "the refused SEND row renders");
         assert.match(metaLine!, /"problem":\{[^}]*"detail":"Last turn both performed retrieval operations and attempted to terminate\./, "the exact Problem rides the META LINE - visible in every packet, never folded away");
         // And NO minted action_failure item exists — the row is the one record.
-        const errs = await db.test_error_rows_for_run.all<{ rx: string }>({ worker_id: workerId });
+        const errs = await db.test_error_rows_for_worker.all<{ rx: string }>({ worker_id: workerId });
         assert.ok(!errs.some((e) => e.rx.includes("action_failure")), "no separate minted item — the op row is the model's op result");
     } finally { await db.close(); }
 });

@@ -100,10 +100,10 @@ test("Floor-scope capstone: full DSL surface exercised end-to-end", async () => 
         const allEntries = (await db.test_list_entries_by_workspace_workspace_pathname.all<{ scheme: string; pathname: string }>({ workspace_id: env.workspaceId })).map((r) => ({ scheme: r.scheme, pathname: r.pathname }));
         assert.deepEqual(allEntries, [{ scheme: "worker", pathname: "/archive/france/capital" }]);
 
-        const logCount = (await db.test_count_log_entries_by_run.get<{ n: number }>({ worker_id: env.workerId }))?.n;
+        const logCount = (await db.test_count_log_entries_by_worker.get<{ n: number }>({ worker_id: env.workerId }))?.n;
         assert.equal(logCount, 9);
 
-        const clientLogCount = (await db.test_count_log_entries_run_origin.get<{ n: number }>({ worker_id: env.workerId, origin: "client" }))?.n;
+        const clientLogCount = (await db.test_count_log_entries_worker_origin.get<{ n: number }>({ worker_id: env.workerId, origin: "client" }))?.n;
         assert.equal(clientLogCount, 9);
     } finally { await db.close(); }
 });

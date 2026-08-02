@@ -121,13 +121,13 @@ test("entry() materializes a tagged https entry (upsert UNIONS tags) and the plu
         const tags = await db.crud_read_tags.all<{ tag: string }>({ entry_id: entry.id });
         assert.deepEqual(tags.map((t) => t.tag).sort(), ["second_query", "turkeys_query"], "the upsert UNIONED the slug tags across both writes");
         // The ambience: the reserved plurnk worker carries ONE narration row per write (2 here), the
-        // fs-fiction shape — origin plurnk, source = the calling run, tokens on the meta line.
+        // fs-fiction shape — origin plurnk, source = the calling worker, tokens on the meta line.
         const plurnkWorker = await db.envelope_get_worker_by_name.get<{ id: number }>({ workspace_id: workspaceId, name: "plurnk" });
         assert.ok(plurnkWorker !== undefined, "the reserved plurnk worker exists");
-        const rows = await db.test_log_entries_by_run_op.all<{ pathname: string; source: string; tokens: number; attrs: string }>({ worker_id: plurnkWorker.id, op: "EDIT" });
+        const rows = await db.test_log_entries_by_worker_op.all<{ pathname: string; source: string; tokens: number; attrs: string }>({ worker_id: plurnkWorker.id, op: "EDIT" });
         const narrations = rows.filter((r) => r.pathname === "/example.org/turkeys");
         assert.equal(narrations.length, 2, "one narration row per entry() write");
-        assert.equal(narrations[0]?.source, String(workerId), "source attributes the CALLING run");
+        assert.equal(narrations[0]?.source, String(workerId), "source attributes the calling worker");
         assert.ok((narrations[0]?.tokens ?? 0) > 0, "the row carries the write's real token weight");
         assert.ok(/turkeys_query/.test(narrations[0]?.attrs ?? ""), "attrs carry the slug tags for the meta line");
         assert.equal(JSON.parse(narrations[0]?.attrs ?? "{}").kind, "entry_materialized", "machine acquisition is typed so live clients compact it without erasing durable history");
@@ -135,7 +135,7 @@ test("entry() materializes a tagged https entry (upsert UNIONS tags) and the plu
         // The row is a FULL fiction — the journal records the write itself, not just that one happened:
         // tx carries the statement with the written content (replay/fork-complete), rx carries the
         // full-content span ({§edit-result-render} — a wholesale write's span IS the content, numbered).
-        const full = await db.test_log_entries_by_run_op_full.all<{ pathname: string; tx: string; rx: string }>({ worker_id: plurnkWorker.id, op: "EDIT" });
+        const full = await db.test_log_entries_by_worker_op_full.all<{ pathname: string; tx: string; rx: string }>({ worker_id: plurnkWorker.id, op: "EDIT" });
         const second = full.filter((r) => r.pathname === "/example.org/turkeys")[1];
         assert.ok(second !== undefined, "the second narration row is present");
         const tx = JSON.parse(second.tx) as { op: string; body: string };
@@ -163,7 +163,7 @@ test("entry() materializes a tagged https entry (upsert UNIONS tags) and the plu
         assert.ok(!foldedLine.includes("wild turkeys"), "folded = no body rides the packet");
         const openLine = PacketWire.renderLog(view(false), countTokens);
         assert.ok(openLine.includes("1:wild turkeys are large birds, revised"), "opened, the full written content renders line-numbered");
-        const sig = await db.test_log_entries_by_run_op_signal.all<{ signal: string | null }>({ worker_id: plurnkWorker.id, op: "EDIT" });
+        const sig = await db.test_log_entries_by_worker_op_signal.all<{ signal: string | null }>({ worker_id: plurnkWorker.id, op: "EDIT" });
         assert.ok(sig.some((r) => /turkeys_query/.test(r.signal ?? "")), "SIGNAL carries the tags — the same slot a model's EDIT[tags] uses, so renderers show them natively");
     } finally { await quiesceExecs(schemes); await schemes.close(); await db.close(); }
 });
@@ -204,7 +204,7 @@ test("entry() preserves an exact failed write Problem on its durable narration r
             name: "plurnk",
         });
         assert.ok(plurnkWorker !== undefined);
-        const rows = await db.test_log_entries_by_run_op_full.all<{
+        const rows = await db.test_log_entries_by_worker_op_full.all<{
             pathname: string;
             rx: string;
             status_rx: number;

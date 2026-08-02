@@ -1,6 +1,6 @@
-// Core run-topology mechanics at the integration level — fork IDENTITY and the premature-terminate
+// Core worker-topology mechanics at the integration level — fork IDENTITY and the premature-terminate
 // LIVENESS contract. These are the seams the fanout demo broke on (forks colliding on one name, forks
-// inheriting a frozen-live loop, the 409 gate disagreeing with the Child Runs orientation). Guarded
+// inheriting a frozen-live loop, the 409 gate disagreeing with the Active Child Workers orientation). Guarded
 // here so they can't reach a real-model tier half-baked again.
 
 import test from "node:test";
@@ -45,7 +45,7 @@ test("a fork inherits the parent's loops as HISTORY (clamped terminal), never fr
     } finally { await db.close(); }
 });
 
-test("the 409 liveness gate and the Child Runs orientation AGREE — never refused for an invisible child", async () => {
+test("the 409 liveness gate and the Active Child Workers orientation AGREE — never refused for an invisible child", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `gate-orient-${crypto.randomUUID()}`);

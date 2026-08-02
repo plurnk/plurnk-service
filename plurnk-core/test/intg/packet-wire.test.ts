@@ -58,6 +58,20 @@ test("log entry: a no-body row renders explicit display:none and body:\"\" — p
     assert.match(out, /\{"body":"","display":"none","op":"EDIT","origin":"model","path":"log:\/\/\/1\/1\/1\/EDIT","status":200,"target":"out\.txt","tokens":0\}/, "jsonplurnk object; display:none carries body:\"\"; path = log URI identity; target = action operand; tokens:0");
 });
 
+test("environment-delta provenance renders as source, never a fictitious run entity", () => {
+    const out = PacketWire.renderLog([{
+        coordinate: "1/1/2",
+        origin: "plurnk",
+        source: "file",
+        op: "EDIT",
+        status: 200,
+        target: { scheme: null, pathname: "/out.txt" },
+        rx: "changed",
+    }], tok);
+    assert.match(out, /"source":"file"/);
+    assert.doesNotMatch(out, /"run":/);
+});
+
 test("a folded-authority web URL renders https://host/... — never https:///host (#370 class, run42 sweep)", () => {
     const out = PacketWire.renderLog([{
         coordinate: "1/1/9", origin: "model", op: "EDIT", status: 200,

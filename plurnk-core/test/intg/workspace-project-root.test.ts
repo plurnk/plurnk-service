@@ -1,5 +1,5 @@
 // F.1: workspaces.project_root column + workspace.create(projectRoot). The workspace
-// pointer lives on the workspace row and is set at workspace.create or never —
+// pointer lives on the workspace row and is set by workspace.create or never —
 // headless is forever. Absent value = headless mode (no disk side-effects on
 // file ops, asserted by later phases).
 

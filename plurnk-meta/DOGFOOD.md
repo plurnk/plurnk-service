@@ -1,9 +1,9 @@
 # Metaproject agentic-readiness gate
 
 This is an opt-in milestone qualification for using PLURNK to develop the complete
-PLURNK primary monorepo. It is intentionally expensive: a fresh run semantically
+PLURNK primary monorepo. It is intentionally expensive: a fresh campaign semantically
 prepares the complete monorepo before asking a floor model to orient
-itself through the outside client. Run it when the focused package, integration,
+itself through the outside client. Execute it when the focused package, integration,
 demo, live-model, and modest-candidate paths are already healthy—not as a routine
 debugging loop or ordinary release gate.
 
@@ -22,7 +22,7 @@ This gate does not replace the evidence ladder that qualifies it:
    enough to test seriously.
 4. The separate bench lane runs real third-party agentic benchmarks and preserves
    their digest, reasoning, and requiem evidence.
-5. Only after those layers are healthy does this full-monorepo run ask whether
+5. Only after those layers are healthy does this full-monorepo campaign ask whether
    PLURNK is ready to develop PLURNK itself.
 
 The gate belongs to `plurnk-meta` because it crosses family ownership: canonical service installation, optional-provider assembly, the outside client, project membership, AG-UI, proposal review, model routing, persistence, and forensic digestion.
@@ -39,7 +39,7 @@ Missing preconditions are RED outcomes. The runner never silently skips a phase.
 
 ## Contract
 
-One run must prove all of the following through production client and AG-UI surfaces:
+One campaign must prove all of the following through production client and AG-UI surfaces:
 
 1. **Clean bootstrap.** Start from a new database, boot the canonical daemon, and create a user-named workspace.
 2. **Membership.** Automatic Git membership completes; `FIND **` succeeds and the canonical `plurnk-service/AGENTS.md` is readable.
@@ -48,7 +48,7 @@ One run must prove all of the following through production client and AG-UI surf
 5. **Loop auto (`--auto`).** Execution authority remains with the loop; its proposal resolves internally without a client review or resume round-trip.
 6. **Human review.** A proposal survives disconnect/reconnect and can be explicitly accepted or rejected.
 7. **Model hot-swap.** Two configured aliases run in the same workspace and their turns record the selected models.
-8. **Restart/resume.** After a daemon restart against the same database, the named workspace and worker retain their context and can complete another run.
+8. **Restart/resume.** After a daemon restart against the same database, the named workspace and worker retain their context and can complete another loop.
 9. **Comprehension.** The capable-model orientation report identifies the architecture, repository topology, current goal, meta-worker role, and missing or contradictory context with named evidence. Writing memory without delivering the requested report is RED.
 10. **Forensics.** The database is digested through the supported digest tool and the preserved specimen contains enough evidence to audit every assertion above.
 
@@ -56,7 +56,7 @@ Passing individual package tests or receiving HTTP 200 is insufficient. The user
 
 ## Evidence
 
-Each run atomically claims `benchmarks/run<N>-dogfood/` and writes:
+Each campaign atomically claims `benchmarks/run<N>-dogfood/` and writes:
 
 - `workspace` — workspace and worker names;
 - `service.stdout.log` and `service.stderr.log`;
@@ -69,7 +69,7 @@ The database is evidence, never the diagnostic interface. Assertions consume cli
 
 ## Posture
 
-- Run foreground and fail hard.
+- Execute in the foreground and fail hard.
 - Report client YOLO and loop auto separately; they are different state machines at different ownership boundaries.
 - Preserve both passing and failing specimens until explicitly curated.
 - Never reuse a database for a clean-bootstrap comparison.

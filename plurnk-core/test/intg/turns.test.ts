@@ -169,14 +169,14 @@ test("turns: ON DELETE CASCADE via loop", async () => {
     } finally { await db.close(); }
 });
 
-test("turns: CASCADE chain workspace→runs→loops→turns", async () => {
+test("turns: CASCADE chain workspace→workers→loops→turns", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, "ws-turns-fullchain");
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1);
         await db.test_turns_insert.run({ loop_id: loopId, sequence: 1, status: 200, packet: MIN_PACKET });
-        await db.test_sessions_delete.run({ id: workspaceId });
+        await db.test_workspaces_delete.run({ id: workspaceId });
         const remaining = (await db.test_turns_count_all.get<{ n: number }>())?.n;
         assert.equal(remaining, 0);
     } finally { await db.close(); }

@@ -1,8 +1,8 @@
 // #194 / {§connection-lifecycle} / {§machine-processes} — the client writes to its own worker, end-to-end.
 //
-// A client `op.*` lands in the connection's CLIENT run; `loop.run` runs the model
-// in its OWN run; the packet renders the model's run, so no client-origin row ever
-// reaches the model's conversation — invisibility by run, no origin filter. This
+// A client `op.*` lands in the connection's client worker; `loop.run` runs the model
+// in its own model worker; the packet renders the model worker, so no client-origin row ever
+// reaches the model's conversation — invisibility by worker, no origin filter. This
 // proves the server wiring (op.* → client worker, loop.run → model worker) that the
 // engine-level {§actor-boundary-isolation} guarantee rests on.
 //
@@ -24,14 +24,14 @@ test("a client op.* never enters the model's packet — the client writes to its
             await rpcCall(ws, 1, "workspace.create", { name: "client-isolation" });
             // A client op — lands in the connection's client worker.
             await rpcCall(ws, 2, "op.edit", { target: "worker:///secret", content: "client-only" });
-            // The model workers — in its OWN run.
-            const run = await runLoopToTerminal(ws, 3, { prompt: "go" });
-            const loopId = (run as { loopId: number }).loopId;
+            // The model works in its own worker.
+            const result = await runLoopToTerminal(ws, 3, { prompt: "go" });
+            const loopId = (result as { loopId: number }).loopId;
 
             const modelWorker = await db.test_get_worker_id_by_loop.get<{ worker_id: number }>({ loop_id: loopId });
             assert.ok(modelWorker !== undefined, "the model loop has a worker");
 
-            // The model's packet is rendered from the model's run alone.
+            // The model's packet is rendered from the model worker alone.
             const modelLog = await db.engine_render_log.all<{ origin: string; pathname: string }>({ worker_id: modelWorker!.worker_id });
             assert.ok(modelLog.length > 0, "the model's packet carries its own log");
             assert.ok(
@@ -40,7 +40,7 @@ test("a client op.* never enters the model's packet — the client writes to its
             );
 
             // And the client still sees its own op: log.read reads the connection's
-            // (client) run, where the op.edit lives.
+            // client worker, where the op.edit lives.
             const own = await rpcCall(ws, 4, "log.read");
             const entries = (own.result as { entries: Array<{ origin: string; op: string }> }).entries;
             assert.ok(entries.some((e) => e.op === "EDIT" && e.origin === "client"), "the client reads its own op from its own worker");
@@ -53,29 +53,29 @@ test("a connection reads the model worker by id — loop.run returns modelWorker
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
-            const created = await rpcCall(ws, 1, "workspace.create", { name: "model-run-readable" });
+            const created = await rpcCall(ws, 1, "workspace.create", { name: "model-worker-readable" });
             const clientWorkerId = (created.result as { workerId: number }).workerId;
-            // A client op lands in the connection's own (client) run.
+            // A client op lands in the connection's own client worker.
             await rpcCall(ws, 2, "op.edit", { target: "worker:///note", content: "client-only" });
-            // Drive the model — its conversation lives in its OWN run, whose id loop.run returns.
-            const run = await runLoopToTerminal(ws, 3, { prompt: "go" });
-            const { loopId, modelWorkerId } = run as { loopId: number; modelWorkerId: number };
+            // Drive the model — its conversation lives in its own worker, whose id loop.run returns.
+            const result = await runLoopToTerminal(ws, 3, { prompt: "go" });
+            const { loopId, modelWorkerId } = result as { loopId: number; modelWorkerId: number };
             assert.equal(typeof modelWorkerId, "number", "loop.run returns the model worker's id");
             assert.notEqual(modelWorkerId, clientWorkerId, "the model worker is distinct from the connection's client worker");
             const byLoop = await db.test_get_worker_id_by_loop.get<{ worker_id: number }>({ loop_id: loopId });
             assert.equal(byLoop!.worker_id, modelWorkerId, "the returned modelWorkerId is the worker the loop actually ran in");
 
-            // Default log.read (no workerId) → the connection's own (client) run: the op.edit.
+            // Default log.read (no workerId) → the connection's own client worker: the op.edit.
             const own = await rpcCall(ws, 4, "log.read");
             const ownEntries = (own.result as { entries: Array<{ origin: string; op: string }> }).entries;
             assert.ok(ownEntries.some((e) => e.op === "EDIT" && e.origin === "client"), "default log.read reads the connection's own worker");
 
             // log.read({ workerId }) → the MODEL worker's log: readable by id (unaddressable before #214),
-            // and a DISTINCT run — the client's op is absent from it.
+            // and a DISTINCT worker — the client's op is absent from it.
             const conv = await rpcCall(ws, 5, "log.read", { workerId: modelWorkerId });
             const convEntries = (conv.result as { entries: Array<{ origin: string; op: string }> }).entries;
             assert.ok(convEntries.length > 0, "the model worker's log is readable by id");
-            assert.ok(!convEntries.some((e) => e.op === "EDIT" && e.origin === "client"), "the model worker is a distinct run — the client's op is absent from it");
+            assert.ok(!convEntries.some((e) => e.op === "EDIT" && e.origin === "client"), "the model worker is distinct — the client's op is absent from it");
 
             // Ownership: a worker in a DIFFERENT workspace is refused from this connection.
             const foreignWorkspace = await insertWorkspace(db, `foreign-${crypto.randomUUID()}`);
@@ -94,11 +94,11 @@ test("workspace.workers tags each worker with its actor — the model worker is 
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
-            const created = await rpcCall(ws, 1, "workspace.create", { name: "run-origin" });
+            const created = await rpcCall(ws, 1, "workspace.create", { name: "worker-origin" });
             const clientWorkerId = (created.result as { workerId: number }).workerId;
             await rpcCall(ws, 2, "op.edit", { target: "worker:///note", content: "x" });
-            const run = await runLoopToTerminal(ws, 3, { prompt: "go" });
-            const { modelWorkerId } = run as { modelWorkerId: number };
+            const result = await runLoopToTerminal(ws, 3, { prompt: "go" });
+            const { modelWorkerId } = result as { modelWorkerId: number };
 
             const listed = (await rpcCall(ws, 4, "workspace.workers")).result as { workers: Array<{ id: number; origin: string }> };
             const model = listed.workers.find((r) => r.id === modelWorkerId);

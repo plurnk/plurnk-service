@@ -20,7 +20,7 @@ import { docsExcludeSet } from "./teaching.ts";
 import type { CoreSchemeAdapter, CoreSchemeServices } from "./CoreSchemeServices.ts";
 import type { RuntimeSchemeFacet } from "../server/DaemonModule.ts";
 
-// The in-tree CORE-scheme depth (run/known/unknown/log) lives in the docs corpus (docs/)
+// The in-tree core-scheme depth (worker/known/unknown/log) lives in the docs corpus (docs/)
 // (Paths.schemeDocs), NOT inline — the docs agent owns the prose; loaded once at module eval.
 // teach()/docs() prefer this over a manifest's inline `documentation` (the path that stays for
 // stubs + plugin schemes). Absent dir → empty map.

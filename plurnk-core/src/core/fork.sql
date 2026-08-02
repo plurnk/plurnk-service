@@ -1,9 +1,9 @@
--- Fork a worker: deep-copy its log into a NEW run in the SAME workspace (SPEC {§machine-processes} —
+-- Fork a worker: deep-copy its log into a new worker in the same workspace (SPEC {§machine-processes} —
 -- branch the log, share the world). loops → turns → entries are copied with their
 -- fold-state (expanded) and attribution (origin/source) intact; only the worker/loop/
 -- turn ids are remapped. Nothing of the world is copied ({§machine-processes-fork-shares-the-world}) — the workspace's entries and
 -- overlay are shared. The {§env-delta} reconciliation snapshot (worker_watermarks) is NOT
--- copied; the branch first-sights its world like any fresh run.
+-- copied; the branch first-sights its world like any fresh worker.
 
 -- PREP: fork_get_worker
 SELECT workspace_id, name, origin FROM workers WHERE id = $id;

@@ -134,11 +134,11 @@ test("workspace.create rejects malformed settings — fail hard, no silent accep
     });
 });
 
-// #269 — turn-0 run-once foists (manifest preview, AGENTS, operator docs) fire on the worker's FIRST
-// loop only; later loops in the same run already carry them in the persistent log, so re-foisting
+// #269 — turn-0 once-per-worker foists (manifest preview, AGENTS, operator docs) fire on the worker's first
+// loop only; later loops in the same worker already carry them in the persistent log, so re-foisting
 // each loop spammed the log + burned tokens. Two loops in one worker: the manifest READ is in loop 1's
 // log, absent from loop 2's.
-test("[#269] turn-0 run-once foists fire on the worker's first loop only, not every loop", async () => {
+test("[#269] turn-0 once-per-worker foists fire on the worker's first loop only, not every loop", async () => {
     const prev = process.env.PLURNK_SERVICE_FILES_ITEMS;
     process.env.PLURNK_SERVICE_FILES_ITEMS = "-1"; // preview ON
     try {

@@ -7,7 +7,7 @@ interface and translates daemon lifecycle events into AG-UI events.
 
 `POST /` accepts `RunAgentInput` and returns an AG-UI event stream.
 
-PLURNK uses standard AG-UI events for runs, messages, steps, tool calls, state,
+PLURNK uses standard AG-UI events for Runs, messages, steps, tool calls, state,
 and approval requests. Additional execution metadata uses namespaced
 `plurnk.*` custom events so generic AG-UI clients can ignore it safely.
 

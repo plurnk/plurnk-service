@@ -49,11 +49,11 @@ export interface DaemonSeam {
     // Hook A-resolve — feed the human's decision. The gate/validation/applyResolution
     // stay core; this is only the resolve. Throws for an unknown/already-resolved id.
     resolveProposal(logEntryId: number, resolution: ProposalResolution): void;
-    // Run-split (service SPEC, machine-processes): loops live in the workspace's MODEL run, never the
+    // Worker split ({§machine-processes}): model loops live in the workspace's model worker, never the
     // client worker (connection scratch). Resolve it here — created on first use.
     ensureModelWorker(workspaceId: number): Promise<number>;
-    // Loop-control — drive/steer a loop on the MODEL run (runLoop refuses a client-origin
-    // run loudly). Returns immediately; the outcome arrives on the event source.
+    // Loop control — drive/steer a loop on the model worker (runLoop refuses a client-origin
+    // worker loudly). Returns immediately; the outcome arrives on the event source.
     runLoop(args: { workspaceId: number; workerId: number; prompt: string; maxTurns?: number; flags?: { auto?: boolean }; openPaths?: string[]; alias?: string; model?: string }): Promise<OperationResult & { action: "injected_next_turn" | "enqueued_new_loop"; loopId: number; turnSeq?: number }>;
     // Loop-control — cancel a worker's active drain. Returns whether a drain was cancelled.
     cancelDrain(workerId: number, reason?: string): boolean;
@@ -86,13 +86,13 @@ export interface DaemonSeam {
     // Workspace membership (gutter signs / the /members verb).
     listMembers(workspaceId: number): Promise<{ members: Array<{ path: string; effect: string }>; hidden: string[] }>;
     // The pure READ-projection query (svc#358): parse at the module's edge, rewrite
-    // LOOK→READ, hand the statement; resolves run-relative on the client loop,
+    // LOOK→READ, hand the statement; resolves worker-relative coordinates on the client loop,
     // returns content, mints NO log row. Engine.look throws on a non-READ statement.
     look(args: { workspaceId: number; workerId: number; statement: PlurnkStatement }): Promise<{ status: number; [key: string]: unknown }>;
-    // Entry shape/channel read + run branching.
+    // Entry shape/channel read + worker branching.
     readEntry(args: { workspaceId: number; target: string; channel?: string; offset?: number }): Promise<OperationResult & { entry: unknown }>;
     forkWorker(args: { workspaceId: number; workerId: number; name?: string }): Promise<{ workerId: number; workerName: string | null; parentWorkerId: number }>;
-    // The third door (svc#366): a named, empty-log, model-origin ROOT run — a fresh
+    // The third door (svc#366): a named, empty-log, model-origin root worker — a fresh
     // conversation over the same world. ensureModelWorker = the stable default,
     // forkWorker = branch with history, createConversationWorker = fresh thread.
     createConversationWorker(args: { workspaceId: number; name?: string }): Promise<{ workerId: number; workerName: string }>;

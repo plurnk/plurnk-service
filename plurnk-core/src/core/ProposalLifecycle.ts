@@ -239,7 +239,7 @@ export default class ProposalLifecycle {
         if (handler === undefined || typeof handler.applyResolution !== "function") return { resolution };
         try {
             // Build a ctx for the scheme's applyResolution. The proposal
-            // was raised inside a specific (workspace, run, loop, turn);
+            // was raised inside a specific (workspace, worker, loop, turn);
             // the scheme uses ctx to write the entry that makes the
             // operation's artifact visible in the next packet's index.
             const applyCtx: PlurnkSchemeContext = {

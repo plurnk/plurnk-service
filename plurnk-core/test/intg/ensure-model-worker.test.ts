@@ -1,6 +1,6 @@
-// #371 — ensureModelWorker is IDEMPOTENT at the seam: the WS connection's per-workspace cache used to
-// mask an insert-only implementation (26 runs in one e2e workspace once the seam exposed it). The
-// canonical conversation is the workspace's earliest model-origin ROOT run; forks and spawned
+// #371 — ensureModelWorker is idempotent at the seam: the connection's per-workspace cache used to
+// mask an insert-only implementation (26 workers in one e2e workspace once the seam exposed it). The
+// canonical conversation is the workspace's earliest model-origin root worker; forks and spawned
 // workers (which inherit origin='model' but carry parent_worker_id) never shadow it.
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -16,8 +16,8 @@ test("ensureModelWorker finds first — repeated calls return ONE conversation w
             const b = await daemon.ensureModelWorker(workspaceId);
             const c = await daemon.ensureModelWorker(workspaceId);
             assert.equal(a, b); assert.equal(b, c);
-            const runs = await db.test_runs_by_session.all<{ id: number; origin: string }>({ workspace_id: workspaceId });
-            assert.equal((runs ?? []).filter((r) => r.origin === "model").length, 1, "exactly one model worker minted across three ensures");
+            const workers = await db.test_workers_by_workspace.all<{ id: number; origin: string }>({ workspace_id: workspaceId });
+            assert.equal((workers ?? []).filter((r) => r.origin === "model").length, 1, "exactly one model worker minted across three ensures");
             // A fork of the conversation never shadows it — ensure still returns the root.
             const fork = await daemon.forkWorker({ workspaceId, workerId: a, name: "branch" });
             assert.notEqual(fork.workerId, a);

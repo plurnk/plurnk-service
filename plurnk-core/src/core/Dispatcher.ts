@@ -580,7 +580,7 @@ export default class Dispatcher {
         // recorded (#382 — a curation act with no forensic trace is how run43's task-frame fold
         // stayed invisible), but engine_render_log suppresses them from the packet, so the receipt
         // rents zero model-facing space — the original clutter concern, resolved by hide-not-drop.
-        // {§join-blocking-collect} (#354) — Run.read on a still-running child returns an awaitWorker signal;
+        // {§join-blocking-collect} (#354) — Worker.read on a still-running child returns an awaitWorker signal;
         // arm the join so THIS turn's bare SEND[102] parks (the blocking collect) instead of spinning.
         if (typeof (result as { awaitWorker?: unknown }).awaitWorker === "string") this.#joinTargets.add(loopId);
         const logEntryId = await this.#writeLog({ statement, result, workspaceId, workerId, loopId, turnId, sequence, origin });
@@ -683,7 +683,7 @@ export default class Dispatcher {
     }
 
     // op.look (#283) — resolve a READ and return its content WITHOUT writing a
-    // log_entries row: the client's off-run inspection primitive (LOOK → READ,
+    // log_entries row: the client's out-of-band inspection primitive (LOOK → READ,
     // invisible to the model). READ never mutates and never proposes, so this is
     // dispatch's resolve path minus #writeLog. Runs on the client loop, so the
     // human's inspection is never constrained by a model loop's flags. {§op-look}
@@ -749,7 +749,7 @@ export default class Dispatcher {
             return this.#denyIfDisallowed("exec", origin);
         }
 
-        // Run control (FORK/WORK → worker://<name>, spawn or fork) is gated by worker://'s writableBy — its
+        // Worker control (FORK/WORK → worker://<name>, spawn or fork) is gated by worker://'s writableBy — its
         // body is a seed prompt, not a dst path, so the entry-COPY dst-parse below doesn't apply.
         // {§machine-processes}
         if (this.#isWorkerControl(statement)) return this.#denyIfDisallowed("worker", origin);
@@ -913,21 +913,21 @@ export default class Dispatcher {
         return check(statement.target);
     }
 
-    // Run control is FORK/WORK (grammar 0.74.55), not COPY — its body
+    // Worker control is FORK/WORK (grammar 0.74.55), not COPY — its body
     // is the new worker's seed prompt, not a destination path. The COPY gates and #handleCopy
     // branch on this so they never parse the prompt as a dst path.
     #isWorkerControl(statement: PlurnkStatement): boolean {
-        return statement.op === "FORK" || statement.op === "WORK"; // run control targets worker://<name> (grammar 0.74.55)
+        return statement.op === "FORK" || statement.op === "WORK"; // worker control targets worker://<name> (grammar 0.74.55)
     }
 
-    // FORK/WORK(worker://<name>):task — run control (grammar 0.74.55):
+    // FORK/WORK(worker://<name>):task — worker control (grammar 0.74.55):
     //   • worker://self   → FORK: deep-copy the current worker's log into a new sister (Fork), then
     //     continue it with the prompt ({§machine-processes-fork-copies-the-log}).
     //   • worker://<name> → SPAWN: a fresh sister (empty log) named <name>, started on the prompt.
     //     A LIVE sister already holding <name> is a 409 conflict; a free or terminated name is
     //     reclaimed ({§worker-scheme-spawn}). The self form is fork; only a name spawns.
-    // Both ride the daemon inject and obey the active-runs cap (508, {§worker-scheme-cap}).
-    // FORK/WORK — run control (grammar 0.74.55). Both name a NEW run in the target authority
+    // Both ride the daemon inject and obey the active-worker cap (508, {§worker-scheme-cap}).
+    // FORK/WORK — worker control (grammar 0.74.55). Both name a new worker in the target authority
     // (worker://<name>) and carry its seed task in the body. WORK spawns a fresh worker; FORK branches
     // the current worker's log into a named sister. Replaces the COPY(worker://) overload — one verb, one
     // intent, so the model never conflates the target slot with the body (grammar#52).
@@ -942,7 +942,7 @@ export default class Dispatcher {
                 { operation: statement.op, retryable: false },
             );
         }
-        const name = target.kind === "url" ? (target.hostname ?? "") : ""; // {§worker-scheme} — run is the AUTHORITY (worker://<name>), not the path
+        const name = target.kind === "url" ? (target.hostname ?? "") : ""; // {§worker-scheme} — the worker is the AUTHORITY (worker://<name>), not the path
         if (name === "") {
             return Dispatcher.#failure(
                 "worker-name-required",
@@ -971,7 +971,7 @@ export default class Dispatcher {
                 { operation: statement.op, worker: name, retryable: false },
             );
         }
-        if (ctx.injectWorker === undefined) throw new Error("run control: injectWorker capability absent");
+        if (ctx.injectWorker === undefined) throw new Error("worker control: injectWorker capability absent");
         const denied = await WorkerCap.deny(this.#db, ctx.workspaceId);
         if (denied !== null) return denied;
         const prompt = statement.body;
@@ -995,7 +995,7 @@ export default class Dispatcher {
         }
 
         if (typeof statement.signal === "string") {
-            if (this.#branchWorker === undefined) throw new Error("branch run control: branchWorker capability absent");
+            if (this.#branchWorker === undefined) throw new Error("branch worker control: branchWorker capability absent");
             const child = await this.#branchWorker({
                 workspaceId: ctx.workspaceId,
                 parentWorkerId: ctx.workerId,
@@ -1025,7 +1025,7 @@ export default class Dispatcher {
         const row = await this.#db.fork_insert_worker.get<{ id: number }>({
             workspace_id: ctx.workspaceId, name, parent_worker_id: ctx.workerId, origin: ctx.writer,
         });
-        if (row === undefined) throw new Error("run spawn: run insert returned no row");
+        if (row === undefined) throw new Error("worker spawn: worker insert returned no row");
         await ctx.injectWorker({ workspaceId: ctx.workspaceId, workerId: row.id, prompt, flags });
         return { status: 200, body: name };
     }
@@ -1118,8 +1118,8 @@ export default class Dispatcher {
         }
         if (schemeName === "worker") {
             // Entry-path present → KILL a worker-scope scratch ENTRY (delete it), self-only —
-            // NOT run cancellation. The authority (hostname) names the owner, the pathname the
-            // entry; only the path-ABSENT form (worker://<name>) terminates the run-as-actor. {§worker-scheme}
+            // NOT worker cancellation. The authority (hostname) names the owner, the pathname the
+            // entry; only the path-ABSENT form (worker://<name>) terminates the worker-as-actor. {§worker-scheme}
             const entryPath = path.kind === "url" ? (path.pathname ?? "") : "";
             if (entryPath !== "" && entryPath !== "/") {
                 const workerHandler = this.#schemes.get("worker") as { killEntry: (s: PlurnkStatement, c: SchemeCtx) => Promise<SchemeResult> };
@@ -1155,7 +1155,7 @@ export default class Dispatcher {
                 }
                 workerId = row.id;
             }
-            if (this.#cancelWorker === undefined) throw new Error("run kill: cancelWorker capability absent");
+            if (this.#cancelWorker === undefined) throw new Error("worker kill: cancelWorker capability absent");
             // {§op-synchronous} — KILL is decisive. Await the one lifecycle owner so the
             // same-turn pending-work gate observes the complete subtree as terminal.
             await this.#cancelWorker(workerId, "killed via worker:// KILL");
@@ -2893,9 +2893,9 @@ export default class Dispatcher {
         const scheme = path.scheme === "file" ? null : path.scheme;
         // Every registered (plurnk-namespace) scheme uses its authority as a namespace segment — fold
         // it into the canonical pathname so known://x ≡ known:///x ≡ /x and the log keys identically to
-        // the entry (/prompt/<run>/<loop>/<N>, /docs/x.md). A foreign web host (http://, unregistered) is NOT a
+        // the entry (/prompt/<worker>/<loop>/<N>, /docs/x.md). A foreign web host (http://, unregistered) is NOT a
         // namespace: keep it in hostname. worker:// is the one registered EXCEPTION — its authority IS the
-        // run selector ({§worker-scheme}), and worker://self must stay distinct from worker://name, so Run.ts
+        // worker selector ({§worker-scheme}), and worker://self must stay distinct from worker://name, so Worker.ts
         // folds the owner into the storage path itself, never here.
         const foldNs = scheme !== null && scheme !== "worker" && this.#schemes.has(scheme);
         return {

@@ -1,5 +1,5 @@
 // #232 — workspace.create({settings}) ceiling family: tighten-only, most-restrictive-wins
-// against the operator env ceiling at each knob's read-site (companion to #231's
+// Each setting tightens the operator env ceiling at the knob's read site (companion to #231's
 // default-semantics knobs). maxCommands min()s PLURNK_SERVICE_MAX_COMMANDS; git:false ANDs the
 // PLURNK_SERVICE_GIT_ALLOWED service ceiling. A client may narrow, never widen.
 //
