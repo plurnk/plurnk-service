@@ -114,11 +114,15 @@ One or more numbers narrow an operation according to its type:
 
 Text scope has one meaning for every textual mimetype:
 
-* `<line>` selects one whole physical line.
-* `<firstLine,lastLine>` selects inclusive whole physical lines.
-* `<startLine,startColumn,endLine,endColumn>` selects an exact text region whose end coordinate is exclusive.
-* Lines and Unicode code-point columns are 1-based.
-* Equal start and end positions insert without deleting.
+| form | endpoint rule | concrete use |
+|------|---------------|--------------|
+| `<N>` | exactly one whole physical line | `<<READ(notes.md)<2>::READ` reads only line 2 |
+| `<N,M>` | whole physical lines N through M, both included | `<<READ(notes.md)<2,3>::READ` reads lines 2 and 3 |
+| `<SL,SC,EL,EC>` | exact region; start included, end excluded | `<<READ(notes.md)<2,1,2,5>::READ` reads columns 1 through 4 of line 2 |
+| `<SL,SC,SL,SC>` | equal exact positions are zero-width | `<<EDIT(notes.md)<2,5,2,5>:inserted text:EDIT` inserts without deleting |
+
+Lines and Unicode code-point columns are 1-based.
+To read exactly line N, use `<N>`; `<N,N+1>` selects both lines.
 
 For EDIT and COPY/MOVE destinations, `<0>` and `<-1>` insert before the first and after the final position.
 `<1,-1>` selects all content; an empty EDIT body deletes its selection.
@@ -126,11 +130,9 @@ Multiple EDITs to one target in a turn use the same source snapshot and cannot o
 YOU MUST use a text scope when editing an existing resource; an unscoped EDIT creates a new resource.
 Use precise, current positions from recent READ results when modifying existing content.
 
-Examples:
+Other scope examples:
 
 * FIND result range: `<<FIND(src/**)<10,20>::FIND`
-* READ line range: `<<READ(notes.md)<12,15>::READ`
-* Exact insertion: `<<EDIT(notes.md)<12,5,12,5>:inserted text:EDIT`
 * Exact source and destination append: `<<COPY(sh:///1/2/3#stderr)<1,1,1,12>:worker:///firstError.txt<-1>:COPY`
 * Semantic FIND threshold and result range: `<<FIND(worker:///**)<0.7,11,20>:~france:FIND`
 * Semantic READ threshold and text range: `<<READ(worker:///**)<0.5,11,20>:~poland:READ`

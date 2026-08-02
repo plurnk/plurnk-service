@@ -191,18 +191,18 @@ The `<L>` slot is optional and its domain is OP-specific. FIND, OPEN, and
 FOLD scope ordered results. EXEC and SEND scope timing. READ, EDIT, COPY, and
 MOVE use one universal text algebra independent of mimetype:
 
-| Arity | Text meaning |
-|---|---|
-| one integer | one whole physical line, or the documented `0`/`-1` mutation anchor |
-| two integers | inclusive whole physical lines |
-| four integers | exact `startLine,startColumn,endLine,endColumn` region |
+| Arity | Surface meaning | Endpoint rule |
+|---|---|---|
+| one integer | one whole physical line, or the documented `0`/`-1` mutation anchor | exactly one ordinal line |
+| two integers | whole physical lines `firstLine..lastLine` | both lines are included |
+| four integers | exact `startLine,startColumn,endLine,endColumn` region | start included, end excluded; equality is zero-width |
 
-Exact regions use 1-based lines and Unicode code-point columns. The end
-position is exclusive, and equal start/end positions are insertion points.
-Whole-line replacement deliberately accounts for newline separators; it is an
-ergonomic projection over exact replacement, not a different mimetype
-navigation mode. Other arities and decimal text coordinates are runtime 416
-failures.
+Exact regions use 1-based lines and Unicode code-point columns. One- and
+two-integer line selections normalize to the same exclusive-end `TextRegion`
+used by four-coordinate selections. Whole-line replacement deliberately
+accounts for newline separators; it is an ergonomic projection over exact
+replacement, not a different mimetype navigation mode. Other arities and
+decimal text coordinates are runtime 416 failures. {§text-scope-semantics}
 
 For READ, a body matcher selects resources against their complete readable
 content. A non-semantic `<L>` then projects text from each selected
