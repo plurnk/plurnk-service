@@ -79,7 +79,7 @@ Independent axes on entries and channels. Confusion across them is a recurring s
 | §mode-ask-read-only **mode** | `"ask" \| "act"`. Per-loop. Ask = read-only: the dispatch gate refuses every side-effecting op (a filesystem write — EDIT/COPY-dest/MOVE/KILL on the `file` scheme — or an EXEC host runtime); reads of the workspace stay open. `act` = full surface. The ancient contract: ask never changes the world. |
 | **flag**                     | Per-loop value shaping authority or toolset: `auto` (resolve proposals inside the loop), `noWeb`, `noInteraction`, `noProposals`, `mode`. |
 | **proposal**                 | A deferred side-effecting action. State machine: `proposed → resolved` (accept), `→ failed` (reject), or `→ cancelled` (cancel). With `flags.auto=true`, authority remains inside the loop and resolution is immediate. |
-| **resolution**               | Client's accept / reject / cancel of a proposal via the `loop.resolve` RPC ({§methods}). |
+| **resolution**               | Accept, reject, or cancel of a durable proposal. Client-owned authority enters core through `resolveProposal`; AG-UI carries it in standard resume entries ({§methods-proposal-resolve}, {§agui-proposal-resolve}). |
 
 ### §packet-terms Packet terms
 
@@ -164,9 +164,9 @@ filter a row.
 
 §actor-boundary-passive-wake **Passive wake.** An idle worker wakes on exactly two events, both *directed at the worker*: a prompt injected into it — the **voice door** (a user/system `loop.inject`, and once `worker://` lands a sibling's `SEND(worker://<name>)`) — or a **stream-status transition** on a subscription it opened ({§channel-state}). Everything ambient is a delta — a sibling's edit to a shared entry, an out-of-band disk change — and a delta **never** wakes; it queues and drains at the next turn one of those two events produces ({§env-delta}).
 
-§actor-boundary-self-hosting **Self-hosting — the runtime is an actor, not a back channel.** Runtime-initiated work (fs reconciliation {§membership}, git auto-add) is an **ephemeral `plurnk` worker** firing ordinary ops, seen by other workers through the environment door like any actor's — not a privileged engine pathway. The engine keeps only the irreducible kernel workers stand on (spawn, dispatch, packet assembly, the budget rails {§grinder}, the fs-watch); everything expressible as ops on workspace entries is a worker doing ops, through the same `op.*` surface ({§methods}) the service offers clients. Dogfooding is the architecture, not a test mode.
+§actor-boundary-self-hosting **Self-hosting — the runtime is an actor, not a back channel.** Runtime-initiated work (fs reconciliation {§membership}, git auto-add) is an **ephemeral `plurnk` worker** firing ordinary ops, seen by other workers through the environment door like any actor's — not a privileged engine pathway. The engine keeps only the irreducible kernel workers stand on (spawn, dispatch, packet assembly, the budget rails {§grinder}, the fs-watch); everything expressible as ops on workspace entries is a worker doing ops through the same engine dispatch path client actions use ({§methods-op-mirror}). Dogfooding is the architecture, not a test mode.
 
-**Migration path.** Largely realized: `Engine.dispatch` is origin-agnostic; client ops run in a per-connection client loop (`_dispatchAsClient`); plurnk EDITs already carry `origin=plurnk`. The keystone is **built** — `dispatchAsPlurnk` spawns the workspace's reserved `plurnk` worker and fires ops through dispatch, mirroring `_dispatchAsClient`; its uses so far (operator docs below; the fs-divergence narration) land in the plurnk worker's log. The line that remains is one of *kind*, not a list of pending dispatches: work **expressible as an op** belongs on the keystone; work that is **not** stays kernel. Disk→entry materialization is the latter — *ingestion* is the inverse of an EDIT (which proposes egress to disk, {§membership-edit-membership-gate}), so it has no actor op and remains fs-watch kernel, paired with the plurnk worker's filtered `source=file` narration ({§env-delta}) so a sibling pulls only true divergences, not every re-sync. Search-index maintenance is likewise pre-model kernel work, not an entry-creating op; catalog rendering remains an independent read-only projection. The one outstanding *expressible* piece is **git auto-add** — a model-created file surfaced as a plurnk-worker op — gated on the {§membership} repo-overlay still being built.
+**Migration path.** Largely realized: `Engine.dispatch` is origin-agnostic; client actions run in a client worker through `dispatchClientAction`; plurnk EDITs already carry `origin=plurnk`. The keystone is **built** — `dispatchAsPlurnk` spawns the workspace's reserved `plurnk` worker and fires ops through dispatch; its uses so far (operator docs below; the fs-divergence narration) land in the plurnk worker's log. The line that remains is one of *kind*, not a list of pending dispatches: work **expressible as an op** belongs on the keystone; work that is **not** stays kernel. Disk→entry materialization is the latter — *ingestion* is the inverse of an EDIT (which proposes egress to disk, {§membership-edit-membership-gate}), so it has no actor op and remains fs-watch kernel, paired with the plurnk worker's filtered `source=file` narration ({§env-delta}) so a sibling pulls only true divergences, not every re-sync. Search-index maintenance is likewise pre-model kernel work, not an entry-creating op; catalog rendering remains an independent read-only projection. The one outstanding *expressible* piece is **git auto-add** — a model-created file surfaced as a plurnk-worker op — gated on the {§membership} repo-overlay still being built.
 
 §actor-boundary-doc-injection **The keystone's first use: operator reference docs.** `PLURNK_SERVICE_MD_<ALIAS>=<path>` ({§operator-config}) materializes `<path>` as a `plurnk:///<ALIAS>.md` entry — a `dispatchAsPlurnk` EDIT in the plurnk worker, **not** the model's — and the model's turn-0 foists a READ of it. The model reads the doc inline while the materializing EDIT stays out of its log: idiomatic context injection, an ordinary entry + READ rather than a bespoke packet section. The same `PLURNK_SERVICE_MD_*` convention cascades to clients.
 
@@ -184,9 +184,9 @@ filter a row.
 
 §machine-processes-worker-is-its-log **A worker's memory of the world is its log — no shadow beside it.** A worker's view of the shared world is the log and only the log — never a per-worker snapshot. *What I am looking at* (OPEN/FOLD) is `log_entries.expanded`, a bit on the worker's own rows, toggled by ordinary `log:///` ops — not a second store, and never membership ({§open-fold}). *What I last saw* needs no shadow either: a worker learns its world moved through log entries ({§env-delta}) — a sibling's write broadcast into its log, an out-of-band disk change detected against the entry's own content and broadcast the same way — never through a per-worker snapshot the worker cannot see. (Its private **scratch** — worker-scope entries, {§worker-scheme} — is the worker's own evolving workspace, owned not shadowed: a store it writes and reads deliberately, not a hidden mirror of the shared world. The doctrine is *no shadow of the world*, not *no private state*.)
 
-§machine-processes-model-worker-readable **A worker's log is private to packets, not to the workspace.** Isolation ({§actor-boundary}) governs what an *actor* sees — its own worker, never a sibling's. It does not wall off the *wire*: any connection may read any worker's log in its workspace by id — `log.read({ workerId })`, ownership-verified, defaulting to the connection's own worker. This is how a conversation client reads the **model** worker, where the conversation lives: `loop.run` returns its `modelWorkerId`, and `workspace.workers` enumerates a workspace's workers for a connection that did not drive it live. The read is observation, never packet membership — no actor sees it.
+§machine-processes-model-worker-readable **A worker's log is private to packets, not to the workspace.** Isolation ({§actor-boundary}) governs what an *actor* sees — its own worker, never a sibling's. It does not wall off the client interface: `readLog({ workspaceId, workerId })` may read any ownership-verified worker in that workspace, and `listWorkers` enumerates them. A client-interface module chooses the default worker from its own conversation binding. The read is observation, never packet membership — no actor sees it.
 
-§machine-processes-worker-origin **A worker carries its actor.** Each worker records its `origin` — `model` (the conversation), `client` (a connection's own worker), or `plurnk` (the runtime's self-hosting worker) — set once at creation and inherited by a fork. `workspace.workers` returns it, so a conversation client identifies the model worker by its actor, not by parsing the name — which is set at instantiation and immutable, never renamed (a worker is permanent history, {§machine-processes-worker-is-its-log}).
+§machine-processes-worker-origin **A worker carries its actor.** Each worker records its `origin` — `model` (a conversation), `client` (a client-interface actor), or `plurnk` (the runtime's self-hosting worker) — set once at creation and inherited by a fork. `listWorkers` returns it, so a client interface identifies actor class without parsing the name, which is set at instantiation and immutable (a worker is permanent history, {§machine-processes-worker-is-its-log}).
 
 §worker-primary **The primary worker is the lineage root.** The PRIMARY worker of a turn's lineage is the no-parent root reached by walking `parent_worker_id` up; a no-parent worker is its own primary. Core supplies it on the first-party metadata channel alongside `Worker-Id` (same gate, computed per turn), stamped on EVERY turn including the primary's own (where it equals `Worker-Id`) — absent-with-a-Worker-Id is a contract violation, never a silent "assume primary." An unresolvable root (a corrupt/cyclic parent chain the `parent != id` CHECK forbids) fails hard. Providers emits it as `Plurnk-Worker-Primary`; a consumer routes primary-vs-spawned by equality (`Worker-Primary == Worker-Id` ⇒ the primary; `!=` ⇒ any-depth spawn, no depth math) and groups the worker tree by the shared root (#522).
 
@@ -235,7 +235,7 @@ The worker:// scheme makes {§machine-processes} addressable: a `worker://` targ
   remapped (source → branch) — so the branch opens with the parent's notes and
   diverges on its own edits: *fork = everything-in-common-but-name*.
 - **Git branch batch** — `WORK[feature/x](worker://<name>):task` and `FORK[feature/x](worker://<name>):task` retain their worker meanings while placing the child in the serialized Git transaction defined by {§worker-branch-batch}. The signal is one branch ref, not tags; an untagged WORK/FORK keeps the ordinary concurrent shared-world behavior.
-- §worker-delegation-inherits-flags **Delegation inherits authority.** The live loop a spawn, fork, or irc-raised fresh loop starts with carries the **delegating loop's flags** — an auto parent delegates auto workers. Flags are a property of the delegation, not of the client connection: a child loop that fell back to defaults would propose every side-effecting op into a resolver-less void (nobody attends a headless worker's review queue; each attempt burns the full proposal timeout — the four-sweep fan-out wedge, where three workers stalled 300s-per-EXEC while the parent slept and the harness watched only the parent). An irc that *resumes* a parked loop leaves that loop's own flags untouched — inheritance applies only where a fresh loop is born.
+- §worker-delegation-inherits-flags **Delegation inherits authority.** The live loop a spawn, fork, or irc-raised fresh loop starts with carries the **delegating loop's flags** — an auto parent delegates auto workers. Flags are a property of the delegation, not of a client binding: a child loop that fell back to defaults would propose every side-effecting op into a resolver-less void (nobody attends a headless worker's review queue; each attempt burns the full proposal timeout — the four-sweep fan-out wedge, where three workers stalled 300s-per-EXEC while the parent slept and the harness watched only the parent). An irc that *resumes* a parked loop leaves that loop's own flags untouched — inheritance applies only where a fresh loop is born.
 - §worker-lifecycle-wake-requeue-not-terminal **A wake re-queue is not a terminal.** A conclusion-wake resumes a 202-blocked loop by re-queueing it (202 → 100); when that lands while the loop's OWN live drain is between turns, the drain **re-claims and continues** (atomic 100 → 102; the injected prompt is already the next turn) — it never reports the re-queue outward. Treating 100 as an externally-imposed terminal once broadcast a QUEUED loop as a terminal result while the DB healed to 200 behind it — a client-facing lie the delegation topology hit in ~30% of observed executions.
 
 Untagged worker control rides the daemon's inject seam (active→fold, idle→enqueue+drain), so the handler creates/branches the worker and hands off; the daemon owns provider + system prompt. Tagged WORK/FORK instead enqueue a fresh loop without starting its drain; {§worker-branch-batch} becomes its sole starter. FORK/WORK carry the seed task in the body and are their own ops, dispatched to worker control — never the entry-copy path.
@@ -326,11 +326,11 @@ Beyond the three creation ops:
 
 - §join-blocking-collect **A `READ` on a running child is a blocking join, not a poll.** A path-absent `READ(worker://<running-child>)` returns **425** (Too Early) and records a live obligation on the loop. The turn's `SEND[202]` waits for that obligation instead of asking the model to poll. When the child reaches any terminal status, the same loop resumes with the result in its log. Children are bounded by their own turn and strike limits, terminal failure also wakes the parent, and the owed-wake path covers completion before the parent parks. Any `SEND` clears the per-turn arm; `SEND[200]` with a live child remains a premature-termination error. A `<seconds>` timeout-poll is the explicit polling alternative.
 
-A worker is a **log plus a cancellation scope** — one `AbortController` per worker, reused while live and replaced only once aborted, so a cancel ends the worker as a unit and a later `loop.run` is never born cancelled. A worker's queued loops are advanced by a **drain**: a single per-worker drain that claims loops atomically (status 100→102) and runs each under the worker's scope. A loop may spawn **streams** (execs) that outlive it; each is a row in the subscription registry ({§subscriptions}) — the durable record of what the worker holds open. Cancellation and conclusion are defined against these structures, never wall-clock timing.
+A worker is a **log plus a cancellation scope** — one `AbortController` per worker, reused while live and replaced only once aborted, so a cancel ends the worker as a unit and a later `runLoop` request is never born cancelled. A worker's queued loops are advanced by a **drain**: a single per-worker drain that claims loops atomically (status 100→102) and runs each under the worker's scope. A loop may spawn **streams** (execs) that outlive it; each is a row in the subscription registry ({§subscriptions}) — the durable record of what the worker holds open. Cancellation and conclusion are defined against these structures, never wall-clock timing.
 
 ```mermaid
 stateDiagram-v2
-    [*] --> Queued: loop.run
+    [*] --> Queued: runLoop request
     Queued --> Running: drain claims
     Running --> Parked: wait with live obligations
     Parked --> Queued: obligation settles or arrival
@@ -450,10 +450,10 @@ whose obligations settled during reconciliation is requeued in place so it can
 observe their terminal results. No effect is replayed across an unknown
 boundary.
 
-- §worker-lifecycle-single-drain **One drain advances a worker.** At most one drain is registered for a worker at any instant: a `loop.run` or wake on a worker with a live drain folds in (active→next-turn) or enqueues a loop that drain claims, never a second parallel drain. A drain's start and its empty-queue teardown relinquish the worker under one per-worker lock, so the teardown's re-claim cannot race a concurrent start into a double-drain.
+- §worker-lifecycle-single-drain **One drain advances a worker.** At most one drain is registered for a worker at any instant: a `runLoop` request or wake on a worker with a live drain folds in (active→next-turn) or enqueues a loop that drain claims, never a second parallel drain. A drain's start and its empty-queue teardown relinquish the worker under one per-worker lock, so the teardown's re-claim cannot race a concurrent start into a double-drain.
 - §worker-lifecycle-total-reap **Cancellation is recursive and reaps every held stream.** `loop.cancel`, worker `KILL`, shutdown, and a worker's `SEND[499]` terminalize every unresolved loop in the cancelled worker subtree and iterate each worker's durable open-subscription rows, invoking each exact callable owner from the process-local live registry. The durable rows answer *what is held*; the live registry answers *how this process tears it down*; the abort signal is a fast-path optimization. There is no implicit detachment. A stream that is running, mid-spawn (its row written before it is killable), or spawned after the cancel is reaped alike. The teardown abort is bounded: the executor sends a polite signal then SIGKILL after a consumer-set grace (`PLURNK_SERVICE_EXEC_KILL_GRACE_MS`). A model `KILL[code]` on one live stream instead delivers exactly that signal once (bare `KILL` → the executor's SIGHUP default, `KILL[9]` → SIGKILL).
 - §worker-lifecycle-exec-epoch-bound **A stream's kill binds to the scope it captured at spawn.** A stream captures the worker's cancellation scope as it registers and wires its kill to it, re-checking `aborted` AFTER wiring — no check-then-listen gap can drop an abort that lands mid-registration. Because the scope is replaced only once aborted, a captured-then-replaced scope is necessarily already aborted, so replacement never strands a live stream.
-- §worker-lifecycle-no-resurrection **A cancelled worker is not resurrected by its own torn-down work.** A stream conclusion delivered to a cancelled, idle worker starts no fresh drain: an aborted (499) conclusion is skipped, and a straggler that concluded cleanly surfaces its deliverable as an environment delta ({§env-delta}), never a revived loop. The cancel was deliberate; only an explicit `loop.run` resumes the worker.
+- §worker-lifecycle-no-resurrection **A cancelled worker is not resurrected by its own torn-down work.** A stream conclusion delivered to a cancelled, idle worker starts no fresh drain: an aborted (499) conclusion is skipped, and a straggler that concluded cleanly surfaces its deliverable as an environment delta ({§env-delta}), never a revived loop. The cancel was deliberate; only an explicit `runLoop` request resumes the worker.
 - §worker-lifecycle-wake-liveness **A stream conclusion always reaches its worker.** When a backgrounded stream concludes, the daemon routes it through the same inject seam as any loop source ({§actor-boundary-passive-wake}): an active worker folds the conclusion into its next turn; a worker **blocked on a 202 wait** for that stream ({§wait-obligation-matrix}) **awakens that loop in place** — the blocked loop *is* the continuation, so there is no fresh loop and no summary-as-prompt fiction. The result is never lost: a blocked loop sleeps rather than ending, and the stream's status-transition is the arrival ({§actor-boundary-passive-wake}) that wakes it; on resume it reads the concluded stream's own state, not a synthetic prompt.
 - §worker-lifecycle-child-wake **A child worker concluding wakes a parent blocked on it — the topology join.** `worker://` spawn/fork records `parent_worker_id` ({§lifecycle-terms}). When a worker's drain exits having **concluded** — no `202`-blocked loop, no open stream — the daemon resumes its parent **in place** if the parent is blocked on the join (`#onDrainExit` → the shared `#wakeParkedWorker`, the same 202→100 resume a stream conclusion uses). So a parent that spawns work and blocks (`SEND[202]`) is woken the moment its child finishes; on resume it reads the child's deliverable from the {§worker-scheme-collect} delta in its own log — a control edge, **never an injected prompt**. The wake recurses upward via the parent's own drain-exit. A child still running — or itself blocked at 202 — is not *concluded*, so it does not wake the parent (it's still a live thing the subtree holds). This is the structured-concurrency join: streams and child workers are the same kind of "live thing a worker holds," driving premature-terminate ({§send-premature-terminate}), the wake edge, and the collect delta identically. A worker conclusion is a **bounded, un-loseable** wake: if the conclusion fires while the parent is mid-turn (before its block commits), `#wakeParkedWorker` finds it not-yet-slept and records an **owed wake**, which the drain honors when the parent blocks — so a wait awaiting workers **always returns**, never dead-blocks on a conclude-before-block race. (Only a live exec stream, unbounded absent a timeout, may legitimately hold a wait open.)
 - §worker-lifecycle-idle-is-concluded **An idle worker concludes; it does not park.** A loop is idle only when it has neither live obligations nor completed results awaiting their first packet. A live child or stream blocks a `SEND[202]` join; a completed stream, child result, or same-turn retrieval continues directly to the next packet where it is observed. Only after those sets are drained does `SEND[202]` resolve like `SEND[200]`. There is no held-open idle loop and no `loop/quiesced` soft signal. A concluded worker is durable working history and an addressed arrival reawakens it as a new loop.
@@ -477,7 +477,7 @@ Three entry points:
 
 §provider-surface-identity Plus immutable identity: `provider.contextWindow` (physical token total, or `null` when unknown), used only to derive natural prompt capacity; and `provider.model` — the instance identity the deferred model-switch recompute compares ({§tokenomics}), exposed but not yet consumed here.
 
-§meta-passthrough **Metadata passthrough (provider → client).** `generate` may return an open `meta: Record<string, unknown>` bag. The service stores it unenforced per turn (`turns.meta`, `json_valid` only — no schema) and forwards the latest turn's blob to the client on the loop usage payload (`loop.run` result / `loop/terminated`, {§methods}). The service never reads a field within it. Providers own their metadata shapes; monetary values carry an explicit amount and currency rather than an implied unit. Absent → `{}`. The mirror direction (client → provider, the self-identified `client` id) rides `generate({client})` ({§attribution}).
+§meta-passthrough **Metadata passthrough (provider → client).** `generate` may return an open `meta: Record<string, unknown>` bag. The service stores it unenforced per turn (`turns.meta`, `json_valid` only — no schema) and forwards the latest turn's blob in `loop/terminated.usage` ({§notifications}). The service never reads a field within it. Providers own their metadata shapes; monetary values carry an explicit amount and currency rather than an implied unit. Absent → `{}`. The mirror direction (client → provider, the self-identified `client` id) rides `generate({client})` ({§attribution}).
 
 ### §provider-guarantees Engine → provider guarantees
 
@@ -850,7 +850,7 @@ Op implications:
 - EDIT to undeclared channel → 400; read-only channel → 405.
 - COPY/MOVE source and destination fragments independently select channels.
 
-RPC params carry fragments inline via the `target` string (`{ target: "known:///x#stderr" }`).
+Client-interface target parameters carry fragments inline (`{ target: "known:///x#stderr" }`).
 
 **Wire rendering: default channel is path-only.** Heredoc fence omits `#channel` when channel matches `defaultChannel`. Single-channel entries render path-only; multi-channel entries render the default path-only and only non-default carries `#name`.
 
@@ -1057,7 +1057,7 @@ The engine's failure terminals — **500** (strike threshold) and **508** (cycle
   live obligations. If work has completed but is unobserved, it continues
   directly to the next packet because the wake edge has already fired; only a
   genuinely empty set resolves immediately like `[200]`.
-- §send-300-choices **SEND[300] is an operator question - a PROPOSAL using the same stop-the-world system as file edits** (owner ruling, #346). Enablement cascades: `PLURNK_QUESTIONS=0` is a servicewide ceiling; otherwise the client affirmatively requests per workspace (`settings.questions: true` at workspace.create), which ALSO injects the questions.md teaching - capability and teaching gate as one. Enabled: the `;`-delimited body parses leniently (first segment the question, the rest choices; zero choices = an open question - never malformed), and the ask raises a proposal: dispatch stops the world, `loop/proposal` carries `{question, choices}` in attrs, and the client's `loop.resolve {decision:"accept", body}` delivers the ANSWER - written into the ask's own model-facing rx (`{"status":200,"body":...}`), read next packet. Reject/timeout resolve through the standard {§proposal} semantics; the turn records a continue either way (never a 300 terminal), and the loop simply proceeds. Loop auto never auto-answers a question - it exists precisely to stop the world for a human, and the workspace opted in. Disabled: refused 409 with a self-decide steer, never a park into the void.
+- §send-300-choices **SEND[300] is an operator question - a PROPOSAL using the same stop-the-world system as file edits** (owner ruling, #346). Enablement cascades: `PLURNK_QUESTIONS=0` is a servicewide ceiling; otherwise the client affirmatively requests per workspace (`settings.questions: true` at workspace creation), which ALSO injects the questions.md teaching - capability and teaching gate as one. Enabled: the `;`-delimited body parses leniently (first segment the question, the rest choices; zero choices = an open question - never malformed), and the ask raises a proposal: dispatch stops the world, `loop/proposal` carries `{question, choices}` in attrs, and the client's accepted proposal body delivers the ANSWER - written into the ask's own model-facing rx (`{"status":200,"body":...}`), read next packet. Reject/timeout resolve through the standard {§proposal} semantics; the turn records a continue either way (never a 300 terminal), and the loop simply proceeds. Loop auto never auto-answers a question - it exists precisely to stop the world for a human, and the workspace opted in. Disabled: refused 409 with a self-decide steer, never a park into the void.
 
 ### §exec EXEC
 
@@ -1136,7 +1136,7 @@ stream cannot fall through an internal `exec`-only query. {§stream-control}
 §proposal-202-pauses A side-effecting op does not execute on dispatch — it **proposes**. The scheme returns **202** (an EXEC `host` runtime {§exec}, an EDIT to a member file {§membership}); the engine writes the log row `state='proposed'`, registers a waiter keyed by `logEntryId`, and **pauses `dispatch`** awaiting a resolution. The pause is internal to dispatch — the turn has already closed, so {§grinder} strike accounting sees the *resolved* status, never the 202. On accept the status becomes 200 and the scheme's effect runs.
 
 **Resolution arrives four ways, one surface to the model:**
-- **`loop.resolve`** ({§methods}) — a client's accept / reject / cancel.
+- **Client resolution** ({§methods-proposal-resolve}) — a client interface delivers accept, reject, or cancel; AG-UI uses standard resume entries ({§agui-proposal-resolve}).
 - **Loop auto** ({§proposal-ownership}) — an in-tree listener resolves `accept` in-process, same tick, no wire roundtrip.
 - **noProposals** — an in-tree listener resolves `reject` (outcome `no_review_channel`).
 - §proposal-timeout-cancels **Timeout is OPT-IN; the shipped default is a world that WAITS** - `PLURNK_SERVICE_PROPOSAL_TIMEOUT_MS` empty (shipped) means a pending proposal - a file edit awaiting review or a [300] question - waits indefinitely for its human: absence is not an answer, and a synthetic cancel deciding it was is unacceptable (owner ruling, the AG-UI migration's first surfaced decision). An operator whose lane needs a bound sets milliseconds; then elapsing synthesizes `cancel` (outcome `timeout`), server-side, needing no client.
@@ -1329,9 +1329,9 @@ Model selection: separate alias cascade in `ProviderRegistry` ({§provider-insta
 | `PLURNK_SERVICE_DB_PATH`                                    | `~/.plurnk/plurnk.db` | SQLite file path. |
 | `PLURNK_HOST`                                               | `127.0.0.1` | Bind address for the listener. Local-only by default. |
 | `PLURNK_PORT`                                               | `3044` | TCP port for THE client surface — the AG-UI+ listener (the plurnk-agui plugin module binds it at boot). Production is single-listener. |
-| `PLURNK_SERVICE_MAX_TURNS`                                  | `-1` | Operator turn **ceiling** — `-1` = no cap; a positive value clamps `loop.run({maxTurns})`. The effective value is persisted on the durable loop and counts cumulatively across every `202` park/resume. |
+| `PLURNK_SERVICE_MAX_TURNS`                                  | `-1` | Operator turn **ceiling** — `-1` = no cap; a positive value clamps `runLoop({maxTurns})`. The effective value is persisted on the durable loop and counts cumulatively across every `202` park/resume. |
 | `PLURNK_SERVICE_MAX_COMMANDS`                               | `-1` | Per-emission op ceiling; `-1` = no cap (default) — every generated op dispatches. A positive value caps dispatched actions: overflow ops drop with one durable `max-commands-exceeded` error row on the next packet. Tightened per workspace via `settings.maxCommands` (min wins). |
-| §operator-config-loop-timeout `PLURNK_SERVICE_LOOP_TIMEOUT` | `86400000` | ms wall-clock budget for a single `loop.run`: expiry aborts the loop signal mid-flight (a stuck `generate` included) and the loop terminates `504 loop_timeout` — a legible engine terminal, kin to the exec `<T>` reap's 504 ({§exec-timeout}). |
+| §operator-config-loop-timeout `PLURNK_SERVICE_LOOP_TIMEOUT` | `86400000` | ms wall-clock budget for a single core loop: expiry aborts the loop signal mid-flight (a stuck `generate` included) and the loop terminates `504 loop_timeout` — a legible engine terminal, kin to the exec `<T>` reap's 504 ({§exec-timeout}). |
 | `PLURNK_SERVICE_MAX_STRIKES`                                | `3` | Strike threshold + sudden-death lead time ({§engine-rails}). |
 | `PLURNK_SERVICE_EMISSION_ATTEMPTS`                          | `3` | Completed provider responses allowed beneath one engine turn before an untrustworthy model-turn frame terminates the loop. Bounded interior operation errors are admitted and do not spend this budget. Independent of strikes. |
 | `PLURNK_SERVICE_PREVIEW_LINES`                              | `16` | Maximum lines in an ordinary bounded log-body projection ({§body-projection}). |
@@ -1347,8 +1347,8 @@ Model selection: separate alias cascade in `ProviderRegistry` ({§provider-insta
 Every knob listed is enforced — the engine reads and acts on it; `.env.defaults` is the authoritative default (reader-declares, {§operator-config-env-defaults}).
 
 **Two override semantics — ceiling vs default.** Which kind a var is determines what "override" means across the cascade:
-- **Ceiling** (most-restrictive-wins) — an operator-set hard bound nothing downstream may exceed: not a lower-precedence file, not a per-workspace constraint, not a per-call RPC arg. `PLURNK_SERVICE_GIT_ALLOWED` (`=0` flatly denies git service-wide, {§membership}), `PLURNK_SERVICE_MAX_COMMANDS`, `PLURNK_SERVICE_MAX_STRIKES`, `PLURNK_PROVIDERS_FETCH_TIMEOUT` (module overrides allowed only *below* it), and `PLURNK_SERVICE_MAX_TURNS` (`-1` ships it off; a positive value caps the per-call request). The sandbox/cost guarantee: the operator caps it; no client widens it.
-- **Default** (explicit-wins) — a fallback the most-specific setter replaces freely: `PLURNK_MODEL` (a `loop.run({alias})` overrides it), `PLURNK_SERVICE_REQUIREMENTS` (the per-call requirements default), and the config-time vars (`HOST` / `PORT` / `DB_PATH`).
+- **Ceiling** (most-restrictive-wins) — an operator-set hard bound nothing downstream may exceed: not a lower-precedence file, not a per-workspace constraint, not a per-call seam argument. `PLURNK_SERVICE_GIT_ALLOWED` (`=0` flatly denies git service-wide, {§membership}), `PLURNK_SERVICE_MAX_COMMANDS`, `PLURNK_SERVICE_MAX_STRIKES`, `PLURNK_PROVIDERS_FETCH_TIMEOUT` (module overrides allowed only *below* it), and `PLURNK_SERVICE_MAX_TURNS` (`-1` ships it off; a positive value caps the per-call request). The sandbox/cost guarantee: the operator caps it; no client widens it.
+- **Default** (explicit-wins) — a fallback the most-specific setter replaces freely: `PLURNK_MODEL` (a `runLoop({alias})` request overrides it), `PLURNK_SERVICE_REQUIREMENTS` (the per-call requirements default), and the config-time vars (`HOST` / `PORT` / `DB_PATH`).
 
 §operator-config-shipped-defaults **The shipped `.env.defaults` is itself under
 test.** It has no active `PLURNK_SERVICE_MD_*` doc alias because policy is a
@@ -1404,186 +1404,137 @@ External plugins declare their own env vars in their own `.env.defaults`, assemb
 
 ## §rpc Module seam
 
-Core exposes operations and events to in-process client-interface modules. It
-does not own an external wire protocol or listener. `plurnk-agui` owns the
-default AG-UI+ HTTP/SSE interface and its public contract.
+Core owns a typed in-process module seam. It owns no external listener, public
+action-name catalog, or generic string-dispatched method registry. A
+client-interface module such as `plurnk-agui` owns its public protocol, action
+names, request validation, discovery result, and event projection.
 
-### §method-registration Method registration
+### §module-lifecycle Module lifecycle and setup seam
 
-```ts
-registry.registerMethod("loop.run", {
-    handler: async (params, ctx) => { /* ... */ },
-    description: "Run a model-driven loop with a prompt.",
-    params: {
-        prompt: "string — the user prompt for the loop",
-        maxTurns: "number? — defaults to PLURNK_SERVICE_MAX_TURNS",
-        alias: "string? — overrides the boot-time PLURNK_MODEL",
-    },
-    requiresInit: true,
-    longRunning: false, // returns immediately ({status:100}); the loop runs async, §methods
-});
+```mermaid
+flowchart LR
+    register["Daemon.registerModule"] --> setup["module.setup(ModuleSetupSeam)"]
+    setup --> capabilities["Register runtimes, schemes,<br/>and extension actions"]
+    capabilities --> ready["Schemes ready; docs published;<br/>durable lifecycle recovered"]
+    ready --> start["module.start(CoreSeam)"]
+    start --> interface["Module-owned listener<br/>and client protocol"]
+    interface --> calls["Typed CoreSeam calls"]
+    calls --> core["Core state and orchestration"]
+    core --> events["subscribeToEvents<br/>(workspaceId, event, payload)"]
+    events --> interface
 ```
 
-- `description`: one-liner surfaced by `discover`.
-- `params`: `"type — meaning"` per param; `?` suffix = optional. Self-documenting, not enforced.
-- `requiresInit`: rejects until a workspace is attached.
+Every registered module's `setup` runs in registration order before any
+module's `start`. Core then readies schemes, publishes installed capabilities,
+recovers durable lifecycle, and starts modules in registration order. Shutdown
+closes started and self-closing modules in reverse order and surfaces aggregated
+close failures.
 
-### §discovery Discovery
+| Setup function                                                         | Contract |
+|------------------------------------------------------------------------|----------|
+| `registerRuntime({ decl, executor, availability, scheme? })`           | Adds one executor runtime and its optional claimed scheme facet to the engine-owned registries. |
+| `registerScheme(name, handler)`                                        | Adds one addressable scheme handler; scheme readiness and model-facing capability publication remain core-owned. |
+| §module-action-registration `registerModuleAction(name, handler)`      | Adds a non-empty, extension-unique name and a handler receiving only `Readonly<Record<string, unknown>>`. Core supplies no implicit workspace or transport context. A client-interface module decides whether and how that name becomes public, and owns collisions with its built-ins. |
 
-`discover` returns the catalog:
+### §methods CoreSeam function set
 
-```json
-{
-    "methods": {
-        "ping": { "description": "Liveness check.", "params": {} },
-        "loop.run": { "description": "Run a model-driven loop.", "params": {...} },
-        "...": "..."
-    },
-    "notifications": {
-        "log/entry": { "description": "A new log_entries row was written.", "params": {...} },
-        "loop/terminated": { "description": "A loop reached a terminal status.", "params": {...} },
-        "...": "..."
-    },
-    "capabilities": {
-        "providers": [...],
-        "schemes": [...],
-        "mimetypes": [...]
-    },
-    "versions": {
-        "service": { "installed": "0.34.0", "latest": "0.35.0" },
-        "client": { "latest": "0.15.0" }
-    }
-}
-```
+`CoreSeam` is a curated `Pick<Daemon, ...>` and therefore changes with the
+implementation at compile time rather than through a parallel method catalog.
+Its function names are transport-neutral library calls, not public wire names.
 
+| Area                                              | Function | Core contract |
+|---------------------------------------------------|----------|---------------|
+| Events                                            | `subscribeToEvents(handler) -> unsubscribe` | Subscribes to the raw event source in {§notifications}. A subscriber failure is logged and cannot re-enter engine control flow. |
+| §proposal-list Proposals                          | `pendingProposals(workspaceId)` | Returns every durable `state='proposed'` row in the workspace so a reconnecting client interface can resurface stopped work. |
+| §methods-proposal-resolve Proposals               | `resolveProposal(logEntryId, resolution)` | Validates and delivers one accept, reject, or cancel decision to the engine. An unknown or already-resolved id fails; the client protocol owns how the decision arrived. |
+| §methods-loop-run Loops                           | `runLoop({ workspaceId, workerId, prompt, maxTurns?, flags?, openPaths?, alias?, model? })` | Validates a model worker and provider selection, persists the effective turn ceiling, then returns an immediate status-100 acknowledgement with `loopId` and `action`. The exact terminal result arrives only through `loop/terminated`; parking and resuming do not replace the loop. |
+| §methods-loop-cancel Loops                        | `cancelDrain(workerId, reason?)` | Begins durable structured cancellation of the worker tree and reaps its process-local scopes. The boolean reports whether process-local work existed when called; queued or parked durable work is still terminalized when it is `false`. |
+| §methods-op-mirror Client dispatch                | `dispatchClientAction({ workspaceId, workerId, statements })` | Dispatches already-parsed grammar statements as one client action and one journal segment. Every statement is an ordered turn; a proposal may keep the action promise and segment open until resolution. Core exposes no per-op method family. |
+| Client observation                                | `look({ workspaceId, workerId, statement })` | Runs an already-parsed READ through the full resolver without a log row. A non-READ statement is rejected ({§op-look}). |
+| §methods-log-read Reads                           | `readLog({ workspaceId, workerId, ...coordinate })` | Ownership-checks the worker, then reads by ids, recency, or the complete `loopSeq`/`turnSeq`/`sequence` display coordinate. `limit` defaults to 100 and is capped at 1000. |
+| §methods-entry-read Reads                         | `readEntry({ workspaceId, target, channel?, offset? })` | Reads the canonical entry shape, or an incremental slice of one named channel, without creating action evidence. |
+| Providers                                         | `listProviders()` | Lists configured aliases with provider/model identity, active state, and the effective `promptBudget` when core can establish it. |
+| §methods-workspace-create Workspace lifecycle     | `createWorkspace({ name?, projectRoot?, settings?, constraints? })` | Creates the world and its client envelope, materializes current docs and constraints, starts derivation warming, and emits global `workspace/created`. `projectRoot` is established here or the workspace remains headless. |
+| §methods-workspace-attach Workspace lifecycle     | `attachWorkspace({ workspaceId, workerId?, workerName? })` | Validates ownership and returns a client envelope for an existing world. It does not retain caller or transport binding state in core. |
+| Workspace lifecycle                               | `ensureModelWorker(workspaceId)` | Returns the workspace's stable default model worker, creating it on first use. |
+| Workspace lifecycle                               | `createConversationWorker({ workspaceId, name? })` | Creates a model-origin root worker with empty private history: a fresh conversation over the same world. |
+| Workspace lifecycle                               | `forkWorker({ workspaceId, workerId, name? })` | Creates a child worker that branches the source worker's history while sharing workspace state. |
+| §methods-workspace-rename Workspace metadata      | `renameWorkspace(workspaceId, name)` | Changes only the world's unique mutable name; workers, log, and membership remain intact. |
+| Workspace metadata                                | `constrain(...)`, `unconstrain(...)`, `listConstraints(...)`, `listMembers(...)` | Owns the membership overlay and returns its resolved effects; clients do not reimplement constraint semantics. |
+| Workspace metadata                                | `listWorkspaces()`, `listWorkers(...)`, `listPrompts(...)`, `workspaceDerivationStatus(...)` | Reads current workspace topology, prompt history, and derivation progress. |
+| Extension actions                                 | `listModuleActions()`, `invokeModuleAction(name, params)` | Lists setup-registered names in sorted order and invokes the exact registered handler. Missing names fail; handler values remain opaque to core. |
 
+§methods-rebind **Binding belongs to the client-interface module.** Core's
+workspace lifecycle calls return `ClientEnvelope` values but retain no
+connection, thread, or current-workspace mapping. A module may replace its own
+binding with a later create or attach result without requiring a new transport.
 
-### §methods Core method set
+§methods-worker-name-reserved **Reserved worker names.** `plurnk` is reserved
+for the runtime actor ({§authority-terms}). Attach, fresh-conversation, and fork
+paths reject it case-insensitively before lookup or creation, and automatic
+names never emit it. A client therefore cannot forge or resume the runtime's
+worker as `origin=plurnk`.
 
-**Liveness + introspection**
+§methods-loop-run-model **Per-loop model selection.** Optional `model`
+(client-resolved `<provider>/<model>`, wins) or `alias` (a declared
+`PLURNK_MODEL_<alias>`) overrides the boot default for a newly created loop.
+The fully resolved provider identity is persisted on that loop and remains
+immutable through turns, parks, wakes, and restart. Injecting into an existing
+loop with a conflicting selection fails before work is accepted. Provider
+instances are cached; no resume path substitutes a boot default for missing or
+malformed durable selection.
 
-| Method     | Params | Result | Notes |
-|------------|--------|--------|-------|
-| `ping`     | none   | `{}`   | No init required. |
-| `discover` | none   | catalog ({§discovery}) | No init required. |
+§methods-log-coordinate **Log coordinate.** Every `LogEntry` returned by
+`readLog` or emitted through `log/entry` carries `loop_seq` and `turn_seq`
+beside database ids, so a client can render and resolve the logical `L/T/S`
+coordinate without fetching all rows and matching locally.
 
-**Workspaces**
+§op-look **LOOK ownership.** A client-interface module owns the public LOOK
+spelling and grammar parsing. It rewrites a valid LOOK statement to READ and
+hands the AST to core's `look`; core owns the full resolver and the no-log
+invariant. The internal closed, rowless observation segment supplies an honest
+numeric loop coordinate for relative `log:///` addressing without leaving
+active lifecycle behind.
 
-| Method                                       | Params              | Result            | Notes |
-|----------------------------------------------|---------------------|-------------------|-------|
-| §methods-workspace-create `workspace.create` | `name?: string`, `projectRoot?: string`, `settings?: object` | `{ id, name, workerId, workerName, projectRoot }` | Creates new workspace + its first worker; auto-name if unprovided. Returns the auto-created worker's identity so clients skip the pending-dance. Optional `projectRoot` pins the workspace — **set here or never; headless is forever** (the pointer is immutable, so membership is established exactly once, at creation); null/omitted = headless. Optional `settings` carries per-workspace open-context overrides ({§operator-config}). |
-| `workspace.list`                             | none                | `{ workspaces: Workspace[] }` | Lists all workspaces. |
-| §methods-workspace-attach `workspace.attach` | `id: number`, `workerId?: number`, `workerName?: string` | `{ id, name, workerId, workerName }` | Binds this connection to an existing workspace. Optional `workerId` resumes that specific worker (must belong to the workspace). Optional `workerName` reuses-or-creates by name within the workspace. Both omitted → new auto-named worker. |
-| `workspace.workers`                          | `id?: number`       | `{ workers: Worker[] }` | Lists workers in a workspace (defaults to attached workspace); most-recent first. |
-| `workspace.prompts`                          | `id?: number`, `limit?: number` | `{ prompts: string[] }` | A workspace's prior user prompts (the conversation worker's loop seeds), newest-first, capped by `limit` (default 100); defaults to attached workspace. Lets a client seed up/down recall without log archaeology. |
-| §methods-workspace-rename `workspace.rename` | `name: string` | `{ id, name }` | Rename the attached workspace — its name is a **mutable handle** on the world (unlike a worker, whose name is frozen at instantiation, {§machine-processes}). Mutates `workspaces.name` only; workers, log, and membership untouched. A name another workspace holds is rejected (`workspaces.name` is unique). |
-| `workspace.constrain`                        | `effect: "pick" \| "hide" \| "view"`, `glob: string` | `{ effect, glob }` | Add a workspace membership constraint ({§membership} overlay): `pick` admits a file Git misses (the sole source when Git is absent), `hide` drops a Git member, and `view` makes a member read-only. Immediate. |
-| `workspace.unconstrain`                      | `effect: "pick" \| "hide" \| "view"`, `glob: string` | `{ effect, glob }` | Remove a membership constraint (the `drop` verb). Immediate. |
-| `workspace.constraints`                      | none                | `{ constraints }` | List the attached workspace's membership constraints. |
-| `workspace.members`                          | none                | `{ members: [{ path, effect }], hidden }` | Resolve each project file's membership effect — `members` tagged `member`/`view` plus the `hide`-excluded `hidden` — so a client signs file visibility (member / read-only / ignored) without reimplementing the overlay glob-matching ({§membership-resolved-effects}). |
+### §notifications Core events
 
-§methods-rebind **Re-binding.** `workspace.create` and `workspace.attach` may be called on a connection that already has a workspace attached — the connection switches in place, releasing the prior client loop (closed at 200). No reconnect is needed to change workspace or attached worker.
+| Event                                                        | Payload | When fired |
+|--------------------------------------------------------------|---------|------------|
+| §notifications-log-entry-notify `log/entry`                  | `{ entry: LogEntry }` | A `log_entries` row is committed. |
+| `loop/terminated`                                            | `{ workerId, loopId, result, hitMaxTurns, turnIds, usage }` | One loop reaches a terminal state. `result` is the exact universal operation result, including its RFC 9457 Problem Details on failure. Worker and loop are an inseparable owning coordinate. |
+| `loop/proposal`                                              | `{ logEntryId, workspaceId, workerId, loopId, turnId, op, target, body, attrs, flags }` | Dispatch pauses on a durable 202 proposal. `flags` lets a client interface suppress review UI when loop-owned policy will resolve it. |
+| `workspace/created`                                          | `{ id, name, projectRoot }` | A workspace is created. This is the only current global event. |
+| `workspace/branch-batch`                                     | Branch-batch lifecycle payload | A branch batch enters queued, running, completed, failed, or recovery-required state. |
+| §notifications-stream-event-on-channel-change `stream/event` | `{ entryId, channel, state, contentLength }` | Channel content grows or channel state transitions. It carries metadata, not content; consumers use `readEntry` for bytes. |
+| §notifications-stream-concluded `stream/concluded`           | `{ entryId, target, subscriptionId, scheme, result, summary, wakeAction, wakeLoopId? }` | A subscription closes. Exact result truth is preserved; `wakeAction` records whether core resumed a parked loop, folded into an active loop, skipped an aborted/cancelled worker, or found no loop. |
+| §notifications-notice-event `notice/event`                   | `{ loopId, notice: Notice }` | A transient observation or progress notice occurs. It cannot alter durable history, scheduling, recovery, or model-visible failure truth. |
 
+§notifications-envelope-carries-workspaceid **Event scope is explicit.**
+`subscribeToEvents` supplies `(workspaceId, event, payload)`: `workspaceId` is
+the authoritative scope and is `null` only for a global event. Core does not
+mutate each payload to repeat it. A transport module stamps that scope onto any
+outward envelope that requires it and owns workspace fan-out.
 
-§methods-worker-name-reserved **Reserved worker names.** `plurnk` is reserved for the runtime actor ({§authority-terms}). `workspace.attach` rejects it — case-insensitively, *before* the lookup-or-create — so a client can neither forge a `plurnk` worker nor resume the runtime's, closing impersonation of `origin=plurnk`. The auto-namer never emits a reserved name.
+### §connection-lifecycle Client action evidence
 
-**Loops (model-driven)**
+A module client is an actor ({§machine-processes}). Its dispatched side effects
+write to its own client worker with `origin="client"`; one client action owns
+one journal segment, and its statements become ordered turns inside that
+segment. A proposal may hold the segment across an external interrupt/resume,
+but the segment records durable evidence rather than defining the public client
+lifecycle. Multiple client actors have distinct workers.
 
-| Method                             | Params                              | Result                 | Notes |
-|------------------------------------|-------------------------------------|------------------------|-------|
-| §methods-loop-run `loop.run`       | `prompt: string`, `maxTurns?: number`, `alias?: string`, `model?: string`, `flags?: LoopFlags` | `{ status: 100, loopId, action }` | Model-driven loop. **Accepts and returns immediately** (`status: 100`; `action` = `enqueued_new_loop` \| `injected_next_turn`) — it never blocks on the loop, which may block on a `SEND[202]` wait for its own spawned work ({§worker-lifecycle-wake-liveness}). The loop's exact outcome — `result`, `turnIds`, `hitMaxTurns`, `usage` — arrives on the **`loop/terminated`** event. The effective `maxTurns` is persisted on the loop and counts its durable turns cumulatively; parking and resuming never reset or replace it. Optional `flags` carries per-loop flags (`{auto?: boolean}`; see {§engine-rails}). Streams `log/entry` and `loop/proposal` during. `longRunning: false`. |
-| §proposal-list `proposal.list`     | — | `{ proposals: [{logEntryId, workerId, loopId, turnId, op, suffix, target, body, attrs, flags, at}] }` | Every pending (`state='proposed'`) stop-the-world proposal in the attached workspace — the indefinite-wait ruling's mandatory companion: `loop/proposal` is a notification, so a client reconnecting during a stopped world (possibly days old) DISCOVERS it here and answers via the ordinary `loop.resolve`. `attrs` carries `{question, choices}` for [300] asks. |
-| `loop.resolve`                     | `logEntryId: number`, `decision: "accept" \| "reject" \| "cancel"`, `body?: string`, `outcome?: string` | `{ status, logEntryId }` | Resolve a pending proposal (status=202 log entry). Engine.dispatch unpauses on resolution. |
-| §methods-loop-cancel `loop.cancel` | `reason?: string`                   | `{ cancelled, workerId, reason }` | Cancel the attached worker's structured scope. Every unresolved loop (`100`, `102`, or `202`) in the worker subtree closes at 499 and every held subscription is reaped; descendants never detach implicitly. Default reason `user_cancelled`. `cancelled` reports whether the attached worker had process-local work when the request arrived; durable parked or queued work is still terminalized when it is `false`. Cancellation is provenanced: each affected row records `terminated_by='cancel'` and the reason, and each terminal event carries the same message. |
-| `providers.list`                   | none                                | `{ aliases: ProviderAlias[] }` | Lists configured `PLURNK_MODEL_<alias>` entries with `{alias, provider, model, active}`. Clients use to populate model-selection UI. |
-
-§methods-loop-run-model **Per-loop model selection** (#414/#598). Optional
-`model` (client-resolved `<provider>/<model>`, wins) or `alias` (a declared
-`PLURNK_MODEL_<alias>`) overrides the boot-time `PLURNK_MODEL` for a newly
-created loop. The fully resolved `{ alias, provider, model, baseUrl? }` is
-persisted on that loop and is immutable through every turn, queue claim, async
-wake, and daemon restart; no resume path may substitute the boot default. A
-prompt folded into an active or parked loop must resolve to the same selection;
-a conflicting selection fails loudly and requires the caller to conclude or
-cancel before opening a loop on another model. Provider instances are cached,
-an unresolvable spec fails before enqueue, and neither selector runs the boot
-default. Mid-loop switching is not an implicit side effect of prompt injection;
-a future such capability requires its own explicit atomic operation.
-
-**Reads**
-
-| Method                           | Params                              | Result                 | Notes |
-|----------------------------------|-------------------------------------|------------------------|-------|
-| §methods-entry-read `entry.read` | `target: string`                    | `{ status, entry }`    | Read the full entry shape (channels + tags + metadata) at the given URI. |
-| §methods-log-read `log.read`     | `loopId?`, `turnId?`, `loopSeq?`, `turnSeq?`, `sequence?`, `sinceId?`, `limit?` | `{ entries: LogEntry[] }` | Read recent log entries from the attached workspace. A full display coordinate (`loopSeq`+`turnSeq`+`sequence`) resolves the single entry behind an `L/T/S` waterfall line — full shape (tx + rx), server-side, no client fetch-all+match (#271). |
-
-§methods-log-coordinate **Log coordinate.** Every `LogEntry` — from `log.read` and the `log/entry` notification alike — carries `loop_seq`/`turn_seq`, the loop+turn ordinals, beside the `loop_id`/`turn_id` DB keys, so a client renders the logical coordinate (e.g. `01/02/03`) without resolving ids.
-
-**DSL operations (client-driven, mirror grammar)**
-
-§methods-op-mirror Per the **Speak in DSL, not plumbing** rule (AGENTS.md): `op.*` methods construct DSL statements internally and dispatch through `Engine.dispatch`. Param shapes are ergonomic (semantic names, not HEREDOC slots); semantics are the DSL's.
-
-Each client action creates one terminal journal segment ({§connection-lifecycle}). Every
-statement in that action creates an ordered turn inside the segment, dispatches, fires
-`log/entry`, and returns its result. `op.parse` therefore does not manufacture one loop
-per parsed statement.
-
-Naming: `target` = URI the op acts on; `scope` for FIND; `source`/`destination` for COPY/MOVE; `recipient` for SEND (or null = broadcast); `cwd` for EXEC. `path` is reserved for *identity* — never an RPC operand.
-
-| Method        | Params                                                  | Notes |
-|---------------|---------------------------------------------------------|-------|
-| `op.find`     | `scope: string`, `matcher?: string`, `tags?: string[]`, `lineRange?: LineMarker` | Mirrors `<<FIND>>`. |
-| `op.read`     | `target: string`, `matcher?: string`, `lineRange?: LineMarker`, `tags?: string[]` | Mirrors `<<READ>>`. |
-| `op.edit`     | `target: string`, `content?: string`, `tags?: string[]`, `lineRange?: LineMarker` | Mirrors `<<EDIT>>`. |
-| `op.copy`     | `source: string`, `destination: string`, `tags?: string[]`, `lineRange?: LineMarker`, `destinationRange?: LineMarker` | Mirrors `<<COPY>>`; source and destination scopes are independent. |
-| `op.move`     | `source: string`, `destination: string`, `tags?: string[]`, `lineRange?: LineMarker`, `destinationRange?: LineMarker` | Mirrors `<<MOVE>>`; destination is required. |
-| `op.open`     | `target: string`, `matcher?: string`, `tags?: string[]` | Mirrors `<<OPEN>>`. |
-| `op.fold`     | `target: string`, `matcher?: string`, `tags?: string[]` | Mirrors `<<FOLD>>`. |
-| `op.send`     | `status: number`, `recipient?: string`, `body?: string` | Mirrors `<<SEND>>`. |
-| `op.exec`     | `cwd?: string`, `runtime?: string`, `command?: string`  | Mirrors `<<EXEC>>`. |
-| `op.dispatch` | `statement: PlurnkStatement`                            | Low-level path for clients that have a parsed AST already (e.g. the TUI when the user types raw HEREDOC at the prompt). |
-| `op.parse`    | `text: string`                                          | Convenience: daemon parses raw DSL text via the grammar, dispatches each statement as actions of one turn, returns `{ results: DispatchResult[] }`. |
-| `op.look`     | `text: string`                                          | Non-logging READ: resolves the target via READ's full scheme resolver and returns its content, writing **no** log entry. The client's off-worker inspection primitive — forward `<<LOOK>>` with the op token rewritten `LOOK`→`READ`. READ-only. {§op-look} |
-
-All `op.*` return `{ status, ...op-specific }`. All `requiresInit: true`. None `longRunning`.
-
-§op-look **`op.look` is the exception** to the "creates a turn, fires `log/entry`" rule above ({§methods-op-mirror}): it runs READ's full resolver (every scheme, full grammar — the client stays grammar-blind, forwarding its `<<LOOK>>` text with the op token swapped to `READ`) but mints **no turn and writes no `log_entries` row** — the read leaves no trace the model can see, the human-side counterpart to membership-gated model reads ({§operator-config}, "the boundary is the client's"). It resolves against the connection's client loop so worker-relative coordinates (`log:///<L>/<T>/<S>`) resolve correctly. Where `entry.read`/`log.read` leave no row but are scheme-limited, and `op.read` resolves everything but logs, `op.look` resolves everything **and** doesn't log. A non-READ statement is rejected.
-
-Future: `subscription.list`, `subscription.cancel` (the latter is `op.send({status: 499, recipient})` today).
-
-### §notifications Events
-
-| Notification                                                 | Params                              | When fired |
-|--------------------------------------------------------------|-------------------------------------|------------|
-| §notifications-log-entry-notify `log/entry`                  | `{ entry: LogEntry }`               | Every `log_entries` write. |
-| `loop/terminated`                                            | `{ workerId, loopId, result: OperationResult, hitMaxTurns, turnIds, usage }` | One loop reaches terminal status. `result` is the exact universal operation result; every failure includes its RFC 9457 Problem Details unchanged. `workerId` and `loopId` are an inseparable owning coordinate; transports bind completion to the exact loop they started or resumed and never infer either half from workspace traffic. |
-| `loop/proposal`                                              | `{ logEntryId, workspaceId, workerId, loopId, turnId, op, target, body, attrs, flags }` | Dispatch pauses on status=202. Carries `flags` so a client can suppress review UI when loop-owned policy will resolve it. Client responds with `loop.resolve` when authority crosses the boundary (or `PLURNK_SERVICE_PROPOSAL_TIMEOUT_MS` fires). |
-| `workspace/created`                                          | `{ id, name, projectRoot }` | Any client creates a workspace. |
-| §notifications-stream-event-on-channel-change `stream/event` | `{ entryId, channel, state, contentLength }` | Channel content grows or state transitions. |
-| §notifications-stream-concluded `stream/concluded`           | `{ entryId, target, subscriptionId, scheme, result, summary, wakeAction, wakeLoopId? }` | A streaming subscription closed (subprocess finished / errored / cancelled). `result` is the exact universal operation result, including RFC 9457 Problem Details for every failure. `wakeAction` says how the conclusion reached the worker: `resumed-loop` (a slept `202` loop resumed in place, {§worker-lifecycle-wake-liveness}), `no-op-active-loop` (folded into a live loop's next turn), `skipped-aborted`/`skipped-cancelled`, or `no-loop` (nothing to resume). `summary` is client presentation; it is never fed to the model or used as failure truth. |
-| §notifications-notice-event `notice/event`                   | `{ loopId, notice: Notice }` | A nonterminal observation or progress notice delivered live to clients. It is not a result channel and cannot affect durable history, lifecycle, recovery, scheduling, or model-visible failure truth. |
-
-§notifications-envelope-carries-workspaceid `stream/event` carries metadata only, never content. Clients fetch via `entry.read({target})`. **Every notification envelope carries its `workspaceId`** (and `workerId` where the emitter has it) so a multi-workspace client — one connection, many workspaces — can route it; the broadcast stays workspace-scoped too.
-
-### §connection-lifecycle Client context
-
-**Client action evidence.** A module client is an actor ({§machine-processes}); its
-side-effecting `op.*` actions write to its **own worker** with `origin = "client"`.
-One action owns one journal segment, and all statements parsed from that action are
-ordered turns inside it. A proposal may hold the segment open while the action crosses
-an AG-UI interrupt/resume boundary; resolution or failure closes it. These segments
-record durable action evidence but do not define client-visible lifecycle—AG-UI Runs do.
-Observational actions create no turns or rows. `LOOK` retains a closed, rowless
-observation segment because the public scheme context and relative `log:///` addressing
-require an honest numeric loop coordinate; it never leaves active lifecycle behind.
-Multiple client actors have distinct workers.
-
-`loop.run` and `inject` target the **model's worker** — a separate worker holding the conversation, `origin = "model"`. Both workers share the workspace's one filesystem ({§machine-processes}); the packet renders only the model's worker, so the client's ops are structurally absent from it — no origin filter ({§actor-boundary-isolation}). The model worker (`Envelope.ensureModelWorker`) and the client context's worker are distinct, each lazily allocated on first use.
+`runLoop` targets a separate model worker holding the conversation with
+`origin="model"`. Both workers share workspace state, while a packet renders
+only the model worker's private log; client action rows are structurally absent
+without an origin filter ({§actor-boundary-isolation}).
 
 ### §versioning Versioning
 
-The module seam follows the platform major. External protocol compatibility is
-owned by the client-interface module that publishes it.
+The typed module seam is released with the service package. Core exposes no
+runtime version or update-advertising action. External protocol compatibility
+and any protocol-level version negotiation belong to the client-interface
+module that publishes that protocol.
 
 ---
 
@@ -1647,7 +1598,7 @@ inspect the section content and add, remove, or reorder sections. It receives no
 separate engine, database, actor, or request context.
 
 This is strictly a trusted in-process seam, admitted through the common plugin
-trust gate; the client/RPC wire cannot invoke it. Whole-list transformation is
+trust gate; an external client action cannot invoke it. Whole-list transformation is
 the fork-avoidance valve for alternate packet shapes ({§ecosystem}), while
 grinding and folding remain closed engine concerns.
 
@@ -1694,7 +1645,7 @@ time of measurement.
 
 **The boundary is the client's.** The client owns the model's filesystem access in both directions: reads are membership-gated (a file is invisible to the model unless it is a member), and writes are proposals the client accepts or rejects (client `--yolo` auto-accepts). Writing an entry never implies writing to disk — entries are canonical in the store; disk only moves when the client accepts a side-effecting proposal, and only where `project_root` is set (null = headless, client owns materialization).
 
-**Tier — workspace is the world; permissions are the workspace's.** Membership, the overlay, and the git flags are **workspace-tier** (`workspace_constraints.workspace_id`, service/workspace config) — never per-worker. Every worker in a workspace shares one world ({§machine-processes}: one filesystem, one overlay); a worker is a *log* — a perspective over that world — owning no membership of its own. A declaration reshapes the one world for every worker, never per-connection. `workers.origin` is attribution (whose perspective), not a permission.
+**Tier — workspace is the world; permissions are the workspace's.** Membership, the overlay, and the git flags are **workspace-tier** (`workspace_constraints.workspace_id`, service/workspace config) — never per-worker. Every worker in a workspace shares one world ({§machine-processes}: one filesystem, one overlay); a worker is a *log* — a perspective over that world — owning no membership of its own. A declaration reshapes the one world for every worker, never per-client binding. `workers.origin` is attribution (whose perspective), not a permission.
 
 **Workspace identity.** No `projects` table; `workspaces.project_root TEXT` (nullable = headless) anchors the workspace. `entries.scope ∈ {'workspace','worker'}` (agent-scope retired). Workspace = workspace; no users/auth/multi-tenant.
 
@@ -1865,8 +1816,8 @@ between what was requested and what landed. {§copy-move-observation}
 
 **Decision — two distinct mechanisms with distinct names.** Authority lives at one of two layers:
 
-- §proposal-ownership-loop-auto **Loop auto** — a per-loop flag, `loops.flags.auto=true`, set via `loop.run({flags:{auto:true}})` or the client `--auto` sugar. The in-tree `auto` listener resolves proposals **in-process** without any `loop.resolve` crossing the wire. No client need be connected. Its uses are non-interactive automation, benchmarks, CI, fixtures, and deliberately unattended dogfood.
-- **Client-side YOLO** — the *client's* own setting (`--yolo` / `PLURNK_YOLO`). The daemon emits the `loop/proposal` notification exactly as always; the client immediately answers `loop.resolve({decision:"accept"})`. The wire roundtrip still happens and the daemon stays **unaware** the acceptance was automatic — indistinguishable from a fast human. Its use is the interactive "stop bothering me" workspace.
+- §proposal-ownership-loop-auto **Loop auto** — a per-loop flag, `loops.flags.auto=true`, set on a `runLoop({flags:{auto:true}})` request or by client sugar. The in-tree `auto` listener resolves proposals **in-process** without a client decision crossing the boundary. No client need be connected. Its uses are non-interactive automation, benchmarks, CI, fixtures, and deliberately unattended dogfood.
+- **Client-side YOLO** — the *client's* own setting (`--yolo` / `PLURNK_YOLO`). The daemon emits the `loop/proposal` notification exactly as always; the client immediately returns an accepted proposal through its ordinary resolution path (standard AG-UI resume for the default interface). The roundtrip still happens and the daemon stays **unaware** the acceptance was automatic — indistinguishable from a fast human. Its use is the interactive "stop bothering me" workspace.
 
 §proposal-ownership-notification **The notification carries authority.** `loop/proposal` carries `flags` ({§notifications}), including `auto`, so a connected client suppresses review UI for a proposal the loop will resolve itself.
 
@@ -2035,7 +1986,7 @@ retain distinct contracts and lifetimes.
 
 §policy-sections Two sections ride the system slot **below the operator notes, at the slot's bottom**: `## Policy` from `PLURNK_SERVICE_POLICY` (default `~/.plurnk/AGENTS.md`) and `## Project Policy` from `PLURNK_SERVICE_PROJECT` (default `<projectRoot>/AGENTS.md`, resolved relative to the workspace root). AGENTS.md is **policy** — the client's authoritative rules promoted into the privileged zone — NOT a curatable, foldable, READ-able entry; the model cannot FOLD it away. A default-absent path is silent (the section is omitted); an explicit override (env set) that fails to read fails the turn hard — a deliberate setting with a broken path is a misconfig, surfaced not hidden. Read per-turn so edits take effect live. Reference/scratch docs are NOT policy — they ride `PLURNK_SERVICE_MD_*` (materialized as READ-able entries, {§operator-config}), which is where the dev-notes AGENTS.md used to hold belong.
 
-**The scheme self-doc contract.** `example` is the hot-path one-liner; `documentation` is the deep doc — the exact shape execs already use (`example` + `documentation`). `SchemeRegistry.teach()` renders the directory; `docEntries()` materializes the docs (per loop.run, alongside the operator docs). `documentation` rides a service-side `SchemeManifest` extension until plurnk-schemes#25 lands it in the contract.
+**The scheme self-doc contract.** `example` is the hot-path one-liner; `documentation` is the deep doc — the exact shape execs already use (`example` + `documentation`). `SchemeRegistry.teach()` renders the directory; `docEntries()` materializes the docs when core publishes capabilities for a workspace. `documentation` rides a service-side `SchemeManifest` extension until plurnk-schemes#25 lands it in the contract.
 
 ### §requirements The requirements section — static per-turn rules
 

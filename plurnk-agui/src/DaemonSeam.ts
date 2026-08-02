@@ -65,9 +65,9 @@ export interface DaemonSeam {
     readLog(args: { workspaceId: number; workerId: number; loopId?: number; turnId?: number; sinceId?: number; limit?: number; loopSeq?: number; turnSeq?: number; sequence?: number }): Promise<LogEntryWire[]>;
     // Providers + effective prompt budget (promptBudget) for the STATE gauge.
     listProviders(): { aliases: Array<{ alias: string; provider: string; model: string; active: boolean; promptBudget: number | null }> };
-    // Workspace lifecycle — establish the envelope a thread binds to. createWorkspace
-    // returns the full envelope INCLUDING modelWorkerId (no lazy inference — the WS
-    // bridge's adopt-first-model-row dance is dead).
+    // Workspace lifecycle — establish the world/client-worker value a thread binds to.
+    // Conversation-worker selection remains a separate module-owned step (#64 tracks
+    // removal of the envelope's two inert nullable ids).
     createWorkspace(args: { name?: string; projectRoot?: string | null; settings?: string | object; constraints?: Array<{ effect: string; glob: string }> }): Promise<ClientEnvelope>;
     attachWorkspace(args: { workspaceId: number; workerId?: number; workerName?: string }): Promise<ClientEnvelope>;
     listWorkspaces(): Promise<Array<{ id: number; name: string }>>;

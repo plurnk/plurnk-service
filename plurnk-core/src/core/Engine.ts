@@ -521,7 +521,7 @@ export default class Engine {
     }
 
     // Per-loop usage totals (#197): SUM the loop's turns (usage is stored per
-    // turn, {§tokenomics}). Surfaced on loop.run + loop/terminated so clients render real
+    // turn, {§tokenomics}). Surfaced on loop/terminated so clients render real
     // token/cost numbers. costUsd is the stored USD unit.
     // #345 — the client-facing budget denominator, ONE meaning on every surface: the prompt
     // budget the packet actually lives under, including optional virtual pressure.
@@ -2150,8 +2150,8 @@ export default class Engine {
         return row.id;
     }
 
-    // External API to feed a resolution into a pending proposal — the loop/resolve
-    // RPC handler, the in-tree auto listener, or the timeout watcher.
+    // External API to feed a resolution into a pending proposal — the client-interface
+    // seam, the in-tree auto listener, or the timeout watcher.
     // Shutdown lane: settle every pending proposal with a cancel so a stopped world can never
     // deadlock the stop ({§proposal-cancel-aborts}; the #344 wedge class).
     cancelAllProposals(outcome: string): void {
@@ -2162,7 +2162,7 @@ export default class Engine {
         this.#proposals.resolve(logEntryId, resolution);
     }
 
-    // Snapshot of pending proposals (for diagnostic / RPC listings).
+    // Snapshot of pending proposals for client-interface discovery.
     pendingProposalIds(): number[] {
         return this.#proposals.pendingIds();
     }
@@ -2184,7 +2184,7 @@ export default class Engine {
     }
 
     // Workspace-scope eager warm: creation and membership changes start the
-    // exhaustive graph/FTS/vector derivation immediately. The RPC returns while
+    // exhaustive graph/FTS/vector derivation immediately. The seam call returns while
     // progress live-fans-out at loopId 0; a model turn joins this same coalesced
     // promise and cannot reach its provider until coverage is complete.
     async warmWorkspaceDerivations(workspaceId: number): Promise<void> {

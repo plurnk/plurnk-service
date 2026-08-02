@@ -87,7 +87,7 @@ ORDER BY e.id ASC;
 
 -- PREP: drain_orphaned_prompt_for_loop
 -- A loop can terminate before consuming a next-turn prompt injected into it
--- (a wake-on-completion, or a loop.run-while-active that landed on a turn the
+-- (a wake-on-completion, or a runLoop-while-active prompt that landed on a turn the
 -- loop never reached). Engine.inject writes prompt:///<loop>/<N>;
 -- if the loop ended at turn K, an injected prompt at turn > K never ran.
 -- Returns the latest such orphan's body + the ended loop's flags so

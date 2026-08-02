@@ -593,11 +593,11 @@ export default class Dispatcher {
             if (typeof attrPath === "string") this.#searchGate?.registerPending(loopId, turnId, rt, cmd, attrPath);
         }
         onDispatch?.(logEntryId);
-        // Proposal lifecycle (SPEC.md {§engine-rails} + {§methods} loop.resolve; {§proposal-202-pauses}). When a
+        // Proposal lifecycle (SPEC.md {§engine-rails} + {§methods-proposal-resolve}; {§proposal-202-pauses}). When a
         // side-effecting op returns status 202 (a broadcast SEND[202] park is model
         // speech, not a proposal — #isProposal, #255), the entry is written
         // state='proposed'; dispatch then PAUSES on a per-entry waiter until
-        // resolution arrives via Engine.resolveProposal (from the loop/resolve RPC,
+        // resolution arrives via Engine.resolveProposal (from a client-interface resume,
         // auto listener, or timeout). The post-resolution status replaces 202 in the
         // result the caller sees, so runTurn never branches on a pending state.
         if (Dispatcher.#isProposal(statement, result)) {
@@ -2590,7 +2590,7 @@ export default class Dispatcher {
             // Owner ruling (#346): the question rides the same stop-the-world proposal system as
             // file edits. Returning 202 here routes through the proposal seam
             // (#isProposal admits signal-300 SENDs): loop/proposal carries {question, choices},
-            // loop.resolve's accept body IS the answer, and applyResolution writes it into the
+            // The accepted proposal body IS the answer, and applyResolution writes it into the
             // model-facing rx — the answer arrives as the result of the ask itself. Timeout is
             // the standard {§proposal-timeout-cancels}. Zero options = an open question.
             const parts = raw.split(";").map((x) => x.trim()).filter((x) => x.length > 0);

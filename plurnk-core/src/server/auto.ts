@@ -1,5 +1,5 @@
 // Loop auto-approval listener — resolves proposals when persisted flags.auto is true.
-// No client roundtrip; no human approval; no RPC involvement.
+// No client roundtrip and no human approval.
 //
 // === Loop auto vs client-side YOLO ===
 //
@@ -7,10 +7,10 @@
 // replaces the other.
 //
 //   Loop auto (this file)
-//     - Enabled via loops.flags.auto = true. RPC opt-in:
-//       loop.run({ prompt, flags: { auto: true } }).
+//     - Enabled via loops.flags.auto = true. A CoreSeam runLoop request may
+//       opt in with { flags: { auto: true } }.
 //     - Engine auto-accepts in-process; the client need not be connected.
-//     - Use cases: benchmarks (pure model+grammar timing, no RPC roundtrip
+//     - Use cases: benchmarks (pure model+grammar timing, no client roundtrip
 //       in the hot loop), CI runs, ad-hoc internal automation, test
 //       fixtures. Anywhere "just run and tell me the final state" is the
 //       right contract.
@@ -19,7 +19,7 @@
 //
 //   Client-side YOLO (@plurnk/plurnk --yolo / PLURNK_YOLO)
 //     - Client receives the loop/proposal notification and immediately
-//       sends loop.resolve({decision:"accept", outcome:"client_yolo"}).
+//       sends a standard proposal-resume decision through its client protocol.
 //     - The wire roundtrip still happens; the daemon stays unaware that
 //       no human reviewed.
 //     - Use cases: real users who want "stop bothering me" ergonomics
@@ -57,7 +57,7 @@ export default class Auto {
                 engine.resolveProposal(event.logEntryId, { decision: "accept" });
             } catch {
                 // Errors here don't abort dispatch — the proposal stays
-                // pending and falls through to the RPC / timeout path.
+                // pending and falls through to the client-decision / timeout path.
             }
         });
     }

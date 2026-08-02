@@ -1,4 +1,4 @@
--- entry.read RPC queries. SPEC {§methods}.
+-- CoreSeam readEntry queries. SPEC {§methods-entry-read}.
 
 -- PREP: entry_read_lookup
 SELECT id, workspace_id, owner_id, scheme, pathname

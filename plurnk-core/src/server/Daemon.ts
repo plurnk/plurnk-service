@@ -15,7 +15,7 @@ import SchemeRegistry from "../core/SchemeRegistry.ts";
 import { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import type { Provider, ProviderAlias } from "@plurnk/plurnk-providers";
 // The event scope (#364 — relocated from the retired MethodRegistry): "all" = a global event
-// (workspace/created), {workspaceId} = workspace-scoped. "this" retired with the per-connection leg.
+// (workspace/created), {workspaceId} = workspace-scoped.
 export type NotifyTarget = "all" | { workspaceId: number };
 // One drained loop's terminal shape — the drain's return currency.
 export interface DrainLoopResult { loopId: number; result: SchemeResult; hitMaxTurns: boolean; turnIds: number[]; action?: string; usage?: { promptTokens: number; completionTokens: number; costUsd: number } }
@@ -143,7 +143,7 @@ export default class Daemon {
     // in-flight subscription tears down — even a spawn that registers AFTER the
     // cancel self-aborts against the already-aborted signal (no race). Outlives
     // any single (ephemeral) drain; replaced with a fresh controller once
-    // aborted so a later loop.run isn't born cancelled.
+    // aborted so a later runLoop request isn't born cancelled.
     #workerAborts = new Map<number, AbortController>();
     // grammar 0.74.20 EXEC `<T,P>` — per-worker hibernation poll-wake timer. When a loop parks at
     // a park with a polled stream, a timer fires every P seconds to resume it ({§exec-poll}). One
@@ -311,13 +311,13 @@ export default class Daemon {
     // gate, validation, and applyResolution stay core (Engine.resolveProposal); the seam is the read +
     // the resolve, never the mechanism. `resolveProposal` throws for an unknown/already-resolved id.
     async pendingProposals(workspaceId: number): Promise<PendingProposal[]> {
-        const checkedWorkspaceId = ClientInput.assertId("proposal.list", "workspaceId", workspaceId);
+        const checkedWorkspaceId = ClientInput.assertId("pendingProposals", "workspaceId", workspaceId);
         return this.#db.proposal_list_pending.all<PendingProposal>({ workspace_id: checkedWorkspaceId });
     }
 
     resolveProposal(logEntryId: number, resolution: Omit<ProposalResolution, "result">): void {
-        const checkedLogEntryId = ClientInput.assertId("proposal.resolve", "logEntryId", logEntryId);
-        const checkedResolution = ClientInput.assertProposalResolution("proposal.resolve", resolution);
+        const checkedLogEntryId = ClientInput.assertId("resolveProposal", "logEntryId", logEntryId);
+        const checkedResolution = ClientInput.assertProposalResolution("resolveProposal", resolution);
         this.#engine.resolveProposal(checkedLogEntryId, checkedResolution);
     }
 
@@ -326,14 +326,14 @@ export default class Daemon {
     // loop runs async and its outcome arrives on the event source (loop/terminated). `cancelDrain` (public)
     // is the cancel hook. Both funnel through the unified `inject`, which owns the drain lifecycle.
     async runLoop(args: { workspaceId: number; workerId: number; prompt: string; maxTurns?: number; flags?: Partial<LoopFlags>; openPaths?: string[]; alias?: string; model?: string }): Promise<SchemeResult & { action: "injected_next_turn" | "enqueued_new_loop"; loopId: number; turnSeq?: number }> {
-        const workspaceId = ClientInput.assertId("loop.run", "workspaceId", args.workspaceId);
-        const workerId = ClientInput.assertId("loop.run", "workerId", args.workerId);
-        const prompt = ClientInput.assertPrompt("loop.run", args.prompt);
-        const requestedMaxTurns = ClientInput.assertMaxTurns("loop.run", args.maxTurns);
-        const openPaths = ClientInput.assertOpenPaths("loop.run", args.openPaths);
-        const alias = ClientInput.assertOptionalSelector("loop.run", "alias", args.alias);
-        const model = ClientInput.assertOptionalSelector("loop.run", "model", args.model);
-        const flags = ClientInput.normalizeLoopFlags("loop.run", args.flags) as Partial<LoopFlags> | undefined;
+        const workspaceId = ClientInput.assertId("runLoop", "workspaceId", args.workspaceId);
+        const workerId = ClientInput.assertId("runLoop", "workerId", args.workerId);
+        const prompt = ClientInput.assertPrompt("runLoop", args.prompt);
+        const requestedMaxTurns = ClientInput.assertMaxTurns("runLoop", args.maxTurns);
+        const openPaths = ClientInput.assertOpenPaths("runLoop", args.openPaths);
+        const alias = ClientInput.assertOptionalSelector("runLoop", "alias", args.alias);
+        const model = ClientInput.assertOptionalSelector("runLoop", "model", args.model);
+        const flags = ClientInput.normalizeLoopFlags("runLoop", args.flags) as Partial<LoopFlags> | undefined;
         // #414 — per-loop model selection: a client sends its alias/model on every loop, so a
         // switch takes effect turn-to-turn. `model` (client-resolved <provider>/<model>, #90) wins
         // over `alias`; neither → the boot default. Instantiation is cached, so ping-ponging
@@ -355,7 +355,7 @@ export default class Daemon {
         }
         const systemPrompt = await readFile(Paths.instructionsSystem, "utf8");
         // {§machine-processes} — the model NEVER runs in a client-origin worker (its packets would carry
-        // client op.* rows). The module resolves the model worker via ensureModelWorker and passes it (or a
+        // client-action rows). The module resolves the model worker via ensureModelWorker and passes it (or a
         // fork); a client worker here is a caller error, refused loudly rather than silently rehomed.
         const target = await this.#db.envelope_get_worker_by_id.get<{ workspace_id: number; origin: string }>({ id: workerId });
         if (target === undefined) {
@@ -429,7 +429,7 @@ export default class Daemon {
                 { stage: "provider-selection", retryable: false },
             );
         }
-        // Resolve eagerly so loop.run fails before enqueue when the provider
+        // Resolve eagerly so runLoop fails before enqueue when the provider
         // cannot be constructed. The drain later retrieves this cached handle
         // from the loop's durable spec at the claim boundary.
         try {
@@ -522,7 +522,7 @@ export default class Daemon {
     }
 
     // {§machine-processes} — the workspace's model worker (created on first use), distinct from the client
-    // worker so the model's packets never carry client op.* rows. The module binds its threads to this.
+    // worker so the model's packets never carry client-action rows. The module binds its threads to this.
     ensureModelWorker(workspaceId: number): Promise<number> {
         return Envelope.ensureModelWorker(
             this.#db,
@@ -1262,7 +1262,7 @@ export default class Daemon {
      *     status=100, starts a drain. Returns the drain promise so the
      *     caller can await full completion.
      *
-     * Rummy parallel: AgentLoop.inject(). Unified surface — both `loop.run`
+     * Rummy parallel: AgentLoop.inject(). Unified surface — both `runLoop`
      * and wake-on-completion go through this method. {§actor-boundary-passive-wake}
      */
     // #368 — flags are LOOP-scoped (persisted per loop row; the packet's teaching follows them), so a
@@ -1356,7 +1356,7 @@ export default class Daemon {
         // serialized against a draining sibling's teardown relinquish so the two can't
         // both register a drain (R4). A live drain re-claims the loop in its own
         // iteration or its lock-held exit re-claim, so it's never stranded.
-        // firstLoopPromise is present only when THIS call started the drain — loop.run
+        // firstLoopPromise is present only when THIS call started the drain — runLoop
         // keys its fast-path response on that.
         const started = await this.#ensureDrain({
             workspaceId, workerId, systemPrompt: args.systemPrompt,
@@ -1408,7 +1408,7 @@ export default class Daemon {
      * exits when queue is empty AND no active subscriptions remain.
      *
      * Returns both `firstLoopPromise` (resolves once the first loop the
-     * drain processes completes — used by loop.run to give the caller a
+     * drain processes completes — used by runLoop to give the caller a
      * fast response containing their loop's result) and `drainPromise`
      * (resolves only when the whole drain finishes, queue+subs settled).
      */
@@ -1550,7 +1550,7 @@ export default class Daemon {
                         resolveFirst(loopResult);
                     }
                     // A next-turn prompt this loop ended before consuming (a
-                    // wake conclusion or a loop.run-while-active) is promoted to
+                    // wake conclusion or a runLoop-while-active prompt) is promoted to
                     // a fresh queued loop so it's never silently dropped.
                     await this.#reconcileOrphanedWake(workerId, loopRow.id);
                     currentLoopId = null;
@@ -1558,7 +1558,7 @@ export default class Daemon {
             } catch (err) {
                 if (controller.signal.aborted) {
                     // #204 / Model 3 — loop.cancel / shutdown aborted the live drain. A cancellation
-                    // is the loop's TERMINAL state (499), delivered via loop/terminated (loop.run no
+                    // is the loop's TERMINAL state (499), delivered via loop/terminated (runLoop no
                     // longer blocks to return it). A genuine error rejects firstLoopPromise.
                     const usage = currentLoopId === null
                         ? { promptTokens: 0, completionTokens: 0, costUsd: 0, contextTokens: 0, promptBudget: null, meta: {} }
@@ -1634,7 +1634,7 @@ export default class Daemon {
                         });
                     }
                 } else {
-                    // #265 — a genuine (non-abort) loop error must still reach the client. loop.run only
+                    // #265 — a genuine (non-abort) loop error must still reach the client. runLoop only
                     // acknowledged queueing, so loop/terminated is the sole outcome channel; the rejection
                     // alone reaches no one (firstLoopPromise/drainPromise are .catch()'d). Broadcast 500
                     // (failed) — distinct from an abort's 499 — for every error, not just the pre-first one.
@@ -1743,7 +1743,7 @@ export default class Daemon {
     }
 
     // After a loop terminates, promote any next-turn prompt it never consumed —
-    // an injected wake (stream conclusion) or a loop.run-while-active prompt
+    // an injected wake (stream conclusion) or a runLoop-while-active prompt
     // that landed on a turn the loop didn't reach — into a fresh queued loop.
     // The drain claims it on its next iteration, so a conclusion or client
     // prompt is never silently dropped. Inherits the ended loop's flags.
@@ -1769,7 +1769,7 @@ export default class Daemon {
     }
 
     // The worker's cancellation scope — lazily created, and replaced once aborted
-    // so a later loop.run gets a live signal. The drain and the execs its loops
+    // so a later runLoop gets a live signal. The drain and the execs its loops
     // spawn all run under it.
     #workerSignal(workerId: number): AbortController {
         const existing = this.#workerAborts.get(workerId);
@@ -1816,7 +1816,8 @@ export default class Daemon {
      * worker signal stops the running loop's turn generation AND tears down every
      * stream linked to it — a background exec that outlived its loop, or even a
      * spawn that registers after this abort (it self-aborts against the aborted
-     * signal). Returns cancelled iff there was work. Queued loops stay enqueued.
+     * signal). Returns cancelled iff there was process-local work; durable
+     * unresolved loops in the worker tree are terminalized independently.
      */
     cancelDrain(workerId: number, reason: string = "user_cancelled"): boolean {
         const hadDrain = this.#activeDrains.has(workerId);

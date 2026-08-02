@@ -1,10 +1,8 @@
-// Envelope lifecycle helpers for client connections. SPEC {§connection-lifecycle}.
+// Envelope lifecycle helpers for module clients. SPEC {§connection-lifecycle}.
 //
-// Every connected client gets a (workspace, worker, client-loop) envelope. Either
-// the client picks the workspace explicitly (workspace.create / workspace.attach)
-// or the daemon auto-creates one on first requiresInit RPC. In both cases
-// the daemon opens a new worker within the workspace and a new client loop within
-// that worker; the client loop closes on disconnect.
+// A client-interface module receives this value from an explicit workspace create
+// or attach call. Core creates or selects the client worker but retains no transport
+// binding; each dispatched client action allocates and settles its own journal segment.
 
 import type { Db } from "../core/Db.ts";
 import GitMembership from "../core/git-membership.ts";
@@ -38,12 +36,10 @@ export interface WorkerRow {
     origin: "model" | "client" | "plurnk";
 }
 
-// Per-connection envelope. `workerId` is the connection's own worker — the client
-// actor's: `op.*` and `log.read` live there ({§connection-lifecycle}, {§machine-processes}). `modelWorkerId` is the
-// model's separate worker (the conversation); `loop.run`/`loop.cancel` target it and
-// the packet renders it, so client ops are absent from what the model sees with no
-// filter. Both `modelWorkerId` and `clientLoopId` are lazily allocated on first use —
-// a connection that never drives a model never spawns a model worker.
+// `workerId` is the client actor's worker: dispatched client actions live there
+// ({§connection-lifecycle}, {§machine-processes}). The conversation worker is
+// resolved separately by the client-interface module. #64 tracks removal of the
+// two legacy nullable ids, which production core never populates.
 export interface ClientEnvelope {
     workspaceId: number;
     workspaceName: string;
@@ -217,9 +213,9 @@ export default class Envelope {
     }
 
     // Lazy model-worker allocator ({§connection-lifecycle}, {§machine-processes} — the client writes to its own worker).
-    // The model's conversation lives in its own worker, distinct from the connection's
+    // The model's conversation lives in its own worker, distinct from the client's
     // client worker, so the packet — rendered from the model worker — never carries
-    // the client's op.*. Created on the first loop.run; reused for the connection.
+    // the client's dispatched actions. The module resolves and retains the binding.
     // #366 — a FRESH conversation over the same world ({§machine-processes}: two workers are two
     // conversations about one curated workspace): a named, empty-log, model-origin root worker.
     // Distinct from ensureModelWorker (the stable default conversation) and forkWorker (copies history).

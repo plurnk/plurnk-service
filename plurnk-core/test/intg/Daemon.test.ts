@@ -69,6 +69,44 @@ test("Daemon: listenerless boot — the seam is live with no socket bound (#364)
     });
 });
 
+test("Daemon: module actions register once during setup and invoke through CoreSeam", async () => {
+    const db = await openMigrated();
+    const daemon = new Daemon({ db, provider: null });
+    const calls: Array<Readonly<Record<string, unknown>>> = [];
+    daemon.registerModule({
+        setup: (seam) => {
+            assert.throws(
+                () => seam.registerModuleAction("", async () => ({})),
+                /action name must not be empty/,
+            );
+            seam.registerModuleAction("example.inspect", async (params) => {
+                calls.push(params);
+                return { inspected: params.target };
+            });
+            assert.throws(
+                () => seam.registerModuleAction("example.inspect", async () => ({})),
+                /module action 'example\.inspect' is already registered/,
+            );
+        },
+    });
+    try {
+        await daemon.start();
+        assert.deepEqual(daemon.listModuleActions(), ["example.inspect"]);
+        assert.deepEqual(
+            await daemon.invokeModuleAction("example.inspect", { target: "sample" }),
+            { inspected: "sample" },
+        );
+        assert.deepEqual(calls, [{ target: "sample" }]);
+        await assert.rejects(
+            () => daemon.invokeModuleAction("missing", {}),
+            /module action 'missing' is not registered/,
+        );
+    } finally {
+        await daemon.stop();
+        await db.close();
+    }
+});
+
 test("Daemon boot reconciles documentation for existing workspaces once", async () => {
     const db = await openMigrated();
     const workspaceId = await insertWorkspace(db, `boot-docs-${crypto.randomUUID()}`);

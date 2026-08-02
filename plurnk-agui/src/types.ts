@@ -14,8 +14,8 @@ export type {
 } from "@ag-ui/core";
 import type { OperationResult } from "@plurnk/plurnk-contracts";
 
-// The daemon wire — the slice of the plurnk JSON-RPC protocol this bridge consumes.
-// The daemon owns these shapes; the module consumes them from the in-process seam.
+// The daemon event shapes this module consumes from the typed in-process seam.
+// Core owns the shapes; this module owns their external AG-UI projection.
 export interface LogEntryNotification {
     entry: {
         id: number;

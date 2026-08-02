@@ -28,7 +28,7 @@ SELECT COUNT(*) AS n FROM loops WHERE worker_id = $worker_id AND status = 102;
 SELECT flags FROM loops WHERE id = $loop_id;
 
 -- PREP: engine_set_loop_flags
--- Updates the loop's persisted flags (json). Called by loop.run RPC handler.
+-- Updates the loop's persisted flags (json). Called by the runLoop seam.
 UPDATE loops SET flags = $flags WHERE id = $loop_id;
 
 -- PREP: engine_tag_loop_attributions
@@ -37,7 +37,7 @@ UPDATE loops SET flags = $flags WHERE id = $loop_id;
 UPDATE loops SET attributions = $attributions WHERE id = $loop_id AND attributions = '[]';
 
 -- PREP: engine_set_loop_open_paths
--- #260 — persist the loop.run-passed @file paths (string[] JSON) on the loop before the drain
+-- #260 — persist runLoop's @file paths (string[] JSON) on the loop before the drain
 -- starts, so runTurn foists a turn-0 READ of each (same seam as the #250 AGENTS.md auto-read).
 UPDATE loops SET open_paths = $open_paths WHERE id = $loop_id;
 
@@ -116,7 +116,7 @@ SELECT COALESCE(MAX(sequence), 0) + 1 AS next FROM turns WHERE loop_id = $loop_i
 
 -- PREP: engine_loop_usage
 -- Per-loop usage totals — SUM the loop's turns ({§tokenomics} stores usage per turn).
--- Surfaced on loop.run + loop/terminated (#197). `context` is the LAST turn's prompt tokens — the
+-- Surfaced on loop/terminated (#197). `context` is the LAST turn's prompt tokens — the
 -- latest provider attempt's honest window-occupancy numerator (#263), distinct from the summed
 -- `prompt` (which includes every billed retry and overcounts a context that grows across turns).
 SELECT COALESCE(SUM(usage_prompt), 0)     AS prompt,
@@ -488,7 +488,7 @@ ORDER BY l.sequence, t.sequence, le.sequence;
 -- Default state='resolved' covers the common path (non-proposing schemes
 -- return their final status immediately). Status 202 + state='proposed'
 -- triggers the proposal lifecycle (engine pauses dispatch; client resolves
--- via loop/resolve RPC; entry transitions through engine_resolve_log_entry).
+-- via proposal resolution; entry transitions through engine_resolve_log_entry).
 INSERT INTO log_entries (
     worker_id, loop_id, turn_id, sequence, origin, source,
     op, suffix, signal,
@@ -508,7 +508,7 @@ RETURNING id;
 
 -- PREP: engine_resolve_log_entry
 -- Transitions a proposed log entry to its terminal state. Used by the
--- proposal lifecycle (loop/resolve RPC, auto resolution, timeout, abort).
+-- proposal lifecycle (client resolution, auto resolution, timeout, abort).
 -- Updates status_rx + rx + state + outcome atomically.
 UPDATE log_entries
    SET state = $state,

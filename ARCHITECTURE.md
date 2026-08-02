@@ -263,4 +263,4 @@ Schemas define shared wire shapes. Package specifications define public behavior
 and invariants owned by that package. Tests provide executable examples.
 
 Architecture documentation describes boundaries and flow; it does not prescribe
-implementation by analogy. Design history remains in Git and GitHub issues.
+implementation by analogy. Design history remains in Git and forge issues.

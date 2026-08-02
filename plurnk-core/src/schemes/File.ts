@@ -39,7 +39,7 @@ type ApplyResult = SchemeResultBase & { outcome?: string; body?: string; result?
 
 // Workspace root for file ops is sourced from `workspaces.project_root`,
 // supplied by the client at workspace.create (headless is forever; issue
-// #150 wired the RPC; F.1 added the column). Server doesn't guess —
+// #150 wired the client-interface seam; F.1 added the column). Core doesn't guess —
 // the client owns workspace identity. If a workspace is headless
 // (project_root=null), file ops fail at 400; the client either supplies
 // a root or the op isn't appropriate for this workspace.

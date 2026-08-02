@@ -1,4 +1,4 @@
--- log.read RPC query. SPEC {§methods}.
+-- CoreSeam readLog query. SPEC {§methods-log-read}.
 -- Static query with IS-NULL guards on optional filters. The loops/turns joins
 -- resolve the DISPLAY coordinate (loop_seq/turn_seq/op-sequence) so a client can
 -- target one entry by its `L/T/S` coordinate (plurnk-service#271) instead of

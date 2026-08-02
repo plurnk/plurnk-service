@@ -7,7 +7,8 @@
 //   stopped-world emits a request_approval/request_user_input TOOL_CALL and finishes
 //   with an AG-UI interrupt outcome (the loop stays paused in-engine); the next AG-UI Run's
 //   standard resume entries resolve the durable proposal and continue the exact loop.
-//   Reads ride STATE_SNAPSHOT on RUN_STARTED; no /plurnk/rpc, no /resolve.
+//   Reads ride STATE_SNAPSHOT on RUN_STARTED; there are no side-channel action
+//   or proposal-resolution endpoints.
 // An AG-UI threadId names one conversation worker inside the explicitly forwarded
 // workspace ({§agui-thread-binding}); no prefix or inferred workspace is minted.
 
@@ -111,6 +112,10 @@ export default class Module {
     #threads = new Map<string, ClientEnvelope>(); // threadId → envelope
     #threadWorkers = new Map<string, number>();   // threadId → conversation workerId
 
+    static #CONTROL_ACTIONS = Object.freeze([
+        "ping", "discover", "providers.list", "workspace.list", "workspace.create", "workspace.attach",
+    ]);
+
     // The control plane vs the world. An AG-UI Run lives in a world (a conversation, or an action
     // that reads/writes a workspace's log); a control-plane action (list/create/attach/discover/
     // auth) does NOT — so it must not bind or forge a workspace (operator ruling 2026-07-10:
@@ -120,12 +125,34 @@ export default class Module {
         "workspace.constrain", "workspace.unconstrain", "workspace.constraints", "entry.read",
         "workspace.derivation", "op.exec", "op.parse", "workspace.members", "op.look", "run.fork",
     ]));
+    static #BUILTIN_ACTIONS = Object.freeze(new Set([
+        ...Module.#CONTROL_ACTIONS,
+        ...Module.#WORLD_SCOPED,
+    ]));
+    static #NOTIFICATIONS = Object.freeze([
+        "log/entry", "loop/terminated", "loop/proposal", "notice/event",
+        "stream/event", "stream/concluded", "workspace/branch-batch",
+    ]);
 
     constructor(seam: DaemonSeam, opts: ModuleOptions) {
         this.#seam = seam;
         this.#opts = opts;
+        this.#moduleActionNames();
         this.#portal = new Portal(seam);
         this.#http = createServer((req, res) => { void this.#route(req, res); });
+    }
+
+    #moduleActionNames(): string[] {
+        const names = this.#seam.listModuleActions();
+        const seen = new Set<string>();
+        for (const name of names) {
+            if (Module.#BUILTIN_ACTIONS.has(name)) {
+                throw new Error(`module action '${name}' collides with AG-UI built-in action`);
+            }
+            if (seen.has(name)) throw new Error(`module action '${name}' is registered more than once`);
+            seen.add(name);
+        }
+        return names;
     }
 
     static init(opts: ModuleOptions): ModuleRegistration {
@@ -503,21 +530,20 @@ export default class Module {
         res.end();
     }
 
-    // The capability manifest a client probes (`discover`) to detect a daemon older than
-    // itself. The methods ARE the action surface; the notifications are the daemon-shape
-    // events the client un-projects. Built from the real surface — never a hand-kept list.
+    // The capability manifest a client probes (`discover`) for exact action/event membership.
+    // The built-ins come from the same inventories routing uses; extension names come from core.
     #capabilities(): { methods: Record<string, true>; notifications: Record<string, true> } {
         const methods: Record<string, true> = {};
         for (const k of [
-            "ping", "discover", "providers.list", "workspace.list", "workspace.create", "workspace.attach",
+            ...Module.#CONTROL_ACTIONS,
             ...Module.#WORLD_SCOPED,
-            ...this.#seam.listModuleActions(),
+            ...this.#moduleActionNames(),
         ]) {
             if (methods[k]) throw new Error(`AG-UI action '${k}' is registered more than once`);
             methods[k] = true;
         }
         const notifications: Record<string, true> = {};
-        for (const n of ["log/entry", "loop/terminated", "loop/proposal", "notice/event", "stream/event", "stream/concluded", "workspace/branch-batch"]) notifications[n] = true;
+        for (const n of Module.#NOTIFICATIONS) notifications[n] = true;
         return { methods, notifications };
     }
 
@@ -527,6 +553,7 @@ export default class Module {
     // runLoop folds a prompt into the active drain; the steered effect streams on the SSE.
     async #action(a: ActionRequest, env: ClientEnvelope | null, conversationWorkerId?: number): Promise<ActionOutcome> {
         const p = a.params;
+        const moduleActions = this.#moduleActionNames();
         try {
             // The control plane — worldless verbs (no bound workspace; #WORLD_SCOPED gates this).
             switch (a.kind) {
@@ -585,7 +612,7 @@ export default class Module {
                     return { ok: true, result: { id: att.workspaceId, name: att.workspaceName, workerId: att.workerId, modelWorkerId: att.modelWorkerId } };
                 }
             }
-            if (this.#seam.listModuleActions().includes(a.kind)) {
+            if (moduleActions.includes(a.kind)) {
                 return { ok: true, result: await this.#seam.invokeModuleAction(a.kind, p) };
             }
             // Below this line lives IN a world. An unknown kind is no worker at all; a

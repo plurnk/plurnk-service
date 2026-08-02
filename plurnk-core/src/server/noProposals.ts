@@ -32,7 +32,7 @@ export default class NoProposals {
                 engine.resolveProposal(event.logEntryId, { decision: "reject", outcome: "no_review_channel" });
             } catch {
                 // Errors here don't abort dispatch — the proposal stays
-                // pending and falls through to the RPC / timeout path.
+                // pending and falls through to the client-decision / timeout path.
             }
         });
     }

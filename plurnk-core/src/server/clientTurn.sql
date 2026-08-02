@@ -1,4 +1,4 @@
--- Client-origin turn helpers. Each client RPC op creates a synthetic turn
+-- Client-origin turn helpers. Each dispatched client action creates a synthetic turn
 -- inside the connection's client loop with an empty packet shape.
 
 -- PREP: client_turn_next_sequence

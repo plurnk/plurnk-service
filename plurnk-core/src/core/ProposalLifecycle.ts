@@ -17,7 +17,7 @@ import Results, { OperationFailureError } from "./results.ts";
 // Proposal lifecycle types. A scheme returns DispatchResult{status:202,attrs}
 // to propose; dispatch writes a state='proposed' log entry, registers a waiter
 // in #pending, and awaits resolution. Resolution arrives via
-// Engine.resolveProposal(id, decision, body?) — from the loop/resolve RPC
+// Engine.resolveProposal(id, decision, body?) — from the CoreSeam resolution call
 // (Phase E.2), the in-tree auto listener (Phase E.3), or a timeout.
 export type ProposalDecision = "accept" | "reject" | "cancel";
 export interface ProposalResolution {
@@ -81,9 +81,9 @@ const readProposalTimeoutMs = (): number | null => {
     return n;
 };
 
-// The proposal lifecycle (SPEC.md {§engine-rails} + {§methods} loop.resolve): a
+// The proposal lifecycle (SPEC.md {§engine-rails} + {§methods-proposal-resolve}): a
 // side-effecting op that returns 202 pauses in dispatch until a resolution
-// arrives — from the loop/resolve RPC, the in-tree auto listener, or the
+// arrives — from a client-interface resume, the in-tree auto listener, or the
 // timeout — then the scheme's applyResolution hook applies the accept.
 export default class ProposalLifecycle {
     #db: Db;
@@ -101,7 +101,7 @@ export default class ProposalLifecycle {
     // Proposal lifecycle: pending dispatch pauses waiting for resolution.
     // Dispatch awaits the promise when a scheme returns status 202;
     // Engine.resolveProposal feeds the resolution back in. Map is per-log-
-    // entry-id; entries clear on resolution. SPEC.md {§engine-rails} + {§methods} (loop.resolve).
+    // entry-id; entries clear on resolution. SPEC.md {§engine-rails} + {§methods-proposal-resolve}.
     #pending = new Map<number, ProposalWaiter>();
     // External observers of proposal lifecycle events. Daemon subscribes
     // here to push `loop/proposal` notifications when an entry enters
@@ -135,7 +135,7 @@ export default class ProposalLifecycle {
     }
 
     // External API to feed a resolution into a pending proposal. Called by
-    // the loop/resolve RPC handler (Phase E.2), the in-tree auto listener
+    // the CoreSeam resolution call, the in-tree auto listener
     // (Phase E.3), or the timeout watcher. Throws when the logEntryId has no
     // pending waiter — duplicate resolutions, IDs for non-proposed entries,
     // or entries already-resolved are caller errors.
@@ -161,7 +161,7 @@ export default class ProposalLifecycle {
         waiter.resolve(resolution);
     }
 
-    // Snapshot of pending proposals (for diagnostic / RPC listings). Returns
+    // Snapshot of pending proposals for client-interface discovery. Returns
     // the log entry IDs currently awaiting resolution.
     pendingIds(): number[] {
         return [...this.#pending.keys()];

@@ -138,13 +138,22 @@ test("a management-action AG-UI Run executes via the seam: result custom + RUN_F
     } finally { await mod.close(); }
 });
 
+test("a module action colliding with an AG-UI built-in fails module startup", async () => {
+    const { seam } = mockSeam();
+    seam.listModuleActions = () => ["ping"];
+    await assert.rejects(
+        () => Module.init({ host: "127.0.0.1", port: 0 }).start(seam),
+        /module action 'ping' collides with AG-UI built-in action/,
+    );
+});
+
 test("module actions are advertised and invoked without AG-UI importing their owner", async () => {
     const { seam } = mockSeam();
     const calls: Array<{
         name: string;
         params: Readonly<Record<string, unknown>>;
     }> = [];
-    seam.listModuleActions = () => ["mcp.prompt.get"];
+    seam.listModuleActions = () => ["example.inspect"];
     seam.invokeModuleAction = async (name, params) => {
         calls.push({
             name,
@@ -179,16 +188,15 @@ test("module actions are advertised and invoked without AG-UI importing their ow
                 };
             };
         };
-        assert.equal(discovery.value.result.methods["mcp.prompt.get"], true);
+        assert.equal(discovery.value.result.methods["example.inspect"], true);
 
         const invoked = await post(mod.address().port, {
             threadId: "module-action",
             forwardedProps: {
                 plurnk: {
                     action: {
-                        kind: "mcp.prompt.get",
-                        server: "github",
-                        name: "review",
+                        kind: "example.inspect",
+                        target: "sample",
                     },
                 },
             },
@@ -207,15 +215,65 @@ test("module actions are advertised and invoked without AG-UI importing their ow
         assert.equal(result.value.ok, true);
         assert.equal(result.value.result.prompt, "review");
         assert.deepEqual(calls, [{
-            name: "mcp.prompt.get",
+            name: "example.inspect",
             params: {
-                server: "github",
-                name: "review",
+                target: "sample",
             },
         }]);
     } finally {
         await mod.close();
     }
+});
+
+test("a module action preserves its owner-defined validation Problem", async () => {
+    const { seam } = mockSeam();
+    const problem = Problems.create(
+        "example:inspect",
+        "target-required",
+        400,
+        "A target is required.",
+        { field: "target", stage: "validation", retryable: false },
+    );
+    seam.listModuleActions = () => ["example.inspect"];
+    seam.invokeModuleAction = async () => {
+        throw Object.assign(new Error(problem.detail), { problem });
+    };
+    const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
+    try {
+        const events = await post(mod.address().port, {
+            threadId: "module-action-validation",
+            forwardedProps: { plurnk: { action: { kind: "example.inspect" } } },
+        });
+        const result = events.find((event) => event.type === "CUSTOM"
+            && (event as { name?: string }).name === "plurnk.action.result") as {
+            value?: { ok?: boolean; problem?: typeof problem };
+        } | undefined;
+        assert.equal(result?.value?.ok, false);
+        assert.deepEqual(result?.value?.problem, problem);
+        assert.equal(events.at(-1)?.type, "RUN_FINISHED");
+    } finally { await mod.close(); }
+});
+
+test("a throwing module action becomes one generic action Problem and a completed AG-UI Run", async () => {
+    const { seam } = mockSeam();
+    seam.listModuleActions = () => ["example.inspect"];
+    seam.invokeModuleAction = async () => { throw new Error("private extension detail"); };
+    const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
+    try {
+        const events = await post(mod.address().port, {
+            threadId: "module-action-failure",
+            runId: "module-action-failure-run",
+            forwardedProps: { plurnk: { action: { kind: "example.inspect" } } },
+        });
+        const result = events.find((event) => event.type === "CUSTOM"
+            && (event as { name?: string }).name === "plurnk.action.result") as {
+            value?: { ok?: boolean; problem?: { type?: string; detail?: string } };
+        } | undefined;
+        assert.equal(result?.value?.ok, false);
+        assert.equal(result?.value?.problem?.type, "https://problems.plurnk.dev/agui/action/action-failed");
+        assert.doesNotMatch(result?.value?.problem?.detail ?? "", /private extension detail/);
+        assert.equal(events.at(-1)?.type, "RUN_FINISHED", "a management failure is the action result, not a failed AG-UI transport Run");
+    } finally { await mod.close(); }
 });
 
 test("an action failure preserves its originating Problem instead of rebuilding it at the client boundary", async () => {
@@ -536,16 +594,47 @@ test("CONTROL PLANE: a worldless action needs NO workspace and FORGES none (oper
     } finally { await mod.close(); }
 });
 
-test("discover: returns the real capability manifest (methods + notifications) — the stale-daemon probe", async () => {
+test("discover returns the exact public action and notification membership", async () => {
     const { seam } = mockSeam();
     const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
     try {
         const ev = await post(mod.address().port, { threadId: "probe", workerId: "r1", forwardedProps: { plurnk: { action: { kind: "discover" } } } });
         const r = ev.find((e) => e.type === "CUSTOM" && (e as { name: string }).name === "plurnk.action.result") as { value: { ok: boolean; result: { methods: Record<string, true>; notifications: Record<string, true> } } };
         assert.equal(r.value.ok, true);
-        assert.equal(r.value.result.methods["op.exec"], true, "op.exec is in the surface");
-        assert.equal(r.value.result.methods["workspace.list"], true);
-        assert.equal(r.value.result.notifications["stream/concluded"], true, "the concluded notification the client depends on");
+        assert.deepEqual(Object.keys(r.value.result).toSorted(), ["methods", "notifications"]);
+        assert.deepEqual(Object.keys(r.value.result.methods).toSorted(), [
+            "discover",
+            "entry.read",
+            "log.read",
+            "loop.cancel",
+            "loop.inject",
+            "op.exec",
+            "op.look",
+            "op.parse",
+            "ping",
+            "providers.list",
+            "run.fork",
+            "workspace.attach",
+            "workspace.constrain",
+            "workspace.constraints",
+            "workspace.create",
+            "workspace.derivation",
+            "workspace.list",
+            "workspace.members",
+            "workspace.prompts",
+            "workspace.rename",
+            "workspace.unconstrain",
+            "workspace.workers",
+        ]);
+        assert.deepEqual(Object.keys(r.value.result.notifications).toSorted(), [
+            "log/entry",
+            "loop/proposal",
+            "loop/terminated",
+            "notice/event",
+            "stream/concluded",
+            "stream/event",
+            "workspace/branch-batch",
+        ]);
     } finally { await mod.close(); }
 });
 

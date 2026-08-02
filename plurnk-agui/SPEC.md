@@ -33,11 +33,11 @@ recompute them.
 
 ## §agui-projection The projection
 
-One daemon notification in, zero-or-more AG-UI events out (`Translator`, pure):
+One accepted Run or daemon notification produces zero-or-more AG-UI events:
 
 | plurnk wire | AG-UI events |
 |---|---|
-| `loop.run` accepted | `RUN_STARTED` |
+| schema-valid `RunAgentInput` | `RUN_STARTED` + initial `STATE_SNAPSHOT` |
 | `log/entry` turn boundary | `STEP_FINISHED` + `STEP_STARTED` (`turn-<id>`) |
 | `log/entry` op=PLAN (model) | `ACTIVITY_SNAPSHOT` {§agui-plan-activity} |
 | `log/entry` op=SEND (model) | `TEXT_MESSAGE_START/CONTENT/END` + `CUSTOM plurnk.send` (signal/status) |
@@ -126,19 +126,107 @@ multi-worker interrupt sets fails before any proposal is released.
 
 ## §agui-management-plane The action surface
 
-A verb is a §3 management-action AG-UI Run: `forwardedProps.plurnk.action = {kind, …params}` in, one
-`CUSTOM plurnk.action.result` (`{kind, ok, result|problem}`) out, `RUN_FINISHED`. A
-failed action carries exact RFC 9457 Problem Details; it never invents a parallel
-error string. There is no side-channel RPC endpoint; the worker envelope is the
-whole interface. Unknown kinds
-error honestly (`ok:false`). `loop.inject` rides this surface; its steered effect
-streams on the original worker's open SSE. `loop.cancel` is its counterpart — it aborts
-the model worker's active drain (the addressable spelling of the SSE-hangup abort; both
-clients' stop controls ride it). An action that opens a stream remains one live AG-UI Run:
-its result is held until every observed stream emits `stream/concluded`, then the result
-and `RUN_FINISHED` close that same AG-UI Run. A client disconnect before settlement cancels the
-action worker with reason `client_disconnected`; it never silently converts the action
-into detached background work.
+PLURNK has three inputs through the one AG-UI Run endpoint. A normal user message
+and a standard proposal resume are not management actions and have no invented
+`loop.run` or `loop.resolve` action names.
+
+```mermaid
+flowchart LR
+    client["AG-UI client"] --> run["POST RunAgentInput"]
+    run --> classify{"Input form"}
+    classify -->|"textual user message"| loop["CoreSeam.runLoop"]
+    classify -->|"RunAgentInput.resume"| proposal["CoreSeam.resolveProposal"]
+    classify -->|"forwardedProps.plurnk.action"| actions{"AG-UI action registry"}
+    actions --> builtIn["Built-in validation<br/>and typed CoreSeam call"]
+    actions --> extension["CoreSeam.invokeModuleAction"]
+    loop --> events["Core event source"]
+    proposal --> events
+    builtIn --> events
+    events --> projection["AG-UI projection"]
+    extension --> result["plurnk.action.result"]
+    projection --> client
+    result --> client
+```
+
+A management-action Run carries
+`forwardedProps.plurnk.action = { kind, ...params }`. Once settled, it returns
+one `CUSTOM plurnk.action.result` shaped as `{ kind, ok, result | problem }`,
+followed by `RUN_FINISHED`. A proposal-gated action may first end with an
+interrupt and deliver that settled result on the standard resume Run. A failed
+action preserves exact RFC 9457 Problem Details and is the result of a
+successfully transported management Run; it does not turn the Run into
+`RUN_ERROR` or invent a parallel error string. Unknown kinds return an honest
+`unknown-action` Problem. There is no side-channel endpoint.
+
+| Public action             | Scope      | Parameters | Owner / effect |
+|---------------------------|------------|------------|----------------|
+| `ping`                    | Worldless  | none | AG-UI-local liveness; returns `{}`. |
+| `discover`                | Worldless  | none | AG-UI-local public membership manifest ({§discovery}). |
+| `providers.list`          | Worldless  | none | `CoreSeam.listProviders`. |
+| `workspace.list`          | Worldless  | none | `CoreSeam.listWorkspaces`. |
+| `workspace.create`        | Worldless  | `name?`, `projectRoot?`, `settings?`, `constraints?` | Creates or attaches the exact named world, or asks core to create an automatically named world. |
+| `workspace.attach`        | Worldless  | `id`, `workerId?` | `CoreSeam.attachWorkspace`; returns the selected envelope. |
+| `workspace.workers`       | Workspace  | `id?` | `CoreSeam.listWorkers`; an explicit id overrides the bound workspace. |
+| `log.read`                | Workspace  | `workerId?`, log-coordinate filters | `CoreSeam.readLog`; defaults to the thread's conversation worker. |
+| `loop.inject`             | Workspace  | `prompt` | `CoreSeam.runLoop` on the thread's conversation worker; folds into live work or enqueues a loop. |
+| `loop.cancel`             | Workspace  | none | `CoreSeam.cancelDrain` on the thread's conversation worker. |
+| `workspace.prompts`       | Workspace  | `limit?` | `CoreSeam.listPrompts`. |
+| `workspace.rename`        | Workspace  | `name` | `CoreSeam.renameWorkspace`. |
+| `workspace.constrain`     | Workspace  | `effect`, `glob` | `CoreSeam.constrain`. |
+| `workspace.unconstrain`   | Workspace  | `effect`, `glob` | `CoreSeam.unconstrain`. |
+| `workspace.constraints`   | Workspace  | none | `CoreSeam.listConstraints`. |
+| `workspace.derivation`    | Workspace  | none | `CoreSeam.workspaceDerivationStatus`. |
+| `entry.read`              | Workspace  | `target`, `channel?`, `offset?` | `CoreSeam.readEntry`. |
+| `op.exec`                 | Workspace  | `command` | Constructs one EXEC statement and calls `CoreSeam.dispatchClientAction` on the client worker. |
+| `op.parse`                | Workspace  | `text` | Parses PLURNK text at this boundary and dispatches its statements as one client action. |
+| `workspace.members`       | Workspace  | none | `CoreSeam.listMembers`. |
+| `op.look`                 | Workspace  | `text` | Parses LOOK, rewrites it to READ, and calls core's no-log `look` projection. |
+| `run.fork`                | Workspace  | `name?` | `CoreSeam.forkWorker` from the thread's conversation worker. |
+| Registered module action  | Worldless  | owner-defined | `CoreSeam.invokeModuleAction`; the handler receives only the supplied params and owns their validation and result. |
+
+§agui-module-actions **One public action namespace.** Core rejects empty and
+duplicate extension registrations ({§module-action-registration}). At module
+startup AG-UI rejects any extension name colliding with a built-in before it
+opens the listener. A recognized Problem thrown by an extension crosses the
+boundary unchanged; an unexpected handler exception becomes the generic
+`action-failed` Problem without exposing private exception text.
+
+### §discovery Discovery membership
+
+The `discover` action returns membership, not a parallel description or schema
+system:
+
+```ts
+type Discovery = {
+    methods: Record<string, true>;
+    notifications: Record<string, true>;
+};
+```
+
+`methods` contains the 22 built-ins in the table plus every registered module
+action. `notifications` contains exactly these externally projected daemon
+event families:
+
+| Notification |
+|--------------|
+| `log/entry` |
+| `loop/terminated` |
+| `loop/proposal` |
+| `notice/event` |
+| `stream/event` |
+| `stream/concluded` |
+| `workspace/branch-batch` |
+
+Discovery does not report parameter pseudo-schemas, plugin catalogs, package
+versions, or update availability. Object key order is not a contract.
+
+`loop.inject`'s steered effect streams on the original worker's open SSE.
+`loop.cancel` is its counterpart: the addressable spelling of the SSE-hangup
+abort. An action that opens a stream remains one live AG-UI Run; its result is
+held until every observed stream emits `stream/concluded`, then the result and
+`RUN_FINISHED` close that Run. A client disconnect before settlement cancels
+the action worker with reason `client_disconnected`; it never silently converts
+the action into detached background work.
 
 ## §agui-topology-scope Topology scope
 
@@ -152,7 +240,7 @@ into the conversation a generic frontend renders.
 Workspace information fans to every open AG-UI Run: ambient rows and stream activity
 remain visible across the workspace, with each SSE
 using its own render router. Terminal control does not fan. A message AG-UI Run binds
-to the exact `loopId` returned by `loop.run`; a proposal-resume AG-UI Run binds to the
+to the exact `loopId` returned by `CoreSeam.runLoop`; a proposal-resume AG-UI Run binds to the
 pending proposal's persisted `loopId` before resolving it. Only that loop's
 `loop/terminated` event may emit `plurnk.terminated` and close the SSE.
 The custom event preserves the daemon's exact universal `result`; failures use
@@ -160,7 +248,7 @@ the Problem `type` as the AG-UI error code and `detail` as its message. The
 module never reconstructs a failure from a status, summary, or exception text.
 Proposal tool calls and interrupt outcomes route only to the proposal's owning
 worker; interrupting sibling AG-UI Runs would violate AG-UI Run identity. Terminations
-that race ahead of the `loop.run` acknowledgement are held until
+that race ahead of the `runLoop` acknowledgement are held until
 the loop identity is known. A sibling, child, or concurrent loop can therefore
 remain visible as topology without ending or relabelling this AG-UI Run.
 
@@ -179,7 +267,8 @@ Two consequences the module owns and a client must handle:
 
 `POST /` (or `/agui`) accepts a schema-valid AG-UI `RunAgentInput`: the last textual
 `user` message becomes the
-`loop.run` prompt (`maxTurns`/`flags.auto` from env); the response is `text/event-stream`,
+`CoreSeam.runLoop` prompt (`maxTurns`/`flags.auto` from the forwarded PLURNK
+properties or module defaults); the response is `text/event-stream`,
 one `data:` line per event, ending after `RUN_FINISHED`/`RUN_ERROR`. Multimodal user content
 is rejected until the model-loop seam supports it deliberately. Loop auto never answers
 a question — that is the daemon's own rule; the module inherits it.
