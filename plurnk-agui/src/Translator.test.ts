@@ -59,10 +59,10 @@ test("a non-array reasoning carrier is rejected", () => {
     assert.deepEqual(events.map((e) => e.type), ["CUSTOM"]);
 });
 
-test("the STANDARD array of items projects ONE correlated span per item (#482)", () => {
+test("an item array projects one correlated span per item", () => {
     const tr = t();
     tr.logEntry(entry({ op: "PLAN", tx: "{}" }));
-    // The standard: a turn CAN carry N reasoning entities (distinct ids) — each its own span.
+    // A turn can carry multiple distinct reasoning entities.
     const events = tr.logEntry(entry({ op: "model", tx: "<<PLAN:x:PLAN", attrs: JSON.stringify({ reasoning: [
         { id: "rs_a", subtype: "message", encrypted: [{ data: "A1", format: "f" }] },
         { id: "rs_b", subtype: "message", encrypted: [{ data: "B1", format: "f" }] },
@@ -74,14 +74,16 @@ test("the STANDARD array of items projects ONE correlated span per item (#482)",
     assert.equal((events[5] as { entityId: string }).entityId, "rs_b", "item B's value correlates to item B's id — never cross-wired");
 });
 
-test("a NULL-id item stays dark — agui never coins an id to fake correlation (#482)", () => {
+test("a missing identity or unknown subtype stays dark", () => {
     const tr = t();
     tr.logEntry(entry({ op: "PLAN", tx: "{}" }));
-    // core allows `id: string | null`; a null id is uncorrelatable, so the standard event can't
-    // be served honestly — dark, not a synthesized entityId.
+    // {§agui-encrypted-reasoning} — neither item can be correlated honestly.
     const events = tr.logEntry(entry({ op: "model", tx: "<<PLAN:x:PLAN",
-        attrs: JSON.stringify({ reasoning: { id: null, subtype: "message", encrypted: [{ data: "X", format: "f" }] } }) }));
-    assert.deepEqual(events.map((e) => e.type), ["CUSTOM"], "null id → plurnk.row only; no coined id");
+        attrs: JSON.stringify({ reasoning: [
+            { id: null, subtype: "message", encrypted: [{ data: "X", format: "f" }] },
+            { id: "reason-42", subtype: "unknown", encrypted: [{ data: "Y", format: "f" }] },
+        ] }) }));
+    assert.deepEqual(events.map((e) => e.type), ["CUSTOM"], "invalid items remain on plurnk.row only");
 });
 
 test("an unknown reasoning carrier is ignored", () => {

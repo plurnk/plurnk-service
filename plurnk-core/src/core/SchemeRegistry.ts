@@ -186,11 +186,8 @@ export default class SchemeRegistry {
         return out;
     }
 
-    // Plugin packet control ({§packet-assembly}): pipe the engine's default
-    // section list through every registered scheme that implements
-    // transformSections, in registration order. A scheme returns whatever list it
-    // wants — add, remove, reorder. The trusted in-process seam; the client wire
-    // never touches the packet. In-tree + external handlers both, duck-typed.
+    // {§scheme-packet-transform} {§packet-plugin-transform} — apply trusted
+    // whole-list transforms in registration order. #73 owns boundary validation.
     async transformSections(sections: PacketSection[]): Promise<PacketSection[]> {
         let current = sections;
         for (const handler of this.#handlers.values()) {

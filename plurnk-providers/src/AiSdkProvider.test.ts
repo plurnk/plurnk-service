@@ -342,7 +342,7 @@ test("generate aggregates reasoning deltas under multiple field names", async ()
     assert.equal("reasoningEncrypted" in assistant, false); // open reasoning only -> field absent (#482)
 });
 
-test("#482 sealed relay reasoning (non-streamed): encrypted reasoning_details surface verbatim, text entries do not", async () => {
+test("encrypted reasoning (non-streamed): encrypted entries normalize and text entries stay separate", async () => {
     // The live o4-mini-via-OpenRouter shape: reasoning null, one encrypted entry.
     installFetchJson({ model: "m", choices: [{ message: {
         content: "4", reasoning: null,
@@ -353,9 +353,9 @@ test("#482 sealed relay reasoning (non-streamed): encrypted reasoning_details su
     }, finish_reason: "stop" }], usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 } });
     const p = new AiSdkProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, streaming: false });
     const { assistant } = await p.generate({ workerId: "r", messages: [] });
-    // item shape: wire `id` preserved, subtype from position (#482 widening)
+    // Wire id is preserved; #44 owns the evidence required for subtype selection.
     assert.deepEqual(assistant.reasoningEncrypted, [{ id: "rs_1", subtype: "message", encrypted: [{ data: "gAAAAABqBLOB", format: "openai-responses-v1" }] }]);
-    assert.equal(assistant.reasoning, null); // sealed turn: nothing readable
+    assert.equal(assistant.reasoning, null); // Encrypted turn: nothing readable.
     assert.equal(assistant.content, "4");
 });
 
@@ -370,7 +370,7 @@ test("#482 widening: distinct wire ids stay distinct items (a single-object shap
     assert.deepEqual(assistant.reasoningEncrypted?.map((i) => i.id), ["rs_1", "rs_2"]);
 });
 
-test("#482 sealed relay reasoning (streamed): chunked blob concatenates per entry index", async () => {
+test("encrypted reasoning (streamed): chunked blob concatenates per entry index", async () => {
     const p = new AiSdkProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0 });
     installFetch([
         { choices: [{ delta: { reasoning_details: [{ type: "reasoning.encrypted", data: "gAAAA", format: "openai-responses-v1", id: "rs_1", index: 0 }] } }] },

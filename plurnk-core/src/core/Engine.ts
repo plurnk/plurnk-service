@@ -1144,7 +1144,7 @@ export default class Engine {
         const notices = this.#notices.drain(loopId)
             .filter((event) => (event as { level?: string }).level !== "info") as Notice[];
 
-        // Build the spec'd packet (Packet.json) request half. The log build
+        // Build the model request packet ({§packet-stored-shape}). The log build
         // queries log_entries scoped to the worker — the prompt entry just
         // written (if turn 1) is part of that query result.
         let requestPacket = await this.#packets.buildRequestPacket({
@@ -1441,10 +1441,8 @@ export default class Engine {
             };
         }
 
-        // Engine splits wire-level response: emission (content, reasoning,
-        // parsed ops) → packet.assistant per Packet.json assistant section;
-        // call-metadata (usage, finishReason, model) → Turn columns per
-        // Turn.json. Mixing the two on packet.assistant was the wrong layer.
+        // {§packet-stored-shape} — admitted emission data extends the packet;
+        // provider-call metadata remains on the Turn row.
         const {
             packetAssistant,
             callMetadata,
@@ -1752,8 +1750,8 @@ export default class Engine {
         // (a 24k-char ramble mirrored open re-injects itself into the next packet: cost,
         // contamination, pressure feedback).
         const sealed = (response.assistant as { reasoningEncrypted?: ReadonlyArray<{ id: string | null; subtype: string; encrypted: ReadonlyArray<{ data: string; format: string | null }> }> }).reasoningEncrypted;
-        // #482 — relay the FULL item ARRAY verbatim (agui projects one correlated span per item), so a
-        // multi-id turn serves N entities, not a collapsed first. Providers already expose the array.
+        // {§encrypted-reasoning-carrier} — core relays every provider-normalized
+        // item unchanged; #44 owns the upstream normalization rule.
         const reasoningItems = sealed !== undefined && sealed.length > 0 ? sealed : undefined;
         if (packetAssistant.content.trim().length > 0 || reasoningItems !== undefined) {
             await this.#dispatcher.writeModelEntry({ verbatim: packetAssistant.content, workerId, loopId, turnId, sequence: errSeq++, folded: true, ...(reasoningItems !== undefined ? { reasoningItems } : {}) });

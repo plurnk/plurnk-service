@@ -1,5 +1,5 @@
 // Helper for creating an ordered statement turn inside a client action's
-// journal segment, with a synthetic packet matching the model-turn shape.
+// journal segment. #76 owns the current synthetic packet representation.
 
 import type { Db } from "../core/Db.ts";
 

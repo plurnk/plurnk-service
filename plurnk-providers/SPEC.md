@@ -320,8 +320,10 @@ When enabled, raw per-token model logprob is canonical; alternatives are
 preserved when returned. Raw body/chunks preserve wire evidence the normalized
 record omits.
 
-Readable reasoning and encrypted reasoning are separate. Encrypted reasoning is
-preserved verbatim and never decoded or synthesized.
+Readable reasoning and encrypted reasoning are separate. Encrypted payload
+bytes remain opaque and are never decoded. #44 owns the unsettled normalization
+contract for their identity and subtype metadata; derived metadata must not be
+described as verbatim evidence.
 
 ## §12 Generation envelopes
 

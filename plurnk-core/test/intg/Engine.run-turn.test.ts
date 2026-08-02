@@ -153,7 +153,7 @@ test("Engine.runTurn: recorded turn cost reflects reasoning tokens (calculateCos
 });
 
 test("Engine.runTurn: packet stores system + user content from messages when the loop prompt is empty", async () => {
-    // packet.user.prompt sources first from the loop's durable prompt
+    // The prompt section sources first from the loop's durable prompt
     // entry; it falls back to messages.user when no entry exists. Test the
     // fallback explicitly by using a loop with an empty prompt.
     const db = await openMigrated();
@@ -768,10 +768,9 @@ test("Engine.runTurn: multi-SEND turn — last SEND wins on turn.status", async 
     } finally { await db.close(); }
 });
 
-// SPEC {§packet} packet.system.log — chronological action-entries for the loop.
-// Task #44.
+// {§packet-stored-shape} {§body-projection} — chronological log-section rows.
 
-test("Engine.runTurn: packet.system.log on first turn contains the prompt entry", async () => {
+test("Engine.runTurn: the first turn's log section contains the prompt entry", async () => {
     // Turn-as-container: turn 1 opens with the prompt written as one
     // system-origin actionless row against prompt:///<loop>/1. When #buildLog snapshots the log for
     // THIS turn's packet, the prompt is already there. The 2 model ops
@@ -789,7 +788,7 @@ test("Engine.runTurn: packet.system.log on first turn contains the prompt entry"
         // The prompt is one actionless plurnk-origin row against prompt:///<loop>/1.
         // Found by its stable identity (origin + target),
         // robust to the turn-0 `model` exemplar at 1/1/1 ({§model-entry}) and any
-        // manifest-preview READ that shift its coordinate.
+        // catalog-preview FIND that shifts its coordinate.
         const prompt = log.find((e) => e.origin === "plurnk" && e.op === "prompt" && e.target === "prompt:///1/1");
         assert.ok(prompt, "first-class prompt row logged against prompt:///1/1");
         assert.equal(prompt.op, "prompt");
@@ -798,7 +797,7 @@ test("Engine.runTurn: packet.system.log on first turn contains the prompt entry"
     } finally { await db.close(); }
 });
 
-test("Engine.runTurn: packet.system.log captures prior turn's actions on second turn", async () => {
+test("Engine.runTurn: the second turn's log section captures prior actions", async () => {
     const { db, engine, workspaceId, workerId, loopId } = await setup();
     try {
         const provider = new Mock({
@@ -814,7 +813,7 @@ test("Engine.runTurn: packet.system.log captures prior turn's actions on second 
         const log = logEntries(JSON.parse(row?.packet ?? "{}"));
         // Turn 2 packet sees the prompt row + the prior turn's two model ops (an
         // EDIT and a SEND). Found by identity (origin + op + target), robust to the
-        // turn-0 `model` exemplar ({§model-entry}) and a manifest-preview foist that
+        // turn-0 `model` exemplar ({§model-entry}) and a catalog-preview foist that
         // shift coordinates between the prompt and the model's ops.
         assert.ok(log.find((e) => e.origin === "plurnk" && e.op === "prompt" && typeof e.target === "string" && e.target.startsWith("prompt:///")), "prompt row logged");
         const edit = log.find((e) => e.origin === "model" && e.op === "EDIT");
@@ -827,7 +826,7 @@ test("Engine.runTurn: packet.system.log captures prior turn's actions on second 
     } finally { await db.close(); }
 });
 
-test("Engine.runTurn: packet.system.log JSON rx body is parsed (mimetype_rx=application/json)", async () => {
+test("Engine.runTurn: the log section parses an application/json rx body", async () => {
     const { db, engine, workspaceId, workerId, loopId } = await setup();
     try {
         const provider = new Mock({
@@ -842,7 +841,7 @@ test("Engine.runTurn: packet.system.log JSON rx body is parsed (mimetype_rx=appl
         const row = await db.test_get_packet.get<{ packet: string }>({ id: t2.turnId });
         const packet = JSON.parse(row?.packet ?? "{}");
         const log = logEntries(packet);
-        // Found by identity, robust to a turn-0 manifest-preview foist.
+        // Found by identity, robust to a turn-0 catalog-preview foist.
         const edit = log.find((e) => e.origin === "model" && e.op === "EDIT");
         assert.ok(edit, "model EDIT logged");
         assert.equal(edit.status, 201);

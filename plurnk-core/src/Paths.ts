@@ -26,9 +26,7 @@ export default class Paths {
     static schemeDocs = resolve(Paths.#DOCS_ROOT, "docs");
     // (GBNF artifact resolution moved to Engine.#grammarConstraint — the env value
     // SELECTS the variant from @plurnk/plurnk-contracts; no hardcoded default here, #225.)
-    // packet.user.system_requirements DEFAULT. Static contract appended at
-    // the end of the user packet — names rules the model has to honor that
-    // the grammar block doesn't cover (e.g. "loop concludes with SEND[200]").
+    // {§requirements} — static recap appended at the end of the user slot.
     static defaultRequirements = Paths.#resolveDefaultRequirements();
 
     // Resolve the default requirements file: `PLURNK_SERVICE_REQUIREMENTS` env (absolute

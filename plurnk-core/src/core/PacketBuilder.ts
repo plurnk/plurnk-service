@@ -123,21 +123,16 @@ const readOptionalPositiveIntFrom = (env: NodeJS.ProcessEnv, name: string): numb
 
 export type ChatMessage = { role: "system" | "user" | "assistant"; content: string };
 
-// Packet assistant shape is part of the shared contracts boundary. Wire-level
-// call-metadata (usage, finishReason, model) is NOT here — those are
-// properties of the call and live on the Turn row, alongside Turn.usage.
+// {§packet-stored-shape} — normalized admitted emission. Call metadata
+// (usage, finishReason, model) belongs to the Turn row instead.
 export type PacketAssistant = {
     content: string;
     ops: PlurnkStatement[];
     reasoning: string | null;
 };
 
-// The request half of the packet — an ordered list of sections — sans the
-// assistant + assistantRaw fields, which aren't known until the provider
-// responds. Engine builds this before the call (so the wire projection has a
-// source) and completes it with the response after. Two consumers: serialized
-// to ChatMessage[] via PacketWire.packetToWireMessages, and stored in
-// turns.packet (via completePacket) as the canonical record of the exchange.
+// {§packet-stored-shape} — exact measured request prior to any admitted
+// response. The same sections feed the provider wire and durable packet.
 export type RequestPacket = {
     tokens: number;
     sections: PacketSection[];
@@ -251,10 +246,8 @@ export default class PacketBuilder {
         return operatorCap === null ? naturalBudget : Math.min(operatorCap, naturalBudget);
     }
 
-    // Assemble the request half of the spec'd packet (Packet.json system
-    // and user) BEFORE the provider call. The same packet object is then
-    // completed with assistant + assistantRaw after the model responds, so
-    // the stored packet and the wire payload share one source of truth.
+    // {§packet-stored-shape} — assemble the system/user request before the
+    // provider call; complete the same record with the provider response.
     async buildRequestPacket({
         initialMessages, requirements, workspaceId, workerId, loopId, currentTurnSeq, provider, gitStatus, notices = [],
     }: {
@@ -380,8 +373,8 @@ export default class PacketBuilder {
                     .replace(TOKENS_FREE_PLACEHOLDER, String(tokensFree));
             }
         }
-        // Pass 2: per-section render-weight + the assembled packet total (post
-        // substitution — the placeholder/number length delta is negligible).
+        // Pass 2: per-section render-weight + the assembled packet total after
+        // substitution. #63 owns the remaining self-measurement mismatch.
         for (const s of sections) s.tokens = countTokens(PacketWire.renderSection(s));
         const packetTokens = countTokens(PacketWire.renderSlot(sections, "system")) + countTokens(PacketWire.renderSlot(sections, "user"));
         return { tokens: packetTokens, sections };
@@ -545,8 +538,8 @@ export default class PacketBuilder {
             + provider.countTokens(PacketWire.renderSlot(packet.sections, "user"));
     }
 
-    // Complete the packet by adding the model's response. After this the
-    // packet matches Packet.json fully and is ready for storage.
+    // {§packet-stored-shape} — add normalized and raw provider response data
+    // to the exact request sections sent on the wire.
     completePacket(requestPacket: RequestPacket, assistant: PacketAssistant, assistantRaw: unknown, provider: Provider): object {
         const assistantTokens = rulerCount(assistant.content); // {§tokenomics-agnostic-ruler} — render-weight in ruler units (usage_* keep the provider's real count)
         return {

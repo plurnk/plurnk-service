@@ -439,7 +439,7 @@ DELETE FROM engine_grinder_fold_set;
 UPDATE log_entries SET expanded = 0 WHERE id = $id;
 
 -- PREP: engine_render_log
--- Render-time log assembly (SPEC {§packet} packet.system.log).
+-- Render-time log-section assembly ({§body-projection}).
 -- Yields log_entries for the whole worker — the conversation's working
 -- memory carries across loops within a worker, not just the
 -- current loop. Coordinate is log:///<loop_seq>/<turn_seq>/<sequence>/<op>.

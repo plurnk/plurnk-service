@@ -1352,13 +1352,8 @@ export default class Dispatcher {
     // (born open — the one worked example the model orients on, thinning the grammar). text/vnd.plurnk.
     async writeModelEntry({ verbatim, workerId, loopId, turnId, sequence, folded, origin = "model", reasoningItems }: {
         verbatim: string; workerId: number; loopId: number; turnId: number; sequence: number; folded: boolean; origin?: WriterTier;
-        // {§sealed-reasoning-carrier} (#482) — a provider's SEALED reasoning ITEMS (the OpenAI
-        // Responses standard: a LIST — a turn can carry N distinct-id items — each { id, subtype,
-        // encrypted:[{data,format}] }, normalized by the provider tier) ride the mirror row's
-        // `attrs.reasoning` VERBATIM: never decoded, never rendered into a packet (the packet renderer
-        // reads no foreign attrs keys). The log/entry broadcast + readLog carry them to the client seam
-        // per turn; agui projects one correlated REASONING_ENCRYPTED_VALUE span per item. NO synthesis
-        // — id/subtype/blobs come from the wire, absent when the turn had none.
+        // {§encrypted-reasoning-carrier} — relay provider-normalized encrypted
+        // reasoning items as opaque mirror-row evidence. #44 owns normalization.
         reasoningItems?: ReadonlyArray<{ id: string | null; subtype: string; encrypted: ReadonlyArray<{ data: string; format: string | null }> }>;
     }): Promise<number> {
         const row = await this.#db.engine_insert_log_entry.get<{ id: number }>({

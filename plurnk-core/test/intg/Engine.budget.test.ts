@@ -68,7 +68,9 @@ test("Engine.runTurn: budget readout — partition-derived ceiling, free reconci
         // partition: provider window 4000 − test reserves (256+1024+64) = 2656
         assert.match(budget, /Token Ceiling 2656 · Token Usage \d+ \(\d+%\) · Tokens Free \d+/, "headline carries the partition-derived ceiling, usage, percent, and free");
         const free = Number(/Tokens Free (\d+)/.exec(budget)?.[1]);
-        const total = packet.sections.reduce((n, s) => n + s.tokens, 0); // summed per-section render-weights (the assembled request size, inter-section joins aside)
+        // #63 owns exact reconciliation against the rendered slots; this legacy
+        // assertion uses the non-authoritative section sum as a bounded proxy.
+        const total = packet.sections.reduce((n, s) => n + s.tokens, 0);
         assert.ok(free > 0 && free < 2656, `free ${free} within (0, 2656)`);
         // Reconciles to ceiling − assembled total, within the placeholder/number
         // substitution delta (tokensFree's own digits change the packet's size).

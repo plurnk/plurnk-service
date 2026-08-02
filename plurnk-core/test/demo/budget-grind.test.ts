@@ -27,13 +27,8 @@ test("demo: complete a multi-source briefing under a tight prompt budget", async
         try {
             const { finalStatus, turnIds, lastContent } = await liveLoop(s, 2, { prompt: userPromptText }, { timeoutMs: 240_000 });
 
-            // Peak assembled context across the loop. packet.tokens is the assembled total (the
-            // Packet-sections shape, `{ tokens, sections }`); the old `packet.system.tokens`/`.user.tokens`
-            // fields are gone — reading them silently measured 0, making this assertion vacuous until
-            // 2026-06-25, then over-strict (peak <= communicated-ceiling) until 2026-06-30.
-            // The DELIVERED REQUEST half only (sections sum): the stored packet.tokens gained the
-            // emission half when {§turn-never-blank} made rambles recordable — an honest record of a
-            // fat emission is not a budget violation; only the request the grinder governs is.
+            // #74 owns replacement of this section-sum proxy with production
+            // slot rendering; completed packet.tokens also includes response content.
             let peak = 0;
             for (const tid of turnIds) {
                 const row = await s.db.test_get_turn.get<{ packet: string }>({ id: tid });

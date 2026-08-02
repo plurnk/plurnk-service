@@ -1,12 +1,5 @@
-// {§sealed-reasoning-carrier} (#482) — a provider's SEALED reasoning
-// (o-class encrypted items, normalized by providers as assistant.reasoningEncrypted) rides the
-// model mirror row's `attrs.reasoning` VERBATIM as the OpenAI/AG-UI item LIST: per-turn on the
-// log/entry broadcast + readLog (agui's seam), never decoded, and NEVER rendered into a packet — a
-// multi-KB blob leaking into the log render would tax every subsequent turn.
-//
-// The CROSS-LANE conformance drive (client's, dep-correct here since core→agui already): core's real
-// write feeds agui's real Translator in one test, so a future non-meeting seam is a RED gate pre-push,
-// not a shipped-broken main (the guard that would have caught the original double-unmatched landing).
+// {§encrypted-reasoning-carrier} {§agui-encrypted-reasoning} — cross-package
+// coverage for core relay, AG-UI projection, cardinality, and packet exclusion.
 import test from "node:test";
 import assert from "node:assert/strict";
 import Engine from "../../src/core/Engine.ts";
@@ -24,7 +17,7 @@ const projectThroughAgui = (workerId: number, attrs: string) => {
     return tr.logEntry({ entry: { id: 9, op: "model", origin: "model", coordinate: "1/1/9/model", turn_id: 1, tx: "", attrs, worker_id: workerId } as never });
 };
 
-test("the item list lands verbatim on attrs.reasoning AND agui projects a correlated span; the packet never carries the blob", async () => {
+test("core preserves the normalized item list, AG-UI correlates it, and the packet excludes it", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `sealed-${crypto.randomUUID()}`);
@@ -37,13 +30,13 @@ test("the item list lands verbatim on attrs.reasoning AND agui projects a correl
         ] as never });
         const t1 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 1 });
 
-        // 1. The carrier: attrs.reasoning is the item LIST, blobs verbatim.
+        // Core preserves the provider-normalized list without reinterpretation.
         const rows = await db.test_log_entries_by_worker_op.all<{ attrs: string }>({ worker_id: workerId, op: "model" });
         const row = rows.find((r) => (JSON.parse(r.attrs) as { reasoning?: unknown }).reasoning !== undefined);
         assert.ok(row, "the mirror row carries attrs.reasoning");
         const list = (JSON.parse(row!.attrs) as { reasoning: Array<{ id: string | null; subtype: string; encrypted: Array<{ data: string; format: string | null }> }> }).reasoning;
         assert.ok(Array.isArray(list), "attrs.reasoning is the item LIST (the standard shape)");
-        assert.deepEqual(list, [{ id: "rs_1", subtype: "message", encrypted: [{ data: BLOB, format: "openai-responses-v1" }] }], "the item rides verbatim — id/subtype/blob unsynthesized");
+        assert.deepEqual(list, [{ id: "rs_1", subtype: "message", encrypted: [{ data: BLOB, format: "openai-responses-v1" }] }], "core relays the normalized item unchanged");
 
         // 2. Cross-lane conformance: core's real attrs → agui's real Translator → the standard event.
         const events = projectThroughAgui(workerId, row!.attrs);
@@ -80,7 +73,7 @@ test("a MULTI-item turn serves N correlated spans — the array residual is clos
 
         const rows = await db.test_log_entries_by_worker_op.all<{ attrs: string }>({ worker_id: workerId, op: "model" });
         const row = rows.find((r) => (JSON.parse(r.attrs) as { reasoning?: unknown }).reasoning !== undefined)!;
-        // core relays BOTH items (not a collapsed first) → agui projects TWO correlated sealed values.
+        // Core relays both items; AG-UI projects two correlated encrypted values.
         const values = projectThroughAgui(workerId, row.attrs)
             .filter((e) => e.type === "REASONING_ENCRYPTED_VALUE") as Array<{ entityId: string; encryptedValue: string }>;
         assert.equal(values.length, 2, "both reasoning items serve — no collapse-to-first");

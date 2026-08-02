@@ -97,17 +97,8 @@ export default class Translator {
             return events;
         }
         if (e.op === "model") {
-            // The mirror row is forensic EXCEPT the reasoning-item core is REQUIRED to surface
-            // (#482, DIVERGENCES row 3 = reasoning CONVERGED, no exception for its representation).
-            // agui consumes the OpenAI/AG-UI reasoning-item shape VERBATIM — this is a hard
-            // interface to the standard, deliberately BROKEN against the bespoke {data,format}
-            // carrier: it lights up only when the seam delivers { id, subtype, encrypted } (the
-            // forcing function — the gap is core's to close, not agui's to translate around).
-            // The standard is a LIST of reasoning items (a turn can carry N, each its own
-            // entity/id) — agui consumes the array. A single item object is tolerated as a
-            // one-element list (core's current single-object write, #482 residual); the array
-            // is the target core must relay to serve multi-item turns. Each well-formed item
-            // projects its OWN correlated span; the id/subtype come from the seam, never invented.
+            // {§agui-encrypted-reasoning} — project every correlated normalized
+            // item; #44 owns the provider-boundary normalization evidence.
             for (const r of Translator.#reasoningItems(e.attrs)) {
                 if (r.encrypted.length === 0) continue;
                 events.push({ type: EventType.REASONING_START, messageId: r.id });

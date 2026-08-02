@@ -78,12 +78,8 @@ export interface PlurnkSchemeContext {
     readonly pushNotice?: (notice: Notice) => void;
 }
 
-// Optional packet hook ({§packet-assembly}). A scheme implements this to rewrite
-// the engine's default section list — add, remove, reorder — by returning a new
-// list. The trusted, in-process seam for plugin packet control: list in, list
-// out, applied in registration order after the kernel builds its defaults. The
-// client wire never reaches the packet; this does. No context by design — pure
-// list surgery; a plugin that needs live state writes a normal op.
+// {§scheme-packet-transform} {§packet-plugin-transform}. #73 owns removal of
+// this duplicate core declaration and the draft/measured type distinction.
 export interface PacketSectionTransformer {
     transformSections(sections: PacketSection[]): PacketSection[] | Promise<PacketSection[]>;
 }

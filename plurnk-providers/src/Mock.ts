@@ -15,8 +15,7 @@ export type MockAssistant = {
     usage?: Partial<ProviderUsage>;
     finishReason?: FinishReason;
     model?: string;
-    // #482: sealed relay reasoning items (id-keyed, widened per client), so core's
-    // sealed-reasoning conformance test can drive the shape through Mock.
+    // Provider-normalized encrypted reasoning fixture; #44 owns normalization.
     reasoningEncrypted?: ReadonlyArray<{ id: string | null; subtype: string; encrypted: ReadonlyArray<{ data: string; format: string | null }> }>;
     // Pre-parsed ops — intg-only escape hatch. Typed `unknown[]` so the
     // framework carries no parser dependency; plurnk-service

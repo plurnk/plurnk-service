@@ -48,11 +48,9 @@ const previewBounds = (): { lines: number; chars: number } => {
     return { lines, chars };
 };
 
-// PacketSection is the canonical packet shape: an ordered list of named,
-// slotted sections (defined below). Sections arrive both from Engine's
-// in-memory packet AND from `turns.packet` re-parsed by the digest — re-parsed
-// leaf fields are untyped (SectionView), narrowed by the runtime `typeof`
-// checks below (boundaries validate). Engine's RequestPacket is strict.
+// {§packet-stored-shape} — sections arrive from both the in-memory request and
+// the durable packet re-parsed by the digest. The latter uses the loose view
+// below and is narrowed at the rendering boundary.
 interface ActionTarget {
     kind?: unknown;
     raw?: unknown;

@@ -83,10 +83,10 @@ Independent axes on entries and channels. Confusion across them is a recurring s
 
 ### §packet-terms Packet terms
 
-| Term | Meaning |
-|---|---|
-| **packet** | The turn's full exchange shape: `{system, user, assistant, assistantRaw}`. Persisted on `turns.packet`. |
-| **log** | the `log` section. Chronological list of `log_entries` in scope this turn. |
+| Term       | Meaning |
+| ---------- | ------- |
+| **packet** | A model turn's durable request record: measured `sections`, extended with `assistant` and `assistantRaw` when an emission is admitted. Persisted on `turns.packet`; #76 owns the inconsistent placeholders used by turns with no model exchange. |
+| **log**    | The `log` section. Chronological list of `log_entries` in scope this turn. |
 | **render** | The act of computing the packet from current DB state at turn boundaries. Mimetype handlers fire at render time. |
 
 ### §test-taxonomy Test taxonomy
@@ -153,7 +153,7 @@ flowchart LR
 
 §actor-boundary-isolation **Isolation is by worker; the model is not
 privileged.** A packet renders exactly one worker's log — the assembling
-worker's — against the workspace's shared manifest ({§packet}). A worker cannot
+worker's — alongside current shared workspace state ({§packet}, {§membership}). A worker cannot
 see another's log: isolation is *structural*, a consequence of "a worker owns
 its log entries" ({§lifecycle-terms}) and "one packet, one worker," never a
 render-time filter.
@@ -171,7 +171,7 @@ file or ancestry-authorized entry through ordinary dispatch ({§worker-read-scop
 | Environment | A change to a shared project file or shared worker entry, as a folded attributed delta. | Ambient state never wakes an idle worker ({§env-delta}).         |
 | Voice       | A directed `loop.inject` or `SEND(worker://name)` message.                              | An active worker folds it into its next turn; an idle one wakes. |
 
-§actor-boundary-no-mutex **Wild west by default; explicit branch batches are the exception.** Ordinary workers share the manifest without locks. Coordination is cooperative and softly fenced (the {§membership} `read-only` overlay, a workspace policy, bounds every worker's writable surface uniformly — {§machine-processes}); a conflict *surfaces* as a delta rather than being prevented. A branch-tagged WORK/FORK opts the whole workspace into the bounded, exclusive Git transaction in {§worker-branch-batch}. It is not a general entry mutex or a hidden per-worker filesystem.
+§actor-boundary-no-mutex **Wild west by default; explicit branch batches are the exception.** Ordinary workers share workspace state without locks. Coordination is cooperative and softly fenced (the {§membership} `read-only` overlay, a workspace policy, bounds every worker's writable surface uniformly — {§machine-processes}); a conflict *surfaces* as a delta rather than being prevented. A branch-tagged WORK/FORK opts the whole workspace into the bounded, exclusive Git transaction in {§worker-branch-batch}. It is not a general entry mutex or a hidden per-worker filesystem.
 
 §actor-boundary-passive-wake **Passive wake follows ownership.** A directed
 voice wakes an idle worker. A parked continuation resumes when an obligation it
@@ -1852,9 +1852,9 @@ speculative or non-overflow trimming.
 
 ### §env-delta The environment delta: what changed since the model last looked
 
-The manifest ({§packet}) states what exists now. The environment delta supplies
-the events that made a worker's prior view stale without copying the shared
-world into worker-private state.
+Catalog FIND results ({§packet-catalog}) state what existed when observed. The
+environment delta supplies the events that made a worker's prior view stale
+without copying the shared world into worker-private state.
 
 ```mermaid
 flowchart LR
@@ -1999,25 +1999,28 @@ Core validates the complete ordered array before exposing it.
 
 ## §packet Packet shape
 
-**Service-owned.** grammar 0.67 deleted `Packet.json` — the protocol scoped itself to the grammar, so the packet shape is now entirely plurnk-service's. The engine assembles it in `PacketBuilder.buildRequestPacket` as an **ordered list of sections** that trusted plugins may rewrite ({§packet-assembly}).
+§packet-stored-shape **A model packet preserves the rendered request and, only
+when an emission is admitted, its response.** Core assembles and measures the
+request under {§packet-assembly}. An admitted response extends that same record
+before the turn closes; a failed provider call or exhausted invalid emission
+leaves the request-only record, while rejected exchanges remain in
+`turn_attempts`.
 
-```ts
-type PacketSection = {
-    name: string;                       // stable id: definition, tools, schemes, system-policy, project-policy, budget, prompt, errors, notices, log, git, requirements — or a plugin's own
-    slot: "system" | "user";            // the prompt-cache boundary; system-slot sections build the cache-stable system message
-    header: string | null;              // "## X", or null (definition renders verbatim)
-    content: string;                    // rendered markdown — what the model saw
-    tokens: number;                     // measured render-weight
-};
-type Packet = {
-    tokens: number;
-    sections: PacketSection[];           // the ordered, plugin-overridable list; the wire renders it by slot
-    assistant: { tokens: number; content: string; ops: PlurnkStatement[]; reasoning: string | null };
-    assistantRaw: unknown;
-};
-```
+| Field                   | Presence                         | Contract                                                                                                                                                                      |
+| ----------------------- | -------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `tokens`                | Every assembled model request    | Ruler weight of both rendered request slots. After an admitted response, core adds the ruler weight of `assistant.content`. It is never provider usage.                        |
+| `sections`              | Every assembled model request    | Ordered post-transform request sections. `PacketWire.renderSlot` groups them into system and user messages, and the digest re-renders those stored sections byte-for-byte.     |
+| `sections[].tokens`     | Every stored section             | Independently measured render-weight of that section. Their sum is not the rendered request weight because slot separators and independent rounding remain outside each row.  |
+| `assistant.content`     | Admitted response only           | Accepted model content from which operations were parsed.                                                                                                                     |
+| `assistant.ops`         | Admitted response only           | Parsed operations admitted from that content.                                                                                                                                |
+| `assistant.reasoning`   | Admitted response only           | Normalized readable reasoning text, or `null`.                                                                                                                               |
+| `assistantRaw`          | Admitted response only           | Opaque provider-owned transport record retained for forensics.                                                                                                               |
 
-The wire projection (`PacketWire.renderSlot`) groups sections by slot into the system + user ChatMessages; the digest re-renders the same stored sections byte-for-byte.
+#76 owns the current hard-stop and non-model placeholder variants and the lack
+of one validated stored-packet algebra. The external transformation surface is
+owned by {§scheme-packet-transform}. #73 tracks the current type's conflation of
+a pre-measure draft with a measured stored section; #74 tracks coverage that
+mistakes the sum of section weights for the rendered request weight.
 
 §definition-table-projection The authored `plurnk.md` remains human-aligned. Its `definition` section deterministically removes Markdown table-cell padding and shortens separator cells to three dashes before plugin transforms, measurement, storage, and wire rendering; alignment colons survive, while fenced blocks and all non-table whitespace remain exact.
 
@@ -2043,7 +2046,14 @@ by service policy.
 
 Retired terms stay retired: the lexicon guard rejects `thinking`, the unqualified `session` noun, `contextSize`, `decodeBudget`, and moved partition-knob names. <!-- lexicon-allow: this sentence enumerates the retired terms -->
 
-§sealed-reasoning-carrier **Sealed reasoning rides the mirror row.** A provider's ENCRYPTED reasoning — the OpenAI Responses reasoning-item LIST (`[{id, subtype, encrypted: [{data, format}]}]` — a turn can carry N distinct-id items; normalized by the provider tier: id + subtype from the wire, never synthesized) — lands VERBATIM in the model mirror row's `attrs.reasoning` — per turn, on the same `log/entry` broadcast and `readLog` read the client seam already consumes; agui projects one correlated `REASONING_ENCRYPTED_VALUE` span per item (#482). A cross-lane conformance test drives core's real write through agui's real Translator, so a future non-meeting seam is a red pre-push gate, not a shipped-broken main. The blobs are never decoded, never synthesized, and never rendered into a packet — the packet renderer reads no foreign attrs keys, so the model never pays tokens for ciphertext it cannot read. Readable text keeps riding `assistant.reasoning`; the two never mix.
+§encrypted-reasoning-carrier **Encrypted reasoning is opaque client evidence.**
+When a provider returns encrypted reasoning items, core attaches that list to
+the admitted model mirror row's `attrs.reasoning`. `log/entry` and `readLog`
+carry it to AG-UI, which may project correlated standard reasoning entities.
+Core never decodes the blobs or renders them into a model packet; readable
+reasoning text remains separate in `assistant.reasoning`. #44 owns the
+unsettled provider-boundary rule for which metadata is preserved versus
+normalized and forbids calling derived fields verbatim.
 
 §body-projection **One full body, one packet projection.** Every durable log row has one canonical full body resolved from its stored tx/rx envelope by `LogBody`. READ and FIND over `log:///`, persistent search derivation, and packet rendering all consume that same meaning. Only packet rendering may project it:
 
@@ -2065,11 +2075,16 @@ authority slot.
 
 §prompt-loop-containment A loop contains every prompt that arrives before it
 concludes, ordinal-keyed as `N`; the next turn publishes every entry for which
-that loop has no `op='prompt'` row, oldest first. A still-undelivered frame at
-conclusion is promoted to a fresh loop. The automatic grinder preserves prompt
-rows; explicit OPEN/FOLD/KILL follows the ordinary log contract.
+that loop has no `op='prompt'` row, oldest first. Every still-undelivered frame
+at conclusion must remain ordered and reach subsequent work exactly once; #75
+tracks the current newest-only recovery violation. The automatic grinder
+preserves prompt rows; explicit OPEN/FOLD/KILL follows the ordinary log
+contract.
 
-§packet-catalog **The entry catalog.** The catalog is the complete, unranked directory of what a workspace holds, queried through FIND rather than stored as a materialized manifest. `FIND(scheme:///**)` returns every entry; `FIND(scheme:///*)` returns the complete one-level projection defined in {§find-result-catalog-rows}. `_entry-manifest.catalogRowsFor` owns entry representation; persistent search materialization belongs to `SearchIndex`. An entry row is `{ path, stream?, tags?, channels: { <uri>: { mimetype, tokens, lines } } }`; every channel key is the URI the model READs. `stream` is absent for ordinary entries and `tags` appears only when present. The catalog never ranks.
+§packet-catalog **Catalogs are query results, not packet state.** The packet
+stores no materialized manifest. Complete and one-level entry directories,
+their row shape, and their ordering are ordinary FIND projections owned by
+{§find-result-catalog-rows}; persistent search derivation is a separate index.
 
 ### §operation-results Model-facing failures and notices
 
@@ -2082,9 +2097,6 @@ The `log` is durable product truth. The `errors` section points at its failures
 while the separate `notices` section displays transient observations. The two
 retain distinct contracts and lifetimes.
 
-**Plurnk-service rendering:**
-
-- `budget` per {§tokenomics}: turn-weight and heaviest-entries tables with `tokenCeiling`/`tokenUsage`/`tokensFree`.
 - §operation-result-uniform-error-channel **One uniform error channel within an
   accepted turn.** Every operation or engine-rail failure — budget overflow,
   max-commands, and the idle/premature steers — is a `log_entries` row with

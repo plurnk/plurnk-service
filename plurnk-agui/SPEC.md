@@ -35,21 +35,21 @@ recompute them.
 
 One accepted Run or daemon notification produces zero-or-more AG-UI events:
 
-| plurnk wire | AG-UI events |
-|---|---|
-| schema-valid `RunAgentInput` | `RUN_STARTED` + initial `STATE_SNAPSHOT` |
-| `log/entry` turn boundary | `STEP_FINISHED` + `STEP_STARTED` (`turn-<id>`) |
-| `log/entry` op=PLAN (model) | `ACTIVITY_SNAPSHOT` {§agui-plan-activity} |
-| `log/entry` op=SEND (model) | `TEXT_MESSAGE_START/CONTENT/END` + `CUSTOM plurnk.send` (signal/status) |
-| `log/entry` other op (model) | `TOOL_CALL_START/ARGS/END` (+ `TOOL_CALL_RESULT` when rx exists) |
-| `log/entry` op=model (mirror) | a correlated `REASONING_START` / `REASONING_ENCRYPTED_VALUE`* / `REASONING_END` span when the reasoning-item `attrs.reasoning` is present (see {§agui-sealed-reasoning}); otherwise nothing — forensic |
-| `log/entry` origin≠model | `CUSTOM plurnk.ambient` (foists, deltas, narrations) |
-| `loop/proposal` | `TOOL_CALL_START/ARGS/END`, then `RUN_FINISHED` with an interrupt outcome |
-| `loop/terminated` | `STATE_DELTA` (budget) + `CUSTOM plurnk.terminated` + `RAW` (the provider's native completion frame, `source: provider`, §475) + `RUN_FINISHED` (`result.status === 200`) or `RUN_ERROR` (otherwise, from the exact RFC 9457 Problem Details) |
-| transport failure after SSE opens | `CUSTOM plurnk.problem` (exact Problem Details) + `RUN_ERROR` (`code` = Problem `type`, `message` = Problem `detail`) |
-| `notice/event` | `CUSTOM plurnk.notice` |
-| `stream/event` + `stream/concluded` | `CUSTOM plurnk.stream` + `ACTIVITY_SNAPSHOT` (the standard background-activity channel: `activityType` = the scheme, replace-snapshot, §475). A conclusion preserves its exact universal `result`, including RFC 9457 Problem Details; AG-UI does not reconstruct failure from a status or summary. |
-| `workspace/branch-batch` | `CUSTOM plurnk.branch_batch` with the daemon's full queued/running/completed/failed/recovery-required lifecycle payload |
+| plurnk wire                                | AG-UI events |
+| ------------------------------------------ | ------------ |
+| schema-valid `RunAgentInput`               | `RUN_STARTED` + initial `STATE_SNAPSHOT` |
+| `log/entry` turn boundary                  | `STEP_FINISHED` + `STEP_STARTED` (`turn-<id>`) |
+| `log/entry` op=PLAN (model)                | `ACTIVITY_SNAPSHOT` {§agui-plan-activity} |
+| `log/entry` op=SEND (model)                | `TEXT_MESSAGE_START/CONTENT/END` + `CUSTOM plurnk.send` (signal/status) |
+| `log/entry` other op (model)               | `TOOL_CALL_START/ARGS/END` (+ `TOOL_CALL_RESULT` when rx exists) |
+| `log/entry` op=model (mirror)              | A correlated `REASONING_START` / `REASONING_ENCRYPTED_VALUE`* / `REASONING_END` span when the reasoning-item `attrs.reasoning` is present (see {§agui-encrypted-reasoning}); otherwise nothing — forensic. |
+| `log/entry` origin≠model                   | `CUSTOM plurnk.ambient` (foists, deltas, narrations) |
+| `loop/proposal`                            | `TOOL_CALL_START/ARGS/END`, then `RUN_FINISHED` with an interrupt outcome |
+| `loop/terminated`                          | `STATE_DELTA` (budget) + `CUSTOM plurnk.terminated` + `RAW` (the provider's native completion frame, `source: provider`, §475) + `RUN_FINISHED` (`result.status === 200`) or `RUN_ERROR` (otherwise, from the exact RFC 9457 Problem Details) |
+| transport failure after SSE opens          | `CUSTOM plurnk.problem` (exact Problem Details) + `RUN_ERROR` (`code` = Problem `type`, `message` = Problem `detail`) |
+| `notice/event`                             | `CUSTOM plurnk.notice` |
+| `stream/event` + `stream/concluded`        | `CUSTOM plurnk.stream` + `ACTIVITY_SNAPSHOT` (the standard background-activity channel: `activityType` = the scheme, replace-snapshot, §475). A conclusion preserves its exact universal `result`, including RFC 9457 Problem Details; AG-UI does not reconstruct failure from a status or summary. |
+| `workspace/branch-batch`                   | `CUSTOM plurnk.branch_batch` with the daemon's full queued/running/completed/failed/recovery-required lifecycle payload |
 
 §agui-plan-activity **PLAN is activity, not reasoning.** PLAN is the model's public,
 durable statement of intended goals. Provider reasoning is a separate channel, so PLAN
@@ -57,28 +57,27 @@ never projects into AG-UI `REASONING_*` events. Live delivery and reattach prese
 same log identity and verbatim goals:
 
 | Projection | Standard representation |
-|---|---|
-| live | `ACTIVITY_SNAPSHOT { messageId: coordinate ?? id, activityType: "PLAN", content: { goals: body }, replace: true }` |
-| reattach | `ActivityMessage { id: coordinate ?? id, role: "activity", activityType: "PLAN", content: { goals: body } }` inside `MESSAGES_SNAPSHOT` |
+| ---------- | ----------------------- |
+| live       | `ACTIVITY_SNAPSHOT { messageId: coordinate ?? id, activityType: "PLAN", content: { goals: body }, replace: true }` |
+| reattach   | `ActivityMessage { id: coordinate ?? id, role: "activity", activityType: "PLAN", content: { goals: body } }` inside `MESSAGES_SNAPSHOT` |
 
 - **An op row IS a tool call** — its `coordinate` is the `toolCallId`, its tx the args (one
   delta: a dispatched plurnk op is atomic), its rx the result. The log-shaped richness the
   core vocabulary can't hold (fold state, tags, tokens) stays on the row inside
   `plurnk.ambient`/`TOOL_CALL_RESULT` payloads.
-- §agui-sealed-reasoning **Sealed reasoning: a hard interface to the standard** — reasoning
-  transmission is a SOLVED problem (OpenAI Responses / AG-UI reasoning-item; DIVERGENCES row 3 =
-  reasoning CONVERGED, with no exception for its representation), so agui consumes the standard
-  shape VERBATIM and does not translate a bespoke one. The REQUIRED seam contract: core surfaces
-  the model's reasoning on the model row's `attrs.reasoning` as a LIST of reasoning items —
-  `[{ id: string, subtype: "message" | "tool-call", encrypted?: [{ data, format }] }]` — because a
-  turn can carry N reasoning entities (distinct ids), each its own span (the OpenAI Responses
-  model). `id` is the entity's identity (the SAME id its open reasoning carries, so open text and
-  sealed value are two faces of one entity). agui projects, per item, `REASONING_ENCRYPTED_VALUE`
-  (`subtype`/`entityId`/`encryptedValue`) with
-  `entityId` = the item `id`, correlated to a `REASONING_START/END` span keyed by that same `id`.
-  `format` has no AG-UI slot; it rides `plurnk.row` losslessly. A non-array carrier is invalid.
-  An item with a null/absent `id` or an unknown
-  `subtype` is DROPPED (uncorrelatable → agui never coins an id or coerces a subtype).
+- §agui-encrypted-reasoning **Encrypted reasoning projects only when it is
+  correlated.** Core supplies an item list on the model mirror row's
+  `attrs.reasoning`; AG-UI does not invent identity or classification.
+
+  | Input fact                                    | Projection |
+  | --------------------------------------------- | ---------- |
+  | String `id`; subtype `message` or `tool-call` | One `REASONING_START`, `REASONING_ENCRYPTED_VALUE`, and `REASONING_END` span keyed by that `id`. |
+  | Null/missing `id` or unknown `subtype`        | No reasoning event; an uncorrelatable item is dropped rather than coerced. |
+  | Encrypted `data`                              | Forwarded as the standard encrypted value without decoding. |
+  | Provider `format`                             | Retained on the lossless row because AG-UI has no corresponding field. |
+
+  #44 owns the unresolved provider-boundary evidence required to normalize an
+  item's identity and subtype before it reaches this projection.
 - §agui-custom-namespace **The custom namespace** — plurnk-specific metadata rides
   `CUSTOM` events named `plurnk.*` (`plurnk.send`, `plurnk.ambient`,
   `plurnk.notice`, `plurnk.stream`, `plurnk.branch_batch`, `plurnk.terminated` — the full loop
