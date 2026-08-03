@@ -84,8 +84,9 @@ export default class Portal {
 
     // Bind a client's SSE to a workspace and AG-UI Run. The emit consumer ends its stream when it
     // sees RUN_FINISHED / RUN_ERROR (the router's terminal projection) — the engine
-    // just fans; the edge owns the socket lifecycle. `workerId` is the driving worker (the
-    // client envelope's); `modelWorkerId` binds the render (null → the router lazily
+    // just fans; the edge owns the socket lifecycle. `workerId` is the lifecycle actor
+    // (client worker for client ops, conversation worker otherwise); `modelWorkerId`
+    // binds the render (null → the router lazily
     // adopts the first model-origin row's worker — a fresh workspace's model worker is born
     // at the drain).
     openThread(args: { workspaceId: number; workerId: number; threadId: string; emit: (events: AguiEvent[]) => void; modelWorkerId?: number | null; inputRunId?: string }): unknown {
