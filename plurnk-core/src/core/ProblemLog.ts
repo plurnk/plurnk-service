@@ -66,7 +66,7 @@ export default class ProblemLog {
             hostname: null,
             port: null,
             pathname: null,
-            params: null,
+            query: null,
             fragment: null,
             lineMarker: null,
             tx: "",

@@ -68,19 +68,15 @@ password: (string | null)
 hostname: (string | null)
 port: (number | null)
 pathname: string
-params: Params
+/**
+ * Canonical serialized WHATWG query component without the leading `?`. Null means no query; the empty string means an explicit empty query (`?`). Ordering, duplicate names, and encoded spelling are preserved.
+ */
+query: (string | null)
 fragment: (string | null)
 /**
  * Trailing `{key: value}` request-metadata blocks removed before WHATWG decomposition and preserved as ordered pairs. Order and duplicate names survive; the addressed scheme owns their meaning. Absent when no block was supplied.
  */
 headers?: [string, string][]
-}
-/**
- * URL query parameters parsed into a JSON object. Single-value keys map to strings; multi-value keys (repeated in the original query string) map to arrays of strings. Empty object when the URL has no query string; nullable usages wrap this schema in a oneOf with null.
- */
-
-export interface Params {
-[k: string]: (string | string[])
 }
 /**
  * The ordered numeric components parsed from a `<scope>` slot. AstBuilder converts each lexical number to a JavaScript number; the operation owner assigns arity and meaning, including text coordinates, result positions, timing, mutation anchors, and an optional leading semantic threshold.

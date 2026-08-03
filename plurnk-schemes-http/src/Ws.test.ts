@@ -105,11 +105,15 @@ const makeCtx = (overrides: CtxOverrides = {}) => {
     return { ctx, localAbort, inspect: () => ({ chunks, opened, closed, wrote }) };
 };
 
-const wss = (raw: string, pathname: string): UrlPath => ({
-    kind: "url", raw, scheme: raw.split("://")[0],
-    username: null, password: null, hostname: "example.com", port: null,
-    pathname, params: {}, fragment: null,
-});
+const wss = (raw: string, pathname: string): UrlPath => {
+    const url = new URL(raw);
+    return {
+        kind: "url", raw, scheme: url.protocol.slice(0, -1),
+        username: url.username || null, password: url.password || null,
+        hostname: url.hostname || null, port: url.port === "" ? null : Number(url.port),
+        pathname, query: url.search === "" ? null : url.search.slice(1), fragment: null,
+    };
+};
 const readStmt = (target: UrlPath): ReadStatement => ({ op: "READ", suffix: "READ", signal: null, target, lineMarker: null, body: null, position: { line: 0, column: 0 } });
 const sendStmt = (signal: number, target: UrlPath, body?: string): SendStatement => ({ op: "SEND", suffix: "SEND", signal, target, lineMarker: null, body: body === undefined ? null : { raw: body, json: null }, position: { line: 0, column: 0 } });
 const killStmt = (target: UrlPath): KillStatement => ({ op: "KILL", suffix: "KILL", signal: null, target, lineMarker: null, body: null, position: { line: 0, column: 0 } });
@@ -148,8 +152,8 @@ test("READ: inbound frames stream into messages; socket close settles done", asy
 
     assert.equal(r.status, 102);
     const { chunks, opened, closed, wrote } = inspect();
-    assert.equal(wrote, "/feed"); // create-then-subscribe
-    assert.equal(opened?.pathname, "/feed");
+    assert.equal(wrote, "/93.184.216.34/feed"); // create-then-subscribe
+    assert.equal(opened?.pathname, "/93.184.216.34/feed");
     assert.deepEqual(chunks.filter((c) => c.channel === "messages").map((c) => c.chunk), ["hello", "world"]);
     assert.ok(chunks.every((c) => c.channel !== "messages" || c.mimetype === "text/plain"));
     assert.equal(closed?.result.status, 200);
@@ -205,6 +209,39 @@ test("SEND[200]: pushes the body onto the open socket a prior READ opened", asyn
     const r = await ws.send(sendStmt(200, wss(PUB, "/feed"), "ping"), ctx);
     assert.equal(r.status, 200);
     assert.deepEqual(sock.sent, ["ping"]);
+});
+
+test("socket lookup isolates addressed protocol, port, and ordered query", async () => {
+    const sock = fakeSocket();
+    const ws = new Ws(() => sock);
+    const { ctx, inspect } = makeCtx();
+    const opened = wss("wss://93.184.216.34:8443/feed?room=1&role=a&role=b", "/feed");
+    const read = ws.read(readStmt(opened), ctx);
+    await flush();
+    assert.equal(inspect().wrote, "/93.184.216.34:8443/feed?room=1&role=a&role=b");
+
+    const reordered = wss("wss://93.184.216.34:8443/feed?role=a&role=b&room=1", "/feed");
+    assert.equal((await ws.send(sendStmt(200, reordered, "wrong"), ctx)).status, 409);
+    const plain = wss("ws://93.184.216.34:8443/feed?room=1&role=a&role=b", "/feed");
+    assert.equal((await ws.send(sendStmt(200, plain, "wrong"), ctx)).status, 409);
+    assert.equal((await ws.send(sendStmt(200, opened, "right"), ctx)).status, 200);
+    assert.deepEqual(sock.sent, ["right"]);
+    sock.close(1000);
+    await read;
+});
+
+test("WebSocket userinfo is rejected before guard or connection", async () => {
+    let connected = false;
+    const { ctx } = makeCtx();
+    const result = await new Ws(() => {
+        connected = true;
+        return fakeSocket();
+    }).read(readStmt(wss("wss://alice:secret@93.184.216.34/feed", "/feed")), ctx);
+    assert.equal(result.status, 400);
+    assert.equal(result.problem?.type, "https://problems.plurnk.dev/scheme/wss/userinfo-not-allowed");
+    assert.equal(result.problem?.target, "wss://93.184.216.34/feed");
+    assert.doesNotMatch(JSON.stringify(result), /alice|secret/);
+    assert.equal(connected, false);
 });
 
 test("SEND[200]: no open socket → 409 (READ opens the connection SEND rides)", async () => {

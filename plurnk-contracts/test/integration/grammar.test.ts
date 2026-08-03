@@ -862,7 +862,7 @@ test("ParsedPath: https URL decomposed fully", () => {
     assert.equal(p.hostname, "sub.example.com");
     assert.equal(p.port, 8080);
     assert.equal(p.pathname, "/foo/bar");
-    assert.deepEqual(p.params, { q: ["1", "2"] });
+    assert.equal(p.query, "q=1&q=2");
     assert.equal(p.fragment, "frag");
 });
 
@@ -912,14 +912,14 @@ test("ParsedPath: file:///… scheme parses, empty hostname", () => {
     assert.equal(p.pathname, "/tmp/foo.txt");
 });
 
-test("ParsedPath: empty query and fragment are null/empty", () => {
+test("ParsedPath: absent query and fragment are null", () => {
     const result = PlurnkParser.parseStatements("<<READ(https://example.com/foo)::READ");
     const item = result.items[0];
     if (item.kind !== "statement") return;
     const p = item.statement.target;
     assert.ok(p);
     if (p.kind !== "url") return;
-    assert.deepEqual(p.params, {});
+    assert.equal(p.query, null);
     assert.equal(p.fragment, null);
 });
 
@@ -941,7 +941,7 @@ test("ParsedPath cleavage: HTTPS retains authority decomposition", () => {
     assert.equal(p.hostname, "example.com");
     assert.equal(p.port, 8080);
     assert.equal(p.pathname, "/api/data");
-    assert.deepEqual(p.params, { q: "1" });
+    assert.equal(p.query, "q=1");
     assert.equal(p.fragment, "frag");
 });
 
@@ -970,7 +970,7 @@ test("ParsedPath: wiki:/// — single-segment pathname under empty authority", (
     assert.equal(p.pathname, "/Paris");
 });
 
-test("ParsedPath: empty-authority scheme preserves params and fragment", () => {
+test("ParsedPath: empty-authority scheme preserves query and fragment", () => {
     const result = PlurnkParser.parseStatements("<<READ(wiki:///Paris?lang=fr#History)::READ");
     const item = result.items[0];
     if (item.kind !== "statement") { assert.fail("expected statement"); return; }
@@ -979,7 +979,7 @@ test("ParsedPath: empty-authority scheme preserves params and fragment", () => {
     assert.equal(p.scheme, "wiki");
     assert.equal(p.hostname, null);
     assert.equal(p.pathname, "/Paris");
-    assert.deepEqual(p.params, { lang: "fr" });
+    assert.equal(p.query, "lang=fr");
     assert.equal(p.fragment, "History");
 });
 

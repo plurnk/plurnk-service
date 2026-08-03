@@ -13,7 +13,7 @@ import { openMigrated, insertWorkspace, insertWorker, makeSchemeCtx } from "./_h
 const url = (pathname: string): UrlPath => ({
     kind: "url", raw: `worker:///${pathname}`, scheme: "worker",
     username: null, password: null, hostname: null, port: null,
-    pathname: `/${pathname}`, params: {}, fragment: null,
+    pathname: `/${pathname}`, query: null, fragment: null,
 });
 const taggedEdit = (target: UrlPath, body: string, tags: string[]): EditStatement => ({
     op: "EDIT", suffix: "", signal: tags, target, lineMarker: null, body, position: { line: 1, column: 1 },

@@ -158,6 +158,29 @@ effects shown to consumers; plugins do not invent a second effect envelope.
 
 Behavior ships as `export default class` (one class per file, static methods) — the ecosystem class paradigm. Type-only modules, the barrel, and the frozen `DEFAULT_LOOP_FLAGS` constant are the only non-class files.
 
+### §network-address Network address identity
+
+`NetworkAddress.from(target)` is the single non-secret normalization path for
+HTTP and WebSocket targets. It returns the exact addressed `scheme`, the
+canonical entry `pathname`, a fragmentless and credential-free transport
+`url`, and whether userinfo was present so the handler can reject it.
+
+| Component        | Entry identity                                      | Transport URL | Plurnk channel |
+|------------------|-----------------------------------------------------|---------------|----------------|
+| Scheme           | Exact `http`, `https`, `ws`, or `wss`               | Yes           | No             |
+| Host             | Canonical WHATWG hostname                            | Yes           | No             |
+| Port             | Non-default port                                     | Yes           | No             |
+| Path             | Canonical pathname                                   | Yes           | No             |
+| Query            | Serialized order, duplicates, and explicit empty `?` | Yes           | No             |
+| Fragment         | No                                                   | No            | Yes            |
+| Userinfo/headers | No                                                   | No            | No             |
+
+The canonical storage form is
+`/<host>[:<port>]<path>[?<query>]`, keyed together with workspace, owner, and
+the exact addressed scheme. `NetworkAddress.render(scheme, pathname)` is its
+model-facing inverse. Routing aliases select a handler; they do not collapse
+resource identity.
+
 ### Active-scheme resolution — `SchemeResolver`
 
 - `SchemeResolver.forLoop(handlers: ReadonlyMap<string, object>, flags: LoopFlags): Set<string>` — applies `manifest.flags` affinity to each handler and returns names of schemes active under the loop's flags.

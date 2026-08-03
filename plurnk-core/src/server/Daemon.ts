@@ -19,7 +19,7 @@ import type { Provider, ProviderAlias } from "@plurnk/plurnk-providers";
 export type NotifyTarget = "all" | { workspaceId: number };
 // One drained loop's terminal shape — the drain's return currency.
 export interface DrainLoopResult { loopId: number; result: SchemeResult; hitMaxTurns: boolean; turnIds: number[]; action?: string; usage?: { promptTokens: number; completionTokens: number; costUsd: number } }
-import type { Notice } from "@plurnk/plurnk-contracts";
+import { parsePath, type Notice } from "@plurnk/plurnk-contracts";
 import type { PlurnkStatement } from "@plurnk/plurnk-contracts";
 import LogEntry from "./logEntry.ts";
 import type { LogEntryWire } from "./logEntry.ts";
@@ -31,7 +31,7 @@ import LoopDocs from "./loopDocs.ts";
 import GitMembership from "../core/git-membership.ts";
 import Fork from "../core/fork.ts";
 import LoopLifecycle from "../core/LoopLifecycle.ts";
-import { promptLoopPrefix } from "../core/plurnk-uri.ts";
+import { entryPathnameOf, promptLoopPrefix, renderAddress } from "../core/plurnk-uri.ts";
 import { rulerCount } from "../core/token-ruler.ts";
 import type { RegistryEntry } from "../core/ExecutorRegistry.ts";
 import { parseAliasesFromEnv, resolveActiveAlias } from "@plurnk/plurnk-providers";
@@ -848,8 +848,13 @@ export default class Daemon {
         const channel = ClientInput.assertOptionalChannel("entry.read", args.channel);
         const release = await this.#workspaceGate.acquireTurn(workspaceId, 0);
         try {
-            const m = args.target.match(/^([a-z][a-z0-9+.-]*):\/\/(.*)$/);
-            if (m === null) {
+            let parsed;
+            try {
+                parsed = parsePath(args.target);
+            } catch {
+                parsed = null;
+            }
+            if (parsed === null || parsed.kind !== "url") {
                 return Results.failure(
                     "daemon:entry",
                     "target-invalid",
@@ -894,17 +899,32 @@ export default class Daemon {
                     },
                 ) as SchemeResult & { entry: null };
             }
-            const scheme = m[1];
-            const pathname = m[2].split("#")[0];
+            if (parsed.username !== null || parsed.password !== null) {
+                return Results.failure(
+                    "daemon:entry",
+                    "userinfo-not-allowed",
+                    400,
+                    "Entry target URL userinfo is not allowed.",
+                    { entry: null },
+                    {
+                        stage: "entry-read",
+                        recovery: "Remove credentials from the entry URL.",
+                        retryable: false,
+                    },
+                ) as SchemeResult & { entry: null };
+            }
+            const scheme = parsed.scheme;
+            const pathname = entryPathnameOf(parsed);
+            const target = renderAddress(scheme, pathname);
             const row = await this.#db.entry_read_lookup.get<{ id: number; scope: string; workspace_id: number; scheme: string; pathname: string }>({ workspace_id: workspaceId, scheme, pathname });
             if (row === undefined) {
                 return Results.failure(
                     "daemon:entry",
                     "entry-not-found",
                     404,
-                    `No entry exists at ${scheme}://${pathname}.`,
+                    `No entry exists at ${target}.`,
                     { entry: null },
-                    { target: `${scheme}://${pathname}` },
+                    { target },
                 ) as SchemeResult & { entry: null };
             }
             let channelRows: ChannelRow[];
@@ -919,10 +939,10 @@ export default class Daemon {
                         "daemon:entry",
                         "channel-not-found",
                         404,
-                        `Channel #${channel} does not exist at ${scheme}://${pathname}.`,
+                        `Channel #${channel} does not exist at ${target}.`,
                         { entry: null },
                         {
-                            target: `${scheme}://${pathname}`,
+                            target,
                             requestedChannel: channel,
                             availableChannels,
                             ...(availableChannels.length === 0

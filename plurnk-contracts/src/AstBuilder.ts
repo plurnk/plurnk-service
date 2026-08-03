@@ -531,7 +531,7 @@ export default class AstBuilder {
             hostname: url.hostname || null,
             port: url.port ? Number.parseInt(url.port, 10) : null,
             pathname: url.pathname,
-            params: AstBuilder.#paramsFrom(url.searchParams),
+            query: AstBuilder.#queryFrom(url),
             fragment: url.hash ? url.hash.slice(1) : null,
         };
         if (headers) parsed.headers = headers;
@@ -570,19 +570,11 @@ export default class AstBuilder {
         return headers;
     }
 
-    static #paramsFrom(sp: URLSearchParams): Record<string, string | string[]> {
-        const params: Record<string, string | string[]> = {};
-        for (const [key, value] of sp) {
-            const existing = params[key];
-            if (existing === undefined) {
-                params[key] = value;
-            } else if (Array.isArray(existing)) {
-                existing.push(value);
-            } else {
-                params[key] = [existing, value];
-            }
-        }
-        return params;
+    static #queryFrom(url: URL): string | null {
+        const queryStart = url.href.indexOf("?");
+        if (queryStart === -1) return null;
+        const fragmentStart = url.href.indexOf("#", queryStart);
+        return url.href.slice(queryStart + 1, fragmentStart === -1 ? undefined : fragmentStart);
     }
 
     // The leading prefix claims its dialect; failed claimed syntax never falls back

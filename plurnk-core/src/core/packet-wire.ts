@@ -7,10 +7,9 @@
 // Format and omission rules are owned by {§packet-markdown}. Section producers
 // supply names and typed content; this projection preserves their ordered evidence.
 
-import { Validator, type LineMarker, type ProblemDetails, type TextRegion } from "@plurnk/plurnk-contracts";
+import { PathSyntax, Validator, type LineMarker, type ProblemDetails, type TextRegion } from "@plurnk/plurnk-contracts";
 import { Results as SchemeResults } from "@plurnk/plurnk-schemes";
-import { renderAddress } from "./plurnk-uri.ts";
-import { encodePathParens } from "./path-decode.ts";
+import { renderTarget } from "./plurnk-uri.ts";
 import type { GitStatus } from "./git-state.ts";
 import LogBody from "./LogBody.ts";
 import {
@@ -52,6 +51,7 @@ interface ActionTarget {
     hostname?: string | null;
     port?: number | null;
     pathname?: string | null;
+    query?: string | null;
     fragment?: string | null;
 }
 // The durable statement supplies operand identity and bodies without asking the
@@ -284,19 +284,6 @@ export default class PacketWire {
         return `<<:::${fence}\n${body}${sep}:::${fence}`;
     }
 
-    // Render a (scheme, pathname) tuple as the URI the model should SEE.
-    // Null scheme → bare pathname. The `file` scheme never reaches this
-    // function because Dispatcher.#extractTarget normalizes it to null at the
-    // storage boundary; storage and wire output are uniform on this.
-    static #renderModelUri(scheme: string | null | undefined, pathname: string | null | undefined): string {
-        const path = pathname ?? "";
-        // #370 — a null scheme is a workspace file, whose member key is /rel but whose MODEL-FACING
-        // form is the bare relative path (the catalog lists data/users.json; FIND returns it; the
-        // model types it). Rendering /data/users.json minted a second spelling of the same file.
-        if (scheme === null || scheme === undefined) return encodePathParens(path.replace(/^\//, ""));
-        return renderAddress(scheme, path);
-    }
-
     // Render one Log entry → a single bullet line carrying the meta JSON.
     // No body, no fence — every meaningful field is in the JSON. Naming
     // follows the uniform principle: `path` is identity (this log row's
@@ -509,20 +496,14 @@ export default class PacketWire {
 
     static #renderActionTarget(target: ActionTarget | null | undefined): string | null {
         if (target === null || target === undefined) return null;
-        // An authority-bearing target (worker://<name> — the worker IS the authority, {§worker-scheme};
-        // a web host http://host/path) keeps its name in `hostname`. Without it a spawn renders
-        // as a bare `worker://`, indistinguishable across workers — the model goes blind to what it
-        // spawned and re-spawns. Reconstruct the authority form when a hostname is present;
-        // namespace schemes (plurnk/known) fold their authority into the path and fall through.
-        const host = typeof target.hostname === "string" && target.hostname.length > 0 ? target.hostname : null;
-        const rendered = host !== null && typeof target.scheme === "string" && target.scheme.length > 0
-            ? `${target.scheme}://${host}${target.port ? `:${target.port}` : ""}${encodePathParens(target.pathname ?? "")}`
-            : PacketWire.#renderModelUri(target.scheme, target.pathname);
-        if (rendered.length === 0) return null;
-        // The channel fragment (#stdout/#stderr) is part of the address — a stream delta has to
-        // say WHICH channel it is, not just the entry. {§exec-stream}
-        const fragment = typeof target.fragment === "string" && target.fragment.length > 0 ? `#${target.fragment}` : "";
-        return rendered + fragment;
+        return renderTarget({
+            scheme: target.scheme,
+            hostname: target.hostname,
+            port: target.port,
+            pathname: target.pathname,
+            query: target.query,
+            fragment: target.fragment,
+        });
     }
 
     static #renderSelection(
@@ -533,7 +514,7 @@ export default class PacketWire {
         const address = target.kind === "local" && typeof target.raw === "string"
             ? target.raw
             : target.scheme === "file"
-                ? encodePathParens(target.pathname?.replace(/^\//, "") ?? "")
+                ? PathSyntax.encodeParens(target.pathname?.replace(/^\//, "") ?? "")
                 : PacketWire.#renderActionTarget(target);
         if (address === null || address.length === 0) return null;
         if (marker === null || marker === undefined) return address;

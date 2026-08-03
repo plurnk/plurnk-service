@@ -11,7 +11,7 @@ import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn } f
 const urlPath = (scheme: string, pathname: string): UrlPath => ({
     kind: "url", raw: `${scheme}://${pathname}`, scheme,
     username: null, password: null, hostname: null, port: null,
-    pathname, params: {}, fragment: null,
+    pathname, query: null, fragment: null,
 });
 
 const editStmt = (pathname: string, body: string, tags: string[] | null = null): EditStatement => ({

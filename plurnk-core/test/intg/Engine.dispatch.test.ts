@@ -10,7 +10,7 @@ import { openMigrated, seedEnvelope } from "./_helpers.ts";
 const urlPath = (scheme: string, pathname: string): UrlPath => ({
     kind: "url", raw: `${scheme}://${pathname}`, scheme,
     username: null, password: null, hostname: null, port: null,
-    pathname, params: {}, fragment: null,
+    pathname, query: null, fragment: null,
 });
 
 const editStmt = (opts: { target: ParsedPath; tags?: string[] | null; body?: string | null }): EditStatement => ({
@@ -89,7 +89,7 @@ test("worker:///x (authority form) folds to the same entry as worker:///x", asyn
         });
         // worker:///config.json => authority "config.json", empty path; #extractTarget folds it to /config.json,
         // the same entry the path form created. Without the fold the authority drops to "" and this 404s.
-        const authForm: UrlPath = { kind: "url", raw: "skill://config.json", scheme: "skill", username: null, password: null, hostname: "config.json", port: null, pathname: "", params: {}, fragment: null };
+        const authForm: UrlPath = { kind: "url", raw: "skill://config.json", scheme: "skill", username: null, password: null, hostname: "config.json", port: null, pathname: "", query: null, fragment: null };
         const read = await engine.dispatch({
             statement: readStmt({ target: authForm }),
             workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId, sequence: 2, origin: "model",
@@ -460,7 +460,7 @@ test("Engine.dispatch: model EDIT worker://plurnk/ is 403 — only the kernel au
         await Owner.commonsId(db, env.workspaceId); // ensure reserved rows resolvable
         await Envelope.ensurePlurnkWorker(db, env.workspaceId);
         const result = await engine.dispatch({
-            statement: editStmt({ target: { kind: "url", raw: "worker://plurnk/docs/log.md", scheme: "worker", username: null, password: null, hostname: "plurnk", port: null, pathname: "/docs/log.md", params: {}, fragment: null }, body: "y" }),
+            statement: editStmt({ target: { kind: "url", raw: "worker://plurnk/docs/log.md", scheme: "worker", username: null, password: null, hostname: "plurnk", port: null, pathname: "/docs/log.md", query: null, fragment: null }, body: "y" }),
             workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId,
             sequence: 1, origin: "model",
         });

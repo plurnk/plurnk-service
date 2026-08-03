@@ -114,7 +114,7 @@ test("op.dispatch accepts a raw PlurnkStatement AST and dispatches it", async ()
                     kind: "url" as const, raw: "worker:///hello",
                     scheme: "worker", username: null, password: null,
                     hostname: null, port: null, pathname: "/hello",
-                    params: {}, fragment: null,
+                    query: null, fragment: null,
                 },
                 lineMarker: null,
                 body: "world",

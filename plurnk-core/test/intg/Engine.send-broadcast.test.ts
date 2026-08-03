@@ -15,7 +15,7 @@ const sendStmt = (status: number | null, body: string, target: ParsedPath | null
 const urlPath = (scheme: string, pathname: string): UrlPath => ({
     kind: "url", raw: `${scheme}://${pathname}`, scheme,
     username: null, password: null, hostname: null, port: null,
-    pathname, params: {}, fragment: null,
+    pathname, query: null, fragment: null,
 });
 
 const setup = async () => {

@@ -37,7 +37,7 @@ const makeEngine = (db: Db): Engine => new Engine({ db, schemes: new SchemeRegis
 const urlPath = (scheme: string, pathname: string): UrlPath => ({
     kind: "url", raw: `${scheme}://${pathname}`, scheme,
     username: null, password: null, hostname: null, port: null,
-    pathname, params: {}, fragment: null,
+    pathname, query: null, fragment: null,
 });
 const editStmt = (target: UrlPath, body: string): EditStatement => ({
     op: "EDIT", suffix: "", signal: null, target, lineMarker: null, body,
@@ -95,7 +95,7 @@ test("an environment delta preserves typed source attributes for model-facing pr
             worker_id: plurnk, loop_id: plurnkLoop, turn_id: plurnkTurn, sequence: 1,
             origin: "plurnk", source: String(observer), op: "EDIT", suffix: "", signal: null,
             scheme: "https", username: null, password: null, hostname: "example.org", port: null,
-            pathname: "/page", params: null, fragment: null, lineMarker: null,
+            pathname: "/page", query: null, fragment: null, lineMarker: null,
             tx: JSON.stringify({ op: "EDIT", body: "page" }), mimetype_tx: "application/json",
             rx: JSON.stringify({ status: 201, span: "1:page" }), mimetype_rx: "application/json",
             status_rx: 201, tokens: 1, state: "resolved", outcome: null,

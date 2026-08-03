@@ -17,7 +17,7 @@ import { urlPath, findStmt } from "./_dsl.ts";
 
 const editStmt = (pathname: string, content: string): EditStatement => ({
     op: "EDIT", suffix: "", signal: null,
-    target: { kind: "url", raw: `worker:///${pathname}`, scheme: "worker", username: null, password: null, hostname: null, port: null, pathname, params: {}, fragment: null } as UrlPath,
+    target: { kind: "url", raw: `worker:///${pathname}`, scheme: "worker", username: null, password: null, hostname: null, port: null, pathname, query: null, fragment: null } as UrlPath,
     lineMarker: null, body: content, position: { line: 1, column: 1 },
 });
 const readStmt = (target: ParsedPath | null, body: MatcherBody | null = null): ReadStatement => ({
@@ -169,7 +169,7 @@ test("READ(log://) returns a composed row's complete canonical body", async () =
             hostname: null,
             port: null,
             pathname: null,
-            params: null,
+            query: null,
             fragment: null,
             lineMarker: null,
             tx: JSON.stringify({ body: full }),

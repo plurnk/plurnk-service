@@ -23,7 +23,7 @@ const killExec = (pathname: string): KillStatement => ({
     target: {
         kind: "url", raw: `exec://${pathname}`, scheme: "exec",
         username: null, password: null, hostname: null, port: null,
-        pathname, params: {}, fragment: null,
+        pathname, query: null, fragment: null,
     },
     lineMarker: null, body: null, position: { line: 1, column: 1 },
 });

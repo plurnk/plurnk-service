@@ -30,7 +30,7 @@ const fileEditStmt = (pathname: string, body: string, marker: LineMarker | null 
     op: "EDIT", suffix: "", signal: null,
     target: { kind: "url", raw: `file:///${pathname}`, scheme: "file",
         username: null, password: null, hostname: null, port: null,
-        pathname: `/${pathname}`, params: {}, fragment: null },
+        pathname: `/${pathname}`, query: null, fragment: null },
     lineMarker: marker, body, position: { line: 1, column: 1 },
 });
 
@@ -38,7 +38,7 @@ const fileReadStmt = (pathname: string): ReadStatement => ({
     op: "READ", suffix: "", signal: null,
     target: { kind: "url", raw: `file:///${pathname}`, scheme: "file",
         username: null, password: null, hostname: null, port: null,
-        pathname: `/${pathname}`, params: {}, fragment: null },
+        pathname: `/${pathname}`, query: null, fragment: null },
     lineMarker: null, body: null, position: { line: 1, column: 1 },
 });
 

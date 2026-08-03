@@ -15,6 +15,7 @@ export { default as Jsonplurnk } from "./Jsonplurnk.ts";
 export { default as PlurnkParseError } from "./PlurnkParseError.ts";
 export { default as PlurnkErrorStrategy } from "./PlurnkErrorStrategy.ts";
 export { default as RecordingListener } from "./RecordingListener.ts";
+export { default as PathSyntax } from "./PathSyntax.ts";
 export { AstBuilder };
 
 export const parsePath = (raw: string) => AstBuilder.parsePath(raw);

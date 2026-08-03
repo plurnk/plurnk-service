@@ -7,6 +7,7 @@
 import { Results, type ChannelCaps, type ChannelState, type SchemeResult } from "@plurnk/plurnk-schemes";
 import type { PlurnkSchemeContext } from "../scheme-types.ts";
 import CapsResolve from "./CapsResolve.ts";
+import { renderAddress } from "../plurnk-uri.ts";
 
 export default class DbChannelCaps implements ChannelCaps {
     readonly #ctx: PlurnkSchemeContext;
@@ -18,6 +19,7 @@ export default class DbChannelCaps implements ChannelCaps {
     }
 
     #failure(code: string, detail: string, pathname: string, channel?: string): SchemeResult {
+        const target = renderAddress(this.#scheme ?? "entry", pathname);
         return Results.failure(
             `scheme:${this.#scheme ?? "entry"}`,
             code,
@@ -25,7 +27,7 @@ export default class DbChannelCaps implements ChannelCaps {
             detail,
             {},
             {
-                target: `${this.#scheme ?? "entry"}://${pathname}`,
+                target,
                 ...(channel === undefined ? {} : { channel }),
             },
         );
@@ -33,32 +35,32 @@ export default class DbChannelCaps implements ChannelCaps {
 
     async append(pathname: string, channel: string, content: string): Promise<SchemeResult> {
         const entryId = await CapsResolve.entryId(this.#ctx, this.#scheme, pathname);
-        if (entryId === null) return this.#failure("entry-not-found", `No entry exists at ${this.#scheme ?? "entry"}://${pathname}.`, pathname);
+        if (entryId === null) return this.#failure("entry-not-found", `No entry exists at ${renderAddress(this.#scheme ?? "entry", pathname)}.`, pathname);
         const r = await this.#ctx.db.append_to_channel.run({ chunk: content, entry_id: entryId, channel });
         return r.changes > 0
             ? Results.assert({ status: 200 })
-            : this.#failure("channel-not-found", `Entry ${this.#scheme ?? "entry"}://${pathname} has no '${channel}' channel.`, pathname, channel);
+            : this.#failure("channel-not-found", `Entry ${renderAddress(this.#scheme ?? "entry", pathname)} has no '${channel}' channel.`, pathname, channel);
     }
 
     async replace(pathname: string, channel: string, content: string): Promise<SchemeResult> {
         const { tokenize } = this.#ctx;
         if (tokenize === undefined) throw new Error("DbChannelCaps.replace: ctx.tokenize is required for token accounting");
         const entryId = await CapsResolve.entryId(this.#ctx, this.#scheme, pathname);
-        if (entryId === null) return this.#failure("entry-not-found", `No entry exists at ${this.#scheme ?? "entry"}://${pathname}.`, pathname);
+        if (entryId === null) return this.#failure("entry-not-found", `No entry exists at ${renderAddress(this.#scheme ?? "entry", pathname)}.`, pathname);
         const r = await this.#ctx.db.replace_channel_content.run({
             content, tokens: tokenize(content), entry_id: entryId, channel,
         });
         return r.changes > 0
             ? Results.assert({ status: 200 })
-            : this.#failure("channel-not-found", `Entry ${this.#scheme ?? "entry"}://${pathname} has no '${channel}' channel.`, pathname, channel);
+            : this.#failure("channel-not-found", `Entry ${renderAddress(this.#scheme ?? "entry", pathname)} has no '${channel}' channel.`, pathname, channel);
     }
 
     async setState(pathname: string, channel: string, state: ChannelState): Promise<SchemeResult> {
         const entryId = await CapsResolve.entryId(this.#ctx, this.#scheme, pathname);
-        if (entryId === null) return this.#failure("entry-not-found", `No entry exists at ${this.#scheme ?? "entry"}://${pathname}.`, pathname);
+        if (entryId === null) return this.#failure("entry-not-found", `No entry exists at ${renderAddress(this.#scheme ?? "entry", pathname)}.`, pathname);
         const r = await this.#ctx.db.set_channel_state.run({ state, entry_id: entryId, channel });
         return r.changes > 0
             ? Results.assert({ status: 200 })
-            : this.#failure("channel-not-found", `Entry ${this.#scheme ?? "entry"}://${pathname} has no '${channel}' channel.`, pathname, channel);
+            : this.#failure("channel-not-found", `Entry ${renderAddress(this.#scheme ?? "entry", pathname)} has no '${channel}' channel.`, pathname, channel);
     }
 }

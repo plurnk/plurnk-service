@@ -11,7 +11,7 @@ import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, ma
 const urlPath = (scheme: string, pathname: string): UrlPath => ({
     kind: "url", raw: `${scheme}://${pathname}`, scheme,
     username: null, password: null, hostname: null, port: null,
-    pathname, params: {}, fragment: null,
+    pathname, query: null, fragment: null,
 });
 
 const readStmt = (target: ParsedPath | null): ReadStatement => ({
@@ -201,13 +201,13 @@ test("Log.read: a matcher READ writes one resource row with surgical coordinates
     const { db, engine, workspaceId, workerId, loopId, turnId } = await setup();
     try {
         await new Worker().edit(
-            { ...editStmt("/notes", "alpha\nbeta\ngamma"), target: { kind: "url", raw: "worker:///notes", scheme: "worker", username: null, password: null, hostname: null, port: null, pathname: "/notes", params: {}, fragment: null } },
+            { ...editStmt("/notes", "alpha\nbeta\ngamma"), target: { kind: "url", raw: "worker:///notes", scheme: "worker", username: null, password: null, hostname: null, port: null, pathname: "/notes", query: null, fragment: null } },
             { db, workspaceId, workerId, loopId, turnId, writer: "model", signal: undefined, tokenize: (t: string) => Math.ceil(t.length / 4) },
         );
         const result = await engine.dispatch({
             statement: {
                 op: "READ", suffix: "", signal: null,
-                target: { kind: "url", raw: "worker:///notes", scheme: "worker", username: null, password: null, hostname: null, port: null, pathname: "/notes", params: {}, fragment: null },
+                target: { kind: "url", raw: "worker:///notes", scheme: "worker", username: null, password: null, hostname: null, port: null, pathname: "/notes", query: null, fragment: null },
                 lineMarker: null,
                 body: { dialect: "regex", raw: "/\\w+/g", pattern: "\\w+", flags: "g" },
                 position: { line: 1, column: 1 },

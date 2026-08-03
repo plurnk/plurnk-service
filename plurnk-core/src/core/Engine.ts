@@ -99,7 +99,7 @@ const promptTarget = (loopSeq: number, turnSeq: number): UrlPath => {
         kind: "url", raw: `prompt://${storage}`,
         scheme: "prompt", username: null, password: null,
         hostname: null, port: null,
-        pathname: storage, params: {}, fragment: null,
+        pathname: storage, query: null, fragment: null,
     };
 };
 
@@ -917,7 +917,7 @@ export default class Engine {
                 const docTarget: UrlPath = {
                     kind: "url", raw: `worker://plurnk/${doc.entryName}`, scheme: "worker",
                     username: null, password: null, hostname: "plurnk", port: null,
-                    pathname: `/${doc.entryName}`, params: {}, fragment: null,
+                    pathname: `/${doc.entryName}`, query: null, fragment: null,
                 };
                 const docRead: ReadStatement = {
                     op: "READ", suffix: "", signal: null, target: docTarget,
@@ -1047,7 +1047,7 @@ export default class Engine {
                             scheme: schemeName,
                             username: null, password: null, hostname: null, port: null,
                             pathname: `/${pattern}`,
-                            params: {}, fragment: null,
+                            query: null, fragment: null,
                         },
                         body: null,
                         lineMarker: cap === null ? null : { marks: [1, cap] },
@@ -1067,7 +1067,7 @@ export default class Engine {
                 await Owner.kernelId(this.#db, workspaceId); // the row exists even before docs materialize — the empty survey is orienting, never 404
                 const kernelDocsFind: FindStatement = {
                     op: "FIND", suffix: "", signal: null,
-                    target: { kind: "url", raw: "worker://plurnk/docs/**", scheme: "worker", username: null, password: null, hostname: "plurnk", port: null, pathname: "/docs/**", params: {}, fragment: null },
+                    target: { kind: "url", raw: "worker://plurnk/docs/**", scheme: "worker", username: null, password: null, hostname: "plurnk", port: null, pathname: "/docs/**", query: null, fragment: null },
                     body: null, lineMarker: null, position: { line: 1, column: 1 },
                 };
                 await this.dispatch({ statement: kernelDocsFind, workspaceId, workerId, loopId, turnId, sequence: nextActionIndex, origin: "plurnk", onDispatch });
@@ -1078,7 +1078,7 @@ export default class Engine {
                 // space is useful orientation, not grounds to hide the surface.
                 const ownFind: FindStatement = {
                     op: "FIND", suffix: "", signal: null,
-                    target: { kind: "url", raw: "worker://~/*", scheme: "worker", username: null, password: null, hostname: "~", port: null, pathname: "/*", params: {}, fragment: null },
+                    target: { kind: "url", raw: "worker://~/*", scheme: "worker", username: null, password: null, hostname: "~", port: null, pathname: "/*", query: null, fragment: null },
                     body: null, lineMarker: null, position: { line: 1, column: 1 },
                 };
                 await this.dispatch({ statement: ownFind, workspaceId, workerId, loopId, turnId, sequence: nextActionIndex, origin: "plurnk", onDispatch });
@@ -1096,7 +1096,7 @@ export default class Engine {
                     target: {
                         kind: "url", raw: `file://${pathname}`, scheme: "file",
                         username: null, password: null, hostname: null, port: null,
-                        pathname, params: {}, fragment: null,
+                        pathname, query: null, fragment: null,
                     },
                     body: null, position: { line: 1, column: 1 },
                 };
@@ -2039,7 +2039,7 @@ export default class Engine {
                 // Dispatcher.#extractTarget so the fiction and a model's file EDIT
                 // address the same nullable log key.
                 scheme: d.scheme === "file" ? null : d.scheme, username: null, password: null, hostname: null, port: null,
-                pathname: d.pathname, params: null, fragment: null, lineMarker: null,
+                pathname: d.pathname, query: null, fragment: null, lineMarker: null,
                 tx: "", mimetype_tx: "text/plain",
                 rx: JSON.stringify({ status: 200, entryId: d.entryId, channel: d.channel, span }), mimetype_rx: "application/json",
                 status_rx: 200, tokens: 0, state: "resolved", outcome: null, attrs: "{}",
@@ -2096,7 +2096,7 @@ export default class Engine {
             hostname: target.hostname,
             port: target.port,
             pathname: target.pathname,
-            params: JSON.stringify(target.params),
+            query: target.query,
             fragment: target.fragment,
             lineMarker: null,
             tx: "",

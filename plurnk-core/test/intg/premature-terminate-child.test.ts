@@ -14,7 +14,7 @@ import { execStmt, sendStmt, readStmt } from "./_dsl.ts";
 
 const knownPath = (pathname: string): ParsedPath => ({
     kind: "url", raw: `worker:///${pathname}`, scheme: "worker",
-    username: null, password: null, hostname: null, port: null, pathname, params: {}, fragment: null,
+    username: null, password: null, hostname: null, port: null, pathname, query: null, fragment: null,
 });
 
 test("SEND[200] with a live child worker is refused 409 on the record (no erasure) + steers", async () => {

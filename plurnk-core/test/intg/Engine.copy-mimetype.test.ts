@@ -14,7 +14,7 @@ import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, se
 const urlPath = (scheme: string, pathname: string): UrlPath => ({
     kind: "url", raw: `${scheme}://${pathname}`, scheme,
     username: null, password: null, hostname: null, port: null,
-    pathname, params: {}, fragment: null,
+    pathname, query: null, fragment: null,
 });
 
 const copyStmt = (src: UrlPath, dst: UrlPath): CopyStatement => ({

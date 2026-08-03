@@ -13,12 +13,6 @@ SELECT workspace_id, owner_id FROM entries LIMIT 1;
 -- PREP: test_entries_insert_with_workspace_id_only
 INSERT INTO entries (workspace_id, owner_id, scheme, pathname) VALUES ($workspace_id, (SELECT id FROM workers ORDER BY id LIMIT 1), 'x', $pathname);
 
--- PREP: test_entries_insert_with_port
-INSERT INTO entries (workspace_id, owner_id, scheme, hostname, port, pathname) VALUES ((SELECT id FROM workspaces ORDER BY id LIMIT 1), (SELECT id FROM workers ORDER BY id LIMIT 1), $scheme, $hostname, $port, $pathname);
-
--- PREP: test_entries_insert_with_params
-INSERT INTO entries (workspace_id, owner_id, scheme, pathname, params) VALUES ((SELECT id FROM workspaces ORDER BY id LIMIT 1), (SELECT id FROM workers ORDER BY id LIMIT 1), 'x', $pathname, $params);
-
 -- PREP: test_entries_insert_with_attributes
 INSERT INTO entries (workspace_id, owner_id, scheme, pathname, attributes) VALUES ((SELECT id FROM workspaces ORDER BY id LIMIT 1), (SELECT id FROM workers ORDER BY id LIMIT 1), 'x', $pathname, $attributes);
 

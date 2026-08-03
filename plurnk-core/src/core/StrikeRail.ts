@@ -1,4 +1,5 @@
 import type { PlurnkStatement, LineMarker } from "@plurnk/plurnk-contracts";
+import { renderTarget } from "./plurnk-uri.ts";
 
 // Rail #38: action-entry statuses that DON'T accumulate strikes. Model adapted
 // to a finding (not_found, op_not_supported); no penalty. Rummy parallel:
@@ -60,7 +61,7 @@ const fingerprintOp = (stmt: PlurnkStatement): string => {
         return `${stmt.op}|(no-path)`;
     }
     const base = path.kind === "url"
-        ? `${stmt.op}|${path.scheme}://${path.pathname}`
+        ? `${stmt.op}|${renderTarget(path)}`
         : `${stmt.op}|local:${path.raw}`;
     if (stmt.op === "FIND" || stmt.op === "READ" || stmt.op === "OPEN" || stmt.op === "FOLD") {
         return `${base}${matcherDiscriminator()}`;

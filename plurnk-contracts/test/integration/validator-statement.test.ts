@@ -226,7 +226,7 @@ test("PlurnkStatement: COPY destination body accepts a scoped resource", () => {
                 hostname: "archive",
                 port: null,
                 pathname: "/draft",
-                params: {},
+                query: null,
                 fragment: null,
             },
             lineMarker: { marks: [12, 5, 12, 5] },

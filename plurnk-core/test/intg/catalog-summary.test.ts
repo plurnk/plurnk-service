@@ -11,7 +11,7 @@ import { openMigrated, insertWorkspace, insertWorker, makeHandlerCtx, makeScheme
 const url = (scheme: string, pathname: string): UrlPath => ({
     kind: "url", raw: `${scheme}:///${pathname}`, scheme,
     username: null, password: null, hostname: null, port: null,
-    pathname: `/${pathname}`, params: {}, fragment: null,
+    pathname: `/${pathname}`, query: null, fragment: null,
 });
 const editStmt = (target: UrlPath, body: string): EditStatement => ({
     op: "EDIT", suffix: "", signal: null, target, lineMarker: null, body,

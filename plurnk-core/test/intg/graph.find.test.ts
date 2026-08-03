@@ -15,7 +15,7 @@ import { openMigrated, insertWorkspace, insertWorker, makeSchemeCtx, DEFAULT_MIM
 const url = (pathname: string): UrlPath => ({
     kind: "url", raw: `worker:///${pathname}`, scheme: "worker",
     username: null, password: null, hostname: null, port: null,
-    pathname: `/${pathname}`, params: {}, fragment: null,
+    pathname: `/${pathname}`, query: null, fragment: null,
 });
 
 const fullReplace: LineMarker = { marks: [1, -1] };

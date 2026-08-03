@@ -470,7 +470,7 @@ test("the client-interface seam — pendingProposals reads a workspace's stopped
             worker_id: workerId, loop_id: loopId, turn_id: turnId, sequence: 1,
             origin: "model", source: null, op: "EDIT", suffix: "", signal: null,
             scheme: "worker", username: null, password: null, hostname: null, port: null,
-            pathname: "/x", params: null, fragment: null, lineMarker: null,
+            pathname: "/x", query: null, fragment: null, lineMarker: null,
             tx: "<<EDIT(worker:///x):body:EDIT", mimetype_tx: "text/vnd.plurnk",
             rx: JSON.stringify({ status: 202 }), mimetype_rx: "application/json",
             status_rx: 202, tokens: 0, state: "proposed", outcome: null, attrs: "{}",
@@ -736,6 +736,40 @@ test("the client-interface seam — readEntry returns an entry's shape and the #
             assert.equal(offset.status, 400);
             assert.equal(offset.problem?.type, "https://problems.plurnk.dev/daemon/entry/offset-channel-required");
             assert.equal(offset.problem?.recovery, "Select the channel to read from the offset.");
+
+            const commons = await db.envelope_get_worker_by_name.get<{ id: number }>({ workspace_id: created.id, name: "commons" });
+            assert.ok(commons !== undefined);
+            const networkEntry = await db.crud_insert_workspace_entry.get<{ id: number }>({
+                workspace_id: created.id,
+                owner_id: commons.id,
+                scheme: "https",
+                pathname: "/example.org:8443/x?b=2&a=1&a=3",
+            });
+            assert.ok(networkEntry !== undefined);
+            await db.crud_write_channel.run({
+                entry_id: networkEntry.id,
+                name: "body",
+                content: "network body",
+                mimetype: "text/plain",
+                tokens: 2,
+                content_hash: null,
+                state: "static",
+            });
+            const network = await daemon.readEntry({
+                workspaceId: created.id,
+                target: "https://example.org:8443/x?b=2&a=1&a=3#body",
+            });
+            assert.equal(network.status, 200);
+            assert.equal(network.entry?.pathname, "/example.org:8443/x?b=2&a=1&a=3");
+            assert.equal(network.entry?.channels.body.content, "network body");
+
+            const userinfo = await daemon.readEntry({
+                workspaceId: created.id,
+                target: "https://alice:secret@example.org:8443/x?b=2&a=1&a=3",
+            });
+            assert.equal(userinfo.status, 400);
+            assert.equal(userinfo.problem?.type, "https://problems.plurnk.dev/daemon/entry/userinfo-not-allowed");
+            assert.doesNotMatch(JSON.stringify(userinfo), /alice|secret/);
         } finally { ws.close(); }
     });
 });

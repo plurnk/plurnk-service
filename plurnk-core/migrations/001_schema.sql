@@ -262,17 +262,12 @@ CREATE TABLE IF NOT EXISTS entries (
     version    INTEGER NOT NULL DEFAULT 0   CHECK (version >= 0),
     workspace_id INTEGER,
     scheme     TEXT    NOT NULL             CHECK (length(scheme) > 0),
-    username   TEXT,
-    password   TEXT,
-    hostname   TEXT,
-    port       INTEGER                      CHECK (port IS NULL OR (port BETWEEN 0 AND 65535)),
     pathname   TEXT    NOT NULL,
     -- #527 {§entry-owner} — every entry is owned by a worker: the spawning worker for capability
     -- streams, the workspace's reserved 'commons' worker for shared content. A real row, never
     -- NULL (NULLs are distinct under UNIQUE — a nullable owner would let the commons fragment).
     -- The id never renders into a URI or packet; the model addresses owners by NAME (authority).
     owner_id   INTEGER NOT NULL,
-    params     TEXT                         CHECK (params IS NULL OR json_valid(params)),
     attributes TEXT    NOT NULL DEFAULT '{}' CHECK (json_valid(attributes)),
     -- SPEC {§membership} — how a file member entered the curated surface. 'git' rows are
     -- reconciled against the repo's members each turn — tracked ls-files PLUS untracked-
@@ -447,7 +442,8 @@ CREATE TABLE IF NOT EXISTS log_entries (
     hostname        TEXT,
     port            INTEGER                    CHECK (port IS NULL OR (port BETWEEN 0 AND 65535)),
     pathname        TEXT,
-    params          TEXT                       CHECK (params IS NULL OR json_valid(params)),
+    -- Serialized query without '?'; NULL = absent, '' = explicit empty. {§path-query}
+    query           TEXT,
     fragment        TEXT,
 
     lineMarker      TEXT                       CHECK (lineMarker IS NULL OR json_valid(lineMarker)),
@@ -498,7 +494,7 @@ BEFORE UPDATE OF
     worker_id, loop_id, turn_id, sequence, at, origin, source,
     op, suffix, signal,
     scheme, username, password, hostname,
-    port, pathname, params, fragment,
+    port, pathname, query, fragment,
     lineMarker, tx, mimetype_tx, mimetype_rx, attrs
 ON log_entries
 BEGIN

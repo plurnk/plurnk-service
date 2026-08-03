@@ -13,7 +13,7 @@ import { openMigrated, seedEnvelope, makeSchemeCtx } from "./_helpers.ts";
 const url = (scheme: string, pathname: string): UrlPath => ({
     kind: "url", raw: `${scheme}://${pathname}`, scheme,
     username: null, password: null, hostname: null, port: null,
-    pathname, params: {}, fragment: null,
+    pathname, query: null, fragment: null,
 });
 
 const sendStmt = (status: number, recipient: UrlPath | null = null, body: string | null = null): SendStatement => ({

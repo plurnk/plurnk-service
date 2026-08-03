@@ -130,12 +130,16 @@ const makeCtx = (priorEntry: EntryData | null = null, overrides: CtxOverrides = 
     };
 };
 
-const urlTarget = (raw: string, pathname: string, headers?: [string, string][], fragment: string | null = null): UrlPath => ({
-    kind: "url", raw, scheme: raw.startsWith("https") ? "https" : "http",
-    username: null, password: null, hostname: "example.com", port: null,
-    pathname, params: {}, fragment,
-    ...(headers === undefined ? {} : { headers }),
-});
+const urlTarget = (raw: string, pathname: string, headers?: [string, string][], fragment: string | null = null): UrlPath => {
+    const url = new URL(raw);
+    return {
+        kind: "url", raw, scheme: url.protocol.slice(0, -1),
+        username: url.username || null, password: url.password || null,
+        hostname: url.hostname || null, port: url.port === "" ? null : Number(url.port),
+        pathname, query: url.search === "" ? null : url.search.slice(1), fragment,
+        ...(headers === undefined ? {} : { headers }),
+    };
+};
 
 const readStmt = (target: UrlPath | null, lineMarker: ReadStatement["lineMarker"] = null): ReadStatement => ({
     op: "READ", suffix: "READ", signal: null, target, lineMarker, body: null,
@@ -322,6 +326,57 @@ test("READ: streams response body into the body channel and closes done", async 
     assert.ok(chunks.some((c) => c.channel === "header" && c.chunk.startsWith("HTTP 200 OK")));
     assert.equal(closed?.result.status, 200);
     assert.match(closed?.summary ?? "", /HTTP 200; \d+ bytes/);
+});
+
+test("READ uses canonical authority/query identity while metadata and fragment stay out of transport", async () => {
+    const { ctx, inspect } = makeCtx();
+    let seenUrl = "";
+    let seenHeaders: HeadersInit | undefined;
+    const target = urlTarget(
+        "https://example.com:8443/x?b=2&a=1&a=3",
+        "/x",
+        [["Authorization", "Bearer example"]],
+        "body",
+    );
+    target.raw += "#body{Authorization: Bearer example}";
+    await withFetch(async (url, init) => {
+        seenUrl = String(url);
+        seenHeaders = init?.headers;
+        return new Response("ok", { status: 200, headers: { "content-type": "text/plain" } });
+    }, async () => {
+        const result = await new Http().read(readStmt(target), ctx);
+        assert.equal(result.status, 102);
+    });
+    assert.equal(seenUrl, "https://example.com:8443/x?b=2&a=1&a=3");
+    assert.equal(new Headers(seenHeaders).get("Authorization"), "Bearer example");
+    assert.equal(inspect().wrote?.pathname, "/example.com:8443/x?b=2&a=1&a=3");
+    assert.equal(inspect().opened?.pathname, "/example.com:8443/x?b=2&a=1&a=3");
+});
+
+test("SEND[410] distinguishes an explicit empty query from no query", async () => {
+    const { ctx, inspect } = makeCtx();
+    const target = urlTarget("https://example.com/x", "/x");
+    target.query = "";
+    const result = await new Http().send(sendStmt(410, target), ctx);
+    assert.equal(result.status, 200);
+    assert.equal(inspect().deleted, "/example.com/x?");
+});
+
+test("HTTP userinfo is rejected without transport or secret-bearing diagnostics", async () => {
+    const { ctx } = makeCtx();
+    let fetched = false;
+    const target = urlTarget("https://alice:secret@example.com/x", "/x");
+    await withFetch(async () => {
+        fetched = true;
+        return new Response("wrong");
+    }, async () => {
+        const result = await new Http().read(readStmt(target), ctx);
+        assert.equal(result.status, 400);
+        assert.equal(result.problem?.type, "https://problems.plurnk.dev/scheme/http/userinfo-not-allowed");
+        assert.equal(result.problem?.target, "https://example.com/x");
+        assert.doesNotMatch(JSON.stringify(result), /alice|secret/);
+    });
+    assert.equal(fetched, false);
 });
 
 test("scoped READ observes the materialized readable entry without refetching", async () => {

@@ -5,6 +5,7 @@
 import { contentHash } from "../core/content-hash.ts";
 import type { PlurnkSchemeContext } from "../core/scheme-types.ts";
 import Owner from "../core/Owner.ts";
+import { renderAddress } from "../core/plurnk-uri.ts";
 import Results, { type SchemeResultBase } from "../core/results.ts";
 
 export type ChannelState = "static" | "active" | "closed" | "errored";
@@ -46,13 +47,14 @@ export default class EntryCrud {
         const owner_id = ownerId ?? await Owner.commonsId(db, workspaceId);
         const entry = await db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: workspaceId, owner_id, scheme, pathname });
         if (entry === undefined) {
+            const target = renderAddress(scheme, pathname);
             return Results.failure(
                 `scheme:${scheme}`,
                 "entry-not-found",
                 404,
-                `No entry exists at ${scheme}://${pathname}.`,
+                `No entry exists at ${target}.`,
                 { entry: null },
-                { target: `${scheme}://${pathname}` },
+                { target },
             ) as ReadEntryResult;
         }
 
@@ -111,13 +113,14 @@ export default class EntryCrud {
         const owner_id = ownerId ?? await Owner.commonsId(db, workspaceId);
         const existing = await db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: workspaceId, owner_id, scheme, pathname });
         if (existing === undefined) {
+            const target = renderAddress(scheme, pathname);
             return Results.failure(
                 `scheme:${scheme}`,
                 "entry-not-found",
                 404,
-                `No entry exists at ${scheme}://${pathname}.`,
+                `No entry exists at ${target}.`,
                 {},
-                { target: `${scheme}://${pathname}` },
+                { target },
             ) as DeleteEntryResult;
         }
         await db.crud_delete_entry.run({ entry_id: existing.id });
@@ -141,13 +144,14 @@ export default class EntryCrud {
             pathname,
         });
         if (existing === undefined) {
+            const target = renderAddress(scheme, pathname);
             return Results.failure(
                 `scheme:${scheme}`,
                 "entry-not-found",
                 404,
-                `No entry exists at ${scheme}://${pathname}.`,
+                `No entry exists at ${target}.`,
                 {},
-                { target: `${scheme}://${pathname}` },
+                { target },
             ) as DeleteEntryResult;
         }
         const deleted = await db.crud_delete_channel.get<{ name: string }>({
@@ -155,14 +159,15 @@ export default class EntryCrud {
             name: channel,
         });
         if (deleted === undefined) {
+            const target = renderAddress(scheme, pathname);
             return Results.failure(
                 `scheme:${scheme}`,
                 "channel-not-found",
                 404,
-                `No channel named #${channel} exists at ${scheme}://${pathname}.`,
+                `No channel named #${channel} exists at ${target}.`,
                 {},
                 {
-                    target: `${scheme}://${pathname}`,
+                    target,
                     channel,
                 },
             ) as DeleteEntryResult;

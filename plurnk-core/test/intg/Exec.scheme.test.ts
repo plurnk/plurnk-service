@@ -87,7 +87,7 @@ test("EXEC[sh](worker:///script) empty body → resolves the scheme content as t
 
         const statement: ExecStatement = {
             op: "EXEC", suffix: "", signal: "sh",
-            target: { kind: "url", raw: "worker:///script", scheme: "worker", username: null, password: null, hostname: null, port: null, pathname: "/script", params: {}, fragment: null },
+            target: { kind: "url", raw: "worker:///script", scheme: "worker", username: null, password: null, hostname: null, port: null, pathname: "/script", query: null, fragment: null },
             lineMarker: null, body: "", position: { line: 1, column: 1 },
         };
 

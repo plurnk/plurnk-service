@@ -6,6 +6,7 @@
 import { Results, type SchemeResult, type TagCaps, type TagListResult } from "@plurnk/plurnk-schemes";
 import type { PlurnkSchemeContext } from "../scheme-types.ts";
 import CapsResolve from "./CapsResolve.ts";
+import { renderAddress } from "../plurnk-uri.ts";
 
 export default class DbTagCaps implements TagCaps {
     readonly #ctx: PlurnkSchemeContext;
@@ -17,13 +18,14 @@ export default class DbTagCaps implements TagCaps {
     }
 
     #missing(pathname: string, fields: Readonly<Record<string, unknown>> = {}): SchemeResult {
+        const target = renderAddress(this.#scheme ?? "entry", pathname);
         return Results.failure(
             `scheme:${this.#scheme ?? "entry"}`,
             "entry-not-found",
             404,
-            `No entry exists at ${this.#scheme ?? "entry"}://${pathname}.`,
+            `No entry exists at ${target}.`,
             fields,
-            { target: `${this.#scheme ?? "entry"}://${pathname}` },
+            { target },
         );
     }
 

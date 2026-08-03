@@ -16,6 +16,7 @@ import type { PlurnkSchemeContext } from "../scheme-types.ts";
 import ChannelWrite from "../ChannelWrite.ts";
 import CapsResolve from "./CapsResolve.ts";
 import type LiveSubscriptions from "../LiveSubscriptions.ts";
+import { renderAddress } from "../plurnk-uri.ts";
 
 export default class DbSubscriptionCaps implements SubscriptionCaps {
     readonly #ctx: PlurnkSchemeContext;
@@ -96,7 +97,7 @@ export default class DbSubscriptionCaps implements SubscriptionCaps {
         await ChannelWrite.closeSubscription(this.#ctx.db, { subscriptionId, result });
         this.#liveSubscriptions.unregister(subscriptionId);
         this.#unlink();
-        const target = this.#scheme === null ? `file://${this.#pathname}` : `${this.#scheme}://${this.#pathname}`;
+        const target = renderAddress(this.#scheme ?? "file", this.#pathname ?? "");
         this.#ctx.wakeWorkerNotify?.({
             workspaceId: this.#ctx.workspaceId, workerId: this.#ctx.workerId,
             entryId, target, subscriptionId, result,

@@ -5,7 +5,7 @@ import { dirname, relative, isAbsolute, join, matchesGlob, sep } from "node:path
 import { createPatch } from "diff";
 import type { EditStatement, ReadStatement, FindStatement, ParsedPath } from "@plurnk/plurnk-contracts";
 import type { Db } from "../core/Db.ts";
-import { decodePathParens } from "../core/path-decode.ts";
+import { PathSyntax } from "@plurnk/plurnk-contracts";
 import GitMembership from "../core/git-membership.ts";
 import type { SchemeManifest, PlurnkSchemeContext } from "../core/scheme-types.ts";
 import EntryOps from "./_entry-ops.ts";
@@ -354,7 +354,7 @@ export default class File extends CoreSchemeAdapterBase {
                 },
             );
         }
-        const pathname = decodePathParens(statement.target.kind === "url" ? statement.target.pathname : statement.target.raw); // #239 item 4
+        const pathname = PathSyntax.decodeParens(statement.target.kind === "url" ? statement.target.pathname : statement.target.raw); // #239 item 4
         const target = await this.#resolveWriteTarget(pathname, core);
         if (!target.ok) return failure(target.code, target.status, target.detail, target.extensions);
         const { canonical, rel, fileExists, original, mimetype, baseSig, admittedBy } = target;
@@ -370,7 +370,7 @@ export default class File extends CoreSchemeAdapterBase {
                     },
                 );
             }
-            const candidatePathname = decodePathParens(candidate.target.kind === "url" ? candidate.target.pathname : candidate.target.raw);
+            const candidatePathname = PathSyntax.decodeParens(candidate.target.kind === "url" ? candidate.target.pathname : candidate.target.raw);
             const candidateTarget = await this.#resolveWriteTarget(candidatePathname, core);
             if (!candidateTarget.ok || candidateTarget.rel !== rel) {
                 return failure(

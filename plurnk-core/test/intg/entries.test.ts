@@ -112,37 +112,6 @@ test("entries: empty scheme string rejected", async () => {
     } finally { await db.close(); }
 });
 
-test("entries: port range CHECK", async () => {
-    const db = await openMigrated();
-    try {
-        await insertWorkspace(db, "ws-port");
-        await db.test_entries_insert_with_port.run({ scheme: "https", hostname: "example.com", port: 443, pathname: "/x" });
-        await db.test_entries_insert_with_port.run({ scheme: "https", hostname: "example.com", port: 0, pathname: "/y" });
-        await db.test_entries_insert_with_port.run({ scheme: "https", hostname: "example.com", port: 65535, pathname: "/z" });
-        await assert.rejects(
-            () => db.test_entries_insert_with_port.run({ scheme: "https", hostname: "example.com", port: 65536, pathname: "/w" }),
-            /CHECK constraint failed/,
-        );
-        await assert.rejects(
-            () => db.test_entries_insert_with_port.run({ scheme: "https", hostname: "example.com", port: -1, pathname: "/v" }),
-            /CHECK constraint failed/,
-        );
-    } finally { await db.close(); }
-});
-
-test("entries: params null/well-formed accepted; invalid JSON rejected", async () => {
-    const db = await openMigrated();
-    try {
-        await insertWorkspace(db, "ws-params");
-        await db.test_entries_insert_with_params.run({ pathname: "/a", params: null });
-        await db.test_entries_insert_with_params.run({ pathname: "/b", params: '{"q":["x"],"page":"2"}' });
-        await assert.rejects(
-            () => db.test_entries_insert_with_params.run({ pathname: "/c", params: "{not json" }),
-            /CHECK constraint failed/,
-        );
-    } finally { await db.close(); }
-});
-
 test("entries: attributes defaults to '{}' and rejects invalid JSON", async () => {
     const db = await openMigrated();
     try {

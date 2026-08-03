@@ -155,7 +155,7 @@ test("Validator: ParsedPath accepts url with full decomposition", () => {
         hostname: "example.com",
         port: 8080,
         pathname: "/path",
-        params: { q: "1" },
+        query: "q=1",
         fragment: "frag",
     });
     assert.equal(valid, true);
@@ -171,7 +171,7 @@ test("Validator: ParsedPath accepts url with null authority fields", () => {
         hostname: "philosophy",
         port: null,
         pathname: "",
-        params: {},
+        query: null,
         fragment: null,
     });
     assert.equal(valid, true);
@@ -191,7 +191,7 @@ test("Validator: ParsedPath rejects url missing required field", () => {
     assert.equal(valid, false);
 });
 
-test("Validator: ParsedPath accepts multi-value params (array)", () => {
+test("Validator: ParsedPath accepts an ordered query component", () => {
     const { valid } = Validator.validateParsedPath({
         kind: "url",
         raw: "https://example.com/?q=1&q=2",
@@ -201,7 +201,7 @@ test("Validator: ParsedPath accepts multi-value params (array)", () => {
         hostname: "example.com",
         port: null,
         pathname: "/",
-        params: { q: ["1", "2"] },
+        query: "q=1&q=2",
         fragment: null,
     });
     assert.equal(valid, true);

@@ -27,12 +27,14 @@ test("digest Markdown exposes amplification as exact aggregates while JSON prese
             attrs: object,
             hostname: string | null = null,
             scheme: string | null = "https",
+            query: string | null = null,
+            port: number | null = null,
         ): Promise<void> => {
             await db.engine_insert_log_entry.run({
                 worker_id: workerId, loop_id: loopId, turn_id: turnId, sequence,
                 origin, source: null, op, suffix: "", signal: null,
-                scheme, username: null, password: null, hostname, port: null,
-                pathname, params: null, fragment: null, lineMarker: null,
+                scheme, username: null, password: null, hostname, port,
+                pathname, query, fragment: null, lineMarker: null,
                 tx: "{}", mimetype_tx: "application/json",
                 rx: JSON.stringify({ status: 200, content: "x" }), mimetype_rx: "application/json",
                 status_rx: 200, tokens: 1, state: "resolved", outcome: null,
@@ -41,7 +43,7 @@ test("digest Markdown exposes amplification as exact aggregates while JSON prese
         };
         for (let i = 1; i <= 50; i++) await insert(i, "model", "READ", "/example.test/whale", {});
         for (let i = 51; i <= 62; i++) await insert(i, "plurnk", "EDIT", `/result${i}.test/`, { kind: "entry_materialized" });
-        await insert(63, "model", "READ", "/wiki/Paris", {}, "en.wikipedia.org");
+        await insert(63, "model", "READ", "/wiki/Paris", {}, "en.wikipedia.org", "https", "b=2&a=1&a=3", 8443);
         await insert(64, "model", "EXEC", "/filesystem_read_text_file", {
             stream: "atlas:///1/1/64",
         }, null, null);
@@ -59,7 +61,7 @@ test("digest Markdown exposes amplification as exact aggregates while JSON prese
             }>;
         };
         assert.match(markdown, /\[model\] READ\[200\] https:\/\/example\.test\/whale ×50 \(seq 1–50\)/);
-        assert.match(markdown, /\[model\] READ\[200\] https:\/\/en\.wikipedia\.org\/wiki\/Paris/);
+        assert.match(markdown, /\[model\] READ\[200\] https:\/\/en\.wikipedia\.org:8443\/wiki\/Paris\?b=2&a=1&a=3/);
         assert.match(markdown, /\[plurnk\] materialized entries\[200\] ×12 \(seq 51–62\)/);
         assert.match(markdown, /\[model\] EXEC\[200\] filesystem_read_text_file stream=atlas:\/\/\/1\/1\/64/);
         assert.equal(json.log_entries.length, 64, "machine-readable evidence remains lossless");
@@ -73,7 +75,7 @@ test("digest Markdown exposes amplification as exact aggregates while JSON prese
             "JSON preserves the row's actor and lifecycle coordinates",
         );
         assert.equal(json.log_entries[50]?.origin, "plurnk", "JSON distinguishes automatic materialization from model actions");
-        assert.equal(json.log_entries.at(-2)?.target, "https://en.wikipedia.org/wiki/Paris", "JSON preserves an explicit URL authority");
+        assert.equal(json.log_entries.at(-2)?.target, "https://en.wikipedia.org:8443/wiki/Paris?b=2&a=1&a=3", "JSON preserves authority, port, and serialized query");
         assert.equal(json.log_entries.at(-1)?.stream, "atlas:///1/1/64", "JSON preserves an EXEC's runtime stream identity");
     } finally {
         await rm(dir, { recursive: true, force: true });

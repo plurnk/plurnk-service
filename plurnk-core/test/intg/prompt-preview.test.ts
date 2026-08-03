@@ -74,7 +74,7 @@ test("an oversized deliverable renders the universal preview and log recovery ad
     const bomb = Array.from({ length: 400 }, (_, i) => `deranged output line ${i + 1}`).join("\n");
     const row = {
         coordinate: "1/2/1", origin: "plurnk", op: "SEND", suffix: "", signal: null, source: "5",
-        target: { scheme: "worker", username: null, password: null, hostname: null, port: null, pathname: "/comparison-checker", params: null, fragment: null },
+        target: { scheme: "worker", username: null, password: null, hostname: null, port: null, pathname: "/comparison-checker", query: null, fragment: null },
         status: 200, rx: bomb, mimetype_rx: "text/markdown", tx: { body: "" }, folded: false, attrs: null,
     };
     const rendered = PacketWire.renderLog([row], countTokens);
@@ -88,7 +88,7 @@ test("a single-line body is constrained by the independent character bound", () 
     const bomb = "x".repeat(20_000); // one line, run111-scale
     const row = {
         coordinate: "1/2/1", origin: "plurnk", op: "SEND", suffix: "", signal: null, source: "5",
-        target: { scheme: "worker", username: null, password: null, hostname: null, port: null, pathname: "/oneliner", params: null, fragment: null },
+        target: { scheme: "worker", username: null, password: null, hostname: null, port: null, pathname: "/oneliner", query: null, fragment: null },
         status: 200, rx: bomb, mimetype_rx: "text/markdown", tx: { body: "" }, folded: false, attrs: null,
     };
     const rendered = PacketWire.renderLog([row], countTokens);
@@ -101,7 +101,7 @@ test("a small deliverable rides whole — whole-when-small is the common case, u
     const countTokens = (s: string): number => Math.ceil(s.length / 4);
     const row = {
         coordinate: "1/2/1", origin: "plurnk", op: "SEND", suffix: "", signal: null, source: "5",
-        target: { scheme: "worker", username: null, password: null, hostname: null, port: null, pathname: "/tidy", params: null, fragment: null },
+        target: { scheme: "worker", username: null, password: null, hostname: null, port: null, pathname: "/tidy", query: null, fragment: null },
         status: 200, rx: "answer: 42\nnotes: none", mimetype_rx: "text/markdown", tx: { body: "" }, folded: false, attrs: null,
     };
     const rendered = PacketWire.renderLog([row], countTokens);

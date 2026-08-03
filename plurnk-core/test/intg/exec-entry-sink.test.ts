@@ -32,7 +32,7 @@ const parseOne = (input: string): PlurnkStatement => {
     return item.statement;
 };
 
-const wire = async (opts?: { fetchWeb?: WebFetch; nullContent?: boolean; tag?: string; webScheme?: boolean; encodedPath?: boolean; entryFailure?: boolean }) => {
+const wire = async (opts?: { fetchWeb?: WebFetch; nullContent?: boolean; unsupportedNullUrl?: string; tag?: string; webScheme?: boolean; encodedPath?: boolean; entryFailure?: boolean }) => {
     // testExecutors() is a module singleton, so each wire() must claim a DISTINCT runtime tag —
     // "one name, one owner" (#289) rejects a second registration of the same tag.
     const tag = opts?.tag ?? "stubsearch";
@@ -72,6 +72,18 @@ const wire = async (opts?: { fetchWeb?: WebFetch; nullContent?: boolean; tag?: s
                 if (opts?.encodedPath) {
                     await args.entry?.("https://example.org/people_%28current%29", "heading\nspouse: Example Person\nfooter", { tags: ["people_query"], mimetype: "text/markdown" });
                     args.write("results", "[]", "application/json");
+                    args.setState("results", "closed");
+                    return { status: 200, exitCode: 0 };
+                }
+                if (opts?.unsupportedNullUrl !== undefined) {
+                    const entry = args.entry as WidenedEntry | undefined;
+                    let rejected = false;
+                    try {
+                        await entry?.(opts.unsupportedNullUrl, null, { tags: ["unsupported_query"] });
+                    } catch {
+                        rejected = true;
+                    }
+                    args.write("results", JSON.stringify([{ rejected }]), "application/json");
                     args.setState("results", "closed");
                     return { status: 200, exitCode: 0 };
                 }
@@ -147,7 +159,7 @@ test("entry() materializes a tagged https entry (upsert UNIONS tags) and the plu
         // cost — real tokens + lines, no body riding. Durable storage remains the typed EDIT above.
         const view = (folded: boolean): object[] => [{
             coordinate: "1/1/2", origin: "plurnk", op: "EDIT", suffix: "", signal: null,
-            target: { scheme: "https", username: null, password: null, hostname: null, port: null, pathname: "/example.org/turkeys", params: null, fragment: null },
+            target: { scheme: "https", username: null, password: null, hostname: null, port: null, pathname: "/example.org/turkeys", query: null, fragment: null },
             status: rx.status, rx, mimetype_rx: "application/json", tx, mimetype_tx: "application/json",
             folded, source: String(workerId), attrs: { kind: "entry_materialized", tags: ["turkeys_query"] },
         }];
@@ -385,6 +397,32 @@ test("entry(content:null) fetches through the guarded sink — live materializes
         // Search discovery membership is independently preserved by the search executor (#596).
         const dead = await db.test_entries_by_pathname.get<{ id: number }>({ pathname: "/example.org/dead" });
         assert.equal(dead, undefined, "a null fetch rejects the sink so no page body materializes");
+    } finally { await quiesceExecs(schemes); await schemes.close(); await db.close(); }
+});
+
+test("entry(content:null) admits only HTTP acquisition targets", async () => {
+    let fetches = 0;
+    const fetchWeb: WebFetch = async () => {
+        fetches += 1;
+        return { body: "unexpected", mimetype: "text/plain" };
+    };
+    const { db, engine, schemes, workspaceId, workerId, loopId, turnId, tag } = await wire({
+        fetchWeb,
+        unsupportedNullUrl: "wss://example.org/events?topic=updates",
+        tag: "stubsearch-non-http-null",
+    });
+    try {
+        const result = await engine.dispatch({
+            statement: execStmt(tag, "events"),
+            workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
+        });
+        assert.ok(result.status < 400);
+        await quiesceExecs(schemes);
+        assert.equal(fetches, 0, "the HTTP fetcher never receives a WebSocket target");
+        const stored = await db.test_entries_by_pathname.get<{ id: number }>({
+            pathname: "/example.org/events?topic=updates",
+        });
+        assert.equal(stored, undefined, "a rejected acquisition does not materialize an entry");
     } finally { await quiesceExecs(schemes); await schemes.close(); await db.close(); }
 });
 

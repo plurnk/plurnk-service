@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import StrikeRail from "./StrikeRail.ts";
+import { parsePath, type ReadStatement } from "@plurnk/plurnk-contracts";
 
 const base = { fingerprint: "READ(x)", noOps: false, budgetStruck: false, steerStruck: false, minCycles: 3, maxCyclePeriod: 4, maxStrikes: 3 };
 
@@ -38,4 +39,21 @@ test("a real hard failure (500-class status) still strikes normally", () => {
     let crossed = false;
     for (const fp of ["EDIT(a)", "EDIT(b)", "EDIT(c)"]) crossed = rail.assess(1, { ...base, fingerprint: fp, statuses: [500] }).thresholdCrossed || crossed;
     assert.equal(crossed, true, "a non-soft failure status accrues strikes as ever");
+});
+
+test("network query and channel coordinates remain distinct cycle fingerprints", () => {
+    const statement = (raw: string): ReadStatement => ({
+        op: "READ",
+        suffix: "",
+        signal: null,
+        target: parsePath(raw),
+        lineMarker: null,
+        body: null,
+        position: { line: 1, column: 1 },
+    });
+    const first = StrikeRail.fingerprintTurn([statement("https://example.org/x?a=1&b=2#body")]);
+    const reordered = StrikeRail.fingerprintTurn([statement("https://example.org/x?b=2&a=1#body")]);
+    const channel = StrikeRail.fingerprintTurn([statement("https://example.org/x?a=1&b=2#header")]);
+    assert.notEqual(first, reordered);
+    assert.notEqual(first, channel);
 });

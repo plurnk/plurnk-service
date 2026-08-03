@@ -288,12 +288,19 @@ and path globs share the slot; content matchers belong in the body.
 | Path glob               | Preserved in either path kind                                       | Scheme defines collection selection and ordering     |
 | `#channel` fragment     | Preserved as `UrlPath.fragment`                                     | Selects a named channel when the scheme supports it  |
 | Trailing `{key: value}` | Removed before URL parsing and preserved as ordered `headers` pairs | Addressed scheme interprets request metadata         |
+| `?query`                | Preserved as ordered `UrlPath.query`; `null` = absent, `""` = `?`   | Participates in scheme resource identity             |
 
 AstBuilder recognizes a URL with the case-insensitive prefix
 `[a-z][a-z0-9+.-]*://`, passes it through WHATWG `URL`, and surfaces malformed
 URL structure as a visitor error. A target without that prefix remains a raw
 local path. Grammar acceptance does not register a scheme; the runtime scheme
 catalogue and packet-time scheme teaching remain dynamically owned elsewhere.
+
+§path-query The serialized query component is the lossless representation.
+Ordering, duplicate names, encoded spelling, and the distinction between an
+absent query and an explicit empty query survive parsing. Consumers that need
+key/value access may construct `URLSearchParams`; the shared AST does not replace
+URI identity with a grouped object projection.
 
 §path-parentheses A depth-zero `)` closes the target slot. The tolerant lexer
 preserves balanced literal parentheses inside the target, but canonical

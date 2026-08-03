@@ -46,7 +46,7 @@ test("workerApply invokes a discovered scheme through the public proposal contex
             hostname: null,
             port: null,
             pathname: "/article",
-            params: {},
+            query: null,
             fragment: null,
         },
         lineMarker: null,

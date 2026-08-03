@@ -4,7 +4,7 @@
 
 import type { SendStatement } from "@plurnk/plurnk-contracts";
 import Owner from "../core/Owner.ts";
-import { entryPathnameOf } from "../core/plurnk-uri.ts";
+import { entryPathnameOf, renderAddress } from "../core/plurnk-uri.ts";
 import type { PlurnkSchemeContext } from "../core/scheme-types.ts";
 import EntryCrud from "./_entry-crud.ts";
 import ChannelWrite from "../core/ChannelWrite.ts";
@@ -65,6 +65,7 @@ export default class EntrySend {
         if (status === 410) {
             const pathname = EntrySend.#pathnameOf(statement);
             if (pathname === null) return failure("target-required", 400, "SEND[410] requires a target path.");
+            const target = renderAddress(scheme, pathname);
             const fragment = EntrySend.#fragmentOf(statement);
             if (fragment !== null) {
                 const { db, workspaceId } = ctx;
@@ -73,9 +74,9 @@ export default class EntrySend {
                     return failure(
                         "entry-not-found",
                         404,
-                        `No entry exists at ${scheme}://${pathname}.`,
+                        `No entry exists at ${target}.`,
                         {},
-                        { target: `${scheme}://${pathname}` },
+                        { target },
                     );
                 }
                 const deleted = await db.crud_delete_channel.get<{ name: string }>({ entry_id: entry.id, name: fragment });
@@ -83,10 +84,10 @@ export default class EntrySend {
                     ? failure(
                         "channel-not-found",
                         404,
-                        `No channel named #${fragment} exists at ${scheme}://${pathname}.`,
+                        `No channel named #${fragment} exists at ${target}.`,
                         {},
                         {
-                            target: `${scheme}://${pathname}`,
+                            target,
                             channel: fragment,
                         },
                     )
@@ -103,15 +104,16 @@ export default class EntrySend {
         if (status === 499) {
             const pathname = EntrySend.#pathnameOf(statement);
             if (pathname === null) return failure("target-required", 400, "SEND[499] requires a target path.");
+            const target = renderAddress(scheme, pathname);
             const { db, workspaceId, workerId } = ctx;
             const entry = await db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: workspaceId, owner_id: explicitOwnerId ?? await Owner.commonsId(db, workspaceId), scheme, pathname });
             if (entry === undefined) {
                 return failure(
                     "entry-not-found",
                     404,
-                    `No entry exists at ${scheme}://${pathname}.`,
+                    `No entry exists at ${target}.`,
                     {},
-                    { target: `${scheme}://${pathname}` },
+                    { target },
                 );
             }
             const subscription = await ChannelWrite.findActiveSubscription(db, { workerId, entryId: entry.id });
@@ -119,9 +121,9 @@ export default class EntrySend {
                 return failure(
                     "subscription-not-found",
                     404,
-                    `No active subscription exists at ${scheme}://${pathname}.`,
+                    `No active subscription exists at ${target}.`,
                     {},
-                    { target: `${scheme}://${pathname}` },
+                    { target },
                 );
             }
             return failure(
@@ -130,7 +132,7 @@ export default class EntrySend {
                 `Scheme '${subscription.scheme}' owns cancellation for this subscription.`,
                 {},
                 {
-                    target: `${scheme}://${pathname}`,
+                    target,
                     owningScheme: subscription.scheme,
                     retryable: false,
                 },

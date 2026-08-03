@@ -5,7 +5,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { parsePath } from "@plurnk/plurnk-contracts";
-import { entryPathnameOf, foldAuthorityIntoPath, renderAddress, schemeNameOf } from "./plurnk-uri.ts";
+import { entryPathnameOf, foldAuthorityIntoPath, renderAddress, renderTarget, schemeNameOf } from "./plurnk-uri.ts";
 
 test("foldAuthorityIntoPath folds a namespace authority into the canonical path", () => {
     assert.equal(foldAuthorityIntoPath("docs", "/x.md"), "/docs/x.md");
@@ -25,6 +25,12 @@ test("entryPathnameOf preserves namespace and network authorities in canonical s
         entryPathnameOf(wikipedia),
         "/en.wikipedia.org/wiki/Igor_Smirnov_(politician)",
     );
+});
+
+test("network entry identity includes non-default port and serialized query", () => {
+    const target = parsePath("https://Example.org:8443/a%28b%29?b=2&a=1&a=3#preview");
+    assert.ok(target);
+    assert.equal(entryPathnameOf(target), "/example.org:8443/a(b)?b=2&a=1&a=3");
 });
 
 test("renderAddress promotes a multi-segment plurnk path to authority form", () => {
@@ -68,4 +74,27 @@ test("fold then render round-trips a model-emitted authority-form address", () =
     assert.equal(renderAddress("plurnk", stored), "plurnk://docs/x.md");
     // the empty-authority form folds to the SAME canonical key — both addressings agree
     assert.equal(foldAuthorityIntoPath(null, "/docs/x.md"), stored);
+});
+
+test("renderTarget is the non-secret inverse for decomposed operation targets", () => {
+    assert.equal(renderTarget({
+        scheme: "https",
+        hostname: "example.org",
+        port: 8443,
+        pathname: "/a(b)",
+        query: "b=(2)&a=%281%29&a=3",
+        fragment: "pre(view)",
+    }), "https://example.org:8443/a%28b%29?b=(2)&a=%281%29&a=3#pre(view)");
+    assert.equal(renderTarget({
+        scheme: "worker",
+        hostname: "ada",
+        port: null,
+        pathname: "/task",
+        query: null,
+        fragment: null,
+    }), "worker://ada/task");
+    assert.equal(renderTarget({
+        scheme: null,
+        pathname: "/docs/a(b).md",
+    }), "docs/a%28b%29.md");
 });

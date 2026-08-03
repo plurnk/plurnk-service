@@ -5,7 +5,7 @@
 // channels. Search indexing is owned separately by SearchIndex.
 
 import type { PlurnkSchemeContext } from "../core/scheme-types.ts";
-import { encodePathParens } from "../core/path-decode.ts";
+import { PathSyntax } from "@plurnk/plurnk-contracts";
 import { renderAddress } from "../core/plurnk-uri.ts";
 
 type ManifestRow = {
@@ -35,7 +35,7 @@ export type CatalogEntry = {
 
 export default class EntryManifest {
     static toPath(scheme: string | null, pathname: string): string {
-        if (scheme === "file") return encodePathParens(pathname);
+        if (scheme === "file") return PathSyntax.encodeParens(pathname);
         if (scheme === null) throw new Error(`entry '${pathname}' carries a NULL scheme — pre-v2 row survived the heal ({§entry-identity-no-null})`);
         return renderAddress(scheme, pathname);
     }

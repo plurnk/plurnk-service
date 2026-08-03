@@ -414,8 +414,6 @@ export class SqlRiteSync {
 	test_entries_get_first: SqlRiteSyncPreparedStatements;
 	test_entries_get_first_scope_workspace: SqlRiteSyncPreparedStatements;
 	test_entries_insert_with_workspace_id_only: SqlRiteSyncPreparedStatements;
-	test_entries_insert_with_port: SqlRiteSyncPreparedStatements;
-	test_entries_insert_with_params: SqlRiteSyncPreparedStatements;
 	test_entries_insert_with_attributes: SqlRiteSyncPreparedStatements;
 	test_entries_count_all: SqlRiteSyncPreparedStatements;
 	test_entries_get_scheme: SqlRiteSyncPreparedStatements;
@@ -906,8 +904,6 @@ export default class SqlRite {
 	test_entries_get_first: SqlRitePreparedStatements;
 	test_entries_get_first_scope_workspace: SqlRitePreparedStatements;
 	test_entries_insert_with_workspace_id_only: SqlRitePreparedStatements;
-	test_entries_insert_with_port: SqlRitePreparedStatements;
-	test_entries_insert_with_params: SqlRitePreparedStatements;
 	test_entries_insert_with_attributes: SqlRitePreparedStatements;
 	test_entries_count_all: SqlRitePreparedStatements;
 	test_entries_get_scheme: SqlRitePreparedStatements;

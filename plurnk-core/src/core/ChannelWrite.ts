@@ -27,7 +27,7 @@ export interface StreamCoordinate {
 
 export interface StreamEventPayload {
     entryId: number;
-    target: string;                // the entry's URI (`scheme://pathname`) — so clients route without an entryId→URI lookup (#179)
+    target: string;                // the canonical entry URI — so clients route without an entryId→URI lookup (#179)
     channel: string;
     state: ChannelState;
     contentLength: number;
@@ -49,7 +49,7 @@ export interface WakeWorkerPayload {
     workspaceId: number;
     workerId: number;
     entryId: number;
-    target: string;                // the entry's URI (`scheme://pathname`) — #179
+    target: string;                // the canonical entry URI — #179
     subscriptionId: number;
     result: SchemeResult;           // exact universal terminal result
     scheme: string;                // the scheme that owned the subscription

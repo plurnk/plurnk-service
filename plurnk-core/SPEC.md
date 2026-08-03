@@ -651,13 +651,27 @@ First path segment = provider name; rest = provider-native model id.
 
 Author-facing contract: [plurnk-schemes#1](https://github.com/plurnk/plurnk-schemes/issues/1). Below: what plurnk-service exposes to schemes and orchestrates over them.
 
-### §scheme-address Address resolution (RFC 3986)
+### §scheme-address Address resolution (RFC 3986 / WHATWG URL)
 
-When an op carries a target, URI parsing follows RFC 3986 (`scheme://[authority]/path`); an entry key is `(workspace, owner, scheme, pathname)` ({§entry-identity-no-null}). Handler routing and resource identity are separate:
+When an op carries a target, RFC 3986 supplies the component model and WHATWG
+URL supplies canonical decomposition; an entry key is
+`(workspace, owner, scheme, pathname)` ({§entry-identity-no-null}). Handler
+routing and resource identity are separate:
 
-- §scheme-address-namespace-fold A **registered non-worker scheme** mechanically folds its authority into the canonical storage pathname (`Dispatcher.#extractTarget` → `foldAuthorityIntoPath`). For an entry namespace, the authority is therefore a leading path segment rather than a separate identity component. Network schemes retain host semantics as specified next.
+- §scheme-address-namespace-fold A **registered non-network, non-worker scheme** mechanically folds its authority into the canonical storage pathname (`Dispatcher.#extractTarget` → `foldAuthorityIntoPath`). For an entry namespace, the authority is therefore a leading path segment rather than a separate identity component.
 - The **`worker` scheme is the registered exception**: its authority selects an owner ({§worker-authority-carving}) and remains distinct through dispatch; the handler strips it only after resolving the entry owner.
-- A **network resource** keeps its addressed protocol while folding the host into the storage pathname: `https://example.com/page` → `(https, /example.com/page)`. `https` may route through the registered `http` handler, just as `ws` routes through `wss`; that implementation alias never aliases identities. The `SchemeCtx.entries` direct CRUD and standard operation caps both bind to the addressed protocol, regardless of the handler manifest's canonical name. Absolute network URLs are single resources even when their path ends `/` — folder/glob expansion belongs to entry namespaces, never an HTTP origin.
+- §scheme-address-network A **network resource** uses the shared schemes-layer
+  normalization contract {§network-address}:
+  `https://example.com:8443/page?b=2&a=1` →
+  `(https, /example.com:8443/page?b=2&a=1)`. The exact protocol, canonical
+  host, non-default port, path, and serialized query are identity; query order,
+  duplicates, and an explicit empty `?` survive. A fragment is a Plurnk channel
+  selector, not network identity or transport. URL userinfo is rejected and
+  request metadata never enters identity. `https` may route through `http`,
+  just as `ws` routes through `wss`; those implementation aliases never alias
+  resources. `SchemeCtx.entries` binds every cap to the addressed protocol.
+  Absolute network URLs are single resources even when their path ends `/` —
+  folder/glob expansion belongs to entry namespaces, never an HTTP origin.
 - The **`file` class is the workspace filesystem** — a mount namespace with its own resolution and naming law, specified below.
 
 §fs-namespace **The workspace is a mount namespace; `project_root` is the model's `/`.** Chroot semantics: host paths do not exist inside the jail, and no engine surface folds a host-absolute spelling onto a member. The root is **fixed immutably at workspace creation** (headless is forever); the namespace's mount table changes only through the declared membership overlay ({§membership}), never by re-rooting. At `project_root = /` the jail is the whole filesystem and every rule below degenerates to identity — the design's proof case, and the common benchmark topology.
@@ -805,7 +819,7 @@ Engine → scheme guarantees:
   invokes its optional `prepareFind()` and then the standard entry selection.
   Preparation owns discovery/materialization only; query semantics remain
   universal. The prepared write and the query resolve through one canonical
-  entry identity, including a URI authority folded into its storage pathname.
+  entry identity, including every component owned by {§scheme-address}.
 - `ctx.writer` reflects the actual writer at this dispatch.
 - §scheme-surface-writableby-403 `manifest.writableBy` is checked BEFORE invocation; engine returns 403 directly on exclusion.
 - `ctx.signal` is wired to the worker's AbortController ({§provider-guarantees-signal-wired}).
@@ -1773,7 +1787,18 @@ flowchart LR
 
 §web-search-retrieval **Web search and retrieval are one first-class composition.** A search runtime enumerates a configured maximum of candidate URLs and hands each to the engine as a `content: null` `entry()` request ({§exec-entry-sink}): the guarded `WebFetcher` sink fetches candidates in parallel, off the write-serialization chain, and materializes successful bodies as ordinary HTTP entries. SearXNG owns membership and rank; Plurnk does not rerank or classify sources. Failed materializations are mechanically omitted from the model-facing result directory, while survivors retain upstream order. The compact directory carries `title/url/snippet/publishedDate/materialized`; it locates readable resources and is not a substitute for their contents. Without an entry sink the executor cannot test materialization and omits the verdict.
 
-Search prefetch and direct HTTP READ materialize the same resource contract: protocol+authority+path is the absolute identity; the sanitized readable projection is the fragmentless default; faithful DOM and response metadata remain explicit auxiliary channels. A normal `READ(https://host/path)` therefore publishes only the sanitized body under that exact URL—never raw HTML, response headers, or a channel-selection lesson. FIND, matcher READ, and embeddings consume the same stored readable projection and never re-fetch each match. Because the search family is in `PLURNK_SERVICE_EXEC_HOLD`, the cycle holds until acquisition concludes ({§exec-hold-until-concluded}), so the next packet contains final materialization verdicts and folded ambient rows for every acquired page.
+Search prefetch and direct HTTP READ materialize the same resource contract:
+protocol + canonical authority (including a non-default port) + path + serialized
+query is the absolute identity ({§scheme-address-network}); the sanitized
+readable projection is the fragmentless default, while faithful DOM and
+response metadata remain explicit auxiliary channels. A normal
+`READ(https://host/path?query)` therefore publishes only the sanitized body
+under that exact URL—never raw HTML, response headers, or a channel-selection
+lesson. FIND, matcher READ, and embeddings consume the same stored readable
+projection and never re-fetch each match. Because the search family is in
+`PLURNK_SERVICE_EXEC_HOLD`, the cycle holds until acquisition concludes
+({§exec-hold-until-concluded}), so the next packet contains final
+materialization verdicts and folded ambient rows for every acquired page.
 
 §search-gate Coverage protects the composition at distinct seams: HTTP unit tests pin fragmentless-body publication and explicit auxiliary selection; integration tests pin search→materialize→FIND/matcher READ and persistence/publication separation. Deterministic model demos require an answer containing a per-fixture sentinel present only in a primary materialized body, proving retrieval without prescribing which valid operation sequence the model uses. A live positive-control demo requires a materialized HTTPS body and a substantive answer from a real sanitized page. Live discovery demos remain diagnostic and may expose model judgment failures without weakening these assertions. **The search gates** (#406, owner ruling) are rail-family accounting — in-memory per-loop state cleaned at the same seam as strikes, restart-drop accepted (a post-restart duplicate re-fetches; the TTL makes it cheap): an IDENTICAL duplicate (same runtime + command in one loop) **strikes and serves** — status 409 (the strike rail counts the turn failure) carrying the prior ranked digest re-read live from the original exec entry, no re-fetch, no provenance prose; the per-turn CAP (`PLURNK_SERVICE_SEARCH_MAX_PER_TURN`) is flood control — 429 with a legible steer, nothing served.
 
@@ -2187,7 +2212,7 @@ retain distinct contracts and lifetimes.
 
 §notice-event-notify **Client surface.** Engine Notices broadcast live via the `notice/event` WS notification — `{ loopId, notice: { source, kind, level, message?, position?, …kind-specific } }` per the grammar's `Notice` schema — the moment they land, scoped to the loop's workspace. AG-UI projects the same observation as the custom `plurnk.notice` event. Failures do not broadcast on this surface: they are log rows, and the client reads them through `log.read` / the `log/entry` notification, the durable log.
 
-**Forensic fidelity and cardinality.** The digest's machine-readable JSON preserves every log row, the exact Problem on every failed row, and each loop's exact terminal result. The human Markdown waterfall may preview only the Problem detail because it remains a triage projection, not the machine record. Targets reconstruct the model-visible address, including hostname, port, and fragment; an authority-bearing URL must never degrade from `https://host/path` to `https:///path`, and folded network-entry storage paths render back to their authority form. Its human Markdown waterfall groups identical per-turn op outcomes and typed `entry_materialized` narrations, reporting the exact count and sequence span (`xN (seq A-B)`). Grouping keys include the complete target, so distinct authorities or channels never collapse. Thus amplification is conspicuous without making the diagnostic artifact itself pathological; packet files remain byte-identical records of what the model saw.
+**Forensic fidelity and cardinality.** The digest's machine-readable JSON preserves every log row, the exact Problem on every failed row, and each loop's exact terminal result. The human Markdown waterfall may preview only the Problem detail because it remains a triage projection, not the machine record. Targets reconstruct the model-visible address, including hostname, port, serialized query, and fragment; an authority-bearing URL must never degrade from `https://host/path` to `https:///path`, and folded network-entry storage paths render back to their authority form. Its human Markdown waterfall groups identical per-turn op outcomes and typed `entry_materialized` narrations, reporting the exact count and sequence span (`xN (seq A-B)`). Grouping keys include the complete target, so distinct authorities or channels never collapse. Thus amplification is conspicuous without making the diagnostic artifact itself pathological; packet files remain byte-identical records of what the model saw.
 
 §turn-lifecycle **Turn-lifecycle liveness.** Provider generation is the long, opaque window in a turn — one or more same-packet emission attempts may occur before the first committed op. A static client screen there is indistinguishable from a hang. The engine brackets the complete attempt window with two `notice/event` notices (`source: "engine:turn"`, `level: "info"`): `turn_awaiting_model` before the first call and `turn_generated` when an emission is accepted or the attempt budget is exhausted. Rejected content never rides the notice channel. Both are suppressed on an aborted loop and broadcast to the workspace like any notice ({§notice-event-notify}).
 

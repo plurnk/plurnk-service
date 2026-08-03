@@ -19,7 +19,7 @@ process.env.PLURNK_SERVICE_EMBED_DISABLE = "0";
 const url = (pathname: string): UrlPath => ({
     kind: "url", raw: `worker:///${pathname}`, scheme: "worker",
     username: null, password: null, hostname: null, port: null,
-    pathname: `/${pathname}`, params: {}, fragment: null,
+    pathname: `/${pathname}`, query: null, fragment: null,
 });
 const fullReplace: LineMarker = { marks: [1, -1] };
 const editStmt = (target: UrlPath, body: string, marker: LineMarker | null = null): EditStatement => ({

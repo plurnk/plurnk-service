@@ -237,6 +237,24 @@ test("log entry: a web host survives into the target — http://host/path, not h
     assert.match(out, /"target":"https:\/\/en\.wikipedia\.org\/wiki\/Paris"/, "the web host reaches the rendered target");
 });
 
+test("log entry: network target preserves port, ordered query, and channel fragment", () => {
+    const out = PacketWire.renderLog([{
+        coordinate: "1/1/2",
+        origin: "model",
+        op: "READ",
+        status: 200,
+        target: {
+            scheme: "https",
+            hostname: "example.org",
+            port: 8443,
+            pathname: "/a(b)",
+            query: "b=2&a=1&a=3",
+            fragment: "preview",
+        },
+    }], tok);
+    assert.match(out, /"target":"https:\/\/example\.org:8443\/a%28b%29\?b=2&a=1&a=3#preview"/);
+});
+
 test("log render: READ@200 with text/markdown rx body → line-numbered heredoc", () => {
     const system = {
         system_definition: "SD",

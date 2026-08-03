@@ -10,7 +10,7 @@ import type {
 export const urlPath = (scheme: string, pathname: string, fragment: string | null = null): UrlPath => ({
     kind: "url", raw: `${scheme}://${pathname}${fragment !== null ? `#${fragment}` : ""}`,
     scheme, username: null, password: null, hostname: null, port: null,
-    pathname, params: {}, fragment,
+    pathname, query: null, fragment,
 });
 
 export const localPath = (raw: string): LocalPath => ({ kind: "local", raw });

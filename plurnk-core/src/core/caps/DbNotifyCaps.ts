@@ -12,6 +12,7 @@ import type { NotifyCaps, ChannelState } from "@plurnk/plurnk-schemes";
 import type { PlurnkSchemeContext } from "../scheme-types.ts";
 import type { StreamEventNotify } from "../ChannelWrite.ts";
 import CapsResolve from "./CapsResolve.ts";
+import { renderAddress } from "../plurnk-uri.ts";
 
 export default class DbNotifyCaps implements NotifyCaps {
     readonly #ctx: PlurnkSchemeContext;
@@ -34,7 +35,7 @@ export default class DbNotifyCaps implements NotifyCaps {
     async #emit(notify: StreamEventNotify, pathname: string, channel: string, state: ChannelState, contentLength: number): Promise<void> {
         const entryId = await CapsResolve.entryId(this.#ctx, this.#scheme, pathname);
         if (entryId === null) return;
-        const target = this.#scheme === null ? `file://${pathname}` : `${this.#scheme}://${pathname}`;
+        const target = renderAddress(this.#scheme ?? "file", pathname);
         notify(this.#ctx.workspaceId, { entryId, target, channel, state, contentLength });
     }
 }

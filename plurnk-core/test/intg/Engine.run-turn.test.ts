@@ -10,7 +10,7 @@ import { openMigrated, insertWorkspace, insertWorker, insertLoop, packetSection,
 const urlPath = (scheme: string, pathname: string): UrlPath => ({
     kind: "url", raw: `${scheme}://${pathname}`, scheme,
     username: null, password: null, hostname: null, port: null,
-    pathname, params: {}, fragment: null,
+    pathname, query: null, fragment: null,
 });
 
 // {§edit-marker-required-on-existing} (#571) — a fixed FULL-REPLACE marker so a

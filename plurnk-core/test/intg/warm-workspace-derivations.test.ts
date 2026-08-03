@@ -28,7 +28,7 @@ const tokenize = (text: string): number => Math.ceil(text.length / 4);
 const url = (pathname: string): UrlPath => ({
     kind: "url", raw: `worker:///${pathname}`, scheme: "worker",
     username: null, password: null, hostname: null, port: null,
-    pathname: `/${pathname}`, params: {}, fragment: null,
+    pathname: `/${pathname}`, query: null, fragment: null,
 });
 const editStmt = (target: UrlPath, body: string): EditStatement => ({
     op: "EDIT", suffix: "", signal: null, target, lineMarker: null, body, position: { line: 1, column: 1 },

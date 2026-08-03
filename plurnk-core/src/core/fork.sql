@@ -59,15 +59,15 @@ RETURNING id;
 -- the caller can carry {§log-region-tagging} tags across (old id → new id). origin/source (attribution)
 -- and expanded (fold-state) ride along too. {§machine-processes-fork-copies-the-log}
 SELECT id, loop_id, turn_id, sequence, at, origin, source, op, suffix, signal,
-       scheme, username, password, hostname, port, pathname, params, fragment,
+       scheme, username, password, hostname, port, pathname, query, fragment,
        lineMarker, tx, mimetype_tx, rx, mimetype_rx, status_rx, tokens,
        state, outcome, attrs, expanded
 FROM log_entries WHERE worker_id = $worker_id ORDER BY id;
 
 -- PREP: fork_insert_log_entry
 -- RETURNING the new id so the caller can copy the row's region tags onto it ({§log-region-tagging}).
-INSERT INTO log_entries (worker_id, loop_id, turn_id, sequence, at, origin, source, op, suffix, signal, scheme, username, password, hostname, port, pathname, params, fragment, lineMarker, tx, mimetype_tx, rx, mimetype_rx, status_rx, tokens, state, outcome, attrs, expanded)
-VALUES ($worker_id, $loop_id, $turn_id, $sequence, $at, $origin, $source, $op, $suffix, $signal, $scheme, $username, $password, $hostname, $port, $pathname, $params, $fragment, $lineMarker, $tx, $mimetype_tx, $rx, $mimetype_rx, $status_rx, $tokens, $state, $outcome, $attrs, $expanded)
+INSERT INTO log_entries (worker_id, loop_id, turn_id, sequence, at, origin, source, op, suffix, signal, scheme, username, password, hostname, port, pathname, query, fragment, lineMarker, tx, mimetype_tx, rx, mimetype_rx, status_rx, tokens, state, outcome, attrs, expanded)
+VALUES ($worker_id, $loop_id, $turn_id, $sequence, $at, $origin, $source, $op, $suffix, $signal, $scheme, $username, $password, $hostname, $port, $pathname, $query, $fragment, $lineMarker, $tx, $mimetype_tx, $rx, $mimetype_rx, $status_rx, $tokens, $state, $outcome, $attrs, $expanded)
 RETURNING id;
 
 -- PREP: fork_copy_log_tags

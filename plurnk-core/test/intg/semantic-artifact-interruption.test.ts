@@ -11,7 +11,7 @@ process.env.PLURNK_SERVICE_EMBED_DISABLE = "0";
 const target: UrlPath = {
     kind: "url", raw: "worker:///interrupted.md", scheme: "worker",
     username: null, password: null, hostname: null, port: null,
-    pathname: "/interrupted.md", params: {}, fragment: null,
+    pathname: "/interrupted.md", query: null, fragment: null,
 };
 const statement: EditStatement = {
     op: "EDIT", suffix: "", signal: null, target, lineMarker: null,

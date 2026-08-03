@@ -23,11 +23,18 @@ static manifest: SchemeManifest = {
 
 `package.json#plurnk`: `{ "kind": "scheme", "name": "http" }`.
 
-`https` routes through the registered `http` handler, but routing is not identity: entries retain the addressed protocol and fold authority into their storage pathname (`https` + `/example.com/page`). Thus two hosts never collide and `http://` never aliases `https://`.
+`https` routes through the registered `http` handler, but routing is not
+identity. The shared schemes-layer `NetworkAddress` {§network-address} retains
+the exact addressed protocol and stores
+`/<host>[:<non-default-port>]<path>[?<serialized-query>]`. Query ordering,
+duplicate names, and an explicit empty `?` remain significant. Thus hosts,
+ports, protocols, paths, and queries cannot accidentally alias.
 
-Entry identity is the resolved URL path, not its grammar-safe spelling. `%28` and
-`%29` materialized from search or received in a model address canonicalize to
-literal parentheses in storage; model-facing renderers encode them again.
+The fragment is a Plurnk channel selector and never enters network identity or
+transport. Request metadata affects the request but not identity. URL userinfo
+is rejected; neither credentials nor metadata are reconstructed from `raw`.
+Within the pathname, `%28` and `%29` canonicalize to literal parentheses in
+storage and model-facing renderers encode them again.
 
 ## §op-surface §2 Op surface
 
@@ -77,6 +84,7 @@ Channel publication follows the manifest contract: a fragmentless READ publishes
 | Client-cancelled fetch | 499 (`kind: cancelled`) |
 | Upstream / network failure | 502 (`kind: fetch-failed`) |
 | Non-url target | 400 (`kind: bad-target`) |
+| URL userinfo | 400 (`kind: userinfo-not-allowed`) |
 | Uninterpreted SEND status | 501 (`kind: send-status-unsupported`) |
 
 Error results carry RFC 9457 Problem Details with a stable `scheme:http`
@@ -141,7 +149,10 @@ new WebFetcher().fetch(url, opts): Promise<{
 
 Under the schemes lifecycle contract {§handler-lifecycle}, `Ws` holds live
 sockets in an **in-instance registry** across op invocations, keyed by
-`workspace:pathname`. Entries exist only while the socket is open: every
+workspace, exact addressed protocol, and the shared canonical network pathname
+{§network-address}. Host, non-default port, path, and serialized query therefore
+select the socket; fragment remains a Plurnk channel selector. Entries exist
+only while the socket is open: every
 terminal path — close, error, KILL, or cancel — removes them, and handler
 shutdown closes any remaining sockets. Day-one limits: text frames only, no
 reconnection, default handshake identity (custom headers pending) — all #468

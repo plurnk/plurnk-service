@@ -27,7 +27,7 @@
                 "kind", "raw", "scheme",
                 "username", "password",
                 "hostname", "port",
-                "pathname", "params", "fragment"
+                "pathname", "query", "fragment"
             ],
             "additionalProperties": false,
             "properties": {
@@ -43,7 +43,10 @@
                     "maximum": 65535
                 },
                 "pathname": { "type": "string" },
-                "params": { "$ref": "https://schemas.plurnk.dev/v0/Params.json" },
+                "query": {
+                    "description": "Canonical serialized WHATWG query component without the leading `?`. Null means no query; the empty string means an explicit empty query (`?`). Ordering, duplicate names, and encoded spelling are preserved.",
+                    "type": ["string", "null"]
+                },
                 "fragment": { "type": ["string", "null"] },
                 "headers": {
                     "description": "Trailing `{key: value}` request-metadata blocks removed before WHATWG decomposition and preserved as ordered pairs. Order and duplicate names survive; the addressed scheme owns their meaning. Absent when no block was supplied.",

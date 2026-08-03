@@ -21,14 +21,14 @@ import { editStmt, sendStmt, readStmt, fullReplace } from "./_dsl.ts";
 const workerPath = (name: string): ParsedPath => ({
     kind: "url", raw: `worker://${name}`, scheme: "worker",
     username: null, password: null, hostname: name, port: null,
-    pathname: "", params: {}, fragment: null,
+    pathname: "", query: null, fragment: null,
 });
 
 // A worker-scope storage address: worker://<owner>/<path> (owner "self" = the current worker), entry path present.
 const workerEntry = (owner: string, path: string): ParsedPath => ({
     kind: "url", raw: `worker://${owner}/${path}`, scheme: "worker",
     username: null, password: null, hostname: owner, port: null,
-    pathname: `/${path}`, params: {}, fragment: null,
+    pathname: `/${path}`, query: null, fragment: null,
 });
 
 // Worker control (grammar 0.74.55): WORK(worker://<name>):task spawns a fresh worker; FORK(worker://<name>):task
@@ -59,21 +59,21 @@ const tokenize = (text: string): number => Math.ceil(text.length / 4);
 // A worker-scope FIND: worker://<owner>/<glob> (owner "self" = the current worker).
 const findEntry = (owner: string, glob: string): FindStatement => ({
     op: "FIND", suffix: "", signal: null,
-    target: { kind: "url", raw: `worker://${owner}/${glob}`, scheme: "worker", username: null, password: null, hostname: owner, port: null, pathname: `/${glob}`, params: {}, fragment: null },
+    target: { kind: "url", raw: `worker://${owner}/${glob}`, scheme: "worker", username: null, password: null, hostname: owner, port: null, pathname: `/${glob}`, query: null, fragment: null },
     lineMarker: null, body: null, position: { line: 1, column: 1 },
 });
 
 // A worker-scope READ: worker://<owner>/<path> (owner "self" = the current worker).
 const readEntry = (owner: string, path: string): ReadStatement => ({
     op: "READ", suffix: "", signal: null,
-    target: { kind: "url", raw: `worker://${owner}/${path}`, scheme: "worker", username: null, password: null, hostname: owner, port: null, pathname: `/${path}`, params: {}, fragment: null },
+    target: { kind: "url", raw: `worker://${owner}/${path}`, scheme: "worker", username: null, password: null, hostname: owner, port: null, pathname: `/${path}`, query: null, fragment: null },
     lineMarker: null, body: null, position: { line: 1, column: 1 },
 });
 
 // A worker-scope ENTRY KILL: worker://<owner>/<path> — deletes the scratch entry (path present).
 const killEntry = (owner: string, path: string): KillStatement => ({
     op: "KILL", suffix: "", signal: null,
-    target: { kind: "url", raw: `worker://${owner}/${path}`, scheme: "worker", username: null, password: null, hostname: owner, port: null, pathname: `/${path}`, params: {}, fragment: null },
+    target: { kind: "url", raw: `worker://${owner}/${path}`, scheme: "worker", username: null, password: null, hostname: owner, port: null, pathname: `/${path}`, query: null, fragment: null },
     lineMarker: null, body: null, position: { line: 1, column: 1 },
 });
 

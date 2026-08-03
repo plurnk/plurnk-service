@@ -14,7 +14,7 @@ import { openMigrated, insertWorkspace, insertWorker, makeSchemeCtx } from "./_h
 const fileUrl = (pathname: string): UrlPath => ({
     kind: "url", raw: `file:///${pathname}`, scheme: "file",
     username: null, password: null, hostname: null, port: null,
-    pathname: `/${pathname}`, params: {}, fragment: null,
+    pathname: `/${pathname}`, query: null, fragment: null,
 });
 
 const findStmt = (target: UrlPath, body: MatcherBody): FindStatement => ({

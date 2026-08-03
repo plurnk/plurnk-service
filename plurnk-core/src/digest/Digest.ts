@@ -44,7 +44,7 @@ import type { SqlRiteSyncPreparedStatements } from "@possumtech/sqlrite";
 // block accessor to the shipped generic statement shape at the site (#535).
 type SyncPrep<T> = SqlRiteSyncPreparedStatements<T>;
 import PacketWire from "../core/packet-wire.ts";
-import { renderAddress } from "../core/plurnk-uri.ts";
+import { renderTarget } from "../core/plurnk-uri.ts";
 import ProviderInstantiate from "../core/ProviderInstantiate.ts";
 import type { ChatMessage, Provider, ProviderResponse, ProviderUsage } from "@plurnk/plurnk-providers";
 import {
@@ -101,7 +101,7 @@ interface LogRow {
     id: number; worker_id: number; loop_id: number; turn_id: number; sequence: number;
     origin: string; attrs: string;
     op: string; scheme: string | null; hostname: string | null; port: number | null;
-    pathname: string | null; fragment: string | null;
+    pathname: string | null; query: string | null; fragment: string | null;
     rx: string | null; status_rx: number; state: string; outcome: string | null;
 }
 interface WorkerRollupRow {
@@ -196,12 +196,7 @@ export default class Digest {
     }
 
     static #renderTarget(le: LogRow): string | null {
-        if (le.pathname === null) return null;
-        if (le.scheme === null) return le.pathname.replace(/^\//, "");
-        const base = le.hostname !== null && le.hostname.length > 0
-            ? `${le.scheme}://${le.hostname}${le.port === null ? "" : `:${le.port}`}${le.pathname}`
-            : renderAddress(le.scheme, le.pathname);
-        return le.fragment === null || le.fragment.length === 0 ? base : `${base}#${le.fragment}`;
+        return renderTarget(le);
     }
 
     static #renderStream(le: LogRow): string | null {
@@ -239,7 +234,7 @@ export default class Digest {
                 ? `materialized\0${row.status_rx}\0${row.state}\0${row.outcome ?? ""}`
                 : [
                     row.op, row.scheme ?? "", row.hostname ?? "", row.port ?? "",
-                    row.pathname ?? "", row.fragment ?? "", row.status_rx, row.state, row.outcome ?? "",
+                    row.pathname ?? "", row.query ?? "", row.fragment ?? "", row.status_rx, row.state, row.outcome ?? "",
                     Digest.#renderStream(row) ?? "",
                 ].join("\0");
             const group = groups.get(key);

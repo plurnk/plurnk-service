@@ -74,11 +74,25 @@ const makeCtx = () => {
     return { ctx, inspect: () => ({ chunks, closed }) };
 };
 
-const readStmt = (raw: string): ReadStatement => ({
-    op: "READ", suffix: "READ", signal: null, body: null, lineMarker: null,
-    position: { line: 0, column: 0 },
-    target: { kind: "url", raw, scheme: "http", username: null, password: null, hostname: "127.0.0.1", port: null, pathname: "/", params: {}, fragment: null } as UrlPath,
-});
+const readStmt = (raw: string): ReadStatement => {
+    const url = new URL(raw);
+    return {
+        op: "READ", suffix: "READ", signal: null, body: null, lineMarker: null,
+        position: { line: 0, column: 0 },
+        target: {
+            kind: "url",
+            raw,
+            scheme: url.protocol.slice(0, -1),
+            username: null,
+            password: null,
+            hostname: url.hostname,
+            port: url.port === "" ? null : Number.parseInt(url.port, 10),
+            pathname: url.pathname,
+            query: null,
+            fragment: null,
+        } as UrlPath,
+    };
+};
 
 test("Http.read: full render path against real chromium — readable body + faithful DOM", async () => {
     const server = await startServer();

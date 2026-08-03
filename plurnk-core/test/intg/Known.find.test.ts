@@ -9,7 +9,7 @@ import { openMigrated, insertWorkspace, insertWorker, makeHandlerCtx, makeScheme
 const url = (pathname: string): UrlPath => ({
     kind: "url", raw: `worker:///${pathname}`, scheme: "worker",
     username: null, password: null, hostname: null, port: null,
-    pathname: `/${pathname}`, params: {}, fragment: null,
+    pathname: `/${pathname}`, query: null, fragment: null,
 });
 
 const editStmt = (target: UrlPath, body: string, tags: string[] | null = null): EditStatement => ({

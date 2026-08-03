@@ -11,7 +11,7 @@ import { openMigrated, insertWorkspace, insertWorker, seedEntryWithChannel, make
 
 const findAll = (): FindStatement => ({
     op: "FIND", suffix: "", signal: null,
-    target: { kind: "url", raw: "worker:///**", scheme: "worker", username: null, password: null, hostname: null, port: null, pathname: "/**", params: {}, fragment: null },
+    target: { kind: "url", raw: "worker:///**", scheme: "worker", username: null, password: null, hostname: null, port: null, pathname: "/**", query: null, fragment: null },
     lineMarker: null, body: null, position: { line: 1, column: 1 },
 });
 

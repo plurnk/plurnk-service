@@ -584,7 +584,7 @@ export default class PacketBuilder {
             origin: string; op: string; suffix: string; signal: string | null;
             scheme: string | null; username: string | null; password: string | null;
             hostname: string | null; port: number | null; pathname: string | null;
-            params: string | null; fragment: string | null;
+            query: string | null; fragment: string | null;
             status_rx: number; rx: string; mimetype_rx: string;
             tx: string; mimetype_tx: string; expanded: number; source: string | null; attrs: string | null;
         }>({ worker_id: workerId });
@@ -599,7 +599,7 @@ export default class PacketBuilder {
                 username: r.username, password: r.password,
                 hostname: r.hostname, port: r.port,
                 pathname: r.pathname,
-                params: r.params === null ? null : JSON.parse(r.params),
+                query: r.query,
                 fragment: r.fragment,
             },
             status: r.status_rx,

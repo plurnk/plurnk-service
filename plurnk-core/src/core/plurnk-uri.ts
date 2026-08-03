@@ -12,8 +12,17 @@
 // column. They therefore use the same mechanical fold while retaining their
 // addressed protocol as the scheme identity.
 
-import type { ParsedPath } from "@plurnk/plurnk-contracts";
-import { decodePathParens, encodePathParens } from "./path-decode.ts";
+import { PathSyntax, type ParsedPath } from "@plurnk/plurnk-contracts";
+import { NetworkAddress } from "@plurnk/plurnk-schemes";
+
+export interface RenderTargetParts {
+    readonly scheme: string | null | undefined;
+    readonly hostname?: string | null;
+    readonly port?: number | null;
+    readonly pathname: string | null | undefined;
+    readonly query?: string | null;
+    readonly fragment?: string | null;
+}
 
 // Bare paths default to the file scheme per plurnk.md (grammar sysprompt):
 // "Bare paths (no scheme) default to local relative project file paths."
@@ -36,10 +45,13 @@ export function foldAuthorityIntoPath(hostname: string | null, pathname: string)
 }
 
 export function entryPathnameOf(path: ParsedPath): string {
+    if (path.kind === "url" && NetworkAddress.supports(path.scheme)) {
+        return NetworkAddress.from(path).pathname;
+    }
     const pathname = path.kind === "url"
         ? foldAuthorityIntoPath(path.hostname, path.pathname)
         : path.raw;
-    return decodePathParens(pathname);
+    return PathSyntax.decodeParens(pathname);
 }
 
 // {§prompt-self-only} — the prompt address is prompt:///<loopSeq>/<turnSeq>: the OWNER rides the
@@ -55,7 +67,8 @@ export function promptLoopPrefix(loopSeq: number): string {
 }
 
 export function renderAddress(scheme: string, pathname: string): string {
-    const encoded = encodePathParens(pathname);
+    if (NetworkAddress.supports(scheme)) return NetworkAddress.render(scheme, pathname);
+    const encoded = PathSyntax.encodeParens(pathname);
     if (scheme === "plurnk" && pathname.split("/").filter((s) => s.length > 0).length >= 2) {
         return `plurnk://${encoded.replace(/^\//, "")}`;
     }
@@ -63,6 +76,30 @@ export function renderAddress(scheme: string, pathname: string): string {
     // model-facing rendering restores it to the authority slot.
     // worker:// renders :/// — the owner rides owner_id ({§entry-owner}), so empty authority IS
     // the canonical stored form; a querying face re-applies its authority (~/name) for display.
-    if (scheme === "http" || scheme === "https" || scheme === "ws" || scheme === "wss") return `${scheme}://${encoded.replace(/^\//, "")}`;
     return `${scheme}://${encoded}`;
+}
+
+/** Render one stored target without exposing credentials or request metadata. {§scheme-address} */
+export function renderTarget(target: RenderTargetParts): string | null {
+    if (target.pathname === null || target.pathname === undefined) return null;
+
+    const hostname = target.hostname ?? null;
+    const scheme = target.scheme ?? null;
+    let address: string;
+    if (scheme === null) {
+        address = PathSyntax.encodeParens(target.pathname.replace(/^\//, ""));
+    } else if (hostname !== null && hostname.length > 0) {
+        const port = target.port === null || target.port === undefined ? "" : `:${target.port}`;
+        address = `${scheme}://${hostname}${port}${PathSyntax.encodeParens(target.pathname)}`;
+    } else {
+        address = renderAddress(scheme, target.pathname);
+    }
+
+    if (target.query !== null && target.query !== undefined) {
+        address += `?${target.query}`;
+    }
+    if (target.fragment !== null && target.fragment !== undefined && target.fragment.length > 0) {
+        address += `#${target.fragment}`;
+    }
+    return address.length === 0 ? null : address;
 }

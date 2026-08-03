@@ -11,7 +11,7 @@ const minimalLog = async (db: Db, ctx: { workerId: number; loopId: number; turnI
         worker_id: ctx.workerId, loop_id: ctx.loopId, turn_id: ctx.turnId,
         sequence: 1, origin: "model", op: "EDIT", suffix: "",
         signal: JSON.stringify(["philosophy"]),
-        scheme: "worker", pathname: "/meaning", port: null, params: null,
+        scheme: "worker", pathname: "/meaning", port: null, query: null,
         lineMarker: null,
         tx: "<<EDIT[philosophy](worker:///meaning):42:EDIT", mimetype_tx: "text/x-plurnk",
         rx: "", mimetype_rx: "text/plain", status_rx: 201,
@@ -153,13 +153,13 @@ test("log_entries: port range", async () => {
     } finally { await db.close(); }
 });
 
-test("log_entries: params + signal + lineMarker JSON validation", async () => {
+test("log_entries: serialized query preserves absence, empty, order, and duplicates", async () => {
     const db = await openMigrated();
     try {
         const ctx = await seedEnvelope(db, "ws-log-json");
-        await minimalLog(db, ctx, { sequence: 1, params: null, signal: null, lineMarker: null });
-        await minimalLog(db, ctx, { sequence: 2, params: '{"q":["x"]}', signal: '["a","b"]', lineMarker: '{"first":1,"last":10}' });
-        await assert.rejects(() => minimalLog(db, ctx, { sequence: 3, params: "{not json" }), /CHECK constraint failed/);
+        await minimalLog(db, ctx, { sequence: 1, query: null, signal: null, lineMarker: null });
+        await minimalLog(db, ctx, { sequence: 2, query: "", signal: '["a","b"]', lineMarker: '{"first":1,"last":10}' });
+        await minimalLog(db, ctx, { sequence: 3, query: "b=2&a=1&a=3" });
         await assert.rejects(() => minimalLog(db, ctx, { sequence: 4, signal: "{bad" }), /CHECK constraint failed/);
         await assert.rejects(() => minimalLog(db, ctx, { sequence: 5, lineMarker: "broken" }), /CHECK constraint failed/);
     } finally { await db.close(); }

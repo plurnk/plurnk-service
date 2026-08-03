@@ -46,11 +46,10 @@ test("parser roundtrip: <<EDIT[france,europe](worker:///countries/france/capital
             sequence: 1, origin: "model",
         });
         assert.equal(result.status, 201);
-        const entry = await db.test_parser_entries_first.get<{ owner_id: number; scheme: string; pathname: string; hostname: string | null }>();
+        const entry = await db.test_parser_entries_first.get<{ owner_id: number; scheme: string; pathname: string }>();
         assert.ok((entry?.owner_id ?? 0) >= 1, "owner stamped ({§entry-owner})");
         assert.equal(entry?.scheme, "worker");
         assert.equal(entry?.pathname, "/countries/france/capital");
-        assert.equal(entry?.hostname, null);
         const body = await db.test_parser_body_first.get<{ content: string }>();
         assert.equal(body?.content, "Paris");
         const tags = await db.test_parser_tags.all<{ tag: string }>();
@@ -138,7 +137,7 @@ test("parser roundtrip: HTTP-shape path still decomposes authority correctly", a
     } finally { await db.close(); }
 });
 
-test("parser roundtrip: real DSL with params + fragment on opaque scheme", async () => {
+test("parser roundtrip: real DSL preserves serialized query + fragment on opaque scheme", async () => {
     const db = await openMigrated();
     try {
         const env = await seedEnvelope(db, "ws-roundtrip-params");
@@ -150,12 +149,11 @@ test("parser roundtrip: real DSL with params + fragment on opaque scheme", async
             workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId,
             sequence: 1, origin: "model",
         });
-        const log = await db.test_parser_log_first.get<{ scheme: string; hostname: string | null; pathname: string; params: string | null; fragment: string | null }>();
+        const log = await db.test_parser_log_first.get<{ scheme: string; hostname: string | null; pathname: string; query: string | null; fragment: string | null }>();
         assert.equal(log?.scheme, "worker");
         assert.equal(log?.hostname, null);
         assert.equal(log?.pathname, "/france");
-        const params = JSON.parse(log?.params ?? "{}") as Record<string, unknown>;
-        assert.equal(params.lang, "fr");
+        assert.equal(log?.query, "lang=fr");
         assert.equal(log?.fragment, "History");
     } finally { await db.close(); }
 });

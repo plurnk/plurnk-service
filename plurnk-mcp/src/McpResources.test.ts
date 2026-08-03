@@ -22,7 +22,7 @@ const readStatement = (pathname: string): ReadStatement => ({
         hostname: null,
         port: null,
         pathname,
-        params: {},
+        query: null,
         fragment: null,
     },
 } as ReadStatement);

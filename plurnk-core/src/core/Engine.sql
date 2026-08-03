@@ -455,7 +455,7 @@ SELECT
     le.op, le.suffix, le.signal,
     le.scheme, le.username, le.password,
     le.hostname, le.port, le.pathname,
-    le.params, le.fragment,
+    le.query, le.fragment,
     le.status_rx, le.rx, le.mimetype_rx,
     le.tx, le.mimetype_tx,
     le.state, le.outcome, le.expanded, le.source, le.attrs
@@ -483,14 +483,14 @@ INSERT INTO log_entries (
     worker_id, loop_id, turn_id, sequence, origin, source,
     op, suffix, signal,
     scheme, username, password, hostname, port,
-    pathname, params, fragment, lineMarker,
+    pathname, query, fragment, lineMarker,
     tx, mimetype_tx, rx, mimetype_rx, status_rx, tokens,
     state, outcome, attrs
 ) VALUES (
     $worker_id, $loop_id, $turn_id, $sequence, $origin, $source,
     $op, $suffix, $signal,
     $scheme, $username, $password, $hostname, $port,
-    $pathname, $params, $fragment, $lineMarker,
+    $pathname, $query, $fragment, $lineMarker,
     $tx, $mimetype_tx, $rx, $mimetype_rx, $status_rx, $tokens,
     $state, $outcome, $attrs
 )

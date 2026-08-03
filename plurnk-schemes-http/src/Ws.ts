@@ -15,7 +15,7 @@
 //
 // Under the schemes lifecycle contract {§handler-lifecycle}, this handler holds
 // live sockets in an in-instance registry across op invocations, keyed by
-// workspace+pathname. Entries live only while the socket is open; every terminal
+// workspace+addressed scheme+canonical network pathname. Entries live only while the socket is open; every terminal
 // path (close/error/KILL/cancel) removes them, and close() releases any remainder.
 //
 // The SSRF Guard re-checks the target before connecting (a ws into private space
@@ -32,8 +32,9 @@ import type {
     SendStatement,
     KillStatement,
     EntryData,
+    UrlPath,
 } from "@plurnk/plurnk-schemes";
-import { Results } from "@plurnk/plurnk-schemes";
+import { NetworkAddress, Results } from "@plurnk/plurnk-schemes";
 import { readFile } from "node:fs/promises";
 import Guard from "./Guard.ts";
 
@@ -84,7 +85,7 @@ export default class Ws implements SchemeHandler {
 
     // The socket factory (injectable for tests) and the live-connection registry
     // - the stateless-contract exception (SPEC "ws"). One socket per
-    // workspace+pathname; SEND/KILL find the socket a prior READ opened.
+    // workspace+addressed scheme+canonical network pathname; SEND/KILL find the socket a prior READ opened.
     readonly #connect: SocketFactory;
     readonly #sockets = new Map<string, Socket>();
     constructor(connect: SocketFactory = connectGlobal) {
@@ -102,8 +103,9 @@ export default class Ws implements SchemeHandler {
                 retryable: false,
             });
         }
-        const url = statement.target.raw;
-        const pathname = statement.target.pathname;
+        const address = Ws.#address(statement.target);
+        if (!(address instanceof NetworkAddress)) return address;
+        const { url, pathname } = address;
         if (!(await Guard.isPublicUrl(url))) {
             return Ws.#bad(403, "ssrf-blocked", `${url} is not a public ws(s):// target.`, {
                 target: url,
@@ -111,7 +113,7 @@ export default class Ws implements SchemeHandler {
                 retryable: false,
             });
         }
-        const key = Ws.#key(ctx.workspaceId, pathname);
+        const key = Ws.#key(ctx.workspaceId, address);
 
         // Create-then-subscribe (http#3): seed the messages channel, then bind.
         const written = await ctx.entries.write(pathname, Ws.#seedEntry());
@@ -205,14 +207,16 @@ export default class Ws implements SchemeHandler {
         const status = statement.signal;
         if (status === 499) return { shape: "passthrough", status: 200 };
         if (status === 200) {
-            const socket = this.#sockets.get(Ws.#key(ctx.workspaceId, statement.target.pathname));
+            const address = Ws.#address(statement.target);
+            if (!(address instanceof NetworkAddress)) return address;
+            const socket = this.#sockets.get(Ws.#key(ctx.workspaceId, address));
             if (socket === undefined) {
                 return Ws.#bad(
                     409,
                     "no-open-socket",
-                    `No WebSocket connection is open for ${statement.target.pathname}.`,
+                    `No WebSocket connection is open for ${address.url}.`,
                     {
-                        target: statement.target.raw,
+                        target: address.url,
                         stage: "connection",
                         recovery: "READ the WebSocket URL before sending a message.",
                         retryable: false,
@@ -223,9 +227,9 @@ export default class Ws implements SchemeHandler {
                 socket.send(statement.body?.raw ?? "");
                 return { shape: "passthrough", status: 200 };
             } catch (err) {
-                console.error("WebSocket send failed", { target: statement.target.raw, err });
+                console.error("WebSocket send failed", { target: address.url, err });
                 return Ws.#bad(502, "send-failed", "The WebSocket message could not be sent.", {
-                    target: statement.target.raw,
+                    target: address.url,
                     stage: "transfer",
                     retryable: false,
                 });
@@ -248,14 +252,16 @@ export default class Ws implements SchemeHandler {
                 retryable: false,
             });
         }
-        const socket = this.#sockets.get(Ws.#key(ctx.workspaceId, statement.target.pathname));
+        const address = Ws.#address(statement.target);
+        if (!(address instanceof NetworkAddress)) return address;
+        const socket = this.#sockets.get(Ws.#key(ctx.workspaceId, address));
         if (socket === undefined) {
             return Ws.#bad(
                 404,
                 "no-open-socket",
-                `No WebSocket connection is open for ${statement.target.pathname}.`,
+                `No WebSocket connection is open for ${address.url}.`,
                 {
-                    target: statement.target.raw,
+                    target: address.url,
                     stage: "connection",
                     retryable: false,
                 },
@@ -265,17 +271,46 @@ export default class Ws implements SchemeHandler {
             socket.close(1000, "killed");
             return { shape: "passthrough", status: 200 };
         } catch (err) {
-            console.error("WebSocket close failed", { target: statement.target.raw, err });
+            console.error("WebSocket close failed", { target: address.url, err });
             return Ws.#bad(502, "close-failed", "The WebSocket connection could not be closed.", {
-                target: statement.target.raw,
+                target: address.url,
                 stage: "connection",
                 retryable: true,
             });
         }
     }
 
-    static #key(workspaceId: number, pathname: string): string {
-        return `${workspaceId}:${pathname}`;
+    static #key(workspaceId: number, address: NetworkAddress): string {
+        return `${workspaceId}:${address.scheme}:${address.pathname}`;
+    }
+
+    static #address(target: UrlPath): NetworkAddress | PassthroughResult {
+        let address: NetworkAddress;
+        try {
+            address = NetworkAddress.from(target);
+        } catch {
+            return Ws.#bad(400, "bad-target", "WebSocket operations require a ws(s):// URL with an authority.", {
+                stage: "target-validation",
+                recovery: "Provide a ws(s):// URL with a host.",
+                retryable: false,
+            });
+        }
+        if (address.scheme !== "ws" && address.scheme !== "wss") {
+            return Ws.#bad(400, "bad-target", "WebSocket operations require a ws(s):// URL target.", {
+                stage: "target-validation",
+                recovery: "Provide a ws(s):// URL target.",
+                retryable: false,
+            });
+        }
+        if (address.hasCredentials) {
+            return Ws.#bad(400, "userinfo-not-allowed", "WebSocket URL userinfo is not allowed.", {
+                target: address.url,
+                stage: "target-validation",
+                recovery: "Remove credentials from the URL.",
+                retryable: false,
+            });
+        }
+        return address;
     }
 
     // Seed entry mirroring the manifest channel (empty content + seed mimetype),

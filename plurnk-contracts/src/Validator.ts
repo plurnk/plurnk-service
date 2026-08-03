@@ -1,7 +1,6 @@
 import { Validator as CfValidator, type OutputUnit, type Schema } from "@cfworker/json-schema";
 import positionSchema from "../schema/Position.json" with { type: "json" };
 import lineMarkerSchema from "../schema/LineMarker.json" with { type: "json" };
-import paramsSchema from "../schema/Params.json" with { type: "json" };
 import channelContentSchema from "../schema/ChannelContent.json" with { type: "json" };
 import parsedPathSchema from "../schema/ParsedPath.json" with { type: "json" };
 import matcherBodySchema from "../schema/MatcherBody.json" with { type: "json" };
@@ -27,9 +26,8 @@ export class InvalidTextRegionError extends TypeError {}
 export default class Validator {
     static #position = new CfValidator(positionSchema as Schema, "2020-12");
     static #lineMarker = new CfValidator(lineMarkerSchema as Schema, "2020-12");
-    static #params = new CfValidator(paramsSchema as Schema, "2020-12");
     static #channelContent = new CfValidator(channelContentSchema as Schema, "2020-12");
-    static #parsedPath = Validator.#withRefs(parsedPathSchema, [paramsSchema]);
+    static #parsedPath = new CfValidator(parsedPathSchema as Schema, "2020-12");
     static #matcherBody = new CfValidator(matcherBodySchema as Schema, "2020-12");
     static #sendBody = new CfValidator(sendBodySchema as Schema, "2020-12");
     static #schemeRegistration = new CfValidator(schemeRegistrationSchema as Schema, "2020-12");
@@ -39,7 +37,6 @@ export default class Validator {
         [
             positionSchema,
             lineMarkerSchema,
-            paramsSchema,
             parsedPathSchema,
             matcherBodySchema,
             sendBodySchema,
@@ -52,7 +49,6 @@ export default class Validator {
             plurnkStatementSchema,
             positionSchema,
             lineMarkerSchema,
-            paramsSchema,
             parsedPathSchema,
             matcherBodySchema,
             sendBodySchema,
@@ -80,10 +76,6 @@ export default class Validator {
 
     static validateLineMarker(value: unknown): ValidationResult {
         return Validator.#validate(Validator.#lineMarker, value);
-    }
-
-    static validateParams(value: unknown): ValidationResult {
-        return Validator.#validate(Validator.#params, value);
     }
 
     static validateChannelContent(value: unknown): ValidationResult {

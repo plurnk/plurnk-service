@@ -22,10 +22,10 @@ import type NoticeChannel from "./NoticeChannel.ts";
 import type ProposalLifecycle from "./ProposalLifecycle.ts";
 import type { ProposalPendingEvent, ProposalSettlement } from "./ProposalLifecycle.ts";
 import type { EntryData, ReadEntryResult, WriteEntryResult, DeleteEntryResult } from "../schemes/_entry-crud.ts";
-import { entryPathnameOf, foldAuthorityIntoPath, renderAddress, schemeNameOf } from "./plurnk-uri.ts";
+import { entryPathnameOf, foldAuthorityIntoPath, renderAddress, renderTarget, schemeNameOf } from "./plurnk-uri.ts";
 import Fork from "./fork.ts";
 import WorkerCap from "./worker-cap.ts";
-import { decodePathParens, encodePathParens } from "./path-decode.ts";
+import { parsePath, PathSyntax } from "@plurnk/plurnk-contracts";
 import Namespace from "./namespace.ts";
 import type { SchemeManifest, WriterTier, PlurnkSchemeContext, LoopFlags } from "./scheme-types.ts";
 import { DEFAULT_LOOP_FLAGS } from "./scheme-types.ts";
@@ -55,6 +55,7 @@ import Results from "./results.ts";
 import { OperationFailureError } from "./results.ts";
 import {
     InvalidOperationResultError,
+    NetworkAddress,
     type MatchEvidence,
     type SchemeResult,
 } from "@plurnk/plurnk-schemes";
@@ -266,7 +267,7 @@ export default class Dispatcher {
                 {
                     stage: "entry-read",
                     scheme,
-                    target: `${scheme}://${pathname}`,
+                    target: renderAddress(scheme, pathname),
                     retryable: false,
                 },
             ) as ReadEntryResult;
@@ -297,7 +298,7 @@ export default class Dispatcher {
                 {
                     stage: "entry-write",
                     scheme,
-                    target: `${scheme}://${pathname}`,
+                    target: renderAddress(scheme, pathname),
                     retryable: false,
                 },
             ) as WriteEntryResult;
@@ -321,7 +322,7 @@ export default class Dispatcher {
                 {
                     stage: "entry-delete",
                     scheme,
-                    target: `${scheme}://${pathname}`,
+                    target: renderAddress(scheme, pathname),
                     retryable: false,
                 },
             );
@@ -1249,6 +1250,21 @@ export default class Dispatcher {
     ): PlurnkStatement {
         const target = statement.target;
         if (target === null || target.kind !== "url") return Dispatcher.#retargetRead(statement, pathname, lineMarker, body);
+        if (NetworkAddress.supports(target.scheme)) {
+            const parsed = parsePath(renderAddress(target.scheme, pathname));
+            if (parsed === null || parsed.kind !== "url") {
+                throw new Error(`failed to reconstruct network entry target for ${target.scheme}:${pathname}`);
+            }
+            const reconstructed = { ...parsed, fragment: target.fragment };
+            const raw = renderTarget(reconstructed);
+            if (raw === null) throw new Error(`failed to render network entry target for ${target.scheme}:${pathname}`);
+            return {
+                ...statement,
+                target: { ...reconstructed, raw },
+                lineMarker,
+                body,
+            } as PlurnkStatement;
+        }
         const hostPrefix = target.hostname === null ? null : `/${target.hostname}`;
         const displayPath = hostPrefix !== null && pathname.startsWith(`${hostPrefix}/`)
             ? pathname.slice(hostPrefix.length)
@@ -1355,7 +1371,7 @@ export default class Dispatcher {
             worker_id: workerId, loop_id: loopId, turn_id: turnId, sequence,
             origin, source: null, op: "model", suffix: "", signal: null,
             scheme: null, username: null, password: null, hostname: null, port: null,
-            pathname: null, params: null, fragment: null, lineMarker: null,
+            pathname: null, query: null, fragment: null, lineMarker: null,
             tx: "", mimetype_tx: "text/vnd.plurnk",
             rx: JSON.stringify({ content: verbatim, mimetype: "text/vnd.plurnk" }),
             mimetype_rx: "application/json",
@@ -1539,7 +1555,7 @@ export default class Dispatcher {
 
     #resourceAddress(selection: ResolvedResourceSelection): string {
         const address = selection.scheme === "file"
-            ? encodePathParens(selection.identityPathname.replace(/^\//, ""))
+            ? PathSyntax.encodeParens(selection.identityPathname.replace(/^\//, ""))
             : renderAddress(selection.scheme, selection.identityPathname);
         return selection.channel === selection.manifest.defaultChannel
             ? address
@@ -2698,10 +2714,11 @@ export default class Dispatcher {
             );
         }
         if (statement.op === "SEND" && statement.signal === 499 && statement.target?.kind === "url") {
+            const addressedScheme = statement.target.scheme;
             const entry = await this.#db.crud_find_workspace_entry.get<{ id: number }>({
                 workspace_id: ctx.workspaceId,
                 owner_id: await Owner.commonsId(this.#db, ctx.workspaceId),
-                scheme: schemeName,
+                scheme: addressedScheme,
                 pathname: entryPathnameOf(statement.target),
             });
             if (entry !== undefined) {
@@ -2709,7 +2726,7 @@ export default class Dispatcher {
                     workerId: ctx.workerId,
                     entryId: entry.id,
                 });
-                if (subscription !== null && subscription.scheme === schemeName) {
+                if (subscription !== null && subscription.scheme === addressedScheme) {
                     const cancelled = await this.#liveSubscriptions.cancel(subscription.id);
                     if (!cancelled) {
                         throw new InvalidOperationResultError(
@@ -2872,7 +2889,7 @@ export default class Dispatcher {
             hostname: target.hostname,
             port: target.port,
             pathname: target.pathname,
-            params: target.params,
+            query: target.query,
             fragment: target.fragment,
             lineMarker: lineMarkerJson,
             tx: txJson,
@@ -2896,11 +2913,11 @@ export default class Dispatcher {
     #extractTarget(path: ParsedPath | null): {
         scheme: string | null; username: string | null; password: string | null;
         hostname: string | null; port: number | null; pathname: string | null;
-        params: string | null; fragment: string | null;
+        query: string | null; fragment: string | null;
     } {
-        if (path === null) return { scheme: null, username: null, password: null, hostname: null, port: null, pathname: null, params: null, fragment: null };
+        if (path === null) return { scheme: null, username: null, password: null, hostname: null, port: null, pathname: null, query: null, fragment: null };
         // `local` (bare path) carries no URL parts — store the raw text as the pathname for the log record, scheme=null.
-        if (path.kind === "local") return { scheme: null, username: null, password: null, hostname: null, port: null, pathname: decodePathParens(path.raw), params: null, fragment: null }; // #239 item 4
+        if (path.kind === "local") return { scheme: null, username: null, password: null, hostname: null, port: null, pathname: PathSyntax.decodeParens(path.raw), query: null, fragment: null }; // #239 item 4
         const scheme = path.scheme === "file" ? null : path.scheme;
         // Every registered (plurnk-namespace) scheme uses its authority as a namespace segment — fold
         // it into the canonical pathname so known://x ≡ known:///x ≡ /x and the log keys identically to
@@ -2908,12 +2925,15 @@ export default class Dispatcher {
         // namespace: keep it in hostname. worker:// is the one registered EXCEPTION — its authority IS the
         // worker selector ({§worker-scheme}), and worker://self must stay distinct from worker://name, so Worker.ts
         // folds the owner into the storage path itself, never here.
-        const foldNs = scheme !== null && scheme !== "worker" && this.#schemes.has(scheme);
+        const foldNs = scheme !== null
+            && scheme !== "worker"
+            && !NetworkAddress.supports(scheme)
+            && this.#schemes.has(scheme);
         return {
             scheme, username: path.username, password: path.password,
             hostname: foldNs ? null : path.hostname, port: path.port,
-            pathname: decodePathParens(foldNs ? foldAuthorityIntoPath(path.hostname, path.pathname) : path.pathname), // #239 item 4
-            params: JSON.stringify(path.params), fragment: path.fragment,
+            pathname: PathSyntax.decodeParens(foldNs ? foldAuthorityIntoPath(path.hostname, path.pathname) : path.pathname), // #239 item 4
+            query: path.query, fragment: path.fragment,
         };
     }
 

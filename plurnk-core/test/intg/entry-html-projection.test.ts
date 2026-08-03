@@ -19,7 +19,7 @@ const ROSTER = "<html><body><h1>Team Roster</h1><user email=\"alice@x.com\">Alic
 
 const readStmt = (pathname: string, body: ReadStatement["body"] = null): ReadStatement => ({
     op: "READ", suffix: "", signal: null,
-    target: { kind: "url", raw: `worker:///${pathname}`, scheme: "worker", username: null, password: null, hostname: null, port: null, pathname: `/${pathname}`, params: {}, fragment: null },
+    target: { kind: "url", raw: `worker:///${pathname}`, scheme: "worker", username: null, password: null, hostname: null, port: null, pathname: `/${pathname}`, query: null, fragment: null },
     lineMarker: null, body, position: { line: 1, column: 1 },
 });
 
@@ -107,7 +107,7 @@ test("a scoped HTTP READ slices the materialized readable body instead of starti
             target: {
                 kind: "url", raw: "https://example.org/page", scheme: "https",
                 username: null, password: null, hostname: "example.org", port: null,
-                pathname: "/page", params: {}, fragment: null,
+                pathname: "/page", query: null, fragment: null,
             },
             lineMarker: { marks: [2, 3] }, body: null, position: { line: 1, column: 1 },
         };

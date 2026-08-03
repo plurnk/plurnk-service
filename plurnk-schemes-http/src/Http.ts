@@ -38,7 +38,7 @@ import type {
     FindStatement,
     SchemeResult,
 } from "@plurnk/plurnk-schemes";
-import { Results } from "@plurnk/plurnk-schemes";
+import { NetworkAddress, Results } from "@plurnk/plurnk-schemes";
 import { readFile } from "node:fs/promises";
 import Browser, { BROWSER_UA, requireNumEnv, type RenderResult } from "./Browser.ts";
 import ErrorDetail from "./ErrorDetail.ts";
@@ -116,22 +116,24 @@ export default class Http implements SchemeHandler {
     async prepareFind(statement: FindStatement, ctx: SchemeCtx): Promise<PassthroughResult> {
         const target = statement.target;
         if (target === null || target.kind !== "url") return { shape: "passthrough", status: 200 };
-        const pathname = Http.#pathname(target);
-        if (pathname.includes("*")) return { shape: "passthrough", status: 200 };
+        const address = Http.#address(target);
+        if (!(address instanceof NetworkAddress)) return address;
+        const { pathname, url } = address;
+        if (target.pathname.includes("*")) return { shape: "passthrough", status: 200 };
         const prior = await ctx.entries.read(pathname);
         if (prior.entry !== null) return { shape: "passthrough", status: 200 };
         if (Results.isErrorStatus(prior.status) && prior.status !== 404) {
             return Http.#passthrough(prior);
         }
-        const fetched = await this.#webFetcher.fetch(Http.#urlFrom(target), { signal: ctx.signal });
+        const fetched = await this.#webFetcher.fetch(url, { signal: ctx.signal });
         if (fetched === null) {
             return Http.#bad(
                 404,
                 "http",
                 "not-materialized",
-                `The URL ${Http.#urlFrom(target)} could not be materialized.`,
+                `The URL ${url} could not be materialized.`,
                 {
-                    target: Http.#urlFrom(target),
+                    target: url,
                     stage: "acquisition",
                     retryable: true,
                 },
@@ -157,9 +159,9 @@ export default class Http implements SchemeHandler {
                     422,
                     "http",
                     "no-readable-projection",
-                    `The URL ${Http.#urlFrom(target)} has no readable projection.`,
+                    `The URL ${url} has no readable projection.`,
                     {
-                        target: Http.#urlFrom(target),
+                        target: url,
                         stage: "projection",
                         retryable: false,
                     },
@@ -187,7 +189,9 @@ export default class Http implements SchemeHandler {
             });
         }
         if (statement.lineMarker !== null) {
-            const prior = await ctx.entries.read(Http.#pathname(statement.target));
+            const address = Http.#address(statement.target);
+            if (!(address instanceof NetworkAddress)) return address;
+            const prior = await ctx.entries.read(address.pathname);
             if (Results.isErrorStatus(prior.status) && prior.status !== 404) {
                 return Http.#passthrough(prior);
             }
@@ -199,7 +203,7 @@ export default class Http implements SchemeHandler {
                     "scope-requires-materialization",
                     "The requested scoped READ has no materialized response.",
                     {
-                        target: Http.#urlFrom(statement.target),
+                        target: address.url,
                         stage: "projection",
                         recovery: "READ the URL without a scope before requesting a range.",
                         retryable: false,
@@ -289,7 +293,9 @@ export default class Http implements SchemeHandler {
             return this.#fetchStream(statement.target, ctx, "POST", body);
         }
         if (status === 410) {
-            return Http.#passthrough(await ctx.entries.delete(Http.#pathname(statement.target)));
+            const address = Http.#address(statement.target);
+            if (!(address instanceof NetworkAddress)) return address;
+            return Http.#passthrough(await ctx.entries.delete(address.pathname));
         }
         if (status === 499) {
             // Cancellation is routed by the engine to the subscription's
@@ -319,8 +325,10 @@ export default class Http implements SchemeHandler {
     // blocks (grammar#46) ride into both the fetch and the render. Each chunk is
     // labelled with its real mimetype via notifyChunk. Settles via close().
     async #fetchStream(target: UrlPath, ctx: SchemeCtx, method: string, body: string | undefined): Promise<PassthroughResult> {
-        const url = Http.#rewriteHostileHost(Http.#urlFrom(target));
-        const pathname = Http.#pathname(target);
+        const address = Http.#address(target);
+        if (!(address instanceof NetworkAddress)) return address;
+        const url = Http.#rewriteHostileHost(address.url);
+        const { pathname } = address;
         const headers = target.headers ?? [];  // [key,value][] — opaque to grammar, honored here
         const publishedChannel = target.fragment ?? Http.manifest.defaultChannel;
         if (!(publishedChannel in Http.manifest.channels)) {
@@ -565,23 +573,33 @@ export default class Http implements SchemeHandler {
         return { shape: "passthrough", status: 102 };
     }
 
-    // Reconstruct the absolute URL from the parsed UrlPath. `raw` is the
-    // grammar's verbatim URL — authoritative; the decomposed fields are a
-    // convenience. Use raw so query strings / auth / port survive exactly.
-    static #urlFrom(target: UrlPath): string {
-        return target.raw;
-    }
-
-    // Entry storage has no authority column. The host is part of a web
-    // resource's identity, so fold it into the pathname exactly as the search
-    // prefetch sink does. Routing (`https` rides the HTTP handler) remains
-    // separate from storage (`https` remains https).
-    static #pathname(target: UrlPath): string {
-        const folded = target.hostname ? `/${target.hostname}${target.pathname}` : target.pathname;
-        // `%28`/`%29` are the grammar-safe transport spelling of literal path
-        // parentheses. Entry storage is canonical; the packet renderer encodes
-        // them again when presenting an address to the model.
-        return folded.replace(/%28/giu, "(").replace(/%29/giu, ")");
+    static #address(target: UrlPath): NetworkAddress | PassthroughResult {
+        let address: NetworkAddress;
+        try {
+            address = NetworkAddress.from(target);
+        } catch {
+            return Http.#bad(400, "http", "bad-target", "HTTP operations require an http(s):// URL with an authority.", {
+                stage: "target-validation",
+                recovery: "Provide an http(s):// URL with a host.",
+                retryable: false,
+            });
+        }
+        if (address.scheme !== "http" && address.scheme !== "https") {
+            return Http.#bad(400, "http", "bad-target", "HTTP operations require an http(s):// URL target.", {
+                stage: "target-validation",
+                recovery: "Provide an http(s):// URL target.",
+                retryable: false,
+            });
+        }
+        if (address.hasCredentials) {
+            return Http.#bad(400, "http", "userinfo-not-allowed", "HTTP URL userinfo is not allowed.", {
+                target: address.url,
+                stage: "target-validation",
+                recovery: "Remove credentials from the URL and use request metadata where authorization is required.",
+                retryable: false,
+            });
+        }
+        return address;
     }
 
     // Known-hostile-host rewrite — the ONE bounded, first-party exception

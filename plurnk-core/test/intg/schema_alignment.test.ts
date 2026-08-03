@@ -53,8 +53,7 @@ const MAPPING: Record<string, SchemaMapping> = {
 
     Position:        { kind: "skip", reason: "AST shape; embedded in log_entries.* and other JSON fields" },
     LineMarker:      { kind: "skip", reason: "AST shape; embedded in log_entries.lineMarker JSON column" },
-    Params:          { kind: "skip", reason: "embedded in entries.params + log_entries.params JSON" },
-    ParsedPath:      { kind: "skip", reason: "AST shape; URL parts already decomposed at entry/log_entries level" },
+    ParsedPath:      { kind: "skip", reason: "AST shape; entries store one canonical pathname while log_entries preserve its decomposed target fields" },
     MatcherBody:     { kind: "skip", reason: "AST shape; not persisted" },
     ResourceSelection: { kind: "skip", reason: "AST shape; COPY/MOVE source or destination selection" },
     SendBody:        { kind: "skip", reason: "AST shape; embedded in log_entries.tx for SEND rows" },

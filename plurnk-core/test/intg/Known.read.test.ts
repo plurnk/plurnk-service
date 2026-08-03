@@ -8,7 +8,7 @@ import { Mimetypes } from "@plurnk/plurnk-mimetypes";
 const urlPath = (scheme: string, pathname: string): UrlPath => ({
     kind: "url", raw: `${scheme}://${pathname}`, scheme,
     username: null, password: null, hostname: null, port: null,
-    pathname, params: {}, fragment: null,
+    pathname, query: null, fragment: null,
 });
 
 const localPath = (raw: string): LocalPath => ({ kind: "local", raw });

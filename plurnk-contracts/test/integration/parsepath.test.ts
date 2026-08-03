@@ -31,7 +31,7 @@ test("parsePath: HTTPS retains full authority decomposition", () => {
     assert.equal(p.hostname, "example.com");
     assert.equal(p.port, 8080);
     assert.equal(p.pathname, "/api");
-    assert.deepEqual(p.params, { q: "1" });
+    assert.equal(p.query, "q=1");
     assert.equal(p.fragment, "frag");
 });
 
@@ -53,13 +53,13 @@ test("parsePath: two-slash URL parses the first segment as its host", () => {
     assert.equal(p.pathname, "/meaning");
 });
 
-test("parsePath: empty-authority scheme preserves params and fragment", () => {
+test("parsePath: empty-authority scheme preserves query and fragment", () => {
     const p = AstBuilder.parsePath("wiki:///Paris?lang=fr#History");
     if (p?.kind !== "url") { assert.fail("expected url"); return; }
     assert.equal(p.scheme, "wiki");
     assert.equal(p.hostname, null);
     assert.equal(p.pathname, "/Paris");
-    assert.deepEqual(p.params, { lang: "fr" });
+    assert.equal(p.query, "lang=fr");
     assert.equal(p.fragment, "History");
 });
 
@@ -109,10 +109,18 @@ test("parsePath: explicit position propagates to error", () => {
     }
 });
 
-test("parsePath: multi-value params parse to array", () => {
-    const p = AstBuilder.parsePath("https://example.com/?q=1&q=2");
+test("parsePath: query preserves ordering and duplicate names", () => {
+    const p = AstBuilder.parsePath("https://example.com/?q=1&lang=en&q=2");
     if (p?.kind !== "url") { assert.fail("expected url"); return; }
-    assert.deepEqual(p.params, { q: ["1", "2"] });
+    assert.equal(p.query, "q=1&lang=en&q=2");
+});
+
+test("parsePath: absent and explicitly empty queries remain distinct", () => {
+    const absent = AstBuilder.parsePath("https://example.com/");
+    const empty = AstBuilder.parsePath("https://example.com/?");
+    if (absent?.kind !== "url" || empty?.kind !== "url") { assert.fail("expected urls"); return; }
+    assert.equal(absent.query, null);
+    assert.equal(empty.query, "");
 });
 
 test("parsePath: hash-leading spellings are ordinary local paths", () => {
@@ -201,7 +209,7 @@ test("parsePath: headers flow through a full parse to the statement target", () 
 });
 
 // {§path-syntax} Scheme-generic decomposition keeps the WebSocket surface reachable (#470).
-test("parsePath: ws:// and wss:// decompose as UrlPath (scheme, host, port, params) (#470)", () => {
+test("parsePath: ws:// and wss:// decompose as UrlPath (scheme, host, port, query) (#470)", () => {
     const ws = AstBuilder.parsePath("ws://api.example.com/feed");
     assert.equal(ws?.kind, "url");
     if (ws?.kind !== "url") return;
@@ -214,7 +222,7 @@ test("parsePath: ws:// and wss:// decompose as UrlPath (scheme, host, port, para
     if (wss?.kind !== "url") return;
     assert.equal(wss.scheme, "wss");
     assert.equal(wss.port, 8443);
-    assert.deepEqual(wss.params, { room: "x" });
+    assert.equal(wss.query, "room=x");
 });
 
 test("parsePath: the ws op trio (READ open+stream, SEND push, KILL close) parses to url targets (#470)", () => {

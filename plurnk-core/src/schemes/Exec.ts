@@ -12,8 +12,6 @@ import type { SchemeManifest, PlurnkSchemeContext } from "../core/scheme-types.t
 import EntryOps from "./_entry-ops.ts";
 import EntryCrud from "./_entry-crud.ts";
 import Owner from "../core/Owner.ts";
-import { foldAuthorityIntoPath } from "../core/plurnk-uri.ts";
-import { decodePathParens } from "../core/path-decode.ts";
 import EntryFind from "./_entry-find.ts";
 import type { ReadResult } from "./_entry-ops.ts";
 import type { EntryData, ReadEntryResult, WriteEntryResult, DeleteEntryResult } from "./_entry-crud.ts";
@@ -21,7 +19,7 @@ import type { FindResult } from "./_entry-find.ts";
 import ChannelWrite, { type StreamCoordinate } from "../core/ChannelWrite.ts";
 import ExecEnv from "./exec-env.ts";
 import ExecAbort from "./exec-abort.ts";
-import { renderAddress } from "../core/plurnk-uri.ts";
+import { entryPathnameOf, renderAddress } from "../core/plurnk-uri.ts";
 import { writeFile, unlink, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -29,7 +27,7 @@ import { CoreSchemeAdapterBase } from "../core/CoreSchemeServices.ts";
 import type { CoreSchemeCallContext } from "../core/CoreSchemeServices.ts";
 import ErrorDetail from "../core/ErrorDetail.ts";
 import Results, { OperationFailureError, type SchemeResult, type SchemeResultBase } from "../core/results.ts";
-import { InvalidOperationResultError } from "@plurnk/plurnk-schemes";
+import { InvalidOperationResultError, NetworkAddress } from "@plurnk/plurnk-schemes";
 
 type ExecResult = SchemeResultBase & { body?: string; attrs?: object };
 
@@ -186,14 +184,15 @@ export default class Exec extends CoreSchemeAdapterBase {
             scheme,
             pathname,
         });
+        const target = renderAddress(scheme, pathname);
         if (terminal === null) {
             return Results.failure(
                 "scheme:exec",
                 "stream-not-found",
                 404,
-                `No stream exists at ${scheme}://${pathname}.`,
+                `No stream exists at ${target}.`,
                 {},
-                { target: `${scheme}://${pathname}` },
+                { target },
             );
         }
         if (terminal === 499) {
@@ -201,10 +200,10 @@ export default class Exec extends CoreSchemeAdapterBase {
                 "scheme:exec",
                 "stream-already-killed",
                 410,
-                `Stream ${scheme}://${pathname} was already killed.`,
+                `Stream ${target} was already killed.`,
                 {},
                 {
-                    target: `${scheme}://${pathname}`,
+                    target,
                     retryable: false,
                 },
             );
@@ -213,10 +212,10 @@ export default class Exec extends CoreSchemeAdapterBase {
             "scheme:exec",
             "stream-already-terminal",
             409,
-            `${scheme}://${pathname} already concluded with status ${terminal}.`,
+            `${target} already concluded with status ${terminal}.`,
             {},
             {
-                target: `${scheme}://${pathname}`,
+                target,
                 terminalStatus: terminal,
                 retryable: false,
             },
@@ -579,23 +578,30 @@ export default class Exec extends CoreSchemeAdapterBase {
         } | null = null;
         const entrySink = (path: string, content: string | null, opts: { tags: string[]; mimetype?: string }): Promise<string> => {
             const parsed = parsePath(path);
-            if (parsed === null || parsed.kind !== "url" || parsed.scheme === null) return Promise.reject(new Error(`entry(): '${path.slice(0, 80)}' is not a URL`));
+            if (parsed === null || parsed.kind !== "url") return Promise.reject(new Error(`entry(): '${path.slice(0, 80)}' is not a URL`));
             if (content !== null && opts.mimetype === undefined) return Promise.reject(new Error("entry(): mimetype is required when content is provided"));
+            const address = NetworkAddress.supports(parsed.scheme) ? NetworkAddress.from(parsed) : null;
+            if (address?.hasCredentials === true) return Promise.reject(new Error("entry(): network URL userinfo is not allowed"));
+            const fetchAddress = address !== null && (address.scheme === "http" || address.scheme === "https")
+                ? address
+                : null;
+            const pathname = address?.pathname ?? entryPathnameOf(parsed);
+            const scheme = address?.scheme ?? parsed.scheme;
             // {§exec-entry-sink}/{§web-search-retrieval} — start content:null
             // acquisition before the write chain so fetches run in parallel;
             // only durable entry writes serialize. A null result rejects the sink.
-            const materialized: Promise<WebFetchResult | null> = content === null
-                ? this.#fetchWeb(path, { signal })
-                : Promise.resolve({ body: content, mimetype: opts.mimetype as string });
+            let materialized: Promise<WebFetchResult | null>;
+            if (content === null) {
+                if (fetchAddress === null) return Promise.reject(new Error("entry(): content:null requires an http(s):// URL"));
+                materialized = this.#fetchWeb(fetchAddress.url, { signal });
+            } else {
+                materialized = Promise.resolve({ body: content, mimetype: opts.mimetype as string });
+            }
             const op = async (): Promise<string> => {
                 const fetched = await materialized;
                 if (fetched === null) throw new Error(`entry(): '${path.slice(0, 80)}' is dead`);
                 let { body, mimetype } = fetched;
-                // External URLs arrive in transport-safe spelling, while entry identity uses
-                // the grammar's canonical resolved path. Store the decoded identity; renderers
-                // encode parentheses again when the address returns to the model.
-                const pathname = decodePathParens(foldAuthorityIntoPath(parsed.hostname, parsed.pathname));
-                const prior = await EntryCrud.readEntry(pathname, ctx, parsed.scheme);
+                const prior = await EntryCrud.readEntry(pathname, ctx, scheme);
                 const tags = [...new Set([...(prior.entry?.tags ?? []), ...opts.tags])];
                 // The web-fetch entry point: a fetched html page stores the handler's readable
                 // projection as the decisive `body` (text/markdown — what READ serves, FIND matches,
@@ -627,7 +633,7 @@ export default class Exec extends CoreSchemeAdapterBase {
                     decisive = projected;
                 }
                 const written = Results.assert(
-                    await EntryCrud.writeEntry(pathname, { channels, tags }, ctx, parsed.scheme),
+                    await EntryCrud.writeEntry(pathname, { channels, tags }, ctx, scheme),
                 );
                 if (narration === null) {
                     const worker = await db.envelope_get_worker_by_name.get<{ id: number }>({ workspace_id: ctx.workspaceId, name: "plurnk" })
@@ -659,8 +665,8 @@ export default class Exec extends CoreSchemeAdapterBase {
                     // signal carries the tags — the SAME slot a model's EDIT[tags] uses, so the
                     // ambient row renders its tags natively everywhere (packet meta line, digest).
                     origin: "plurnk", source: String(ctx.workerId), op: "EDIT", suffix: "", signal: JSON.stringify(tags),
-                    scheme: parsed.scheme, username: null, password: null, hostname: null, port: null,
-                    pathname, params: null, fragment: null, lineMarker: null,
+                    scheme, username: null, password: null, hostname: null, port: null,
+                    pathname, query: null, fragment: null, lineMarker: null,
                     tx: JSON.stringify({ op: "EDIT", body }), mimetype_tx: "application/json",
                     rx: JSON.stringify(written.problem === undefined
                         ? {
@@ -676,7 +682,7 @@ export default class Exec extends CoreSchemeAdapterBase {
                     attrs: JSON.stringify({ tags, kind: "entry_materialized" }),
                 });
                 if (written.problem !== undefined) throw new OperationFailureError(written);
-                return renderAddress(parsed.scheme, pathname);
+                return renderAddress(scheme, pathname);
             };
             const run = entryChain.then(op, op);
             entryChain = run.then(() => undefined, () => undefined);

@@ -11,7 +11,7 @@ const sendStmt = (status: number, body: string): SendStatement => ({
 
 const editStmt = (target: string, body: string): EditStatement => ({
     op: "EDIT", suffix: "", signal: null,
-    target: { kind: "url", raw: `worker:///${target}`, scheme: "worker", username: null, password: null, hostname: null, port: null, pathname: `/${target}`, params: {}, fragment: null },
+    target: { kind: "url", raw: `worker:///${target}`, scheme: "worker", username: null, password: null, hostname: null, port: null, pathname: `/${target}`, query: null, fragment: null },
     lineMarker: null, body, position: { line: 1, column: 1 },
 });
 

@@ -17,7 +17,7 @@ import { openMigrated, insertWorkspace, insertWorker, makeSchemeCtx, DEFAULT_MIM
 const fileUrl = (pathname: string): UrlPath => ({
     kind: "url", raw: `file://${pathname}`, scheme: "file",
     username: null, password: null, hostname: null, port: null,
-    pathname, params: {}, fragment: null,
+    pathname, query: null, fragment: null,
 });
 const readStmt = (pathname: string): ReadStatement => ({ op: "READ", suffix: "", signal: null, target: fileUrl(pathname), lineMarker: null, body: null, position: { line: 1, column: 1 } });
 const fullReplace: LineMarker = { marks: [1, -1] };
