@@ -119,8 +119,8 @@ test("bin: spawns, the AG-UI listener answers HTTP on its bound port, exits clea
         assert.ok(res.status > 0, `the AG-UI listener answered HTTP (status ${res.status})`);
     } finally {
         const { code, signal } = await stopDaemon(booted);
-        assert.ok(code === 0 || signal === "SIGTERM",
-            `daemon exited cleanly (code=${code} signal=${signal})`);
+        assert.equal(code, 0, `the service handled SIGTERM and exited zero (signal=${signal})`);
+        assert.equal(signal, null, "SIGTERM was handled rather than killing the process directly");
     }
 });
 

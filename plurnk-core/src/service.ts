@@ -18,6 +18,7 @@ import { parseAliasesFromEnv, resolveActiveAlias } from "@plurnk/plurnk-provider
 import { Module as AguiModule } from "@plurnk/plurnk-agui";
 import { Module as McpModule } from "@plurnk/plurnk-mcp";
 import { formatBuildInfo, getBuildInfo } from "./build-info.ts";
+import ServiceTeardown from "./core/ServiceTeardown.ts";
 
 // The `plurnk-service` executable: launches the daemon (start) or applies the schema baseline.
 // Not the user-facing client — that is the separate `plurnk` project.
@@ -209,6 +210,10 @@ export default class Service {
         const provider = alias === null ? null : await ProviderInstantiate.loadActiveProvider();
         const db = await Service.#openDb(dbPath, true);
         const daemon = new Daemon({ db, provider, nodeModulesPath: Service.#pluginsNodeModules() });
+        const teardown = new ServiceTeardown(
+            async () => daemon.stop(),
+            async () => db.close(),
+        );
         try {
             daemon.registerModule(McpModule.init());
             // AG-UI plugin module (#355) — THE client surface, always on: its init runs at boot with the
@@ -242,13 +247,19 @@ export default class Service {
             const aliasStr = alias === null ? "no model" : `${alias.alias}=${alias.provider}/${alias.model}`;
             process.stdout.write(`plurnk-service agui=http://${aguiAddr.host}:${aguiAddr.port} db=${dbPath} ${aliasStr}\n`);
 
-            const shutdown = async (): Promise<void> => { await daemon.stop(); await db.close(); process.exit(0); };
+            const shutdown = (): void => {
+                teardown.request((cause) => {
+                    process.exitCode = 1;
+                    process.stderr.write(
+                        ServiceTeardown.diagnostic("plurnk-service shutdown", cause),
+                        () => process.exit(1),
+                    );
+                });
+            };
             process.on("SIGINT", shutdown);
             process.on("SIGTERM", shutdown);
         } catch (cause) {
-            await daemon.stop().catch(() => {});
-            await db.close();
-            throw cause;
+            await teardown.fail(cause);
         }
     }
 
@@ -329,8 +340,7 @@ ${EnvFlags.formatFlagsHelp(flagDescriptors)}
         process.stderr.write(`plurnk-service: ${formatBuildInfo(buildInfo)}\n`);
         try { await handler(); }
         catch (cause) {
-            process.stderr.write(`${subcommand}: ${cause instanceof Error ? cause.message : String(cause)}\n`);
-            if (cause instanceof Error && cause.cause) process.stderr.write(`  cause: ${cause.cause instanceof Error ? cause.cause.message : String(cause.cause)}\n`);
+            process.stderr.write(ServiceTeardown.diagnostic(subcommand, cause));
             process.exit(1);
         }
     }
