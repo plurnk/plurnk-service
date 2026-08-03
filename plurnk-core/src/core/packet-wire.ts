@@ -4,14 +4,8 @@
 // digest tool imports it to write byte-identical packetNNN.{system,user}.md
 // files. No second implementation, no drift.
 //
-// Format: markdown. user picked it over rummy's XML and JSON alternatives
-// 2026-05-22. Standard markdown idioms only — headers as section delimiters,
-// fenced code blocks for entry bodies, lists for arrays. No invented
-// separators. Models parse markdown natively.
-//
-// Section headers follow the `## Plurnk Service X` convention so the model
-// sees consistent framing across every section it might receive. Sections
-// with no content are omitted entirely (no empty headers in the wire).
+// Format and omission rules are owned by {§packet-markdown}. Section producers
+// supply names and typed content; this projection preserves their ordered evidence.
 
 import { Validator, type LineMarker, type ProblemDetails, type TextRegion } from "@plurnk/plurnk-contracts";
 import { Results as SchemeResults } from "@plurnk/plurnk-schemes";
