@@ -2,8 +2,8 @@
 // tight virtual PROMPT_BUDGET. Budget pressure is a DIMENSION atop a real scenario,
 // not a bespoke fixture — if the same task still completes when the model must curate
 // to fit the window, the grinder works end-to-end with a real model. The intg layer
-// (budget-stories.test.ts) pins the exact mechanics; this pins the behavior, the way
-// rummy's e2e/stories/tight_context_limit ran a real task at contextLimit: 6667.
+// (budget-stories.test.ts) pins the exact mechanics; this pins the behavior with
+// a real task under a deliberately tight context limit.
 //
 // The marquee (owner): a JUMBO prompt — SPEC.md itself, ~42k tokens — under a tight
 // ceiling. A whole-read overflows by ~10x, so on the next turn the grinder auto-folds

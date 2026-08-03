@@ -1,10 +1,8 @@
 import type { PlurnkStatement, LineMarker } from "@plurnk/plurnk-contracts";
 import { renderTarget } from "./plurnk-uri.ts";
 
-// Rail #38: action-entry statuses that DON'T accumulate strikes. Model adapted
-// to a finding (not_found, op_not_supported); no penalty. Rummy parallel:
-// SOFT_FAILURE_OUTCOMES = {"not_found", "unparsed"}.
-// Exploratory misses are not failures: probing a path that doesn't exist (404), a line
+// Action-entry statuses that do not accumulate strikes. Exploratory misses are
+// not failures: probing a path that doesn't exist (404), a line
 // range that doesn't exist (416), or a capability a scheme lacks (501) is how discovery
 // works — striking them prices caution into the motions we most want (range-reads ARE
 // the surgical behavior under budget pressure). One simple set, evenly applied.
@@ -70,13 +68,8 @@ const fingerprintOp = (stmt: PlurnkStatement): string => {
 };
 
 // Rails #38 (strikes) + #39 (cycle detection): the per-loop failure-streak
-// accounting that decides abandonment. Strike accounting is engine-internal
-// bookkeeping. Per rummy precedent (plugins/error/error.js#verdict) and SPEC
-// {§operation-results} policy: model sees failures from admitted operations and
-// engine rails, never the engine's accounting about them (strike counts,
-// cycle detection, sudden-death threshold). Surfacing internal state to the
-// model creates a gamification surface — model optimizes for engine metrics
-// rather than task progress.
+// accounting that decides abandonment. {§rail-accounting-private} — the model
+// sees admitted operation and engine-rail failures, never this bookkeeping.
 export default class StrikeRail {
     // Per-turn fingerprint: sorted set of per-op fingerprints, joined. Order
     // within a turn doesn't matter — we want the SET of activities.
@@ -86,8 +79,7 @@ export default class StrikeRail {
 
     // Rail #39 cycle detector. For each candidate period k in [1, maxCyclePeriod],
     // check whether the last k*minCycles entries form minCycles repetitions of the
-    // same length-k pattern. O(maxCyclePeriod × minCycles × max k) ≈ tiny. Rummy
-    // parallel: src/plugins/error/error.js detectCycle.
+    // same length-k pattern. O(maxCyclePeriod × minCycles × max k) ≈ tiny.
     static detectCycle(
         history: ReadonlyArray<string>,
         minCycles: number,
@@ -143,12 +135,10 @@ export default class StrikeRail {
     }): { cycleDetected: boolean; thresholdCrossed: boolean } {
         // Rail #39: cycle detection. Push this turn's fingerprint to
         // history, scan for repetition patterns. Detection bumps
-        // turnErrors so the strike system handles abandonment
-        // naturally — same internal-only role rummy gave it
-        // (plugins/error/error.js#verdict). Intentionally NOT a
-        // model-facing notices kind: model sees the strike pile-up
-        // (which IS the actionable signal); cycle is the engine's
-        // reason for treating the turn as a failure, not its own alert.
+        // turnErrors so the strike system handles abandonment. It is intentionally
+        // not a model-facing notice: cycle is the engine's reason for treating the
+        // turn as a failure, and its accounting stays private
+        // ({§rail-accounting-private}).
         const state = this.#state.get(loopId) ?? { streak: 0, turnErrors: 0, history: [] };
         state.history.push(turn.fingerprint);
         const cycle = StrikeRail.detectCycle(state.history, turn.minCycles, turn.maxCyclePeriod);

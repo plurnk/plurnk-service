@@ -39,8 +39,8 @@ export interface StreamEventPayload {
 
 export type StreamEventNotify = (workspaceId: number, event: StreamEventPayload) => void;
 
-// Wake-on-completion (rummy parallel: stream/completed wake:true). When a
-// streaming-scheme subscription closes, schemes call this so the daemon
+// {§worker-lifecycle-wake-liveness} — when a streaming-scheme subscription
+// closes, schemes call this so the daemon
 // can open a fresh loop in the worker if no loop is currently active —
 // otherwise the model would never learn that its long-running command
 // finished after it ended the calling loop. Daemon decides whether to

@@ -1,23 +1,20 @@
-// Budget stories — the grinder under real pressure, ported from rummy's proven
-// budget suite (test/integration/budget_{math,cascade,preflight_uses_actual_packet,
-// hard_413_shortcircuits_dispatch}.test.js) and ADAPTED to plurnk's architecture,
-// not transplanted. The key divergence learned while porting:
+// Budget stories — the grinder under real pressure. The specimens exercise
+// PLURNK's own packet architecture:
 //
 //   * Entries are FREE. An EDIT's body lands in the catalog entry, which does not
-//     render — so a "fat entry" adds nothing to the packet. rummy fattens context
-//     with big entries; plurnk can't. The only thing that renders (and so the only
-//     budget pressure) is the LOG: a READ result renders the content it pulled.
+//     render — so a "fat entry" adds nothing to the packet. The only thing that
+//     renders (and therefore creates budget pressure) is the LOG: a READ result
+//     renders the content it pulled.
 //   * The grinder runs PRE-LLM. A turn's stored request packet is what was sent
 //     BEFORE the model spoke — it never contains that turn's own emission. The fat
 //     log a turn produces only weighs on the NEXT turn's packet.
-//   * The lever is the immediately-prior turn only (engine_grinder_prior_turn_logs:
-//     MAX(turn) < current) — NOT rummy's progressive layered archive.
+//   * The lever is the immediately-prior turn only
+//     (engine_grinder_prior_turn_logs: MAX(turn) < current).
 //
 // Machinery anchors (overflow-only, layer1-rollback, hard-413-abort, strike-coupling,
-// soft-turn-1, event-model-terms) live in Engine.budget-enforce. These are the
-// BEHAVIORAL stories rummy proved that plurnk hadn't: the grinder gates on the
-// CURRENT packet, folding RECLAIMS room and the turn still delivers ≤100%, and a
-// hard-413 never reaches the model.
+// soft-turn-1, event-model-terms) live in Engine.budget-enforce. These behavioral
+// stories prove that the grinder gates on the CURRENT packet, folding RECLAIMS
+// room and the turn still delivers ≤100%, and a hard-413 never reaches the model.
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -126,8 +123,7 @@ test("budget: under the ceiling the turn delivers and the budget reads at or bel
     } finally { await db.close(); }
 });
 
-// 2 — the grinder gates on the CURRENT assembled packet (rummy
-// budget_preflight_uses_actual_packet "stale baseline" regression): a fat prior-turn
+// 2 — the grinder gates on the CURRENT assembled packet: a fat prior-turn
 // READ log triggers the fold on the next turn — plurnk measures packet.tokens.
 test("budget: overflow is judged on the current assembled packet, not a prior-turn baseline", async () => {
     const db = await openMigrated();
@@ -183,9 +179,8 @@ test("budget: a delivered packet after fold-to-fit reads at or below 100%", asyn
     } finally { await db.close(); }
 });
 
-// 5 — folding drops the measured packet (rummy budget_math: a folded entry costs
-// less than its expanded body). The post-fold delivered packet is lighter than the
-// expanded reference.
+// 5 — folding drops the measured packet. The post-fold delivered packet is
+// lighter than the expanded reference.
 test("budget: folding a fat log strictly reduces the measured packet", async () => {
     const db = await openMigrated();
     try {
@@ -201,8 +196,8 @@ test("budget: folding a fat log strictly reduces the measured packet", async () 
     } finally { await db.close(); }
 });
 
-// 6 — a hard-413 never reaches the model (rummy budget_hard_413 "short-circuits
-// dispatch"). The stored turn carries an EMPTY assistant — generate() was skipped.
+// 6 — a hard-413 never reaches the model. The stored turn carries an EMPTY
+// assistant — generate() was skipped.
 test("budget: an un-foldable hard-413 short-circuits dispatch — the model is never called", async () => {
     const db = await openMigrated();
     try {
@@ -220,7 +215,7 @@ test("budget: an un-foldable hard-413 short-circuits dispatch — the model is n
 });
 
 // 7 — fold is render-only: stored log_entries.tokens (full body cost) is unchanged
-// by a fold (rummy budget_math "tokens always reflect full body cost").
+// by a fold.
 test("budget: folding changes the render, not the stored token cost of the entry", async () => {
     const db = await openMigrated();
     try {
@@ -238,9 +233,9 @@ test("budget: folding changes the render, not the stored token cost of the entry
     } finally { await db.close(); }
 });
 
-// 8 — the lever is the IMMEDIATELY-prior turn, not progressive shedding. plurnk folds
-// MAX(turn < current) only — it does NOT walk back through history like rummy's
-// layered archive. Turn 2 folds turn 1, turn 3 folds turn 2, and turn 1 — already
+// 8 — the lever is the IMMEDIATELY-prior turn, not progressive shedding. The grinder
+// folds MAX(turn < current) only; it does not walk back through history. Turn 2 folds
+// turn 1, turn 3 folds turn 2, and turn 1 — already
 // folded — stays folded, untouched.
 test("budget: the grinder folds the immediately-prior turn each time, never older folded turns", async () => {
     const db = await openMigrated();

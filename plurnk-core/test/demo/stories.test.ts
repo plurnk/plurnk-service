@@ -11,7 +11,7 @@
 // (rather than the auto-closing withDaemon) only because the db must stay open
 // for the post-loop forensic asserts; the loop itself is 100% prod.
 //
-// Patterns adopted from rummy's test/e2e/stories/:
+// Model-story doctrine:
 //   - Project fixture: real files the model can read/edit/query.
 //   - Scoped prompts: "find exactly N values" / "edit this specific
 //     thing" — gives gemma a clear stopping point. Open-ended phrasings
@@ -30,7 +30,7 @@ import { liveWorkspace, liveLoop } from "../_live-harness.ts";
 import { seedDemoFixture } from "./_fixture.ts";
 import WorldState from "../../src/core/world-state.ts";
 
-const TIMEOUT = 480_000; // 8 minutes — matches rummy's story timeout.
+const TIMEOUT = 480_000; // 8-minute model-story ceiling.
 
 interface StoryOpts {
     label: string;
@@ -134,8 +134,8 @@ const runStoryChain = async (opts: ChainOpts): Promise<ChainResult> => {
 
 test("story: find a single value in a JSON config", { timeout: TIMEOUT }, async () => {
     // src/config.json has { db, pool, host }. Scoped prompt: ONE value.
-    // Comment in rummy: "earlier open-ended phrasings let the model
-    // over-define adjacent unknowns and stall on Completion."
+    // A single-value question gives the model a crisp completion boundary;
+    // open-ended phrasing invites unrelated investigation.
     const story = await runStory({
         label: "config-lookup",
         prompt: "What database host does src/config.json use?",

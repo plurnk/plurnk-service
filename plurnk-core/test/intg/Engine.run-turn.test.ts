@@ -439,8 +439,7 @@ test("Engine.runLoop: soft failures (404) do NOT accumulate strikes", async () =
     try {
         // READ a missing worker:/// path → 404 (soft). With maxStrikes=2 and
         // 4 consecutive soft turns, no abandon should fire.
-        // Vary path each turn to keep rail #39 cycle detection orthogonal
-        // (per rummy's same-pattern test).
+        // Vary path each turn to keep rail #39 cycle detection orthogonal.
         const readMissing = (suffix: string): ReadStatement => ({
             op: "READ", suffix: "", signal: null,
             target: urlPath("worker", `/not-there-${suffix}`),
@@ -627,9 +626,8 @@ test("Engine.runLoop: period-2 alternating cycle detected after 6 turns", async 
 });
 
 test("Engine.runLoop: cycle detection is internal — bumps turnErrors, NO model-facing notice", async () => {
-    // Per rummy precedent (plugins/error/error.js) AND gamification
-    // policy: cycle, strike, sudden_death are all engine bookkeeping.
-    // Model sees admitted operation failures, not the engine's accounting.
+    // {§rail-accounting-private} — cycle, strike, and sudden death are engine
+    // bookkeeping. The model sees admitted operation failures, not the accounting.
     const { db, engine, workspaceId, workerId, loopId } = await setup();
     try {
         const provider = new Mock({

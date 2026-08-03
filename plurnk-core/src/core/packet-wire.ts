@@ -252,8 +252,7 @@ export default class PacketWire {
     }
 
     // Stable JSON: keys sorted alphabetically so the same meta produces the
-    // same string across turns — prefix-cache friendly. Mirrors rummy
-    // plugins/helpers.js canonicalJson.
+    // same string across turns — prefix-cache friendly.
     static #canonicalJson(obj: Record<string, unknown>): string {
         const keys = Object.keys(obj).sort();
         const sorted: Record<string, unknown> = {};

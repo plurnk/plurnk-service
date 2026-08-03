@@ -1,4 +1,4 @@
-// Daemon-level drain + inject + cancel paradigm (rummy AgentLoop parallel).
+// Daemon-level drain + inject + cancel contract ({§actor-boundary-passive-wake}).
 // Engine-level inject mechanics are covered in Engine.inject.test.ts;
 // this file exercises the RPC surface and lifecycle through real WS calls.
 

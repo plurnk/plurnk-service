@@ -302,7 +302,7 @@ test("a hide-glob drops a tracked file from membership, reconciling already-regi
 
         // Reconciled: the entry is GONE (un-registered), not merely hidden — entries == members.
         const after = await db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: ctx.workspaceId, owner_id: await Owner.commonsId(db, ctx.workspaceId), scheme: "file", pathname: `${trackedPath}`});
-        assert.equal(after, undefined, "an ignored member must be un-registered (rummy's removed-file case)");
+        assert.equal(after, undefined, "an ignored member must be un-registered");
         const read = await new File().read(readStmt(urlPath("file", `/${trackedPath}`)), ctx);
         assert.equal(read.status, 404, "an ignored file is not readable — it left the curated surface");
     });

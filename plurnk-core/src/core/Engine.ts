@@ -38,7 +38,6 @@ import { setTimeout as delay } from "node:timers/promises";
 // Shared module imported by both Engine and bin/digest.ts, so wire
 // projection and digest projection are structurally one function — no
 // drift between wire and digest possible.
-// Format: markdown (user pick over rummy's XML alternative, 2026-05-22).
 import PacketWire from "./packet-wire.ts";
 import Results, { OperationFailureError, type SchemeResult } from "./results.ts";
 import BranchReceipt from "./BranchReceipt.ts";
@@ -845,7 +844,7 @@ export default class Engine {
         onDispatch?: (logEntryId: number) => void;
         // Position in the surrounding loop. Used to build per-turn LLM
         // context: turn 1 carries the initial user prompt verbatim; turn
-        // N>1 substitutes a continuation marker (rummy's pattern). Both
+        // N>1 substitutes a continuation marker. Both
         // are augmented with the durable state (index/log/notices).
         turnNumber?: number;
         maxTurns?: number;
@@ -2168,9 +2167,6 @@ export default class Engine {
     // Returns null when no loop in the worker is currently active (status=102).
     // The daemon-side inject path then enqueues a fresh loop with this
     // prompt; engine doesn't open loops itself.
-    //
-    // Rummy parallel: AgentLoop.inject(). The "active drain → write
-    // prompt entry, return immediately" branch.
     async inject(workerId: number, prompt: string): Promise<
         { loopId: number; turnSeq: number } | null
     > {

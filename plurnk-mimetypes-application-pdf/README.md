@@ -20,7 +20,7 @@ PDF is a binary mimetype — the package declares `plurnk.binary: true`, and the
 
 Resource caps are unbounded by default; set `PLURNK_MIMETYPES_PDF_MAX_BYTES` / `PLURNK_MIMETYPES_PDF_MAX_PAGES` to a positive integer to cap (malformed values fail hard). See `.env.defaults`.
 
-Salvage pattern from [rummy.web/WebFetcher.js](https://github.com/possumtech/rummy.web): pdfjs configured with `isEvalSupported: false` (no PDF JS execution) and `verbosity: 0` (silences font-warning noise — we read text streams directly, not glyphs).
+Implementation provenance: the hardened pdfjs loader follows [rummy.web/WebFetcher.js](https://github.com/possumtech/rummy.web), with `isEvalSupported: false` (no PDF JavaScript execution) and `verbosity: 0` (silences font-warning noise while extracting text without rendering glyphs).
 
 ## license
 

@@ -1288,8 +1288,8 @@ export default class Daemon {
      *     status=100, starts a drain. Returns the drain promise so the
      *     caller can await full completion.
      *
-     * Rummy parallel: AgentLoop.inject(). Unified surface — both `runLoop`
-     * and wake-on-completion go through this method. {§actor-boundary-passive-wake}
+     * Both `runLoop` and wake-on-completion go through this method
+     * ({§actor-boundary-passive-wake}).
      */
     // #368 — flags are LOOP-scoped (persisted per loop row; the packet's teaching follows them), so a
     // prompt folding into a live/parked loop cannot re-flag it mid-flight — and it must never PRETEND
@@ -1880,8 +1880,6 @@ export default class Daemon {
      * Skipped on result.status=499 (aborted): the model already knows about
      * its own SEND[499], and a forcefully-cancelled loop's spawn-abort
      * shouldn't resurrect into a wake loop (defeats the cancel).
-     *
-     * Rummy parallel: plugins/stream/stream.js stream/completed wake:true.
      */
     async #handleWakeWorker(payload: WakeWorkerPayload): Promise<void> {
         // {§search-gate} — settle the dedup registration: promote on a 200 conclusion, drop on
