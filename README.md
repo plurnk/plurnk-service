@@ -24,13 +24,11 @@ Everything else is implementation and may change as those ideas are tested.
 
 ```mermaid
 flowchart LR
-    contracts["contracts<br/>language + shared wire + generated rail"] --> providers["provider family"]
+    contracts["contracts<br/>language + shared wire"] --> providers["provider family"]
     contracts --> capabilities["scheme / executor / mimetype families"]
     meta["meta<br/>discovery + teaching sources"] --> providers
     meta --> capabilities
     contracts --> core["plurnk-service<br/>composed daemon"]
-    gbnf["gbnf<br/>GBNF parser + validator"] --> providers
-    gbnf --> core
     providers --> core
     capabilities --> core
     packet["plurnkdown<br/>packet format"] -. contract .-> core

@@ -6,54 +6,25 @@ specifications own behavior; design history belongs in Git and forge issues.
 
 ## Standards boundary
 
-PLURNK composes externally owned industry interfaces, adopted internal
-specifications, and its own plugin interface. Boundary adapters implement their
-owning standards; PLURNK does not replace or restate those protocols. Dashed
-surfaces are explicitly deferred.
+PLURNK is an engine between standards. Nodes outside PLURNK are interface
+specifications; the OTel label inside PLURNK is an internally adopted
+specification. Boundary adapters implement their owning standards rather than
+restate them. Dotted interfaces are explicitly deferred.
 
 ```mermaid
-flowchart TB
-    subgraph INTERFACES["Industry interface specifications"]
-        direction LR
-        AGUI["AG-UI Specification"]
-        MCP["MCP Specification"]
-        OPENAI["OpenAI Specification"]
-    end
+flowchart LR
+    AGUI["AG-UI Specification"] --- PLURNK["plurnk<br/><br/>OTel (internal specification)"]
+    MCP["MCP Specification"] --- PLURNK
+    OPENAI["OpenAI Specification"] --- PLURNK
+    PLUGIN["Plurnk Plugin<br/>(exec / scheme)<br/>plurnk-owned interface"] --- PLURNK
 
-    subgraph CENTER[" "]
-        direction LR
-
-        subgraph PLURNK["plurnk"]
-            direction TB
-            ENGINE(("engine"))
-            OTEL["OTel Specification<br/>internal instrumentation"]
-            OTEL --> ENGINE
-        end
-
-        PLUGIN["Plurnk Plugin<br/>(exec / scheme)<br/>plurnk-owned interface"]
-    end
-
-    subgraph DEFERRED["Deferred industry interface specifications"]
-        direction LR
-        A2A["A2A Specification"]
-        X402["x402 Specification"]
-        AP2["AP2 Specification"]
-        DID["W3C DID Specification"]
-    end
-
-    AGUI <--> ENGINE
-    MCP <--> ENGINE
-    OPENAI <--> ENGINE
-    ENGINE <--> PLUGIN
-
-    A2A -.-> ENGINE
-    X402 -.-> ENGINE
-    AP2 -.-> ENGINE
-    DID -.-> ENGINE
+    PLURNK -.-> A2A["A2A Specification<br/>(deferred)"]
+    PLURNK -.-> X402["x402 Specification<br/>(deferred)"]
+    PLURNK -.-> AP2["AP2 Specification<br/>(deferred)"]
+    PLURNK -.-> DID["W3C DID Specification<br/>(deferred)"]
 
     classDef deferred stroke-dasharray: 6 4;
     class A2A,X402,AP2,DID deferred;
-    style CENTER fill:transparent,stroke:transparent;
 ```
 
 ## Ecosystem
@@ -61,8 +32,7 @@ flowchart TB
 ```mermaid
 flowchart LR
     subgraph foundation[Foundations]
-        contracts["plurnk-contracts<br/>language + shared wire + generated rail"]
-        gbnf["gbnf<br/>GBNF parser + validator"]
+        contracts["plurnk-contracts<br/>language + shared wire"]
         packet["plurnk-plurnkdown<br/>packet Markdown"]
         meta["plurnk-meta<br/>discovery + teaching sources"]
     end
@@ -85,8 +55,6 @@ flowchart LR
     contracts --> mimetypes
     contracts --> packet
     contracts --> core
-    gbnf -. validates GBNF transport .-> providers
-    gbnf -. validates raw rail evidence .-> core
     meta --> providers
     meta --> schemes
     meta --> execs
@@ -105,15 +73,15 @@ flowchart LR
 
 [`plurnk-contracts/plurnk.md`](./plurnk-contracts/plurnk.md) is the
 model-facing canon. It is intentionally narrower than the tolerant parser.
-Language, schema, and rail behavior remain owned by the contracts package; this
-root document does not restate their teaching.
+Language and schema behavior remain owned by the contracts package; this root
+document does not restate their teaching.
 
 ## Package ownership
 
 | Contract area                                             | Owner                                                        | Normative source                                                                                               |
 | --------------------------------------------------------- | ------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------- |
-| Model language, parser, generated rail, shared types/wire | `@plurnk/plurnk-contracts`                                   | [`plurnk.md`](./plurnk-contracts/plurnk.md), [`SPEC.md`](./plurnk-contracts/SPEC.md)                           |
-| GBNF parsing and sentence validation                      | `@plurnk/gbnf`                                               | [`gbnf/SPEC.md`](./gbnf/SPEC.md)                                                                               |
+| Model language, parser, shared types/wire                 | `@plurnk/plurnk-contracts`                                   | [`plurnk.md`](./plurnk-contracts/plurnk.md), [`SPEC.md`](./plurnk-contracts/SPEC.md)                           |
+| Optional GBNF sentence validator                          | `@plurnk/gbnf`                                               | [`gbnf/SPEC.md`](./gbnf/SPEC.md)                                                                               |
 | Model-packet Markdown projection                          | `@plurnk/plurnk-plurnkdown`                                  | [`plurnk-plurnkdown/SPEC.md`](./plurnk-plurnkdown/SPEC.md)                                                     |
 | Discovery, trust predicate, teaching bytes                | `@plurnk/plurnk-meta`                                        | [`plurnk-meta/SPEC.md`](./plurnk-meta/SPEC.md)                                                                 |
 | Provider adaptation and model selection                   | `@plurnk/plurnk-providers`, aliases, model-data package      | [`plurnk-providers/SPEC.md`](./plurnk-providers/SPEC.md), [`plurnk-aliases/SPEC.md`](./plurnk-aliases/SPEC.md) |
@@ -175,20 +143,15 @@ sequenceDiagram
     participant Store as SQLite
     participant Provider
     participant Contracts
-    participant GBNF
     participant Owner as Operation owner
 
     Client->>AGUI: user prompt
     AGUI->>Core: CoreSeam call
     Core->>Store: persist accepted input and loop state
     Core->>Provider: rendered packet, generation context, optional rail
-    Provider-->>Core: normalized response and conditional raw rail evidence
+    Provider-->>Core: normalized response and usage evidence
     Core->>Contracts: parse projected PLURNK content
     Contracts-->>Core: admitted statements or diagnostics
-    opt configured rail and admitted emission
-        Core->>GBNF: validate raw sentence against configured rail
-        GBNF-->>Core: independent tri-state verdict
-    end
     loop dispatched statements
         Core->>Owner: route through the owning operation seam
         Owner-->>Core: universal operation result
@@ -218,24 +181,3 @@ Source execution, built `dist` execution, and installed npm execution are
 distinct runtime forms. Whole-product gates identify the exact client and
 daemon artifacts they launch; passing one form does not silently certify the
 others.
-
-## Source and forge roles
-
-| Surface                                                                                 | Role                                                                                         |
-| --------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
-| [PossumTech Gitea](https://repo.possumtech.com/plurnk/plurnk-service)                   | Canonical maintainer branches, issues, reviews, and accepted development history.            |
-| [GitHub](https://github.com/plurnk/plurnk-service)                                      | Public downstream source, external contributions, private security reports, and history.     |
-| npm                                                                                     | Versioned package artifacts produced from the monorepo workspaces.                           |
-| Former standalone repositories for consolidated packages                                | Archived provenance only; they are not current source or ordinary issue owners.              |
-
-Package metadata projects those roles through one exact mapping:
-
-| npm field    | Required projection                                                                                            |
-| ------------ | -------------------------------------------------------------------------------------------------------------- |
-| `repository` | Public GitHub monorepo plus npm's exact workspace `directory`.                                                 |
-| `homepage`   | The workspace's README in the public GitHub monorepo.                                                          |
-| `bugs`       | Canonical Gitea monorepo issues; private vulnerability reports remain owned by [`SECURITY.md`](./SECURITY.md). |
-
-`scripts/package-provenance.mjs` enforces the source manifests and exact packed
-candidates. Contribution and security workflows are specified in
-[`CONTRIBUTING.md`](./CONTRIBUTING.md) and [`SECURITY.md`](./SECURITY.md).
