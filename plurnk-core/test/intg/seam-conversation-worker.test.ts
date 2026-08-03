@@ -65,9 +65,27 @@ test("createConversationWorker: fresh named conversation — empty log, runLoop 
                     return true;
                 },
             );
-            // A default name mints distinct model-<ts> conversations.
+            // A default name mints distinct model-<N> conversations.
             const anon = await daemon.createConversationWorker({ workspaceId });
             assert.match(anon.workerName, /^model-/, "default name follows the model-worker convention");
+        } finally { ws.close(); }
+    });
+});
+
+test("{§worker-auto-name} #159: concurrent unnamed fresh conversations claim distinct model ordinals", async () => {
+    await withDaemon(null, async (_db, daemon, addr) => {
+        const ws = await connect(addr);
+        try {
+            const created = await rpcCall(ws, 1, "workspace.create", { name: `threads-${crypto.randomUUID()}` });
+            const workspaceId = (created.result as { id: number }).id;
+            const conversations = await Promise.all(Array.from(
+                { length: 8 },
+                () => daemon.createConversationWorker({ workspaceId }),
+            ));
+            const names = conversations.map(({ workerName }) => workerName);
+
+            assert.equal(new Set(names).size, conversations.length, "every fresh conversation remains individually addressable");
+            assert.deepEqual(names.toSorted(), Array.from({ length: 8 }, (_, i) => `model-${i + 1}`).toSorted());
         } finally { ws.close(); }
     });
 });

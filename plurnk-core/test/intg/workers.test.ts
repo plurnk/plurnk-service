@@ -17,6 +17,21 @@ test("a client cannot create or resume a worker named 'plurnk' (runtime imperson
     } finally { await db.close(); }
 });
 
+test("{§worker-auto-name} #159: concurrent anonymous attachments atomically claim distinct client ordinals", async () => {
+    const db = await openMigrated();
+    try {
+        const workspaceId = await insertWorkspace(db, `ws-concurrent-clients-${crypto.randomUUID()}`);
+        const envelopes = await Promise.all(Array.from(
+            { length: 8 },
+            () => Envelope.attachToWorkspace(db, workspaceId),
+        ));
+        const names = envelopes.map(({ workerName }) => workerName);
+
+        assert.equal(new Set(names).size, envelopes.length, "every attachment receives a distinct addressable worker");
+        assert.deepEqual(names.toSorted(), Array.from({ length: 8 }, (_, i) => `client-${i + 1}`).toSorted());
+    } finally { await db.close(); }
+});
+
 test("workers: table is STRICT", async () => {
     const db = await openMigrated();
     try {

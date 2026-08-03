@@ -1,6 +1,21 @@
 import { RESERVED_AUTHORITIES, WORKER_NAME } from "@plurnk/plurnk-contracts";
+import type { Db } from "./Db.ts";
 
 export type WorkerNameRejection = "invalid" | "reserved";
+export type WorkerOrigin = "model" | "client" | "plurnk";
+
+export interface WorkerNameClaim {
+    id: number;
+    name: string;
+}
+
+interface AutoWorkerOptions {
+    workspaceId: number;
+    prefix: string;
+    qualifier?: string;
+    parentWorkerId?: number;
+    origin: WorkerOrigin;
+}
 
 export class WorkerNameError extends Error {
     readonly workerName: string;
@@ -51,5 +66,64 @@ export default class WorkerName {
             if (WorkerName.rejection(candidate) === null) return candidate;
         }
         throw new Error(`Worker ordinal suffix '${suffix}' leaves no mintable name prefix.`);
+    }
+
+    static async #root(
+        db: Db,
+        workspaceId: number,
+        origin: WorkerOrigin,
+    ): Promise<WorkerNameClaim | undefined> {
+        return await db.worker_name_get_root.get<WorkerNameClaim>({
+            workspace_id: workspaceId,
+            origin,
+        });
+    }
+
+    static async #claimAuto(
+        db: Db,
+        options: AutoWorkerOptions,
+        rootOrigin: WorkerOrigin | null,
+    ): Promise<WorkerNameClaim> {
+        const { workspaceId, prefix, qualifier, parentWorkerId, origin } = options;
+        const namePrefix = `${prefix}${qualifier === undefined ? "" : `-${qualifier}`}-%`;
+        const count = await db.worker_name_count.get<{ n: number }>({
+            workspace_id: workspaceId,
+            name_prefix: namePrefix,
+        });
+        let ordinal = (count?.n ?? 0) + 1;
+
+        while (true) {
+            const claimed = await db.worker_name_claim.get<WorkerNameClaim>({
+                workspace_id: workspaceId,
+                name: WorkerName.ordinal(prefix, ordinal, qualifier),
+                parent_worker_id: parentWorkerId ?? null,
+                origin,
+                root_origin: rootOrigin,
+            });
+            if (claimed !== undefined) return claimed;
+
+            if (rootOrigin !== null) {
+                const existing = await WorkerName.#root(db, workspaceId, rootOrigin);
+                if (existing !== undefined) return existing;
+            }
+            ordinal++;
+        }
+    }
+
+    // A generated name is not minted until this atomic claim creates its worker.
+    // Competing allocators retry only after losing the claim. {§worker-auto-name}
+    static async claimAuto(db: Db, options: AutoWorkerOptions): Promise<WorkerNameClaim> {
+        return await WorkerName.#claimAuto(db, options, null);
+    }
+
+    // The stable default conversation is both an auto-name allocation and a
+    // per-workspace root ensure; both predicates therefore share one write.
+    static async ensureAutoRoot(
+        db: Db,
+        options: Omit<AutoWorkerOptions, "parentWorkerId" | "qualifier">,
+    ): Promise<WorkerNameClaim> {
+        const existing = await WorkerName.#root(db, options.workspaceId, options.origin);
+        if (existing !== undefined) return existing;
+        return await WorkerName.#claimAuto(db, options, options.origin);
     }
 }

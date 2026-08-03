@@ -36,12 +36,6 @@ RETURNING id, name, origin;
 -- PREP: envelope_get_worker_by_id
 SELECT id, name, workspace_id, origin FROM workers WHERE id = $id;
 
--- PREP: envelope_count_workers_by_prefix
--- {§worker-auto-name} — ever-created count for the per-workspace ordinal auto-name
--- (`<prefix>-<N>`); monotonic (counts terminated workers too), so a reclaimed name
--- never re-mints.
-SELECT COUNT(*) AS n FROM workers WHERE workspace_id = $workspace_id AND name LIKE $name_prefix;
-
 -- PREP: envelope_get_worker_by_name
 SELECT id, name FROM workers WHERE workspace_id = $workspace_id AND name = $name;
 
@@ -84,9 +78,3 @@ WHERE id = $loop_id AND status = 102;
 SELECT id, name, project_root, created_at, cost_usd
 FROM workspaces
 ORDER BY created_at DESC;
-
--- PREP: envelope_get_model_worker
--- #371 — the workspace's canonical conversation worker: the earliest model-origin root worker
--- (parent_worker_id NULL excludes forks and spawned workers, which inherit origin='model').
--- ensureModelWorker finds this first; only a workspace with none mints one.
-SELECT id FROM workers WHERE workspace_id = $workspace_id AND origin = 'model' AND parent_worker_id IS NULL ORDER BY id LIMIT 1;

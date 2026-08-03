@@ -10,33 +10,33 @@
 // ambient-event cursor initialization for a fork.
 
 import type { Db } from "./Db.ts";
-import WorkerName from "./WorkerName.ts";
+import WorkerName, { type WorkerOrigin } from "./WorkerName.ts";
 
 export default class Fork {
     // Terminal loop statuses ({§lifecycle-terms}) — inherited loops outside this set are clamped to 200.
     static #TERMINAL_LOOP = new Set([200, 413, 429, 499, 500, 504, 508]);
 
     static async fork(db: Db, parentWorkerId: number, name?: string): Promise<number> {
-        const parent = await db.fork_get_worker.get<{ workspace_id: number; name: string; origin: string }>({ id: parentWorkerId });
+        const parent = await db.fork_get_worker.get<{ workspace_id: number; name: string; origin: WorkerOrigin }>({ id: parentWorkerId });
         if (parent === undefined) throw new Error(`fork: worker ${parentWorkerId} not found`);
 
         // #248 — name the branch at instantiation (immutable after). An explicit name wins; the default
         // is the next free `<parent>-fork-<N>` admitted by {§worker-name-minting}.
-        let branchName = name;
-        if (branchName === undefined) {
-            let ordinal = 1;
-            do {
-                branchName = WorkerName.ordinal(parent.name, ordinal++, "fork");
-            } while (await db.envelope_get_worker_by_name.get({
+        const branch = name === undefined
+            ? await WorkerName.claimAuto(db, {
+                workspaceId: parent.workspace_id,
+                prefix: parent.name,
+                qualifier: "fork",
+                parentWorkerId,
+                origin: parent.origin,
+            })
+            : await db.fork_insert_worker.get<{ id: number }>({
                 workspace_id: parent.workspace_id,
-                name: branchName,
-            }) !== undefined);
-        }
-        branchName = WorkerName.assert(branchName);
-        const branch = await db.fork_insert_worker.get<{ id: number }>({
-            workspace_id: parent.workspace_id, name: branchName, parent_worker_id: parentWorkerId, origin: parent.origin,
-        });
-        if (branch === undefined) throw new Error("fork: branch worker insert returned no row");
+                name: WorkerName.assert(name),
+                parent_worker_id: parentWorkerId,
+                origin: parent.origin,
+            });
+        if (branch === undefined) throw new Error("fork: explicit branch worker insert returned no row");
         const branchWorkerId = branch.id;
 
         // loops → new loops, mapping old id → new id. A copied loop is INHERITED HISTORY, never the

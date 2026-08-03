@@ -33,6 +33,20 @@ test("N self-forks of one parent get UNIQUE, individually-addressable names", as
     } finally { await db.close(); }
 });
 
+test("{§worker-auto-name} #159: concurrent unnamed forks atomically claim distinct ordinals", async () => {
+    const db = await openMigrated();
+    try {
+        const workspaceId = await insertWorkspace(db, `fork-concurrent-${crypto.randomUUID()}`);
+        const parent = await insertWorker(db, workspaceId, null, "worker");
+        const forks = await Promise.all(Array.from({ length: 8 }, () => Fork.fork(db, parent)));
+        const names = await Promise.all(forks.map(async (id) =>
+            (await db.fork_get_worker.get<{ name: string }>({ id }))?.name ?? ""));
+
+        assert.equal(new Set(names).size, forks.length, "every concurrent fork remains individually addressable");
+        assert.deepEqual(names.toSorted(), Array.from({ length: 8 }, (_, i) => `worker-fork-${i + 1}`).toSorted());
+    } finally { await db.close(); }
+});
+
 test("an automatic fork of a maximum-length parent remains a mintable worker name", async () => {
     const db = await openMigrated();
     try {

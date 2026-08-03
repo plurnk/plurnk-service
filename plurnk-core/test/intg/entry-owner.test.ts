@@ -98,11 +98,13 @@ test("auto-names are id-free per-workspace ordinals; only internal names and ~ a
     const db = await openMigrated();
     try {
         const ws = await insertWorkspace(db, `owner-name-${crypto.randomUUID()}`);
-        const first = await Envelope.mintWorkerName(db, ws, "model");
-        assert.equal(first, "model-1", "the first model auto-name is the ordinal, no timestamp/hash");
-        await Envelope.createModelWorker(db, ws);
-        const second = await Envelope.mintWorkerName(db, ws, "model");
-        assert.equal(second, "model-2", "the ordinal advances with the ever-created count");
+        const first = await Envelope.createModelWorker(db, ws);
+        assert.equal(first.name, "model-1", "the first model auto-name is the ordinal, no timestamp/hash");
+        const second = await Envelope.createModelWorker(db, ws);
+        assert.equal(second.name, "model-2", "the ordinal advances with the ever-created count");
+        await Envelope.createModelWorker(db, ws, "model-4");
+        const afterOccupiedLiteral = await Envelope.createModelWorker(db, ws);
+        assert.equal(afterOccupiedLiteral.name, "model-5", "an occupied candidate is never reused");
 
         await assert.rejects(Envelope.createModelWorker(db, ws, "commons"), /reserved/, "the commons row's name is refused");
         await assert.rejects(Envelope.createModelWorker(db, ws, "plurnk"), /reserved/, "the kernel row's name is refused");
