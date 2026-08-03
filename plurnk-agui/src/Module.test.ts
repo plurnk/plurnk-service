@@ -75,22 +75,49 @@ const openStream = (port: number, body: Record<string, unknown>): Promise<AguiEv
         .then((res) => res.text())
         .then((text) => text.split("\n\n").filter((f) => f.startsWith("data: ")).map((f) => JSON.parse(f.slice(6)) as AguiEvent));
 
+const waitForFixture = async (barrier: Promise<void>, detail: () => string): Promise<void> => {
+    let timeout: NodeJS.Timeout | null = null;
+    try {
+        await Promise.race([
+            barrier,
+            new Promise<never>((_, reject) => {
+                timeout = setTimeout(() => reject(new Error(detail())), 10_000);
+            }),
+        ]);
+    } finally {
+        if (timeout !== null) clearTimeout(timeout);
+    }
+};
+
 test("a workspace's stream events fan to every open AG-UI Run (never last-binder-wins) — svc#504", async () => {
     const { seam, emit } = mockSeam();
+    const firstRun = Promise.withResolvers<void>();
+    const bothRuns = Promise.withResolvers<void>();
+    const releaseSecondWorker = Promise.withResolvers<void>();
+    let runCalls = 0;
     seam.listWorkspaces = async () => [{ id: 3, name: "w" }];
     seam.attachWorkspace = async () => ({ workspaceId: 3, workspaceName: "w", projectRoot: null, workerId: 10, workerName: "c", modelWorkerId: 20, clientLoopId: null });
     seam.listWorkers = async () => [{ id: 20, name: "model-1" }];
-    seam.createConversationWorker = async (a) => ({ workerId: a.name === "chat-a" ? 77 : 78, workerName: a.name ?? "x" });
+    seam.createConversationWorker = async (a) => {
+        if (a.name === "chat-b") await releaseSecondWorker.promise;
+        return { workerId: a.name === "chat-a" ? 77 : 78, workerName: a.name ?? "x" };
+    };
     // runLoop does NOT finish here: both streams stay open so the injected stream event
     // races them exactly as concurrent nvim management-action AG-UI Runs do against a resumed exec.
-    seam.runLoop = async () => ({ status: 100, action: "enqueued_new_loop" as const, loopId: 9 });
+    seam.runLoop = async () => {
+        runCalls++;
+        if (runCalls === 1) firstRun.resolve();
+        if (runCalls === 2) bothRuns.resolve();
+        return { status: 100, action: "enqueued_new_loop" as const, loopId: 9 };
+    };
     const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
     try {
         const port = mod.address().port;
         const a = openStream(port, { threadId: "chat-a", messages: [{ role: "user", content: "hi" }], forwardedProps: { plurnk: { workspace: "w" } } });
         const b = openStream(port, { threadId: "chat-b", messages: [{ role: "user", content: "hi" }], forwardedProps: { plurnk: { workspace: "w" } } });
-        // Let both AG-UI Runs bind their threads to workspace 3 before the event races them.
-        await new Promise((r) => setTimeout(r, 60));
+        await waitForFixture(firstRun.promise, () => `first AG-UI Run did not bind through runLoop; observed ${runCalls}/2`);
+        releaseSecondWorker.resolve();
+        await waitForFixture(bothRuns.promise, () => `both AG-UI Runs did not bind through runLoop; observed ${runCalls}/2`);
         emit(3, "stream/event", { entryId: 5, scheme: "exec", content: "alpha" });
         emit(3, "stream/concluded", { entryId: 5, result: { status: 200 } });
         emit(3, "loop/terminated", { loopId: 9, result: { status: 200 }, hitMaxTurns: false, turnIds: [1], usage: { promptTokens: 1, completionTokens: 1, costUsd: 0, contextTokens: 2, promptBudget: 1000, meta: {} } });
