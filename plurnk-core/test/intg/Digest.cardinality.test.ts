@@ -29,12 +29,13 @@ test("digest Markdown exposes amplification as exact aggregates while JSON prese
             scheme: string | null = "https",
             query: string | null = null,
             port: number | null = null,
+            fragment: string | null = null,
         ): Promise<void> => {
             await db.engine_insert_log_entry.run({
                 worker_id: workerId, loop_id: loopId, turn_id: turnId, sequence,
                 origin, source: null, op, suffix: "", signal: null,
                 scheme, username: null, password: null, hostname, port,
-                pathname, query, fragment: null, lineMarker: null,
+                pathname, query, fragment, lineMarker: null,
                 tx: "{}", mimetype_tx: "application/json",
                 rx: JSON.stringify({ status: 200, content: "x" }), mimetype_rx: "application/json",
                 status_rx: 200, tokens: 1, state: "resolved", outcome: null,
@@ -47,6 +48,10 @@ test("digest Markdown exposes amplification as exact aggregates while JSON prese
         await insert(64, "model", "EXEC", "/filesystem_read_text_file", {
             stream: "atlas:///1/1/64",
         }, null, null);
+        await insert(65, "plurnk", "EDIT", "/page", { kind: "entry_materialized" }, "repeat.test", "https", "q=1", 9443, "body");
+        await insert(66, "plurnk", "EDIT", "/page", { kind: "entry_materialized" }, "repeat.test", "https", "q=1", 9443, "body");
+        await insert(67, "plurnk", "EDIT", "/", { kind: "entry_materialized" }, "empty.test", "https", null);
+        await insert(68, "plurnk", "EDIT", "/", { kind: "entry_materialized" }, "empty.test", "https", "");
     } finally {
         await db.close();
     }
@@ -62,9 +67,17 @@ test("digest Markdown exposes amplification as exact aggregates while JSON prese
         };
         assert.match(markdown, /\[model\] READ\[200\] https:\/\/example\.test\/whale ×50 \(seq 1–50\)/);
         assert.match(markdown, /\[model\] READ\[200\] https:\/\/en\.wikipedia\.org:8443\/wiki\/Paris\?b=2&a=1&a=3/);
-        assert.match(markdown, /\[plurnk\] materialized entries\[200\] ×12 \(seq 51–62\)/);
+        assert.equal(
+            markdown.match(/\[plurnk\] materialized entry\[200\] https:\/\/result\d+\.test\//g)?.length,
+            12,
+            "distinct materialization targets remain distinct Markdown evidence",
+        );
+        assert.doesNotMatch(markdown, /materialized entr(?:y|ies)\[200\] ×12/, "target partitioning replaces the targetless aggregate");
+        assert.match(markdown, /\[plurnk\] materialized entry\[200\] https:\/\/repeat\.test:9443\/page\?q=1#body ×2 \(seq 65–66\)/);
+        assert.match(markdown, /\[plurnk\] materialized entry\[200\] https:\/\/empty\.test\/\n/, "an absent query has its own group");
+        assert.match(markdown, /\[plurnk\] materialized entry\[200\] https:\/\/empty\.test\/\?\n/, "an explicit empty query has its own group");
         assert.match(markdown, /\[model\] EXEC\[200\] filesystem_read_text_file stream=atlas:\/\/\/1\/1\/64/);
-        assert.equal(json.log_entries.length, 64, "machine-readable evidence remains lossless");
+        assert.equal(json.log_entries.length, 68, "machine-readable evidence remains lossless");
         assert.deepEqual(
             json.log_entries[0],
             {
@@ -75,8 +88,8 @@ test("digest Markdown exposes amplification as exact aggregates while JSON prese
             "JSON preserves the row's actor and lifecycle coordinates",
         );
         assert.equal(json.log_entries[50]?.origin, "plurnk", "JSON distinguishes automatic materialization from model actions");
-        assert.equal(json.log_entries.at(-2)?.target, "https://en.wikipedia.org:8443/wiki/Paris?b=2&a=1&a=3", "JSON preserves authority, port, and serialized query");
-        assert.equal(json.log_entries.at(-1)?.stream, "atlas:///1/1/64", "JSON preserves an EXEC's runtime stream identity");
+        assert.equal(json.log_entries.find((entry) => entry.target?.includes("wikipedia"))?.target, "https://en.wikipedia.org:8443/wiki/Paris?b=2&a=1&a=3", "JSON preserves authority, port, and serialized query");
+        assert.equal(json.log_entries.find((entry) => entry.stream !== undefined)?.stream, "atlas:///1/1/64", "JSON preserves an EXEC's runtime stream identity");
     } finally {
         await rm(dir, { recursive: true, force: true });
     }

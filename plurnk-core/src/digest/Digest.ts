@@ -205,7 +205,7 @@ export default class Digest {
         return typeof stream === "string" ? stream : null;
     }
 
-    static #renderOpLine(le: LogRow): string {
+    static #renderOpLine(le: LogRow, label: string = le.op): string {
         const target = Digest.#renderTarget(le) ?? "—";
         const stream = Digest.#renderStream(le);
         const state = le.state !== "resolved" ? ` state=${le.state}` : "";
@@ -218,40 +218,32 @@ export default class Digest {
         if (le.status_rx >= 400) {
             errLine = `\n    -> ${Digest.#summarize(Digest.#rowProblem(le).detail, 140)}`;
         }
-        return `  ← [${le.origin}] ${le.op}[${le.status_rx}] ${target}${state}${outcome}${streamLink}${fail}${errLine}`;
+        return `  ← [${le.origin}] ${label}[${le.status_rx}] ${target}${state}${outcome}${streamLink}${fail}${errLine}`;
+    }
+
+    static #renderGroupedOpLine(row: LogRow): string {
+        const attrs = Digest.#parseJson(row.attrs, {}) as { kind?: unknown };
+        const materialized = row.origin === "plurnk" && row.op === "EDIT" && attrs.kind === "entry_materialized";
+        return Digest.#renderOpLine(row, materialized ? "materialized entry" : row.op);
     }
 
     // Human triage is not a row dump. Preserve every row in digest.json, but
-    // collapse repeated same-outcome deliveries in the Markdown waterfall.
-    // This makes matcher amplification legible (`×20,177`) without concealing it,
-    // and turns machine page acquisition into one typed aggregate.
+    // collapse identical rendered outcomes in the Markdown waterfall. Using the
+    // rendered line itself as the key keeps actor, complete target, lifecycle,
+    // stream, and visible failure detail structurally aligned with the grouping.
     static #renderOpLines(rows: LogRow[]): string[] {
-        const groups = new Map<string, { first: LogRow; count: number; firstSeq: number; lastSeq: number }>();
+        const groups = new Map<string, { line: string; count: number; firstSeq: number; lastSeq: number }>();
         for (const row of rows) {
-            const attrs = Digest.#parseJson(row.attrs, {}) as { kind?: unknown };
-            const materialized = row.origin === "plurnk" && row.op === "EDIT" && attrs.kind === "entry_materialized";
-            const key = materialized
-                ? `materialized\0${row.status_rx}\0${row.state}\0${row.outcome ?? ""}`
-                : [
-                    row.op, row.scheme ?? "", row.hostname ?? "", row.port ?? "",
-                    row.pathname ?? "", row.query ?? "", row.fragment ?? "", row.status_rx, row.state, row.outcome ?? "",
-                    Digest.#renderStream(row) ?? "",
-                ].join("\0");
-            const group = groups.get(key);
+            const line = Digest.#renderGroupedOpLine(row);
+            const group = groups.get(line);
             if (group === undefined) {
-                groups.set(key, { first: row, count: 1, firstSeq: row.sequence, lastSeq: row.sequence });
+                groups.set(line, { line, count: 1, firstSeq: row.sequence, lastSeq: row.sequence });
             } else {
                 group.count++;
                 group.lastSeq = row.sequence;
             }
         }
-        return [...groups.values()].map(({ first, count, firstSeq, lastSeq }) => {
-            const attrs = Digest.#parseJson(first.attrs, {}) as { kind?: unknown };
-            const materialized = first.origin === "plurnk" && first.op === "EDIT" && attrs.kind === "entry_materialized";
-            if (materialized) {
-                return `  ← [plurnk] materialized entries[${first.status_rx}] ×${count} (seq ${firstSeq}–${lastSeq})`;
-            }
-            const line = Digest.#renderOpLine(first);
+        return [...groups.values()].map(({ line, count, firstSeq, lastSeq }) => {
             return count === 1 ? line : `${line} ×${count} (seq ${firstSeq}–${lastSeq})`;
         });
     }
