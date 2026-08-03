@@ -16,6 +16,9 @@ const fakeEmbedder = {
         // WHICH text was embedded.
         return new Uint8Array(new Float32Array([text.length, text.charCodeAt(0) || 0]).buffer);
     },
+    async embedBatch(texts: readonly string[]): Promise<Uint8Array[]> {
+        return Promise.all(texts.map((text) => fakeEmbedder.embed(text)));
+    },
 };
 
 function makeDiscovery(handlers: HandlerInfo[]): Discovery {

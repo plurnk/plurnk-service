@@ -899,18 +899,19 @@ Cross-cutting promises service relies on:
 
 No format handler ships inside `@plurnk/plurnk-service`; the framework and
 format handlers are sibling workspaces and independently published packages.
+The service manifest, not the framework manifest, owns the dependency edges
+that compose the default install ({§bundled-set}).
 
 ### §mimetype-surface Consumption surface
 
 plurnk-service is mimetype-illiterate. Engine hands channel content + mimetype label to `Mimetypes.process({content, hint})`; the manifest build uses `result.totalLines` for each channel's `lines`. Content reaches the model on READ, not as a rendered preview.
 
-The current framework package directly includes its standard structured,
-document, embedding, and tokenizer packages. Tree-sitter grammar WASM leaves
-remain independently installable and resolve through the framework registry;
-third-party handler packages register through trust-gated discovery
-({§mimetype-discovery}). #85 owns the unresolved question of which package
-should ultimately declare the default bundle; core does not invent a second
-behavioral contract while that topology is open.
+The default service installation includes its structured, document, embedding,
+and tokenizer leaves through the service manifest. The lean framework also
+supports direct consumers that assemble a different set. Tree-sitter grammar
+WASM leaves and third-party handlers remain independently installable and
+resolve from the same consumer-visible package graph under trust-gated
+discovery ({§mimetype-discovery}).
 
 **Token accounting.** The daemon injects no tokenizer into `Mimetypes`; content
 projection is independent of packet budgeting. Core uses the stable
@@ -1417,11 +1418,24 @@ of skipped-package evidence.
 Family discovery ({§plugin-discovery}) scans installed scoped and unscoped
 packages carrying the applicable `plurnk.kind` declaration.
 
+§default-plugin-ownership `@plurnk/plurnk-service` is the sole manifest owner
+of the default leaf set. Capability frameworks own contracts, discovery, and
+loading; their runtime dependency graphs contain no leaf consumers. A required
+default leaf missing from a service install is a broken install. A direct
+framework consumer may intentionally omit leaves and receives that framework's
+documented unavailable-capability behavior.
+
+| Family    | Lean framework                     | Service-owned default leaves                                                                                                     |
+|-----------|------------------------------------|----------------------------------------------------------------------------------------------------------------------------------|
+| Schemes   | `@plurnk/plurnk-schemes`           | `@plurnk/plurnk-schemes-http`                                                                                                    |
+| Mimetypes | `@plurnk/plurnk-mimetypes`         | `application-ipynb`, `application-json`, `application-jsonl`, `application-pdf`, and `application-xml` format leaves.             |
+|           |                                    | `text-csv`, `text-diff`, `text-dotenv`, `text-html`, `text-ini`, `text-markdown`, and `text-plain` format leaves.                 |
+|           |                                    | Fixed `embeddings` and `tokenizers` artifacts. All names use the `@plurnk/plurnk-mimetypes-*` prefix.                             |
+| Executors | `@plurnk/plurnk-execs`             | `common`, `git`, `jq`, `search`, `sqlite`, and `wasm` leaves under the `@plurnk/plurnk-execs-*` prefix.                            |
+
 **Providers:** `@plurnk/plurnk-providers` resolves the Models.dev catalog,
 operator declarations, local adapters, and finally installed AI SDK provider
 plugins. `Mock` is its integration fixture. Core contains no vendor protocol.
-
-**Mimetypes in-tree:** none. Framework + handlers are all siblings.
 
 **Core schemes:** `file`, `log`, `prompt`, `skill`, and `worker` expose daemon
 state or filesystem orchestration owned by core. `exec` is internal dispatch
@@ -1430,10 +1444,11 @@ scheme. External schemes are discovered through
 `@plurnk/plurnk-schemes` and registered through the same manifest-bound
 dispatcher contract.
 
-**Executors in-tree:** none. The framework and runtime implementations are
-packages. The executor registry discovers installed runtimes, probes
-availability, and routes `EXEC[<runtime>]`; core contributes orchestration and
-the output-scheme adapter, not runtime implementations.
+The executor registry discovers installed runtimes, probes availability, and
+routes `EXEC[<runtime>]`; core contributes orchestration and the output-scheme
+adapter, not runtime implementations. Optional and third-party leaves extend
+each family by installation and discovery; they never require a framework or
+service manifest edit.
 
 ---
 

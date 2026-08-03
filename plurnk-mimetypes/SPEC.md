@@ -630,16 +630,18 @@ interface TreeSitterLanguageEntry {
 
 ### 13.4 Install patterns
 
-The current published framework has normal dependencies on its standard format
-handlers and on the embedding/tokenizer artifacts. Its built-in tree-sitter
-registry is different: language detection metadata lives in the framework, but
-each grammar WASM remains an independently installed leaf.
+The framework is lean: it owns detection, discovery, projection contracts, and
+the built-in tree-sitter registry, but no runtime dependency on a format
+handler, grammar, embedding artifact, or tokenizer artifact. The consumer's
+manifest assembles leaves. `@plurnk/plurnk-service` owns its default set in
+{§bundled-set}; a direct framework consumer may choose another set.
 
 | Installation state                         | Behavior                                                                                                                                              |
 |--------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------|
-| Framework only                             | Standard JSON/JSONC/JSONL/IPYNB/PDF/XML/CSV/diff/dotenv/HTML/INI/Markdown/plain handlers plus embedding and tokenizer artifacts are installed.        |
+| Framework only                             | Framework APIs and language detection metadata are present; no format handler, grammar WASM, embedding artifact, or tokenizer artifact is implied.    |
+| Default composed service                   | The service manifest installs its standard format handlers and fixed embedding/tokenizer artifacts as required dependencies.                          |
 | Framework plus selected grammar leaves     | Only those language WASM packages add structural parsing; for example Python and Rust leaves.                                                         |
-| Additional third-party handler packages    | Discovery registers their declared mimetypes subject to {§plugin-trust-boundary}.                                                                     |
+| Additional third-party handler packages    | Discovery registers and loading resolves their declarations from the same consumer package graph, subject to {§plugin-trust-boundary}.                |
 | Detected language with absent grammar leaf | `process()` returns honest metadata, empty requested structural channels, and `grammarMissing`; `{ strict: true }` throws `GrammarNotInstalledError`. |
 
 `detect()` is install-state-blind for tree-sitter grammar leaves: it returns the
@@ -793,12 +795,12 @@ the exported `RefsCaptureNode` surface consumed by the shared engine.
 
 ## §mimetype-embedding 17. Embedding channel
 
-The framework exposes one lazily resolved embedding seam. The current
-distribution installs its portable artifact as an ordinary dependency, but
-embedding inference is never in the default channel set: callers request it
-explicitly. Lazy resolution and explicit computation do not imply optional
-package installation. The artifact may execute its bundled local model or
-target a configured OpenAI-compatible endpoint without changing this seam.
+The framework exposes one lazily resolved embedding seam. The default service
+composition installs its portable artifact as a required dependency; a direct
+framework installation does not. Embedding inference is never in the default
+channel set: callers request it explicitly. Installation and computation are
+independent axes. The artifact may execute its bundled local model or target a
+configured OpenAI-compatible endpoint without changing this seam.
 
 | Surface                    | Input and result                                                                                          | Artifact unavailable                                                   |
 |----------------------------|-----------------------------------------------------------------------------------------------------------|------------------------------------------------------------------------|
@@ -806,11 +808,12 @@ target a configured OpenAI-compatible endpoint without changing this seam.
 | `embedBatch(texts, ...)`   | Returns one vector per input in input order and honors progress/cancellation through the artifact.        | Throws.                                                                |
 | `embedderInfo()`           | Returns dimension plus optional model, context-window, and exact-counter facts; unknown facts are `null`. | Returns `null`.                                                        |
 
-An artifact without `embedBatch()` is driven sequentially through `embed()`.
-The framework owns artifact resolution, lifecycle, and result shape; the
-artifact owns model execution, model-space identity, dimension, and optional
-token-counting facts. Chunk planning, persistence, and re-derivation policy are
-consumer responsibilities.
+An installed artifact must expose `embed()`, `embedBatch()`, and a numeric
+`dimension`; an incompatible surface fails hard rather than masquerading as an
+absent artifact. The framework owns artifact resolution, lifecycle, and result
+shape; the artifact owns model execution, model-space identity, dimension, and
+optional token-counting facts. Chunk planning, persistence, and re-derivation
+policy are consumer responsibilities.
 
 §mimetype-embedding-wire A nonempty vector is currently a `Uint8Array` of raw
 native-endian `Float32` values, so its byte length is four times the artifact's
@@ -849,10 +852,10 @@ diverge.
 ## §mimetype-tokenizer 19. Tokenizer seam
 
 `Mimetypes.tokenizer()` supplies a model-vocabulary counter for consumers that
-need one. The current framework includes the independently published
-`@plurnk/plurnk-mimetypes-tokenizers` artifact and resolves it lazily. The
-artifact owns vocabulary data and reproducibility; the framework owns
-resolution, lifecycle, and explicit degradation.
+need one. The default service composition includes the independently published
+`@plurnk/plurnk-mimetypes-tokenizers` artifact; the lean framework resolves it
+lazily when installed. The artifact owns vocabulary data and reproducibility;
+the framework owns resolution, lifecycle, and explicit degradation.
 
 The exported `TokenizerResolution` type owns the surface:
 
@@ -872,10 +875,10 @@ resolutions sharing a vocabulary therefore share the identity. A persisted
 tokenizer-dependent derivation must include it in its derivation key.
 
 The artifact exposes `resolve(modelRef)` and may expose `dispose()`. A `null`
-resolution means no bundled vocabulary matches. Module-not-found or a module
-without the required `resolve()` surface is treated as artifact absence; any
-other load error propagates. `Mimetypes.dispose()` forwards artifact disposal
-and clears the lazy cache.
+resolution means no bundled vocabulary matches. True module absence selects
+the lean-framework degradation; an installed module without `resolve()` is an
+incompatible artifact and fails hard. Other load errors also propagate.
+`Mimetypes.dispose()` forwards artifact disposal and clears the lazy cache.
 
 ## §mimetype-classification 20. Binary classification
 

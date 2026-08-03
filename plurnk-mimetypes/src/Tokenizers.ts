@@ -98,7 +98,9 @@ export default class Tokenizers {
             }
             const m = mod as { resolve?: unknown; default?: { resolve?: unknown } };
             const surface = typeof m.resolve === "function" ? m : m.default;
-            if (typeof surface?.resolve !== "function") return null;
+            if (typeof surface?.resolve !== "function") {
+                throw new TypeError(`${TOKENIZERS_PACKAGE} does not implement resolve()`);
+            }
             return surface as unknown as TokenizersArtifact;
         })();
         return this.#promise;

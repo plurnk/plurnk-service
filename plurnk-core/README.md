@@ -46,7 +46,7 @@ Config + state live in `~/.plurnk/` (created on first start): put your config in
 
 ## Semantic search
 
-The default service installation includes `@plurnk/plurnk-mimetypes-embeddings`, so `FIND`'s `~query` uses embedding cosine ranking without a separate package install. An explicitly disabled or unavailable embedder falls back to FTS keyword ranking and produces an `embedder inactive` startup notice. A remote OpenAI-compatible embedder can replace the included local path; see [`INSTALL.md`](./INSTALL.md).
+The default service installation includes `@plurnk/plurnk-mimetypes-embeddings`, so `FIND`'s `~query` uses embedding cosine ranking without a separate package install. `PLURNK_SERVICE_EMBED_DISABLE=1` explicitly selects FTS keyword ranking; a missing required artifact is a broken installation and refuses startup. A remote OpenAI-compatible embedder can replace the included local path; see [`INSTALL.md`](./INSTALL.md).
 
 ## The file sandbox
 

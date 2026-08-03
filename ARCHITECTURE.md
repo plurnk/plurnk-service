@@ -66,7 +66,10 @@ document does not restate their teaching.
 
 Family packages define extension contracts. Installed adapters implement those
 contracts. Core composes them but does not absorb their domain logic. Shared
-facts have one schema and one specification owner.
+facts have one schema and one specification owner. Capability frameworks do not
+depend on their leaf consumers; the service manifest is the sole owner of its
+default leaf set, while compatible third-party leaves extend it through the
+same installation and discovery path ({§default-plugin-ownership}).
 
 ## Process composition
 

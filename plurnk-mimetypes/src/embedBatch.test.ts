@@ -67,29 +67,16 @@ describe("Mimetypes.embedBatch (plurnk-service#272)", () => {
         assert.equal(gotOnProgress, true);
     });
 
-    it("falls back to a sequential embed() loop for embedders without embedBatch, firing onProgress", async () => {
-        const progress: Array<{ completed: number; total: number }> = [];
+    it("fails hard when an installed artifact lacks the required embedBatch surface (#85)", async () => {
         const m = makeMimetypes({
             dimension: 1,
             embed: async (t: string) => bytesFor(t),
             // no embedBatch
         });
-        const out = await m.embedBatch(["a", "bb"], { onProgress: (p) => progress.push(p) });
-        assert.deepEqual(out.map((v) => new Float32Array(v.buffer)[0]), [1, 2]);
-        assert.deepEqual(progress, [
-            { completed: 1, total: 2 },
-            { completed: 2, total: 2 },
-        ]);
-    });
-
-    it("fallback honors an aborted signal", async () => {
-        const controller = new AbortController();
-        controller.abort();
-        const m = makeMimetypes({
-            dimension: 1,
-            embed: async (t: string) => bytesFor(t),
-        });
-        await assert.rejects(() => m.embedBatch(["a", "b"], { signal: controller.signal }));
+        await assert.rejects(
+            () => m.embedderInfo(),
+            /does not implement embedBatch\(\)/,
+        );
     });
 
     it("throws (not silent empties) when the embeddings package is absent", async () => {

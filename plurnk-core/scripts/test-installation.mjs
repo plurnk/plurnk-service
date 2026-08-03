@@ -4,7 +4,7 @@
 // fresh install has NO active model (the #307 no-phone-home posture): the pointer surfaces instead.
 // The hosted-model round-trip is a deliberate red until that endpoint is live.
 import { execFileSync, spawn } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, renameSync } from "node:fs";
 import { createRequire } from "node:module";
 import { resolve } from "node:path";
 import { installPacked, installSandbox, uninstallSandbox, sandbox } from "./install-sandbox.mjs";
@@ -13,6 +13,11 @@ let failures = 0;
 const ok = (cond, msg) => { process.stdout.write(`  ${cond ? "✓" : "✗"} ${msg}\n`); if (!cond) failures++; };
 const bin = resolve(sandbox, "node_modules", ".bin", "plurnk-service");
 const isogitPackage = "@plurnk/plurnk-execs-isogit";
+
+const installedManifest = (packageName) => JSON.parse(readFileSync(
+    resolve(sandbox, "node_modules", ...packageName.split("/"), "package.json"),
+    "utf8",
+));
 
 // Probe the actual packed configuration, discovery, import, and availability
 // path in a fresh Node process. Running outside the monorepo prevents a
@@ -34,12 +39,11 @@ const packedExecInventory = (env = {}) => {
         EnvDefaults.apply(merged);
         const discovery = await discover({ cwd: process.cwd() });
         const executors = await ExecutorRegistry.build({ cwd: process.cwd() });
-        const owner = (tag) => discovery.registry.get(tag)?.packageName ?? null;
         process.stdout.write(JSON.stringify({
             defaultValue: process.env.PLURNK_EXECS_ISOGIT ?? null,
             defaultOwner: merged.get("PLURNK_EXECS_ISOGIT")?.owner ?? null,
             disabled: discovery.disabled,
-            owners: { git: owner("git"), isogit: owner("isogit") },
+            owners: Object.fromEntries([...discovery.registry].map(([tag, info]) => [tag, info.packageName])),
             advertised: executors.availableRuntimes(),
         }));
     `;
@@ -47,6 +51,36 @@ const packedExecInventory = (env = {}) => {
         cwd: sandbox,
         encoding: "utf8",
         env: childEnv,
+    }));
+};
+
+const packedMimetypeInventory = () => {
+    const program = `
+        import { resolve } from "node:path";
+        import { pathToFileURL } from "node:url";
+        const framework = resolve("node_modules/@plurnk/plurnk-mimetypes/dist/index.js");
+        const { Mimetypes, discover } = await import(pathToFileURL(framework));
+        const discovery = await discover({ cwd: process.cwd(), includeTreeSitter: false });
+        const mimetypes = new Mimetypes({
+            discoverOptions: { cwd: process.cwd(), includeTreeSitter: false },
+        });
+        const json = await mimetypes.process(
+            { content: '{"installed":true}', ext: ".json" },
+            { channels: ["symbols"] },
+        );
+        const embedder = await mimetypes.embedderInfo();
+        const tokenizer = await mimetypes.tokenizer("gpt-4o", { strict: true });
+        process.stdout.write(JSON.stringify({
+            owners: Object.fromEntries([...discovery.handlers].map(([name, info]) => [name, info.packageName])),
+            json: { ok: json.ok, mimetype: json.mimetype },
+            embedder: embedder !== null,
+            tokenizer: tokenizer.exact,
+        }));
+        await mimetypes.dispose();
+    `;
+    return JSON.parse(execFileSync(process.execPath, ["--input-type=module", "--eval", program], {
+        cwd: sandbox,
+        encoding: "utf8",
     }));
 };
 
@@ -90,7 +124,39 @@ ok(buildInfo.version === installedPackage.version, "packed build provenance matc
 ok(buildInfo.revision === revision, "packed build provenance matches the checkout revision");
 ok(buildInfo.dirty === dirty, "packed build provenance reports checkout cleanliness");
 
-ok(existsSync(resolve(mods, "@plurnk", "plurnk-mimetypes-embeddings")), "embedder ships in the default service composition");
+const serviceDependencies = Object.keys(installedPackage.dependencies ?? {});
+const defaultExecPackages = serviceDependencies.filter((name) => name.startsWith("@plurnk/plurnk-execs-"));
+const defaultMimetypePackages = serviceDependencies.filter((name) => name.startsWith("@plurnk/plurnk-mimetypes-"));
+const execFrameworkDependencies = Object.keys(installedManifest("@plurnk/plurnk-execs").dependencies ?? {});
+const mimetypeFrameworkDependencies = Object.keys(installedManifest("@plurnk/plurnk-mimetypes").dependencies ?? {});
+ok(
+    !execFrameworkDependencies.some((name) => name.startsWith("@plurnk/plurnk-execs-")),
+    "the executor framework contains no leaf-consumer dependency edges",
+);
+ok(
+    !mimetypeFrameworkDependencies.some((name) => name.startsWith("@plurnk/plurnk-mimetypes-")),
+    "the mimetype framework contains no leaf-consumer dependency edges",
+);
+
+const mimetypeInventory = packedMimetypeInventory();
+for (const packageName of defaultMimetypePackages) {
+    const manifest = installedManifest(packageName);
+    for (const handler of manifest.plurnk?.handlers ?? []) {
+        ok(
+            mimetypeInventory.owners[handler.name] === packageName,
+            `${handler.name} is discovered from the service-owned ${packageName} leaf`,
+        );
+    }
+}
+ok(
+    mimetypeInventory.json.ok === true && mimetypeInventory.json.mimetype === "application/json",
+    "a packed default handler loads through the composed service module graph",
+);
+ok(mimetypeInventory.embedder === true, "the packed default embedding artifact resolves");
+ok(mimetypeInventory.tokenizer === true, "the packed default tokenizer artifact resolves exactly");
+
+const embedderRoot = resolve(mods, "@plurnk", "plurnk-mimetypes-embeddings");
+ok(existsSync(embedderRoot), "embedder ships in the default service composition");
 for (const [providerPackage, provider] of [
     ["@ai-sdk/openai-compatible", "OpenAI-compatible and Cloudflare"],
     ["@ai-sdk/google", "Google"],
@@ -130,10 +196,32 @@ ok(!/embedder inactive/.test(boot.stderr), "no embedder-inactive notice — the 
 ok(/ no model\n?$/m.test(boot.stdout) || /no model/.test(boot.stdout), "startup line reports 'no model' on an untouched install (no hosted default)");
 ok(/no model configured/.test(boot.stderr) && /local \/ cloud \/ plurnk\.ai/.test(boot.stderr), "the pointer names the three options in ~/.plurnk/.env");
 
+const withheldEmbedderRoot = `${embedderRoot}.withheld`;
+renameSync(embedderRoot, withheldEmbedderRoot);
+const brokenComposition = await bootStart({
+    PLURNK_DB_PATH: resolve(sandbox, "broken-composition.db"),
+    PLURNK_SCHEMES_HTTP_PLAYWRIGHT_METHOD: "disabled",
+});
+renameSync(withheldEmbedderRoot, embedderRoot);
+ok(
+    brokenComposition.listening === false
+        && /default service composition is missing required @plurnk\/plurnk-mimetypes-embeddings/.test(brokenComposition.stderr),
+    "a missing required default artifact fails as a broken service install",
+);
+
 process.stdout.write("-- optional executor lifecycle --\n");
 const isogitRoot = resolve(mods, "@plurnk", "plurnk-execs-isogit");
 ok(!existsSync(isogitRoot), "isogit is absent from a clean service install");
 const absentIsogit = packedExecInventory({ PLURNK_EXECS_ISOGIT: "1" });
+for (const packageName of defaultExecPackages) {
+    const manifest = installedManifest(packageName);
+    for (const runtime of manifest.plurnk?.runtimes ?? []) {
+        ok(
+            absentIsogit.owners[runtime.name] === packageName,
+            `EXEC[${runtime.name}] is discovered from the service-owned ${packageName} leaf`,
+        );
+    }
+}
 ok(!absentIsogit.advertised.includes("isogit"), "configuration cannot advertise an executor package that is not installed");
 
 installPacked(tarballs, isogitPackage);

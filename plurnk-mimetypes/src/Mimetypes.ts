@@ -1,4 +1,7 @@
 import fs from "node:fs/promises";
+import { createRequire } from "node:module";
+import path from "node:path";
+import { pathToFileURL } from "node:url";
 import { detect } from "./detect.ts";
 import { discover } from "./discover.ts";
 import { parseBodyMatcher, type ParsedBodyMatcher } from "./parseBodyMatcher.ts";
@@ -32,11 +35,15 @@ export type { EmbedderInfo, EmbedProgress, EmbedBatchOptions } from "./Embedding
 export type { TokenizerResolution } from "./Tokenizers.ts";
 
 // Loader hook: how to resolve a handler package to its default-exported class.
-// Production uses dynamic import(); tests inject a custom loader to avoid
-// touching the module system.
+// The default anchors resolution in the same consumer-visible module graph
+// discovery scans ({§mimetype-discovery}); tests and unusual package layouts
+// may inject a loader.
 export type HandlerLoader = (packageName: string) => Promise<unknown>;
 
-const defaultLoader: HandlerLoader = (packageName) => import(packageName);
+const defaultLoader = (cwd: string): HandlerLoader => {
+    const require = createRequire(path.join(path.resolve(cwd), "package.json"));
+    return (packageName) => import(pathToFileURL(require.resolve(packageName)).href);
+};
 
 export interface MimetypesOptions {
     discoverOptions?: DiscoverOptions;
@@ -116,7 +123,7 @@ export default class Mimetypes {
 
     constructor(options: MimetypesOptions = {}) {
         this.#discoverOptions = options.discoverOptions ?? {};
-        this.#loader = options.loader ?? defaultLoader;
+        this.#loader = options.loader ?? defaultLoader(this.#discoverOptions.cwd ?? process.cwd());
         this.#defaultMimetype = options.defaultMimetype ?? null;
         this.#embeddings = new Embeddings(this.#loader);
         this.#tokenizers = new Tokenizers(this.#loader);

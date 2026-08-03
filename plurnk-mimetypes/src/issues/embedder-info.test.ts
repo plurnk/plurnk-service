@@ -34,16 +34,23 @@ const fullEmbedder = {
     async embed(): Promise<Uint8Array> {
         return new Uint8Array(new Float32Array(4).buffer);
     },
+    async embedBatch(texts: readonly string[]): Promise<Uint8Array[]> {
+        return texts.map(() => new Uint8Array(new Float32Array(4).buffer));
+    },
     async countTokens(text: string): Promise<number> {
         return text.length;
     },
 };
 
-// Minimal valid surface: embed + dimension only, no chunk-planning facts.
+// Minimal valid surface: scalar/batch embedding + dimension, no optional
+// chunk-planning facts.
 const minimalEmbedder = {
     dimension: 4,
     async embed(): Promise<Uint8Array> {
         return new Uint8Array(new Float32Array(4).buffer);
+    },
+    async embedBatch(texts: readonly string[]): Promise<Uint8Array[]> {
+        return texts.map(() => new Uint8Array(new Float32Array(4).buffer));
     },
 };
 

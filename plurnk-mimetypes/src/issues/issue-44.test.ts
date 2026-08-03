@@ -124,6 +124,14 @@ describe("Issue #44 — T5: present-but-broken artifact rethrows", () => {
             /misconfigured/,
         );
     });
+
+    it("an installed artifact without resolve() fails as incompatible (#85)", async () => {
+        const { m } = mk({});
+        await assert.rejects(
+            () => m.tokenizer("gemma-4-26b"),
+            /does not implement resolve\(\)/,
+        );
+    });
 });
 
 describe("Issue #44 — T6: artifact loads once", () => {

@@ -4,7 +4,7 @@ Portable local/remote embedder for [`@plurnk/plurnk-mimetypes`](https://github.c
 
 | Concern      | Contract                                                                                                                                    |
 |--------------|---------------------------------------------------------------------------------------------------------------------------------------------|
-| Installation | The current framework distribution and default service composition install this artifact as an ordinary dependency.                       |
+| Installation | The default service composition installs this artifact as a required dependency; direct framework consumers install it when wanted.        |
 | Resolution   | The framework lazily imports this fixed artifact; it does not scan for competing embedder packages.                                        |
 | Computation  | Only `embedding`, `embedBatch()`, or direct `embed()` requests produce vectors; the service search index requests them explicitly.          |
 | External     | The same artifact can target an OpenAI-compatible embedding endpoint instead of executing the bundled local model.                         |
@@ -24,8 +24,9 @@ Vendoring ORT's own self-contained pre-built dist removes both `onnxruntime-web`
 
 ## Install
 
-Service and framework users already receive this package. Install it directly
-only when consuming its exported embedding surface independently:
+Service users already receive this package. Direct framework consumers install
+it to enable the embedding seam, or install it independently for its exported
+surface:
 
 ```sh
 npm install @plurnk/plurnk-mimetypes-embeddings

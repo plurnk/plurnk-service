@@ -34,6 +34,9 @@ function makeEmbedder() {
         async embed(): Promise<Uint8Array> {
             return new Uint8Array(new Float32Array(2).buffer);
         },
+        async embedBatch(texts: readonly string[]): Promise<Uint8Array[]> {
+            return texts.map(() => new Uint8Array(new Float32Array(2).buffer));
+        },
         async dispose(): Promise<void> {
             disposed += 1;
         },

@@ -15,14 +15,10 @@ detected mimetype plus exactly the requested projections.
 npm install @plurnk/plurnk-mimetypes
 ```
 
-Node ≥ 26, ESM. The current framework package installs its standard handler
-and artifact bundle as normal dependencies:
-
-| Family     | Included capability                                         |
-|------------|-------------------------------------------------------------|
-| Structured | JSON/JSONC, JSONL, IPYNB, XML, CSV, INI, dotenv             |
-| Documents  | Markdown, HTML, PDF, plain/stream text, diff                |
-| Semantic   | Local/remote embedding seam and model-vocabulary tokenizers |
+Node ≥ 26, ESM. The framework is intentionally lean: it supplies detection,
+discovery, projection, and authoring APIs without installing its leaf
+consumers. Direct users install the format handlers and artifacts they want;
+the default `@plurnk/plurnk-service` installation declares its standard set.
 
 Tree-sitter language grammars remain independent WASM leaves. Install only the
 languages you need; discovery already carries their detection metadata.
@@ -136,8 +132,8 @@ await m.dispose(); // when this owner shuts down
 ```
 
 Channels materialize per call; unrequested fields are absent. `channels: []` is
-the metadata-only call. Embedding inference is opt-in even though the current
-distribution installs its artifact. Body-matcher queries use
+the metadata-only call. Embedding inference is opt-in even though the default
+service composition installs its artifact. Body-matcher queries use
 `m.query(input, expr)` for regex, glob, JSONPath, and XPath. `format()` renders
 an unbudgeted human outline. Failure behavior is owned by
 {§mimetype-error-policy}.

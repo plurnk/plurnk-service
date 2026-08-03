@@ -1,10 +1,7 @@
-// Smoke coverage for every @plurnk/plurnk-mimetypes-* handler we ship
-// as a hard dependency. Asserts auto-discovery actually loaded each
-// handler, extension routing produces the expected mimetype, and a
-// sensible preview comes back. Without this, we'd ship a dep whose
-// integration is unverified at our level — handlers have their own
-// suites for behavioral coverage, but nothing here proves they're
-// wired into plurnk-service's runtime path.
+// Smoke coverage for the service-owned default mimetype composition
+// ({§bundled-set}). The service manifest is the inventory authority; this suite
+// asserts every declared handler from those dependencies is discovered, then
+// drives representative handlers through the assembled processing path.
 //
 // Per-handler behavioral tests live in each sibling's repo. This file
 // is the plurnk-service-side integration check: "the handler exists,
@@ -14,21 +11,33 @@
 // NOT standalone deps — the 0.10.0 framework absorbed them into its internal
 // TREE_SITTER_REGISTRY ({§mimetype-backend-selection} Tier 1), so they're covered by
 // @plurnk/plurnk-mimetypes' own suite, not here. Only bespoke standalone
-// handlers (json/html/markdown/csv/plain/pdf) belong in CASES.
+// handlers belong to this service-side composition check.
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { Mimetypes } from "@plurnk/plurnk-mimetypes";
+import { createRequire } from "node:module";
+import { Mimetypes, discover } from "@plurnk/plurnk-mimetypes";
+
+const require = createRequire(import.meta.url);
+const serviceManifest = require("../../package.json") as {
+    dependencies?: Record<string, string>;
+};
+const defaultHandlerPackages = Object.keys(serviceManifest.dependencies ?? {})
+    .filter((name) => name.startsWith("@plurnk/plurnk-mimetypes-"))
+    .flatMap((packageName) => {
+        const manifest = require(`${packageName}/package.json`) as {
+            plurnk?: { handlers?: Array<{ name?: unknown }> };
+        };
+        return (manifest.plurnk?.handlers ?? [])
+            .filter((handler): handler is { name: string } => typeof handler.name === "string")
+            .map((handler) => ({ packageName, mimetype: handler.name }));
+    });
 
 interface Case {
     label: string;
     ext: string;
     sampleContent: string;
     expectedMimetype: string;
-    // Substring the preview should contain. Most handlers return a
-    // structural symbol outline; we look for a recognizable token from
-    // the input that should land in any reasonable preview.
-    previewIncludes: string;
 }
 
 const CASES: Case[] = [
@@ -37,37 +46,66 @@ const CASES: Case[] = [
         ext: ".md",
         sampleContent: "# Title\n\nA paragraph.\n\n## Section\n",
         expectedMimetype: "text/markdown",
-        previewIncludes: "Title",
     },
     {
         label: "text/html",
         ext: ".html",
         sampleContent: "<!DOCTYPE html><html><head><title>Page</title></head><body><h1>Heading</h1></body></html>",
         expectedMimetype: "text/html",
-        // html handler emits structural outline; `<h1>Heading</h1>` is
-        // the canonical extractable element. Title isn't always surfaced.
-        previewIncludes: "Heading",
     },
     {
         label: "text/csv",
         ext: ".csv",
         sampleContent: "name,age\nAlice,30\nBob,25\n",
         expectedMimetype: "text/csv",
-        previewIncludes: "name",
     },
     {
         label: "application/json",
         ext: ".json",
         sampleContent: "{\"name\":\"Alice\",\"age\":30}",
         expectedMimetype: "application/json",
-        previewIncludes: "name",
+    },
+    {
+        label: "application/jsonl",
+        ext: ".jsonl",
+        sampleContent: "{\"name\":\"Alice\"}\n{\"name\":\"Bob\"}\n",
+        expectedMimetype: "application/jsonl",
+    },
+    {
+        label: "application/x-ipynb+json",
+        ext: ".ipynb",
+        sampleContent: "{\"cells\":[],\"metadata\":{},\"nbformat\":4,\"nbformat_minor\":5}",
+        expectedMimetype: "application/x-ipynb+json",
+    },
+    {
+        label: "application/xml",
+        ext: ".xml",
+        sampleContent: "<root><item>value</item></root>",
+        expectedMimetype: "application/xml",
+    },
+    {
+        label: "text/x-diff",
+        ext: ".diff",
+        sampleContent: "--- a/file.txt\n+++ b/file.txt\n@@ -1 +1 @@\n-old\n+new\n",
+        expectedMimetype: "text/x-diff",
+    },
+    {
+        label: "text/x-dotenv",
+        ext: ".env",
+        sampleContent: "PLURNK_EXAMPLE=settled\n",
+        expectedMimetype: "text/x-dotenv",
+    },
+    {
+        label: "text/x-ini",
+        ext: ".ini",
+        sampleContent: "[section]\nkey=value\n",
+        expectedMimetype: "text/x-ini",
     },
     {
         label: "text/plain",
         ext: ".txt",
         sampleContent: "Just some text content here.",
         expectedMimetype: "text/plain",
-        previewIncludes: "Just",
     },
 ];
 
@@ -78,6 +116,17 @@ const mimetypes = new Mimetypes();
 
 test("discovery: Mimetypes initializes without throwing", async () => {
     await mimetypes.ready();
+});
+
+test("discovery: every service-owned format-handler declaration is registered", async () => {
+    const found = await discover({ includeTreeSitter: false });
+    for (const { packageName, mimetype } of defaultHandlerPackages) {
+        assert.equal(
+            found.handlers.get(mimetype)?.packageName,
+            packageName,
+            `${mimetype} should resolve to the service-owned ${packageName} leaf`,
+        );
+    }
 });
 
 for (const c of CASES) {

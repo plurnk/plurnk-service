@@ -292,9 +292,10 @@ the framework does not define a second Active/Available state machine.
 
 ## §executor-default-inventory Current installed set
 
-The current `@plurnk/plurnk-execs` dependency graph installs the following
-`@plurnk/plurnk-execs-<leaf>` packages. A probe and consumer policy still
-determine which declared tags are offered in a particular workspace.
+The default `@plurnk/plurnk-service` composition installs the following
+`@plurnk/plurnk-execs-<leaf>` packages. The lean framework owns no leaf
+dependency edges. A probe and consumer policy still determine which declared
+tags are offered in a particular workspace ({§bundled-set}).
 
 | Leaf     | Declared tags                                                                                              | Effect by target                | Channels / mimetype                |
 | -------- | ---------------------------------------------------------------------------------------------------------- | ------------------------------- | ---------------------------------- |

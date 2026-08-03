@@ -19,8 +19,8 @@ export interface EmbedBatchOptions {
 interface Embedder {
     // Current vector representation ({§mimetype-embedding-wire}).
     embed(text: string): Promise<Uint8Array>;
-    // Input-order bulk surface; absence selects the sequential adapter.
-    embedBatch?(texts: readonly string[], options?: EmbedBatchOptions): Promise<Uint8Array[]>;
+    // Input-order bulk surface.
+    embedBatch(texts: readonly string[], options?: EmbedBatchOptions): Promise<Uint8Array[]>;
     readonly dimension: number;
     // Model-space identity surfaced on ProcessResult.embeddingModel.
     readonly model?: string;
@@ -104,10 +104,21 @@ export default class Embeddings {
                 if (code === "ERR_MODULE_NOT_FOUND" || code === "MODULE_NOT_FOUND") return null;
                 throw err;
             }
-            const m = mod as { embed?: unknown; dimension?: unknown; default?: { embed?: unknown; dimension?: unknown } };
+            const m = mod as {
+                embed?: unknown;
+                embedBatch?: unknown;
+                dimension?: unknown;
+                default?: { embed?: unknown; embedBatch?: unknown; dimension?: unknown };
+            };
             const surface = typeof m.embed === "function" ? m : m.default;
-            if (typeof surface?.embed !== "function" || typeof surface?.dimension !== "number") {
-                return null;
+            if (typeof surface?.embed !== "function") {
+                throw new TypeError(`${EMBEDDINGS_PACKAGE} does not implement embed()`);
+            }
+            if (typeof surface.embedBatch !== "function") {
+                throw new TypeError(`${EMBEDDINGS_PACKAGE} does not implement embedBatch()`);
+            }
+            if (typeof surface.dimension !== "number") {
+                throw new TypeError(`${EMBEDDINGS_PACKAGE} does not declare a numeric dimension`);
             }
             return surface as unknown as Embedder;
         })();
@@ -129,8 +140,8 @@ export default class Embeddings {
         };
     }
 
-    // Bulk output preserves input order; an absent bulk capability is adapted
-    // sequentially. Calling the explicit surface without an artifact throws.
+    // Bulk output preserves input order. Calling the explicit surface without
+    // an artifact throws.
     async batch(texts: readonly string[], options?: EmbedBatchOptions): Promise<Uint8Array[]> {
         const embedder = await this.#resolve();
         if (embedder === null) {
@@ -139,17 +150,7 @@ export default class Embeddings {
                 + `npm install ${EMBEDDINGS_PACKAGE} to enable it.`,
             );
         }
-        if (typeof embedder.embedBatch === "function") {
-            return embedder.embedBatch(texts, options);
-        }
-        // Sequential adapter preserves progress and cancellation semantics.
-        const out: Uint8Array[] = [];
-        for (let i = 0; i < texts.length; i += 1) {
-            options?.signal?.throwIfAborted();
-            out.push(await embedder.embed(texts[i]));
-            options?.onProgress?.({ completed: i + 1, total: texts.length });
-        }
-        return out;
+        return embedder.embedBatch(texts, options);
     }
 
     // Idempotent cache teardown; later use resolves lazily again.

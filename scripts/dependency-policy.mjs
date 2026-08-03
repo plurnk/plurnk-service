@@ -7,6 +7,14 @@ const sections = ["dependencies", "devDependencies", "peerDependencies", "option
 const forbidden = /^(?:@tree-sitter-grammars\/)?tree-sitter(?:-|$)/;
 const violations = [];
 
+// {§core-plugin-composition}: capability frameworks own contracts and
+// discovery, never runtime edges to their leaf consumers. The composed host's
+// manifest is the one default-inventory owner ({§bundled-set}).
+const leanFrameworks = new Map([
+    ["plurnk-mimetypes/package.json", "@plurnk/plurnk-mimetypes-"],
+    ["plurnk-execs/package.json", "@plurnk/plurnk-execs-"],
+]);
+
 for (const file of manifests) {
     const manifest = JSON.parse(await fs.readFile(file, "utf8"));
     for (const [name, command] of Object.entries(manifest.scripts ?? {})) {
@@ -18,6 +26,16 @@ for (const file of manifests) {
         for (const name of Object.keys(manifest[section] ?? {})) {
             if (name !== "web-tree-sitter" && forbidden.test(name)) {
                 violations.push(`${file}: ${section}.${name}`);
+            }
+        }
+    }
+    const leafPrefix = leanFrameworks.get(file);
+    if (leafPrefix !== undefined) {
+        for (const section of ["dependencies", "optionalDependencies", "peerDependencies"]) {
+            for (const name of Object.keys(manifest[section] ?? {})) {
+                if (name.startsWith(leafPrefix)) {
+                    violations.push(`${file}: ${section}.${name} makes the framework depend on a leaf consumer`);
+                }
             }
         }
     }

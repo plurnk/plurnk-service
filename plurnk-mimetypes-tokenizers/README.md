@@ -11,11 +11,14 @@ math.
 npm i @plurnk/plurnk-mimetypes-tokenizers
 ```
 
-Opt-in artifact package: the framework resolves it lazily by name; absent, the
-seam degrades to a chars/2 estimate with a `tokenizer_unavailable` Notice —
-never a silent estimate. The estimate is neither exact nor a proven upper
-bound; correctness-sensitive consumers must reject it or apply their own
-defensible policy.
+The default service composition installs this artifact as a required
+dependency. Direct users of the lean framework install it when they want exact
+model-vocabulary counters. The framework resolves it lazily by name; when it is
+truly absent, the seam degrades to a chars/2 estimate with a
+`tokenizer_unavailable` Notice—never a silent estimate. The estimate is neither
+exact nor a proven upper bound; correctness-sensitive consumers must reject it
+or apply their own defensible policy. An installed artifact with an incompatible
+surface fails hard.
 
 ## surface
 

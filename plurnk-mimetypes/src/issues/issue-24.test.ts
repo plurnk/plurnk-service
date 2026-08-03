@@ -18,6 +18,9 @@ const fakeEmbedderModule = {
         const v = new Float32Array([text.length, text.charCodeAt(0) || 0, 0.5, -1]);
         return new Uint8Array(v.buffer);
     },
+    async embedBatch(texts: readonly string[]): Promise<Uint8Array[]> {
+        return Promise.all(texts.map((text) => fakeEmbedderModule.embed(text)));
+    },
 };
 
 class PlainHandler extends BaseHandler {}

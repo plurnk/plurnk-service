@@ -1,8 +1,19 @@
 # plurnk-execs
 
-Framework and current installed set for `@plurnk/plurnk-execs-*` runtime
-packages. Core uses it to discover EXEC tags, admit calls, and stream each
-runtime's output under its own tag-addressed scheme.
+Lean framework and contract for `@plurnk/plurnk-execs-*` runtime packages. Core
+uses it to discover EXEC tags, admit calls, and stream each runtime's output
+under its own tag-addressed scheme. The default service manifest, not this
+framework, owns the standard installed leaf set ({§bundled-set}).
+
+## Install
+
+```sh
+npm install @plurnk/plurnk-execs
+```
+
+Install executor leaves beside the framework to assemble a standalone host.
+Any compatible third-party leaf remains discoverable without changing the
+framework or service.
 
 ## Documentation
 

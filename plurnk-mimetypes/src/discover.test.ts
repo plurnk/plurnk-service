@@ -5,6 +5,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
 import { discover } from "./discover.ts";
+import Mimetypes from "./Mimetypes.ts";
 
 async function makePackage(
     root: string,
@@ -336,6 +337,41 @@ describe("discover — scope-agnostic scan (issue #28)", () => {
             );
             assert.equal(result.handlers.get("text/x-cobol")?.packageName, "@acme/acme-mime-cobol");
             assert.equal(result.handlers.get("text/x-fortran")?.packageName, "mime-fortran");
+        } finally {
+            await fs.rm(root, { recursive: true, force: true });
+        }
+    });
+
+    it("loads a discovered third-party handler from the consumer-visible module graph (#85)", async () => {
+        const root = await fs.mkdtemp(path.join(os.tmpdir(), "plurnk-consumer-loader-"));
+        try {
+            const dir = await makePackage(root, "node_modules/@acme/acme-mime-cobol", {
+                name: "@acme/acme-mime-cobol",
+                type: "module",
+                exports: "./index.js",
+                plurnk: {
+                    kind: "mimetype",
+                    handlers: [{ name: "text/x-cobol", extensions: [".cob"] }],
+                },
+            });
+            await fs.writeFile(path.join(dir, "index.js"), `
+                export default class Cobol {
+                    validate() {}
+                    extractRaw() { return []; }
+                }
+            `);
+
+            const mimetypes = new Mimetypes({
+                discoverOptions: { cwd: root, includeTreeSitter: false },
+            });
+            const result = await mimetypes.process(
+                { content: "IDENTIFICATION DIVISION.", ext: ".cob" },
+                { channels: ["symbols"] },
+            );
+
+            assert.equal(result.ok, true);
+            assert.equal(result.mimetype, "text/x-cobol");
+            assert.deepEqual(result.symbols, []);
         } finally {
             await fs.rm(root, { recursive: true, force: true });
         }

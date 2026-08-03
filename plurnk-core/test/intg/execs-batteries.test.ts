@@ -1,5 +1,6 @@
-// Batteries-included executor coverage — every EXEC[tag] the default install (the @plurnk/plurnk-execs bundle
-// + -mcp) ships, driven end-to-end through the REAL Exec scheme (dispatch → run/accept → spawn → read
+// Batteries-included executor coverage — every EXEC[tag] the service-owned
+// default executor leaf set ships, driven end-to-end through the REAL Exec
+// scheme (dispatch → run/accept → spawn → read
 // the captured output channel), not sh alone. Historically only EXEC[sh] (and one EXEC[node]) were
 // exercised; the rest of the bundle (jq, sqlite, wat/wasm, awk, bc, perl, python, …) went untested.
 //
@@ -7,9 +8,9 @@
 // declared channel (subprocess and native Git -> stdout; jq/sqlite/wat -> a JSON `results` channel), and host-effecting
 // runtimes PROPOSE (accept) while pure/read ones run INLINE (auto-resolved, no accept). The census
 // REQUIRES every available self-contained tag to be covered, REPORTS the resource-gated ones
-// (mcp needs a server, search is covered in the live tier, wasm needs a compiled module — its
+// (search is covered in the live tier; wasm needs a compiled module — its
 // compile+run path is covered inline via `wat`), and FAILS on a census tag that is not even
-// DISCOVERED (#471 — a deleted bundle package must read as bundle drift, never as "unavailable
+// DISCOVERED (#471 — a deleted default leaf must read as composition drift, never as "unavailable
 // in this env"): never a silent omission reading as coverage.
 
 import test from "node:test";
@@ -127,7 +128,7 @@ test("execs batteries: coverage census — every self-contained default-install 
     const reg = await testExecutors();
     const available = new Set(reg.availableRuntimes());
     const covered = new Set(CASES.map((c) => c.tag).concat("sh", "git")); // sh: Exec.scheme.test.ts; git: the init→status test below
-    // #471 — bundle drift fails LOUDLY: every census tag must at least be DISCOVERED (the registry
+    // #471 — default-composition drift fails LOUDLY: every census tag must at least be DISCOVERED (the registry
     // retains probe-failed entries as available:false; a DELETED package has no entry at all). The
     // gh purge sailed through the old census as "unavailable in this env" — this is the hole, closed.
     const undiscovered = [...SELF_CONTAINED, ...RESOURCE_GATED].filter((t) => reg.entry(t) === undefined);

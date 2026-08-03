@@ -237,7 +237,10 @@ export default class Service {
             // self-report returns info with the unknowns explicitly null — say which case this is).
             const embedInfo = await daemon.mimetypes.embedderInfo();
             if (embedInfo === null) {
-                process.stderr.write("plurnk-service: embedder inactive — semantic ~query falls back to FTS keyword ranking. Check PLURNK_SERVICE_EMBED_DISABLE or configure PLURNK_MIMETYPES_EMBED_BASE_URL; see README.md#semantic-search\n");
+                throw new Error(
+                    "default service composition is missing required "
+                    + "@plurnk/plurnk-mimetypes-embeddings; reinstall @plurnk/plurnk-service",
+                );
             } else if (embedInfo.contextWindow === null) {
                 process.stderr.write("plurnk-service: remote embedder active but reports no input context window — set PLURNK_MIMETYPES_EMBED_CONTEXT_WINDOW to the endpoint's limit or embedding derivations will refuse\n");
             }
