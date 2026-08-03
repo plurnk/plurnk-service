@@ -126,8 +126,8 @@ export default class Module {
         "workspace.derivation", "op.exec", "op.parse", "workspace.members", "op.look", "run.fork",
     ]));
     static #BUILTIN_ACTIONS = Object.freeze(new Set([
-        ...Module.#CONTROL_ACTIONS,
-        ...Module.#WORLD_SCOPED,
+        ...this.#CONTROL_ACTIONS,
+        ...this.#WORLD_SCOPED,
     ]));
     static #NOTIFICATIONS = Object.freeze([
         "log/entry", "loop/terminated", "loop/proposal", "notice/event",
