@@ -5,9 +5,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import Module from "./Module.ts";
-import type { DaemonSeam, ProposalResolution } from "./DaemonSeam.ts";
+import type { DaemonSeam, PlurnkStatement, ProposalResolution } from "./DaemonSeam.ts";
 import type { AguiEvent } from "./types.ts";
-import { Problems, Validator } from "@plurnk/plurnk-contracts";
+import { PlurnkParser, Problems, Validator } from "@plurnk/plurnk-contracts";
 
 const mockSeam = () => {
     const resolves: Array<{ logEntryId: number; resolution: ProposalResolution }> = [];
@@ -207,6 +207,106 @@ test("#58: op.parse projects the parser-owned diagnostic and structured position
         );
         assert.equal(text.indexOf("-1"), 11, "the client projection retains code-point, not UTF-16, columns");
         assert.equal(failure.recovery, undefined, "AG-UI does not author generic parser recovery");
+    } finally { await mod.close(); }
+});
+
+// {§agui-op-look} {§parse-diagnostics} {§unparsed-tail-boundary}
+test("#136: op.look admits one clean LOOK and rejects every other parser fact before observation", async () => {
+    const { seam } = mockSeam();
+    const calls: Parameters<DaemonSeam["look"]>[0][] = [];
+    seam.look = async (args) => {
+        calls.push(args);
+        return { status: 200, content: "looked" };
+    };
+    const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
+    try {
+        const invoke = async (text: string): Promise<{
+            ok: boolean;
+            result?: Record<string, unknown>;
+            problem?: Record<string, unknown>;
+        }> => {
+            const events = await post(mod.address().port, {
+                threadId: "look-admission",
+                forwardedProps: {
+                    plurnk: {
+                        workspace: "look-admission",
+                        action: { kind: "op.look", text },
+                    },
+                },
+            });
+            const event = events.find((candidate) => candidate.type === "CUSTOM"
+                && (candidate as { name?: string }).name === "plurnk.action.result") as {
+                value?: {
+                    ok: boolean;
+                    result?: Record<string, unknown>;
+                    problem?: Record<string, unknown>;
+                };
+            } | undefined;
+            assert.ok(event?.value !== undefined, "op.look returns one management-action outcome");
+            return event.value;
+        };
+
+        const source = " \n<<LOOK[draft](worker:///x)<1-2>:~needle:LOOK\n";
+        const admitted = await invoke(source);
+        assert.equal(admitted.ok, true);
+        assert.equal(admitted.result?.content, "looked");
+        assert.equal(calls.length, 1);
+        const expected = PlurnkParser.parseClient(source).items.find((item) => item.kind === "statement")?.statement;
+        assert.ok(expected !== undefined);
+        const { op: _look, ...expectedReadShape } = expected;
+        const { op, ...actualReadShape } = calls[0].statement as PlurnkStatement;
+        assert.equal(op, "READ");
+        assert.deepEqual(actualReadShape, expectedReadShape, "the projection changes only LOOK to READ");
+
+        const missing = await invoke(" \n\t");
+        assert.equal(missing.ok, false);
+        assert.equal(missing.problem?.type, "https://problems.plurnk.dev/agui/action/invalid-action-parameters");
+        assert.equal(missing.problem?.detail, "op.look parsed 0 statements; exactly one LOOK statement is required.");
+
+        const extra = await invoke("<<LOOK(worker:///x)::LOOK\n<<LOOK(worker:///y)::LOOK");
+        assert.equal(extra.ok, false);
+        assert.equal(extra.problem?.type, "https://problems.plurnk.dev/agui/action/invalid-action-parameters");
+        assert.equal(extra.problem?.detail, "op.look parsed 2 statements; exactly one LOOK statement is required.");
+        assert.equal(extra.problem?.stage, "action-validation");
+
+        for (const operation of ["READ", "EDIT"] as const) {
+            const body = operation === "EDIT" ? ":bad:EDIT" : "::READ";
+            const wrongOperation = await invoke(`<<${operation}(worker:///x)${body}`);
+            assert.equal(wrongOperation.ok, false);
+            assert.equal(wrongOperation.problem?.type, "https://problems.plurnk.dev/agui/action/invalid-action-parameters");
+            assert.equal(wrongOperation.problem?.detail, `op.look parsed ${operation}; the single statement must be LOOK.`);
+        }
+
+        const bounded = await invoke("text <<LOOK(worker:///x)::LOOK");
+        assert.equal(bounded.ok, false);
+        assert.deepEqual(bounded.problem, {
+            type: "https://problems.plurnk.dev/agui/action/parse-failed",
+            title: "Parse failed",
+            status: 400,
+            detail: "unexpected text between statements; expected open tag `<<OPsuffix`",
+            line: 1,
+            column: 0,
+            source: "parser",
+            severity: "error",
+            stage: "parsing",
+            retryable: false,
+        });
+
+        const tailed = await invoke("<<LOOK(worker:///x)::LOOK\n<<EDIT(worker:///y):unterminated");
+        assert.equal(tailed.ok, false);
+        assert.deepEqual(tailed.problem, {
+            type: "https://problems.plurnk.dev/agui/action/parse-failed",
+            title: "Parse failed",
+            status: 400,
+            detail: "body of `<<EDIT` opened at line 2 but never closed - add `:EDIT` to terminate",
+            line: 2,
+            column: 0,
+            source: "grammar",
+            severity: "error",
+            stage: "parsing",
+            retryable: false,
+        });
+        assert.equal(calls.length, 1, "no rejected parse reaches CoreSeam.look");
     } finally { await mod.close(); }
 });
 

@@ -85,9 +85,7 @@ export interface DaemonSeam {
     } | null;
     // Workspace membership (gutter signs / the /members verb).
     listMembers(workspaceId: number): Promise<{ members: Array<{ path: string; effect: string }>; hidden: string[] }>;
-    // The pure READ-projection query (svc#358): parse at the module's edge, rewrite
-    // LOOK→READ, hand the statement; resolves worker-relative coordinates on the client loop,
-    // returns content, mints NO log row. Engine.look throws on a non-READ statement.
+    // The pure READ projection after AG-UI has admitted and rewritten one LOOK. {§agui-op-look} {§op-look}
     look(args: { workspaceId: number; workerId: number; statement: PlurnkStatement }): Promise<{ status: number; [key: string]: unknown }>;
     // Entry shape/channel read + worker branching.
     readEntry(args: { workspaceId: number; target: string; channel?: string; offset?: number }): Promise<OperationResult & { entry: unknown }>;

@@ -179,7 +179,7 @@ successfully transported management Run; it does not turn the Run into
 | `op.exec`                | Workspace | `command`                                            | Constructs one EXEC statement and calls `CoreSeam.dispatchClientAction` on the client worker.                      |
 | `op.parse`               | Workspace | `text`                                               | Parses and projects PLURNK text under {§agui-op-parse}.                                                            |
 | `workspace.members`      | Workspace | none                                                 | `CoreSeam.listMembers`.                                                                                            |
-| `op.look`                | Workspace | `text`                                               | Parses LOOK, rewrites it to READ, and calls core's no-log `look` projection.                                       |
+| `op.look`                | Workspace | `text`                                               | Admits one LOOK under {§agui-op-look}, rewrites it to READ, and calls core's no-log `look` projection.              |
 | `run.fork`               | Workspace | `name?`                                              | `CoreSeam.forkWorker` from the thread's conversation worker.                                                       |
 | Registered module action | Worldless | owner-defined                                        | `CoreSeam.invokeModuleAction`; the handler receives only the supplied params and owns their validation and result. |
 
@@ -197,6 +197,23 @@ preserves the parser's source order in its `results` array:
 
 No statement at or beyond the tail boundary is dispatched. Every parse failure
 uses `stage: "parsing"` and `retryable: false`.
+
+### §agui-op-look Single-statement observation admission
+
+`op.look` admits a parser result only when it contains exactly one LOOK
+statement, no other item, and no `unparsedTail`. Hidden surrounding whitespace
+is not an item. The action never selects a trusted prefix or silently discards
+a parser fact.
+
+| Parser result                                       | AG-UI outcome                                                                                                                      |
+|-----------------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------|
+| First positioned diagnostic                         | 400 `agui/action/parse-failed`, preserving parser detail, line, column, source, and severity                                       |
+| No diagnostic, with `unparsedTail`                  | 400 `agui/action/parse-failed`, preserving its reason and position with `source: "grammar"` and `severity: "error"`                |
+| Text item, zero or multiple statements, or non-LOOK | 400 `agui/action/invalid-action-parameters` naming the observed admission fact                                                     |
+| Exactly one LOOK and no other parser fact           | Change only `op` to READ and call `CoreSeam.look` under {§op-look}; return its exact `OperationResult` through the action envelope |
+
+Parser failures use `stage: "parsing"`; action-shape failures use
+`stage: "action-validation"`. Both are non-retryable.
 
 §agui-module-actions **One public action namespace.** Core rejects empty and
 duplicate extension registrations ({§module-action-registration}). At module

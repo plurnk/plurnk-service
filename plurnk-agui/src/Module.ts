@@ -822,8 +822,7 @@ export default class Module {
                 }
                 case "workspace.members": return { ok: true, result: await this.#seam.listMembers(env.workspaceId) };
                 case "op.look": {
-                    // Parse at the edge; LOOK is the wire spelling of the read-projection —
-                    // rewrite to READ (Engine.look enforces READ-only).
+                    // {§agui-op-look}
                     if (typeof p.text !== "string" || p.text.length === 0) {
                         return actionFailure(
                             "invalid-action-parameters",
@@ -833,13 +832,55 @@ export default class Module {
                         );
                     }
                     const parsed = PlurnkParser.parseClient(p.text);
-                    const item = parsed.items.find((i) => i.kind === "statement");
-                    if (item === undefined || item.kind !== "statement") {
+                    const diagnostic = parsed.items.find((item) => item.kind === "error");
+                    if (diagnostic !== undefined && diagnostic.kind === "error") {
+                        return operationOutcome(parseFailureResult({
+                            detail: diagnostic.error.message,
+                            line: diagnostic.error.line,
+                            column: diagnostic.error.column,
+                            source: diagnostic.error.source,
+                            severity: diagnostic.error.severity,
+                        }));
+                    }
+                    if (parsed.unparsedTail !== undefined) {
+                        return operationOutcome(parseFailureResult({
+                            detail: parsed.unparsedTail.reason,
+                            line: parsed.unparsedTail.from.line,
+                            column: parsed.unparsedTail.from.column,
+                            source: "grammar",
+                            severity: "error",
+                        }));
+                    }
+                    const textItem = parsed.items.find((item) => item.kind === "text");
+                    if (textItem !== undefined && textItem.kind === "text") {
                         return actionFailure(
-                            "parse-failed",
-                            "op.look did not contain a parseable statement.",
+                            "invalid-action-parameters",
+                            "op.look parsed text outside the statement; only surrounding whitespace is allowed.",
                             400,
-                            { stage: "parsing", recovery: "Provide one valid PLURNK statement." },
+                            {
+                                field: "text",
+                                line: textItem.position.line,
+                                column: textItem.position.column,
+                                recovery: "Remove text outside the LOOK statement.",
+                            },
+                        );
+                    }
+                    const statements = parsed.items.filter((item) => item.kind === "statement");
+                    if (statements.length !== 1) {
+                        return actionFailure(
+                            "invalid-action-parameters",
+                            `op.look parsed ${statements.length} statements; exactly one LOOK statement is required.`,
+                            400,
+                            { field: "text", recovery: "Provide exactly one valid LOOK statement." },
+                        );
+                    }
+                    const [item] = statements;
+                    if (item.statement.op !== "LOOK") {
+                        return actionFailure(
+                            "invalid-action-parameters",
+                            `op.look parsed ${item.statement.op}; the single statement must be LOOK.`,
+                            400,
+                            { field: "text", recovery: "Use LOOK as the observation operation." },
                         );
                     }
                     const statement = { ...(item.statement as unknown as Record<string, unknown>), op: "READ" } as unknown as PlurnkStatement;

@@ -14,14 +14,14 @@ import type { AguiEvent } from "../../src/types.ts";
 
 const SERVICE = resolve(import.meta.dirname, "../../../plurnk-core");
 
-const action = async (port: number, threadId: string, workspace: string, kind: string, params: Record<string, unknown> = {}): Promise<{ ok: boolean; result?: Record<string, unknown>; error?: string }> => {
+const action = async (port: number, threadId: string, workspace: string, kind: string, params: Record<string, unknown> = {}): Promise<{ ok: boolean; result?: Record<string, unknown>; problem?: Record<string, unknown> }> => {
     const res = await fetch(`http://127.0.0.1:${port}/`, {
         method: "POST", headers: { "content-type": "application/json" },
         body: JSON.stringify({ threadId, runId: crypto.randomUUID(), state: {}, messages: [], tools: [], context: [], forwardedProps: { plurnk: { workspace, action: { kind, ...params } } } }),
     });
     assert.equal(res.status, 200);
     const events = (await res.text()).split("\n\n").filter((f) => f.startsWith("data: ")).map((f) => JSON.parse(f.slice(6)) as AguiEvent);
-    const r = events.find((e) => e.type === "CUSTOM" && (e as { name?: string }).name === "plurnk.action.result") as { value: { ok: boolean; result?: Record<string, unknown>; error?: string } } | undefined;
+    const r = events.find((e) => e.type === "CUSTOM" && (e as { name?: string }).name === "plurnk.action.result") as { value: { ok: boolean; result?: Record<string, unknown>; problem?: Record<string, unknown> } } | undefined;
     assert.ok(r !== undefined, `no action result for ${kind}`);
     return r.value;
 };
@@ -51,7 +51,7 @@ test("two threads, one world: distinct workers, shared filesystem (the environme
         const edit = await action(port, "shared-world", "shared-world", "op.parse", {
             text: "<<EDIT(worker:///notes.md):first:EDIT\n<<EDIT(worker:///notes.md)<1,-1>:the world is one:EDIT\n",
         });
-        assert.equal(edit.ok, true, edit.error ?? "");
+        assert.equal(edit.ok, true, JSON.stringify(edit.problem));
         const editResults = (edit.result as { results: Array<{ status: number }> }).results;
         assert.deepEqual(editResults.map(({ status }) => status), [201, 200]);
 
@@ -60,7 +60,7 @@ test("two threads, one world: distinct workers, shared filesystem (the environme
         const tailed = await action(port, "shared-world", "shared-world", "op.parse", {
             text: "<<EDIT(worker:///tail-trusted.md):kept:EDIT\n<<EDIT(worker:///tail-untrusted.md):must not land",
         });
-        assert.equal(tailed.ok, true, tailed.error ?? "");
+        assert.equal(tailed.ok, true, JSON.stringify(tailed.problem));
         const tailResults = (tailed.result as {
             results: Array<{ status: number; problem?: Record<string, unknown> }>;
         }).results;
@@ -85,10 +85,37 @@ test("two threads, one world: distinct workers, shared filesystem (the environme
 
         // Thread B — a DISTINCT conversation over the SAME world.
         const read = await action(port, "second-look", "shared-world", "op.parse", { text: "<<READ(worker:///notes.md):READ\n" });
-        assert.equal(read.ok, true, read.error ?? "");
+        assert.equal(read.ok, true, JSON.stringify(read.problem));
         const readResults = (read.result as { results: Array<{ status: number; [k: string]: unknown }> }).results;
         assert.equal(readResults[0]?.status, 200, `thread B READs what thread A wrote: ${JSON.stringify(readResults)}`);
         assert.equal(readResults[0]?.content, "the world is one", "the action dispatched both EDITs in source order");
+
+        // {§agui-op-look} {§op-look}
+        const beforeLook = await action(port, "second-look", "shared-world", "log.read");
+        const entriesBeforeLook = (beforeLook.result as { entries: unknown[] }).entries.length;
+        const looked = await action(port, "second-look", "shared-world", "op.look", {
+            text: "<<LOOK(worker:///notes.md)::LOOK",
+        });
+        assert.equal(looked.ok, true, JSON.stringify(looked.problem));
+        assert.equal(looked.result?.status, 200);
+        assert.equal(looked.result?.content, "the world is one");
+        const afterLook = await action(port, "second-look", "shared-world", "log.read");
+        assert.equal(
+            (afterLook.result as { entries: unknown[] }).entries.length,
+            entriesBeforeLook,
+            "op.look creates no log entry through the assembled module and daemon",
+        );
+
+        const ambiguousLook = await action(port, "second-look", "shared-world", "op.look", {
+            text: "<<LOOK(worker:///notes.md)::LOOK\n<<EDIT(worker:///notes.md):must-not-dispatch:EDIT",
+        });
+        assert.equal(ambiguousLook.ok, false);
+        assert.equal(ambiguousLook.problem?.type, "https://problems.plurnk.dev/agui/action/invalid-action-parameters");
+        assert.equal(ambiguousLook.problem?.detail, "op.look parsed 2 statements; exactly one LOOK statement is required.");
+        const unchanged = await action(port, "second-look", "shared-world", "op.look", {
+            text: "<<LOOK(worker:///notes.md)::LOOK",
+        });
+        assert.equal(unchanged.result?.content, "the world is one", "the rejected second statement never reaches the daemon");
 
         // The workers are DISTINCT: the workspace holds thread B's own conversation worker,
         // named for it, alongside the model worker — histories split, world shared.
@@ -105,7 +132,7 @@ test("two threads, one world: distinct workers, shared filesystem (the environme
         const perWorker = new Map<number, number>();
         for (const worker of workerList) {
             const read = await action(port, "second-look", "shared-world", "log.read", { workerId: worker.id });
-            assert.equal(read.ok, true, `log.read workerId=${worker.id}: ${read.error ?? ""}`);
+            assert.equal(read.ok, true, `log.read workerId=${worker.id}: ${JSON.stringify(read.problem)}`);
             perWorker.set(worker.id, (read.result as { entries: unknown[] }).entries.length);
         }
         const counts = [...perWorker.values()];
