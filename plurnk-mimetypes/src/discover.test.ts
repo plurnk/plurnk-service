@@ -143,25 +143,29 @@ describe("discover", () => {
         assert.equal(result.handlers.size, 0);
     });
 
-    it("skips packages missing the handlers array entirely", async () => {
+    it("rejects a mimetype declaration missing the handlers array", async () => {
         const dir = await makePackage(tmpRoot, "pkg-no-handlers", {
             name: "@plurnk/plurnk-mimetypes-bad",
             plurnk: { kind: "mimetype" },
         });
-        const result = await discover({ packageDirs: [dir], includeTreeSitter: false });
-        assert.equal(result.handlers.size, 0);
+        await assert.rejects(
+            () => discover({ packageDirs: [dir], includeTreeSitter: false }),
+            (error: Error) => error.name === "MimetypePluginError" && /handlers/.test(error.message),
+        );
     });
 
-    it("skips packages where handlers is not an array", async () => {
+    it("rejects a mimetype declaration whose handlers field is not an array", async () => {
         const dir = await makePackage(tmpRoot, "pkg-handlers-nonarray", {
             name: "@plurnk/plurnk-mimetypes-bad",
             plurnk: { kind: "mimetype", handlers: "not an array" },
         });
-        const result = await discover({ packageDirs: [dir], includeTreeSitter: false });
-        assert.equal(result.handlers.size, 0);
+        await assert.rejects(
+            () => discover({ packageDirs: [dir], includeTreeSitter: false }),
+            (error: Error) => error.name === "MimetypePluginError" && /handlers/.test(error.message),
+        );
     });
 
-    it("skips handler entries with missing or empty name", async () => {
+    it("rejects the whole declaration when a handler entry has no name", async () => {
         const dir = await makePackage(tmpRoot, "pkg-entry-noname", {
             name: "@plurnk/plurnk-mimetypes-test",
             plurnk: {
@@ -173,12 +177,27 @@ describe("discover", () => {
                 ],
             },
         });
-        const result = await discover({ packageDirs: [dir], includeTreeSitter: false });
-        assert.equal(result.handlers.size, 1);
-        assert.ok(result.handlers.has("text/valid"));
+        await assert.rejects(
+            () => discover({ packageDirs: [dir], includeTreeSitter: false }),
+            (error: Error) => error.name === "MimetypePluginError" && /entry 0.*name/.test(error.message),
+        );
     });
 
-    it("skips non-object handler entries without breaking valid ones", async () => {
+    it("rejects a handler entry whose name is not a media type", async () => {
+        const dir = await makePackage(tmpRoot, "pkg-entry-invalid-name", {
+            name: "@plurnk/plurnk-mimetypes-test",
+            plurnk: {
+                kind: "mimetype",
+                handlers: [{ name: "text/not/a-media-type", extensions: [".x"] }],
+            },
+        });
+        await assert.rejects(
+            () => discover({ packageDirs: [dir], includeTreeSitter: false }),
+            (error: Error) => error.name === "MimetypePluginError" && /media-type name/.test(error.message),
+        );
+    });
+
+    it("rejects the whole declaration when a handler entry is not an object", async () => {
         const dir = await makePackage(tmpRoot, "pkg-entry-junk", {
             name: "@plurnk/plurnk-mimetypes-test",
             plurnk: {
@@ -191,9 +210,10 @@ describe("discover", () => {
                 ],
             },
         });
-        const result = await discover({ packageDirs: [dir], includeTreeSitter: false });
-        assert.equal(result.handlers.size, 1);
-        assert.ok(result.handlers.has("text/valid"));
+        await assert.rejects(
+            () => discover({ packageDirs: [dir], includeTreeSitter: false }),
+            (error: Error) => error.name === "MimetypePluginError" && /entry 0.*object/.test(error.message),
+        );
     });
 
     it("skips directories without a package.json", async () => {
@@ -211,7 +231,7 @@ describe("discover", () => {
         assert.equal(result.handlers.size, 0);
     });
 
-    it("filters non-string extension entries within a handler", async () => {
+    it("rejects non-string extension entries within a handler", async () => {
         const dir = await makePackage(tmpRoot, "pkg-mixed-ext", {
             name: "@plurnk/plurnk-mimetypes-mixed",
             plurnk: {
@@ -221,10 +241,24 @@ describe("discover", () => {
                 ],
             },
         });
-        const result = await discover({ packageDirs: [dir], includeTreeSitter: false });
-        const info = result.handlers.get("text/mixed");
-        assert.ok(info);
-        assert.deepEqual([...info.extensions], [".js", ".ts"]);
+        await assert.rejects(
+            () => discover({ packageDirs: [dir], includeTreeSitter: false }),
+            (error: Error) => error.name === "MimetypePluginError" && /extensions/.test(error.message),
+        );
+    });
+
+    it("rejects an unsafe package name on an explicit mimetype declaration", async () => {
+        const dir = await makePackage(tmpRoot, "pkg-invalid-name", {
+            name: "../not-a-package",
+            plurnk: {
+                kind: "mimetype",
+                handlers: [{ name: "text/invalid", extensions: [".invalid"] }],
+            },
+        });
+        await assert.rejects(
+            () => discover({ packageDirs: [dir], includeTreeSitter: false }),
+            (error: Error) => error.name === "MimetypePluginError" && /package name/.test(error.message),
+        );
     });
 
     it("last-loaded wins on conflicting mimetype across packages", async () => {
@@ -356,8 +390,20 @@ describe("discover — scope-agnostic scan (issue #28)", () => {
             });
             await fs.writeFile(path.join(dir, "index.js"), `
                 export default class Cobol {
+                    constructor({ mimetype, glyph, extensions }) {
+                        this.mimetype = mimetype;
+                        this.glyph = glyph;
+                        this.extensions = extensions;
+                    }
                     validate() {}
                     extractRaw() { return []; }
+                    deepJson() { return null; }
+                    deepXml() { return ""; }
+                    references() { return []; }
+                    content() { return undefined; }
+                    query() { return []; }
+                    symbolsRaw() { return ""; }
+                    toText(content) { return content; }
                 }
             `);
 
@@ -472,6 +518,25 @@ describe("discover — plugin trust gate PLURNK_PLUGINS_TRUSTED_ONLY (issue #29)
                 env: { PLURNK_PLUGINS_TRUSTED_ONLY: "1" },
             });
             assert.deepEqual(result.skipped, ["@acme/acme-mime-cobol", "mime-fortran"]);
+        } finally {
+            await fs.rm(root, { recursive: true, force: true });
+        }
+    });
+
+    it("withholds an untrusted family claim before validating its handler declaration", async () => {
+        const root = await fs.mkdtemp(path.join(os.tmpdir(), "plurnk-gate-malformed-"));
+        try {
+            const dir = await makePackage(root, "broken-handler", {
+                name: "@acme/broken-handler",
+                plurnk: { kind: "mimetype", handlers: "not-an-array" },
+            });
+            const result = await discover({
+                packageDirs: [dir],
+                includeTreeSitter: false,
+                env: { PLURNK_PLUGINS_TRUSTED_ONLY: "1" },
+            });
+            assert.equal(result.handlers.size, 0);
+            assert.deepEqual(result.skipped, ["@acme/broken-handler"]);
         } finally {
             await fs.rm(root, { recursive: true, force: true });
         }

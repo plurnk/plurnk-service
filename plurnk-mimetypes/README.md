@@ -147,6 +147,7 @@ before importing handler code.
 
 - **Scope-agnostic.** Publish under your own scope and the host's scan finds it like a first-party handler — no bundle membership, no registration.
 - **Trust gate.** Discovery enforces the metaproject's shared pre-import predicate and preserves withheld package names in `skipped` for the consumer to present ({§plugin-trust-boundary}).
+- **Failure boundary.** Non-mimetype packages are ignored; malformed trusted declarations and registered handler load failures throw `MimetypePluginError` with plugin identity and causal evidence ({§mimetype-plugin-failure}).
 - **Default ordering.** Third-party packages are sorted first and `@plurnk` packages last; later declarations win, so the default scan protects the standard handlers from shadowing.
 - **Explicit ordering.** `packageDirs` bypasses default enumeration and preserves caller order; later declarations still win.
 
@@ -156,8 +157,8 @@ before importing handler code.
 |---------------------|----------------------------------------------------------------------------------------------------------------------------|
 | Orchestration       | `Mimetypes`: discovery, detection, processing, querying, classification, embedding/tokenizer seams, lifecycle.             |
 | Handler authoring   | `BaseHandler`, parser extractors, `withExtractor`, parser-coordinate materializers, and tree/reference primitives.         |
-| Detection/discovery | `detect`, `discover`, `emptyRegistry`.                                                                                     |
-| Query/projection    | Matcher parser, four dialect helpers, JSON/XML projection, text coordinates, and typed query/coordinate failures.         |
+| Detection/discovery | `detect`, `discover`, `emptyRegistry`, `MimetypePluginError`.                                                              |
+| Query/projection    | Matcher parser, four dialect helpers, JSON/XML projection, text coordinates, and typed query/coordinate failures.          |
 | Classification      | `classifyMimetype`, `matchSearchExclusion`.                                                                                |
 | Formatting          | `format`, `buildTree`, `renderTree`, `maxDepth`, `pruneToMaxDepth`.                                                        |
 | Grammar build       | `runCompile`, `rewriteImports`, `injectBaseImports`.                                                                       |

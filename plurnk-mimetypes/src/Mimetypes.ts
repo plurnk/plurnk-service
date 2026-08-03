@@ -14,10 +14,12 @@ import Tokenizers, { type TokenizerResolution } from "./Tokenizers.ts";
 import { classifyMimetype, classifyWithHandler, type MimeClassification } from "./classify.ts";
 import { matchSearchExclusion } from "./searchExcluded.ts";
 import { mimetypeSource, type Notice } from "./Notice.ts";
+import MimetypePluginError from "./MimetypePluginError.ts";
 import type {
     DetectInput,
     DiscoverOptions,
     Discovery,
+    HandlerInfo,
     HandlerMetadata,
     MimeRef,
     MimeSymbol,
@@ -29,6 +31,17 @@ import type {
 export type Channel = "symbols" | "deepJson" | "deepXml" | "references" | "content" | "embedding";
 
 const DEFAULT_CHANNELS: readonly Channel[] = ["symbols", "deepJson", "deepXml", "references", "content"];
+const HANDLER_METHODS = [
+    "extractRaw",
+    "deepJson",
+    "deepXml",
+    "references",
+    "content",
+    "validate",
+    "query",
+    "symbolsRaw",
+    "toText",
+] as const;
 
 // Public seam types stay reachable from the orchestrator module.
 export type { EmbedderInfo, EmbedProgress, EmbedBatchOptions } from "./Embeddings.ts";
@@ -177,13 +190,22 @@ export default class Mimetypes {
             extensions: info.extensions,
         };
 
-        let handler: BaseHandler | null;
+        let candidate: unknown;
         if (info.source === "treesitter") {
-            handler = await this.#instantiateTreeSitterHandler(metadata, info.mimetype);
+            candidate = await this.#instantiateTreeSitterHandler(metadata, info);
         } else {
-            handler = await this.#instantiatePackageHandler(metadata, info.packageName);
+            candidate = await this.#instantiatePackageHandler(metadata, info.packageName, info.mimetype);
         }
-        if (handler === null) return null;
+        const surfaceFailure = handlerSurfaceFailure(candidate, metadata);
+        if (surfaceFailure !== null) {
+            throw new MimetypePluginError({
+                reason: "handler surface is incompatible",
+                packageName: info.packageName,
+                mimetype: info.mimetype,
+                cause: surfaceFailure,
+            });
+        }
+        const handler = candidate as BaseHandler;
 
         this.#handlerInstances.set(mimetype, handler);
         return handler;
@@ -192,27 +214,62 @@ export default class Mimetypes {
     async #instantiatePackageHandler(
         metadata: HandlerMetadata,
         packageName: string,
-    ): Promise<BaseHandler | null> {
+        mimetype: string,
+    ): Promise<unknown> {
         let mod: unknown;
         try {
             mod = await this.#loader(packageName);
-        } catch {
-            return null;
+        } catch (cause) {
+            throw new MimetypePluginError({
+                reason: "package import failed",
+                packageName,
+                mimetype,
+                cause,
+            });
         }
-        if (typeof mod !== "object" || mod === null) return null;
+        if (typeof mod !== "object" || mod === null) {
+            throw new MimetypePluginError({
+                reason: "module must expose a default handler constructor",
+                packageName,
+                mimetype,
+                cause: new TypeError("handler module is not an object"),
+            });
+        }
         const HandlerClass = (mod as { default?: unknown }).default;
-        if (typeof HandlerClass !== "function") return null;
-        const Ctor = HandlerClass as new (m: HandlerMetadata) => BaseHandler;
-        return new Ctor(metadata);
+        if (typeof HandlerClass !== "function") {
+            throw new MimetypePluginError({
+                reason: "module must expose a default handler constructor",
+                packageName,
+                mimetype,
+                cause: new TypeError("default export is not a constructor"),
+            });
+        }
+        try {
+            const Ctor = HandlerClass as new (m: HandlerMetadata) => unknown;
+            return new Ctor(metadata);
+        } catch (cause) {
+            throw new MimetypePluginError({
+                reason: "handler construction failed",
+                packageName,
+                mimetype,
+                cause,
+            });
+        }
     }
 
     async #instantiateTreeSitterHandler(
         metadata: HandlerMetadata,
-        mimetype: string,
-    ): Promise<BaseHandler | null> {
+        info: HandlerInfo,
+    ): Promise<unknown> {
         const { lookupTreeSitterLanguage } = await import("./treesitter/registry.ts");
-        const entry = lookupTreeSitterLanguage(mimetype);
-        if (entry === null) return null;
+        const entry = lookupTreeSitterLanguage(info.mimetype);
+        if (entry === null) {
+            throw new MimetypePluginError({
+                reason: "framework registry entry is absent",
+                packageName: info.packageName,
+                mimetype: info.mimetype,
+            });
+        }
         const { default: TreeSitterLanguageHandler } = await import("./treesitter/handler.ts");
         return new TreeSitterLanguageHandler(metadata, entry);
     }
@@ -254,18 +311,6 @@ export default class Mimetypes {
         // only deepXml is requested and the handler hasn't overridden deepXml().
         // GrammarNotInstalledError selects the non-strict degradation path.
         //
-        // Missing required methods fail explicitly. #88 owns replacing the
-        // version-specific compatibility branch with one handler-load contract.
-        for (const method of ["deepXml", "references"] as const) {
-            if (channels.has(method) && typeof handler[method] !== "function") {
-                throw new TypeError(
-                    `Handler for ${mimetype} does not implement ${method}() — its `
-                    + `@plurnk/plurnk-mimetypes-* package predates the 0.15 duck `
-                    + `contract. Update the handler package to a 0.15-compatible `
-                    + `release (the floor handlers shipped 0.15 patches).`,
-                );
-            }
-        }
         const needsDeepJson = channels.has("deepJson")
             || (channels.has("deepXml") && handler.deepXml === BaseHandler.prototype.deepXml);
         let symbols: MimeSymbol[] | undefined;
@@ -362,14 +407,11 @@ export default class Mimetypes {
 
         const handler = await this.getHandler(mimetype);
         if (handler === null) {
-            if (info === null) {
-                throw new UnsupportedDialectError({
-                    mimetype,
-                    dialect: parsed.dialect,
-                    reason: "no registered handler provides a readable projection",
-                });
-            }
-            throw new ReferenceError(`Mimetypes.query: registered handler unavailable for ${mimetype}`);
+            throw new UnsupportedDialectError({
+                mimetype,
+                dialect: parsed.dialect,
+                reason: "no registered handler provides a readable projection",
+            });
         }
 
         return handler.query(content, parsed.dialect, parsed.pattern, parsed.flags);
@@ -425,6 +467,27 @@ function errorResult(mimetype: string | null): ProcessResult {
         ok: false,
         totalLines: 0,
     };
+}
+
+function handlerSurfaceFailure(candidate: unknown, metadata: HandlerMetadata): TypeError | null {
+    if (typeof candidate !== "object" || candidate === null) {
+        return new TypeError("invalid handler surface: constructor did not return an object");
+    }
+    const surface = candidate as Record<string, unknown>;
+    const missing = HANDLER_METHODS.filter((method) => typeof surface[method] !== "function");
+    if (missing.length > 0) {
+        return new TypeError(`invalid handler surface: missing callable ${missing.map((method) => `${method}()`).join(", ")}`);
+    }
+    if (
+        surface.mimetype !== metadata.mimetype
+        || surface.glyph !== metadata.glyph
+        || !Array.isArray(surface.extensions)
+        || surface.extensions.length !== metadata.extensions.length
+        || !surface.extensions.every((extension, index) => extension === metadata.extensions[index])
+    ) {
+        return new TypeError("invalid handler surface: constructor did not preserve injected metadata");
+    }
+    return null;
 }
 
 // Derive successful-degradation Notices from the result signals

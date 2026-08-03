@@ -40,7 +40,9 @@ supply `ProcessInput.content` in the declared shape; the framework does not
 coerce an explicitly supplied value.
 
 Handler identity (`mimetype`, `glyph`, and `extensions`) is injected from the
-discovered package declaration at construction.
+discovered package declaration at construction. The orchestrator validates the
+handler surface structurally before caching it; class identity is not part of
+the contract.
 
 ### §mimetype-lifecycle 1.1 Orchestrator lifecycle
 
@@ -98,11 +100,13 @@ Multi-handler example (one package serving variants of the same content type):
 | `attribution` | string \| string[] | no       | Normalized non-empty creator tags on each package-sourced `HandlerInfo`; the family does not interpret them and framework tree-sitter entries omit them. |
 | `handlers`    | `HandlerDecl[]`    | yes      | One or more peer handler entries.                                                                                                                        |
 
+The containing `package.json` `name` must be a valid current npm package name.
+
 `HandlerDecl`:
 
 | Field        | Type     | Required | Contract                                                                                                        |
 |--------------|----------|----------|-----------------------------------------------------------------------------------------------------------------|
-| `name`       | string   | yes      | Mimetype registered by this entry (`text/markdown`, `application/json`, …).                                     |
+| `name`       | string   | yes      | RFC 6838 restricted type/subtype name registered by this entry (`text/markdown`, `application/json`, …).        |
 | `glyph`      | string   | no       | Display marker; defaults to an empty string.                                                                    |
 | `extensions` | string[] | no       | Dotted entries are case-insensitive extensions; bare entries are case-sensitive filenames such as `Dockerfile`. |
 
@@ -115,13 +119,17 @@ flowchart TD
     I -->|yes| E["caller order"]
     I -->|no| N["enumerate all node_modules packages"]
     N --> O["third-party sorted, then @plurnk sorted"]
-    E --> M["read plurnk.kind + handlers"]
+    E --> M["read package.json"]
     O --> M
-    M --> K{"valid mimetype declaration?"}
+    M --> K{"exact mimetype-family claim?"}
     K -->|no| Z["ignore package"]
-    K -->|yes| T{"trusted?"}
+    K -->|yes| P{"valid package name?"}
+    P -->|no| F["throw MimetypePluginError"]
+    P -->|yes| T{"trusted?"}
     T -->|no| S["record package in skipped"]
-    T -->|yes| G["register entries; later claims win"]
+    T -->|yes| D{"valid handler declaration?"}
+    D -->|no| F
+    D -->|yes| G["register entries; later claims win"]
     G --> B["add unclaimed tree-sitter entries/keys"]
 ```
 
@@ -129,6 +137,13 @@ The trust predicate runs before handler code import and withheld package names
 remain observable in `skipped` ({§plugin-trust-boundary}). A package claim for a
 tree-sitter mimetype suppresses that built-in entry; otherwise the built-in
 entry fills only unclaimed extension/filename keys.
+
+§mimetype-plugin-failure A missing manifest or package outside the mimetype
+family is ignored, and a withheld package is reported without importing its
+code. A trusted family claim with a malformed declaration fails discovery. A
+registered handler's import, construction, or structural validation failure
+throws `MimetypePluginError` with package and mimetype identity and preserves
+its original cause when one exists.
 
 ### 2.1 Mimetype naming convention
 
@@ -284,13 +299,13 @@ The exported `ProcessResult` type owns the executable field shape.
 
 - Logical editor lines: `abc\ndef` → `2`, `abc\ndef\n` → `2` (the trailing newline terminates rather than adds a line), `"\n"` → `1`, and `""` → `0`.
 - **Binary content** (mimetypes flagged `binary: true` in their `plurnk` block - PDF, future images/archives): `totalLines: 0`. Lines are not a meaningful unit for the source bytes. A handler's readable `content` projection is independently line-addressable; `totalLines` does not describe that derived text.
-- `0` on every returned error result (detection null, content unreadable, or handler missing). A propagated exception returns no `ProcessResult`.
+- `0` on every returned error result (detection null or content unreadable). A propagated exception returns no `ProcessResult`.
 
 | Failure                             | Current behavior                                                                                                                               |
 |-------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------|
 | Detection returns null              | `{ mimetype: null, ok: false, totalLines: 0 }`; no channel fields.                                                                             |
 | Content path cannot be read         | `{ mimetype, ok: false, totalLines: 0 }`; no channel fields.                                                                                   |
-| Registered handler cannot be loaded | `{ mimetype, ok: false, totalLines: 0 }`; no channel fields.                                                                                   |
+| Registered handler cannot be loaded | `MimetypePluginError` propagates; no `ProcessResult`.                                                                                         |
 | Tree-sitter grammar leaf is absent  | Non-strict mode preserves the mimetype and extent, returns empty requested structural channels, and sets `grammarMissing`; strict mode throws. |
 | `validate()` throws                 | Propagates to the caller.                                                                                                                      |
 | Handler channel method throws       | Propagates unless the selected extractor explicitly classifies the failure as an empty/null parse result.                                      |
@@ -510,7 +525,7 @@ precise source evidence while preserving the same result contract.
 | Detection returns null                      | `ReferenceError`          | Propagates                     |
 | Content is unreadable                       | `ReferenceError`          | Propagates                     |
 | Resolved mimetype has no registered handler | `UnsupportedDialectError` | 415                            |
-| Registered handler cannot be loaded         | `ReferenceError`          | Propagates                     |
+| Registered handler cannot be loaded         | `MimetypePluginError`     | Propagates                     |
 | Dialect is unsupported                      | `UnsupportedDialectError` | 415                            |
 | Expression is malformed                     | `InvalidExpressionError`  | 400                            |
 | Content cannot be parsed for the dialect    | `QueryParseFailureError`  | 203 with readable content      |
@@ -527,12 +542,13 @@ successful non-strict degradation:
 | `grammarMissing`    | `grammar_degraded`    | Mimetype and missing grammar package.        |
 | `embeddingMissing`  | `embedding_degraded`  | Mimetype and missing embedding package.      |
 
-Hard failures are not Notices. `UnsupportedDialectError`,
-`InvalidExpressionError`, and strict `GrammarNotInstalledError` remain typed
-exceptions. `QueryParseFailureError` is also typed, but the standard scheme
-adapter treats it as a successful 203 raw-content fallback rather than a
-Problem. Each consumer owns that operation-boundary policy. This keeps one
-authority for failure status, detail, and recovery.
+Hard failures are not Notices. `MimetypePluginError`,
+`UnsupportedDialectError`, `InvalidExpressionError`, and strict
+`GrammarNotInstalledError` remain typed exceptions. `QueryParseFailureError` is
+also typed, but the standard scheme adapter treats it as a successful 203
+raw-content fallback rather than a Problem. Each consumer owns that
+operation-boundary policy. This keeps one authority for failure status, detail,
+and recovery.
 
 Notice sources use `mimetype:<normalized-type>`, with invalid runs normalized to
 `-`. `level` is required and producer-owned; these degradation Notices use

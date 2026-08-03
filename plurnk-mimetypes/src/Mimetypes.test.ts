@@ -7,6 +7,7 @@ import path from "node:path";
 import os from "node:os";
 import Mimetypes from "./Mimetypes.ts";
 import BaseHandler from "./BaseHandler.ts";
+import MimetypePluginError from "./MimetypePluginError.ts";
 import { UnsupportedDialectError } from "./QueryError.ts";
 import type {
     Discovery,
@@ -141,30 +142,54 @@ describe("Mimetypes — getHandler", () => {
         assert.equal(loadCount, 1, "loader should be called once and cached");
     });
 
-    it("returns null when loader throws", async () => {
+    it("preserves a registered handler import failure", async () => {
+        const cause = new Error("module not found");
         const m = new Mimetypes({
             discovery: makeDiscovery([plainInfo]),
             loader: async () => {
-                throw new Error("module not found");
+                throw cause;
             },
         });
-        assert.equal(await m.getHandler("text/plain"), null);
+        await assert.rejects(
+            () => m.getHandler("text/plain"),
+            (error: unknown) => {
+                assert.ok(error instanceof MimetypePluginError);
+                assert.equal(error.packageName, plainInfo.packageName);
+                assert.equal(error.mimetype, plainInfo.mimetype);
+                assert.strictEqual(error.cause, cause);
+                return true;
+            },
+        );
     });
 
-    it("returns null when module lacks a default export", async () => {
+    it("rejects a module without a default handler constructor", async () => {
         const m = new Mimetypes({
             discovery: makeDiscovery([plainInfo]),
             loader: async () => ({ named: FakePlainHandler }),
         });
-        assert.equal(await m.getHandler("text/plain"), null);
+        await assert.rejects(
+            () => m.getHandler("text/plain"),
+            (error: unknown) => {
+                assert.ok(error instanceof MimetypePluginError);
+                assert.ok(error.cause instanceof TypeError);
+                return true;
+            },
+        );
     });
 
-    it("returns null when default export isn't a constructor", async () => {
+    it("rejects a non-constructor default export", async () => {
         const m = new Mimetypes({
             discovery: makeDiscovery([plainInfo]),
             loader: async () => ({ default: "not a class" }),
         });
-        assert.equal(await m.getHandler("text/plain"), null);
+        await assert.rejects(
+            () => m.getHandler("text/plain"),
+            (error: unknown) => {
+                assert.ok(error instanceof MimetypePluginError);
+                assert.ok(error.cause instanceof TypeError);
+                return true;
+            },
+        );
     });
 
     it("passes only metadata to handlers", async () => {
@@ -211,15 +236,15 @@ describe("Mimetypes — process: metadata + error paths", () => {
         });
     });
 
-    it("ok:false metadata-only when handler is missing", async () => {
+    it("propagates a registered handler contract failure", async () => {
         const m = new Mimetypes({
             discovery: makeDiscovery([plainInfo]),
             loader: async () => ({ default: undefined }),
         });
-        const result = await m.process({ path: "foo.txt", content: "raw" });
-        assert.equal(result.ok, false);
-        assert.equal(result.mimetype, "text/plain");
-        assert.equal("symbols" in result, false, "error results carry no channel fields");
+        await assert.rejects(
+            () => m.process({ path: "foo.txt", content: "raw" }),
+            MimetypePluginError,
+        );
     });
 
     it("propagates validate errors per error policy", async () => {
@@ -467,7 +492,7 @@ describe("Mimetypes - process: totalLines", () => {
         assert.equal(r.totalLines, 0);
     });
 
-    it("returns 0 on every error path (detection / read / handler-missing)", async () => {
+    it("returns 0 on detection and read error results", async () => {
         const noDetect = new Mimetypes({ discovery: makeDiscovery([]) });
         const r1 = await noDetect.process({ path: "foo.unknown", content: "x" });
         assert.equal(r1.totalLines, 0);
@@ -478,13 +503,6 @@ describe("Mimetypes - process: totalLines", () => {
         });
         const r2 = await cantRead.process({ path: "/nonexistent.txt" });
         assert.equal(r2.totalLines, 0);
-
-        const noHandler = new Mimetypes({
-            discovery: makeDiscovery([plainInfo]),
-            loader: async () => ({ default: undefined }),
-        });
-        const r3 = await noHandler.process({ path: "foo.txt", content: "anything" });
-        assert.equal(r3.totalLines, 0);
     });
 });
 
@@ -617,9 +635,11 @@ describe("Mimetypes — query", () => {
                 );
             },
             (error: unknown) => {
-                assert.ok(error instanceof ReferenceError);
+                assert.ok(error instanceof MimetypePluginError);
                 assert.equal(error instanceof UnsupportedDialectError, false);
-                assert.match(error.message, /registered handler unavailable/);
+                assert.equal(error.packageName, plainInfo.packageName);
+                assert.equal(error.mimetype, plainInfo.mimetype);
+                assert.match(String(error.cause), /module not found/);
                 return true;
             },
         );

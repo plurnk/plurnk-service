@@ -1,6 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import Meta from "@plurnk/plurnk-meta";
+import MimetypePluginError from "./MimetypePluginError.ts";
 import { TREE_SITTER_REGISTRY } from "./treesitter/registry.ts";
 import type {
     Discovery,
@@ -17,12 +18,11 @@ import type {
 // import; withheld package names return as `skipped` for consumer presentation.
 // Tests and unusual layouts may provide package directories explicitly.
 //
-// A package is recognized as a handler when its `package.json` declares
-// `plurnk.kind === "mimetype"` and exposes one or more handler entries via
-// `plurnk.handlers: HandlerDecl[]` (SPEC §2). Each entry — all entries are
-// peers — produces its own HandlerInfo with its own metadata, registered
-// separately in the routing maps. Detection returns the matched name; the
-// matched mimetype is what flows through to `ProcessResult.mimetype`.
+// Exact `plurnk.kind === "mimetype"` enters this plugin family. Once trusted,
+// the package must expose one or more peer entries through
+// `plurnk.handlers: HandlerDecl[]` ({§mimetype-plugin-failure}). Each entry
+// produces its own HandlerInfo and routing-map registration. Detection returns
+// the matched name, which flows through to `ProcessResult.mimetype`.
 //
 // Conflicts (two packages claiming the same mimetype name or extension):
 // last-loaded wins, and `@plurnk` is scanned LAST so a first-party (floor)
@@ -39,11 +39,13 @@ export async function discover(options: DiscoverOptions = {}): Promise<Discovery
     const skipped = new Set<string>();
 
     for (const dir of dirs) {
-        const infos = await readHandlerInfos(dir);
-        if (infos.length > 0 && !isTrusted(infos[0].packageName)) {
-            skipped.add(infos[0].packageName);
+        const manifest = await readMimetypeManifest(dir);
+        if (manifest === null) continue;
+        if (!isTrusted(manifest.packageName)) {
+            skipped.add(manifest.packageName);
             continue;
         }
+        const infos = readHandlerInfos(manifest);
         for (const info of infos) {
             handlers.set(info.mimetype, info);
             for (const entry of info.extensions) {
@@ -107,55 +109,111 @@ async function defaultPackageDirs(cwd: string): Promise<string[]> {
     return [...thirdParty, ...plurnk];
 }
 
-// Produce one HandlerInfo per declared handler entry. Returns [] for
-// non-handler packages or invalid declarations.
-async function readHandlerInfos(dir: string): Promise<HandlerInfo[]> {
+interface MimetypeManifest {
+    readonly manifestPath: string;
+    readonly packageName: string;
+    readonly plurnk: Record<string, unknown>;
+}
+
+const PACKAGE_NAME = /^(?:@[a-z0-9~-][a-z0-9._~-]*\/[a-z0-9~-][a-z0-9._~-]*|[a-z0-9~-][a-z0-9._~-]*)$/;
+const MEDIA_TYPE_NAME = /^[A-Za-z0-9][A-Za-z0-9!#$&^_.+-]{0,126}\/[A-Za-z0-9][A-Za-z0-9!#$&^_.+-]{0,126}$/;
+
+function isPackageName(value: unknown): value is string {
+    return typeof value === "string"
+        && value.length > 0
+        && value.length <= 214
+        && PACKAGE_NAME.test(value);
+}
+
+// Establish a family claim without interpreting executable declaration fields.
+// Non-packages and packages outside this family remain out of domain.
+async function readMimetypeManifest(dir: string): Promise<MimetypeManifest | null> {
     const pkgPath = path.join(dir, "package.json");
     let raw: string;
     try {
         raw = await fs.readFile(pkgPath, "utf-8");
     } catch {
-        return [];
+        return null;
     }
 
     let pkg: unknown;
     try {
         pkg = JSON.parse(raw);
     } catch {
-        return [];
+        return null;
     }
 
-    if (typeof pkg !== "object" || pkg === null) return [];
+    if (typeof pkg !== "object" || pkg === null) return null;
     const record = pkg as Record<string, unknown>;
     const plurnk = record.plurnk;
-    if (typeof plurnk !== "object" || plurnk === null) return [];
+    if (typeof plurnk !== "object" || plurnk === null) return null;
     const plurnkRec = plurnk as Record<string, unknown>;
-    if (!Meta.declaresKind(plurnkRec, "mimetype")) return [];
-    if (!Array.isArray(plurnkRec.handlers)) return [];
+    if (!Meta.declaresKind(plurnkRec, "mimetype")) return null;
+    if (!isPackageName(record.name)) {
+        throw new MimetypePluginError({
+            reason: "package name must be a current npm package name",
+            packageName: typeof record.name === "string" ? record.name : null,
+            manifestPath: pkgPath,
+        });
+    }
+    return { manifestPath: pkgPath, packageName: record.name, plurnk: plurnkRec };
+}
 
-    const packageName = typeof record.name === "string" ? record.name : "";
-    // Package-level `binary: true` applies to every handler in the package.
-    const binary = plurnkRec.binary === true;
-    // Normalized package-level attribution is copied to every handler; the host owns policy.
-    const attribution = normalizeAttribution(plurnkRec.attribution);
-    const infos: HandlerInfo[] = [];
-
-    for (const entry of plurnkRec.handlers) {
-        if (typeof entry !== "object" || entry === null) continue;
-        const e = entry as Record<string, unknown>;
-        if (typeof e.name !== "string" || e.name === "") continue;
-        infos.push({
-            mimetype: e.name,
-            glyph: typeof e.glyph === "string" ? e.glyph : "",
+// Produce one HandlerInfo per valid entry from one trusted family claim.
+function readHandlerInfos(manifest: MimetypeManifest): HandlerInfo[] {
+    const { manifestPath, packageName, plurnk } = manifest;
+    const fail = (reason: string, mimetype?: string): never => {
+        throw new MimetypePluginError({
+            reason,
             packageName,
-            extensions: filterExtensions(e.extensions),
+            mimetype,
+            manifestPath,
+        });
+    };
+    const handlers = plurnk.handlers;
+    if (!Array.isArray(handlers) || handlers.length === 0) {
+        fail("plurnk.handlers must be a non-empty array");
+    }
+    const entries = handlers as unknown[];
+    if (plurnk.binary !== undefined && typeof plurnk.binary !== "boolean") {
+        fail("plurnk.binary must be a boolean when present");
+    }
+    // Package-level `binary: true` applies to every handler in the package.
+    const binary = plurnk.binary === true;
+    // Normalized package-level attribution is copied to every handler; the host owns policy.
+    const attribution = normalizeAttribution(plurnk.attribution);
+
+    return entries.map((entry, index) => {
+        if (typeof entry !== "object" || entry === null) {
+            fail(`plurnk.handlers entry ${index} must be an object`);
+        }
+        const e = entry as Record<string, unknown>;
+        const name = e.name;
+        const glyph = e.glyph;
+        const extensions = e.extensions;
+        if (typeof name !== "string" || !MEDIA_TYPE_NAME.test(name)) {
+            fail(`plurnk.handlers entry ${index} must declare a media-type name`, typeof name === "string" ? name : undefined);
+        }
+        const mimetype = name as string;
+        if (glyph !== undefined && typeof glyph !== "string") {
+            fail(`plurnk.handlers entry ${index} glyph must be a string`, mimetype);
+        }
+        if (extensions !== undefined && (
+            !Array.isArray(extensions)
+            || !extensions.every((extension) => typeof extension === "string" && extension !== "")
+        )) {
+            fail(`plurnk.handlers entry ${index} extensions must be non-empty strings`, mimetype);
+        }
+        return {
+            mimetype,
+            glyph: typeof glyph === "string" ? glyph : "",
+            packageName,
+            extensions: (extensions ?? []) as string[],
             binary,
             source: "package",
             ...(attribution !== undefined && { attribution }),
-        });
-    }
-
-    return infos;
+        } satisfies HandlerInfo;
+    });
 }
 
 // Normalize the pass-through shape without imposing host attribution policy.
@@ -166,9 +224,4 @@ function normalizeAttribution(raw: unknown): string | string[] | undefined {
         return tags.length > 0 ? tags : undefined;
     }
     return undefined;
-}
-
-function filterExtensions(raw: unknown): string[] {
-    if (!Array.isArray(raw)) return [];
-    return raw.filter((e): e is string => typeof e === "string" && e !== "");
 }
