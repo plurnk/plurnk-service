@@ -82,6 +82,7 @@ Channel publication follows the manifest contract: a fragmentless READ publishes
 | SEND[410] delete | as `ctx.entries.delete` returns |
 | SEND[499] cancel | 200 (engine already routed teardown to the handle) |
 | Client-cancelled fetch | 499 (`kind: cancelled`) |
+| Non-public guarded target | 403 (`kind: ssrf-blocked`) |
 | Upstream / network failure | 502 (`kind: fetch-failed`) |
 | Non-url target | 400 (`kind: bad-target`) |
 | URL userinfo | 400 (`kind: userinfo-not-allowed`) |
@@ -101,6 +102,22 @@ The **byte path** is dependency-free: `fetch` / `AbortController` / `TextDecoder
 The **render path** takes one runtime dependency, `playwright`, **lazy-imported** (`Browser.ts`) so byte fetches do not load it. A normal installation provisions Playwright's compatible Chromium hermetically inside the installed package (`PLAYWRIGHT_BROWSERS_PATH=0`) and boot verifies it before reporting the daemon ready; execution therefore does not depend on the installing user's home-directory cache. Playwright's native installation environment, including an operator-set `PLAYWRIGHT_BROWSERS_PATH` or `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD`, remains authoritative.
 
 `PLURNK_SCHEMES_HTTP_PLAYWRIGHT_METHOD` maps directly to Playwright's BrowserType surface: `launch` (default), `connect`, `connectOverCDP`, or `disabled`. Launch uses the provisioned Chromium unless the operator selects a supported installed-browser `CHANNEL` or exact `EXECUTABLE_PATH`. `connect` uses the full Playwright protocol; `connectOverCDP` attaches to a running Chromium browser with Playwright's documented lower-fidelity CDP path. Both require `PLAYWRIGHT_ENDPOINT`. Disabled rendering fails clearly rather than treating raw HTML as equivalent. Contradictory selections fail boot; methods never fall back into one another.
+
+### §http-security-boundary Network security boundary
+
+Direct HTTP operations and `WebFetcher` use the same `Guard.fetch` byte
+transport. It accepts only credential-free HTTP(S) targets whose complete DNS
+answer contains ordinary globally reachable unicast addresses, and repeats
+that validation before every manually followed redirect hop. A refused direct
+operation returns `403`; prefetch treats it as an unmaterializable URL.
+
+Redirect request transitions follow WHATWG Fetch: 301/302 rewrite POST to GET;
+303 rewrites methods other than GET/HEAD to GET; 307/308 preserve method and
+body. A body rewrite removes its body headers, and a cross-origin hop removes
+`Authorization`. Discarded redirect response bodies are cancelled. Direct and
+prefetch browser renders apply the same address predicate to every navigation
+and subresource request. Validation-time and connection-time DNS resolution
+are not yet bound to one answer; #117 owns that distinct transport question.
 
 ## §render-lifecycle §6 Render lifecycle
 
@@ -136,7 +153,7 @@ new WebFetcher().fetch(url, opts): Promise<{
   projects the rendered DOM through the same handler. Browser mutation must
   not replace already-useful server-rendered content (#596).
 - **`null`** — dead: SSRF-refused, unreachable, non-2xx, non-textual (binary pruned), or empty. Dead-ness is a **value, not a throw** — the liveness verdict core prunes on.
-- **SSRF guard** (`Guard`): http(s) only, no localhost, every resolved address public (RFC-reserved v4/v6 ranges blocked), with **manual per-hop redirect re-guarding**; the chromium render is guarded too via request interception. Hops capped by `PLURNK_SCHEMES_HTTP_REDIRECTS`. Residual DNS-rebinding sliver (runtime re-resolves after the check) accepted day-one.
+- **Network boundary** — acquisition follows {§http-security-boundary}; redirect hops are capped by `PLURNK_SCHEMES_HTTP_REDIRECTS`.
 - **Textual set**: `text/*`, `application/{json,xml,xhtml+xml}`, `+json`/`+xml` suffixes.
 
 ## §ws §8 WebSocket

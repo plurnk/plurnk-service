@@ -42,6 +42,7 @@ import { NetworkAddress, Results } from "@plurnk/plurnk-schemes";
 import { readFile } from "node:fs/promises";
 import Browser, { BROWSER_UA, requireNumEnv, type RenderResult } from "./Browser.ts";
 import ErrorDetail from "./ErrorDetail.ts";
+import Guard, { GuardBlockedError } from "./Guard.ts";
 import WebFetcher from "./WebFetcher.ts";
 
 // The channel the response body streams into, and the header metadata channel.
@@ -62,7 +63,7 @@ const documentation = await readFile(new URL("../docs/http.md", import.meta.url)
 // What Http needs from the render foundation — narrow, so tests inject a fake.
 interface Renderer {
     ready?(): Promise<string>;
-    render(url: string, opts: { workerId: number; signal?: AbortSignal; headers?: ReadonlyArray<readonly [string, string]> }): Promise<RenderResult>;
+    render(url: string, opts: { workerId: number; signal?: AbortSignal; headers?: ReadonlyArray<readonly [string, string]>; guard?: (url: string) => Promise<boolean> }): Promise<RenderResult>;
     close?(): Promise<void>;
 }
 
@@ -410,18 +411,17 @@ export default class Http implements SchemeHandler {
         composed.addEventListener("abort", onAbort, { once: true });
 
         try {
-            const response = await fetch(url, {
+            const requestHeaders: Array<[string, string]> = headers.some(([k]) => k.toLowerCase() === "user-agent")
+                ? [...headers, ...conditional]
+                : [["User-Agent", BROWSER_UA], ...headers, ...conditional];
+            const response = await Guard.fetch(url, {
                 method,
                 body,
                 // One browser identity on the wire (never Node's default "node"
                 // UA — a loud automated-client fingerprint). The model's own
                 // {User-Agent: …} block wins when present.
-                headers: headers.some(([k]) => k.toLowerCase() === "user-agent")
-                    ? [...headers, ...conditional]
-                    : [["User-Agent", BROWSER_UA] as [string, string], ...headers, ...conditional],
-                signal: local.signal,
-                redirect: "follow",
-            });
+                headers: requestHeaders,
+            }, local.signal);
 
             // Origin confirms the cached copy is current → re-serve it, skip the
             // render/stream. A 304-serve is a first-class READ: the model sees the
@@ -447,7 +447,12 @@ export default class Http implements SchemeHandler {
                 && /^(?:text\/html|application\/xhtml\+xml)\b/i.test(contentType);
             if (isHtml) {
                 await response.body?.cancel();
-                const result = await this.#browser.render(url, { workerId: ctx.workerId, signal: local.signal, headers });
+                const result = await this.#browser.render(url, {
+                    workerId: ctx.workerId,
+                    signal: local.signal,
+                    headers,
+                    guard: Guard.isPublicUrl,
+                });
                 const projected = await ctx.projection.readable(result.html, "text/html");
                 if (projected === null) throw new Error("rendered HTML has no readable projection");
                 await Http.#writeHeader(ctx, result.status, result.statusText, result.headers);
@@ -487,22 +492,26 @@ export default class Http implements SchemeHandler {
             return { shape: "passthrough", status: 102 };
         } catch (err) {
             const aborted = local.signal.aborted;
-            if (!aborted) console.error("HTTP acquisition failed", { method, url, err });
+            const blocked = !aborted && err instanceof GuardBlockedError;
+            if (!aborted && !blocked) console.error("HTTP acquisition failed", { method, url, err });
             const cause = ErrorDetail.preview(err, this.#errorDetailLimit);
             const reason = aborted
                 ? `HTTP ${method} ${url} was cancelled.`
-                : `HTTP ${method} ${url} failed: ${cause}`;
-            // 499 for client-cancelled, 502 for upstream/network/render failure.
+                : blocked
+                    ? `${err.url} is not a public http(s) target.`
+                    : `HTTP ${method} ${url} failed: ${cause}`;
+            // 403 for a guarded target, 499 for client cancellation, and 502 for
+            // an upstream/network/render failure.
             const result = Http.#bad(
-                aborted ? 499 : 502,
+                aborted ? 499 : blocked ? 403 : 502,
                 "http",
-                aborted ? "cancelled" : "fetch-failed",
+                aborted ? "cancelled" : blocked ? "ssrf-blocked" : "fetch-failed",
                 reason,
                 {
-                    target: url,
+                    target: blocked ? err.url : url,
                     method,
-                    stage: "acquisition",
-                    retryable: !aborted,
+                    stage: blocked ? "target-validation" : "acquisition",
+                    retryable: !aborted && !blocked,
                 },
             );
             await ctx.subscriptions.close(result, reason);

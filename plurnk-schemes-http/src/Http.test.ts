@@ -4,7 +4,7 @@
 // subscription lifecycle (open → notifyChunk → close) and the SEND verb
 // dispatch without a network or a database.
 
-import test from "node:test";
+import test, { mock } from "node:test";
 import { strict as assert } from "node:assert";
 import {
     Results,
@@ -30,15 +30,16 @@ import {
 } from "@plurnk/plurnk-schemes";
 import Http from "./Http.ts";
 import type { RenderResult } from "./Browser.ts";
+import Guard from "./Guard.ts";
 
 // A fake render foundation: returns a canned rendered page, records the call
 // (including the request headers threaded through — grammar#46).
 const fakeBrowser = (html: string) => {
-    const calls: Array<{ url: string; workerId: number; headers?: ReadonlyArray<readonly [string, string]> }> = [];
+    const calls: Array<{ url: string; workerId: number; headers?: ReadonlyArray<readonly [string, string]>; guarded: boolean }> = [];
     return {
         calls,
-        render: async (url: string, opts: { workerId: number; signal?: AbortSignal; headers?: ReadonlyArray<readonly [string, string]> }): Promise<RenderResult> => {
-            calls.push({ url, workerId: opts.workerId, headers: opts.headers });
+        render: async (url: string, opts: { workerId: number; signal?: AbortSignal; headers?: ReadonlyArray<readonly [string, string]>; guard?: (url: string) => Promise<boolean> }): Promise<RenderResult> => {
+            calls.push({ url, workerId: opts.workerId, headers: opts.headers, guarded: opts.guard !== undefined });
             return { status: 200, statusText: "OK", headers: [["content-type", "text/html"]], html };
         },
     };
@@ -175,10 +176,18 @@ const mockFetch = (status: number, statusText: string, bodyChunks: string[], hea
     return async () => new Response(stream, { status, statusText, headers });
 };
 
-const withFetch = async (impl: typeof fetch | (() => Promise<Response>), fn: () => Promise<void>) => {
+const withFetch = async (
+    impl: typeof fetch | (() => Promise<Response>),
+    fn: () => Promise<void>,
+    allowAllTargets = true,
+) => {
     const original = globalThis.fetch;
+    const publicUrl = allowAllTargets ? mock.method(Guard, "isPublicUrl", async () => true) : null;
     globalThis.fetch = impl as typeof fetch;
-    try { await fn(); } finally { globalThis.fetch = original; }
+    try { await fn(); } finally {
+        globalThis.fetch = original;
+        publicUrl?.mock.restore();
+    }
 };
 
 // ── manifest ──────────────────────────────────────────────────────────────
@@ -379,6 +388,70 @@ test("HTTP userinfo is rejected without transport or secret-bearing diagnostics"
     assert.equal(fetched, false);
 });
 
+test("READ/POST/PUT/DELETE: a non-public target is a 403 and never reaches transport", async () => {
+    let fetched = false;
+    await withFetch(async () => {
+        fetched = true;
+        return new Response("private");
+    }, async () => {
+        const target = urlTarget("http://127.0.0.1/private", "/private");
+        const operations = [
+            (http: Http, ctx: SchemeCtx) => http.read(readStmt(target), ctx),
+            (http: Http, ctx: SchemeCtx) => http.send(sendStmt(200, target, "body"), ctx),
+            (http: Http, ctx: SchemeCtx) => http.edit(editStmt(target, "body"), ctx),
+            (http: Http, ctx: SchemeCtx) => http.kill(killStmt(target), ctx),
+        ];
+        for (const operation of operations) {
+            const { ctx, inspect } = makeCtx();
+            const result = await operation(new Http(), ctx);
+            assert.equal(result.status, 403);
+            assert.equal(result.problem?.type, "https://problems.plurnk.dev/scheme/http/ssrf-blocked");
+            assert.equal(result.problem?.stage, "target-validation");
+            assert.equal(inspect().closed?.result.problem, result.problem);
+        }
+    }, false);
+    assert.equal(fetched, false);
+});
+
+test("READ: a public target reaches the guarded transport", async () => {
+    const { ctx, inspect } = makeCtx();
+    let fetched = false;
+    await withFetch(async () => {
+        fetched = true;
+        return new Response("public", { status: 200, headers: { "content-type": "text/plain" } });
+    }, async () => {
+        const result = await new Http().read(
+            readStmt(urlTarget("https://8.8.8.8/public", "/public")),
+            ctx,
+        );
+        assert.equal(result.status, 102);
+    }, false);
+    assert.equal(fetched, true);
+    assert.equal(inspect().closed?.result.status, 200);
+});
+
+test("READ: a public redirect into private space is refused before its second request", async () => {
+    const { ctx, inspect } = makeCtx();
+    let calls = 0;
+    await withFetch(async () => {
+        calls += 1;
+        return new Response(null, {
+            status: 302,
+            headers: { location: "http://127.0.0.1/private" },
+        });
+    }, async () => {
+        const result = await new Http().read(
+            readStmt(urlTarget("https://8.8.8.8/public", "/public")),
+            ctx,
+        );
+        assert.equal(result.status, 403);
+        assert.equal(result.problem?.type, "https://problems.plurnk.dev/scheme/http/ssrf-blocked");
+        assert.equal(result.problem?.target, "http://127.0.0.1/private");
+        assert.equal(inspect().closed?.result.problem, result.problem);
+    }, false);
+    assert.equal(calls, 1);
+});
+
 test("scoped READ observes the materialized readable entry without refetching", async () => {
     const { ctx, inspect } = makeCtx(priorEntry("complete page", "text/markdown", ""));
     let fetched = false;
@@ -540,7 +613,7 @@ test("READ: rendered HTML archives the DOM while body carries the model-facing p
         assert.equal(r.status, 102);
     });
     const { chunks, closed } = inspect();
-    assert.deepEqual(browser.calls, [{ url: "https://example.com/spa", workerId: 1, headers: [] }]);
+    assert.deepEqual(browser.calls, [{ url: "https://example.com/spa", workerId: 1, headers: [], guarded: true }]);
     const bodyChunks = chunks.filter((c) => c.channel === "body");
     assert.equal(bodyChunks.length, 1);
     assert.equal(bodyChunks[0].chunk, "rendered");
