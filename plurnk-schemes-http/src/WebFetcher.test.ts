@@ -1,8 +1,10 @@
 // WebFetcher primitive tests (#454). Hermetic: injected fake browser, mocked
-// global fetch, IP-literal targets (no DNS). Env from --env-file=.env.defaults.
+// global fetch, and IP literals or explicit guard mocks (no DNS). Env from
+// --env-file=.env.defaults.
 
 import test from "node:test";
 import { strict as assert } from "node:assert";
+import Guard from "./Guard.ts";
 import WebFetcher from "./WebFetcher.ts";
 import type { RenderResult } from "./Browser.ts";
 
@@ -34,6 +36,23 @@ test("live public textual URL → { body, mimetype }", async () => {
         assert.match(fetched?.header ?? "", /^HTTP 200 /);
         assert.match(fetched?.header ?? "", /^x-plurnk-fetched-at:/m);
     });
+});
+
+test("GitHub blob acquisition uses one source target for byte fetch and render", async (t) => {
+    t.mock.method(Guard, "isPublicUrl", async () => true);
+    const browser = fakeBrowser("<html><body>rendered source</body></html>");
+    const seen: string[] = [];
+    const blob = "https://github.com/nodejs/node/blob/main/src/node_version.h";
+    const raw = "https://raw.githubusercontent.com/nodejs/node/main/src/node_version.h";
+    await withFetch((async (url) => {
+        seen.push(String(url));
+        return resp("<html></html>", 200, { "content-type": "text/html" });
+    }) as typeof fetch, async () => {
+        const fetched = await new WebFetcher(browser).fetch(blob);
+        await fetched?.render?.();
+    });
+    assert.deepEqual(seen, [raw]);
+    assert.equal(browser.calls[0]?.url, raw);
 });
 
 test("HTML → byte response first; guarded browser render is a lazy fallback", async () => {

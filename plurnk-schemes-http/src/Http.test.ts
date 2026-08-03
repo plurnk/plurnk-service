@@ -234,6 +234,24 @@ test("prepareFind materializes an exact URL through the guarded readable path", 
     assert.equal(inspect().wrote?.entry.channels.body?.mimetype, "application/json");
 });
 
+test("prepareFind rewrites acquisition but stores the addressed GitHub identity", async () => {
+    const { ctx, inspect } = makeCtx();
+    let seenUrl = "";
+    const blob = "https://github.com/nodejs/node/blob/main/src/node_version.h";
+    await withFetch(async (url) => {
+        seenUrl = String(url);
+        return new Response("// source", { status: 200, headers: { "content-type": "text/plain" } });
+    }, async () => {
+        const prepared = await new Http().prepareFind(
+            findStmt(urlTarget(blob, "/nodejs/node/blob/main/src/node_version.h")),
+            ctx,
+        );
+        assert.equal(prepared.status, 201);
+    });
+    assert.equal(seenUrl, "https://raw.githubusercontent.com/nodejs/node/main/src/node_version.h");
+    assert.equal(inspect().wrote?.pathname, "/github.com/nodejs/node/blob/main/src/node_version.h");
+});
+
 test("prepareFind leaves absent and glob discovery to the shared entry query", async () => {
     const { ctx, inspect } = makeCtx();
     const http = new Http(fakeBrowser("unused"));
@@ -848,7 +866,7 @@ test("KILL → DELETE (method mapping); distinct from SEND[410] cache drop", asy
 
 // ── hostile-host rewrite (schemes-http#4) ──────────────────────────────────
 test("GitHub blob → raw.githubusercontent rewrite (code wants source, not the SPA)", async () => {
-    const { ctx } = makeCtx();
+    const { ctx, inspect } = makeCtx();
     let seenUrl = "";
     const probe = async (url: string | URL | Request) => {
         seenUrl = String(url);
@@ -859,6 +877,7 @@ test("GitHub blob → raw.githubusercontent rewrite (code wants source, not the 
         await new Http().read(readStmt(urlTarget(blob, "/nodejs/node/blob/main/src/node_version.h")), ctx);
     });
     assert.equal(seenUrl, "https://raw.githubusercontent.com/nodejs/node/main/src/node_version.h");
+    assert.equal(inspect().wrote?.pathname, "/github.com/nodejs/node/blob/main/src/node_version.h");
 });
 
 test("GitHub blob rewrite preserves a slash-bearing branch ref", async () => {
@@ -880,6 +899,31 @@ test("non-GitHub URL is fetched verbatim (no rewrite)", async () => {
         await new Http().read(readStmt(urlTarget("https://example.com/x", "/x")), ctx);
     });
     assert.equal(seenUrl, "https://example.com/x");
+});
+
+test("POST/PUT/DELETE preserve the addressed GitHub blob target", async () => {
+    const seen: Array<{ url: string; method: string }> = [];
+    const blob = "https://github.com/o/r/blob/main/src/x.js";
+    await withFetch(async (url, init) => {
+        seen.push({ url: String(url), method: init?.method ?? "GET" });
+        return new Response(null, { status: 204 });
+    }, async () => {
+        const target = urlTarget(blob, "/o/r/blob/main/src/x.js");
+        const operations = [
+            (http: Http, ctx: SchemeCtx) => http.send(sendStmt(200, target, "body"), ctx),
+            (http: Http, ctx: SchemeCtx) => http.edit(editStmt(target, "body"), ctx),
+            (http: Http, ctx: SchemeCtx) => http.kill(killStmt(target), ctx),
+        ];
+        for (const operation of operations) {
+            const { ctx } = makeCtx();
+            assert.equal((await operation(new Http(), ctx)).status, 102);
+        }
+    });
+    assert.deepEqual(seen, [
+        { url: blob, method: "POST" },
+        { url: blob, method: "PUT" },
+        { url: blob, method: "DELETE" },
+    ]);
 });
 
 // ── conditional revalidation (service#341) ─────────────────────────────────

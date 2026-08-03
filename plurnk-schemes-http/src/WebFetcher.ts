@@ -17,6 +17,15 @@ const isTextual = (mimetype: string): boolean =>
 const isHtml = (mimetype: string): boolean =>
     mimetype === "text/html" || mimetype === "application/xhtml+xml";
 
+// {§host-rewrite} — one transport-only policy for acquisition GETs. Callers
+// retain the addressed URL as entry identity; mutations never pass through it.
+export const rewriteAcquisitionTarget = (url: string): string => {
+    const gh = /^https:\/\/github\.com\/([^/]+)\/([^/]+)\/blob\/(.+)$/.exec(url);
+    return gh === null
+        ? url
+        : `https://raw.githubusercontent.com/${gh[1]}/${gh[2]}/${gh[3]}`;
+};
+
 // What the primitive needs from the render foundation — narrow, so tests inject.
 interface Renderer {
     render(url: string, opts: {
@@ -53,6 +62,7 @@ export default class WebFetcher {
     }
 
     async fetch(url: string, opts?: { signal?: AbortSignal }): Promise<WebFetchResult | null> {
+        const target = rewriteAcquisitionTarget(url);
         // Bound the byte probe independently. Browser.render owns its own
         // navigation timeout and must be allowed to observe Playwright's
         // TimeoutError so Browser.#safeGoto can salvage an already-rendered DOM.
@@ -64,7 +74,7 @@ export default class WebFetcher {
 
         let response: Response;
         try {
-            response = await Guard.fetch(url, { method: "GET", body: undefined, headers: [["User-Agent", BROWSER_UA]] }, probeSignal);
+            response = await Guard.fetch(target, { method: "GET", body: undefined, headers: [["User-Agent", BROWSER_UA]] }, probeSignal);
         } catch {
             return null; // SSRF-refused or unreachable — both dead
         }
@@ -86,7 +96,7 @@ export default class WebFetcher {
                 header,
                 render: async () => {
                     try {
-                        const rendered = await this.#browser.render(url, {
+                        const rendered = await this.#browser.render(target, {
                             workerId: 0,
                             // Caller cancellation still spans the whole operation.
                             // The renderer supplies its own per-navigation deadline.
