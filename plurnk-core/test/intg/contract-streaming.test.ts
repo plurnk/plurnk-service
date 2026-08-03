@@ -128,7 +128,7 @@ test("SEND[499] resolves the registry to the owning scheme + stored handle and t
         assert.equal(await ChannelWrite.findActiveSubscription(db, { workerId, entryId }), null, "no active subscription remains");
 
         const channel = await db.test_get_channel.get<{ state: string }>({ entry_id: entryId, name: "data" });
-        assert.equal(channel?.state, "closed", "channel transitioned active → closed");
+        assert.equal(channel?.state, "errored", "channel transitioned active → errored on cancellation");
     } finally { await db.close(); }
 });
 

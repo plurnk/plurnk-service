@@ -15,6 +15,7 @@ import type {
     KillStatement,
     UrlPath,
     EntryData,
+    StoredEntryData,
     FindStatement,
     SchemeResult,
 } from "@plurnk/plurnk-schemes";
@@ -335,15 +336,21 @@ export default class Http implements SchemeHandler {
                 return Http.#passthrough(prior);
             }
             const pb = prior.entry?.channels[BODY];
-            const ph = prior.entry?.channels[HEADER]?.content ?? "";
-            if (pb !== undefined && pb.content.length > 0 && Http.#requestMethod(ph) === "GET") {
-                const html = prior.entry?.channels.html;
+            const ph = prior.entry?.channels[HEADER];
+            if (
+                prior.entry !== null
+                && pb !== undefined
+                && ph !== undefined
+                && Http.#representationComplete(prior.entry)
+                && Http.#requestMethod(ph.content) === "GET"
+            ) {
+                const html = prior.entry.channels.html;
                 cached = {
-                    header: ph,
+                    header: ph.content,
                     body: { content: pb.content, mimetype: pb.mimetype },
                     ...(html === undefined || html.content.length === 0 ? {} : { html: { content: html.content, mimetype: html.mimetype } }),
                 };
-                conditional.push(...Http.#validators(ph));
+                conditional.push(...Http.#validators(ph.content));
             }
         }
 
@@ -527,9 +534,20 @@ export default class Http implements SchemeHandler {
     // open(); notifyChunk later welds acquired content to its actual mimetype.
     static #seedEntry(): EntryData {
         const channels = Object.fromEntries(
-            Object.entries(Http.manifest.channels).map(([name, mimetype]) => [name, { content: "", mimetype }]),
+            Object.entries(Http.manifest.channels).map(([name, mimetype]) => [name, {
+                content: "",
+                mimetype,
+                state: "active" as const,
+            }]),
         );
         return { channels, tags: [] };
+    }
+
+    // {§revalidation} `static` exact materializations and successfully `closed`
+    // streams are final. Active or failed channels cannot vouch for a reusable
+    // representation, regardless of whether partial content is non-empty.
+    static #representationComplete(entry: StoredEntryData): boolean {
+        return Object.values(entry.channels).every(({ state }) => state === "static" || state === "closed");
     }
 
     // {§revalidation} Origin headers come first; authoritative package method

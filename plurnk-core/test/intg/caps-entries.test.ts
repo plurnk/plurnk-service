@@ -16,28 +16,30 @@ test("DbEntryCaps: write creates (201) → read round-trips → re-write updates
 
         // write a new entry → 201 created, real entryId
         const w = await caps.write("/note.md", {
-            channels: { body: { content: "hello", mimetype: "text/markdown" } },
+            channels: { body: { content: "hello", mimetype: "text/markdown", state: "active" } },
             tags: ["a", "b"],
         });
         assert.equal(w.status, 201);
         assert.equal(w.created, true);
         assert.equal(typeof w.entryId, "number");
 
-        // read round-trips content, mimetype, and tags
+        // read round-trips content, mimetype, lifecycle state, and tags
         const r = await caps.read("/note.md");
         assert.equal(r.status, 200);
         assert.equal(r.entry?.channels.body.content, "hello");
         assert.equal(r.entry?.channels.body.mimetype, "text/markdown");
+        assert.equal(r.entry?.channels.body.state, "active");
         assert.deepEqual([...(r.entry?.tags ?? [])].sort(), ["a", "b"]);
 
         // re-write the same path → 200 (not created), content replaced
         const w2 = await caps.write("/note.md", {
-            channels: { body: { content: "world", mimetype: "text/markdown" } },
+            channels: { body: { content: "world", mimetype: "text/markdown", state: "closed" } },
             tags: [],
         });
         assert.equal(w2.status, 200);
         assert.equal(w2.created, false);
         assert.equal((await caps.read("/note.md")).entry?.channels.body.content, "world");
+        assert.equal((await caps.read("/note.md")).entry?.channels.body.state, "closed");
 
         // read an absent path → 404, null entry
         const miss = await caps.read("/missing.md");

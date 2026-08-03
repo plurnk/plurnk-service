@@ -76,6 +76,7 @@ export type {
     EntryReadResult,
     EntryStorageReadResult,
     EntryStorageWriteResult,
+    StoredEntryData,
     ProjectionCaps,
     NotifyCaps,
     ProposalApplyRequest,

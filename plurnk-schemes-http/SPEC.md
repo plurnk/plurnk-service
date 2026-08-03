@@ -257,7 +257,10 @@ are checked under {§automatic-fetch-check} only when `WebFetcher` acquires them
 Acquired GET responses append package-owned `x-plurnk-request-method` and
 `x-plurnk-fetched-at` fields after origin headers; the last value is
 authoritative. Only a GET representation can supply a direct READ's body, TTL
-stamp, or conditional validators. A copy inside `PLURNK_SCHEMES_HTTP_TTL_MS`
+stamp, or conditional validators. Completion comes from channel lifecycle, not
+body length: every stored channel must be final (`static` after exact
+materialization or `closed` after a successful stream); `active`, `errored`, or
+unknown state is ineligible. A copy inside `PLURNK_SCHEMES_HTTP_TTL_MS`
 serves with no network request. Outside the window, READ sends stored ETag or
 Last-Modified validators. A 304 refreshes the package stamp and restores the
 stored channels without rendering; any other response replaces them. `0`

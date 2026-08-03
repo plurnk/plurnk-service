@@ -21,6 +21,8 @@ import {
     type ProjectionCaps,
     type SubscriptionCaps,
     type EntryData,
+    type ChannelState,
+    type StoredEntryData,
     type ReadStatement,
     type SendStatement,
     type EditStatement,
@@ -62,7 +64,7 @@ interface CtxOverrides {
     readonly signal?: AbortSignal;
 }
 
-const makeCtx = (priorEntry: EntryData | null = null, overrides: CtxOverrides = {}) => {
+const makeCtx = (priorEntry: StoredEntryData | null = null, overrides: CtxOverrides = {}) => {
     const chunks: Array<{ channel: string; chunk: string; mimetype?: string }> = [];
     let opened: { pathname: string; handle: SubscriptionHandle; publishedChannel?: string } | null = null;
     let closed: { result: Parameters<SubscriptionCaps["close"]>[0]; summary?: string } | null = null;
@@ -493,7 +495,7 @@ test("prepareFind preserves an exact storage-write failure", async () => {
 });
 
 test("prepareFind preserves an unmarked authored entry without network acquisition", async () => {
-    const { ctx, inspect } = makeCtx(priorEntry("authored representation", "text/plain", ""));
+    const { ctx, inspect } = makeCtx(priorEntry("authored representation", "text/plain", "", undefined, "static"));
     let fetched = false;
     await withFetch(async () => {
         fetched = true;
@@ -521,8 +523,9 @@ test("READ: materializes the entry (manifest channels) BEFORE subscribing", asyn
     assert.equal(wrote?.pathname, "/example.com/robots.txt");
     // Seeded channels mirror the manifest: empty content + the seed mimetypes.
     assert.deepEqual(Object.keys(wrote!.entry.channels).sort(), ["body", "header", "html"]);
-    assert.deepEqual(wrote!.entry.channels.body, { content: "", mimetype: "application/octet-stream" });
-    assert.deepEqual(wrote!.entry.channels.header, { content: "", mimetype: "text/plain" });
+    assert.deepEqual(wrote!.entry.channels.body, { content: "", mimetype: "application/octet-stream", state: "active" });
+    assert.deepEqual(wrote!.entry.channels.header, { content: "", mimetype: "text/plain", state: "active" });
+    assert.equal(wrote!.entry.channels.html?.state, "active");
     assert.deepEqual(wrote!.entry.tags, []);
 });
 
@@ -1295,11 +1298,17 @@ test("POST/PUT/DELETE preserve the addressed GitHub blob target", async () => {
 });
 
 // ── conditional revalidation {§revalidation} ──────────────────────────────
-const priorEntry = (body: string, mimetype: string, header: string, html?: string): EntryData => ({
+const priorEntry = (
+    body: string,
+    mimetype: string,
+    header: string,
+    html?: string,
+    state: ChannelState = "closed",
+): StoredEntryData => ({
     channels: {
-        body: { content: body, mimetype },
-        header: { content: header, mimetype: "text/plain" },
-        ...(html === undefined ? {} : { html: { content: html, mimetype: "text/html" } }),
+        body: { content: body, mimetype, state },
+        header: { content: header, mimetype: "text/plain", state },
+        ...(html === undefined ? {} : { html: { content: html, mimetype: "text/html", state } }),
     },
     tags: [],
 });
@@ -1418,6 +1427,58 @@ test("TTL: fresh stamp serves the stored copy with ZERO round-trips", async () =
     assert.match(inspect().closed?.summary ?? "", /ttl-fresh/);
 });
 
+test("TTL: an exact static WebFetcher materialization is reusable", async () => {
+    const { ctx, inspect } = makeCtx(priorEntry(
+        "materialized",
+        "text/plain",
+        stampedHeader(1000),
+        undefined,
+        "static",
+    ));
+    let fetched = false;
+    await withTtl("60000", async () => {
+        await withFetch((async () => { fetched = true; throw new Error("must not fetch"); }) as unknown as typeof fetch, async () => {
+            await new Http().read(readStmt(urlTarget("https://example.com/materialized", "/materialized")), ctx);
+        });
+    });
+    assert.equal(fetched, false);
+    assert.equal(inspect().chunks.find(({ channel }) => channel === "body")?.chunk, "materialized");
+});
+
+test("TTL: a completed empty GET is a reusable representation", async () => {
+    const { ctx, inspect } = makeCtx(priorEntry("", "text/plain", stampedHeader(1000)));
+    let fetched = false;
+    await withTtl("60000", async () => {
+        await withFetch((async () => { fetched = true; throw new Error("must not fetch"); }) as unknown as typeof fetch, async () => {
+            assert.equal(await new Http().read(readStmt(urlTarget("https://example.com/empty", "/empty")), ctx).then((r) => r.status), 102);
+        });
+    });
+    assert.equal(fetched, false);
+    assert.equal(inspect().chunks.filter(({ channel }) => channel === "body").length, 1);
+    assert.equal(inspect().chunks.find(({ channel }) => channel === "body")?.chunk, "");
+    assert.match(inspect().closed?.summary ?? "", /ttl-fresh; 0 chars/);
+});
+
+for (const state of ["active", "errored"] as const) {
+    test(`TTL: an ${state} GET seed cannot supply freshness or validators`, async () => {
+        const header = stampedHeader(1000, '\netag: "partial"');
+        const { ctx } = makeCtx(priorEntry("partial", "text/plain", header, undefined, state));
+        let fetched = false;
+        let conditional = false;
+        await withTtl("60000", async () => {
+            await withFetch(async (_url, init) => {
+                fetched = true;
+                conditional = new Headers(init?.headers).has("if-none-match");
+                return new Response("complete", { status: 200, headers: { "content-type": "text/plain" } });
+            }, async () => {
+                await new Http().read(readStmt(urlTarget(`https://example.com/${state}`, `/${state}`)), ctx);
+            });
+        });
+        assert.equal(fetched, true);
+        assert.equal(conditional, false);
+    });
+}
+
 test("TTL: stale stamp falls through to the conditional GET (revalidates)", async () => {
     const { ctx } = makeCtx(priorEntry("old", "text/plain", stampedHeader(120_000, "\netag: \"v1\"")));
     let seenINM = "";
@@ -1431,6 +1492,23 @@ test("TTL: stale stamp falls through to the conditional GET (revalidates)", asyn
         });
     });
     assert.equal(seenINM, "\"v1\""); // past the window → the 304 phase owns freshness
+});
+
+test("READ revalidation: 304 restores a completed empty representation", async () => {
+    const header = stampedHeader(120_000, '\netag: "empty"');
+    const { ctx, inspect } = makeCtx(priorEntry("", "text/plain", header));
+    let seenINM = "";
+    await withTtl("60000", async () => {
+        await withFetch((async (_url: string | URL | Request, init?: RequestInit) => {
+            seenINM = new Headers(init?.headers).get("if-none-match") ?? "";
+            return new Response(null, { status: 304, statusText: "Not Modified" });
+        }) as typeof fetch, async () => {
+            await new Http().read(readStmt(urlTarget("https://example.com/empty", "/empty")), ctx);
+        });
+    });
+    assert.equal(seenINM, '"empty"');
+    assert.equal(inspect().chunks.find(({ channel }) => channel === "body")?.chunk, "");
+    assert.match(inspect().closed?.summary ?? "", /revalidated 304; 0 chars/);
 });
 
 test("TTL: package-appended metadata wins over a same-named origin header", async () => {
@@ -1456,7 +1534,13 @@ test("TTL: package-appended metadata wins over a same-named origin header", asyn
 });
 
 test("TTL: an unmarked authored entry never supplies GET freshness or validators", async () => {
-    const { ctx } = makeCtx(priorEntry("materialized", "text/html", "HTTP 200 OK\netag: \"m1\""));
+    const { ctx } = makeCtx(priorEntry(
+        "materialized",
+        "text/html",
+        "HTTP 200 OK\netag: \"m1\"",
+        undefined,
+        "static",
+    ));
     let fetched = false;
     let conditional = false;
     const probe = async (_url: string | URL | Request, init?: RequestInit) => {

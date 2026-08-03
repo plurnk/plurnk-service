@@ -19,6 +19,7 @@ import type {
     SubscriptionHandle,
     ProposalAware,
     EntryData,
+    StoredEntryData,
     ChannelState,
 } from "./ctx.ts";
 import Results from "./Results.ts";
@@ -29,7 +30,7 @@ import Results from "./Results.ts";
 // composite contracts.
 
 const makeCtx = () => {
-    const store = new Map<string, EntryData>();
+    const store = new Map<string, StoredEntryData>();
     const events: string[] = [];
     const chunks: Array<{ channel: string; chunk: string; mimetype?: string }> = [];
     let woken = 0;
@@ -66,7 +67,13 @@ const makeCtx = () => {
         },
         async write(pathname, entry) {
             const created = !store.has(pathname);
-            store.set(pathname, entry);
+            store.set(pathname, {
+                channels: Object.fromEntries(Object.entries(entry.channels).map(([name, channel]) => [
+                    name,
+                    { ...channel, state: channel.state ?? "static" },
+                ])),
+                tags: entry.tags,
+            });
             return { status: created ? 201 : 200, created, entryId: 1 };
         },
         async delete(pathname) {
@@ -83,17 +90,34 @@ const makeCtx = () => {
             const prev = e.channels[channel];
             store.set(pathname, {
                 ...e,
-                channels: { ...e.channels, [channel]: { content: (prev?.content ?? "") + content, mimetype: prev?.mimetype ?? "text/markdown" } },
+                channels: { ...e.channels, [channel]: {
+                    content: (prev?.content ?? "") + content,
+                    mimetype: prev?.mimetype ?? "text/markdown",
+                    state: prev?.state ?? "static",
+                } },
             });
             return { status: 200 };
         },
         async replace(pathname, channel, content) {
             const e = store.get(pathname);
             if (!e) return failure("entry-not-found", 404, `No entry exists at ${pathname}.`);
-            store.set(pathname, { ...e, channels: { ...e.channels, [channel]: { content, mimetype: e.channels[channel]?.mimetype ?? "text/markdown" } } });
+            const previous = e.channels[channel];
+            store.set(pathname, { ...e, channels: { ...e.channels, [channel]: {
+                content,
+                mimetype: previous?.mimetype ?? "text/markdown",
+                state: previous?.state ?? "static",
+            } } });
             return { status: 200 };
         },
-        async setState(_pathname, _channel, _state: ChannelState) {
+        async setState(pathname, channel, state: ChannelState) {
+            const entry = store.get(pathname);
+            const previous = entry?.channels[channel];
+            if (entry === undefined) return failure("entry-not-found", 404, `No entry exists at ${pathname}.`);
+            if (previous === undefined) return failure("channel-not-found", 404, `No channel ${channel} exists at ${pathname}.`);
+            store.set(pathname, {
+                ...entry,
+                channels: { ...entry.channels, [channel]: { ...previous, state } },
+            });
             return { status: 200 };
         },
     };
@@ -160,6 +184,7 @@ test("ctx: entries cap does real CRUD scoped to the store", async () => {
     const r = await ctx.entries.read("notes:///x");
     assert.equal(r.status, 200);
     assert.equal(r.entry?.channels.body.content, "hi");
+    assert.equal(r.entry?.channels.body.state, "static");
     assert.equal((await ctx.entries.delete("notes:///x")).status, 200);
     assert.equal((await ctx.entries.read("notes:///x")).status, 404);
 });

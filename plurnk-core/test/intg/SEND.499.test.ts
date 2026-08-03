@@ -156,7 +156,7 @@ test("End-to-end: synthetic streaming scheme — SEND[499] tears down subscripti
         assert.equal(terminal.problem?.detail, "The stream was cancelled by SEND[499].");
 
         const channelState = (await db.test_get_channel.get<{ state: string }>({ entry_id: entryId, name: "data" }))?.state;
-        assert.equal(channelState, "closed", "channel state transitioned to closed");
+        assert.equal(channelState, "errored", "cancelled content remains readable but is not marked complete");
 
         const active = await ChannelWrite.findActiveSubscription(db, { workerId, entryId });
         assert.equal(active, null, "no active subscription remaining");

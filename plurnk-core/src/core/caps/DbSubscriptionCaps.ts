@@ -84,7 +84,7 @@ export default class DbSubscriptionCaps implements SubscriptionCaps {
         const subscriptionId = this.#subscriptionId;
         if (entryId === null || subscriptionId === null) throw new Error("subscriptions.close: no open subscription");
         Results.assert(result);
-        const state: ChannelState = result.status >= 400 && result.status !== 499 ? "errored" : "closed";
+        const state: ChannelState = result.status >= 400 ? "errored" : "closed";
         // Every channel of the entry → terminal state, then the registry row
         // closes, then the worker wakes with the scheme's summary.
         const channels = await this.#ctx.db.crud_read_channels.all<{ name: string }>({ entry_id: entryId });

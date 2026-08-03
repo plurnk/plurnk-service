@@ -13,10 +13,16 @@ import type { EditBatchResult } from "./edit-receipt.ts";
 // grammar ChannelContent.state). Metadata, not an engine gate (service SPEC: channel lifecycle state).
 export type ChannelState = "static" | "active" | "closed" | "errored";
 
-// The full entry shape exchanged across CRUD (mirrors plurnk-service's
-// EntryData). Channels keyed by name → content + pinned mimetype + state.
+// Entry write shape. Omitting state selects the consumer's `static` default.
 export interface EntryData {
     readonly channels: Record<string, { content: string; mimetype: string; state?: ChannelState }>;
+    readonly tags: ReadonlyArray<string>;
+}
+
+// Entry read shape. Lifecycle is part of the stored channel representation,
+// not private database metadata, so successful reads never omit it.
+export interface StoredEntryData {
+    readonly channels: Record<string, { content: string; mimetype: string; state: ChannelState }>;
     readonly tags: ReadonlyArray<string>;
 }
 
@@ -74,7 +80,7 @@ export interface EntryOperationCaps {
 // entry-op implementation. A scheme may use these semantics or implement an
 // op itself.
 export interface EntryStorageReadResult extends SchemeResult {
-    readonly entry: EntryData | null;
+    readonly entry: StoredEntryData | null;
 }
 
 export interface EntryStorageWriteResult extends SchemeResult {

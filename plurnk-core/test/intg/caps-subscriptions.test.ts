@@ -56,13 +56,16 @@ test("DbSubscriptionCaps: open binds + composes abort, notifyChunk streams, clos
         assert.ok(streamEvents.every((event) => event.channel === "stdout"), "only the selected default channel is published");
         const meta = await db.channel_meta.get<{ state: string }>({ entry_id: entryId, channel: "stdout" });
         assert.equal(meta?.state, "closed");
+        assert.equal((await entries.read("/run")).entry?.channels.stdout.state, "closed");
         assert.equal(wakes.length, 1);
         assert.deepEqual(wakes[0].result, { status: 200 });
         assert.equal(wakes[0].summary, "exit 0; 11 bytes");
         assert.equal(wakes[0].target, "exec:///run");
 
         // a worker abort propagates to the subscription signal AND force-cancels the handle
-        await entries.write("/run2", { channels: { stdout: { content: "", mimetype: "text/plain" } }, tags: [] });
+        await entries.write("/run2", { channels: {
+            stdout: { content: "", mimetype: "text/plain", state: "active" },
+        }, tags: [] });
         const signal2 = await subs.open("/run2", { cancel: () => { cancelCalls += 1; } });
         const entry2 = await entries.read("/run2");
         assert.equal(entry2.status, 200);
@@ -79,6 +82,11 @@ test("DbSubscriptionCaps: open binds + composes abort, notifyChunk streams, clos
         const cancelledRow = await db.test_get_subscription.get<{ close_status: number; close_result: string }>({ id: cancelledId });
         assert.equal(cancelledRow?.close_status, 499, "cancelled settlement is durable 499");
         assert.deepEqual(JSON.parse(cancelledRow?.close_result ?? "null"), cancelledResult);
+        assert.equal(
+            (await entries.read("/run2")).entry?.channels.stdout.state,
+            "errored",
+            "a cancelled stream is terminal but not a complete representation",
+        );
 
         // open on an absent entry → throws (a subscription needs its entry)
         await assert.rejects(() => subs.open("/missing", { cancel: () => {} }), /no entry/);

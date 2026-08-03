@@ -996,7 +996,7 @@ Client-interface target parameters carry fragments inline (`{ target: "sh:///1/1
 - `static` — content final, not being written. Entry schemes after EDIT.
 - `active` — scheme is writing (chunks arriving). Streaming schemes during accumulation.
 - `closed` — stream ended cleanly. Content final.
-- `errored` — stream ended in error. Content may be partial; reads return what accumulated.
+- `errored` — stream ended with a failure status, including cancellation. Content may be partial; reads return what accumulated.
 
 §channel-state-schemes-own-state-transitions Schemes own transitions; UPDATE `entry_channels.state` as connection lifecycle progresses. State does not gate reads — schemes return accumulated `content` regardless ({§channel-state-state-is-metadata}).
 

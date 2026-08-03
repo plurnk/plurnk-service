@@ -4,11 +4,12 @@
 
 import { contentHash } from "../core/content-hash.ts";
 import type { PlurnkSchemeContext } from "../core/scheme-types.ts";
+import type { ChannelState, StoredEntryData } from "@plurnk/plurnk-schemes";
 import Owner from "../core/Owner.ts";
 import { renderAddress } from "../core/plurnk-uri.ts";
 import Results, { type SchemeResultBase } from "../core/results.ts";
 
-export type ChannelState = "static" | "active" | "closed" | "errored";
+export type { ChannelState, StoredEntryData } from "@plurnk/plurnk-schemes";
 
 // {§channels-channels-append-only}: channels are content stores keyed by (entry_id, name)
 export interface EntryData {
@@ -17,7 +18,7 @@ export interface EntryData {
 }
 
 export interface ReadEntryResult extends SchemeResultBase {
-    entry: EntryData | null;
+    entry: StoredEntryData | null;
 }
 
 export interface WriteEntryResult extends SchemeResultBase {
@@ -58,10 +59,15 @@ export default class EntryCrud {
             ) as ReadEntryResult;
         }
 
-        const channelRows = await db.crud_read_channels.all<{ name: string; content: string; mimetype: string }>({ entry_id: entry.id });
-        const channels: EntryData["channels"] = {};
+        const channelRows = await db.crud_read_channels.all<{
+            name: string;
+            content: string;
+            mimetype: string;
+            state: ChannelState;
+        }>({ entry_id: entry.id });
+        const channels: StoredEntryData["channels"] = {};
         for (const row of channelRows) {
-            channels[row.name] = { content: row.content, mimetype: row.mimetype };
+            channels[row.name] = { content: row.content, mimetype: row.mimetype, state: row.state };
         }
 
         const tagRows = await db.crud_read_tags.all<{ tag: string }>({ entry_id: entry.id });

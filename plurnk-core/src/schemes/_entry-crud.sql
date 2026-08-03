@@ -8,7 +8,7 @@ SELECT id FROM entries
 WHERE workspace_id = $workspace_id AND owner_id = $owner_id AND scheme = $scheme AND pathname = $pathname;
 
 -- PREP: crud_read_channels
-SELECT name, content, mimetype FROM entry_channels WHERE entry_id = $entry_id;
+SELECT name, content, mimetype, state FROM entry_channels WHERE entry_id = $entry_id;
 
 -- PREP: crud_read_tags
 SELECT tag FROM entry_tags WHERE entry_id = $entry_id ORDER BY tag;

@@ -9,11 +9,12 @@
 
 import type { Db } from "./Db.ts";
 import type { LoopFlags, WriterTier } from "./types.ts";
-import { Results, type SchemeResult } from "@plurnk/plurnk-schemes";
+import { Results, type ChannelState, type SchemeResult } from "@plurnk/plurnk-schemes";
 import type { Notice } from "@plurnk/plurnk-contracts";
 import { renderAddress } from "./plurnk-uri.ts";
 
-export type ChannelState = "static" | "active" | "closed" | "errored"; // render metadata, never a read gate — {§channel-state-state-is-metadata}
+// Render metadata, never a read gate — {§channel-state-state-is-metadata}.
+export type { ChannelState } from "@plurnk/plurnk-schemes";
 
 // The loop/turn/sequence coordinate of the entry, mirrored onto stream payloads
 // so clients read it as fields instead of re-parsing the exec URI's trailing

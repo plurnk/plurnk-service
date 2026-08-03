@@ -289,6 +289,8 @@ its implementation.
 - `entries` — direct storage over the scheme's own namespace
   (`read`/`write`/`delete`) plus `operations`, the standard PLURNK
   `READ`/`EDIT`/`FIND`/`SEND` implementation for entry-bearing schemes.
+  A write may omit channel state to select the `static` default; a successful
+  storage read always returns each channel's persisted lifecycle state.
   Standard operations are bound to the handler's manifest. Their optional
   owner is semantic: `"commons"` (default) or the current `"worker"`; database
   owner IDs are not part of the plugin contract. A handler may implement its
