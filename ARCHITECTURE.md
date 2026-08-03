@@ -4,6 +4,58 @@ PLURNK is a contract-first platform with one composed daemon and multiple thin
 clients. This document owns the ecosystem map and cross-boundary flow. Package
 specifications own behavior; design history belongs in Git and forge issues.
 
+## Standards boundary
+
+PLURNK composes externally owned industry interfaces, adopted internal
+specifications, and its own plugin interface. Boundary adapters implement their
+owning standards; PLURNK does not replace or restate those protocols. Dashed
+surfaces are explicitly deferred.
+
+```mermaid
+flowchart TB
+    subgraph INTERFACES["Industry interface specifications"]
+        direction LR
+        AGUI["AG-UI Specification"]
+        MCP["MCP Specification"]
+        OPENAI["OpenAI Specification"]
+    end
+
+    subgraph CENTER[" "]
+        direction LR
+
+        subgraph PLURNK["plurnk"]
+            direction TB
+            ENGINE(("engine"))
+            OTEL["OTel Specification<br/>internal instrumentation"]
+            OTEL --> ENGINE
+        end
+
+        PLUGIN["Plurnk Plugin<br/>(exec / scheme)<br/>plurnk-owned interface"]
+    end
+
+    subgraph DEFERRED["Deferred industry interface specifications"]
+        direction LR
+        A2A["A2A Specification"]
+        X402["x402 Specification"]
+        AP2["AP2 Specification"]
+        DID["W3C DID Specification"]
+    end
+
+    AGUI <--> ENGINE
+    MCP <--> ENGINE
+    OPENAI <--> ENGINE
+    ENGINE <--> PLUGIN
+
+    A2A -.-> ENGINE
+    X402 -.-> ENGINE
+    AP2 -.-> ENGINE
+    DID -.-> ENGINE
+
+    classDef deferred stroke-dasharray: 6 4;
+    class A2A,X402,AP2,DID deferred;
+    style CENTER fill:transparent,stroke:transparent;
+```
+
 ## Ecosystem
 
 ```mermaid
