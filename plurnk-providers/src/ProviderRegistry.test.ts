@@ -182,6 +182,73 @@ test("#633: public construction applies the package floor to a sparse consumer e
     assert.equal(provider.model, "accounts/fireworks/models/deepseek-v4-pro");
 });
 
+test("{§deepseek-reasoning-request} #157: direct DeepSeek composes catalog facts, credential, reasoning control, and cached cost", async () => {
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    mock.method(globalThis, "fetch", async (url: string | URL | Request, init?: RequestInit) => {
+        calls.push({ url: String(url), init });
+        const chunks = [
+            {
+                id: "deepseek-test",
+                object: "chat.completion.chunk",
+                created: 1,
+                model: "deepseek-v4-flash",
+                choices: [{ index: 0, delta: { content: "ok" }, finish_reason: "stop" }],
+                usage: null,
+            },
+            {
+                id: "deepseek-test",
+                object: "chat.completion.chunk",
+                created: 1,
+                model: "deepseek-v4-flash",
+                choices: [],
+                usage: {
+                    prompt_tokens: 10,
+                    prompt_cache_hit_tokens: 8,
+                    prompt_cache_miss_tokens: 2,
+                    completion_tokens: 2,
+                    total_tokens: 12,
+                },
+            },
+        ];
+        const body = [...chunks.map((chunk) => `data: ${JSON.stringify(chunk)}`), "data: [DONE]"].join("\n\n");
+        return new Response(body, { status: 200, headers: { "Content-Type": "text/event-stream" } });
+    });
+
+    const provider = await instantiateProvider(
+        "deepseek",
+        {
+            DEEPSEEK_API_KEY: "test-key",
+            PLURNK_PROVIDERS_REASONING: "off",
+            PLURNK_PROVIDERS_RETRY_ATTEMPTS: "0",
+        },
+        "deepseek-v4-flash",
+        async () => ({}),
+        mapOf({}),
+    );
+    const response = await provider.generate({
+        workerId: "worker",
+        messages: [{ role: "user", content: "Reply with ok." }],
+    });
+
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].url, "https://api.deepseek.com/chat/completions");
+    assert.equal(new Headers(calls[0].init?.headers).get("Authorization"), "Bearer test-key");
+    const request = JSON.parse(String(calls[0].init?.body)) as Record<string, unknown>;
+    assert.equal(request.model, "deepseek-v4-flash");
+    assert.deepEqual(request.thinking, { type: "disabled" });
+    assert.equal(provider.contextWindow, 1_000_000);
+    assert.equal(response.assistant.content, "ok");
+    assert.deepEqual(response.assistant.usage, {
+        prompt: 10,
+        completion: 2,
+        reasoning: 0,
+        cached: 8,
+        total: 12,
+    });
+    assert.ok(Math.abs(provider.calculateCost(response.assistant.usage) - 0.0000008624) < 1e-15);
+    mock.restoreAll();
+});
+
 test("#633: an explicit malformed operator override still fails at its owning contract", async () => {
     await assert.rejects(
         () => instantiateProvider(

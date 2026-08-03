@@ -18,7 +18,7 @@ export type ProviderFetch = typeof globalThis.fetch;
 
 // Backend wire spellings for the resolved reasoning intent. The switch beside each
 // mapping retains any backend-specific omission/explicit-disable constraint.
-export type ReasoningStyle = "none" | "think" | "include_reasoning" | "effort" | "effort_explicit" | "template" | "anthropic";
+export type ReasoningStyle = "none" | "think" | "include_reasoning" | "effort" | "effort_explicit" | "thinking_effort" | "template" | "anthropic";
 
 // GBNF transport is a local llama-server capability. "none" means no
 // service-managed constrained sampling; endpoint-owned settings are not inferred.
@@ -164,7 +164,7 @@ const heuristicTokens = (text: string): number => (text.length === 0 ? 0 : Math.
 // sampling stay deliberately caller-overridable.
 const RESERVED_BODY_KEYS: ReadonlySet<string> = new Set([
     "model", "messages", "stream", "stream_options", "grammar", "response_format", "id_slot", "logprobs", "top_logprobs",
-    "reasoning_format", "thinking_budget_tokens",
+    "reasoning_format", "reasoning_effort", "thinking", "think", "include_reasoning", "chat_template_kwargs", "thinking_budget_tokens", // lexicon-allow: backend wire fields
     "n", "tools", "tool_choice", "functions", "function_call", "parallel_tool_calls",
     "modalities", "audio", "prediction", "max_tokens", "max_completion_tokens",
     "prompt_cache_key",
@@ -348,6 +348,13 @@ export default class AiSdkProvider implements Provider {
             case "effort_explicit": return mode === "off"
                 ? { reasoning_effort: "none" }
                 : mode === "on" ? { reasoning_effort: effortFromBudget(budget!) } : {};
+            // {§deepseek-reasoning-request}
+            case "thinking_effort": return mode === "off"
+                ? { thinking: { type: "disabled" } }
+                : mode === "on" ? {
+                    thinking: { type: "enabled" },
+                    reasoning_effort: effortFromBudget(budget!),
+                } : {};
             // Anthropic compat: explicit thinking object. off → disabled; on →
             // enabled with budget_tokens; adaptive → omit (the API default).
             case "anthropic": return mode === "off"

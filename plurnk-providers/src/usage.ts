@@ -20,6 +20,8 @@ export type RawUsage = {
     completion_tokens?: number;
     total_tokens?: number;
     cached_tokens?: number;
+    prompt_cache_hit_tokens?: number;
+    prompt_cache_miss_tokens?: number;
     prompt_tokens_details?: { cached_tokens?: number };
     completion_tokens_details?: { reasoning_tokens?: number };
 };
@@ -29,7 +31,10 @@ export const normalizeUsage = (raw: RawUsage | null | undefined, reasoningText =
     const completionRaw = raw?.completion_tokens ?? 0;
     const reportedTotal = raw?.total_tokens ?? 0;
     // OpenAI nests cached under prompt_tokens_details; others put it top-level.
-    const cached = raw?.prompt_tokens_details?.cached_tokens ?? raw?.cached_tokens ?? 0;
+    const cached = raw?.prompt_tokens_details?.cached_tokens
+        ?? raw?.prompt_cache_hit_tokens
+        ?? raw?.cached_tokens
+        ?? 0;
     const reasoningDetail = raw?.completion_tokens_details?.reasoning_tokens;
 
     let completion: number;

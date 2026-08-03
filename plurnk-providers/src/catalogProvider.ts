@@ -29,7 +29,7 @@ const reasoningStyleFromEnv = (
     if (value === undefined || value.length === 0) return undefined;
     const styles: readonly ReasoningStyle[] = [
         "none", "think", "include_reasoning", "effort",
-        "effort_explicit", "template", "anthropic",
+        "effort_explicit", "thinking_effort", "template", "anthropic",
     ];
     if (!styles.includes(value as ReasoningStyle)) {
         throw new Error(`${name} provider: PLURNK_PROVIDERS_PROVIDER_${prefix}_REASONING_STYLE has invalid value "${value}"`);

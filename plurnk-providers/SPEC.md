@@ -102,6 +102,15 @@ PLURNK maps its generic settings to AI SDK call settings:
 Provider-specific options are permitted only where they preserve a documented
 PLURNK product contract the generic SDK surface cannot express.
 
+§deepseek-reasoning-request The direct DeepSeek catalog path maps the common
+reasoning intent to its OpenAI-compatible controls:
+
+| PLURNK mode | `thinking`            | `reasoning_effort`   |
+| ----------- | --------------------- | -------------------- |
+| `off`       | `{ type: disabled }`  | omitted              |
+| `adaptive`  | omitted               | omitted              |
+| `on`        | `{ type: enabled }`   | budget-derived tier  |
+
 The compatible transport is deliberately retained for:
 
 - `openai` local endpoints, including llama-server and vLLM;

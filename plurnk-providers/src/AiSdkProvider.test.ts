@@ -417,6 +417,38 @@ test("reasoningStyle 'effort_explicit': off SENDS none, adaptive OMITS (#403 —
     }
 });
 
+test("{§deepseek-reasoning-request} #157: thinking_effort maps the complete DeepSeek reasoning contract", async () => {
+    const cases = [
+        [{ mode: "off", budget: null }, { thinking: { type: "disabled" } }],
+        [{ mode: "adaptive", budget: null }, {}],
+        [{ mode: "on", budget: 5000 }, { thinking: { type: "enabled" }, reasoning_effort: "high" }],
+    ] as const;
+    for (const [reasoning, expected] of cases) {
+        const p = new AiSdkProvider({
+            model: "m",
+            url: "http://x/v1/chat/completions",
+            fetchTimeoutMs: 5000,
+            temperature: 0.2,
+            repeatPenalty: 1.15,
+            reasoning,
+            retryAttempts: 0,
+            reasoningStyle: "thinking_effort",
+        });
+        const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
+        await p.generate({
+            workerId: "r",
+            messages: [],
+            sampling: { thinking: { type: "disabled" }, reasoning_effort: "max" },
+        });
+        const body = JSON.parse(calls[0].init.body as string);
+        assert.deepEqual(
+            Object.fromEntries(Object.entries(body).filter(([key]) => key === "thinking" || key === "reasoning_effort")),
+            expected,
+        );
+        mock.restoreAll();
+    }
+});
+
 test("the family temperature default rides every request; caller sampling overrides it (#30)", async () => {
     const p = new AiSdkProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0 });
     let calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);

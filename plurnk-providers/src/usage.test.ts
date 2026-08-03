@@ -48,6 +48,17 @@ test("normalizeUsage: top-level cached_tokens still honored", () => {
     assert.equal(u.cached, 12);
 });
 
+test("#157: normalizeUsage maps DeepSeek's prompt cache hit count", () => {
+    const u = normalizeUsage({
+        prompt_tokens: 50,
+        prompt_cache_hit_tokens: 30,
+        prompt_cache_miss_tokens: 20,
+        completion_tokens: 10,
+        total_tokens: 60,
+    });
+    assert.deepEqual(u, { prompt: 50, completion: 10, reasoning: 0, cached: 30, total: 60 });
+});
+
 test("normalizeUsage: no reasoning — plain prompt+completion", () => {
     const u = normalizeUsage({ prompt_tokens: 10, completion_tokens: 20, total_tokens: 30 });
     assert.deepEqual(u, { prompt: 10, completion: 20, reasoning: 0, cached: 0, total: 30 });

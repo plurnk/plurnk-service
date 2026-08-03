@@ -37,6 +37,13 @@ test("createSdkModel expands catalog endpoint variables without treating them as
     });
 });
 
+test("#157: a cataloged compatible provider fails before transport when its declared credential is absent", () => {
+    assert.throws(
+        () => createSdkModel("deepseek", "deepseek-v4-flash", {}),
+        /deepseek provider: DEEPSEEK_API_KEY must be set/,
+    );
+});
+
 test("createSdkModel fails clearly for a declared but unsupported SDK package", () => {
     assert.throws(
         () => createSdkModel("acme", "model", {

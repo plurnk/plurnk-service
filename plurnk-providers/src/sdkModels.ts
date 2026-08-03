@@ -85,12 +85,6 @@ const baseUrl = (
     return value === undefined ? undefined : expandEnv(value, env, provider).replace(/\/+$/, "");
 };
 
-const apiKey = (
-    provider: string,
-    env: NodeJS.ProcessEnv,
-    catalog: ProviderInfo,
-): string | undefined => firstSet(env, configuredKeyNames(provider, env, catalog));
-
 const requireApiKey = (
     provider: string,
     env: NodeJS.ProcessEnv,
@@ -179,12 +173,14 @@ export const createSdkModel = (
             };
         case "@ai-sdk/openai-compatible":
             if (url === undefined) throw new Error(`${provider} provider: Models.dev supplies no API URL and no base URL was configured`);
+            const keyNames = configuredKeyNames(provider, env, catalog);
+            const key = keyNames.length === 0 ? undefined : requireApiKey(provider, env, catalog);
             return {
                 compatible: {
                     url: `${url}/chat/completions`,
-                    headers: apiKey(provider, env, catalog) === undefined
+                    headers: key === undefined
                         ? {}
-                        : { Authorization: `Bearer ${apiKey(provider, env, catalog)}` },
+                        : { Authorization: `Bearer ${key}` },
                 },
                 catalog,
             };
