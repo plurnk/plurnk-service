@@ -157,31 +157,31 @@ successfully transported management Run; it does not turn the Run into
 `RUN_ERROR` or invent a parallel error string. Unknown kinds return an honest
 `unknown-action` Problem. There is no side-channel endpoint.
 
-| Public action             | Scope      | Parameters | Owner / effect |
-|---------------------------|------------|------------|----------------|
-| `ping`                    | Worldless  | none | AG-UI-local liveness; returns `{}`. |
-| `discover`                | Worldless  | none | AG-UI-local public membership manifest ({§discovery}). |
-| `providers.list`          | Worldless  | none | `CoreSeam.listProviders`. |
-| `workspace.list`          | Worldless  | none | `CoreSeam.listWorkspaces`. |
-| `workspace.create`        | Worldless  | `name?`, `projectRoot?`, `settings?`, `constraints?` | Creates or attaches the exact named world, or asks core to create an automatically named world. |
-| `workspace.attach`        | Worldless  | `id`, `workerId?` | `CoreSeam.attachWorkspace`; returns the selected envelope. |
-| `workspace.workers`       | Workspace  | `id?` | `CoreSeam.listWorkers`; an explicit id overrides the bound workspace. |
-| `log.read`                | Workspace  | `workerId?`, log-coordinate filters | `CoreSeam.readLog`; defaults to the thread's conversation worker. |
-| `loop.inject`             | Workspace  | `prompt` | `CoreSeam.runLoop` on the thread's conversation worker; folds into live work or enqueues a loop. |
-| `loop.cancel`             | Workspace  | none | `CoreSeam.cancelDrain` on the thread's conversation worker. |
-| `workspace.prompts`       | Workspace  | `limit?` | `CoreSeam.listPrompts`. |
-| `workspace.rename`        | Workspace  | `name` | `CoreSeam.renameWorkspace`. |
-| `workspace.constrain`     | Workspace  | `effect`, `glob` | `CoreSeam.constrain`. |
-| `workspace.unconstrain`   | Workspace  | `effect`, `glob` | `CoreSeam.unconstrain`. |
-| `workspace.constraints`   | Workspace  | none | `CoreSeam.listConstraints`. |
-| `workspace.derivation`    | Workspace  | none | `CoreSeam.workspaceDerivationStatus`. |
-| `entry.read`              | Workspace  | `target`, `channel?`, `offset?` | `CoreSeam.readEntry`. |
-| `op.exec`                 | Workspace  | `command` | Constructs one EXEC statement and calls `CoreSeam.dispatchClientAction` on the client worker. |
-| `op.parse`                | Workspace  | `text` | Parses PLURNK text at this boundary and dispatches its statements as one client action. |
-| `workspace.members`       | Workspace  | none | `CoreSeam.listMembers`. |
-| `op.look`                 | Workspace  | `text` | Parses LOOK, rewrites it to READ, and calls core's no-log `look` projection. |
-| `run.fork`                | Workspace  | `name?` | `CoreSeam.forkWorker` from the thread's conversation worker. |
-| Registered module action  | Worldless  | owner-defined | `CoreSeam.invokeModuleAction`; the handler receives only the supplied params and owns their validation and result. |
+| Public action            | Scope     | Parameters                                           | Owner / effect                                                                                                     |
+|--------------------------|-----------|------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------|
+| `ping`                   | Worldless | none                                                 | AG-UI-local liveness; returns `{}`.                                                                                |
+| `discover`               | Worldless | none                                                 | AG-UI-local public membership manifest ({§discovery}).                                                             |
+| `providers.list`         | Worldless | none                                                 | `CoreSeam.listProviders`.                                                                                          |
+| `workspace.list`         | Worldless | none                                                 | `CoreSeam.listWorkspaces`.                                                                                         |
+| `workspace.create`       | Worldless | `name?`, `projectRoot?`, `settings?`, `constraints?` | Creates or attaches the exact named world, or asks core to create an automatically named world.                    |
+| `workspace.attach`       | Worldless | `id`, `workerId?`                                    | `CoreSeam.attachWorkspace`; returns the selected envelope.                                                         |
+| `workspace.workers`      | Workspace | `id?`                                                | `CoreSeam.listWorkers`; an explicit id overrides the bound workspace.                                              |
+| `log.read`               | Workspace | `workerId?`, log-coordinate filters                  | `CoreSeam.readLog`; defaults to the thread's conversation worker.                                                  |
+| `loop.inject`            | Workspace | `prompt`                                             | `CoreSeam.runLoop` on the thread's conversation worker; folds into live work or enqueues a loop.                   |
+| `loop.cancel`            | Workspace | none                                                 | `CoreSeam.cancelDrain` on the thread's conversation worker.                                                        |
+| `workspace.prompts`      | Workspace | `limit?`                                             | `CoreSeam.listPrompts`.                                                                                            |
+| `workspace.rename`       | Workspace | `name`                                               | `CoreSeam.renameWorkspace`.                                                                                        |
+| `workspace.constrain`    | Workspace | `effect`, `glob`                                     | `CoreSeam.constrain`.                                                                                              |
+| `workspace.unconstrain`  | Workspace | `effect`, `glob`                                     | `CoreSeam.unconstrain`.                                                                                            |
+| `workspace.constraints`  | Workspace | none                                                 | `CoreSeam.listConstraints`.                                                                                        |
+| `workspace.derivation`   | Workspace | none                                                 | `CoreSeam.workspaceDerivationStatus`.                                                                              |
+| `entry.read`             | Workspace | `target`, `channel?`, `offset?`                      | `CoreSeam.readEntry`.                                                                                              |
+| `op.exec`                | Workspace | `command`                                            | Constructs one EXEC statement and calls `CoreSeam.dispatchClientAction` on the client worker.                      |
+| `op.parse`               | Workspace | `text`                                               | Parses PLURNK text under {§parse-diagnostics} and dispatches its statements as one client action.                  |
+| `workspace.members`      | Workspace | none                                                 | `CoreSeam.listMembers`.                                                                                            |
+| `op.look`                | Workspace | `text`                                               | Parses LOOK, rewrites it to READ, and calls core's no-log `look` projection.                                       |
+| `run.fork`               | Workspace | `name?`                                              | `CoreSeam.forkWorker` from the thread's conversation worker.                                                       |
+| Registered module action | Worldless | owner-defined                                        | `CoreSeam.invokeModuleAction`; the handler receives only the supplied params and owns their validation and result. |
 
 §agui-module-actions **One public action namespace.** Core rejects empty and
 duplicate extension registrations ({§module-action-registration}). At module

@@ -159,15 +159,29 @@ test("op.parse surfaces a parse failure as a 400 result with its line:col — no
             const result = response.result as {
                 results: Array<{
                     status: number;
-                    problem?: { type: string; line?: number; column?: number; recovery?: string };
+                    problem?: {
+                        type: string;
+                        detail?: string;
+                        line?: number;
+                        column?: number;
+                        source?: string;
+                        severity?: string;
+                        recovery?: string;
+                    };
                 }>;
             };
             assert.ok(result.results.some((r) => r.status === 201), "the valid EDIT dispatched");
             const err = result.results.find((r) => r.status === 400);
             assert.ok(err !== undefined, "the parse failure surfaced as a 400 result, not silently dropped");
             assert.equal(err!.problem?.type, "https://problems.plurnk.dev/daemon/input/parse-failed");
+            assert.match(err!.problem?.detail ?? "", /unrecognized character 'x' in signal/);
+            assert.doesNotMatch(err!.problem?.detail ?? "", /Plurnk lexer error at line/);
             assert.equal(err!.problem?.line, 2, "the failure's line is in the caller's submitted text (PLAN-prefix de-offset)");
-            assert.equal(err!.problem?.recovery, "Correct the statement at the reported position.");
+            assert.deepEqual(
+                { source: err!.problem?.source, severity: err!.problem?.severity },
+                { source: "lexer", severity: "error" },
+            );
+            assert.equal(err!.problem?.recovery, undefined, "the client seam does not author generic parser recovery");
         } finally { ws.close(); }
     });
 });

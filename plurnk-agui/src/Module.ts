@@ -743,7 +743,7 @@ export default class Module {
                 case "op.parse": {
                     // Raw DSL parsed at the module's edge (the grammar is a family-internal
                     // runtime dep, operator-approved) → each statement dispatched; parse
-                    // failures return as per-statement 400 results.
+                    // failures return as per-statement 400 results. {§parse-diagnostics}
                     if (typeof p.text !== "string" || p.text.length === 0) {
                         return actionFailure(
                             "invalid-action-parameters",
@@ -767,8 +767,9 @@ export default class Module {
                                     {
                                         line: item.error.line,
                                         column: item.error.column,
+                                        source: item.error.source,
+                                        severity: item.error.severity,
                                         stage: "parsing",
-                                        recovery: "Correct the statement at the reported position.",
                                         retryable: false,
                                     },
                                 ),

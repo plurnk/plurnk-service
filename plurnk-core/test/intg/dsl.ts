@@ -10,11 +10,17 @@
 // in the canonical contracts grammar.
 
 import { PlurnkParser } from "@plurnk/plurnk-contracts";
-import type { LineMarker, PlurnkStatement } from "@plurnk/plurnk-contracts";
+import type { ErrorSource, LineMarker, PlurnkStatement, Severity } from "@plurnk/plurnk-contracts";
 
-// A parse failure surfaced from raw DSL — an error item or an unterminated tail. `line`/`column`
-// are 1-based positions in the CALLER's text (PLAN-prefix de-offset applied). {§methods}
-export type ParseFailure = { message: string; line: number; column: number };
+// A parse failure surfaced from raw DSL — an error item or an unterminated tail. Positions refer
+// to the CALLER's text after the injected PLAN line is de-offset. {§methods} {§parse-diagnostics} #128
+export type ParseFailure = {
+    message: string;
+    line: number;
+    column: number;
+    source: ErrorSource | "grammar";
+    severity: Severity;
+};
 
 interface OpWithMatcher {
     target: string;
@@ -123,22 +129,32 @@ export default class Dsl {
             if (item.kind === "statement") {
                 if (item.statement.op !== "PLAN") statements.push(item.statement);
             } else if (item.kind === "error") {
-                // Drop the parser's "Plurnk <source> error at L:C — " prefix; the de-offset line:col
-                // below is authoritative (the prefix's embedded L:C is in the PLAN-prefixed text).
-                const message = item.error.message.replace(/^Plurnk \w+ error at (?:line )?\d+:\d+ [-—] /, "");
+                const { message } = item.error;
                 // The parser emits benign turn-structure items for parse-and-dispatch input that isn't a
                 // full turn — "unexpected end of input" (pre-0.74.34) / the imperative "a turn must begin
                 // with PLAN" + "a turn must end with a terminal SEND" (0.74.34+). op.parse dispatches a
                 // statement set, not a turn, so these are noise; the genuine unterminated case is the
                 // unparsedTail below. Drop the scaffolding; keep real errors.
                 if (message.startsWith("unexpected end of input") || message.startsWith("a turn must ")) continue;
-                errors.push({ message, line: line(item.error.line), column: item.error.column });
+                errors.push({
+                    message,
+                    line: line(item.error.line),
+                    column: item.error.column,
+                    source: item.error.source,
+                    severity: item.error.severity,
+                });
             }
         }
         if (result.unparsedTail !== undefined) {
             const { from, reason } = result.unparsedTail;
             const deLined = prefixed ? reason.replace(/opened at line (\d+)/g, (_m, n) => `opened at line ${line(Number(n))}`) : reason;
-            errors.push({ message: deLined, line: line(from.line), column: from.column });
+            errors.push({
+                message: deLined,
+                line: line(from.line),
+                column: from.column,
+                source: "grammar",
+                severity: "error",
+            });
         }
         return { statements, errors };
     }

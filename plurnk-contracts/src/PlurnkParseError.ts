@@ -8,7 +8,7 @@ export default class PlurnkParseError extends Error {
     readonly severity: Severity;
 
     constructor(line: number, column: number, source: ErrorSource, message: string, severity: Severity = "error") {
-        super(`Plurnk ${source} ${severity} at line ${line}:${column} - ${message}`);
+        super(message);
         this.name = "PlurnkParseError";
         this.line = line;
         this.column = column;

@@ -138,6 +138,50 @@ test("a management-action AG-UI Run executes via the seam: result custom + RUN_F
     } finally { await mod.close(); }
 });
 
+test("#58: op.parse projects the parser-owned diagnostic and structured position", async () => {
+    const { seam } = mockSeam();
+    const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
+    try {
+        const events = await post(mod.address().port, {
+            threadId: "parse-diagnostic",
+            runId: "parse-diagnostic-run",
+            forwardedProps: {
+                plurnk: {
+                    workspace: "parse-diagnostic",
+                    action: { kind: "op.parse", text: "<<EXEC[-1,300]:x:EXEC" },
+                },
+            },
+        });
+        const event = events.find((candidate) => candidate.type === "CUSTOM"
+            && (candidate as { name?: string }).name === "plurnk.action.result") as {
+            value?: {
+                result?: {
+                    results?: Array<{
+                        status?: number;
+                        problem?: {
+                            detail?: string;
+                            line?: number;
+                            column?: number;
+                            source?: string;
+                            severity?: string;
+                            recovery?: string;
+                        };
+                    }>;
+                };
+            };
+        } | undefined;
+        const failure = event?.value?.result?.results?.find(({ status }) => status === 400)?.problem;
+        assert.ok(failure !== undefined, "the malformed statement surfaces as a child operation failure");
+        assert.match(failure.detail ?? "", /timeout\/poll ride the `<scope>` slot/);
+        assert.doesNotMatch(failure.detail ?? "", /Plurnk lexer error at line/);
+        assert.deepEqual(
+            { line: failure.line, column: failure.column, source: failure.source, severity: failure.severity },
+            { line: 1, column: 7, source: "lexer", severity: "error" },
+        );
+        assert.equal(failure.recovery, undefined, "AG-UI does not author generic parser recovery");
+    } finally { await mod.close(); }
+});
+
 test("a module action colliding with an AG-UI built-in fails module startup", async () => {
     const { seam } = mockSeam();
     seam.listModuleActions = () => ["ping"];

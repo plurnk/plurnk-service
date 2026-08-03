@@ -62,7 +62,7 @@ export default class Plurnkdown {
     }
 
     // Delegate a ```plurnk fence's ops to the contracts grammar; surface each syntax error at
-    // its absolute line. Fence content line 1 sits one line below the opening fence.
+    // its absolute line. Fence content line 1 sits one line below the opening fence. {§parse-diagnostics}
     #checkFencedOps(text: string, line: number, diagnostics: Diagnostic[]): void {
         for (const item of PlurnkParser.parseStatements(text).items) {
             if (item.kind !== "error") continue;
@@ -70,7 +70,7 @@ export default class Plurnkdown {
             diagnostics.push({
                 rule: "op-syntax",
                 severity: error.severity === "warning" ? "warning" : "error",
-                message: error.message.replace(/^Plurnk \w+ error at line \d+:\d+ - /, ""),
+                message: error.message,
                 line: line + error.line,
                 column: error.column,
             });

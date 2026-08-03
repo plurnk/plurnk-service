@@ -247,7 +247,8 @@ export default class SeamSocket {
                             stage: "parsing",
                             line: e.line,
                             column: e.column,
-                            recovery: "Correct the statement at the reported position.",
+                            source: e.source,
+                            severity: e.severity,
                             retryable: false,
                         },
                     ));

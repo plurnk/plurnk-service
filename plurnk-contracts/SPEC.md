@@ -676,9 +676,11 @@ or from the canonical Problem without creating another PLURNK failure contract.
 failure truth, lifecycle, scheduling, or recovery. Sharing a renderer with
 Problems does not merge their semantics.
 
-## 14. Parse error format
+## 14. Parse diagnostics
 
-`PlurnkParseError` is a JSON-serializable Error subclass:
+§parse-diagnostics `PlurnkParseError` is a JSON-serializable Error subclass.
+Its `message` contains only the parser-owned diagnostic; position, source, and
+severity remain separate facts.
 
 ```typescript
 type ErrorSource = "lexer" | "parser" | "visitor";
@@ -688,16 +690,15 @@ class PlurnkParseError extends Error {
     readonly line: number;
     readonly column: number;
     readonly source: ErrorSource;
-    readonly severity: Severity;   // default "error"; "warning" for advisories (e.g. near-miss ops)
-    // .message is "Plurnk <source> <severity> at line <line>:<column> - <message>"
+    readonly severity: Severity;
 }
 ```
 
-The three sources distinguish:
-
-- **`"lexer"`** — token-level failures (unrecognized character, malformed integer in `<L>`, etc.).
-- **`"parser"`** — structural failures at parse-tree level (missing close tag, wrong token order, etc.).
-- **`"visitor"`** — semantic failures during AST construction (SEND signal not an integer, EXEC signal with multiple values, etc.).
+| Source      | Boundary                                                                               |
+|-------------|----------------------------------------------------------------------------------------|
+| `"lexer"`   | Token-level failure, such as an unrecognized character or malformed `<L>` integer.     |
+| `"parser"`  | Structural failure, such as a missing close tag or wrong token order.                  |
+| `"visitor"` | Semantic AST-construction failure, such as an invalid matcher dialect or signal shape. |
 
 `severity` distinguishes a hard error from a non-fatal advisory. The parser is
 the sole and complete owner of syntax-error messaging because it holds the
@@ -739,11 +740,52 @@ these targeted diagnostics:
   otherwise returns only a bare 400. It is gated on a path-shaped signal so a
   genuine tags-only slip is not mis-steered toward a path it lacks.
 
-Consumers map hard parse errors bounded to a trustworthy model-turn frame to
-durable failed operation results and may project warnings as Notices with
-`level: "warn"`. An `unparsedTail` makes everything beyond its boundary
-undefined and cannot be recovered this way. Packet presentation may normalize
-and bound the producer-owned message without changing its meaning.
+§error-shape The diagnostic class determines how much guidance the parser may
+provide:
+
+| Class                  | Surface               | Message contract                                                                          |
+|------------------------|-----------------------|-------------------------------------------------------------------------------------------|
+| Hard fact              | `severity: "error"`   | One concise observed fact and violated constraint in PLURNK vocabulary.                   |
+| Targeted hard redirect | `severity: "error"`   | One canonical correction only when parser state makes the intended structure unambiguous. |
+| Non-fatal advisory     | `severity: "warning"` | One narrowly gated likely mistake and canonical alternative; input remains admitted.      |
+| Boundary loss          | `unparsedTail`        | Where trust ends, what remains open, and the required closer; later input is undefined.   |
+
+All messages use PLURNK protocol vocabulary: open tag, close tag, signal,
+target, scope, line marker, body, statement header, or space between
+statements. They never expose ANTLR rule or token names. They refer to a slot or
+feature rather than an implementation rule. Generic tutoring, speculative
+intent, coordinate restatement, and multiple repair strategies are forbidden.
+
+Examples of canonical hard facts:
+
+- `unrecognized character '<<' in target`
+- `unrecognized character ':' in signal`
+- `unrecognized character 'X' in statement header`
+- `expected close tag; got end of input`
+- `expected ')'; got ':'`
+
+Each malformed statement produces at most one hard error. The first recorded
+hard lexer or parser error within its source range wins; later failures in that
+same range are consumed rather than projected as a cascade. A visitor failure
+surfaces when syntax admitted the statement but AST construction did not.
+Independent malformed statements each retain one hard error. Advisories remain
+separate because they do not represent failed admission.
+
+When the lexer cannot determine where a malformed statement ends, the result's
+`unparsedTail` marks the position from which parsing gave up. It is a separate
+boundary fact, not an additional malformed-statement diagnostic. Consumers
+must treat anything past that point as undefined.
+
+| Consumer duty      | Contract                                                                                                       |
+|--------------------|----------------------------------------------------------------------------------------------------------------|
+| Diagnostic text    | Project `message` verbatim; do not strip prefixes, restate coordinates, or synthesize generic syntax recovery. |
+| Structured context | Preserve `line`, `column`, `source`, and `severity` as separate fields.                                        |
+| Runtime recovery   | Attach only a separately owned fact, such as Core knowing that bounded sibling operations were retained.       |
+| Durable projection | Map bounded hard errors to failed operation results; warnings may become Notices with `level: "warn"`.         |
+| Presentation       | Normalize or bound the diagnostic only when the surface requires it, without changing its meaning.             |
+
+An `unparsedTail` makes everything beyond its boundary undefined and cannot be
+recovered as a bounded failed operation.
 
 Serialization convention for transmission to the model (the agent
 runtime constructs this; the parser provides the fields):
@@ -757,38 +799,3 @@ runtime constructs this; the parser provides the fields):
     "message": "expected close tag `:OPsuffix`; got end of input"
 }
 ```
-
-§error-shape **Message style rules** (enforced by `PlurnkErrorStrategy` and the
-lexer message translator):
-
-- **Protocol vocabulary only.** Messages refer to plurnk concepts (open
-  tag, close tag, signal, path, line marker, body, statement header,
-  between statements) — never ANTLR or parser-internal terms (no
-  "token recognition error," "extraneous input," "RPAREN," "no viable
-  alternative," "<EOF>", etc.).
-- **Terse but complete.** One short sentence naming what was wrong.
-  No suggestions, no recovery hints, no extra context. The model
-  receives `line`/`column` separately and doesn't need duplication.
-- **Slot/feature references**, not rule references. "in path" rather
-  than "in rule path"; "expected close tag" rather than "expected
-  CLOSE_TAG."
-
-Examples of canonical messages:
-
-- `unrecognized character '<<' in path`
-- `unrecognized character ':' in signal`
-- `unrecognized character 'X' in statement header`
-- `expected close tag; got end of input`
-- `expected ')'; got ':'`
-
-**Per-statement semantics.** A single statement produces at most one
-error (fail-hard within a statement; first error wins, no cascading
-within-statement reports). Across statements, the parser recovers and
-continues — independent malformations in different statements each
-get their own error item in the result.
-
-**Boundary-destroying errors.** When the lexer cannot determine where
-a malformed statement ends (e.g., a body that never finds its close
-tag), the parser cannot reliably parse content after that point. The
-result's `unparsedTail` field marks the position from which parsing
-gave up. Consumers must treat anything past that point as undefined.

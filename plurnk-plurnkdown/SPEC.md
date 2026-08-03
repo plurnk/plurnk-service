@@ -86,7 +86,8 @@ Plurnkdown preserves the semantic evidence supplied by section owners.
 
 Model-facing operation examples use fenced blocks with the `plurnk` info string. A paragraph line
 beginning with `<<` is an `op-fence` error. Each `plurnk` fence is parsed statement-by-statement by
-`@plurnk/plurnk-contracts`; parser errors and advisories surface as `op-syntax` diagnostics.
+`@plurnk/plurnk-contracts`; parser errors and advisories surface as `op-syntax` diagnostics under
+{§parse-diagnostics}.
 
 Inline code may name a short operation form without becoming a block example. Other code-fence
 languages are opaque to the PLURNK syntax check.

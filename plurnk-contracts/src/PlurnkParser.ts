@@ -349,11 +349,13 @@ export default class PlurnkParser {
             if (!start) continue;
 
             if (c.ruleIndex !== undefined && STATEMENT_RULES.has(c.ruleIndex)) {
-                const errForStatement = errors.find(
+                const errorsForStatement = errors.filter(
                     (e) => !consumedErrors.has(e) && PlurnkParser.#errorInRange(e, start, stop ?? start),
                 );
+                const errForStatement = errorsForStatement[0];
                 if (errForStatement) {
-                    consumedErrors.add(errForStatement);
+                    // One malformed statement projects one hard diagnostic. {§error-shape}
+                    for (const error of errorsForStatement) consumedErrors.add(error);
                     items.push({ kind: "error", error: errForStatement });
                 } else if ((c.getChildCount?.() ?? 0) === 0) {
                     // A phantom statement context synthesized during error recovery (e.g. a

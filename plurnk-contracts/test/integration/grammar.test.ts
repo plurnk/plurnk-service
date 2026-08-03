@@ -8,6 +8,19 @@ const statementsOf = (input: string) =>
 const errorsOf = (input: string) =>
     PlurnkParser.parseStatements(input).items.filter((i) => i.kind === "error").map((i) => i.error);
 
+// {§parse-diagnostics} {§error-shape}
+test("#58: PlurnkParseError keeps diagnostic text separate from structured context", () => {
+    const error = new PlurnkParseError(3, 7, "lexer", "unrecognized character '-' in signal");
+    assert.equal(error.message, "unrecognized character '-' in signal");
+    assert.deepEqual(error.toJSON(), {
+        line: 3,
+        column: 7,
+        source: "lexer",
+        severity: "error",
+        message: "unrecognized character '-' in signal",
+    });
+});
+
 // -------------------------------------------------------------------------
 // Single-statement parses
 // -------------------------------------------------------------------------
@@ -307,6 +320,24 @@ test("value-add: a malformed signal collapses the per-character lexer cascade to
     // Adjacent lexer failures with the same context collapse into one steer.
     assert.equal(lex.length, 1, lex.map((e) => e!.message).join(" | "));
     assert.match(lex[0]!.message, /expected integer for SEND\/KILL/);
+});
+
+// {§parse-diagnostics} {§error-shape}
+test("#58: each malformed statement surfaces only its first hard diagnostic", () => {
+    const exec = errorsOf("<<EXEC[-1,300]:x:EXEC");
+    assert.equal(exec.length, 1, exec.map(({ message }) => message).join(" | "));
+    assert.match(exec[0]!.message, /timeout\/poll ride the `<scope>` slot/);
+
+    const matcher = errorsOf("<<FIND(a.go)$fC:x:FIND");
+    assert.equal(matcher.length, 1, matcher.map(({ message }) => message).join(" | "));
+    assert.match(matcher[0]!.message, /matcher rides the `:body:` slot/);
+
+    const independent = errorsOf("<<EXEC[-1,300]:x:EXEC\n<<FIND(a.go)$fC:x:FIND");
+    assert.deepEqual(
+        independent.map(({ line }) => line),
+        [1, 2],
+        independent.map(({ message }) => message).join(" | "),
+    );
 });
 
 test("value-add: SPAWN/DELEGATE near-miss steers to `<<WORK`", () => {

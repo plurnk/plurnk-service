@@ -1771,8 +1771,8 @@ export default class Engine {
         // only structured operations are executable). Interstitial free text is DROPPED — the prior
         // #free-text-capture synthesis of SEND[103] log ops was retired as tech debt
         // (grammar 0.70 forbids free text between ops, so a prose-only turn strikes 422).
-        // Full PlurnkParseError context (line/column/source) is preserved
-        // on rejected attempt evidence. Warnings remain admissible Notices.
+        // Full PlurnkParseError context is preserved on rejected attempt evidence;
+        // warnings remain admissible Notices. {§parse-diagnostics}
         const parseErrors: ParseErrorInfo[] = [];
         let hasUnparsedTail = false;
         const parseNotices: Notice[] = [];
