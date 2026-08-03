@@ -121,6 +121,7 @@ export default class WebFetcher {
         return [
             `HTTP ${response.status} ${response.statusText}`,
             ...[...response.headers].map(([key, value]) => `${key}: ${value}`),
+            "x-plurnk-request-method: GET",
             `x-plurnk-fetched-at: ${new Date().toISOString()}`,
         ].join("\n");
     }

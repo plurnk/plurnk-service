@@ -48,10 +48,33 @@ import WebFetcher, { rewriteAcquisitionTarget } from "./WebFetcher.ts";
 // The channel the response body streams into, and the header metadata channel.
 const BODY = "body";
 const HEADER = "header";
-// Materialization stamp line in the HEADER channel — the ONE timestamp the
-// freshness predicate reads (SPEC {§revalidation}). Namespaced so it can never
-// collide with a real response header.
+// Package-owned metadata appended after untrusted origin headers. Readers take
+// the last value so an origin using the same field name cannot override it.
 const FETCHED_AT = "x-plurnk-fetched-at";
+const REQUEST_METHOD = "x-plurnk-request-method";
+
+const lastHeaderValue = (header: string, name: string): string | undefined => {
+    const lines = header.split(/\r?\n/);
+    for (let index = lines.length - 1; index >= 0; index -= 1) {
+        const line = lines[index]!;
+        const colon = line.indexOf(":");
+        if (colon < 0 || line.slice(0, colon).trim().toLowerCase() !== name) continue;
+        return line.slice(colon + 1).trim();
+    }
+    return undefined;
+};
+
+const replaceLastHeaderValue = (header: string, name: string, value: string): string => {
+    const lines = header === "" ? [] : header.split("\n");
+    for (let index = lines.length - 1; index >= 0; index -= 1) {
+        const line = lines[index]!;
+        const colon = line.indexOf(":");
+        if (colon < 0 || line.slice(0, colon).trim().toLowerCase() !== name) continue;
+        lines[index] = `${name}: ${value}`;
+        return lines.join("\n");
+    }
+    return [...lines, `${name}: ${value}`].join("\n");
+};
 
 // Deep doc lives in `docs/http.md` (the constellation's docs/<name>.md
 // convention) and is loaded into the manifest at module init — the contract
@@ -122,7 +145,12 @@ export default class Http implements SchemeHandler {
         const { pathname, url } = address;
         if (target.pathname.includes("*")) return { shape: "passthrough", status: 200 };
         const prior = await ctx.entries.read(pathname);
-        if (prior.entry !== null) return { shape: "passthrough", status: 200 };
+        if (prior.entry !== null) {
+            const priorMethod = Http.#requestMethod(prior.entry.channels[HEADER]?.content ?? "");
+            if (priorMethod === undefined || priorMethod === "GET") {
+                return { shape: "passthrough", status: 200 };
+            }
+        }
         if (Results.isErrorStatus(prior.status) && prior.status !== 404) {
             return Http.#passthrough(prior);
         }
@@ -348,14 +376,8 @@ export default class Http implements SchemeHandler {
             );
         }
 
-        // Conditional revalidation (GET only, service#341): recover the prior
-        // fetch's validators + body from THIS scheme's own stored entry (entries
-        // cap, own namespace — sanctioned). If the origin answers 304, we re-serve
-        // the cached body and skip the expensive render. Freshness is decided ONLY
-        // by #storedCopyServable (SPEC {§revalidation}): within the operator TTL
-        // window the stored copy serves with zero round-trips; past it, the
-        // conditional GET revalidates (service#333/#405 landed the TTL). Captured
-        // BEFORE the seed write below overwrites the entry.
+        // {§revalidation} — recover only a GET-marked representation and its
+        // validators before the seed write replaces the stored channels.
         let cached: { header: string; body: { content: string; mimetype: string }; html?: { content: string; mimetype: string } } | undefined;
         const conditional: Array<[string, string]> = [];
         if (method === "GET") {
@@ -364,8 +386,8 @@ export default class Http implements SchemeHandler {
                 return Http.#passthrough(prior);
             }
             const pb = prior.entry?.channels[BODY];
-            if (pb !== undefined && pb.content.length > 0) {
-                const ph = prior.entry?.channels[HEADER]?.content ?? "";
+            const ph = prior.entry?.channels[HEADER]?.content ?? "";
+            if (pb !== undefined && pb.content.length > 0 && Http.#requestMethod(ph) === "GET") {
                 const html = prior.entry?.channels.html;
                 cached = {
                     header: ph,
@@ -376,11 +398,8 @@ export default class Http implements SchemeHandler {
             }
         }
 
-        // TTL fast path (the pre-fetch phase of the ONE predicate): a stored copy
-        // still inside the freshness window serves with NO round-trip at all —
-        // identical for a model READ and lane-1 prefetch (#405). Stamp unchanged:
-        // the clock only resets when the ORIGIN vouches (fetch or 304), never by
-        // serving from cache.
+        // {§revalidation} TTL fast path. Serving does not refresh the stamp;
+        // only a network acquisition or 304 vouches for a new acquisition time.
         if (cached !== undefined && Http.#storedCopyServable(Http.#fetchedAt(cached.header), null)) {
             const written = await ctx.entries.write(pathname, Http.#seedEntry());
             if (Results.isErrorStatus(written.status)) return Http.#passthrough(written);
@@ -423,12 +442,8 @@ export default class Http implements SchemeHandler {
                 headers: requestHeaders,
             }, local.signal);
 
-            // Origin confirms the cached copy is current → re-serve it, skip the
-            // render/stream. A 304-serve is a first-class READ: the model sees the
-            // stored body as an ordinary streaming result, never a cache status
-            // (service#341). `revalidated 304` rides the close summary for the log
-            // meta line + digest. notifyChunk appends onto the freshly-seeded empty
-            // channels, restoring the cached header + body.
+            // {§revalidation} A 304 restores the GET representation into the
+            // freshly seeded channels and remains an ordinary streaming READ.
             if (cached !== undefined && Http.#storedCopyServable(Http.#fetchedAt(cached.header), response)) {
                 await ctx.subscriptions.notifyChunk(HEADER, Http.#stamp(cached.header), "text/plain");
                 if (cached.html !== undefined) await ctx.subscriptions.notifyChunk("html", cached.html.content, cached.html.mimetype);
@@ -455,7 +470,7 @@ export default class Http implements SchemeHandler {
                 });
                 const projected = await ctx.projection.readable(result.html, "text/html");
                 if (projected === null) throw new Error("rendered HTML has no readable projection");
-                await Http.#writeHeader(ctx, result.status, result.statusText, result.headers);
+                await Http.#writeHeader(ctx, method, result.status, result.statusText, result.headers);
                 await ctx.subscriptions.notifyChunk("html", result.html, "text/html");
                 await ctx.subscriptions.notifyChunk(BODY, projected.content, projected.mimetype);
                 await ctx.subscriptions.close({ status: 200 }, `rendered HTTP ${result.status}; ${projected.content.length} readable chars`);
@@ -468,12 +483,12 @@ export default class Http implements SchemeHandler {
             // GET; events land in the body channel as they arrive across turns,
             // until the origin closes. Only GET — a POST reply is never an SSE READ.
             if (method === "GET" && /^text\/event-stream\b/i.test(contentType)) {
-                await Http.#writeHeader(ctx, response.status, response.statusText, [...response.headers]);
+                await Http.#writeHeader(ctx, method, response.status, response.statusText, [...response.headers]);
                 return await Http.#streamEvents(ctx, response);
             }
 
             // Byte path: stream the body labelled with its real content type.
-            await Http.#writeHeader(ctx, response.status, response.statusText, [...response.headers]);
+            await Http.#writeHeader(ctx, method, response.status, response.statusText, [...response.headers]);
             const bodyMime = contentType.split(";")[0].trim() || "application/octet-stream";
             if (response.body === null) {
                 await ctx.subscriptions.close({ status: 200 }, `HTTP ${response.status}; empty body`);
@@ -533,10 +548,12 @@ export default class Http implements SchemeHandler {
         return { channels, tags: [] };
     }
 
-    // Record the response status line + headers into the HEADER channel (text/plain).
-    static async #writeHeader(ctx: SchemeCtx, status: number, statusText: string, headers: ReadonlyArray<readonly [string, string]>): Promise<void> {
+    // {§revalidation} Origin headers come first; authoritative package method
+    // and acquisition-time metadata are appended last.
+    static async #writeHeader(ctx: SchemeCtx, method: string, status: number, statusText: string, headers: ReadonlyArray<readonly [string, string]>): Promise<void> {
         const lines = [`HTTP ${status} ${statusText}`];
         for (const [k, v] of headers) lines.push(`${k}: ${v}`);
+        lines.push(`${REQUEST_METHOD}: ${method}`);
         lines.push(`${FETCHED_AT}: ${new Date().toISOString()}`);
         await ctx.subscriptions.notifyChunk(HEADER, lines.join("\n"), "text/plain");
     }
@@ -611,15 +628,8 @@ export default class Http implements SchemeHandler {
         return address;
     }
 
-    // The single freshness-predicate boundary (service#341, #333). Today a
-    // conditional-GET `304 Not Modified` proves the stored copy is current, so it
-    // is servable without a re-fetch/re-render. service#333's per-URL TTL lands
-    // HERE as the SAME predicate (a pre-fetch branch) — one stamp, one rule,
-    // identical at every entry point. Never add a second freshness check elsewhere.
-    // Pre-fetch phase (response === null): fresh iff the stamp is inside the
-    // operator TTL window; PLURNK_SCHEMES_HTTP_TTL_MS=0 disables the window so
-    // every read revalidates (the pre-TTL behavior). Post-fetch phase: a 304 is
-    // the origin vouching for the stored copy.
+    // {§revalidation} One predicate owns the TTL pre-fetch decision and the
+    // post-fetch 304 decision.
     static #storedCopyServable(fetchedAtMs: number | undefined, response: Response | null): boolean {
         if (response === null) {
             const ttl = requireNumEnv("PLURNK_SCHEMES_HTTP_TTL_MS");
@@ -628,21 +638,21 @@ export default class Http implements SchemeHandler {
         return response.status === 304;
     }
 
-    // Parse the materialization stamp out of a stored HEADER channel; undefined
-    // when absent (pre-TTL entries, execs-materialized pages) — those simply
-    // never TTL-serve and revalidate instead.
+    // Package metadata is appended after origin headers, so the last value wins.
     static #fetchedAt(priorHeader: string): number | undefined {
-        const m = new RegExp(`^${FETCHED_AT}:[ \\t]*(.+)$`, "im").exec(priorHeader);
-        if (m === null) return undefined;
-        const ms = Date.parse(m[1].trim());
+        const value = lastHeaderValue(priorHeader, FETCHED_AT);
+        if (value === undefined) return undefined;
+        const ms = Date.parse(value);
         return Number.isNaN(ms) ? undefined : ms;
     }
 
-    // Re-stamp a stored HEADER to now — used when the ORIGIN vouches (304).
+    static #requestMethod(priorHeader: string): string | undefined {
+        return lastHeaderValue(priorHeader, REQUEST_METHOD)?.toUpperCase();
+    }
+
+    // Re-stamp the package-owned (last) field when the origin vouches with 304.
     static #stamp(header: string): string {
-        const line = `${FETCHED_AT}: ${new Date().toISOString()}`;
-        const re = new RegExp(`^${FETCHED_AT}:.*$`, "im");
-        return re.test(header) ? header.replace(re, line) : `${header}\n${line}`;
+        return replaceLastHeaderValue(header, FETCHED_AT, new Date().toISOString());
     }
 
     // Conditional-request headers from the prior fetch's stored response headers

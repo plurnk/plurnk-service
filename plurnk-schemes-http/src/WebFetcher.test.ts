@@ -34,6 +34,7 @@ test("live public textual URL → { body, mimetype }", async () => {
         assert.equal(fetched?.body, '{"a":1}');
         assert.equal(fetched?.mimetype, "application/json");
         assert.match(fetched?.header ?? "", /^HTTP 200 /);
+        assert.match(fetched?.header ?? "", /^x-plurnk-request-method: GET$/m);
         assert.match(fetched?.header ?? "", /^x-plurnk-fetched-at:/m);
     });
 });

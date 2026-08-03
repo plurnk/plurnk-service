@@ -5,6 +5,7 @@ import Http from "@plurnk/plurnk-schemes-http";
 import type {
     FindStatement,
     ReadStatement,
+    SendStatement,
     SchemeCtx,
     SchemeHandler,
     SchemeManifest,
@@ -62,6 +63,16 @@ const parseRead = (dsl: string): ReadStatement => {
     );
     if (item?.kind !== "statement" || item.statement.op !== "READ") {
         throw new Error(`no READ parsed from ${dsl}`);
+    }
+    return item.statement;
+};
+
+const parseSend = (dsl: string): SendStatement => {
+    const item = PlurnkParser.parse(`<<PLAN::PLAN\n${dsl}`).items.find(
+        (candidate) => candidate.kind === "statement" && candidate.statement.op === "SEND",
+    );
+    if (item?.kind !== "statement" || item.statement.op !== "SEND") {
+        throw new Error(`no SEND parsed from ${dsl}`);
     }
     return item.statement;
 };
@@ -223,6 +234,67 @@ test("exact URL FIND acquires live HTTP resources, reuses them, and rejects dead
         assert.equal(dead.status, 404);
         assert.equal(dead.problem?.type, "https://problems.plurnk.dev/scheme/http/not-materialized");
         assert.deepEqual(requests, [url, deadUrl]);
+    } finally {
+        globalThis.fetch = originalFetch;
+        await http.close();
+        await db.close();
+    }
+});
+
+test("HTTP mutation responses cannot satisfy later READ or exact FIND acquisition", async () => {
+    const db = await openMigrated();
+    const schemes = new SchemeRegistry();
+    const http = new Http();
+    schemes.register("http", http);
+    const engine = new Engine({ db, schemes, mimetypes: DEFAULT_MIMETYPES });
+    const originalFetch = globalThis.fetch;
+    const requests: Array<{ url: string; method: string }> = [];
+    const readUrl = "https://93.184.216.34/mutation-read";
+    const findUrl = "https://93.184.216.34/mutation-find";
+    globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+        const url = String(input);
+        const method = init?.method ?? "GET";
+        requests.push({ url, method });
+        const body = method === "GET"
+            ? `current GET representation for ${url}`
+            : `mutation response for ${url}`;
+        return new Response(body, {
+            status: 200,
+            headers: { "content-type": "text/plain" },
+        });
+    }) as typeof fetch;
+    try {
+        const workspaceId = await insertWorkspace(db, `http-method-provenance-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const loopId = await insertLoop(db, workerId, 1);
+        const turnId = await insertTurn(db, loopId, 1, 102);
+        const dispatch = (statement: FindStatement | ReadStatement | SendStatement, sequence: number) => engine.dispatch({
+            statement,
+            workspaceId,
+            workerId,
+            loopId,
+            turnId,
+            sequence,
+            origin: "model",
+        });
+
+        assert.equal((await dispatch(parseSend(`<<SEND[200](${readUrl}):update:SEND`), 1)).status, 102);
+        assert.equal((await dispatch(parseRead(`<<READ(${readUrl})::READ`), 2)).status, 102);
+        const readEntry = await db.test_entries_by_pathname.get<{ id: number }>({ pathname: "/93.184.216.34/mutation-read" });
+        assert.ok(readEntry !== undefined);
+        const readChannels = await db.entry_read_channels.all<{ name: string; content: string }>({ entry_id: readEntry.id });
+        assert.equal(readChannels.find(({ name }) => name === "body")?.content, `current GET representation for ${readUrl}`);
+
+        assert.equal((await dispatch(parseSend(`<<SEND[200](${findUrl}):update:SEND`), 3)).status, 102);
+        const found = await dispatch(parseFind(`<<FIND(${findUrl}):/current GET/:FIND`), 4);
+        assert.equal(found.status, 200);
+        assert.match(String(found.content), /"matches"/);
+        assert.deepEqual(requests, [
+            { url: readUrl, method: "POST" },
+            { url: readUrl, method: "GET" },
+            { url: findUrl, method: "POST" },
+            { url: findUrl, method: "GET" },
+        ]);
     } finally {
         globalThis.fetch = originalFetch;
         await http.close();

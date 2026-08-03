@@ -309,6 +309,23 @@ test("prepareFind preserves an exact storage-write failure", async () => {
     );
 });
 
+test("prepareFind preserves an unmarked authored entry without network acquisition", async () => {
+    const { ctx, inspect } = makeCtx(priorEntry("authored representation", "text/plain", ""));
+    let fetched = false;
+    await withFetch(async () => {
+        fetched = true;
+        return new Response("wrong");
+    }, async () => {
+        const result = await new Http().prepareFind(
+            findStmt(urlTarget("https://example.com/authored", "/authored")),
+            ctx,
+        );
+        assert.equal(result.status, 200);
+    });
+    assert.equal(fetched, false);
+    assert.equal(inspect().wrote, null);
+});
+
 // ── create-then-subscribe (http#3) ────────────────────────────────────────
 test("READ: materializes the entry (manifest channels) BEFORE subscribing", async () => {
     const { ctx, inspect } = makeCtx();
@@ -903,6 +920,7 @@ test("non-GitHub URL is fetched verbatim (no rewrite)", async () => {
 
 test("POST/PUT/DELETE preserve the addressed GitHub blob target", async () => {
     const seen: Array<{ url: string; method: string }> = [];
+    const markers: string[] = [];
     const blob = "https://github.com/o/r/blob/main/src/x.js";
     await withFetch(async (url, init) => {
         seen.push({ url: String(url), method: init?.method ?? "GET" });
@@ -915,8 +933,10 @@ test("POST/PUT/DELETE preserve the addressed GitHub blob target", async () => {
             (http: Http, ctx: SchemeCtx) => http.kill(killStmt(target), ctx),
         ];
         for (const operation of operations) {
-            const { ctx } = makeCtx();
+            const { ctx, inspect } = makeCtx();
             assert.equal((await operation(new Http(), ctx)).status, 102);
+            const header = inspect().chunks.find(({ channel }) => channel === "header")?.chunk ?? "";
+            markers.push(/^x-plurnk-request-method:[ \t]*(.+)$/im.exec(header)?.[1].trim() ?? "");
         }
     });
     assert.deepEqual(seen, [
@@ -924,6 +944,7 @@ test("POST/PUT/DELETE preserve the addressed GitHub blob target", async () => {
         { url: blob, method: "PUT" },
         { url: blob, method: "DELETE" },
     ]);
+    assert.deepEqual(markers, ["POST", "PUT", "DELETE"]);
 });
 
 // ── conditional revalidation (service#341) ─────────────────────────────────
@@ -936,8 +957,50 @@ const priorEntry = (body: string, mimetype: string, header: string, html?: strin
     tags: [],
 });
 
+test("revalidation: a mutation response cannot satisfy a later GET", async () => {
+    const header = [
+        "HTTP 200 OK",
+        "etag: \"mutation\"",
+        "x-plurnk-request-method: POST",
+        `x-plurnk-fetched-at: ${new Date().toISOString()}`,
+    ].join("\n");
+    const { ctx, inspect } = makeCtx(priorEntry("post response", "text/plain", header));
+    let conditional = false;
+    await withFetch(async (_url, init) => {
+        const headers = new Headers(init?.headers);
+        conditional = headers.has("if-none-match") || headers.has("if-modified-since");
+        return new Response("get response", { status: 200, headers: { "content-type": "text/plain" } });
+    }, async () => {
+        await new Http().read(readStmt(urlTarget("https://example.com/item", "/item")), ctx);
+    });
+    assert.equal(conditional, false);
+    assert.equal(inspect().chunks.filter(({ channel }) => channel === "body").map(({ chunk }) => chunk).join(""), "get response");
+});
+
+test("prepareFind reacquires an exact URL whose stored response came from a mutation", async () => {
+    const header = [
+        "HTTP 200 OK",
+        "x-plurnk-request-method: DELETE",
+        `x-plurnk-fetched-at: ${new Date().toISOString()}`,
+    ].join("\n");
+    const { ctx, inspect } = makeCtx(priorEntry("deleted", "text/plain", header));
+    let fetched = false;
+    await withFetch(async () => {
+        fetched = true;
+        return new Response("current representation", { status: 200, headers: { "content-type": "text/plain" } });
+    }, async () => {
+        const result = await new Http().prepareFind(
+            findStmt(urlTarget("https://example.com/item", "/item")),
+            ctx,
+        );
+        assert.equal(result.status, 201);
+    });
+    assert.equal(fetched, true);
+    assert.equal(inspect().wrote?.entry.channels.body?.content, "current representation");
+});
+
 test("READ revalidation: prior ETag → If-None-Match → 304 serves cached projection + DOM, skips render", async () => {
-    const { ctx, inspect } = makeCtx(priorEntry("cached page", "text/markdown", "HTTP 200 OK\netag: \"v1\"", "<html>cached page</html>"));
+    const { ctx, inspect } = makeCtx(priorEntry("cached page", "text/markdown", "HTTP 200 OK\netag: \"v1\"\nx-plurnk-request-method: GET", "<html>cached page</html>"));
     const browser = fakeBrowser("<html>SHOULD NOT RENDER</html>");
     let seenINM = "";
     const probe = async (_url: string | URL | Request, init?: RequestInit) => {
@@ -957,7 +1020,7 @@ test("READ revalidation: prior ETag → If-None-Match → 304 serves cached proj
 });
 
 test("READ revalidation: 200 (changed) re-fetches + streams normally despite a prior entry", async () => {
-    const { ctx, inspect } = makeCtx(priorEntry("old", "text/plain", "HTTP 200 OK\netag: \"v1\""));
+    const { ctx, inspect } = makeCtx(priorEntry("old", "text/plain", "HTTP 200 OK\netag: \"v1\"\nx-plurnk-request-method: GET"));
     await withFetch(mockFetch(200, "OK", ["fresh content"], { "content-type": "text/plain" }), async () => {
         await new Http().read(readStmt(urlTarget("https://example.com/p", "/p")), ctx);
     });
@@ -982,7 +1045,7 @@ test("READ revalidation: no prior entry → no conditional headers, full fetch",
 
 // ── per-URL TTL at the freshness predicate (#405, service#333) ─────────────
 const stampedHeader = (ageMs: number, extra = "") =>
-    `HTTP 200 OK${extra}\nx-plurnk-fetched-at: ${new Date(Date.now() - ageMs).toISOString()}`;
+    `HTTP 200 OK${extra}\nx-plurnk-request-method: GET\nx-plurnk-fetched-at: ${new Date(Date.now() - ageMs).toISOString()}`;
 const withTtl = async (ttl: string | undefined, fn: () => Promise<void>) => {
     const prev = process.env.PLURNK_SCHEMES_HTTP_TTL_MS;
     if (ttl === undefined) delete process.env.PLURNK_SCHEMES_HTTP_TTL_MS;
@@ -1023,16 +1086,44 @@ test("TTL: stale stamp falls through to the conditional GET (revalidates)", asyn
     assert.equal(seenINM, "\"v1\""); // past the window → the 304 phase owns freshness
 });
 
-test("TTL: stampless prior entry (execs-materialized) never TTL-serves — revalidates", async () => {
+test("TTL: package-appended metadata wins over a same-named origin header", async () => {
+    const future = new Date(Date.now() + 3_600_000).toISOString();
+    const stale = new Date(Date.now() - 120_000).toISOString();
+    const header = [
+        "HTTP 200 OK",
+        `x-plurnk-fetched-at: ${future}`,
+        "x-plurnk-request-method: GET",
+        `x-plurnk-fetched-at: ${stale}`,
+    ].join("\n");
+    const { ctx } = makeCtx(priorEntry("old", "text/plain", header));
+    let fetched = false;
+    await withTtl("60000", async () => {
+        await withFetch(async () => {
+            fetched = true;
+            return new Response("fresh", { status: 200, headers: { "content-type": "text/plain" } });
+        }, async () => {
+            await new Http().read(readStmt(urlTarget("https://example.com/p", "/p")), ctx);
+        });
+    });
+    assert.equal(fetched, true);
+});
+
+test("TTL: an unmarked authored entry never supplies GET freshness or validators", async () => {
     const { ctx } = makeCtx(priorEntry("materialized", "text/html", "HTTP 200 OK\netag: \"m1\""));
     let fetched = false;
-    const probe = async () => { fetched = true; return new Response("x", { status: 200 }); };
+    let conditional = false;
+    const probe = async (_url: string | URL | Request, init?: RequestInit) => {
+        fetched = true;
+        conditional = new Headers(init?.headers).has("if-none-match");
+        return new Response("x", { status: 200 });
+    };
     await withTtl("60000", async () => {
         await withFetch(probe as typeof fetch, async () => {
             await new Http().read(readStmt(urlTarget("https://example.com/m", "/m")), ctx);
         });
     });
     assert.equal(fetched, true);
+    assert.equal(conditional, false);
 });
 
 test("TTL: explicit 0 disables the window — fresh stamp still revalidates", async () => {
@@ -1076,6 +1167,24 @@ test("stamp: #writeHeader materializes x-plurnk-fetched-at; 304 re-serve refresh
     const oldMs = Date.parse(/x-plurnk-fetched-at: (.+)$/m.exec(old)![1]);
     const newMs = Date.parse(/x-plurnk-fetched-at: (.+)$/m.exec(served)![1]);
     assert.ok(newMs > oldMs, "origin vouched (304) → stamp refreshed");
+});
+
+test("GET appends authoritative request-method metadata after origin headers", async () => {
+    const { ctx, inspect } = makeCtx();
+    await withFetch(async () => new Response("x", {
+        status: 200,
+        headers: {
+            "content-type": "text/plain",
+            "x-plurnk-request-method": "POST",
+        },
+    }), async () => {
+        await new Http().read(readStmt(urlTarget("https://example.com/method", "/method")), ctx);
+    });
+    const header = inspect().chunks.find(({ channel }) => channel === "header")?.chunk ?? "";
+    assert.deepEqual(
+        [...header.matchAll(/^x-plurnk-request-method:[ \t]*(.+)$/gim)].map((match) => match[1].trim()),
+        ["POST", "GET"],
+    );
 });
 
 // ── wire identity ───────────────────────────────────────────────────────────
