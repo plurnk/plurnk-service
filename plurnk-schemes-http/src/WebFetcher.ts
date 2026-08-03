@@ -4,6 +4,11 @@
 // typed admission failure and caller cancellation reject.
 
 import { MimetypeClassifier, type ProjectionCaps } from "@plurnk/plurnk-schemes";
+import {
+    admissionBroker,
+    type AdmissionBrokerOwner,
+    type AdmissionLease,
+} from "./AdmissionBroker.ts";
 import Browser, { BROWSER_UA, requireNumEnv, type RenderResult } from "./Browser.ts";
 import Guard, {
     GuardBlockedError,
@@ -67,8 +72,11 @@ export default class WebFetcher {
     // One warm-Chromium pool shared across prefetches (render context keyed 0 —
     // prefetch is public-page acquisition, no per-worker cookie isolation to keep).
     readonly #browser: Renderer;
-    constructor(browser: Renderer = new Browser()) {
-        this.#browser = browser;
+    readonly #broker: AdmissionBrokerOwner;
+    #admission: AdmissionLease | null = null;
+    constructor(browser?: Renderer, broker: AdmissionBrokerOwner = admissionBroker) {
+        this.#broker = broker;
+        this.#browser = browser ?? new Browser(undefined, broker);
     }
 
     // {§html-materialization} One projection seam for exact HTTP preparation
@@ -111,11 +119,23 @@ export default class WebFetcher {
     }
 
     async close(): Promise<void> {
-        await this.#browser.close?.();
+        const admission = this.#admission;
+        this.#admission = null;
+        const results = await Promise.allSettled([
+            this.#browser.close?.(),
+            admission?.close(),
+        ].filter((operation): operation is Promise<void> => operation !== undefined));
+        const errors = results
+            .filter((result): result is PromiseRejectedResult => result.status === "rejected")
+            .flatMap((result) => result.reason instanceof AggregateError
+                ? [...result.reason.errors]
+                : [result.reason]);
+        if (errors.length > 0) throw new AggregateError(errors, "WebFetcher shutdown failed");
     }
 
     async fetch(url: string, opts?: { signal?: AbortSignal }): Promise<WebFetchResult | null> {
         opts?.signal?.throwIfAborted();
+        const admission = this.#admission ??= this.#broker.acquire();
         const target = rewriteAcquisitionTarget(url);
         // Bound the byte probe independently. Browser.render owns its navigation
         // deadline so it can apply the substantive-DOM timeout salvage contract.
@@ -124,7 +144,12 @@ export default class WebFetcher {
 
         let response: Response;
         try {
-            response = await Guard.fetch(target, { method: "GET", body: undefined, headers: [["User-Agent", BROWSER_UA]] }, probeSignal);
+            response = await Guard.fetch(
+                target,
+                { method: "GET", body: undefined, headers: [["User-Agent", BROWSER_UA]] },
+                probeSignal,
+                admission,
+            );
         } catch (cause) {
             // {§prefetch} AbortSignal.any preserves the first winning reason.
             // Only a caller-owned win escapes; the probe deadline remains the
@@ -158,7 +183,7 @@ export default class WebFetcher {
                         // The renderer supplies its own per-navigation deadline.
                         signal: opts?.signal,
                         headers: [["User-Agent", BROWSER_UA]],
-                        guard: Guard.admit,
+                        guard: (raw) => Guard.admit(raw, admission),
                     });
                     return rendered.html.length > 0 ? { body: rendered.html, mimetype: "text/html" } : null;
                 },

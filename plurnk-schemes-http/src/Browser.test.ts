@@ -4,6 +4,10 @@
 
 import test from "node:test";
 import { strict as assert } from "node:assert";
+import type {
+    AdmissionBrokerOwner,
+    AdmissionLease,
+} from "./AdmissionBroker.ts";
 import Browser, { type ChromiumEngine } from "./Browser.ts";
 import {
     GuardBlockedError,
@@ -48,11 +52,29 @@ interface FakeConfig {
 const timeoutError = () => Object.assign(new Error("Timeout 30000ms exceeded"), { name: "TimeoutError" });
 const admitAll = async (): Promise<GuardAdmission> => ({ admitted: true });
 
+const makeBroker = (localUrl = "socks5://127.0.0.1:41080") => {
+    const calls = { acquire: 0, fixed: [] as boolean[], close: 0 };
+    const owner: AdmissionBrokerOwner = {
+        acquire(): AdmissionLease {
+            calls.acquire += 1;
+            return {
+                admit: admitAll,
+                async localProxyUrl(fixed = false) { calls.fixed.push(fixed); return localUrl; },
+                async dispatcher() { throw new Error("dispatcher is outside this browser unit seam"); },
+                async legacyDispatcher() { throw new Error("dispatcher is outside this browser unit seam"); },
+                translateTransportError: (_raw, cause) => cause,
+                async close() { calls.close += 1; },
+            };
+        },
+    };
+    return { owner, calls };
+};
+
 const makeEngine = (cfg: FakeConfig = {}) => {
     const calls = { newContext: 0, newPage: 0, goto: 0, routeContinue: 0, routeAbort: 0, webSocketConnect: 0, webSocketClose: 0, popupClose: 0, pageClose: 0, contextClose: 0, browserClose: 0, launch: 0, connect: 0, connectOverCDP: 0 };
     const launchOptions: Array<{ channel?: string; executablePath?: string; headless?: boolean; chromiumSandbox?: boolean; timeout?: number }> = [];
     const endpoints: string[] = [];
-    const contextOptions: Array<{ serviceWorkers?: "block"; isMobile?: boolean; userAgent?: string } | undefined> = [];
+    const contextOptions: Array<{ serviceWorkers?: "block"; proxy?: { server: string }; isMobile?: boolean; userAgent?: string } | undefined> = [];
     const makePage = () => {
         const mainFrame = {};
         let routeHandler: ((route: {
@@ -139,7 +161,7 @@ const makeEngine = (cfg: FakeConfig = {}) => {
         async close() { calls.contextClose++; await cfg.contextClose?.(contextNumber); },
     });
     const makeBrowser = () => ({
-        async newContext(options?: { serviceWorkers?: "block"; isMobile?: boolean; userAgent?: string }) { calls.newContext++; contextOptions.push(options); return makeContext(calls.newContext); },
+        async newContext(options?: { serviceWorkers?: "block"; proxy?: { server: string }; isMobile?: boolean; userAgent?: string }) { calls.newContext++; contextOptions.push(options); return makeContext(calls.newContext); },
         on() {},
         async close() { calls.browserClose++; await cfg.browserClose?.(); },
     });
@@ -206,15 +228,21 @@ test("ready: connect uses a Playwright protocol endpoint", async () => {
     await withEnv({
         PLURNK_SCHEMES_HTTP_PLAYWRIGHT_METHOD: "connect",
         PLURNK_SCHEMES_HTTP_PLAYWRIGHT_ENDPOINT: "ws://browser.test/playwright",
+        PLURNK_SCHEMES_HTTP_PLAYWRIGHT_BROKER_URL: "socks5://browser.test:1080",
     }, async () => {
-        const { engine, calls, endpoints } = makeEngine();
-        const browser = new Browser(() => Promise.resolve(engine));
+        const { engine, calls, endpoints, contextOptions } = makeEngine();
+        const broker = makeBroker();
+        const browser = new Browser(() => Promise.resolve(engine), broker.owner);
         assert.equal(await browser.ready(), "connect");
         assert.equal(calls.connect, 1);
         assert.equal(calls.connectOverCDP, 0);
         assert.equal(calls.launch, 0);
         assert.deepEqual(endpoints, ["ws://browser.test/playwright"]);
+        assert.deepEqual(broker.calls.fixed, [true]);
+        await browser.render("https://example.com/", { workerId: 1, guard: admitAll });
+        assert.equal(contextOptions[0]?.proxy?.server, "socks5://browser.test:1080");
         await browser.close();
+        assert.equal(broker.calls.close, 1);
     });
 });
 
@@ -222,14 +250,17 @@ test("ready: connectOverCDP attaches to a running Chromium browser", async () =>
     await withEnv({
         PLURNK_SCHEMES_HTTP_PLAYWRIGHT_METHOD: "connectOverCDP",
         PLURNK_SCHEMES_HTTP_PLAYWRIGHT_ENDPOINT: "http://browser.test:9222",
+        PLURNK_SCHEMES_HTTP_PLAYWRIGHT_BROKER_URL: "socks5://browser.test:1080",
     }, async () => {
         const { engine, calls, endpoints } = makeEngine();
-        const browser = new Browser(() => Promise.resolve(engine));
+        const broker = makeBroker();
+        const browser = new Browser(() => Promise.resolve(engine), broker.owner);
         assert.equal(await browser.ready(), "connectOverCDP");
         assert.equal(calls.connect, 0);
         assert.equal(calls.connectOverCDP, 1);
         assert.equal(calls.launch, 0);
         assert.deepEqual(endpoints, ["http://browser.test:9222"]);
+        assert.deepEqual(broker.calls.fixed, [true]);
         await browser.close();
     });
 });
@@ -279,6 +310,17 @@ test("configuration rejects incompatible Playwright selections", async () => {
     }, async () => {
         const { engine } = makeEngine();
         await assert.rejects(new Browser(() => Promise.resolve(engine)).ready(), /mutually exclusive/);
+    });
+    await withEnv({
+        PLURNK_SCHEMES_HTTP_PLAYWRIGHT_METHOD: "connect",
+        PLURNK_SCHEMES_HTTP_PLAYWRIGHT_ENDPOINT: "ws://browser.test/playwright",
+        PLURNK_SCHEMES_HTTP_PLAYWRIGHT_BROKER_URL: undefined,
+    }, async () => {
+        const { engine } = makeEngine();
+        await assert.rejects(
+            new Browser(() => Promise.resolve(engine)).ready(),
+            /requires PLURNK_SCHEMES_HTTP_PLAYWRIGHT_BROKER_URL/,
+        );
     });
 });
 
@@ -573,6 +615,7 @@ test("mobile emulation: contexts default to the configured mobile profile", asyn
     const browser = new Browser(() => Promise.resolve(engine));
     await browser.render("https://example.com/", { workerId: 1, guard: admitAll });
     assert.equal(contextOptions[0]?.serviceWorkers, "block");
+    assert.match(contextOptions[0]?.proxy?.server ?? "", /^socks5:\/\/127\.0\.0\.1:/);
     assert.equal(contextOptions[0]?.isMobile, true);
     assert.match(contextOptions[0]?.userAgent ?? "", /Mobile/);
     await browser.close();
@@ -585,7 +628,9 @@ test("mobile emulation: PLURNK_SCHEMES_HTTP_MOBILE=0 renders desktop (no emulati
         const { engine, contextOptions } = makeEngine();
         const browser = new Browser(() => Promise.resolve(engine));
         await browser.render("https://example.com/", { workerId: 1, guard: admitAll });
-        assert.deepEqual(contextOptions[0], { serviceWorkers: "block" });
+        assert.equal(contextOptions[0]?.serviceWorkers, "block");
+        assert.match(contextOptions[0]?.proxy?.server ?? "", /^socks5:\/\/127\.0\.0\.1:/);
+        assert.equal(contextOptions[0]?.isMobile, undefined);
         await browser.close();
     } finally {
         if (prev === undefined) delete process.env.PLURNK_SCHEMES_HTTP_MOBILE;

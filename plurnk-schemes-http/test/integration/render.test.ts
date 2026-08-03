@@ -8,12 +8,13 @@
 import test from "node:test";
 import { strict as assert } from "node:assert";
 import http from "node:http";
-import type { AddressInfo } from "node:net";
+import net, { type AddressInfo, type Socket } from "node:net";
 import type {
     SchemeCtx, SchemeResult, SubscriptionHandle, ReadStatement, UrlPath,
 } from "@plurnk/plurnk-schemes";
+import AdmissionBroker from "../../src/AdmissionBroker.ts";
 import Browser from "../../src/Browser.ts";
-import Guard, { GuardBlockedError, type GuardAdmission } from "../../src/Guard.ts";
+import { GuardBlockedError, type GuardAdmission } from "../../src/Guard.ts";
 import Http from "../../src/Http.ts";
 
 // A page whose REAL content exists only after JS runs: the as-served body says
@@ -34,13 +35,37 @@ const startServer = (): Promise<http.Server> =>
     });
 
 const urlOf = (server: http.Server): string =>
-    `http://127.0.0.1:${(server.address() as AddressInfo).port}/`;
+    `http://browser.test:${(server.address() as AddressInfo).port}/`;
+
+const connect = (port: number): Promise<Socket> => new Promise((resolve, reject) => {
+    const socket = net.connect({ host: "127.0.0.1", port });
+    const onError = (cause: Error) => reject(cause);
+    socket.once("error", onError);
+    socket.once("connect", () => {
+        socket.off("error", onError);
+        resolve(socket);
+    });
+});
+
+const brokerFor = (server: http.Server): AdmissionBroker => {
+    const port = (server.address() as AddressInfo).port;
+    return new AdmissionBroker({
+        port: 0,
+        lookup: async () => [{ address: "8.8.8.8", family: 4 }],
+        connector: async (target) => {
+            assert.equal(target.host, "browser.test");
+            assert.equal(target.port, port);
+            assert.deepEqual(target.addresses, [{ address: "8.8.8.8", family: 4 }]);
+            return connect(port);
+        },
+    });
+};
 
 const admitAll = async (): Promise<GuardAdmission> => ({ admitted: true });
 
 test("Browser.render: real chromium runs the page JS and serializes the final DOM", async () => {
     const server = await startServer();
-    const browser = new Browser();
+    const browser = new Browser(undefined, brokerFor(server));
     try {
         const r = await browser.render(urlOf(server), { workerId: 1, guard: admitAll });
         assert.equal(r.status, 200);
@@ -83,7 +108,7 @@ test("Browser.render: browser-created network surfaces cannot bypass admission",
         socket.destroy();
     });
     await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
-    const browser = new Browser();
+    const browser = new Browser(undefined, brokerFor(server));
     const root = urlOf(server);
     const guard = async (raw: string): Promise<GuardAdmission> => new URL(raw).pathname === "/"
         ? { admitted: true }
@@ -107,7 +132,7 @@ test("Browser.render: reused worker contexts keep page headers, policy, and fail
         res.end("<!doctype html><body>ok</body>");
     });
     await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
-    const browser = new Browser();
+    const browser = new Browser(undefined, brokerFor(server));
     const root = urlOf(server);
     const guardPath = (path: string) => async (raw: string): Promise<GuardAdmission> =>
         new URL(raw).pathname === path
@@ -195,13 +220,14 @@ const readStmt = (raw: string): ReadStatement => {
     };
 };
 
-test("Http.read: full render path against real chromium — readable body + faithful DOM", async (t) => {
-    t.mock.method(Guard, "admit", async () => ({ admitted: true }));
+test("Http.read: full render path against real chromium — readable body + faithful DOM", async () => {
     const server = await startServer();
-    const browser = new Browser();          // injected so the test owns teardown
+    const broker = brokerFor(server);
+    const browser = new Browser(undefined, broker);
+    const handler = new Http(browser, broker);
     const { ctx, inspect } = makeCtx();
     try {
-        const r = await new Http(browser).read(readStmt(urlOf(server)), ctx);
+        const r = await handler.read(readStmt(urlOf(server)), ctx);
         assert.equal(r.status, 102);
         const body = inspect().chunks.filter((c) => c.channel === "body");
         assert.equal(body.length, 1);
@@ -213,7 +239,7 @@ test("Http.read: full render path against real chromium — readable body + fait
         assert.equal(html[0]?.mimetype, "text/html");
         assert.deepEqual(inspect().closed?.result, { status: 200 });
     } finally {
-        await browser.close();
+        await handler.close();
         server.close();
     }
 });

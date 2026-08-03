@@ -16,6 +16,13 @@ import type {
 } from "@plurnk/plurnk-schemes";
 import { NetworkAddress, Results } from "@plurnk/plurnk-schemes";
 import { readFile } from "node:fs/promises";
+import { WebSocket as UndiciWebSocket } from "undici";
+import {
+    admissionBroker,
+    type AdmissionBoundary,
+    type AdmissionBrokerOwner,
+    type AdmissionLease,
+} from "./AdmissionBroker.ts";
 import Guard, { GuardResolutionError } from "./Guard.ts";
 
 // The inbound-frame channel - every message the origin pushes streams here.
@@ -38,7 +45,7 @@ interface Socket {
     send(data: string): void;
     close(code?: number, reason?: string): void;
 }
-type SocketFactory = (url: string) => Socket;
+type SocketFactory = (url: string, admission: AdmissionBoundary) => Socket | Promise<Socket>;
 
 type SocketOwnerState = "claimed" | "connecting" | "open" | "settling";
 interface SocketOwner {
@@ -53,11 +60,8 @@ interface SocketOwner {
 
 const SOCKET_OPEN = 1;
 
-// Default: the Node 26+ global WebSocket, reached through globalThis so the lib
-// typing is not a compile dependency (tests always inject, so this path is
-// runtime-only). Fail-hard if the runtime lacks it.
-const connectGlobal: SocketFactory = (url) =>
-    new (globalThis as unknown as { WebSocket: new (u: string) => Socket }).WebSocket(url);
+const connectUndici: SocketFactory = async (url, admission) =>
+    new UndiciWebSocket(url, { dispatcher: await admission.dispatcher() }) as unknown as Socket;
 
 export default class Ws implements SchemeHandler {
     static manifest: SchemeManifest = {
@@ -81,9 +85,12 @@ export default class Ws implements SchemeHandler {
     // One READ owns each workspace+addressed scheme+canonical network pathname
     // through terminal cleanup; SEND/KILL act only through that owner.
     readonly #connect: SocketFactory;
+    readonly #broker: AdmissionBrokerOwner;
+    #admission: AdmissionLease | null = null;
     readonly #sockets = new Map<string, SocketOwner>();
-    constructor(connect: SocketFactory = connectGlobal) {
+    constructor(connect: SocketFactory = connectUndici, broker: AdmissionBrokerOwner = admissionBroker) {
         this.#connect = connect;
+        this.#broker = broker;
     }
 
     // {§ws-lifecycle} Claim, connect through native open, stream inbound frames,
@@ -99,7 +106,8 @@ export default class Ws implements SchemeHandler {
         const address = Ws.#address(statement.target);
         if (!(address instanceof NetworkAddress)) return address;
         const { url, pathname } = address;
-        const admission = await Guard.admit(url);
+        const boundary = this.#admission ??= this.#broker.acquire();
+        const admission = await Guard.admit(url, boundary);
         if (!admission.admitted) {
             const resolution = admission.error instanceof GuardResolutionError;
             if (resolution) console.error("WebSocket target resolution failed", { url, error: admission.error });
@@ -156,7 +164,7 @@ export default class Ws implements SchemeHandler {
 
             let socket: Socket;
             try {
-                socket = this.#connect(url);
+                socket = await this.#connect(url, boundary);
             } catch (err) {
                 console.error("WebSocket connection failed", { url, err });
                 const detail = `The WebSocket connection to ${url} failed.`;
@@ -349,6 +357,8 @@ export default class Ws implements SchemeHandler {
     }
 
     async close(): Promise<void> {
+        const admission = this.#admission;
+        this.#admission = null;
         const owners = [...this.#sockets.values()];
         for (const owner of owners) owner.shutdownRequested = true;
         const results = await Promise.allSettled(owners.map(async (owner) => {
@@ -361,7 +371,8 @@ export default class Ws implements SchemeHandler {
             await owner.done;
             if (shutdownError !== undefined) throw shutdownError;
         }));
-        const errors = results
+        const admissionResults = admission === null ? [] : await Promise.allSettled([admission.close()]);
+        const errors = [...results, ...admissionResults]
             .filter((result): result is PromiseRejectedResult => result.status === "rejected")
             .flatMap((result) => result.reason instanceof AggregateError
                 ? [...result.reason.errors]

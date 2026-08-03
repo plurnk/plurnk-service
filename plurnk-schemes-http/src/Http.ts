@@ -20,6 +20,11 @@ import type {
 } from "@plurnk/plurnk-schemes";
 import { MimetypeClassifier, NetworkAddress, PathSyntax, Results } from "@plurnk/plurnk-schemes";
 import { readFile } from "node:fs/promises";
+import {
+    admissionBroker,
+    type AdmissionBrokerOwner,
+    type AdmissionLease,
+} from "./AdmissionBroker.ts";
 import Browser, { BROWSER_UA, requireNumEnv, type RenderResult } from "./Browser.ts";
 import ErrorDetail from "./ErrorDetail.ts";
 import Guard, {
@@ -102,12 +107,15 @@ export default class Http implements SchemeHandler {
     // The render foundation (lazy chromium). Injectable for tests; one warm
     // pool per Http instance, shared across this scheme's fetches.
     readonly #browser: Renderer;
+    readonly #broker: AdmissionBrokerOwner;
+    #admission: AdmissionLease | null = null;
     readonly #errorDetailLimit: number;
     readonly #webFetcher: WebFetcher;
-    constructor(browser: Renderer = new Browser()) {
-        this.#browser = browser;
+    constructor(browser?: Renderer, broker: AdmissionBrokerOwner = admissionBroker) {
+        this.#broker = broker;
+        this.#browser = browser ?? new Browser(undefined, broker);
         this.#errorDetailLimit = ErrorDetail.configuredLimit();
-        this.#webFetcher = new WebFetcher(browser);
+        this.#webFetcher = new WebFetcher(this.#browser, broker);
     }
 
     async ready(): Promise<void> {
@@ -116,7 +124,18 @@ export default class Http implements SchemeHandler {
     }
 
     async close(): Promise<void> {
-        await this.#webFetcher.close();
+        const admission = this.#admission;
+        this.#admission = null;
+        const results = await Promise.allSettled([
+            this.#webFetcher.close(),
+            ...(admission === null ? [] : [admission.close()]),
+        ]);
+        const errors = results
+            .filter((result): result is PromiseRejectedResult => result.status === "rejected")
+            .flatMap((result) => result.reason instanceof AggregateError
+                ? [...result.reason.errors]
+                : [result.reason]);
+        if (errors.length > 0) throw new AggregateError(errors, "HTTP handler shutdown failed");
     }
 
     // FIND itself is the consumer's standard entry query. This hook owns only
@@ -385,6 +404,7 @@ export default class Http implements SchemeHandler {
         composed.addEventListener("abort", onAbort, { once: true });
 
         try {
+            const admission = this.#admission ??= this.#broker.acquire();
             const requestHeaders: Array<[string, string]> = headers.some(([k]) => k.toLowerCase() === "user-agent")
                 ? [...headers, ...conditional]
                 : [["User-Agent", BROWSER_UA], ...headers, ...conditional];
@@ -395,7 +415,7 @@ export default class Http implements SchemeHandler {
                 // UA — a loud automated-client fingerprint). The model's own
                 // {User-Agent: …} block wins when present.
                 headers: requestHeaders,
-            }, local.signal);
+            }, local.signal, admission);
 
             // {§revalidation} A 304 restores the GET representation into the
             // freshly seeded channels and remains an ordinary streaming READ.
@@ -423,7 +443,7 @@ export default class Http implements SchemeHandler {
                         workerId: ctx.workerId,
                         signal: local.signal,
                         headers,
-                        guard: Guard.admit,
+                        guard: (raw) => Guard.admit(raw, admission),
                     });
                 } catch (cause) {
                     throw new WebMaterializationError("render", responseMime, cause);
