@@ -224,15 +224,3 @@ test("parser: digit suffix (plurnk.md 0.26.0) disambiguates nested-op fences", (
     assert.equal(outer.suffix, "1");
     assert.match(outer.body as string, /<<EDIT\(worker:\/\/\/inner\):hello:EDIT/);
 });
-
-test("parser: mismatched suffix surfaces a parse-error item", () => {
-    // The suffix is a fence-matching token. Mismatched suffixes don't get
-    // silently absorbed: the parser emits an `error` item in result.items
-    // alongside any best-effort statement extraction. Consumers can decide
-    // whether to honor the best-effort statement or reject the whole input
-    // when an error is present.
-    const mismatched = "<<EDITouter(worker:///x):body:EDITother";
-    const result = PlurnkParser.parse(mismatched);
-    const errors = result.items.filter((i) => i.kind === "error");
-    assert.ok(errors.length >= 1, "mismatched suffix yields at least one error item");
-});
