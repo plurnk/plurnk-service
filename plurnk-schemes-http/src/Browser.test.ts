@@ -4,6 +4,7 @@
 
 import test from "node:test";
 import { strict as assert } from "node:assert";
+import { readFile } from "node:fs/promises";
 import Browser, { type ChromiumEngine } from "./Browser.ts";
 
 interface PwResponseLike {
@@ -76,6 +77,16 @@ const withEnv = async (values: Record<string, string | undefined>, fn: () => Pro
     }
 };
 
+test("package provisioning: Playwright is required without a browser-install lifecycle", async () => {
+    const manifest = JSON.parse(
+        await readFile(new URL("../package.json", import.meta.url), "utf8"),
+    ) as { dependencies?: Record<string, string>; scripts?: Record<string, string> };
+    assert.match(manifest.dependencies?.playwright ?? "", /\S/);
+    assert.equal(manifest.scripts?.preinstall, undefined);
+    assert.equal(manifest.scripts?.install, undefined);
+    assert.equal(manifest.scripts?.postinstall, undefined);
+});
+
 test("render: returns status, headers, and the serialized DOM", async () => {
     const { engine } = makeEngine({ html: "<html><body>hi</body></html>" });
     const browser = new Browser(() => Promise.resolve(engine));
@@ -87,7 +98,7 @@ test("render: returns status, headers, and the serialized DOM", async () => {
     await browser.close();
 });
 
-test("render: launches the bundled browser by default and serializes", async () => {
+test("render: launches the selected local browser and serializes", async () => {
     const { engine, calls } = makeEngine();
     const browser = new Browser(() => Promise.resolve(engine));
     await browser.render("https://example.com/", { workerId: 1 });

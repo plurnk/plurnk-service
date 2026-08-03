@@ -175,11 +175,11 @@ sniff or decode unknown bytes.
 
 ## §5 Dependencies and configuration
 
-| Surface           | Runtime contract                                                                 |
-| ----------------- | -------------------------------------------------------------------------------- |
-| Platform          | Node ≥26 native fetch, streams, abort signals, decoding, DNS, and `WebSocket`    |
-| SSE               | `eventsource-parser` for bounded WHATWG event-stream framing                     |
-| Browser rendering | Lazy-loaded `playwright` client with an explicitly selected browser method           |
+| Surface           | Runtime contract                                                                                          |
+| ----------------- | --------------------------------------------------------------------------------------------------------- |
+| Platform          | Node ≥26 native fetch, streams, abort signals, decoding, DNS, and `WebSocket`                             |
+| SSE               | `eventsource-parser` for bounded WHATWG event-stream framing                                              |
+| Browser rendering | Required lazy-loaded `playwright` client; executable provisioning follows {§browser-provisioning}        |
 
 ### §http-config Operator configuration
 
@@ -189,11 +189,26 @@ sniff or decode unknown bytes.
 | Required values      | Missing or invalid required values fail at their owning read; code carries no hidden fallback            |
 | Browser method       | Exactly one of `launch`, `connect`, `connectOverCDP`, or `disabled`                                      |
 | Method-specific data | Endpoint belongs to connection methods; channel/executable belong to launch and are mutually exclusive   |
-| Native Playwright    | Operator-set installation variables remain authoritative                                                 |
+| Browser location     | Operator-set Playwright location variables remain authoritative                                         |
 
 `Http.ready()` verifies the selected browser route before the handler is
 advertised. Disabled rendering is a valid configured route and fails clearly
 if an HTML operation later requires the browser.
+
+### §browser-provisioning Browser provisioning
+
+| Component or method | Contract                                                                                             |
+| ------------------- | ---------------------------------------------------------------------------------------------------- |
+| Playwright client   | Required runtime dependency; lazy import keeps non-render paths from initializing it                 |
+| `launch`            | Requires an operator-provisioned compatible browser, selected by Playwright, channel, or exact path  |
+| `connect`           | Requires an external Playwright endpoint; no local browser executable                                |
+| `connectOverCDP`    | Requires an external Chromium CDP endpoint; no local browser executable                              |
+| `disabled`          | Requires no browser executable; a render attempt fails clearly                                       |
+
+The package has no browser-install lifecycle script and never assigns
+`PLAYWRIGHT_BROWSERS_PATH`. Operators may provision the standard compatible
+Chromium with `npx playwright install chromium`; methods never fall back into
+one another.
 
 ### §automatic-fetch-check Automatic acquisition URL check
 

@@ -110,10 +110,8 @@ export const requireNumEnv = (key: string): number => {
 
 // Default factory: lazy-import the real chromium. The cast bridges Playwright's
 // full type to our structural view at the single trusted library boundary.
-const defaultFactory: ChromiumFactory = async () => {
-    process.env.PLAYWRIGHT_BROWSERS_PATH ??= "0";
-    return (await import("playwright")).chromium as unknown as ChromiumEngine;
-};
+const defaultFactory: ChromiumFactory = async () =>
+    (await import("playwright")).chromium as unknown as ChromiumEngine;
 
 const requireBoolEnv = (key: string): boolean => {
     const raw = process.env[key];

@@ -69,6 +69,12 @@ The Playwright client is included. Provision a compatible local browser
 separately, select an external Playwright/CDP endpoint, or disable rendering.
 The shipped `.env.defaults` is the canonical operator configuration registry.
 
+For local `launch`:
+
+```sh
+npx playwright install chromium
+```
+
 ## Verify
 
 ```sh
