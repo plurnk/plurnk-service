@@ -11,12 +11,8 @@ export { default as Problems } from "./Problems.ts";
 export type { ProblemOptions } from "./Problems.ts";
 export type { ValidationResult } from "./Validator.ts";
 export { default as PlurnkParser } from "./PlurnkParser.ts";
-export { default as Jsonplurnk } from "./Jsonplurnk.ts";
 export { default as PlurnkParseError } from "./PlurnkParseError.ts";
-export { default as PlurnkErrorStrategy } from "./PlurnkErrorStrategy.ts";
-export { default as RecordingListener } from "./RecordingListener.ts";
 export { default as PathSyntax } from "./PathSyntax.ts";
-export { AstBuilder };
 
 export const parsePath = (raw: string) => AstBuilder.parsePath(raw);
 export const parseResourceSelection = (raw: string) => AstBuilder.parseResourceSelection(raw);

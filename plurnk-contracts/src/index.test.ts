@@ -1,11 +1,32 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import * as Contracts from "./index.ts";
 import {
     PlurnkParser,
     Problems,
     UNKNOWN_POSITION,
     Validator,
 } from "./index.ts";
+
+test("the package root exposes exactly the supported runtime values", () => {
+    assert.deepEqual(Object.keys(Contracts).sort(), [
+        "InvalidNoticeError",
+        "InvalidOperationResultError",
+        "InvalidProblemDetailsError",
+        "InvalidTextRegionError",
+        "PLURNK_OPS",
+        "PathSyntax",
+        "PlurnkParseError",
+        "PlurnkParser",
+        "Problems",
+        "RESERVED_AUTHORITIES",
+        "UNKNOWN_POSITION",
+        "Validator",
+        "WORKER_NAME",
+        "parsePath",
+        "parseResourceSelection",
+    ]);
+});
 
 test("the package root is the singular language and wire-contract API", () => {
     const parsed = PlurnkParser.parseStatements("<<EDIT(worker:///draft):body:EDIT");

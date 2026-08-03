@@ -578,18 +578,33 @@ Every entry point returns ordered `statement`, `error`, and, where admitted,
 extent. The statement `op` field discriminates the generated per-operation
 union.
 
-| Helper                        | Contract                                                                     |
-|-------------------------------|------------------------------------------------------------------------------|
-| `parsePath(raw)`              | Uses the same local/URL decomposition as target slots; empty input is `null` |
-| `parseResourceSelection(raw)` | Parses a COPY/MOVE destination target and optional trailing text scope       |
-| `PLURNK_OPS`                  | Runtime tuple from which the closed `PlurnkOp` union is derived              |
-| `WORKER_NAME`                 | Mintable authority-name predicate governed by {§worker-name}                 |
-| `RESERVED_AUTHORITIES`        | Resolver-owned authority names excluded from minting                         |
+§root-value-api The package-root runtime namespace is closed and consists of the
+following supported consumer values. All other root exports are TypeScript types.
 
-Validators, Problems, operation results, Notices, and schema-derived types are
-the runtime-neutral surface described in §13. Existing parser-construction and
-specialized renderer exports remain subject to the compatibility census in
-issue #100; this audit does not remove or relabel them.
+| Root value(s)                         | Consumer contract                                                   | Exact owner                                 |
+|---------------------------------------|---------------------------------------------------------------------|---------------------------------------------|
+| `PlurnkParser`                        | Four document-tier entry points listed above                        | {§parser-architecture}, {§tier-entrypoints} |
+| `PlurnkParseError`                    | JSON-serializable positioned parser diagnostic                      | {§parse-diagnostics}                        |
+| `parsePath`, `parseResourceSelection` | Parser-equivalent target and COPY/MOVE destination admission        | {§path-syntax}, {§tier-entrypoints}         |
+| `PathSyntax`                          | Canonical target-slot parenthesis encoding and decoding             | {§path-parentheses}                         |
+| `Validator`                           | Validation and assertion against the owning JSON Schemas            | {§wire-entrypoint}                          |
+| `InvalidNoticeError`                  | Typed failure from `Validator.assertNotice`                         | {§notice}                                   |
+| `InvalidProblemDetailsError`          | Typed failure from `Validator.assertProblemDetails`                 | {§problem-details}                          |
+| `InvalidOperationResultError`         | Typed failure from `Validator.assertOperationResult`                | {§operation-result}                         |
+| `InvalidTextRegionError`              | Typed failure from `Validator.assertTextRegion`                     | {§text-region}                              |
+| `Problems`                            | RFC 9457 Problem construction                                       | {§problem-details}                          |
+| `PLURNK_OPS`                          | Runtime tuple from which the closed `PlurnkOp` union is derived     | {§canonical-statement}                      |
+| `WORKER_NAME`, `RESERVED_AUTHORITIES` | Authority minting predicate and resolver-reserved names             | {§worker-name}                              |
+| `UNKNOWN_POSITION`                    | Frozen sentinel for an AST statement without retained parsed source | {§parser-position}                          |
+
+§parser-construction-boundary Parser construction components are internal rather
+than alternate consumer entry points:
+
+| Internal component                         | Boundary                                                                                                      |
+|--------------------------------------------|---------------------------------------------------------------------------------------------------------------|
+| `AstBuilder`                               | Consumes generated ANTLR contexts; `PlurnkParser`, `parsePath`, and `parseResourceSelection` own its API      |
+| `PlurnkErrorStrategy`, `RecordingListener` | Assemble parser recovery and diagnostics around `antlr4ng`; consumers receive `PlurnkParseError` values       |
+| `Jsonplurnk` test helper                   | Independently checks the Core-owned {§jsonplurnk} renderer corpus; it is neither shipped code nor a root API  |
 
 ### CLI
 

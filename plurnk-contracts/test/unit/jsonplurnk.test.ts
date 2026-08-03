@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { Jsonplurnk } from "../../src/index.ts";
+import Jsonplurnk from "../Jsonplurnk.ts";
 
 // The ratified #437 sample (fold-key = `display`): three entries, the middle one `open` with a
 // heredoc body whose TAG is a `prompt://` URI (colons and slashes).

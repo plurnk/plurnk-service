@@ -1,8 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { AstBuilder, PlurnkParseError, PlurnkParser, WORKER_NAME, RESERVED_AUTHORITIES } from "../../src/index.ts";
+import AstBuilder from "../../src/AstBuilder.ts";
+import { PlurnkParseError, PlurnkParser, WORKER_NAME, RESERVED_AUTHORITIES } from "../../src/index.ts";
 
-// {§path-syntax} Public target decomposition without a statement wrapper.
+// {§path-syntax} Detailed target admission behind the public parsePath helper.
 
 test("parsePath: empty string returns null", () => {
     assert.equal(AstBuilder.parsePath(""), null);

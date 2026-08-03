@@ -1,14 +1,11 @@
 /**
- * Reverses jsonplurnk's single deviation from JSON: raw HEREDOC body values
- * become escaped JSON strings. Core owns rendering; contracts owns stripping.
- * {§jsonplurnk}
+ * Independent conformance parser for Core-owned {§jsonplurnk}. Keeping this in
+ * test support prevents the renderer and its corpus checker from sharing an
+ * implementation without making the checker a package API.
  */
 export default class Jsonplurnk {
-    // `"body":`, then any whitespace/newlines, then the heredoc opener `<<:::`.
     static #OPENER = /"body":\s*<<:::/g;
 
-    // Reverse the one deviation: rewrite every heredoc `body` value as a JSON-escaped string.
-    // Throws on an opener its `:::TAG` never closes - a renderer contract violation, surfaced.
     static strip(block: string): string {
         const opener = Jsonplurnk.#OPENER;
         opener.lastIndex = 0;
@@ -31,14 +28,10 @@ export default class Jsonplurnk {
         return out + block.slice(cursor);
     }
 
-    // Strip, then parse as ordinary JSON.
     static parse(block: string): unknown {
         return JSON.parse(Jsonplurnk.strip(block));
     }
 
-    // Index where the closing `:::TAG` line begins - it must occupy a whole line at column 0,
-    // either right at `from` (an empty body) or immediately after a newline. A `:::TAG` with
-    // trailing characters on its line does not close; keep scanning.
     static #findClose(block: string, from: number, close: string): number {
         if (block.startsWith(close, from) && Jsonplurnk.#endsLine(block, from + close.length)) return from;
         let at = from;

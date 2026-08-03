@@ -65,29 +65,91 @@ try {
     }
 
     await writeFile(join(tempDir, "consume.js"), `
-import { Problems, PlurnkParser, Validator, PlurnkParseError, parsePath } from "@plurnk/plurnk-contracts";
+import * as Contracts from "@plurnk/plurnk-contracts";
 
-// 1. Parse a simple plurnk statement.
+const expectedRootValues = [
+    "Validator",
+    "InvalidNoticeError",
+    "InvalidOperationResultError",
+    "InvalidProblemDetailsError",
+    "InvalidTextRegionError",
+    "Problems",
+    "PlurnkParser",
+    "PlurnkParseError",
+    "PathSyntax",
+    "parsePath",
+    "parseResourceSelection",
+    "PLURNK_OPS",
+    "WORKER_NAME",
+    "RESERVED_AUTHORITIES",
+    "UNKNOWN_POSITION",
+].sort();
+const rootValues = Object.keys(Contracts).sort();
+if (JSON.stringify(rootValues) !== JSON.stringify(expectedRootValues)) {
+    throw new Error("unexpected package-root values: " + JSON.stringify(rootValues));
+}
+
+const {
+    InvalidOperationResultError,
+    PathSyntax,
+    PlurnkParseError,
+    PlurnkParser,
+    PLURNK_OPS,
+    Problems,
+    RESERVED_AUTHORITIES,
+    UNKNOWN_POSITION,
+    Validator,
+    WORKER_NAME,
+    parsePath,
+    parseResourceSelection,
+} = Contracts;
+
+const assertClean = (label, result) => {
+    const errors = result.items.filter(({ kind }) => kind === "error");
+    if (errors.length > 0 || result.unparsedTail !== undefined) {
+        throw new Error(label + " failed: " + JSON.stringify(result));
+    }
+};
+
+assertClean("model turn", PlurnkParser.parse("<<PLAN:smoke:PLAN\\n<<SEND[200]:done:SEND"));
 const result = PlurnkParser.parseStatements("<<EDIT(worker:///foo):body content:EDIT");
+assertClean("statement sequence", result);
+assertClean("wrapped log", PlurnkParser.parseLog("<<TURN:<<PLAN:smoke:PLAN\\n<<SEND[200]:done:SEND:TURN"));
+assertClean("client tier", PlurnkParser.parseClient("<<LOOK(known://foo)::LOOK"));
+
+// Parse a simple statement and validate its schema-derived position.
 const item = result.items[0];
 if (item.kind !== "statement") throw new Error("expected statement, got " + item.kind);
 if (item.statement.op !== "EDIT") throw new Error("expected EDIT, got " + item.statement.op);
-
-// 2. Validator round-trip (exercises JSON schema imports).
 const pos = item.statement.position;
 const posResult = Validator.validatePosition(pos);
 if (!posResult.valid) throw new Error("position validation failed: " + JSON.stringify(posResult.errors));
 
-// 3. Validate the runtime-neutral result contract through the package root.
 const problem = Problems.create("smoke", "missing", 404, "Missing.");
 Validator.assertOperationResult({ status: 404, problem });
+try {
+    Validator.assertOperationResult({ status: 400 });
+    throw new Error("invalid operation result was accepted");
+} catch (error) {
+    if (!(error instanceof InvalidOperationResultError)) throw error;
+}
 
-// 4. Confirm an error class is importable as a value.
 if (typeof PlurnkParseError !== "function") throw new Error("PlurnkParseError is not a class");
 
-// 5. Confirm the parsePath helper is a callable grammar export.
 const dest = parsePath("worker:///archive/draft");
 if (dest?.kind !== "url" || dest.scheme !== "worker" || dest.pathname !== "/archive/draft") throw new Error("parsePath export not working: " + JSON.stringify(dest));
+const selection = parseResourceSelection("worker:///archive/draft<12,5,12,5>");
+if (selection?.target.kind !== "url" || JSON.stringify(selection.lineMarker?.marks) !== "[12,5,12,5]") {
+    throw new Error("parseResourceSelection export not working: " + JSON.stringify(selection));
+}
+if (PathSyntax.encodeParens("/draft(1)") !== "/draft%281%29") throw new Error("PathSyntax encode failed");
+if (PathSyntax.decodeParens("/draft%281%29") !== "/draft(1)") throw new Error("PathSyntax decode failed");
+if (!PLURNK_OPS.includes("PLAN") || !WORKER_NAME.test("worker-1") || !RESERVED_AUTHORITIES.includes("self")) {
+    throw new Error("contracts constants are not usable");
+}
+if (UNKNOWN_POSITION.line !== 0 || UNKNOWN_POSITION.column !== 0 || !Object.isFrozen(UNKNOWN_POSITION)) {
+    throw new Error("unknown position sentinel is not intact");
+}
 
 console.log("OK: wire contracts and grammar are consumable through one installed entrypoint.");
 `);
