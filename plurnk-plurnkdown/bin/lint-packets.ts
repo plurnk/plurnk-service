@@ -1,8 +1,6 @@
 #!/usr/bin/env node
 
-// CLI for PacketLint (src/PacketLint.ts): lint the emitted packets in a digest dir against
-// the plurnkdown house style. Produce the dir with `plurnk-core/bin/digest.ts <run.db> <dir>`,
-// then `npm run dev:lint-packets <dir>`.
+// Lint emitted digest packet files against {§packet-lint}.
 import PacketLint from "../src/PacketLint.ts";
 
 if (import.meta.main) {

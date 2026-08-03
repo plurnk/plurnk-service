@@ -5,9 +5,8 @@ import type { Diagnostic } from "./types.ts";
 const RUNON_LIMIT = 180; // a long run-on regardless of structure
 const WELD_LIMIT = 120;  // a semicolon welding clauses in a non-trivial sentence
 
-// plurnkdown linter. Structural blocks are exempt by not being prose. Ops written bare
-// in prose are flagged for fencing; ops inside a ```plurnk fence are delegated to
-// The contracts grammar handles statement-level validation; prose sentences stay atomic.
+// Structural blocks are not prose. Bare paragraph operations require fences;
+// contracts owns fenced statement parsing. {§packet-operation-fences} {§packet-atomic-prose}
 export default class Plurnkdown {
     lint(source: string): Diagnostic[] {
         const diagnostics: Diagnostic[] = [];
@@ -39,10 +38,8 @@ export default class Plurnkdown {
         });
     }
 
-    // Soft-warn (#453): the floor model reads short atomic sentences better than dense
-    // compounds. Flag a long run-on (>= RUNON_LIMIT) or a semicolon-welded clause pair
-    // (>= WELD_LIMIT with a `;`). A `;` is not treated as a sentence split — the weld
-    // IS the anti-pattern. Warning, not error: it's a heuristic for human review.
+    // Review heuristic for dense paragraph prose; never a structural-content gate.
+    // {§packet-atomic-prose}
     #checkRunOns(token: Token, line: number, diagnostics: Diagnostic[]): void {
         const text = this.#visibleText((token as Tokens.Paragraph).tokens ?? []);
         // Per line, then per sentence — a soft line break is a unit boundary in this

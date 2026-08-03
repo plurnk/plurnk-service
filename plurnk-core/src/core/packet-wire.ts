@@ -120,8 +120,8 @@ interface Packet { sections?: SectionView[] }
 type CountTokens = (text: string) => number;
 
 export default class PacketWire {
-    // Render the sections in `slot` to one ChatMessage.content string. Sections
-    // render in list order; empties are omitted (no empty headers on the wire);
+    // {§packet-markdown} Render the sections in `slot` to one ChatMessage.content
+    // string. Sections render in list order; empties are omitted (no empty headers on the wire);
     // each is `## {header}\n\n{content}` (or bare content when header is null),
     // trailing newlines stripped, joined with a blank line.
     static renderSlot(sections: SectionView[], slot: "system" | "user"): string {
@@ -194,9 +194,9 @@ export default class PacketWire {
         const log = Array.isArray(entries) ? (entries as LogEntryView[]) : [];
         if (log.length === 0) return "";
         const items = PacketWire.#renderLogEntries(log, countTokens);
-        // The opening fence is DYNAMIC — one backtick longer than the longest run in any body — so a
-        // code sample inside a body can never close the block early (CommonMark closes a fence only on
-        // a line of ≥ its own length). {§jsonplurnk-dynamic-fence}
+        // The opening fence is DYNAMIC — one backtick longer than the longest run in the rendered
+        // entries — so a code sample inside a body can never close the block early (CommonMark closes
+        // a fence only on a line of ≥ its own length). {§jsonplurnk-dynamic-fence}
         const longestTicks = Math.max(0, ...[...items.matchAll(/`+/g)].map((m) => m[0].length));
         const fence = "`".repeat(Math.max(3, longestTicks + 1));
         return `${fence}jsonplurnk\n[\n${items}\n]\n${fence}`;

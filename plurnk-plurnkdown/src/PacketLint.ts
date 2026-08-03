@@ -12,9 +12,7 @@ export interface PacketLintResult {
     findings: PacketFinding[];
 }
 
-// The evaluation instrument: lint real emitted packets, not fixtures. A digest dir holds
-// packetNNN.{system,user}.md — byte-exact what the model saw (Engine and digest both render
-// through one PacketWire). Produce it with `plurnk-core/bin/digest.ts <run.db> <dir>`.
+// Lint the byte-exact system/user packet files emitted by a digest. {§packet-lint}
 export default class PacketLint {
     static lintDir(dir: string): PacketLintResult {
         const linter = new Plurnkdown();

@@ -167,7 +167,7 @@ export default class SchemeRegistry {
             if (typeof example !== "string" || example.length === 0) continue;
             lines.push(example); // bare op — the Schemes catalog is fenced, not bulleted (#436); doc links removed (#270)
         }
-        // PACKET.md "Schemes" — a fenced `plurnk` catalog, validatable by the same op-fence as the doc (not a bullet list).
+        // Scheme examples use the shared model-facing operation fence. {§packet-operation-fences}
         return lines.length > 0 ? `\`\`\`plurnk\n${lines.join("\n")}\n\`\`\`` : "";
     }
 

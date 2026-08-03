@@ -412,8 +412,8 @@ export default class PacketBuilder {
         questionsOn = false,
         activeSchemes?: Set<string>,
     ): { executors: string; optionalOperations: string } {
-        // PACKET.md "Tools" (#441) — registered executor examples form a closed, explicitly titled
-        // catalogue. Optional non-EXEC operations are separate so the heading remains truthful.
+        // Registered executors and optional operations remain distinct fenced sheets.
+        // {§tools-capability-sheet} {§packet-operation-fences}
         const executorOps: string[] = [];
         const notices: string[] = [];
         // {§send-300-choices} — the one-liner rides ONLY where questions are enabled (allowed +
