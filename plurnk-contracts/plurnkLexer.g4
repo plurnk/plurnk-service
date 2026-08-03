@@ -167,14 +167,13 @@ OPEN_TURN : '<<TURN' SUFFIX? { this.setOpenTag(); } -> type(OPEN_TURN), mode(SLO
 OPEN_LOOK : '<<LOOK' SUFFIX? { this.setOpenTag(); } -> mode(SLOTS) ;
 OPEN_BUFF : '<<BUFF' SUFFIX? { this.setOpenTag(); } -> mode(SLOTS) ;
 
-// Default-mode whitespace is a hidden token (not folded into TEXT) so the parser can
-// require "nothing but WS" between/after ops in a turn: WS is invisible to rules, while
-// any non-WS TEXT between ops makes the turn invalid.
+// Default-mode whitespace is hidden. Non-whitespace outside statements becomes TEXT;
+// each document tier decides whether TEXT is admitted. {§whitespace-contract}
 WS   : [ \t\r\n]+ -> channel(HIDDEN) ;
 
 // Absorb a complete native reasoning enclosure as one TEXT token so an op drafted inside
 // pre-PLAN reasoning cannot become the turn anchor. An unclosed enclosure falls through to
-// ordinary TEXT. The stricter sampling shape is specified by SPEC {§gbnf-turn-shape} (#16).
+// ordinary TEXT. The stricter sampling shape is {§gbnf-turn-shape}.
 THINK_BLOCK   : '<think>' .*? '</think>' -> type(TEXT) ;
 CHANNEL_BLOCK : '<|channel>' .*? '<channel|>' -> type(TEXT) ;
 
@@ -188,7 +187,7 @@ CLOSE_TURN : { this.atTurnCloseTag() }? ':TURN' SUFFIX? { this.turnSuffixStack.p
 TEXT : ('<<' { !this.isOpKeywordAfterLtLt() }? | '<' ~[<] | ~[< \t\r\n])+ ;
 
 // ============================================================================
-// SLOTS — after open tag. Accepts any slot opener (`[`, `(`, `<L>`) in any
+// SLOTS — after open tag. Accepts any slot opener (`[`, `(`, `<scope>`) in any
 // order, plus `:` to enter the body. Signal-mode entry dispatches on op
 // family so the signal slot lexes as the right token type. At-most-once-
 // per-slot is enforced by the parser's permutation rules.
@@ -230,11 +229,9 @@ ST_END   : ']' -> type(RBRACKET), mode(SLOTS) ;
 
 mode SIGNAL_INT;
 SI_WS   : [ \t]+ -> skip ;
-// A terminal DISPOSITION code lexes to its own token so the parser can make a
-// disposition-coded SEND structurally terminal — a SEND[200] IS a turn termination,
-// distinct from a mid-comms SEND[400] (INT). 202 RETIRED (#54): it lexes as a plain INT,
-// Both SEND and KILL enter this mode; a KILL carrying one of these numbers is harmless
-// (its signal rule accepts both).
+// A disposition code lexes separately so a disposition-coded SEND is structurally
+// terminal. KILL still admits either numeric token because its code is target-specific.
+// {§send-mid-reservation} {§operation-code-polymorphism}
 // Ordered before SI_INT; max-munch keeps `2000` an INT (the longer match wins).
 SI_DISP : ('102' | '200' | '202' | '300' | '499') -> type(DISPOSITION) ;
 SI_INT  : '-'? [0-9]+ -> type(INT) ;
@@ -251,8 +248,8 @@ SD_IDENT : [a-zA-Z_] [a-zA-Z0-9_.\-+]* -> type(IDENT) ;
 SD_END   : ']' -> type(RBRACKET), mode(SLOTS) ;
 
 // ============================================================================
-// TARGET — inside `(...)`. Content kept as opaque TARGET_TEXT; WHATWG URL parsing
-// and local-vs-URL discrimination happen in the visitor (runtime library job).
+// TARGET — inside `(...)`. Content stays opaque TARGET_TEXT; AstBuilder owns
+// local-vs-URL discrimination and WHATWG decomposition. {§path-syntax}
 // ============================================================================
 
 mode TARGET;
@@ -264,8 +261,8 @@ TARGET_END   : ')' -> type(RPAREN), mode(SLOTS) ;
 // ============================================================================
 // BODY — opaque body content. Close-tag detection via predicate matching the
 // `:OPsuffix` literal. Matcher dialect dispatch (xpath/regex/jsonpath/glob)
-// happens in the visitor — labeling by leading character is content
-// interpretation, not BNF structure.
+// happens in AstBuilder; prefix classification is typed admission, not BNF structure.
+// {§matcher-prefix-claims}
 // ============================================================================
 
 mode BODY;

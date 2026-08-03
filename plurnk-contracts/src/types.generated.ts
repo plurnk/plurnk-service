@@ -15,12 +15,12 @@ tokens: number
 
 export type ClientStatement = (PlurnkStatement | LookStatement | BuffStatement)
 /**
- * The parsed AST of one plurnk statement. Discriminated on `op`. OPEN, FOLD, KILL, WORK, and FORK have no `<L>` slot (`lineMarker` is always null for those); WORK and FORK carry an optional single Git branch ref in `signal`; SEND's `<L>` slot carries an optional terminal wait scope (runtime semantics admit it on [202]; null on mid-comms SENDs); EXEC's `<L>` slot carries an optional `<timeout,poll>`. `target` is the URI of the operand (parsed into ParsedPath structure); null when the operand slot was omitted. Body shape varies per op: matcher dialect for FIND/READ/OPEN/FOLD, raw string for EDIT/EXEC, ResourceSelection for COPY/MOVE destinations, SendBody for SEND, opaque annotation string for KILL (no assigned runtime meaning; lands in the log), intended-goals text for PLAN (recorded to the log; no other effect), and a required prompt string for WORK (spawn a fresh named worker) and FORK (branch the current worker into a named sibling). The `worker://<name>` in target names the new worker.
+ * The parsed AST union for one protocol statement, discriminated by `op`. Every variant has fixed signal, target, lineMarker, body, suffix, and source-position fields; operation-specific schemas constrain their types. A null field records an omitted tolerated slot and does not satisfy runtime requirements by itself.
  */
 
 export type PlurnkStatement = (FindStatement | ReadStatement | OpenStatement | FoldStatement | EditStatement | CopyStatement | MoveStatement | SendStatement | ExecStatement | WorkStatement | ForkStatement | KillStatement | PlanStatement)
 /**
- * A parsed path slot from a plurnk statement. Discriminated on `kind`: a bare local path (no scheme) or a fully decomposed URL. Paths address exact resources or carry shell glob selectors; content matching belongs in the statement body.
+ * A parsed target slot from a plurnk statement. Discriminated on `kind`: a bare local path or a WHATWG-decomposed URL. Targets carry an exact address or a path glob; content matching belongs in the statement body.
  */
 
 export type ParsedPath = (LocalPath | UrlPath)
@@ -71,7 +71,7 @@ pathname: string
 params: Params
 fragment: (string | null)
 /**
- * Request-metadata blocks split off the target — trailing `{key: value}` groups (e.g. `(https://api{Authorization: Bearer x})`). Ordered key/value pairs so order and duplicate names survive; opaque to the grammar's addressing, interpreted by the scheme handler (auth, content-type, method affordance). Absent when the target carries no `{...}` block. See #46.
+ * Trailing `{key: value}` request-metadata blocks removed before WHATWG decomposition and preserved as ordered pairs. Order and duplicate names survive; the addressed scheme owns their meaning. Absent when no block was supplied.
  */
 headers?: [string, string][]
 }
@@ -83,7 +83,7 @@ export interface Params {
 [k: string]: (string | string[])
 }
 /**
- * A parsed `<L>` slot: the ordered numeric components, verbatim. Signed integers may carry runtime sentinel meaning (0 = prepend anchor, -1 = append anchor); a leading decimal may be a semantic similarity threshold. Arity is interpretation, owned by the consumer: `[N]` = one position; `[N, M]` = a range; four integers = an exact text region; `[0.7, 10, 20]` = a thresholded range (score >= 0.7, positions 10-20). The grammar carries the numbers; it does not assign them roles.
+ * The ordered numeric components parsed from a `<scope>` slot. AstBuilder converts each lexical number to a JavaScript number; the operation owner assigns arity and meaning, including text coordinates, result positions, timing, mutation anchors, and an optional leading semantic threshold.
  */
 
 export interface LineMarker {
@@ -201,7 +201,7 @@ body: (ResourceSelection | null)
 position: Position
 }
 /**
- * One addressed resource representation and an optional textual region. A fragment-less target selects the scheme's default channel; a URI fragment selects a named channel. The line marker scopes that selected channel.
+ * A COPY/MOVE destination target and optional text scope. A target without a fragment selects the scheme's default channel; a fragment selects a named channel; lineMarker scopes the selected destination content.
  */
 
 export interface ResourceSelection {

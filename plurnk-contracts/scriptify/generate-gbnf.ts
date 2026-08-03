@@ -29,8 +29,8 @@ const C = (chars: string): Array<[number, number]> => [...chars].map((ch) => R(c
 const cls = (ranges: Array<[number, number]>, negate = false): GItem => ({ kind: "cls", ranges, negate });
 
 const OPS = ["FIND", "READ", "EDIT", "COPY", "MOVE", "OPEN", "FOLD", "SEND", "EXEC", "WORK", "FORK", "KILL", "PLAN"] as const;
-// Ops whose body is a MATCHER pattern (single-line by contract) vs a content body. Pattern
-// bodies forbid literal line terminators (the in-body quicksand fix); content bodies allow them.
+// Matcher bodies are single-line on the rail; content bodies may span lines.
+// {§pattern-body-single-line}
 const PATTERN_OPS = new Set<string>(["FIND", "READ", "OPEN", "FOLD"]);
 // The lean rail offers the canonical suffix plus depths 1 and 2. The forgiving parser
 // accepts the general suffix shape; deeper generation can use a custom rail.
@@ -43,7 +43,7 @@ const PATTERN_OPS = new Set<string>(["FIND", "READ", "OPEN", "FOLD"]);
 const SUFFIXES = ["", "1", "2"] as const;
 
 const DIGIT = cls([R("0", "9")]);
-const WS = cls(C(" \t\r\n")); // one whitespace char; `star(WS)` is the strict/plan inter-op separator
+const WS = cls(C(" \t\r\n")); // one separator character; `sep` bounds its repetition
 const TAG_CHAR = cls([R("A", "Z"), R("a", "z"), R("0", "9"), ...C("_.-")]);
 const BRANCH_CHAR = cls([R("A", "Z"), R("a", "z"), R("0", "9"), ...C("_.-/")]);
 // The lexer's executor IDENT requires a letter/underscore head; canon dictates lowercase.
@@ -53,13 +53,8 @@ const EXEC_TAIL = cls([R("a", "z"), R("0", "9"), ...C("_-")]);
 // Body alphabet excludes control chars (tab/newline/CR allowed) plus the chars
 // tracked by the close-literal automaton state.
 const CONTROL_RANGES: Array<[number, number]> = [[0x00, 0x08], [0x0B, 0x0C], [0x0E, 0x1F], [0x7F, 0x7F]];
-// Line terminators — allowed in CONTENT bodies (multiline EDIT/SEND/COPY/MOVE/EXEC/PLAN),
-// FORBIDDEN in PATTERN bodies (FIND/READ/OPEN/FOLD), which are single-line by contract (a
-// regex matching a newline writes the two-char escape `\n`, never a literal one). Excluding
-// them collapses the in-body quicksand trap: a mismatched close (`<<FIND…:READ`) leaves the
-// model stuck in the FIND body — with no newline to break its line, the ONLY exit is the real
-// close `:FIND`, so it is ejected to statement level within ONE line instead of rambling to the
-// max_tokens wall (packet002 forensic: gemma, 8192 tokens, 50x "(End of turn)" against a masked EOS).
+// A matcher with a wrong closer stays bounded to its line; the correct close remains
+// the only exit from the body automaton. {§pattern-body-single-line}
 const LINE_TERMINATORS: Array<[number, number]> = [[0x0A, 0x0A], [0x0D, 0x0D]];
 const bodyOther = (excluded: string, singleLine = false): GItem =>
     cls([...CONTROL_RANGES, ...(singleLine ? LINE_TERMINATORS : []), ...C(excluded)], true);
@@ -109,15 +104,9 @@ const bodyRulesNonEmpty = (model: GModel, name: string, close: string): void => 
     model.set(`${name}-b0ne`, alts);
 };
 
-// PLAN body: complement over BOTH the closer `:PLAN` and the op-opener `<<` (#502). PLAN is
-// suffix-less by design, so the op-quoting device does not exist for it — a literal `<<` in a
-// plan body has zero sanctioned use, and admitting it is the run113 trap: an omitted `:PLAN`
-// lets the body swallow the turn's ops to the NEXT `:PLAN` occurrence, silently and in-rail
-// (PLAN=1, SEND=1, the essential op vanished, rails=accept). Excluding `<<` force-closes the
-// plan where the acting begins: at the omitted closer the mask denies the second `<`, and the
-// shortest legal path to the intended op is emitting `:PLAN` first — the rail auto-corrects
-// the omission at one-token cost (the quicksand-fix mechanics). A single `<` stays legal
-// (comparisons, arrows); only the double is unsampleable.
+// PLAN has no suffix, so its complement forbids both `:PLAN` and the operation
+// opener `<<`. A missing closer therefore cannot absorb later operations. A single
+// `<` remains legal. {§plan-body-no-openers}
 const planBodyRules = (model: GModel, name: string, close: string): void => {
     // Closer-prefix states (k = chars of `close` matched), each `<`-aware.
     for (let k = 0; k < close.length; k++) {
@@ -233,9 +222,7 @@ export const buildModel = (): GModel => {
 
     for (const op of OPS) {
         for (const suffix of SUFFIXES) {
-            // PLAN is allowed but inert: bare `<<PLAN` only, no numeric suffix (a suffix
-            // would let a model emit the malformed `<<PLAN1`). Provider reasoning lives
-            // in the <think> preamble, not in the public PLAN record.
+            // PLAN is the bare, unsuffixed intended-goals record. {§plan-intended-goals}
             if (op === "PLAN" && suffix !== "") continue;
             const name = op.toLowerCase() + (suffix === "" ? "" : `-${suffix}`);
             const open = `<<${op}${suffix}`;
@@ -245,19 +232,10 @@ export const buildModel = (): GModel => {
             const bodyStart = patternBody ? patternBodyStartRule(model, name) : `${name}-b0`;
             const body = [lit(":"), ref(bodyStart), lit(close)];
             if (op === "SEND") {
-                // A SEND is comms; the LAST SEND before EOS is the turn's disposition. Mid
-                // SENDs carry any NON-disposition 3-digit status (status-mid) or none, targeted
-                // or pathless, empty body allowed. The TERMINAL SEND requires a disposition code
-                // and a non-empty body - a turn must not end empty-handed. Terminal set (waitpid
-                // contract, service SPEC {§wait-obligation-matrix}): 102 continue, 200 done,
-                // 202 wait (obligation-checked; the engine verifies against live spawns/streams/
-                // retrievals), 300 stop-the-world question, 499 abandon. The park `<T>`/`<T,P>`/
-                // `<-1>` rides [202] ONLY - waiting is 202's meaning, so [102] is a pure continue
-                // (the rail does not offer a park there; ANTLR tolerates one per owner ruling,
-                // the engine folds it). No `<T>` on 200/300/499 (200/499 end the loop; 300 waits
-                // on the operator exclusively, indefinite by definition). Context discipline
-                // (200-with-pending, 202-on-nothing resolves like 200) is the ENGINE's
-                // obligation matrix, NOT a rail - the grammar polices shape only.
+                // Mid SENDs carry no disposition; terminal SENDs require one disposition
+                // and a non-empty body. Only [202] admits a park scope. Runtime obligation
+                // truth remains outside the rail. {§send-mid-reservation}
+                // {§terminal-body-nonempty} {§park-202-only} {§wait-obligation-matrix}
                 // Tails are factored behind the shared `<<SEND…` opener trie (no leading
                 // `lit(open)` - the trie matches it). `<<SEND` is a prefix of `<<SEND1`, so
                 // its tails sit at the interior trie node beside the digit branch.
@@ -274,26 +252,18 @@ export const buildModel = (): GModel => {
                     [lit("[202]"), opt(ref("target")), opt(ref("park")), ...bodyNE],
                     [lit("["), ref("status-final-rest"), lit("]"), opt(ref("target")), ...bodyNE],
                 ] });
-                // NO-IDLE RULE (consumer-requested, ratified 2026-07-16): a zero-op turn may
-                // not conclude [102] - "continue" with nothing submitted is a spin, the
-                // corridor-flail escape valve. tail-0's exit trie omits the [102] tail, so a
-                // bare PLAN+SEND[102] does not derive; after >=1 op the full set returns.
-                // 200/202/300/499 stay legal bare (the delegation breath's wake turn IS
-                // PLAN+SEND[200]; a zero-op 202 is the ENGINE's obligation check, not ours).
+                // tail-0 omits [102]; deeper tails restore the complete disposition set.
+                // {§no-idle-102}
                 sendFinalFirstEntries.push({ literal: open, tails: [
                     [lit("[202]"), opt(ref("target")), opt(ref("park")), ...bodyNE],
                     [lit("["), ref("status-final-rest"), lit("]"), opt(ref("target")), ...bodyNE],
                 ] });
             } else if (op === "EXEC") {
-                // EXEC's optional `<timeout,poll>` rides the shared `line` slot (numbers; runtime-interpreted).
+                // EXEC's optional `<timeout,poll>` rides the shared scope slot (runtime-interpreted).
                 opEntries.push({ literal: open, tails: [[opt(ref("exec-sig")), opt(ref("target")), opt(ref("line")), ...body]] });
             } else if (op === "PLAN") {
-                // Slotless bare intended-goals body, REQUIRED non-empty (no blank statement of
-                // intent). PLAN is the MANDATORY turn anchor and the FIRST op only — root-turn
-                // references the standalone `plan` rule and PLAN is NOT in the op-statement
-                // trie, so a second PLAN cannot appear mid-batch. The body additionally
-                // excludes `<<` (#502, planBodyRules — overrides the generic automaton): the
-                // plan ends where the acting begins.
+                // PLAN is a standalone, non-empty turn anchor outside the mid-op trie.
+                // Its specialized body also excludes `<<`. {§plan-body-no-openers}
                 planBodyRules(model, name, close);
                 const bodyNE = [lit(":"), ref(`${name}-b0ne`), lit(close)];
                 model.set("plan", [[lit(open), ...bodyNE]]);
@@ -309,21 +279,18 @@ export const buildModel = (): GModel => {
                 opEntries.push({ literal: open, tails: [[opt(ref("branch")), ref("target"), ...bodyNE]] });
             } else if (op === "OPEN" || op === "FOLD") {
                 // Log curation selects sets by tags + target + matcher. It has no positional
-                // line slot; FIND alone paginates selected results.
+                // scope slot; FIND alone paginates selected results.
                 opEntries.push({ literal: open, tails: [[opt(ref("tags")), ref("target"), ...body]] });
             } else {
-                // Scoped tag-CSV ops (FIND/READ/EDIT/COPY/MOVE) share one shape. The former
-                // READ/FIND retrieval routing (the READ->200 rail, 0.74.47-0.74.58) is DELETED
-                // (#54, ruled 2026-07-05): premature-conclude is CONTEXT, and context lives in
-                // the engine's pending-set rule (409 + steer), uniformly with streams/children.
+                // FIND/READ/EDIT/COPY/MOVE share the canonical tagged-target-scope shape.
                 opEntries.push({ literal: open, tails: [[opt(ref("tags")), ref("target"), opt(ref("line")), ...body]] });
             }
         }
     }
 
-    // SPEC {§gbnf-turn-shape} and {§gbnf-reasoning-boundary} (#12/#16): the grammar
-    // constrains one unsplit channel + PLURNK sentence. `sep` is bounded so whitespace
-    // cannot consume the response envelope indefinitely.
+    // Constrain one raw, unsplit channel + PLURNK sentence. `sep` is bounded so
+    // whitespace cannot consume the response envelope. {§gbnf-turn-shape}
+    // {§gbnf-reasoning-boundary}
     model.set("sep", [Array.from({ length: 7 }, () => opt(WS))]);
     // The body complement rejects both delimiters. Its epsilon keeps an empty reasoning
     // body legal while the production still supplies exactly one opener and closer.
@@ -354,24 +321,9 @@ export const buildModel = (): GModel => {
     // fuzz tests; unreachable from root-turn, so pruned from the shipped artifact.
     model.set("send-statement", [[ref("send-mid-any")], [ref("send-final-any")]]);
     model.set("statement", [[ref("op-statement")], [ref("send-statement")]]);
-    // Terminal set (waitpid contract, service SPEC {§wait-obligation-matrix}): 102 continue,
-    // 200 done, 202 wait (back on the menu 2026-07-09 with a NEW meaning - obligation-checked,
-    // the engine verifies it against live spawns/streams/retrievals; a wait on nothing resolves
-    // like 200, so the old groundless-hibernate fumble cannot recur), 300 = a stop-the-world
-    // multiple-choice question to the user (waker exclusively the operator, indefinite by
-    // definition, no `<T>`), 499 abandon. NOT 500: "failed" is an ENGINE verdict, never a
-    // model SEND (persisted-only) - see plurnk-service#33.
-    // The [102]/[202] branches ride inline (sendFinalEntries above); status-final-rest is
-    // the remaining terminal codes. park rides [202] ONLY: `<T>` = wait up to T seconds, any
-    // arrival wakes early; `<T,P>` adds a poll cadence (mirrors EXEC's `<timeout,poll>`);
-    // `<-1>` = indefinite standby (bounded by the join's own liveness guarantee).
-    // status-mid: any 3-digit code EXCEPT the terminal disposition codes {102,200,202,300,499}.
-    // A SEND carrying a terminal code IS the terminal (the dispatcher acts on the FIRST
-    // disposition-coded SEND, so it terminates there), hence it can ONLY be the last op.
-    // Reserving the five from mid position keeps the grammar's last-SEND model and the
-    // dispatcher's first-disposition model coincident. A mid SEND stays comms: statusless, or
-    // a non-disposition code (a 4xx error report to a peer). Encoded as the complement of
-    // the five over DDD, as a first-digit trie.
+    // status-final-rest completes the terminal set beside inline [102]/[202].
+    // status-mid is the complement of {102,200,202,300,499} over three digits,
+    // encoded as a first-digit trie. {§send-mid-reservation}
     model.set("status-final-rest", [[lit("200")], [lit("300")], [lit("499")]]);
     model.set("park", [[lit("<"), ref("park-t"), opt(ref("park-poll")), lit(">")]]);
     model.set("park-t", [[lit("-1")], [plus(DIGIT)]]);
@@ -397,7 +349,7 @@ export const buildModel = (): GModel => {
     model.set("target", [[lit("("), ref("target-inner"), lit(")")]]);
     model.set("target-inner", [[plus(cls([...CONTROL_RANGES, ...C("()<\r\n")], true))]]);
     // N numeric components, comma-separated (the dictated form). `<N>`, `<N,M>`,
-    // `<0.7,10,20>` all derive; the dash separator (`<N-M>`) stays parse-side only.
+    // `<0.7,10,20>` all derive; dash-separated scope stays parse-side only.
     model.set("line", [[lit("<"), ref("int"), star(ref("line-rest")), lit(">")]]);
     model.set("line-rest", [[lit(","), opt(lit(" ")), ref("int")]]);
     model.set("int", [[opt(lit("-")), plus(DIGIT), opt(ref("frac"))]]);

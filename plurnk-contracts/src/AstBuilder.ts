@@ -80,7 +80,7 @@ type ExecSlots = { signal: string | null; target: ParsedPath | null; lineMarker:
 
 export default class AstBuilder {
     static #SCHEME_PATTERN = /^[a-z][a-z0-9+.-]*:\/\//i;
-    // RFC 9535 jsonpath, the runtime's own engine (json-p3, #494/#490) — compile-only here.
+    // Compile-only RFC 9535 admission using the runtime's JSONPath engine. {§matcher-prefix-claims}
     static #JSONPATH = new JSONPathEnvironment();
 
     static build(ctx: StatementContext | MidStatementContext | PlanStatementContext | SendStatementContext): PlurnkStatement {
@@ -444,10 +444,9 @@ export default class AstBuilder {
         return c !== undefined && c >= "0" && c <= "9";
     }
 
-    // Scans the `<L>` slot into its ordered numeric components. Separators are `,`
+    // Scans `<scope>` into ordered numeric components. Separators are `,`
     // (with an optional space) or `-`; a `-` immediately starting a component is its
-    // sign, not a separator. Roles (position / range / threshold) are the consumer's
-    // to assign — the parser only carries the numbers.
+    // sign, not a separator. The operation owner assigns roles. {§scope-marker-forms}
     static #parseLineMarker(text: string): LineMarker {
         const inner = text.slice(1, -1);
         const marks: number[] = [];
@@ -476,8 +475,8 @@ export default class AstBuilder {
     }
 
     /**
-     * Parse a COPY/MOVE body into its destination resource and optional trailing
-     * scope. The scope is adjacent to the resource it selects:
+     * Parse a COPY/MOVE body into its destination target and optional trailing
+     * scope. The scope is adjacent to the destination it selects:
      * `destination.txt<12,5,12,5>`.
      */
     static parseResourceSelection(
@@ -497,23 +496,17 @@ export default class AstBuilder {
     }
 
     /**
-     * Parse a path string into a ParsedPath, mirroring how the AST visitor
-     * decomposes path slots inside HEREDOC statements. Public for consumers
-     * (RPC layers, scheme handlers) that need to honor the grammar's
-     * authority-vs-opaque cleavage without round-tripping through a fake
-     * HEREDOC. Returns null when `raw` is empty. Throws PlurnkParseError
-     * when `raw` starts with `scheme://` but WHATWG URL rejects it.
+     * Apply target-slot decomposition without round-tripping through a statement.
+     * Returns null for empty input and throws PlurnkParseError when a scheme URL
+     * fails WHATWG admission. {§path-syntax}
      */
     static parsePath(raw: string, pos: Position = { line: 0, column: 0 }): ParsedPath | null {
         if (raw.length === 0) return null;
         if (!AstBuilder.#SCHEME_PATTERN.test(raw)) {
             return { kind: "local", raw };
         }
-        // Split trailing `{key: value}` header blocks (http request metadata: auth,
-        // content-type, …) off the URL before WHATWG decomposition — `new URL()`
-        // rejects the unencoded `{`. `{`/`}` are illegal unencoded in a URI (RFC 3986),
-        // so the first `{` is an unambiguous marker. The blocks are opaque to the
-        // grammar's addressing; the scheme handler interprets them (see #46).
+        // Split trailing request metadata before WHATWG decomposition; the addressed
+        // scheme interprets the preserved ordered pairs. {§path-request-metadata}
         const braceIdx = raw.indexOf("{");
         const urlPart = braceIdx === -1 ? raw : raw.slice(0, braceIdx);
         const headers = braceIdx === -1 ? null : AstBuilder.#splitHeaders(raw.slice(braceIdx), pos);
@@ -592,14 +585,8 @@ export default class AstBuilder {
         return params;
     }
 
-    // Matcher dispatch: the leading prefix CLAIMS its dialect - the canon table's
-    // contract (`/` regex, `//` xpath, `$` jsonpath, `~` semantic, `@` graph, none
-    // glob). A claimed body that fails its dialect's parse is a positioned visitor
-    // ERROR, never a silent glob fallback: the fallback converted a syntax fumble
-    // into a lying 204 no-matches (#59 - four burned matcher turns and a confidently
-    // wrong "no occurrences exist" about a file with two matches). Semantic and graph
-    // have no parse step - any text is a valid query - so every prefix now claims
-    // unconditionally. XPath's `//` is tested before the regex `/pattern/flags`.
+    // The leading prefix claims its dialect; failed claimed syntax never falls back
+    // to glob. XPath's `//` is classified before regex `/`. {§matcher-prefix-claims}
     static #parseMatcherBody(body: string, pos: Position): MatcherBody {
         if (body.startsWith("//")) {
             try { xpath.parse(body); }
@@ -622,8 +609,7 @@ export default class AstBuilder {
                     : `pattern leads with \`/\` but is not a valid \`/pattern/flags\` regex - ${regex.detail}${slashRecovery}`);
         }
         if (body.startsWith("$")) {
-            // Compile-only validity check against RFC 9535 — json-p3 is the engine the runtime
-            // dispatches (#494/#490), so the flag layer and the engine agree by construction.
+            // Compile-only RFC 9535 admission through the shared json-p3 engine.
             try { AstBuilder.#JSONPATH.compile(body); }
             catch (e) {
                 throw new PlurnkParseError(pos.line, pos.column, "visitor",

@@ -2,7 +2,7 @@
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "$id": "https://schemas.plurnk.dev/v0/PlurnkStatement.json",
     "title": "PlurnkStatement",
-    "description": "The parsed AST of one plurnk statement. Discriminated on `op`. OPEN, FOLD, KILL, WORK, and FORK have no `<L>` slot (`lineMarker` is always null for those); WORK and FORK carry an optional single Git branch ref in `signal`; SEND's `<L>` slot carries an optional terminal wait scope (runtime semantics admit it on [202]; null on mid-comms SENDs); EXEC's `<L>` slot carries an optional `<timeout,poll>`. `target` is the URI of the operand (parsed into ParsedPath structure); null when the operand slot was omitted. Body shape varies per op: matcher dialect for FIND/READ/OPEN/FOLD, raw string for EDIT/EXEC, ResourceSelection for COPY/MOVE destinations, SendBody for SEND, opaque annotation string for KILL (no assigned runtime meaning; lands in the log), intended-goals text for PLAN (recorded to the log; no other effect), and a required prompt string for WORK (spawn a fresh named worker) and FORK (branch the current worker into a named sibling). The `worker://<name>` in target names the new worker.",
+    "description": "The parsed AST union for one protocol statement, discriminated by `op`. Every variant has fixed signal, target, lineMarker, body, suffix, and source-position fields; operation-specific schemas constrain their types. A null field records an omitted tolerated slot and does not satisfy runtime requirements by itself.",
     "oneOf": [
         { "$ref": "#/$defs/FindStatement" },
         { "$ref": "#/$defs/ReadStatement" },

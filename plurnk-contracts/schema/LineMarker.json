@@ -2,7 +2,7 @@
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "$id": "https://schemas.plurnk.dev/v0/LineMarker.json",
     "title": "LineMarker",
-    "description": "A parsed `<L>` slot: the ordered numeric components, verbatim. Signed integers may carry runtime sentinel meaning (0 = prepend anchor, -1 = append anchor); a leading decimal may be a semantic similarity threshold. Arity is interpretation, owned by the consumer: `[N]` = one position; `[N, M]` = a range; four integers = an exact text region; `[0.7, 10, 20]` = a thresholded range (score >= 0.7, positions 10-20). The grammar carries the numbers; it does not assign them roles.",
+    "description": "The ordered numeric components parsed from a `<scope>` slot. AstBuilder converts each lexical number to a JavaScript number; the operation owner assigns arity and meaning, including text coordinates, result positions, timing, mutation anchors, and an optional leading semantic threshold.",
     "type": "object",
     "required": ["marks"],
     "additionalProperties": false,

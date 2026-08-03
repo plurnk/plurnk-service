@@ -129,7 +129,7 @@ test("interstatement whitespace is hidden, not captured as text", () => {
     const input = "<<EDIT(p)::EDIT\n\n<<READ(q)::READ";
     const result = PlurnkParser.parseStatements(input);
     assert.equal(result.items.filter((i) => i.kind === "statement").length, 2);
-    // whitespace is a hidden token now — pure inter-op whitespace surfaces no text items
+    // Pure inter-operation whitespace surfaces no text items.
     assert.equal(result.items.filter((i) => i.kind === "text").length, 0);
 });
 
@@ -269,10 +269,9 @@ test("value-add: a bare `<<DELETE` mention without heredoc close is NOT flagged 
 // {§send-mid-reservation}
 test("value-add: mid-turn termination (op after a disposition SEND) is lifted to the rule", () => {
     const errs = errMsgs("<<PLAN:p:PLAN\n<<SEND[200]:done:SEND\n<<EDIT(worker:///a):v:EDIT");
-    // Shape-only wording: no code enumeration in error messages (the menu is canon's job) -
-    // enumerating painted us into corners twice (202 retirement, the 300 injectable-only leak).
+    // Shape-only diagnostics leave disposition policy to {§waitpid-dispositions}.
     assert.ok(errs.some((e) => /a disposition SEND ends the turn - nothing may follow it/.test(e!.message)));
-    // No longer the bare token-level fallback.
+    // Recovery reports the violated turn rule, not a token-level fallback.
     assert.equal(errs.some((e) => /unexpected open tag/.test(e!.message)), false);
 });
 
@@ -287,7 +286,7 @@ test("202 is the wait disposition; ANTLR remains shape-tolerant while runtime ow
     const ok = PlurnkParser.parse("<<PLAN:p:PLAN\n<<SEND[202]:awaiting worker:SEND");
     assert.equal(ok.items.filter((i) => i.kind === "error").length, 0);
     assert.equal(ok.unparsedTail, undefined);
-    // Mid position: a disposition again — the mid-termination rule fires.
+    // Mid position: the mid-termination rule fires.
     const errs = errMsgs("<<PLAN:p:PLAN\n<<SEND[202]:fyi:SEND\n<<SEND[102]:cont:SEND");
     assert.ok(errs.some((e) => /a disposition SEND ends the turn/.test(e!.message)));
     // ANTLR admits the terminal SEND scope shape. The dispatcher rejects this
@@ -305,12 +304,12 @@ test("value-add: the mid-termination lift is suppressed when the turn derailed m
 
 test("value-add: a malformed signal collapses the per-character lexer cascade to one error", () => {
     const lex = errMsgs("<<PLAN:p:PLAN\n<<SEND[abc]:d:SEND").filter((e) => e!.source === "lexer");
-    // 'a','b','c' would each error one-per-char without the collapse; now a single steer.
+    // Adjacent lexer failures with the same context collapse into one steer.
     assert.equal(lex.length, 1, lex.map((e) => e!.message).join(" | "));
     assert.match(lex[0]!.message, /expected integer for SEND\/KILL/);
 });
 
-test("value-add: SPAWN/DELEGATE near-miss steers to `<<WORK` (0.74.54 delegation verbs)", () => {
+test("value-add: SPAWN/DELEGATE near-miss steers to `<<WORK`", () => {
     for (const word of ["SPAWN", "DELEGATE"]) {
         const r = PlurnkParser.parse(`<<PLAN:p:PLAN\n<<${word}(worker://x):go:${word}\n<<SEND[102]:c:SEND`);
         const warn = r.items.find((i) => i.kind === "error" && i.error.severity === "warning");
@@ -319,7 +318,7 @@ test("value-add: SPAWN/DELEGATE near-miss steers to `<<WORK` (0.74.54 delegation
     }
 });
 
-test("value-add: FORK is a real op now, never flagged as a near-miss", () => {
+test("value-add: FORK is an operation, never a near-miss", () => {
     const r = PlurnkParser.parse("<<PLAN:p:PLAN\n<<FORK(worker://x):retry:FORK\n<<SEND[102]:c:SEND");
     assert.equal(r.items.filter((i) => i.kind === "error").length, 0);
     assert.equal(r.items.filter((i) => i.kind === "statement" && i.statement.op === "FORK").length, 1);
@@ -486,7 +485,7 @@ test("valid path (custom scheme) accepted", () => {
     assert.equal(result.items.filter((i) => i.kind === "statement").length, 1);
 });
 
-test("valid path (relative, falls back to file://) accepted", () => {
+test("bare relative target remains local", () => {
     const result = PlurnkParser.parseStatements("<<READ(./README.md)::READ");
     assert.equal(result.items.filter((i) => i.kind === "statement").length, 1);
 });
@@ -547,7 +546,7 @@ test("#59: the claim is per-statement — sibling statements still build around 
 });
 
 test("#59 residual: a marker-shaped body prefix still claims nothing and stays a glob", () => {
-    // A line-marker bled into the body is a DIFFERENT fumble - no prefix claim fires.
+    // A scope marker in the body does not claim a matcher dialect.
     // Documented residual: we claim declared intent, we don't heuristic every fumble.
     const result = PlurnkParser.parseStatements("<<READ(f.txt)::<1,-1>:/hello/i::READ");
     const stmt = result.items.find((i) => i.kind === "statement");
@@ -639,11 +638,8 @@ test("RFC 9535 bare filter form ($[?@.role==\"admin\"]) is accepted", () => {
     assert.equal(result.items.filter((i) => i.kind === "statement").length, 1);
 });
 
-// #497 ({§invented-closer-advisory}): the run111 class — a model closes an op with a tag of its
-// own invention (bash-heredoc prior); the body legally swallows it and the emission runs to
-// the cap. The cut tail's unparsedTail reason must name the imposter so the recovery turn
-// learns WHAT happened, not just that something did.
-test("invented closer (): unparsedTail names the imposter tag", () => {
+// {§invented-closer-advisory}
+test("invented closer: unparsedTail names the imposter tag", () => {
     const cut = "<<PLAN:p:PLAN\n<<WORK(worker://compare):Is 3 > 2? Return 'yes' or 'no':COMPARISON_TASK\nfabricated narration continues until the cap";
     const result = PlurnkParser.parse(cut);
     assert.ok(result.unparsedTail, "the unclosed WORK must surface as unparsedTail");
@@ -659,11 +655,9 @@ test("invented closer: a never-closed body with NO imposter tag keeps the plain 
     assert.doesNotMatch(result.unparsedTail!.reason, /which is body text/);
 });
 
-// #502 ({§plan-body-op-advisory}): the ingest-side twin of the GBNF `<<`-exclusion. An omitted
-// `:PLAN` swallows the turn's ops into the plan body and the parse SUCCEEDS (run113) — the
-// advisory makes the silent swallow visible on unrailed paths.
-test("plan-body advisory (): op-shaped text in a parsed PLAN body warns", () => {
-    // The run113 shape: :PLAN omitted, body swallows to the second plan's closer.
+// {§plan-body-op-advisory}
+test("plan-body advisory: op-shaped text in a parsed PLAN body warns", () => {
+    // :PLAN is omitted, so the body reaches the later PLAN closer.
     const emission = "<<PLAN:Execute hostname.\n<<EXEC:hostname::EXEC\n<<SEND[102]:executing:SEND\n<<PLAN:Awaiting.:PLAN\n<<SEND[202]:waiting:SEND";
     const result = PlurnkParser.parse(emission);
     const warn = result.items.find((i) => i.kind === "error" && i.error.severity === "warning");
@@ -677,17 +671,14 @@ test("plan-body advisory: a clean plan mentioning an op BY NAME does not warn", 
     assert.equal(result.items.filter((i) => i.kind === "error").length, 0);
 });
 
-// #562 (run61): the model reads `[signal](target)` as a markdown link and routes a bare file path
-// (which does not look like a URL) into the `[…]` tag slot, leaving `(target)` null — the engine
-// then returns a bare 400. The advisory redirects the path into `(…)` at the parse. Wrapped in a
-// turn because `parse()` (the engine's entry, Engine.ts) requires a PLAN-anchored sandwich.
+// {§misplaced-target-advisory}
 const misplacedWarn = (op: string) => {
     const result = PlurnkParser.parse(`<<PLAN:do the thing:PLAN\n${op}\n<<SEND[200]:done:SEND`);
     return result.items.find((i) => i.kind === "error" && i.error.severity === "warning"
         && /has no `\(target\)`/.test(i.error.message));
 };
 
-test("misplaced-target advisory (): path in [signal] with null target redirects to (…)", () => {
+test("misplaced-target advisory: path in [signal] with null target redirects to (…)", () => {
     for (const [op, echoed] of [
         ["<<EDIT[evaluator/functions.go]<38,61>:package x:EDIT", "EDIT(evaluator/functions.go)"],
         ["<<COPY[src/a.go]:x:COPY", "COPY(src/a.go)"],
@@ -717,10 +708,8 @@ test("misplaced-target advisory: a non-mutating op with a bracketed path does no
     assert.equal(misplacedWarn("<<FIND[functions.go]:x:FIND"), undefined);
 });
 
-// {§unscoped-edit-create-only} (#571): the parser is existence-blind, so it PASSES an unscoped EDIT
-// through (lineMarker null) for core to make the create-or-refuse decision. It must never reject a
-// scopeless edit - that would break file/entry creation. (Core refuses it only for EXISTING targets.)
-test("unscoped EDIT parses through with a null lineMarker ()", () => {
+// The parser preserves a null scope; core owns create-or-refuse. {§unscoped-edit-create-only}
+test("unscoped EDIT parses through with a null lineMarker", () => {
     for (const src of [
         "<<EDIT(notes.md):a whole new body:EDIT",
         "<<EDIT[plan](worker:///plan.md):draft:EDIT",
@@ -1165,8 +1154,7 @@ test("MatcherBody: graph neighborhood query (@symbol) dispatches graph", () => {
 });
 
 test("#59: a `//`-leading literal (code comment) errors because the prefix claims xpath", () => {
-    // The old fallback quietly glob'd this; under claiming, invalid XPath fails
-    // instead of silently becoming a different matcher.
+    // The XPath prefix claims the dialect, so invalid XPath cannot become a glob.
     const result = PlurnkParser.parseStatements("<<READ(src/app.js):// TODO: add error handling:READ");
     const errors = result.items.filter((i) => i.kind === "error");
     assert.equal(errors.length, 1);
@@ -1190,7 +1178,7 @@ test("MatcherBody: valid xpath still dispatches xpath even after disambiguation"
     assert.equal(b.raw, "//h1/text()");
 });
 
-test("COPY destination body is a resource selection", () => {
+test("COPY body carries a destination selection", () => {
     const result = PlurnkParser.parseStatements("<<COPY(known://draft):known://archive/2026-05-14/draft<12,5,12,5>:COPY");
     const item = result.items[0];
     if (item.kind !== "statement" || item.statement.op !== "COPY") return;
@@ -1226,7 +1214,7 @@ test("COPY destination resolves into the same ParsedPath as a target slot", () =
     assert.deepEqual(parsePath("archive/2026/draft"), { kind: "local", raw: "archive/2026/draft" });
 });
 
-test("MOVE body is a resource selection", () => {
+test("MOVE body carries a destination selection", () => {
     const result = PlurnkParser.parseStatements("<<MOVE(worker:///draft):worker:///final/answer:MOVE");
     const item = result.items[0];
     if (item.kind !== "statement" || item.statement.op !== "MOVE") return;
@@ -1315,10 +1303,8 @@ test("error message: stray char in slot region names what's allowed", () => {
     assert.match(e.message, /\[signal\].*\(target\).*<L>.*:body:/);
 });
 
-// #516 (run56 T13): a model that has the `<timeout,poll>` vocabulary but puts it in the
-// executor slot (`EXEC[-1,300]`) gets a redirect to the `<scope>` slot AT THE PARSE, not a raw
-// `unrecognized character` dead-end. SIGNAL_IDENT is EXEC-exclusive, so the redirect is op-correct.
-test("error message: mark-shaped EXEC signal redirects to <scope> ()", () => {
+// {§signal-scope-redirect}
+test("error message: mark-shaped EXEC signal redirects to <scope>", () => {
     for (const src of ["<<EXEC[-1,300]:make:EXEC", "<<EXEC[1,300]:make:EXEC", "<<EXEC[30,5]:make:EXEC"]) {
         const e = firstError(src);
         assert.match(e.message, /timeout\/poll ride the `<scope>` slot; try `EXEC<-1,300>`/, src);
@@ -1348,8 +1334,7 @@ test("error message: the redirect's suggested spelling actually parses (EXEC<-1,
     if (stmt?.kind === "statement") assert.deepEqual((stmt.statement as any).lineMarker?.marks, [-1, 300]);
 });
 
-// #562 (run61): an unambiguous matcher after the path instead of in the body gets
-// redirected at the parse. Slash is excluded because it can also be an unwrapped target.
+// Slash is excluded because it can also be an unwrapped target. {§matcher-body-redirect}
 test("error message: matcher-shaped char in the slot region redirects to :body:", () => {
     for (const src of [
         "<<FIND(data.json)$.role:FIND",
@@ -1439,7 +1424,7 @@ test("error message: slot region errors enumerate the four slots", () => {
     assert.match(e.message, /any order/);
 });
 
-test("slot order: canonical [signal](path)<L> parses", () => {
+test("slot order: canonical [signal](target)<scope> parses", () => {
     const result = PlurnkParser.parseStatements("<<FIND[a,b](p)<1-5>:m:FIND");
     assert.equal(result.items.filter((i) => i.kind === "error").length, 0);
     const item = result.items[0];
@@ -1449,7 +1434,7 @@ test("slot order: canonical [signal](path)<L> parses", () => {
     assert.equal(item.statement.lineMarker?.marks[0], 1);
 });
 
-test("slot order: (path)[signal]<L> accepted (reordered)", () => {
+test("slot order: (target)[signal]<scope> accepted (reordered)", () => {
     const result = PlurnkParser.parseStatements("<<FIND(p)[a,b]<1-5>:m:FIND");
     assert.equal(result.items.filter((i) => i.kind === "error").length, 0);
     const item = result.items[0];
@@ -1459,7 +1444,7 @@ test("slot order: (path)[signal]<L> accepted (reordered)", () => {
     assert.equal(item.statement.lineMarker?.marks[0], 1);
 });
 
-test("slot order: <L>(path)[signal] accepted (reordered)", () => {
+test("slot order: <scope>(target)[signal] accepted (reordered)", () => {
     const result = PlurnkParser.parseStatements("<<FIND<1-5>(p)[a,b]:m:FIND");
     assert.equal(result.items.filter((i) => i.kind === "error").length, 0);
     const item = result.items[0];
@@ -1608,8 +1593,15 @@ test("parseLog: a single wrapped turn is a valid log", () => {
     assert.deepEqual(logResult(turn("<<PLAN:p:PLAN <<SEND[200]:done:SEND")), { stmts: 2, errs: 0, tail: false });
 });
 
-test("parseLog: prose inside a wrapped turn is tolerated (comments)", () => {
-    assert.equal(logResult(turn("thinking <<PLAN:p:PLAN consider <<READ(worker:///x)::READ <<SEND[200]:done:SEND")).errs, 0);
+test("parseLog: TEXT inside a wrapped turn is preserved without language semantics", () => {
+    const result = PlurnkParser.parseLog(
+        turn("thinking <<PLAN:p:PLAN consider <<READ(worker:///x)::READ <<SEND[200]:done:SEND"),
+    );
+    assert.equal(result.items.filter((item) => item.kind === "error").length, 0);
+    assert.deepEqual(
+        result.items.filter((item) => item.kind === "text").map(({ text }) => text),
+        ["thinking", "consider"],
+    );
 });
 
 test("parseLog: a BARE (unwrapped) turn is NOT a valid log — TURN wrapping is required", () => {
@@ -1687,7 +1679,7 @@ const ssClean = (s: string) => {
     return !r.items.some((i) => i.kind === "error") && !r.unparsedTail;
 };
 
-test("#42: single-colon body-less ops no longer merge — close at newline", () => {
+test("#42: single-colon body-less operations close at newline", () => {
     const r = PlurnkParser.parseStatements("<<READ(known://x/a):READ\n<<READ(known://x/b):READ");
     assert.equal(r.items.filter((i) => i.kind === "statement").length, 2);
     assert.equal(r.items.filter((i) => i.kind === "error").length, 0);

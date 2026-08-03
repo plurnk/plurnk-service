@@ -2,11 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { AstBuilder, PlurnkParseError, PlurnkParser, WORKER_NAME, RESERVED_AUTHORITIES } from "../../src/index.ts";
 
-// AstBuilder.parsePath was promoted from private to public in 0.3.2 (issue #7)
-// so consumer RPC layers can decompose path strings without round-tripping
-// through a fake HEREDOC. As of the uniform-authority change, parsing is plain
-// WHATWG with no per-scheme allowlist: `://` introduces an authority for every
-// scheme; authority-less references use the empty-authority form `scheme:///path`.
+// {§path-syntax} Public target decomposition without a statement wrapper.
 
 test("parsePath: empty string returns null", () => {
     assert.equal(AstBuilder.parsePath(""), null);
@@ -50,7 +46,7 @@ test("parsePath: authority-less scheme uses three slashes — empty authority, l
     assert.equal(p.password, null);
 });
 
-test("parsePath: two-slash now parses the first segment as host (uniform WHATWG, no allowlist)", () => {
+test("parsePath: two-slash URL parses the first segment as its host", () => {
     const p = AstBuilder.parsePath("known://philosophy/meaning");
     if (p?.kind !== "url") { assert.fail("expected url"); return; }
     assert.equal(p.hostname, "philosophy");
@@ -168,7 +164,7 @@ test("parsePath: duplicate header names survive (ordered pairs, not a map)", () 
     assert.deepEqual(p.headers, [["Set-Cookie", "a=1"], ["Set-Cookie", "b=2"]]);
 });
 
-test("parsePath: URL with no block has no headers field (back-compat)", () => {
+test("parsePath: URL without request metadata has no headers field", () => {
     const p = AstBuilder.parsePath("https://x.dev/a");
     if (p?.kind !== "url") { assert.fail("expected url"); return; }
     assert.equal("headers" in p, false);
@@ -204,9 +200,7 @@ test("parsePath: headers flow through a full parse to the statement target", () 
     assert.deepEqual(statement.target.headers, [["Authorization", "Bearer x"], ["Accept", "q"]]);
 });
 
-// grammar#470: ws:// and wss:// must decompose as UrlPath so the schemes-http handler's
-// WebSocket interface is reachable. The grammar is scheme-generic by design (no whitelist
-// at either layer) - this pins the contract the ws routing depends on.
+// {§path-syntax} Scheme-generic decomposition keeps the WebSocket surface reachable (#470).
 test("parsePath: ws:// and wss:// decompose as UrlPath (scheme, host, port, params) (#470)", () => {
     const ws = AstBuilder.parsePath("ws://api.example.com/feed");
     assert.equal(ws?.kind, "url");
@@ -240,7 +234,7 @@ test("parsePath: the ws op trio (READ open+stream, SEND push, KILL close) parses
 // #527 ({§worker-name}): the mintable worker-name contract — a lowercase DNS label. The single
 // source core's auto-namer and schemes' registry derive from. The parser stays permissive
 // (any authority decomposes); this pins the CONTRACT constant, not ingestion behavior.
-test("worker-name contract (): WORKER_NAME is a lowercase DNS label", () => {
+test("worker-name contract: WORKER_NAME is a lowercase DNS label", () => {
     for (const ok of ["alice", "child3", "brisk-otter", "3com", "a", "plurnk"]) {
         assert.ok(WORKER_NAME.test(ok), `${ok} must be mintable`);
     }

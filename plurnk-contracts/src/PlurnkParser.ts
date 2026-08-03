@@ -29,12 +29,8 @@ const CONTAINER_RULES = new Set<number>([
 ]);
 
 export default class PlurnkParser {
-    // Parse a model TURN. Two hard requirements: a PLAN anchor (first op, only free-text
-    // preamble may precede it) and a terminal SEND (carries the disposition code). A PLAN-less
-    // or SEND-less packet does NOT parse and surfaces as error items. Prose is tolerated
-    // anywhere else (preamble, between ops, trailing) and surfaces as text items - in Plurnk
-    // Script that prose is the comment mechanism. The GBNF rail already requires PLAN, so the
-    // rail and the parser agree (prose tolerance is the only place the parser stays lenient).
+    // Parse one PLAN-anchored model turn ending in a disposition SEND. Tolerated
+    // interstatement TEXT remains an ordered item without language semantics. {§turn-shape}
     static parse(input: string): ParseResult {
         const result = PlurnkParser.#run(input, (parser) => parser.document());
         // Value-adds layered on ANTLR's own diagnostics (we own syntax errors end to end):
@@ -48,9 +44,7 @@ export default class PlurnkParser {
         return result;
     }
 
-    // The terminal disposition set (waitpid contract, service SPEC {§wait-obligation-matrix}):
-    // 102 continue, 200 done, 202 wait (obligation-checked), 300 stop-the-world question,
-    // 499 abandon.
+    // Terminal disposition alphabet. {§waitpid-dispositions} {§wait-obligation-matrix}
     static #DISPOSITIONS = new Set([102, 200, 202, 300, 499]);
 
     // Curated op-name confusions (semantic + dead-verb), NOT edit-distance - a full
@@ -113,9 +107,7 @@ export default class PlurnkParser {
     // model to the anchor; a present-PLAN, absent-SEND turn gets the terminator imperative.
     static #imperativeTurnShape(items: ParseItem<any>[]): void {
         const hasPlan = items.some((i: any) => i.kind === "statement" && i.statement.op === "PLAN");
-        // A turn terminates on a DISPOSITION-coded SEND only — a mid-comms SEND does not
-        // satisfy the terminal requirement, so a turn ending on one still gets the
-        // end-with-terminal imperative (the migration steer).
+        // A mid-comms SEND does not satisfy the terminal requirement.
         const hasSend = items.some(
             (i: any) => i.kind === "statement" && i.statement.op === "SEND" && PlurnkParser.#DISPOSITIONS.has(i.statement.signal),
         );
@@ -143,9 +135,9 @@ export default class PlurnkParser {
         items.push({ kind: "error", error: new PlurnkParseError(anchor.line, anchor.column, "parser", fix) });
     }
 
-    // Lift the mid-turn-termination error. A disposition-coded SEND (102/200/300/499) IS the
-    // turn terminal (grammar 0.74.52/0.74.53), so an op or second SEND after one is a genuine
-    // error - but the parser reports only a generic "unexpected open tag". Rewrite it to the rule.
+    // Lift the mid-turn-termination error. A disposition-coded SEND
+    // (102/200/202/300/499) ends the turn, so a following operation is an error.
+    // Rewrite ANTLR's generic structure message to that rule. {§send-mid-reservation}
     // Runs after the begin/end imperative (which handles the incomplete-shape case and, for a
     // complete-but-trailing turn, returns early leaving this error in place to rewrite).
     static #imperativeMidTermination(items: ParseItem<any>[]): void {
@@ -201,8 +193,8 @@ export default class PlurnkParser {
         return PlurnkParser.#run(input, (parser) => parser.statementSeq());
     }
 
-    // Parse a multi-turn LOG - a saved sequence of turns, each a full PLAN-anchored sandwich
-    // (the v1 Plurnk Script substrate). Items are flat across turns, in source order; turn
+    // Parse a multi-turn LOG - a saved sequence of turns, each a full PLAN-anchored sandwich.
+    // Items are flat across turns, in source order; turn
     // boundaries are recoverable from the terminal SENDs. A log is valid (no error items, no
     // unparsedTail) iff every turn in it is a valid turn.
     static parseLog(input: string): ParseResult {
@@ -267,11 +259,8 @@ export default class PlurnkParser {
         return { items, unparsedTail };
     }
 
-    // Op-shaped text inside an UNSUFFIXED PLAN body (#502, the run113 class) is almost
-    // always an omitted `:PLAN` whose body swallowed the turn's ops to the next closer.
-    // A suffixed PLAN deliberately invokes the universal body-quoting contract and must
-    // not receive this advisory. The narrow GBNF rail keeps PLAN unsuffixed and excludes
-    // `<<` from its body; this is the ingest-side warning for unrailed emissions.
+    // Warn when an unsuffixed PLAN body contains op-shaped text; a suffix deliberately
+    // invokes the universal quoting contract. {§plan-body-op-advisory}
     static #flagOpsInPlanBody(items: ParseItem<any>[]): void {
         const additions: { at: number; item: ParseItem<any> }[] = [];
         const opener = new RegExp(`<<(${PLURNK_OPS.join("|")})\\b`);
@@ -302,14 +291,8 @@ export default class PlurnkParser {
     // on one of these is unambiguously wrong - there is nothing to edit/copy/move.
     static #MUTATING_OPS = new Set(["EDIT", "COPY", "MOVE"]);
 
-    // The misplaced-target advisory (#562, run61): a model riding markdown-link muscle memory reads
-    // `[signal](target)` as `[label](url)` and routes a bare file path - which does not look like a
-    // URL - into the `[…]` slot, leaving `(target)` null (every scheme:// URI landed in `(…)` cleanly;
-    // only plain paths mis-slotted). The `[…]` slot holds tags, so a path there with no target is the
-    // markdown mis-read: redirect it into `(…)` at the parse, where the engine only returns a bare 400
-    // with no reason. Gated on a path-shaped signal element (a `/` or a dotted extension) so a genuine
-    // tags-only slip - a different mistake - is not mis-steered toward a path it does not have. A
-    // WARNING: the parse succeeded; the steer makes the silent rejection legible.
+    // A null mutation target plus a path-shaped tag is the narrow advisory gate; an
+    // ordinary tags-only omission is not redirected. {§misplaced-target-advisory}
     static #flagMisplacedTarget(items: ParseItem<any>[]): void {
         const pathShaped = (s: string) => s.includes("/") || /[^/]\.[a-zA-Z][a-zA-Z0-9]*$/.test(s);
         const additions: { at: number; item: ParseItem<any> }[] = [];
@@ -337,12 +320,8 @@ export default class PlurnkParser {
         for (const { at, item } of additions.reverse()) items.splice(at + 1, 0, item);
     }
 
-    // The invented-closer advisory (#497, the run111 class): a model under load falls back to
-    // bash-heredoc semantics and closes an op with a tag of its own invention (`:COMPARISON_TASK`
-    // for `<<WORK`), which the body legally swallows - the op never closes and the emission runs
-    // to the cap. When the cut tail parses here, name the imposter so the recovery turn learns
-    // WHAT happened, not just that something did. Fires only in the never-closed error state, so
-    // a coincidental `:ALLCAPS` in a healthy body is never flagged.
+    // Name an ALLCAPS close lookalike only inside a never-closed statement; healthy
+    // bodies are never scanned by this path. {§invented-closer-advisory}
     static #inventedCloser(input: string, from: { line: number; column: number }, openTag: string): string {
         const lines = input.split("\n");
         const offset = lines.slice(0, from.line - 1).reduce((sum, l) => sum + l.length + 1, 0) + from.column;
@@ -380,8 +359,7 @@ export default class PlurnkParser {
                     // A phantom statement context synthesized during error recovery (e.g. a
                     // PLAN slot the parser opened then failed to fill on bare text): zero tokens
                     // matched, so its OPEN terminal is null and building it would null-deref.
-                    // The real failure is already a recorded grammar error; skip the phantom so
-                    // an internal crash never leaks as a spurious parse-error item (#45).
+                    // The real failure is already recorded; skip the zero-token recovery node.
                 } else {
                     try {
                         items.push({ kind: "statement", statement: buildFn(c) });
@@ -389,7 +367,7 @@ export default class PlurnkParser {
                         // A genuine visitor contract violation (e.g. a malformed URI) is a
                         // PlurnkParseError - surface it as an error item. Anything else is an
                         // internal bug, not a parse error: let it crash rather than masquerade
-                        // as a model-facing parse-error item (#45).
+                        // as a model-facing parse-error item.
                         if (!(e instanceof PlurnkParseError)) throw e;
                         items.push({ kind: "error", error: e });
                     }

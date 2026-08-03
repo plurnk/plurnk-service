@@ -2,7 +2,7 @@
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "$id": "https://schemas.plurnk.dev/v0/ClientStatement.json",
     "title": "ClientStatement",
-    "description": "The client-tier AST: every protocol PlurnkStatement plus the two client-only utility ops, LOOK and BUFF. Produced ONLY by PlurnkParser.parseClient; the model/protocol/script entry points (parse, parseStatements, parseLog) neither emit nor accept the client ops. LOOK and BUFF are read-shaped — identical signature to ReadStatement (tag signal, target, lineMarker, matcher body): LOOK is READ minus the log side effect, BUFF pulls an editable entry into a buffer for editing (the write-back is a later plain EDIT, not part of BUFF). The protocol PlurnkStatement set stays closed; client ops live here so they never leak into the model-facing contract type.",
+    "description": "The client-tier AST returned by PlurnkParser.parseClient: the closed protocol PlurnkStatement union plus read-shaped LOOK and BUFF utility statements.",
     "oneOf": [
         { "$ref": "https://schemas.plurnk.dev/v0/PlurnkStatement.json" },
         { "$ref": "#/$defs/LookStatement" },

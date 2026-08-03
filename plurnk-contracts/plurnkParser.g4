@@ -2,11 +2,8 @@ parser grammar plurnkParser;
 
 options { tokenVocab = plurnkLexer; }
 
-// A Plurnk packet IS a TURN (PlurnkParser.parse). The sandwich is law: exactly one
-// PLAN-anchored turn — PLAN first (only free-text preamble precedes it), mid-ops with prose
-// (comments) between, a REQUIRED terminal SEND, EOF. NO mid-op PLAN (a second PLAN would
-// start a new turn — use parseLog for that). PLAN-less / SEND-less / multi-turn input does
-// NOT parse. Prose surfaces as text items. GBNF already enforces PLAN-first, so all tiers agree.
+// One model turn: optional TEXT, PLAN, interleaved mid-ops/TEXT, terminal SEND,
+// optional TEXT, EOF. TEXT has no language semantics. {§turn-shape}
 document
     : turnContent EOF
     ;
@@ -18,8 +15,8 @@ log
     : turnStatement+ EOF
     ;
 
-// `<<TURN[label]?(target)?<L>?: <a full turn> :TURN` — wraps one sandwich. Modifiers parse
-// but are semantically undefined in v1. The body is `turnContent` (real, internal Plurnk).
+// `<<TURN[label]?(target)?<scope>?: <a full turn> :TURN` wraps one turn. This contract
+// assigns no semantics to its parsed modifiers. The body is `turnContent`.
 turnStatement
     : OPEN_TURN tagOpModifiers? COLON turnContent CLOSE_TURN
     ;
@@ -91,8 +88,8 @@ midStatement
     | killStatement
     ;
 
-// Scoped tag-CSV ops share the same modifier permutation: tagSignal, target,
-// lineMarker in any order, each appearing at most once.
+// Scoped tag-CSV ops tolerate signal, target, and scope in any order, at most once.
+// Canonical producers retain signal → target → scope. {§slot-order}
 findStatement : OPEN_FIND tagOpModifiers? COLON? body? CLOSE_TAG ;
 readStatement : OPEN_READ tagOpModifiers? COLON? body? CLOSE_TAG ;
 editStatement : OPEN_EDIT tagOpModifiers? COLON? body? CLOSE_TAG ;
@@ -120,8 +117,8 @@ workStatement : OPEN_WORK branchModifiers? COLON body CLOSE_TAG ;
 forkStatement : OPEN_FORK branchModifiers? COLON body CLOSE_TAG ;
 killStatement : OPEN_KILL intOpModifiers? COLON? body? CLOSE_TAG ;
 
-// PLAN — reasoning recorded to the log. Canonical form is slotless; tag-op
-// modifiers parse permissively (tags on thoughts are legitimate folksonomy).
+// PLAN records intended goals. Canon is slotless; modifiers remain ingest-side
+// tolerance. {§plan-intended-goals}
 planStatement : OPEN_PLAN tagOpModifiers? COLON? body? CLOSE_TAG ;
 
 // LOOK / BUFF — client-tier utility ops, read-shaped (identical signature to readStatement:

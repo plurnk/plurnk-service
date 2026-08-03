@@ -2,7 +2,7 @@
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "$id": "https://schemas.plurnk.dev/v0/ParsedPath.json",
     "title": "ParsedPath",
-    "description": "A parsed path slot from a plurnk statement. Discriminated on `kind`: a bare local path (no scheme) or a fully decomposed URL. Paths address exact resources or carry shell glob selectors; content matching belongs in the statement body.",
+    "description": "A parsed target slot from a plurnk statement. Discriminated on `kind`: a bare local path or a WHATWG-decomposed URL. Targets carry an exact address or a path glob; content matching belongs in the statement body.",
     "oneOf": [
         { "$ref": "#/$defs/LocalPath" },
         { "$ref": "#/$defs/UrlPath" }
@@ -46,7 +46,7 @@
                 "params": { "$ref": "https://schemas.plurnk.dev/v0/Params.json" },
                 "fragment": { "type": ["string", "null"] },
                 "headers": {
-                    "description": "Request-metadata blocks split off the target — trailing `{key: value}` groups (e.g. `(https://api{Authorization: Bearer x})`). Ordered key/value pairs so order and duplicate names survive; opaque to the grammar's addressing, interpreted by the scheme handler (auth, content-type, method affordance). Absent when the target carries no `{...}` block. See #46.",
+                    "description": "Trailing `{key: value}` request-metadata blocks removed before WHATWG decomposition and preserved as ordered pairs. Order and duplicate names survive; the addressed scheme owns their meaning. Absent when no block was supplied.",
                     "type": "array",
                     "items": {
                         "type": "array",

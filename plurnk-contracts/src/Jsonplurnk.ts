@@ -1,16 +1,7 @@
 /**
- * jsonplurnk: the Log section's clean-markdown form (grammar#437). A JSON array of entry
- * objects with exactly ONE deviation from valid JSON - each `body` value, when present, is a
- * raw HEREDOC (`<<:::TAG … :::TAG`, TAG = the entry's target/log URI) rendered verbatim rather
- * than JSON-escaped, so the model reads it as natural text instead of an escaped blob.
- *
- * `strip` reverses that one deviation (heredoc body -> escaped JSON string) so the whole block
- * parses as ordinary JSON; everything else is already valid JSON and passes through untouched.
- * The TAG echo on the opener names its own closing delimiter, so a body can hold anything but a
- * column-0 line that exactly matches `:::<that TAG>`.
- *
- * Core renders jsonplurnk; grammar owns this strip-parser and the magnum-opus assertion (every
- * outbound Log strips to valid JSON under the one carve-out).
+ * Reverses jsonplurnk's single deviation from JSON: raw HEREDOC body values
+ * become escaped JSON strings. Core owns rendering; contracts owns stripping.
+ * {§jsonplurnk}
  */
 export default class Jsonplurnk {
     // `"body":`, then any whitespace/newlines, then the heredoc opener `<<:::`.
@@ -40,7 +31,7 @@ export default class Jsonplurnk {
         return out + block.slice(cursor);
     }
 
-    // strip, then parse. The magnum-opus assertion reduces to: this does not throw on a valid Log.
+    // Strip, then parse as ordinary JSON.
     static parse(block: string): unknown {
         return JSON.parse(Jsonplurnk.strip(block));
     }

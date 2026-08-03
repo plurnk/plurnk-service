@@ -2,7 +2,7 @@
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "$id": "https://schemas.plurnk.dev/v0/TextRegion.json",
     "title": "TextRegion",
-    "description": "A contiguous region in a textual resource. Lines and Unicode code-point columns are 1-based; the end position is exclusive.",
+    "description": "A contiguous region of text. Lines and Unicode code-point columns are 1-based; the start is included and the end is excluded.",
     "type": "object",
     "required": ["startLine", "startColumn", "endLine", "endColumn"],
     "additionalProperties": false,

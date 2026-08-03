@@ -2,7 +2,7 @@
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "$id": "https://schemas.plurnk.dev/v0/ResourceSelection.json",
     "title": "ResourceSelection",
-    "description": "One addressed resource representation and an optional textual region. A fragment-less target selects the scheme's default channel; a URI fragment selects a named channel. The line marker scopes that selected channel.",
+    "description": "A COPY/MOVE destination target and optional text scope. A target without a fragment selects the scheme's default channel; a fragment selects a named channel; lineMarker scopes the selected destination content.",
     "type": "object",
     "required": ["target", "lineMarker"],
     "additionalProperties": false,
