@@ -7,11 +7,48 @@ import { execFileSync, spawn } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { resolve } from "node:path";
-import { installSandbox, uninstallSandbox, sandbox } from "./install-sandbox.mjs";
+import { installPacked, installSandbox, uninstallSandbox, sandbox } from "./install-sandbox.mjs";
 
 let failures = 0;
 const ok = (cond, msg) => { process.stdout.write(`  ${cond ? "✓" : "✗"} ${msg}\n`); if (!cond) failures++; };
 const bin = resolve(sandbox, "node_modules", ".bin", "plurnk-service");
+const isogitPackage = "@plurnk/plurnk-execs-isogit";
+
+// Probe the actual packed configuration, discovery, import, and availability
+// path in a fresh Node process. Running outside the monorepo prevents a
+// workspace-hoisted optional package from satisfying the assertion.
+const packedExecInventory = (env = {}) => {
+    const childEnv = { ...process.env };
+    for (const key of ["PLURNK_EXECS_ONLY", "PLURNK_EXECS_GIT", "PLURNK_EXECS_ISOGIT"]) delete childEnv[key];
+    Object.assign(childEnv, { PLURNK_SERVICE_GIT_ALLOWED: "1" }, env);
+    const program = `
+        import { resolve } from "node:path";
+        import { pathToFileURL } from "node:url";
+        const serviceRoot = resolve("node_modules/@plurnk/plurnk-service");
+        const nodeModules = resolve("node_modules");
+        const { default: EnvDefaults } = await import(pathToFileURL(resolve(serviceRoot, "dist/core/env-defaults.js")));
+        const { default: ExecutorRegistry } = await import(pathToFileURL(resolve(serviceRoot, "dist/core/ExecutorRegistry.js")));
+        const { discover } = await import(pathToFileURL(resolve(nodeModules, "@plurnk/plurnk-execs/dist/index.js")));
+        const files = await EnvDefaults.collect(serviceRoot, nodeModules);
+        const merged = EnvDefaults.merge(files);
+        EnvDefaults.apply(merged);
+        const discovery = await discover({ cwd: process.cwd() });
+        const executors = await ExecutorRegistry.build({ cwd: process.cwd() });
+        const owner = (tag) => discovery.registry.get(tag)?.packageName ?? null;
+        process.stdout.write(JSON.stringify({
+            defaultValue: process.env.PLURNK_EXECS_ISOGIT ?? null,
+            defaultOwner: merged.get("PLURNK_EXECS_ISOGIT")?.owner ?? null,
+            disabled: discovery.disabled,
+            owners: { git: owner("git"), isogit: owner("isogit") },
+            advertised: executors.availableRuntimes(),
+        }));
+    `;
+    return JSON.parse(execFileSync(process.execPath, ["--input-type=module", "--eval", program], {
+        cwd: sandbox,
+        encoding: "utf8",
+        env: childEnv,
+    }));
+};
 
 const runBin = (args, env = {}) => {
     try {
@@ -38,7 +75,7 @@ const bootStart = (env = {}) => new Promise((res) => {
 
 process.stdout.write("== plurnk-service installation e2e ==\n");
 process.stdout.write("-- local sandbox install --\n");
-installSandbox();
+const { tarballs } = installSandbox();
 ok(existsSync(bin), "plurnk-service bin linked in the sandbox");
 
 const mods = resolve(sandbox, "node_modules");
@@ -88,6 +125,26 @@ ok(!/embedder inactive/.test(boot.stderr), "no embedder-inactive notice — the 
 // three options, and nothing can phone the hosted relay without the user uncommenting it.
 ok(/ no model\n?$/m.test(boot.stdout) || /no model/.test(boot.stdout), "startup line reports 'no model' on an untouched install (no hosted default)");
 ok(/no model configured/.test(boot.stderr) && /local \/ cloud \/ plurnk\.ai/.test(boot.stderr), "the pointer names the three options in ~/.plurnk/.env");
+
+process.stdout.write("-- optional executor lifecycle --\n");
+const isogitRoot = resolve(mods, "@plurnk", "plurnk-execs-isogit");
+ok(!existsSync(isogitRoot), "isogit is absent from a clean service install");
+const absentIsogit = packedExecInventory({ PLURNK_EXECS_ISOGIT: "1" });
+ok(!absentIsogit.advertised.includes("isogit"), "configuration cannot advertise an executor package that is not installed");
+
+installPacked(tarballs, isogitPackage);
+ok(existsSync(resolve(isogitRoot, "package.json")), "the exact packed isogit leaf installs into the service-visible module graph");
+const disabledIsogit = packedExecInventory();
+ok(disabledIsogit.defaultValue === "0" && disabledIsogit.defaultOwner === isogitPackage,
+    "the installed leaf uniquely owns and applies its disabled default");
+ok(disabledIsogit.disabled.includes("isogit") && !disabledIsogit.advertised.includes("isogit"),
+    "installed isogit remains unadvertised by default");
+
+const enabledIsogit = packedExecInventory({ PLURNK_EXECS_ISOGIT: "1" });
+ok(enabledIsogit.defaultValue === "1" && enabledIsogit.advertised.includes("isogit"),
+    "explicitly enabled isogit is discovered, probed, and advertised");
+ok(enabledIsogit.owners.git === "@plurnk/plurnk-execs-git" && enabledIsogit.owners.isogit === isogitPackage,
+    "native git and optional isogit retain distinct runtime owners");
 
 process.stdout.write("  ⚠ hosted-model round-trip: deliberate red (endpoint not live) — not yet asserted\n");
 

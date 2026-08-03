@@ -216,6 +216,27 @@ packages. A package may declare multiple tags backed by the same default
 export. Discovery is scope-agnostic; third-party packages participate through
 the same contract.
 
+### §executor-installation Installed capability lifecycle
+
+Configuration cannot enable a package that is absent from the consumer-visible
+module graph. An executor leaf must be installed under the `node_modules` found
+from the running service before discovery can inspect its declaration. The
+service assembles every installed member's package-owned `.env.defaults` under
+operator configuration {§operator-config-env-defaults}; a leaf may therefore
+ship default-disabled without transferring ownership of its key to the host.
+
+| Package state | Effective policy and probe             | Runtime result                                                      |
+| ------------- | -------------------------------------- | ------------------------------------------------------------------- |
+| Absent        | Any configuration                      | Not discovered, registered, advertised, or dispatchable.            |
+| Installed     | Tag disabled in any policy layer       | Listed in `Discovery.disabled`; not registered or advertised.       |
+| Installed     | Tag admitted; probe unavailable        | Registered as unavailable; not advertised or dispatchable.          |
+| Installed     | Tag admitted; probe available          | Registered, advertised through `availableRuntimes()`, dispatchable. |
+
+An operator value of `PLURNK_EXECS_<TAG>=1` can outrank a package-owned `0`
+floor. It does not restore a tag removed by `PLURNK_EXECS_ONLY`, another
+consumer layer, or a service hard ceiling. Discovery and policy are evaluated
+at boot; changing package membership or configuration requires a restart.
+
 ### §executor-runtime-declaration Runtime metadata
 
 | Field           | Meaning                                                                                            |

@@ -50,7 +50,22 @@ export function installSandbox() {
         `${JSON.stringify({ name: "plurnk-sandbox", version: "1.0.0", private: true, overrides }, null, 2)}\n`,
     );
     sh("npm", ["install", core], { cwd: sandbox });
-    return { sandbox, tarball: core };
+    return { sandbox, tarball: core, tarballs };
+}
+
+// Add one packed optional workspace to the already-installed consumer. The
+// package becomes a direct dependency exactly as it would in a real project;
+// remove its test-only override first because npm rejects an override that also
+// names a direct dependency.
+export function installPacked(tarballs, packageName) {
+    const tarball = tarballs[packageName];
+    if (tarball === undefined) throw new Error(`packAll produced no ${packageName} tarball`);
+    const manifestPath = resolve(sandbox, "package.json");
+    const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+    delete manifest.overrides?.[packageName];
+    manifest.dependencies = { ...manifest.dependencies, [packageName]: `file:${tarball}` };
+    writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+    sh("npm", ["install"], { cwd: sandbox });
 }
 
 export function uninstallSandbox() {
