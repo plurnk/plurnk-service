@@ -7,13 +7,13 @@ specifications own behavior; design history belongs in Git and forge issues.
 ## Standards boundary
 
 PLURNK is an engine between standards. Nodes outside PLURNK are interface
-specifications; the OTel label inside PLURNK is an internally adopted
-specification. Boundary adapters implement their owning standards rather than
-restate them. Dotted interfaces are explicitly deferred.
+specifications; standards named inside PLURNK govern internal contracts.
+Boundary adapters implement their owning standards rather than restate them.
+Dotted interfaces are explicitly deferred.
 
 ```mermaid
 flowchart LR
-    AGUI["AG-UI Specification"] --- PLURNK["plurnk<br/><br/>OTel (internal specification)"]
+    AGUI["AG-UI Specification"] --- PLURNK["plurnk<br/><br/>JSON Schema · RFC 9457<br/>SARIF regions · RFC 3986 / WHATWG URL<br/>IANA media types · OTel"]
     MCP["MCP Specification"] --- PLURNK
     OPENAI["OpenAI Specification"] --- PLURNK
     PLUGIN["Plurnk Plugin<br/>(exec / scheme)<br/>plurnk-owned interface"] --- PLURNK
@@ -31,44 +31,15 @@ flowchart LR
 
 ```mermaid
 flowchart LR
-    subgraph foundation[Foundations]
-        contracts["plurnk-contracts<br/>language + shared wire"]
-        packet["plurnk-plurnkdown<br/>packet Markdown"]
-        meta["plurnk-meta<br/>discovery + teaching sources"]
-    end
-
-    subgraph families[Capability families]
-        providers[providers]
-        schemes[schemes]
-        execs[executors]
-        mimetypes[mimetypes]
-    end
-
+    contracts["plurnk-contracts<br/>language + shared wire"] --> core
+    packet["plurnk-plurnkdown<br/>packet projection"] --> core
+    meta["plurnk-meta<br/>discovery + teaching"] --> core
+    providers["Provider family"] --> core
+    capabilities["Scheme / executor / mimetype families"] --> core
+    mcp["MCP daemon module<br/>contract deferred"] -.-> core
     core["plurnk-service<br/>composed daemon"]
-    mcp["plurnk-mcp<br/>optional module; contract deferred"]
-    agui["plurnk-agui<br/>client interface"]
-    clients["CLI / TUI / Neovim / web clients"]
-
-    contracts --> providers
-    contracts --> schemes
-    contracts --> execs
-    contracts --> mimetypes
-    contracts --> packet
-    contracts --> core
-    meta --> providers
-    meta --> schemes
-    meta --> execs
-    meta --> mimetypes
-    providers --> core
-    schemes --> core
-    execs --> core
-    mimetypes --> core
-    packet -. projection contract .-> core
-    schemes --> mcp
-    execs --> mcp
-    mcp -. daemon module .-> core
-    core --> agui
-    agui --> clients
+    core --> agui["plurnk-agui<br/>client interface"]
+    agui --> clients["CLI / TUI / Neovim / web clients"]
 ```
 
 [`plurnk-contracts/plurnk.md`](./plurnk-contracts/plurnk.md) is the
@@ -102,12 +73,6 @@ facts have one schema and one specification owner.
 
 ```mermaid
 flowchart LR
-    subgraph outside[Outside the daemon]
-        clients["Thin clients"]
-        endpoints["Local or remote model endpoints"]
-        project["Project filesystem + Git"]
-    end
-
     subgraph daemon[One @plurnk/plurnk-service process]
         agui["AG-UI module"]
         core["Core engine"]
@@ -115,16 +80,17 @@ flowchart LR
         providers["Provider adapters"]
         capabilities["Scheme / executor / mimetype packages"]
         sqlite[(SQLite)]
+
+        agui -->|CoreSeam| core
+        modules -->|module lifecycle| core
+        core --> providers
+        core --> capabilities
+        core --> sqlite
     end
 
-    clients <-->|HTTP / SSE| agui
-    agui -->|CoreSeam| core
-    modules -->|module lifecycle| core
-    core --> providers
-    providers <--> endpoints
-    core --> capabilities
-    core --> sqlite
-    core <--> project
+    clients["Thin clients"] <-->|HTTP / SSE| agui
+    providers <--> endpoints["Local or remote model endpoints"]
+    core <--> project["Project filesystem + Git"]
 ```
 
 `@plurnk/plurnk-service` is the only long-running platform process. Plugin and
@@ -148,7 +114,7 @@ sequenceDiagram
     Client->>AGUI: user prompt
     AGUI->>Core: CoreSeam call
     Core->>Store: persist accepted input and loop state
-    Core->>Provider: rendered packet, generation context, optional rail
+    Core->>Provider: rendered packet and generation context
     Provider-->>Core: normalized response and usage evidence
     Core->>Contracts: parse projected PLURNK content
     Contracts-->>Core: admitted statements or diagnostics

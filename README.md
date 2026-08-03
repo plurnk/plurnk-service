@@ -24,19 +24,13 @@ Everything else is implementation and may change as those ideas are tested.
 
 ```mermaid
 flowchart LR
-    contracts["contracts<br/>language + shared wire"] --> providers["provider family"]
-    contracts --> capabilities["scheme / executor / mimetype families"]
-    meta["meta<br/>discovery + teaching sources"] --> providers
-    meta --> capabilities
-    contracts --> core["plurnk-service<br/>composed daemon"]
-    providers --> core
-    capabilities --> core
-    packet["plurnkdown<br/>packet format"] -. contract .-> core
-    capabilities -. scheme + executor seams .-> mcp["MCP daemon module<br/>contract deferred"]
-    mcp -. optional module .-> core
-    core --> agui["AG-UI<br/>client interface"]
-    agui --> clients["CLI / TUI / Neovim / web clients"]
+    clients["CLI / TUI / Neovim / web"] <--> agui["AG-UI"]
+    agui <--> core["plurnk-service<br/>engine + durable state"]
+    core <--> providers["Model providers"]
+    plugins["Scheme / executor / mimetype plugins"] --> core
+    modules["Optional daemon modules"] --> core
     core --> sqlite[(SQLite)]
+    core <--> project["Project files + Git"]
 ```
 
 The daemon owns durable agent state and composes package-owned capabilities.
