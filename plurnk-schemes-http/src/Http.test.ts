@@ -254,16 +254,28 @@ test("prepareFind rewrites acquisition but stores the addressed GitHub identity"
     assert.equal(inspect().wrote?.pathname, "/github.com/nodejs/node/blob/main/src/node_version.h");
 });
 
-test("prepareFind leaves absent and glob discovery to the shared entry query", async () => {
+test("prepareFind leaves absent and shared-classified path globs to the entry query", async () => {
     const { ctx, inspect } = makeCtx();
     const http = new Http(fakeBrowser("unused"));
     const absent = await http.prepareFind(findStmt(null), ctx);
     assert.equal(absent.status, 200);
-    const glob = await http.prepareFind(
+    const star = await http.prepareFind(
         findStmt(urlTarget("https://example.com/docs/*", "/docs/*")),
         ctx,
     );
-    assert.equal(glob.status, 200);
+    assert.equal(star.status, 200);
+    let fetched = false;
+    await withFetch(async () => {
+        fetched = true;
+        return new Response("wrong");
+    }, async () => {
+        const characterClass = await http.prepareFind(
+            findStmt(urlTarget("https://example.com/docs/[ab].md", "/docs/[ab].md")),
+            ctx,
+        );
+        assert.equal(characterClass.status, 200);
+    });
+    assert.equal(fetched, false);
     assert.equal(inspect().wrote, null);
 });
 

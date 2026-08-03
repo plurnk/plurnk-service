@@ -46,7 +46,6 @@ import {
 import SchemeCtxImpl from "./caps/SchemeCtxImpl.ts";
 import EntryCrud from "../schemes/_entry-crud.ts";
 import EntryFind from "../schemes/_entry-find.ts";
-import { hasPathGlob } from "../schemes/_path-scope.ts";
 import EntryOps from "../schemes/_entry-ops.ts";
 import WorkspaceSettings from "./workspace-settings.ts";
 import type LiveSubscriptions from "./LiveSubscriptions.ts";
@@ -1193,7 +1192,7 @@ export default class Dispatcher {
         if (body !== null && typeof handler?.prepareFind === "function") return true;
         const t = statement.target;
         const p = t === null ? "" : (t.kind === "url" ? t.pathname : t.raw);
-        if (hasPathGlob(p)) return true;
+        if (PathSyntax.hasGlob(p)) return true;
         return p.endsWith("/") && schemeName !== null && this.#schemes.manifestFor(schemeName)?.folderScopes === true;
     }
 

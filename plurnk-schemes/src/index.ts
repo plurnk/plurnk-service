@@ -42,6 +42,7 @@ export { default as DefaultRead } from "./DefaultRead.ts";
 export type { ReadResolution } from "./DefaultRead.ts";
 export { default as Results } from "./Results.ts";
 export { InvalidOperationResultError } from "./Results.ts";
+export { PathSyntax } from "@plurnk/plurnk-contracts";
 export type {
     EditBatchReceipt,
     EditBatchResult,

@@ -18,7 +18,7 @@ import type {
     FindStatement,
     SchemeResult,
 } from "@plurnk/plurnk-schemes";
-import { MimetypeClassifier, NetworkAddress, Results } from "@plurnk/plurnk-schemes";
+import { MimetypeClassifier, NetworkAddress, PathSyntax, Results } from "@plurnk/plurnk-schemes";
 import { readFile } from "node:fs/promises";
 import Browser, { BROWSER_UA, requireNumEnv, type RenderResult } from "./Browser.ts";
 import ErrorDetail from "./ErrorDetail.ts";
@@ -120,7 +120,7 @@ export default class Http implements SchemeHandler {
         const address = Http.#address(target);
         if (!(address instanceof NetworkAddress)) return address;
         const { pathname, url } = address;
-        if (target.pathname.includes("*")) return { shape: "passthrough", status: 200 };
+        if (PathSyntax.hasGlob(target.pathname)) return { shape: "passthrough", status: 200 };
         const prior = await ctx.entries.read(pathname);
         if (prior.entry !== null) {
             const priorMethod = Http.#requestMethod(prior.entry.channels[HEADER]?.content ?? "");

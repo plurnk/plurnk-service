@@ -1,4 +1,10 @@
-import type { FindStatement, FoldStatement, OpenStatement, ReadStatement } from "@plurnk/plurnk-contracts";
+import {
+    PathSyntax,
+    type FindStatement,
+    type FoldStatement,
+    type OpenStatement,
+    type ReadStatement,
+} from "@plurnk/plurnk-contracts";
 import { LineMarkerOps } from "../content/index.ts";
 import type { SchemeManifest, PlurnkSchemeContext, SchemeReadResult } from "../core/scheme-types.ts";
 import { ReadResolve } from "../content/index.ts";
@@ -13,7 +19,7 @@ import LogBody from "../core/LogBody.ts";
 import EntrySemantic from "./_entry-semantic.ts";
 import EntryGraph from "./_entry-graph.ts";
 import { resolveSearchCandidates } from "./_search-candidate.ts";
-import { hasPathGlob, pathFolderSummaries, pathScope, pathScopeMatches } from "./_path-scope.ts";
+import { pathFolderSummaries, pathScope, pathScopeMatches } from "./_path-scope.ts";
 
 type OpenFoldResult = SchemeResultBase & { matched?: number };
 
@@ -35,7 +41,7 @@ const coordinateGlob = (pathname: string): string | null => {
     if (pathname === "" ) return "**";
     if (pathname.endsWith("/")) return `${pathname}**`;
     if (PARTIAL_COORDINATE.test(pathname)) return `${pathname}/**`;
-    if (parseCoordinate(pathname) !== null || hasPathGlob(pathname)) return pathname;
+    if (parseCoordinate(pathname) !== null || PathSyntax.hasGlob(pathname)) return pathname;
     return null;
 };
 

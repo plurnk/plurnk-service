@@ -15,3 +15,19 @@ test("encodeParens is the model-facing inverse without general URL encoding", ()
     assert.equal(PathSyntax.encodeParens("/wiki/Igor_(politician)"), "/wiki/Igor_%28politician%29");
     assert.equal(PathSyntax.encodeParens("/wiki/Igor_%28politician%29"), "/wiki/Igor_%28politician%29");
 });
+
+test("path-glob classification recognizes the complete shared syntax", () => {
+    assert.equal(PathSyntax.hasGlob("/docs/exact.md"), false);
+    assert.equal(PathSyntax.globMagicIndex("/docs/exact.md"), -1);
+    assert.equal(PathSyntax.globMagicIndex("/docs/[ab].md"), 6);
+    for (const pattern of [
+        "/docs/*.md",
+        "/docs/file?.md",
+        "/docs/[ab].md",
+        "/docs/{a,b}.md",
+        "/docs/@(a|b).md",
+        "/docs/a\\*.md",
+    ]) {
+        assert.equal(PathSyntax.hasGlob(pattern), true, pattern);
+    }
+});

@@ -308,6 +308,15 @@ producers percent-encode `(` as `%28`, `)` as `%29`, and `<` as `%3C` so the
 address cannot collide with slot syntax. Newlines and `<<` are never target
 content. Glob metacharacters remain legal path data.
 
+§path-glob `PathSyntax` owns exact-path versus path-pattern classification.
+
+| Method                           | Contract                                                                 |
+| -------------------------------- | ------------------------------------------------------------------------ |
+| `hasGlob(pathname)`              | Recognizes `*`, `?`, character-class, brace, extglob, and escape syntax  |
+| `globMagicIndex(pathname)`       | First such position, solely for conservative candidate-prefix selection  |
+
+Matching and folder-scope semantics remain runtime concerns.
+
 §path-request-metadata A scheme URL may append one or more
 `{key: value}` request-metadata blocks. AstBuilder removes the blocks before
 WHATWG decomposition and preserves them as ordered pairs so order and duplicate
@@ -586,7 +595,7 @@ following supported consumer values. All other root exports are TypeScript types
 | `PlurnkParser`                        | Four document-tier entry points listed above                        | {§parser-architecture}, {§tier-entrypoints} |
 | `PlurnkParseError`                    | JSON-serializable positioned parser diagnostic                      | {§parse-diagnostics}                        |
 | `parsePath`, `parseResourceSelection` | Parser-equivalent target and COPY/MOVE destination admission        | {§path-syntax}, {§tier-entrypoints}         |
-| `PathSyntax`                          | Canonical target-slot parenthesis encoding and decoding             | {§path-parentheses}                         |
+| `PathSyntax`                          | Target-slot spelling and exact-versus-glob classification           | {§path-parentheses}, {§path-glob}           |
 | `Validator`                           | Validation and assertion against the owning JSON Schemas            | {§wire-entrypoint}                          |
 | `InvalidNoticeError`                  | Typed failure from `Validator.assertNotice`                         | {§notice}                                   |
 | `InvalidProblemDetailsError`          | Typed failure from `Validator.assertProblemDetails`                 | {§problem-details}                          |

@@ -53,6 +53,9 @@ Every direct network method uses the same guarded streaming path. Request
 headers are ordered target metadata: one trailing `{Key: value}` block per
 header. The loop `SEND[code]` is never the remote HTTP status; remote status and
 headers are persisted in `header`.
+Exact-versus-pattern FIND preparation uses the shared
+`PathSyntax.hasGlob` classifier {§path-glob}; HTTP owns no reduced
+path-pattern grammar.
 
 ## §http-lifecycle §3 Acquisition, materialization, and query lifecycle
 

@@ -1,4 +1,5 @@
 import { posix } from "node:path";
+import { PathSyntax } from "@plurnk/plurnk-contracts";
 
 export type PathScope =
     | { kind: "exact"; pathname: string; candidatePrefix: string }
@@ -11,25 +12,11 @@ export type PathScope =
         recursivePrefix: string | null;
     };
 
-const firstGlobMagic = (pattern: string): number => {
-    for (let i = 0; i < pattern.length; i++) {
-        const c = pattern[i];
-        // Stop at an escape too. Treating less of the pattern as a SQL prefix is
-        // conservative; treating the escape itself as a pathname byte is not.
-        if (c === "\\") return i;
-        if (c === "*" || c === "?" || c === "[" || c === "{") return i;
-        if ((c === "!" || c === "+" || c === "@") && pattern[i + 1] === "(") return i;
-    }
-    return -1;
-};
-
-export const hasPathGlob = (pattern: string): boolean => firstGlobMagic(pattern) >= 0;
-
 export const pathScope = (pathname: string, folderScopes: boolean): PathScope => {
     if (folderScopes && (pathname === "" || pathname.endsWith("/"))) {
         return { kind: "folder", prefix: pathname, candidatePrefix: pathname };
     }
-    const magic = firstGlobMagic(pathname);
+    const magic = PathSyntax.globMagicIndex(pathname);
     if (magic < 0) return { kind: "exact", pathname, candidatePrefix: pathname };
     const candidatePrefix = magic === 0 ? null : pathname.slice(0, magic);
     const shallowPrefix = pathname[magic] === "*" && pathname[magic + 1] !== "*"
