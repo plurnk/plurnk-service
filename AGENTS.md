@@ -87,6 +87,8 @@ root overrides.
 - Forge issues record observations, investigation, competing interpretations,
   rulings, rejected alternatives, and completion evidence. Issue numbers are
   provenance; specification tags are current authority.
+- Give every new forge issue one appropriate Conventional type label when the
+  issue is created; labels are part of issue creation, not later cleanup.
 - README material teaches concise usage derived from the specification. Do not
   turn specifications or READMEs into chronological design journals.
 - Code and coverage may cite the owning specification tag and issue numbers, but must not
