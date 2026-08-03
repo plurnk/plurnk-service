@@ -48,5 +48,14 @@
     },
     "dependencies": {
         "jsonc-parser": "^3.3.1"
+    },
+    "homepage": "https://github.com/plurnk/plurnk-service/tree/main/plurnk-mimetypes-application-ipynb#readme",
+    "bugs": {
+        "url": "https://repo.possumtech.com/plurnk/plurnk-service/issues"
+    },
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/plurnk/plurnk-service.git",
+        "directory": "plurnk-mimetypes-application-ipynb"
     }
 }

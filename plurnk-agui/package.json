@@ -6,7 +6,8 @@
     "license": "MIT",
     "repository": {
         "type": "git",
-        "url": "git+https://github.com/plurnk/plurnk-agui.git"
+        "url": "git+https://github.com/plurnk/plurnk-service.git",
+        "directory": "plurnk-agui"
     },
     "exports": {
         ".": {
@@ -49,9 +50,9 @@
         "sse",
         "human-in-the-loop"
     ],
-    "homepage": "https://github.com/plurnk/plurnk-agui#readme",
+    "homepage": "https://github.com/plurnk/plurnk-service/tree/main/plurnk-agui#readme",
     "bugs": {
-        "url": "https://github.com/plurnk/plurnk-agui/issues"
+        "url": "https://repo.possumtech.com/plurnk/plurnk-service/issues"
     },
     "author": "@wikitopian",
     "publishConfig": {

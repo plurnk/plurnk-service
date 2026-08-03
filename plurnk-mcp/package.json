@@ -10,13 +10,14 @@
         "mcp",
         "model-context-protocol"
     ],
-    "homepage": "https://github.com/plurnk/plurnk-service#readme",
+    "homepage": "https://github.com/plurnk/plurnk-service/tree/main/plurnk-mcp#readme",
     "bugs": {
-        "url": "https://github.com/plurnk/plurnk-service/issues"
+        "url": "https://repo.possumtech.com/plurnk/plurnk-service/issues"
     },
     "repository": {
         "type": "git",
-        "url": "git+https://github.com/plurnk/plurnk-service.git"
+        "url": "git+https://github.com/plurnk/plurnk-service.git",
+        "directory": "plurnk-mcp"
     },
     "engines": {
         "node": ">=26"

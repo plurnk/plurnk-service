@@ -50,5 +50,9 @@
         "build": "npm run build:dist",
         "prepack": "npm run build",
         "prepublishOnly": "npm audit --audit-level=moderate && npm test"
+    },
+    "homepage": "https://github.com/plurnk/plurnk-service/tree/main/plurnk-plurnkdown#readme",
+    "bugs": {
+        "url": "https://repo.possumtech.com/plurnk/plurnk-service/issues"
     }
 }

@@ -2,7 +2,7 @@
 
 SQLite runtime executor for [plurnk-service](https://github.com/plurnk/plurnk-service)'s `exec` scheme. Runs the `sqlite` runtime tag **in-process** via Node's builtin `node:sqlite` — no subprocess.
 
-A `@plurnk/plurnk-execs-*` sibling built on the [plurnk-execs](https://github.com/plurnk/plurnk-execs) framework.
+A `@plurnk/plurnk-execs-*` sibling built on the [plurnk-execs](https://github.com/plurnk/plurnk-service/tree/main/plurnk-execs) framework.
 
 ## Runtime tag
 

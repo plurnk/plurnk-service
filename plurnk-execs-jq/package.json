@@ -11,13 +11,14 @@
         "json",
         "filter"
     ],
-    "homepage": "https://github.com/plurnk/plurnk-execs-jq#readme",
+    "homepage": "https://github.com/plurnk/plurnk-service/tree/main/plurnk-execs-jq#readme",
     "bugs": {
-        "url": "https://github.com/plurnk/plurnk-execs-jq/issues"
+        "url": "https://repo.possumtech.com/plurnk/plurnk-service/issues"
     },
     "repository": {
         "type": "git",
-        "url": "git+https://github.com/plurnk/plurnk-execs-jq.git"
+        "url": "git+https://github.com/plurnk/plurnk-service.git",
+        "directory": "plurnk-execs-jq"
     },
     "engines": {
         "node": ">=26"

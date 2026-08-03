@@ -5,7 +5,7 @@ The **universal subprocess executor** for
 package covers the shell, Node, Python, and whichever supported host
 interpreters are present. Node is guaranteed; the rest are detected.
 
-A `@plurnk/plurnk-execs-*` sibling built on the [plurnk-execs](https://github.com/plurnk/plurnk-execs) framework. **Supersedes the former `-sh`, `-node`, `-python` packages** (folded in here).
+A `@plurnk/plurnk-execs-*` sibling built on the [plurnk-execs](https://github.com/plurnk/plurnk-service/tree/main/plurnk-execs) framework. **Supersedes the former `-sh`, `-node`, `-python` packages** (folded in here).
 
 ## How it works
 

@@ -1,6 +1,6 @@
 # @plurnk/plurnk-mimetypes-embeddings
 
-Opt-in embedder for [`@plurnk/plurnk-mimetypes`](https://github.com/plurnk/plurnk-mimetypes)' `embedding` channel (issue #24). Install it and the framework's loader finds it; nothing else to configure.
+Opt-in embedder for [`@plurnk/plurnk-mimetypes`](https://github.com/plurnk/plurnk-service/tree/main/plurnk-mimetypes)' `embedding` channel (issue #24). Install it and the framework's loader finds it; nothing else to configure.
 
 ## Model
 

@@ -18,6 +18,10 @@ const { values } = parseArgs({ options: { only: { type: "string" } } });
 const root = JSON.parse(await fs.readFile("package.json", "utf8"));
 const dirs = values.only ? [values.only] : root.workspaces;
 
+const provenanceArgs = ["scripts/package-provenance.mjs", "--pack"];
+if (values.only !== undefined) provenanceArgs.push("--only", values.only);
+await run("node", provenanceArgs, { maxBuffer: 64 * 1024 * 1024 });
+
 let gated = 0;
 for (const dir of dirs) {
     const pkg = JSON.parse(await fs.readFile(path.join(dir, "package.json"), "utf8"));

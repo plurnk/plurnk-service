@@ -176,6 +176,14 @@ others.
 | npm                                                                                     | Versioned package artifacts produced from the monorepo workspaces.                           |
 | Former standalone repositories for consolidated packages                                | Archived provenance only; they are not current source or ordinary issue owners.              |
 
-Package metadata must project these roles consistently; #51 and #97 own that
-mechanical normalization. Contribution and security workflows are specified in
+Package metadata projects those roles through one exact mapping:
+
+| npm field    | Required projection                                                                                            |
+| ------------ | -------------------------------------------------------------------------------------------------------------- |
+| `repository` | Public GitHub monorepo plus npm's exact workspace `directory`.                                                 |
+| `homepage`   | The workspace's README in the public GitHub monorepo.                                                          |
+| `bugs`       | Canonical Gitea monorepo issues; private vulnerability reports remain owned by [`SECURITY.md`](./SECURITY.md). |
+
+`scripts/package-provenance.mjs` enforces the source manifests and exact packed
+candidates. Contribution and security workflows are specified in
 [`CONTRIBUTING.md`](./CONTRIBUTING.md) and [`SECURITY.md`](./SECURITY.md).

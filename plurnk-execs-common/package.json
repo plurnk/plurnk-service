@@ -13,13 +13,14 @@
         "node",
         "python"
     ],
-    "homepage": "https://github.com/plurnk/plurnk-execs-common#readme",
+    "homepage": "https://github.com/plurnk/plurnk-service/tree/main/plurnk-execs-common#readme",
     "bugs": {
-        "url": "https://github.com/plurnk/plurnk-execs-common/issues"
+        "url": "https://repo.possumtech.com/plurnk/plurnk-service/issues"
     },
     "repository": {
         "type": "git",
-        "url": "git+https://github.com/plurnk/plurnk-execs-common.git"
+        "url": "git+https://github.com/plurnk/plurnk-service.git",
+        "directory": "plurnk-execs-common"
     },
     "engines": {
         "node": ">=26"

@@ -10,13 +10,14 @@
         "bpe",
         "sentencepiece"
     ],
-    "homepage": "https://github.com/plurnk/plurnk-mimetypes-tokenizers#readme",
+    "homepage": "https://github.com/plurnk/plurnk-service/tree/main/plurnk-mimetypes-tokenizers#readme",
     "bugs": {
-        "url": "https://github.com/plurnk/plurnk-mimetypes-tokenizers/issues"
+        "url": "https://repo.possumtech.com/plurnk/plurnk-service/issues"
     },
     "repository": {
         "type": "git",
-        "url": "git+https://github.com/plurnk/plurnk-mimetypes-tokenizers.git"
+        "url": "git+https://github.com/plurnk/plurnk-service.git",
+        "directory": "plurnk-mimetypes-tokenizers"
     },
     "engines": {
         "node": ">=26"

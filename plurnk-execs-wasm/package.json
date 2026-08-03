@@ -12,13 +12,14 @@
         "wat",
         "sandbox"
     ],
-    "homepage": "https://github.com/plurnk/plurnk-execs-wasm#readme",
+    "homepage": "https://github.com/plurnk/plurnk-service/tree/main/plurnk-execs-wasm#readme",
     "bugs": {
-        "url": "https://github.com/plurnk/plurnk-execs-wasm/issues"
+        "url": "https://repo.possumtech.com/plurnk/plurnk-service/issues"
     },
     "repository": {
         "type": "git",
-        "url": "git+https://github.com/plurnk/plurnk-execs-wasm.git"
+        "url": "git+https://github.com/plurnk/plurnk-service.git",
+        "directory": "plurnk-execs-wasm"
     },
     "engines": {
         "node": ">=26"

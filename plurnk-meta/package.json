@@ -41,5 +41,14 @@
     },
     "publishConfig": {
         "access": "public"
+    },
+    "homepage": "https://github.com/plurnk/plurnk-service/tree/main/plurnk-meta#readme",
+    "bugs": {
+        "url": "https://repo.possumtech.com/plurnk/plurnk-service/issues"
+    },
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/plurnk/plurnk-service.git",
+        "directory": "plurnk-meta"
     }
 }

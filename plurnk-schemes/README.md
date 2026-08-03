@@ -5,7 +5,7 @@ Framework + contract for `@plurnk/plurnk-schemes-*` URI handler packages. Consum
 ## Documentation
 
 - [`SPEC.md`](./SPEC.md) — author-facing contract.
-- Constellation: [plurnk-contracts](https://github.com/plurnk/plurnk-service/tree/main/plurnk-contracts), [plurnk-mimetypes](https://github.com/plurnk/plurnk-mimetypes), [plurnk-providers](https://github.com/plurnk/plurnk-providers), [plurnk-execs](https://github.com/plurnk/plurnk-execs).
+- Constellation: [plurnk-contracts](https://github.com/plurnk/plurnk-service/tree/main/plurnk-contracts), [plurnk-mimetypes](https://github.com/plurnk/plurnk-service/tree/main/plurnk-mimetypes), [plurnk-providers](https://github.com/plurnk/plurnk-service/tree/main/plurnk-providers), [plurnk-execs](https://github.com/plurnk/plurnk-service/tree/main/plurnk-execs).
 
 ## Write a scheme
 

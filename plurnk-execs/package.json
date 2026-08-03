@@ -8,13 +8,14 @@
         "runtime",
         "executor"
     ],
-    "homepage": "https://github.com/plurnk/plurnk-execs#readme",
+    "homepage": "https://github.com/plurnk/plurnk-service/tree/main/plurnk-execs#readme",
     "bugs": {
-        "url": "https://github.com/plurnk/plurnk-execs/issues"
+        "url": "https://repo.possumtech.com/plurnk/plurnk-service/issues"
     },
     "repository": {
         "type": "git",
-        "url": "git+https://github.com/plurnk/plurnk-execs.git"
+        "url": "git+https://github.com/plurnk/plurnk-service.git",
+        "directory": "plurnk-execs"
     },
     "engines": {
         "node": ">=26"

@@ -12,7 +12,7 @@ plurnk-service discovers this handler automatically via its `plurnk.kind: "mimet
 
 ## what it does
 
-Nothing structural. text/plain has no symbols to extract — [`BaseHandler`](https://github.com/plurnk/plurnk-mimetypes)'s defaults (empty `extractRaw`, no-op `validate`, derived `symbolsRaw`/`preview`) are exactly right. When the framework's `Mimetypes.process` calls this handler and gets back no symbols, its raw-content fallback path supplies the preview.
+Nothing structural. text/plain has no symbols to extract — [`BaseHandler`](https://github.com/plurnk/plurnk-service/tree/main/plurnk-mimetypes)'s defaults (empty `extractRaw`, no-op `validate`, derived `symbolsRaw`/`preview`) are exactly right. When the framework's `Mimetypes.process` calls this handler and gets back no symbols, its raw-content fallback path supplies the preview.
 
 ## development
 

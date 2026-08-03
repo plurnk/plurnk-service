@@ -8,13 +8,14 @@
         "provider",
         "tokenizer"
     ],
-    "homepage": "https://github.com/plurnk/plurnk-providers#readme",
+    "homepage": "https://github.com/plurnk/plurnk-service/tree/main/plurnk-providers#readme",
     "bugs": {
-        "url": "https://github.com/plurnk/plurnk-providers/issues"
+        "url": "https://repo.possumtech.com/plurnk/plurnk-service/issues"
     },
     "repository": {
         "type": "git",
-        "url": "git+https://github.com/plurnk/plurnk-providers.git"
+        "url": "git+https://github.com/plurnk/plurnk-service.git",
+        "directory": "plurnk-providers"
     },
     "engines": {
         "node": ">=26"

@@ -10,13 +10,14 @@
         "sqlite",
         "sql"
     ],
-    "homepage": "https://github.com/plurnk/plurnk-execs-sqlite#readme",
+    "homepage": "https://github.com/plurnk/plurnk-service/tree/main/plurnk-execs-sqlite#readme",
     "bugs": {
-        "url": "https://github.com/plurnk/plurnk-execs-sqlite/issues"
+        "url": "https://repo.possumtech.com/plurnk/plurnk-service/issues"
     },
     "repository": {
         "type": "git",
-        "url": "git+https://github.com/plurnk/plurnk-execs-sqlite.git"
+        "url": "git+https://github.com/plurnk/plurnk-service.git",
+        "directory": "plurnk-execs-sqlite"
     },
     "engines": {
         "node": ">=26"

@@ -8,7 +8,7 @@ runtime's output under its own tag-addressed scheme.
 
 - [`SPEC.md`](./SPEC.md) — authoritative executor author and consumer contract.
 - [plurnk-contracts](https://github.com/plurnk/plurnk-service/tree/main/plurnk-contracts) — EXEC AST and shared runtime-neutral contracts.
-- [plurnk-schemes](https://github.com/plurnk/plurnk-schemes) — universal operation results and derived output-scheme contract.
+- [plurnk-schemes](https://github.com/plurnk/plurnk-service/tree/main/plurnk-schemes) — universal operation results and derived output-scheme contract.
 
 ## Write an executor
 

@@ -10,13 +10,14 @@
         "isomorphic-git",
         "sandbox"
     ],
-    "homepage": "https://github.com/plurnk/plurnk-service#readme",
+    "homepage": "https://github.com/plurnk/plurnk-service/tree/main/plurnk-execs-isogit#readme",
     "bugs": {
-        "url": "https://github.com/plurnk/plurnk-service/issues"
+        "url": "https://repo.possumtech.com/plurnk/plurnk-service/issues"
     },
     "repository": {
         "type": "git",
-        "url": "git+https://github.com/plurnk/plurnk-service.git"
+        "url": "git+https://github.com/plurnk/plurnk-service.git",
+        "directory": "plurnk-execs-isogit"
     },
     "engines": {
         "node": ">=26"

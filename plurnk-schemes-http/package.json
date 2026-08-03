@@ -12,13 +12,14 @@
         "ws",
         "wss"
     ],
-    "homepage": "https://github.com/plurnk/plurnk-schemes-http#readme",
+    "homepage": "https://github.com/plurnk/plurnk-service/tree/main/plurnk-schemes-http#readme",
     "bugs": {
-        "url": "https://github.com/plurnk/plurnk-schemes-http/issues"
+        "url": "https://repo.possumtech.com/plurnk/plurnk-service/issues"
     },
     "repository": {
         "type": "git",
-        "url": "git+https://github.com/plurnk/plurnk-schemes-http.git"
+        "url": "git+https://github.com/plurnk/plurnk-service.git",
+        "directory": "plurnk-schemes-http"
     },
     "engines": {
         "node": ">=26"

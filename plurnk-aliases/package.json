@@ -8,13 +8,14 @@
         "provider",
         "env"
     ],
-    "homepage": "https://github.com/plurnk/plurnk-aliases#readme",
+    "homepage": "https://github.com/plurnk/plurnk-service/tree/main/plurnk-aliases#readme",
     "bugs": {
-        "url": "https://github.com/plurnk/plurnk-aliases/issues"
+        "url": "https://repo.possumtech.com/plurnk/plurnk-service/issues"
     },
     "repository": {
         "type": "git",
-        "url": "git+https://github.com/plurnk/plurnk-aliases.git"
+        "url": "git+https://github.com/plurnk/plurnk-service.git",
+        "directory": "plurnk-aliases"
     },
     "engines": {
         "node": ">=26"

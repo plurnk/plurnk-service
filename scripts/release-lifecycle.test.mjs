@@ -19,4 +19,11 @@ test("release lifecycle stamps, commits, then builds and gates before script-fre
     assert.ok(preBuildClean >= 0 && preBuildClean < build);
     assert.ok(build < gates && gates < postGateClean && postGateClean < firstPublish);
     assert.match(publish, /\["publish", "-w", name, "--access", "public", "--ignore-scripts"\]/);
+
+    const gateSweep = await readFile(new URL("./release-gates.mjs", import.meta.url), "utf8");
+    assert.match(
+        gateSweep,
+        /\["scripts\/package-provenance\.mjs", "--pack"\]/,
+        "the pre-publication sweep inspects metadata from exact candidate archives",
+    );
 });
