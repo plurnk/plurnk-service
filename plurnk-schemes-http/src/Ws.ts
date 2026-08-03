@@ -16,7 +16,7 @@ import type {
 } from "@plurnk/plurnk-schemes";
 import { NetworkAddress, Results } from "@plurnk/plurnk-schemes";
 import { readFile } from "node:fs/promises";
-import Guard from "./Guard.ts";
+import Guard, { GuardResolutionError } from "./Guard.ts";
 
 // The inbound-frame channel - every message the origin pushes streams here.
 const MESSAGES = "messages";
@@ -99,12 +99,22 @@ export default class Ws implements SchemeHandler {
         const address = Ws.#address(statement.target);
         if (!(address instanceof NetworkAddress)) return address;
         const { url, pathname } = address;
-        if (!(await Guard.isPublicUrl(url))) {
-            return Ws.#bad(403, "ssrf-blocked", `${url} is not a public ws(s):// target.`, {
-                target: url,
-                stage: "target-validation",
-                retryable: false,
-            });
+        const admission = await Guard.admit(url);
+        if (!admission.admitted) {
+            const resolution = admission.error instanceof GuardResolutionError;
+            if (resolution) console.error("WebSocket target resolution failed", { url, error: admission.error });
+            return Ws.#bad(
+                resolution ? 502 : 403,
+                resolution ? "dns-resolution-failed" : "ssrf-blocked",
+                resolution
+                    ? `DNS resolution failed for ${admission.error.url}.`
+                    : `${admission.error.url} is not a public ws(s):// target.`,
+                {
+                    target: admission.error.url,
+                    stage: resolution ? "target-resolution" : "target-validation",
+                    retryable: resolution,
+                },
+            );
         }
         const key = Ws.#key(ctx.workspaceId, address);
         const existing = this.#sockets.get(key);

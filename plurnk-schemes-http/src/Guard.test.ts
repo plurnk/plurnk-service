@@ -4,7 +4,8 @@
 
 import test from "node:test";
 import { strict as assert } from "node:assert";
-import Guard, { GuardBlockedError } from "./Guard.ts";
+import dns from "node:dns/promises";
+import Guard, { GuardBlockedError, GuardResolutionError } from "./Guard.ts";
 
 test("isPublicAddress: blocks RFC-reserved v4 ranges", () => {
     for (const ip of ["0.0.0.0", "10.0.0.1", "127.0.0.1", "169.254.169.254", "172.16.0.1", "172.31.255.255", "192.168.1.1", "100.64.0.1", "100.127.0.1"]) {
@@ -34,15 +35,54 @@ test("isPublicAddress: blocks non-global v6 and canonical v4-mapped forms", () =
     assert.equal(Guard.isPublicAddress("not-an-address"), false);
 });
 
-test("isPublicUrl: protocol / localhost / IP-literal, no DNS", async () => {
+test("admit: protocol / localhost / IP-literal policy is typed without DNS", async () => {
     for (const bad of ["ftp://8.8.8.8/", "file:///etc/passwd", "http://localhost/", "http://x.localhost/", "http://127.0.0.1/", "http://169.254.169.254/latest/meta-data/", "http://[::ffff:127.0.0.1]/", "https://user:secret@8.8.8.8/", "ws://127.0.0.1/", "wss://192.168.1.1/", "not a url"]) {
-        assert.equal(await Guard.isPublicUrl(bad), false, `${bad} should be refused`);
+        const admission = await Guard.admit(bad);
+        assert.equal(admission.admitted, false, `${bad} should be refused`);
+        if (!admission.admitted) assert.ok(admission.error instanceof GuardBlockedError);
     }
-    assert.equal(await Guard.isPublicUrl("https://8.8.8.8/"), true);
-    assert.equal(await Guard.isPublicUrl("http://[2606:4700:4700::1111]/"), true);
+    assert.deepEqual(await Guard.admit("https://8.8.8.8/"), { admitted: true });
+    assert.deepEqual(await Guard.admit("http://[2606:4700:4700::1111]/"), { admitted: true });
     // ws(s):// ride the same range check (the Ws engine guards its target here).
-    assert.equal(await Guard.isPublicUrl("wss://8.8.8.8/"), true);
-    assert.equal(await Guard.isPublicUrl("ws://93.184.216.34/feed"), true);
+    assert.deepEqual(await Guard.admit("wss://8.8.8.8/"), { admitted: true });
+    assert.deepEqual(await Guard.admit("ws://93.184.216.34/feed"), { admitted: true });
+});
+
+test("admit: a DNS lookup failure remains a retryable resolution error with its cause", async (t) => {
+    const cause = Object.assign(new Error("queryA ENOTFOUND missing.example"), { code: "ENOTFOUND" });
+    t.mock.method(dns, "lookup", async () => { throw cause; });
+
+    const admission = await Guard.admit("https://user:secret@missing.example/x");
+    assert.equal(admission.admitted, false);
+    if (admission.admitted) assert.fail("DNS failure must not be admitted");
+    assert.ok(admission.error instanceof GuardBlockedError,
+        "userinfo is policy-invalid before DNS is attempted");
+
+    const resolved = await Guard.admit("https://missing.example/x");
+    assert.equal(resolved.admitted, false);
+    if (resolved.admitted) assert.fail("DNS failure must not be admitted");
+    assert.ok(resolved.error instanceof GuardResolutionError);
+    assert.equal(resolved.error.url, "https://missing.example/x");
+    assert.equal(resolved.error.cause, cause);
+});
+
+test("admit: an empty DNS answer is resolution failure, while any non-public answer blocks the target", async (t) => {
+    const lookup = t.mock.method(dns, "lookup", async () => []);
+    const empty = await Guard.admit("https://empty.example/");
+    assert.equal(empty.admitted, false);
+    if (empty.admitted) assert.fail("an empty answer must not be admitted");
+    assert.ok(empty.error instanceof GuardResolutionError);
+    assert.ok(empty.error.cause instanceof Error);
+
+    lookup.mock.restore();
+    t.mock.method(dns, "lookup", (async () => [
+        { address: "93.184.216.34", family: 4 },
+        { address: "127.0.0.1", family: 4 },
+    ]) as unknown as typeof dns.lookup);
+    const mixed = await Guard.admit("https://mixed.example/");
+    assert.equal(mixed.admitted, false);
+    if (mixed.admitted) assert.fail("a mixed answer must not be admitted");
+    assert.ok(mixed.error instanceof GuardBlockedError);
 });
 
 test("Guard.fetch: a private target is refused before any fetch", async () => {
@@ -58,15 +98,30 @@ test("Guard.fetch: a private target is refused before any fetch", async () => {
     } finally { globalThis.fetch = orig; }
 });
 
-test("Guard.fetch: ws(s) remains valid for socket validation but not byte transport", async () => {
+test("Guard.fetch: ws(s) remains valid for socket admission but not byte transport", async () => {
     const orig = globalThis.fetch;
     let called = false;
     globalThis.fetch = (async () => { called = true; return new Response("x"); }) as typeof fetch;
     try {
-        assert.equal(await Guard.isPublicUrl("wss://8.8.8.8/"), true);
+        assert.deepEqual(await Guard.admit("wss://8.8.8.8/"), { admitted: true });
         await assert.rejects(
             Guard.fetch("wss://8.8.8.8/", { method: "GET", body: undefined, headers: [] }, AbortSignal.timeout(2000)),
             (error) => error instanceof GuardBlockedError,
+        );
+        assert.equal(called, false);
+    } finally { globalThis.fetch = orig; }
+});
+
+test("Guard.fetch: a DNS failure is preserved before transport", async (t) => {
+    const cause = Object.assign(new Error("queryA ENOTFOUND missing.example"), { code: "ENOTFOUND" });
+    t.mock.method(dns, "lookup", async () => { throw cause; });
+    const orig = globalThis.fetch;
+    let called = false;
+    globalThis.fetch = (async () => { called = true; return new Response("x"); }) as typeof fetch;
+    try {
+        await assert.rejects(
+            Guard.fetch("https://missing.example/", { method: "GET", body: undefined, headers: [] }, AbortSignal.timeout(2000)),
+            (error: unknown) => error instanceof GuardResolutionError && error.cause === cause,
         );
         assert.equal(called, false);
     } finally { globalThis.fetch = orig; }

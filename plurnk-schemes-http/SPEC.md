@@ -78,7 +78,9 @@ flowchart TD
 
     prefetch --> guard["Guard.fetch validates every followed hop"]
     stream --> guard
-    guard --> owner{"Consumer"}
+    guard --> admission{"Admission result"}
+    admission -->|admitted| owner{"Consumer"}
+    admission -->|typed failure| admissionFailure["Exact operation reports a Problem;<br/>entry sink rejects the candidate"]
 
     owner -->|WebFetcher| prefetchType{"Accepted response?"}
     prefetchType -->|2xx HTML| prefetchHtml["Shared HTML materialization;<br/>render lazily only if absent"]
@@ -154,7 +156,8 @@ never enters the absence channel.
 | `SEND[410]`                                           | Exact entry-delete result                        |
 | Routed `SEND[499]` dispatch                           | `200`                                            |
 | Client-cancelled acquisition                          | `499` (`cancelled`)                              |
-| Target fails network admission                        | `403` (`ssrf-blocked`)                           |
+| Target violates public-network policy                 | `403` (`ssrf-blocked`), nonretryable             |
+| DNS cannot produce an admission verdict               | `502` (`dns-resolution-failed`), retryable       |
 | Multi-statement HTTP edit batch                       | `409` (`non-atomic-edit-batch`)                  |
 | Invalid target, channel, line edit, or URL userinfo   | `400` with the corresponding stable Problem kind |
 | Direct network or acquisition exception               | `502` (`fetch-failed`)                           |
@@ -200,13 +203,33 @@ if an HTML operation later requires the browser.
 
 ### §http-security-boundary Network security boundary
 
-Direct HTTP operations and WebFetcher share `Guard.fetch`. It accepts
-credential-free HTTP(S) targets only when every resolved address is ordinary
-globally reachable unicast, and repeats admission before every manually
-followed redirect. A refused or unresolvable direct target returns `403`;
-WebFetcher returns its ordinary dead value. The browser applies the same
-predicate to every navigation and subresource. WebSocket applies it to the
-initial target before constructing a socket.
+Direct HTTP operations and WebFetcher share `Guard.fetch`; WebSocket and
+browser routing use the same `Guard.admit` verdict. Admission accepts
+credential-free HTTP(S)/WS(S) targets only when every resolved address is
+ordinary globally reachable unicast. `Guard.fetch` repeats it before every
+manually followed redirect.
+
+| Admission outcome                         | Guard representation     | HTTP / WebSocket projection                         |
+| ----------------------------------------- | ------------------------ | --------------------------------------------------- |
+| Invalid or prohibited target/address set  | `GuardBlockedError`      | Nonretryable `403 ssrf-blocked`                     |
+| DNS throws or returns no addresses        | `GuardResolutionError`   | Retryable `502 dns-resolution-failed`; cause logged |
+| Every address satisfies the public policy | `{ admitted: true }`     | Transport may proceed                               |
+
+WebFetcher preserves both typed failures as rejections. Exact FIND therefore
+reports the truthful Problem, while an executor entry-sink consumer may reject
+and mechanically prune that candidate from its digest {§exec-entry-sink}.
+Generic transport failure after admission remains WebFetcher's ordinary
+liveness value.
+
+The browser applies admission to requests delivered through its installed
+Playwright page route. A denied or unresolved main navigation is the typed
+render failure; an intercepted non-main-frame request is aborted and omitted
+from an otherwise useful page. Unexpected guard or route-action errors remain
+owned render failures rather than escaping the callback. Service-worker traffic,
+page-created WebSockets, and the first request of a popup are not covered by
+that page-route claim; #145 owns those interception gaps. WebSocket applies
+admission to its initial target before claiming an address or constructing a
+socket.
 
 Redirect transitions follow WHATWG Fetch: 301/302 rewrite POST to GET; 303
 rewrites methods other than GET/HEAD to GET; 307/308 preserve method and body.
@@ -217,16 +240,17 @@ Validation-time DNS answers are not pinned to connection-time resolution.
 
 ## §render-lifecycle §6 Render lifecycle
 
-| Concern       | Contract                                                                                                      |
-| ------------- | ------------------------------------------------------------------------------------------------------------- |
-| Direct gate   | A GET HTML response cancels the byte probe body and navigates through the guarded browser                     |
-| Prefetch gate | Server HTML is primary; browser rendering is a lazy fallback only when its readable projection is absent      |
-| Pool          | One warm browser per `Browser`; one atomically acquired context per worker; prefetch uses worker `0`          |
-| Navigation    | Mobile-emulated by default; `networkidle` with bounded substantive-DOM timeout salvage                        |
-| Projection    | A present result, including `""`, becomes `body`; exact HTML used becomes `html`                              |
-| Cancellation  | The render-owned page close aborts in-flight navigation; an already-aborted render never navigates            |
-| Page cleanup  | Close each opened page once and await it; preserve its failure alone or aggregate it after a primary failure  |
-| Shutdown      | Attempt every context and browser close, await all, then aggregate failures under {§handler-lifecycle}        |
+| Concern           | Contract                                                                                                      |
+| ----------------- | ------------------------------------------------------------------------------------------------------------- |
+| Direct gate       | A GET HTML response cancels the byte probe body and navigates through the guarded browser                     |
+| Prefetch gate     | Server HTML is primary; browser rendering is a lazy fallback only when its readable projection is absent      |
+| Request admission | Main-navigation failure surfaces; an intercepted non-main-frame request is omitted; gaps belong to #145      |
+| Pool              | One warm browser per `Browser`; one atomically acquired context per worker; prefetch uses worker `0`          |
+| Navigation        | Mobile-emulated by default; `networkidle` with bounded substantive-DOM timeout salvage                        |
+| Projection        | A present result, including `""`, becomes `body`; exact HTML used becomes `html`                              |
+| Cancellation      | The render-owned page close aborts in-flight navigation; an already-aborted render never navigates            |
+| Page cleanup      | Close each opened page once and await it; preserve its failure alone or aggregate it after a primary failure  |
+| Shutdown          | Attempt every context and browser close, await all, then aggregate failures under {§handler-lifecycle}        |
 
 ### §host-rewrite Acquisition target rewrite
 
@@ -263,19 +287,22 @@ accumulate until the origin closes or the operation is cancelled.
 
 ## §prefetch §7 WebFetcher
 
-| Result                       | Meaning                                                                              |
-| ---------------------------- | ------------------------------------------------------------------------------------ |
-| Non-empty 2xx HTML           | Server body, MIME type, package-stamped headers, and a lazy guarded browser renderer |
-| Non-empty accepted text      | Complete body, MIME type, and package-stamped headers                                |
-| Lazy renderer value          | Non-empty rendered HTML, or `null` only when rendering yields no HTML                |
-| Lazy renderer failure        | Rejects with the complete browser failure; materialization preserves stage and cause |
-| Top-level `null`             | Refused, unreachable, timed-out, non-2xx, non-textual, or empty byte response        |
-| Caller-cancelled acquisition | Rejects with the caller signal's exact reason                                        |
-| Accepted textual family      | Shared `MimetypeClassifier` taxonomy {§mimetype-classifier}                          |
+| Result                       | Meaning                                                                                 |
+| ---------------------------- | --------------------------------------------------------------------------------------- |
+| Non-empty 2xx HTML           | Server body, MIME type, package-stamped headers, and a lazy guarded browser renderer    |
+| Non-empty accepted text      | Complete body, MIME type, and package-stamped headers                                   |
+| Lazy renderer value          | Non-empty rendered HTML, or `null` only when rendering yields no HTML                   |
+| Lazy renderer failure        | Rejects with the complete browser failure; materialization preserves stage and cause    |
+| Policy admission failure     | Rejects with `GuardBlockedError`                                                        |
+| DNS admission failure        | Rejects with `GuardResolutionError` and its resolver cause                              |
+| Top-level `null`             | Post-admission transport failure, probe timeout, non-2xx, non-textual, or empty response |
+| Caller-cancelled acquisition | Rejects with the caller signal's exact reason                                           |
+| Accepted textual family      | Shared `MimetypeClassifier` taxonomy {§mimetype-classifier}                             |
 
-Top-level `null` is a liveness value rather than a thrown failure. Caller
-cancellation is not liveness: a pre-aborted caller fails before admission, and
-the first abort reason selected between the caller and configured byte-probe
+Top-level `null` is a post-admission liveness value rather than a thrown failure.
+Policy and DNS admission failures are typed truth, not liveness. Caller
+cancellation is also not liveness: a pre-aborted caller fails before admission,
+and the first abort reason selected between the caller and configured byte-probe
 deadline owns the outcome. The probe deadline remains `null`. WebFetcher owns
 no entry identity, projection verdict, or query policy; its consumer projects
 and materializes the returned value. Lazy-render exceptions remain distinct

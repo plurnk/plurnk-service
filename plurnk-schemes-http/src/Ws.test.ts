@@ -7,6 +7,7 @@
 import test from "node:test";
 import { strict as assert } from "node:assert";
 import Ws from "./Ws.ts";
+import Guard, { GuardResolutionError } from "./Guard.ts";
 import {
     Results,
     type SchemeCtx,
@@ -233,6 +234,32 @@ test("READ: an SSRF target is refused (403) and never connects", async () => {
     assert.equal(r.status, 403);
     assert.equal(r.problem?.type, "https://problems.plurnk.dev/scheme/wss/ssrf-blocked");
     assert.equal(connected, false);
+});
+
+test("READ: DNS admission failure is a retryable 502 and never claims or connects", async (t) => {
+    const target = "wss://missing.example/feed";
+    const cause = Object.assign(new Error("queryA ENOTFOUND missing.example"), { code: "ENOTFOUND" });
+    const failure = new GuardResolutionError(target, cause);
+    t.mock.method(Guard, "admit", async () => ({ admitted: false, error: failure }));
+    const diagnostics: unknown[][] = [];
+    t.mock.method(console, "error", (...args: unknown[]) => { diagnostics.push(args); });
+    let connected = false;
+    const { ctx, inspect } = makeCtx();
+
+    const result = await new Ws(() => {
+        connected = true;
+        return fakeSocket();
+    }).read(readStmt(wss(target, "/feed")), ctx);
+
+    assert.equal(result.status, 502);
+    assert.equal(result.problem?.type, "https://problems.plurnk.dev/scheme/wss/dns-resolution-failed");
+    assert.equal(result.problem?.stage, "target-resolution");
+    assert.equal(result.problem?.retryable, true);
+    assert.doesNotMatch(result.problem?.detail ?? "", /ENOTFOUND|queryA/);
+    assert.equal(connected, false);
+    assert.equal(inspect().wrote, null);
+    assert.equal(inspect().opened, null);
+    assert.equal((diagnostics[0]?.[1] as { error?: Error })?.error, failure);
 });
 
 test("READ: a connect throw settles error (502), not an unhandled throw", async () => {

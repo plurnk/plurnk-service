@@ -30,7 +30,11 @@ import {
 } from "@plurnk/plurnk-schemes";
 import Http from "./Http.ts";
 import type { RenderResult } from "./Browser.ts";
-import Guard from "./Guard.ts";
+import Guard, {
+    GuardBlockedError,
+    GuardResolutionError,
+    type GuardAdmission,
+} from "./Guard.ts";
 import WebFetcher from "./WebFetcher.ts";
 
 // A fake render foundation: returns a canned rendered page, records the call
@@ -39,7 +43,7 @@ const fakeBrowser = (html: string) => {
     const calls: Array<{ url: string; workerId: number; headers?: ReadonlyArray<readonly [string, string]>; guarded: boolean }> = [];
     return {
         calls,
-        render: async (url: string, opts: { workerId: number; signal?: AbortSignal; headers?: ReadonlyArray<readonly [string, string]>; guard?: (url: string) => Promise<boolean> }): Promise<RenderResult> => {
+        render: async (url: string, opts: { workerId: number; signal?: AbortSignal; headers?: ReadonlyArray<readonly [string, string]>; guard?: (url: string) => Promise<GuardAdmission> }): Promise<RenderResult> => {
             calls.push({ url, workerId: opts.workerId, headers: opts.headers, guarded: opts.guard !== undefined });
             return { status: 200, statusText: "OK", headers: [["content-type", "text/html"]], html };
         },
@@ -193,7 +197,7 @@ const withFetch = async (
     allowAllTargets = true,
 ) => {
     const original = globalThis.fetch;
-    const publicUrl = allowAllTargets ? mock.method(Guard, "isPublicUrl", async () => true) : null;
+    const publicUrl = allowAllTargets ? mock.method(Guard, "admit", async () => ({ admitted: true })) : null;
     globalThis.fetch = impl as typeof fetch;
     try { await fn(); } finally {
         globalThis.fetch = original;
@@ -243,6 +247,46 @@ test("prepareFind materializes an exact URL through the guarded readable path", 
     assert.equal(inspect().wrote?.pathname, "/example.com/dist/index.json");
     assert.equal(inspect().wrote?.entry.channels.body?.content, '{"version":"24.18.0"}');
     assert.equal(inspect().wrote?.entry.channels.body?.mimetype, "application/json");
+});
+
+test("prepareFind reports a policy-refused exact URL as nonretryable 403 without writing", async (t) => {
+    const target = "http://127.0.0.1/private";
+    const failure = new GuardBlockedError(target);
+    t.mock.method(WebFetcher.prototype, "fetch", async () => { throw failure; });
+    const { ctx, inspect } = makeCtx();
+
+    const result = await new Http().prepareFind(
+        findStmt(urlTarget(target, "/private")),
+        ctx,
+    );
+    assert.equal(result.status, 403);
+    assert.equal(result.problem?.type, "https://problems.plurnk.dev/scheme/http/ssrf-blocked");
+    assert.equal(result.problem?.stage, "target-validation");
+    assert.equal(result.problem?.retryable, false);
+    assert.equal(inspect().wrote, null);
+});
+
+test("prepareFind reports DNS failure as retryable 502, preserves its cause in diagnostics, and does not write", async (t) => {
+    const target = "https://missing.example/x";
+    const cause = Object.assign(new Error("queryA ENOTFOUND missing.example"), { code: "ENOTFOUND" });
+    const failure = new GuardResolutionError(target, cause);
+    const diagnostics: unknown[][] = [];
+    t.mock.method(WebFetcher.prototype, "fetch", async () => { throw failure; });
+    t.mock.method(console, "error", (...args: unknown[]) => { diagnostics.push(args); });
+    const { ctx, inspect } = makeCtx();
+
+    const result = await new Http().prepareFind(
+        findStmt(urlTarget(target, "/x")),
+        ctx,
+    );
+    assert.equal(result.status, 502);
+    assert.equal(result.problem?.type, "https://problems.plurnk.dev/scheme/http/dns-resolution-failed");
+    assert.equal(result.problem?.stage, "target-resolution");
+    assert.equal(result.problem?.retryable, true);
+    assert.doesNotMatch(result.problem?.detail ?? "", /ENOTFOUND|queryA/);
+    assert.equal(inspect().wrote, null);
+    assert.equal((diagnostics[0]?.[1] as { error?: Error })?.error, failure);
+    assert.equal(failure.cause, cause);
 });
 
 test("prepareFind treats XHTML and a present empty projection as successful materialization", async () => {
@@ -629,6 +673,31 @@ test("READ/POST/PUT/DELETE: a non-public target is a 403 and never reaches trans
         }
     }, false);
     assert.equal(fetched, false);
+});
+
+test("READ: DNS admission failure is a retryable 502 and never reaches transport", async (t) => {
+    const target = "https://missing.example/x";
+    const cause = Object.assign(new Error("resolver unavailable"), { code: "EAI_AGAIN" });
+    const failure = new GuardResolutionError(target, cause);
+    t.mock.method(Guard, "admit", async () => ({ admitted: false, error: failure }));
+    const diagnostics: unknown[][] = [];
+    t.mock.method(console, "error", (...args: unknown[]) => { diagnostics.push(args); });
+    const originalFetch = globalThis.fetch;
+    let fetched = false;
+    globalThis.fetch = (async () => { fetched = true; return new Response("wrong"); }) as typeof fetch;
+    try {
+        const { ctx, inspect } = makeCtx();
+        const result = await new Http().read(readStmt(urlTarget(target, "/x")), ctx);
+        assert.equal(result.status, 502);
+        assert.equal(result.problem?.type, "https://problems.plurnk.dev/scheme/http/dns-resolution-failed");
+        assert.equal(result.problem?.stage, "target-resolution");
+        assert.equal(result.problem?.retryable, true);
+        assert.equal(inspect().closed?.result.problem, result.problem);
+        assert.equal(fetched, false);
+        assert.equal((diagnostics[0]?.[1] as { error?: Error })?.error, failure);
+    } finally {
+        globalThis.fetch = originalFetch;
+    }
 });
 
 test("READ: a public target reaches the guarded transport", async () => {
@@ -1030,6 +1099,48 @@ test("READ: a render exception returns a retryable 502 render failure", async (t
     assert.equal(result?.problem?.retryable, true);
     assert.equal(inspect().closed?.result.problem, result?.problem);
     assert.equal((diagnostics[0]?.[1] as { error?: Error })?.error?.cause, cause);
+});
+
+test("READ: browser navigation admission failures retain their policy/DNS meaning through materialization", async (t) => {
+    const specimens = [
+        {
+            failure: new GuardBlockedError("http://127.0.0.1/private"),
+            status: 403,
+            kind: "ssrf-blocked",
+            stage: "target-validation",
+            retryable: false,
+        },
+        {
+            failure: new GuardResolutionError("https://missing.example/x", new Error("resolver unavailable")),
+            status: 502,
+            kind: "dns-resolution-failed",
+            stage: "target-resolution",
+            retryable: true,
+        },
+    ] as const;
+    for (const specimen of specimens) {
+        await t.test(specimen.kind, async (st) => {
+            const { ctx, inspect } = makeCtx();
+            const diagnostics: unknown[][] = [];
+            st.mock.method(console, "error", (...args: unknown[]) => { diagnostics.push(args); });
+            let result: Awaited<ReturnType<Http["read"]>> | undefined;
+            await withFetch(
+                mockFetch(200, "OK", ["<html></html>"], { "content-type": "text/html" }),
+                async () => {
+                    result = await new Http(failingBrowser(specimen.failure)).read(
+                        readStmt(urlTarget("https://example.com/render", "/render")),
+                        ctx,
+                    );
+                },
+            );
+            assert.equal(result?.status, specimen.status);
+            assert.equal(result?.problem?.type, `https://problems.plurnk.dev/scheme/http/${specimen.kind}`);
+            assert.equal(result?.problem?.stage, specimen.stage);
+            assert.equal(result?.problem?.retryable, specimen.retryable);
+            assert.equal(inspect().closed?.result.problem, result?.problem);
+            assert.ok(diagnostics.length > 0, "the nested materialization failure retains daemon-side evidence");
+        });
+    }
 });
 
 test("SEND[200]: an HTML response is NOT rendered (POST can't be a navigation)", async () => {

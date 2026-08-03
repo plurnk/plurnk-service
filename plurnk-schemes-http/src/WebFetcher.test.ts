@@ -4,7 +4,11 @@
 
 import test from "node:test";
 import { strict as assert } from "node:assert";
-import Guard from "./Guard.ts";
+import Guard, {
+    GuardBlockedError,
+    GuardResolutionError,
+    type GuardAdmission,
+} from "./Guard.ts";
 import WebFetcher from "./WebFetcher.ts";
 import type { RenderResult } from "./Browser.ts";
 import type { ProjectionCaps } from "@plurnk/plurnk-schemes";
@@ -15,7 +19,7 @@ const fakeBrowser = (html: string) => {
     const calls: Array<{ url: string; guarded: boolean; signal: AbortSignal | undefined }> = [];
     return {
         calls,
-        render: async (url: string, opts: { workerId: number; signal?: AbortSignal; headers?: ReadonlyArray<readonly [string, string]>; guard?: (u: string) => Promise<boolean> }): Promise<RenderResult> => {
+        render: async (url: string, opts: { workerId: number; signal?: AbortSignal; headers?: ReadonlyArray<readonly [string, string]>; guard?: (u: string) => Promise<GuardAdmission> }): Promise<RenderResult> => {
             calls.push({ url, guarded: typeof opts.guard === "function", signal: opts.signal });
             return { status: 200, statusText: "OK", headers: [["content-type", "text/html"]], html };
         },
@@ -49,7 +53,7 @@ test("the shared textual taxonomy accepts application/yaml", async () => {
 });
 
 test("GitHub blob acquisition uses one source target for byte fetch and render", async (t) => {
-    t.mock.method(Guard, "isPublicUrl", async () => true);
+    t.mock.method(Guard, "admit", async () => ({ admitted: true }));
     const browser = fakeBrowser("<html><body>rendered source</body></html>");
     const seen: string[] = [];
     const blob = "https://github.com/nodejs/node/blob/main/src/node_version.h";
@@ -214,12 +218,41 @@ test("close releases the owned renderer", async () => {
     assert.equal(closed, 1);
 });
 
-test("SSRF-refused target → null, and never fetches", async () => {
+test("SSRF-refused target rejects with its typed policy error and never fetches", async () => {
     let called = false;
     await withFetch((async () => { called = true; return resp("x", 200); }) as typeof fetch, async () => {
-        assert.equal(await new WebFetcher().fetch("http://169.254.169.254/latest/meta-data/"), null);
+        await assert.rejects(
+            new WebFetcher().fetch("http://169.254.169.254/latest/meta-data/"),
+            (error: unknown) => error instanceof GuardBlockedError,
+        );
     });
     assert.equal(called, false);
+});
+
+test("DNS admission failure rejects with its typed resolution error", async (t) => {
+    const cause = new Error("resolver unavailable");
+    const failure = new GuardResolutionError("https://missing.example/x", cause);
+    t.mock.method(Guard, "fetch", async () => { throw failure; });
+
+    await assert.rejects(
+        new WebFetcher().fetch("https://missing.example/x"),
+        (error: unknown) => error === failure && (error as GuardResolutionError).cause === cause,
+    );
+});
+
+test("caller cancellation still owns a simultaneous typed admission failure when it won first", async (t) => {
+    const caller = new AbortController();
+    const reason = new Error("operator cancelled");
+    const admission = new GuardResolutionError("https://missing.example/x", new Error("resolver unavailable"));
+    t.mock.method(Guard, "fetch", async () => {
+        caller.abort(reason);
+        throw admission;
+    });
+
+    await assert.rejects(
+        new WebFetcher().fetch("https://missing.example/x", { signal: caller.signal }),
+        (error: unknown) => error === reason,
+    );
 });
 
 test("non-2xx → null", async () => {

@@ -22,6 +22,14 @@ metadata, not the selected page body. Use READ for content.
 Caller cancellation of an exact acquisition returns `499 cancelled`. The
 independent byte-probe deadline remains an ordinary unavailable result.
 
+| Target admission outcome       | Result                                      |
+| ------------------------------ | ------------------------------------------- |
+| Public-network policy refusal  | Nonretryable `403 ssrf-blocked`             |
+| DNS cannot produce an address  | Retryable `502 dns-resolution-failed`       |
+
+These failures remain distinct for direct operations and exact FIND. A search
+executor may instead omit any candidate whose entry materialization rejects.
+
 | Direct response           | `body`                                                       | Other channel                    |
 | ------------------------- | ------------------------------------------------------------ | -------------------------------- |
 | GET HTML                  | Readable projection of the guarded rendered page             | Faithful rendered DOM in `#html` |

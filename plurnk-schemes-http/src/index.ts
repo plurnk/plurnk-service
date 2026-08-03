@@ -13,4 +13,5 @@ export type { ChromiumEngine, ChromiumFactory, RenderResult } from "./Browser.ts
 export { default as WebFetcher } from "./WebFetcher.ts";
 export { WebMaterializationError } from "./WebFetcher.ts";
 export type { WebFetchResult, WebMaterializedResult } from "./WebFetcher.ts";
-export { default as Guard, GuardBlockedError } from "./Guard.ts";
+export { default as Guard, GuardBlockedError, GuardResolutionError } from "./Guard.ts";
+export type { GuardAdmission } from "./Guard.ts";

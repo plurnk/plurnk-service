@@ -34,7 +34,9 @@ identity; `messages` is the only current channel.
 
 The target is resolved and checked before socket construction. Loopback,
 link-local, RFC-1918/CGNAT, and other non-public address ranges are refused with
-`403`.
+nonretryable `403 ssrf-blocked`. A DNS failure is not a policy verdict; it
+returns retryable `502 dns-resolution-failed`. Neither outcome claims the
+address or constructs a socket.
 
 | Current transport boundary | Behavior                                                              |
 | -------------------------- | --------------------------------------------------------------------- |

@@ -5,6 +5,11 @@
 import test from "node:test";
 import { strict as assert } from "node:assert";
 import Browser, { type ChromiumEngine } from "./Browser.ts";
+import {
+    GuardBlockedError,
+    GuardResolutionError,
+    type GuardAdmission,
+} from "./Guard.ts";
 
 interface PwResponseLike {
     status(): number;
@@ -18,6 +23,13 @@ interface FakeConfig {
     html?: string;
     goto?: () => Promise<PwResponseLike | null>;
     route?: () => Promise<void>;
+    requests?: ReadonlyArray<{
+        url: string;
+        navigation: boolean;
+        mainFrame?: boolean;
+        continue?: () => Promise<void>;
+        abort?: () => Promise<void>;
+    }>;
     bodyLen?: number; // evaluate() salvage probe
     onClose?: () => void; // page.close hook (for abort timing)
     pageClose?: () => Promise<void>;
@@ -28,22 +40,54 @@ interface FakeConfig {
 const timeoutError = () => Object.assign(new Error("Timeout 30000ms exceeded"), { name: "TimeoutError" });
 
 const makeEngine = (cfg: FakeConfig = {}) => {
-    const calls = { newContext: 0, newPage: 0, goto: 0, pageClose: 0, contextClose: 0, browserClose: 0, launch: 0, connect: 0, connectOverCDP: 0 };
+    const calls = { newContext: 0, newPage: 0, goto: 0, routeContinue: 0, routeAbort: 0, pageClose: 0, contextClose: 0, browserClose: 0, launch: 0, connect: 0, connectOverCDP: 0 };
     const launchOptions: Array<{ channel?: string; executablePath?: string; headless?: boolean; chromiumSandbox?: boolean; timeout?: number }> = [];
     const endpoints: string[] = [];
     const contextOptions: Array<{ isMobile?: boolean; userAgent?: string } | undefined> = [];
-    const makePage = () => ({
-        async route() { await cfg.route?.(); },
-        async setExtraHTTPHeaders() {},
-        async goto() {
-            calls.goto++;
-            if (cfg.goto) return cfg.goto();
-            return response(200, "OK", { "content-type": "text/html; charset=utf-8" });
-        },
-        async content() { return cfg.html ?? "<html><body>rendered</body></html>"; },
-        async evaluate() { return cfg.bodyLen ?? 0; },
-        async close() { calls.pageClose++; cfg.onClose?.(); await cfg.pageClose?.(); },
-    });
+    const makePage = () => {
+        const mainFrame = {};
+        let routeHandler: ((route: {
+            request(): { url(): string; isNavigationRequest(): boolean; frame(): object };
+            continue(): Promise<void>;
+            abort(): Promise<void>;
+        }) => Promise<void>) | undefined;
+        return {
+            mainFrame: () => mainFrame,
+            async route(_pattern: string, handler: typeof routeHandler) {
+                await cfg.route?.();
+                routeHandler = handler;
+            },
+            async setExtraHTTPHeaders() {},
+            async goto() {
+                calls.goto++;
+                let navigationAborted = false;
+                for (const request of cfg.requests ?? []) {
+                    await routeHandler?.({
+                        request: () => ({
+                            url: () => request.url,
+                            isNavigationRequest: () => request.navigation,
+                            frame: () => request.mainFrame === false ? {} : mainFrame,
+                        }),
+                        continue: async () => {
+                            calls.routeContinue++;
+                            await request.continue?.();
+                        },
+                        abort: async () => {
+                            calls.routeAbort++;
+                            if (request.navigation && request.mainFrame !== false) navigationAborted = true;
+                            await request.abort?.();
+                        },
+                    });
+                }
+                if (navigationAborted) throw new Error("net::ERR_FAILED");
+                if (cfg.goto) return cfg.goto();
+                return response(200, "OK", { "content-type": "text/html; charset=utf-8" });
+            },
+            async content() { return cfg.html ?? "<html><body>rendered</body></html>"; },
+            async evaluate() { return cfg.bodyLen ?? 0; },
+            async close() { calls.pageClose++; cfg.onClose?.(); await cfg.pageClose?.(); },
+        };
+    };
     const makeContext = (contextNumber: number) => ({
         async newPage() { calls.newPage++; return makePage(); },
         async close() { calls.contextClose++; await cfg.contextClose?.(contextNumber); },
@@ -216,6 +260,106 @@ test("non-timeout navigation error re-throws (not salvaged)", async () => {
     await browser.close();
 });
 
+test("route admission: a refused main navigation surfaces the typed policy error", async () => {
+    const target = "https://private.example/";
+    const failure = new GuardBlockedError(target);
+    const { engine, calls } = makeEngine({
+        requests: [{ url: target, navigation: true }],
+    });
+    const browser = new Browser(() => Promise.resolve(engine));
+    await assert.rejects(
+        browser.render(target, {
+            workerId: 1,
+            guard: async () => ({ admitted: false, error: failure }),
+        }),
+        (error: unknown) => error === failure,
+    );
+    assert.equal(calls.routeContinue, 0);
+    assert.equal(calls.routeAbort, 1);
+    await browser.close();
+});
+
+test("route admission: a DNS-failed main navigation surfaces the typed resolution error", async () => {
+    const target = "https://missing.example/";
+    const failure = new GuardResolutionError(target, new Error("resolver unavailable"));
+    const { engine } = makeEngine({
+        requests: [{ url: target, navigation: true }],
+    });
+    const browser = new Browser(() => Promise.resolve(engine));
+    await assert.rejects(
+        browser.render(target, {
+            workerId: 1,
+            guard: async () => ({ admitted: false, error: failure }),
+        }),
+        (error: unknown) => error === failure,
+    );
+    await browser.close();
+});
+
+test("route admission: refused subresources and child frames do not discard an admitted page", async () => {
+    const target = "https://example.com/";
+    const asset = "http://127.0.0.1/tracker";
+    const childFrame = "http://127.0.0.1/embed";
+    const failure = new GuardBlockedError(asset);
+    const { engine, calls } = makeEngine({
+        requests: [
+            { url: target, navigation: true },
+            { url: asset, navigation: false },
+            { url: childFrame, navigation: true, mainFrame: false },
+        ],
+    });
+    const browser = new Browser(() => Promise.resolve(engine));
+    const guard = async (url: string): Promise<GuardAdmission> => url === asset || url === childFrame
+        ? { admitted: false, error: failure }
+        : { admitted: true };
+    const rendered = await browser.render(target, { workerId: 1, guard });
+    assert.match(rendered.html, /rendered/);
+    assert.equal(calls.routeContinue, 1);
+    assert.equal(calls.routeAbort, 2);
+    await browser.close();
+});
+
+test("route admission: an unexpected guard failure is owned by render, not an unhandled callback", async () => {
+    const cause = new Error("guard implementation failed");
+    const target = "https://example.com/";
+    const { engine, calls } = makeEngine({
+        requests: [{ url: target, navigation: true }],
+    });
+    const browser = new Browser(() => Promise.resolve(engine));
+    await assert.rejects(
+        browser.render(target, {
+            workerId: 1,
+            guard: async () => { throw cause; },
+        }),
+        (error: unknown) => error === cause,
+    );
+    assert.equal(calls.routeAbort, 1);
+    await browser.close();
+});
+
+test("route admission: a route-action failure is owned by render", async () => {
+    const cause = new Error("route continue failed");
+    const target = "https://example.com/";
+    const { engine, calls } = makeEngine({
+        requests: [{
+            url: target,
+            navigation: true,
+            continue: async () => { throw cause; },
+        }],
+    });
+    const browser = new Browser(() => Promise.resolve(engine));
+    await assert.rejects(
+        browser.render(target, {
+            workerId: 1,
+            guard: async () => ({ admitted: true }),
+        }),
+        (error: unknown) => error === cause,
+    );
+    assert.equal(calls.routeContinue, 1);
+    assert.equal(calls.routeAbort, 1);
+    await browser.close();
+});
+
 // {§render-lifecycle}
 test("#125: a page-close failure becomes the render failure", async () => {
     const { engine, calls } = makeEngine({
@@ -265,7 +409,7 @@ test("#125: setup failure still closes the opened page before navigation", async
     await assert.rejects(
         () => browser.render("https://example.com/", {
             workerId: 1,
-            guard: async () => true,
+            guard: async () => ({ admitted: true }),
         }),
         /route setup failed/,
     );

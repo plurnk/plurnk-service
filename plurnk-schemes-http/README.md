@@ -39,7 +39,8 @@ WebFetcher prunes them because they cannot satisfy a text query.
 
 ## Design
 
-- Direct HTTP requests and WebFetcher use one redirect-aware network guard.
+- Direct HTTP, WebFetcher, browser routing, and WebSocket share one typed
+  network-admission verdict; policy refusal and DNS failure remain distinct.
 - Direct GET HTML is rendered through Playwright, projected into `body`, and
   retained faithfully in `html`.
 - GET representations carry method and acquisition-time metadata for the

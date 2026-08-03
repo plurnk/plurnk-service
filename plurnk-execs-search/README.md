@@ -51,7 +51,7 @@ Useful server-rendered HTML is projected directly; guarded browser rendering
 is attempted only when that projection is empty.
 
 - **Materialized:** `entry()` resolves — the row carries `materialized: true`; its body lives in the ordinary HTTP entry.
-- **Unavailable body:** `entry()` rejects (unreachable / guard-refused / empty) — the row is omitted from the model-facing digest.
+- **Unavailable body:** `entry()` rejects for any reason — the row is omitted from the model-facing digest.
 - **No sink:** every candidate rides the digest and the `materialized` field is omitted because no verdict exists.
 
 Discovery membership and rank belong to SearXNG. Plurnk does not rerank or

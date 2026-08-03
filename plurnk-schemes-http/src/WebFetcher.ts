@@ -1,11 +1,15 @@
 // Guarded entry-acquisition primitive {§prefetch}. The byte response is primary;
 // HTML carries a lazy browser fallback for the consumer to invoke only when its
-// readable projection is absent. Top-level deadness is the `null` value; caller
-// cancellation rejects with that signal's exact reason.
+// readable projection is absent. Post-admission deadness is the `null` value;
+// typed admission failure and caller cancellation reject.
 
 import { MimetypeClassifier, type ProjectionCaps } from "@plurnk/plurnk-schemes";
 import Browser, { BROWSER_UA, requireNumEnv, type RenderResult } from "./Browser.ts";
-import Guard from "./Guard.ts";
+import Guard, {
+    GuardBlockedError,
+    GuardResolutionError,
+    type GuardAdmission,
+} from "./Guard.ts";
 
 // {§host-rewrite} — one transport-only policy for acquisition GETs. Callers
 // retain the addressed URL as entry identity; mutations never pass through it.
@@ -22,7 +26,7 @@ interface Renderer {
         workerId: number;
         signal?: AbortSignal;
         headers?: ReadonlyArray<readonly [string, string]>;
-        guard?: (url: string) => Promise<boolean>;
+        guard?: (url: string) => Promise<GuardAdmission>;
     }): Promise<RenderResult>;
     close?(): Promise<void>;
 }
@@ -121,14 +125,17 @@ export default class WebFetcher {
         let response: Response;
         try {
             response = await Guard.fetch(target, { method: "GET", body: undefined, headers: [["User-Agent", BROWSER_UA]] }, probeSignal);
-        } catch {
+        } catch (cause) {
             // {§prefetch} AbortSignal.any preserves the first winning reason.
             // Only a caller-owned win escapes; the probe deadline remains the
             // primitive's ordinary dead/liveness result.
             if (opts?.signal?.aborted === true && probeSignal.reason === opts.signal.reason) {
                 opts.signal.throwIfAborted();
             }
-            return null; // SSRF-refused or unreachable — both dead
+            // Admission truth belongs to Guard and survives for exact consumers.
+            // Search remains free to prune the rejected entry() candidate.
+            if (cause instanceof GuardBlockedError || cause instanceof GuardResolutionError) throw cause;
+            return null; // generic unreachable and probe timeout are ordinary deadness
         }
         const mimetype = (response.headers.get("content-type") ?? "").split(";")[0].trim().toLowerCase()
             || "application/octet-stream";
@@ -151,7 +158,7 @@ export default class WebFetcher {
                         // The renderer supplies its own per-navigation deadline.
                         signal: opts?.signal,
                         headers: [["User-Agent", BROWSER_UA]],
-                        guard: Guard.isPublicUrl,
+                        guard: Guard.admit,
                     });
                     return rendered.html.length > 0 ? { body: rendered.html, mimetype: "text/html" } : null;
                 },
