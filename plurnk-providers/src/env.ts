@@ -80,12 +80,15 @@ export const contextWindowFromEnv = (env: NodeJS.ProcessEnv, label: string): num
 
 // {§model-fact-resolution} — an operator value caps known model physics and
 // declares the window only when no natural value is known.
-export const effectiveContextWindow = (operatorCap: number | null, naturalWindow: number | null): number | null =>
-    operatorCap === null
+export function effectiveContextWindow(operatorCap: number | null, naturalWindow: number): number;
+export function effectiveContextWindow(operatorCap: number | null, naturalWindow: number | null): number | null;
+export function effectiveContextWindow(operatorCap: number | null, naturalWindow: number | null): number | null {
+    return operatorCap === null
         ? naturalWindow
         : naturalWindow === null
             ? operatorCap
             : Math.min(operatorCap, naturalWindow);
+}
 
 export type ProviderTokenRates = { input: number; cached: number; output: number };
 

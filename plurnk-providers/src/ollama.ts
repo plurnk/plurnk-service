@@ -1,5 +1,5 @@
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
-import { contextWindowFromEnv, parseRequiredInt, requireEnv } from "./env.ts";
+import { contextWindowFromEnv, effectiveContextWindow, parseRequiredInt, requireEnv } from "./env.ts";
 import { providerFromSdkModel } from "./catalogProvider.ts";
 import type { Provider, ProviderOptions } from "./types.ts";
 
@@ -46,8 +46,11 @@ export const ollamaProviderFromEnv = async (
         "PLURNK_PROVIDERS_FETCH_TIMEOUT",
         "ollama",
     );
-    const contextWindow = contextWindowFromEnv(env, "ollama")
-        ?? await fetchContextWindow({ baseUrl, model, timeout });
+    // {§model-fact-resolution}
+    const contextWindow = effectiveContextWindow(
+        contextWindowFromEnv(env, "ollama"),
+        await fetchContextWindow({ baseUrl, model, timeout }),
+    );
     const languageModel = createOpenAICompatible({
         name: "ollama",
         baseURL: `${baseUrl}/v1`,
