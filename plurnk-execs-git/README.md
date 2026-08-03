@@ -8,10 +8,13 @@ interpreted by a shell.
 ## Contract
 
 - `git` means native Git. Plurnk does not replace or reinterpret its commands.
-- Native stdout and stderr are preserved as stream channels.
+- Native stdout and stderr are preserved as `#stdout` and `#stderr` under the
+  emitted `git:///<loop>/<turn>/<sequence>` address
+  ({§executor-output-address}).
 - `(target)` names the repo directory and maps to Git's `-C` option.
 - An unavailable Git binary makes the runtime unavailable; there is no fallback.
-- Every invocation is host-effecting and follows the normal proposal policy.
+- Every invocation is `host` and therefore proposal-gated
+  ({§executor-effect}).
 
 Git may invoke repository hooks, aliases, credential helpers, and network
 operations. Deployments that do not grant those capabilities should disable the

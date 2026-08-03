@@ -162,7 +162,7 @@ test("unclaimed runtime tag is fail-hard", async () => {
     await assert.rejects(run("brainfuck", "+"), /unclaimed runtime tag 'brainfuck'/);
 });
 
-// SPEC §6 — must honor args.signal. A pre-aborted signal is caught at the first
+// {§executor-cancellation} requires honoring args.signal. A pre-aborted signal is caught at the first
 // phase boundary: nothing instantiates or runs, the channel closes errored 499.
 test("pre-aborted signal → 499 errored, nothing runs", async () => {
     const ac = new AbortController();

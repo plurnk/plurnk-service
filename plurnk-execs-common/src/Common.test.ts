@@ -129,7 +129,7 @@ test("probe: reflects PATH presence per tag", async () => {
 });
 
 // The PLURNK_EXECS_<tag>=0 / _ONLY kill-switch moved to the framework's
-// discover() (SPEC §3.3) — a disabled tag is never registered, so probe() no
+// discover() ({§executor-policy}) — a disabled tag is never registered, so probe() no
 // longer sees it. Covered in plurnk-execs' policy.test.ts / discover.test.ts.
 
 test("unclaimed runtime tag is fail-hard in spawnArgs", async () => {

@@ -1,7 +1,8 @@
 # git
 
 Native Git with ordinary Git CLI syntax. Arguments execute directly without
-shell interpretation. Native stdout and stderr become the operation's streams.
+shell interpretation. Native stdout and stderr stream as `#stdout` and
+`#stderr` under the emitted `git:///<loop>/<turn>/<sequence>` address.
 
 Examples:
 

@@ -13,47 +13,27 @@ interface ExecManifest {
     plurnk: Record<string, unknown>;
 }
 
-// Scan installed executor packages and build the runtime-tag registry the
-// consuming scheme dispatches on. Parallel to plurnk-mimetypes' discover().
-// The public `discover()` entry (SPEC §3) is re-exported from index.ts over
-// `Discover.scan`; static cross-refs use the explicit `Discover.` binding so a
-// detached re-export stays callable.
+// Build the flat runtime-tag registry from installed executor packages
+// ({§executor-discovery}). `index.ts` re-exports `Discover.scan` as discover;
+// internal calls retain the class binding so that detached export stays usable.
 //
 // Default scan target: every installed package under `<cwd>/node_modules` —
 // scope-agnostic, so third-party executors (`@acme/foo`) are discovered too,
 // not just `@plurnk/*`. Tests and unusual layouts can pass `packageDirs`
 // explicitly to skip the scan.
 //
-// The PLURNK_PLUGINS_TRUSTED_ONLY gate (plurnk-service#229; see `#isTrusted`)
-// filters the scope-agnostic scan: when on, an untrusted third-party package is
-// discovered but not registered, returned in `Discovery.skipped` for the
-// consumer to note. Off by default — no regression.
-//
-// A package is recognized as an executor when its `package.json` declares
-// `plurnk.kind === "exec"` and exposes one or more runtime tags. Tags come from
-// one of two sources (SPEC §3):
+// Trust precedes executable hooks ({§executor-trust}). A package is recognized
+// only when its manifest declares `plurnk.kind === "exec"`; tags come from:
 //   - STATIC: `plurnk.runtimes: { name, glyph?, example?, documentation? }[]` —
-//     the tags are known at publish time (sh, search, sqlite, …).
-//   - DYNAMIC: `plurnk.runtimesModule: "<rel-path>"` — for a package whose tags
-//     are per-deployment (the MCP bridge: one tag per configured server). The
-//     module's `runtimes` (or default) export is a hook discover() imports and
-//     calls at scan time to materialize the decls. Executed only for TRUSTED
-//     packages — the trust gate runs first, so an untrusted package's hook is
-//     never imported (plurnk-execs#10). A declared-but-broken hook is fail-hard.
+//     tags known at publish time.
+//   - DYNAMIC: `plurnk.runtimesModule: "<export-subpath>"` — a trusted hook that
+//     returns deployment-configured declarations ({§executor-dynamic-runtimes}).
 // Each decl registers its tag separately; one package can claim many tags
-// backed by the same handler (e.g. the search sibling claims `search`, `news`,
-// `images`, …). `example` is a one-line self-documenting usage example
-// (plurnk-execs#7); `documentation` is the fuller markdown a consumer can serve
-// on demand — sourced from a `docs/<tag>.md` file in the package (the docs
-// convention), falling back to the inline `documentation` manifest field.
-// execs carries both; how they reach the model is the consumer's. Package-level
-// `plurnk.attribution` (string | string[]) is surfaced raw on each tag too
-// (plurnk-service#249).
+// backed by the same default export. Example, documentation, and attribution
+// projection are defined by {§executor-runtime-declaration}.
 //
-// Tags are a flat global namespace. Unlike plurnk-mimetypes (last-loaded
-// wins), a tag collision here is a FAIL-HARD install error: two packages
-// claiming the same runtime is an unresolvable ambiguity the operator must
-// fix (SPEC §3, plurnk-execs#1).
+// Tags occupy one flat namespace. Two packages claiming one tag are a fail-hard
+// installation ambiguity.
 export default class Discover {
     static async scan(options: DiscoverOptions = {}): Promise<Discovery> {
         const dirs = options.packageDirs ?? await Discover.#defaultPackageDirs(options.cwd ?? process.cwd());
@@ -64,23 +44,15 @@ export default class Discover {
         for (const dir of dirs) {
             const manifest = await Discover.#readExecManifest(dir);
             if (manifest === null) continue; // not an exec package
-            // Host plugin-trust gate (plurnk-service#229), enforced BEFORE any
-            // tag is read or — critically — any dynamic runtimes hook is
-            // imported: an untrusted third-party package is discovered but not
-            // registered, and its code is never executed. Recorded for the
-            // consumer's notices note, never crashed on.
+            // Trust is enforced before any dynamic runtime hook is imported
+            // ({§executor-trust}).
             if (!Meta.isTrusted(manifest.packageName)) {
                 skipped.add(manifest.packageName);
                 continue;
             }
             for (const info of await Discover.#readExecInfos(dir, manifest)) {
-                // Runtime policy — the operator kill-switch / allowlist
-                // (PLURNK_EXECS_<tag>=0, PLURNK_EXECS_ONLY), the daemon's boot
-                // layer, applied uniformly to EVERY tag regardless of plugin
-                // (SPEC §3.3). A disabled tag is not registered — absent, not
-                // "Available-off" — and recorded for the consumer. The
-                // per-workspace client layer is the consumer's to intersect via
-                // the exported Policy, same parser.
+                // Boot policy removes a tag before registration; consumer-owned
+                // layers can reuse the same parser ({§executor-policy}).
                 if (!Policy.isEnabled(info.runtime)) {
                     disabled.add(info.runtime);
                     continue;
@@ -100,11 +72,8 @@ export default class Discover {
     }
 
 
-    // Enumerate every installed package directory — scoped (`@scope/name`) and
-    // unscoped (`name`) — under `<cwd>/node_modules`. The scan is scope-agnostic
-    // so a THIRD PARTY can publish an executor under their own scope (`@acme/foo`)
-    // and have it discovered with no involvement from us; `#readExecInfos` keeps
-    // only the packages that declare `plurnk.kind === "exec"`.
+    // Enumerate scoped and unscoped packages under the nearest node_modules;
+    // `#readExecManifest` retains only declared executor packages.
     static async #defaultPackageDirs(cwd: string): Promise<string[]> {
         const nm = Meta.nearestNodeModules(cwd) ?? path.join(path.resolve(cwd), "node_modules");
         return (await Meta.packageDirs(nm)).map((c) => c.dir).toSorted();
@@ -140,12 +109,11 @@ export default class Discover {
         return { packageName: typeof record.name === "string" ? record.name : "", plurnk: plurnkRec };
     }
 
-    // Produce one ExecInfo per declared runtime tag — static `plurnk.runtimes[]`
-    // or a dynamic `plurnk.runtimesModule` hook. Returns [] when neither is
-    // declared.
+    // Produce one ExecInfo per static or dynamic runtime declaration.
     static async #readExecInfos(dir: string, { packageName, plurnk }: ExecManifest): Promise<ExecInfo[]> {
-        // Package-level attribution, surfaced raw (plurnk-service#249); every tag
-        // of the package carries the same value. The consumer owns the policy.
+        // Package-level attribution is surfaced raw on every tag
+        // ({§executor-runtime-declaration}); every tag of the package carries
+        // the same value. The consumer owns the policy.
         const rawAttr = plurnk.attribution;
         const attribution = typeof rawAttr === "string" || Array.isArray(rawAttr) ? rawAttr as string | string[] : undefined;
 
@@ -154,8 +122,8 @@ export default class Discover {
             if (typeof decl !== "object" || decl === null) continue;
             const e = decl as Record<string, unknown>;
             if (typeof e.name !== "string" || e.name === "") continue;
-            // `docs/<tag>.md` is the documentation source of truth (the docs
-            // convention); the inline `documentation` field is the fallback.
+            // A package doc file wins over inline documentation
+            // ({§executor-runtime-declaration}).
             const inlineDoc = typeof e.documentation === "string" ? e.documentation : "";
             const documentation = await Discover.#readDocFile(dir, e.name) ?? inlineDoc;
             infos.push({
@@ -171,10 +139,8 @@ export default class Discover {
         return infos;
     }
 
-    // Resolve a package's runtime decls. Static `plurnk.runtimes[]` is the common
-    // case; `plurnk.runtimesModule` (an export subpath, e.g. "./runtimes") is the
-    // dynamic hook for per-deployment tags. Static wins if both are declared.
-    // Returns [] when neither is present.
+    // Static declarations win over a dynamic export when both are present
+    // ({§executor-dynamic-runtimes}).
     static async #runtimeDecls(dir: string, packageName: string, plurnk: Record<string, unknown>): Promise<unknown[]> {
         if (Array.isArray(plurnk.runtimes)) return plurnk.runtimes;
         const mod = plurnk.runtimesModule;
@@ -182,14 +148,9 @@ export default class Discover {
         return [];
     }
 
-    // Import a trusted package's runtimes hook via its export map and call it.
-    // The manifest names an export SUBPATH ("./runtimes"), never a file path —
-    // resolution through exports keeps dev (src via conditions) and published
-    // (dist) layouts on one mechanism. Fail-hard on every failure — an
-    // unloadable module, a missing/non-function export, or a non-array return
-    // is a contract violation by a trusted package (its own packaging or
-    // config), surfaced with the cause, never swallowed. The trust gate in
-    // scan() guarantees this only runs for trusted packages.
+    // Import an admitted package's hook through its export map. Hook loading,
+    // shape, execution, and result failures are fail-hard
+    // ({§executor-dynamic-runtimes}).
     static async #loadDynamicRuntimes(dir: string, packageName: string, rel: string): Promise<RuntimeDecl[]> {
         if (!rel.startsWith("./")) throw new Error(`exec runtimes hook invalid: ${packageName} -> ${rel} must be an export subpath like "./runtimes"`);
         // Self-reference resolution: the subpath resolves through the package's OWN export

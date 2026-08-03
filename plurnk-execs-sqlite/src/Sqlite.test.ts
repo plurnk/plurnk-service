@@ -166,7 +166,7 @@ test("a trailing semicolon and trailing comments are NOT a second statement", as
     assert.equal(comment.result.status, 200);
 });
 
-// SPEC §6 — must honor args.signal. sqlite is synchronous, so a pre-aborted
+// {§executor-cancellation} requires honoring args.signal. sqlite is synchronous, so a pre-aborted
 // signal is honored at entry: the file-backed mutation never runs (the db file
 // is never created), and the channel closes errored with 499.
 test("pre-aborted signal → 499 errored, file mutation skipped", async () => {

@@ -1,17 +1,21 @@
 # plurnk-execs
 
-Framework + contract for `@plurnk/plurnk-execs-*` runtime executor packages. Consumed by [plurnk-service](https://github.com/plurnk/plurnk-service)'s `exec` scheme for EXEC op dispatch.
+Framework and current installed set for `@plurnk/plurnk-execs-*` runtime
+packages. Core uses it to discover EXEC tags, admit calls, and stream each
+runtime's output under its own tag-addressed scheme.
 
 ## Documentation
 
-- [`SPEC.md`](./SPEC.md) — the authoritative author-facing contract. This README is the orientation and the how-to.
-- Constellation: [plurnk-contracts](https://github.com/plurnk/plurnk-service/tree/main/plurnk-contracts) (EXEC AST), [plurnk-providers](https://github.com/plurnk/plurnk-providers), [plurnk-schemes](https://github.com/plurnk/plurnk-schemes), [plurnk-mimetypes](https://github.com/plurnk/plurnk-mimetypes) (the reference family this one mirrors).
+- [`SPEC.md`](./SPEC.md) — authoritative executor author and consumer contract.
+- [plurnk-contracts](https://github.com/plurnk/plurnk-service/tree/main/plurnk-contracts) — EXEC AST and shared runtime-neutral contracts.
+- [plurnk-schemes](https://github.com/plurnk/plurnk-schemes) — universal operation results and derived output-scheme contract.
 
 ## Write an executor
 
-Ship an executor by publishing a package — **under any scope** (`@acme/whatever`; discovery keys on `plurnk.kind`, not the `@plurnk` scope) — that declares its runtime tags and default-exports a `BaseExecutor` subclass.
+Publish a package under any scope with `plurnk.kind === "exec"`, one or more
+runtime declarations, and a default-exported `BaseExecutor` subclass.
 
-### 1. Declare tags in `package.json`
+### Declare runtime tags
 
 ```json
 {
@@ -21,65 +25,77 @@ Ship an executor by publishing a package — **under any scope** (`@acme/whateve
       {
         "name": "cobol",
         "glyph": "🗄",
-        "example": "<<EXEC[cobol]:DISPLAY 'HI'.:EXEC",
-        "documentation": "# cobol\n\nGnuCOBOL `cobc -xj`. Fixed-format source; the body is one program…"
+        "example": "<<EXEC[cobol]:DISPLAY 'HI'.:EXEC"
       }
     ]
   }
 }
 ```
 
-One package may claim many tags (the search sibling claims `search`/`news`/`images`/…); each `runtimes[]` entry registers independently. `glyph` is display; `example` and `documentation` are how the tag tells the model what it is — see [How the model sees your tag](#how-the-model-sees-your-tag).
+One package may claim several tags; the consumer instantiates and probes each
+tag independently. `example` is a compact verbatim `plurnk` snippet, and every
+line in it must be a complete `<<`-delimited operation. A `docs/<tag>.md` file
+supplies the full reference material. See {§executor-runtime-declaration}.
 
-### 2. Default-export a `BaseExecutor` subclass
+### Implement the executor
 
-The framework instantiates **one executor per tag**, injecting `{ runtime, glyph }` (`ExecutorMetadata`) — branch on `this.runtime` when one class backs several tags. Two ways in:
+| Runtime shape         | Base class           | Author-owned hooks                                                                      |
+| --------------------- | -------------------- | --------------------------------------------------------------------------------------- |
+| Subprocess            | `SubprocessExecutor` | `spawnArgs()` and normally `binary`; stdout/stderr, abort, env, and exit are inherited. |
+| Logical or in-process | `BaseExecutor`       | `channels`, `run()`, and optional `probe()` / `effect()`.                               |
 
-- **Subprocess runtimes** (the common case): subclass **`SubprocessExecutor`** and override one hook — `spawnArgs(runtime, command, target) → { cmd, args, useShell, stdin? }`. With no `target`, `command` is the inline program; with a `target`, run it as the program and hand `command` to `stdin` (plurnk-execs#15). You inherit stdout/stderr streaming, process-group abort, **env scoping**, and exit-code reporting. Override the `binary` getter so `probe()` checks it's on PATH (`null` = always available).
-- **Logical / in-process runtimes** (sqlite, search, wasm, jq): subclass **`BaseExecutor`** directly and implement:
-  - `get channels()` — the output channels you write, each `{ mimetype, defaultState? }`.
-  - `run(args) → ExecResult` — do the work. Success resolves `{ status }`;
-    failure resolves the same status plus RFC 9457 `problem`. Never throw for an
-    expected failure; set its channel to `errored`. `emit` is only for
-    nonterminal notices such as progress.
-  - `probe(signal?)` *(optional)* — `{ available, detail? }`; defaults to available. Override when you depend on an external binary or config (the `detail` is model-facing on a 501). If you spawn a child (or open a connection) to check, hand it `signal` so a resolved/timed-out probe reaps it — no stray write EPIPEs after teardown (plurnk-execs#16).
-  - `effect(target)` *(optional)* — `"pure" | "read" | "host"`; the consumer maps it to its proposal policy (host → propose, read/pure → auto-run inline). Classify the **target only**, never the command. Defaults to `host` (the safe end).
+`run()` receives only the inputs and consumer-owned sinks in
+{§executor-sinks}. Return a universal result; expected failures carry RFC 9457
+Problem Details and leave affected channels `errored`. Honor `signal`, write
+only declared channels, and retain no state between runs.
 
-### 3. What `worker` receives (`ExecArgs`) — sinks, never the substrate
+`effect(target)` declares an admission fact. `host` is proposal-gated;
+`read` and `pure` are automatically accepted. All three then use the same
+background stream path—automatic acceptance is not a same-turn result. See
+{§executor-effect}.
 
-`{ runtime, command, cwd, target, env, signal, write(channel, chunk, mimetype?), setState(channel, state), emit(event) }`. The executor gets sinks and honors `signal` — never the db, subscriptions, or wake machinery (those stay in the consumer). **`cwd`** is the workspace workspace (the process working directory); **`target`** is the parsed EXEC `(target)` slot — a referenced resource you interpret **per your tool's CLI**: a *data* runtime reads it as input with `command` as the program (jq `(file):filter`, sqlite `(db):SQL`); an *executable* runtime runs it as the program with `command` as its **stdin** (sh `(cmdline):stdin`, python `(script):stdin`). Resolved relative to `cwd`, `null` when the op names none (plurnk-execs#15). `write`'s optional `mimetype` stamps the channel with the real per-call output type. **`env`**, when the consumer scopes it, is exactly the environment a spawned child should see (the host's own secrets already dropped — never inherit `process.env` for model-run children yourself). Stay stateless across runs beyond your construction metadata.
+### Understand the target
 
-### How the model sees your tag
+The EXEC `(target)` slot is runtime-specific:
 
-Your tag documents itself to the model at two altitudes — you provide the content, the consumer decides how it reaches the model:
+| Runtime family | Typical mapping                                                   |
+| -------------- | ----------------------------------------------------------------- |
+| Data           | Target is input; body is the program (`jq`, SQLite, WebAssembly). |
+| Executable     | Target is the program; body is its stdin (shell, Python).         |
 
-- **`example`** — one line, the always-on form. The model uses it to reach for a simple tag without reading anything more. Store it as the **complete `<<`-delimited op** (`<<EXEC[tag]:…:EXEC`) — the consumer renders it verbatim, so an example missing the `<<` opener teaches the model a malformed op. Keep it to a single line — it's surfaced per available tag, so it's token-sensitive.
-- **`documentation`** — full markdown, depth on demand. The flags, modes, and gotchas the one-liner can't carry (sqlite's `:memory:`-vs-file, jq's `$ENV`, git's tokenized argv). Optional — provide it for non-trivial tags; the consumer can still derive a baseline from the rest of your registry entry (example, channels, effect, availability) when you don't.
+The consumer supplies both `cwd` and a resolved `target`; the leaf maps them
+to its tool rather than reconstructing filesystem or scheme policy.
 
-Declare the two and a third-party tag gets the same self-documenting surface the first-party tags do. **How** the consumer renders the one-liner and serves the docs on demand is plurnk-service's concern, not this contract's — execs owns the two fields, the consumer owns the wiring.
+### Address output
 
-## Discovery & trust
+The runtime tag is also the output scheme. A subprocess result is therefore
+read at an address such as `sh:///1/2/3#stdout`, while a structured result may
+be `sqlite:///1/2/3#results`. `exec://` is not an output address. Executors only
+produce channels; the consumer owns storage and every later READ/FIND. See
+{§executor-output-address}.
 
-`discover(options?)` scans **every installed package** under the nearest `node_modules` (walking up from `cwd` for workspace hoisting) — scope-agnostic — for `plurnk.kind === "exec"`, returning `{ registry, skipped, disabled }`.
+## Discovery and policy
 
-- **Tag collisions are fail-hard.** Two packages claiming the same tag throws at discovery, naming both — deliberately stricter than plurnk-mimetypes' last-wins. A runtime tag is an executable dispatch key, so a third party silently shadowing `python` is exactly the failure we refuse to let ship quietly; the operator resolves it.
-- **Trust gate.** `discover()` enforces the shared pre-import predicate and returns withheld package names in `Discovery.skipped` for the consumer to present ({§plugin-trust-boundary}).
-- **Runtime policy (enable/disable cascade).** `discover()` applies the operator kill-switch uniformly to every tag (SPEC §3.3): `PLURNK_EXECS_<TAG>=0` kills one tag, `PLURNK_EXECS_ONLY=a,b,c` is an allowlist (all else off). Disabled tags are **not** registered — returned in `Discovery.disabled`. It's purely subtractive, so it **cascades**: the consumer feeds a client-declared policy (same `PLURNK_EXECS_*` format) through `Policy.enabledAcross(tag, [serviceEnv, clientLayer])` and the client can only narrow — never re-enable what the service disabled. `disable all but search` → `PLURNK_EXECS_ONLY=search`.
+`discover(options?)` scans scoped and unscoped packages under the nearest
+`node_modules`, applies trust before executable hooks, applies boot policy, and
+returns `{ registry, skipped, disabled }`. Tag collisions fail hard.
+
+| Policy                              | Result                                 |
+| ----------------------------------- | -------------------------------------- |
+| `PLURNK_EXECS_<TAG>=0` or `false`   | Tag is not registered.                 |
+| `PLURNK_EXECS_ONLY=a,b,c`           | Only the named tags remain registered. |
+| `Policy.enabledAcross(tag, layers)` | Every layer must admit the tag.        |
+
+Policy is subtractive; a downstream layer cannot restore a removed tag. See
+{§executor-discovery}, {§executor-trust}, and {§executor-policy}.
 
 ## Exports
 
-- `BaseExecutor` — abstract base: `channels`, `run(args)`, optional `probe()` / `effect(target)`.
-- `SubprocessExecutor` — concrete base for subprocess runtimes; override `spawnArgs()` (and `binary`). Streaming + process-group abort + env scoping + exit code, inherited.
-- `ErrorDetail` - validates `PLURNK_EXECS_ERROR_DETAIL_LIMIT` and bounds
-  third-party diagnostic text before it enters a model-facing Problem.
-- `discover(options?)` — the scope-agnostic registry scan (trust-gated + runtime-policy-gated, fail-hard on collision).
-- `Policy` — the runtime enable/disable resolver (SPEC §3.3): `Policy.isEnabled(tag, env?)`, `Policy.enabledAcross(tag, layers)`. Same parser the daemon and the consumer's per-workspace client layer share.
-- `Results` and the `ProblemDetails` / `SchemeResult` types — the universal
-  operation-result constructor and contract shared with schemes.
-- Contract types: `ExecArgs`, `ExecResult`, `ChannelDecl`, `ChannelState`, `ExecutorMetadata`, `RuntimeAvailability`, `Effect`, `ExecInfo`, `ExecRegistry`, `Discovery`, `DiscoverOptions`.
-- `Notice`, `ContentOffset`, `LogCoordinate` — the `emit` sink's transient, nonterminal payload (a local mirror of grammar's Notice envelope).
-- `SpawnArgs` — the `SubprocessExecutor.spawnArgs()` return shape for
-  runtime-specific subclasses.
+- `BaseExecutor`, `SubprocessExecutor`, and `SpawnArgs`.
+- `discover`, `Policy`, and runtime discovery types.
+- `ErrorDetail` and `PLURNK_EXECS_ERROR_DETAIL_LIMIT`.
+- Executor arguments, channel, availability, and effect types.
+- `Results`, result types, and runtime-neutral Notice types.
 
 ## Tests
 

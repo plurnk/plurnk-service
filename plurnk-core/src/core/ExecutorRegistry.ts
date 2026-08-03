@@ -14,20 +14,20 @@ export interface Executor {
     get defaultChannel(): string;
     get channels(): Readonly<Record<string, ChannelDecl>>;
     run(args: ExecArgs): Promise<ExecResult>;
-    // signal (execs 0.4.28, #16): the host aborts it on resolve/timeout so a probe reaps its
-    // --version child at once — no in-flight write EPIPEs after teardown. Optional + ignore-safe.
+    // The host aborts on resolve or timeout so probe work is reaped immediately
+    // ({§executor-probe}). Optional and ignore-safe.
     probe(signal?: AbortSignal): Promise<RuntimeAvailability>;
-    // command-aware (#289): the effect may be resolved per-command, not just per-target - a module
-    // executor may read per-command metadata to auto-run a read-only call. Target-only
-    // executors ignore the second arg (a narrower signature still satisfies this interface).
+    // The consumer interface accepts optional command metadata for dynamically
+    // registered runtimes. Installed BaseExecutor leaves implement the narrower,
+    // target-only contract in {§executor-effect}.
     effect(target: string | null, command?: string): Effect;
 }
 
 export interface RegistryEntry {
     readonly executor: Executor;
     readonly glyph: string;
-    // One-line self-documenting usage example for the tag (plurnk-execs#7),
-    // surfaced in the ## Registered Executable Tools sheet. "" when the package omits it.
+    // Compact verbatim plurnk snippet for the tag; every line is a complete
+    // operation ({§executor-runtime-declaration}). Empty when omitted.
     readonly example: string;
     // Fuller reference doc for the tag (plurnk-execs ExecInfo.documentation),
     // materialized at worker://plurnk/docs/<tag>.md. "" when omitted.

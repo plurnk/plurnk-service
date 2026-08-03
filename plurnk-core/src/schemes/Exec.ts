@@ -35,12 +35,12 @@ type ExecResult = SchemeResultBase & { body?: string; attrs?: object };
 
 interface ExecAttrs {
     runtime: string;        // "" (default shell), "sh", "bash", "node", "python", etc.
-    cwd: string | null;     // process working directory = the workspace workspace (project_root), or null (headless). A relative target resolves against it. (execs 0.4.26 §2)
-    target: string | null;  // the parsed (target) slot — the executor's DATA SOURCE (jq input file / sqlite db / wasm module); null = no source (subprocess ignores it). (#15)
+    cwd: string | null;     // selected project working directory, or null when the workspace has none ({§executor-sinks})
+    target: string | null;  // consumer-routed EXEC target; each executor owns its mapping ({§executor-sinks})
     command: string;        // body of the EXEC op
-    pathname: string;       // stamped by Dispatcher.#writeLog as /<loop>/<turn>/<seq>; entry persists under the RUNTIME TAG scheme — <runtime>:///<pathname> (e.g. sh:///1/1/2), {§exec}/#240. exec:// is process-control only.
-    inline?: boolean;       // effect=read/pure → auto-run (no human gate); output streams like any exec
-    schemeTarget?: { scheme: string; pathname: string; fragment: string | null };  // #201 — a plurnk-scheme target resolved to content at apply-time (empty body → run-as-command; non-empty body → temp-materialize to cwd)
+    pathname: string;       // stamped by Dispatcher.#writeLog as /<loop>/<turn>/<seq>; output persists under the runtime tag, e.g. sh:///1/1/2 ({§executor-output-address}).
+    inline?: boolean;       // effect=read/pure → automatically accepted; output still backgrounds
+    schemeTarget?: { scheme: string; pathname: string; fragment: string | null };  // non-file scheme target resolved by the consumer at apply time
     timeoutSec?: number;    // `<T,P>` mark[0] > 0: kill the spawn after T seconds (504). Absent/-1 = unbounded.
     turnScoped?: boolean;   // `<0>`: turn-scoped — reaped at the worker's next pre-turn, never surviving into the subsequent turn. {§exec-poll}
     pollSec?: number;       // `<T,P>` mark[1]: while the loop hibernates (202), wake it every P seconds to check this stream. Absent/≤0 = no poll-wake. {§exec-poll}
@@ -62,9 +62,9 @@ const localPathFromTarget = (target: ExecStatement["target"]): string | null => 
     return null;
 };
 
-// #201 — a plurnk-scheme target (known/exec/log/…), distinct from file/local
-// (which localPathFromTarget handles as a path). Its content is resolved at apply-time;
-// executors stay scheme-blind (SPEC §5), so the scheme — not the executor — reads it.
+// A non-file scheme target is distinct from the local path handled above. The
+// consumer resolves its content at apply time; executors stay scheme-blind
+// ({§executor-role}).
 const schemeTargetOf = (target: ExecStatement["target"]): { scheme: string; pathname: string; fragment: string | null } | null => {
     if (target === null || target.kind !== "url") return null;
     if (target.scheme === null || target.scheme === "file") return null;
@@ -338,11 +338,12 @@ export default class Exec extends CoreSchemeAdapterBase {
         // subprocess program run with the body as stdin; #15). A #462 directory target routed to cwd above
         // leaves this null (the body is the command, run in that directory).
         const target = routedTarget;
-        // Effect classifies by the target only, never by parsing the command (#289): host → propose,
-        // read/pure → auto-run inline (plurnk-service#182).
+        // Installed executors classify the target only, never the command
+        // ({§executor-effect}). Core maps host to proposal and read/pure to
+        // automatic acceptance; every accepted call backgrounds below.
         const policy = EffectPolicy.decide(resolved.executor.effect(target, command));
         // cwd is the workspace WORKSPACE (project_root) — the directory File writes to and a relative
-        // data-source target resolves against (execs 0.4.26 §2) — UNLESS a #462 directory target overrode
+        // data-source target resolves against ({§executor-sinks}) — UNLESS a #462 directory target overrode
         // it above, in which case the body runs in that directory. A file/data-source target never moves cwd.
         // Pathname is assigned by Dispatcher.#writeLog as <runtime>/<loop_seq>/
         // <turn_seq>/<sequence> (executor-domain + coordinate, e.g. sh/1/1/2).

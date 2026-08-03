@@ -4,26 +4,50 @@ A shell command line, run via `sh -c`. Bare `EXEC` (no runtime tag) defaults to 
 
 ## Environment
 
-The command runs with a **scoped** environment: the host daemon's own secrets — provider API keys and every `PLURNK_*` config var — are stripped before the child sees them, so `printenv` / `env` cannot read plurnk's credentials. The project's own environment passes through unchanged.
+The command receives a **scoped** environment. Provider keys and every
+`PLURNK_*` setting are stripped before the child starts, so `printenv` cannot
+read plurnk's credentials. The project's environment passes through.
 
 ## Working directory
 
-`EXEC[sh](./dir):…` runs in `./dir`. With no target the command runs in the workspace's project root — the same place the `file` scheme writes — so it finds files a prior `EDIT` just created, rather than the daemon's cwd.
+`EXEC[sh](./dir):…` runs in `./dir`. With no target, the command runs in the
+workspace project root where file operations write—not in the daemon's own
+working directory.
 
-`(target)` is polymorphic on the filesystem: a **directory** is the cwd (above); a **file** is a **script to run**. `<<EXEC[sh](greet.sh)::EXEC` runs `greet.sh` — an empty body just runs it (note the `::` — empty body); a body becomes its stdin (`<<EXEC[sh](greet.sh):input line:EXEC`). Directory → run *in* it; file → run *it*. The interpreter **reads** the file — no `+x` needed, and none is ever set (transient exec, #500); a `./script.sh` typed in a *body* still meets the kernel's own exec-bit check, so prefer the `(target)` form for scripts you just wrote.
+The target's filesystem type selects its role:
+
+- A directory becomes the working directory.
+- A file is the script to run. `<<EXEC[sh](greet.sh)::EXEC` runs it with an
+  empty stdin; a nonempty body becomes stdin.
+
+The interpreter reads a targeted file directly, so it needs no executable bit.
+A script path authored inside a shell body still follows the kernel's ordinary
+executable-bit rules.
 
 ## Channels
 
-Output streams into two channels on the `exec://` entry: `#stdout` (default) and `#stderr` (both `text/stream`). A host-effecting command proposes for review before it runs; a read-only one runs without the review pause. The stream opens when the command concludes — for a quick command, right on your next turn (folded only while it still runs); READ the entry to revisit or slice it. A non-zero exit closes the entry with status 500, the message on `stderr`.
+Every shell invocation is host-effecting and proposes for review before it
+runs. Output then streams under the emitted
+`sh:///<loop>/<turn>/<sequence>` address: `#stdout` is the default channel and
+`#stderr` is the second; both are `text/stream`. Running deltas stay folded and
+the terminal delta opens on a later turn. READ the emitted address to revisit
+or slice it. A nonzero exit closes with status 500; inspect both channels
+because either may carry the useful diagnostic.
 
 ## Deadlines & polling — `<timeout, poll>`
 
 For a long-running command, the `<L>` slot carries `<TIMEOUT_SECONDS, POLL_SECONDS>` (both seconds):
 
-```
-<<EXEC<1800>:npm run build:EXEC         hard-kill at 1800s; wake on completion
-<<EXEC<1800,300>:npm run e2e:EXEC       bounded at 1800s + wake every 300s
-<<EXEC<-1,300>:npm run test:EXEC        no deadline (-1) + wake every 300s
+```plurnk
+<<EXEC<1800>:npm run build:EXEC
+<<EXEC<1800,300>:npm run e2e:EXEC
+<<EXEC<-1,300>:npm run test:EXEC
 ```
 
-The **timeout** (first, required when the slot is used) bounds the worker — at the deadline the command is killed. **`-1` declines a deadline** (unlimited); the worker is still reaped when the loop ends, and you remain free to `KILL` it. The optional **poll** (second) wakes the loop on that cadence while the stream is open, so you can `READ` partial output and decide to wait or `KILL` — it never interrupts the command. A poll always requires a timeout (it's the second coordinate); bare `EXEC` with no slot runs to completion, bounded only by the loop.
+The first coordinate is the timeout: a positive value kills at that deadline;
+`-1` declines the per-operation deadline; `0` keeps the process only through
+the current turn. Loop teardown still reaps surviving work. The optional
+positive second coordinate fixes the poll cadence while a loop is parked on
+the stream. With no explicit poll, the consumer uses exponential backoff so a
+parked loop can inspect partial output and decide whether to wait or KILL.
+Polling wakes the loop but never interrupts the command.

@@ -55,10 +55,11 @@ export default class SubprocessExecutor extends BaseExecutor {
         if (detailLimit === null) {
             return { available: false, detail: `${ERROR_DETAIL_LIMIT} must be set to a non-negative integer.` };
         }
-        // No internal deadline — the per-probe timeout is the consumer's (SPEC
-        // §2.2), handed in as `signal`. We pass it to spawn so a resolved or
+        // No internal deadline — the per-probe timeout is the consumer's
+        // ({§executor-probe}), handed in as `signal`. We pass it to spawn so a
+        // resolved or
         // timed-out probe REAPS its child at once; no in-flight `--version` write
-        // can EPIPE after host teardown (plurnk-execs#16). stdin/stderr are
+        // can EPIPE after host teardown. stdin/stderr are
         // /dev/null'd — only stdout is read, for the version detail.
         return new Promise<RuntimeAvailability>((resolve) => {
             let settled = false;
@@ -80,7 +81,8 @@ export default class SubprocessExecutor extends BaseExecutor {
     // interpreter table (e.g. the common-REPL harness) override this — and so
     // inherit run()'s streaming + process-group abort handling rather than
     // reimplementing it. When `target` is set, the body becomes the program's
-    // stdin (plurnk-execs#15) — the plugin maps it; the parent parses nothing.
+    // stdin ({§executor-subprocess-routing}); the plugin maps it and the parent
+    // parses nothing.
     protected spawnArgs(runtime: string, command: string, target: string | null): SpawnArgs {
         return Runtime.resolve(runtime, command, target);
     }
@@ -142,9 +144,9 @@ export default class SubprocessExecutor extends BaseExecutor {
             // (e.g. the `sleep` in `sh -c "sleep 30"`) that a bare SIGTERM to the
             // direct child orphans, leaking the process and its stdout pipe. We
             // drive cancellation manually rather than via spawn's `signal`
-            // option, which only kills the direct child (plurnk-execs#4).
+            // option, which only kills the direct child ({§executor-cancellation}).
             // env: consumer-scoped when provided (drops plurnk's own secrets,
-            // plurnk-execs#8); host env inherited by default for back-compat.
+            // {§exec-env-scoped}); host env inherited when absent.
             // fd0: a provided stdin body gets a pipe (written + EOF'd below); NO
             // stdin body gets /dev/null, never a dangling open pipe (#519). A bare
             // interpreter reached via the sh fallthrough (`EXEC[python3]` → `sh -c

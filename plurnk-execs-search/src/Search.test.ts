@@ -81,7 +81,7 @@ test("declares a results channel (application/json)", () => {
     });
 });
 
-test("effect: search is read (auto-run; entries materialize via the consumer's own sink)", () => {
+test("effect: search is read (auto-accepted; entries materialize via the consumer's own sink)", () => {
     assert.equal(new Search({ runtime: "search", glyph: "🔎" }).effect(null), "read");
 });
 
@@ -189,7 +189,7 @@ test("digest: SNIPPET bounds the snippet; RAW restores the verbatim payload and 
     delete process.env.PLURNK_EXECS_SEARCH_RAW;
 });
 
-// --- page prefetch enrichment (#18, #596, SPEC §2.6) -----------------------
+// --- page prefetch enrichment (#18, #596) ---------------------------------
 
 test("entry(): the executor hands each unique candidate url to the sink as a prefetch request (url, null, [slug])", async () => {
     routes([{ title: "a", url: "https://8.8.8.8/a" }]);
@@ -228,7 +228,7 @@ test("#596: a rejected entry() is scrubbed from the model-facing digest", async 
     });
     assert.deepEqual(JSON.parse(writes[0].chunk), [
         { title: "a", url: "https://8.8.8.8/a", materialized: true },
-    ], "only successfully materialized resources reach the model");
+    ], "only successfully materialized entries reach the model");
 });
 
 test("search acquisition emits bounded aggregate progress with no candidate URLs", async () => {

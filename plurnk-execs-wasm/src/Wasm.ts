@@ -30,15 +30,15 @@ const ENTRY_POINTS = ["main", "_start"];
 // model's WebAssembly Text via wabt; `wasm` decodes a base64 binary module.
 // Both instantiate in a sandbox — the only host interaction is an `env.log`
 // import that captures values — call the entry point, and return its result as
-// application/json. effect `pure`: a module cannot touch the host, only call
-// the imports we hand it, so it auto-runs inline. The safe arbitrary-execution
-// tier `node -e` can't be.
+// application/json. A module cannot touch the host beyond the imports supplied,
+// so an inline call is `pure` and bypasses proposal admission. Its result still
+// follows the universal background stream path ({§executor-effect}).
 export default class Wasm extends BaseExecutor {
     get channels(): Readonly<Record<string, ChannelDecl>> {
         return { results: { mimetype: "application/json" } };
     }
 
-    // Inline body is sandboxed → `pure` (auto-run). A file-path target reads the
+    // Inline body is sandboxed → `pure`. A file-path target reads the
     // host filesystem → `read` (execution stays sandboxed; the FS read is the
     // only host interaction). Target-classified, never command-inspected.
     override effect(target: string | null): Effect {
@@ -74,7 +74,7 @@ export default class Wasm extends BaseExecutor {
             setState("results", "errored");
             return ErrorDetail.invalidConfiguration("executor:wasm");
         }
-        // Honor an abort at each phase boundary (SPEC §6). The file read, wabt init,
+        // Honor an abort at each phase boundary ({§executor-cancellation}). The file read, wabt init,
         // and instantiate are the await points where a KILL/cancel can land; the
         // entry-point call itself is synchronous and uninterruptible.
         const aborted = (): ExecResult => {
@@ -94,7 +94,7 @@ export default class Wasm extends BaseExecutor {
         };
         if (signal.aborted) return aborted();
         // target = a module file, resolved against cwd (the workspace) —
-        // plurnk-execs#15; otherwise the module rides the body (WAT / base64).
+        // {§executor-sinks}; otherwise the module rides the body (WAT / base64).
         const path = target === null ? null : (isAbsolute(target) ? target : resolve(cwd ?? process.cwd(), target));
 
         // 1. Obtain the module bytes — from the file-path target, else the body.

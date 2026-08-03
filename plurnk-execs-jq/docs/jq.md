@@ -2,15 +2,20 @@
 
 The system `jq` as a runtime: the **body is the jq program**, the **`(target)` is the data source**.
 
-```
-<<EXEC[jq]:[1,2,3] | add:EXEC                       inline — no input (-n), the program stands alone
-<<EXEC[jq](data.json):.users[].name:EXEC            filter a file
-<<EXEC[jq](exec://…#results):.items[]:EXEC          filter a prior op's output
+```plurnk
+<<EXEC[jq]:[1,2,3] | add:EXEC
+<<EXEC[jq](data.json):.users[].name:EXEC
+<<EXEC[jq](search:///1/2/3#results):.[] | .title:EXEC
 ```
 
-An empty body defaults to `.` (identity). Results land on `results` as `application/jsonl` — one compact value per line.
+The first form has no input and uses `-n`. The second filters a file. The third
+filters the result stream at the emitted search address.
 
-## Deliberate departures from the `jq` CLI (#493)
+An empty body defaults to `.` (identity). Results land on `#results` as
+`application/jsonl`—one compact value per line—under the emitted `jq://`
+address.
+
+## Deliberate departures from the `jq` CLI
 
 - **No stdin.** The op grammar has no pipe; `jq`'s read-stdin default maps to `-n` (null input) when no target is given, so an inline program constructs its own input. A file target matches `jq program file` exactly.
 - **Compact output is forced (`-c`).** `jq`'s pretty-print default would break the channel's JSONL contract; presentation belongs to the consumer's mimetype pipeline, not the filter.

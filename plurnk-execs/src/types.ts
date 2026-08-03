@@ -12,10 +12,7 @@ import type { Notice } from "./Notice.ts";
 // `active` while producing, then a terminal `closed` (clean) or `errored`.
 export type ChannelState = "active" | "closed" | "errored";
 
-// A channel an executor declares it writes to. The consuming scheme seeds the
-// exec entry from these declarations (service#174 Q1) rather than from a
-// static scheme-level manifest — so `search` honestly exposes a `results`
-// channel instead of overloading `stdout`.
+// A channel an executor declares it writes to ({§executor-channels}).
 export interface ChannelDecl {
     mimetype: string;
     defaultState?: ChannelState;
@@ -31,8 +28,8 @@ export interface ExecutorMetadata {
 
 // Arguments passed to `BaseExecutor.run()`. The executor is handed sinks —
 // never the db, subscription registry, AbortController bridging, or
-// wake-on-completion machinery, all of which stay in the consuming scheme
-// (service#174). The executor writes output, drives channel state, emits
+// wake-on-completion machinery, all of which stay in the consumer
+// ({§executor-role}). The executor writes output, drives channel state, emits
 // notices, and honors `signal`.
 export interface ExecArgs {
     // The matched runtime tag. Multi-tag executors branch on it (e.g. the
@@ -45,8 +42,8 @@ export interface ExecArgs {
     // runtimes spawn in it. null for logical runtimes (search) that touch no
     // filesystem.
     cwd: string | null;
-    // The parsed EXEC `(target)` slot — a referenced resource, interpreted
-    // **per-runtime** (plurnk-execs#15). Each executor maps `(target, command)`
+    // The parsed EXEC `(target)` slot — a referenced file or entry, interpreted
+    // **per-runtime** ({§executor-sinks}). Each executor maps `(target, command)`
     // onto its own tool's CLI; the framework passes both raw and parses neither:
     //   - a *data* runtime reads `target` as the input and `command` as the
     //     program — jq `(file):filter`, sqlite `(db):SQL`, wasm `(module):…`;
@@ -59,7 +56,7 @@ export interface ExecArgs {
     // Environment for runtimes that spawn a child process. When set, the child
     // gets EXACTLY this env — the consumer scopes out its own secrets (provider
     // keys, PLURNK_*) so a model-directed `printenv` can't read them
-    // (plurnk-execs#8). When omitted, the child inherits the host process env
+    // ({§exec-env-scoped}). When omitted, the child inherits the host process env
     // (back-compat default). Ignored by in-process runtimes that don't spawn.
     env?: NodeJS.ProcessEnv;
     // Cancellation. Executors must abort in-flight work when this fires.
@@ -67,11 +64,9 @@ export interface ExecArgs {
     // Write a chunk to one of the executor's declared channels. The optional
     // `mimetype` stamps the channel with the REAL per-call output type
     // (`application/json`, `text/markdown`, …); the consumer retypes the channel
-    // to it — the channel's declared mimetype is only the pre-fetch seed. The
-    // consumer's output-stream index/slicer (service#240) dispatches on this, so
-    // an executor whose output type is known or varies per call (sqlite → JSON,
-    // an MCP tool → whatever it returns) stamps it; omit it and the channel keeps
-    // its declared seed.
+    // to it — the channel's declared mimetype is only the pre-run seed. A
+    // runtime whose output type varies per call stamps it here; omission keeps
+    // the declared seed ({§executor-channels}).
     write: (channel: string, chunk: string, mimetype?: string) => void;
     // Transition a declared channel's lifecycle state.
     setState: (channel: string, state: ChannelState) => void;
@@ -79,20 +74,10 @@ export interface ExecArgs {
     // engine's Notice channel; operation failures belong in the returned
     // ExecResult as RFC 9457 Problem Details.
     emit: (notice: Notice) => void;
-    // Request materialization/prefetch of a substrate entry (Web Search Epic,
-    // execs#18 / service#340): the executor supplies the address (`path`) and
-    // tags; the CONSUMER creates the entry and announces it (folded row) — the
-    // executor owns zero substrate machinery (SPEC §2.6). `content` null ⇒
-    // CONSUMER-SOURCED: the consumer fetches `path` and derives the body +
-    // mimetype — the ruling-#5 prefetch, since the executor never fetches
-    // (§2.6). Resolves to the canonical model-facing address of the materialized
-    // entry; the consumer owns target encoding and entry identity, so an
-    // executor never reconstructs Plurnk syntax from an external address. A
-    // rejection means only "not materialized"; it says nothing about whether
-    // discovery metadata is valid.
-    // Consumer collision semantics: upsert + tag-union + freshness bump.
-    // Optional: absent, the producer preserves discovery results without a
-    // materialization verdict.
+    // Optional materialization request ({§executor-entry-sink}). The consumer
+    // owns acquisition, storage, tags, announcement, and the returned canonical
+    // model-facing address. `content === null` requests consumer-sourced bytes.
+    // Rejection means only that materialization failed.
     entry?: (path: string, content: string | null, opts: { tags: string[]; mimetype?: string }) => Promise<string>;
 }
 
@@ -104,7 +89,7 @@ export interface ExecResult extends SchemeResult {
 }
 
 // Side-effect class of an executor invocation, for the consumer's per-runtime
-// proposal-gating policy (service#182). The executor declares the *fact*; the
+// proposal-gating policy ({§executor-effect}). The executor declares the fact; the
 // consumer owns the *policy* (effect → propose/auto map, deployment-tunable):
 //   - host  : runs code / mutates the host (subprocess, file-backed sqlite) → propose
 //   - read  : observes external state, no host mutation (search)            → auto
@@ -112,7 +97,7 @@ export interface ExecResult extends SchemeResult {
 export type Effect = "pure" | "read" | "host";
 
 // Environment availability of a runtime, reported by `BaseExecutor.probe()`.
-// The consumer probes once at boot (per package, not per tag) and offers the
+// The consumer probes once at boot per runtime tag and offers the
 // model only the available runtimes; `detail` is model-facing — it rides the
 // 501 reason for a deliberate attempt at an unavailable runtime, so keep it
 // terse and actionable ("python3 not on PATH").
@@ -125,15 +110,12 @@ export interface RuntimeAvailability {
 export interface ExecInfo {
     runtime: string;
     glyph: string;
-    // A one-line, self-documenting usage example for this tag, surfaced verbatim
-    // in the consumer's `# Plurnk System Tools` capability sheet so the model
-    // sees the syntax + what the tag does without a separate prose description
-    // (e.g. `EXEC[search]:france population:EXEC`). Empty when the manifest
-    // entry omits it. Kept to one line — the hot-path sheet is token-sensitive;
-    // the generic `(target)` slot is documented once at the op level, not here.
+    // A compact self-documenting plurnk snippet surfaced verbatim by the
+    // consumer. Every line is a complete operation; empty when omitted
+    // ({§executor-runtime-declaration}).
     example: string;
     // Full markdown documentation for this tag — the flags, modes, and gotchas
-    // the one-line `example` can't carry. The depth a consumer can serve on
+    // the compact `example` can't carry. The depth a consumer can serve on
     // demand, separate from the always-on `example` (progressive disclosure).
     // Empty when omitted. execs owns this field; HOW it reaches the model is the
     // consumer's concern, not specified by the contract.
@@ -141,8 +123,8 @@ export interface ExecInfo {
     packageName: string;
     // Raw `plurnk.attribution` (string | string[]) from the package's manifest —
     // the credit a consumer unions onto the model call when this package's tags
-    // are active (plurnk-service#249). Package-level: every tag of a package
-    // carries the same value. `undefined` when the package omits it. Surfaced
+    // are active ({§executor-runtime-declaration}). Package-level: every tag of
+    // a package carries the same value. `undefined` when omitted. Surfaced
     // raw — the consumer owns the reservation policy (e.g. `@plurnk/`-scoped
     // attribution only from `@plurnk/` packages).
     attribution?: string | string[];
@@ -160,17 +142,9 @@ export interface RuntimeDecl {
     documentation?: string;
 }
 
-// A dynamic runtimes hook. A package that can't enumerate its tags at publish
-// time — the MCP bridge is the motivating case, its tags are the per-deployment
-// servers an operator configures in the environment (plurnk-execs#10) —
-// declares `plurnk.runtimesModule` (a path, relative to the package dir) INSTEAD
-// of a static `plurnk.runtimes[]`, pointing at a module whose `runtimes` export
-// (or default export) is this function. discover() imports and calls it at scan
-// time, but only AFTER the trust gate — an untrusted package's hook is never
-// executed. The hook reads its own config from the environment and returns the
-// same decls a static manifest would. Throwing is FAIL-HARD: a declared but
-// broken hook is a trusted-package contract violation, surfaced not swallowed
-// (unlike a malformed third-party package.json, which discover() skips).
+// Dynamic runtime declaration hook ({§executor-dynamic-runtimes}). Discovery
+// imports it only after trust admission. A declared but broken admitted hook is
+// fail-hard; a malformed unrelated package manifest is merely not discovered.
 export type RuntimesHook = () => RuntimeDecl[] | Promise<RuntimeDecl[]>;
 
 // Runtime tag → provider. Tags are a flat global namespace; collisions are a
@@ -184,8 +158,7 @@ export interface Discovery {
     // never crashes on an untrusted package — it returns them here so the
     // consumer can emit a notices note (discover() has no sink of its own).
     skipped: string[];
-    // Registered tags removed by the runtime policy (PLURNK_EXECS_<tag>=0 /
-    // PLURNK_EXECS_ONLY — the daemon boot layer; SPEC §3.3): materialized but
+    // Tags removed by the boot runtime policy ({§executor-policy}): declared but
     // NOT registered, returned so the consumer can note what the operator gated
     // off. Distinct from `skipped` (whole untrusted packages).
     disabled: string[];
@@ -193,7 +166,7 @@ export interface Discovery {
 
 export interface DiscoverOptions {
     // Scan root; defaults to `process.cwd()`. The scan target is
-    // `<cwd>/node_modules/@plurnk/`.
+    // the nearest `<cwd>/node_modules`, including scoped and unscoped packages.
     cwd?: string;
     // Explicit package directories, bypassing the node_modules scan (tests,
     // unusual layouts).

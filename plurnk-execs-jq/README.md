@@ -6,26 +6,32 @@ A `@plurnk/plurnk-execs-*` sibling built on the [plurnk-execs](https://github.co
 
 ## Invocation model
 
-**body = the jq program** (defaults to `.` if empty) · **target = optional data source** — present → jq reads it; **absent → `-n` (null input)** so the body is self-contained.
+The body is the jq program and defaults to `.` when empty. The optional target
+is the data source. Without one, jq receives `-n` (null input), so the program
+is self-contained.
 
-| EXEC | runs | does |
-|---|---|---|
-| `<<EXEC[jq]:{"a":1}:EXEC` | `jq -n '{"a":1}'` | construct / validate inline JSON |
-| `<<EXEC[jq]:[1,2,3] \| add:EXEC` | `jq -n '[1,2,3] \| add'` | pure compute, no data |
-| `<<EXEC[jq](data.json):.users[].name:EXEC` | `jq '.users[].name' data.json` | filter a file |
-| `<<EXEC[jq](data.json):EXEC` | `jq '.' data.json` | empty body → identity (pretty-print) |
-| `<<EXEC[jq](exec://…/EXEC#results):.items[]:EXEC` | filter a **prior op's output** | once the service resolves the scheme target ([plurnk-service#201](https://github.com/plurnk/plurnk-service/issues/201)) |
+| EXEC                                                     | Runs                              | Purpose                            |
+| -------------------------------------------------------- | --------------------------------- | ---------------------------------- |
+| `<<EXEC[jq]:{"a":1}:EXEC`                                | `jq -n '{"a":1}'`                 | Construct or validate inline JSON. |
+| `<<EXEC[jq]:[1,2,3] \| add:EXEC`                         | `jq -n '[1,2,3] \| add'`          | Compute without input.             |
+| `<<EXEC[jq](data.json):.users[].name:EXEC`               | `jq '.users[].name' data.json`    | Filter a file.                     |
+| `<<EXEC[jq](data.json):EXEC`                             | `jq '.' data.json`                | Apply identity to a file.          |
+| `<<EXEC[jq](search:///1/2/3#results):.[] \| .title:EXEC` | Consumer materializes the target. | Filter a prior runtime's output.   |
 
-Output → the `results` channel (`application/json`).
+Output streams to `#results` as `application/jsonl`: one compact JSON value per
+line ({§executor-output-address}).
 
 ## Effect & availability
 
-- **`effect`** — inline/`-n` → `pure`; a file-path data source → `read` (filesystem). Both **auto-run** (jq is a pure filter — no host writes or exec).
+- **`effect`** — inline/`-n` is `pure`; a target data source is `read`. Both
+  bypass the human proposal gate, then stream on the same next-turn path as
+  every EXEC ({§executor-effect}).
 - **`probe`** — `jq` on PATH (`jq --version`).
 - **Errors** return RFC 9457 Problems (`jq-error`, `spawn-failed`) in the
   terminal operation result.
 
-jq is a leaf process, so cancellation is a plain signal kill — no process-group handling needed.
+jq is a leaf process, so cancellation is a plain signal kill; it needs no
+process-group handling.
 
 ## Tests
 

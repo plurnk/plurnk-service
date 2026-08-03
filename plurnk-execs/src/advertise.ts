@@ -1,8 +1,7 @@
 import type { ExecInfo, ExecRegistry } from "./types.ts";
 
-// The EXEC family's per-loop capability contribution (SPEC §3.4, execs#24).
+// Legacy public capability contributor; reconciliation is tracked in #103.
 export default class Advertise {
-    // Deliberate wording — validated by the consumer probe, not free to edit (SPEC §3.4).
     static readonly NO_EXECS_NOTICE = "No EXEC operations permitted";
 
     static contribute(

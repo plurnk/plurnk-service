@@ -8,12 +8,14 @@ import type { ChannelDecl, Effect, ExecArgs, ExecResult, RuntimeAvailability } f
 //   target = optional data source; present → jq reads that file; absent → `-n`
 //            (null input) so the body is self-contained.
 // So `EXEC[jq](data.json):.users[].name` filters a file, `EXEC[jq]:[1,2,3]|add`
-// computes inline, `EXEC[jq](exec://…):.items[]` filters a prior op's output once
-// the service resolves the scheme target to a path (plurnk-service#201).
+// computes without input, and a tag-addressed prior stream can be the target
+// once the consumer resolves it to a path ({§executor-output-address}).
 //
 // jq is a leaf process (no shell, no grandchildren), so a plain signal-based
 // spawn is sufficient — no process-group machinery needed. It's a pure filter
-// (no host writes / exec), so `effect` is `pure`/`read` — always auto-run.
+// (no host writes / exec), so `effect` is `pure`/`read` and bypasses proposal
+// admission; output still follows the universal background stream path
+// ({§executor-effect}).
 export default class Jq extends BaseExecutor {
     // jq is a streaming filter: a multi-value program emits one value per line.
     // run() spawns with -c so each value stays compact on its own line, making
@@ -23,7 +25,7 @@ export default class Jq extends BaseExecutor {
         return { results: { mimetype: "application/jsonl" } };
     }
 
-    // Inline/`-n` → pure; a file-path data source → read (filesystem). Both auto-run.
+    // Inline/`-n` → pure; a target data source → read ({§executor-effect}).
     override effect(target: string | null): Effect {
         return target ? "read" : "pure";
     }
@@ -33,7 +35,7 @@ export default class Jq extends BaseExecutor {
         return new Promise((resolve) => {
             let out = "";
             // Honor the consumer's per-probe signal so a resolved/timed-out probe
-            // reaps the child (plurnk-execs#16); /dev/null stdin+stderr.
+            // reaps the child ({§executor-probe}); /dev/null stdin+stderr.
             const child = spawn("jq", ["--version"], { signal, stdio: ["ignore", "pipe", "ignore"] });
             child.stdout?.on("data", (c: Buffer) => { out += c.toString("utf8"); });
             child.on("error", (err) => resolve((err as NodeJS.ErrnoException).code === "ABORT_ERR"
@@ -53,7 +55,8 @@ export default class Jq extends BaseExecutor {
         }
         const program = command.trim() || ".";
         // target = the data-source file; spawn resolves a relative one against cwd
-        // (the workspace) — plurnk-execs#15. Absent → -n, the program stands alone.
+        // (the workspace). Absent → -n, the program stands alone
+        // ({§executor-sinks}).
         // -c keeps each value compact on its own line so multi-value output is
         // honest JSONL (plurnk-execs-jq#2).
         const args = target !== null ? ["-c", program, target] : ["-c", "-n", program];
@@ -68,7 +71,7 @@ export default class Jq extends BaseExecutor {
             };
             let err = "";
             // jq can read the environment (`env`, `$ENV`), so honor the
-            // consumer's scoped env when provided (plurnk-execs#8).
+            // consumer's scoped env when provided ({§exec-env-scoped}).
             const child = spawn("jq", args, { signal, cwd: cwd ?? undefined, env: env ?? process.env });
             child.stdout?.on("data", (c: Buffer) => write("results", c.toString("utf8")));
             child.stderr?.on("data", (c: Buffer) => { err += c.toString("utf8"); });

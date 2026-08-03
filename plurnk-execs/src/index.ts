@@ -6,21 +6,19 @@ export { default as SubprocessExecutor } from "./SubprocessExecutor.ts";
 export { default as ErrorDetail, ERROR_DETAIL_LIMIT } from "./ErrorDetail.ts";
 export { CommandSyntaxError, tokenizeArgv } from "./tokenizeArgv.ts";
 
-// Discovery (SPEC §3). The behavior lives on the `Discover` class; the
+// Discovery ({§executor-discovery}). The behavior lives on `Discover`; the
 // documented `discover()` entry is its `scan` static, re-exported here so the
 // public contract and the consumer's import stay unchanged.
 export const discover = Discover.scan;
 
-// Runtime enable/disable policy (SPEC §3.3). `discover()` applies it as the
+// Subtractive runtime policy ({§executor-policy}). `discover()` applies it as the
 // daemon boot layer; the consumer reuses the same parser for the per-workspace
 // client layer — Policy.enabledAcross(tag, [serviceEnv, clientLayer]) — so the
 // cascade is byte-identical at both tiers.
 export { default as Policy } from "./policy.ts";
 
-// The EXEC family's per-loop capability contribution (SPEC §3.4). Turns a zero
-// count of permitted runtimes into a single legible "No EXEC operations
-// permitted" line instead of silent absence, which the model reads as unknown
-// availability and fills by confabulating runtimes (execs#24).
+// Legacy public capability contributor. It has no production consumer; #103
+// owns whether this surface is removed or becomes the single filtering path.
 export { default as Advertise } from "./advertise.ts";
 
 // Universal operation-result helpers. Executors return the same result shape as

@@ -10,7 +10,7 @@ import type { ChannelDecl, Effect, ExecArgs, ExecResult, ExecutorMetadata, Runti
 // The consuming scheme owns all I/O and lifecycle machinery (db, channels,
 // subscriptions, AbortController bridging, wake-on-completion). The executor
 // receives sinks via ExecArgs and nothing more — it stays stateless across
-// runs beyond its construction metadata (SPEC §5; the statelessness rule is §6).
+// runs beyond its construction metadata ({§executor-role}).
 export default abstract class BaseExecutor implements SchemeHandler {
     readonly runtime: string;
     readonly glyph: string;
@@ -20,11 +20,12 @@ export default abstract class BaseExecutor implements SchemeHandler {
         this.glyph = glyph;
     }
 
-    // --- output addressing: the executor produces, the consumer reads (SPEC §2.6)
+    // Output addressing: the executor produces and the consumer reads
+    // ({§executor-output-address}).
     // The executor is a PRODUCER. Its output streams (via run()'s write/setState)
     // into a consumer-held log entry addressed at `<tag>://<coord>`; every READ /
     // FIND over that entry is the consumer's uniform machinery, identical across
-    // every tag (MCP no exception). The executor's only scheme-facing job is to
+    // every tag. The executor's only scheme-facing job is to
     // DECLARE the output scheme's manifest — derived from the runtime decl via
     // schemes' `manifestFromRuntime`, which is the sole reason it conforms to
     // SchemeHandler. It serves no read: BaseExecutor implements no read/find and
@@ -48,7 +49,7 @@ export default abstract class BaseExecutor implements SchemeHandler {
     }
 
     // Channels this executor writes to. The consuming scheme seeds the exec
-    // entry from this declaration (service#174 Q1): subprocess runtimes
+    // entry from this declaration ({§executor-channels}): subprocess runtimes
     // declare `{ stdout, stderr }`; the search sibling declares `{ results }`.
     // Implemented as a getter so executors may branch on `this.runtime` when a
     // tag dictates a different shape; most return a constant map.
@@ -66,7 +67,7 @@ export default abstract class BaseExecutor implements SchemeHandler {
     // sqlite, where the daemon itself satisfies the dependency). Subclasses
     // that depend on an external binary or external config override.
     //
-    // The consumer probes once at boot, per package, runs probes concurrently
+    // The consumer probes once at boot, per runtime tag, runs probes concurrently
     // under a per-probe timeout, and caches the result. Unlike `run()`, this
     // MAY reject — the consumer treats a rejection as `{ available: false }` —
     // but returning a crafted `{ available: false, detail }` for an expected
@@ -76,7 +77,7 @@ export default abstract class BaseExecutor implements SchemeHandler {
     // override that spawns a child (or opens a connection) MUST hand it to that
     // child so a resolved or timed-out probe REAPS it at once — otherwise an
     // in-flight `--version` write can EPIPE after the host tears down
-    // (plurnk-execs#16). Optional and ignore-safe: a probe that spawns nothing
+    // ({§executor-probe}). Optional and ignore-safe: a probe that spawns nothing
     // needs nothing.
     async probe(_signal?: AbortSignal): Promise<RuntimeAvailability> {
         return { available: true };
@@ -85,7 +86,7 @@ export default abstract class BaseExecutor implements SchemeHandler {
     // Side-effect class of an invocation against `target` (the parsed EXEC
     // `(target)` slot — the same value run() receives as `args.target`), for the
     // consumer's proposal-gating
-    // policy (service#182). MUST be pure, synchronous, and cheap — it runs on
+    // policy ({§executor-effect}). MUST be pure, synchronous, and cheap — it runs on
     // the dispatch hot path at propose time: classify the target only, NEVER
     // the command (parsing SQL/shell to judge intent is a sandbox-escape
     // footgun). Default `host` is the conservative, fail-safe end — anything we

@@ -52,8 +52,8 @@ const onPath = (bin: string): boolean =>
 // up only the interpreters present on this host, so the consumer offers the
 // model exactly what the platform has — "plurnk supports the host's REPLs out
 // of the box". The operator kill-switch (PLURNK_EXECS_<tag>=0 / _ONLY) is no
-// longer honored here — the framework's discover() applies it uniformly across
-// every plugin (SPEC §3.3), so a disabled tag never reaches probe(). All run
+// longer honored here — framework discovery applies it uniformly across every
+// plugin ({§executor-policy}), so a disabled tag never reaches probe(). All run
 // arbitrary code → effect `host` (inherited, proposal-gated). Reuses
 // SubprocessExecutor's run() (streaming + process-group abort) via spawnArgs().
 export default class Common extends SubprocessExecutor {
@@ -61,7 +61,7 @@ export default class Common extends SubprocessExecutor {
         const r = RECIPES[runtime];
         if (r === undefined) throw new Error(`plurnk-execs-common received unclaimed runtime tag '${runtime}'`);
         // With a target the program IS the target and the body is its stdin
-        // (plurnk-execs#15), run as a single script-file positional for EVERY
+        // ({§executor-subprocess-routing}), run as one script-file positional for every
         // interpreter — transient exec (owner ruling, #500): the interpreter
         // READS the file, so no exec bit is consulted and none is ever set.
         // The old sh/bash `-c` arm made the shell execve() the target instead

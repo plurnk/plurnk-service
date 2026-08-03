@@ -6,7 +6,7 @@ import type { ChannelDecl, Effect, ExecArgs, ExecResult, RuntimeAvailability } f
 const MEMORY = ":memory:";
 
 // Resolve the EXEC (target) slot to a db path: a relative target resolves
-// against cwd (the workspace, plurnk-execs#15); null — or an explicit
+// against cwd ({§executor-sinks}); null — or an explicit
 // `:memory:` — means no file target → an ephemeral in-memory db.
 const dbPath = (cwd: string | null, target: string | null): string => {
     if (target === null || target === MEMORY) return MEMORY;
@@ -35,14 +35,12 @@ const stripComments = (sql: string): string =>
 // objects; mutations write `{ changes, lastInsertRowid }`. The query/mutation
 // split is decided by `columns()` — never by parsing the SQL.
 //
-// NOTE: `effect()` (per-runtime proposal gating; :memory:→pure, file→host) is
-// pending the contract addition in plurnk-service#182 and lands when that does.
 export default class Sqlite extends BaseExecutor {
     get channels(): Readonly<Record<string, ChannelDecl>> {
         return { results: { mimetype: "application/json" } };
     }
 
-    // Always available — node:sqlite is a Node 25 builtin, in-process.
+    // Always available in the package's supported Node >=26 runtime.
     override async probe(): Promise<RuntimeAvailability> {
         return { available: true, detail: "node:sqlite" };
     }
@@ -55,7 +53,8 @@ export default class Sqlite extends BaseExecutor {
 
     async run({ command, cwd, target, signal, write, setState }: ExecArgs): Promise<ExecResult> {
         // node:sqlite is fully synchronous — no await point to interrupt mid-query —
-        // so the only place to honor an abort is before the work starts (SPEC §6).
+        // so the only place to honor an abort is before the work starts
+        // ({§executor-cancellation}).
         // Matters for a file-backed (host) statement: a cancel/KILL that lands first
         // must not still mutate the db.
         if (signal.aborted) {
@@ -133,7 +132,7 @@ export default class Sqlite extends BaseExecutor {
             // One statement per op is the contract (the results channel is one JSON
             // doc) — but SQLite's prepare compiles only the FIRST statement and
             // silently ignores the rest, so a sqlite3-CLI-style script would
-            // partially execute under a 200 (#493). sourceSQL is the compiled
+            // partially execute under a 200. sourceSQL is the compiled
             // statement's own text: any real SQL left after it is a dropped tail —
             // fail-hard, never truncate silently. Trailing whitespace/comments pass.
             const tail = stripComments(sql.slice(stmt.sourceSQL.length)).trim();

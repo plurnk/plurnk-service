@@ -8,18 +8,18 @@ The first non-subprocess `@plurnk/plurnk-execs-*` sibling, built on the [plurnk-
 
 Each tag maps to a SearXNG search category (`categories=`):
 
-| Tag | Glyph | Category |
-|---|---|---|
-| `search` | 🔎 | general |
-| `images` | 🖼 | images |
-| `videos` | 🎬 | videos |
-| `news` | 📰 | news |
-| `map` | 🗺 | map |
-| `music` | 🎵 | music |
-| `it` | 💻 | it |
-| `science` | 🔬 | science |
-| `social` | 💬 | social media |
-| `downloadable` | 📥 | files |
+| Tag            | Glyph | Category     |
+| -------------- | ----- | ------------ |
+| `search`       | 🔎    | general      |
+| `images`       | 🖼    | images       |
+| `videos`       | 🎬    | videos       |
+| `news`         | 📰    | news         |
+| `map`          | 🗺    | map          |
+| `music`        | 🎵    | music        |
+| `it`           | 💻    | it           |
+| `science`      | 🔬    | science      |
+| `social`       | 💬    | social media |
+| `downloadable` | 📥    | files        |
 
 Engine, language, and time-range selection ride the query string via SearXNG's native `!bang` and `:lang` syntax (e.g. `<<EXEC[search]:!gh node streams:EXEC`). External bangs (`!!`) are refused — they redirect rather than return results.
 
@@ -27,23 +27,28 @@ Engine, language, and time-range selection ride the query string via SearXNG's n
 
 Every tunable is an **optional env override** — no code default hides a magic number (suggested values ship in this package's `.env.defaults`).
 
-| Var | Required | Behavior if unset |
-|---|---|---|
-| `PLURNK_EXECS_SEARCH_SEARXNG_URL` | **yes** | search is unavailable — base URL of the instance (`/search` must allow `format=json`); URL userinfo is sent as HTTP Basic auth and redacted from diagnostics |
-| `PLURNK_EXECS_SEARCH_LANGUAGE` | no | SearXNG's own default |
-| `PLURNK_EXECS_SEARCH_ENGINES` | no | SearXNG's own enabled engines |
-| `PLURNK_EXECS_SEARCH_LIMIT` | no | `.env.defaults` sets 12 candidates |
-| `PLURNK_EXECS_SEARCH_TIMEOUT` | no | the consumer's signal is the deadline (SPEC §2.5); this is an extra ceiling (ms) |
-| `PLURNK_EXECS_SEARCH_SAFESEARCH` | no | instance default — `0` / `1` / `2` |
-| `PLURNK_EXECS_SEARCH_SNIPPET` | no | snippet unbounded (else max chars per result snippet) |
-| `PLURNK_EXECS_SEARCH_QUERY_PREVIEW` | no | `.env.defaults` sets 120 characters in error facts |
-| `PLURNK_EXECS_SEARCH_RAW` | no | digest mode; truthy → verbatim SearXNG payload, prefetch skipped (debug) |
+| Variable                            | Required | Behavior when unset                                                                            |
+| ----------------------------------- | -------- | ---------------------------------------------------------------------------------------------- |
+| `PLURNK_EXECS_SEARCH_SEARXNG_URL`   | yes      | Search is unavailable. URL userinfo, when present, supplies redacted HTTP Basic credentials.   |
+| `PLURNK_EXECS_SEARCH_LANGUAGE`      | no       | SearXNG default.                                                                               |
+| `PLURNK_EXECS_SEARCH_ENGINES`       | no       | SearXNG enabled engines.                                                                       |
+| `PLURNK_EXECS_SEARCH_LIMIT`         | no       | `.env.defaults` supplies 12 candidates.                                                        |
+| `PLURNK_EXECS_SEARCH_TIMEOUT`       | no       | Consumer cancellation is the primary deadline; this is an extra local ceiling in milliseconds. |
+| `PLURNK_EXECS_SEARCH_SAFESEARCH`    | no       | Instance default; accepted values are `0`, `1`, or `2`.                                        |
+| `PLURNK_EXECS_SEARCH_SNIPPET`       | no       | Snippets are unbounded.                                                                        |
+| `PLURNK_EXECS_SEARCH_QUERY_PREVIEW` | no       | `.env.defaults` supplies 120 characters for error facts.                                       |
+| `PLURNK_EXECS_SEARCH_RAW`           | no       | Digest mode; truthy emits the SearXNG payload and skips prefetch for debugging.                |
 
-The page-fetch knobs (per-page timeout, redirect hops) moved to the consumer with the fetch — the executor no longer fetches result pages (SPEC §2.6, ruling #5); schemes-http owns the prefetch and its `PLURNK_SCHEMES_HTTP_*` knobs.
+Page-fetch knobs belong to the consumer and schemes-http because the executor
+does not fetch result pages ({§executor-entry-sink}).
 
-## Page prefetch (plurnk-execs#18, service#596, SPEC §2.6)
+## Page prefetch
 
-The executor emits the digest but **never fetches** (ruling #5). It hands each unique candidate url to the consumer's `ExecArgs.entry()` sink as a **prefetch request** — `entry(url, null, { tags: [slug] })`, content consumer-sourced — and the consumer acquires, MIME-projects, and materializes the `https://` entry behind its own SSRF/redirect guards. Useful server-rendered HTML is projected directly; guarded browser rendering is attempted only when that model-facing projection is empty:
+The executor emits the digest but never fetches. It hands each unique candidate
+URL to `entry(url, null, { tags: [slug] })`; the consumer acquires,
+MIME-projects, and materializes the `https://` entry behind its own guards.
+Useful server-rendered HTML is projected directly; guarded browser rendering
+is attempted only when that projection is empty.
 
 - **Materialized:** `entry()` resolves — the row carries `materialized: true`; its body lives in the ordinary HTTP entry.
 - **Unavailable body:** `entry()` rejects (unreachable / guard-refused / empty) — the row is omitted from the model-facing digest.
@@ -55,13 +60,15 @@ preserving the upstream order of the survivors.
 
 ## Output
 
-Writes a compact ranked digest — `{ title, url, snippet, materialized? }` per
-result (plus `publishedDate` when present), capped by
-`PLURNK_EXECS_SEARCH_LIMIT` — as JSON to the `results` channel. The digest is
-the model's chooser context and rides OPEN (a few KB by design — the raw
-SearXNG payload was ~10–20× that and blew budgets, plurnk-execs#17); successful
-page bodies live in materialized HTTP entries, never the packet. Every emitted
-row names an ordinary readable resource.
+Writes a compact ranked digest—`{ title, url, snippet, materialized? }` per
+result, plus `publishedDate` when present—as JSON to `#results` under the
+emitted `search://`-family address ({§executor-output-address}). The digest is
+bounded by `PLURNK_EXECS_SEARCH_LIMIT`; successful page bodies live in
+materialized HTTP entries rather than this stream. Every emitted row names an
+ordinary readable entry.
+
+Search is a `read` effect, so it bypasses proposal review and still returns
+through the ordinary background stream path ({§executor-effect}).
 
 Failures return RFC 9457 Problems in the terminal operation result. Bounded
 aggregate acquisition progress remains a transient Notice.

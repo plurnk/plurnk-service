@@ -1,320 +1,349 @@
 # plurnk-execs — Specification
 
-Contract for `@plurnk/plurnk-execs-*` sibling packages — runtime executors that plurnk-service's `exec://` scheme dispatches to. Audience: implementer of a runtime executor. Consumer: [plurnk-service](https://github.com/plurnk/plurnk-service) (SPEC.md §6.8, §10). Contract shape settled in plurnk-service#174.
+Author contract for `@plurnk/plurnk-execs-*` runtime packages. Core consumes
+the framework; executor leaves implement it.
 
-## §1 Role
+## §executor-role Role and ownership
 
-A runtime executor handles one or more EXEC `runtime` slot values (`sh`, `node`, `python`, `search`, `news`, …). It is a `BaseExecutor` subclass that declares its output channels and implements `run()`; the framework discovers it from its `package.json` `plurnk` block. The consuming scheme owns all I/O and lifecycle machinery (db, channels, subscriptions, AbortController bridging, wake-on-completion) and hands the executor sinks — the executor stays stateless across runs beyond its construction metadata.
+An executor owns the runtime-specific mapping from an EXEC body and optional
+target to work, declared output channels, environment availability, and effect
+classification. The consumer owns dispatch, proposal policy, storage,
+subscriptions, deadlines, polling, cancellation delivery, packet projection,
+and all reads of stored output.
 
-The framework ships `SubprocessExecutor` (§4), a concrete `BaseExecutor` for
-subprocess runtimes. Runtime packages override its `spawnArgs()` hook and
-inherit process execution, streaming, cancellation, and result construction.
+```mermaid
+flowchart LR
+    Manifest["package runtime declarations"] --> Discover["framework discovery"]
+    Discover --> Registry["runtime-tag registry"]
+    Registry --> Probe["consumer instantiates and probes each tag"]
+    Request["EXEC[tag]"] --> Effect["executor effect fact"]
+    Effect --> Admission["consumer proposal policy"]
+    Admission --> Stream["consumer creates tag-addressed stream"]
+    Stream --> Run["executor run with consumer sinks"]
+    Run --> Channels["stored output channels"]
+    Channels --> Packet["consumer observation and READ/FIND"]
+```
 
-## §2 Executor contract
+`SubprocessExecutor` is the concrete base for command runtimes. It owns child
+process spawning, stdout/stderr streaming, environment handoff, exit status,
+and process-group cancellation. A subprocess leaf normally overrides only its
+spawn recipe and availability binary.
+
+## §executor-contract Author surface
 
 ```ts
 abstract class BaseExecutor {
-    readonly runtime: string;   // matched tag — "sh" / "search" / "news" / …
+    readonly runtime: string;
     readonly glyph: string;
-    constructor(metadata: { runtime: string; glyph: string });
 
-    // Channels this executor writes to; the scheme seeds the exec entry from
-    // these (§2.1). Subprocess runtimes declare { stdout, stderr }; search
-    // declares { results }.
     abstract get channels(): Readonly<Record<string, ChannelDecl>>;
-
+    get defaultChannel(): string;
     abstract run(args: ExecArgs): Promise<ExecResult>;
+    probe(signal?: AbortSignal): Promise<RuntimeAvailability>;
+    effect(target: string | null): Effect;
 }
 
-interface ChannelDecl { mimetype: string; defaultState?: ChannelState; }
-type ChannelState = "active" | "closed" | "errored";
+interface ChannelDecl {
+    mimetype: string;
+    defaultState?: "active" | "closed" | "errored";
+}
 
 interface ExecArgs {
-    runtime: string;            // matched tag; multi-tag executors branch on it
-    command: string;            // EXEC body: shell line / source / search query
-    cwd: string | null;         // process working dir (workspace workspace); null for logical runtimes
-    target: string | null;      // parsed EXEC (target) slot, interpreted per-runtime (data: input+body=program / executable: program+body=stdin); resolved vs cwd; null if none
-    env?: NodeJS.ProcessEnv;    // consumer-scoped child env — drops plurnk's own secrets (plurnk-execs#8); host env inherited when omitted
-    signal: AbortSignal;        // cancellation — executors must honor it
-    write: (channel: string, chunk: string, mimetype?: string) => void;  // write a chunk; optional mimetype stamps the channel's real per-call output type
-    setState: (channel: string, state: ChannelState) => void;            // drive a declared channel's lifecycle
-    emit: (notice: Notice) => void;                              // emit nonterminal notices (§2.4)
-    entry?: (path: string, content: string | null, opts: { tags: string[]; mimetype?: string }) => Promise<void>;  // request materialization/prefetch — content null ⇒ consumer-sourced (§2.6)
+    runtime: string;
+    command: string;
+    cwd: string | null;
+    target: string | null;
+    env?: NodeJS.ProcessEnv;
+    signal: AbortSignal;
+    write(channel: string, chunk: string, mimetype?: string): void;
+    setState(channel: string, state: ChannelState): void;
+    emit(notice: Notice): void;
+    entry?(
+        path: string,
+        content: string | null,
+        opts: { tags: string[]; mimetype?: string },
+    ): Promise<string>;
 }
 
-interface ExecResult extends SchemeResult {
-    exitCode?: number;          // subprocess family only
+interface RuntimeAvailability {
+    available: boolean;
+    detail?: string;
 }
-```
 
-`ExecResult` is the universal operation-result contract from
-`@plurnk/plurnk-schemes`. A result with `status >= 400` must carry exactly one
-RFC 9457 `problem` whose status matches. `run()` must not throw for an expected
-runtime failure: return that failure result and set the affected channel to
-`errored`. The consumer validates every result at the plugin boundary. A thrown
-exception or an invalid result is an executor contract violation, which the
-consumer converts into its own durable failure result before closing the stream.
-A nonzero subprocess exit directs the model to inspect both stdout and stderr:
-programs may report their failure through either channel, so recovery never
-presumes stderr contains the useful evidence.
-
-Third-party diagnostic text included in a Problem detail is bounded through
-`ErrorDetail` and `PLURNK_EXECS_ERROR_DETAIL_LIMIT`. The committed
-`.env.defaults` supplies the required limit. A missing or invalid configured
-limit is itself an exact
-`invalid-configuration` failure. Structured facts remain separate extensions.
-
-### §2.1 Channel topology is executor-declared
-
-The executor declares its channels; the consuming scheme seeds the exec entry from `executor.channels` rather than from a static scheme-level manifest (plurnk-service#174 Q1). This keeps channel names honest — `search` exposes `{ results: { mimetype: "application/json" } }`, and the model reads `exec://<coord>/EXEC#results` instead of an overloaded `#stdout`. `write` / `setState` are generic over channel name; writing to an undeclared channel is a contract violation.
-
-### §2.2 Availability probe
-
-```ts
-interface RuntimeAvailability { available: boolean; detail?: string; }
-
-abstract class BaseExecutor {
-    async probe(signal?: AbortSignal): Promise<RuntimeAvailability> { return { available: true }; }  // default: available
-}
-```
-
-`probe()` reports whether the runtime's *environment* is usable here — distinct from whether the *package* is installed (`discover()`). Pure / in-process runtimes (node, sqlite) inherit the available default; runtimes depending on an external binary (`python` → `python3 --version`) or config (`search` → `SEARXNG_URL`) override. `SubprocessExecutor` probes its `binary` getter (`null` = always available).
-
-Consumer contract (plurnk-service#181): probe **once at boot, per package** (not per tag — stamp all of a package's tags with the one result), **concurrently under a per-probe timeout**, and **cache**. The per-probe deadline/cancellation is delivered as the optional **`signal`** — a probe that spawns a child or opens a connection MUST hand `signal` to it, so a resolved or timed-out probe **reaps** it immediately (else an in-flight `--version` write can `EPIPE` after host teardown, plurnk-execs#16). `signal` is ignore-safe: a probe that spawns nothing needs nothing. `probe()` MAY reject; the consumer treats rejection as `{ available: false, detail: <error> }`, so a buggy probe degrades only its runtime. The model is offered a positive list of available runtimes; an attempt at an unavailable one returns **501 carrying `detail`** (so `detail` is model-facing — terse and actionable). A configured default runtime that probes unavailable is a **fail-hard boot error**.
-
-### §2.3 Effect (proposal gating)
-
-```ts
 type Effect = "pure" | "read" | "host";
-
-abstract class BaseExecutor {
-    effect(target: string | null): Effect { return "host"; }  // default: conservative
-}
 ```
 
-`effect()` classifies an invocation's side effect so the consumer can gate the proposal lifecycle per runtime (service#182). The executor declares the **fact**; the consumer owns the **policy** (an `effect → propose/auto` map, deployment-tunable: default `host → propose`, `read`/`pure → auto`).
+The framework constructs one executor per matched runtime tag with
+`{ runtime, glyph }`. A package that declares several tags may branch on
+`this.runtime`; it must not retain per-run state on the executor instance.
 
-- **`host`** — runs code / mutates the host (subprocess; file-backed sqlite) → propose.
-- **`read`** — observes external state, no host mutation (search) → auto.
-- **`pure`** — no observable side effect (sqlite `:memory:`, transforms) → auto.
+### §executor-sinks Inputs and sinks
 
-`effect()` MUST be **pure, synchronous, and cheap** — it runs on the dispatch hot path at propose time. It classifies the **target only** (known pre-`run()`); it MUST NOT inspect the command (parsing SQL/shell to judge intent is a sandbox-escape footgun) and MUST NOT do I/O. Default `host` is conservative — anything unclassifiable is proposed (fail-safe, the mirror of `probe()`'s fail-open default).
+| Field      | Contract                                                                                                |
+| ---------- | ------------------------------------------------------------------------------------------------------- |
+| `runtime`  | The matched tag.                                                                                        |
+| `command`  | The EXEC body: source, query, filter, or command according to the leaf contract.                        |
+| `cwd`      | Consumer-selected project working directory, or `null` for a runtime that has none.                     |
+| `target`   | Consumer-resolved optional EXEC target. The leaf defines how target and body map to its tool.           |
+| `env`      | Exact child environment when supplied. A subprocess must use it instead of reconstructing host policy.  |
+| `signal`   | Consumer cancellation. Every executor must honor it at each cancellable boundary.                       |
+| `write`    | Append to a declared channel. An optional mimetype replaces that channel's per-call output type.        |
+| `setState` | Move a declared channel from `active` to terminal `closed` or `errored`.                                |
+| `emit`     | Publish a transient, nonterminal Notice.                                                                |
+| `entry`    | Optionally request consumer-owned entry materialization and receive its canonical model-facing address. |
 
-For `exec`, per-runtime `effect()` supersedes the static `Exec.manifest.flags.proposes`. Auto-run (`read`/`pure`) runtimes may run **inline** — synchronous return rather than entry-then-read-next-turn — while still landing the result as a re-readable entry.
+The executor receives callbacks, never a database, subscription registry,
+packet builder, or wake mechanism. Related lifecycle behavior remains on the
+consumer side of {§executor-role}.
 
-### §2.4 Notices
+### §executor-channels Channels
 
-`emit` is for nonterminal, transient notices such as bounded progress. It is not
-a failure channel and cannot affect the durable result, stream lifecycle,
-scheduler, recovery, or model-visible truth. Terminal failures live only in
-`ExecResult.problem`; duplicating them into notices creates two authorities
-that can disagree.
+The executor declares every channel it may write. The consumer seeds a stream
+entry from that declaration and rejects writes or state transitions for an
+undeclared channel. `defaultChannel` is the fragmentless READ channel and
+defaults to the first declared channel. Subprocess executors declare
+`stdout` and `stderr`, with `stdout` first; logical runtimes commonly declare
+`results`.
 
-The `Notice` envelope remains mirrored locally so executor plugins need not
-depend on the grammar package.
+### §executor-results Results, failures, and notices
 
-### §2.5 Deadlines & polling — the executor stays oblivious
+`run()` resolves one universal `SchemeResult`; `ExecResult` adds an optional
+subprocess `exitCode`. A result with `status >= 400` carries exactly one RFC
+9457 Problem whose status agrees with the result. Expected runtime failures
+resolve as failure results and leave affected channels `errored`; they do not
+throw. The consumer validates the boundary and converts a throw or invalid
+result into its own durable failure before closing the stream.
 
-An EXEC op may carry a `<L>` line-marker slot read as `[TIMEOUT_SECONDS, POLL_SECONDS?]` (#277): `<1800>` hard-kills at 1800s, `<-1>` declines a per-exec deadline (still loop-life bounded), `<1800,300>` fixes a 300s loop-poll. **None of this touches the executor contract.** `run()` stays stream-only and abort-driven:
+A nonzero subprocess exit directs the caller to inspect both stdout and stderr
+because either may contain the useful diagnostic. Third-party diagnostic text
+entering a Problem is bounded with `ErrorDetail` and the required
+`PLURNK_EXECS_ERROR_DETAIL_LIMIT`. Missing or invalid configuration is itself
+an `invalid-configuration` failure. Structured diagnostic facts remain
+separate Problem extensions.
 
-- The **timeout** is the consumer's: at the deadline it fires `args.signal` — arriving as an ordinary abort the executor already honors (the §4 process-group SIGHUP→grace→KILL path). No deadline awareness in the executor.
-- The **poll** is purely the consumer's loop: it wakes on a cadence while the channel is `active`, reading the partial output the executor already streams incrementally via `write`. The executor never sees a tick; it's non-destructive.
+`emit` is only for transient progress or other nonterminal observations. It
+cannot own failure truth, change the terminal result, or drive the scheduler.
+The runtime-neutral Notice types are re-exported from
+`@plurnk/plurnk-contracts`; they are not redefined by this package.
 
-**Default poll — exponential backoff, not park-blind (owner ruling, #519).** An absent poll (`<T>`, `<T,-1>`, or no slot) does **not** mean "never wake" — the consumer applies a default **exponential backoff, base 60s, 8 turns** (both operator-tunable: `PLURNK_SERVICE_EXEC_POLL_SEC` / `PLURNK_SERVICE_EXEC_POLL_TURNS`): the loop wakes at 60s, 120, 240 … doubling for 8 turns then holding at the cap. This reverses the earlier park-blind default, under which a hung exec (a deadlock, a lock-wait, a bare interpreter on stdin) held its worker for the whole loop life with the model never regaining a turn. The wake is **non-destructive and model-driven**: each tick hands the model a turn to observe the partial output and decide — re-park a legitimately slow long-runner, or **KILL** a stuck one. There is deliberately **no auto-kill**: only the model can tell a silent deadlock from a silent `cargo build`, so disposal is its judgment, not a timer's. Overrides: `<,P>` (P>0) fixes the cadence; `<,0>` opts out to a blind park for an exec a model truly wants unwatched. Mechanism + knobs live in the consumer (plurnk-service).
+### §executor-effect Effect is an admission fact
 
-So the feature is contract-free for executors and applies to all of them uniformly: a long-runner is watched by the backoff (or the op slot), a fast/logical executor (search) terminates before the first tick and the slot is a no-op.
+`effect(target)` is pure, synchronous, cheap, and target-classified. An
+installed executor does not parse authored code or commands to infer safety.
+Unknown or unclassifiable work remains `host` through the conservative default.
 
-### §2.6 Output addressing — the executor produces, the consumer reads
+| Effect | Executor fact                                | Default consumer admission |
+| ------ | -------------------------------------------- | -------------------------- |
+| `host` | Runs host code or may mutate host state.     | Human proposal gate.       |
+| `read` | Observes external state without mutating it. | Automatically accepted.    |
+| `pure` | Has no externally observable side effect.    | Automatically accepted.    |
 
-An executor is a **producer, not a reader.** Its whole output contract is `run()` writing channels (`write` / `setState`), emitting optional nonterminal notices, and returning one terminal result; the consumer streams those into an ordinary log entry addressed at **`<tag>://<coord>`** (the worker's `<runtime>:///<loop>/<turn>/<seq>`), and every READ/FIND over that output is the consumer's uniform entry machinery — identical for `sh`, `search`, `sqlite`, and MCP alike. The executor never reads, slices, summarizes, or orients its own output.
+The classification controls admission only. After acceptance, every EXEC uses
+the same background stream path: output is not returned in the dispatching
+turn. Core owns that composed behavior in {§exec-host-proposes},
+{§exec-readpure-ungated}, and {§exec-stream}.
 
-The executor's only scheme-facing contribution is a **derived manifest** — `OutputScheme.manifestFromRuntime({ name, glyph, channels, defaultChannel })`, built from the runtime declaration, no separate authoring — so the consumer can mint a per-tag output scheme (name = the tag) and the model can address `<tag>://`. `defaultChannel` (first declared channel; subprocess → `stdout`) is where a bare `READ <tag>://<coord>` lands. `discover()` is unchanged (static install/config truth, §3); activation (§3.2) is the consumer's runtime overlay.
+### §executor-probe Availability is per runtime tag
 
-**No executor read-face; no per-runtime read, no orientation receipt.** `BaseExecutor` implements no `read`/`find`, and none is wired downstream — not one sibling in the family overrides them (the "rich" `sqlite`/MCP included), and the consumer's per-tag scheme serves every READ through its single `DefaultRead` resolver (which holds the `Mimetypes` instance + output store the executor never sees) over the stored entry. Orientation is **model-pulled**: the model probes an output's shape by querying the entry (FIND / READ with jsonpath / glob / line-range) against the neutral `{ mimetype, tokens, lines }` every entry carries, pulling only the slice it wants. An engine-pushed shape digest *is* the catalog-as-index the paradigm forbids ("the instant it did, it would be an index again") — so there is none, and the answer to service#240's *"where is the OrientIndex receipt built?"* is **nowhere; nothing builds one.** A `<tag>://` entry is folded by default, so output never floods context regardless; the one real risk — a chatty runtime filling sqlite — is a daemon storage-cap concern, not an executor one.
+`probe(signal?)` reports whether this runtime tag can work in the current
+environment. The default is `{ available: true }`; leaves override it for
+external binaries or required configuration. `detail` must be terse and
+actionable because the consumer may return it with a 501 failure.
 
-Module-owned executors are not exceptions: `run()` writes results through declared
-channels exactly like an installed executor. A module may also register a
-separate same-name resource facet, but unclaimed executor-output coordinates
-still use the consumer's uniform entry machinery.
+The consumer constructs and probes one executor per tag at boot, concurrently
+under a per-probe timeout, then caches each verdict. This is intentionally
+per-tag: a multi-tag package can expose only the interpreters actually present.
+A probe that spawns or opens a connection passes the supplied signal through so
+completion or timeout reaps its work. Probe rejection or timeout makes only
+that tag unavailable; a configured default runtime that is absent or
+unavailable is a fail-hard boot error.
 
-**Entry materialization is a sink, not a substrate breach (execs#18 / service#340).** `ExecArgs.entry?(path, content, { tags, mimetype }) → Promise<void>` lets an executor *request* that the consumer materialize a substrate entry — the same shape as `write`/`emit` (consumer-implemented callbacks; the executor never touches storage, tagging, or announcement machinery). The consumer creates the entry, applies the tags, and announces it through its ambience as a **folded** row (the meta line carries path + tokens; page-scale bodies never ride a wake packet). Consumer collision semantics: upsert content, union tags, bump freshness. A rejected `entry()` means only *not materialized*; it does not invalidate upstream discovery metadata. The sink is optional: absent, producers degrade gracefully without a materialization verdict. This closed the gap that §2.6's earlier absolutism forced on the search flow (a double-fetch dance routed around the missing sink); the principle — executors own zero substrate machinery — is unchanged.
+## §executor-output-address Tag-addressed output
 
-**The search prefetch seam resolves here (service#596).** The consumer implements `entry()` as auto-prefetch: acquire, MIME-project, and materialize the `https://` entry. A guarded browser render is a fallback only when the HTTP response has no useful model-facing projection. Resolve/reject becomes the candidate's admission verdict: failed materializations are omitted while survivors retain SearXNG rank. Plurnk does not otherwise rerank or judge the results. There is no executor pre-validation (that would fetch — forbidden) or double fetch. A URL prefetch carries no page body for the executor to supply, so `content` is **consumer-sourced** — the executor contributes the candidate `url` as `path` and learns only the materialization verdict, never the body.
+`exec` is the consumer's internal EXEC dispatcher; it is not a model-facing
+output namespace. Every available runtime receives one derived read-only
+scheme face from its tag, channels, and default channel. The executor authors
+no second scheme manifest.
 
-Search acquisition emits aggregate `search_progress` notices through `emit`: a start, at most approximately ten intermediate milestones, and a terminal `complete`, carrying `completed`, `total`, `materialized`, `rejected`, and `percent`. It never emits candidate URLs or one event per result. This is compact live client state, not the ranked digest and not a substitute for its durable per-result verdicts.
+| Output                    | Model-facing address                                               |
+| ------------------------- | ------------------------------------------------------------------ |
+| Calling worker's stream   | `<tag>:///<loop>/<turn>/<sequence>#<channel>`                      |
+| Fragmentless read         | `<tag>:///<loop>/<turn>/<sequence>` → the declared default channel |
+| Example subprocess stdout | `sh:///1/2/3#stdout`                                               |
+| Example structured result | `sqlite:///1/2/3#results`                                          |
 
-## §3 Discovery
+The executor only produces through `write` and `setState`. The consumer stores
+the entry and serves every later READ/FIND through uniform entry machinery.
+An executor does not implement a private read face, orientation receipt,
+slicer, or index. Owner-qualified cross-worker addresses and packet projection
+belong to core's {§stream-owner-scoped} and {§exec-stream} contracts.
 
-`discover(options?) → { registry, skipped, disabled }`. Scans **every installed package** under the nearest `node_modules` (walking up from `cwd` for workspace hoisting) — scope-agnostic (scoped and unscoped) — for the exact string `plurnk.kind === "exec"` ({§plugin-family-kind}), and registers each runtime tag from `plurnk.runtimes[]`. The scan is deliberately not limited to `@plurnk/*`: a **third party** can publish an executor under their own scope (`@acme/acme-execs-foo`) and have it discovered with no involvement from this project. (No aggregator package: the default bundle is the daemon's own dependency list, not a metapackage.)
+### §executor-entry-sink Optional materialization
+
+`entry(path, content, { tags, mimetype? })` is a consumer-implemented sink, not
+executor access to storage. The consumer materializes or updates an entry,
+unions tags, announces it through its ordinary ambience, and resolves the
+canonical model-facing address. `content === null` requests consumer-sourced
+acquisition. Rejection means only that this materialization failed; it does not
+invalidate the executor's upstream result. When the sink is absent, the
+executor preserves its result without inventing a materialization verdict.
+
+## §executor-discovery Discovery and registration
+
+`discover(options?)` scans every scoped and unscoped package under the nearest
+`node_modules` for the exact declaration `plurnk.kind === "exec"`. It returns
+`{ registry, skipped, disabled }`, where the registry maps each flat runtime
+tag to its declaration and package owner.
 
 ```json
 {
-    "name": "@plurnk/plurnk-execs-search",
-    "plurnk": {
-        "kind": "exec",
-        "runtimes": [
-            { "name": "search", "glyph": "🔎", "example": "<<EXEC[search]:france population:EXEC", "documentation": "# search\n\n`!bang` / `:lang` ride the query…" },
-            { "name": "news",   "glyph": "📰" }
-        ]
-    }
+  "name": "@acme/acme-execs-cobol",
+  "plurnk": {
+    "kind": "exec",
+    "runtimes": [
+      {
+        "name": "cobol",
+        "glyph": "🗄",
+        "example": "<<EXEC[cobol]:DISPLAY 'HI'.:EXEC"
+      }
+    ]
+  }
 }
 ```
 
-A package may claim multiple tags backed by one handler. Tags form a **flat global namespace**; `registry` maps tag → `{ runtime, glyph, example, documentation, packageName, attribution? }`. Unlike plurnk-mimetypes (last-loaded wins), a tag **collision is fail-hard**: two packages claiming the same runtime is an unresolvable install ambiguity the operator must fix.
+A tag collision is a fail-hard installation error naming both claiming
+packages. A package may declare multiple tags backed by the same default
+export. Discovery is scope-agnostic; third-party packages participate through
+the same contract.
 
-Each entry's optional **`attribution`** is the package's raw `plurnk.attribution` (`string | string[]`) — credit a consumer unions onto the model call when the package's tags are active (plurnk-service#249). It's **package-level** (every tag of a package carries the same value) and surfaced **raw**: the consumer owns the reservation policy (e.g. `@plurnk/`-scoped attribution only from `@plurnk/`-scoped packages). `undefined` when the package omits it.
+### §executor-runtime-declaration Runtime metadata
 
-Each entry's optional **`example`** is a one-line, self-documenting usage example surfaced **verbatim** by the consumer in its `# Plurnk System Tools` capability sheet so the model learns the tag's syntax + purpose in one line instead of a separate prose description (plurnk-execs#7). It MUST be the **complete canonical op, `<<`-delimited** — `<<EXEC[tag]:body:EXEC` (or `<<EXEC[tag](target):body:EXEC`) — because the consumer renders it verbatim into the sheet; an example missing the `<<` opener teaches the model a malformed op. Defaults to `""` when omitted. Kept to a single line on purpose — the sheet is hot-path and token-sensitive; the generic `(target)` slot is documented once at the op level, not repeated per tag.
+| Field           | Meaning                                                                                            |
+| --------------- | -------------------------------------------------------------------------------------------------- |
+| `name`          | Flat runtime tag and derived output-scheme name.                                                   |
+| `glyph`         | Optional presentation glyph.                                                                       |
+| `example`       | Optional compact, verbatim `plurnk` snippet. Each line is a complete `<<`-delimited operation.     |
+| `documentation` | Optional full Markdown reference. `docs/<tag>.md` wins over the inline manifest field.             |
+| `attribution`   | Optional package-level `string \| string[]`, copied raw to every declared tag for consumer policy. |
+| `packageName`   | Package that owns and default-exports the executor implementation.                                 |
 
-Each entry's optional **`documentation`** is full markdown — the flags, modes, and gotchas the one-liner can't carry. It is the depth a consumer can serve on demand, separate from the always-on `example` (progressive disclosure). The **source of truth is a `docs/<tag>.md` file** in the package (the docs convention; ship it via `files`), which `discover()` reads into `documentation`; the inline `documentation` manifest field is the fallback when no file ships. Defaults to `""`. The execs contract is the two fields; **how** the consumer surfaces them to the model — an in-context one-liner, the full doc fetched when the model wants it — is the consumer's (plurnk-service's) concern, not specified here.
+The framework carries example and documentation content unchanged. The
+consumer decides when and how to present either surface.
 
-### §3.1 Dynamic runtimes (per-deployment tags)
+### §executor-dynamic-runtimes Dynamic declarations
 
-A plugin package whose tags are not known at publish time declares
-**`plurnk.runtimesModule`** (an export subpath, resolved through the package's
-export map) **instead of** a static `plurnk.runtimes[]`:
+A trusted package whose tags depend on deployment configuration may declare
+`plurnk.runtimesModule` as an exported subpath instead of a static
+`plurnk.runtimes[]` array. Its named `runtimes` export, or default export,
+returns `RuntimeDecl[] | Promise<RuntimeDecl[]>`. Static declarations win when
+both fields are present.
 
-```json
-{
-    "name": "@acme/executor-fleet",
-    "plurnk": { "kind": "exec", "runtimesModule": "./runtimes" }
-}
-```
+Discovery resolves the subpath through the package export map and imports it
+only after the trust gate. An unloadable hook, missing function export, thrown
+hook, or non-array result is a fail-hard contract violation by the admitted
+package. The hook enumerates configuration; reachability remains the per-tag
+probe's job.
 
-The module's **`runtimes`** export (or its default export) is a hook `() => RuntimeDecl[] | Promise<RuntimeDecl[]>` returning the same decls a static manifest would (`{ name, glyph?, example?, documentation? }`). `discover()` imports and calls it at scan time and registers the result exactly as if the decls were static (a `docs/<tag>.md` file still wins over an inline `documentation`, though dynamic tags rarely ship one). The hook reads its own config from the environment — it must be cheap and **must not** depend on network reachability (that is `probe()`'s job, per server, at boot).
+### §executor-trust Trust precedes executable discovery hooks
 
-Two guarantees frame the hook:
+The shared plugin trust predicate runs before a dynamic runtime module is
+imported. A withheld package executes no hook and is returned in
+`Discovery.skipped` for consumer presentation. Discovery silently ignores a
+package that does not form a readable executor manifest; once an admitted
+package declares executable hook code, its broken hook is surfaced rather than
+swallowed.
 
-- **Trust-gated execution.** The hook is imported only after the shared trust boundary admits its package ({§plugin-trust-boundary}), so an untrusted package's code is never executed.
-- **Fail-hard on a broken hook.** An unloadable module, a missing/non-function export, or a non-array return is a **contract violation by a trusted package** (its own packaging or config) and throws with the cause attached — surfaced, not swallowed. This is deliberately stricter than a malformed third-party `package.json`, which `discover()` silently skips: a package that *declares* a hook owns making it work.
+### §executor-policy Subtractive runtime policy
 
-`runtimes[]` and `runtimesModule` are mutually exclusive; if both are present the **static array wins** and the hook is never loaded.
+Discovery applies the daemon's registration policy to every tag. The exported
+`Policy` parser can apply the same grammar to additional consumer-owned layers.
 
-**Trust gate.** `discover()` enforces the shared predicate before importing a dynamic hook and returns withheld package names in `Discovery.skipped`; it owns no presentation sink ({§plugin-trust-boundary}).
+| Variable                                 | Enforced effect                                         |
+| ---------------------------------------- | ------------------------------------------------------- |
+| `PLURNK_EXECS_<TAG>=0` or `false`        | Remove that tag. Keys are matched case-insensitively.   |
+| `PLURNK_EXECS_ONLY=tag-a,tag-b`          | Remove every tag not in the case-insensitive allowlist. |
+| `Policy.enabledAcross(tag, [a, b, ...])` | Keep the tag only when every supplied layer enables it. |
 
-Each runtime package's **default export** is its `BaseExecutor` subclass (also a named export — `export { default as Sh }` / `export { default }`); the consumer instantiates it per matched tag with the tag + glyph from the registry.
+Policy is purely subtractive: no layer can re-enable a tag removed by another.
+Boot-disabled tags are absent from the registry and returned in
+`Discovery.disabled`. Workspace and loop admission remain consumer concerns;
+the framework does not define a second Active/Available state machine.
 
-### §3.2 Activation (Active / Available)
+## §executor-default-inventory Current installed set
 
-Discovery answers *what is installed/configured*; **activation** answers *what is offered to the model right now*. They are distinct axes and must not be conflated - `discover()` stays static truth, activation is a runtime overlay the consumer owns on top of it (plurnk-execs#10). This generalizes across the **shared exec/scheme namespace**: a registered capability is a tag claimed once that is both `EXEC[tag]` and `tag://`, and activation operates on it whichever family it came from. Daemon-module registration is another route into the same namespace, not another executor category.
+The current `@plurnk/plurnk-execs` dependency graph installs the following
+`@plurnk/plurnk-execs-<leaf>` packages. A probe and consumer policy still
+determine which declared tags are offered in a particular workspace.
 
-**Two states, no third.** A registered capability is **Active** (in the `# Plurnk System Tools` sheet, dispatchable) or **Available** (registered, inert). "Disabled" is the *verb* (Active→Available), not a state. The consumer's capability sheet surfaces two buckets:
+| Leaf     | Declared tags                                                                                              | Effect by target                | Channels / mimetype                |
+| -------- | ---------------------------------------------------------------------------------------------------------- | ------------------------------- | ---------------------------------- |
+| `common` | `sh`, `bash`, `node`, `python`, `python3`, `perl`, `ruby`, `php`, `lua`, `deno`, `bun`, `tcl`, `bc`, `awk` | `host`                          | `stdout`, `stderr` / `text/stream` |
+| `git`    | `git`                                                                                                      | `host`                          | `stdout`, `stderr` / `text/stream` |
+| `search` | `search`, `images`, `videos`, `news`, `map`, `music`, `it`, `science`, `social`, `downloadable`            | `read`                          | `results` / `application/json`     |
+| `jq`     | `jq`                                                                                                       | no target `pure`; target `read` | `results` / `application/jsonl`    |
+| `sqlite` | `sqlite`                                                                                                   | memory `pure`; file `host`      | `results` / `application/json`     |
+| `wasm`   | `wat`, `wasm`                                                                                              | no target `pure`; file `read`   | `results` / `application/json`     |
 
-- **Tools Active** — the full one-line `example` each (the hot-path teaching cost).
-- **Tools Available** — name + glyph + `attribution` each (a word, not a line).
+Optional executor packages are not part of this installed set merely because
+they exist in the workspace.
 
-This split *is* the progressive disclosure that bounds the sheet: N available servers cost N words, not N lines.
+## §executor-subprocess Subprocess contract
 
-**Default-activation rule** (the consumer applies it; execs supplies the signals — `packageName` scope, source route, `attribution`):
-
-| Source route | Trust | Default |
-|---|---|---|
-| Installed package (boot discovery) | first-party (`@plurnk/*`) | **Active** |
-| Installed package (boot discovery) | third-party | **Available** |
-| Daemon-module registration | module-owned | **Active** when available |
-
-The principle: *Active = the operator unambiguously committed this capability ON* through an installed first-party package or a configured daemon module. Installing a third-party package is the lighter act -> Available, opt-in.
-
-**Reachability is orthogonal.** Whether a capability is Active/Available (activation) is independent of whether it is reachable/unreachable (the §2.2 `probe()` health flag). Do not overload "available" across the two axes.
-
-**Capability vs substrate.** enable/disable targets **capability** tags only (execs and executor-backed schemes). Core **substrate** schemes (`file://`, the addressing/ops ground) are always-active and never toggleable — `/disable file` must not be able to brick the address space. For an executor-backed scheme, `disable` gates *new production*; existing `tag://` entries stay READable (reads are pure).
-
-**Security - gate introduction, not activation.** `enable` / `disable` are
-not trust-gated: a client may activate any registered capability. Plugin
-registration remains bounded by the trust gate (§3). Daemon modules are
-explicit dependencies registered by the daemon rather than packages found by
-the plugin scanner.
-
-Execs owns none of the overlay machinery. Live availability, workspace policy,
-and daemon-module registration are consumer concerns.
-
-### §3.3 Runtime policy (the enable/disable cascade)
-
-A **registration** bound — a sibling of the §3 trust gate, **not** the §3.2 activation overlay. The trust gate bounds registration by *package*; the runtime policy bounds it by *tag*; `discover()` enforces both (the two operator gates on "what is registered for this daemon"). A policy-disabled tag is **absent** — not Active, not Available — so §3.2's "a client may freely activate any registered capability" still holds: the registered set is simply bounded per layer.
-
-**Grammar** (the `PLURNK_EXECS_*` namespace, identical at every tier):
-
-| Var | Effect |
-|---|---|
-| `PLURNK_EXECS_<TAG>=0` (or `false`) | surgical kill-switch for one tag |
-| `PLURNK_EXECS_ONLY=a,b,c` | allowlist — a tag not listed is disabled |
-
-The two compose within a layer (an allowlisted tag can still be individually killed). `ONLY` is reserved: a runtime tag may not be named `only`. **Keys are matched case-insensitively** — `PLURNK_EXECS_sh=0` ≡ `PLURNK_EXECS_SH=0`, the way the mcp config folds server names, so the natural lowercase-tag spelling doesn't silently no-op. Purely **subtractive** — there is no force-enable verb, by design.
-
-**The cascade is an intersection.** A tag is live iff enabled in *every* layer: `enabled(tag) = service ∧ client ∧ …`. Because each layer only subtracts, order is irrelevant and no downstream layer can undo an upstream disable — **the client can never re-enable what the service disabled**, structurally, not by a policed rule.
-
-- `discover()` applies the **daemon boot layer** (`process.env`) at registration, uniformly across every plugin (framework-guaranteed — a plugin cannot escape it, the way `-common`'s old local kill-switch let `sqlite`/`jq`/`git` slip through). Disabled tags are returned in `Discovery.disabled`.
-- The consumer applies the **per-workspace client layer** with the *same parser* — `Policy.enabledAcross(tag, [serviceEnv, clientLayer])`, or `Policy.isEnabled(tag, clientLayer)` over the already-registered set. The client declares its policy in the identical `PLURNK_EXECS_*` format; the daemon intersects. The client has no enforcement surface of its own — executors run in the daemon — so this is a structural ceiling, not a trust boundary.
-
-Framework surface: **`Policy.isEnabled(tag, env?)`** (one layer, defaults to `process.env`) and **`Policy.enabledAcross(tag, layers)`** (the intersection). To disable all standard execs except search: `PLURNK_EXECS_ONLY=search`.
-
-### §3.4 The empty-set notice (the legible no)
-
-When a loop leaves **zero** EXEC runtimes in the §3.2 *Active* bucket, the capability sheet must carry a positive statement — **"No EXEC operations permitted"** — not silent absence. The grammar still teaches `EXEC` as a valid op (the GBNF permits it); with no availability signal either way, the model reads the bare op mention as *unknown* and confabulates runtimes, burning its strikes on a gate that correctly refuses them (execs#24). The negative line closes that window: a legible *no* where silence invited a guess.
-
-**One contributor, both cases.** `Advertise.contribute(registry, isPermitted)` returns the permitted runtimes **and** the notice from the *same* filter — a non-empty result never carries a notice, so the N-runtime sheet and the 0-runtime line cannot drift out of sync.
-
-**Cause-agnostic.** `isPermitted` resolves whether a registered tag survives *this* loop's gates: execs supplies the §3.3 policy cascade as the baseline predicate, and the consumer composes stricter gates into it — the effect-typed **host bar** by which a loop mode (ask-mode) bars host-effecting ops. But *why* the set is empty — policy zeroing every tag, or the host bar catching them all — is never execs' business. Execs owns the §2.3 `effect()` classification and the count; the consumer owns the loop-mode decision and reduces it to the effect-typed bar it composes into the predicate. Nothing about the mode reaches execs. The line is short and **EXEC-scoped** — it names the op, so the model reads a bounded "no EXEC here", not a general rule — and cause-agnostic. Exact wording is the consumer's ask-mode probe to validate, not asserted here.
-
-Execs owns the notice content and the tally. It does **not** own the mode, the sheet's rendering, or the decision of when a loop bars host effects — only the single line spoken when its own count of surviving runtimes reaches zero.
-
-## §4 Subprocess executors
-
-`SubprocessExecutor` translates a runtime tag and command into
-`node:child_process.spawn` arguments:
+`SubprocessExecutor` translates a runtime, body, and optional target into:
 
 ```ts
-interface SpawnArgs { cmd: string; args: string[]; useShell: boolean; stdin?: string; }
+interface SpawnArgs {
+    cmd: string;
+    args: string[];
+    useShell: boolean;
+    stdin?: string;
+}
 ```
 
-| Runtime | Spawn |
-|---|---|
-| `""` / `"sh"` / `"bash"` | `{ cmd: command, args: [], useShell: true }` |
-| `"node"` | `{ cmd: "node", args: ["-e", command], useShell: false }` |
-| `"python"` / `"python3"` | `{ cmd: "python3", args: ["-c", command], useShell: false }` |
-| any other | `{ cmd: runtime, args: ["-c", command], useShell: false }` (conservative fallback) |
+### §executor-subprocess-routing Default routing
 
-The executor registry rejects an unknown runtime before an executor runs.
+| Runtime                    | No-target spawn                                                      |
+| -------------------------- | -------------------------------------------------------------------- |
+| `sh` / `bash`              | Shell command line.                                                  |
+| `node`                     | `node -e <command>`.                                                 |
+| `python` / `python3`       | `python3 -c <command>`.                                              |
+| Other default-base runtime | `<runtime> -c <command>`; specialized leaves override this fallback. |
 
-With a target, a subprocess executor runs the target as the program and passes
-the body as stdin: a shell runs `sh -c "<target>"`; another interpreter runs
-`<interpreter> <target>`. With no target, the body is the inline program. Data
-runtimes such as jq, sqlite, and wasm define their own mapping.
+With a target, the target is the program and the body is its stdin. Core
+stat-routes a directory target to `cwd`; a file remains the executor target.
+Data runtimes define their own target mapping.
 
-The consumer stat-routes a subprocess target: a directory becomes the command's
-working directory; a file is the program and the body is its stdin. With no
-target, the body runs from the project-root working directory.
+Subprocess leaves inherit stdout/stderr streaming, scoped-environment handoff,
+availability probing, operation results, exit code, and process-group
+cancellation. `CommandSyntaxError` during spawn translation becomes a durable
+400 `invalid-command`; other translation exceptions remain plugin contract
+violations for the consumer to contain.
 
-`SubprocessExecutor extends BaseExecutor`, declares stdout and stderr channels,
-and implements `run()`. Subclasses override
-`spawnArgs(runtime, command, target) → SpawnArgs` and optionally `binary`.
-They inherit streaming, scoped environment handling, availability probing,
-universal result construction, exit status, and process-group cancellation. Abort sends SIGHUP by default; an
-explicit kill reason supplies its signal; loop-end housekeeping may escalate to
-SIGKILL after the consumer-provided grace period.
+### §executor-cancellation Cancellation and consumer timing
 
-A `CommandSyntaxError` raised while translating model input becomes a durable
-400 `invalid-command` result with both channels errored. Other `spawnArgs()`
-exceptions remain executor contract violations and propagate to the consumer.
+Executors know only the supplied `AbortSignal`. Core owns EXEC timeout and poll
+syntax, timers, wakes, and loop lifetime in {§exec-timeout} and {§exec-poll}.
+Subprocess cancellation signals the process group: a caller-supplied kill code
+is delivered once; ordinary cancellation uses SIGHUP; loop-end housekeeping
+may escalate after the consumer-provided grace period.
 
-## §5 Consumer surface (plurnk-service)
+## §executor-consumer-boundary Required composition
 
-Per plurnk-service#174/#181/#182, realized in service `0.9.0`, the exec scheme:
+The consumer:
 
-1. Boot-discovers executors (`discover()`), `probe()`s each per-package, and offers the model the positive available-runtimes list; an unavailable runtime returns 501 carrying `probe()` `detail`.
-2. Resolves the runtime tag to its executor and runs it through `run()`, seeding the exec entry's channels from `executor.channels`.
-3. Provides the `write` / `setState` / `emit` sinks bound to its channel-write, channel-state, and transient-notice machinery; bridges its AbortController to `args.signal`; validates and preserves the exact `ExecResult` through stream close and wake projection.
-4. Gates the proposal lifecycle by `effect(target)` (`EffectPolicy`: `host → propose`, `read`/`pure → auto`), running auto-run runtimes inline (synchronous return) while still landing the result as a re-readable entry.
+1. discovers declared tags, instantiates and probes each tag, and caches the verdict;
+2. registers a derived output scheme for every admitted, available tag;
+3. resolves EXEC to exactly one tag and obtains its effect fact;
+4. applies proposal policy, creates the stream entry, and supplies sinks plus cancellation;
+5. validates the terminal result and closes every declared channel and subscription coherently; and
+6. projects stream observations and later reads without calling back into the executor.
 
-## §6 Forbidden (for siblings)
+## §executor-forbidden Forbidden in executor leaves
 
-| ❌ |
-|---|
-| Database access |
-| Imports from `@plurnk/plurnk-service/*` |
-| Mutating `ExecArgs` |
-| Holding state across `worker` calls beyond construction metadata |
-| Reading runtime output via `console.*` |
-| Ignoring `args.signal` |
-| Writing to an undeclared channel |
-| Spawning processes outside the runtime's domain (e.g. an HTTP/search runtime spawning subprocesses) |
+- Direct database, subscription, packet, or wake access.
+- Imports from `@plurnk/plurnk-service/*`.
+- Mutation of `ExecArgs` or state retained across runs.
+- Output through `console.*` instead of declared channels.
+- Writes or state transitions for undeclared channels.
+- Ignoring `args.signal` at a cancellable boundary.
+- A process or network mechanism unrelated to the leaf's declared runtime domain.

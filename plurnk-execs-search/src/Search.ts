@@ -88,24 +88,24 @@ const configuredInteger = (
 //   PLURNK_EXECS_SEARCH_SEARXNG_URL   (required)  base URL of the instance
 //   PLURNK_EXECS_SEARCH_LANGUAGE      (optional)  SearXNG's own default if unset
 //   PLURNK_EXECS_SEARCH_LIMIT         (optional)  client-side result cap; keep-all if unset
-//   PLURNK_EXECS_SEARCH_TIMEOUT       (optional)  ms; the consumer's signal is the deadline
-//                                                 (SPEC §2.5) — this is an extra local ceiling
+//   PLURNK_EXECS_SEARCH_TIMEOUT       (optional)  ms; consumer cancellation is primary
+//                                                 ({§executor-cancellation}); this is an extra ceiling
 //   PLURNK_EXECS_SEARCH_SAFESEARCH    (optional)  0|1|2
 //   PLURNK_EXECS_SEARCH_SNIPPET       (optional)  max chars per result snippet; unbounded if unset
 //   PLURNK_EXECS_SEARCH_QUERY_PREVIEW (optional)  max chars in error facts; unbounded if unset
 //   PLURNK_EXECS_SEARCH_RAW           (optional)  truthy → emit the verbatim SearXNG payload (debug;
 //                                                 skips the prefetch pass entirely)
 // No code default hides a magic number; suggested values ship in this package's
-// .env.defaults. The page-fetch knobs (timeout, redirects) moved to the consumer
-// with the fetch — the executor no longer fetches (SPEC §2.6, ruling #5).
+// .env.defaults. Page-fetch knobs belong to the consumer because the executor
+// never fetches ({§executor-entry-sink}).
 //
-// Page prefetch (plurnk-execs#18, service#596, SPEC §2.6): the executor emits
-// the ranked discovery digest but NEVER fetches — it hands each candidate URL
+// Page prefetch ({§executor-entry-sink}): the executor emits the ranked
+// discovery digest but NEVER fetches — it hands each candidate URL
 // to the consumer's entry() as a consumer-sourced prefetch request. The
 // consumer fetches/renders/materializes the https:// entry; resolve/reject
-// becomes the row's materialized verdict, never a membership or ranking filter.
-// The digest rides OPEN as chooser context; successful page bodies live in the
-// entries (schemes-http owns the guarded fetch/render), never the packet.
+// becomes the row's materialized verdict. Rejected candidates are removed while
+// surviving rows preserve SearXNG rank. Successful page bodies live in ordinary
+// entries; schemes-http owns the guarded fetch/render.
 export default class Search extends BaseExecutor {
     get channels(): Readonly<Record<string, ChannelDecl>> {
         return { results: { mimetype: "application/json" } };
@@ -175,7 +175,8 @@ export default class Search extends BaseExecutor {
         }
 
         // External bangs (`!!`) redirect to an upstream site instead of
-        // returning JSON — incompatible with a results executor (SPEC §2.2).
+        // returning JSON — incompatible with this declared results channel
+        // ({§executor-channels}).
         if (query.startsWith("!!")) {
             return fail(
                 "external-bang-refused",
@@ -239,7 +240,7 @@ export default class Search extends BaseExecutor {
         if (engines) url.searchParams.set("engines", engines);
         if (safesearch) url.searchParams.set("safesearch", safesearch);
 
-        // The consumer's signal is the deadline (SPEC §2.5); an optional search
+        // The consumer's signal is the primary deadline ({§executor-cancellation}); an optional search
         // timeout adds a local ceiling on top of it.
         // A malformed TIMEOUT is the same throw-class: AbortSignal.timeout(NaN)
         // throws, so only arm the extra ceiling for a finite positive value.
@@ -356,12 +357,12 @@ export default class Search extends BaseExecutor {
             return { status: 200 };
         }
 
-        // Page prefetch (#18, SPEC §2.6, #596): hand each candidate URL to the
+        // Page prefetch ({§executor-entry-sink}): hand each candidate URL to the
         // consumer's entry() as a prefetch request (content null ⇒
-        // consumer-sourced). The executor never fetches. Fetchability is
-        // enrichment, not relevance: a rejection leaves the SearXNG discovery
-        // row in place and records only that no body materialized. Deduped by
-        // URL; without the sink no verdict exists, so `materialized` is omitted.
+        // consumer-sourced). The executor never fetches. A rejection removes
+        // that row from the model-facing digest; surviving rows retain SearXNG
+        // order. Deduped by URL; without the sink no verdict exists, so
+        // `materialized` is omitted.
         const slug = slugify(query);
         const unique = [...new Map(capped.filter((r) => r.url).map((r) => [r.url!, r])).values()];
         let completed = 0;

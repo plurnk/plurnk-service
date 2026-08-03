@@ -1,31 +1,24 @@
-// Runtime enable/disable policy — a REGISTRATION bound, sibling to the trust
-// gate (discover.ts `#isTrusted`), NOT the §3.2 activation overlay. A disabled
-// tag is not registered at all: neither Active nor Available, simply absent. So
-// the consumer can honor "a client may freely activate any registered
-// capability" (§3.2) while the registered set itself is bounded per layer.
+// Subtractive runtime registration policy ({§executor-policy}). A disabled tag
+// is absent from the registry. Consumers may reuse the same parser for narrower
+// workspace layers.
 //
 // Grammar (the `PLURNK_EXECS_*` namespace — same at every tier):
 //   PLURNK_EXECS_<TAG>=0 | false   surgical kill-switch for one tag
 //   PLURNK_EXECS_ONLY=a,b,c        allowlist — a tag not listed is disabled
 // The two compose within a layer (a listed tag can still be individually
-// killed). `ONLY` is a reserved key: a runtime tag may not be named "only".
+// killed). The `only` tag/key collision still lacks discovery enforcement;
+// #105 owns that boundary repair.
 //
-// PURELY SUBTRACTIVE — there is no force-enable verb, and that is the whole
-// point: intersect layers (service ∩ client ∩ …) and a downstream layer can
-// only ever narrow. The client can never re-enable a tag the service disabled,
-// structurally, not by a policed rule.
+// PURELY SUBTRACTIVE: intersecting layers means no downstream layer can restore
+// a tag removed upstream.
 //
-// `env` is the policy LAYER: `process.env` for the daemon's boot layer
-// (discover's default), or a client-declared map in the exact same
-// `PLURNK_EXECS_*` format for the per-workspace client layer. One parser, both
-// tiers — the consumer feeds the client's map straight to these methods.
+// `env` is one policy layer: `process.env` at discovery, or any consumer-owned
+// map using the same `PLURNK_EXECS_*` grammar.
 export default class Policy {
     // Read a PLURNK_EXECS_<suffix> key case-INSENSITIVELY. The env-var
-    // convention is uppercase, but an operator/agent naturally writes the tag as
-    // it appears (PLURNK_EXECS_sh=0) — matching the tag they see, not shouting
-    // it — and a case-sensitive miss would silently no-op (service#328). Fold
-    // the key the way the mcp config already folds server names. Direct hit
-    // first (the common uppercase form), then a folded scan.
+    // convention is uppercase, but matching is case-insensitive so a natural
+    // lowercase tag spelling does not silently miss. Try the conventional form
+    // first, then scan folded keys.
     static #read(env: Record<string, string | undefined>, suffix: string): string | undefined {
         const key = `PLURNK_EXECS_${suffix.toUpperCase()}`;
         if (key in env) return env[key];

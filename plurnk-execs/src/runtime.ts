@@ -6,7 +6,7 @@ export default class Runtime {
     static resolve(runtime: string, command: string, target: string | null = null): SpawnArgs {
         const shell = runtime === "" || runtime === "sh" || runtime === "bash";
         // With a target the program IS the target and the body is its stdin
-        // (plurnk-execs#15): a shell runs the target as a command line (`-c`, so
+        // ({§executor-subprocess-routing}): a shell runs the target as a command line (`-c`, so
         // the shell tokenizes it — we don't); any other runtime runs it as a
         // single script-file positional. No target → the body is the program,
         // inline (`-c`/`-e`), as before.

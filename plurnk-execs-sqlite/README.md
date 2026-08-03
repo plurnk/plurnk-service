@@ -6,26 +6,27 @@ A `@plurnk/plurnk-execs-*` sibling built on the [plurnk-execs](https://github.co
 
 ## Runtime tag
 
-| Tag | Glyph | Engine |
-|---|---|---|
-| `sqlite` | 🗃 | `node:sqlite` (Node 25 builtin) |
+| Tag      | Glyph | Engine                                      |
+| -------- | ----- | ------------------------------------------- |
+| `sqlite` | 🗃    | `node:sqlite` in the supported Node runtime |
 
 ## Database target
 
 The EXEC target slot is the database file; with no target it defaults to an ephemeral in-memory db:
 
-```
-<<EXEC[sqlite]:SELECT * FROM users:EXEC            → :memory: (fresh per worker)
-<<EXEC[sqlite](./app.db):SELECT * FROM users:EXEC  → ./app.db (persistent)
+```plurnk
+<<EXEC[sqlite]:SELECT * FROM users:EXEC
+<<EXEC[sqlite](./app.db):SELECT * FROM users:EXEC
 ```
 
-`:memory:` is ephemeral — state does not persist across EXECs. Pass a file path for persistence.
+With no target, a fresh `:memory:` database exists for that operation only.
+State does not persist across EXECs. Pass a file path for persistence.
 
 ### Transient tabular calculations
 
 With no target, `:memory:` is a scratch calculator over ad-hoc tables — build one inline with `VALUES` and aggregate, no schema or file needed:
 
-```
+```plurnk
 <<EXEC[sqlite]:WITH t(item,qty,price) AS (VALUES ('a',3,2),('b',1,5)) SELECT sum(qty*price) AS total, sum(qty*price)*1.0/sum(qty) AS avg_price FROM t:EXEC
 ```
 
@@ -49,7 +50,11 @@ rejected SQL tails included in Problem facts.
 
 ## Availability & proposal gating
 
-`probe()` always reports available (`node:sqlite` is a builtin). `effect(target)` marks `:memory:` (and no target) as `pure` (auto-run) and a file-backed db as `host` (propose) — classified by the target only, never by inspecting the SQL.
+`probe()` reports available because `node:sqlite` is part of the supported Node
+>=26 runtime. `effect(target)` marks `:memory:` and no target as `pure`, while a
+file-backed database is `host`. The former bypasses the proposal gate and the
+latter requires it; both produce their result through the background stream
+path ({§executor-effect}). Classification uses only the target, never the SQL.
 
 ## Tests
 

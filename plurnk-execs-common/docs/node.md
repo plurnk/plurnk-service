@@ -8,8 +8,13 @@ The same scoped environment as `sh`: the daemon's own secrets (`PLURNK_*`, provi
 
 ## Output
 
-Whatever the snippet writes to stdout streams to the `stdout` channel (stderr → `stderr`); both are text. To return structured data, `console.log(JSON.stringify(x))` and `READ` it back. A thrown error exits non-zero (status 500) with the stack on `stderr`.
+Whatever the snippet writes to stdout streams to `#stdout`; stderr streams to
+`#stderr`. Both are text under the emitted `node:///<loop>/<turn>/<sequence>`
+address. To return structured data, use `console.log(JSON.stringify(value))`
+and READ that address. A thrown error exits nonzero (status 500) with its stack
+on stderr.
 
 ## Working directory
 
-Runs in the workspace project root by default; `EXEC[node](./dir):…` sets cwd, and relative `import` / `require` / `fs` paths resolve against it.
+Runs in the workspace project root by default. `EXEC[node](./dir):…` sets the
+working directory; relative module and filesystem paths resolve against it.
