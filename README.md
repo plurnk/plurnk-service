@@ -22,26 +22,31 @@ Everything else is implementation and may change as those ideas are tested.
 
 ## Architecture
 
-```text
-CLI / TUI / editor
-        |
-        | AG-UI over HTTP/SSE
-        v
-   plurnk-agui
-        |
-        v
-   plurnk-core ---- SQLite
-     /  |  \
-providers schemes executors
-          |
-      mimetypes
+```mermaid
+flowchart LR
+    contracts["contracts<br/>language + shared wire + generated rail"] --> providers["provider family"]
+    contracts --> capabilities["scheme / executor / mimetype families"]
+    meta["meta<br/>discovery + teaching sources"] --> providers
+    meta --> capabilities
+    contracts --> core["plurnk-service<br/>composed daemon"]
+    gbnf["gbnf<br/>GBNF parser + validator"] --> providers
+    gbnf --> core
+    providers --> core
+    capabilities --> core
+    packet["plurnkdown<br/>packet format"] -. contract .-> core
+    capabilities -. scheme + executor seams .-> mcp["MCP daemon module<br/>contract deferred"]
+    mcp -. optional module .-> core
+    core --> agui["AG-UI<br/>client interface"]
+    agui --> clients["CLI / TUI / Neovim / web clients"]
+    core --> sqlite[(SQLite)]
 ```
 
-The daemon owns state, model turns, operation dispatch, and recovery. Clients
-submit actions and render events. Plugins adapt model providers, addressable
-resources, executable capabilities, and content formats.
+The daemon owns durable agent state and composes package-owned capabilities.
+Clients submit actions and render events; plugins run in-process but retain
+their own contracts.
 
-See [ARCHITECTURE.md](./ARCHITECTURE.md) for boundaries and request flow.
+See [ARCHITECTURE.md](./ARCHITECTURE.md) for the package map, process boundaries,
+and request flow.
 
 ## Requirements
 
@@ -52,9 +57,10 @@ See [ARCHITECTURE.md](./ARCHITECTURE.md) for boundaries and request flow.
 
 ## Develop
 
-PossumTech Gitea is the canonical maintainer-development forge. GitHub remains
-the public source-distribution, external-contribution, and security-reporting
-surface.
+[PossumTech Gitea](https://repo.possumtech.com/plurnk/plurnk-service) is the
+canonical maintainer-development forge. [GitHub](https://github.com/plurnk/plurnk-service)
+is the public downstream source, external-contribution, security-reporting, and
+historical surface.
 
 ```sh
 git clone https://github.com/plurnk/plurnk-service.git
@@ -86,17 +92,15 @@ checkouts once, then set `PLURNK_CANDIDATE_SKIP_BUILD=1` for the frozen build.
 
 ## Packages
 
-| Area | Packages |
-| --- | --- |
-| Daemon and client protocol | `plurnk-core`, `plurnk-agui` |
-| Model language and shared contracts | `plurnk-contracts`, `gbnf` |
-| Model endpoints | `plurnk-providers*`, `plurnk-models`, `plurnk-aliases` |
-| Addressable resources | `plurnk-schemes*` |
-| Executable capabilities | `plurnk-execs*` |
-| Content handling | `plurnk-mimetypes*` |
+This repository is an npm workspace monorepo. Each workspace publishes under
+its own package contract; the root owns orchestration, one lockfile, and the
+cross-package gates. The complete package-to-SPEC map lives in
+[ARCHITECTURE.md](./ARCHITECTURE.md#package-ownership).
 
-This repository is an npm workspace monorepo. One lockfile and the root
-commands are authoritative for bundled packages.
+[`plurnk-contracts/plurnk.md`](./plurnk-contracts/plurnk.md) is the freshly
+reviewed model-facing canon. Its owning
+[`SPEC.md`](./plurnk-contracts/SPEC.md) distinguishes that narrow teaching from
+the tolerant parser and runtime-neutral wire contracts.
 
 ## Contributing
 
