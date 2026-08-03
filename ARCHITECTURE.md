@@ -72,24 +72,10 @@ facts have one schema and one specification owner.
 
 ```mermaid
 flowchart LR
-    subgraph daemon[One @plurnk/plurnk-service process]
-        agui["AG-UI module"]
-        core["Core engine"]
-        modules["Optional daemon modules<br/>including MCP"]
-        providers["Provider adapters"]
-        capabilities["Scheme / executor / mimetype packages"]
-        sqlite[(SQLite)]
-
-        agui -->|CoreSeam| core
-        modules -->|module lifecycle| core
-        core --> providers
-        core --> capabilities
-        core --> sqlite
-    end
-
-    clients["Thin clients"] <-->|HTTP / SSE| agui
-    providers <--> endpoints["Local or remote model endpoints"]
-    core <--> project["Project filesystem + Git"]
+    clients["Thin clients"] <-->|AG-UI over HTTP / SSE| daemon["One @plurnk/plurnk-service process<br/><br/>AG-UI · core · daemon modules<br/>provider and capability adapters"]
+    daemon <-->|Provider protocols| endpoints["Local or remote model endpoints"]
+    daemon <-->|Filesystem / Git| project["Project filesystem + Git"]
+    daemon <-->|SQLite file I/O| database[(Durable database)]
 ```
 
 `@plurnk/plurnk-service` is the only long-running platform process. Plugin and
