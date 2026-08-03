@@ -1,47 +1,36 @@
 # wss:// — WebSocket
 
-A full-duplex, persistent connection to a WebSocket origin. Unlike `http://`
-(request/response) or SSE (a one-way `http://` event stream), a WebSocket is
-**bidirectional and stateful**: you open it once, then send and receive on the
-same live connection until it closes.
+Use WebSocket for a guarded, persistent, bidirectional connection. `wss` is a
+stateful scheme, not an HTTP content type: READ claims a workspace address and
+owns its socket until terminal settlement, while concurrent SEND and KILL
+operations address that owner.
 
-## Ops
+| Operation                             | Effect                                                                             |
+| ------------------------------------- | ---------------------------------------------------------------------------------- |
+| `READ(wss://host/path)`               | Claim the address, construct the socket, and stream inbound frames into `messages` |
+| A second `READ` of the same address   | Return `409`; it never replaces the existing owner                                 |
+| `SEND[200](wss://host/path):message:` | Send through the socket claimed by READ; no claimed socket is `409`                |
+| `SEND[499](wss://host/path)`          | Cancel the owning READ through its routed subscription handle                      |
+| `KILL(wss://host/path)`               | Close the claimed socket; no claimed socket is `404`                               |
 
-| Op | Effect |
-| --- | --- |
-| `READ(wss://host/path)` | Open the socket. Inbound frames stream into the `messages` channel as they arrive; the READ holds until the socket closes. A second READ of the same target in this workspace is a `409`. |
-| `SEND[200](wss://host/path):your message:` | Push a message onto the **already-open** socket. READ it first — a SEND with no open socket is a `409`. |
-| `SEND[499](wss://host/path)` | Cancel: closes the open socket. |
-| `KILL(wss://host/path)` | Close the open socket. |
+The READ remains pending until the socket settles. Inbound frames accumulate in
+the `messages` channel, and a separate concurrent dispatch can SEND or KILL
+while that address remains claimed. Operations in one model turn run in order,
+so a SEND placed after the pending READ in that same turn cannot address it.
+An ordinary remote close finishes the subscription and the READ resolves with
+streaming status `102`.
 
-```
-<<READ(wss://echo.websocket.events)::READ
-<<SEND[200](wss://echo.websocket.events):hello:SEND
-<<KILL(wss://echo.websocket.events)::KILL
-```
+Connection identity includes the workspace, exact `ws`/`wss` protocol, host,
+non-default port, path, and ordered query. A fragment does not change socket
+identity; `messages` is the only current channel.
 
-A READ returns `102 Processing` and the socket's inbound frames accumulate in the
-`messages` channel across turns — read them as they land, the way you read any
-streaming subscription. The connection stays open for concurrent `SEND`s until
-you `KILL` it or the origin closes.
+The target is resolved and checked before socket construction. Loopback,
+link-local, RFC-1918/CGNAT, and other non-public address ranges are refused with
+`403`.
 
-## Model
-
-- **One socket per target, per workspace.** The connection a READ opens is keyed by
-  its exact protocol, host, non-default port, path, and ordered query. A later
-  SEND/KILL to the same target acts on that connection; another READ cannot
-  replace it.
-- **SSRF-guarded.** The target is resolved and checked before connecting — a
-  `ws://`/`wss://` into loopback, link-local, or RFC-1918/CGNAT space is refused
-  (`403`), the same guard the fetch path uses.
-
-## Day-one limits
-
-- **Text frames only.** Binary frames stringify loosely; structured binary is a
-  follow-up (#468).
-- **No reconnection.** A dropped socket closes the READ; re-READ to reopen.
-- **Default handshake identity.** Custom request headers on the WebSocket
-  handshake aren't wired yet (the standard `WebSocket` constructor has no header
-  slot); pending, tracked on #468.
-
-Runtime: Node ≥22 (global `WebSocket`).
+| Current transport boundary | Behavior                                                                    |
+| -------------------------- | --------------------------------------------------------------------------- |
+| Readiness                  | The constructed socket is addressable immediately; no open event is exposed |
+| Inbound payload            | `String(event.data)` in `messages`; binary semantics are not retained       |
+| Reconnection               | None; READ again after a close                                              |
+| Handshake headers          | Target header metadata is not applied                                       |

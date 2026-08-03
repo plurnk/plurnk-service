@@ -1,26 +1,6 @@
-// http(s):// scheme handler — the first greenfield `@plurnk/plurnk-schemes-*`
-// sibling, authored entirely against the stable SchemeCtx contract. It never
-// imports private service modules or depends on database layout.
-//
-// Surface — the HTTP method is the OP (grammar#46): READ→GET, SEND→POST,
-// EDIT→PUT, KILL→DELETE. Every request streams its response the same way
-// (102 Processing now; the subscription accumulates; the model reads next turn).
-//   READ(http(s)://host/path)   — GET. HTML is rendered; else raw bytes stream.
-//   SEND[200](http(s)://...)    — POST the body; response streams back.
-//   EDIT(http(s)://...):body:   — PUT the body (full-resource replace; no `<L>`).
-//   KILL(http(s)://...)         — DELETE the resource.
-//   SEND[499](http(s)://...)    — cancel an in-flight request (abort the fetch).
-//   SEND[410](http(s)://...)    — delete the locally cached response entry
-//                                 (loop disposition, NOT an HTTP DELETE — that's KILL).
-//
-// Request headers ride IN the target as trailing `{Key: value}` blocks
-// (grammar#46 — `UrlPath.headers`, ordered pairs), one header per block:
-//   READ(https://api.x/v1{Authorization: Bearer T}{Accept: application/json})
-// The SEND `[code]` is loop disposition (102/200/…), never the HTTP status —
-// the real 2xx/4xx comes back in the response `header`/`body` channels.
-//
-// `fetch` is the scheme's purpose. Node owns acquisition; eventsource-parser
-// owns the WHATWG event-stream framing used by SSE responses.
+// HTTP(S) handler. Operation-to-method semantics live in {§op-surface};
+// acquisition, materialization, publication, and query flow live in
+// {§http-lifecycle}. The implementation depends only on SchemeCtx capabilities.
 
 import { createParser, type ParseError } from "eventsource-parser";
 import type {
@@ -76,11 +56,8 @@ const replaceLastHeaderValue = (header: string, name: string, value: string): st
     return [...lines, `${name}: ${value}`].join("\n");
 };
 
-// Deep doc lives in `docs/http.md` (the constellation's docs/<name>.md
-// convention) and is loaded into the manifest at module init — the contract
-// field stays a plain string; only the authoring source moves out of line.
-// `../docs/http.md` resolves identically from src/ (test) and dist/ (published):
-// both sit one level under the package root. Missing file → fail-hard at import.
+// The package-shipped model teaching is loaded verbatim and fails hard if absent.
+// The relative path is identical from src/ during development and dist/ after build.
 const documentation = await readFile(new URL("../docs/http.md", import.meta.url), "utf-8");
 
 // What Http needs from the render foundation — narrow, so tests inject a fake.
@@ -346,19 +323,14 @@ export default class Http implements SchemeHandler {
         );
     }
 
-    // The streaming core, shared by every verb. Opens the subscription
-    // (registering the abort handle for SEND[499] routing), fetches, then EITHER
-    // renders (a GET of an HTML page is re-acquired through the browser, its
-    // readable projection becomes body, and its final DOM is archived) OR streams the raw bytes (every non-GET
-    // response and every non-HTML body). Request headers from the target's `{…}`
-    // blocks (grammar#46) ride into both the fetch and the render. Each chunk is
-    // labelled with its real mimetype via notifyChunk. Settles via close().
+    // {§http-lifecycle} One guarded direct-operation path owns seeding,
+    // subscription cancellation, response materialization, and settlement.
     async #fetchStream(target: UrlPath, ctx: SchemeCtx, method: string, body: string | undefined): Promise<PassthroughResult> {
         const address = Http.#address(target);
         if (!(address instanceof NetworkAddress)) return address;
         const url = method === "GET" ? rewriteAcquisitionTarget(address.url) : address.url;
         const { pathname } = address;
-        const headers = target.headers ?? [];  // [key,value][] — opaque to grammar, honored here
+        const headers = target.headers ?? [];
         const publishedChannel = target.fragment ?? Http.manifest.defaultChannel;
         if (!(publishedChannel in Http.manifest.channels)) {
             const availableChannels = Object.keys(Http.manifest.channels);
@@ -415,11 +387,8 @@ export default class Http implements SchemeHandler {
         const local = new AbortController();
         const handle: SubscriptionHandle = { cancel: () => local.abort() };
 
-        // Materialize the streaming target BEFORE subscribing (http#3). open()
-        // binds an EXISTING entry — only the scheme knows its channel shape, so
-        // it seeds them. Mirror exec's create-then-subscribe: write a seed entry
-        // whose channels are the manifest's (body: octet-stream placeholder,
-        // header: text/plain) — the same channels notifyChunk then populates.
+        // {§http-lifecycle} open() binds an existing entry, so the handler seeds
+        // its manifest-owned channel shape before subscribing.
         const written = await ctx.entries.write(pathname, Http.#seedEntry());
         if (Results.isErrorStatus(written.status)) return Http.#passthrough(written);
 
@@ -536,11 +505,8 @@ export default class Http implements SchemeHandler {
         }
     }
 
-    // Seed entry mirroring the manifest's channels — empty content + the seed
-    // mimetypes (body: octet-stream until the fetch retypes it via notifyChunk,
-    // header: text/plain). This is the channel-shape knowledge open() lacks; the
-    // scheme materializes the target so the subscription binds an existing entry
-    // (http#3). Fresh stream target → no tags.
+    // {§http-manifest}/{§http-lifecycle} Seed the declared channel shape before
+    // open(); notifyChunk later welds acquired content to its actual mimetype.
     static #seedEntry(): EntryData {
         const channels = Object.fromEntries(
             Object.entries(Http.manifest.channels).map(([name, mimetype]) => [name, { content: "", mimetype }]),

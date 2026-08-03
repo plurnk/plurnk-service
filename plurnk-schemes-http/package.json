@@ -1,13 +1,16 @@
 {
     "name": "@plurnk/plurnk-schemes-http",
     "version": "1.3.12",
-    "description": "http(s):// URI scheme handler for the plurnk agent runtime — fetch + streaming response body.",
+    "description": "HTTP(S) request/response and WebSocket scheme handlers for the plurnk agent runtime.",
     "keywords": [
         "plurnk",
         "scheme",
         "uri",
         "http",
-        "https"
+        "https",
+        "websocket",
+        "ws",
+        "wss"
     ],
     "homepage": "https://github.com/plurnk/plurnk-schemes-http#readme",
     "bugs": {

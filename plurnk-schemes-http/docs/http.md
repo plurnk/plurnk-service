@@ -1,65 +1,61 @@
 # http(s)://
 
-Fetch a URL. HTML is rendered (headless browser, post-JS) and returned as
-**markdown by default** (main content; nav/ads/chrome stripped). Non-HTML
-returns its readable content under the response `Content-Type`. Every request
-streams its response: status `102` now, then an ordinary fragmentless READ
-returns the sanitized body. Auxiliary transport/archive channels are never
-presented by default.
+Use a web URL as an addressable entry. An unscoped READ performs a guarded GET
+or reuses a fresh stored GET representation, then streams the selected response
+channel. HTML becomes a readable model-facing body (normally markdown); its
+faithful DOM is retained separately. Auxiliary channels are never presented by
+default.
 
-Re-reading a URL without `<scope>` **revalidates** it: the prior fetch's validators (`ETag`/
-`Last-Modified`) go out on the next READ, and if the page is unchanged the
-stored copy is served without re-rendering — always fresh, but cheap when
-nothing changed. Within the operator's freshness window a re-read serves the
-stored copy directly, skipping even that check. You just READ again; there's
-no cache flag to manage.
+| Operation                         | Remote action | Effect                                                                         |
+| --------------------------------- | ------------- | ------------------------------------------------------------------------------ |
+| Unscoped `READ(http(s)://…)`      | GET           | Acquire/reuse the response and publish the selected channel                    |
+| Scoped `READ(http(s)://…)<scope>` | None          | Read a range from the already-materialized readable response; never refetch    |
+| `FIND(http(s)://…):matcher`       | GET if needed | Prepare an exact URL, then return standard JSON metadata and match coordinates |
+| `SEND[200](http(s)://…):body:`    | POST          | Submit the body and stream the response                                        |
+| `EDIT(http(s)://…):body:`         | PUT           | Replace the whole remote resource; do not use a line scope                     |
+| `KILL(http(s)://…)`               | DELETE        | Delete the remote resource and stream the response                             |
 
-A scoped READ (`READ(url)<start,end>`) observes the already-materialized
-readable response without refetching it. If the URL has not been materialized,
-READ it once without a scope first.
+A path-pattern FIND searches only web entries already materialized in the
+workspace; a pattern cannot discover the remote web. FIND returns navigation
+metadata, not the selected page body. Use READ for content.
 
-The HTTP method is the **op**:
+| Direct response           | `body`                                           | Other channel                    |
+| ------------------------- | ------------------------------------------------ | -------------------------------- |
+| GET HTML                  | Readable projection of the guarded rendered page | Faithful rendered DOM in `#html` |
+| GET `text/event-stream`   | One event `data` value per chunk                 | Initial response in `#header`    |
+| Any other direct response | Decoded response content under its declared type | Status and headers in `#header`  |
 
-- `READ(http(s)://…)` — GET.
-- `FIND(http(s)://…):matcher` - fetch an exact URL when absent, then return
-  the standard JSON FIND metadata and match coordinates. It does not return
-  the page body; READ does. Glob targets query only web entries
-  already materialized in the workspace.
-- `SEND[200](http(s)://…):body:` — POST the body.
-- `EDIT(http(s)://…):body:` — PUT the body (replaces the whole resource; no `<L>`).
-- `KILL(http(s)://…)` — DELETE the resource.
+`#header` contains the remote HTTP status line and headers. The PLURNK
+operation result describes the streaming lifecycle; `SEND[code]` is never the
+remote HTTP status. An HTTP 4xx/5xx response still streams normally and remains
+visible in `#header`.
 
-The ordinary URL is the model-facing markdown for HTML, or readable response
-content for other textual types. Diagnostic channels require explicit access:
+Re-reading without a scope uses the stored GET when it is inside the operator's
+freshness window. Outside that window, stored ETag or Last-Modified validators
+produce a conditional GET; a 304 restores the stored channels without
+rendering. Without validators, the next READ performs a full GET. Responses to
+POST, PUT, and DELETE are not reused as later GET representations.
 
-- `#html` — faithful rendered DOM for HTML (`text/html`)
-- `#header` — response status line + headers (`text/plain`)
+A scoped READ requires an already-materialized readable body. READ the URL once
+without a scope before selecting a range.
 
-Request headers ride **inside the target** as trailing `{Key: value}` blocks —
-one header per block, so a value may contain commas/colons:
+Request headers ride inside the target as ordered trailing `{Key: value}`
+blocks, one header per block:
 
+```plurnk
+<<READ(https://api.example.com/v1/me{Authorization: Bearer TOKEN}{Accept: application/json})::READ
+<<EDIT(https://api.example.com/v1/thing/42{Authorization: Bearer TOKEN}{Content-Type: application/json}):{"done":true}:EDIT
 ```
-READ(https://api.example.com/v1/me{Authorization: Bearer TOKEN}{Accept: application/json})
-EDIT(https://api.example.com/v1/thing/42{Authorization: Bearer TOKEN}{Content-Type: application/json}):{"done":true}:
-```
 
-Percent-encode `)`, `<`, and `}` inside a header value (the path-encoding rule).
+Percent-encode `)`, `<`, and `}` inside a header value.
 
-GET acquisition handling: READ or exact FIND of a GitHub `…/blob/…` URL fetches
-its `raw.githubusercontent.com` source (line-navigable, exact) rather than the JS
-code-viewer page. The GitHub URL remains the entry identity; POST, PUT, and
-DELETE retain their addressed target.
+GET acquisition of a GitHub `…/blob/…` URL uses its
+`raw.githubusercontent.com` source. The addressed GitHub URL remains entry
+identity. POST, PUT, and DELETE never use that rewrite.
 
-Cancel / cache:
+| Control                  | Effect                                                                |
+| ------------------------ | --------------------------------------------------------------------- |
+| `SEND[499](http(s)://…)` | Cancel the routed in-flight acquisition                               |
+| `SEND[410](http(s)://…)` | Delete the local stored response; the next READ must acquire it again |
 
-- `SEND[499](http(s)://…)` — cancel an in-flight request (abort the fetch).
-- `SEND[410](http(s)://…)` — drop the locally cached copy, forcing the next READ
-  to full-fetch instead of revalidate. A local cache drop, **not** an HTTP
-  DELETE — use `KILL` to DELETE the remote resource.
-
-The `SEND[code]` is loop disposition (`102`/`200`/…), never the HTTP status —
-the real `2xx`/`4xx` comes back in `#header`.
-
-Status: `102` streaming · `499` cancelled · `502` upstream/render failure.
-
-For a persistent, bidirectional connection, see the `wss://` scheme.
+For a persistent bidirectional connection, use `wss://`.

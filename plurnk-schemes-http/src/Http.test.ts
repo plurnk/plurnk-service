@@ -33,7 +33,7 @@ import type { RenderResult } from "./Browser.ts";
 import Guard from "./Guard.ts";
 
 // A fake render foundation: returns a canned rendered page, records the call
-// (including the request headers threaded through — grammar#46).
+// including ordered request-header metadata {§op-surface}.
 const fakeBrowser = (html: string) => {
     const calls: Array<{ url: string; workerId: number; headers?: ReadonlyArray<readonly [string, string]>; guarded: boolean }> = [];
     return {
@@ -60,7 +60,7 @@ const makeCtx = (priorEntry: EntryData | null = null, overrides: CtxOverrides = 
     let deleted: string | null = null;
     let wrote: { pathname: string; entry: EntryData } | null = null;
     let observedRead: ReadStatement | null = null;
-    const seq: string[] = []; // op order — proves create-then-subscribe (http#3)
+    const seq: string[] = []; // {§http-lifecycle} operation order
     const localAbort = new AbortController();
 
     const entries: EntryCaps = {
@@ -199,7 +199,7 @@ test("manifest: name http, default channel body, requiresWeb, network-volatile",
     assert.deepEqual(Object.keys(Http.manifest.channels).sort(), ["body", "header", "html"]);
     // Self-doc for the model's packet listing (deep docs ride plurnk://schemes/http.md).
     assert.equal(Http.manifest.glyph, "🌐");
-    // example must be a complete, copy-pasteable op (http#2): the service renders
+    // The manifest example must be one complete copy-pasteable operation.
     // it verbatim into the scheme directory, so a `<<`-less / `::OP`-less form
     // mis-trains small models on op shape. Guard the well-formed `<<OP(…)::OP`
     // heredoc with a matching opener/closer op — catches the regression class
@@ -326,7 +326,7 @@ test("prepareFind preserves an unmarked authored entry without network acquisiti
     assert.equal(inspect().wrote, null);
 });
 
-// ── create-then-subscribe (http#3) ────────────────────────────────────────
+// ── acquisition lifecycle {§http-lifecycle} ───────────────────────────────
 test("READ: materializes the entry (manifest channels) BEFORE subscribing", async () => {
     const { ctx, inspect } = makeCtx();
     await withFetch(mockFetch(200, "OK", ["x"], { "content-type": "text/plain" }), async () => {
@@ -570,7 +570,7 @@ test("READ: non-HTML body is labelled with its real content-type", async () => {
     assert.equal(body[0]?.mimetype, "application/json");
 });
 
-// ── SSE (#468) ────────────────────────────────────────────────────────────
+// ── server-sent events {§sse} ─────────────────────────────────────────────
 const sseBody = (chunks: Array<{ channel: string; chunk: string }>) =>
     chunks.filter((c) => c.channel === "body").map((c) => c.chunk);
 
@@ -816,7 +816,7 @@ test("SEND with an uninterpreted status → 501", async () => {
     assert.equal(r.problem?.requestedStatus, 418);
 });
 
-// ── request headers + method verbs (grammar#46) ───────────────────────────
+// ── request headers and method operations {§op-surface} ───────────────────
 test("READ: target {…} headers are threaded into the fetch", async () => {
     const { ctx } = makeCtx();
     let seenHeaders: RequestInit["headers"];
@@ -881,7 +881,7 @@ test("KILL → DELETE (method mapping); distinct from SEND[410] cache drop", asy
     assert.equal(seenMethod, "DELETE");
 });
 
-// ── hostile-host rewrite (schemes-http#4) ──────────────────────────────────
+// ── acquisition target rewrite {§host-rewrite} ────────────────────────────
 test("GitHub blob → raw.githubusercontent rewrite (code wants source, not the SPA)", async () => {
     const { ctx, inspect } = makeCtx();
     let seenUrl = "";
@@ -947,7 +947,7 @@ test("POST/PUT/DELETE preserve the addressed GitHub blob target", async () => {
     assert.deepEqual(markers, ["POST", "PUT", "DELETE"]);
 });
 
-// ── conditional revalidation (service#341) ─────────────────────────────────
+// ── conditional revalidation {§revalidation} ──────────────────────────────
 const priorEntry = (body: string, mimetype: string, header: string, html?: string): EntryData => ({
     channels: {
         body: { content: body, mimetype },
@@ -1043,7 +1043,7 @@ test("READ revalidation: no prior entry → no conditional headers, full fetch",
     assert.equal(hadConditional, false);
 });
 
-// ── per-URL TTL at the freshness predicate (#405, service#333) ─────────────
+// ── per-URL TTL at the freshness predicate {§revalidation} ────────────────
 const stampedHeader = (ageMs: number, extra = "") =>
     `HTTP 200 OK${extra}\nx-plurnk-request-method: GET\nx-plurnk-fetched-at: ${new Date(Date.now() - ageMs).toISOString()}`;
 const withTtl = async (ttl: string | undefined, fn: () => Promise<void>) => {

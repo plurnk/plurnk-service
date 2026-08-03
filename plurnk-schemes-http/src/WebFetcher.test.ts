@@ -1,4 +1,4 @@
-// WebFetcher primitive tests (#454). Hermetic: injected fake browser, mocked
+// WebFetcher contract coverage {§prefetch}. Hermetic: injected fake browser, mocked
 // global fetch, and IP literals or explicit guard mocks (no DNS). Env from
 // --env-file=.env.defaults.
 
@@ -70,7 +70,7 @@ test("HTML → byte response first; guarded browser render is a lazy fallback", 
         "the byte-probe timeout does not close render at its salvage deadline");
 });
 
-test("#596: caller cancellation still spans byte probe and render", async () => {
+test("caller cancellation spans both byte probe and lazy render", async () => {
     const b = fakeBrowser("<html><body>rendered</body></html>");
     const caller = new AbortController();
     await withFetch((async () => resp("<html></html>", 200, { "content-type": "text/html" })) as typeof fetch, async () => {

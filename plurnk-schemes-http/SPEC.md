@@ -1,179 +1,283 @@
 # plurnk-schemes-http — Specification
 
-`http(s)://` scheme handler. Implements the `@plurnk/plurnk-schemes` author contract (SPEC §2 interface + §3.bis capability ctx). Consumed by plurnk-service via plugin discovery.
+This package owns the `http(s)://` request/response scheme, the `ws(s)://`
+full-duplex scheme, and their shared guarded acquisition and browser-rendering
+foundations. Both handlers implement the DB-free `SchemeCtx` author contract.
 
-## §1 Manifest
+## §http-manifest §1 HTTP manifest
 
-```ts
-static manifest: SchemeManifest = {
-    name: "http",
-    // Seed defaults (pre-fetch placeholders). `body` is retyped per-call via
-    // notifyChunk's mimetype arg. Rendered HTML projects into body while the
-    // faithful DOM is archived in html. `header` is always text/plain.
-    channels: { body: "application/octet-stream", header: "text/plain", html: "text/html" },
-    defaultChannel: "body",
-    category: "data",
-    scope: "workspace",
-    writableBy: ["model", "client"],
-    volatile: true,        // remote content can change between fetches
-    modelVisible: true,
-    flags: { requiresWeb: true },  // excluded under the loop's noWeb flag
-};
+| Field            | Value                         |
+| ---------------- | ----------------------------- |
+| Registered name  | `http` (`https` routes to it) |
+| Category / scope | `data` / `workspace`          |
+| Writers          | `model`, `client`             |
+| Volatile         | `true`                        |
+| Model-visible    | `true`                        |
+| Requires web     | `true`                        |
+| Default channel  | `body`                        |
+
+| Channel  | Seed type                  | Meaning                                                         |
+| -------- | -------------------------- | --------------------------------------------------------------- |
+| `body`   | `application/octet-stream` | Response payload, SSE data, or readable HTML projection         |
+| `header` | `text/plain`               | Status line, response headers, and package acquisition metadata |
+| `html`   | `text/html`                | Faithful HTML used to produce the readable body                 |
+
+`package.json#plurnk.schemes` registers `http` through the default export and
+`wss` through `Ws`.
+
+Routing is not identity. `NetworkAddress` {§network-address} retains the exact
+addressed protocol and stores
+`/<host>[:<non-default-port>]<path>[?<serialized-query>]`. Query ordering,
+duplicate names, and an explicit empty `?` remain significant. The fragment is
+a Plurnk channel selector and never enters network identity or transport.
+Request metadata affects transport but not identity. URL userinfo is rejected;
+neither credentials nor metadata are reconstructed from `raw`. Within storage
+pathnames, `%28` and `%29` canonicalize to literal parentheses and renderers
+encode them again.
+
+## §op-surface §2 HTTP operation surface
+
+| Operation                         | Remote action                         | Contract                                                                                   |
+| --------------------------------- | ------------------------------------- | ------------------------------------------------------------------------------------------ |
+| Unscoped `READ(url)`              | GET unless a fresh GET copy is usable | Seed, subscribe, materialize every channel, publish the selected channel, and return `102` |
+| Scoped `READ(url)<scope>`         | None                                  | Require a non-empty stored `body`, then delegate the requested channel and scope to READ   |
+| `FIND(url)` / matcher `READ(url)` | GET only when acquisition is required | Prepare an exact entry, then use universal query, matcher, weighting, and pagination       |
+| `FIND(pattern-url)`               | None                                  | Query already-materialized web entries; a path pattern does not discover the remote web    |
+| `SEND[200](url):body:`            | POST                                  | Stream and persist the response under the addressed URL                                    |
+| `EDIT(url):body:`                 | PUT                                   | Replace the whole remote resource; a line marker is invalid                                |
+| `KILL(url)`                       | DELETE                                | Delete the remote resource and stream its response                                         |
+| `SEND[410](url)`                  | None                                  | Delete the local stored entry                                                              |
+| `SEND[499](url)`                  | Cancellation is engine-routed         | The routed subscription handle aborts acquisition; scheme dispatch itself is a `200` no-op |
+
+Every direct network method uses the same guarded streaming path. Request
+headers are ordered target metadata: one trailing `{Key: value}` block per
+header. The loop `SEND[code]` is never the remote HTTP status; remote status and
+headers are persisted in `header`.
+
+## §http-lifecycle §3 Acquisition, materialization, and query lifecycle
+
+```mermaid
+flowchart TD
+    op{"HTTP operation"}
+
+    op -->|scoped READ| hasBody{"Non-empty stored body?"}
+    hasBody -->|yes| selected["Universal READ applies<br/>selected channel and scope"]
+    hasBody -->|no| scopeError["409 scope-requires-materialization"]
+
+    op -->|FIND or matcher READ| pattern{"Path pattern?"}
+    pattern -->|yes| query["Universal catalog, matcher,<br/>weight, and pagination"]
+    pattern -->|no| usable{"Usable exact entry?"}
+    usable -->|yes| query
+    usable -->|no| prefetch["WebFetcher GET"]
+
+    op -->|unscoped READ| fresh{"Fresh stored GET?"}
+    fresh -->|yes| replay["Seed → open → replay stored channels → close"]
+    fresh -->|no| stream["Seed entry → open subscription"]
+    op -->|POST, PUT, or DELETE| stream
+
+    prefetch --> guard["Guard.fetch validates every followed hop"]
+    stream --> guard
+    guard --> owner{"Consumer"}
+
+    owner -->|WebFetcher| prefetchType{"Accepted response?"}
+    prefetchType -->|2xx HTML| prefetchHtml["Project server HTML;<br/>render lazily only if empty"]
+    prefetchType -->|2xx text| prefetchText["Materialize complete text"]
+    prefetchType -->|dead| dead["404 not-materialized"]
+    prefetchHtml --> materialize["Write entry"]
+    prefetchText --> materialize
+    materialize --> query
+
+    owner -->|direct operation| response{"Response path"}
+    response -->|304 with stored GET| restore["Restore stored channels and refresh stamp"]
+    response -->|GET + HTML| render["Guarded browser → readable body + html"]
+    response -->|GET + SSE| events["Event data → body chunks"]
+    response -->|other| bytes["Decoded response chunks → body"]
+    restore --> close["Persist/publish → close exact result"]
+    render --> close
+    events --> close
+    bytes --> close
 ```
 
-`package.json#plurnk`: `{ "kind": "scheme", "name": "http" }`.
+| Consumer / response                      | `body`                                                           | Auxiliary materialization                 | Completion                          |
+| ---------------------------------------- | ---------------------------------------------------------------- | ----------------------------------------- | ----------------------------------- |
+| Direct GET + HTML                        | Readable projection of the guarded rendered DOM                  | Rendered DOM in `html`; render headers    | Subscription closes; op is `102`    |
+| Direct GET + `text/event-stream`         | One `data` value plus newline per `text/plain` chunk             | Initial response in `header`              | Origin close ends the subscription  |
+| Direct request + every other response    | `TextDecoder` output under the response type or octet fallback   | Response and package metadata in `header` | Response-body end closes the stream |
+| WebFetcher + non-empty 2xx HTML          | Readable projection of server HTML or the lazy rendered fallback | Selected HTML in `html`; byte headers     | Materialize, then universal query   |
+| WebFetcher + accepted non-empty 2xx text | Complete textual response                                        | Byte response in `header`                 | Materialize, then universal query   |
 
-`https` routes through the registered `http` handler, but routing is not
-identity. The shared schemes-layer `NetworkAddress` {§network-address} retains
-the exact addressed protocol and stores
-`/<host>[:<non-default-port>]<path>[?<serialized-query>]`. Query ordering,
-duplicate names, and an explicit empty `?` remain significant. Thus hosts,
-ports, protocols, paths, and queries cannot accidentally alias.
+A fragmentless direct operation publishes only `body`. An explicit fragment
+publishes that named channel. Every acquired channel remains durable even when
+it is not published to the requesting loop. FIND returns standard JSON metadata
+and match coordinates; matcher READ returns selected content and navigation
+evidence.
 
-The fragment is a Plurnk channel selector and never enters network identity or
-transport. Request metadata affects the request but not identity. URL userinfo
-is rejected; neither credentials nor metadata are reconstructed from `raw`.
-Within the pathname, `%28` and `%29` canonicalize to literal parentheses in
-storage and model-facing renderers encode them again.
+## §http-status §4 HTTP status mapping
 
-## §op-surface §2 Op surface
+| Outcome                                             | Operation status                                 |
+| --------------------------------------------------- | ------------------------------------------------ |
+| Scoped READ after its body precondition             | Exact universal entry-READ result                |
+| Exact FIND / matcher READ after preparation         | Exact universal query result                     |
+| Exact acquisition returns no WebFetcher value       | `404` (`not-materialized`)                       |
+| Exact acquisition has no non-empty HTML projection  | `422` (`no-readable-projection`)                 |
+| Direct response lifecycle completes                 | `102`                                            |
+| `SEND[410]`                                         | Exact entry-delete result                        |
+| Routed `SEND[499]` dispatch                         | `200`                                            |
+| Client-cancelled acquisition                        | `499` (`cancelled`)                              |
+| Target fails network admission                      | `403` (`ssrf-blocked`)                           |
+| Scoped READ lacks a non-empty materialized body     | `409` (`scope-requires-materialization`)         |
+| Multi-statement HTTP edit batch                     | `409` (`non-atomic-edit-batch`)                  |
+| Invalid target, channel, line edit, or URL userinfo | `400` with the corresponding stable Problem kind |
+| Direct network, render, or projection exception     | `502` (`fetch-failed`)                           |
+| Uninterpreted SEND status                           | `501` (`send-status-unsupported`)                |
 
-Implemented against the DB-free `SchemeCtx` (no `ctx.db`):
+An HTTP error status is still a successfully acquired direct response: its
+status remains in `header` and its body streams normally. WebFetcher instead
+treats a non-2xx response as unmaterializable. Handler failures use RFC 9457
+Problem Details. Caught direct-acquisition diagnostics are bounded by
+`PLURNK_SCHEMES_HTTP_ERROR_DETAIL_LIMIT` in model-facing detail while complete
+errors remain in daemon diagnostics.
 
-The HTTP method is the op: an unscoped `read` → GET, `send` (SEND[200]) → POST, `edit` → PUT (whole-body; `<L>` rejected), `kill` → DELETE. A scoped READ observes the already-materialized readable response through the standard entry operation; it never refetches and discards the requested scope. Without a materialized body it returns 409 directing an unscoped READ first. `SEND[410]` drops the cached copy; `SEND[499]` cancels in-flight; other SEND codes → 501. Request headers ride the target's `{Key: value}` blocks (grammar#46).
+## §5 Dependencies and configuration
 
-FIND and matcher READ use the schemes framework's universal data-scheme
-selection rather than an HTTP-specific query implementation. For an exact URL,
-`prepareFind` materializes a missing entry through the guarded `WebFetcher`
-byte/render path; the consumer then applies its standard catalog, matcher,
-weight, pagination, and status semantics. Glob and regex scopes survey
-already-materialized web entries because a pattern cannot discover the remote
-web. The prepared and queried identities both retain protocol and host, so a
-successful acquisition cannot miss its own entry during the standard query.
-FIND returns JSON metadata and match coordinates; READ returns content.
+| Surface           | Runtime contract                                                                 |
+| ----------------- | -------------------------------------------------------------------------------- |
+| Platform          | Node ≥26 native fetch, streams, abort signals, decoding, DNS, and `WebSocket`    |
+| SSE               | `eventsource-parser` for bounded WHATWG event-stream framing                     |
+| Browser rendering | Lazy-loaded `playwright`; normal installation provisions its compatible Chromium |
 
-Results use the `passthrough` family (read-only / network shape) — http entries are coordinate/URL-addressed, not entry-CRUD-backed.
+### §http-config Operator configuration
 
-## §3 Streaming lifecycle
+| Concern              | Contract                                                                                                 |
+| -------------------- | -------------------------------------------------------------------------------------------------------- |
+| Canonical registry   | Shipped `.env.defaults`; the daemon assembles it as a set-if-unset floor {§operator-config-env-defaults} |
+| Required values      | Missing or invalid required values fail at their owning read; code carries no hidden fallback            |
+| Browser method       | Exactly one of `launch`, `connect`, `connectOverCDP`, or `disabled`                                      |
+| Method-specific data | Endpoint belongs to connection methods; channel/executable belong to launch and are mutually exclusive   |
+| Native Playwright    | Operator-set installation variables remain authoritative                                                 |
 
-All verbs share one streaming core:
-
-1. `ctx.subscriptions.open(pathname, handle, { publishedChannel })` — registers the subscription for cancel routing and selects the one channel published to the requesting loop; returns the worker+teardown-composed `AbortSignal`. The handle's `cancel()` aborts a local `AbortController` wired to the `fetch`/render.
-2. `fetch(url, { signal })` — GET (READ) or POST (SEND[200], body from `SendBody.raw`); read the response `Content-Type`.
-3. **Render gate ({§render-lifecycle}):** a GET whose response is HTML routes to the render path; a GET whose response is `text/event-stream` routes to the SSE path ({§sse}); everything else (POST responses, non-HTML bodies) streams raw.
-4. Response status + headers are persisted in `header`.
-5. Non-HTML body is persisted in `body` under its response type. Rendered HTML → `projection.readable(finalDom, "text/html")`, then the readable result goes to `body` and the faithful DOM to `html`. A page with no readable projection fails; raw DOM never silently becomes the model-facing body.
-6. `close(result, summary)` with the exact operation result: `{ status: 200 }`
-   on clean end or an RFC 9457 Problem on failure. The optional summary is
-   presentation only.
-
-Returns `102 Processing` on success (the subscription drives the channel content). The composed signal aborting (loop.cancel) and the local handle (SEND[499]) both tear the fetch/render down.
-
-Channel publication follows the manifest contract: a fragmentless READ publishes only `defaultChannel` (`body`) and renders under the exact fragmentless URL. An explicit fragment publishes that named channel. All channels still persist, but auxiliary transport metadata and faithful DOM do not become ambient model results merely because they were acquired alongside the readable projection. Unit and core integration coverage pin both publication filtering and durable auxiliary persistence.
-
-## §4 Status mapping
-
-| Outcome | status |
-|---|---|
-| Exact FIND, live or already materialized URL | 200 standard FIND result |
-| Exact FIND, dead/unmaterializable URL | 404 (`kind: not-materialized`) |
-| Exact FIND, no readable projection | 422 (`kind: no-readable-projection`) |
-| Stream opened (READ / SEND[200] success) | 102 |
-| SEND[410] delete | as `ctx.entries.delete` returns |
-| SEND[499] cancel | 200 (engine already routed teardown to the handle) |
-| Client-cancelled fetch | 499 (`kind: cancelled`) |
-| Non-public guarded target | 403 (`kind: ssrf-blocked`) |
-| Upstream / network failure | 502 (`kind: fetch-failed`) |
-| Non-url target | 400 (`kind: bad-target`) |
-| URL userinfo | 400 (`kind: userinfo-not-allowed`) |
-| Uninterpreted SEND status | 501 (`kind: send-status-unsupported`) |
-
-Error results carry RFC 9457 Problem Details with a stable `scheme:http`
-problem type (via `Results.failure`). The daemon attaches the durable log URI
-as `instance`; malformed results fail the universal scheme-result boundary.
-Caught acquisition diagnostics are bounded in model-facing `detail` by
-`PLURNK_SCHEMES_HTTP_ERROR_DETAIL_LIMIT`; complete errors remain in daemon
-diagnostics.
-
-## §5 Dependencies
-
-The **byte path** is dependency-free: `fetch` / `AbortController` / `TextDecoder` / `ReadableStream` are Node ≥25 built-ins.
-
-The **render path** takes one runtime dependency, `playwright`, **lazy-imported** (`Browser.ts`) so byte fetches do not load it. A normal installation provisions Playwright's compatible Chromium hermetically inside the installed package (`PLAYWRIGHT_BROWSERS_PATH=0`) and boot verifies it before reporting the daemon ready; execution therefore does not depend on the installing user's home-directory cache. Playwright's native installation environment, including an operator-set `PLAYWRIGHT_BROWSERS_PATH` or `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD`, remains authoritative.
-
-`PLURNK_SCHEMES_HTTP_PLAYWRIGHT_METHOD` maps directly to Playwright's BrowserType surface: `launch` (default), `connect`, `connectOverCDP`, or `disabled`. Launch uses the provisioned Chromium unless the operator selects a supported installed-browser `CHANNEL` or exact `EXECUTABLE_PATH`. `connect` uses the full Playwright protocol; `connectOverCDP` attaches to a running Chromium browser with Playwright's documented lower-fidelity CDP path. Both require `PLAYWRIGHT_ENDPOINT`. Disabled rendering fails clearly rather than treating raw HTML as equivalent. Contradictory selections fail boot; methods never fall back into one another.
+`Http.ready()` verifies the selected browser route before the handler is
+advertised. Disabled rendering is a valid configured route and fails clearly
+if an HTML operation later requires the browser.
 
 ### §http-security-boundary Network security boundary
 
-Direct HTTP operations and `WebFetcher` use the same `Guard.fetch` byte
-transport. It accepts only credential-free HTTP(S) targets whose complete DNS
-answer contains ordinary globally reachable unicast addresses, and repeats
-that validation before every manually followed redirect hop. A refused direct
-operation returns `403`; prefetch treats it as an unmaterializable URL.
+Direct HTTP operations and WebFetcher share `Guard.fetch`. It accepts
+credential-free HTTP(S) targets only when every resolved address is ordinary
+globally reachable unicast, and repeats admission before every manually
+followed redirect. A refused or unresolvable direct target returns `403`;
+WebFetcher returns its ordinary dead value. The browser applies the same
+predicate to every navigation and subresource. WebSocket applies it to the
+initial target before constructing a socket.
 
-Redirect request transitions follow WHATWG Fetch: 301/302 rewrite POST to GET;
-303 rewrites methods other than GET/HEAD to GET; 307/308 preserve method and
-body. A body rewrite removes its body headers, and a cross-origin hop removes
-`Authorization`. Discarded redirect response bodies are cancelled. Direct and
-prefetch browser renders apply the same address predicate to every navigation
-and subresource request. Validation-time and connection-time DNS resolution
-are not yet bound to one answer; #117 owns that distinct transport question.
+Redirect transitions follow WHATWG Fetch: 301/302 rewrite POST to GET; 303
+rewrites methods other than GET/HEAD to GET; 307/308 preserve method and body.
+A body rewrite removes body headers, cross-origin redirects remove
+`Authorization`, and followed redirect bodies are cancelled. The configured
+hop limit returns the last redirect rather than following beyond the limit.
+Validation-time DNS answers are not pinned to connection-time resolution.
 
 ## §render-lifecycle §6 Render lifecycle
 
-`Browser` (`export default class`, barrel-exported as a standalone foundation) is the headless-Chromium render engine — ported from rummy.web's WebFetcher, render-only.
+| Concern       | Contract                                                                                                |
+| ------------- | ------------------------------------------------------------------------------------------------------- |
+| Direct gate   | A GET HTML response cancels the byte probe body and navigates through the guarded browser               |
+| Prefetch gate | Server HTML is primary; browser rendering is a lazy fallback only when its readable projection is empty |
+| Pool          | One warm browser per `Browser`; one atomically acquired context per worker; prefetch uses worker `0`    |
+| Navigation    | Mobile-emulated by default; `networkidle` with bounded substantive-DOM timeout salvage                  |
+| Projection    | Readable result becomes `body`; the exact HTML used becomes `html`                                      |
+| Cancellation  | Closing the page aborts in-flight navigation                                                            |
+| Shutdown      | Attempt every context and browser close, await all, then aggregate failures under {§handler-lifecycle}  |
 
-- **Gate:** a GET whose response `Content-Type` is `text/html` / `application/xhtml+xml` renders; the probe-fetch body is discarded and the browser does its own navigation. POST never renders.
-- **Render:** warm chromium (one per `Browser`), one atomically acquired per-worker `BrowserContext` keyed on `ctx.workerId`, **mobile-emulated by default** (Pixel-5-class viewport + UA — responsive sites serve lighter layouts; `PLURNK_SCHEMES_HTTP_MOBILE=0` renders desktop), navigate with `waitUntil: "networkidle"` + a salvage path (timed-out-but-rendered pages with substantive body text), serialize the final DOM via `page.content()`.
-- **Lifecycle:** `Http.ready()` verifies the selected browser route before advertisement. Under {§handler-lifecycle}, shutdown attempts every context close and the browser close, awaits all of them, then aggregates every failure.
-- **Body:** the consumer's configured mimetype family projects the serialized DOM. Its readable markdown is the decisive `body` used by READ, FIND, embeddings, weights, and the model; the faithful final DOM is archived under `html` for XPath and inspection. Direct READ and search prefetch therefore expose the same kind of model-facing content.
-- §host-rewrite **Host rewrite (bounded, first-party):** an acquisition GET for a GitHub `…/blob/…` URL uses its `raw.githubusercontent.com` source (line-navigable, exact) for both byte and render transport. Direct READ and exact FIND share this one rewrite; the originally addressed URL remains entry identity. POST, PUT, and DELETE are never retargeted. The rewritten target enters {§http-security-boundary} like any other request. This is the only host rewrite; Wikipedia was measured through the extractor and deliberately gets none (desktop already extracts the full clean article; rewrites regressed it — schemes-http#4).
-- **Config:** `.env.defaults` at the package root is the authoritative list (family-namespaced `PLURNK_SCHEMES_HTTP_*`), shipped in the tarball; the daemon assembles it into the boot floor set-if-unset (service SPEC {§operator-config-env-defaults}, schemes#31). Required numerics - `FETCH_TIMEOUT`, `SALVAGE_MIN_BODY_CHARS`, `IDLE_TIMEOUT`, `PLAYWRIGHT_TIMEOUT`, `SSE_MAX_BUFFER_CHARS`, and `ERROR_DETAIL_LIMIT` - fail hard when unset (no in-code defaults). `PLAYWRIGHT_METHOD`, `PLAYWRIGHT_HEADLESS`, `PLAYWRIGHT_CHROMIUM_SANDBOX`, and `MOBILE` are floor-defaulted and required reads. `PLAYWRIGHT_ENDPOINT` belongs only to `connect`/`connectOverCDP`; `PLAYWRIGHT_CHANNEL` and `PLAYWRIGHT_EXECUTABLE_PATH` belong only to `launch` and are mutually exclusive. `CHROMIUM_HEAP_MB` remains an optional local-launch control.
-- §revalidation **Freshness (unscoped READ):** guarded acquisition appends package-owned `x-plurnk-request-method` and `x-plurnk-fetched-at` lines after origin headers; the last value is authoritative. Only a `GET` representation can supply a direct READ's stored body, TTL stamp, or conditional validators. Inside `PLURNK_SCHEMES_HTTP_TTL_MS`, READ serves that representation with zero network round-trips. Outside the window it sends stored `ETag`/`Last-Modified` validators; `304` refreshes the package stamp and re-serves the stored channels without rendering, while any other response replaces them. `0` disables the TTL fast path. POST, PUT, and DELETE responses retain their method marker but cannot satisfy later GET freshness or exact-FIND acquisition. An unmarked authored entry remains materialized for FIND but is not a direct-READ cache representation. `SEND[410]` deletes the stored entry.
-- **Cancel:** the composed `AbortSignal` / SEND[499] handle aborts the render by closing the page (in-flight `goto` rejects promptly).
+### §host-rewrite Acquisition target rewrite
 
-- §sse **SSE (READ):** a GET whose response is `text/event-stream` is parsed by `eventsource-parser`, not streamed raw. Each event's joined `data` value dispatches as one `notifyChunk("body", …, "text/plain")`; the model reads event payloads, not framing. Comments and `event`/`id`/`retry` metadata do not enter the body. `SSE_MAX_BUFFER_CHARS` bounds an incomplete remote event; exhaustion fails the stream. Reconnection (`Last-Event-ID`) is a follow-up (#468). Events from a long-lived GET land across turns until the origin closes; the close summary counts them.
+Only acquisition GETs are eligible for host rewriting. A GitHub
+`…/blob/…` address uses the corresponding `raw.githubusercontent.com` source for
+both byte and browser transport. Direct READ, exact FIND, matcher READ, and
+WebFetcher prefetch share that rule. The originally addressed GitHub URL remains
+entry identity. POST, PUT, and DELETE are never retargeted. Rewritten targets
+enter {§http-security-boundary} normally.
 
-## §prefetch §7 Prefetch primitive
+### §revalidation GET representation freshness
 
-`WebFetcher` is the guarded acquisition seam core's entry-materialization calls (#454):
+Guarded responses append package-owned `x-plurnk-request-method` and
+`x-plurnk-fetched-at` fields after origin headers; the last value is
+authoritative. Only a GET representation can supply a direct READ's body, TTL
+stamp, or conditional validators. A copy inside `PLURNK_SCHEMES_HTTP_TTL_MS`
+serves with no network request. Outside the window, READ sends stored ETag or
+Last-Modified validators. A 304 refreshes the package stamp and restores the
+stored channels without rendering; any other response replaces them. `0`
+disables the TTL fast path.
 
-```ts
-new WebFetcher().fetch(url, opts): Promise<{
-  body: string;
-  mimetype: string;
-  render?: () => Promise<{ body: string; mimetype: string } | null>;
-} | null>
-```
+POST, PUT, and DELETE responses retain their method marker but cannot satisfy a
+later GET or exact-FIND acquisition. An unmarked authored entry and a stored GET
+remain usable by universal FIND without revalidation. `SEND[410]` deletes the
+stored entry.
 
-- **Primary body** — the guarded HTTP response. Core projects HTML through
-  the MIME handler first; a useful model-facing projection wins.
-- **Lazy `render()`** — present for HTML. Core invokes guarded
-  Playwright/salvage only when the primary MIME projection is empty, then
-  projects the rendered DOM through the same handler. Browser mutation must
-  not replace already-useful server-rendered content (#596).
-- **`null`** — dead: SSRF-refused, unreachable, non-2xx, non-textual (binary pruned), or empty. Dead-ness is a **value, not a throw** — the liveness verdict core prunes on.
-- **Network boundary** — acquisition follows {§http-security-boundary}; redirect hops are capped by `PLURNK_SCHEMES_HTTP_REDIRECTS`.
-- **Textual set**: `text/*`, `application/{json,xml,xhtml+xml}`, `+json`/`+xml` suffixes.
+### §sse Server-sent events
+
+A direct GET whose response is `text/event-stream` feeds the bounded parser.
+Each event's joined `data` value plus a newline becomes one `text/plain` body
+chunk. Comments and `event`, `id`, and `retry` metadata are not projected.
+Buffer exhaustion fails the stream. The handler does not reconnect; events
+accumulate until the origin closes or the operation is cancelled.
+
+## §prefetch §7 WebFetcher
+
+| Result                  | Meaning                                                                              |
+| ----------------------- | ------------------------------------------------------------------------------------ |
+| Non-empty 2xx HTML      | Server body, MIME type, package-stamped headers, and a lazy guarded browser renderer |
+| Non-empty accepted text | Complete body, MIME type, and package-stamped headers                                |
+| Lazy renderer value     | Non-empty rendered HTML, or `null` when rendering fails or yields no HTML            |
+| Top-level `null`        | Refused, unreachable, non-2xx, non-textual, or empty byte response                   |
+| Accepted textual family | `text/*`, JSON/XML/XHTML, and `+json` / `+xml` structured suffixes                   |
+
+Top-level `null` is a liveness value rather than a thrown failure. WebFetcher
+owns no entry identity, projection verdict, or query policy; its consumer
+projects and materializes the returned value. The handler lifecycle closes the
+shared browser.
 
 ## §ws §8 WebSocket
 
-`Ws` is this package's **second first-class scheme** (#468, #473): registered `wss` via `package.json` `plurnk.schemes` (`{ name: "wss", export: "Ws" }`), with the `ws` prefix riding it in core's `schemeNameOf` exactly as `https` rides `http`. WebSocket is a distinct protocol — bidirectional, stateful, full-duplex, its own URI scheme — not an http content-type (that's SSE, {§sse}), so it has its own manifest (🔌, `messages` channel, `docs/wss.md`) and its own directory entry the model discovers natively. Op → socket lifecycle:
+`wss` is a first-class data scheme; `ws` routes to the same handler. WebSocket
+is bidirectional and stateful, not an HTTP content type. It uses `messages` as a
+`text/plain` default channel and the same canonical network address contract
+{§network-address}.
 
-- **`READ(wss://…)`** — atomically claim and open the socket, guard the target through `Guard.isPublicUrl` (extended to `ws:`/`wss:`), seed + subscribe (create-then-subscribe, http#3), stream each inbound frame into the `messages` channel (`notifyChunk`, text/plain). Returns `102`; the op **holds until the socket closes** (mirrors the streaming lifecycle — the worker wakes on close, summary counts messages). A concurrent READ of the same canonical workspace address is `409`; it never replaces the first owner.
-- **`SEND[200](wss://…):msg:`** — push `msg` onto the open socket. No open socket → `409` (`kind: no_open_socket`) — READ opens the connection SEND rides.
-- **`SEND[499](wss://…)`** — cancel; engine routes teardown to the READ's handle (which closes the socket), scheme-level `200` no-op.
-- **`KILL(wss://…)`** — close the open socket (`404` if none open).
+### §ws-lifecycle Socket ownership and settlement
 
-Under the schemes lifecycle contract {§handler-lifecycle}, `Ws` holds live
-sockets in an **in-instance registry** across op invocations, keyed by
-workspace, exact addressed protocol, and the shared canonical network pathname
-{§network-address}. Host, non-default port, path, and serialized query therefore
-select the socket; fragment remains a Plurnk channel selector. Entries exist
-only while the socket is live: every terminal path — close, error, KILL,
-cancel, or message-persistence failure — releases address ownership and closes
-the transport. The READ completes only after its durable subscription cleanup.
-Handler shutdown closes every remainder, awaits those READ cleanups, and
-aggregates transport-close failures. Day-one limits: text frames only, no
-reconnection, default handshake identity (custom headers pending) — all #468
-follow-ups.
+```mermaid
+stateDiagram-v2
+    [*] --> Idle
+    Idle --> Claimed: guard target and claim canonical workspace address
+    Claimed --> Subscribed: seed entry and open subscription
+    Claimed --> Idle: setup failure / release ownership
+    Subscribed --> Owned: construct socket object
+    Subscribed --> Settling: construction failure
+    Owned --> Owned: inbound frame or SEND[200]
+    Owned --> Settling: close, error, KILL, cancel, persistence failure, or shutdown
+    Settling --> Idle: release address, close subscription, finish READ
+```
+
+| Operation                    | Contract                                                                                          |
+| ---------------------------- | ------------------------------------------------------------------------------------------------- |
+| `READ(ws(s)://…)`            | Guard and claim one workspace address, seed/subscribe, construct the socket, and await settlement |
+| Concurrent duplicate READ    | `409`; it never replaces the existing owner                                                       |
+| `SEND[200](ws(s)://…)`       | Send through the constructed socket; no owned socket is `409`; a send throw is `502`              |
+| `SEND[499](ws(s)://…)`       | Engine-routed cancellation closes the owning READ; scheme dispatch returns `200`                  |
+| `KILL(ws(s)://…)`            | Close the constructed socket; no owned socket is `404`; a close throw is `502`                    |
+| Ordinary remote socket close | Close the subscription with `200`; the owning READ resolves `102`                                 |
+
+The in-instance registry is keyed by workspace, addressed protocol, and
+canonical network pathname. Every terminal path releases address ownership,
+closes the transport when necessary, and finishes durable subscription cleanup.
+Handler shutdown requests settlement for every remainder, awaits every owning
+READ, and aggregates transport-close failures under {§handler-lifecycle}.
+
+| Transport limit    | Current contract                                                              |
+| ------------------ | ----------------------------------------------------------------------------- |
+| Readiness          | A constructed socket is immediately addressable; no `open` transition is used |
+| Payload projection | `String(event.data)` into `text/plain`; binary semantics are not retained     |
+| Reconnection       | None; READ again after a close                                                |
+| Handshake metadata | Default global-WebSocket identity; custom target headers are not applied      |
+| Runtime            | Node ≥26                                                                      |

@@ -1,8 +1,6 @@
-// Browser — the headless-Chromium render foundation (SPEC {§render-lifecycle}),
-// ported from rummy.web's WebFetcher (@possumtech/rummy.web, MIT, same author). A
-// STANDALONE foundation, not Http-private: the render scheme drives it now,
-// and other consumers can sit on the same warm pool. Initialization,
-// concurrency, and shutdown follow {§handler-lifecycle}.
+// Headless-Chromium render foundation {§render-lifecycle}, derived from
+// @possumtech/rummy.web's MIT WebFetcher by the same author. It is a standalone
+// package surface whose initialization and shutdown follow {§handler-lifecycle}.
 //
 // Scope here is render-ONLY: navigate, let JS run + hydration settle, serialize
 // the final DOM. It returns the true rendered page; it never cleans, strips,
@@ -84,13 +82,8 @@ export interface RenderResult {
     readonly html: string;
 }
 
-// Mobile device emulation (a Pixel-5-class profile). Responsive sites serve a
-// lighter, less-chrome layout to a mobile viewport/UA — a general generation
-// hint, not a per-host rewrite (schemes-http#4). Default ON; set
-// PLURNK_SCHEMES_HTTP_MOBILE=0 to render as desktop (escape hatch for the tail
-// of sites that serve degraded/blocked mobile content). NOTE: Wikipedia gates
-// mobile on the domain, not the UA, so this is a no-op there — by design; its
-// desktop page already extracts clean.
+// Mobile device emulation (a Pixel-5-class profile) is the configured default;
+// PLURNK_SCHEMES_HTTP_MOBILE=0 selects a desktop context {§http-config}.
 // The ONE browser identity both acquisition paths present (render context AND
 // the byte-path fetch) — ordinary Chrome traffic, never an automated-client or
 // plurnk fingerprint. Model-supplied {User-Agent: …} target blocks override it.
@@ -103,20 +96,16 @@ const MOBILE_CONTEXT: PwContextOptions = Object.freeze({
     isMobile: true,
     hasTouch: true,
 });
-// Floor-set knob (schemes#31): the assembled .env.defaults floor guarantees it,
-// so an unset value is a config crash, not a silent default. "0" = desktop.
+// Required floor-set knob; unset is a configuration failure {§http-config}.
 const mobileEmulation = (): PwContextOptions | undefined => {
     const raw = process.env.PLURNK_SCHEMES_HTTP_MOBILE;
     if (raw === undefined) throw new Error("Browser: required env PLURNK_SCHEMES_HTTP_MOBILE is unset — see .env.defaults");
     return raw === "0" ? undefined : MOBILE_CONTEXT;
 };
 
-// Required numeric knob — `.env.defaults` is the canonical list (schemes#31:
-// the file IS the docs and the daemon floor-sets it at boot; no in-code
-// default hides a magic number). An
-// unset or non-numeric value fails hard at first use, naming the var. All
-// three numerics are render-path-only, so a byte-fetch-only deployment never
-// pays them — but a rendering one must configure them.
+// Required numeric lookup. `.env.defaults` owns values; call sites own when a
+// value becomes necessary, and no in-code fallback hides its absence
+// {§http-config}.
 export const requireNumEnv = (key: string): number => {
     const raw = process.env[key];
     if (raw === undefined) throw new Error(`Browser: required env ${key} is unset — see .env.defaults`);
@@ -218,11 +207,9 @@ export default class Browser {
     ): Promise<RenderResult> {
         const context = await this.#getContext(workerId);
         const page = await context.newPage();
-        // SSRF interception (WebFetcher, #454): re-guard every navigation AND
-        // subresource — a rendered public page must not reach private space.
-        // Aborted requests surface as a nav/subresource failure, which the
-        // caller reads as dead. Only wired when a guard is supplied (the general
-        // READ render path passes none — unchanged).
+        // {§http-security-boundary} Every current caller supplies the shared
+        // predicate so browser navigation and subresources stay inside the same
+        // admission boundary as byte acquisition.
         if (guard) await page.route("**", async (r) => { (await guard(r.request().url())) ? await r.continue() : await r.abort(); });
         // Request headers (auth/accept) apply to the navigation too, so an authed
         // HTML page renders authenticated. Ordered pairs collapse to a record here

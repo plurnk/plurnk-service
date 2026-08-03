@@ -229,7 +229,7 @@ test("abort: aborting the signal closes the page, unblocking an in-flight naviga
     await browser.close();
 });
 
-test("mobile emulation: contexts default to a mobile profile (schemes-http#4)", async () => {
+test("mobile emulation: contexts default to the configured mobile profile", async () => {
     const { engine, contextOptions } = makeEngine();
     const browser = new Browser(() => Promise.resolve(engine));
     await browser.render("https://example.com/", { workerId: 1 });

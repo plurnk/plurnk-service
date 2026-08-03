@@ -1,4 +1,5 @@
-// Ws engine tests (#468). Hermetic: injected fake socket (no real WebSocket),
+// WebSocket ownership and settlement coverage {§ws-lifecycle}. Hermetic:
+// injected fake socket (no real WebSocket),
 // IP-literal targets (net.isIP short-circuits DNS in the guard). The socket's
 // close() fires its own `close` listener, mirroring the real WebSocket.
 
@@ -201,11 +202,11 @@ test("READ preserves an exact seed-write failure without connecting", async () =
     assert.equal(inspect().opened, null);
 });
 
-test("SEND[200]: pushes the body onto the open socket a prior READ opened", async () => {
+test("SEND[200]: pushes the body through the socket object a prior READ claimed", async () => {
     const sock = fakeSocket();
     const ws = new Ws(() => sock);
     const { ctx } = makeCtx();
-    void ws.read(readStmt(wss(PUB, "/feed")), ctx); // registers, promise stays pending (socket open)
+    void ws.read(readStmt(wss(PUB, "/feed")), ctx); // owner exists while READ remains pending
     await flush();
     const r = await ws.send(sendStmt(200, wss(PUB, "/feed"), "ping"), ctx);
     assert.equal(r.status, 200);
@@ -295,7 +296,7 @@ test("WebSocket userinfo is rejected before guard or connection", async () => {
     assert.equal(connected, false);
 });
 
-test("SEND[200]: no open socket → 409 (READ opens the connection SEND rides)", async () => {
+test("SEND[200]: no claimed socket → 409", async () => {
     const { ctx } = makeCtx();
     const r = await new Ws(() => fakeSocket()).send(sendStmt(200, wss(PUB, "/feed"), "x"), ctx);
     assert.equal(r.status, 409);
@@ -334,7 +335,7 @@ test("SEND: an uninterpreted code → 501", async () => {
     assert.equal(r.problem?.stage, "dispatch");
 });
 
-test("KILL: closes the open socket and settles the READ", async () => {
+test("KILL: closes the claimed socket and settles the READ", async () => {
     const sock = fakeSocket();
     const ws = new Ws(() => sock);
     const { ctx, inspect } = makeCtx();
@@ -347,7 +348,7 @@ test("KILL: closes the open socket and settles the READ", async () => {
     assert.equal(inspect().closed?.result.status, 200);
 });
 
-test("KILL: no open socket → 404", async () => {
+test("KILL: no claimed socket → 404", async () => {
     const { ctx } = makeCtx();
     const r = await new Ws(() => fakeSocket()).kill(killStmt(wss(PUB, "/feed")), ctx);
     assert.equal(r.status, 404);

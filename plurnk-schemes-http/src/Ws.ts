@@ -1,27 +1,6 @@
-// ws(s):// scheme handler — this package's second first-class scheme (#468,
-// #473): registered `wss` via package.json plurnk.schemes ({ export: "Ws" });
-// the `ws` prefix rides it (core's schemeNameOf, mirroring https -> http).
-// WebSocket IS a distinct protocol - bidirectional, stateful, full-duplex - not
-// an http content-type (that's SSE, Http.#streamEvents), so it's its own
-// scheme, not a branch in the fetch path.
-//
-// Op -> socket lifecycle (SPEC section "ws"):
-//   READ(wss://host/path)     - open the socket; inbound frames stream into the
-//                               `messages` channel; the op holds until close.
-//   SEND[200](wss://...):msg: - push `msg` onto the open socket (READ it first).
-//   SEND[499](wss://...)      - cancel: the engine routes to the READ's handle,
-//                               which closes the socket (scheme-level no-op).
-//   KILL(wss://...)           - close the open socket.
-//
-// Under the schemes lifecycle contract {§handler-lifecycle}, this handler holds
-// live sockets in an in-instance registry across op invocations, keyed by
-// workspace+addressed scheme+canonical network pathname. Each address has one
-// owner; terminal paths remove it, close the transport, and finish subscription
-// cleanup. close() performs and awaits the same cleanup for every remainder.
-//
-// The SSRF Guard re-checks the target before connecting (a ws into private space
-// is the same attack as a fetch). Node ≥22 global `WebSocket` at runtime; tests
-// inject a fake socket.
+// WebSocket handler. {§ws} owns its operation surface; {§ws-lifecycle} owns
+// address claims and settlement. Retained sockets follow {§handler-lifecycle}
+// and use the canonical network identity {§network-address}.
 
 import type {
     SchemeCtx,
@@ -67,7 +46,7 @@ interface SocketOwner {
     readonly done: Promise<void>;
 }
 
-// Default: the Node 22+ global WebSocket, reached through globalThis so the lib
+// Default: the Node 26+ global WebSocket, reached through globalThis so the lib
 // typing is not a compile dependency (tests always inject, so this path is
 // runtime-only). Fail-hard if the runtime lacks it.
 const connectGlobal: SocketFactory = (url) =>
@@ -100,9 +79,8 @@ export default class Ws implements SchemeHandler {
         this.#connect = connect;
     }
 
-    // READ -> open the socket, stream inbound frames into `messages`, hold the op
-    // until the socket closes (mirrors the http streaming lifecycle: 102 now, the
-    // subscription drives content, the worker wakes on close).
+    // {§ws-lifecycle} Claim, construct, stream inbound frames, and hold the READ
+    // until terminal settlement.
     async read(statement: ReadStatement, ctx: SchemeCtx): Promise<PassthroughResult> {
         if (statement.target === null || statement.target.kind !== "url") {
             return Ws.#bad(400, "bad-target", "READ requires a ws(s):// URL target.", {
@@ -140,7 +118,7 @@ export default class Ws implements SchemeHandler {
         this.#sockets.set(key, owner);
 
         try {
-            // Create-then-subscribe (http#3): seed the messages channel, then bind.
+            // {§ws-lifecycle} Seed the declared channel before subscription open.
             const written = await ctx.entries.write(pathname, Ws.#seedEntry());
             if (Results.isErrorStatus(written.status)) return Ws.#passthrough(written);
             if (owner.shutdownRequested) return Ws.#cancelled(url);
@@ -298,8 +276,8 @@ export default class Ws implements SchemeHandler {
         if (errors.length > 0) throw new AggregateError(errors, "WebSocket shutdown failed");
     }
 
-    // SEND[200] -> push a message onto the open socket. SEND[499] -> cancel (engine
-    // routes to the READ handle; scheme no-op, mirroring http). Other codes 501.
+    // SEND[200] targets the constructed socket object. SEND[499] is routed to
+    // the owning READ handle; scheme dispatch is a no-op. Other codes are 501.
     async send(statement: SendStatement, ctx: SchemeCtx): Promise<PassthroughResult> {
         if (statement.target === null || statement.target.kind !== "url") {
             return Ws.#bad(400, "bad-target", "SEND requires a ws(s):// URL target.", {
@@ -346,8 +324,8 @@ export default class Ws implements SchemeHandler {
         });
     }
 
-    // KILL -> close the open socket. The READ's close listener deregisters it and
-    // settles the subscription, so KILL only trips the close.
+    // KILL closes the constructed socket. Its close listener deregisters the
+    // owner and settles the READ subscription.
     async kill(statement: KillStatement, ctx: SchemeCtx): Promise<PassthroughResult> {
         if (statement.target === null || statement.target.kind !== "url") {
             return Ws.#bad(400, "bad-target", "KILL requires a ws(s):// URL target.", {
@@ -417,8 +395,7 @@ export default class Ws implements SchemeHandler {
         return address;
     }
 
-    // Seed entry mirroring the manifest channel (empty content + seed mimetype),
-    // so open() binds an existing entry (http#3) - same shape as Http.#seedEntry.
+    // {§ws-lifecycle} open() binds an existing entry, so seed the manifest shape.
     static #seedEntry(): EntryData {
         const channels = Object.fromEntries(
             Object.entries(Ws.manifest.channels).map(([name, mimetype]) => [name, { content: "", mimetype }]),

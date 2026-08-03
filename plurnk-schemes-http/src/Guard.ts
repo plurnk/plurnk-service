@@ -1,7 +1,7 @@
 // {§http-security-boundary} — every initial HTTP target and redirect hop must
 // resolve only to ordinary globally reachable unicast addresses. Redirects are
 // followed manually so validation and Fetch-standard request transitions share
-// one transport seam. Connection-time DNS binding remains isolated as #117.
+// one transport seam.
 
 import dns from "node:dns/promises";
 import net from "node:net";

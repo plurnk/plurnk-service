@@ -1,14 +1,11 @@
-// The guarded acquisition primitive core's entrySink calls (#454). The byte
-// response is primary; HTML carries a lazy guarded browser fallback for core
-// to invoke only when MIME projection is empty. Dead-ness is a value, never a
-// throw — null covers SSRF-refused, unreachable, non-2xx, non-textual, and empty.
+// Guarded entry-acquisition primitive {§prefetch}. The byte response is primary;
+// HTML carries a lazy browser fallback for the consumer to invoke only when its
+// readable projection is empty. Top-level deadness is the `null` value.
 
 import Browser, { BROWSER_UA, requireNumEnv, type RenderResult } from "./Browser.ts";
 import Guard from "./Guard.ts";
 
-// Day-one textual set (owner ruling, #454): text/* plus the +json/+xml family.
-// Non-textual bodies (pdf, images) prune to null — they don't survive the
-// string entry() contract core prefetches into.
+// {§prefetch} Only textual bodies can enter the string-valued entry contract.
 const isTextual = (mimetype: string): boolean =>
     mimetype.startsWith("text/")
     || ["application/json", "application/xml", "application/xhtml+xml"].includes(mimetype)
@@ -63,12 +60,8 @@ export default class WebFetcher {
 
     async fetch(url: string, opts?: { signal?: AbortSignal }): Promise<WebFetchResult | null> {
         const target = rewriteAcquisitionTarget(url);
-        // Bound the byte probe independently. Browser.render owns its own
-        // navigation timeout and must be allowed to observe Playwright's
-        // TimeoutError so Browser.#safeGoto can salvage an already-rendered DOM.
-        // Sharing this timeout with render used to close the page at the exact
-        // same instant as goto timed out, converting salvageable news pages into
-        // "Target closed" and returning null (#596).
+        // Bound the byte probe independently. Browser.render owns its navigation
+        // deadline so it can apply the substantive-DOM timeout salvage contract.
         const probeTimeout = AbortSignal.timeout(requireNumEnv("PLURNK_SCHEMES_HTTP_FETCH_TIMEOUT"));
         const probeSignal = opts?.signal ? AbortSignal.any([opts.signal, probeTimeout]) : probeTimeout;
 
@@ -82,11 +75,8 @@ export default class WebFetcher {
         if (!response.ok) { await response.body?.cancel(); return null; } // non-2xx dead
         const header = WebFetcher.#header(response);
 
-        // Preserve server-rendered HTML as the primary acquisition. The MIME
-        // layer decides whether its model-facing projection is useful; only an
-        // empty projection invokes the lazy browser fallback. Unconditionally
-        // rendering valid SSR pages is slower and can mutate the DOM until
-        // Readability selects unrelated feed/chrome content (#596).
+        // Preserve server HTML as primary. Eager rendering can mutate already
+        // useful content; the consumer alone decides whether projection is empty.
         if (isHtml(mimetype)) {
             const body = await response.text();
             if (body.length === 0) return null;
