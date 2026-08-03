@@ -48,7 +48,12 @@ function mk(embedder: unknown | null) {
         discovery: makeDiscovery(),
         loader: async (pkg) => {
             if (pkg === EMB_PKG) {
-                if (embedder === null) throw Object.assign(new Error("MODULE_NOT_FOUND"), { code: "ERR_MODULE_NOT_FOUND" });
+                if (embedder === null) {
+                    throw Object.assign(
+                        new Error(`Cannot find package '${EMB_PKG}' imported from test`),
+                        { code: "ERR_MODULE_NOT_FOUND" },
+                    );
+                }
                 return embedder;
             }
             return { default: BaseHandler };
@@ -72,8 +77,8 @@ describe("#36 — Mimetypes.dispose()", () => {
         assert.equal(embedder.disposed(), 0, "nothing loaded → nothing to release");
     });
 
-    it("D3: swallows a load failure — nothing to surface", async () => {
-        const m = mk(null); // loader throws MODULE_NOT_FOUND for the embedder
+    it("D3: releases cleanly after an absent artifact resolution", async () => {
+        const m = mk(null);
         await m.embedderInfo(); // forces the (failing) load attempt to be cached
         await assert.doesNotReject(m.dispose());
     });

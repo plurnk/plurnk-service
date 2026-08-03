@@ -1,5 +1,6 @@
 import type { HandlerLoader } from "./Mimetypes.ts";
 import type { Notice } from "./Notice.ts";
+import { isExactModuleAbsent } from "./module-absence.ts";
 
 // Fixed tokenizer artifact seam, resolved lazily ({§mimetype-tokenizer}).
 const TOKENIZERS_PACKAGE = "@plurnk/plurnk-mimetypes-tokenizers";
@@ -91,9 +92,7 @@ export default class Tokenizers {
             try {
                 mod = await this.#loader(TOKENIZERS_PACKAGE);
             } catch (err) {
-                // Only module absence selects degradation; import defects surface.
-                const code = (err as { code?: string })?.code;
-                if (code === "ERR_MODULE_NOT_FOUND" || code === "MODULE_NOT_FOUND") return null;
+                if (isExactModuleAbsent(err, TOKENIZERS_PACKAGE)) return null;
                 throw err;
             }
             const m = mod as { resolve?: unknown; default?: { resolve?: unknown } };

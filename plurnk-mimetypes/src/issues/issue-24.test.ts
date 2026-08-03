@@ -62,7 +62,12 @@ function makeMimetypes(opts: { withEmbedder: boolean; handler?: new (...a: never
         discovery: makeDiscovery([INFO]),
         loader: async (pkg) => {
             if (pkg === EMB_PKG) {
-                if (!opts.withEmbedder) throw Object.assign(new Error("MODULE_NOT_FOUND"), { code: "ERR_MODULE_NOT_FOUND" });
+                if (!opts.withEmbedder) {
+                    throw Object.assign(
+                        new Error(`Cannot find package '${EMB_PKG}' imported from test`),
+                        { code: "ERR_MODULE_NOT_FOUND" },
+                    );
+                }
                 return fakeEmbedderModule;
             }
             return { default: opts.handler ?? PlainHandler };
@@ -77,7 +82,7 @@ describe("a present-but-broken embedder crashes, never silently degrades to abse
             loader: async (pkg) => {
                 // Installed but throws on import — a misconfiguration the loader
                 // catch must NOT swallow as "no embedder" (that would hide it as
-                // a silent FTS-only downgrade). Distinct from ERR_MODULE_NOT_FOUND.
+                // a silent FTS-only downgrade).
                 if (pkg === EMB_PKG) throw new RangeError("PLURNK_MIMETYPES_EMBED_WORKERS is required");
                 return { default: PlainHandler };
             },

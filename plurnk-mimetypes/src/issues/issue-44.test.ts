@@ -47,7 +47,12 @@ function mk(artifact: unknown | null, loadError?: Error) {
             if (pkg === TOK_PKG) {
                 loads += 1;
                 if (loadError) throw loadError;
-                if (artifact === null) throw Object.assign(new Error("MODULE_NOT_FOUND"), { code: "ERR_MODULE_NOT_FOUND" });
+                if (artifact === null) {
+                    throw Object.assign(
+                        new Error(`Cannot find package '${TOK_PKG}' imported from test`),
+                        { code: "ERR_MODULE_NOT_FOUND" },
+                    );
+                }
                 return artifact;
             }
             return { default: BaseHandler };

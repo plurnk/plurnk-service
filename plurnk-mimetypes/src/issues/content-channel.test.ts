@@ -63,7 +63,12 @@ function mk(handler: new (...a: never[]) => BaseHandler, withEmbedder = false) {
         discovery: makeDiscovery([INFO]),
         loader: async (pkg) => {
             if (pkg === EMB_PKG) {
-                if (!withEmbedder) throw Object.assign(new Error("MODULE_NOT_FOUND"), { code: "ERR_MODULE_NOT_FOUND" });
+                if (!withEmbedder) {
+                    throw Object.assign(
+                        new Error(`Cannot find package '${EMB_PKG}' imported from test`),
+                        { code: "ERR_MODULE_NOT_FOUND" },
+                    );
+                }
                 return fakeEmbedder;
             }
             return { default: handler };

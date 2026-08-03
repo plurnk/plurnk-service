@@ -24,7 +24,12 @@ function makeMimetypes(embedder: unknown | null): Mimetypes {
         discovery: emptyDiscovery(),
         loader: async (pkg: string) => {
             if (pkg === EMB_PKG) {
-                if (embedder === null) throw Object.assign(new Error("MODULE_NOT_FOUND"), { code: "ERR_MODULE_NOT_FOUND" });
+                if (embedder === null) {
+                    throw Object.assign(
+                        new Error(`Cannot find package '${EMB_PKG}' imported from test`),
+                        { code: "ERR_MODULE_NOT_FOUND" },
+                    );
+                }
                 return embedder;
             }
             return { default: class {} };

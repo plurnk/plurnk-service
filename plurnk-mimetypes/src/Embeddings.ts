@@ -1,5 +1,6 @@
 import type BaseHandler from "./BaseHandler.ts";
 import type { HandlerLoader } from "./Mimetypes.ts";
+import { isExactModuleAbsent } from "./module-absence.ts";
 
 // Fixed embedding artifact seam, resolved lazily ({§mimetype-embedding}).
 const EMBEDDINGS_PACKAGE = "@plurnk/plurnk-mimetypes-embeddings";
@@ -99,9 +100,7 @@ export default class Embeddings {
             try {
                 mod = await this.#loader(EMBEDDINGS_PACKAGE);
             } catch (err) {
-                // Only module absence selects degradation; import defects surface.
-                const code = (err as { code?: string })?.code;
-                if (code === "ERR_MODULE_NOT_FOUND" || code === "MODULE_NOT_FOUND") return null;
+                if (isExactModuleAbsent(err, EMBEDDINGS_PACKAGE)) return null;
                 throw err;
             }
             const m = mod as {

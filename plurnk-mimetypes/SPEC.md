@@ -295,6 +295,10 @@ The exported `ProcessResult` type owns the executable field shape.
 | `validate()` throws                 | Propagates to the caller.                                                                                                                      |
 | Handler channel method throws       | Propagates unless the selected extractor explicitly classifies the failure as an empty/null parse result.                                      |
 
+§mimetype-artifact-absence A fixed artifact is absent only when module
+resolution names that exact requested package as missing. A missing dependency,
+incompatible export, or initialization fault in an installed artifact propagates.
+
 ## §mimetype-detection 8. Detection priority
 
 `detect({ path?, ext?, hint? }, registry)` resolves in strict priority order,
@@ -822,9 +826,10 @@ model space. Consumers preserve that identity with stored vectors and never
 compare vectors from different spaces.
 
 A missing tree-sitter grammar does not prevent embedding readable string input:
-the result may carry both `grammarMissing` and a real vector. Other unexpected
-artifact load errors propagate. A readable-projection exception currently
-produces empty embedding bytes rather than an `embeddingMissing` signal.
+the result may carry both `grammarMissing` and a real vector. Artifact
+availability follows {§mimetype-artifact-absence}. A readable-projection
+exception currently produces empty embedding bytes rather than an
+`embeddingMissing` signal.
 
 ## §mimetype-content 18. Content channel
 
@@ -875,10 +880,10 @@ resolutions sharing a vocabulary therefore share the identity. A persisted
 tokenizer-dependent derivation must include it in its derivation key.
 
 The artifact exposes `resolve(modelRef)` and may expose `dispose()`. A `null`
-resolution means no bundled vocabulary matches. True module absence selects
-the lean-framework degradation; an installed module without `resolve()` is an
-incompatible artifact and fails hard. Other load errors also propagate.
-`Mimetypes.dispose()` forwards artifact disposal and clears the lazy cache.
+resolution means no bundled vocabulary matches. Artifact availability follows
+{§mimetype-artifact-absence}; an installed module without `resolve()` is an
+incompatible artifact and fails hard. `Mimetypes.dispose()` forwards artifact
+disposal and clears the lazy cache.
 
 ## §mimetype-classification 20. Binary classification
 
