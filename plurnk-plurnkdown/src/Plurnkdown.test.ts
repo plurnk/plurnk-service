@@ -46,6 +46,19 @@ test("a malformed op inside a plurnk fence is flagged by op-syntax", () => {
     assert.equal(diagnostics[0].line, 2); // the op line inside the fence
 });
 
+// {§packet-operation-fences} {§unparsed-tail-boundary}
+test("#135: an unterminated op fence surfaces the one parser-owned tail diagnostic", () => {
+    const source = "```plurnk\n<<EDIT(worker:///note.md):unterminated\n```";
+    const diagnostics = linter.lint(source).filter(d => d.rule === "op-syntax");
+    assert.deepEqual(diagnostics, [{
+        rule: "op-syntax",
+        severity: "error",
+        message: "body of `<<EDIT` opened at line 1 but never closed - add `:EDIT` to terminate",
+        line: 2,
+        column: 0,
+    }]);
+});
+
 test("valid ops inside a plurnk fence pass op-syntax", () => {
     const source = "```plurnk\n<<PLAN:go:PLAN\n<<READ(file.md)<5>::READ\n```";
     assert.deepEqual(linter.lint(source).filter(d => d.rule === "op-syntax"), []);

@@ -2,19 +2,17 @@
 // two threads name the same workspace; each gets its OWN worker (its own history), and the
 // world — the workspace filesystem — is SHARED: an EDIT made through thread A is READable
 // through thread B (the environment door). No model needed: client ops (op.parse)
-// exercise the routing and the shared world against a REAL daemon; skips clean when
-// the sibling service checkout is absent.
+// exercise the routing and the shared world against the real daemon in the canonical
+// core workspace.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { access } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import Module from "../../src/Module.ts";
 import type { DaemonSeam } from "../../src/DaemonSeam.ts";
 import type { AguiEvent } from "../../src/types.ts";
 
-const SERVICE = resolve(import.meta.dirname, "../../../plurnk-service");
-const gated = await access(join(SERVICE, "src/server/Daemon.ts")).then(() => false, () => true);
+const SERVICE = resolve(import.meta.dirname, "../../../plurnk-core");
 
 const action = async (port: number, threadId: string, workspace: string, kind: string, params: Record<string, unknown> = {}): Promise<{ ok: boolean; result?: Record<string, unknown>; error?: string }> => {
     const res = await fetch(`http://127.0.0.1:${port}/`, {
@@ -28,10 +26,9 @@ const action = async (port: number, threadId: string, workspace: string, kind: s
     return r.value;
 };
 
-test("two threads, one world: distinct workers, shared filesystem (the environment door)", { skip: gated, timeout: 60_000 }, async () => {
-    // The service's shipped env floor (partition integers etc.) — the daemon fails
-    // hard without it, and this test boots one in-process.
-    process.loadEnvFile(join(SERVICE, ".env.defaults"));
+test("two threads, one world: distinct workers, shared filesystem (the environment door)", { timeout: 60_000 }, async () => {
+    // Apply the same assembled package-default floor as the daemon's own test tiers.
+    await import(join(SERVICE, "test/floor.ts"));
     const { openMigrated } = await import(join(SERVICE, "test/intg/_helpers.ts"));
     const { default: Daemon } = await import(join(SERVICE, "src/server/Daemon.ts"));
 
@@ -54,6 +51,34 @@ test("two threads, one world: distinct workers, shared filesystem (the environme
         assert.equal(edit.ok, true, edit.error ?? "");
         const editResults = (edit.result as { results: Array<{ status: number }> }).results;
         assert.ok(editResults.every((r) => r.status < 300), `EDIT dispatched clean: ${JSON.stringify(editResults)}`);
+
+        // {§agui-op-parse} {§unparsed-tail-boundary} — one real daemon action keeps the
+        // valid prefix, surfaces the boundary loss once, and never mutates from recovered tail AST.
+        const tailed = await action(port, "shared-world", "shared-world", "op.parse", {
+            text: "<<EDIT(worker:///tail-trusted.md):kept:EDIT\n<<EDIT(worker:///tail-untrusted.md):must not land",
+        });
+        assert.equal(tailed.ok, true, tailed.error ?? "");
+        const tailResults = (tailed.result as {
+            results: Array<{ status: number; problem?: Record<string, unknown> }>;
+        }).results;
+        assert.deepEqual(tailResults.map(({ status }) => status), [201, 400]);
+        assert.deepEqual(tailResults[1]?.problem, {
+            type: "https://problems.plurnk.dev/agui/action/parse-failed",
+            title: "Parse failed",
+            status: 400,
+            detail: "body of `<<EDIT` opened at line 2 but never closed - add `:EDIT` to terminate",
+            line: 2,
+            column: 0,
+            source: "grammar",
+            severity: "error",
+            stage: "parsing",
+            retryable: false,
+        });
+        const untrusted = await action(port, "shared-world", "shared-world", "op.parse", {
+            text: "<<READ(worker:///tail-untrusted.md)::READ",
+        });
+        const untrustedResults = (untrusted.result as { results: Array<{ status: number }> }).results;
+        assert.equal(untrustedResults[0]?.status, 404, "the statement recovered from the undefined tail never dispatched");
 
         // Thread B — a DISTINCT conversation over the SAME world.
         const read = await action(port, "second-look", "shared-world", "op.parse", { text: "<<READ(worker:///notes.md):READ\n" });
@@ -83,7 +108,6 @@ test("two threads, one world: distinct workers, shared filesystem (the environme
         assert.ok(new Set(counts).size > 1 || counts.every((c) => c === 0) === false,
             `per-worker reads are DISTINGUISHABLE (a uniform answer for every workerId is the #376 signature): ${JSON.stringify([...perWorker])}`);
     } finally {
-        await (module as Module | null)?.close();
         await daemon.stop();
         await db.close();
     }

@@ -34,13 +34,15 @@ export default class PlurnkParser {
     static parse(input: string): ParseResult {
         const result = PlurnkParser.#run(input, (parser) => parser.document());
         // Value-adds layered on ANTLR's own diagnostics (we own syntax errors end to end):
-        // near-miss op advisories on swallowed prose, then turn-shape imperatives. Both only
-        // refine the model-facing message set; neither changes what parsed.
+        // near-miss op advisories on swallowed prose, then turn-shape imperatives while the
+        // document boundary remains trustworthy. Neither changes what parsed.
         PlurnkParser.#flagNearMissOps(result.items);
         PlurnkParser.#flagOpsInPlanBody(result.items);
         PlurnkParser.#flagMisplacedTarget(result.items);
-        PlurnkParser.#imperativeTurnShape(result.items);
-        PlurnkParser.#imperativeMidTermination(result.items);
+        if (result.unparsedTail === undefined) {
+            PlurnkParser.#imperativeTurnShape(result.items);
+            PlurnkParser.#imperativeMidTermination(result.items);
+        }
         return result;
     }
 
@@ -118,10 +120,10 @@ export default class PlurnkParser {
         const kept = items.filter((i) => !isStructErr(i));
         items.length = 0;
         items.push(...kept);
-        // Only add the anchor imperative when the shape is CLEANLY incomplete. If a lexer or
-        // visitor error is present, the turn derailed mid-op (e.g. an unclosed target), so the
-        // missing PLAN/SEND is a parse artifact, not the real fix - that specific error plus the
-        // unparsedTail is the actionable guidance, and an imperative would mislead.
+        // Only add the anchor imperative when the shape is CLEANLY incomplete. If a bounded lexer
+        // or visitor error is present, the turn derailed within an operation, so the
+        // missing PLAN/SEND is a parse artifact, not the real fix - that specific bounded error
+        // is the actionable guidance, and an imperative would mislead.
         const hasSpecificError = items.some(
             (i) => i.kind === "error" && i.error.severity === "error" && i.error.source !== "parser",
         );
@@ -138,9 +140,9 @@ export default class PlurnkParser {
     // Runs after the begin/end imperative (which handles the incomplete-shape case and, for a
     // complete-but-trailing turn, returns early leaving this error in place to rewrite).
     static #imperativeMidTermination(items: ParseItem<any>[]): void {
-        // If the turn derailed mid-op (a lexer/visitor error - e.g. an unclosed signal), a partial
-        // disposition SEND may have been recovered; that derailment is the real issue, so don't
-        // mislabel its fallout as a mid-termination. Mirrors #imperativeTurnShape's guard.
+        // If a bounded lexer/visitor error derailed the turn, any recovered disposition SEND is
+        // suspect; don't mislabel its fallout as a mid-termination. Boundary loss never reaches
+        // this pass. Mirrors #imperativeTurnShape's guard.
         if (items.some((i: any) => i.kind === "error" && i.error.severity === "error" && i.error.source !== "parser")) return;
         const terminal = items.find(
             (i: any) => i.kind === "statement" && i.statement.op === "SEND" && PlurnkParser.#DISPOSITIONS.has(i.statement.signal),
@@ -227,33 +229,38 @@ export default class PlurnkParser {
 
         const tree = parseFn(parser);
         PlurnkParser.#dedupeLexerCascade(errors);
+        const unparsedTail = PlurnkParser.#unparsedTail(lexer, input);
 
         const items: ParseItem<S>[] = [];
         const consumedErrors = new Set<PlurnkParseError>();
-        PlurnkParser.#collect(tree, errors, consumedErrors, items, buildFn);
+        PlurnkParser.#collect(tree, errors, consumedErrors, items, buildFn, unparsedTail?.from);
 
         for (const err of errors) {
-            if (!consumedErrors.has(err)) {
+            if (!consumedErrors.has(err)
+                && (unparsedTail === undefined || PlurnkParser.#isBefore(err, unparsedTail.from))) {
                 items.push({ kind: "error", error: err });
             }
         }
 
-        let unparsedTail: ParseResult["unparsedTail"];
-        if (lexer.mode !== 0) {
-            const openTag = lexer.getOpenTag();
-            const from = { line: lexer.getOpenTagLine(), column: lexer.getOpenTagColumn() };
-            const modeName = lexer.modeNames[lexer.mode] ?? "";
-            const reason = modeName === "BODY"
-                ? `body of \`<<${openTag}\` opened at line ${from.line} but never closed - add \`:${openTag}\` to terminate${PlurnkParser.#inventedCloser(input, from, openTag)}`
-                : modeName === "SIGNAL_TAGS" || modeName === "SIGNAL_INT" || modeName === "SIGNAL_IDENT"
-                    ? `signal slot of \`<<${openTag}\` opened at line ${from.line} but never closed - add \`]\` to terminate the signal`
-                    : modeName === "TARGET"
-                        ? `target slot of \`<<${openTag}\` opened at line ${from.line} but never closed - add \`)\` to terminate the target`
-                        : `statement \`<<${openTag}\` opened at line ${from.line} but never reached its close tag - add \`:${openTag}\` to terminate`;
-            unparsedTail = { from, reason };
-        }
-
         return { items, unparsedTail };
+    }
+
+    // Determine the public trust boundary before visiting recovered contexts. The parser may
+    // synthesize tree nodes after an unfinished lexer mode, but those nodes have no public AST
+    // meaning and can violate AstBuilder's complete-statement precondition. {§unparsed-tail-boundary}
+    static #unparsedTail(lexer: plurnkLexer, input: string): ParseResult["unparsedTail"] {
+        if (lexer.mode === 0) return undefined;
+        const openTag = lexer.getOpenTag();
+        const from = { line: lexer.getOpenTagLine(), column: lexer.getOpenTagColumn() };
+        const modeName = lexer.modeNames[lexer.mode] ?? "";
+        const reason = modeName === "BODY"
+            ? `body of \`<<${openTag}\` opened at line ${from.line} but never closed - add \`:${openTag}\` to terminate${PlurnkParser.#inventedCloser(input, from, openTag)}`
+            : modeName === "SIGNAL_TAGS" || modeName === "SIGNAL_INT" || modeName === "SIGNAL_IDENT"
+                ? `signal slot of \`<<${openTag}\` opened at line ${from.line} but never closed - add \`]\` to terminate the signal`
+                : modeName === "TARGET"
+                    ? `target slot of \`<<${openTag}\` opened at line ${from.line} but never closed - add \`)\` to terminate the target`
+                    : `statement \`<<${openTag}\` opened at line ${from.line} but never reached its close tag - add \`:${openTag}\` to terminate`;
+        return { from, reason };
     }
 
     // Warn when an unsuffixed PLAN body contains op-shaped text; a suffix deliberately
@@ -360,19 +367,21 @@ export default class PlurnkParser {
     // Walk a parse tree, appending statement/error/text items in source order. Statement rules
     // are leaves (built directly); container rules (turnContent) are recursed into; TEXT tokens
     // surface as text items. So `document` (one turnContent) and `log` (turnContent+) both
-    // flatten to items in order, while a malformed statement surfaces as an error item.
+    // flatten to items in order, while a bounded malformed statement surfaces as an error item.
     static #collect<S extends ClientStatement>(
         ctx: ParserRuleContext,
         errors: PlurnkParseError[],
         consumedErrors: Set<PlurnkParseError>,
         items: ParseItem<S>[],
         buildFn: (ctx: any) => S,
+        boundary?: Position,
     ): void {
         for (const child of ctx.children ?? []) {
             const c = child as any;
             const start = c.start ?? c.symbol;
             const stop = c.stop ?? c.symbol;
             if (!start) continue;
+            if (boundary !== undefined && !PlurnkParser.#isBefore(start, boundary)) continue;
 
             if (c.ruleIndex !== undefined && STATEMENT_RULES.has(c.ruleIndex)) {
                 const errorsForStatement = errors.filter(
@@ -401,12 +410,17 @@ export default class PlurnkParser {
                     }
                 }
             } else if (c.ruleIndex !== undefined && CONTAINER_RULES.has(c.ruleIndex)) {
-                PlurnkParser.#collect(c, errors, consumedErrors, items, buildFn);
+                PlurnkParser.#collect(c, errors, consumedErrors, items, buildFn, boundary);
             } else if (c.symbol?.type === plurnkLexer.TEXT) {
                 const position: Position = { line: start.line, column: start.column };
                 items.push({ kind: "text", text: c.symbol.text ?? "", position });
             }
         }
+    }
+
+    static #isBefore(point: { line: number; column: number }, boundary: Position): boolean {
+        return point.line < boundary.line
+            || (point.line === boundary.line && point.column < boundary.column);
     }
 
     static #errorInRange(

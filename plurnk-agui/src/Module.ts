@@ -94,6 +94,36 @@ const operationOutcome = (result: OperationResult): ActionOutcome => {
         : { ok: false, problem: exact.problem };
 };
 
+const parseFailureResult = ({
+    detail,
+    line,
+    column,
+    source,
+    severity,
+}: {
+    detail: string;
+    line: number;
+    column: number;
+    source: string;
+    severity: "error" | "warning";
+}): OperationResult => ({
+    status: 400,
+    problem: Problems.create(
+        "agui:action",
+        "parse-failed",
+        400,
+        detail,
+        {
+            line,
+            column,
+            source,
+            severity,
+            stage: "parsing",
+            retryable: false,
+        },
+    ),
+});
+
 const writeHttpProblem = (res: ServerResponse, problem: ProblemDetails): void => {
     res.writeHead(problem.status, { "content-type": "application/problem+json" });
     res.end(JSON.stringify(problem));
@@ -741,9 +771,8 @@ export default class Module {
                     return operationOutcome(result);
                 }
                 case "op.parse": {
-                    // Raw DSL parsed at the module's edge (the grammar is a family-internal
-                    // runtime dep, operator-approved) → each statement dispatched; parse
-                    // failures return as per-statement 400 results. {§parse-diagnostics}
+                    // Raw DSL is parsed at the module's edge; statements and parser facts project
+                    // through one ordered result contract. {§agui-op-parse}
                     if (typeof p.text !== "string" || p.text.length === 0) {
                         return actionFailure(
                             "invalid-action-parameters",
@@ -757,28 +786,27 @@ export default class Module {
                     const statements: PlurnkStatement[] = [];
                     for (const item of parsed.items) {
                         if (item.kind === "error") {
-                            results.push({
-                                status: 400,
-                                problem: Problems.create(
-                                    "agui:action",
-                                    "parse-failed",
-                                    400,
-                                    String(item.error.message ?? item.error),
-                                    {
-                                        line: item.error.line,
-                                        column: item.error.column,
-                                        source: item.error.source,
-                                        severity: item.error.severity,
-                                        stage: "parsing",
-                                        retryable: false,
-                                    },
-                                ),
-                            });
+                            results.push(parseFailureResult({
+                                detail: item.error.message,
+                                line: item.error.line,
+                                column: item.error.column,
+                                source: item.error.source,
+                                severity: item.error.severity,
+                            }));
                             continue;
                         }
                         if (item.kind !== "statement") continue; // interstitial text isn't dispatchable
                         statements.push(item.statement as unknown as PlurnkStatement);
                         results.push(null);
+                    }
+                    if (parsed.unparsedTail !== undefined) {
+                        results.push(parseFailureResult({
+                            detail: parsed.unparsedTail.reason,
+                            line: parsed.unparsedTail.from.line,
+                            column: parsed.unparsedTail.from.column,
+                            source: "grammar",
+                            severity: "error",
+                        }));
                     }
                     const dispatched = statements.length === 0
                         ? []

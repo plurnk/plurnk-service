@@ -1810,11 +1810,8 @@ export default class Engine {
                     }
                 }
             }
-            // The grammar also reports an `unparsedTail` when input ends
-            // mid-statement (a body opened but never closed): its `reason`
-            // names the op AND the fix ("…never closed — add `:READ`"), where
-            // the item-level error only says "expected close tag". Preserve the
-            // more precise diagnosis with the rejected forensic attempt.
+            // Boundary loss is the parser's one public fact from `unparsedTail.from` onward;
+            // preserve it with the rejected forensic attempt. {§unparsed-tail-boundary}
             const tail = parsed.unparsedTail;
             if (tail !== undefined) {
                 hasUnparsedTail = true;

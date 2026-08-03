@@ -61,18 +61,28 @@ export default class Plurnkdown {
         }
     }
 
-    // Delegate a ```plurnk fence's ops to the contracts grammar; surface each syntax error at
-    // its absolute line. Fence content line 1 sits one line below the opening fence. {§parse-diagnostics}
+    // Delegate a ```plurnk fence's ops to the contracts grammar; surface every diagnostic and
+    // tail at its absolute point. Fence line 1 sits below the opener. {§packet-operation-fences}
     #checkFencedOps(text: string, line: number, diagnostics: Diagnostic[]): void {
-        for (const item of PlurnkParser.parseStatements(text).items) {
+        const parsed = PlurnkParser.parseStatements(text);
+        for (const item of parsed.items) {
             if (item.kind !== "error") continue;
-            const error = (item as { error: { line: number; column: number; severity: string; message: string } }).error;
+            const { error } = item;
             diagnostics.push({
                 rule: "op-syntax",
                 severity: error.severity === "warning" ? "warning" : "error",
                 message: error.message,
                 line: line + error.line,
                 column: error.column,
+            });
+        }
+        if (parsed.unparsedTail !== undefined) {
+            diagnostics.push({
+                rule: "op-syntax",
+                severity: "error",
+                message: parsed.unparsedTail.reason,
+                line: line + parsed.unparsedTail.from.line,
+                column: parsed.unparsedTail.from.column,
             });
         }
     }

@@ -153,11 +153,18 @@ test("finish=length is forensic evidence: an incomplete frame retries wholesale 
         const attempts = await db.test_turn_attempts.all<{
             accepted: number;
             finish_reason: string | null;
+            parse_errors: string;
         }>({ turn_id: result.turnId });
         assert.deepEqual(attempts.map(({ accepted, finish_reason }) => ({ accepted, finish_reason })), [
             { accepted: 0, finish_reason: "length" },
             { accepted: 1, finish_reason: "length" },
         ]);
+        assert.deepEqual(JSON.parse(attempts[0]!.parse_errors), [{
+            message: "body of `<<EDIT` opened at line 3 but never closed - add `:EDIT` to terminate",
+            line: 3,
+            column: 0,
+            source: "grammar",
+        }], "the rejected attempt preserves one tail fact and no recovered-tail diagnostics");
         const rows = await db.test_log_entries_by_turn.all<{ op: string; origin: string }>({ turn_id: result.turnId });
         assert.equal(
             rows.filter(({ op, origin }) => origin === "model" && op === "READ").length,

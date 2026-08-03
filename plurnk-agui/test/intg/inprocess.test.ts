@@ -1,8 +1,8 @@
 // THE go-live smoke (plurnk-agui#2): the in-process transport module, activated
 // through the daemon's boot plug-point (registerModule → the CoreSeam handle), drives
 // a REAL model worker through the AG-UI+ single interface — no WebSocket, no bridge
-// process, no DaemonClient. Gated on a configured model (~/.plurnk/.env via the env
-// the runner loads); skips clean when absent.
+// process, no DaemonClient. Gated on a configured model supplied to the runner;
+// skips clean when absent.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -13,13 +13,14 @@ import Module from "../../src/Module.ts";
 import type { DaemonSeam } from "../../src/DaemonSeam.ts";
 import { EventType, type AguiEvent } from "../../src/types.ts";
 
-const SERVICE = resolve(import.meta.dirname, "../../../plurnk-service");
+const SERVICE = resolve(import.meta.dirname, "../../../plurnk-core");
 
-// Needs a configured model AND the service's provider env (layer .env.example from
-// plurnk-service + ~/.plurnk/.env — see the file header). Skips clean otherwise.
+// Needs a configured model and provider route from the invoking environment. The test
+// applies the assembled package-default floor after this gate.
 const gated = (process.env.PLURNK_MODEL ?? "") === "" || (process.env.PLURNK_PROVIDERS_FETCH_TIMEOUT ?? "") === "";
 
 test("in-process module: boot plug-point → AG-UI+ run → real model → SSE", { skip: gated, timeout: 180_000 }, async () => {
+    await import(join(SERVICE, "test/floor.ts"));
     const { openMigrated } = await import(join(SERVICE, "test/intg/_helpers.ts"));
     const { liveProvider } = await import(join(SERVICE, "test/_live-harness.ts"));
     const { default: Daemon } = await import(join(SERVICE, "src/server/Daemon.ts"));
@@ -86,7 +87,6 @@ test("in-process module: boot plug-point → AG-UI+ run → real model → SSE",
         assert.match(speech, /pong/i, "the reply answers the prompt");
         assert.equal(types[types.length - 1], "RUN_FINISHED", "the worker closes clean");
     } finally {
-        await (module as Module | null)?.close();
         await daemon.stop();
         await db.close();
         await rm(sandbox, { recursive: true, force: true });

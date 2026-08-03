@@ -184,6 +184,61 @@ test("#58: op.parse projects the parser-owned diagnostic and structured position
     } finally { await mod.close(); }
 });
 
+// {§agui-op-parse} {§unparsed-tail-boundary}
+test("#127: op.parse dispatches only the trusted prefix and appends one parser-owned tail failure", async () => {
+    const { seam } = mockSeam();
+    const dispatched: Parameters<DaemonSeam["dispatchClientAction"]>[0]["statements"][] = [];
+    seam.dispatchClientAction = async ({ statements }) => {
+        dispatched.push(statements);
+        return statements.map(() => ({ status: 201 }));
+    };
+    const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
+    try {
+        const text = "<<EDIT(worker:///ok):yes:EDIT\n<<EDIT(worker:///bad):unterminated";
+        const events = await post(mod.address().port, {
+            threadId: "parse-tail",
+            runId: "parse-tail-run",
+            forwardedProps: {
+                plurnk: {
+                    workspace: "parse-tail",
+                    action: { kind: "op.parse", text },
+                },
+            },
+        });
+        const event = events.find((candidate) => candidate.type === "CUSTOM"
+            && (candidate as { name?: string }).name === "plurnk.action.result") as {
+            value?: {
+                result?: {
+                    results?: Array<{
+                        status?: number;
+                        problem?: Record<string, unknown>;
+                    }>;
+                };
+            };
+        } | undefined;
+
+        assert.equal(dispatched.length, 1);
+        assert.equal(dispatched[0].length, 1, "the recovered tail statement is not dispatched");
+        assert.equal(dispatched[0][0].op, "EDIT");
+        assert.equal(dispatched[0][0].target?.raw, "worker:///ok");
+
+        const results = event?.value?.result?.results;
+        assert.deepEqual(results?.map(({ status }) => status), [201, 400]);
+        assert.deepEqual(results?.[1]?.problem, {
+            type: "https://problems.plurnk.dev/agui/action/parse-failed",
+            title: "Parse failed",
+            status: 400,
+            detail: "body of `<<EDIT` opened at line 2 but never closed - add `:EDIT` to terminate",
+            line: 2,
+            column: 0,
+            source: "grammar",
+            severity: "error",
+            stage: "parsing",
+            retryable: false,
+        });
+    } finally { await mod.close(); }
+});
+
 test("a module action colliding with an AG-UI built-in fails module startup", async () => {
     const { seam } = mockSeam();
     seam.listModuleActions = () => ["ping"];

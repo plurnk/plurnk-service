@@ -574,9 +574,9 @@ an operation after the terminal SEND is an error.
 | `PlurnkParser.parseClient`     | Protocol statements plus read-shaped client LOOK/BUFF commands | `ClientStatement`     |
 
 Every entry point returns ordered `statement`, `error`, and, where admitted,
-`text` items. `unparsedTail` identifies the first position after which a broken
-lexical boundary makes input undefined. The statement `op` field discriminates
-the generated per-operation union.
+`text` items. When present, {§unparsed-tail-boundary} governs the result's item
+extent. The statement `op` field discriminates the generated per-operation
+union.
 
 | Helper                        | Contract                                                                     |
 |-------------------------------|------------------------------------------------------------------------------|
@@ -793,10 +793,13 @@ surfaces when syntax admitted the statement but AST construction did not.
 Independent malformed statements each retain one hard error. Advisories remain
 separate because they do not represent failed admission.
 
-When the lexer cannot determine where a malformed statement ends, the result's
-`unparsedTail` marks the position from which parsing gave up. It is a separate
-boundary fact, not an additional malformed-statement diagnostic. Consumers
-must treat anything past that point as undefined.
+§unparsed-tail-boundary When the lexer cannot determine where a malformed
+statement ends, the result's `unparsedTail` marks the position from which
+parsing gave up. `ParseResult.items` contains only facts that begin strictly
+before that point; recovered contexts and diagnostics at or beyond it are not
+public results. The tail is one separate boundary fact, not an additional
+malformed-statement diagnostic. Consumers must treat anything from that point
+onward as undefined and must never dispatch a recovered statement from it.
 
 | Consumer duty      | Contract                                                                                                       |
 |--------------------|----------------------------------------------------------------------------------------------------------------|
@@ -805,9 +808,6 @@ must treat anything past that point as undefined.
 | Runtime recovery   | Attach only a separately owned fact, such as Core knowing that bounded sibling operations were retained.       |
 | Durable projection | Map bounded hard errors to failed operation results; warnings may become Notices with `level: "warn"`.         |
 | Presentation       | Normalize or bound the diagnostic only when the surface requires it, without changing its meaning.             |
-
-An `unparsedTail` makes everything beyond its boundary undefined and cannot be
-recovered as a bounded failed operation.
 
 Serialization convention for transmission to the model (the agent
 runtime constructs this; the parser provides the fields):

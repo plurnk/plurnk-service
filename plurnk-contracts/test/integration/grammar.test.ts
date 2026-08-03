@@ -44,9 +44,14 @@ test("#607: balanced parentheses are ordinary URL target content", () => {
 
 test("#607: unmatched target parentheses require percent-encoding", () => {
     assert.ok(errorsOf("<<READ(https://example.test/a)b)::READ").length > 0);
-    assert.ok(errorsOf("<<READ(https://example.test/a(b)::READ").length > 0);
-    assert.equal(errorsOf("<<READ(https://example.test/a%28b)::READ").length, 0);
-    assert.equal(errorsOf("<<READ(https://example.test/a%29b)::READ").length, 0);
+    const unclosed = PlurnkParser.parseStatements("<<READ(https://example.test/a(b)::READ");
+    assert.equal(unclosed.items.length, 0);
+    assert.match(unclosed.unparsedTail?.reason ?? "", /target slot of `<<READ`.*add `\)`/);
+    for (const encoded of ["a%28b", "a%29b"]) {
+        const result = PlurnkParser.parseStatements(`<<READ(https://example.test/${encoded})::READ`);
+        assert.equal(result.items.filter((item) => item.kind === "error").length, 0);
+        assert.equal(result.unparsedTail, undefined);
+    }
 });
 
 test("ex 12 — EDIT with empty body (clear)", () => {
@@ -156,14 +161,18 @@ test("three valid statements in sequence parse independently", () => {
     assert.equal(result.items.filter((i) => i.kind === "statement").length, 3);
 });
 
-test("malformed path (unclosed paren) produces error, not silent swallowing", () => {
-    // Statement 2's path is missing its `)`. With tightened PATH_INNER,
-    // the lexer rejects `<<` inside path content and produces an error
-    // instead of greedily consuming statement 3.
+test("malformed path (unclosed paren) produces a tail boundary, not silent swallowing", () => {
+    // Statement 2's path is missing its `)`. The lexer retains that boundary
+    // rather than greedily exposing statement 3 as another public statement.
     const input = "<<EDIT(p1):one:EDIT<<EDIT(broken<<EDIT(p3):three:EDIT";
     const result = PlurnkParser.parseStatements(input);
-    const errors = result.items.filter((i) => i.kind === "error");
-    assert.ok(errors.length >= 1, "expected at least one error from malformed path");
+    assert.deepEqual(
+        result.items.map((item) => item.kind === "statement" ? item.statement.target?.raw : item.kind),
+        ["p1"],
+        "only the complete statement before the broken target remains public",
+    );
+    assert.deepEqual(result.unparsedTail?.from, { line: 1, column: 19 });
+    assert.match(result.unparsedTail?.reason ?? "", /target slot of `<<EDIT`.*add `\)`/);
 });
 
 test("error carries line, column, and source", () => {
@@ -185,6 +194,40 @@ test("boundary-destroying error produces unparsedTail", () => {
     // No close tag at all: lexer stuck in BODY mode at EOF.
     const result = PlurnkParser.parseStatements("<<EDIT(p):body never closed");
     assert.ok(result.unparsedTail, "expected unparsedTail to be set");
+});
+
+// {§unparsed-tail-boundary}
+test("#127: unparsedTail excludes recovered items at and beyond its trust boundary", async (t) => {
+    const prefix = "<<EDIT(worker:///ok):yes:EDIT\n";
+    const tails = [
+        ["body", "<<EDIT(worker:///bad):unterminated", /body of `<<EDIT`/],
+        ["target", "<<READ(worker:///bad", /target slot of `<<READ`/],
+        ["signal", "<<SEND[x", /signal slot of `<<SEND`/],
+    ] as const;
+
+    for (const [name, tail, reason] of tails) {
+        await t.test(name, () => {
+            const result = PlurnkParser.parseClient(prefix + tail);
+            assert.deepEqual(result.unparsedTail?.from, { line: 2, column: 0 });
+            assert.match(result.unparsedTail?.reason ?? "", reason);
+            assert.equal(result.items.length, 1, "only the trusted-prefix statement is public");
+            const [item] = result.items;
+            assert.equal(item.kind, "statement");
+            if (item.kind === "statement") {
+                assert.equal(item.statement.op, "EDIT");
+                assert.deepEqual(item.statement.position, { line: 1, column: 0 });
+            }
+        });
+    }
+});
+
+test("#127: boundary loss does not synthesize a downstream turn-shape error", () => {
+    const result = PlurnkParser.parse("<<PLAN:p:PLAN\n<<EDIT(worker:///bad):unterminated");
+    assert.deepEqual(
+        result.items.map((item) => item.kind === "statement" ? item.statement.op : item.kind),
+        ["PLAN"],
+    );
+    assert.match(result.unparsedTail?.reason ?? "", /body of `<<EDIT`/);
 });
 
 test("clean parse has no unparsedTail", () => {
@@ -241,9 +284,10 @@ test("value-add: SEND-less turn gets the end-with-SEND imperative", () => {
 
 test("value-add: a turn that derails mid-op does NOT get a misleading SEND imperative", () => {
     // The real fix is the unclosed target; the missing SEND is a parse artifact.
-    const errs = errMsgs("<<PLAN:t:PLAN <<READ(:READ <<SEND[200]:d:SEND");
+    const result = PlurnkParser.parse("<<PLAN:t:PLAN <<READ(:READ <<SEND[200]:d:SEND");
+    const errs = result.items.filter((item) => item.kind === "error").map((item) => item.error);
     assert.equal(errs.some((e) => /end with a terminal/.test(e!.message)), false);
-    assert.equal(errs.some((e) => e!.source === "lexer"), true);
+    assert.match(result.unparsedTail?.reason ?? "", /target slot of `<<READ`.*add `\)`/);
 });
 
 test("value-add: near-miss op swallowed as prose surfaces a warning, not an error", () => {
@@ -347,10 +391,11 @@ test("202 is the wait disposition; ANTLR remains shape-tolerant while runtime ow
 });
 
 test("value-add: the mid-termination lift is suppressed when the turn derailed mid-op", () => {
-    // An unclosed signal recovers a partial SEND[200]; the real fix is the `]`, not a mid-term.
-    const errs = errMsgs("<<PLAN:p:PLAN\n<<SEND[200(x):d:SEND");
+    // The real fix is the unclosed signal, not a synthesized mid-termination.
+    const result = PlurnkParser.parse("<<PLAN:p:PLAN\n<<SEND[200(x):d:SEND");
+    const errs = result.items.filter((item) => item.kind === "error").map((item) => item.error);
     assert.equal(errs.some((e) => /ends the turn/.test(e!.message)), false);
-    assert.equal(errs.some((e) => e!.source === "lexer"), true);
+    assert.match(result.unparsedTail?.reason ?? "", /signal slot of `<<SEND`.*add `\]`/);
 });
 
 test("value-add: a malformed signal collapses the per-character lexer cascade to one error", () => {
@@ -1358,10 +1403,10 @@ const firstError = (input: string) => {
     return e.error;
 };
 
-test("error message: missing close tag uses 'close tag' wording", () => {
-    const e = firstError("<<EDIT(p):body without close");
-    assert.match(e.message, /close tag/);
-    assert.doesNotMatch(e.message, /CLOSE_TAG|EOF|<EOF>|RPAREN|LBRACKET/);
+test("unparsedTail: missing body closer uses protocol wording", () => {
+    const result = PlurnkParser.parseStatements("<<EDIT(p):body without close");
+    assert.match(result.unparsedTail?.reason ?? "", /body of `<<EDIT`.*add `:EDIT` to terminate/);
+    assert.doesNotMatch(result.unparsedTail?.reason ?? "", /CLOSE_TAG|EOF|<EOF>|RPAREN|LBRACKET/);
 });
 
 test("error message: << inside target says 'in target'", () => {

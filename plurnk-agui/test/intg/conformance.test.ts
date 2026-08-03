@@ -12,10 +12,11 @@ import { join, resolve } from "node:path";
 import Module from "../../src/Module.ts";
 import type { DaemonSeam } from "../../src/DaemonSeam.ts";
 
-const SERVICE = resolve(import.meta.dirname, "../../../plurnk-service");
+const SERVICE = resolve(import.meta.dirname, "../../../plurnk-core");
 const gated = (process.env.PLURNK_MODEL ?? "") === "" || (process.env.PLURNK_PROVIDERS_FETCH_TIMEOUT ?? "") === "";
 
 test("the official @ag-ui/client accepts the full stream (create-ag-ui-app conformance)", { skip: gated, timeout: 180_000 }, async () => {
+    await import(join(SERVICE, "test/floor.ts"));
     const { openMigrated } = await import(join(SERVICE, "test/intg/_helpers.ts"));
     const { liveProvider } = await import(join(SERVICE, "test/_live-harness.ts"));
     const { default: Daemon } = await import(join(SERVICE, "src/server/Daemon.ts"));
@@ -51,7 +52,6 @@ test("the official @ag-ui/client accepts the full stream (create-ag-ui-app confo
         assert.equal(last.role, "assistant", "their message-builder assembled the reply");
         assert.match(String(last.content ?? ""), /pong/i, "the reply answers the prompt");
     } finally {
-        await (module as Module | null)?.close();
         await daemon.stop();
         await db.close();
         await rm(sandbox, { recursive: true, force: true });

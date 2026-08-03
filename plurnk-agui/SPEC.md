@@ -177,11 +177,26 @@ successfully transported management Run; it does not turn the Run into
 | `workspace.derivation`   | Workspace | none                                                 | `CoreSeam.workspaceDerivationStatus`.                                                                              |
 | `entry.read`             | Workspace | `target`, `channel?`, `offset?`                      | `CoreSeam.readEntry`.                                                                                              |
 | `op.exec`                | Workspace | `command`                                            | Constructs one EXEC statement and calls `CoreSeam.dispatchClientAction` on the client worker.                      |
-| `op.parse`               | Workspace | `text`                                               | Parses PLURNK text under {§parse-diagnostics} and dispatches its statements as one client action.                  |
+| `op.parse`               | Workspace | `text`                                               | Parses and projects PLURNK text under {§agui-op-parse}.                                                            |
 | `workspace.members`      | Workspace | none                                                 | `CoreSeam.listMembers`.                                                                                            |
 | `op.look`                | Workspace | `text`                                               | Parses LOOK, rewrites it to READ, and calls core's no-log `look` projection.                                       |
 | `run.fork`               | Workspace | `name?`                                              | `CoreSeam.forkWorker` from the thread's conversation worker.                                                       |
 | Registered module action | Worldless | owner-defined                                        | `CoreSeam.invokeModuleAction`; the handler receives only the supplied params and owns their validation and result. |
+
+### §agui-op-parse Parsed-operation projection
+
+`op.parse` dispatches all trusted-prefix statements as one client action and
+preserves the parser's source order in its `results` array:
+
+| Parser output                                  | AG-UI result                                                                                                                                         |
+|------------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------|
+| Statement before the tail boundary             | Its corresponding `CoreSeam.dispatchClientAction` result in the statement's position                                                                 |
+| Bounded hard error                             | A 400 `agui/action/parse-failed` result in the error's position, preserving parser detail, line, column, source, and severity                        |
+| `unparsedTail` under {§unparsed-tail-boundary} | Exactly one final 400 `agui/action/parse-failed` result with its verbatim reason and position, `source: "grammar"`, and no adapter-authored recovery |
+| Text item                                      | No result; text is not dispatchable                                                                                                                  |
+
+No statement at or beyond the tail boundary is dispatched. Every parse failure
+uses `stage: "parsing"` and `retryable: false`.
 
 §agui-module-actions **One public action namespace.** Core rejects empty and
 duplicate extension registrations ({§module-action-registration}). At module

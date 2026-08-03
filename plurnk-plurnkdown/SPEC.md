@@ -86,8 +86,8 @@ Plurnkdown preserves the semantic evidence supplied by section owners.
 
 Model-facing operation examples use fenced blocks with the `plurnk` info string. A paragraph line
 beginning with `<<` is an `op-fence` error. Each `plurnk` fence is parsed statement-by-statement by
-`@plurnk/plurnk-contracts`; parser errors and advisories surface as `op-syntax` diagnostics under
-{§parse-diagnostics}.
+`@plurnk/plurnk-contracts`; bounded diagnostics and {§unparsed-tail-boundary} surface as
+`op-syntax` diagnostics under {§parse-diagnostics}.
 
 Inline code may name a short operation form without becoming a block example. Other code-fence
 languages are opaque to the PLURNK syntax check.
@@ -114,11 +114,11 @@ document-size limit.
 
 ## §packet-lint Linter contract
 
-| Rule        | Severity         | Trigger                                                                                  |
-| ----------- | ---------------- | ---------------------------------------------------------------------------------------- |
-| `op-fence`  | error            | A paragraph line starts with a bare `<<` operation opener.                               |
-| `op-syntax` | error or warning | A statement in a `plurnk` fence fails or receives an advisory from the contracts parser. |
-| `run-on`    | warning          | Paragraph prose crosses an atomic-prose threshold.                                       |
+| Rule        | Severity         | Trigger                                                                    |
+| ----------- | ---------------- | -------------------------------------------------------------------------- |
+| `op-fence`  | error            | A paragraph line starts with a bare `<<` operation opener.                 |
+| `op-syntax` | error or warning | A `plurnk` fence contains a parser diagnostic, advisory, or unparsed tail. |
+| `run-on`    | warning          | Paragraph prose crosses an atomic-prose threshold.                         |
 
 `PacketLint.lintDir` evaluates byte-exact digest files named
 `packetNNN.system.md` and `packetNNN.user.md`. It ignores other digest artifacts, preserves the
