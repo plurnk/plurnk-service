@@ -1,4 +1,4 @@
-import { PlurnkParser, PlurnkParseError } from "@plurnk/plurnk-contracts";
+import { PlurnkParser, PlurnkParseError, UNKNOWN_POSITION } from "@plurnk/plurnk-contracts";
 import Owner from "./Owner.ts";
 import type { Notice } from "@plurnk/plurnk-contracts";
 import type { PlurnkStatement, EditStatement, ReadStatement, UrlPath, FindStatement } from "@plurnk/plurnk-contracts";
@@ -921,7 +921,7 @@ export default class Engine {
                 };
                 const docRead: ReadStatement = {
                     op: "READ", suffix: "", signal: null, target: docTarget,
-                    lineMarker: null, body: null, position: { line: 1, column: 1 },
+                    lineMarker: null, body: null, position: UNKNOWN_POSITION,
                 };
                 await this.dispatch({
                     statement: docRead, workspaceId, workerId, loopId, turnId,
@@ -1051,7 +1051,7 @@ export default class Engine {
                         },
                         body: null,
                         lineMarker: cap === null ? null : { marks: [1, cap] },
-                        position: { line: 1, column: 1 },
+                        position: UNKNOWN_POSITION,
                     };
                     await this.dispatch({
                         statement: catalogFind, workspaceId, workerId, loopId, turnId,
@@ -1068,7 +1068,7 @@ export default class Engine {
                 const kernelDocsFind: FindStatement = {
                     op: "FIND", suffix: "", signal: null,
                     target: { kind: "url", raw: "worker://plurnk/docs/**", scheme: "worker", username: null, password: null, hostname: "plurnk", port: null, pathname: "/docs/**", query: null, fragment: null },
-                    body: null, lineMarker: null, position: { line: 1, column: 1 },
+                    body: null, lineMarker: null, position: UNKNOWN_POSITION,
                 };
                 await this.dispatch({ statement: kernelDocsFind, workspaceId, workerId, loopId, turnId, sequence: nextActionIndex, origin: "plurnk", onDispatch });
                 nextActionIndex++;
@@ -1079,7 +1079,7 @@ export default class Engine {
                 const ownFind: FindStatement = {
                     op: "FIND", suffix: "", signal: null,
                     target: { kind: "url", raw: "worker://~/*", scheme: "worker", username: null, password: null, hostname: "~", port: null, pathname: "/*", query: null, fragment: null },
-                    body: null, lineMarker: null, position: { line: 1, column: 1 },
+                    body: null, lineMarker: null, position: UNKNOWN_POSITION,
                 };
                 await this.dispatch({ statement: ownFind, workspaceId, workerId, loopId, turnId, sequence: nextActionIndex, origin: "plurnk", onDispatch });
                 nextActionIndex++;
@@ -1098,7 +1098,7 @@ export default class Engine {
                         username: null, password: null, hostname: null, port: null,
                         pathname, query: null, fragment: null,
                     },
-                    body: null, position: { line: 1, column: 1 },
+                    body: null, position: UNKNOWN_POSITION,
                 };
                 await this.dispatch({
                     statement: fileRead, workspaceId, workerId, loopId, turnId,

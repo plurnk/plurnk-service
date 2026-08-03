@@ -697,7 +697,9 @@ class PlurnkParseError extends Error {
 §parser-position Parser source locations are points, not text regions. An AST
 statement's `position` identifies the first `<` of its open tag; a diagnostic
 identifies the offending or recovery point; a text item and `unparsedTail.from`
-identify the first point at which that item or undefined tail begins.
+identify the first point at which that item or undefined tail begins. A
+statement constructed without retained parsed source uses `UNKNOWN_POSITION`,
+the unknown sentinel; its dispatch origin remains a separate fact.
 
 | Representation                      | Line                     | Column                                   | Absence or extent                                      |
 |-------------------------------------|--------------------------|------------------------------------------|--------------------------------------------------------|

@@ -21,6 +21,6 @@ export { AstBuilder };
 export const parsePath = (raw: string) => AstBuilder.parsePath(raw);
 export const parseResourceSelection = (raw: string) => AstBuilder.parseResourceSelection(raw);
 
-export { PLURNK_OPS, WORKER_NAME, RESERVED_AUTHORITIES } from "./types.ts";
+export { PLURNK_OPS, WORKER_NAME, RESERVED_AUTHORITIES, UNKNOWN_POSITION } from "./types.ts";
 export type * from "./types.ts";
 export type { ErrorSource, Severity } from "./PlurnkParseError.ts";

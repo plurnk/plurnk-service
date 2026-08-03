@@ -21,6 +21,9 @@ export const WORKER_NAME = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/;
 // Resolver-owned authority names excluded from minting. {§worker-name}
 export const RESERVED_AUTHORITIES = Object.freeze(["plurnk", "self"] as const);
 
+// Structurally synthesized statements have no parsed source point. {§parser-position}
+export const UNKNOWN_POSITION: Readonly<Position> = Object.freeze({ line: 0, column: 0 });
+
 // Client-tier-only ops (parseClient). Kept distinct from PlurnkOp so the protocol op set
 // stays closed and client ops never widen the model-facing type.
 export type ClientOp = "LOOK" | "BUFF";

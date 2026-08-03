@@ -511,6 +511,13 @@ test("the client-interface seam — runLoop drives a loop end to end on the daem
             assert.ok(docsAtCreation.length > 0, "workspace creation publishes worker://plurnk/docs/*.md before any model worker or loop exists");
             const plurnkWorker = await db.envelope_get_worker_by_name.get<{ id: number }>({ workspace_id: created.id, name: "plurnk" });
             assert.ok(plurnkWorker !== undefined);
+            const docEdits = await db.test_log_entries_by_worker_op_full.all<{ tx: string }>({ worker_id: plurnkWorker!.id, op: "EDIT" });
+            assert.ok(docEdits.length > 0, "documentation publication dispatches structural EDIT statements");
+            for (const { tx } of docEdits) {
+                const statement = JSON.parse(tx) as unknown;
+                assert.equal(Validator.validatePlurnkStatement(statement).valid, true);
+                assert.deepEqual((statement as { position?: unknown }).position, { line: 0, column: 0 });
+            }
             const publicationRows = async () => db.test_log_entries_by_worker.all<{ op: string; status_rx: number }>({ worker_id: plurnkWorker!.id });
             const publishedCount = (await publicationRows()).length;
 

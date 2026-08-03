@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
     PlurnkParser,
     Problems,
+    UNKNOWN_POSITION,
     Validator,
 } from "./index.ts";
 
@@ -17,4 +18,10 @@ test("the package root is the singular language and wire-contract API", () => {
 
     const problem = Problems.create("contracts", "missing", 404, "Missing.");
     assert.equal(Validator.validateOperationResult({ status: 404, problem }).valid, true);
+});
+
+test("unknown statement position is one frozen contracts-owned value", () => {
+    assert.deepEqual(UNKNOWN_POSITION, { line: 0, column: 0 });
+    assert.equal(Object.isFrozen(UNKNOWN_POSITION), true);
+    assert.equal(Validator.validatePosition(UNKNOWN_POSITION).valid, true);
 });

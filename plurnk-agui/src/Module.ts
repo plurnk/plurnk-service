@@ -16,11 +16,11 @@ import { createServer, type IncomingMessage, type ServerResponse, type Server as
 import Portal from "./Portal.ts";
 import { stateSnapshot, parseAction, actionResult, type ActionRequest, type ActionOutcome } from "./AguiPlus.ts";
 import type { DaemonSeam, ClientEnvelope, PlurnkStatement } from "./DaemonSeam.ts";
-import { PlurnkParser } from "@plurnk/plurnk-contracts";
+import { PlurnkParser, UNKNOWN_POSITION } from "@plurnk/plurnk-contracts";
 import { EventType, type AguiEvent, type RunAgentInput } from "./types.ts";
 import { RunAgentInputSchema, type Interrupt } from "@ag-ui/core";
 import { logEntryIdFromToolCallId, proposalInterrupt } from "./AguiPlus.ts";
-import { Problems, Validator, type OperationResult, type ProblemDetails } from "@plurnk/plurnk-contracts";
+import { Problems, Validator, type ExecStatement, type OperationResult, type ProblemDetails } from "@plurnk/plurnk-contracts";
 
 export interface ModuleOptions {
     host: string;
@@ -763,7 +763,10 @@ export default class Module {
                             { field: "command", recovery: "Provide the command to execute." },
                         );
                     }
-                    const statement = { op: "EXEC", suffix: "", signal: null, target: null, lineMarker: null, body: p.command, position: { line: 1, col: 1 } } as unknown as PlurnkStatement;
+                    const statement: ExecStatement = {
+                        op: "EXEC", suffix: "", signal: null, target: null,
+                        lineMarker: null, body: p.command, position: UNKNOWN_POSITION,
+                    };
                     // Client ops journal as client-origin turns in the client worker (worker split:
                     // only LOOPS live in the model worker).
                     const [result] = await this.#seam.dispatchClientAction({ workspaceId: env.workspaceId, workerId: env.workerId, statements: [statement] });

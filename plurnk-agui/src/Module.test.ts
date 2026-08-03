@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import Module from "./Module.ts";
 import type { DaemonSeam, ProposalResolution } from "./DaemonSeam.ts";
 import type { AguiEvent } from "./types.ts";
-import { Problems } from "@plurnk/plurnk-contracts";
+import { Problems, Validator } from "@plurnk/plurnk-contracts";
 
 const mockSeam = () => {
     const resolves: Array<{ logEntryId: number; resolution: ProposalResolution }> = [];
@@ -135,6 +135,32 @@ test("a management-action AG-UI Run executes via the seam: result custom + RUN_F
         assert.equal(err.value.problem.recovery, "Use an action advertised by discover.");
         assert.equal(err.value.problem.retryable, false);
         assert.doesNotMatch(err.value.problem.detail, /seam surface/, "no internal jargon leaks to the client");
+    } finally { await mod.close(); }
+});
+
+test("#131: structured op.exec dispatches one valid statement with unknown source position", async () => {
+    const { seam } = mockSeam();
+    const dispatched: Parameters<DaemonSeam["dispatchClientAction"]>[0]["statements"][] = [];
+    seam.dispatchClientAction = async ({ statements }) => {
+        dispatched.push(statements);
+        return [{ status: 200 }];
+    };
+    const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
+    try {
+        await post(mod.address().port, {
+            threadId: "structured-exec-position",
+            forwardedProps: {
+                plurnk: {
+                    workspace: "structured-exec-position",
+                    action: { kind: "op.exec", command: "printf done" },
+                },
+            },
+        });
+        assert.equal(dispatched.length, 1);
+        assert.equal(dispatched[0].length, 1);
+        assert.equal(dispatched[0][0].op, "EXEC");
+        assert.equal(Validator.validatePlurnkStatement(dispatched[0][0]).valid, true);
+        assert.deepEqual(dispatched[0][0].position, { line: 0, column: 0 });
     } finally { await mod.close(); }
 });
 

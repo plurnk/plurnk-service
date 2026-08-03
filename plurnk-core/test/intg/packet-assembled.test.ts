@@ -14,6 +14,7 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { rulerCount } from "../../src/core/token-ruler.ts";
 import { Mock } from "@plurnk/plurnk-providers";
+import { Validator } from "@plurnk/plurnk-contracts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, seedEntryWithChannel, packetSection, logEntries, DEFAULT_MIMETYPES } from "./_helpers.ts";
 import { copyStmt, editStmt, readStmt, regex, sendStmt, urlPath } from "./_dsl.ts";
 
@@ -36,6 +37,16 @@ test("assembled packet: the turn-0 catalog foist renders its entries into the lo
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(200)] } }] });
         const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
+        const foists = (await db.test_log_entries_by_loop.all<{ id: number; op: string; origin: string }>({ loop_id: loopId }))
+            .filter(({ op, origin }) => origin === "plurnk" && (op === "FIND" || op === "READ"));
+        assert.ok(foists.length > 0, "the first turn persists its structural observation foists");
+        for (const { id } of foists) {
+            const tx = await db.test_log_entries_get_tx_by_id.get<{ tx: string }>({ id });
+            assert.ok(tx !== undefined);
+            const statement = JSON.parse(tx.tx) as unknown;
+            assert.equal(Validator.validatePlurnkStatement(statement).valid, true);
+            assert.deepEqual((statement as { position?: unknown }).position, { line: 0, column: 0 });
+        }
         const packet = await getPacket(db, result.turnId);
         const log = packetSection(packet, "log");
 
