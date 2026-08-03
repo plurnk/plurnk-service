@@ -5,6 +5,7 @@ export { default as BaseExecutor } from "./BaseExecutor.ts";
 export { default as SubprocessExecutor } from "./SubprocessExecutor.ts";
 export { default as ErrorDetail, ERROR_DETAIL_LIMIT } from "./ErrorDetail.ts";
 export { CommandSyntaxError, tokenizeArgv } from "./tokenizeArgv.ts";
+export { default as RuntimeTag } from "./RuntimeTag.ts";
 
 // Discovery ({§executor-discovery}). The behavior lives on `Discover`; the
 // documented `discover()` entry is its `scan` static, re-exported here so the

@@ -96,6 +96,22 @@ test("module runtime registration preserves one-name-one-owner atomicity", async
         assert.throws(() => engine.registerRuntime("worker", fakeEntry("worker")), /reserved/i, "reserved name rejected");
         assert.equal(executors.entry("worker"), undefined, "reserved collision left the executor registry untouched");
         assert.equal(schemes.get("worker")?.constructor.name, "Worker", "the reserved 'worker' scheme is unchanged, not shadowed");
+
+        assert.throws(
+            () => engine.registerRuntime("Alias_Tool", fakeEntry("Alias_Tool")),
+            /runtime declaration invalid: module runtime name 'Alias_Tool' must match \[a-z\]\[a-z0-9\+\.\-\]\*/,
+            "module-owned declarations use the same canonical tag admission as installed declarations",
+        );
+        assert.equal(executors.entry("Alias_Tool"), undefined, "invalid admission leaves the executor registry untouched");
+        assert.equal(schemes.has("Alias_Tool"), false, "invalid admission leaves the scheme registry untouched");
+
+        assert.throws(
+            () => engine.registerRuntime("only", fakeEntry("only")),
+            /runtime declaration invalid: module runtime name 'only' is reserved by PLURNK_EXECS_ONLY/,
+            "dynamic registration cannot collide with the policy allowlist key",
+        );
+        assert.equal(executors.entry("only"), undefined);
+        assert.equal(schemes.has("only"), false);
     } finally { await db.close(); }
 });
 

@@ -44,9 +44,11 @@ runtime declarations, and a default-exported `BaseExecutor` subclass.
 ```
 
 One package may claim several tags; the consumer instantiates and probes each
-tag independently. `example` is a compact verbatim `plurnk` snippet, and every
-line in it must be a complete `<<`-delimited operation. A `docs/<tag>.md` file
-supplies the full reference material. See {§executor-runtime-declaration}.
+tag independently. A name uses lowercase URI-scheme syntax
+`[a-z][a-z0-9+.-]*`; `only` is reserved by runtime policy. `example` is a
+compact verbatim `plurnk` snippet, and every line in it must be a complete
+`<<`-delimited operation. A `docs/<tag>.md` file supplies the full reference
+material. See {§executor-runtime-declaration}.
 
 ### Implement the executor
 
@@ -103,7 +105,7 @@ Policy is subtractive; a downstream layer cannot restore a removed tag. See
 ## Exports
 
 - `BaseExecutor`, `SubprocessExecutor`, and `SpawnArgs`.
-- `discover`, `Policy`, and runtime discovery types.
+- `discover`, `Policy`, `RuntimeTag`, and runtime discovery types.
 - `ErrorDetail` and `PLURNK_EXECS_ERROR_DETAIL_LIMIT`.
 - Executor arguments, channel, availability, and effect types.
 - `Results`, result types, and runtime-neutral Notice types.

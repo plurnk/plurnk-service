@@ -147,6 +147,26 @@ test("discover: the dynamic hook accepts a default export and a sync return", as
     assert.deepEqual([...registry.keys()], ["slack"]);
 });
 
+test("{§executor-runtime-declaration} #105: dynamic runtime tags use canonical scheme names and reject reserved policy names", async () => {
+    const invalid = await makeDynamicPkg(
+        "@plurnk/plurnk-execs-dynamic-fixture",
+        `export default () => [{ name: "Alias_Tool" }];`,
+    );
+    await assert.rejects(
+        Discover.scan({ packageDirs: [invalid] }),
+        /runtime declaration invalid: @plurnk\/plurnk-execs-dynamic-fixture name 'Alias_Tool' must match \[a-z\]\[a-z0-9\+\.\-\]\*/,
+    );
+
+    const reserved = await makeDynamicPkg(
+        "@plurnk/plurnk-execs-dynamic-fixture",
+        `export default () => [{ name: "only" }];`,
+    );
+    await assert.rejects(
+        Discover.scan({ packageDirs: [reserved] }),
+        /runtime declaration invalid: @plurnk\/plurnk-execs-dynamic-fixture name 'only' is reserved by PLURNK_EXECS_ONLY/,
+    );
+});
+
 test("discover: a broken dynamic hook is fail-hard (trusted-package contract)", async () => {
     const missing = await makeDynamicPkg("@plurnk/plurnk-execs-dynamic-fixture", "// no exports", "gone.mjs");
     // Point at a file that doesn't exist on disk → unloadable.
@@ -224,16 +244,59 @@ test("discover: tag collision across packages is fail-hard", async () => {
     );
 });
 
-test("discover: skips entries with no/empty name and malformed package.json", async () => {
-    const dir = await makePkg({
-        name: "@plurnk/plurnk-execs-mixed",
-        plurnk: { kind: "exec", runtimes: [{ glyph: "❓" }, { name: "" }, { name: "ok" }] },
+test("{§executor-runtime-declaration} #105: static runtime tags are canonical, path-safe scheme names", async () => {
+    const valid = await makePkg({
+        name: "@acme/acme-execs-tools",
+        plurnk: { kind: "exec", runtimes: [{ name: "alias.tool" }, { name: "tool-v2" }, { name: "c++" }] },
+    });
+    assert.deepEqual(
+        [...(await Discover.scan({ packageDirs: [valid] })).registry.keys()],
+        ["alias.tool", "tool-v2", "c++"],
+    );
+
+    for (const name of ["Alias", "_private", "alias_tool", "../escape", "two words"]) {
+        const invalid = await makePkg({
+            name: "@acme/acme-execs-invalid",
+            plurnk: { kind: "exec", runtimes: [{ name }] },
+        });
+        await assert.rejects(
+            Discover.scan({ packageDirs: [invalid] }),
+            /runtime declaration invalid: @acme\/acme-execs-invalid .*must match \[a-z\]\[a-z0-9\+\.\-\]\*/,
+            `invalid runtime name ${JSON.stringify(name)} must fail at discovery`,
+        );
+    }
+
+    const reserved = await makePkg({
+        name: "@acme/acme-execs-reserved",
+        plurnk: { kind: "exec", runtimes: [{ name: "only" }] },
+    });
+    await assert.rejects(
+        Discover.scan({ packageDirs: [reserved] }),
+        /runtime declaration invalid: @acme\/acme-execs-reserved name 'only' is reserved by PLURNK_EXECS_ONLY/,
+    );
+});
+
+test("discover: claimed runtime declarations with no name fail hard; unrelated malformed packages remain ignored", async () => {
+    for (const decl of [{ glyph: "❓" }, { name: "" }]) {
+        const claimed = await makePkg({
+            name: "@plurnk/plurnk-execs-invalid",
+            plurnk: { kind: "exec", runtimes: [decl] },
+        });
+        await assert.rejects(
+            Discover.scan({ packageDirs: [claimed] }),
+            /runtime declaration invalid: @plurnk\/plurnk-execs-invalid must declare a string name/,
+        );
+    }
+
+    const valid = await makePkg({
+        name: "@plurnk/plurnk-execs-valid",
+        plurnk: { kind: "exec", runtimes: [{ name: "ok" }] },
     });
     const brokenDir = await mkTmp("execs-discover-");
     await fs.writeFile(path.join(brokenDir, "package.json"), "{ not json", "utf-8");
     const emptyDir = await mkTmp("execs-discover-");
 
-    const { registry } = await Discover.scan({ packageDirs: [dir, brokenDir, emptyDir] });
+    const { registry } = await Discover.scan({ packageDirs: [valid, brokenDir, emptyDir] });
 
     assert.equal(registry.size, 1);
     assert.ok(registry.has("ok"));

@@ -2,6 +2,28 @@ import test from "node:test";
 import { strict as assert } from "node:assert";
 import Policy from "./policy.ts";
 
+test("{§executor-policy} #105: policy keys address canonical runtime tags and the ONLY control key", () => {
+    for (const key of [
+        "PLURNK_EXECS_SH",
+        "PLURNK_EXECS_alias.tool",
+        "plurnk_execs_TOOL-V2",
+        "PLURNK_EXECS_C++",
+        "PLURNK_EXECS_ONLY",
+        "PLURNK_EXECS_only",
+    ]) {
+        assert.equal(Policy.isKey(key), true, `${key} is an addressable runtime policy key`);
+    }
+    for (const key of [
+        "PLURNK_EXECS_",
+        "PLURNK_EXECS_2FAST",
+        "PLURNK_EXECS_ALIAS_TOOL",
+        "PLURNK_EXECS_ERROR_DETAIL_LIMIT",
+        "PLURNK_PROVIDERS_SH",
+    ]) {
+        assert.equal(Policy.isKey(key), false, `${key} is outside runtime policy-key grammar`);
+    }
+});
+
 test("isEnabled: a tag is on by default when nothing is set", () => {
     assert.equal(Policy.isEnabled("node", {}), true);
 });

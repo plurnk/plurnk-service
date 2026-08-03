@@ -2,6 +2,7 @@
 // exact public operation failure for every module riding the daemon surface.
 // Internal invariant violations still throw ordinary implementation errors.
 import { isAbsolute } from "node:path";
+import { Policy } from "@plurnk/plurnk-execs";
 import Results, { OperationFailureError } from "../core/results.ts";
 import type { ProposalResolution } from "../core/ProposalLifecycle.ts";
 import WorkerName, { WorkerNameError } from "../core/WorkerName.ts";
@@ -517,12 +518,15 @@ export default class ClientInput {
                         { field: `settings.execs.${k}`, recovery: "Configure MCP servers outside workspace settings." },
                     );
                 }
-                if (!/^PLURNK_EXECS_[A-Za-z0-9_]+$/.test(k)) {
+                if (!Policy.isKey(k)) {
                     ClientInput.#invalid(
                         "workspace.create",
                         "setting-key-invalid",
-                        `settings.execs key '${k}' is not a PLURNK_EXECS_* flag.`,
-                        { field: `settings.execs.${k}`, recovery: "Use a PLURNK_EXECS_* policy key." },
+                        `settings.execs key '${k}' is not a runtime policy key.`,
+                        {
+                            field: `settings.execs.${k}`,
+                            recovery: "Use PLURNK_EXECS_ONLY or PLURNK_EXECS_<canonical runtime tag>.",
+                        },
                     );
                 }
                 if (typeof v !== "string") {

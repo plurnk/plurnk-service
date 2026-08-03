@@ -132,9 +132,9 @@ export interface ExecInfo {
 
 // One runtime-tag declaration — the shape of a static `plurnk.runtimes[]`
 // manifest entry, and the element type a dynamic runtimes hook returns. `name`
-// is the tag; the rest are the optional manifest fields discover() surfaces
-// onto ExecInfo (a per-tag `docs/<tag>.md` file, when present, still wins over
-// an inline `documentation`).
+// is the canonical tag from {§executor-runtime-declaration}; the rest are the
+// optional manifest fields discover() surfaces onto ExecInfo (a per-tag
+// `docs/<tag>.md` file, when present, still wins over inline documentation).
 export interface RuntimeDecl {
     name: string;
     glyph?: string;

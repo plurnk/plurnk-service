@@ -29,7 +29,7 @@ test("client input accepts valid project, constraint, flag, and settings shapes"
         git: false,
         questions: true,
         client: "plurnk.test/1",
-        execs: { PLURNK_EXECS_GIT: "0" },
+        execs: { PLURNK_EXECS_GIT: "0", "PLURNK_EXECS_ALIAS.TOOL": "false" },
         mdDocs: [{ alias: "guide.md", content: "Hello" }],
     })), {
         filesItems: 3,
@@ -37,7 +37,7 @@ test("client input accepts valid project, constraint, flag, and settings shapes"
         git: false,
         questions: true,
         client: "plurnk.test/1",
-        execs: { PLURNK_EXECS_GIT: "0" },
+        execs: { PLURNK_EXECS_GIT: "0", "PLURNK_EXECS_ALIAS.TOOL": "false" },
         mdDocs: [{ alias: "guide.md", content: "Hello" }],
     });
     assert.deepEqual(JSON.parse(ClientInput.parseSettings("{\"git\":false}")), { git: false });
@@ -110,6 +110,14 @@ test("client input failures are exact RFC 9457 operation failures", () => {
             code: "mcp-configuration-forbidden",
             context: "workspace.create",
             field: "settings.execs.PLURNK_MCP_PRIVATE_HEADERS",
+        },
+        {
+            run: () => ClientInput.parseSettings({
+                execs: { PLURNK_EXECS_ALIAS_TOOL: "0" },
+            }),
+            code: "setting-key-invalid",
+            context: "workspace.create",
+            field: "settings.execs.PLURNK_EXECS_ALIAS_TOOL",
         },
         {
             run: () => ClientInput.parseSettings("{"),

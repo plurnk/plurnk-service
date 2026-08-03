@@ -241,7 +241,7 @@ at boot; changing package membership or configuration requires a restart.
 
 | Field           | Meaning                                                                                            |
 | --------------- | -------------------------------------------------------------------------------------------------- |
-| `name`          | Flat runtime tag and derived output-scheme name.                                                   |
+| `name`          | Canonical runtime tag and derived output-scheme name, admitted below.                              |
 | `glyph`         | Optional presentation glyph.                                                                       |
 | `example`       | Optional compact, verbatim `plurnk` snippet. Each line is a complete `<<`-delimited operation.     |
 | `documentation` | Optional full Markdown reference. `docs/<tag>.md` wins over the inline manifest field.             |
@@ -250,6 +250,20 @@ at boot; changing package membership or configuration requires a restart.
 
 The framework carries example and documentation content unchanged. The
 consumer decides when and how to present either surface.
+
+Runtime-name admission is one identity contract:
+
+| Constraint  | Contract                                                                                                      |
+| ----------- | ------------------------------------------------------------------------------------------------------------- |
+| Syntax      | `[a-z][a-z0-9+.-]*`: canonical lowercase RFC-scheme syntax that is also an admitted EXEC identifier.           |
+| Identity    | The exact name is the EXEC selector, registry key, `docs/<tag>.md` basename, and output URI-scheme name.       |
+| Reservation | `only` is unavailable because `PLURNK_EXECS_ONLY` owns that case-insensitive configuration key.               |
+
+Installed static declarations, trusted dynamic-hook declarations, and
+module-owned declarations use the same validator before documentation lookup,
+policy filtering, or registry mutation. A malformed claimed declaration fails
+hard and names its package or module boundary; discovery still ignores an
+unreadable package that never forms an executor manifest.
 
 ### §executor-dynamic-runtimes Dynamic declarations
 
@@ -283,6 +297,7 @@ Discovery applies the daemon's registration policy to every tag. The exported
 | ---------------------------------------- | ------------------------------------------------------- |
 | `PLURNK_EXECS_<TAG>=0` or `false`        | Remove that tag. Keys are matched case-insensitively.   |
 | `PLURNK_EXECS_ONLY=tag-a,tag-b`          | Remove every tag not in the case-insensitive allowlist. |
+| `Policy.isKey(key)`                      | Admit only `ONLY` or a canonical runtime-tag suffix.    |
 | `Policy.enabledAcross(tag, [a, b, ...])` | Keep the tag only when every supplied layer enables it. |
 
 Policy is purely subtractive: no layer can re-enable a tag removed by another.

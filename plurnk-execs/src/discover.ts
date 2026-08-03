@@ -4,6 +4,7 @@ import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
 import Meta from "@plurnk/plurnk-meta";
 import Policy from "./policy.ts";
+import RuntimeTag from "./RuntimeTag.ts";
 import type { Discovery, DiscoverOptions, ExecInfo, RuntimeDecl } from "./types.ts";
 
 // An exec package's parsed manifest — its name and the `plurnk` block. Read
@@ -119,15 +120,16 @@ export default class Discover {
 
         const infos: ExecInfo[] = [];
         for (const decl of await Discover.#runtimeDecls(dir, packageName, plurnk)) {
-            if (typeof decl !== "object" || decl === null) continue;
-            const e = decl as Record<string, unknown>;
-            if (typeof e.name !== "string" || e.name === "") continue;
+            const e = typeof decl === "object" && decl !== null
+                ? decl as Record<string, unknown>
+                : {};
+            const runtime = RuntimeTag.assert(e.name, packageName);
             // A package doc file wins over inline documentation
             // ({§executor-runtime-declaration}).
             const inlineDoc = typeof e.documentation === "string" ? e.documentation : "";
-            const documentation = await Discover.#readDocFile(dir, e.name) ?? inlineDoc;
+            const documentation = await Discover.#readDocFile(dir, runtime) ?? inlineDoc;
             infos.push({
-                runtime: e.name,
+                runtime,
                 glyph: typeof e.glyph === "string" ? e.glyph : "",
                 example: typeof e.example === "string" ? e.example : "",
                 documentation,
