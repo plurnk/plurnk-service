@@ -75,8 +75,9 @@ const result: OperationResult = { status: 404, problem };
 Validator.assertOperationResult(result);
 ```
 
-The schemas, generated types, constructors, and validators share the package
-root entry point described by SPEC {§wire-entrypoint}.
+Generated wire types, constructors, and validators share the package root entry
+point described by SPEC {§wire-entrypoint}. Owning JSON Schemas use the published
+`@plurnk/plurnk-contracts/schema/*.json` subpaths.
 
 ## CLI
 
