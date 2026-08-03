@@ -37,6 +37,7 @@ const bootDaemon = (): Promise<BootedDaemon> => new Promise((resolvePromise, rej
             PLURNK_SERVICE_DB_PATH: dbPath,
             PLURNK_HOST: "127.0.0.1",
             PLURNK_PORT: "0",      // the AG-UI+ surface — THE listener; OS picks a free port
+            PLURNK_SCHEMES_HTTP_PLAYWRIGHT_METHOD: "disabled", // {§browser-provisioning}: no operator browser in this launcher fixture
         };
         delete env.PLURNK_MODEL;
 
