@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import type { Db } from "../../src/core/Db.ts";
 import { openMigrated, insertWorkspace } from "./_helpers.ts";
 
-const insertWorkspaceEntry = async (db: Db, workspaceId: number, scheme: string | null, pathname: string): Promise<number> => {
+const insertWorkspaceEntry = async (db: Db, workspaceId: number, scheme: string, pathname: string): Promise<number> => {
     const row = await db.test_entries_insert_workspace.get<{ id: number }>({ workspace_id: workspaceId, scheme, pathname });
     if (row === undefined) throw new Error("workspace entry insert returned no row");
     return row.id;
@@ -11,7 +11,7 @@ const insertWorkspaceEntry = async (db: Db, workspaceId: number, scheme: string 
 
 // Convenience for tests that just need "an entry" — agent-scope (the old workspaceless shortcut)
 // is gone, so this gives a workspace-scope entry on its own fresh workspace.
-const insertEntry = async (db: Db, scheme: string | null, pathname: string): Promise<number> => {
+const insertEntry = async (db: Db, scheme: string, pathname: string): Promise<number> => {
     const workspaceId = await insertWorkspace(db, `ws-entry-${crypto.randomUUID()}`);
     return insertWorkspaceEntry(db, workspaceId, scheme, pathname);
 };
@@ -97,7 +97,11 @@ test("entries: ON DELETE CASCADE via workspace", async () => {
 test("entries: a NULL scheme is refused — no identity component may be NULL", async () => {
     const db = await openMigrated();
     try {
-        await assert.rejects(() => insertEntry(db, null, "config/foo.json"), /NOT NULL constraint failed: entries\.scheme/);
+        const workspaceId = await insertWorkspace(db, `ws-entry-null-${crypto.randomUUID()}`);
+        await assert.rejects(
+            () => db.test_entries_insert_workspace.get({ workspace_id: workspaceId, scheme: null, pathname: "config/foo.json" }),
+            /NOT NULL constraint failed: entries\.scheme/,
+        );
     } finally { await db.close(); }
 });
 

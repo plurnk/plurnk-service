@@ -7,7 +7,7 @@ import type { PlurnkSchemeContext } from "../scheme-types.ts";
 import Owner from "../Owner.ts";
 
 export default class CapsResolve {
-    static async entryId(ctx: PlurnkSchemeContext, scheme: string | null, pathname: string): Promise<number | null> {
+    static async entryId(ctx: PlurnkSchemeContext, scheme: string, pathname: string): Promise<number | null> {
         const row = await ctx.db.crud_find_workspace_entry.get<{ id: number }>({
             workspace_id: ctx.workspaceId, owner_id: await Owner.commonsId(ctx.db, ctx.workspaceId), scheme, pathname,
         });

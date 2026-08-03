@@ -43,7 +43,6 @@ import WorkspaceSettings from "./workspace-settings.ts";
 // it as a source=file EDIT so every worker pulls it through the one delta path.
 export interface FsDivergence {
     pathname: string;
-    scheme: string | null;
     entryId: number;
     channel: string;
     before: string;
@@ -367,7 +366,7 @@ export default class GitMembership {
         const result = await EntryCrud.writeEntry(pathname, { channels: { body: { content, mimetype } }, tags: [] }, ctx, "file");
         if (result.entryId !== null) await ctx.db.crud_set_synced_sig.run({ entry_id: result.entryId, synced_sig: sig });
         if (prior !== undefined && prior.content !== content && result.entryId !== null) {
-            return { pathname, scheme: "file", entryId: result.entryId, channel: "body", before: prior.content, after: content };
+            return { pathname, entryId: result.entryId, channel: "body", before: prior.content, after: content };
         }
         return null;
     }

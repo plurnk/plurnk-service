@@ -133,7 +133,7 @@ const lastReply = async (db: Db, turnIds: number[] | undefined): Promise<string>
 // The model still has to emit the op to reach it; nothing is auto-shown.
 export const seedEntry = async (
     db: Db, workspaceId: number,
-    opts: { scheme?: string | null; pathname: string; content: string; mimetype?: string },
+    opts: { scheme?: string; pathname: string; content: string; mimetype?: string },
 ): Promise<number> => {
     // worker:///lines.md resolves to pathname "/lines.md" — the prod write path canonicalizes to that
     // leading-slash form, so storing the bare arg ("lines.md") 404'd the model's READ by one char.

@@ -16,7 +16,7 @@ export interface CoreSchemeServices {
     readonly wakeWorkerNotify: WakeWorkerNotify | undefined;
     readonly injectWorker: InjectWorkerNotify | undefined;
     readonly pushNotice: (workspaceId: number, loopId: number, notice: Notice) => void;
-    readonly defaultChannelFor: (scheme: string | null) => string;
+    readonly defaultChannelFor: (scheme: string) => string;
     readonly liveSubscriptions: LiveSubscriptions;
 }
 

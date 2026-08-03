@@ -10,7 +10,7 @@ import { renderAddress } from "../core/plurnk-uri.ts";
 
 type ManifestRow = {
     entry_id: number;
-    scheme: string | null;
+    scheme: string;
     pathname: string;
     channel: string;
     content: string;
@@ -34,13 +34,12 @@ export type CatalogEntry = {
 };
 
 export default class EntryManifest {
-    static toPath(scheme: string | null, pathname: string): string {
+    static toPath(scheme: string, pathname: string): string {
         if (scheme === "file") return PathSyntax.encodeParens(pathname);
-        if (scheme === null) throw new Error(`entry '${pathname}' carries a NULL scheme — pre-v2 row survived the heal ({§entry-identity-no-null})`);
         return renderAddress(scheme, pathname);
     }
 
-    static async catalogRowsFor(ctx: PlurnkSchemeContext, schemeFilter?: string | null, ownerId?: number): Promise<CatalogEntry[]> {
+    static async catalogRowsFor(ctx: PlurnkSchemeContext, schemeFilter?: string, ownerId?: number): Promise<CatalogEntry[]> {
         const { db, workspaceId, mimetypes, tokenize } = ctx;
         if (mimetypes === undefined) throw new Error("catalogRowsFor: ctx.mimetypes is required for the lines (extent) field");
         if (tokenize === undefined) throw new Error("catalogRowsFor: ctx.tokenize is required — the model-agnostic ruler, re-counted at render");

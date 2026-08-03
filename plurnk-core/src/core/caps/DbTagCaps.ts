@@ -10,17 +10,17 @@ import { renderAddress } from "../plurnk-uri.ts";
 
 export default class DbTagCaps implements TagCaps {
     readonly #ctx: PlurnkSchemeContext;
-    readonly #scheme: string | null;
+    readonly #scheme: string;
 
-    constructor(ctx: PlurnkSchemeContext, scheme: string | null) {
+    constructor(ctx: PlurnkSchemeContext, scheme: string) {
         this.#ctx = ctx;
         this.#scheme = scheme;
     }
 
     #missing(pathname: string, fields: Readonly<Record<string, unknown>> = {}): SchemeResult {
-        const target = renderAddress(this.#scheme ?? "entry", pathname);
+        const target = renderAddress(this.#scheme, pathname);
         return Results.failure(
-            `scheme:${this.#scheme ?? "entry"}`,
+            `scheme:${this.#scheme}`,
             "entry-not-found",
             404,
             `No entry exists at ${target}.`,

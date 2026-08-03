@@ -1013,9 +1013,9 @@ export default class Engine {
             const filesItems = workspaceMI !== null ? normalizeFilesItems(workspaceMI) : readFilesItems();
             if (filesItems !== null && workerFirstLoop) { // #269 — catalog preview appears once per worker
                 // engine_scheme_catalog_summary is the scheme source: workspace-scoped, ordered,
-                // one row per scheme that has entries (scheme=null → file). log:// is absent —
+                // one row per stored entry scheme. log:// is absent —
                 // it lives in log_entries, not the catalog (present-mode, the # Log section).
-                const catalogSchemes = await this.#db.engine_scheme_catalog_summary.all<{ scheme: string | null; entries: number; shallow_items: number }>({ workspace_id: workspaceId });
+                const catalogSchemes = await this.#db.engine_scheme_catalog_summary.all<{ scheme: string; entries: number; shallow_items: number }>({ workspace_id: workspaceId });
                 // Entry-bearing plugin schemes foist alongside the four structural surveys below.
                 const foistSchemes = catalogSchemes
                     .filter((catalog) => catalog.scheme !== "prompt" && catalog.scheme !== "worker")
@@ -1026,11 +1026,10 @@ export default class Engine {
                     scheme: "worker",
                     shallow_items: catalogSchemes.find((c) => c.scheme === "worker")?.shallow_items ?? 0,
                 });
-                if (!foistSchemes.some((c) => c.scheme === "file")) foistSchemes.push({ scheme: "file", shallow_items: 0 }); // {§entry-identity-no-null} — file rows persist under the reserved scheme now; a null key would double-foist the tree
+                if (!foistSchemes.some((c) => c.scheme === "file")) foistSchemes.push({ scheme: "file", shallow_items: 0 }); // Empty project surface still receives its orienting FIND.
                 for (const { scheme, shallow_items: shallowItems } of foistSchemes) {
-                    const schemeName = scheme ?? "file";
-                    const isFile = schemeName === "file";
-                    const pattern = this.#schemes.manifestFor(schemeName)?.folderScopes === true ? "*" : "**";
+                    const isFile = scheme === "file";
+                    const pattern = this.#schemes.manifestFor(scheme)?.folderScopes === true ? "*" : "**";
                     // Only the file map takes PLURNK_SERVICE_FILES_ITEMS as a first-N cap;
                     // other schemes always render their complete one-level map. An empty file
                     // survey has no range: `<1,0>` would turn useful orientation into an error.
@@ -1043,8 +1042,8 @@ export default class Engine {
                         op: "FIND", suffix: "", signal: null,
                         target: isFile ? { kind: "local", raw: pattern } : {
                             kind: "url",
-                            raw: `${schemeName}:///${pattern}`,
-                            scheme: schemeName,
+                            raw: `${scheme}:///${pattern}`,
+                            scheme,
                             username: null, password: null, hostname: null, port: null,
                             pathname: `/${pattern}`,
                             query: null, fragment: null,
@@ -1060,7 +1059,7 @@ export default class Engine {
                     nextActionIndex++;
                     // {§model-entry} — the same FIND, rendered back to DSL for the turn-0 echo (the model's
                     // own survey, mirrored OPEN). The <L> cap rides as `<1,N>`, exactly as the model would type it.
-                    turnZeroMoves.push(`<<FIND(${isFile ? pattern : `${schemeName}:///${pattern}`})${cap === null ? "" : `<1,${cap}>`}::FIND`);
+                    turnZeroMoves.push(`<<FIND(${isFile ? pattern : `${scheme}:///${pattern}`})${cap === null ? "" : `<1,${cap}>`}::FIND`);
                 }
                 // The kernel's self-documenting surface — FIND(worker://plurnk/docs/**), uncapped,
                 // always (the law materializes the docs): the #270 discovery foist, re-homed (#527).
@@ -2032,10 +2031,9 @@ export default class Engine {
             await this.#db.engine_insert_log_entry.get({
                 worker_id: worker.id, loop_id: loop.id, turn_id: turn.id, sequence: sequence++,
                 origin: "plurnk", source: "file", op: "EDIT", suffix: "", signal: null,
-                // `file` is an entry-routing scheme, never a stored log scheme. Match
-                // Dispatcher.#extractTarget so the fiction and a model's file EDIT
-                // address the same nullable log key.
-                scheme: d.scheme === "file" ? null : d.scheme, username: null, password: null, hostname: null, port: null,
+                // Match Dispatcher.#extractTarget: a bare file address has NULL scheme
+                // only in log target metadata; its entry identity remains `file`.
+                scheme: null, username: null, password: null, hostname: null, port: null,
                 pathname: d.pathname, query: null, fragment: null, lineMarker: null,
                 tx: "", mimetype_tx: "text/plain",
                 rx: JSON.stringify({ status: 200, entryId: d.entryId, channel: d.channel, span }), mimetype_rx: "application/json",

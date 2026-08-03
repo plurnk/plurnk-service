@@ -1,5 +1,5 @@
 // @graph over file:/// — the PRIMARY case (codebase navigation). Proves the
-// symbol dialect resolves uniformly on file entries (scheme=null, bare-rendered):
+// symbol dialect resolves uniformly on file entries (scheme=file, bare-rendered):
 // materialize files the way git-membership does → derive at manifest-add → FIND
 // the graph dialect through File (using the shared entry backing).
 
@@ -36,7 +36,7 @@ const seed = async () => {
     const workspaceId = await insertWorkspace(db, `gfile-${crypto.randomUUID()}`);
     const workerId = await insertWorker(db, workspaceId);
     const ctx = makeSchemeCtx({ db, workspaceId, workerId });
-    // Materialize file entries exactly as git-membership does: writeEntry(scheme=null).
+    // Materialize file entries exactly as git-membership does: writeEntry(scheme="file").
     for (const [pathname, content] of FILES) {
         await EntryCrud.writeEntry(`${pathname}`, { channels: { body: { content, mimetype: "text/typescript" } }, tags: [] }, ctx, "file");
     }
@@ -49,7 +49,7 @@ test("[#186-graph-file] @graph resolves over file:/// entries — the primary co
     const { db, workspaceId, workerId } = await seed();
     try {
         const ctx = makeSchemeCtx({ db, workspaceId, workerId, loopId: 0, turnId: 0 });
-        // FIND returns catalog rows; a file:// (scheme=null) row renders its path BARE
+        // FIND returns catalog rows; a stored file row renders its path BARE
         // (slash-free, namespace-relative) — the same form the manifest catalogs and the
         // model types back, not the addressed file:/// form.
         const referrers = await new File().find(findStmt(fileUrl(""), graph("@<foo")), ctx);

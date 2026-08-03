@@ -386,7 +386,6 @@ export class SqlRiteSync {
 	test_probe_raw: SqlRiteSyncPreparedStatements;
 	test_stamp_terminated_after_turn: SqlRiteSyncPreparedStatements;
 	test_set_workspace_root: SqlRiteSyncPreparedStatements;
-	test_count_null_scheme_entries: SqlRiteSyncPreparedStatements;
 	test_list_loops_all: SqlRiteSyncPreparedStatements;
 	test_get_entry_attributes: SqlRiteSyncPreparedStatements;
 	test_embeddings_for_entry: SqlRiteSyncPreparedStatements;
@@ -876,7 +875,6 @@ export default class SqlRite {
 	test_probe_raw: SqlRitePreparedStatements;
 	test_stamp_terminated_after_turn: SqlRitePreparedStatements;
 	test_set_workspace_root: SqlRitePreparedStatements;
-	test_count_null_scheme_entries: SqlRitePreparedStatements;
 	test_list_loops_all: SqlRitePreparedStatements;
 	test_get_entry_attributes: SqlRitePreparedStatements;
 	test_embeddings_for_entry: SqlRitePreparedStatements;

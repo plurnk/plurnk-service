@@ -42,7 +42,7 @@ test("[catalog] engine_scheme_catalog_summary tallies distinct entries per schem
             tags: [],
         }, ctx, "file");
 
-        const rows = await db.engine_scheme_catalog_summary.all<{ scheme: string | null; entries: number; shallow_items: number }>({ workspace_id: workspaceId });
+        const rows = await db.engine_scheme_catalog_summary.all<{ scheme: string; entries: number; shallow_items: number }>({ workspace_id: workspaceId });
         const byScheme = new Map(rows.map((r) => [r.scheme, r]));
         assert.equal(byScheme.get("worker")?.entries, 3, "three commons entries tallied as distinct");
         assert.equal(byScheme.get("worker")?.shallow_items, 2, "one root entry plus one notes/** scope form the shallow map");

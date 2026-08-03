@@ -805,7 +805,7 @@ interface PlurnkSchemeContext {
     readonly mimetypes?: Mimetypes;
     readonly executors?: ExecutorRegistry;           // boot-discovered EXEC runtimes (§exec)
     readonly tokenize?: (text: string) => number;    // write-time tokenizer (§tokenomics)
-    readonly defaultChannelFor?: (scheme: string | null) => string;
+    readonly defaultChannelFor?: (scheme: string) => string;
     readonly pushNotice?: (notice: Notice) => void; // → next packet Notices + notice/event (§operation-results)
 }
 ```

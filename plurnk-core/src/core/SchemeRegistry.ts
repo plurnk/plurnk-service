@@ -162,9 +162,8 @@ export default class SchemeRegistry {
     }
 
     // A scheme's default channel (manifest.defaultChannel) — the channel a fragment-less
-    // address targets. Drives the manifest's address-keyed channels (note 4); null → file (body).
-    defaultChannelFor(scheme: string | null): string {
-        if (scheme === null) return "body";
+    // address targets. Drives the manifest's address-keyed channels (note 4).
+    defaultChannelFor(scheme: string): string {
         return this.manifestFor(scheme)?.defaultChannel ?? "body";
     }
 

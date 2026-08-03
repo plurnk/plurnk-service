@@ -47,7 +47,7 @@ const seedKnown = (ctx: Ctx, pathname: string, content: string) =>
 const knownEntry = (ctx: Ctx, pathname: string) =>
     ctx.db.test_get_entry_by_pathname_scheme.get<{ pathname: string }>({ pathname: `/${pathname}`, scheme: "worker" });
 
-// Materialize a FILE member the production way: on disk + a scheme=null entry + body channel +
+// Materialize a FILE member the production way: on disk + a scheme=file entry + body channel +
 // synced_sig — so it's a tracked member (editable, movable, deletable), not untracked disk.
 const seedFileMember = async (ctx: Ctx, root: string, rel: string, content: string): Promise<void> => {
     const abs = join(root, rel);

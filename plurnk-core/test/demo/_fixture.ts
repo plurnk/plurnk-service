@@ -100,12 +100,12 @@ export const seedDemoFixture = async (label: string): Promise<DemoFixture> => {
         workspace,
         cleanup: async () => { await rm(workspace, { recursive: true, force: true }); },
         // The fixture owns catalog membership: register each seeded file as a
-        // workspace entry (scheme=null, the file-routing internal) so the model
+        // workspace entry under the reserved file identity so the model
         // may READ it. Channel-less — disk stays the truth; the entry is the
         // membership marker the read gate checks and FIND globs by path.
         addToCatalog: async (db, workspaceId) => {
             for (const rel of FILES) {
-                await db.crud_insert_workspace_entry.get({ workspace_id: workspaceId, owner_id: await Owner.commonsId(db, workspaceId), scheme: null, pathname: rel });
+                await db.crud_insert_workspace_entry.get({ workspace_id: workspaceId, owner_id: await Owner.commonsId(db, workspaceId), scheme: "file", pathname: rel });
             }
         },
     };

@@ -72,7 +72,7 @@ export interface PlurnkSchemeContext {
     // A scheme's default channel — the manifest keys channels by addressable URI (note 4):
     // default → the bare entry path, non-default → path#channel. Engine wires the registry;
     // absent → "body" (correct for body-default entries, e.g. test ctxs without exec).
-    readonly defaultChannelFor?: (scheme: string | null) => string;
+    readonly defaultChannelFor?: (scheme: string) => string;
     // Push a transient Notice. The engine drains it into the next packet's
     // Notices section and broadcasts it through `notice/event`.
     readonly pushNotice?: (notice: Notice) => void;

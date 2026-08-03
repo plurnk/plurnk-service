@@ -196,14 +196,14 @@ test("streaming exec: the workspace catalog picks up partial channel content bet
         engine.resolveProposal(await idDeferred.promise, { decision: "accept" });
         await dispatchPromise;
 
-        const execStdout = async (): Promise<Array<{ scheme: string | null; pathname: string; content: string }>> => {
+        const execStdout = async (): Promise<Array<{ scheme: string; pathname: string; content: string }>> => {
             // Read the exec entry's stdout channel from the workspace catalog
             // (engine_list_workspace_entries, the source behind the catalog):
             // one row per (entry, channel) with the channel's LIVE content.
             // Streaming is a channel property — partial bytes must be observable
             // mid-stream regardless of how they're later rendered.
             const rows = await db.engine_list_workspace_entries.all<{
-                scheme: string | null; pathname: string;
+                scheme: string; pathname: string;
                 channel: string; content: string;
             }>({ workspace_id: workspaceId });
             return rows

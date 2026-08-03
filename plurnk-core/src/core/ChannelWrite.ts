@@ -120,7 +120,7 @@ export type NoticeNotify = (workspaceId: number, payload: NoticePayload) => void
 
 interface ChannelMetaRow {
     workspace_id: number;
-    scheme: string | null;
+    scheme: string;
     pathname: string;
     state: ChannelState;
     mimetype: string;
@@ -138,11 +138,9 @@ export default class ChannelWrite {
     static #openSubsForWorkerStmt(db: Db) { return db.find_open_subscriptions_for_worker; }
     static #execTerminalStmt(db: Db) { return db.find_exec_close_status; }
 
-    // The entry's target URI for stream notifications (#179). A NULL scheme is
-    // a filesystem entry (the file scheme stores scheme=NULL), so it decodes to
-    // file:///.
-    static #targetUri(scheme: string | null, pathname: string): string {
-        return renderAddress(scheme === null ? "file" : scheme, pathname);
+    // The entry's target URI for stream notifications (#179).
+    static #targetUri(scheme: string, pathname: string): string {
+        return renderAddress(scheme, pathname);
     }
 
     // A stream chunk accumulates into the channel's content ({§chunk-accumulation-chunks-accumulate})

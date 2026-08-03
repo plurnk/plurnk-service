@@ -13,7 +13,7 @@ import LogBody from "../core/LogBody.ts";
 
 type EntryRow = {
     entry_id: number;
-    scheme: string | null;
+    scheme: string;
     pathname: string;
     channel: string;
     content: string;

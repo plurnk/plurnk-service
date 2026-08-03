@@ -20,7 +20,7 @@ import { renderAddress } from "../plurnk-uri.ts";
 
 export default class DbSubscriptionCaps implements SubscriptionCaps {
     readonly #ctx: PlurnkSchemeContext;
-    readonly #scheme: string | null;
+    readonly #scheme: string;
     readonly #liveSubscriptions: LiveSubscriptions;
     #pathname: string | null = null;
     #entryId: number | null = null;
@@ -28,7 +28,7 @@ export default class DbSubscriptionCaps implements SubscriptionCaps {
     #publishedChannel: string | null = null;
     #unlink: () => void = () => {};
 
-    constructor(ctx: PlurnkSchemeContext, scheme: string | null, liveSubscriptions: LiveSubscriptions) {
+    constructor(ctx: PlurnkSchemeContext, scheme: string, liveSubscriptions: LiveSubscriptions) {
         this.#ctx = ctx;
         this.#scheme = scheme;
         this.#liveSubscriptions = liveSubscriptions;
@@ -38,7 +38,7 @@ export default class DbSubscriptionCaps implements SubscriptionCaps {
         const entryId = await CapsResolve.entryId(this.#ctx, this.#scheme, pathname);
         if (entryId === null) throw new Error(`subscriptions.open: no entry at ${pathname}`);
         const subscriptionId = await ChannelWrite.openSubscription(this.#ctx.db, {
-            workerId: this.#ctx.workerId, entryId, scheme: this.#scheme ?? "file", handle: pathname,
+            workerId: this.#ctx.workerId, entryId, scheme: this.#scheme, handle: pathname,
             publishedChannel: options?.publishedChannel ?? null,
         });
         // Compose the worker signal with a fresh controller; a worker abort also
@@ -97,11 +97,11 @@ export default class DbSubscriptionCaps implements SubscriptionCaps {
         await ChannelWrite.closeSubscription(this.#ctx.db, { subscriptionId, result });
         this.#liveSubscriptions.unregister(subscriptionId);
         this.#unlink();
-        const target = renderAddress(this.#scheme ?? "file", this.#pathname ?? "");
+        const target = renderAddress(this.#scheme, this.#pathname ?? "");
         this.#ctx.wakeWorkerNotify?.({
             workspaceId: this.#ctx.workspaceId, workerId: this.#ctx.workerId,
             entryId, target, subscriptionId, result,
-            scheme: this.#scheme ?? "file", summary: summary ?? "",
+            scheme: this.#scheme, summary: summary ?? "",
         });
         this.#pathname = null;
         this.#entryId = null;

@@ -64,7 +64,7 @@ const detectFileMimetype = async (canonical: string, ctx: PlurnkSchemeContext): 
 
 // SECURITY — File is entry-backed: read()/find()/readEntry()
 // delegate to the shared Entry* helpers over the membership-materialized entries
-// (scheme=null). The membership gate is now ENTRY-EXISTENCE — a non-member has no
+// (stored under scheme="file"). The membership gate is now ENTRY-EXISTENCE — a non-member has no
 // entry, so read/find/readEntry 404 it at the shared entry boundary
 // (a gitignored `.env` is never a member → never an entry → never readable). Disk
 // I/O is confined to the two edges that own it: the git-membership materialize-IN
@@ -592,9 +592,8 @@ export default class File extends CoreSchemeAdapterBase {
         // by file extension; .md → text/markdown, anything else → text/plain.
         const mimetype = relPath.endsWith(".md") ? "text/markdown" : "text/plain";
         try {
-            // scheme=null: the "file" scheme is a routing internal only;
-            // never stored. Entries.scheme stays NULL for filesystem rows
-            // so render-time bare-path output requires no special case.
+            // {§entry-identity-no-null} — file members persist under the reserved
+            // `file` identity; bare-path rendering is a projection of that row.
             const { entryId } = await EntryCrud.writeEntry(relPath, {
                 channels: { body: { content: patched, mimetype } },
                 tags: [],
