@@ -59,6 +59,7 @@ const makeCtx = (priorEntry: EntryData | null = null, overrides: CtxOverrides = 
     let closed: { result: Parameters<SubscriptionCaps["close"]>[0]; summary?: string } | null = null;
     let deleted: string | null = null;
     let wrote: { pathname: string; entry: EntryData } | null = null;
+    let observedStorageRead: string | null = null;
     let observedRead: ReadStatement | null = null;
     const seq: string[] = []; // {§http-lifecycle} operation order
     const localAbort = new AbortController();
@@ -75,6 +76,7 @@ const makeCtx = (priorEntry: EntryData | null = null, overrides: CtxOverrides = 
             async send() { return { status: 501 }; },
         },
         async read(pathname) {
+            observedStorageRead = pathname;
             if (overrides.read !== undefined) return overrides.read(pathname);
             return priorEntry === null
                 ? Results.failure(
@@ -126,7 +128,7 @@ const makeCtx = (priorEntry: EntryData | null = null, overrides: CtxOverrides = 
     };
     return {
         ctx,
-        inspect: () => ({ chunks, opened, closed, deleted, wrote, observedRead, seq }),
+        inspect: () => ({ chunks, opened, closed, deleted, wrote, observedStorageRead, observedRead, seq }),
         forceCancel: () => opened?.handle.cancel(),
     };
 };
@@ -502,6 +504,37 @@ test("scoped READ observes the materialized readable entry without refetching", 
     assert.equal(inspect().opened, null, "no subscription is opened for a stored range");
 });
 
+test("scoped READ delegates an auxiliary channel even when the stored body is empty", async () => {
+    const statement = readStmt(
+        urlTarget("https://example.com/x#header", "/x", undefined, "header"),
+        { marks: [2] },
+    );
+    const selected = Results.assert({
+        status: 200,
+        content: "content-type: text/plain",
+        mimetype: "text/plain",
+        channel: "header",
+        startLine: 2,
+    }) as EntryReadResult;
+    const { ctx, inspect } = makeCtx(
+        priorEntry("", "text/plain", "HTTP 204 No Content\ncontent-type: text/plain"),
+        {
+            operationRead: async (observed) => {
+                assert.equal(observed.target?.kind, "url");
+                assert.equal(observed.target.fragment, "header");
+                return selected;
+            },
+        },
+    );
+    let fetched = false;
+    await withFetch(async () => { fetched = true; return new Response("wrong"); }, async () => {
+        assert.deepEqual(await new Http().read(statement, ctx), { ...selected, shape: "passthrough" });
+    });
+    assert.equal(inspect().observedRead, statement);
+    assert.equal(inspect().observedStorageRead, null, "universal READ is the only channel-selection path");
+    assert.equal(fetched, false, "a scoped auxiliary-channel observation never enters the network path");
+});
+
 test("scoped READ preserves the exact standard-reader failure", async () => {
     const failure = Results.failure(
         "schemes:slicer",
@@ -526,19 +559,26 @@ test("scoped READ preserves the exact standard-reader failure", async () => {
     assert.deepEqual(result, { ...failure, shape: "passthrough" });
 });
 
-test("scoped READ fails clearly when no readable response has been materialized", async () => {
-    const { ctx, inspect } = makeCtx();
+test("scoped READ preserves a missing selected-channel failure without acquisition", async () => {
+    const failure = Results.failure(
+        "scheme:http",
+        "entry-not-found",
+        404,
+        "No entry exists at https://example.com/x.",
+        { content: null, mimetype: null, channel: "body" },
+        { retryable: false },
+    ) as EntryReadResult;
+    const { ctx, inspect } = makeCtx(null, { operationRead: async () => failure });
     let fetched = false;
     await withFetch(async () => { fetched = true; return new Response("wrong"); }, async () => {
         const result = await new Http().read(
             readStmt(urlTarget("https://example.com/x", "/x"), { marks: [2, 4] }),
             ctx,
         );
-        assert.equal(result.status, 409);
-        assert.equal(result.problem?.detail, "The requested scoped READ has no materialized response.");
-        assert.equal(result.problem?.recovery, "READ the URL without a scope before requesting a range.");
+        assert.deepEqual(result, { ...failure, shape: "passthrough" });
     });
     assert.equal(fetched, false);
+    assert.equal(inspect().observedStorageRead, null);
     assert.equal(inspect().opened, null);
 });
 

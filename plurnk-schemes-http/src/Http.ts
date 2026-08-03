@@ -183,9 +183,9 @@ export default class Http implements SchemeHandler {
         return Http.#passthrough(written);
     }
 
-    // An unscoped READ fetches/revalidates. A scoped READ observes the already
-    // materialized readable entry: refetching would discard the requested range
-    // and return another asynchronous whole-body 102.
+    // An unscoped READ fetches/revalidates. A scoped READ observes its selected
+    // already-materialized channel through universal READ: refetching would
+    // discard the requested range and return another asynchronous whole-body 102.
     async read(statement: ReadStatement, ctx: SchemeCtx): Promise<PassthroughResult> {
         if (statement.target === null || statement.target.kind !== "url") {
             return Http.#bad(400, "http", "bad-target", "READ requires an http(s):// URL target.", {
@@ -197,25 +197,6 @@ export default class Http implements SchemeHandler {
         if (statement.lineMarker !== null) {
             const address = Http.#address(statement.target);
             if (!(address instanceof NetworkAddress)) return address;
-            const prior = await ctx.entries.read(address.pathname);
-            if (Results.isErrorStatus(prior.status) && prior.status !== 404) {
-                return Http.#passthrough(prior);
-            }
-            const body = prior.entry?.channels[BODY];
-            if (body === undefined || body.content.length === 0) {
-                return Http.#bad(
-                    409,
-                    "http",
-                    "scope-requires-materialization",
-                    "The requested scoped READ has no materialized response.",
-                    {
-                        target: address.url,
-                        stage: "projection",
-                        recovery: "READ the URL without a scope before requesting a range.",
-                        retryable: false,
-                    },
-                );
-            }
             return Http.#passthrough(await ctx.entries.operations.read(statement));
         }
         return this.#fetchStream(statement.target, ctx, "GET", undefined);

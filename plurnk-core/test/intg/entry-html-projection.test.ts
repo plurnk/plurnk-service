@@ -118,3 +118,37 @@ test("a scoped HTTP READ slices the materialized readable body instead of starti
         assert.equal(result.startLine, 2);
     } finally { await db.close(); }
 });
+
+test("a scoped HTTP READ slices the selected auxiliary channel when body is empty", async () => {
+    const db = await openMigrated();
+    try {
+        const workspaceId = await insertWorkspace(db, `http-header-scope-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const ctx = makeSchemeCtx({ db, workspaceId, workerId });
+        await EntryCrud.writeEntry("/example.org/empty", {
+            channels: {
+                body: { content: "", mimetype: "text/plain" },
+                header: {
+                    content: "HTTP 204 No Content\ncontent-type: text/plain\nx-request-id: 42",
+                    mimetype: "text/plain",
+                },
+            },
+            tags: [],
+        }, ctx, "https");
+        const statement: ReadStatement = {
+            op: "READ", suffix: "", signal: null,
+            target: {
+                kind: "url", raw: "https://example.org/empty#header", scheme: "https",
+                username: null, password: null, hostname: "example.org", port: null,
+                pathname: "/empty", query: null, fragment: "header",
+            },
+            lineMarker: { marks: [2, 3] }, body: null, position: { line: 1, column: 1 },
+        };
+        const manifest = { ...Http.manifest, name: "https" };
+        const result = await new Http().read(statement, makeHandlerCtx(ctx, manifest));
+        assert.equal(result.status, 200);
+        assert.equal(result.content, "content-type: text/plain\nx-request-id: 42");
+        assert.equal(result.channel, "header");
+        assert.equal(result.startLine, 2);
+    } finally { await db.close(); }
+});

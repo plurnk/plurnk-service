@@ -9,7 +9,7 @@ default.
 | Operation                         | Remote action | Effect                                                                         |
 | --------------------------------- | ------------- | ------------------------------------------------------------------------------ |
 | Unscoped `READ(http(s)://…)`      | GET           | Acquire/reuse the response and publish the selected channel                    |
-| Scoped `READ(http(s)://…)<scope>` | None          | Read a range from the already-materialized readable response; never refetch    |
+| Scoped `READ(http(s)://…)<scope>` | None          | Read a range from the selected already-materialized channel; never refetch     |
 | `FIND(http(s)://…):matcher`       | GET if needed | Prepare an exact URL, then return standard JSON metadata and match coordinates |
 | `SEND[200](http(s)://…):body:`    | POST          | Submit the body and stream the response                                        |
 | `EDIT(http(s)://…):body:`         | PUT           | Replace the whole remote resource; do not use a line scope                     |
@@ -36,8 +36,10 @@ produce a conditional GET; a 304 restores the stored channels without
 rendering. Without validators, the next READ performs a full GET. Responses to
 POST, PUT, and DELETE are not reused as later GET representations.
 
-A scoped READ requires an already-materialized readable body. READ the URL once
-without a scope before selecting a range.
+A scoped READ never fetches. Its fragment, or `body` by default, selects an
+already-materialized channel before the universal READ contract applies the
+range. If that channel is absent, READ the URL without a scope to acquire the
+response first.
 
 Request headers ride inside the target as ordered trailing `{Key: value}`
 blocks, one header per block:

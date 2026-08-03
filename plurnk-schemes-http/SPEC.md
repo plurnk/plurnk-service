@@ -40,7 +40,7 @@ encode them again.
 | Operation                         | Remote action                         | Contract                                                                                   |
 | --------------------------------- | ------------------------------------- | ------------------------------------------------------------------------------------------ |
 | Unscoped `READ(url)`              | GET unless a fresh GET copy is usable | Seed, subscribe, materialize every channel, publish the selected channel, and return `102` |
-| Scoped `READ(url)<scope>`         | None                                  | Require a non-empty stored `body`, then delegate the requested channel and scope to READ   |
+| Scoped `READ(url)<scope>`         | None                                  | Delegate selected-channel presence and scope projection to universal READ; never acquire   |
 | `FIND(url)` / matcher `READ(url)` | GET only when acquisition is required | Prepare an exact entry, then use universal query, matcher, weighting, and pagination       |
 | `FIND(pattern-url)`               | None                                  | Query already-materialized web entries; a path pattern does not discover the remote web    |
 | `SEND[200](url):body:`            | POST                                  | Stream and persist the response under the addressed URL                                    |
@@ -60,9 +60,7 @@ headers are persisted in `header`.
 flowchart TD
     op{"HTTP operation"}
 
-    op -->|scoped READ| hasBody{"Non-empty stored body?"}
-    hasBody -->|yes| selected["Universal READ applies<br/>selected channel and scope"]
-    hasBody -->|no| scopeError["409 scope-requires-materialization"]
+    op -->|scoped READ| selected["Universal READ selects the channel,<br/>requires it to exist, and applies scope"]
 
     op -->|FIND or matcher READ| pattern{"Path pattern?"}
     pattern -->|yes| query["Universal catalog, matcher,<br/>weight, and pagination"]
@@ -116,7 +114,7 @@ evidence.
 
 | Outcome                                             | Operation status                                 |
 | --------------------------------------------------- | ------------------------------------------------ |
-| Scoped READ after its body precondition             | Exact universal entry-READ result                |
+| Scoped READ                                         | Exact universal selected-channel READ result     |
 | Exact FIND / matcher READ after preparation         | Exact universal query result                     |
 | Exact acquisition returns no WebFetcher value       | `404` (`not-materialized`)                       |
 | Exact acquisition has no non-empty HTML projection  | `422` (`no-readable-projection`)                 |
@@ -125,7 +123,6 @@ evidence.
 | Routed `SEND[499]` dispatch                         | `200`                                            |
 | Client-cancelled acquisition                        | `499` (`cancelled`)                              |
 | Target fails network admission                      | `403` (`ssrf-blocked`)                           |
-| Scoped READ lacks a non-empty materialized body     | `409` (`scope-requires-materialization`)         |
 | Multi-statement HTTP edit batch                     | `409` (`non-atomic-edit-batch`)                  |
 | Invalid target, channel, line edit, or URL userinfo | `400` with the corresponding stable Problem kind |
 | Direct network, render, or projection exception     | `502` (`fetch-failed`)                           |
