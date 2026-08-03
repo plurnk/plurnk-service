@@ -63,7 +63,6 @@ document does not restate their teaching.
 | External HTTP/SSE client protocol                         | `@plurnk/plurnk-agui`                                        | [`plurnk-agui/SPEC.md`](./plurnk-agui/SPEC.md)                                                                 |
 | MCP host module                                           | `@plurnk/plurnk-mcp`                                         | MCP epic deferred; this document makes no call-syntax claim.                                                   |
 | CLI, TUI, Neovim, and web presentation                    | Separate open-client repositories                            | Consume AG-UI; they do not own daemon scheduling or persisted truth.                                           |
-| Whole-product evaluation                                  | `plurnk-bench` and candidate/readiness harnesses             | Consumer evidence only; they do not define runtime contracts.                                                  |
 
 Family packages define extension contracts. Installed adapters implement those
 contracts. Core composes them but does not absorb their domain logic. Shared
@@ -142,8 +141,3 @@ and daemon authority are not interchangeable.
 | Project bytes and Git membership        | The project filesystem and repository; database entries are the agent-visible projection.             |
 | Active drains, provider calls, teardown | Process-local core state reconciled against durable state; see `{§worker-loop-lifecycle}`.            |
 | Client binding and presentation         | The client-interface package and client process; neither becomes persisted daemon truth by accident.  |
-
-Source execution, built `dist` execution, and installed npm execution are
-distinct runtime forms. Whole-product gates identify the exact client and
-daemon artifacts they launch; passing one form does not silently certify the
-others.
