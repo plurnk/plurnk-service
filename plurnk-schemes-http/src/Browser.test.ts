@@ -17,8 +17,10 @@ const response = (status: number, statusText: string, headers: Record<string, st
 interface FakeConfig {
     html?: string;
     goto?: () => Promise<PwResponseLike | null>;
+    route?: () => Promise<void>;
     bodyLen?: number; // evaluate() salvage probe
     onClose?: () => void; // page.close hook (for abort timing)
+    pageClose?: () => Promise<void>;
     contextClose?: (contextNumber: number) => Promise<void>;
     browserClose?: () => Promise<void>;
 }
@@ -26,18 +28,21 @@ interface FakeConfig {
 const timeoutError = () => Object.assign(new Error("Timeout 30000ms exceeded"), { name: "TimeoutError" });
 
 const makeEngine = (cfg: FakeConfig = {}) => {
-    const calls = { newContext: 0, newPage: 0, pageClose: 0, contextClose: 0, browserClose: 0, launch: 0, connect: 0, connectOverCDP: 0 };
+    const calls = { newContext: 0, newPage: 0, goto: 0, pageClose: 0, contextClose: 0, browserClose: 0, launch: 0, connect: 0, connectOverCDP: 0 };
     const launchOptions: Array<{ channel?: string; executablePath?: string; headless?: boolean; chromiumSandbox?: boolean; timeout?: number }> = [];
     const endpoints: string[] = [];
     const contextOptions: Array<{ isMobile?: boolean; userAgent?: string } | undefined> = [];
     const makePage = () => ({
+        async route() { await cfg.route?.(); },
+        async setExtraHTTPHeaders() {},
         async goto() {
+            calls.goto++;
             if (cfg.goto) return cfg.goto();
             return response(200, "OK", { "content-type": "text/html; charset=utf-8" });
         },
         async content() { return cfg.html ?? "<html><body>rendered</body></html>"; },
         async evaluate() { return cfg.bodyLen ?? 0; },
-        async close() { calls.pageClose++; cfg.onClose?.(); },
+        async close() { calls.pageClose++; cfg.onClose?.(); await cfg.pageClose?.(); },
     });
     const makeContext = (contextNumber: number) => ({
         async newPage() { calls.newPage++; return makePage(); },
@@ -211,6 +216,80 @@ test("non-timeout navigation error re-throws (not salvaged)", async () => {
     await browser.close();
 });
 
+// {§render-lifecycle}
+test("#125: a page-close failure becomes the render failure", async () => {
+    const { engine, calls } = makeEngine({
+        pageClose: async () => { throw new Error("page close failed"); },
+    });
+    const browser = new Browser(() => Promise.resolve(engine));
+    await assert.rejects(
+        () => browser.render("https://example.com/", { workerId: 1 }),
+        /page close failed/,
+    );
+    assert.equal(calls.pageClose, 1);
+    await browser.close();
+});
+
+// {§render-lifecycle}
+test("#125: abort-driven navigation and page-close failures retain both causes", async () => {
+    const controller = new AbortController();
+    const { engine, calls } = makeEngine({
+        goto: async () => {
+            controller.abort();
+            throw new Error("Target closed");
+        },
+        pageClose: async () => { throw new Error("page close failed"); },
+    });
+    const browser = new Browser(() => Promise.resolve(engine));
+    await assert.rejects(
+        () => browser.render("https://example.com/", { workerId: 1, signal: controller.signal }),
+        (error: unknown) => {
+            assert.ok(error instanceof AggregateError);
+            assert.deepEqual(error.errors.map((cause) => String(cause)), [
+                "Error: Target closed",
+                "Error: page close failed",
+            ]);
+            return true;
+        },
+    );
+    assert.equal(calls.pageClose, 1);
+    await browser.close();
+});
+
+// {§render-lifecycle}
+test("#125: setup failure still closes the opened page before navigation", async () => {
+    const { engine, calls } = makeEngine({
+        route: async () => { throw new Error("route setup failed"); },
+    });
+    const browser = new Browser(() => Promise.resolve(engine));
+    await assert.rejects(
+        () => browser.render("https://example.com/", {
+            workerId: 1,
+            guard: async () => true,
+        }),
+        /route setup failed/,
+    );
+    assert.equal(calls.goto, 0);
+    assert.equal(calls.pageClose, 1);
+    await browser.close();
+});
+
+// {§render-lifecycle}
+test("#125: an already-aborted render closes once and never navigates", async () => {
+    const { engine, calls } = makeEngine();
+    const browser = new Browser(() => Promise.resolve(engine));
+    await assert.rejects(
+        () => browser.render("https://example.com/", {
+            workerId: 1,
+            signal: AbortSignal.abort(new Error("render cancelled")),
+        }),
+        /render cancelled/,
+    );
+    assert.equal(calls.goto, 0);
+    assert.equal(calls.pageClose, 1);
+    await browser.close();
+});
+
 test("abort: aborting the signal closes the page, unblocking an in-flight navigation", async () => {
     let tripClose: () => void = () => {};
     const closed = new Promise<void>((r) => { tripClose = r; });
@@ -225,7 +304,7 @@ test("abort: aborting the signal closes the page, unblocking an in-flight naviga
     const browser = new Browser(() => Promise.resolve(engine));
     const p = browser.render("https://example.com/", { workerId: 1, signal: controller.signal });
     await assert.rejects(p, /Target closed/);
-    assert.ok(calls.pageClose >= 1, "page was closed on abort");
+    assert.equal(calls.pageClose, 1, "abort and final settlement share one page close");
     await browser.close();
 });
 

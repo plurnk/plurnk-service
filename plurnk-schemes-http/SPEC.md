@@ -179,15 +179,16 @@ Validation-time DNS answers are not pinned to connection-time resolution.
 
 ## §render-lifecycle §6 Render lifecycle
 
-| Concern       | Contract                                                                                                |
-| ------------- | ------------------------------------------------------------------------------------------------------- |
-| Direct gate   | A GET HTML response cancels the byte probe body and navigates through the guarded browser               |
-| Prefetch gate | Server HTML is primary; browser rendering is a lazy fallback only when its readable projection is empty |
-| Pool          | One warm browser per `Browser`; one atomically acquired context per worker; prefetch uses worker `0`    |
-| Navigation    | Mobile-emulated by default; `networkidle` with bounded substantive-DOM timeout salvage                  |
-| Projection    | Readable result becomes `body`; the exact HTML used becomes `html`                                      |
-| Cancellation  | Closing the page aborts in-flight navigation                                                            |
-| Shutdown      | Attempt every context and browser close, await all, then aggregate failures under {§handler-lifecycle}  |
+| Concern       | Contract                                                                                                      |
+| ------------- | ------------------------------------------------------------------------------------------------------------- |
+| Direct gate   | A GET HTML response cancels the byte probe body and navigates through the guarded browser                     |
+| Prefetch gate | Server HTML is primary; browser rendering is a lazy fallback only when its readable projection is empty       |
+| Pool          | One warm browser per `Browser`; one atomically acquired context per worker; prefetch uses worker `0`          |
+| Navigation    | Mobile-emulated by default; `networkidle` with bounded substantive-DOM timeout salvage                        |
+| Projection    | Readable result becomes `body`; the exact HTML used becomes `html`                                            |
+| Cancellation  | The render-owned page close aborts in-flight navigation; an already-aborted render never navigates            |
+| Page cleanup  | Close each opened page once and await it; preserve its failure alone or aggregate it after a primary failure  |
+| Shutdown      | Attempt every context and browser close, await all, then aggregate failures under {§handler-lifecycle}        |
 
 ### §host-rewrite Acquisition target rewrite
 

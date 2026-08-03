@@ -207,35 +207,57 @@ export default class Browser {
     ): Promise<RenderResult> {
         const context = await this.#getContext(workerId);
         const page = await context.newPage();
-        // {§http-security-boundary} Every current caller supplies the shared
-        // predicate so browser navigation and subresources stay inside the same
-        // admission boundary as byte acquisition.
-        if (guard) await page.route("**", async (r) => { (await guard(r.request().url())) ? await r.continue() : await r.abort(); });
-        // Request headers (auth/accept) apply to the navigation too, so an authed
-        // HTML page renders authenticated. Ordered pairs collapse to a record here
-        // — Playwright's per-page header API is single-valued (dup names not a
-        // render concern; the byte-path fetch preserves them).
-        if (headers && headers.length > 0) await page.setExtraHTTPHeaders(Object.fromEntries(headers));
-        // Abort cascades by closing the page — an in-flight goto rejects with
-        // "Target closed", surfacing promptly instead of blocking on timeout.
-        const onAbort = () => { page.close().catch(() => {}); };
+        let closeFailure: { cause: unknown } | undefined;
+        let closePromise: Promise<void> | undefined;
+        // {§render-lifecycle} Abort and final settlement share one immediately
+        // observed close promise, so neither a duplicate call nor an unhandled
+        // rejection can escape the render boundary.
+        const closePage = (): Promise<void> => {
+            closePromise ??= Promise.resolve()
+                .then(() => page.close())
+                .catch((cause: unknown) => { closeFailure = { cause }; });
+            return closePromise;
+        };
+        const onAbort = () => { void closePage(); };
         signal?.addEventListener("abort", onAbort, { once: true });
-        // Already aborted before the page opened: the listener won't fire
-        // retroactively, so close now — the navigation must not proceed.
-        if (signal?.aborted) onAbort();
+        let outcome: { result: RenderResult } | { cause: unknown } | undefined;
         try {
+            if (signal?.aborted) {
+                onAbort();
+                signal.throwIfAborted();
+            }
+            // {§http-security-boundary}
+            if (guard) await page.route("**", async (r) => { (await guard(r.request().url())) ? await r.continue() : await r.abort(); });
+            // Playwright's page header API is single-valued; byte acquisition preserves duplicates.
+            if (headers && headers.length > 0) await page.setExtraHTTPHeaders(Object.fromEntries(headers));
             const response = await this.#safeGoto(page, url, timeout);
             const html = await page.content();
-            return {
-                status: response?.status() ?? 200,
-                statusText: response?.statusText() ?? "",
-                headers: response ? Object.entries(response.headers()) : [],
-                html,
+            outcome = {
+                result: {
+                    status: response?.status() ?? 200,
+                    statusText: response?.statusText() ?? "",
+                    headers: response ? Object.entries(response.headers()) : [],
+                    html,
+                },
             };
+        } catch (cause) {
+            outcome = { cause };
         } finally {
             signal?.removeEventListener("abort", onAbort);
-            await page.close().catch(() => {});
+            await closePage();
         }
+        if (outcome === undefined) throw new Error("Browser render settled without an outcome");
+        if ("cause" in outcome) {
+            if (closeFailure !== undefined) {
+                throw new AggregateError(
+                    [outcome.cause, closeFailure.cause],
+                    "Browser render and page close failed",
+                );
+            }
+            throw outcome.cause;
+        }
+        if (closeFailure !== undefined) throw closeFailure.cause;
+        return outcome.result;
     }
 
     // page.goto with the salvage path. networkidle timing out while the DOM has
