@@ -17,6 +17,7 @@ tokens {
 private openTag: string = "";
 private openTagLine: number = 0;
 private openTagColumn: number = 0;
+private bodyStart: { line: number; column: number } | null = null;
 private targetDepth: number = 0;
 
 private setOpenTag(): void {
@@ -24,11 +25,21 @@ private setOpenTag(): void {
     // Capture where the open tag began, for reference in mismatched-close-tag errors.
     this.openTagLine = (this as any).currentTokenStartLine;
     this.openTagColumn = (this as any).currentTokenColumn;
+    this.bodyStart = null;
 }
 
 public getOpenTag(): string { return this.openTag; }
 public getOpenTagLine(): number { return this.openTagLine; }
 public getOpenTagColumn(): number { return this.openTagColumn; }
+
+private setBodyStart(): void {
+    this.bodyStart = { line: this.line, column: this.column };
+}
+
+public getBodyStart(): { line: number; column: number } {
+    if (this.bodyStart === null) throw new Error("BODY start requested before entering BODY mode");
+    return this.bodyStart;
+}
 
 private atColonCloseTag(): boolean {
     if (this.inputStream.LA(1) !== 0x3A /* ':' */) return false;
@@ -206,9 +217,10 @@ SLOTS_L        : L_PATTERN -> type(L_MARKER) ;
 SLOTS_EMPTY_CLOSE : { this.atSlotsEmptyClose() }? ':' . { this.consumeRestOfCloseTagAfterColon(); } -> type(CLOSE_TAG), mode(DEFAULT_MODE) ;
 // TURN's body is internal Plurnk, not opaque — its colon opens a turn body in statement
 // mode (depth++), where the inner sandwich lexes normally; `:TURN` closes it. Every other
-// op's colon enters opaque BODY mode.
+// op's colon enters opaque BODY mode and owns its advisory scan boundary.
+// {§invented-closer-advisory}
 SLOTS_COLON_TURN : { this.isTurnOp() }? ':' { this.turnSuffixStack.push(this.openTag.substring(4)); } -> type(COLON), mode(DEFAULT_MODE) ;
-SLOTS_COLON    : ':' -> type(COLON), mode(BODY) ;
+SLOTS_COLON    : ':' { this.setBodyStart(); } -> type(COLON), mode(BODY) ;
 
 // ============================================================================
 // SIGNAL_TAGS — inside `[...]` for FIND/READ/EDIT/COPY/MOVE/OPEN/FOLD.

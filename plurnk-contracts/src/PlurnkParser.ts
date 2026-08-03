@@ -254,7 +254,7 @@ export default class PlurnkParser {
         const from = { line: lexer.getOpenTagLine(), column: lexer.getOpenTagColumn() };
         const modeName = lexer.modeNames[lexer.mode] ?? "";
         const reason = modeName === "BODY"
-            ? `body of \`<<${openTag}\` opened at line ${from.line} but never closed - add \`:${openTag}\` to terminate${PlurnkParser.#inventedCloser(input, from, openTag)}`
+            ? `body of \`<<${openTag}\` opened at line ${from.line} but never closed - add \`:${openTag}\` to terminate${PlurnkParser.#inventedCloser(input, lexer.getBodyStart(), openTag)}`
             : modeName === "SIGNAL_TAGS" || modeName === "SIGNAL_INT" || modeName === "SIGNAL_IDENT"
                 ? `signal slot of \`<<${openTag}\` opened at line ${from.line} but never closed - add \`]\` to terminate the signal`
                 : modeName === "TARGET"
@@ -324,10 +324,10 @@ export default class PlurnkParser {
         for (const { at, item } of additions.reverse()) items.splice(at + 1, 0, item);
     }
 
-    // Name an ALLCAPS close lookalike only inside a never-closed statement; healthy
+    // Name an ALLCAPS close lookalike only inside a never-closed body; healthy
     // bodies are never scanned by this path. {§invented-closer-advisory}
-    static #inventedCloser(input: string, from: { line: number; column: number }, openTag: string): string {
-        const offset = PlurnkParser.#offsetAtPosition(input, from);
+    static #inventedCloser(input: string, bodyStart: Position, openTag: string): string {
+        const offset = PlurnkParser.#offsetAtPosition(input, bodyStart);
         const body = input.slice(offset);
         const m = /:([A-Z][A-Z0-9_]{2,})\b/.exec(body);
         if (!m || m[1] === openTag.toUpperCase()) return "";

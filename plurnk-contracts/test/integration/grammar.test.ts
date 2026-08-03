@@ -777,6 +777,36 @@ test("invented closer: Unicode offset conversion cannot scan a pre-op tag as bod
     assert.doesNotMatch(result.unparsedTail.reason, /found `:BEFORE`/);
 });
 
+test("#132: invented closer scanning begins after every pre-body slot and target header", () => {
+    const specimens = [
+        "<<EDIT[a:HEADER](x):unterminated",
+        "<<EDIT(worker:///:HEADER):unterminated",
+        "<<EDIT<1-2>(https://example.test/data{X-Plurnk:HEADER})[curation]:unterminated",
+    ];
+
+    for (const source of specimens) {
+        const result = PlurnkParser.parseStatements(source);
+        assert.ok(result.unparsedTail, source);
+        assert.match(result.unparsedTail.reason, /never closed - add `:EDIT` to terminate/, source);
+        assert.doesNotMatch(result.unparsedTail.reason, /found `:HEADER`/, source);
+    }
+});
+
+test("#132: Unicode before BODY does not obscure the first genuine body lookalike", () => {
+    const source = "<<EDIT[a:HEADER]\n(worker://😀/:TARGET)\n<1-2>\n:body 😀 :INSIDE";
+    const result = PlurnkParser.parseStatements(source);
+    assert.ok(result.unparsedTail);
+    assert.match(result.unparsedTail.reason, /found `:INSIDE`, which is body text/);
+    assert.doesNotMatch(result.unparsedTail.reason, /found `:(?:HEADER|TARGET)`/);
+});
+
+test("#132: a healthy closed body never enters invented-closer recovery", () => {
+    const result = PlurnkParser.parseStatements("<<EDIT(worker:///:HEADER):body :COMPARISON_TASK:EDIT");
+    assert.equal(result.unparsedTail, undefined);
+    assert.equal(result.items.filter((item) => item.kind === "statement").length, 1);
+    assert.equal(result.items.filter((item) => item.kind === "error").length, 0);
+});
+
 // {§plan-body-op-advisory}
 test("plan-body advisory: op-shaped text in a parsed PLAN body warns", () => {
     // :PLAN is omitted, so the body reaches the later PLAN closer.
