@@ -2619,18 +2619,15 @@ export default class Dispatcher {
             if (failCount > 0) return Dispatcher.#unobservedFailures(failCount);
             const pending = await this.#pendingSet(workerId, turnId);
             if (pending.length > 0) {
-                // Kind-specific steer (owner wording, xpath/topo forensics): retrievals-only is
-                // gemma's read-and-conclude idiom — no lever to pull, the results simply arrive;
-                // KILL/park advice only muddies it. Streams/children keep the remedy steer.
+                // A retrieval-only refusal needs no KILL/park remedy menu: the results simply
+                // arrive in the next packet. Streams and children retain their remedy steer.
                 const retrievalsOnly = pending.every((k) => k.startsWith("this turn's retrieval results"));
                 if (retrievalsOnly) {
-                    // #83 — current retrieval-only refusal marker and factual
-                    // observation-boundary steer; the issue owns its unsettled rail policy.
                     return Dispatcher.#failure(
                         "retrieval-results-unobserved",
                         409,
                         "Last turn both performed retrieval operations and attempted to terminate. Retrieval operations force an additional turn so their results can be reviewed.",
-                        { attrs: { retrievalOnly: true } },
+                        {},
                         {
                             pending: [...pending],
                             stage: "completion",

@@ -102,7 +102,7 @@ test("READ + SEND[200] same turn is refused 409 — the pending set includes thi
             messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }],
         });
         assert.equal(result.status, 102, "the turn stays a continue — the loop never went terminal");
-        assert.equal(result.steerStruck, false, "a retrievals-only refusal does NOT strike (owner ruling) — it teaches; the turn still demotes");
+        assert.equal(result.steerStruck, true, "the false terminal claim strikes while the turn still demotes");
         const rows = await db.test_log_sequencees_by_turn.all<{ status_rx: number; op: string }>({ turn_id: result.turnId });
         assert.equal(rows.find((r) => r.op === "SEND")?.status_rx, 409, "the SEND[200] row records the refusal as 409");
         // The STORED record agrees with the return (run20's T3 bug: the close persists the
@@ -246,10 +246,9 @@ test("499 is never gated and recursively cancels unresolved descendants", async 
 });
 
 
-test("a retrievals-ONLY refusal states the continuation, not a remedy menu (owner wording)", async () => {
-    // xpath/topo forensics: gemma's read-and-conclude idiom hit the KILL/park steer three turns
-    // straight and never adapted — there is no lever to pull for a this-turn retrieval; the
-    // results simply arrive. The steer now says exactly that. Streams/children keep the menu.
+test("a retrieval-only refusal states the observation boundary, not a live-work remedy menu", async () => {
+    // There is no lever to pull for a same-turn retrieval: the results arrive in the next
+    // packet. The correction says exactly that; streams and children keep their remedy menu.
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `steer-ret-${crypto.randomUUID()}`);
@@ -277,34 +276,39 @@ test("a retrievals-ONLY refusal states the continuation, not a remedy menu (owne
     } finally { await db.close(); }
 });
 
-test("retrieval preemies NEVER strike — repeated refusals teach without executing (owner ruling)", async () => {
-    // Atomic-turn pretraining pairs fetch-and-answer in one emission; each refusal is correct,
-    // and maxTurns bounds the walk. FOUR consecutive read-and-conclude turns: every one refused
-    // 409, the loop still ALIVE after all of them — never a strike-out. A live-child refusal
-    // keeps its strike (covered by the STRIKES-OUT test above).
+test("retrieval-and-conclude strikes out even when changing targets avoids cycle detection", async () => {
+    // Distinct targets keep cycle detection out of the result: this specimen proves the
+    // observation-boundary rule itself stops a model that keeps doing READ + SEND[200].
+    // plurnk.md already teaches the packet boundary, so every refused terminal strikes.
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `preemie-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1, "go");
-        await seedEntryWithChannel(db, { workspaceId, scheme: "worker", pathname: "/page.html", channel: "body", content: "<h1>Hi</h1>", mimetype: "text/html", state: "static" });
+        const paths = Array.from({ length: 10 }, (_, index) => `/page-${index}.html`);
+        for (const pathname of paths) {
+            await seedEntryWithChannel(db, { workspaceId, scheme: "worker", pathname, channel: "body", content: `<h1>${pathname}</h1>`, mimetype: "text/html", state: "static" });
+        }
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-        const readAndConclude = () => ({ assistant: { content: "", reasoning: null, ops: [readStmt(knownPath("/page.html")), sendStmt(200, null, "the answer is Hi")] } });
-        const provider = new Mock({ contextWindow: 100000, responses: [readAndConclude(), readAndConclude(), readAndConclude(), readAndConclude()] });
-        for (let i = 0; i < 4; i++) await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
+        const provider = new Mock({
+            contextWindow: 100000,
+            responses: paths.map((pathname) => ({
+                assistant: { content: "", reasoning: null, ops: [readStmt(knownPath(pathname)), sendStmt(200, null, `read ${pathname}`)] },
+            })),
+        });
+        const result = await engine.runLoop({ provider, workspaceId, workerId, loopId, messages: [], maxTurns: 10, maxStrikes: 3 });
+
+        assert.equal(result.reason, "strike_threshold", "habitual retrieval-and-conclude ends through strike accounting");
+        assert.equal(result.result.status, 500, "distinct targets prove the cycle detector was not the terminating rail");
+        assert.equal(result.turnIds.length, 3, "each refused retrieval-and-conclude counts toward the threshold");
         const refusals = await db.test_send_rows_for_worker.all<{ status_rx: number }>({ worker_id: workerId });
-        assert.equal(refusals.filter((r) => r.status_rx === 409).length, 4, "all four conclude-attempts refused — the gate never weakened");
-        const loopStatus = (await db.test_get_loop_status.get<{ status: number }>({ id: loopId }))?.status;
-        assert.notEqual(loopStatus, 500, "the loop is NOT struck out — retrieval preemies never strike");
-        assert.equal(loopStatus, 102, "still alive, still teachable");
+        assert.equal(refusals.filter((r) => r.status_rx === 409).length, 3, "all three conclude-attempts refused — the gate never weakened");
     } finally { await db.close(); }
 });
 
-test("one idle-grace turn after a retrieval-409 — obeying the steer never strikes; a second idle does", async () => {
-    // The admins specimen: the steer says 'continuing in order to receive results', the model
-    // waits one bare [102] turn, and the idle rail struck it for obeying. Turn 1: READ+[200]
-    // (refused, grace armed). Turn 2: bare PLAN+[102] (the obedient wait — GRACED). Turns 3-5:
-    // three more bare idles — the rail resumes and strikes out as ever (grace is ONE turn).
+test("a retrieval refusal grants no exemption from the ordinary idle-turn rail", async () => {
+    // The next packet already contains the retrieval result and directs the model to review it
+    // before concluding. PLAN + SEND[102] performs no work and remains an ordinary idle strike.
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `grace-${crypto.randomUUID()}`);
@@ -318,17 +322,12 @@ test("one idle-grace turn after a retrieval-409 — obeying the steer never stri
             { assistant: { content: "", reasoning: null, ops: [readStmt(knownPath("/page.html")), sendStmt(200, null, "Hi")] } },
             idle(), idle(), idle(), idle(),
         ] });
-        const statuses: number[] = [];
         for (let i = 0; i < 5; i++) {
-            const r = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
-            statuses.push(r.status);
-            if ((await db.test_get_loop_status.get<{ status: number }>({ id: loopId }))?.status === 500) break;
+            await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
         }
         const errRows = await db.test_error_rows_for_worker.all<{ rx: string }>({ worker_id: workerId });
         const idleStrikes = errRows.filter((r) => /engine\/rail\/idle-turn/.test(r.rx)).length;
-        assert.ok(idleStrikes >= 1, "later idles still strike — the rail is intact");
-        const graceCovered = 5 - 1 - idleStrikes; // turns minus the refused turn minus struck idles
-        assert.ok(graceCovered >= 1, `exactly one idle rode the grace (struck ${idleStrikes} of 4 idles)`);
+        assert.equal(idleStrikes, 4, "all four idle turns strike; the retrieval refusal creates no special rail state");
     } finally { await db.close(); }
 });
 

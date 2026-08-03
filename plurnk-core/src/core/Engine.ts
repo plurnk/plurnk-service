@@ -257,9 +257,6 @@ export default class Engine {
     // Streaming schemes (exec) chain their per-spawn controllers off
     // ctx.signal so cancelled loops tear down their background spawns.
     #loopAborts = new Map<number, AbortController>();
-    // {§send-premature-terminate} — loops owed one idle-grace turn after a retrieval-only 409
-    // (the steer's own advice is to wait; in-memory, fail-open on restart).
-    #retrievalRefusalGrace = new Set<number>();
     // One coalesced warm per workspace. Creation/membership changes start it as soon
     // as content exists; the first model turn joins it, so no operation observes
     // partial graph/vector coverage. A request arriving mid-pass marks the workspace
@@ -1494,8 +1491,8 @@ export default class Engine {
             (op): op is PlurnkStatement & { op: "SEND"; signal: number } =>
                 op.op === "SEND" && typeof op.signal === "number" && op.signal >= 200,
         );
-        // {§send} the terminal contract — two engine error states verify a terminal claim against loop
-        // state, never trusting the model's code. Both strike via turn.steerStruck (turnErrors,
+        // {§send} the terminal contract — engine error states verify a terminal claim against loop
+        // state, never trusting the model's code. They strike via turn.steerStruck (turnErrors,
         // {§grinder-strike-coupling}): the loop continues, the model sees the steering hint not the strike
         // count, and a non-resolver spins out to the engine's 500.
         let steerStruck = false;
@@ -1516,22 +1513,12 @@ export default class Engine {
             : realOpsCount === 0 ? TURN_STATUS_NO_OPS : TURN_STATUS_IMPLICIT_CONTINUE;
 
         // Idle turn: an implicit-continue (102) that did no WORK — its ops are only PLAN/SEND, no mid op.
-        // The model continued with nothing to do. (Skipped when premature already steered this turn.)
+        // The model continued with nothing to do.
         const midOpsCount = packetAssistant.ops.filter((op) => op.op !== "PLAN" && op.op !== "SEND").length
             + recoverableParseErrors.length;
         if (!steerStruck && turnStatus === TURN_STATUS_IMPLICIT_CONTINUE && midOpsCount === 0) {
-            // One grace turn after a retrieval-only 409 (admins specimen): the refusal steer says
-            // "continuing in order to receive results" — a model that obediently waits one bare
-            // [102] turn is following OUR advice, and the idle rail was executing it for that.
-            // The grace is exactly one turn; a second consecutive idle strikes as ever.
-            if (this.#retrievalRefusalGrace.delete(loopId)) {
-                // graced — the wait the steer asked for
-            } else {
-                steerStruck = true;
-                pendingEngineErrors.push("idle_turn");
-            }
-        } else {
-            this.#retrievalRefusalGrace.delete(loopId); // a working turn consumes any pending grace
+            steerStruck = true;
+            pendingEngineErrors.push("idle_turn");
         }
 
         // Close the turn with the final packet, status, and usage stats.
@@ -1645,12 +1632,10 @@ export default class Engine {
                 origin, onDispatch,
             });
             statuses.push(result.status);
-            // {§send-premature-terminate} — a refused terminal leaves both
-            // loop and turn continuing. #83 owns the current retrieval-only
-            // strike and following-idle-grace exception.
+            // {§send-premature-terminate} — a refused terminal leaves both loop and turn
+            // continuing, and every such false terminal claim strikes uniformly.
             if (statement === sendOp && result.status === 409) {
-                if ((result.attrs as { retrievalOnly?: boolean } | undefined)?.retrievalOnly !== true) steerStruck = true;
-                else this.#retrievalRefusalGrace.add(loopId); // the steer says "continuing to receive" — the NEXT turn's obedient wait must not idle-strike
+                steerStruck = true;
                 turnStatus = TURN_STATUS_IMPLICIT_CONTINUE;
                 await this.#db.engine_reconcile_turn_status.run({ id: turnId, status: turnStatus });
             }

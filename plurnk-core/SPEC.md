@@ -1168,7 +1168,15 @@ AST: `{ op: "SEND", target: ParsedPath | null, body: SendBody | null, signal: nu
 
 The engine's failure terminals — **500** (strike threshold) and **508** (cycle), {§engine-rails} — are never the model's to pick; they are the engine ruling the loop failed. The surface is small on purpose: the model says done, waiting, or giving up, and is never asked to hold a correct opinion about *how* it failed or *whether* it can be woken — the engine decides those from state.
 
-**Three engine error states verify the claim.** None is a status code the model learns; all are engine machinery ({§engine-rails}), pushed to the model as a steering hint on the next packet and **never** as the strike itself ({§rail-accounting-private}). Each strikes (`turnErrors`) and lets the loop continue so the model can correct; a model that ignores the hint and keeps offending spins out to the engine's 500, seeing only the repeated hint, never the count. (All live at `Engine.runLoop`'s turn close.)
+**Rail accounting is separate from model-facing evidence.** The model sees the
+specific correction on its next packet, never the private strike count
+({§rail-accounting-private}). Each state below contributes one strike and lets
+the loop continue; repeated offenses terminate through the engine's 500.
+
+| state                 | model-facing evidence                                        | accounting |
+|-----------------------|--------------------------------------------------------------|------------|
+| Idle turn             | An engine-rail error row with the corrective disposition     | One strike |
+| Premature termination | The refused SEND row at 409 with pending-kind Problem Detail | One strike |
 
 - §send-idle-turn **Idle turn** — a continuing turn (102) whose ops are only PLAN/SEND — no work op. The model continued with nothing to do. The steer, verbatim: *"If your work is done, conclude with 200. If you're waiting on a child or stream you spawned, SEND[202] to block on it — a 202 with nothing to wait on simply concludes."*
 - §send-premature-terminate **Premature terminate — the pending set.**
@@ -1179,7 +1187,9 @@ The engine's failure terminals — **500** (strike threshold) and **508** (cycle
   stream output without a terminal foisted READ, and child results queued for
   the next packet). The set is judged at the disposition's own dispatch, after
   earlier operations in the emission. `[200]` over any member is refused 409
-  and the loop continues; `[499]` deliberately abandons regardless.
+  and the loop continues; every refusal strikes uniformly, including a
+  retrieval-only refusal. The pending kind changes the corrective message, not
+  rail accounting. `[499]` deliberately abandons regardless.
 - §send-undelivered-child-term **Completion is not delivery.** A result becomes
   observed only after crossing a packet boundary. `SEND[202]` parks only on
   live obligations. If work has completed but is unobserved, it continues

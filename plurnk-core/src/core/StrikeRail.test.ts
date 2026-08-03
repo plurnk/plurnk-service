@@ -5,19 +5,14 @@ import { parsePath, type ReadStatement } from "@plurnk/plurnk-contracts";
 
 const base = { fingerprint: "READ(x)", noOps: false, budgetStruck: false, steerStruck: false, minCycles: 3, maxCyclePeriod: 4, maxStrikes: 3 };
 
-test("a retrieval-only 409 (steerStruck=false) does NOT strike — 409 is soft (#346 gap, firefast)", () => {
+test("a 409 status alone is soft because Engine supplies the premature-terminate strike", () => {
     const rail = new StrikeRail();
-    // Three consecutive retrieval-preemie refusals: distinct fingerprints (varied targets, so no
-    // cycle), status 409, steerStruck FALSE. The ruling: never a strike. Before the 409-soft fix,
-    // recordedFailed counted each → streak 3 → 500. Now: soft, streak stays 0.
-    for (const fp of ["READ(a)", "READ(b)", "READ(c)"]) {
-        const v = rail.assess(1, { ...base, fingerprint: fp, statuses: [409] });
-        assert.equal(v.thresholdCrossed, false, `retrieval-409 on ${fp} must not cross the strike threshold`);
-    }
-    assert.equal(rail.streak(1), 0, "no strikes accrued — retrieval preemies teach without striking");
+    const verdict = rail.assess(1, { ...base, statuses: [409] });
+    assert.equal(verdict.thresholdCrossed, false);
+    assert.equal(rail.streak(1), 0, "the status is not counted separately from Engine's steerStruck ruling");
 });
 
-test("a stream/child 409 STILL strikes — via steerStruck, the authority", () => {
+test("a premature-terminate 409 strikes through steerStruck", () => {
     const rail = new StrikeRail();
     // Same 409 status, but steerStruck TRUE (Engine sets it for a live-work refusal). Strikes.
     let crossed = false;

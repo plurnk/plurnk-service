@@ -6,13 +6,9 @@ import { renderTarget } from "./plurnk-uri.ts";
 // range that doesn't exist (416), or a capability a scheme lacks (501) is how discovery
 // works — striking them prices caution into the motions we most want (range-reads ARE
 // the surgical behavior under budget pressure). One simple set, evenly applied.
-// 409 (premature-terminate refusal) is SOFT here: whether it strikes is decided by steerStruck
-// (Engine sets it true for a stream/child refusal — discarding live work IS serious — and false
-// for a retrievals-only refusal, which teaches without striking, {§send-premature-terminate}/#346).
-// Counting the raw 409 status ALSO would double-strike the stream/child case and WRONGLY strike
-// the retrieval-only case (a cloud atomic-turn model repeating read+conclude struck out 500 on
-// firefast despite the ruling). The cycle detector remains the backstop for a genuinely-spinning
-// model (508 loop-detected — the honest signal, not a 500 failure).
+// 409 (premature-terminate refusal) is SOFT here because Engine accounts for that engine ruling
+// through steerStruck ({§send-premature-terminate}). Counting the raw status as well would
+// double-count one false terminal claim. The cycle detector remains an independent backstop.
 const SOFT_FAILURE_STATUSES: ReadonlySet<number> = new Set([404, 409, 416, 501]);
 
 // Per-op fingerprint: op verb + target URI, plus an op-specific discriminator
