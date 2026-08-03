@@ -53,6 +53,7 @@ import type LiveSubscriptions from "./LiveSubscriptions.ts";
 import LoopLifecycle from "./LoopLifecycle.ts";
 import Results from "./results.ts";
 import { OperationFailureError } from "./results.ts";
+import EffectPolicy from "../schemes/EffectPolicy.ts";
 import {
     InvalidOperationResultError,
     NetworkAddress,
@@ -608,10 +609,18 @@ export default class Dispatcher {
         // auto listener, or timeout). The post-resolution status replaces 202 in the
         // result the caller sees, so runTurn never branches on a pending state.
         if (Dispatcher.#isProposal(statement, result)) {
-            // Effect-gated auto-run (read/pure runtimes, plurnk-service#182):
-            // no human gate, no loop/proposal notification. Accept + apply
-            // in-process; the model sees the outcome directly, never a review.
-            if ((result.attrs as { inline?: boolean } | undefined)?.inline === true) {
+            // Effect-gated auto-run (read/pure runtimes, {§exec-readpure-ungated}):
+            // EXEC stores its one canonical effect fact before admission. Reuse
+            // that exact fact here; no human gate or loop/proposal notification.
+            const effect = (result.attrs as { effect?: unknown } | undefined)?.effect;
+            let autoAccept = false;
+            if (statement.op === "EXEC") {
+                if (!EffectPolicy.isEffect(effect)) {
+                    throw new InvalidOperationResultError("EXEC proposal omitted its canonical effect fact.");
+                }
+                autoAccept = EffectPolicy.decide(effect) === "auto";
+            }
+            if (autoAccept) {
                 const initialSettlement = await this.#proposals.workerApply(
                     statement,
                     result,

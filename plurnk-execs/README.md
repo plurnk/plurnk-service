@@ -62,10 +62,11 @@ material. See {§executor-runtime-declaration}.
 Problem Details and leave affected channels `errored`. Honor `signal`, write
 only declared channels, and retain no state between runs.
 
-`effect(target)` declares an admission fact. `host` is proposal-gated;
-`read` and `pure` are automatically accepted. All three then use the same
-background stream path—automatic acceptance is not a same-turn result. See
-{§executor-effect}.
+`effect(target)` declares one admission fact for the consumer-canonical logical
+target. `host` is proposal-gated; `read` and `pure` are automatically accepted.
+The consumer preserves the fact rather than asking again after target
+materialization. All three then use the same background stream path—automatic
+acceptance is not a same-turn result. See {§executor-effect}.
 
 ### Understand the target
 

@@ -1229,17 +1229,32 @@ the loop continue; repeated offenses terminate through the engine's 500.
 
 ### §exec EXEC
 
-AST: `{ op: "EXEC", target (local path, stat-routed to cwd or program), body: string | null (command), signal: string | null (runtime tag), lineMarker (timeout/poll) }`.
+AST: `{ op: "EXEC", target (optional input source, program, or cwd), body: string | null (command), signal: string | null (runtime tag), lineMarker (timeout/poll) }`.
 
-§exec-target-routing Engine routes unconditionally to the `exec` scheme; the
-`(target)` slot is a local path or `file:///` URL, not a member URI. The target
-is stat-routed at dispatch: a **directory** overrides `cwd` and the body runs
-there; a **file** is the program/data source the executor runs, with the body
-as its stdin, so an **empty body is legal** for a file target; a **stat miss**
-takes the file arm, letting the runtime report its own not-found rather than a
-dispatch 400. With no target, `cwd` is the workspace's `project_root`, where
-the File scheme writes — never the daemon's own cwd. An empty body with a
-directory target or no target at all is the one 400 (nothing to run).
+§exec-target-routing Engine routes unconditionally to the `exec` scheme and
+canonicalizes `(target)` before effect admission. With no directory override,
+`cwd` is the workspace's `project_root`, where the File scheme writes — never
+the daemon's own cwd.
+
+| Authored target                       | Body      | Canonical effect target | Accepted executor realization                         |
+| ------------------------------------- | --------- | ----------------------- | ----------------------------------------------------- |
+| Absent                                | Non-empty | `null`                  | Body is the command; target is absent.                |
+| Local/file directory                  | Non-empty | `null`                  | Directory becomes `cwd`; target is absent.            |
+| Local/file file or stat miss          | Any       | Authored local path     | Path is the program/data target; body is its input.   |
+| Entry-backed scheme address           | Empty     | `null`                  | Selected channel content becomes the command.         |
+| Entry-backed scheme address           | Non-empty | Authored address        | Selected content is materialized as the local target. |
+
+A stat miss takes the file arm so the runtime reports its own not-found rather
+than dispatch returning 400. An empty body is legal for a local file or scheme
+command source; it remains a 400 with no target or a directory target. For a
+scheme-data target, the authored address is an opaque target-present identity:
+the executor neither resolves it nor sees it during `run()`; core materializes
+the selected content only after acceptance and supplies that local path.
+
+Core calls `effect()` once against this canonical target, without command text,
+stores the resulting fact with the invocation, and reuses it unchanged for
+proposal policy, application, stream registration, and effect-qualified hold
+policy. The post-acceptance materialization path never triggers reclassification.
 
 §exec-registry-resolves The runtime slot (`signal`) selects an executor,
 resolved against the boot-time `ExecutorRegistry`: siblings are discovered and

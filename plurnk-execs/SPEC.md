@@ -128,9 +128,18 @@ The runtime-neutral Notice types are re-exported from
 
 ### §executor-effect Effect is an admission fact
 
-`effect(target)` is pure, synchronous, cheap, and target-classified. An
-installed executor does not parse authored code or commands to infer safety.
-Unknown or unclassifiable work remains `host` through the conservative default.
+`effect(target)` is pure, synchronous, cheap, and target-classified. The
+consumer calls it exactly once for an admitted invocation, before proposal
+policy, then preserves that exact fact through application and effect-sensitive
+bookkeeping. An installed executor does not parse authored code or commands to
+infer safety. Unknown or unclassifiable work remains `host` through the
+conservative default.
+
+`target` is the consumer-canonical logical target. It is normally the same
+local value later supplied to `run()`. If the consumer will materialize an
+addressed source only after acceptance, it may classify against a stable opaque
+target-present identity; the executor neither resolves that address nor
+reclassifies the materialized path.
 
 | Effect | Executor fact                                | Default consumer admission |
 | ------ | -------------------------------------------- | -------------------------- |
@@ -138,8 +147,9 @@ Unknown or unclassifiable work remains `host` through the conservative default.
 | `read` | Observes external state without mutating it. | Automatically accepted.    |
 | `pure` | Has no externally observable side effect.    | Automatically accepted.    |
 
-The classification controls admission only. After acceptance, every EXEC uses
-the same background stream path: output is not returned in the dispatching
+The classification controls admission policy and may be reused as operational
+metadata; it never changes within the invocation. After acceptance, every EXEC
+uses the same background stream path: output is not returned in the dispatching
 turn. Core owns that composed behavior in {§exec-host-proposes},
 {§exec-readpure-ungated}, and {§exec-stream}.
 

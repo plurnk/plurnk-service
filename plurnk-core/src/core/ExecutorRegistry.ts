@@ -17,10 +17,9 @@ export interface Executor {
     // The host aborts on resolve or timeout so probe work is reaped immediately
     // ({§executor-probe}). Optional and ignore-safe.
     probe(signal?: AbortSignal): Promise<RuntimeAvailability>;
-    // The consumer interface accepts optional command metadata for dynamically
-    // registered runtimes. Installed BaseExecutor leaves implement the narrower,
-    // target-only contract in {§executor-effect}.
-    effect(target: string | null, command?: string): Effect;
+    // One pure classification of the consumer-canonical logical target
+    // ({§executor-effect}); authored command text is never an admission input.
+    effect(target: string | null): Effect;
 }
 
 export interface RegistryEntry {

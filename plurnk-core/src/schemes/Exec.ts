@@ -43,7 +43,7 @@ interface ExecAttrs {
     target: string | null;  // consumer-routed EXEC target; each executor owns its mapping ({§executor-sinks})
     command: string;        // body of the EXEC op
     pathname: string;       // stamped by Dispatcher.#writeLog as /<loop>/<turn>/<seq>; output persists under the runtime tag, e.g. sh:///1/1/2 ({§executor-output-address}).
-    inline?: boolean;       // effect=read/pure → automatically accepted; output still backgrounds
+    effect: Effect;         // one admission fact, preserved through apply and stream/hold bookkeeping
     schemeTarget?: { scheme: string; pathname: string; fragment: string | null };  // non-file scheme target resolved by the consumer at apply time
     timeoutSec?: number;    // `<T,P>` mark[0] > 0: kill the spawn after T seconds (504). Absent/-1 = unbounded.
     turnScoped?: boolean;   // `<0>`: turn-scoped — reaped at the worker's next pre-turn, never surviving into the subsequent turn. {§exec-poll}
@@ -74,6 +74,20 @@ const schemeTargetOf = (target: ExecStatement["target"]): { scheme: string; path
     if (target.scheme === null || target.scheme === "file") return null;
     return { scheme: target.scheme, pathname: target.pathname, fragment: target.fragment };
 };
+
+// {§exec-target-routing} — effect classifies the invocation core is admitting,
+// before a scheme-backed source can be materialized. A scheme target with no
+// body becomes the command, so the executor has no target. With a body, the
+// scheme content becomes a target at run time; its authored address is the
+// stable, opaque target-present identity used only for the one effect call.
+const effectTargetOf = (
+    authoredTarget: ExecStatement["target"],
+    routedTarget: string | null,
+    schemeTarget: ReturnType<typeof schemeTargetOf>,
+    command: string,
+): string | null => schemeTarget !== null && command.length > 0
+    ? authoredTarget?.raw ?? null
+    : routedTarget;
 
 // EXEC's pathname is <runtime>/<loop_seq>/<turn_seq>/<sequence> (stamped by
 // Dispatcher.#writeLog). Exec owns this convention, so it — not the client — turns
@@ -124,7 +138,7 @@ export default class Exec extends CoreSchemeAdapterBase {
         volatile: true,
         modelVisible: true,
         example: "<<EXEC[sqlite]:SELECT 22.0 / 7.0:EXEC",
-        documentation: "Runs a command in a runtime — `<<EXEC[runtime](cwd):command:EXEC` — output streams into the worker's `<runtime>:///<loop>/<turn>/<seq>` entry on the runtime's own channels (a subprocess → stdout/stderr; a computational runtime like sqlite/jq → a JSON `results` channel). A host-effecting command proposes for review before it runs; a read-only/pure one runs ungated. Either way you never fetch the output: the engine surfaces each turn's new stream bytes to you automatically — folded while the command runs, opened when it finishes.",
+        documentation: "Runs a command in a runtime — `<<EXEC[runtime](target):command:EXEC` — output streams into the worker's `<runtime>:///<loop>/<turn>/<seq>` entry on the runtime's own channels (a subprocess → stdout/stderr; a computational runtime like sqlite/jq → a JSON `results` channel). A host-effecting command proposes for review before it runs; a read-only/pure one runs ungated. Either way you never fetch the output: the engine surfaces each turn's new stream bytes to you automatically — folded while the command runs, opened when it finishes.",
         flags: {
             excludedInAsk: true,
         },
@@ -236,8 +250,8 @@ export default class Exec extends CoreSchemeAdapterBase {
     }
 
     // EXEC op handler — the actual model-facing entry point per plurnk.md.
-    // `<<EXEC[runtime](cwd):command:EXEC` →
-    //   signal=runtime, target=cwd (ParsedPath local/file or null), body=command.
+    // `<<EXEC[runtime](target):command:EXEC` →
+    //   signal=runtime, target=optional source/program/cwd, body=command.
     //
     // Proposes (status=202) with attrs={runtime, cwd, command, pathname}.
     // applyResolution spawns the subprocess; output streams into the
@@ -346,14 +360,15 @@ export default class Exec extends CoreSchemeAdapterBase {
                 },
             ) as ExecResult;
         }
-        // The (target) slot the executor receives — its DATA SOURCE / program (jq input, sqlite db, or a
-        // subprocess program run with the body as stdin; #15). A #462 directory target routed to cwd above
-        // leaves this null (the body is the command, run in that directory).
+        // The local (target) realization the executor receives — its data source
+        // or program. A directory routes to cwd and a scheme source is resolved
+        // only after acceptance, so either is null here.
         const target = routedTarget;
-        // Installed executors classify the target only, never the command
-        // ({§executor-effect}). Core maps host to proposal and read/pure to
-        // automatic acceptance; every accepted call backgrounds below.
-        const policy = EffectPolicy.decide(resolved.executor.effect(target, command));
+        // Derive one effect from the canonical logical target before any policy
+        // consumes it, then preserve that fact with the invocation (#107,
+        // {§executor-effect}). Leaves never receive authored command text.
+        const effectTarget = effectTargetOf(statement.target, target, schemeTarget, command);
+        const effect = resolved.executor.effect(effectTarget);
         // cwd is the workspace WORKSPACE (project_root) — the directory File writes to and a relative
         // data-source target resolves against ({§executor-sinks}) — UNLESS a #462 directory target overrode
         // it above, in which case the body runs in that directory. A file/data-source target never moves cwd.
@@ -370,7 +385,7 @@ export default class Exec extends CoreSchemeAdapterBase {
         const turnScoped = typeof marks?.[0] === "number" && marks[0] === 0;
         const pollSec = typeof marks?.[1] === "number" && marks[1] >= 0 ? Math.floor(marks[1]) : undefined;
         const attrs: ExecAttrs = {
-            runtime, cwd, command, target, pathname: "", inline: policy === "auto",
+            runtime, cwd, command, target, pathname: "", effect,
             ...(schemeTarget !== null ? { schemeTarget } : {}),
             ...(timeoutSec !== undefined ? { timeoutSec } : {}),
             ...(turnScoped ? { turnScoped: true } : {}),
@@ -393,8 +408,12 @@ export default class Exec extends CoreSchemeAdapterBase {
         const runtime = (typeof attrs.runtime === "string" && attrs.runtime !== "") ? attrs.runtime : "sh";
         const cwd = (typeof attrs.cwd === "string" && attrs.cwd.length > 0) ? attrs.cwd : null;
         let target = (typeof attrs.target === "string" && attrs.target.length > 0) ? attrs.target : null;
+        const effect = attrs.effect;
         if (typeof pathname !== "string" || pathname.length === 0) {
             throw new InvalidOperationResultError("The accepted EXEC proposal is missing its stream pathname.");
+        }
+        if (!EffectPolicy.isEffect(effect)) {
+            throw new InvalidOperationResultError("The accepted EXEC proposal is missing its canonical effect fact.");
         }
 
         // #201 — resolve a scheme-URI target to content (executors stay scheme-blind).
@@ -461,9 +480,8 @@ export default class Exec extends CoreSchemeAdapterBase {
         if (resolved === undefined) {
             throw new InvalidOperationResultError(`The '${runtime}' executor disappeared after its EXEC proposal.`);
         }
-        // #485 — the per-tool effect (execs Effect: read/host/pure) rides the hold predicate so a
-        // suffixed PLURNK_SERVICE_EXEC_HOLD entry (`github:read`) can hold one tool-class and not another.
-        const effect = resolved.executor.effect(target, command);
+        // #485/#107 — the admitted effect fact rides the hold predicate unchanged;
+        // application never asks the executor to classify the invocation again.
         const seedChannels: EntryData["channels"] = {};
         for (const [name, decl] of Object.entries(resolved.executor.channels)) {
             seedChannels[name] = {
@@ -524,8 +542,9 @@ export default class Exec extends CoreSchemeAdapterBase {
 
         // Every exec backgrounds + streams ({§exec-stream}): no same-turn receipt — the output
         // surfaces as the environment-observation injector's delta on the next turn (folded while
-        // it runs, opened when it finishes). Pure/read commands still auto-accept (attrs.inline =
-        // no human gate); they just resolve a turn later, uniformly with host streams.
+        // it runs, opened when it finishes). Pure/read commands still auto-accept
+        // from the preserved effect fact; they resolve a turn later, uniformly
+        // with host streams.
         this.#activeSpawns.set(subscriptionId, tail);
         return { status: 200, outcome: "started" };
     }

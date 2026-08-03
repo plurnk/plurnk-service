@@ -6,7 +6,7 @@
 //
 // Two axes the suite gets right because the gap hid them: each runtime's output lands on its OWN
 // declared channel (subprocess and native Git -> stdout; jq/sqlite/wat -> a JSON `results` channel), and host-effecting
-// runtimes PROPOSE (accept) while pure/read ones run INLINE (auto-resolved, no accept). The census
+// runtimes PROPOSE (accept) while pure/read ones are automatically accepted. The census
 // REQUIRES every available self-contained tag to be covered, REPORTS the resource-gated ones
 // (search is covered in the live tier; wasm needs a compiled module — its
 // compile+run path is covered inline via `wat`), and FAILS on a census tag that is not even
@@ -19,6 +19,7 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ExecStatement } from "@plurnk/plurnk-contracts";
+import type { Effect } from "@plurnk/plurnk-execs";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Exec from "../../src/schemes/Exec.ts";
@@ -40,8 +41,8 @@ const deferred = <T>(): { promise: Promise<T>; resolve: (v: T) => void } => {
 
 // Drive one EXEC[tag] through the full Exec path and return its captured, ANSI-stripped output —
 // from the executor's OWN default channel (subprocess runtimes → stdout; jq/sqlite/wat → results) —
-// plus whether it ran INLINE (effect pure/read → ungated) or PROPOSED (effect host → review-gated).
-const runExec = async (tag: string, body: string, cwd: string | null): Promise<{ status: number; out: string; inline: boolean; mimetype: string; declaredMimetype: string | undefined }> => {
+// plus the one effect fact that drove automatic admission or proposal review.
+const runExec = async (tag: string, body: string, cwd: string | null): Promise<{ status: number; out: string; effect: Effect; mimetype: string; declaredMimetype: string | undefined }> => {
     const db = await openMigrated();
     try {
         const schemes = new SchemeRegistry();
@@ -63,12 +64,13 @@ const runExec = async (tag: string, body: string, cwd: string | null): Promise<{
             onDispatch: (id) => idDeferred.resolve(id),
         });
         const logEntryId = await idDeferred.promise;
-        // Side-effecting (host) executors PROPOSE (202, awaiting accept); pure/read ones run INLINE,
-        // auto-resolved within dispatch. `attrs.inline` is decided at proposal time, so it's the
-        // deterministic gate — a row-state check races the inline auto-resolve. Accept only a real proposal.
+        // Side-effecting (host) executors propose; pure/read ones are automatically
+        // accepted within dispatch. The persisted effect is the deterministic fact —
+        // a row-state check races automatic settlement. Accept only a host proposal.
         const proposal = await db.test_get_log_entry_by_id.get<{ attrs: string }>({ id: logEntryId });
-        const inline = (JSON.parse(proposal?.attrs ?? "{}") as { inline?: boolean }).inline === true;
-        if (!inline) engine.resolveProposal(logEntryId, { decision: "accept" });
+        const effect = (JSON.parse(proposal?.attrs ?? "{}") as { effect: Effect }).effect;
+        assert.ok(effect === "pure" || effect === "read" || effect === "host", "EXEC persists its canonical effect fact");
+        if (effect === "host") engine.resolveProposal(logEntryId, { decision: "accept" });
         const result = await dispatchPromise;
         await exec.idle(); // the spawn runs async; idle() awaits its close
 
@@ -76,12 +78,12 @@ const runExec = async (tag: string, body: string, cwd: string | null): Promise<{
         const { pathname } = JSON.parse(log?.attrs ?? "{}") as { pathname: string };
         const entryRow = await db.test_get_entry_by_pathname_scheme.get<{ id: number }>({ scheme: tag, pathname });
         // idle() awaits the spawn promise, which drains the channel-write queue before resolving, so the
-        // output is committed by here — for inline and proposed runtimes alike. No poll, no close-race.
+        // output is committed by here — for auto-accepted and proposed runtimes alike. No poll, no close-race.
         const out = entryRow
             ? await db.test_get_channel.get<{ content: string; state: string; mimetype: string }>({ entry_id: entryRow.id, name: channel })
             : undefined;
         assert.equal(out?.state, "closed", `EXEC[${tag}] output channel settled to closed by idle()`);
-        return { status: result.status, out: stripAnsi(out?.content ?? ""), inline, mimetype: out?.mimetype ?? "", declaredMimetype };
+        return { status: result.status, out: stripAnsi(out?.content ?? ""), effect, mimetype: out?.mimetype ?? "", declaredMimetype };
     } finally {
         await db.close();
     }
@@ -93,10 +95,10 @@ const tmp = mkdtempSync(join(tmpdir(), "plurnk-batt-"));
 // Each batteries-included tag with a deterministic, self-contained one-liner, its exact output, and
 // its GATE — the effect→proposal classification that is the executor security boundary ({§exec}, #182):
 //   "propose" = effect `host` (arbitrary host code/disk mutation) → human/policy review before it runs
-//   "inline"  = effect `pure`/`read` (sandboxed compute, at most a host FS read) → auto-run, ungated
+//   "auto"    = effect `pure`/`read` (sandboxed compute, at most a host FS read) → ungated
 // Bodies mirror each executor package's own declared usage example where one exists, so a drift in the
 // executor's contract surfaces here.
-const CASES: ReadonlyArray<{ tag: string; body: string; cwd: string | null; expect: string; gate: "propose" | "inline" }> = [
+const CASES: ReadonlyArray<{ tag: string; body: string; cwd: string | null; expect: string; gate: "propose" | "auto" }> = [
     // Subprocess runtimes execute arbitrary host code → ALWAYS `host` → always gated, even for a
     // visibly-harmless command (the executor classifies the target, never parses the command to judge it).
     { tag: "awk", body: "BEGIN { print 6 * 7 }", cwd: null, expect: "42\n", gate: "propose" },
@@ -106,9 +108,9 @@ const CASES: ReadonlyArray<{ tag: string; body: string; cwd: string | null; expe
     { tag: "node", body: "console.log(6 * 7)", cwd: null, expect: "42\n", gate: "propose" },
     { tag: "bash", body: "echo $((6 * 7))", cwd: null, expect: "42\n", gate: "propose" },
     // Sandboxed/in-process computational runtimes earn `pure` when the target implies no host mutation.
-    { tag: "jq", body: "[1,2,3] | add", cwd: null, expect: "6\n", gate: "inline" }, // inline filter → pure
-    { tag: "sqlite", body: "SELECT 2 + 2 AS n", cwd: null, expect: '[{"n":4}]', gate: "inline" }, // :memory: → pure; rows as JSON
-    { tag: "wat", body: '(module (func (export "main") (result i32) i32.const 42))', cwd: null, expect: '{"returned":42,"log":[],"exports":["main"]}', gate: "inline" }, // sandboxed module → pure
+    { tag: "jq", body: "[1,2,3] | add", cwd: null, expect: "6\n", gate: "auto" }, // inline filter → pure
+    { tag: "sqlite", body: "SELECT 2 + 2 AS n", cwd: null, expect: '[{"n":4}]', gate: "auto" }, // :memory: → pure; rows as JSON
+    { tag: "wat", body: '(module (func (export "main") (result i32) i32.const 42))', cwd: null, expect: '{"returned":42,"log":[],"exports":["main"]}', gate: "auto" }, // sandboxed module → pure
     // The boundary is TARGET-driven, not executor-driven: the SAME sqlite executor flips to `host` (gated)
     // the moment its target is a real db FILE it could mutate — the security line that the gate exists to draw.
     { tag: "sqlite", body: "SELECT 2 + 2 AS n", cwd: join(tmp, "app.db"), expect: '[{"n":4}]', gate: "propose" },
@@ -166,7 +168,7 @@ for (const { tag, body, cwd, expect, gate } of CASES) {
             t.skip(`EXEC[${tag}] not available in this env (probe failed / resource-gated)`);
             return;
         }
-        const { status, out, inline, mimetype, declaredMimetype } = await runExec(tag, body, cwd);
+        const { status, out, effect, mimetype, declaredMimetype } = await runExec(tag, body, cwd);
         assert.equal(status, 200, `${label} dispatch returns 200`);
         assert.equal(out, expect, `${label} output`);
         // The stream entry's channel carries the executor's OWN declared mimetype — so a JSON-returning
@@ -174,9 +176,9 @@ for (const { tag, body, cwd, expect, gate } of CASES) {
         // render), never mislabelled text/stream. The Exec seed honors the declaration; the write never overwrites it.
         assert.equal(mimetype, declaredMimetype, `${label} channel carries the executor's declared mimetype`);
         // The security boundary: effect→gate must match. A host runtime MUST propose (be review-gated);
-        // a pure/read one MUST run inline. A regression that flips a host runtime to inline would let
-        // arbitrary host code run ungated — this assertion guards exactly that.
-        assert.equal(inline, gate === "inline", `${label} gating: ${gate === "inline" ? "pure/read → inline (ungated)" : "host → proposed (review-gated)"}`);
+        // a pure/read one MUST auto-run. A regression that automatically admits
+        // a host runtime would let arbitrary host code run ungated.
+        assert.equal(effect === "host" ? "propose" : "auto", gate, `${label} effect drives the expected proposal policy`);
     });
 }
 
@@ -189,7 +191,7 @@ test("execs batteries: EXEC[git] preserves native checkout argv through the asse
     const repo = mkdtempSync(join(tmpdir(), "plurnk-batt-git-"));
     const init = await runExec("git", "init", repo);
     assert.equal(init.status, 200, "EXEC[git]:init dispatches 200");
-    assert.equal(init.inline, false, "native Git is host-effecting and proposal-gated");
+    assert.equal(init.effect, "host", "native Git is host-effecting and proposal-gated");
     assert.equal(init.mimetype, "text/stream", "native Git stdout is a text stream");
     assert.equal((await runExec("git", "config user.email fixture@plurnk.invalid", repo)).status, 200);
     assert.equal((await runExec("git", 'config user.name "Plurnk Fixture"', repo)).status, 200);

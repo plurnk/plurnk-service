@@ -15,6 +15,10 @@ export type ExecPolicy = "propose" | "auto";
 // Deployment-tunability (a high-security deployment proposing even `read`) is a
 // later env knob; the default map is the contract until one is needed.
 export default class EffectPolicy {
+    static isEffect(value: unknown): value is Effect {
+        return value === "pure" || value === "read" || value === "host";
+    }
+
     static decide(effect: Effect): ExecPolicy {
         return effect === "host" ? "propose" : "auto";
     }

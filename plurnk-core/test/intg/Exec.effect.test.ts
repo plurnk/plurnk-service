@@ -6,12 +6,12 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import type { ExecStatement } from "@plurnk/plurnk-contracts";
+import { parsePath, type ExecStatement } from "@plurnk/plurnk-contracts";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Exec from "../../src/schemes/Exec.ts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, testExecutors, rootWorkspace } from "./_helpers.ts";
-import { mkdtemp, rm } from "node:fs/promises";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, testExecutors, rootWorkspace, seedEntryWithChannel } from "./_helpers.ts";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import ExecutorRegistry, { type Executor } from "../../src/core/ExecutorRegistry.ts";
@@ -102,41 +102,107 @@ test("effect-gating: sh (host) proposes — entry sits at 'proposed' awaiting a 
     } finally { await db.close(); }
 });
 
-test("effect is command-aware (#289): the EXEC command body is passed to effect(), not just the target", async () => {
-    // execs-mcp resolves a per-tool readOnlyHint OFF THE COMMAND, so the service must hand the command
-    // to effect(), not only the target. A custom executor captures what it receives; it returns `host`
-    // (propose) so run() is never reached — we reject after asserting.
-    let seen: string | undefined = "UNSET";
+test("one canonical target derives one preserved effect fact (#107)", async () => {
+    const effectCalls: Array<{ target: string | null; argumentCount: number }> = [];
+    const runs: Array<{ command: string; cwd: string | null; target: string | null; materialized?: string }> = [];
     const exe: Executor = {
         runtime: "tool", glyph: "🔧",
         get manifest(): SchemeManifest { return { name: "tool" } as unknown as SchemeManifest; },
         get defaultChannel(): string { return "results"; },
         get channels() { return { results: { mimetype: "application/json" } }; },
-        run: async () => { throw new Error("run must not be reached — effect proposes (host), then the test rejects"); },
+        run: async ({ command, cwd, target, setState }) => {
+            runs.push({
+                command,
+                cwd,
+                target,
+                ...(target?.startsWith(tmpdir()) === true
+                    ? { materialized: await readFile(target, "utf8") }
+                    : {}),
+            });
+            setState("results", "closed");
+            return { status: 200 };
+        },
         probe: async () => ({ available: true }),
-        effect: (_target: string | null, command?: string): Effect => { seen = command; return "host"; },
+        effect(target: string | null): Effect {
+            effectCalls.push({ target, argumentCount: arguments.length });
+            return target === null ? "pure" : "read";
+        },
     };
     const registry = new ExecutorRegistry(new Map([["tool", { executor: exe, glyph: "🔧", example: "", documentation: "", available: true, detail: undefined }]]));
     const db = await openMigrated();
+    const root = await mkdtemp(join(tmpdir(), "plurnk-effect-"));
     const schemes = new SchemeRegistry();
+    const exec = schemes.get("exec") as Exec;
     const engine = new Engine({ db, schemes });
     engine.setExecutors(registry);
-    const workspaceId = await insertWorkspace(db, `cmd-effect-${crypto.randomUUID()}`);
+    const workspaceId = await insertWorkspace(db, `canonical-effect-${crypto.randomUUID()}`);
     const workerId = await insertWorker(db, workspaceId);
-    const loopId = await insertLoop(db, workerId, 1, "cmd-effect");
+    const loopId = await insertLoop(db, workerId, 1, "canonical effect");
     const turnId = await insertTurn(db, loopId, 1, 102);
     try {
-        const idDeferred = deferred<number>();
-        const dispatchPromise = engine.dispatch({
-            statement: execStmt("tool", null, "tools/call name=list_files readOnly=true"),
-            workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
-            onDispatch: (id) => idDeferred.resolve(id),
+        await writeFile(join(root, "data.txt"), "local data");
+        await mkdir(join(root, "work"));
+        await rootWorkspace(db, workspaceId, root);
+        await seedEntryWithChannel(db, {
+            workspaceId,
+            scheme: "worker",
+            pathname: "/source",
+            channel: "body",
+            content: "scheme data",
+            state: "static",
         });
-        const logEntryId = await idDeferred.promise;
-        assert.equal(seen, "tools/call name=list_files readOnly=true", "the EXEC command body reaches effect() — command-aware (#289)");
-        engine.resolveProposal(logEntryId, { decision: "reject" });
-        await dispatchPromise;
-    } finally { await db.close(); }
+
+        const schemeTarget = parsePath("worker:///source#body");
+        assert.ok(schemeTarget !== null);
+        const statements: ExecStatement[] = [
+            execStmt("tool", null, "inline"),
+            execStmt("tool", "data.txt", "file input"),
+            execStmt("tool", "work", "directory cwd"),
+            { ...execStmt("tool", null, ""), target: schemeTarget },
+            { ...execStmt("tool", null, "filter"), target: schemeTarget },
+        ];
+        const effects: Effect[] = [];
+        for (const [index, statement] of statements.entries()) {
+            let logEntryId: number | undefined;
+            const result = await engine.dispatch({
+                statement,
+                workspaceId, workerId, loopId, turnId,
+                sequence: index + 1,
+                origin: "model",
+                onDispatch: (id) => { logEntryId = id; },
+            });
+            assert.equal(result.status, 200);
+            assert.notEqual(logEntryId, undefined);
+            const row = await db.test_get_log_entry_by_id.get<{ attrs: string }>({ id: logEntryId as number });
+            effects.push((JSON.parse(row?.attrs ?? "{}") as { effect: Effect }).effect);
+        }
+        await exec.idle();
+
+        assert.deepEqual(effectCalls, [
+            { target: null, argumentCount: 1 },
+            { target: "data.txt", argumentCount: 1 },
+            { target: null, argumentCount: 1 },
+            { target: null, argumentCount: 1 },
+            { target: "worker:///source#body", argumentCount: 1 },
+        ], "effect() is called once against the canonical logical target and never receives command metadata");
+        assert.deepEqual(effects, ["pure", "read", "pure", "pure", "read"], "the admitted effect fact is persisted with each invocation");
+        assert.deepEqual(runs.map(({ command, cwd, target, materialized }) => ({
+            command,
+            cwd: cwd === join(root, "work") ? "<directory>" : cwd,
+            target: target?.startsWith(tmpdir()) === true ? "<materialized>" : target,
+            ...(materialized === undefined ? {} : { materialized }),
+        })), [
+            { command: "inline", cwd: root, target: null },
+            { command: "file input", cwd: root, target: "data.txt" },
+            { command: "directory cwd", cwd: "<directory>", target: null },
+            { command: "scheme data", cwd: root, target: null },
+            { command: "filter", cwd: root, target: "<materialized>", materialized: "scheme data" },
+        ], "run() receives the correctly routed local realization of the same invocation");
+    } finally {
+        await exec.idle();
+        await db.close();
+        await rm(root, { recursive: true, force: true });
+    }
 });
 
 test("bare EXEC resolves to sh and respects the workspace's sh policy gate", async () => {

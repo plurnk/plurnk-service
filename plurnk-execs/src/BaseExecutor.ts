@@ -83,14 +83,12 @@ export default abstract class BaseExecutor implements SchemeHandler {
         return { available: true };
     }
 
-    // Side-effect class of an invocation against `target` (the parsed EXEC
-    // `(target)` slot — the same value run() receives as `args.target`), for the
-    // consumer's proposal-gating
-    // policy ({§executor-effect}). MUST be pure, synchronous, and cheap — it runs on
-    // the dispatch hot path at propose time: classify the target only, NEVER
-    // the command (parsing SQL/shell to judge intent is a sandbox-escape
-    // footgun). Default `host` is the conservative, fail-safe end — anything we
-    // can't classify is treated as host code-execution and proposed.
+    // Side-effect class of an invocation against the consumer-canonical logical
+    // target ({§executor-effect}). It is normally the same value run() receives;
+    // a consumer that later materializes an addressed source may supply a stable,
+    // opaque target-present identity instead. MUST be pure, synchronous, and
+    // cheap: classify the target only, NEVER authored command text. Default
+    // `host` is conservative — anything unclassifiable is proposed.
     effect(_target: string | null): Effect {
         return "host";
     }

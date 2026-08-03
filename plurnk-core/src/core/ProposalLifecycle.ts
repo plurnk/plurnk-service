@@ -269,7 +269,7 @@ export default class ProposalLifecycle {
             // (operational metadata, e.g. exec's "started") AND its body — the applied result the
             // model must see THIS turn: a file EDIT's line-numbered diff, a [300] answer. EXEC
             // never uses the body rail — its output streams uniformly ({§exec-stream}, NO same-turn
-            // in-body exception; inline only skips the review pause) and is READ next turn.
+            // in-body exception; automatic admission only skips the review pause) and is READ next turn.
             const withOutcome = applyResult.outcome !== undefined && resolution.outcome === undefined
                 ? { ...resolution, outcome: applyResult.outcome }
                 : resolution;
