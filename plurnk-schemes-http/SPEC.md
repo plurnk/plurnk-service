@@ -248,34 +248,37 @@ is bidirectional and stateful, not an HTTP content type. It uses `messages` as a
 stateDiagram-v2
     [*] --> Idle
     Idle --> Claimed: guard target and claim canonical workspace address
-    Claimed --> Subscribed: seed entry and open subscription
-    Claimed --> Idle: setup failure / release ownership
-    Subscribed --> Owned: construct socket object
-    Subscribed --> Settling: construction failure
-    Owned --> Owned: inbound frame or SEND[200]
-    Owned --> Settling: close, error, KILL, cancel, persistence failure, or shutdown
-    Settling --> Idle: release address, close subscription, finish READ
+    Claimed --> Connecting: seed entry, open subscription, construct socket
+    Claimed --> Idle: setup or construction failure
+    Connecting --> Open: native open; messages becomes active
+    Connecting --> Settling: pre-open close/error, KILL, cancel, activation failure, or shutdown
+    Open --> Open: inbound frame or SEND[200]
+    Open --> Settling: closing state, close/error, KILL, cancel, persistence failure, or shutdown
+    Settling --> Idle: await capability work, close subscription, release claim, finish READ
 ```
 
-| Operation                    | Contract                                                                                          |
-| ---------------------------- | ------------------------------------------------------------------------------------------------- |
-| `READ(ws(s)://…)`            | Guard and claim one workspace address, seed/subscribe, construct the socket, and await settlement |
-| Concurrent duplicate READ    | `409`; it never replaces the existing owner                                                       |
-| `SEND[200](ws(s)://…)`       | Send through the constructed socket; no owned socket is `409`; a send throw is `502`              |
-| `SEND[499](ws(s)://…)`       | Engine-routed cancellation closes the owning READ; scheme dispatch returns `200`                  |
-| `KILL(ws(s)://…)`            | Close the constructed socket; no owned socket is `404`; a close throw is `502`                    |
-| Ordinary remote socket close | Close the subscription with `200`; the owning READ resolves `102`                                 |
+| Operation                    | Contract                                                                                                          |
+| ---------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `READ(ws(s)://…)`            | Claim, seed/subscribe, construct `CONNECTING`, commit native `open`, then await terminal settlement               |
+| Concurrent duplicate READ    | `409` in `claimed`, `connecting`, `open`, or `settling`; cleanup releases the only claim                          |
+| `SEND[200](ws(s)://…)`       | Send only for owner `open` plus native `readyState=OPEN`; absent or non-open owner is `409`; send throw is `502`  |
+| `SEND[499](ws(s)://…)`       | Engine-routed cancellation closes the owning READ; scheme dispatch returns `200`                                  |
+| `KILL(ws(s)://…)`            | Close/cancel the claimed owner; no owner is `404`; an attempted close throw is `502`                              |
+| Socket closes before `open`  | Close subscription with `502 connection-failed`; owning READ settles exactly once                                 |
+| Socket closes after `open`   | Close subscription with `200`; owning READ resolves `102`                                                         |
 
 The in-instance registry is keyed by workspace, addressed protocol, and
-canonical network pathname. Every terminal path releases address ownership,
-closes the transport when necessary, and finishes durable subscription cleanup.
-Handler shutdown requests settlement for every remainder, awaits every owning
-READ, and aggregates transport-close failures under {§handler-lifecycle}.
+canonical network pathname. The claim remains registered through terminal
+cleanup, so a new READ cannot overlap an owner's subscription settlement. Every
+terminal path waits for already-started operation-capability work, closes the
+transport when necessary, closes the durable subscription, then releases the
+claim. Handler shutdown requests settlement for every remainder, awaits every
+owning READ, and aggregates transport-close failures under
+{§handler-lifecycle}. Inbound persistence ordering is separately owned by #139.
 
-| Transport limit    | Current contract                                                              |
-| ------------------ | ----------------------------------------------------------------------------- |
-| Readiness          | A constructed socket is immediately addressable; no `open` transition is used |
-| Payload projection | `String(event.data)` into `text/plain`; binary semantics are not retained     |
-| Reconnection       | None; READ again after a close                                                |
-| Handshake metadata | Default global-WebSocket identity; custom target headers are not applied      |
-| Runtime            | Node ≥26                                                                      |
+| Transport limit    | Current contract                                                          |
+| ------------------ | ------------------------------------------------------------------------- |
+| Payload projection | `String(event.data)` into `text/plain`; binary semantics are not retained |
+| Reconnection       | None; READ again after terminal cleanup                                   |
+| Handshake metadata | Default global-WebSocket identity; custom target headers are not applied  |
+| Runtime            | Node ≥26                                                                  |

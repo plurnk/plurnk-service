@@ -5,20 +5,28 @@ stateful scheme, not an HTTP content type: READ claims a workspace address and
 owns its socket until terminal settlement, while concurrent SEND and KILL
 operations address that owner.
 
-| Operation                             | Effect                                                                             |
-| ------------------------------------- | ---------------------------------------------------------------------------------- |
-| `READ(wss://host/path)`               | Claim the address, construct the socket, and stream inbound frames into `messages` |
-| A second `READ` of the same address   | Return `409`; it never replaces the existing owner                                 |
-| `SEND[200](wss://host/path):message:` | Send through the socket claimed by READ; no claimed socket is `409`                |
-| `SEND[499](wss://host/path)`          | Cancel the owning READ through its routed subscription handle                      |
-| `KILL(wss://host/path)`               | Close the claimed socket; no claimed socket is `404`                               |
+| Operation                             | Effect                                                                                     |
+| ------------------------------------- | ------------------------------------------------------------------------------------------ |
+| `READ(wss://host/path)`               | Claim the address, connect, mark `messages` active on `open`, and stream inbound frames    |
+| A second `READ` of the same address   | Return `409` until the existing owner's terminal cleanup releases the claim                |
+| `SEND[200](wss://host/path):message:` | Send only through an open socket; claimed, connecting, or settling owners return `409`     |
+| `SEND[499](wss://host/path)`          | Cancel the owning READ through its routed subscription handle                              |
+| `KILL(wss://host/path)`               | Close or cancel the claimed owner; an address with no owner is `404`                       |
 
-The READ remains pending until the socket settles. Inbound frames accumulate in
-the `messages` channel, and a separate concurrent dispatch can SEND or KILL
-while that address remains claimed. Operations in one model turn run in order,
-so a SEND placed after the pending READ in that same turn cannot address it.
-An ordinary remote close finishes the subscription and the READ resolves with
-streaming status `102`.
+| Owner state  | Meaning                                              | `SEND[200]`                                      |
+| ------------ | ---------------------------------------------------- | ------------------------------------------------ |
+| `claimed`    | Address reserved while entry/subscription setup runs | `409`; no second ownership path is created       |
+| `connecting` | Native socket exists but has not emitted `open`      | `409`; wait for the active stream event          |
+| `open`       | `open` was observed and the native state is open     | Sends the message                                |
+| `settling`   | A terminal transition owns cleanup                   | `409`; wait for cleanup before another READ      |
+
+The native `open` event is the readiness boundary. It transitions `messages` to
+`active` and emits the ordinary metadata-only stream event. The READ remains
+pending until the socket settles, so a separate concurrent worker or client
+dispatch must SEND or KILL. Operations in one model turn run in order; a SEND
+after the pending READ in that turn cannot run. A close before `open` is a
+`502` connection failure. An ordinary close after `open` finishes the
+subscription and the READ resolves with streaming status `102`.
 
 Connection identity includes the workspace, exact `ws`/`wss` protocol, host,
 non-default port, path, and ordered query. A fragment does not change socket
@@ -28,9 +36,8 @@ The target is resolved and checked before socket construction. Loopback,
 link-local, RFC-1918/CGNAT, and other non-public address ranges are refused with
 `403`.
 
-| Current transport boundary | Behavior                                                                    |
-| -------------------------- | --------------------------------------------------------------------------- |
-| Readiness                  | The constructed socket is addressable immediately; no open event is exposed |
-| Inbound payload            | `String(event.data)` in `messages`; binary semantics are not retained       |
-| Reconnection               | None; READ again after a close                                              |
-| Handshake headers          | Target header metadata is not applied                                       |
+| Current transport boundary | Behavior                                                              |
+| -------------------------- | --------------------------------------------------------------------- |
+| Inbound payload            | `String(event.data)` in `messages`; binary semantics are not retained |
+| Reconnection               | None; READ again after terminal cleanup                               |
+| Handshake headers          | Target header metadata is not applied                                 |
