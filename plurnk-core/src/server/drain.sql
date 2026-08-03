@@ -118,10 +118,18 @@ SELECT id FROM loops WHERE worker_id = $worker_id AND status = 202 ORDER BY sequ
 SELECT provider_spec FROM loops WHERE id = $loop_id;
 
 -- PREP: drain_worker_min_poll
--- grammar 0.74.20 EXEC `<T,P>` — the tightest poll cadence (seconds) among a worker's OPEN
--- subscriptions. open_count distinguishes no stream from an open stream whose cadence is NULL;
--- child-only joins have no polling policy and wake exclusively from child settlement.
-SELECT COUNT(*) AS open_count, MIN(poll_seconds) AS poll_seconds
+-- EXEC `<T,P>` — aggregate each open subscription's policy into one worker timer. A fixed cadence
+-- wins at its tightest positive value; otherwise any omitted cadence requests default backoff;
+-- only an all-zero set disables the timer. Child-only joins have no subscription policy.
+SELECT
+    COUNT(*) AS open_count,
+    CASE
+        WHEN COUNT(*) = 0 THEN NULL
+        WHEN MIN(CASE WHEN poll_seconds > 0 THEN poll_seconds END) IS NOT NULL
+            THEN MIN(CASE WHEN poll_seconds > 0 THEN poll_seconds END)
+        WHEN SUM(CASE WHEN poll_seconds IS NULL THEN 1 ELSE 0 END) > 0 THEN NULL
+        ELSE 0
+    END AS poll_seconds
 FROM subscriptions WHERE worker_id = $worker_id AND closed_at IS NULL;
 
 -- PREP: worker_parent_id

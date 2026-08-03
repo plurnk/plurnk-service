@@ -1273,8 +1273,17 @@ faster than a turn settles, to inspect progress. It does **nothing while the
 loop is active** because ambient stream deltas already surface progress. An
 open stream without `P` uses exponential backoff
 (`PLURNK_SERVICE_EXEC_POLL_SEC` and `PLURNK_SERVICE_EXEC_POLL_TURNS`); explicit
-`<,P>` wins and `<,0>` disables polling. Child-only joins never use this timer:
-child settlement is their durable wake edge.
+`<,P>` wins and `<,0>` disables polling for that stream. Open subscriptions
+aggregate into the worker's one timer as follows:
+
+| Open-stream policies                          | Worker timer                  |
+| --------------------------------------------- | ----------------------------- |
+| Any positive `P`                              | The smallest positive cadence |
+| No positive `P`, at least one omitted `P`     | Exponential backoff           |
+| Every `P` is explicit zero                    | Disabled                      |
+
+Child-only joins never use this timer: child settlement is their durable wake
+edge. Stream closure remains a wake edge under every poll policy.
 
 §exec-host-proposes **Effect-gating.** Each executor declares an `effect` (`pure` | `read` | `host`); the service maps it to policy (`EffectPolicy`). A `host` runtime (subprocess; file-backed sqlite) mutates the host → **propose** (lifecycle {§proposal}): the worker waits for a human gate, then spawns and writes stdout/stderr to channels of a `<runtime>:///<loop>/<turn>/<seq>` entry (the runtime tag is the URI scheme, {§exec}/#240; the coordinate matches the op's log-row coordinate, e.g. `sh:///1/1/2`), returning `102 Processing` immediately. Channel state transitions (`active` → `closed`/`errored`) drive what the model sees at subsequent turn boundaries ({§channel-state}).
 

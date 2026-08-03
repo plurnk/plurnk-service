@@ -58,18 +58,25 @@ test("an EXEC without an explicit cadence wakes on the exponential-backoff floor
 });
 
 test("an explicit zero cadence stays blind while open but still wakes exactly once on closure", async () => {
+    const previous = process.env.PLURNK_SERVICE_EXEC_POLL_SEC;
+    process.env.PLURNK_SERVICE_EXEC_POLL_SEC = "0.1";
     const mock = new Mock({ contextWindow: 16384, responses: [
-        makeMockResponse("<<EXEC[sh]<10,0>:sleep 1; echo closed:EXEC\n<<SEND[202]:waiting blindly for closure:SEND", 10),
+        makeMockResponse("<<EXEC[sh]<10,0>:sleep 3; echo closed:EXEC\n<<SEND[202]:waiting blindly for closure:SEND", 10),
         makeMockResponse("<<SEND[200]:observed terminal closure:SEND", 10),
     ] });
-    await withDaemon(mock, async (_db, _daemon, addr) => {
-        const ws = await connect(addr);
-        try {
-            await rpcCall(ws, 1, "workspace.create", { name: "exec-poll-blind" });
-            const { finalStatus, turnIds } = await runLoopToTerminal(ws, 2, { prompt: "go", flags: { auto: true } });
-            assert.equal(finalStatus, 200);
-            assert.equal(turnIds?.length, 2, "no pre-closure poll turn consumed the terminal response");
-            assert.equal(mock.remaining, 0, "closure produced the only continuation");
-        } finally { ws.close(); }
-    });
+    try {
+        await withDaemon(mock, async (_db, _daemon, addr) => {
+            const ws = await connect(addr);
+            try {
+                await rpcCall(ws, 1, "workspace.create", { name: "exec-poll-blind" });
+                const { finalStatus, turnIds } = await runLoopToTerminal(ws, 2, { prompt: "go", flags: { auto: true } });
+                assert.equal(finalStatus, 200);
+                assert.equal(turnIds?.length, 2, "no pre-closure poll turn consumed the terminal response");
+                assert.equal(mock.remaining, 0, "closure produced the only continuation");
+            } finally { ws.close(); }
+        });
+    } finally {
+        if (previous === undefined) delete process.env.PLURNK_SERVICE_EXEC_POLL_SEC;
+        else process.env.PLURNK_SERVICE_EXEC_POLL_SEC = previous;
+    }
 });

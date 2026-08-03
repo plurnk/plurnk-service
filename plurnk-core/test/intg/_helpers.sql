@@ -85,7 +85,7 @@ WHERE entry_id = $entry_id AND name = $name;
 SELECT tag FROM entry_tags WHERE entry_id = $entry_id ORDER BY tag;
 
 -- PREP: test_get_subscription
-SELECT id, worker_id, entry_id, scheme, handle, closed_at, close_status, close_result
+SELECT id, worker_id, entry_id, scheme, handle, poll_seconds, closed_at, close_status, close_result
 FROM subscriptions WHERE id = $id;
 
 -- PREP: test_get_subscription_by_entry

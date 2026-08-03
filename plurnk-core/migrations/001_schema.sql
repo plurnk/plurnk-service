@@ -591,9 +591,9 @@ CREATE TABLE IF NOT EXISTS subscriptions (
     handle       TEXT    NOT NULL CHECK (length(handle) > 0),
     published_channel TEXT          CHECK (published_channel IS NULL OR length(published_channel) > 0),
     opened_at    TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
-    -- grammar 0.74.20 EXEC `<T,P>` poll cadence (seconds). NULL = not polled. While the owning
-    -- loop hibernates (202), the daemon wakes it every poll_seconds to inspect this stream ({§exec-poll}).
-    poll_seconds INTEGER          CHECK (poll_seconds IS NULL OR poll_seconds > 0),
+    -- EXEC `<T,P>` poll policy: NULL = default backoff, 0 = disabled, positive = fixed cadence.
+    -- While the owning loop hibernates (202), an armed policy wakes it to inspect the stream ({§exec-poll}).
+    poll_seconds INTEGER          CHECK (poll_seconds IS NULL OR poll_seconds >= 0),
     -- EXEC `<0>` — turn-scoped: the stream is reaped at the worker's next pre-turn so it never survives
     -- into the subsequent turn; its terminal output surfaces born-OPEN like any conclusion. {§exec-poll}
     turn_scoped  INTEGER NOT NULL DEFAULT 0 CHECK (turn_scoped IN (0, 1)),

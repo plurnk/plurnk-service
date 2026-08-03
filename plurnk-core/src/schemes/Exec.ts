@@ -47,7 +47,7 @@ interface ExecAttrs {
     schemeTarget?: { scheme: string; pathname: string; fragment: string | null };  // non-file scheme target resolved by the consumer at apply time
     timeoutSec?: number;    // `<T,P>` mark[0] > 0: kill the spawn after T seconds (504). Absent/-1 = unbounded.
     turnScoped?: boolean;   // `<0>`: turn-scoped — reaped at the worker's next pre-turn, never surviving into the subsequent turn. {§exec-poll}
-    pollSec?: number;       // `<T,P>` mark[1]: while the loop hibernates (202), wake it every P seconds to check this stream. Absent/≤0 = no poll-wake. {§exec-poll}
+    pollSec?: number;       // `<T,P>` mark[1]: absent = default backoff; 0 = disabled; positive = fixed cadence. {§exec-poll}
 }
 
 // Executors are discovered + probed at boot into ExecutorRegistry and reach
@@ -368,7 +368,7 @@ export default class Exec extends CoreSchemeAdapterBase {
         const marks = statement.lineMarker?.marks;
         const timeoutSec = typeof marks?.[0] === "number" && marks[0] > 0 ? Math.floor(marks[0]) : undefined;
         const turnScoped = typeof marks?.[0] === "number" && marks[0] === 0;
-        const pollSec = typeof marks?.[1] === "number" && marks[1] > 0 ? Math.floor(marks[1]) : undefined;
+        const pollSec = typeof marks?.[1] === "number" && marks[1] >= 0 ? Math.floor(marks[1]) : undefined;
         const attrs: ExecAttrs = {
             runtime, cwd, command, target, pathname: "", inline: policy === "auto",
             ...(schemeTarget !== null ? { schemeTarget } : {}),

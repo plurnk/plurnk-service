@@ -42,6 +42,7 @@ For a long-running command, the `<L>` slot carries `<TIMEOUT_SECONDS, POLL_SECON
 <<EXEC<1800>:npm run build:EXEC
 <<EXEC<1800,300>:npm run e2e:EXEC
 <<EXEC<-1,300>:npm run test:EXEC
+<<EXEC<-1,0>:tail -f app.log:EXEC
 ```
 
 The first coordinate is the timeout: a positive value kills at that deadline;
@@ -49,5 +50,7 @@ The first coordinate is the timeout: a positive value kills at that deadline;
 the current turn. Loop teardown still reaps surviving work. The optional
 positive second coordinate fixes the poll cadence while a loop is parked on
 the stream. With no explicit poll, the consumer uses exponential backoff so a
-parked loop can inspect partial output and decide whether to wait or KILL.
-Polling wakes the loop but never interrupts the command.
+parked loop can inspect partial output and decide whether to wait or KILL. A
+second coordinate of `0` disables timer polling for that stream; its eventual
+closure still wakes the loop. Polling wakes the loop but never interrupts the
+command.
