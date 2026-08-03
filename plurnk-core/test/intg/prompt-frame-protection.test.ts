@@ -11,7 +11,7 @@ import type { ParsedPath, KillStatement } from "@plurnk/plurnk-contracts";
 const killStmt = (target: ParsedPath): KillStatement => ({ op: "KILL", suffix: "", signal: null, target, lineMarker: null, body: null, position: { line: 1, column: 1 } });
 
 const urlLog = (raw: string) => ({ kind: "url" as const, raw, scheme: "log", username: null, password: null, hostname: null, port: null, pathname: "/" + raw.replace(/^log:\/\/\//, ""), query: null, fragment: null });
-const urlKnown = (raw: string) => ({ kind: "url" as const, raw, scheme: "worker", username: null, password: null, hostname: null, port: null, pathname: "/" + raw.replace(/^worker:\/\/\//, ""), query: null, fragment: null });
+const urlWorker = (raw: string) => ({ kind: "url" as const, raw, scheme: "worker", username: null, password: null, hostname: null, port: null, pathname: "/" + raw.replace(/^worker:\/\/\//, ""), query: null, fragment: null });
 
 async function seedPromptWorker(db: Awaited<ReturnType<typeof openMigrated>>) {
     const workspaceId = await insertWorkspace(db, `frame-${crypto.randomUUID()}`);
@@ -144,7 +144,7 @@ test("OPEN/FOLD are recorded in the DB but suppressed from the packet render (#3
     try {
         const { workspaceId, workerId, loopId, engine, curationTurn } = await seedPromptWorker(db);
         // seed a genuine non-prompt row (a worker:/// note), then fold IT so the success records
-        await engine.dispatch({ statement: editStmt(urlKnown("worker:///scratch"), "note"), workspaceId, workerId, loopId, turnId: curationTurn, sequence: 1, origin: "model" });
+        await engine.dispatch({ statement: editStmt(urlWorker("worker:///scratch"), "note"), workspaceId, workerId, loopId, turnId: curationTurn, sequence: 1, origin: "model" });
         await engine.dispatch({ statement: foldStmt(urlLog("log:///1/2/1/EDIT")), workspaceId, workerId, loopId, turnId: curationTurn, sequence: 2, origin: "model" });
         const dbRow = await db.test_count_op.get<{ n: number }>({ op: "FOLD" });
         assert.ok((dbRow?.n ?? 0) >= 1, "the FOLD is recorded in the DB (forensics)");
@@ -158,12 +158,12 @@ test("a successful KILL of a log item is suppressed from the render; a KILL of a
     try {
         const { workspaceId, workerId, loopId, engine, curationTurn } = await seedPromptWorker(db);
         // Two seeds: a worker:/// note (a real artifact) and a log row to curate. KILL each.
-        await engine.dispatch({ statement: editStmt(urlKnown("worker:///scratch"), "note"), workspaceId, workerId, loopId, turnId: curationTurn, sequence: 1, origin: "model" });
+        await engine.dispatch({ statement: editStmt(urlWorker("worker:///scratch"), "note"), workspaceId, workerId, loopId, turnId: curationTurn, sequence: 1, origin: "model" });
         // KILL the log EDIT row just written (a LOG item) — the run61 tombstone case.
         const logKill = await engine.dispatch({ statement: killStmt(urlLog("log:///1/2/1/EDIT")), workspaceId, workerId, loopId, turnId: curationTurn, sequence: 2, origin: "model" });
         assert.ok(logKill.status < 400, `KILL of the log item succeeds — got ${logKill.status}`);
         // KILL the worker:/// note (a WORLD mutation, not log housekeeping).
-        const noteKill = await engine.dispatch({ statement: killStmt(urlKnown("worker:///scratch")), workspaceId, workerId, loopId, turnId: curationTurn, sequence: 3, origin: "model" });
+        const noteKill = await engine.dispatch({ statement: killStmt(urlWorker("worker:///scratch")), workspaceId, workerId, loopId, turnId: curationTurn, sequence: 3, origin: "model" });
         assert.ok(noteKill.status < 400, `KILL of the note succeeds — got ${noteKill.status}`);
 
         const killCount = await db.test_count_op.get<{ n: number }>({ op: "KILL" });

@@ -12,7 +12,7 @@ test("DbEntryCaps: write creates (201) → read round-trips → re-write updates
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `caps-entries-${crypto.randomUUID()}`);
-        const caps = new DbEntryCaps(makeSchemeCtx({ db, workspaceId }), "known", schemeManifest("known"));
+        const caps = new DbEntryCaps(makeSchemeCtx({ db, workspaceId }), "notes", schemeManifest("notes"));
 
         // write a new entry → 201 created, real entryId
         const w = await caps.write("/note.md", {

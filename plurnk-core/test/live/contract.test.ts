@@ -63,7 +63,7 @@ test("live: content-match selection — the model culls entries by CONTENT (frui
         await seedEntry(s.db, s.workspaceId, { pathname: "pantry/alpha.md", content: "a crisp autumn apple, freshly picked" });
         await seedEntry(s.db, s.workspaceId, { pathname: "pantry/bravo.md", content: "a sour yellow lemon" });
         await seedEntry(s.db, s.workspaceId, { pathname: "pantry/charlie.md", content: "buy milk and bread" });
-        await liveLoop(s, 3, { prompt: "Tidy the pantry: delete every known entry whose content does not name a fruit." }, { timeoutMs: TIMEOUT });
+        await liveLoop(s, 3, { prompt: "Tidy the pantry: delete every entry in worker:///pantry/ whose content does not name a fruit." }, { timeoutMs: TIMEOUT });
         assert.equal(await readBody(s.db, "pantry/charlie.md"), undefined, "milk & bread is no fruit — read, classified, deleted");
         assert.match(await readBody(s.db, "pantry/alpha.md") ?? "", /apple/, "the apple entry is a fruit — kept");
         assert.match(await readBody(s.db, "pantry/bravo.md") ?? "", /lemon/, "the lemon entry is a fruit — kept");

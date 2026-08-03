@@ -31,39 +31,39 @@ test("Floor-scope capstone: full DSL surface exercised end-to-end", async () => 
         engine.dispatch({ statement, ...env, sequence, origin: "client" });
 
     try {
-        const [editUnknown] = parse("<<EDIT[geography,question](worker:///france/capital):what is the capital of france?:EDIT");
-        const r1 = await dispatch(editUnknown, 1);
+        const [editQuestion] = parse("<<EDIT[geography,question](worker:///france/capital):what is the capital of france?:EDIT");
+        const r1 = await dispatch(editQuestion, 1);
         assert.equal(r1.status, 201);
-        const unknownEntryId = r1.entryId as number;
-        assert.ok(typeof unknownEntryId === "number");
+        const questionEntryId = r1.entryId as number;
+        assert.ok(typeof questionEntryId === "number");
 
-        const channels1 = await db.test_list_channel_names.all<{ name: string }>({ entry_id: unknownEntryId });
+        const channels1 = await db.test_list_channel_names.all<{ name: string }>({ entry_id: questionEntryId });
         assert.deepEqual(channels1.map((c) => c.name), ["body"]);
 
         // {§edit-marker-required-on-existing} — the entry already exists (created above), so
         // the re-edit needs a marker; <1,-1> states the deliberate full rewrite.
-        const [editUnknownAgain] = parse("<<EDIT[geography](worker:///france/capital)<1,-1>:rephrased question:EDIT");
-        const r2 = await dispatch(editUnknownAgain, 2);
+        const [editQuestionAgain] = parse("<<EDIT[geography](worker:///france/capital)<1,-1>:rephrased question:EDIT");
+        const r2 = await dispatch(editQuestionAgain, 2);
         assert.equal(r2.status, 200);
-        assert.equal(r2.entryId, unknownEntryId);
-        const body2 = (await db.test_get_channel.get<{ content: string }>({ entry_id: unknownEntryId, name: "body" }))?.content;
+        assert.equal(r2.entryId, questionEntryId);
+        const body2 = (await db.test_get_channel.get<{ content: string }>({ entry_id: questionEntryId, name: "body" }))?.content;
         assert.equal(body2, "rephrased question");
 
         const [copyOp] = parse("<<COPY[answer,france](worker:///france/capital):skill:///france/capital:COPY");
         const r3 = await dispatch(copyOp, 3);
         assert.equal(r3.status, 201);
 
-        const knownEntry = await db.test_get_entry_id_by_scheme_pathname.get<{ id: number }>({ scheme: "skill", pathname: "/france/capital" });
-        const knownEntryId = knownEntry!.id;
-        const knownTags = (await db.test_list_entry_tags.all<{ tag: string }>({ entry_id: knownEntryId })).map((t) => t.tag);
-        assert.deepEqual(knownTags, ["answer", "france"]);
+        const skillEntry = await db.test_get_entry_id_by_scheme_pathname.get<{ id: number }>({ scheme: "skill", pathname: "/france/capital" });
+        const skillEntryId = skillEntry!.id;
+        const skillTags = (await db.test_list_entry_tags.all<{ tag: string }>({ entry_id: skillEntryId })).map((t) => t.tag);
+        assert.deepEqual(skillTags, ["answer", "france"]);
 
         // The COPY above already created this entry, so the edit needs a marker too.
-        const [editKnown] = parse("<<EDIT(skill:///france/capital)<1,-1>:Paris:EDIT");
-        const r4 = await dispatch(editKnown, 4);
+        const [editSkill] = parse("<<EDIT(skill:///france/capital)<1,-1>:Paris:EDIT");
+        const r4 = await dispatch(editSkill, 4);
         assert.equal(r4.status, 200);
-        const knownBody = (await db.test_get_channel.get<{ content: string }>({ entry_id: knownEntryId, name: "body" }))?.content;
-        assert.equal(knownBody, "Paris");
+        const skillBody = (await db.test_get_channel.get<{ content: string }>({ entry_id: skillEntryId, name: "body" }))?.content;
+        assert.equal(skillBody, "Paris");
 
         const [findByTag] = parse("<<FIND[answer](skill:///)::FIND");
         const r6 = await dispatch(findByTag, 5);

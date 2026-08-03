@@ -1,5 +1,5 @@
--- Entry CRUD primitives (SPEC {§crud}). Used by entry-bearing schemes
--- (known/unknown/skill) and the engine for cross-scheme COPY/MOVE/SEND[410].
+-- Entry CRUD primitives (SPEC {§crud}). Used by entry-bearing schemes and
+-- the engine for cross-scheme COPY/MOVE/SEND[410].
 
 -- PREP: crud_find_workspace_entry
 -- {§entry-identity-no-null} — every identity component is NOT NULL (bare/absolute paths
