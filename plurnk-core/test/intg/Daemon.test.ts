@@ -688,6 +688,11 @@ test("the client-interface seam — workspace lifecycle: create/attach/rename/se
         // create — with a constraint seeded atomically; returns the envelope + emits workspace/created.
         const env = await daemon.createWorkspace({ name: "seam-life", constraints: [{ effect: "hide", glob: "secret/**" }] });
         assert.ok(env.workspaceId > 0 && env.workerId > 0, "createWorkspace returns the envelope (workspace + client worker)");
+        assert.deepEqual(
+            Object.keys(env).toSorted(),
+            ["projectRoot", "workerId", "workerName", "workspaceId", "workspaceName"],
+            "{§methods-rebind} #64: the envelope carries workspace/client-worker identity only",
+        );
         assert.ok(events.some((e) => e.method === "workspace/created" && (e.params as { id?: number }).id === env.workspaceId), "workspace/created emitted on the event source");
         assert.deepEqual(await daemon.listConstraints(env.workspaceId), [{ effect: "hide", glob: "secret/**" }], "the seeded constraint landed atomically with the workspace");
 
@@ -700,7 +705,13 @@ test("the client-interface seam — workspace lifecycle: create/attach/rename/se
         assert.equal(invalidWorkerName.status, 400);
         assert.equal(invalidWorkerName.name, "bad_name");
         assert.equal(invalidWorkerName.retryable, false);
-        assert.equal((await daemon.attachWorkspace({ workspaceId: env.workspaceId })).workspaceId, env.workspaceId, "attachWorkspace returns an envelope on the same workspace");
+        const attached = await daemon.attachWorkspace({ workspaceId: env.workspaceId });
+        assert.equal(attached.workspaceId, env.workspaceId, "attachWorkspace returns an envelope on the same workspace");
+        assert.deepEqual(
+            Object.keys(attached).toSorted(),
+            ["projectRoot", "workerId", "workerName", "workspaceId", "workspaceName"],
+            "{§methods-rebind} #64: attach does not fabricate conversation or action-loop binding",
+        );
 
         // rename — mutations return the applied value; a name collision is refused. (No root
         // mutation on the seam: the workspace pointer is set at workspace.create or never.)

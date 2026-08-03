@@ -1633,9 +1633,13 @@ Its function names are transport-neutral library calls, not public wire names.
 | Extension actions                                 | `listModuleActions()`, `invokeModuleAction(name, params)` | Lists setup-registered names in sorted order and invokes the exact registered handler. Missing names fail; handler values remain opaque to core. |
 
 §methods-rebind **Binding belongs to the client-interface module.** Core's
-workspace lifecycle calls return `ClientEnvelope` values but retain no
-connection, thread, or current-workspace mapping. A module may replace its own
-binding with a later create or attach result without requiring a new transport.
+workspace lifecycle calls return exactly the workspace and selected client actor
+(`workspaceId`, `workspaceName`, `projectRoot`, `workerId`, `workerName`); they
+carry no conversation-worker or action-loop binding. Core retains no connection,
+thread, or current-workspace mapping. A module may replace its own binding with a
+later create or attach result without requiring a new transport; it resolves the
+conversation worker separately, while each client action allocates its own journal
+segment under {§connection-lifecycle}.
 
 §methods-worker-name-reserved **Client worker-name admission.** Attach,
 fresh-conversation, and fork apply {§worker-name-minting} before lookup or

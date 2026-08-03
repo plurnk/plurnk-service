@@ -639,7 +639,7 @@ export default class Module {
                     }
                     const att = await this.#seam.attachWorkspace({ workspaceId: p.id, ...(typeof p.workerId === "number" ? { workerId: p.workerId } : {}) });
                     this.#threads.set(att.workspaceName, att);
-                    return { ok: true, result: { id: att.workspaceId, name: att.workspaceName, workerId: att.workerId, modelWorkerId: att.modelWorkerId } };
+                    return { ok: true, result: { id: att.workspaceId, name: att.workspaceName, workerId: att.workerId } };
                 }
             }
             if (moduleActions.includes(a.kind)) {

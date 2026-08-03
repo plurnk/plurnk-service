@@ -38,16 +38,13 @@ export interface WorkerRow {
 
 // `workerId` is the client actor's worker: dispatched client actions live there
 // ({§connection-lifecycle}, {§machine-processes}). The conversation worker is
-// resolved separately by the client-interface module. #64 tracks removal of the
-// two legacy nullable ids, which production core never populates.
+// resolved separately by the client-interface module.
 export interface ClientEnvelope {
     workspaceId: number;
     workspaceName: string;
     projectRoot: string | null;
     workerId: number;
     workerName: string;
-    modelWorkerId: number | null;
-    clientLoopId: number | null;
 }
 
 export default class Envelope {
@@ -94,8 +91,6 @@ export default class Envelope {
             workspaceId: workspace.id, workspaceName: workspace.name,
             projectRoot: workspace.project_root,
             workerId: worker.id, workerName: worker.name,
-            modelWorkerId: null,
-            clientLoopId: null,
         };
     }
 
@@ -177,8 +172,6 @@ export default class Envelope {
             workspaceId: workspace.id, workspaceName: workspace.name,
             projectRoot: workspace.project_root,
             workerId: worker.id, workerName: worker.name,
-            modelWorkerId: null,
-            clientLoopId: null,
         };
     }
 

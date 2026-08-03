@@ -16,6 +16,7 @@ export default class SeamSocket {
     #listeners = new Map<string, Set<Listener>>();
     #unsubscribe: () => void;
     #workspace: ClientEnvelope | null = null;
+    #modelWorkerId: number | null = null;
     #closed = false;
 
     constructor(daemon: Daemon) {
@@ -87,31 +88,34 @@ export default class SeamSocket {
                     constraints: p.constraints as Array<{ effect: string; glob: string }> | undefined,
                 });
                 this.#workspace = envelope;
+                this.#modelWorkerId = null;
                 return { id: envelope.workspaceId, name: envelope.workspaceName, workerId: envelope.workerId, workerName: envelope.workerName, projectRoot: envelope.projectRoot };
             }
             case "workspace.attach": {
                 const envelope = await daemon.attachWorkspace({ workspaceId: (p.workspaceId ?? p.id) as number, workerId: p.workerId as number | undefined, workerName: p.workerName as string | undefined });
                 this.#workspace = envelope;
+                this.#modelWorkerId = null;
                 return { id: envelope.workspaceId, name: envelope.workspaceName, workerId: envelope.workerId, workerName: envelope.workerName, projectRoot: envelope.projectRoot };
             }
             case "loop.run": {
                 const s = this.#attached();
-                if (s.modelWorkerId === null) s.modelWorkerId = await daemon.ensureModelWorker(s.workspaceId);
+                const modelWorkerId = this.#modelWorkerId ?? await daemon.ensureModelWorker(s.workspaceId);
+                this.#modelWorkerId = modelWorkerId;
                 const loop = await daemon.runLoop({
-                    workspaceId: s.workspaceId, workerId: s.modelWorkerId, prompt: p.prompt as string,
+                    workspaceId: s.workspaceId, workerId: modelWorkerId, prompt: p.prompt as string,
                     ...(p.maxTurns !== undefined ? { maxTurns: p.maxTurns as number } : {}),
                     ...(p.flags !== undefined ? { flags: p.flags as { auto?: boolean } } : {}),
                     ...(p.openPaths !== undefined ? { openPaths: p.openPaths as string[] } : {}),
                     ...(p.alias !== undefined ? { alias: p.alias as string } : {}),
                     ...(p.model !== undefined ? { model: p.model as string } : {}),
                 });
-                return { ...loop, modelWorkerId: s.modelWorkerId };
+                return { ...loop, modelWorkerId };
             }
             case "loop.inject": {
                 // inject speaks to an EXISTING model worker; the seam's runLoop injects into a live
                 // drain identically (daemon.inject under both) — refusing only a new loop start.
                 const s = this.#attached();
-                if (s.modelWorkerId === null) {
+                if (this.#modelWorkerId === null) {
                     throw new OperationFailureError(Results.failure(
                         "daemon:worker",
                         "model-worker-required",
@@ -126,18 +130,18 @@ export default class SeamSocket {
                     ));
                 }
                 const result = await daemon.runLoop({
-                    workspaceId: s.workspaceId, workerId: s.modelWorkerId, prompt: p.prompt as string,
+                    workspaceId: s.workspaceId, workerId: this.#modelWorkerId, prompt: p.prompt as string,
                     ...(p.maxTurns !== undefined ? { maxTurns: p.maxTurns as number } : {}),
                     ...(p.flags !== undefined ? { flags: p.flags as { auto?: boolean } } : {}),
                     ...(p.alias !== undefined ? { alias: p.alias as string } : {}),
                     ...(p.model !== undefined ? { model: p.model as string } : {}),
                 });
-                return { ...result, modelWorkerId: s.modelWorkerId };
+                return { ...result, modelWorkerId: this.#modelWorkerId };
             }
             case "loop.cancel": {
-                const s = this.#attached();
+                this.#attached();
                 const reason = (typeof p.reason === "string" && p.reason.length > 0) ? p.reason : "user_cancelled";
-                const modelWorkerId = s.modelWorkerId;
+                const modelWorkerId = this.#modelWorkerId;
                 const cancelled = modelWorkerId !== null && daemon.cancelDrain(modelWorkerId, reason);
                 return { cancelled, workerId: modelWorkerId, reason };
             }
@@ -188,7 +192,7 @@ export default class SeamSocket {
             case "run.fork": {
                 // fork branches an EXISTING model worker — no worker yet is a caller error, never an implicit create.
                 const s = this.#attached();
-                const workerId = (p.workerId as number | undefined) ?? s.modelWorkerId;
+                const workerId = (p.workerId as number | undefined) ?? this.#modelWorkerId;
                 if (workerId === null || workerId === undefined) {
                     throw new OperationFailureError(Results.failure(
                         "daemon:worker",

@@ -22,7 +22,9 @@ recompute them.
   conversation, `ensureModelWorker` — origin identifies it, never a name parse); a DISTINCT
   `threadId` names its own conversation worker — found by name if it exists (forks and prior
   conversations are addressable as threads), minted via `createConversationWorker` (svc#366)
-  if it doesn't. World-scoped actions (`loop.inject`, `loop.cancel`, `log.read` default,
+  if it doesn't. The core workspace envelope carries only the workspace and selected client
+  actor ({§methods-rebind}); AG-UI owns the separate per-thread conversation binding.
+  World-scoped actions (`loop.inject`, `loop.cancel`, `log.read` default,
   `run.fork`) operate on the THREAD's conversation, never blindly on the model worker.
   Extended context persists across AG-UI Runs because the worker's log does.
 - §agui-run-authority **AG-UI owns the client lifecycle** — `threadId`, `runId`,
