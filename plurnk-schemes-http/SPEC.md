@@ -81,38 +81,41 @@ flowchart TD
     guard --> owner{"Consumer"}
 
     owner -->|WebFetcher| prefetchType{"Accepted response?"}
-    prefetchType -->|2xx HTML| prefetchHtml["Project server HTML;<br/>render lazily only if empty"]
+    prefetchType -->|2xx HTML| prefetchHtml["Shared HTML materialization;<br/>render lazily only if absent"]
     prefetchType -->|2xx text| prefetchText["Materialize complete text"]
     prefetchType -->|dead| dead["404 not-materialized"]
-    prefetchHtml --> materialize["Write entry"]
+    prefetchHtml -->|present, including empty| materialize["Write entry"]
+    prefetchHtml -->|absent| noProjection["422 no-readable-projection"]
     prefetchText --> materialize
     materialize --> query
 
     owner -->|direct operation| response{"Response path"}
     response -->|304 with stored GET| restore["Restore stored channels and refresh stamp"]
-    response -->|GET + HTML| render["Guarded browser → readable body + html"]
+    response -->|GET + HTML| render["Guarded browser → rendered HTML"]
     response -->|GET + SSE| events["Event data → body chunks"]
     response -->|other| representation{"Body representation"}
     representation -->|none| empty["Header only"]
     representation -->|textual| text["UTF-8 response chunks → body"]
     representation -->|binary or unknown| binary["Cancel bytes → typed empty marker + 415"]
     restore --> close["Persist/publish → close exact result"]
-    render --> close
+    render --> directHtml["Shared HTML materialization"]
+    directHtml -->|present, including empty| close
+    directHtml -->|absent| noProjection
     events --> close
     empty --> close
     text --> close
     binary --> close
 ```
 
-| Consumer / response                       | `body`                                                           | Auxiliary materialization                 | Completion                           |
-| ----------------------------------------- | ---------------------------------------------------------------- | ----------------------------------------- | ------------------------------------ |
-| Direct GET + HTML                         | Readable projection of the guarded rendered DOM                  | Rendered DOM in `html`; render headers    | Subscription closes; op is `102`     |
-| Direct GET + `text/event-stream`          | One `data` value plus newline per `text/plain` chunk             | Initial response in `header`              | Origin close ends the subscription   |
-| Direct request + no response body         | Empty seed                                                       | Response and package metadata in `header` | Subscription closes; op is `102`     |
-| Direct request + textual response         | Incremental UTF-8 text under the declared type                   | Response and package metadata in `header` | Response-body end closes the stream  |
-| Direct request + binary or unknown type   | Empty marker; declared type or `application/octet-stream`        | Response and package metadata in `header` | `415 binary-response-unsupported`    |
-| WebFetcher + non-empty 2xx HTML           | Readable projection of server HTML or the lazy rendered fallback | Selected HTML in `html`; byte headers     | Materialize, then universal query    |
-| WebFetcher + accepted non-empty 2xx text  | Complete textual response                                        | Byte response in `header`                 | Materialize, then universal query    |
+| Consumer / response                      | `body`                                                          | Auxiliary materialization                 | Completion                              |
+| ---------------------------------------- | --------------------------------------------------------------- | ----------------------------------------- | --------------------------------------- |
+| Direct GET + HTML                        | Present projection of the guarded rendered DOM, including `""`  | Rendered DOM in `html`; render headers    | `102`; absent projection is `422`       |
+| Direct GET + `text/event-stream`         | One `data` value plus newline per `text/plain` chunk            | Initial response in `header`              | Origin close ends the subscription      |
+| Direct request + no response body        | Empty seed                                                      | Response and package metadata in `header` | Subscription closes; op is `102`        |
+| Direct request + textual response        | Incremental UTF-8 text under the declared type                  | Response and package metadata in `header` | Response-body end closes the stream     |
+| Direct request + binary or unknown type  | Empty marker; declared type or `application/octet-stream`       | Response and package metadata in `header` | `415 binary-response-unsupported`       |
+| Exact WebFetcher + non-empty 2xx HTML    | Present projection of server HTML or the lazy rendered fallback | Selected HTML in `html`; byte headers     | Materialize; absent projection is `422` |
+| WebFetcher + accepted non-empty 2xx text | Complete textual response                                       | Byte response in `header`                 | Materialize, then universal query       |
 
 A fragmentless direct operation publishes only `body`. An explicit fragment
 publishes that named channel. Every acquired channel remains durable even when
@@ -120,24 +123,39 @@ it is not published to the requesting loop. FIND returns standard JSON metadata
 and match coordinates; matcher READ returns selected content and navigation
 evidence.
 
+### §html-materialization HTML materialization
+
+`WebFetcher.materialize` is the shared HTML-family projection seam for direct
+GET, exact query preparation, and executor entry acquisition.
+
+| Acquired representation          | Projection attempt                                  | Materialized result                             |
+| -------------------------------- | --------------------------------------------------- | ----------------------------------------------- |
+| Non-HTML text                    | None                                                | Original representation in `body`               |
+| HTML with a present projection   | Server or already-rendered HTML                     | Projection in `body`; selected HTML in `html`   |
+| HTML with an absent projection   | One lazy guarded render when the caller supplies it | Rendered projection in `body`; rendered `html`  |
+| HTML still absent after fallback | No further fallback                                 | `null`; the consumer applies its failure policy |
+
+A projection object is present even when its content is `""`; only `null`
+denotes absence. Projection exceptions remain failures, not absence.
+
 ## §http-status §4 HTTP status mapping
 
-| Outcome                                             | Operation status                                 |
-| --------------------------------------------------- | ------------------------------------------------ |
-| Scoped READ                                         | Exact universal selected-channel READ result     |
-| Exact FIND / matcher READ after preparation         | Exact universal query result                     |
-| Exact acquisition returns no WebFetcher value       | `404` (`not-materialized`)                       |
-| Exact acquisition has no non-empty HTML projection  | `422` (`no-readable-projection`)                 |
-| Direct textual or empty response completes          | `102`                                            |
-| Direct non-textual response                         | `415` (`binary-response-unsupported`)            |
-| `SEND[410]`                                         | Exact entry-delete result                        |
-| Routed `SEND[499]` dispatch                         | `200`                                            |
-| Client-cancelled acquisition                        | `499` (`cancelled`)                              |
-| Target fails network admission                      | `403` (`ssrf-blocked`)                           |
-| Multi-statement HTTP edit batch                     | `409` (`non-atomic-edit-batch`)                  |
-| Invalid target, channel, line edit, or URL userinfo | `400` with the corresponding stable Problem kind |
-| Direct network, render, or projection exception     | `502` (`fetch-failed`)                           |
-| Uninterpreted SEND status                           | `501` (`send-status-unsupported`)                |
+| Outcome                                               | Operation status                                 |
+| ----------------------------------------------------- | ------------------------------------------------ |
+| Scoped READ                                           | Exact universal selected-channel READ result     |
+| Exact FIND / matcher READ after preparation           | Exact universal query result                     |
+| Exact acquisition returns no WebFetcher value         | `404` (`not-materialized`)                       |
+| Direct or exact-preparation HTML projection is absent | `422` (`no-readable-projection`)                 |
+| Direct textual or empty response completes            | `102`                                            |
+| Direct non-textual response                           | `415` (`binary-response-unsupported`)            |
+| `SEND[410]`                                           | Exact entry-delete result                        |
+| Routed `SEND[499]` dispatch                           | `200`                                            |
+| Client-cancelled acquisition                          | `499` (`cancelled`)                              |
+| Target fails network admission                        | `403` (`ssrf-blocked`)                           |
+| Multi-statement HTTP edit batch                       | `409` (`non-atomic-edit-batch`)                  |
+| Invalid target, channel, line edit, or URL userinfo   | `400` with the corresponding stable Problem kind |
+| Direct network, render, or projection exception       | `502` (`fetch-failed`)                           |
+| Uninterpreted SEND status                             | `501` (`send-status-unsupported`)                |
 
 An HTTP error status is still a successfully acquired direct response: its
 status remains in `header` and its body streams normally. WebFetcher instead
@@ -197,10 +215,10 @@ Validation-time DNS answers are not pinned to connection-time resolution.
 | Concern       | Contract                                                                                                      |
 | ------------- | ------------------------------------------------------------------------------------------------------------- |
 | Direct gate   | A GET HTML response cancels the byte probe body and navigates through the guarded browser                     |
-| Prefetch gate | Server HTML is primary; browser rendering is a lazy fallback only when its readable projection is empty       |
+| Prefetch gate | Server HTML is primary; browser rendering is a lazy fallback only when its readable projection is absent      |
 | Pool          | One warm browser per `Browser`; one atomically acquired context per worker; prefetch uses worker `0`          |
 | Navigation    | Mobile-emulated by default; `networkidle` with bounded substantive-DOM timeout salvage                        |
-| Projection    | Readable result becomes `body`; the exact HTML used becomes `html`                                            |
+| Projection    | A present result, including `""`, becomes `body`; exact HTML used becomes `html`                              |
 | Cancellation  | The render-owned page close aborts in-flight navigation; an already-aborted render never navigates            |
 | Page cleanup  | Close each opened page once and await it; preserve its failure alone or aggregate it after a primary failure  |
 | Shutdown      | Attempt every context and browser close, await all, then aggregate failures under {§handler-lifecycle}        |

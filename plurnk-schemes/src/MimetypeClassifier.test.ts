@@ -29,6 +29,13 @@ test("+json / +xml / +yaml suffix is text", () => {
     assert.equal(MimetypeClassifier.isBinary("application/cloudevents+yaml"), false);
 });
 
+test("the web-readable HTML family includes HTML and XHTML only", () => {
+    assert.equal(MimetypeClassifier.isHtml("text/html"), true);
+    assert.equal(MimetypeClassifier.isHtml("application/xhtml+xml"), true);
+    assert.equal(MimetypeClassifier.isHtml("image/svg+xml"), false);
+    assert.equal(MimetypeClassifier.isHtml("text/plain"), false);
+});
+
 test("image/audio/video are binary", () => {
     assert.equal(MimetypeClassifier.isBinary("image/png"), true);
     assert.equal(MimetypeClassifier.isBinary("image/jpeg"), true);

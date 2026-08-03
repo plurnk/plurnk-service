@@ -49,6 +49,12 @@ class MarkdownHandler extends BaseHandler {
     }
 }
 
+class EmptyProjectionHandler extends BaseHandler {
+    override content(): string {
+        return "";
+    }
+}
+
 function mk(handler: new (...a: never[]) => BaseHandler, withEmbedder = false) {
     return new Mimetypes({
         discovery: makeDiscovery([INFO]),
@@ -85,6 +91,16 @@ describe("content channel — C3: overriding handler surfaces it", () => {
         );
         assert.equal(r.content, "# article body");
         assert.equal("symbols" in r, false, "only the requested channel");
+    });
+
+    it("preserves a present empty projection instead of erasing the field", async () => {
+        const m = mk(EmptyProjectionHandler);
+        const r = await m.process(
+            { path: "a.tst", content: "source" },
+            { channels: ["content"] },
+        );
+        assert.equal("content" in r, true);
+        assert.equal(r.content, "");
     });
 });
 

@@ -36,6 +36,11 @@ export default class MimetypeClassifier {
         return mimetype === "application/json" || mimetype.endsWith("+json");
     }
 
+    // Exact normalized HTML family used by web acquisition {§html-materialization}.
+    static isHtml(mimetype: string): boolean {
+        return mimetype === "text/html" || mimetype === "application/xhtml+xml";
+    }
+
     // Normalize an auto-derived text mimetype to the text primitive.
     // Use at any consumer-side auto-derivation point (file scheme
     // extension fallback, log rx wrap, etc.): text/plain / null / undefined

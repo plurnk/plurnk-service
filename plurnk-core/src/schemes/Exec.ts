@@ -28,6 +28,7 @@ import type { CoreSchemeCallContext } from "../core/CoreSchemeServices.ts";
 import ErrorDetail from "../core/ErrorDetail.ts";
 import Results, { OperationFailureError, type SchemeResult, type SchemeResultBase } from "../core/results.ts";
 import { InvalidOperationResultError, NetworkAddress } from "@plurnk/plurnk-schemes";
+import DbProjectionCaps from "../core/caps/DbProjectionCaps.ts";
 
 type ExecResult = SchemeResultBase & { body?: string; attrs?: object };
 
@@ -606,38 +607,19 @@ export default class Exec extends CoreSchemeAdapterBase {
             const op = async (): Promise<string> => {
                 const fetched = await materialized;
                 if (fetched === null) throw new Error(`entry(): '${path.slice(0, 80)}' is dead`);
-                let { body, mimetype } = fetched;
+                const web = await WebFetcher.materialize(fetched, new DbProjectionCaps(ctx));
+                if (web === null) throw new Error(`entry(): '${path.slice(0, 80)}' has no readable HTML projection`);
                 const prior = await EntryCrud.readEntry(pathname, ctx, scheme);
                 const tags = [...new Set([...(prior.entry?.tags ?? []), ...opts.tags])];
-                // The web-fetch entry point: a fetched html page stores the handler's readable
-                // projection as the decisive `body` (text/markdown — what READ serves, FIND matches,
-                // FTS indexes, every weight reports) with the raw page under `html` (xpath + archive).
-                // Scoped HERE, not writeEntry: only auto-fetched web content projects; authored files
-                // stay verbatim (a `<user email=…>` roster's attribute data must survive a default READ).
-                let channels: EntryData["channels"] = { body: { content: body, mimetype } };
-                if (fetched.header !== undefined) channels.header = { content: fetched.header, mimetype: "text/plain" };
-                let decisive = body;
-                if (mimetype === "text/html") {
-                    if (ctx.mimetypes === undefined) throw new Error("entry(): HTML materialization requires the mimetype registry");
-                    let projected = (await ctx.mimetypes.process({ content: body, hint: "text/html" }, { channels: ["content"] })).content;
-                    if ((typeof projected !== "string" || projected.length === 0) && fetched.render !== undefined) {
-                        const rendered = await fetched.render();
-                        if (rendered !== null) {
-                            body = rendered.body;
-                            mimetype = rendered.mimetype;
-                            projected = (await ctx.mimetypes.process({ content: body, hint: "text/html" }, { channels: ["content"] })).content;
-                        }
-                    }
-                    if (typeof projected !== "string" || projected.length === 0) {
-                        throw new Error(`entry(): '${path.slice(0, 80)}' has no readable HTML projection`);
-                    }
-                    channels = {
-                        body: { content: projected, mimetype: "text/markdown" },
-                        html: { content: body, mimetype },
-                        ...(fetched.header === undefined ? {} : { header: { content: fetched.header, mimetype: "text/plain" } }),
-                    };
-                    decisive = projected;
-                }
+                // {§exec-entry-sink}/{§html-materialization} The sink stores one
+                // decisive projection beside the faithful HTML evidence.
+                const channels: EntryData["channels"] = {
+                    body: web.body,
+                    ...(web.html === undefined ? {} : { html: web.html }),
+                    ...(fetched.header === undefined ? {} : { header: { content: fetched.header, mimetype: "text/plain" } }),
+                };
+                const decisive = web.body.content;
+                const source = web.html?.content ?? decisive;
                 const written = Results.assert(
                     await EntryCrud.writeEntry(pathname, { channels, tags }, ctx, scheme),
                 );
@@ -673,7 +655,7 @@ export default class Exec extends CoreSchemeAdapterBase {
                     origin: "plurnk", source: String(ctx.workerId), op: "EDIT", suffix: "", signal: JSON.stringify(tags),
                     scheme, username: null, password: null, hostname: null, port: null,
                     pathname, query: null, fragment: null, lineMarker: null,
-                    tx: JSON.stringify({ op: "EDIT", body }), mimetype_tx: "application/json",
+                    tx: JSON.stringify({ op: "EDIT", body: source }), mimetype_tx: "application/json",
                     rx: JSON.stringify(written.problem === undefined
                         ? {
                             ...written,

@@ -15,7 +15,7 @@ export default class DbProjectionCaps implements ProjectionCaps {
         const mimetypes = this.#ctx.mimetypes;
         if (mimetypes === undefined) throw new Error("projection.readable: mimetype registry is required");
         const projected = (await mimetypes.process({ content, hint: mimetype }, { channels: ["content"] })).content;
-        return typeof projected === "string" && projected.length > 0
+        return typeof projected === "string"
             ? { content: projected, mimetype: "text/markdown" }
             : null;
     }

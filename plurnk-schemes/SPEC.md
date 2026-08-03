@@ -201,9 +201,15 @@ resource identity.
 ### §mimetype-classifier Mimetype classification — `MimetypeClassifier`
 
 - `MimetypeClassifier.isBinary(mimetype)` — enforces 415 boundary on binary entries. Delegates to `classifyMimetype` from @plurnk/plurnk-mimetypes (the framework owns the text/binary taxonomy — mimetypes#43; the former local allowlists were absorbed upstream verbatim and retired).
+- `MimetypeClassifier.isHtml(mimetype)` — recognizes the normalized web-projection family: `text/html` and `application/xhtml+xml`.
 - `MimetypeClassifier.isJson(mimetype)` - `application/json` plus `+json` variants, used only by result summarization.
 - `MimetypeClassifier.normalizeAutoText(mimetype)` — `text/plain` / null / undefined → `TEXT_PRIMITIVE_MIMETYPE` (`text/markdown`).
 - `TEXT_PRIMITIVE_MIMETYPE` — `"text/markdown"` (named export from the same module).
+
+`ProjectionCaps.readable(content, mimetype)` returns the configured
+model-facing projection. A returned object is present even when its `content`
+is `""`; only `null` denotes absence. Consumers must not infer projection
+presence from content length.
 
 ### Text-region slicing and replacement - `Slicer`
 

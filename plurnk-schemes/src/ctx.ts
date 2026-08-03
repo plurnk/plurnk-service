@@ -142,7 +142,9 @@ export interface NotifyCaps {
 // projection of acquired content. Network schemes acquire bytes/DOM; they do
 // not select or instantiate the reader family. Keeping that reader capability
 // on the consumer makes direct READ and executor-prefetch use the same
-// configured projection instead of shipping raw HTML down one path.
+// configured projection instead of shipping raw HTML down one path. A returned
+// object is a present projection even when content is empty; null alone means
+// the requested projection is absent.
 export interface ProjectionCaps {
     readable(content: string, mimetype: string): Promise<{ content: string; mimetype: string } | null>;
 }

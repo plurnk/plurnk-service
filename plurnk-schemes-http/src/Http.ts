@@ -145,40 +145,13 @@ export default class Http implements SchemeHandler {
                 },
             );
         }
-        let { body, mimetype } = fetched;
-        let channels: EntryData["channels"] = {
-            [BODY]: { content: body, mimetype },
+        const materialized = await WebFetcher.materialize(fetched, ctx.projection);
+        if (materialized === null) return Http.#noReadableProjection(url);
+        const channels: EntryData["channels"] = {
+            [BODY]: materialized.body,
+            ...(materialized.html === undefined ? {} : { html: materialized.html }),
             ...(fetched.header === undefined ? {} : { [HEADER]: { content: fetched.header, mimetype: "text/plain" } }),
         };
-        if (mimetype === "text/html") {
-            let projected = await ctx.projection.readable(body, mimetype);
-            if ((projected === null || projected.content.length === 0) && fetched.render !== undefined) {
-                const rendered = await fetched.render();
-                if (rendered !== null) {
-                    body = rendered.body;
-                    mimetype = rendered.mimetype;
-                    projected = await ctx.projection.readable(body, mimetype);
-                }
-            }
-            if (projected === null || projected.content.length === 0) {
-                return Http.#bad(
-                    422,
-                    "http",
-                    "no-readable-projection",
-                    `The URL ${url} has no readable projection.`,
-                    {
-                        target: url,
-                        stage: "projection",
-                        retryable: false,
-                    },
-                );
-            }
-            channels = {
-                [BODY]: { content: projected.content, mimetype: projected.mimetype },
-                html: { content: body, mimetype },
-                ...(fetched.header === undefined ? {} : { [HEADER]: { content: fetched.header, mimetype: "text/plain" } }),
-            };
-        }
         const written = await ctx.entries.write(pathname, { channels, tags: [] });
         return Http.#passthrough(written);
     }
@@ -403,13 +376,13 @@ export default class Http implements SchemeHandler {
             }
 
             const contentType = response.headers.get("content-type") ?? "";
+            const responseMime = contentType.split(";")[0].trim().toLowerCase();
 
             // Always-render: a GET of an HTML page is re-acquired through the
             // browser so the body is projected from the final rendered DOM. The probe-fetch
             // body is discarded — the browser does its own navigation. Only GET
             // renders; POST/PUT/DELETE can't be replayed as a browser navigation.
-            const isHtml = method === "GET"
-                && /^(?:text\/html|application\/xhtml\+xml)\b/i.test(contentType);
+            const isHtml = method === "GET" && MimetypeClassifier.isHtml(responseMime);
             if (isHtml) {
                 await response.body?.cancel();
                 const result = await this.#browser.render(url, {
@@ -418,12 +391,19 @@ export default class Http implements SchemeHandler {
                     headers,
                     guard: Guard.isPublicUrl,
                 });
-                const projected = await ctx.projection.readable(result.html, "text/html");
-                if (projected === null) throw new Error("rendered HTML has no readable projection");
+                const materialized = await WebFetcher.materialize(
+                    { body: result.html, mimetype: "text/html" },
+                    ctx.projection,
+                );
                 await Http.#writeHeader(ctx, method, result.status, result.statusText, result.headers);
                 await ctx.subscriptions.notifyChunk("html", result.html, "text/html");
-                await ctx.subscriptions.notifyChunk(BODY, projected.content, projected.mimetype);
-                await ctx.subscriptions.close({ status: 200 }, `rendered HTTP ${result.status}; ${projected.content.length} readable chars`);
+                if (materialized === null) {
+                    const failure = Http.#noReadableProjection(url);
+                    await ctx.subscriptions.close(failure, failure.problem?.detail);
+                    return failure;
+                }
+                await ctx.subscriptions.notifyChunk(BODY, materialized.body.content, materialized.body.mimetype);
+                await ctx.subscriptions.close({ status: 200 }, `rendered HTTP ${result.status}; ${materialized.body.content.length} readable chars`);
                 return { shape: "passthrough", status: 102 };
             }
 
@@ -442,7 +422,7 @@ export default class Http implements SchemeHandler {
             // decoding bytes while preserving their origin MIME type would lie
             // about the stored representation.
             await Http.#writeHeader(ctx, method, response.status, response.statusText, [...response.headers]);
-            const bodyMime = contentType.split(";")[0].trim().toLowerCase() || "application/octet-stream";
+            const bodyMime = responseMime || "application/octet-stream";
             if (response.body === null) {
                 await ctx.subscriptions.close({ status: 200 }, `HTTP ${response.status}; empty body`);
                 return { shape: "passthrough", status: 102 };
@@ -641,6 +621,20 @@ export default class Http implements SchemeHandler {
 
     static #passthrough(result: SchemeResult): PassthroughResult {
         return Results.assert({ ...result, shape: "passthrough" }) as PassthroughResult;
+    }
+
+    static #noReadableProjection(url: string): PassthroughResult {
+        return Http.#bad(
+            422,
+            "http",
+            "no-readable-projection",
+            `The URL ${url} has no readable projection.`,
+            {
+                target: url,
+                stage: "projection",
+                retryable: false,
+            },
+        );
     }
 
     static #bad(

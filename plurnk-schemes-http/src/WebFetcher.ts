@@ -1,13 +1,10 @@
 // Guarded entry-acquisition primitive {§prefetch}. The byte response is primary;
 // HTML carries a lazy browser fallback for the consumer to invoke only when its
-// readable projection is empty. Top-level deadness is the `null` value.
+// readable projection is absent. Top-level deadness is the `null` value.
 
-import { MimetypeClassifier } from "@plurnk/plurnk-schemes";
+import { MimetypeClassifier, type ProjectionCaps } from "@plurnk/plurnk-schemes";
 import Browser, { BROWSER_UA, requireNumEnv, type RenderResult } from "./Browser.ts";
 import Guard from "./Guard.ts";
-
-const isHtml = (mimetype: string): boolean =>
-    mimetype === "text/html" || mimetype === "application/xhtml+xml";
 
 // {§host-rewrite} — one transport-only policy for acquisition GETs. Callers
 // retain the addressed URL as entry identity; mutations never pass through it.
@@ -36,9 +33,14 @@ export interface WebFetchResult {
     // direct Http READ uses for TTL/conditional revalidation.
     header?: string;
     // HTML byte responses are authoritative when their model-facing MIME
-    // projection is useful. Core calls this guarded browser acquisition only
-    // when that projection is empty.
+    // projection is present. Core calls this guarded browser acquisition only
+    // when that projection is absent.
     render?: () => Promise<{ body: string; mimetype: string } | null>;
+}
+
+export interface WebMaterializedResult {
+    readonly body: { content: string; mimetype: string };
+    readonly html?: { content: string; mimetype: string };
 }
 
 export default class WebFetcher {
@@ -47,6 +49,28 @@ export default class WebFetcher {
     readonly #browser: Renderer;
     constructor(browser: Renderer = new Browser()) {
         this.#browser = browser;
+    }
+
+    // {§html-materialization} One projection seam for exact HTTP preparation
+    // and executor entry acquisition. A present empty projection is valid;
+    // only null asks the lazy renderer or reports final absence.
+    static async materialize(
+        fetched: Pick<WebFetchResult, "body" | "mimetype" | "render">,
+        projection: ProjectionCaps,
+    ): Promise<WebMaterializedResult | null> {
+        if (!MimetypeClassifier.isHtml(fetched.mimetype)) {
+            return { body: { content: fetched.body, mimetype: fetched.mimetype } };
+        }
+        let html = { content: fetched.body, mimetype: fetched.mimetype };
+        let projected = await projection.readable(html.content, html.mimetype);
+        if (projected === null && fetched.render !== undefined) {
+            const rendered = await fetched.render();
+            if (rendered !== null) {
+                html = { content: rendered.body, mimetype: rendered.mimetype };
+                projected = await projection.readable(html.content, html.mimetype);
+            }
+        }
+        return projected === null ? null : { body: projected, html };
     }
 
     async close(): Promise<void> {
@@ -72,8 +96,8 @@ export default class WebFetcher {
         const header = WebFetcher.#header(response);
 
         // Preserve server HTML as primary. Eager rendering can mutate already
-        // useful content; the consumer alone decides whether projection is empty.
-        if (isHtml(mimetype)) {
+        // useful content; the consumer alone decides whether projection is absent.
+        if (MimetypeClassifier.isHtml(mimetype)) {
             const body = await response.text();
             if (body.length === 0) return null;
             return {

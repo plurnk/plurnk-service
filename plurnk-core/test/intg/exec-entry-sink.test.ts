@@ -361,14 +361,14 @@ test("an absolute web URL ending in slash is one fetchable resource, not a folde
     }
 });
 
-test("entry(content:null) fetches through the guarded sink — live materializes, unavailable does not (#455)", async () => {
+test("entry(content:null) fetches through the guarded sink — live XHTML materializes, unavailable does not (#455)", async () => {
     // The sink's WebFetch is faked: the SSRF guard blocks localhost, so no live server can stand in for
-    // the fetch. A /dead URL resolves null; anything else returns useful server HTML.
+    // the fetch. A /dead URL resolves null; anything else returns useful server XHTML.
     let browserFallbacks = 0;
     const fetchWeb: WebFetch = async (url) =>
         url.includes("/dead") ? null : {
             body: "<p>fetched live turkeys</p>",
-            mimetype: "text/html",
+            mimetype: "application/xhtml+xml",
             render: async () => {
                 browserFallbacks += 1;
                 return { body: "<p>wrong fallback</p>", mimetype: "text/html" };
@@ -387,7 +387,7 @@ test("entry(content:null) fetches through the guarded sink — live materializes
         const live = await db.test_entries_by_pathname.get<{ id: number; scheme: string }>({ pathname: "/example.org/live" });
         assert.ok(live !== undefined, "content:null triggered the fetch and the live page materialized (authority folded)");
         assert.equal(live.scheme, "https");
-        // A fetched html page stores its readable projection as the decisive text/markdown body (what READ serves).
+        // The complete HTML family stores its readable projection as the decisive text/markdown body.
         const body = await db.test_get_channel.get<{ content: string; mimetype: string }>({ entry_id: live.id, name: "body" });
         assert.equal(body?.mimetype, "text/markdown", "the fetched html projected to the decisive markdown body");
         assert.match(body?.content ?? "", /fetched live turkeys/, "the projected body carries the fetched content, not the raw markup alone");
@@ -426,7 +426,7 @@ test("entry(content:null) admits only HTTP acquisition targets", async () => {
     } finally { await quiesceExecs(schemes); await schemes.close(); await db.close(); }
 });
 
-test("#596: an empty byte-response projection renders once, then stores only useful fallback markdown", async () => {
+test("#596: an absent byte-response projection renders once, then stores only useful fallback markdown", async () => {
     let browserFallbacks = 0;
     const fetchWeb: WebFetch = async (url) =>
         url.includes("/dead") ? null : {

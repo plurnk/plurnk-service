@@ -7,6 +7,7 @@ import { strict as assert } from "node:assert";
 import Guard from "./Guard.ts";
 import WebFetcher from "./WebFetcher.ts";
 import type { RenderResult } from "./Browser.ts";
+import type { ProjectionCaps } from "@plurnk/plurnk-schemes";
 
 const PUB = "https://93.184.216.34/x"; // public IP literal — skips DNS
 
@@ -76,6 +77,28 @@ test("HTML → byte response first; guarded browser render is a lazy fallback", 
     assert.equal(b.calls[0].guarded, true);
     assert.equal(b.calls[0].signal, undefined,
         "the byte-probe timeout does not close render at its salvage deadline");
+});
+
+test("materialization accepts an honest empty XHTML projection without rendering", async () => {
+    let renders = 0;
+    const projection: ProjectionCaps = {
+        async readable() {
+            return { content: "", mimetype: "text/markdown" };
+        },
+    };
+    const result = await WebFetcher.materialize({
+        body: "<html><body></body></html>",
+        mimetype: "application/xhtml+xml",
+        render: async () => {
+            renders += 1;
+            return { body: "<p>wrong fallback</p>", mimetype: "text/html" };
+        },
+    }, projection);
+    assert.deepEqual(result, {
+        body: { content: "", mimetype: "text/markdown" },
+        html: { content: "<html><body></body></html>", mimetype: "application/xhtml+xml" },
+    });
+    assert.equal(renders, 0);
 });
 
 test("caller cancellation spans both byte probe and lazy render", async () => {

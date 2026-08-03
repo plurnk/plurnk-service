@@ -51,6 +51,7 @@ interface CtxOverrides {
     readonly write?: (pathname: string, entry: EntryData) => Promise<EntryStorageWriteResult>;
     readonly delete?: (pathname: string) => Promise<SchemeResult>;
     readonly operationRead?: (statement: ReadStatement) => Promise<EntryReadResult>;
+    readonly projection?: ProjectionCaps;
 }
 
 const makeCtx = (priorEntry: EntryData | null = null, overrides: CtxOverrides = {}) => {
@@ -111,7 +112,7 @@ const makeCtx = (priorEntry: EntryData | null = null, overrides: CtxOverrides = 
         async list() { return { status: 200, tags: [] }; },
     };
     const notify: NotifyCaps = { streamEvent() {} };
-    const projection: ProjectionCaps = {
+    const projection: ProjectionCaps = overrides.projection ?? {
         async readable(content) {
             const text = content.replace(/<[^>]+>/g, "").trim();
             return text.length > 0 ? { content: text, mimetype: "text/markdown" } : null;
@@ -234,6 +235,51 @@ test("prepareFind materializes an exact URL through the guarded readable path", 
     assert.equal(inspect().wrote?.pathname, "/example.com/dist/index.json");
     assert.equal(inspect().wrote?.entry.channels.body?.content, '{"version":"24.18.0"}');
     assert.equal(inspect().wrote?.entry.channels.body?.mimetype, "application/json");
+});
+
+test("prepareFind treats XHTML and a present empty projection as successful materialization", async () => {
+    const projection: ProjectionCaps = {
+        async readable() {
+            return { content: "", mimetype: "text/markdown" };
+        },
+    };
+    const { ctx, inspect } = makeCtx(null, { projection });
+    const browser = fakeBrowser("<p>wrong fallback</p>");
+    await withFetch(
+        mockFetch(200, "OK", ["<html><body></body></html>"], { "content-type": "application/xhtml+xml" }),
+        async () => {
+            const result = await new Http(browser).prepareFind(
+                findStmt(urlTarget("https://example.com/empty.xhtml", "/empty.xhtml")),
+                ctx,
+            );
+            assert.equal(result.status, 201);
+        },
+    );
+    assert.equal(browser.calls.length, 0);
+    assert.deepEqual(inspect().wrote?.entry.channels.body, { content: "", mimetype: "text/markdown" });
+    assert.deepEqual(inspect().wrote?.entry.channels.html, {
+        content: "<html><body></body></html>",
+        mimetype: "application/xhtml+xml",
+    });
+});
+
+test("prepareFind reports an absent final HTML projection as 422", async () => {
+    const projection: ProjectionCaps = { async readable() { return null; } };
+    const { ctx, inspect } = makeCtx(null, { projection });
+    const browser = fakeBrowser("<html><body><div></div></body></html>");
+    await withFetch(
+        mockFetch(200, "OK", ["<html><body><div></div></body></html>"], { "content-type": "text/html" }),
+        async () => {
+            const result = await new Http(browser).prepareFind(
+                findStmt(urlTarget("https://example.com/empty", "/empty")),
+                ctx,
+            );
+            assert.equal(result.status, 422);
+            assert.equal(result.problem?.type, "https://problems.plurnk.dev/scheme/http/no-readable-projection");
+        },
+    );
+    assert.equal(browser.calls.length, 1);
+    assert.equal(inspect().wrote, null);
 });
 
 test("prepareFind rewrites acquisition but stores the addressed GitHub identity", async () => {
@@ -762,6 +808,57 @@ test("READ: rendered HTML archives the DOM while body carries the model-facing p
     assert.equal(htmlChunks[0]?.mimetype, "text/html");
     assert.equal(closed?.result.status, 200);
     assert.match(closed?.summary ?? "", /rendered HTTP 200; \d+ readable chars/);
+});
+
+test("READ: a present empty rendered projection succeeds and retains its HTML evidence", async () => {
+    const projection: ProjectionCaps = {
+        async readable() {
+            return { content: "", mimetype: "text/markdown" };
+        },
+    };
+    const { ctx, inspect } = makeCtx(null, { projection });
+    const html = "<html><body></body></html>";
+    const browser = fakeBrowser(html);
+    await withFetch(
+        mockFetch(200, "OK", [html], { "content-type": "text/html" }),
+        async () => {
+            const result = await new Http(browser).read(
+                readStmt(urlTarget("https://example.com/empty", "/empty")),
+                ctx,
+            );
+            assert.equal(result.status, 102);
+        },
+    );
+    assert.deepEqual(inspect().chunks.find(({ channel }) => channel === "body"), {
+        channel: "body",
+        chunk: "",
+        mimetype: "text/markdown",
+    });
+    assert.equal(inspect().chunks.find(({ channel }) => channel === "html")?.chunk, html);
+    assert.equal(inspect().closed?.result.status, 200);
+});
+
+test("READ: an absent rendered projection returns 422 and retains its HTML evidence", async () => {
+    const projection: ProjectionCaps = { async readable() { return null; } };
+    const { ctx, inspect } = makeCtx(null, { projection });
+    const html = "<html><body><div></div></body></html>";
+    const browser = fakeBrowser(html);
+    let result: Awaited<ReturnType<Http["read"]>> | undefined;
+    await withFetch(
+        mockFetch(200, "OK", [html], { "content-type": "text/html" }),
+        async () => {
+            result = await new Http(browser).read(
+                readStmt(urlTarget("https://example.com/empty", "/empty")),
+                ctx,
+            );
+        },
+    );
+    assert.equal(result?.status, 422);
+    assert.equal(result?.problem?.type, "https://problems.plurnk.dev/scheme/http/no-readable-projection");
+    assert.equal(inspect().closed?.result.problem, result?.problem);
+    assert.equal(inspect().chunks.find(({ channel }) => channel === "html")?.chunk, html);
+    assert.match(inspect().chunks.find(({ channel }) => channel === "header")?.chunk ?? "", /^HTTP 200 OK/m);
+    assert.equal(inspect().chunks.some(({ channel }) => channel === "body"), false);
 });
 
 test("SEND[200]: an HTML response is NOT rendered (POST can't be a navigation)", async () => {
