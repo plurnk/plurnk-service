@@ -31,6 +31,7 @@ import {
 import Http from "./Http.ts";
 import type { RenderResult } from "./Browser.ts";
 import Guard from "./Guard.ts";
+import WebFetcher from "./WebFetcher.ts";
 
 // A fake render foundation: returns a canned rendered page, records the call
 // including ordered request-header metadata {§op-surface}.
@@ -362,6 +363,46 @@ test("prepareFind keeps caller cancellation distinct from lazy-render failure", 
         },
     );
     assert.equal(diagnostics.length, 0);
+});
+
+test("prepareFind reports caller cancellation during the byte probe as 499", async (t) => {
+    const controller = new AbortController();
+    const reason = new Error("operator cancelled");
+    const { ctx, inspect } = makeCtx(null, { signal: controller.signal });
+    t.mock.method(Guard, "fetch", async (
+        _url: Parameters<typeof Guard.fetch>[0],
+        _init: Parameters<typeof Guard.fetch>[1],
+        signal: Parameters<typeof Guard.fetch>[2],
+    ) => {
+        controller.abort(reason);
+        signal.throwIfAborted();
+        throw new Error("unreachable after abort");
+    });
+    const result = await new Http().prepareFind(
+        findStmt(urlTarget("https://example.com/cancelled-probe", "/cancelled-probe")),
+        ctx,
+    );
+    assert.equal(result.status, 499);
+    assert.equal(result.problem?.type, "https://problems.plurnk.dev/scheme/http/cancelled");
+    assert.equal(result.problem?.retryable, false);
+    assert.equal(inspect().wrote, null);
+});
+
+test("prepareFind does not relabel an unrelated failure after a later caller abort", async (t) => {
+    const controller = new AbortController();
+    const failure = new Error("unrelated acquisition defect");
+    const { ctx } = makeCtx(null, { signal: controller.signal });
+    t.mock.method(WebFetcher.prototype, "fetch", async () => {
+        controller.abort(new Error("later cancellation"));
+        throw failure;
+    });
+    await assert.rejects(
+        new Http().prepareFind(
+            findStmt(urlTarget("https://example.com/failed-probe", "/failed-probe")),
+            ctx,
+        ),
+        (error: unknown) => error === failure,
+    );
 });
 
 test("prepareFind rewrites acquisition but stores the addressed GitHub identity", async () => {

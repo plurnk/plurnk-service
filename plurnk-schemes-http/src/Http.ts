@@ -26,6 +26,7 @@ import Guard, { GuardBlockedError } from "./Guard.ts";
 import WebFetcher, {
     rewriteAcquisitionTarget,
     WebMaterializationError,
+    type WebFetchResult,
     type WebMaterializedResult,
 } from "./WebFetcher.ts";
 
@@ -135,7 +136,17 @@ export default class Http implements SchemeHandler {
         if (Results.isErrorStatus(prior.status) && prior.status !== 404) {
             return Http.#passthrough(prior);
         }
-        const fetched = await this.#webFetcher.fetch(url, { signal: ctx.signal });
+        // {§prefetch} WebFetcher preserves caller cancellation as rejection;
+        // this operation owns its one model-facing 499 projection.
+        let fetched: WebFetchResult | null;
+        try {
+            fetched = await this.#webFetcher.fetch(url, { signal: ctx.signal });
+        } catch (err) {
+            if (ctx.signal?.aborted === true && err === ctx.signal.reason) {
+                return Http.#cancelled(url, "GET");
+            }
+            throw err;
+        }
         if (fetched === null) {
             return Http.#bad(
                 404,

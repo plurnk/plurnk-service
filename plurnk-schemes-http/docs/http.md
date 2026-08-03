@@ -19,6 +19,9 @@ A path-pattern FIND searches only web entries already materialized in the
 workspace; a pattern cannot discover the remote web. FIND returns navigation
 metadata, not the selected page body. Use READ for content.
 
+Caller cancellation of an exact acquisition returns `499 cancelled`. The
+independent byte-probe deadline remains an ordinary unavailable result.
+
 | Direct response           | `body`                                                       | Other channel                    |
 | ------------------------- | ------------------------------------------------------------ | -------------------------------- |
 | GET HTML                  | Readable projection of the guarded rendered page             | Faithful rendered DOM in `#html` |

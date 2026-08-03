@@ -147,6 +147,61 @@ test("caller cancellation spans both byte probe and lazy render", async () => {
     assert.equal(b.calls[0].signal, caller.signal);
 });
 
+test("caller cancellation during the byte probe rejects with the exact caller reason", async (t) => {
+    const caller = new AbortController();
+    const reason = new Error("operator cancelled");
+    t.mock.method(Guard, "fetch", async (
+        _url: Parameters<typeof Guard.fetch>[0],
+        _init: Parameters<typeof Guard.fetch>[1],
+        signal: Parameters<typeof Guard.fetch>[2],
+    ) => {
+        caller.abort(reason);
+        signal.throwIfAborted();
+        throw new Error("unreachable after abort");
+    });
+    await assert.rejects(
+        new WebFetcher().fetch(PUB, { signal: caller.signal }),
+        (error: unknown) => error === reason,
+    );
+});
+
+test("a pre-aborted caller rejects before target admission", async (t) => {
+    const caller = new AbortController();
+    const reason = new Error("already cancelled");
+    caller.abort(reason);
+    const guarded = t.mock.method(Guard, "fetch");
+    await assert.rejects(
+        new WebFetcher().fetch(PUB, { signal: caller.signal }),
+        (error: unknown) => error === reason,
+    );
+    assert.equal(guarded.mock.callCount(), 0);
+});
+
+test("the independent byte-probe timeout remains an ordinary dead result", async (t) => {
+    const prior = process.env.PLURNK_SCHEMES_HTTP_FETCH_TIMEOUT;
+    process.env.PLURNK_SCHEMES_HTTP_FETCH_TIMEOUT = "1";
+    const caller = new AbortController();
+    t.mock.method(Guard, "fetch", async (
+        _url: Parameters<typeof Guard.fetch>[0],
+        _init: Parameters<typeof Guard.fetch>[1],
+        signal: Parameters<typeof Guard.fetch>[2],
+    ) => await new Promise<Response>((_resolve, reject) => {
+        const rejectTimedOut = () => {
+            const timeoutReason = signal.reason;
+            caller.abort(new Error("later caller cancellation"));
+            reject(timeoutReason);
+        };
+        if (signal.aborted) rejectTimedOut();
+        else signal.addEventListener("abort", rejectTimedOut, { once: true });
+    }));
+    try {
+        assert.equal(await new WebFetcher().fetch(PUB, { signal: caller.signal }), null);
+    } finally {
+        if (prior === undefined) delete process.env.PLURNK_SCHEMES_HTTP_FETCH_TIMEOUT;
+        else process.env.PLURNK_SCHEMES_HTTP_FETCH_TIMEOUT = prior;
+    }
+});
+
 test("close releases the owned renderer", async () => {
     let closed = 0;
     const fetcher = new WebFetcher({

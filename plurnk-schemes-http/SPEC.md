@@ -263,20 +263,24 @@ accumulate until the origin closes or the operation is cancelled.
 
 ## §prefetch §7 WebFetcher
 
-| Result                  | Meaning                                                                              |
-| ----------------------- | ------------------------------------------------------------------------------------ |
-| Non-empty 2xx HTML      | Server body, MIME type, package-stamped headers, and a lazy guarded browser renderer |
-| Non-empty accepted text | Complete body, MIME type, and package-stamped headers                                |
-| Lazy renderer value     | Non-empty rendered HTML, or `null` only when rendering yields no HTML                |
-| Lazy renderer failure   | Rejects with the complete browser failure; materialization preserves stage and cause |
-| Top-level `null`        | Refused, unreachable, non-2xx, non-textual, or empty byte response                   |
-| Accepted textual family | Shared `MimetypeClassifier` taxonomy {§mimetype-classifier}                          |
+| Result                       | Meaning                                                                              |
+| ---------------------------- | ------------------------------------------------------------------------------------ |
+| Non-empty 2xx HTML           | Server body, MIME type, package-stamped headers, and a lazy guarded browser renderer |
+| Non-empty accepted text      | Complete body, MIME type, and package-stamped headers                                |
+| Lazy renderer value          | Non-empty rendered HTML, or `null` only when rendering yields no HTML                |
+| Lazy renderer failure        | Rejects with the complete browser failure; materialization preserves stage and cause |
+| Top-level `null`             | Refused, unreachable, timed-out, non-2xx, non-textual, or empty byte response        |
+| Caller-cancelled acquisition | Rejects with the caller signal's exact reason                                        |
+| Accepted textual family      | Shared `MimetypeClassifier` taxonomy {§mimetype-classifier}                          |
 
-Top-level `null` is a liveness value rather than a thrown failure. WebFetcher
-owns no entry identity, projection verdict, or query policy; its consumer
-projects and materializes the returned value. Lazy-render exceptions remain
-distinct from a renderer that honestly returns no HTML. The handler lifecycle
-closes the shared browser.
+Top-level `null` is a liveness value rather than a thrown failure. Caller
+cancellation is not liveness: a pre-aborted caller fails before admission, and
+the first abort reason selected between the caller and configured byte-probe
+deadline owns the outcome. The probe deadline remains `null`. WebFetcher owns
+no entry identity, projection verdict, or query policy; its consumer projects
+and materializes the returned value. Lazy-render exceptions remain distinct
+from a renderer that honestly returns no HTML. The handler lifecycle closes
+the shared browser.
 
 ## §ws §8 WebSocket
 

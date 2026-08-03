@@ -7,6 +7,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { PlurnkParser } from "@plurnk/plurnk-contracts";
 import type { ExecStatement, PlurnkStatement, ReadStatement } from "@plurnk/plurnk-contracts";
+import { WebFetcher } from "@plurnk/plurnk-schemes-http";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import type { WebFetch } from "../../src/schemes/Exec.ts";
@@ -32,7 +33,16 @@ const parseOne = (input: string): PlurnkStatement => {
     return item.statement;
 };
 
-const wire = async (opts?: { fetchWeb?: WebFetch; nullContent?: boolean; unsupportedNullUrl?: string; tag?: string; webScheme?: boolean; encodedPath?: boolean; entryFailure?: boolean }) => {
+const wire = async (opts?: {
+    fetchWeb?: WebFetch;
+    nullContent?: boolean;
+    cancelledNullContent?: (failure: unknown, signal: AbortSignal) => void;
+    unsupportedNullUrl?: string;
+    tag?: string;
+    webScheme?: boolean;
+    encodedPath?: boolean;
+    entryFailure?: boolean;
+}) => {
     // testExecutors() is a module singleton, so each wire() must claim a DISTINCT runtime tag —
     // "one name, one owner" (#289) rejects a second registration of the same tag.
     const tag = opts?.tag ?? "stubsearch";
@@ -86,6 +96,21 @@ const wire = async (opts?: { fetchWeb?: WebFetch; nullContent?: boolean; unsuppo
                     args.write("results", JSON.stringify([{ rejected }]), "application/json");
                     args.setState("results", "closed");
                     return { status: 200, exitCode: 0 };
+                }
+                if (opts?.cancelledNullContent !== undefined) {
+                    const entry = args.entry as WidenedEntry | undefined;
+                    try {
+                        await entry?.("https://93.184.216.34/cancelled", null, { tags: ["cancelled_query"] });
+                    } catch (failure) {
+                        opts.cancelledNullContent(failure, args.signal);
+                    }
+                    args.setState("results", "closed");
+                    return Results.failure(
+                        `executor:${tag}`,
+                        "cancelled",
+                        499,
+                        "The test execution was cancelled.",
+                    );
                 }
                 if (opts?.nullContent) {
                     const entry = args.entry as WidenedEntry | undefined;
@@ -398,6 +423,51 @@ test("entry(content:null) fetches through the guarded sink — live XHTML materi
         const dead = await db.test_entries_by_pathname.get<{ id: number }>({ pathname: "/example.org/dead" });
         assert.equal(dead, undefined, "a null fetch rejects the sink so no page body materializes");
     } finally { await quiesceExecs(schemes); await schemes.close(); await db.close(); }
+});
+
+test("entry(content:null) preserves caller cancellation through the real WebFetcher", async () => {
+    const started = Promise.withResolvers<void>();
+    const webFetcher = new WebFetcher();
+    let preserved = false;
+    const fetchWeb: WebFetch = (url, opts) => webFetcher.fetch(url, opts);
+    const { db, engine, schemes, workspaceId, workerId, loopId, turnId, tag } = await wire({
+        fetchWeb,
+        tag: "stubsearch-cancelled-fetch",
+        cancelledNullContent: (failure, signal) => { preserved = failure === signal.reason; },
+    });
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = ((_input: string | URL | Request, init?: RequestInit) => new Promise<Response>((_resolve, reject) => {
+        const signal = init?.signal;
+        if (!(signal instanceof AbortSignal)) {
+            reject(new Error("guarded fetch did not receive its acquisition signal"));
+            return;
+        }
+        const cancel = () => reject(signal.reason);
+        if (signal.aborted) cancel();
+        else signal.addEventListener("abort", cancel, { once: true });
+        started.resolve();
+    })) as typeof fetch;
+    try {
+        const result = await engine.dispatch({
+            statement: execStmt(tag, "cancelled"),
+            workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
+        });
+        assert.ok(result.status < 400);
+        await started.promise;
+        const subscription = await db.test_open_subscription_for_worker.get<{ id: number }>({ worker_id: workerId });
+        assert.ok(subscription !== undefined);
+        await engine.cancelSubscription(subscription.id);
+        await quiesceExecs(schemes);
+        assert.equal(preserved, true, "the entry sink received the caller signal's exact reason, not a dead-URL error");
+        const stored = await db.test_entries_by_pathname.get<{ id: number }>({ pathname: "/93.184.216.34/cancelled" });
+        assert.equal(stored, undefined);
+    } finally {
+        globalThis.fetch = originalFetch;
+        await quiesceExecs(schemes);
+        await schemes.close();
+        await webFetcher.close();
+        await db.close();
+    }
 });
 
 test("entry(content:null) admits only HTTP acquisition targets", async () => {
