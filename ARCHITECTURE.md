@@ -13,7 +13,7 @@ Dotted interfaces are explicitly deferred.
 
 ```mermaid
 flowchart LR
-    AGUI["AG-UI Specification"] --- PLURNK["plurnk<br/><br/>JSON Schema · RFC 9457<br/>SARIF regions · RFC 3986 / WHATWG URL<br/>IANA media types · OTel"]
+    AGUI["AG-UI Specification"] --- PLURNK["plurnk<br/><br/>JSON Schema · RFC 9457<br/>SARIF regions · IANA media types<br/>RFC 3986 · WHATWG URL · OTel"]
     MCP["MCP Specification"] --- PLURNK
     OPENAI["OpenAI Specification"] --- PLURNK
     PLUGIN["Plurnk Plugin<br/>(exec / scheme)<br/>plurnk-owned interface"] --- PLURNK

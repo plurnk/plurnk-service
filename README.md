@@ -29,8 +29,8 @@ flowchart LR
     core <--> providers["Model providers"]
     plugins["Scheme / executor / mimetype plugins"] --> core
     modules["Optional daemon modules"] --> core
+    project["Project files + Git"] <--> core
     core --> sqlite[(SQLite)]
-    core <--> project["Project files + Git"]
 ```
 
 The daemon owns durable agent state and composes package-owned capabilities.
