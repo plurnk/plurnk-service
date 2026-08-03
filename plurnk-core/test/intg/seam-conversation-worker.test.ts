@@ -44,6 +44,17 @@ test("createConversationWorker: fresh named conversation — empty log, runLoop 
                 },
             );
             await assert.rejects(
+                () => daemon.createConversationWorker({ workspaceId, name: "bad_name" }),
+                (error) => {
+                    assert.ok(error instanceof OperationFailureError);
+                    assert.equal(error.result.problem.type, "https://problems.plurnk.dev/daemon/worker/name-invalid");
+                    assert.equal(error.result.problem.status, 400);
+                    assert.equal(error.result.problem.name, "bad_name");
+                    assert.equal(error.result.problem.retryable, false);
+                    return true;
+                },
+            );
+            await assert.rejects(
                 () => daemon.createConversationWorker({ workspaceId, name: "thread-2" }),
                 (error) => {
                     assert.ok(error instanceof OperationFailureError);

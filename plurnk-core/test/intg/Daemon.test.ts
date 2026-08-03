@@ -691,8 +691,15 @@ test("the client-interface seam — workspace lifecycle: create/attach/rename/se
         assert.ok(events.some((e) => e.method === "workspace/created" && (e.params as { id?: number }).id === env.workspaceId), "workspace/created emitted on the event source");
         assert.deepEqual(await daemon.listConstraints(env.workspaceId), [{ effect: "hide", glob: "secret/**" }], "the seeded constraint landed atomically with the workspace");
 
-        // attach — core's namespace invariant refuses a reserved worker name; a plain attach returns an envelope.
+        // attach — core's namespace invariant refuses reserved and non-mintable worker names;
+        // a plain attach returns an envelope.
         await assert.rejects(() => daemon.attachWorkspace({ workspaceId: env.workspaceId, workerName: "plurnk" }), /reserved/, "attachWorkspace refuses a reserved worker name");
+        const invalidWorkerName = await rejectedProblem(() =>
+            daemon.attachWorkspace({ workspaceId: env.workspaceId, workerName: "bad_name" }));
+        assert.equal(invalidWorkerName.type, "https://problems.plurnk.dev/daemon/worker/name-invalid");
+        assert.equal(invalidWorkerName.status, 400);
+        assert.equal(invalidWorkerName.name, "bad_name");
+        assert.equal(invalidWorkerName.retryable, false);
         assert.equal((await daemon.attachWorkspace({ workspaceId: env.workspaceId })).workspaceId, env.workspaceId, "attachWorkspace returns an envelope on the same workspace");
 
         // rename — mutations return the applied value; a name collision is refused. (No root
@@ -796,6 +803,15 @@ test("the client-interface seam — forkWorker branches a worker's log, ownershi
 
             // invariants: a reserved name and a foreign worker are both refused.
             await assert.rejects(() => daemon.forkWorker({ workspaceId: created.id, workerId: clientWorker.id, name: "plurnk" }), /reserved/);
+            const invalidName = await rejectedProblem(() => daemon.forkWorker({
+                workspaceId: created.id,
+                workerId: clientWorker.id,
+                name: "bad_name",
+            }));
+            assert.equal(invalidName.type, "https://problems.plurnk.dev/daemon/worker/name-invalid");
+            assert.equal(invalidName.status, 400);
+            assert.equal(invalidName.name, "bad_name");
+            assert.equal(invalidName.retryable, false);
             const other = (await rpcCall(ws, 2, "workspace.create", { name: "seam-fork-other" })).result as { id: number };
             const otherWorker = (await db.test_get_client_worker_by_workspace.get<{ id: number }>({ workspace_id: other.id }))!;
             const problem = await rejectedProblem(() => daemon.forkWorker({

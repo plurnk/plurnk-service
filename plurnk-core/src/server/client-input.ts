@@ -4,6 +4,7 @@
 import { isAbsolute } from "node:path";
 import Results, { OperationFailureError } from "../core/results.ts";
 import type { ProposalResolution } from "../core/ProposalLifecycle.ts";
+import WorkerName, { WorkerNameError } from "../core/WorkerName.ts";
 
 const CONSTRAINT_EFFECTS: ReadonlySet<string> = new Set(["pick", "hide", "view"]);
 
@@ -64,6 +65,30 @@ export default class ClientInput {
             );
         }
         return value;
+    }
+
+    static assertOptionalWorkerName(context: string, field: string, value: unknown): string | undefined {
+        const workerName = ClientInput.assertOptionalName(context, field, value);
+        if (workerName === undefined) return undefined;
+        try {
+            return WorkerName.assert(workerName);
+        } catch (error) {
+            if (!(error instanceof WorkerNameError)) throw error;
+            throw new OperationFailureError(Results.failure(
+                "daemon:worker",
+                error.code,
+                error.rejection === "reserved" ? 409 : 400,
+                error.message,
+                {},
+                {
+                    context,
+                    field,
+                    name: error.workerName,
+                    recovery: error.recovery,
+                    retryable: false,
+                },
+            ));
+        }
     }
 
     static assertOptionalSelector(context: string, field: "alias" | "model", value: unknown): string | undefined {

@@ -10,6 +10,7 @@
 // ambient-event cursor initialization for a fork.
 
 import type { Db } from "./Db.ts";
+import WorkerName from "./WorkerName.ts";
 
 export default class Fork {
     // Terminal loop statuses ({§lifecycle-terms}) — inherited loops outside this set are clamped to 200.
@@ -20,13 +21,18 @@ export default class Fork {
         if (parent === undefined) throw new Error(`fork: worker ${parentWorkerId} not found`);
 
         // #248 — name the branch at instantiation (immutable after). An explicit name wins; the default
-        // is `<parent>-fork-<N>` (N = next free), so N self-forks of one parent are individually
-        // addressable instead of all colliding on a single `<parent>-fork` ({§worker-scheme-fork}).
+        // is the next free `<parent>-fork-<N>` admitted by {§worker-name-minting}.
         let branchName = name;
         if (branchName === undefined) {
-            const existing = await db.fork_count_branches.get<{ n: number }>({ parent_worker_id: parentWorkerId, name_prefix: `${parent.name}-fork%` });
-            branchName = `${parent.name}-fork-${(existing?.n ?? 0) + 1}`;
+            let ordinal = 1;
+            do {
+                branchName = WorkerName.ordinal(parent.name, ordinal++, "fork");
+            } while (await db.envelope_get_worker_by_name.get({
+                workspace_id: parent.workspace_id,
+                name: branchName,
+            }) !== undefined);
         }
+        branchName = WorkerName.assert(branchName);
         const branch = await db.fork_insert_worker.get<{ id: number }>({
             workspace_id: parent.workspace_id, name: branchName, parent_worker_id: parentWorkerId, origin: parent.origin,
         });

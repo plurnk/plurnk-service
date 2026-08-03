@@ -39,7 +39,7 @@ SELECT id, name, workspace_id, origin FROM workers WHERE id = $id;
 -- PREP: envelope_count_workers_by_prefix
 -- {§worker-auto-name} — ever-created count for the per-workspace ordinal auto-name
 -- (`<prefix>-<N>`); monotonic (counts terminated workers too), so a reclaimed name
--- never re-mints. The fork_count_branches pattern, workspace-wide.
+-- never re-mints.
 SELECT COUNT(*) AS n FROM workers WHERE workspace_id = $workspace_id AND name LIKE $name_prefix;
 
 -- PREP: envelope_get_worker_by_name

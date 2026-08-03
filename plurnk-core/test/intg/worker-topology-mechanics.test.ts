@@ -5,6 +5,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
+import { WORKER_NAME } from "@plurnk/plurnk-contracts";
 import Fork from "../../src/core/fork.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop } from "./_helpers.ts";
 
@@ -29,6 +30,20 @@ test("N self-forks of one parent get UNIQUE, individually-addressable names", as
             const r = await db.worker_resolve_by_name.get<{ id: number }>({ workspace_id: workspaceId, name: n });
             assert.equal(r?.id, id, `worker://${n} addresses its own fork`);
         }
+    } finally { await db.close(); }
+});
+
+test("an automatic fork of a maximum-length parent remains a mintable worker name", async () => {
+    const db = await openMigrated();
+    try {
+        const workspaceId = await insertWorkspace(db, `fork-name-${crypto.randomUUID()}`);
+        const parent = await insertWorker(db, workspaceId, null, "a".repeat(63));
+        const fork = await Fork.fork(db, parent);
+        const name = (await db.fork_get_worker.get<{ name: string }>({ id: fork }))?.name ?? "";
+
+        assert.ok(WORKER_NAME.test(name), "the generated name satisfies the contracts-owned minting predicate");
+        assert.equal(name.length, 63, "only the inherited parent portion is shortened");
+        assert.match(name, /-fork-1$/, "the stable fork ordinal remains visible");
     } finally { await db.close(); }
 });
 

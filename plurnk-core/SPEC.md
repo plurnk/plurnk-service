@@ -286,6 +286,18 @@ or membership overlay requires a new workspace.
 
 §worker-authority-carving **The authority names the OWNER** (#527, the (c) carving): `worker:///notes.md` is in the COMMONS — a shared blackboard; `worker://~/draft.md` is the calling worker's own private space; `worker://<name>/result.md` is a named worker's space; `worker://plurnk/docs/x.md` is the kernel's published surface, world-readable. Storage keys the owner on the entries.owner_id column ({§entry-owner}) — the pathname is always the bare entry path, and a FIND's result paths re-apply the queried authority so the model sees the address it typed. `~` is the sole current-worker sigil and cannot be minted; `commons` and `plurnk` are internal worker names unavailable for minting. Every other mintable authority, including `self`, is a literal worker name ({§worker-name}).
 
+§worker-name-minting **URI ingestion is permissive; worker minting is not.**
+Every model/client worker-creation door applies the contracts-owned
+`WORKER_NAME` predicate through one core admission path. Generic URL parsing
+continues to decompose other authorities without treating them as mintable.
+
+| Candidate                                      | Minting result                                                        |
+| ---------------------------------------------- | --------------------------------------------------------------------- |
+| `WORKER_NAME` match, not reserved              | Admitted as the exact literal worker name.                            |
+| `commons`, `plurnk`, or `~` (any case variant) | Refused as reserved before lookup or insertion.                       |
+| Any other spelling                             | Refused as `name-invalid` before lookup, insertion, or child startup. |
+| Automatic name                                 | Generated, then admitted through the same predicate.                  |
+
 §worker-read-scope **Named spaces are ancestry-gated reads**: the reader is the owner or an ANCESTOR (the recursive parent_worker_id walk) — oversight flows down the tree, a parent reads `worker://child/result` across generations, a child cannot snoop upward, and an unknown name or unpermitted reader resolves 404 with no existence leak. The kernel surface is the one world-readable named space.
 
 §worker-write-scoping **Writes are own-space-and-commons only**: a model writes `worker://~/` and `worker:///` — every named authority is read-only to it (403), and owner_id is engine-stamped from the dispatch context, never model-set. Nothing worker-authored can land under another principal — `worker://plurnk/` included, which is what makes the kernel surface the trust boundary with no guard to forget (only the kernel, dispatching as itself, authors it). The entry-copy seam (COPY/MOVE) is pathname-keyed and addresses the commons; a space's content moves via READ + EDIT.
@@ -1270,7 +1282,7 @@ child settlement is their durable wake edge.
 
 §stream-owner-scoped **Capability streams are owner-scoped** (#526). Concurrent workers' stream coordinates are loop-relative and IDENTICAL (every worker's first loop is sequence 1), so the entry identity keys on the owner and identical coordinates across workers are distinct rows. The address's authority names the owner: **empty = the calling worker** — your own streams need no qualifier, so a fan-out sibling's output can never surface under your READ — and a **named authority** reaches that worker's streams gated by ancestry (the reader is the owner or an ancestor; oversight flows down the tree, unknown-or-unpermitted resolves 404 with no existence leak). KILL stays self-only — a parent controls a child through the worker lifecycle, never by reaching into its streams. The storage pathname stays the bare loop coordinate; the owner rides the column, so nothing model-facing carries a worker id.
 
-§worker-auto-name **Auto-names are id-free ordinals** — worker names are the addressable authority, so an auto-name is `<prefix>-<N>` (per-workspace monotonic count, the fork `<parent>-fork-<N>` pattern), never a timestamp-hash that would leak machine identity through the hostname. Unique among live workers per the reclaim doctrine ({§machine-processes-worker-origin}); reserved names refused at every naming door.
+§worker-auto-name **Auto-names are id-free ordinals** — worker names are the addressable authority, so an auto-name is `<prefix>-<N>` (per-workspace monotonic count, the fork `<parent>-fork-<N>` pattern), never a timestamp-hash that would leak machine identity through the hostname. The semantic suffix remains intact; when the complete name would exceed `WORKER_NAME`, generation shortens only the inherited prefix until the predicate admits it. Auto-names never reuse an existing literal and pass through {§worker-name-minting} like explicit names.
 
 §exec-readpure-ungated A `read` runtime (observes external state, e.g. search) or `pure` runtime (no observable effect, e.g. `:memory:` sqlite) is side-effect-free → **auto-run**: no proposal, no human gate, no notification. It skips the gate a host command faces, but it does NOT resolve in-band — like every exec it backgrounds and streams, its output reaching the model through the environment-observation injector (a foisted READ of the stream's new bytes each turn, {§exec-stream}), never a same-turn receipt.
 
@@ -1625,12 +1637,11 @@ workspace lifecycle calls return `ClientEnvelope` values but retain no
 connection, thread, or current-workspace mapping. A module may replace its own
 binding with a later create or attach result without requiring a new transport.
 
-§methods-worker-name-reserved **Reserved worker names.** `plurnk` and `commons`
-are internal actors, while `~` is the current-worker sigil ({§worker-name}).
-Attach, fresh-conversation, and fork paths reject them case-insensitively before
-lookup or creation, and automatic names never emit them. Every other mintable
-name, including `self`, is literal. A client therefore cannot forge or resume an
-internal worker.
+§methods-worker-name-reserved **Client worker-name admission.** Attach,
+fresh-conversation, and fork apply {§worker-name-minting} before lookup or
+creation. A client therefore cannot forge or resume an internal worker, insert
+a non-mintable spelling, or make the client registry diverge from model worker
+control.
 
 §methods-loop-run-model **Per-loop model selection.** Optional `model`
 (client-resolved `<provider>/<model>`, wins) or `alias` (a declared

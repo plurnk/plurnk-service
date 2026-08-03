@@ -14,12 +14,6 @@ INSERT INTO workers (workspace_id, name, parent_worker_id, origin)
 VALUES ($workspace_id, $name, $parent_worker_id, $origin)
 RETURNING id;
 
--- PREP: fork_count_branches
--- How many fork branches the parent already has — for a UNIQUE `<parent>-fork-<N>` default name, so N
--- self-forks of one parent are individually addressable (KILL/SEND/READ by name) instead of colliding
--- on a single `<parent>-fork` that worker_resolve_by_name would resolve to the newest only ({§worker-scheme-fork}).
-SELECT COUNT(*) AS n FROM workers WHERE parent_worker_id = $parent_worker_id AND name LIKE $name_prefix;
-
 -- PREP: fork_get_loops
 SELECT id, sequence, status, prompt, flags, terminal_result
 FROM loops WHERE worker_id = $worker_id ORDER BY id;

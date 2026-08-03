@@ -242,6 +242,44 @@ test("WORK-spawning a name a LIVE sister holds is refused 409 — legible, never
     } finally { await db.close(); }
 });
 
+test("WORK and FORK reject non-mintable worker authorities before creating or starting a child", async () => {
+    const db = await openMigrated();
+    try {
+        const { calls, injectWorker } = recordingInjectWorker();
+        const engine = new Engine({ db, schemes: new SchemeRegistry(), injectWorker, tokenize });
+        const workspaceId = await insertWorkspace(db, `worker-name-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const loopId = await insertLoop(db, workerId, 1, "go");
+        const turnId = await insertTurn(db, loopId, 1, 102);
+
+        for (const [sequence, statement] of [
+            [1, spawnedWorker("bad_name", "spawn")],
+            [2, forkWorker("bad_name", "fork")],
+        ] as const) {
+            const result = await engine.dispatch({
+                statement,
+                workspaceId,
+                workerId,
+                loopId,
+                turnId,
+                sequence,
+                origin: "model",
+            });
+            assert.equal(result.status, 400);
+            assert.equal(result.problem?.type, "https://problems.plurnk.dev/engine/dispatcher/worker-name-invalid");
+            assert.equal(result.problem?.worker, "bad_name");
+            assert.equal(result.problem?.retryable, false);
+        }
+
+        assert.equal(calls.length, 0, "invalid names never reach the child-start seam");
+        assert.equal(
+            await db.worker_resolve_by_name.get({ workspace_id: workspaceId, name: "bad_name" }),
+            undefined,
+            "invalid names never reach the worker registry",
+        );
+    } finally { await db.close(); }
+});
+
 test("a TERMINATED sister's name is reclaimed — spawn succeeds, newest wins", async () => {
     const db = await openMigrated();
     try {

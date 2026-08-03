@@ -16,6 +16,7 @@ import type {
 import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import type { Db } from "./Db.ts";
 import Owner from "./Owner.ts";
+import WorkerName, { WorkerNameError } from "./WorkerName.ts";
 import type SchemeRegistry from "./SchemeRegistry.ts";
 import type ExecutorRegistry from "./ExecutorRegistry.ts";
 import type NoticeChannel from "./NoticeChannel.ts";
@@ -946,14 +947,21 @@ export default class Dispatcher {
                 { operation: statement.op, retryable: false },
             );
         }
-        // {§worker-name} — internal names and the `~` current-worker sigil cannot be minted.
-        if (Owner.RESERVED.has(name)) {
+        try {
+            WorkerName.assert(name); // {§worker-name-minting}
+        } catch (error) {
+            if (!(error instanceof WorkerNameError)) throw error;
             return Dispatcher.#failure(
-                "worker-name-reserved",
+                `worker-${error.code}`,
                 400,
-                `Worker name '${name}' is reserved.`,
+                error.message,
                 {},
-                { operation: statement.op, worker: name, retryable: false },
+                {
+                    operation: statement.op,
+                    worker: error.workerName,
+                    recovery: error.recovery,
+                    retryable: false,
+                },
             );
         }
         if (ctx.injectWorker === undefined) throw new Error("worker control: injectWorker capability absent");

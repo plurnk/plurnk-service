@@ -30,6 +30,7 @@ import ClientTurn from "./clientTurn.ts";
 import LoopDocs from "./loopDocs.ts";
 import GitMembership from "../core/git-membership.ts";
 import Fork from "../core/fork.ts";
+import WorkerName from "../core/WorkerName.ts";
 import LoopLifecycle from "../core/LoopLifecycle.ts";
 import { entryPathnameOf, promptLoopPrefix, renderAddress } from "../core/plurnk-uri.ts";
 import { rulerCount } from "../core/token-ruler.ts";
@@ -201,11 +202,12 @@ export default class Daemon {
             createChild: async ({ workspaceId, parentWorkerId, op, name, prompt, flags, origin }) => {
                 const providerSpec = resolveActiveAlias();
                 if (providerSpec === null) throw new Error("Branch worker: active provider has no resolvable alias");
+                const workerName = WorkerName.assert(name);
                 const workerId = op === "FORK"
-                    ? await Fork.fork(this.#db, parentWorkerId, name)
+                    ? await Fork.fork(this.#db, parentWorkerId, workerName)
                     : (await this.#db.fork_insert_worker.get<{ id: number }>({
                         workspace_id: workspaceId,
-                        name,
+                        name: workerName,
                         parent_worker_id: parentWorkerId,
                         origin,
                     }))?.id;
@@ -782,7 +784,7 @@ export default class Daemon {
         const workerId = args.workerId === undefined
             ? undefined
             : ClientInput.assertId("workspace.attach", "workerId", args.workerId);
-        const workerName = ClientInput.assertOptionalName("workspace.attach", "workerName", args.workerName);
+        const workerName = ClientInput.assertOptionalWorkerName("workspace.attach", "workerName", args.workerName);
         const envelope = await Envelope.attachToWorkspace(this.#db, workspaceId, { workerId, workerName });
         void this.#engine.warmWorkspaceDerivations(envelope.workspaceId).catch(() => {});
         return envelope;
@@ -972,7 +974,7 @@ export default class Daemon {
     // model-origin root that runLoop accepts. New chat = new conversation, same workspace.
     async createConversationWorker(args: { workspaceId: number; name?: string }): Promise<{ workerId: number; workerName: string }> {
         const workspaceId = ClientInput.assertId("worker.create", "workspaceId", args.workspaceId);
-        const name = ClientInput.assertOptionalName("worker.create", "name", args.name);
+        const name = ClientInput.assertOptionalWorkerName("worker.create", "name", args.name);
         const workspace = await this.#db.envelope_get_workspace.get<{ id: number }>({ id: workspaceId });
         if (workspace === undefined) {
             throw daemonFailure(
@@ -984,15 +986,6 @@ export default class Daemon {
             );
         }
         if (name !== undefined) {
-            if (Envelope.RESERVED_WORKER_NAMES.has(name.toLowerCase())) {
-                throw daemonFailure(
-                    "daemon:worker",
-                    "name-reserved",
-                    409,
-                    `Worker name '${name}' is reserved.`,
-                    { name, recovery: "Choose another worker name.", retryable: false },
-                );
-            }
             const taken = await this.#db.envelope_get_worker_by_name.get<{ id: number }>({ workspace_id: workspaceId, name });
             if (taken !== undefined) {
                 throw daemonFailure(
@@ -1012,7 +1005,7 @@ export default class Daemon {
     async forkWorker(args: { workspaceId: number; workerId: number; name?: string }): Promise<{ workerId: number; workerName: string | null; parentWorkerId: number }> {
         const workspaceId = ClientInput.assertId("worker.fork", "workspaceId", args.workspaceId);
         const workerId = ClientInput.assertId("worker.fork", "workerId", args.workerId);
-        const name = ClientInput.assertOptionalName("worker.fork", "name", args.name);
+        const name = ClientInput.assertOptionalWorkerName("worker.fork", "name", args.name);
         const owner = await this.#db.envelope_get_worker_by_id.get<{ workspace_id: number }>({ id: workerId });
         if (owner === undefined) {
             throw daemonFailure(
@@ -1038,15 +1031,6 @@ export default class Daemon {
             );
         }
         if (name !== undefined) {
-            if (Envelope.RESERVED_WORKER_NAMES.has(name.toLowerCase())) {
-                throw daemonFailure(
-                    "daemon:worker",
-                    "name-reserved",
-                    409,
-                    `Worker name '${name}' is reserved.`,
-                    { name, recovery: "Choose another worker name.", retryable: false },
-                );
-            }
             const taken = await this.#db.envelope_get_worker_by_name.get<{ id: number }>({ workspace_id: workspaceId, name });
             if (taken !== undefined) {
                 throw daemonFailure(

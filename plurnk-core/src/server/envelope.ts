@@ -6,9 +6,9 @@
 
 import type { Db } from "../core/Db.ts";
 import GitMembership from "../core/git-membership.ts";
-import Owner from "../core/Owner.ts";
 import Results, { OperationFailureError, type SchemeResult } from "../core/results.ts";
 import LoopLifecycle from "../core/LoopLifecycle.ts";
+import WorkerName from "../core/WorkerName.ts";
 
 const envelopeFailure = (
     owner: string,
@@ -51,12 +51,6 @@ export interface ClientEnvelope {
 }
 
 export default class Envelope {
-    // Worker names reserved for non-client actors: a client must not create OR
-    // attach to a worker under a reserved name (origin-impersonation — `plurnk`
-    // is the runtime actor, {§authority-terms}/{§actor-boundary}). Checked case-insensitively, before
-    // lookup, so a client can neither forge nor hijack one (SPEC {§methods}).
-    static readonly RESERVED_WORKER_NAMES: ReadonlySet<string> = Owner.RESERVED; // {§methods-worker-name-reserved}
-
     // Workspace names default to `workspace-{unixtime}-{random}`; the suffix avoids
     // collisions when two creations land in the same second. Worker names use the
     // workspace-local `<prefix>-<ordinal>` contract in mintWorkerName.
@@ -74,8 +68,11 @@ export default class Envelope {
         const count = await db.envelope_count_workers_by_prefix.get<{ n: number }>({ workspace_id: workspaceId, name_prefix: `${prefix}-%` });
         let n = (count?.n ?? 0) + 1;
         // A manually-named squatter (`model-3` typed by a user) can hold the ordinal — bump past it.
-        while (await db.envelope_get_worker_by_name.get<{ id: number }>({ workspace_id: workspaceId, name: `${prefix}-${n}` }) !== undefined) n++;
-        return `${prefix}-${n}`;
+        while (await db.envelope_get_worker_by_name.get<{ id: number }>({
+            workspace_id: workspaceId,
+            name: WorkerName.ordinal(prefix, n),
+        }) !== undefined) n++;
+        return WorkerName.ordinal(prefix, n);
     }
 
     static async createClientEnvelope(db: Db, opts: { name?: string; prefix?: string; projectRoot?: string | null; settings?: string } = {}): Promise<ClientEnvelope> {
@@ -159,22 +156,10 @@ export default class Envelope {
             return { id: existing.id, name: existing.name };
         }
         if (opts.workerName !== undefined) {
-            if (Envelope.RESERVED_WORKER_NAMES.has(opts.workerName.toLowerCase())) {
-                throw envelopeFailure(
-                    "daemon:worker",
-                    "name-reserved",
-                    409,
-                    `Worker name '${opts.workerName}' is reserved.`,
-                    {
-                        name: opts.workerName,
-                        recovery: "Choose another worker name.",
-                        retryable: false,
-                    },
-                );
-            }
-            const existing = await db.envelope_get_worker_by_name.get<{ id: number; name: string }>({ workspace_id: workspaceId, name: opts.workerName });
+            const workerName = WorkerName.assert(opts.workerName); // {§worker-name-minting}
+            const existing = await db.envelope_get_worker_by_name.get<{ id: number; name: string }>({ workspace_id: workspaceId, name: workerName });
             if (existing !== undefined) return existing;
-            const created = await db.envelope_insert_worker.get<{ id: number; name: string }>({ workspace_id: workspaceId, name: opts.workerName, origin: "client" });
+            const created = await db.envelope_insert_worker.get<{ id: number; name: string }>({ workspace_id: workspaceId, name: workerName, origin: "client" });
             if (created === undefined) throw new Error("resolveWorker: worker insert returned no row");
             return created;
         }
@@ -220,16 +205,10 @@ export default class Envelope {
     // conversations about one curated workspace): a named, empty-log, model-origin root worker.
     // Distinct from ensureModelWorker (the stable default conversation) and forkWorker (copies history).
     static async createModelWorker(db: Db, workspaceId: number, name?: string): Promise<{ id: number; name: string }> {
-        if (name !== undefined && Owner.RESERVED.has(name.toLowerCase())) {
-            throw envelopeFailure(
-                "daemon:worker",
-                "name-reserved",
-                409,
-                `Worker name '${name}' is reserved.`,
-                { name, recovery: "Choose another worker name.", retryable: false },
-            );
-        }
-        const worker = await db.envelope_insert_worker.get<{ id: number; name: string }>({ workspace_id: workspaceId, name: name ?? await Envelope.mintWorkerName(db, workspaceId, "model"), origin: "model" });
+        const workerName = name === undefined
+            ? await Envelope.mintWorkerName(db, workspaceId, "model")
+            : WorkerName.assert(name);
+        const worker = await db.envelope_insert_worker.get<{ id: number; name: string }>({ workspace_id: workspaceId, name: workerName, origin: "model" });
         if (worker === undefined) throw new Error("createModelWorker: worker insert returned no row");
         return worker;
     }

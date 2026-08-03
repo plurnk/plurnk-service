@@ -215,7 +215,6 @@ export class SqlRiteSync {
 	envelope_get_model_worker: SqlRiteSyncPreparedStatements;
 	fork_get_worker: SqlRiteSyncPreparedStatements;
 	fork_insert_worker: SqlRiteSyncPreparedStatements;
-	fork_count_branches: SqlRiteSyncPreparedStatements;
 	fork_get_loops: SqlRiteSyncPreparedStatements;
 	fork_insert_loop: SqlRiteSyncPreparedStatements;
 	fork_reidentify_loop_result: SqlRiteSyncPreparedStatements;
@@ -444,7 +443,6 @@ export default class SqlRite {
 	envelope_get_model_worker: SqlRitePreparedStatements;
 	fork_get_worker: SqlRitePreparedStatements;
 	fork_insert_worker: SqlRitePreparedStatements;
-	fork_count_branches: SqlRitePreparedStatements;
 	fork_get_loops: SqlRitePreparedStatements;
 	fork_insert_loop: SqlRitePreparedStatements;
 	fork_reidentify_loop_result: SqlRitePreparedStatements;
