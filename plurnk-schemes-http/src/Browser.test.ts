@@ -19,12 +19,14 @@ interface FakeConfig {
     goto?: () => Promise<PwResponseLike | null>;
     bodyLen?: number; // evaluate() salvage probe
     onClose?: () => void; // page.close hook (for abort timing)
+    contextClose?: (contextNumber: number) => Promise<void>;
+    browserClose?: () => Promise<void>;
 }
 
 const timeoutError = () => Object.assign(new Error("Timeout 30000ms exceeded"), { name: "TimeoutError" });
 
 const makeEngine = (cfg: FakeConfig = {}) => {
-    const calls = { newContext: 0, newPage: 0, pageClose: 0, contextClose: 0, launch: 0, connect: 0, connectOverCDP: 0 };
+    const calls = { newContext: 0, newPage: 0, pageClose: 0, contextClose: 0, browserClose: 0, launch: 0, connect: 0, connectOverCDP: 0 };
     const launchOptions: Array<{ channel?: string; executablePath?: string; headless?: boolean; chromiumSandbox?: boolean; timeout?: number }> = [];
     const endpoints: string[] = [];
     const contextOptions: Array<{ isMobile?: boolean; userAgent?: string } | undefined> = [];
@@ -37,14 +39,14 @@ const makeEngine = (cfg: FakeConfig = {}) => {
         async evaluate() { return cfg.bodyLen ?? 0; },
         async close() { calls.pageClose++; cfg.onClose?.(); },
     });
-    const makeContext = () => ({
+    const makeContext = (contextNumber: number) => ({
         async newPage() { calls.newPage++; return makePage(); },
-        async close() { calls.contextClose++; },
+        async close() { calls.contextClose++; await cfg.contextClose?.(contextNumber); },
     });
     const makeBrowser = () => ({
-        async newContext(options?: { isMobile?: boolean; userAgent?: string }) { calls.newContext++; contextOptions.push(options); return makeContext(); },
+        async newContext(options?: { isMobile?: boolean; userAgent?: string }) { calls.newContext++; contextOptions.push(options); return makeContext(calls.newContext); },
         on() {},
-        async close() {},
+        async close() { calls.browserClose++; await cfg.browserClose?.(); },
     });
     const engine = {
         async launch(options: { channel?: string; executablePath?: string }) { calls.launch++; launchOptions.push(options); return makeBrowser(); },
@@ -272,9 +274,48 @@ test("per-worker context: reused across renders, dropped by closeContext", async
     await browser.render("https://example.com/b", { workerId: 7 });
     assert.equal(calls.newContext, 1); // one context for the worker, two pages
     assert.equal(calls.newPage, 2);
-    browser.closeContext(7);
+    await browser.closeContext(7);
     assert.equal(calls.contextClose, 1);
     await browser.render("https://example.com/c", { workerId: 7 }); // fresh context after drop
     assert.equal(calls.newContext, 2);
     await browser.close();
+});
+
+test("per-worker context: overlapping renders share one atomic context acquisition", async () => {
+    const { engine, calls } = makeEngine();
+    const browser = new Browser(() => Promise.resolve(engine));
+
+    await Promise.all([
+        browser.render("https://example.com/a", { workerId: 7 }),
+        browser.render("https://example.com/b", { workerId: 7 }),
+    ]);
+
+    assert.equal(calls.newContext, 1, "overlapping calls cannot overwrite and leak a second worker context");
+    assert.equal(calls.newPage, 2);
+    await browser.close();
+});
+
+test("close attempts every context and browser close, then aggregates every failure", async () => {
+    const { engine, calls } = makeEngine({
+        contextClose: async (contextNumber) => { throw new Error(`context ${contextNumber} close failed`); },
+        browserClose: async () => { throw new Error("browser close failed"); },
+    });
+    const browser = new Browser(() => Promise.resolve(engine));
+    await browser.render("https://example.com/a", { workerId: 1 });
+    await browser.render("https://example.com/b", { workerId: 2 });
+
+    await assert.rejects(
+        () => browser.close(),
+        (error: unknown) => {
+            assert.ok(error instanceof AggregateError);
+            assert.deepEqual(error.errors.map((cause) => String(cause)), [
+                "Error: context 1 close failed",
+                "Error: context 2 close failed",
+                "Error: browser close failed",
+            ]);
+            return true;
+        },
+    );
+    assert.equal(calls.contextClose, 2);
+    assert.equal(calls.browserClose, 1);
 });

@@ -42,9 +42,9 @@ export interface SchemeHandler {
     // their runtime declaration. (executor-is-a-scheme RFC, schemes#20.)
     readonly manifest?: SchemeManifest;
 
-    // Optional process-lifecycle hook for handlers that own pooled resources
-    // (browser processes, sockets, client connections). The consumer calls this
-    // once after in-flight scheme work drains and before its backing stores close.
+    // Optional process hooks under {§handler-lifecycle}: readiness precedes
+    // advertisement; shutdown follows dispatch drain and precedes store closure.
+    // Both run once per unique handler object identity.
     ready?(): Promise<void>;
     close?(): Promise<void>;
     applyResolution?(request: ProposalApplyRequest, ctx: SchemeCtx): Promise<ProposalApplyResult>;

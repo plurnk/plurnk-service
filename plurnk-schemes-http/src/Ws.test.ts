@@ -40,6 +40,7 @@ const fakeSocket = () => {
 };
 
 interface CtxOverrides {
+    readonly workspaceId?: number;
     readonly write?: EntryCaps["write"];
     readonly notifyChunk?: SubscriptionCaps["notifyChunk"];
     readonly close?: SubscriptionCaps["close"];
@@ -99,7 +100,7 @@ const makeCtx = (overrides: CtxOverrides = {}) => {
         },
     };
     const ctx: SchemeCtx = {
-        workspaceId: 1, workerId: 1, loopId: 1, turnId: 1, writer: "model", signal: undefined,
+        workspaceId: overrides.workspaceId ?? 1, workerId: 1, loopId: 1, turnId: 1, writer: "model", signal: undefined,
         entries, channels, tags, notify, projection, subscriptions,
     };
     return { ctx, localAbort, inspect: () => ({ chunks, opened, closed, wrote }) };
@@ -209,6 +210,56 @@ test("SEND[200]: pushes the body onto the open socket a prior READ opened", asyn
     const r = await ws.send(sendStmt(200, wss(PUB, "/feed"), "ping"), ctx);
     assert.equal(r.status, 200);
     assert.deepEqual(sock.sent, ["ping"]);
+});
+
+test("READ: duplicate canonical workspace address is 409 and never replaces its owner", async () => {
+    const sockets = [fakeSocket(), fakeSocket()];
+    let connects = 0;
+    const ws = new Ws(() => sockets[connects++]!);
+    const firstCtx = makeCtx();
+    const secondCtx = makeCtx();
+    const target = wss(PUB, "/feed");
+    const firstRead = ws.read(readStmt(target), firstCtx.ctx);
+    try {
+        const secondRead = ws.read(readStmt(target), secondCtx.ctx);
+        await flush();
+        if (connects > 1) sockets[1].close(1000);
+        const result = await secondRead;
+
+        assert.equal(result.status, 409);
+        assert.equal(result.problem?.type, "https://problems.plurnk.dev/scheme/wss/socket-already-open");
+        assert.equal(connects, 1, "the duplicate does not create a second transport");
+        assert.equal(secondCtx.inspect().wrote, null, "the duplicate has no storage side effects");
+        assert.equal(secondCtx.inspect().opened, null, "the duplicate opens no subscription");
+        assert.equal((await ws.send(sendStmt(200, target, "still-owned"), firstCtx.ctx)).status, 200);
+        assert.deepEqual(sockets[0].sent, ["still-owned"]);
+    } finally {
+        sockets[0].close(1000);
+        await firstRead;
+    }
+});
+
+test("socket ownership isolates the same canonical address by workspace", async () => {
+    const sockets = [fakeSocket(), fakeSocket()];
+    let connects = 0;
+    const ws = new Ws(() => sockets[connects++]!);
+    const firstCtx = makeCtx({ workspaceId: 1 });
+    const secondCtx = makeCtx({ workspaceId: 2 });
+    const target = wss(PUB, "/feed");
+    const reads = [
+        ws.read(readStmt(target), firstCtx.ctx),
+        ws.read(readStmt(target), secondCtx.ctx),
+    ];
+    await flush();
+
+    assert.equal((await ws.send(sendStmt(200, target, "first"), firstCtx.ctx)).status, 200);
+    assert.equal((await ws.send(sendStmt(200, target, "second"), secondCtx.ctx)).status, 200);
+    assert.deepEqual(sockets[0].sent, ["first"]);
+    assert.deepEqual(sockets[1].sent, ["second"]);
+
+    sockets[0].close(1000);
+    sockets[1].close(1000);
+    await Promise.all(reads);
 });
 
 test("socket lookup isolates addressed protocol, port, and ordered query", async () => {
@@ -323,7 +374,9 @@ test("READ: message persistence failure settles with a structured problem", asyn
     const { ctx, inspect } = makeCtx({
         notifyChunk: async () => { throw new Error("raw persistence failure"); },
     });
-    const read = new Ws(() => sock).read(readStmt(wss(PUB, "/feed")), ctx);
+    const ws = new Ws(() => sock);
+    const target = wss(PUB, "/feed");
+    const read = ws.read(readStmt(target), ctx);
     await flush();
     sock.emit("message", { data: "hello" });
     const result = await read;
@@ -331,6 +384,25 @@ test("READ: message persistence failure settles with a structured problem", asyn
     assert.equal(result.problem?.type, "https://problems.plurnk.dev/scheme/wss/message-persistence-failed");
     assert.equal(result.problem?.stage, "persistence");
     assert.equal(inspect().closed?.result.problem, result.problem);
+    assert.notEqual(sock.closed, null, "a terminal persistence failure closes its transport");
+    assert.equal((await ws.send(sendStmt(200, target, "late"), ctx)).status, 409, "terminal cleanup releases address ownership");
+});
+
+test("READ: a terminal transport error closes the socket before settling", async () => {
+    const sock = fakeSocket();
+    const { ctx, inspect } = makeCtx();
+    const ws = new Ws(() => sock);
+    const target = wss(PUB, "/feed");
+    const read = ws.read(readStmt(target), ctx);
+    await flush();
+    sock.emit("error", { message: "connection reset" });
+    const result = await read;
+
+    assert.equal(result.status, 502);
+    assert.equal(result.problem?.type, "https://problems.plurnk.dev/scheme/wss/connection-failed");
+    assert.equal(inspect().closed?.result.problem, result.problem);
+    assert.notEqual(sock.closed, null, "a terminal transport error closes its transport");
+    assert.equal((await ws.send(sendStmt(200, target, "late"), ctx)).status, 409, "terminal cleanup releases address ownership");
 });
 
 test("READ: subscription close rejection rejects instead of hanging", async () => {
@@ -354,4 +426,58 @@ test("cancel: the composed abort signal closes the socket", async () => {
     assert.deepEqual(sock.closed, { code: 1000, reason: "cancelled" });
     assert.equal(inspect().closed?.result.status, 499);
     assert.equal(inspect().closed?.result.problem?.type, "https://problems.plurnk.dev/scheme/wss/cancelled");
+});
+
+test("handler close closes every remaining socket and waits for READ cleanup", async () => {
+    const sockets = [fakeSocket(), fakeSocket()];
+    let connects = 0;
+    const cleanupGate = Promise.withResolvers<void>();
+    const firstCtx = makeCtx();
+    const secondCtx = makeCtx({ close: async () => { await cleanupGate.promise; } });
+    const ws = new Ws(() => sockets[connects++]!);
+    const reads = [
+        ws.read(readStmt(wss("wss://93.184.216.34/one", "/one")), firstCtx.ctx),
+        ws.read(readStmt(wss(`${PUB}?room=two`, "/feed")), secondCtx.ctx),
+    ];
+    await flush();
+
+    let shutdownSettled = false;
+    const shutdown = ws.close().then(() => { shutdownSettled = true; });
+    await flush();
+    assert.notEqual(sockets[0].closed, null);
+    assert.notEqual(sockets[1].closed, null);
+    assert.equal(shutdownSettled, false, "handler close waits for subscription cleanup");
+
+    cleanupGate.resolve();
+    await shutdown;
+    const results = await Promise.all(reads);
+    assert.deepEqual(results.map(({ status }) => status), [499, 499]);
+    assert.equal((await ws.send(sendStmt(200, wss("wss://93.184.216.34/one", "/one"), "late"), firstCtx.ctx)).status, 409);
+});
+
+test("handler close settles every READ and aggregates transport close failures", async () => {
+    const first = fakeSocket();
+    const second = fakeSocket();
+    let connects = 0;
+    const ws = new Ws(() => connects++ === 0
+        ? { ...first, close() { throw new Error("first close failed"); } }
+        : second);
+    const firstCtx = makeCtx();
+    const secondCtx = makeCtx();
+    const reads = [
+        ws.read(readStmt(wss("wss://93.184.216.34/one", "/one")), firstCtx.ctx),
+        ws.read(readStmt(wss(`${PUB}?room=two`, "/feed")), secondCtx.ctx),
+    ];
+    await flush();
+
+    await assert.rejects(
+        () => ws.close(),
+        (error: unknown) => {
+            assert.ok(error instanceof AggregateError);
+            assert.deepEqual(error.errors.map((cause) => String(cause)), ["Error: first close failed"]);
+            return true;
+        },
+    );
+    assert.notEqual(second.closed, null, "one close failure does not skip another socket");
+    assert.deepEqual((await Promise.all(reads)).map(({ status }) => status), [499, 499]);
 });

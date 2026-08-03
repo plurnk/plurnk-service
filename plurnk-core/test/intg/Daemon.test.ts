@@ -931,6 +931,51 @@ test("module lifecycle orders setup, start, listener close, and module close", a
     }
 });
 
+test("daemon shutdown preserves module and scheme lifecycle failures in one aggregate", async () => {
+    const db = await openMigrated();
+    const daemon = new Daemon({
+        db,
+        provider: new Mock({
+            contextWindow: 8192,
+            responses: [],
+        }),
+    });
+    daemon.registerModule({
+        async close() { throw new Error("module close failed"); },
+    });
+    daemon.schemes.register("broken-close", {
+        manifest: {
+            name: "broken-close",
+            channels: { body: "text/plain" },
+            defaultChannel: "body",
+            category: "data",
+            scope: "workspace",
+            writableBy: ["model"],
+            volatile: false,
+            modelVisible: true,
+        },
+        async close() { throw new Error("scheme close failed"); },
+    });
+    try {
+        await daemon.start();
+        await assert.rejects(
+            () => daemon.stop(),
+            (error: unknown) => {
+                assert.ok(error instanceof AggregateError);
+                assert.equal(error.message, "daemon shutdown failed");
+                assert.deepEqual(
+                    error.errors.map((cause) => String(cause)),
+                    ["Error: module close failed", "Error: scheme close failed"],
+                );
+                return true;
+            },
+        );
+    } finally {
+        await daemon.stop();
+        await db.close();
+    }
+});
+
 test("a module that acquires resources during setup is closed when later setup fails", async () => {
     const db = await openMigrated();
     const daemon = new Daemon({

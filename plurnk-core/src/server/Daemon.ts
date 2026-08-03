@@ -1082,8 +1082,7 @@ export default class Daemon {
     async registerScheme(name: string, handler: object): Promise<void> {
         this.#schemes.register(name, handler);
         if (this.#capabilitiesPublished) {
-            const ready = (handler as { ready?: () => Promise<void> }).ready;
-            if (ready !== undefined) await ready.call(handler);
+            await this.#schemes.ready();
             for (const workspace of await Envelope.listWorkspaces(this.#db)) {
                 await LoopDocs.materialize(this.#engine, this.#db, workspace.id);
             }
@@ -1242,13 +1241,17 @@ export default class Daemon {
         const drainPromises = [...this.#activeDrains.values()].map((d) => d.promise);
         await Promise.allSettled(drainPromises);
         const closeResults = await moduleClose;
-        await this.#drainStreamingSchemes();
-        await this.#engine.drainDerivations(); // active workspace warms finish before the db closes upstream
-        await this.#schemes.close();
-        const closeErrors = closeResults
+        const [streamingResult] = await Promise.allSettled([this.#drainStreamingSchemes()]);
+        const [derivationResult] = await Promise.allSettled([
+            this.#engine.drainDerivations(), // active workspace warms finish before the db closes upstream
+        ]);
+        const [schemeResult] = await Promise.allSettled([this.#schemes.close()]);
+        const closeErrors = [...closeResults, streamingResult, derivationResult, schemeResult]
             .filter((result): result is PromiseRejectedResult => result.status === "rejected")
-            .map((result) => result.reason);
-        if (closeErrors.length > 0) throw new AggregateError(closeErrors, "daemon module shutdown failed");
+            .flatMap((result) => result.reason instanceof AggregateError
+                ? [...result.reason.errors]
+                : [result.reason]);
+        if (closeErrors.length > 0) throw new AggregateError(closeErrors, "daemon shutdown failed");
     }
 
     // Per-scheme idle awaits for clean shutdown. New streaming schemes

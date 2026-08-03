@@ -67,6 +67,7 @@ grammar. `editBatch` returns the typed `EditBatchResult` specialization:
 import type { EditBatchResult, SchemeHandler } from "@plurnk/plurnk-schemes";
 
 export interface SchemeHandler {
+    ready?(): Promise<void>;
     close?(): Promise<void>;
     prepareFind?(statement: FindStatement, ctx: SchemeCtx): Promise<SchemeResult>;
     read?(statement: ReadStatement, ctx: SchemeCtx): Promise<SchemeResult>;
@@ -96,10 +97,21 @@ operation only where the scheme owns genuinely different candidate semantics.
 
 A sibling does `export default class X implements SchemeHandler` (with `static manifest: SchemeManifest`) and gets compile-time signature checking. Every registered handler exposes either that static manifest or an instance `manifest` for dynamically derived identities; `Manifest.of` validates the complete resolved declaration and its registration name before the handler becomes dispatchable. The interface is the handler-delegable subset of grammar's operation union. `LOOK`/`BUFF` are client-facing operations, while OPEN/FOLD are core-owned log curation; none is dispatchable to a plugin scheme. **The statement + path types (`ReadStatement`, `SendStatement`, `UrlPath`, …) are re-exported from this barrel**, so a sibling depends on and peers (`^1`) ONLY `@plurnk/plurnk-schemes` — grammar rides underneath as the framework's transitive dep (§3).
 
-§handler-lifecycle `close?()` is the process-lifecycle hook for handler-owned
-resources such as browser processes, sockets, client connections, caches, and
-pools. The consumer calls it once per unique handler instance after in-flight
-scheme work drains and before backing stores close. Stateless handlers omit it.
+§handler-lifecycle A registered handler object is a process-lived shared
+instance and may receive overlapping operation calls. Retained handler state is
+ordinary; handlers must make concurrent access and semantic isolation explicit.
+
+| Concern            | Contract |
+| ------------------ | -------- |
+| Readiness          | `ready?()` runs after registration and before capability advertisement. It establishes that advertised resources are usable. |
+| Hook cardinality   | The consumer invokes each hook once per unique handler object identity, even when multiple registered names share that object. |
+| Operation context  | `SchemeCtx` and capabilities extracted from it remain operation-owned under {§scheme-ctx-lifetime}. |
+| Retained state     | Tenant- or address-selectable state keys every semantic isolation coordinate. A global pool is valid only when it carries no cross-tenant session state. |
+| Live ownership     | An address-selectable live resource has one unambiguous owner. Conflicting acquisition fails explicitly; it never overwrites the existing owner. |
+| Shutdown           | After in-flight scheme work drains and before backing stores close, `close?()` releases partially or fully initialized handler resources. The consumer attempts and awaits every unique handler close, then aggregates every failure. |
+
+Handlers without initialization or retained resources omit the corresponding
+hook.
 
 The entry CRUD primitives (`readEntry`/`writeEntry`/`deleteEntry`) are not handler operations; schemes use `ctx.entries`. Proposal application is the optional `applyResolution` handler hook described in §3.bis.
 
@@ -308,9 +320,9 @@ orchestration uses the manifest-bound `ctx.entries` implementation.
 ## §trusted-extension §5 Trusted extension contract
 
 Installed schemes may legitimately own network connections, subprocesses,
-caches, pools, or other host resources. Use `close()` to release resources
-owned by the handler. These powers are why installation is a trust decision and
-why contained interoperability belongs in MCP rather than an in-process plugin.
+caches, pools, or other host resources under {§handler-lifecycle}. These powers
+are why installation is a trust decision and why contained interoperability
+belongs in MCP rather than an in-process plugin.
 
 The supported compatibility boundary is `@plurnk/plurnk-schemes`. Plugins
 should not import private service modules, depend on database layout, or call

@@ -76,26 +76,97 @@ test("registerRuntimeSchemes: re-scanning the same runtime tag is idempotent, no
     assert.ok(registry.has("sh"));
 });
 
-test("close: closes each unique resource-owning handler exactly once", async () => {
+test("lifecycle hooks run once per unique handler object identity", async () => {
     const registry = new SchemeRegistry();
-    let closes = 0;
-    registry.register("resource-a", handler("resource-a", { async close() { closes++; } }));
-    registry.register("stateless", handler("stateless"));
-
-    await registry.close();
-
-    assert.equal(closes, 1, "each resource-owning handler closes once");
-});
-
-test("ready: verifies each unique resource-owning handler exactly once", async () => {
-    const registry = new SchemeRegistry();
+    let name = "resource-a";
     let probes = 0;
-    registry.register("resource-a", handler("resource-a", { async ready() { probes++; } }));
+    let closes = 0;
+    const shared = {
+        get manifest() { return manifest(name); },
+        async ready() { probes++; },
+        async close() { closes++; },
+    };
+    registry.register(name, shared);
+    name = "resource-alias";
+    registry.register(name, shared);
     registry.register("stateless", handler("stateless"));
 
     await registry.ready();
+    await registry.ready();
+    await registry.close();
+    await registry.close();
 
-    assert.equal(probes, 1, "each resource-owning handler is probed once");
+    assert.equal(probes, 1, "aliases and repeated readiness passes probe one handler object once");
+    assert.equal(closes, 1, "aliases and repeated shutdown passes close one handler object once");
+});
+
+test("ready: a later registration probes only the newly registered handler", async () => {
+    const registry = new SchemeRegistry();
+    let firstProbes = 0;
+    let secondProbes = 0;
+    registry.register("resource-a", handler("resource-a", { async ready() { firstProbes++; } }));
+    await registry.ready();
+    registry.register("resource-b", handler("resource-b", { async ready() { secondProbes++; } }));
+
+    await registry.ready();
+
+    assert.equal(firstProbes, 1);
+    assert.equal(secondProbes, 1);
+});
+
+test("ready: a failed probe is retained rather than invoked again", async () => {
+    const registry = new SchemeRegistry();
+    const failure = new Error("readiness failed");
+    let probes = 0;
+    let closes = 0;
+    registry.register("partial", handler("partial", {
+        async ready() {
+            probes += 1;
+            throw failure;
+        },
+        async close() { closes += 1; },
+    }));
+
+    await assert.rejects(() => registry.ready(), (error) => error === failure);
+    await assert.rejects(() => registry.ready(), (error) => error === failure);
+    await registry.close();
+
+    assert.equal(probes, 1, "readiness is invoked once even when partial initialization fails");
+    assert.equal(closes, 1, "a readiness failure does not exempt partial resources from shutdown");
+});
+
+test("close: attempts and awaits every handler, then aggregates every failure", async () => {
+    const registry = new SchemeRegistry();
+    const slow = Promise.withResolvers<void>();
+    let slowSettled = false;
+    let secondAttempted = false;
+    registry.register("failure-a", handler("failure-a", {
+        async close() { throw new Error("failure a"); },
+    }));
+    registry.register("slow", handler("slow", {
+        async close() {
+            await slow.promise;
+            slowSettled = true;
+        },
+    }));
+    registry.register("failure-b", handler("failure-b", {
+        async close() {
+            secondAttempted = true;
+            throw new Error("failure b");
+        },
+    }));
+    setImmediate(() => slow.resolve());
+
+    await assert.rejects(
+        () => registry.close(),
+        (error: unknown) => {
+            assert.ok(error instanceof AggregateError);
+            assert.deepEqual(error.errors.map((cause) => String(cause)), ["Error: failure a", "Error: failure b"]);
+            return true;
+        },
+    );
+    assert.equal(secondAttempted, true, "a prior failure does not skip a later closer");
+    assert.equal(slowSettled, true, "shutdown waits for a slower closer before rejecting");
 });
 
 test("register requires one identity-matched static or instance manifest", () => {

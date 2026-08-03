@@ -1,7 +1,8 @@
 // Browser — the headless-Chromium render foundation (SPEC {§render-lifecycle}),
 // ported from rummy.web's WebFetcher (@possumtech/rummy.web, MIT, same author). A
 // STANDALONE foundation, not Http-private: the render scheme drives it now,
-// and a future plurnk browser-troubleshooting MCP sits on the same warm pool.
+// and other consumers can sit on the same warm pool. Initialization,
+// concurrency, and shutdown follow {§handler-lifecycle}.
 //
 // Scope here is render-ONLY: navigate, let JS run + hydration settle, serialize
 // the final DOM. It returns the true rendered page; it never cleans, strips,
@@ -190,10 +191,10 @@ export default class Browser {
     #factory: ChromiumFactory;
     #browser: PwBrowser | null = null;
     #launching: Promise<PwBrowser> | null = null;
-    // One BrowserContext per worker — cookies / cache / storage scoped to the worker
-    // that opened it, no cross-worker bleed. Closed by closeContext() on run end
-    // or abort. The browser process stays warm across all of them.
-    #contexts = new Map<number, PwContext>();
+    // One atomically acquired BrowserContext per worker — cookies / cache /
+    // storage scoped to the worker that opened it, no cross-worker bleed.
+    // Promises make overlapping first renders share the same acquisition.
+    #contexts = new Map<number, Promise<PwContext>>();
     #idleTimer: ReturnType<typeof setTimeout> | null = null;
 
     // Inject a factory in tests; production lazy-imports playwright.
@@ -303,26 +304,38 @@ export default class Browser {
     // PLURNK_SCHEMES_HTTP_MOBILE=0.
     async #getContext(workerId: number): Promise<PwContext> {
         this.#touchIdle();
-        const existing = this.#contexts.get(workerId);
-        if (existing) return existing;
-        const browser = await this.#getBrowser();
-        const context = await browser.newContext(mobileEmulation());
-        this.#contexts.set(workerId, context);
-        return context;
+        let context = this.#contexts.get(workerId);
+        if (context === undefined) {
+            context = (async () => {
+                const browser = await this.#getBrowser();
+                return browser.newContext(mobileEmulation());
+            })();
+            this.#contexts.set(workerId, context);
+        }
+        try {
+            return await context;
+        } catch (error) {
+            if (this.#contexts.get(workerId) === context) this.#contexts.delete(workerId);
+            throw error;
+        }
     }
 
     // Drop the worker's context (run end or abort). Closing it cascades to any
-    // in-flight page in that context. Fire-and-forget.
-    closeContext(workerId: number): void {
+    // in-flight page in that context.
+    async closeContext(workerId: number): Promise<void> {
         const context = this.#contexts.get(workerId);
         if (!context) return;
         this.#contexts.delete(workerId);
-        context.close().catch(() => {});
+        await (await context).close();
     }
 
     #touchIdle(): void {
         if (this.#idleTimer) clearTimeout(this.#idleTimer);
-        this.#idleTimer = setTimeout(() => { this.close().catch(() => {}); }, requireNumEnv("PLURNK_SCHEMES_HTTP_IDLE_TIMEOUT"));
+        this.#idleTimer = setTimeout(() => {
+            void this.close().catch((error: unknown) => {
+                console.error("Browser idle cleanup failed", { error });
+            });
+        }, requireNumEnv("PLURNK_SCHEMES_HTTP_IDLE_TIMEOUT"));
         this.#idleTimer.unref?.();
     }
 
@@ -332,8 +345,16 @@ export default class Browser {
         if (this.#idleTimer) { clearTimeout(this.#idleTimer); this.#idleTimer = null; }
         const contexts = [...this.#contexts.values()];
         this.#contexts.clear();
-        await Promise.allSettled(contexts.map((c) => c.close()));
-        if (this.#browser) { await this.#browser.close().catch(() => {}); this.#browser = null; }
+        const contextResults = await Promise.allSettled(contexts.map(async (context) => (await context).close()));
+        const browser = this.#browser;
+        this.#browser = null;
         this.#launching = null;
+        const browserResults = browser === null ? [] : await Promise.allSettled([browser.close()]);
+        const errors = [...contextResults, ...browserResults]
+            .filter((result): result is PromiseRejectedResult => result.status === "rejected")
+            .flatMap((result) => result.reason instanceof AggregateError
+                ? [...result.reason.errors]
+                : [result.reason]);
+        if (errors.length > 0) throw new AggregateError(errors, "Browser shutdown failed");
     }
 }

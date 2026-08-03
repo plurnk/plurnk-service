@@ -15,8 +15,9 @@
 //
 // Under the schemes lifecycle contract {§handler-lifecycle}, this handler holds
 // live sockets in an in-instance registry across op invocations, keyed by
-// workspace+addressed scheme+canonical network pathname. Entries live only while the socket is open; every terminal
-// path (close/error/KILL/cancel) removes them, and close() releases any remainder.
+// workspace+addressed scheme+canonical network pathname. Each address has one
+// owner; terminal paths remove it, close the transport, and finish subscription
+// cleanup. close() performs and awaits the same cleanup for every remainder.
 //
 // The SSRF Guard re-checks the target before connecting (a ws into private space
 // is the same attack as a fetch). Node ≥22 global `WebSocket` at runtime; tests
@@ -59,6 +60,13 @@ interface Socket {
 }
 type SocketFactory = (url: string) => Socket;
 
+interface SocketOwner {
+    socket: Socket | null;
+    shutdownRequested: boolean;
+    shutdown(): Promise<void>;
+    readonly done: Promise<void>;
+}
+
 // Default: the Node 22+ global WebSocket, reached through globalThis so the lib
 // typing is not a compile dependency (tests always inject, so this path is
 // runtime-only). Fail-hard if the runtime lacks it.
@@ -83,11 +91,11 @@ export default class Ws implements SchemeHandler {
         },
     };
 
-    // The socket factory (injectable for tests) and the live-connection registry
-    // - the stateless-contract exception (SPEC "ws"). One socket per
-    // workspace+addressed scheme+canonical network pathname; SEND/KILL find the socket a prior READ opened.
+    // The socket factory (injectable for tests) and the live-connection registry.
+    // One READ owns each workspace+addressed scheme+canonical network pathname;
+    // SEND/KILL find its socket, while close() can settle and await the owning READ.
     readonly #connect: SocketFactory;
-    readonly #sockets = new Map<string, Socket>();
+    readonly #sockets = new Map<string, SocketOwner>();
     constructor(connect: SocketFactory = connectGlobal) {
         this.#connect = connect;
     }
@@ -114,43 +122,111 @@ export default class Ws implements SchemeHandler {
             });
         }
         const key = Ws.#key(ctx.workspaceId, address);
-
-        // Create-then-subscribe (http#3): seed the messages channel, then bind.
-        const written = await ctx.entries.write(pathname, Ws.#seedEntry());
-        if (Results.isErrorStatus(written.status)) return Ws.#passthrough(written);
-
-        const handle: SubscriptionHandle = { cancel: () => this.#sockets.get(key)?.close(1000, "cancelled") };
-        const composed = await ctx.subscriptions.open(pathname, handle);
-
-        let socket: Socket;
-        try {
-            socket = this.#connect(url);
-        } catch (err) {
-            console.error("WebSocket connection failed", { url, err });
-            const detail = `The WebSocket connection to ${url} failed.`;
-            const result = Ws.#bad(502, "connect-failed", detail, {
+        if (this.#sockets.has(key)) {
+            return Ws.#bad(409, "socket-already-open", `A WebSocket connection is already open for ${url}.`, {
                 target: url,
                 stage: "connection",
-                retryable: true,
+                recovery: "Use the existing connection or KILL it before opening another.",
+                retryable: false,
             });
-            await ctx.subscriptions.close(result, detail);
-            return result;
         }
-        this.#sockets.set(key, socket);
+        const done = Promise.withResolvers<void>();
+        const owner: SocketOwner = {
+            socket: null,
+            shutdownRequested: false,
+            async shutdown() {},
+            done: done.promise,
+        };
+        this.#sockets.set(key, owner);
 
-        const onAbort = () => socket.close(1000, "cancelled");
-        composed.addEventListener("abort", onAbort, { once: true });
+        try {
+            // Create-then-subscribe (http#3): seed the messages channel, then bind.
+            const written = await ctx.entries.write(pathname, Ws.#seedEntry());
+            if (Results.isErrorStatus(written.status)) return Ws.#passthrough(written);
+            if (owner.shutdownRequested) return Ws.#cancelled(url);
 
-        let messages = 0;
-        let settled = false;
-        return await new Promise<PassthroughResult>((resolve, reject) => {
-            const settle = (result: PassthroughResult, terminal: PassthroughResult, summary: string) => {
-                if (settled) return;
+            let requestCancel = () => { owner.shutdownRequested = true; };
+            const handle: SubscriptionHandle = { cancel: () => requestCancel() };
+            const composed = await ctx.subscriptions.open(pathname, handle);
+            if (owner.shutdownRequested) {
+                const cancelled = Ws.#cancelled(url);
+                await ctx.subscriptions.close(cancelled, "WebSocket execution was cancelled.");
+                return cancelled;
+            }
+
+            let socket: Socket;
+            try {
+                socket = this.#connect(url);
+            } catch (err) {
+                console.error("WebSocket connection failed", { url, err });
+                const detail = `The WebSocket connection to ${url} failed.`;
+                const result = Ws.#bad(502, "connect-failed", detail, {
+                    target: url,
+                    stage: "connection",
+                    retryable: true,
+                });
+                await ctx.subscriptions.close(result, detail);
+                return result;
+            }
+            owner.socket = socket;
+
+            const readResult = Promise.withResolvers<PassthroughResult>();
+            let messages = 0;
+            let settled = false;
+            let settlement: Promise<void> | null = null;
+            const settle = (
+                result: PassthroughResult,
+                terminal: PassthroughResult,
+                summary: string,
+                transportClose?: { code: number; reason: string },
+            ): Promise<void> => {
+                if (settled) return settlement ?? Promise.resolve();
                 settled = true;
-                this.#sockets.delete(key);
+                if (this.#sockets.get(key) === owner) this.#sockets.delete(key);
                 composed.removeEventListener("abort", onAbort);
-                void ctx.subscriptions.close(terminal, summary).then(() => resolve(result), reject);
+                settlement = (async () => {
+                    const errors: unknown[] = [];
+                    if (transportClose !== undefined) {
+                        try {
+                            socket.close(transportClose.code, transportClose.reason);
+                        } catch (error) {
+                            errors.push(error);
+                        }
+                    }
+                    try {
+                        await ctx.subscriptions.close(terminal, summary);
+                        readResult.resolve(result);
+                    } catch (error) {
+                        readResult.reject(error);
+                        errors.push(error);
+                    }
+                    if (errors.length === 1) throw errors[0];
+                    if (errors.length > 1) throw new AggregateError(errors, "WebSocket terminal cleanup failed");
+                })();
+                return settlement;
             };
+            const reportCleanupFailure = (error: unknown) => {
+                console.error("WebSocket terminal cleanup failed", { url, error });
+            };
+            const cancelled = () => Ws.#cancelled(url);
+            requestCancel = () => {
+                owner.shutdownRequested = true;
+                const result = cancelled();
+                void settle(result, result, "WebSocket execution was cancelled.", {
+                    code: 1000,
+                    reason: "cancelled",
+                }).catch(reportCleanupFailure);
+            };
+            owner.shutdown = () => {
+                const result = cancelled();
+                return settle(result, result, `ws closed (1001); ${messages} messages`, {
+                    code: 1001,
+                    reason: "shutdown",
+                });
+            };
+
+            const onAbort = () => requestCancel();
+            composed.addEventListener("abort", onAbort, { once: true });
             socket.addEventListener("message", (event) => {
                 messages += 1;
                 void ctx.subscriptions.notifyChunk(MESSAGES, String(event.data ?? ""), "text/plain").catch((err: unknown) => {
@@ -165,7 +241,12 @@ export default class Ws implements SchemeHandler {
                             retryable: false,
                         },
                     );
-                    settle(result, result, result.problem?.detail ?? "WebSocket message persistence failed.");
+                    void settle(
+                        result,
+                        result,
+                        result.problem?.detail ?? "WebSocket message persistence failed.",
+                        { code: 1011, reason: "persistence failed" },
+                    ).catch(reportCleanupFailure);
                 });
             });
             socket.addEventListener("error", (event) => {
@@ -176,22 +257,45 @@ export default class Ws implements SchemeHandler {
                     stage: "connection",
                     retryable: true,
                 });
-                settle(result, result, detail);
+                void settle(result, result, detail, {
+                    code: 1011,
+                    reason: "transport failed",
+                }).catch(reportCleanupFailure);
             });
             socket.addEventListener("close", (event) => {
                 const summary = `ws closed (${event.code ?? 0}); ${messages} messages`;
-                const cancelled = Ws.#bad(499, "cancelled", "WebSocket execution was cancelled.", {
-                    target: url,
-                    stage: "connection",
-                    retryable: false,
-                });
-                settle(
-                    composed.aborted ? cancelled : { shape: "passthrough", status: 102 },
-                    composed.aborted ? cancelled : { shape: "passthrough", status: 200 },
-                    summary,
-                );
+                const result = composed.aborted ? cancelled() : { shape: "passthrough", status: 102 } as const;
+                const terminal = composed.aborted ? result : { shape: "passthrough", status: 200 } as const;
+                void settle(result, terminal, summary).catch(reportCleanupFailure);
             });
-        });
+
+            if (owner.shutdownRequested || composed.aborted) requestCancel();
+            return await readResult.promise;
+        } finally {
+            if (this.#sockets.get(key) === owner) this.#sockets.delete(key);
+            done.resolve();
+        }
+    }
+
+    async close(): Promise<void> {
+        const owners = [...this.#sockets.values()];
+        for (const owner of owners) owner.shutdownRequested = true;
+        const results = await Promise.allSettled(owners.map(async (owner) => {
+            let shutdownError: unknown;
+            try {
+                await owner.shutdown();
+            } catch (error) {
+                shutdownError = error;
+            }
+            await owner.done;
+            if (shutdownError !== undefined) throw shutdownError;
+        }));
+        const errors = results
+            .filter((result): result is PromiseRejectedResult => result.status === "rejected")
+            .flatMap((result) => result.reason instanceof AggregateError
+                ? [...result.reason.errors]
+                : [result.reason]);
+        if (errors.length > 0) throw new AggregateError(errors, "WebSocket shutdown failed");
     }
 
     // SEND[200] -> push a message onto the open socket. SEND[499] -> cancel (engine
@@ -209,8 +313,8 @@ export default class Ws implements SchemeHandler {
         if (status === 200) {
             const address = Ws.#address(statement.target);
             if (!(address instanceof NetworkAddress)) return address;
-            const socket = this.#sockets.get(Ws.#key(ctx.workspaceId, address));
-            if (socket === undefined) {
+            const socket = this.#sockets.get(Ws.#key(ctx.workspaceId, address))?.socket;
+            if (socket === null || socket === undefined) {
                 return Ws.#bad(
                     409,
                     "no-open-socket",
@@ -254,8 +358,8 @@ export default class Ws implements SchemeHandler {
         }
         const address = Ws.#address(statement.target);
         if (!(address instanceof NetworkAddress)) return address;
-        const socket = this.#sockets.get(Ws.#key(ctx.workspaceId, address));
-        if (socket === undefined) {
+        const socket = this.#sockets.get(Ws.#key(ctx.workspaceId, address))?.socket;
+        if (socket === null || socket === undefined) {
             return Ws.#bad(
                 404,
                 "no-open-socket",
@@ -324,6 +428,14 @@ export default class Ws implements SchemeHandler {
 
     static #passthrough(result: import("@plurnk/plurnk-schemes").SchemeResult): PassthroughResult {
         return Results.assert({ ...result, shape: "passthrough" }) as PassthroughResult;
+    }
+
+    static #cancelled(url: string): PassthroughResult {
+        return Ws.#bad(499, "cancelled", "WebSocket execution was cancelled.", {
+            target: url,
+            stage: "connection",
+            retryable: false,
+        });
     }
 
     static #bad(

@@ -36,6 +36,8 @@ export default class SchemeRegistry {
     // Handler store. Dispatcher supplies one context implementation to bundled
     // and discovered schemes alike.
     #handlers = new Map<string, object>();
+    #readiness = new Map<object, Promise<void>>();
+    #closures = new Map<object, Promise<void>>();
     #coreServices: CoreSchemeServices | undefined;
     #attributions: string[] = []; // #249 — declared attribution tags of discovered external schemes
     // {§exec} — runtime-tag schemes (sh/node/…) that ALIAS the exec handler for output-entry
@@ -119,25 +121,44 @@ export default class SchemeRegistry {
 
     list(): string[] { return [...this.#handlers.keys()].toSorted(); }
 
-    // Process-readiness boundary for plugin-owned runtime capabilities. Discovery
-    // alone proves only that a handler can be imported; ready() proves resources
-    // advertised as available at boot can actually be opened.
+    // {§handler-lifecycle} — discovery proves importability; one successful
+    // ready() per object identity proves advertised resources are usable.
     async ready(): Promise<void> {
         const handlers = new Set(this.#handlers.values());
         for (const handler of handlers) {
-            const ready = (handler as { ready?: () => Promise<void> }).ready;
-            if (ready !== undefined) await ready.call(handler);
+            let readiness = this.#readiness.get(handler);
+            if (readiness === undefined) {
+                readiness = Promise.resolve().then(async () => {
+                    const ready = (handler as Partial<SchemeHandler>).ready;
+                    if (ready !== undefined) await ready.call(handler);
+                });
+                this.#readiness.set(handler, readiness);
+            }
+            await readiness;
         }
     }
 
-    // Process-lifecycle boundary for plugin-owned pools/sockets/connections. Runtime
-    // aliases may share a handler, so close each object identity exactly once.
+    // {§handler-lifecycle} — aliases may share a handler. Attempt and await every
+    // unique close once, then surface all failures together.
     async close(): Promise<void> {
-        const handlers = new Set(this.#handlers.values());
-        await Promise.all([...handlers].map(async (handler) => {
-            const close = (handler as { close?: () => Promise<void> }).close;
-            if (close !== undefined) await close.call(handler);
-        }));
+        const closures = [...new Set(this.#handlers.values())].map((handler) => {
+            let closure = this.#closures.get(handler);
+            if (closure === undefined) {
+                closure = Promise.resolve().then(async () => {
+                    const close = (handler as Partial<SchemeHandler>).close;
+                    if (close !== undefined) await close.call(handler);
+                });
+                this.#closures.set(handler, closure);
+            }
+            return closure;
+        });
+        const results = await Promise.allSettled(closures);
+        const errors = results
+            .filter((result): result is PromiseRejectedResult => result.status === "rejected")
+            .flatMap((result) => result.reason instanceof AggregateError
+                ? [...result.reason.errors]
+                : [result.reason]);
+        if (errors.length > 0) throw new AggregateError(errors, "scheme handler shutdown failed");
     }
 
     // A scheme's default channel (manifest.defaultChannel) — the channel a fragment-less

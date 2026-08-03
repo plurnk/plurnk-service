@@ -107,7 +107,8 @@ The **render path** takes one runtime dependency, `playwright`, **lazy-imported*
 `Browser` (`export default class`, barrel-exported as a standalone foundation) is the headless-Chromium render engine — ported from rummy.web's WebFetcher, render-only.
 
 - **Gate:** a GET whose response `Content-Type` is `text/html` / `application/xhtml+xml` renders; the probe-fetch body is discarded and the browser does its own navigation. POST never renders.
-- **Render:** warm chromium (one per `Browser`), per-worker `BrowserContext` keyed on `ctx.workerId`, **mobile-emulated by default** (Pixel-5-class viewport + UA — responsive sites serve lighter layouts; `PLURNK_SCHEMES_HTTP_MOBILE=0` renders desktop), navigate with `waitUntil: "networkidle"` + a salvage path (timed-out-but-rendered pages with substantive body text), serialize the final DOM via `page.content()`.
+- **Render:** warm chromium (one per `Browser`), one atomically acquired per-worker `BrowserContext` keyed on `ctx.workerId`, **mobile-emulated by default** (Pixel-5-class viewport + UA — responsive sites serve lighter layouts; `PLURNK_SCHEMES_HTTP_MOBILE=0` renders desktop), navigate with `waitUntil: "networkidle"` + a salvage path (timed-out-but-rendered pages with substantive body text), serialize the final DOM via `page.content()`.
+- **Lifecycle:** `Http.ready()` verifies the selected browser route before advertisement. Under {§handler-lifecycle}, shutdown attempts every context close and the browser close, awaits all of them, then aggregates every failure.
 - **Body:** the consumer's configured mimetype family projects the serialized DOM. Its readable markdown is the decisive `body` used by READ, FIND, embeddings, weights, and the model; the faithful final DOM is archived under `html` for XPath and inspection. Direct READ and search prefetch therefore expose the same kind of model-facing content.
 - §host-rewrite **Host rewrite (bounded, first-party):** a GitHub `…/blob/…` URL is fetched as its `raw.githubusercontent.com` source (line-navigable, exact) — the blob page is a CSP-locked JS SPA and code wants source, not a rendered viewer. This is the ONLY host rewrite; Wikipedia was measured through the extractor and deliberately gets none (desktop already extracts the full clean article; rewrites regressed it — schemes-http#4).
 - **Config:** `.env.defaults` at the package root is the authoritative list (family-namespaced `PLURNK_SCHEMES_HTTP_*`), shipped in the tarball; the daemon assembles it into the boot floor set-if-unset (service SPEC {§operator-config-env-defaults}, schemes#31). Required numerics - `FETCH_TIMEOUT`, `SALVAGE_MIN_BODY_CHARS`, `IDLE_TIMEOUT`, `PLAYWRIGHT_TIMEOUT`, `SSE_MAX_BUFFER_CHARS`, and `ERROR_DETAIL_LIMIT` - fail hard when unset (no in-code defaults). `PLAYWRIGHT_METHOD`, `PLAYWRIGHT_HEADLESS`, `PLAYWRIGHT_CHROMIUM_SANDBOX`, and `MOBILE` are floor-defaulted and required reads. `PLAYWRIGHT_ENDPOINT` belongs only to `connect`/`connectOverCDP`; `PLAYWRIGHT_CHANNEL` and `PLAYWRIGHT_EXECUTABLE_PATH` belong only to `launch` and are mutually exclusive. `CHROMIUM_HEAP_MB` remains an optional local-launch control.
@@ -142,7 +143,7 @@ new WebFetcher().fetch(url, opts): Promise<{
 
 `Ws` is this package's **second first-class scheme** (#468, #473): registered `wss` via `package.json` `plurnk.schemes` (`{ name: "wss", export: "Ws" }`), with the `ws` prefix riding it in core's `schemeNameOf` exactly as `https` rides `http`. WebSocket is a distinct protocol — bidirectional, stateful, full-duplex, its own URI scheme — not an http content-type (that's SSE, {§sse}), so it has its own manifest (🔌, `messages` channel, `docs/wss.md`) and its own directory entry the model discovers natively. Op → socket lifecycle:
 
-- **`READ(wss://…)`** — open the socket, guard the target through `Guard.isPublicUrl` (extended to `ws:`/`wss:`), seed + subscribe (create-then-subscribe, http#3), stream each inbound frame into the `messages` channel (`notifyChunk`, text/plain). Returns `102`; the op **holds until the socket closes** (mirrors the streaming lifecycle — the worker wakes on close, summary counts messages).
+- **`READ(wss://…)`** — atomically claim and open the socket, guard the target through `Guard.isPublicUrl` (extended to `ws:`/`wss:`), seed + subscribe (create-then-subscribe, http#3), stream each inbound frame into the `messages` channel (`notifyChunk`, text/plain). Returns `102`; the op **holds until the socket closes** (mirrors the streaming lifecycle — the worker wakes on close, summary counts messages). A concurrent READ of the same canonical workspace address is `409`; it never replaces the first owner.
 - **`SEND[200](wss://…):msg:`** — push `msg` onto the open socket. No open socket → `409` (`kind: no_open_socket`) — READ opens the connection SEND rides.
 - **`SEND[499](wss://…)`** — cancel; engine routes teardown to the READ's handle (which closes the socket), scheme-level `200` no-op.
 - **`KILL(wss://…)`** — close the open socket (`404` if none open).
@@ -152,8 +153,10 @@ sockets in an **in-instance registry** across op invocations, keyed by
 workspace, exact addressed protocol, and the shared canonical network pathname
 {§network-address}. Host, non-default port, path, and serialized query therefore
 select the socket; fragment remains a Plurnk channel selector. Entries exist
-only while the socket is open: every
-terminal path — close, error, KILL, or cancel — removes them, and handler
-shutdown closes any remaining sockets. Day-one limits: text frames only, no
+only while the socket is live: every terminal path — close, error, KILL,
+cancel, or message-persistence failure — releases address ownership and closes
+the transport. The READ completes only after its durable subscription cleanup.
+Handler shutdown closes every remainder, awaits those READ cleanups, and
+aggregates transport-close failures. Day-one limits: text frames only, no
 reconnection, default handshake identity (custom headers pending) — all #468
 follow-ups.

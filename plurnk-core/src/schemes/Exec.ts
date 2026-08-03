@@ -145,6 +145,12 @@ export default class Exec extends CoreSchemeAdapterBase {
 
     async idle(): Promise<void> {
         await Promise.allSettled([...this.#activeSpawns.values()]);
+    }
+
+    // {§handler-lifecycle} — idle is the streaming drain barrier; the handler
+    // hook owns release of its separate guarded-fetch browser pool.
+    async close(): Promise<void> {
+        await this.idle();
         await this.#closeWebFetcher();
     }
 

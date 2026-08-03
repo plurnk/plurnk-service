@@ -72,8 +72,8 @@ test("live web: exec[search] queries a real SearXNG instance into a results entr
         // streaming its SearXNG JSON into the `results` channel of a search:/// output entry. We dispatch
         // a real EXEC[search] through a real Engine + ExecutorRegistry and read the results back — no mock.
         const db = await openMigrated();
+        const schemes = new SchemeRegistry();
         try {
-            const schemes = new SchemeRegistry();
             const exec = schemes.get("exec") as Exec;
             const executors = await ExecutorRegistry.build({ defaultRuntime: "sh", cwd: process.cwd() });
             const engine = new Engine({ db, schemes, mimetypes: DEFAULT_MIMETYPES });
@@ -113,7 +113,7 @@ test("live web: exec[search] queries a real SearXNG instance into a results entr
             const pageBody = await db.test_get_channel.get<{ content: string; mimetype: string }>({ entry_id: page.id, name: "body" });
             assert.ok((pageBody?.content.length ?? 0) > 0, "the discovered page has a non-empty model-facing body");
             assert.notEqual(pageBody?.mimetype, "text/html", "raw HTML never occupies the decisive body channel");
-        } finally { await db.close(); }
+        } finally { await schemes.close(); await db.close(); }
     });
 
 test("live web: a real HTML READ stores readable body + faithful DOM under one absolute identity",
