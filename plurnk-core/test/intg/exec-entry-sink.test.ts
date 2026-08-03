@@ -7,11 +7,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { PlurnkParser } from "@plurnk/plurnk-contracts";
 import type { ExecStatement, PlurnkStatement, ReadStatement } from "@plurnk/plurnk-contracts";
-import {
-    Guard,
-    GuardResolutionError,
-    WebFetcher,
-} from "@plurnk/plurnk-schemes-http";
+import { WebFetcher } from "@plurnk/plurnk-schemes-http";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import type { WebFetch } from "../../src/schemes/Exec.ts";
@@ -427,69 +423,6 @@ test("entry(content:null) fetches through the guarded sink — live XHTML materi
         const dead = await db.test_entries_by_pathname.get<{ id: number }>({ pathname: "/example.org/dead" });
         assert.equal(dead, undefined, "a null fetch rejects the sink so no page body materializes");
     } finally { await quiesceExecs(schemes); await schemes.close(); await db.close(); }
-});
-
-// Search's #596 coverage owns the generic digest filter. This composed test
-// proves that a typed Guard rejection traverses WebFetcher and the real core
-// sink as the rejection that filter consumes.
-test("typed admission failure rejects the real WebFetcher entry sink without materializing a candidate", async (t) => {
-    const resolution = new GuardResolutionError(
-        "https://example.org/dead",
-        new Error("resolver unavailable"),
-    );
-    t.mock.method(Guard, "admit", async (url: string) => url.endsWith("/dead")
-        ? { admitted: false, error: resolution }
-        : { admitted: true });
-    const webFetcher = new WebFetcher();
-    const fetchWeb: WebFetch = (url, opts) => webFetcher.fetch(url, opts);
-    const { db, engine, schemes, workspaceId, workerId, loopId, turnId, tag } = await wire({
-        fetchWeb,
-        nullContent: true,
-        tag: "stubsearch-admission-prune",
-    });
-    const originalFetch = globalThis.fetch;
-    globalThis.fetch = (async () => new Response("live page", {
-        status: 200,
-        headers: { "content-type": "text/plain" },
-    })) as typeof fetch;
-    try {
-        let logEntryId = -1;
-        const result = await engine.dispatch({
-            statement: execStmt(tag, "turkeys"),
-            workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
-            onDispatch: (id) => { logEntryId = id; },
-        });
-        assert.ok(result.status < 400);
-        await quiesceExecs(schemes);
-
-        const log = await db.test_get_log_entry_by_id.get<{ attrs: string }>({ id: logEntryId });
-        const { pathname } = JSON.parse(log?.attrs ?? "{}") as { pathname: string };
-        const output = await db.test_get_entry_by_pathname_scheme.get<{ id: number }>({
-            scheme: tag,
-            pathname,
-        });
-        assert.ok(output !== undefined);
-        const results = await db.test_get_channel.get<{ content: string }>({
-            entry_id: output.id,
-            name: "results",
-        });
-        assert.deepEqual(JSON.parse(results?.content ?? "[]"), [{
-            title: "Live",
-            url: "https://example.org/live",
-            pruned: true,
-        }], "the rejected candidate contributes no row or error payload to the digest");
-        assert.equal(
-            await db.test_entries_by_pathname.get({ pathname: "/example.org/dead" }),
-            undefined,
-            "the rejected admission creates no HTTP entry",
-        );
-    } finally {
-        globalThis.fetch = originalFetch;
-        await quiesceExecs(schemes);
-        await schemes.close();
-        await webFetcher.close();
-        await db.close();
-    }
 });
 
 test("entry(content:null) preserves caller cancellation through the real WebFetcher", async () => {

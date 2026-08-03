@@ -109,8 +109,7 @@ export const resolveStreamStatement = async <S extends { target: ReadStatement["
 
 // {§exec-entry-sink} / #455 — the guarded web-fetch the sink calls when the executor hands content:null:
 // schemes-http's WebFetcher (SSRF-guarded byte acquisition + lazy browser
-// fallback; liveness is null, admission and caller cancellation reject per
-// {§prefetch}).
+// fallback, dead-as-null; caller cancellation rejects per {§prefetch}).
 // Injectable because the guard refuses localhost.
 export type WebFetch = (url: string, opts?: { signal?: AbortSignal }) => Promise<WebFetchResult | null>;
 

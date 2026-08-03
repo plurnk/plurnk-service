@@ -59,35 +59,17 @@ const safeUrl = (raw: string): string => {
     }
 };
 
-// A target (or redirect hop) forbidden by the public-network policy. Consumers
-// map this nonretryable refusal to their own scheme Problem.
+// A target (or a redirect hop) that resolved to a non-public address. Http maps
+// it to a 403 dead-signal, distinct from a network 502.
 export class GuardBlockedError extends Error {
     readonly url: string;
     constructor(url: string) {
         const sanitized = safeUrl(url);
-        super(`Network guard: ${sanitized} is not an admissible public network target`);
+        super(`SSRF guard: ${sanitized} is not a public http(s) target`);
         this.name = "GuardBlockedError";
         this.url = sanitized;
     }
 }
-
-// DNS could not produce an address verdict. This is an operational resolution
-// failure, not proof that the target violates policy; consumers therefore keep
-// it distinct and retryable. The URL is safe for model-facing projection while
-// the exact resolver cause remains daemon-side evidence.
-export class GuardResolutionError extends Error {
-    readonly url: string;
-    constructor(url: string, cause: unknown) {
-        const sanitized = safeUrl(url);
-        super(`Network guard: DNS resolution failed for ${sanitized}`, { cause });
-        this.name = "GuardResolutionError";
-        this.url = sanitized;
-    }
-}
-
-export type GuardAdmission =
-    | { readonly admitted: true }
-    | { readonly admitted: false; readonly error: GuardBlockedError | GuardResolutionError };
 
 export default class Guard {
     // Static protocol ranges, not operator policy. IPv4-mapped IPv6 is checked
@@ -100,50 +82,31 @@ export default class Guard {
         return GLOBAL_IPV6.check(ip, "ipv6") && !BLOCKED.check(ip, "ipv6");
     }
 
-    // One admission verdict for http(s)/ws(s): no userinfo or localhost, and
-    // EVERY resolved address public. IP literals skip DNS. Policy refusal and
-    // inability to obtain a DNS answer are deliberately different outcomes.
-    static async admit(raw: string): Promise<GuardAdmission> {
+    // http(s)/ws(s) only, no localhost, and EVERY resolved address public. An IP
+    // literal skips DNS; a hostname resolves and every A/AAAA must be public.
+    // ws:/wss: ride the same range check — a WebSocket into private space is the
+    // same SSRF as a fetch (the Ws scheme guards its target through here).
+    static async isPublicUrl(raw: string): Promise<boolean> {
         let url: URL;
-        try { url = new URL(raw); } catch { return { admitted: false, error: new GuardBlockedError(raw) }; }
-        if (!["http:", "https:", "ws:", "wss:"].includes(url.protocol)) {
-            return { admitted: false, error: new GuardBlockedError(url.href) };
-        }
-        if (url.username !== "" || url.password !== "") {
-            return { admitted: false, error: new GuardBlockedError(url.href) };
-        }
+        try { url = new URL(raw); } catch { return false; }
+        if (!["http:", "https:", "ws:", "wss:"].includes(url.protocol)) return false;
+        if (url.username !== "" || url.password !== "") return false;
         const host = url.hostname.toLowerCase().replace(/^\[|\]$/g, "");
-        if (host === "localhost" || host.endsWith(".localhost")) {
-            return { admitted: false, error: new GuardBlockedError(url.href) };
-        }
-        if (net.isIP(host)) return Guard.isPublicAddress(host)
-            ? { admitted: true }
-            : { admitted: false, error: new GuardBlockedError(url.href) };
+        if (host === "localhost" || host.endsWith(".localhost")) return false;
+        if (net.isIP(host)) return Guard.isPublicAddress(host);
         try {
             const addrs = await dns.lookup(host, { all: true });
-            if (addrs.length === 0) {
-                return {
-                    admitted: false,
-                    error: new GuardResolutionError(
-                        url.href,
-                        new Error(`DNS lookup returned no addresses for ${host}`),
-                    ),
-                };
-            }
-            return addrs.every(({ address }) => Guard.isPublicAddress(address))
-                ? { admitted: true }
-                : { admitted: false, error: new GuardBlockedError(url.href) };
-        } catch (cause) {
-            return { admitted: false, error: new GuardResolutionError(url.href, cause) };
+            return addrs.length > 0 && addrs.every(({ address }) => Guard.isPublicAddress(address));
+        } catch {
+            return false; // unresolvable is dead anyway
         }
     }
 
     // Guarded fetch: re-guard every hop, follow up to PLURNK_SCHEMES_HTTP_REDIRECTS
     // manually (floor-set knob — unset crashes). Method, body, body headers, and
-    // cross-origin Authorization follow WHATWG HTTP-redirect fetch. Throws the
-    // exact typed admission error on a refused or unresolved hop;
-    // hands back the final response (including a terminal redirect when hops
-    // run out) otherwise.
+    // cross-origin Authorization follow WHATWG HTTP-redirect fetch. Throws
+    // GuardBlockedError on a non-public hop; hands back the final response
+    // (including a terminal redirect when hops run out) otherwise.
     static async fetch(
         raw: string,
         init: { method: string; body: string | undefined; headers: ReadonlyArray<readonly [string, string]> },
@@ -157,9 +120,9 @@ export default class Guard {
         while (true) {
             let current: URL;
             try { current = new URL(target); } catch { throw new GuardBlockedError(target); }
-            if (!["http:", "https:"].includes(current.protocol)) throw new GuardBlockedError(current.href);
-            const admission = await Guard.admit(current.href);
-            if (!admission.admitted) throw admission.error;
+            if (!["http:", "https:"].includes(current.protocol) || !(await Guard.isPublicUrl(current.href))) {
+                throw new GuardBlockedError(current.href);
+            }
             const response = await fetch(current.href, { method, body, headers, signal, redirect: "manual" });
             if (!REDIRECT_STATUSES.has(response.status)) return response;
             const location = response.headers.get("location");

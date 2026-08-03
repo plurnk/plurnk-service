@@ -96,7 +96,7 @@ const readStmt = (raw: string): ReadStatement => {
 };
 
 test("Http.read: full render path against real chromium — readable body + faithful DOM", async (t) => {
-    t.mock.method(Guard, "admit", async () => ({ admitted: true }));
+    t.mock.method(Guard, "isPublicUrl", async () => true);
     const server = await startServer();
     const browser = new Browser();          // injected so the test owns teardown
     const { ctx, inspect } = makeCtx();

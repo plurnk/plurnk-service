@@ -13,8 +13,6 @@
 // in unit tests, and a remote CDP endpoint (Lightpanda/browserless/shared
 // chromium) swapped in via env with zero code change.
 
-import type { GuardAdmission } from "./Guard.ts";
-
 // ── the structural Playwright surface we drive ────────────────────────────
 // Only the handful of methods we use, so the seam is injectable and the heavy
 // playwright types stay off everything but the default factory.
@@ -23,15 +21,13 @@ interface PwResponse {
     statusText(): string;
     headers(): Record<string, string>;
 }
-type PwFrame = object;
 interface PwRoute {
-    request(): { url(): string; isNavigationRequest(): boolean; frame(): PwFrame };
+    request(): { url(): string };
     continue(): Promise<void>;
     abort(): Promise<void>;
 }
 interface PwPage {
     route(pattern: string, handler: (route: PwRoute) => Promise<void>): Promise<void>;
-    mainFrame(): PwFrame;
     goto(url: string, opts: { waitUntil: "networkidle"; timeout: number }): Promise<PwResponse | null>;
     setExtraHTTPHeaders(headers: Record<string, string>): Promise<void>;
     content(): Promise<string>;
@@ -207,7 +203,7 @@ export default class Browser {
     async render(
         url: string,
         { workerId, signal, headers, guard, timeout = requireNumEnv("PLURNK_SCHEMES_HTTP_FETCH_TIMEOUT") }:
-            { workerId: number; signal?: AbortSignal; headers?: ReadonlyArray<readonly [string, string]>; guard?: (url: string) => Promise<GuardAdmission>; timeout?: number },
+            { workerId: number; signal?: AbortSignal; headers?: ReadonlyArray<readonly [string, string]>; guard?: (url: string) => Promise<boolean>; timeout?: number },
     ): Promise<RenderResult> {
         const context = await this.#getContext(workerId);
         const page = await context.newPage();
@@ -225,82 +221,17 @@ export default class Browser {
         const onAbort = () => { void closePage(); };
         signal?.addEventListener("abort", onAbort, { once: true });
         let outcome: { result: RenderResult } | { cause: unknown } | undefined;
-        let routeFailure: { cause: unknown } | undefined;
-        const rememberRouteFailure = (cause: unknown): void => {
-            if (routeFailure === undefined) {
-                routeFailure = { cause };
-                return;
-            }
-            if (routeFailure.cause === cause) return;
-            const causes = routeFailure.cause instanceof AggregateError
-                ? [...routeFailure.cause.errors, cause]
-                : [routeFailure.cause, cause];
-            routeFailure = { cause: new AggregateError(causes, "Browser request admission failed") };
-        };
-        const abortAfterRouteFailure = async (route: PwRoute): Promise<void> => {
-            try {
-                await route.abort();
-            } catch (cause) {
-                rememberRouteFailure(cause);
-            }
-        };
-        const throwIfRouteFailed = (): void => {
-            if (routeFailure !== undefined) throw routeFailure.cause;
-        };
         try {
             if (signal?.aborted) {
                 onAbort();
                 signal.throwIfAborted();
             }
             // {§http-security-boundary}
-            if (guard) {
-                await page.route("**", async (route) => {
-                    try {
-                        const request = route.request();
-                        let admission: GuardAdmission;
-                        try {
-                            admission = await guard(request.url());
-                        } catch (cause) {
-                            rememberRouteFailure(cause);
-                            await abortAfterRouteFailure(route);
-                            return;
-                        }
-                        if (!admission.admitted) {
-                            // A refused non-main-frame request is an honest
-                            // omission from an otherwise useful page. A refused
-                            // main navigation is the render outcome and must
-                            // survive Playwright's generic net::ERR_FAILED.
-                            if (request.isNavigationRequest() && request.frame() === page.mainFrame()) {
-                                rememberRouteFailure(admission.error);
-                            }
-                            await abortAfterRouteFailure(route);
-                            return;
-                        }
-                        try {
-                            await route.continue();
-                        } catch (cause) {
-                            rememberRouteFailure(cause);
-                            await abortAfterRouteFailure(route);
-                        }
-                    } catch (cause) {
-                        // Synchronous request-surface failures belong to the
-                        // render boundary just like asynchronous route actions.
-                        rememberRouteFailure(cause);
-                        await abortAfterRouteFailure(route);
-                    }
-                });
-            }
+            if (guard) await page.route("**", async (r) => { (await guard(r.request().url())) ? await r.continue() : await r.abort(); });
             // Playwright's page header API is single-valued; byte acquisition preserves duplicates.
             if (headers && headers.length > 0) await page.setExtraHTTPHeaders(Object.fromEntries(headers));
-            let response: PwResponse | null;
-            try {
-                response = await this.#safeGoto(page, url, timeout);
-            } catch (cause) {
-                throw routeFailure?.cause ?? cause;
-            }
-            throwIfRouteFailed();
+            const response = await this.#safeGoto(page, url, timeout);
             const html = await page.content();
-            throwIfRouteFailed();
             outcome = {
                 result: {
                     status: response?.status() ?? 200,

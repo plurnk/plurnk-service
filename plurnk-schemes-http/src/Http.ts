@@ -22,11 +22,7 @@ import { MimetypeClassifier, NetworkAddress, PathSyntax, Results } from "@plurnk
 import { readFile } from "node:fs/promises";
 import Browser, { BROWSER_UA, requireNumEnv, type RenderResult } from "./Browser.ts";
 import ErrorDetail from "./ErrorDetail.ts";
-import Guard, {
-    GuardBlockedError,
-    GuardResolutionError,
-    type GuardAdmission,
-} from "./Guard.ts";
+import Guard, { GuardBlockedError } from "./Guard.ts";
 import WebFetcher, {
     rewriteAcquisitionTarget,
     WebMaterializationError,
@@ -72,7 +68,7 @@ const documentation = await readFile(new URL("../docs/http.md", import.meta.url)
 // What Http needs from the render foundation — narrow, so tests inject a fake.
 interface Renderer {
     ready?(): Promise<string>;
-    render(url: string, opts: { workerId: number; signal?: AbortSignal; headers?: ReadonlyArray<readonly [string, string]>; guard?: (url: string) => Promise<GuardAdmission> }): Promise<RenderResult>;
+    render(url: string, opts: { workerId: number; signal?: AbortSignal; headers?: ReadonlyArray<readonly [string, string]>; guard?: (url: string) => Promise<boolean> }): Promise<RenderResult>;
     close?(): Promise<void>;
 }
 
@@ -149,8 +145,6 @@ export default class Http implements SchemeHandler {
             if (ctx.signal?.aborted === true && err === ctx.signal.reason) {
                 return Http.#cancelled(url, "GET");
             }
-            const admission = Http.#admissionFailure(url, "GET", err);
-            if (admission !== null) return admission;
             throw err;
         }
         if (fetched === null) {
@@ -171,8 +165,6 @@ export default class Http implements SchemeHandler {
             materialized = await WebFetcher.materialize(fetched, ctx.projection);
         } catch (err) {
             if (ctx.signal?.aborted === true) return Http.#cancelled(url, "GET");
-            const admission = Http.#admissionFailure(url, "GET", err);
-            if (admission !== null) return admission;
             if (err instanceof WebMaterializationError) {
                 return Http.#materializationFailure(url, "GET", err);
             }
@@ -423,7 +415,7 @@ export default class Http implements SchemeHandler {
                         workerId: ctx.workerId,
                         signal: local.signal,
                         headers,
-                        guard: Guard.admit,
+                        guard: Guard.isPublicUrl,
                     });
                 } catch (cause) {
                     throw new WebMaterializationError("render", responseMime, cause);
@@ -503,31 +495,29 @@ export default class Http implements SchemeHandler {
                 await ctx.subscriptions.close(result, result.problem?.detail);
                 return result;
             }
-            const admission = Http.#admissionFailure(url, method, err);
-            if (admission !== null) {
-                await ctx.subscriptions.close(admission, admission.problem?.detail);
-                return admission;
-            }
-            if (err instanceof WebMaterializationError) {
+            const blocked = err instanceof GuardBlockedError;
+            if (!blocked && err instanceof WebMaterializationError) {
                 const result = Http.#materializationFailure(url, method, err);
                 await ctx.subscriptions.close(result, result.problem?.detail);
                 return result;
             }
-            console.error("HTTP acquisition failed", { method, url, err });
+            if (!blocked) console.error("HTTP acquisition failed", { method, url, err });
             const cause = ErrorDetail.preview(err, this.#errorDetailLimit);
-            const reason = `HTTP ${method} ${url} failed: ${cause}`;
-            // The remaining catch owns generic acquisition failure; cancellation,
-            // admission, and typed materialization failures settled above.
+            const reason = blocked
+                ? `${err.url} is not a public http(s) target.`
+                : `HTTP ${method} ${url} failed: ${cause}`;
+            // The remaining catch owns target refusal and acquisition failure;
+            // cancellation and typed materialization failures settled above.
             const result = Http.#bad(
-                502,
+                blocked ? 403 : 502,
                 "http",
-                "fetch-failed",
+                blocked ? "ssrf-blocked" : "fetch-failed",
                 reason,
                 {
-                    target: url,
+                    target: blocked ? err.url : url,
                     method,
-                    stage: "acquisition",
-                    retryable: true,
+                    stage: blocked ? "target-validation" : "acquisition",
+                    retryable: !blocked,
                 },
             );
             await ctx.subscriptions.close(result, reason);
@@ -683,53 +673,6 @@ export default class Http implements SchemeHandler {
                 retryable: false,
             },
         );
-    }
-
-    // Guard is the single classifier. HTTP owns only the model-facing Problem
-    // projection, including admission errors nested beneath lazy render and
-    // cleanup wrappers.
-    static #admissionFailure(
-        url: string,
-        method: string,
-        caught: unknown,
-    ): PassthroughResult | null {
-        const error = Http.#findAdmissionError(caught);
-        if (error === null) return null;
-        const resolution = error instanceof GuardResolutionError;
-        if (resolution || error !== caught) {
-            console.error("HTTP target admission failed", { method, url, error: caught });
-        }
-        return Http.#bad(
-            resolution ? 502 : 403,
-            "http",
-            resolution ? "dns-resolution-failed" : "ssrf-blocked",
-            resolution
-                ? `DNS resolution failed for ${error.url}.`
-                : `${error.url} is not a public http(s) target.`,
-            {
-                target: error.url,
-                method,
-                stage: resolution ? "target-resolution" : "target-validation",
-                retryable: resolution,
-            },
-        );
-    }
-
-    static #findAdmissionError(
-        value: unknown,
-        seen: Set<object> = new Set(),
-    ): GuardBlockedError | GuardResolutionError | null {
-        if (value instanceof GuardBlockedError || value instanceof GuardResolutionError) return value;
-        if (typeof value !== "object" || value === null || seen.has(value)) return null;
-        seen.add(value);
-        if (value instanceof AggregateError) {
-            for (const error of value.errors) {
-                const found = Http.#findAdmissionError(error, seen);
-                if (found !== null) return found;
-            }
-        }
-        if (value instanceof Error) return Http.#findAdmissionError(value.cause, seen);
-        return null;
     }
 
     static #materializationFailure(
