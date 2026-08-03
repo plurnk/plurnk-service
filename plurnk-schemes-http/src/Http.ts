@@ -23,7 +23,11 @@ import { readFile } from "node:fs/promises";
 import Browser, { BROWSER_UA, requireNumEnv, type RenderResult } from "./Browser.ts";
 import ErrorDetail from "./ErrorDetail.ts";
 import Guard, { GuardBlockedError } from "./Guard.ts";
-import WebFetcher, { rewriteAcquisitionTarget } from "./WebFetcher.ts";
+import WebFetcher, {
+    rewriteAcquisitionTarget,
+    WebMaterializationError,
+    type WebMaterializedResult,
+} from "./WebFetcher.ts";
 
 // The channel the response body streams into, and the header metadata channel.
 const BODY = "body";
@@ -145,7 +149,16 @@ export default class Http implements SchemeHandler {
                 },
             );
         }
-        const materialized = await WebFetcher.materialize(fetched, ctx.projection);
+        let materialized: WebMaterializedResult | null;
+        try {
+            materialized = await WebFetcher.materialize(fetched, ctx.projection);
+        } catch (err) {
+            if (ctx.signal?.aborted === true) return Http.#cancelled(url, "GET");
+            if (err instanceof WebMaterializationError) {
+                return Http.#materializationFailure(url, "GET", err);
+            }
+            throw err;
+        }
         if (materialized === null) return Http.#noReadableProjection(url);
         const channels: EntryData["channels"] = {
             [BODY]: materialized.body,
@@ -385,18 +398,23 @@ export default class Http implements SchemeHandler {
             const isHtml = method === "GET" && MimetypeClassifier.isHtml(responseMime);
             if (isHtml) {
                 await response.body?.cancel();
-                const result = await this.#browser.render(url, {
-                    workerId: ctx.workerId,
-                    signal: local.signal,
-                    headers,
-                    guard: Guard.isPublicUrl,
-                });
+                let result: RenderResult;
+                try {
+                    result = await this.#browser.render(url, {
+                        workerId: ctx.workerId,
+                        signal: local.signal,
+                        headers,
+                        guard: Guard.isPublicUrl,
+                    });
+                } catch (cause) {
+                    throw new WebMaterializationError("render", responseMime, cause);
+                }
+                await Http.#writeHeader(ctx, method, result.status, result.statusText, result.headers);
+                await ctx.subscriptions.notifyChunk("html", result.html, "text/html");
                 const materialized = await WebFetcher.materialize(
                     { body: result.html, mimetype: "text/html" },
                     ctx.projection,
                 );
-                await Http.#writeHeader(ctx, method, result.status, result.statusText, result.headers);
-                await ctx.subscriptions.notifyChunk("html", result.html, "text/html");
                 if (materialized === null) {
                     const failure = Http.#noReadableProjection(url);
                     await ctx.subscriptions.close(failure, failure.problem?.detail);
@@ -461,26 +479,34 @@ export default class Http implements SchemeHandler {
             return { shape: "passthrough", status: 102 };
         } catch (err) {
             const aborted = local.signal.aborted;
-            const blocked = !aborted && err instanceof GuardBlockedError;
-            if (!aborted && !blocked) console.error("HTTP acquisition failed", { method, url, err });
+            if (aborted) {
+                const result = Http.#cancelled(url, method);
+                await ctx.subscriptions.close(result, result.problem?.detail);
+                return result;
+            }
+            const blocked = err instanceof GuardBlockedError;
+            if (!blocked && err instanceof WebMaterializationError) {
+                const result = Http.#materializationFailure(url, method, err);
+                await ctx.subscriptions.close(result, result.problem?.detail);
+                return result;
+            }
+            if (!blocked) console.error("HTTP acquisition failed", { method, url, err });
             const cause = ErrorDetail.preview(err, this.#errorDetailLimit);
-            const reason = aborted
-                ? `HTTP ${method} ${url} was cancelled.`
-                : blocked
-                    ? `${err.url} is not a public http(s) target.`
-                    : `HTTP ${method} ${url} failed: ${cause}`;
-            // 403 for a guarded target, 499 for client cancellation, and 502 for
-            // an upstream/network/render failure.
+            const reason = blocked
+                ? `${err.url} is not a public http(s) target.`
+                : `HTTP ${method} ${url} failed: ${cause}`;
+            // The remaining catch owns target refusal and acquisition failure;
+            // cancellation and typed materialization failures settled above.
             const result = Http.#bad(
-                aborted ? 499 : blocked ? 403 : 502,
+                blocked ? 403 : 502,
                 "http",
-                aborted ? "cancelled" : blocked ? "ssrf-blocked" : "fetch-failed",
+                blocked ? "ssrf-blocked" : "fetch-failed",
                 reason,
                 {
                     target: blocked ? err.url : url,
                     method,
                     stage: blocked ? "target-validation" : "acquisition",
-                    retryable: !aborted && !blocked,
+                    retryable: !blocked,
                 },
             );
             await ctx.subscriptions.close(result, reason);
@@ -621,6 +647,45 @@ export default class Http implements SchemeHandler {
 
     static #passthrough(result: SchemeResult): PassthroughResult {
         return Results.assert({ ...result, shape: "passthrough" }) as PassthroughResult;
+    }
+
+    static #cancelled(url: string, method: string): PassthroughResult {
+        return Http.#bad(
+            499,
+            "http",
+            "cancelled",
+            `HTTP ${method} ${url} was cancelled.`,
+            {
+                target: url,
+                method,
+                stage: "acquisition",
+                retryable: false,
+            },
+        );
+    }
+
+    static #materializationFailure(
+        url: string,
+        method: string,
+        error: WebMaterializationError,
+    ): PassthroughResult {
+        console.error("HTTP materialization failed", { method, url, error });
+        const projection = error.stage === "projection";
+        return Http.#bad(
+            projection ? 500 : 502,
+            "http",
+            projection ? "projection-failed" : "render-failed",
+            projection
+                ? `HTTP ${method} ${url} acquired HTML, but its readable projection failed.`
+                : `HTTP ${method} ${url} could not render HTML.`,
+            {
+                target: url,
+                method,
+                mimetype: error.mimetype,
+                stage: error.stage,
+                retryable: !projection,
+            },
+        );
     }
 
     static #noReadableProjection(url: string): PassthroughResult {

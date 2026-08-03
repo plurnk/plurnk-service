@@ -34,13 +34,28 @@ export interface WebFetchResult {
     header?: string;
     // HTML byte responses are authoritative when their model-facing MIME
     // projection is present. Core calls this guarded browser acquisition only
-    // when that projection is absent.
+    // when that projection is absent. Null means no rendered HTML; a render
+    // failure rejects with its cause.
     render?: () => Promise<{ body: string; mimetype: string } | null>;
 }
 
 export interface WebMaterializedResult {
     readonly body: { content: string; mimetype: string };
     readonly html?: { content: string; mimetype: string };
+}
+
+// {§html-materialization} Preserve the failing stage and original cause while
+// keeping an expected absent projection in the ordinary null result channel.
+export class WebMaterializationError extends Error {
+    readonly stage: "projection" | "render";
+    readonly mimetype: string;
+
+    constructor(stage: "projection" | "render", mimetype: string, cause: unknown) {
+        super(`Web ${stage} failed for ${mimetype}.`, { cause });
+        this.name = "WebMaterializationError";
+        this.stage = stage;
+        this.mimetype = mimetype;
+    }
 }
 
 export default class WebFetcher {
@@ -53,7 +68,8 @@ export default class WebFetcher {
 
     // {§html-materialization} One projection seam for exact HTTP preparation
     // and executor entry acquisition. A present empty projection is valid;
-    // only null asks the lazy renderer or reports final absence.
+    // only null asks the lazy renderer or reports final absence. Projection and
+    // render exceptions retain their causes in WebMaterializationError.
     static async materialize(
         fetched: Pick<WebFetchResult, "body" | "mimetype" | "render">,
         projection: ProjectionCaps,
@@ -62,15 +78,31 @@ export default class WebFetcher {
             return { body: { content: fetched.body, mimetype: fetched.mimetype } };
         }
         let html = { content: fetched.body, mimetype: fetched.mimetype };
-        let projected = await projection.readable(html.content, html.mimetype);
+        let projected = await WebFetcher.#project(html, projection);
         if (projected === null && fetched.render !== undefined) {
-            const rendered = await fetched.render();
+            let rendered: Awaited<ReturnType<NonNullable<WebFetchResult["render"]>>>;
+            try {
+                rendered = await fetched.render();
+            } catch (cause) {
+                throw new WebMaterializationError("render", html.mimetype, cause);
+            }
             if (rendered !== null) {
                 html = { content: rendered.body, mimetype: rendered.mimetype };
-                projected = await projection.readable(html.content, html.mimetype);
+                projected = await WebFetcher.#project(html, projection);
             }
         }
         return projected === null ? null : { body: projected, html };
+    }
+
+    static async #project(
+        html: { content: string; mimetype: string },
+        projection: ProjectionCaps,
+    ): Promise<{ content: string; mimetype: string } | null> {
+        try {
+            return await projection.readable(html.content, html.mimetype);
+        } catch (cause) {
+            throw new WebMaterializationError("projection", html.mimetype, cause);
+        }
     }
 
     async close(): Promise<void> {
@@ -105,19 +137,15 @@ export default class WebFetcher {
                 mimetype,
                 header,
                 render: async () => {
-                    try {
-                        const rendered = await this.#browser.render(target, {
-                            workerId: 0,
-                            // Caller cancellation still spans the whole operation.
-                            // The renderer supplies its own per-navigation deadline.
-                            signal: opts?.signal,
-                            headers: [["User-Agent", BROWSER_UA]],
-                            guard: Guard.isPublicUrl,
-                        });
-                        return rendered.html.length > 0 ? { body: rendered.html, mimetype: "text/html" } : null;
-                    } catch {
-                        return null;
-                    }
+                    const rendered = await this.#browser.render(target, {
+                        workerId: 0,
+                        // Caller cancellation still spans the whole operation.
+                        // The renderer supplies its own per-navigation deadline.
+                        signal: opts?.signal,
+                        headers: [["User-Agent", BROWSER_UA]],
+                        guard: Guard.isPublicUrl,
+                    });
+                    return rendered.html.length > 0 ? { body: rendered.html, mimetype: "text/html" } : null;
                 },
             };
         }

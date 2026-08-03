@@ -209,7 +209,8 @@ resource identity.
 `ProjectionCaps.readable(content, mimetype)` returns the configured
 model-facing projection. A returned object is present even when its `content`
 is `""`; only `null` denotes absence. Consumers must not infer projection
-presence from content length.
+presence from content length. A thrown projection call is an execution failure
+whose cause propagates; it must never be converted to `null`.
 
 ### Text-region slicing and replacement - `Slicer`
 

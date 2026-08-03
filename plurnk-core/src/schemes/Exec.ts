@@ -3,7 +3,12 @@ import type { Notice } from "@plurnk/plurnk-contracts";
 import type { ExecStatement, FindStatement, ReadStatement } from "@plurnk/plurnk-contracts";
 import { Policy, type ChannelState } from "@plurnk/plurnk-execs";
 import type { ExecResult as ExecutorResult } from "@plurnk/plurnk-execs";
-import { WebFetcher, type WebFetchResult } from "@plurnk/plurnk-schemes-http";
+import {
+    WebFetcher,
+    WebMaterializationError,
+    type WebFetchResult,
+    type WebMaterializedResult,
+} from "@plurnk/plurnk-schemes-http";
 import type { Executor } from "../core/ExecutorRegistry.ts";
 import WorkspaceSettings from "../core/workspace-settings.ts";
 import EffectPolicy from "./EffectPolicy.ts";
@@ -607,7 +612,15 @@ export default class Exec extends CoreSchemeAdapterBase {
             const op = async (): Promise<string> => {
                 const fetched = await materialized;
                 if (fetched === null) throw new Error(`entry(): '${path.slice(0, 80)}' is dead`);
-                const web = await WebFetcher.materialize(fetched, new DbProjectionCaps(ctx));
+                let web: WebMaterializedResult | null;
+                try {
+                    web = await WebFetcher.materialize(fetched, new DbProjectionCaps(ctx));
+                } catch (error) {
+                    if (!signal.aborted && error instanceof WebMaterializationError) {
+                        console.error("entry() web materialization failed", { path, error });
+                    }
+                    throw error;
+                }
                 if (web === null) throw new Error(`entry(): '${path.slice(0, 80)}' has no readable HTML projection`);
                 const prior = await EntryCrud.readEntry(pathname, ctx, scheme);
                 const tags = [...new Set([...(prior.entry?.tags ?? []), ...opts.tags])];

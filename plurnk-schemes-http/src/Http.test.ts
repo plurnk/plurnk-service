@@ -45,6 +45,12 @@ const fakeBrowser = (html: string) => {
     };
 };
 
+const failingBrowser = (cause: Error) => ({
+    async render(): Promise<RenderResult> {
+        throw cause;
+    },
+});
+
 // ── conformant ctx + recorder ─────────────────────────────────────────────
 interface CtxOverrides {
     readonly read?: (pathname: string) => Promise<EntryStorageReadResult>;
@@ -52,6 +58,7 @@ interface CtxOverrides {
     readonly delete?: (pathname: string) => Promise<SchemeResult>;
     readonly operationRead?: (statement: ReadStatement) => Promise<EntryReadResult>;
     readonly projection?: ProjectionCaps;
+    readonly signal?: AbortSignal;
 }
 
 const makeCtx = (priorEntry: EntryData | null = null, overrides: CtxOverrides = {}) => {
@@ -124,7 +131,7 @@ const makeCtx = (priorEntry: EntryData | null = null, overrides: CtxOverrides = 
         async close(result, summary) { closed = { result, summary }; },
     };
     const ctx: SchemeCtx = {
-        workspaceId: 1, workerId: 1, loopId: 1, turnId: 1, writer: "model", signal: undefined,
+        workspaceId: 1, workerId: 1, loopId: 1, turnId: 1, writer: "model", signal: overrides.signal,
         entries, channels, tags, notify, projection, subscriptions,
     };
     return {
@@ -280,6 +287,81 @@ test("prepareFind reports an absent final HTML projection as 422", async () => {
     );
     assert.equal(browser.calls.length, 1);
     assert.equal(inspect().wrote, null);
+});
+
+test("prepareFind reports a projection exception as 500 and logs its cause", async (t) => {
+    const cause = new Error("reader implementation failed");
+    const projection: ProjectionCaps = { async readable() { throw cause; } };
+    const { ctx, inspect } = makeCtx(null, { projection });
+    const diagnostics: unknown[][] = [];
+    t.mock.method(console, "error", (...args: unknown[]) => { diagnostics.push(args); });
+    await withFetch(
+        mockFetch(200, "OK", ["<html><body>page</body></html>"], { "content-type": "text/html" }),
+        async () => {
+            const result = await new Http(fakeBrowser("unused")).prepareFind(
+                findStmt(urlTarget("https://example.com/projection", "/projection")),
+                ctx,
+            );
+            assert.equal(result.status, 500);
+            assert.equal(result.problem?.type, "https://problems.plurnk.dev/scheme/http/projection-failed");
+            assert.equal(result.problem?.stage, "projection");
+            assert.equal(result.problem?.retryable, false);
+            assert.doesNotMatch(result.problem?.detail ?? "", /reader implementation failed/);
+        },
+    );
+    assert.equal(inspect().wrote, null);
+    assert.equal((diagnostics[0]?.[1] as { error?: Error })?.error?.cause, cause);
+});
+
+test("prepareFind reports a lazy-render exception as a retryable 502", async (t) => {
+    const cause = new Error("browser navigation failed");
+    const projection: ProjectionCaps = { async readable() { return null; } };
+    const { ctx, inspect } = makeCtx(null, { projection });
+    const diagnostics: unknown[][] = [];
+    t.mock.method(console, "error", (...args: unknown[]) => { diagnostics.push(args); });
+    await withFetch(
+        mockFetch(200, "OK", ["<html><body></body></html>"], { "content-type": "text/html" }),
+        async () => {
+            const result = await new Http(failingBrowser(cause)).prepareFind(
+                findStmt(urlTarget("https://example.com/render", "/render")),
+                ctx,
+            );
+            assert.equal(result.status, 502);
+            assert.equal(result.problem?.type, "https://problems.plurnk.dev/scheme/http/render-failed");
+            assert.equal(result.problem?.stage, "render");
+            assert.equal(result.problem?.retryable, true);
+        },
+    );
+    assert.equal(inspect().wrote, null);
+    assert.equal((diagnostics[0]?.[1] as { error?: Error })?.error?.cause, cause);
+});
+
+test("prepareFind keeps caller cancellation distinct from lazy-render failure", async (t) => {
+    const controller = new AbortController();
+    const cause = new Error("render aborted");
+    const projection: ProjectionCaps = { async readable() { return null; } };
+    const browser = {
+        async render(): Promise<RenderResult> {
+            controller.abort();
+            throw cause;
+        },
+    };
+    const { ctx } = makeCtx(null, { projection, signal: controller.signal });
+    const diagnostics: unknown[][] = [];
+    t.mock.method(console, "error", (...args: unknown[]) => { diagnostics.push(args); });
+    await withFetch(
+        mockFetch(200, "OK", ["<html><body></body></html>"], { "content-type": "text/html" }),
+        async () => {
+            const result = await new Http(browser).prepareFind(
+                findStmt(urlTarget("https://example.com/cancelled", "/cancelled")),
+                ctx,
+            );
+            assert.equal(result.status, 499);
+            assert.equal(result.problem?.type, "https://problems.plurnk.dev/scheme/http/cancelled");
+            assert.equal(result.problem?.retryable, false);
+        },
+    );
+    assert.equal(diagnostics.length, 0);
 });
 
 test("prepareFind rewrites acquisition but stores the addressed GitHub identity", async () => {
@@ -859,6 +941,54 @@ test("READ: an absent rendered projection returns 422 and retains its HTML evide
     assert.equal(inspect().chunks.find(({ channel }) => channel === "html")?.chunk, html);
     assert.match(inspect().chunks.find(({ channel }) => channel === "header")?.chunk ?? "", /^HTTP 200 OK/m);
     assert.equal(inspect().chunks.some(({ channel }) => channel === "body"), false);
+});
+
+test("READ: a projection exception returns 500, retains evidence, and logs its cause", async (t) => {
+    const cause = new Error("reader implementation failed");
+    const projection: ProjectionCaps = { async readable() { throw cause; } };
+    const { ctx, inspect } = makeCtx(null, { projection });
+    const html = "<html><body>page</body></html>";
+    const diagnostics: unknown[][] = [];
+    t.mock.method(console, "error", (...args: unknown[]) => { diagnostics.push(args); });
+    let result: Awaited<ReturnType<Http["read"]>> | undefined;
+    await withFetch(
+        mockFetch(200, "OK", [html], { "content-type": "text/html" }),
+        async () => {
+            result = await new Http(fakeBrowser(html)).read(
+                readStmt(urlTarget("https://example.com/projection", "/projection")),
+                ctx,
+            );
+        },
+    );
+    assert.equal(result?.status, 500);
+    assert.equal(result?.problem?.type, "https://problems.plurnk.dev/scheme/http/projection-failed");
+    assert.equal(inspect().closed?.result.problem, result?.problem);
+    assert.equal(inspect().chunks.find(({ channel }) => channel === "html")?.chunk, html);
+    assert.match(inspect().chunks.find(({ channel }) => channel === "header")?.chunk ?? "", /^HTTP 200 OK/m);
+    assert.equal(inspect().chunks.some(({ channel }) => channel === "body"), false);
+    assert.equal((diagnostics[0]?.[1] as { error?: Error })?.error?.cause, cause);
+});
+
+test("READ: a render exception returns a retryable 502 render failure", async (t) => {
+    const cause = new Error("browser navigation failed");
+    const { ctx, inspect } = makeCtx();
+    const diagnostics: unknown[][] = [];
+    t.mock.method(console, "error", (...args: unknown[]) => { diagnostics.push(args); });
+    let result: Awaited<ReturnType<Http["read"]>> | undefined;
+    await withFetch(
+        mockFetch(200, "OK", ["<html></html>"], { "content-type": "text/html" }),
+        async () => {
+            result = await new Http(failingBrowser(cause)).read(
+                readStmt(urlTarget("https://example.com/render", "/render")),
+                ctx,
+            );
+        },
+    );
+    assert.equal(result?.status, 502);
+    assert.equal(result?.problem?.type, "https://problems.plurnk.dev/scheme/http/render-failed");
+    assert.equal(result?.problem?.retryable, true);
+    assert.equal(inspect().closed?.result.problem, result?.problem);
+    assert.equal((diagnostics[0]?.[1] as { error?: Error })?.error?.cause, cause);
 });
 
 test("SEND[200]: an HTML response is NOT rendered (POST can't be a navigation)", async () => {

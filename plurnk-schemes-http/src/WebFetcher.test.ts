@@ -101,6 +101,42 @@ test("materialization accepts an honest empty XHTML projection without rendering
     assert.equal(renders, 0);
 });
 
+test("materialization preserves a projection exception and identifies its stage", async () => {
+    const cause = new Error("reader implementation failed");
+    const projection: ProjectionCaps = {
+        async readable() {
+            throw cause;
+        },
+    };
+    await assert.rejects(
+        WebFetcher.materialize({ body: "<html></html>", mimetype: "text/html" }, projection),
+        (err: unknown) => {
+            assert.ok(err instanceof Error);
+            assert.equal(err.cause, cause);
+            assert.equal((err as Error & { stage?: string }).stage, "projection");
+            return true;
+        },
+    );
+});
+
+test("materialization preserves a lazy-render exception and identifies its stage", async () => {
+    const cause = new Error("browser navigation failed");
+    const projection: ProjectionCaps = { async readable() { return null; } };
+    await assert.rejects(
+        WebFetcher.materialize({
+            body: "<html></html>",
+            mimetype: "text/html",
+            render: async () => { throw cause; },
+        }, projection),
+        (err: unknown) => {
+            assert.ok(err instanceof Error);
+            assert.equal(err.cause, cause);
+            assert.equal((err as Error & { stage?: string }).stage, "render");
+            return true;
+        },
+    );
+});
+
 test("caller cancellation spans both byte probe and lazy render", async () => {
     const b = fakeBrowser("<html><body>rendered</body></html>");
     const caller = new AbortController();
@@ -153,6 +189,20 @@ test("render yielding empty DOM → null", async () => {
     await withFetch((async () => resp("<html></html>", 200, { "content-type": "text/html" })) as typeof fetch, async () => {
         const fetched = await new WebFetcher(fakeBrowser("")).fetch(PUB);
         assert.equal(await fetched?.render?.(), null);
+    });
+});
+
+test("lazy rendering preserves a browser exception instead of converting it to absence", async () => {
+    const cause = new Error("chromium crashed");
+    const browser = {
+        async render(): Promise<RenderResult> {
+            throw cause;
+        },
+    };
+    await withFetch((async () => resp("<html></html>", 200, { "content-type": "text/html" })) as typeof fetch, async () => {
+        const fetched = await new WebFetcher(browser).fetch(PUB);
+        assert.ok(fetched?.render !== undefined);
+        await assert.rejects(fetched.render(), (err: unknown) => err === cause);
     });
 });
 

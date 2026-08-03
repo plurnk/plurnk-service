@@ -11,5 +11,6 @@ export type { ChromiumEngine, ChromiumFactory, RenderResult } from "./Browser.ts
 
 // Guarded entry-acquisition primitive {§prefetch} and network boundary.
 export { default as WebFetcher } from "./WebFetcher.ts";
-export type { WebFetchResult } from "./WebFetcher.ts";
+export { WebMaterializationError } from "./WebFetcher.ts";
+export type { WebFetchResult, WebMaterializedResult } from "./WebFetcher.ts";
 export { default as Guard, GuardBlockedError } from "./Guard.ts";

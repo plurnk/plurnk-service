@@ -30,6 +30,9 @@ HTML projection presence is structural: a returned projection is accepted even
 when its content is empty. `422 no-readable-projection` means HTML was acquired
 but no model-facing body projection exists. A direct READ retains its faithful
 `#html` and `#header` evidence; exact FIND preparation creates no entry.
+An internal projection exception instead returns non-retryable
+`500 projection-failed`; a browser failure returns retryable
+`502 render-failed`.
 
 A non-textual direct response returns `415 binary-response-unsupported`. The
 remote response was received and its metadata remains in `#header`; do not

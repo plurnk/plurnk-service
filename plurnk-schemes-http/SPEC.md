@@ -128,15 +128,18 @@ evidence.
 `WebFetcher.materialize` is the shared HTML-family projection seam for direct
 GET, exact query preparation, and executor entry acquisition.
 
-| Acquired representation          | Projection attempt                                  | Materialized result                             |
-| -------------------------------- | --------------------------------------------------- | ----------------------------------------------- |
-| Non-HTML text                    | None                                                | Original representation in `body`               |
-| HTML with a present projection   | Server or already-rendered HTML                     | Projection in `body`; selected HTML in `html`   |
-| HTML with an absent projection   | One lazy guarded render when the caller supplies it | Rendered projection in `body`; rendered `html`  |
-| HTML still absent after fallback | No further fallback                                 | `null`; the consumer applies its failure policy |
+| Input or event                       | Action                                             | Result                                                   |
+| ------------------------------------ | -------------------------------------------------- | -------------------------------------------------------- |
+| Non-HTML text                        | Bypass projection                                  | Original representation in `body`                        |
+| HTML with a present projection       | Stop                                               | Projection in `body`; selected HTML in `html`            |
+| HTML with an absent projection       | Render once when the caller supplies a renderer    | Rendered projection in `body`; rendered `html`           |
+| HTML still absent after fallback     | Stop                                               | `null`; the consumer applies its absence policy          |
+| Projection implementation throws     | Stop and preserve the cause                        | `WebMaterializationError` with stage `projection`        |
+| Lazy guarded renderer throws         | Stop before another projection attempt             | `WebMaterializationError` with stage `render`            |
 
 A projection object is present even when its content is `""`; only `null`
-denotes absence. Projection exceptions remain failures, not absence.
+denotes absence. A materialization exception retains its original `cause`; it
+never enters the absence channel.
 
 ## §http-status §4 HTTP status mapping
 
@@ -154,7 +157,9 @@ denotes absence. Projection exceptions remain failures, not absence.
 | Target fails network admission                        | `403` (`ssrf-blocked`)                           |
 | Multi-statement HTTP edit batch                       | `409` (`non-atomic-edit-batch`)                  |
 | Invalid target, channel, line edit, or URL userinfo   | `400` with the corresponding stable Problem kind |
-| Direct network, render, or projection exception       | `502` (`fetch-failed`)                           |
+| Direct network or acquisition exception               | `502` (`fetch-failed`)                           |
+| Direct or prepared HTML render exception              | `502` (`render-failed`)                          |
+| Direct or prepared projection exception               | `500` (`projection-failed`)                      |
 | Uninterpreted SEND status                             | `501` (`send-status-unsupported`)                |
 
 An HTTP error status is still a successfully acquired direct response: its
@@ -262,14 +267,16 @@ accumulate until the origin closes or the operation is cancelled.
 | ----------------------- | ------------------------------------------------------------------------------------ |
 | Non-empty 2xx HTML      | Server body, MIME type, package-stamped headers, and a lazy guarded browser renderer |
 | Non-empty accepted text | Complete body, MIME type, and package-stamped headers                                |
-| Lazy renderer value     | Non-empty rendered HTML, or `null` when rendering fails or yields no HTML            |
+| Lazy renderer value     | Non-empty rendered HTML, or `null` only when rendering yields no HTML                |
+| Lazy renderer failure   | Rejects with the complete browser failure; materialization preserves stage and cause |
 | Top-level `null`        | Refused, unreachable, non-2xx, non-textual, or empty byte response                   |
 | Accepted textual family | Shared `MimetypeClassifier` taxonomy {§mimetype-classifier}                          |
 
 Top-level `null` is a liveness value rather than a thrown failure. WebFetcher
 owns no entry identity, projection verdict, or query policy; its consumer
-projects and materializes the returned value. The handler lifecycle closes the
-shared browser.
+projects and materializes the returned value. Lazy-render exceptions remain
+distinct from a renderer that honestly returns no HTML. The handler lifecycle
+closes the shared browser.
 
 ## §ws §8 WebSocket
 
