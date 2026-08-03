@@ -47,10 +47,7 @@ const HANDLER_METHODS = [
 export type { EmbedderInfo, EmbedProgress, EmbedBatchOptions } from "./Embeddings.ts";
 export type { TokenizerResolution } from "./Tokenizers.ts";
 
-// Loader hook: how to resolve a handler package to its default-exported class.
-// The default anchors resolution in the same consumer-visible module graph
-// discovery scans ({§mimetype-discovery}); tests and unusual package layouts
-// may inject a loader.
+// Default and caller-owned loading modes ({§mimetype-package-resolution}).
 export type HandlerLoader = (packageName: string) => Promise<unknown>;
 
 const defaultLoader = (cwd: string): HandlerLoader => {
@@ -63,6 +60,7 @@ export interface MimetypesOptions {
     // Pre-built discovery — bypasses the filesystem scan. Useful for tests and
     // for consumers that build their registry programmatically.
     discovery?: Discovery;
+    // Caller-owned resolution for an unusual or import-only package graph.
     loader?: HandlerLoader;
     // Mimetype to return when every detection lane misses. Unset means null.
     defaultMimetype?: string;

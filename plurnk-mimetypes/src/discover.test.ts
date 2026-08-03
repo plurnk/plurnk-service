@@ -1,11 +1,13 @@
-// Contract: {§mimetype-discovery}.
+// Contracts: {§mimetype-discovery}, {§mimetype-package-resolution}.
 import { after, before, describe, it } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
+import { pathToFileURL } from "node:url";
 import { discover } from "./discover.ts";
 import Mimetypes from "./Mimetypes.ts";
+import MimetypePluginError from "./MimetypePluginError.ts";
 
 async function makePackage(
     root: string,
@@ -17,6 +19,25 @@ async function makePackage(
     await fs.writeFile(path.join(dir, "package.json"), JSON.stringify(pkg, null, 2));
     return dir;
 }
+
+const THIRD_PARTY_HANDLER_SOURCE = `
+    export default class Cobol {
+        constructor({ mimetype, glyph, extensions }) {
+            this.mimetype = mimetype;
+            this.glyph = glyph;
+            this.extensions = extensions;
+        }
+        validate() {}
+        extractRaw() { return []; }
+        deepJson() { return null; }
+        deepXml() { return ""; }
+        references() { return []; }
+        content() { return undefined; }
+        query() { return []; }
+        symbolsRaw() { return ""; }
+        toText(content) { return content; }
+    }
+`;
 
 describe("discover", () => {
     let tmpRoot: string;
@@ -388,24 +409,7 @@ describe("discover — scope-agnostic scan (issue #28)", () => {
                     handlers: [{ name: "text/x-cobol", extensions: [".cob"] }],
                 },
             });
-            await fs.writeFile(path.join(dir, "index.js"), `
-                export default class Cobol {
-                    constructor({ mimetype, glyph, extensions }) {
-                        this.mimetype = mimetype;
-                        this.glyph = glyph;
-                        this.extensions = extensions;
-                    }
-                    validate() {}
-                    extractRaw() { return []; }
-                    deepJson() { return null; }
-                    deepXml() { return ""; }
-                    references() { return []; }
-                    content() { return undefined; }
-                    query() { return []; }
-                    symbolsRaw() { return ""; }
-                    toText(content) { return content; }
-                }
-            `);
+            await fs.writeFile(path.join(dir, "index.js"), THIRD_PARTY_HANDLER_SOURCE);
 
             const mimetypes = new Mimetypes({
                 discoverOptions: { cwd: root, includeTreeSitter: false },
@@ -418,6 +422,48 @@ describe("discover — scope-agnostic scan (issue #28)", () => {
             assert.equal(result.ok, true);
             assert.equal(result.mimetype, "text/x-cobol");
             assert.deepEqual(result.symbols, []);
+        } finally {
+            await fs.rm(root, { recursive: true, force: true });
+        }
+    });
+
+    it("makes import-only package roots an explicit-loader contract (#156)", async () => {
+        const root = await fs.mkdtemp(path.join(os.tmpdir(), "plurnk-import-only-loader-"));
+        try {
+            const dir = await makePackage(root, "node_modules/@acme/acme-mime-cobol", {
+                name: "@acme/acme-mime-cobol",
+                type: "module",
+                exports: { import: "./index.js" },
+                plurnk: {
+                    kind: "mimetype",
+                    handlers: [{ name: "text/x-cobol", extensions: [".cob"] }],
+                },
+            });
+            await fs.writeFile(path.join(dir, "index.js"), THIRD_PARTY_HANDLER_SOURCE);
+
+            const automatic = new Mimetypes({
+                discoverOptions: { cwd: root, includeTreeSitter: false },
+            });
+            await assert.rejects(
+                () => automatic.getHandler("text/x-cobol"),
+                (error: unknown) => {
+                    assert.ok(error instanceof MimetypePluginError);
+                    assert.equal(error.packageName, "@acme/acme-mime-cobol");
+                    assert.equal(error.mimetype, "text/x-cobol");
+                    assert.equal((error.cause as NodeJS.ErrnoException).code, "ERR_PACKAGE_PATH_NOT_EXPORTED");
+                    return true;
+                },
+            );
+
+            const explicit = new Mimetypes({
+                discoverOptions: { cwd: root, includeTreeSitter: false },
+                loader: async (packageName) => {
+                    assert.equal(packageName, "@acme/acme-mime-cobol");
+                    return import(pathToFileURL(path.join(dir, "index.js")).href);
+                },
+            });
+            const handler = await explicit.getHandler("text/x-cobol");
+            assert.equal(handler?.mimetype, "text/x-cobol");
         } finally {
             await fs.rm(root, { recursive: true, force: true });
         }

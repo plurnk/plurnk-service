@@ -145,6 +145,21 @@ registered handler's import, construction, or structural validation failure
 throws `MimetypePluginError` with package and mimetype identity and preserves
 its original cause when one exists.
 
+§mimetype-package-resolution Registration and default loading use the same
+consumer package graph. The default loader anchors Node package-root resolution
+at `DiscoverOptions.cwd` (or `process.cwd()`), then dynamically imports the
+resolved URL.
+
+| Package root                                           | Default loading contract                                                                                  |
+|--------------------------------------------------------|-----------------------------------------------------------------------------------------------------------|
+| Condition-neutral export or `default` mapping          | Portable authoring shape; resolves from the consumer root and loads.                                      |
+| Root visible to an active require/custom condition     | Resolves under the process's actual Node conditions and loads.                                            |
+| `import`-only conditional root                         | Not resolved automatically; plugin failure propagates, or the caller supplies a `HandlerLoader`.          |
+| Injected `HandlerLoader`                               | Caller owns resolution and loading for an unusual package graph.                                          |
+
+The framework does not change daemon flags, install process-global module
+hooks, or implement a second package-exports resolver.
+
 ### 2.1 Mimetype naming convention
 
 The family follows a single resolution order. Authors of new handlers MUST consult these sources in order:

@@ -46,6 +46,14 @@ Ship a handler by publishing a package — **under any scope** (`@acme/whatever`
 
 ```json
 {
+  "name": "@acme/acme-mime-cobol",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
   "plurnk": {
     "kind": "mimetype",
     "handlers": [
@@ -60,7 +68,10 @@ independently. Add `"binary": true` at the top of the `plurnk` block for
 byte-oriented formats. The framework then reads filesystem paths as
 `Uint8Array`; inline callers supply the declared shape directly. Override
 `toText()` when binary content has a readable regex/glob and embedding
-projection.
+projection. Automatic loading resolves the package root from the consumer
+graph, so expose a condition-neutral root or `default` mapping. An `import`-only
+root requires the consumer to inject a `HandlerLoader`
+({§mimetype-package-resolution}).
 
 ### 2. Default-export a `BaseHandler` subclass
 
