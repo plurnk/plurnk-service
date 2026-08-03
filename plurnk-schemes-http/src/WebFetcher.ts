@@ -26,7 +26,7 @@ interface Renderer {
         workerId: number;
         signal?: AbortSignal;
         headers?: ReadonlyArray<readonly [string, string]>;
-        guard: (url: string) => Promise<GuardAdmission>;
+        guard?: (url: string) => Promise<GuardAdmission>;
     }): Promise<RenderResult>;
     close?(): Promise<void>;
 }

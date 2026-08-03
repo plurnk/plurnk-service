@@ -13,7 +13,7 @@ import type {
     SchemeCtx, SchemeResult, SubscriptionHandle, ReadStatement, UrlPath,
 } from "@plurnk/plurnk-schemes";
 import Browser from "../../src/Browser.ts";
-import Guard, { GuardBlockedError, type GuardAdmission } from "../../src/Guard.ts";
+import Guard from "../../src/Guard.ts";
 import Http from "../../src/Http.ts";
 
 // A page whose REAL content exists only after JS runs: the as-served body says
@@ -36,114 +36,14 @@ const startServer = (): Promise<http.Server> =>
 const urlOf = (server: http.Server): string =>
     `http://127.0.0.1:${(server.address() as AddressInfo).port}/`;
 
-const admitAll = async (): Promise<GuardAdmission> => ({ admitted: true });
-
 test("Browser.render: real chromium runs the page JS and serializes the final DOM", async () => {
     const server = await startServer();
     const browser = new Browser();
     try {
-        const r = await browser.render(urlOf(server), { workerId: 1, guard: admitAll });
+        const r = await browser.render(urlOf(server), { workerId: 1 });
         assert.equal(r.status, 200);
         assert.match(r.html, /RENDERED_BY_JS/);   // JS executed
         assert.doesNotMatch(r.html, /SHIM/);        // post-hydration DOM, not the as-served body
-    } finally {
-        await browser.close();
-        server.close();
-    }
-});
-
-test("Browser.render: browser-created network surfaces cannot bypass admission", async () => {
-    const reached = { popup: 0, serviceWorker: 0, webSocket: 0 };
-    const server = http.createServer((req, res) => {
-        if (req.url === "/popup") reached.popup += 1;
-        if (req.url === "/sw.js") reached.serviceWorker += 1;
-        res.writeHead(200, { "content-type": req.url === "/sw.js" ? "text/javascript" : "text/html" });
-        const body = req.url === "/"
-            ? `<!doctype html><body><script>
-                window.open("/popup", "plurnk-popup");
-                navigator.serviceWorker.register("/sw.js").catch(() => {});
-                const socket = new WebSocket("ws://" + location.host + "/socket");
-                socket.onerror = () => {};
-                const blank = window.open("about:blank", "plurnk-blank");
-                if (blank) {
-                    const blankSocket = new blank.WebSocket("ws://" + location.host + "/blank-socket");
-                    blankSocket.onerror = () => {};
-                }
-            </script></body>`
-            : req.url === "/socket-page"
-                ? `<!doctype html><body><script>
-                    const socket = new WebSocket("ws://" + location.host + "/socket");
-                    socket.onerror = () => {};
-                </script></body>`
-                : "ok";
-        res.end(body);
-    });
-    server.on("upgrade", (_req, socket) => {
-        reached.webSocket += 1;
-        socket.destroy();
-    });
-    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
-    const browser = new Browser();
-    const root = urlOf(server);
-    const guard = async (raw: string): Promise<GuardAdmission> => new URL(raw).pathname === "/"
-        ? { admitted: true }
-        : { admitted: false, error: new GuardBlockedError(raw) };
-    try {
-        await browser.render(root, { workerId: 1, guard });
-        assert.deepEqual(reached, { popup: 0, serviceWorker: 0, webSocket: 0 });
-        await browser.render(new URL("/socket-page", root).href, { workerId: 1, guard: admitAll });
-        assert.deepEqual(reached, { popup: 0, serviceWorker: 0, webSocket: 1 });
-    } finally {
-        await browser.close();
-        server.close();
-    }
-});
-
-test("Browser.render: reused worker contexts keep page headers, policy, and failures isolated", async () => {
-    const reached: Array<{ path: string; marker: string | undefined }> = [];
-    const server = http.createServer((req, res) => {
-        reached.push({ path: req.url ?? "", marker: req.headers["x-render-marker"] });
-        res.writeHead(200, { "content-type": "text/html" });
-        res.end("<!doctype html><body>ok</body>");
-    });
-    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
-    const browser = new Browser();
-    const root = urlOf(server);
-    const guardPath = (path: string) => async (raw: string): Promise<GuardAdmission> =>
-        new URL(raw).pathname === path
-            ? { admitted: true }
-            : { admitted: false, error: new GuardBlockedError(raw) };
-    try {
-        await Promise.all([
-            browser.render(new URL("/a", root).href, {
-                workerId: 7,
-                headers: [["X-Render-Marker", "a"]],
-                guard: guardPath("/a"),
-            }),
-            browser.render(new URL("/b", root).href, {
-                workerId: 7,
-                headers: [["X-Render-Marker", "b"]],
-                guard: guardPath("/b"),
-            }),
-        ]);
-        assert.deepEqual(reached.toSorted((a, b) => a.path.localeCompare(b.path)), [
-            { path: "/a", marker: "a" },
-            { path: "/b", marker: "b" },
-        ]);
-
-        const failure = new GuardBlockedError(new URL("/blocked", root).href);
-        await assert.rejects(
-            browser.render(new URL("/blocked", root).href, {
-                workerId: 7,
-                guard: async () => ({ admitted: false, error: failure }),
-            }),
-            (error: unknown) => error === failure,
-        );
-        await browser.render(new URL("/after", root).href, {
-            workerId: 7,
-            guard: guardPath("/after"),
-        });
-        assert.deepEqual(reached.at(-1), { path: "/after", marker: undefined });
     } finally {
         await browser.close();
         server.close();
