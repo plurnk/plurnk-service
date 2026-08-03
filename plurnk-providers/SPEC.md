@@ -8,8 +8,9 @@ ordinary provider protocols.
 
 The provider stack has four owners:
 
-1. Models.dev supplies a build-time snapshot of provider package, API endpoint,
-   credential names, models, context windows, output limits, and USD prices.
+1. Models.dev supplies a release-time snapshot of provider package, API
+   endpoint, credential names, models, context windows, output limits,
+   reasoning capability, and USD prices.
 2. Official AI SDK providers own vendor request and response protocols.
 3. This package owns the PLURNK contract: aliases, envelopes, normalized usage
    and errors, evidence, local capabilities, and first-party metadata.
@@ -42,25 +43,20 @@ interface Provider {
 }
 ```
 
-`contextWindow: null` means genuinely unknown. A consumer MUST NOT invent a
-stand-in. A cataloged cloud model without a context window fails construction
-unless the operator pins `PLURNK_PROVIDERS_CONTEXT_WINDOW`. A local probe
-failure degrades to `null` and emits one warning because a transient probe
-failure must not make a usable local endpoint unbootable.
-
-`contextWindow` is provider physics. An operator value is a hard physical
-ceiling: the provider reports `min(configured, detected/cataloged)`. When no
-natural value is knowable, the explicit value declares the window. This knob
-never carries model-facing prompt policy or grinder pressure; those belong to
-the consumer.
+`contextWindow` is provider physics and resolves under
+{§model-fact-resolution}. `null` means genuinely unknown; a consumer MUST NOT
+invent a stand-in. The context-window knob never carries model-facing prompt
+policy or grinder pressure.
 
 `countTokens` is synchronous and non-negative. The common fallback is a
 conservative chars/2 ruler and is announced once. `tokenize` exists only when
 the endpoint exposes its real vocabulary.
 
-`calculateCost` returns estimated USD. Models.dev rates are converted at the
-provider boundary. Unknown pricing returns `0`; it is not represented as a
-fabricated rate.
+`calculateCost` returns the local USD estimate defined by
+{§model-fact-resolution}. It is not an authoritative upstream-settled charge.
+The current numeric surface cannot distinguish unknown rates from a genuine
+zero estimate; [#9](https://repo.possumtech.com/plurnk/plurnk-service/issues/9)
+owns that end-to-end monetary correction.
 
 ### Generation
 
@@ -147,6 +143,22 @@ defaults.
 `PLURNK_MODEL_<alias>=<provider>/<model-id>` declares an alias.
 `PLURNK_MODEL=<alias>` selects the boot alias. Model IDs may contain `/`.
 `PLURNK_BASEURL_<alias>` is a per-alias endpoint override.
+
+### §model-fact-resolution Model fact precedence
+
+Provider and model facts resolve independently:
+
+| Fact                 | Natural source                                         | Operator source                                      | Effective value                                                                                                                                        |
+| -------------------- | ------------------------------------------------------ | ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Context window       | Catalog metadata or a local endpoint probe.            | `PLURNK_PROVIDERS_CONTEXT_WINDOW`.                   | Minimum when both exist; the sole value otherwise. A cataloged cloud miss fails construction; a compatible probe miss remains `null` with one warning. |
+| Completion envelope  | Catalog `maxOutput`; there is no live limit probe.     | `PLURNK_PROVIDERS_COMPLETION_RESERVE`.               | An absolute reserve wins. A percentage derives from the effective window and is capped by catalog `maxOutput` when present.                            |
+| Reasoning capability | Catalog `reasoning: true`, exposed by snapshot lookup. | Runtime activation, reserve, and adapter wire style. | The catalog bit is informational; provider construction neither activates nor blocks reasoning from it.                                                |
+| Estimated USD rates  | Catalog input, output, and optional cache-read rates.  | Complete input/output rate override; cache optional. | Operator rates win; otherwise catalog rates apply. With neither source, `calculateCost` returns `0`; no live price fetch exists.                       |
+
+The cached-input override defaults to the explicit input rate when omitted.
+Catalog cache-read cost likewise defaults to catalog input cost. Catalog
+cache-write cost remains snapshot information; the current usage estimator has
+no cache-write quantity to price.
 
 `instantiateProvider` resolves in this order:
 
@@ -329,11 +341,8 @@ described as verbatim evidence.
 
 Reasoning and completion reserves are percentages of the resolved context
 window or absolute token counts. Absolute pins win. The provider reports the
-resolved reserves; the consumer owns prompt packing and the per-call output cap.
-
-Models.dev `maxOutput` constrains a percentage-derived completion reserve but
-does not override an explicit absolute operator choice. Unknown model physics
-remain unknown.
+resolved reserves; the consumer owns prompt packing and the per-call output
+cap. Model-limit precedence is defined once in {§model-fact-resolution}.
 
 ## §13 Capacity pool
 

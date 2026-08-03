@@ -1,35 +1,63 @@
 # @plurnk/plurnk-models
 
-A build-time-vendored snapshot of model metadata — **context window + per-token pricing** — sourced from [models.dev](https://models.dev/). Consumed by [plurnk-providers](https://github.com/plurnk/plurnk-providers) and clients.
+A release-time snapshot of provider and model metadata from
+[Models.dev](https://models.dev/). `@plurnk/plurnk-providers` uses it to
+construct cataloged providers and resolve model facts without a Models.dev
+request during installation or runtime. Clients may use the same snapshot for
+model discovery.
 
-## Fallback only — live data wins
+## Data
 
-This snapshot is a **last resort**, never a primary source. A backend's probed context window and a provider's fetched per-token pricing are ground truth and can change; a vendored snapshot must never shadow them — especially cost. Consumers resolve in this order:
+The generated snapshot retains only the facts PLURNK consumes:
 
-```
-env override  →  live probe / live pricing fetch  →  THIS catalog  →  null
-```
+| Lookup             | Snapshot facts                                                         |
+| ------------------ | ---------------------------------------------------------------------- |
+| `lookupProvider()` | Provider id, AI SDK package, credential names, and optional API URL.   |
+| `lookup()`         | Context window, optional output limit, reasoning flag, and USD prices. |
 
-The catalog only fills the gap for a known cloud model whose endpoint doesn't self-report (e.g. a relay model behind `openrouter`). A local model (`macher.gguf` on llama-server) is a deliberate **miss** — the probe owns that.
-
-## Use
+Model entries without a positive context window are omitted. `reasoning: true`
+means the source asserted that capability; absence does not activate or disable
+runtime reasoning. A missing cost means Models.dev supplied no complete
+input/output rate pair.
 
 ```ts
 import { lookup } from "@plurnk/plurnk-models";
 
 const info = lookup("openrouter", "anthropic/claude-sonnet-4");
-// → { contextWindow: 1000000, cost: { inputPer1M: 3, outputPer1M: 15, cacheReadPer1M: 0.3, cacheWritePer1M: 3.75 } }
+// → {
+//     contextWindow: 1_000_000,
+//     maxOutput: 64_000,
+//     reasoning: true,
+//     cost: {
+//       inputPer1M: 3,
+//       outputPer1M: 15,
+//       cacheReadPer1M: 0.3,
+//       cacheWritePer1M: 3.75,
+//     },
+//   }
 // miss → null
 ```
 
-`provider` is the plurnk provider name (the alias-cascade segment); `model` is the provider-native id (for relays, `publisher/model`). `catalogSnapshot()` returns the whole read-only map for a client's model picker.
+`provider` is the PLURNK provider name. `model` is the provider-native id; for
+relays this is commonly `publisher/model`. `resolveModel()` also accepts an
+unambiguous provider-native suffix. `catalogSnapshot()` and
+`providerCatalogSnapshot()` expose the complete read-only maps.
 
-## Data
+## Resolution boundary
 
-Pruned to the two fields plurnk uses, across plurnk's supported providers only (~620 models, ~64 KB). Four provider names diverge from models.dev's ids (`together→togetherai`, `fireworks→fireworks-ai`, `cloudflare→cloudflare-workers-ai`, `ollama→ollama-cloud`); the rest are identity.
+This package owns snapshot generation and lookup, not runtime precedence.
+Context windows, output envelopes, reasoning activation, and prices resolve by
+different rules in the provider contract ({§model-fact-resolution}). In
+particular, PLURNK does not fetch live per-token prices.
 
-**No network at install or runtime** — the snapshot is committed. Refresh on the release cadence:
+## Refresh
 
+The committed snapshot is refreshed deliberately at release time:
+
+```sh
+npm run generate
 ```
-npm run generate   # fetch models.dev/api.json → prune → src/catalog.json
-```
+
+That command fetches `https://models.dev/api.json`, retains providers whose AI
+SDK package PLURNK supports, prunes the model facts, and rewrites the two source
+JSON files.

@@ -2,10 +2,12 @@ import test from "node:test";
 import { strict as assert } from "node:assert";
 import { lookup, lookupProvider, resolveModel, catalogSnapshot, providerCatalogSnapshot, providerCredentialEnvNames } from "./index.ts";
 
-test("lookup: a known cloud model resolves to context window + pricing", () => {
+test("lookup: a known cloud model exposes the four snapshot model fact groups", () => {
     const info = lookup("openrouter", "anthropic/claude-sonnet-4");
     assert.ok(info !== null, "expected a snapshot entry for a well-known relay model");
     assert.ok(info.contextWindow > 0);
+    assert.ok((info.maxOutput ?? 0) > 0);
+    assert.equal(info.reasoning, true);
     assert.equal(typeof info.cost?.inputPer1M, "number");
     assert.equal(typeof info.cost?.outputPer1M, "number");
 });

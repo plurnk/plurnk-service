@@ -71,17 +71,15 @@ export const dataCaptureFromEnv = (env: NodeJS.ProcessEnv, label: string): { top
     };
 };
 
-// The context-window pin (SPEC §4) under its OpenAI-lexicon name (#472) — the
-// industry term is "context window" (OpenAI/Anthropic docs, models.dev
-// contextWindow); CONTEXT_SIZE was home-grown. One reader for base AND
-// plugins, so the shed fires everywhere the knob is honored.
+// {§model-fact-resolution} — one context-window reader for every provider path;
+// the retired CONTEXT_SIZE spelling fails visibly at the same boundary.
 export const contextWindowFromEnv = (env: NodeJS.ProcessEnv, label: string): number | null => {
     shedRenamed(env, "PLURNK_PROVIDERS_CONTEXT_SIZE", "PLURNK_PROVIDERS_CONTEXT_WINDOW", label, "the industry term, #472"); // lexicon-allow
     return parseOptionalInt(env.PLURNK_PROVIDERS_CONTEXT_WINDOW, "PLURNK_PROVIDERS_CONTEXT_WINDOW", label);
 };
 
-// An operator window is a hard ceiling, not a replacement for smaller model
-// physics. When no natural window is knowable, the explicit value declares it.
+// {§model-fact-resolution} — an operator value caps known model physics and
+// declares the window only when no natural value is known.
 export const effectiveContextWindow = (operatorCap: number | null, naturalWindow: number | null): number | null =>
     operatorCap === null
         ? naturalWindow
@@ -91,6 +89,8 @@ export const effectiveContextWindow = (operatorCap: number | null, naturalWindow
 
 export type ProviderTokenRates = { input: number; cached: number; output: number };
 
+// {§model-fact-resolution} — any explicit rate opts into one complete operator
+// estimate; cached input alone may default to the explicit input rate.
 export const tokenRatesFromEnv = (env: NodeJS.ProcessEnv, label: string): ProviderTokenRates | null => {
     const inputName = "PLURNK_PROVIDERS_INPUT_USD_PER_MILLION";
     const cachedName = "PLURNK_PROVIDERS_CACHE_READ_USD_PER_MILLION";

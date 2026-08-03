@@ -5,8 +5,9 @@ PLURNK's stable model-provider contract and its adapter to the
 
 Ordinary provider behavior is intentionally not reimplemented here:
 
-- Models.dev supplies provider package, endpoint, credential, context-window,
-  output-limit, and pricing metadata at build time.
+- A release-time Models.dev snapshot supplies provider package, endpoint, and
+  credential names, plus context-window, output-limit, reasoning-capability,
+  and pricing metadata.
 - Official AI SDK providers own vendor request and response protocols.
 - PLURNK owns aliases, generation envelopes, normalized usage and errors,
   evidence capture, first-party metadata, and local endpoint capabilities.
@@ -14,6 +15,11 @@ Ordinary provider behavior is intentionally not reimplemented here:
 See `SPEC.md` for the contract and `.env.defaults` for every operational knob.
 The package-owned `PLURNK_PROVIDERS_ERROR_DETAIL_LIMIT` bounds upstream
 diagnostic text in public provider Problems.
+
+Model facts do not share one fallback chain. Context windows, output envelopes,
+reasoning activation, and estimated prices resolve independently
+({§model-fact-resolution}). PLURNK does not fetch live per-token prices, and the
+local estimate is not an authoritative relay-settled charge.
 
 ## Configure a model
 

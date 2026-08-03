@@ -1,9 +1,6 @@
-// @plurnk/plurnk-models — a build-time-vendored snapshot of model metadata
-// (context window + pricing) sourced from models.dev.
-//
-// Cloud provider facts come from this release-time snapshot. Local endpoint
-// probes and explicit operator pins win where present. There is no runtime
-// dependency on models.dev and no parallel PLURNK vendor table.
+// Release-time Models.dev snapshot. This package owns lookup; provider-owned
+// field precedence is defined by {§model-fact-resolution}. There is no runtime
+// dependency on Models.dev and no parallel PLURNK vendor table.
 
 import catalog from "./catalog.json" with { type: "json" };
 import providers from "./providers.json" with { type: "json" };
@@ -17,9 +14,9 @@ export type ModelCost = {
 
 export type ModelInfo = {
     readonly contextWindow: number;     // tokens
-    readonly maxOutput?: number;        // completion cap (tokens); absent when the source had none
-    readonly reasoning?: boolean;       // model reasons (static, from models.dev); absent = no
-    readonly cost?: ModelCost;          // absent when models.dev had no pricing
+    readonly maxOutput?: number;        // completion cap in tokens; absent when the source had none
+    readonly reasoning?: boolean;       // true when Models.dev asserts reasoning capability
+    readonly cost?: ModelCost;          // absent without complete input and output rates
 };
 
 export type ProviderInfo = {
@@ -48,11 +45,9 @@ const PROVIDER_IDS: Readonly<Record<string, string>> = Object.freeze({
 const data = catalog as Record<string, Record<string, ModelInfo>>;
 const providerData = providers as Record<string, ProviderInfo>;
 
-// Snapshot metadata for the FALLBACK lookup. Returns null on a miss — the
-// caller MUST already have preferred any live value; a null here means "no
-// fallback either", i.e. leave the field unknown. `provider` is the plurnk
-// provider name (the alias-cascade segment); `model` is the provider-native id
-// (for relays, `publisher/model`, matching models.dev's keys).
+// Snapshot lookup only; {§model-fact-resolution} owns field-specific runtime
+// precedence. `provider` is the PLURNK alias-cascade segment and `model` is the
+// provider-native id (for relays, `publisher/model`).
 export const lookup = (provider: string, model: string): ModelInfo | null => {
     const id = PROVIDER_IDS[provider] ?? provider;
     return data[id]?.[model] ?? null;

@@ -264,7 +264,7 @@ test("identity getters and defaults", () => {
     assert.equal(p.contextWindow, null); // default
     assert.equal(p.countTokens(""), 0);
     assert.equal(p.countTokens("four"), 2); // default heuristic ceil(4/2) upper bound
-    assert.equal(p.calculateCost({ prompt: 9, completion: 9, reasoning: 0, cached: 0, total: 18 }), 0); // default free
+    assert.equal(p.calculateCost({ prompt: 9, completion: 9, reasoning: 0, cached: 0, total: 18 }), 0); // current unknown-rate sentinel
 });
 
 test("injected countTokens and calculateCost are used", () => {

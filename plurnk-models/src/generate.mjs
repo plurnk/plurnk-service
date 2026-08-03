@@ -1,10 +1,9 @@
-// Release-time generator. Fetches models.dev and vendors the provider facts
-// needed to construct an AI SDK provider plus the pruned model metadata PLURNK
+// Release-time generator. Fetches Models.dev and vendors the provider facts
+// needed to construct an AI SDK provider plus the pruned model facts PLURNK
 // consumes. Run on the release cadence:
 //   npm run generate
-// The snapshot is committed; there is NO network at install or runtime. Live
-// provider data always wins over this snapshot (see README) — it only fills the
-// gap when a provider exposes no live context/pricing.
+// The snapshot is committed; there is no Models.dev request at install or
+// runtime. {§model-fact-resolution} owns each field's runtime precedence.
 
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -35,13 +34,11 @@ const prune = (m) => {
     const contextWindow = m?.limit?.context;
     if (typeof contextWindow !== "number" || contextWindow <= 0) return null;
     const info = { contextWindow };
-    // The model's completion cap (#567/defaults-epic): models.dev carries limit.output for
-    // every model — the real per-model max output, not a blind window fraction.
+    // Retain the source's model-specific output limit when present.
     const maxOutput = m?.limit?.output;
     if (typeof maxOutput === "number" && maxOutput > 0) info.maxOutput = maxOutput;
-    // models.dev carries a per-model reasoning flag (all models) — the static "does this model
-    // reason" fact. The reasoning FORMAT (reasoning_content vs reasoning_effort) stays a
-    // per-provider probe, not a catalog field. Stored only when true; absent = non-reasoning.
+    // The capability bit is informational. Runtime activation and wire style are
+    // provider concerns, not catalog fields. Store only an asserted true value.
     if (m?.reasoning === true) info.reasoning = true;
     const c = m?.cost;
     if (c && typeof c.input === "number" && typeof c.output === "number") {

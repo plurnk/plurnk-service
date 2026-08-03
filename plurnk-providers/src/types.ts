@@ -146,16 +146,8 @@ export interface Provider {
     // everywhere else. Coordinates are 1-based: absent/0 emits no header (no
     // strikes-style zero exception). Headers only, never the packet.
     generate(args: { messages: ChatMessage[]; workerId: string; primaryWorkerId?: string; signal?: AbortSignal; grammar?: string; maxTokens?: number; attributions?: string[]; client?: string; strikes?: number; workspaceId?: string; loop?: number; turn?: number; sampling?: Record<string, unknown> }): Promise<ProviderResponse>;
-    // The model's effective context window in tokens. The provider RESOLVES it as
-    // min(operator cap, live probe/catalog fact), or the explicit declaration when
-    // no natural window is knowable. A CLOUD provider (no probe)
-    // FAILS AT CONSTRUCTION when it can't (#419/#417: never budget against a wrong
-    // number). A PROBING provider (openai/llama-server) instead DEGRADES to null on a
-    // probe miss - a blip must not crash it (#34) - and surfaces it once
-    // (PLURNK_CONTEXT_UNKNOWN). So null still means "window unknown -> no cap"; the
-    // consumer must NOT improvise a stand-in from it (#421). NOTE: under llama-server
-    // --parallel N, the window is PER SLOT (the server splits --ctx-size across slots
-    // and reports the divided value).
+    // {§model-fact-resolution} — effective physical context in tokens. `null`
+    // means unknown; under llama-server parallelism the probed value is per slot.
     readonly contextWindow: number | null;
     readonly model: string;
     // OPTIONAL (#37): the backend's SELF-REPORTED served model id, from a
@@ -197,8 +189,8 @@ export interface Provider {
     // `tokenize === undefined` means the backend can't. Exact-counting
     // consumers (the tokenizer seam) prefer this over any client-side data.
     tokenize?(text: string): Promise<number[]>;
-    // Provider-owned estimated cost calculation. Returns USD.
-    // Returns 0 for siblings/models with no known rates.
+    // {§model-fact-resolution} — local USD estimate. The current surface returns
+    // 0 for both unknown rates and a genuine zero estimate; #9 owns that split.
     calculateCost(usage: ProviderUsage): number;
 }
 
