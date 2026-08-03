@@ -91,11 +91,6 @@
     "devDependencies": {
         "@types/diff": "^7.0.2"
     },
-    "peerDependenciesMeta": {
-        "@plurnk/plurnk-mimetypes-embeddings": {
-            "optional": true
-        }
-    },
     "homepage": "https://github.com/plurnk/plurnk-service/tree/main/plurnk-core#readme",
     "bugs": {
         "url": "https://repo.possumtech.com/plurnk/plurnk-service/issues"

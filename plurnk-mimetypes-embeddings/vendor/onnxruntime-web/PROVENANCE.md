@@ -18,7 +18,7 @@ run verify:ort` checks them against `ort.sha256` (run in `pretest`).
 `protobufjs` ships a `postinstall` script. That script is benign (a read-only
 version-pin advisory) but its mere presence trips dependency script-gates
 (lavamoat, pnpm `approve-builds`, hardened npm) — so a first install of anything
-downstream (… → `@plurnk/plurnk-mimetypes-all` → `plurnk-service`) greets the
+downstream (`@plurnk/plurnk-mimetypes` → `@plurnk/plurnk-service`) greets the
 user with a script-approval prompt. There is no clean way to suppress it from a
 transitive package: npm `overrides` are root-only, and every portable WASM
 embedding stack (Transformers.js included) sits on this same `onnxruntime-web`.

@@ -1,5 +1,5 @@
 // Off-hot-path e2e: install the built package into a clean sandbox as a consumer would, then
-// prove it works out of the box — the embedder ships (default-on OOTB, a bundle member since the -all removal) with no
+// prove it works out of the box — the embedder ships in the default composition with no
 // native install scripts, the bin boots the DB from the installed dist, the daemon listens, and a
 // fresh install has NO active model (the #307 no-phone-home posture): the pointer surfaces instead.
 // The hosted-model round-trip is a deliberate red until that endpoint is live.
@@ -90,7 +90,7 @@ ok(buildInfo.version === installedPackage.version, "packed build provenance matc
 ok(buildInfo.revision === revision, "packed build provenance matches the checkout revision");
 ok(buildInfo.dirty === dirty, "packed build provenance reports checkout cleanliness");
 
-ok(existsSync(resolve(mods, "@plurnk", "plurnk-mimetypes-embeddings")), "embedder ships OOTB (default-on bundle member)");
+ok(existsSync(resolve(mods, "@plurnk", "plurnk-mimetypes-embeddings")), "embedder ships in the default service composition");
 for (const [providerPackage, provider] of [
     ["@ai-sdk/openai-compatible", "OpenAI-compatible and Cloudflare"],
     ["@ai-sdk/google", "Google"],

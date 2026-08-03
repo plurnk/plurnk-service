@@ -242,7 +242,7 @@ function topLevel(a, b) [50-60]
 type Channel = "symbols" | "deepJson" | "deepXml" | "references" | "content" | "embedding";
 ```
 
-- **Default set: `symbols`, `deepJson`, `deepXml`, `references`, `content`** (five). `content` performs no model inference ({§mimetype-content}); `embedding` does and is opt-in ({§mimetype-embedding}).
+- **Default set: `symbols`, `deepJson`, `deepXml`, `references`, `content`** (five). `content` performs no model inference ({§mimetype-content}); `embedding` does and must be requested explicitly ({§mimetype-embedding}).
 - **Unrequested channels are not computed and their fields are absent** from `ProcessResult`. A channel an entry legitimately lacks (flat text has no deep tree) comes back *present but empty* (`[]` / `null` / `""`) — absence means "not asked," emptiness means "asked, nothing there."
 - **`channels: []` is valid** — metadata only (`mimetype`, `ok`, `totalLines`), with no projection parse.
 - The default deep-xml projection consumes the deep-json value; when `deepXml` alone is requested the framework computes deep-json internally without exposing it.
@@ -793,8 +793,12 @@ the exported `RefsCaptureNode` surface consumed by the shared engine.
 
 ## §mimetype-embedding 17. Embedding channel
 
-The framework exposes one lazily resolved embedding seam. Embedding inference is
-never in the default channel set; callers request it explicitly.
+The framework exposes one lazily resolved embedding seam. The current
+distribution installs its portable artifact as an ordinary dependency, but
+embedding inference is never in the default channel set: callers request it
+explicitly. Lazy resolution and explicit computation do not imply optional
+package installation. The artifact may execute its bundled local model or
+target a configured OpenAI-compatible endpoint without changing this seam.
 
 | Surface                    | Input and result                                                                                          | Artifact unavailable                                                   |
 |----------------------------|-----------------------------------------------------------------------------------------------------------|------------------------------------------------------------------------|

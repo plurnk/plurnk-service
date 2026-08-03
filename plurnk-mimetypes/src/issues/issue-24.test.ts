@@ -86,7 +86,7 @@ describe("a present-but-broken embedder crashes, never silently degrades to abse
     });
 });
 
-describe("Issue #24 — C1: embedding is opt-in only", () => {
+describe("Issue #24 — C1: the embedding channel is request-only", () => {
     it("the default channel set never materializes embedding", async () => {
         let embedderRequested = false;
         const m = new Mimetypes({

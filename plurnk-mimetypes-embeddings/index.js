@@ -1,5 +1,5 @@
-// Opt-in embedder for @plurnk/plurnk-mimetypes' "embedding" channel
-// (plurnk-mimetypes#24). The framework duck-checks exactly this surface:
+// Portable implementation of @plurnk/plurnk-mimetypes' explicitly requested
+// embedding seam ({§mimetype-embedding}). The framework duck-checks this surface:
 // embed(text) → Promise<Uint8Array> of native-endian raw Float32 bytes
 // (4 × dimension), plus the dimension constant.
 //
