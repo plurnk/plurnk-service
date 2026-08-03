@@ -42,6 +42,17 @@ test("isEnabled: PLURNK_EXECS_ONLY is an allowlist — everything not listed is 
     assert.equal(Policy.isEnabled("node", env), false, "not in the allowlist → disabled");
 });
 
+test("{§executor-policy} #162: an explicitly empty ONLY value is the empty allowlist", () => {
+    assert.equal(Policy.isEnabled("node", {}), true, "an absent allowlist imposes no constraint");
+    assert.equal(Policy.isEnabled("node", { PLURNK_EXECS_ONLY: "" }), false, "a present empty allowlist admits no tag");
+    assert.equal(Policy.isEnabled("node", { PLURNK_EXECS_only: "" }), false, "case-insensitive key lookup preserves presence");
+    assert.equal(
+        Policy.enabledAcross("node", [{}, { PLURNK_EXECS_ONLY: "" }]),
+        false,
+        "an empty downstream layer remains subtractive in the intersection",
+    );
+});
+
 test("isEnabled: the allowlist and tag match are case-insensitive", () => {
     assert.equal(Policy.isEnabled("SEARCH", { PLURNK_EXECS_ONLY: "search" }), true);
     assert.equal(Policy.isEnabled("search", { PLURNK_EXECS_ONLY: "SEARCH" }), true);

@@ -293,12 +293,12 @@ swallowed.
 Discovery applies the daemon's registration policy to every tag. The exported
 `Policy` parser can apply the same grammar to additional consumer-owned layers.
 
-| Variable                                 | Enforced effect                                         |
-| ---------------------------------------- | ------------------------------------------------------- |
-| `PLURNK_EXECS_<TAG>=0` or `false`        | Remove that tag. Keys are matched case-insensitively.   |
-| `PLURNK_EXECS_ONLY=tag-a,tag-b`          | Remove every tag not in the case-insensitive allowlist. |
-| `Policy.isKey(key)`                      | Admit only `ONLY` or a canonical runtime-tag suffix.    |
-| `Policy.enabledAcross(tag, [a, b, ...])` | Keep the tag only when every supplied layer enables it. |
+| Variable                                 | Enforced effect                                             |
+| ---------------------------------------- | ----------------------------------------------------------- |
+| `PLURNK_EXECS_<TAG>=0` or `false`        | Remove that tag. Keys are matched case-insensitively.       |
+| `PLURNK_EXECS_ONLY=<list>`               | When present, remove every unlisted tag; empty removes all. |
+| `Policy.isKey(key)`                      | Admit only `ONLY` or a canonical runtime-tag suffix.        |
+| `Policy.enabledAcross(tag, [a, b, ...])` | Keep the tag only when every supplied layer enables it.     |
 
 Policy is purely subtractive: no layer can re-enable a tag removed by another.
 Boot-disabled tags are absent from the registry and returned in

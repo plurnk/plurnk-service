@@ -39,7 +39,7 @@ export default class Policy {
         const off = Policy.#read(env, tag);
         if (off === "0" || off?.toLowerCase() === "false") return false;
         const only = Policy.#read(env, "ONLY");
-        if (only) {
+        if (only !== undefined) {
             const allow = new Set(only.split(",").map((s) => s.trim().toLowerCase()).filter(Boolean));
             if (!allow.has(tag.toLowerCase())) return false;
         }

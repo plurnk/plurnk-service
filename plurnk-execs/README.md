@@ -93,11 +93,11 @@ produce channels; the consumer owns storage and every later READ/FIND. See
 `node_modules`, applies trust before executable hooks, applies boot policy, and
 returns `{ registry, skipped, disabled }`. Tag collisions fail hard.
 
-| Policy                              | Result                                 |
-| ----------------------------------- | -------------------------------------- |
-| `PLURNK_EXECS_<TAG>=0` or `false`   | Tag is not registered.                 |
-| `PLURNK_EXECS_ONLY=a,b,c`           | Only the named tags remain registered. |
-| `Policy.enabledAcross(tag, layers)` | Every layer must admit the tag.        |
+| Policy                              | Result                                        |
+| ----------------------------------- | --------------------------------------------- |
+| `PLURNK_EXECS_<TAG>=0` or `false`   | Tag is not registered.                        |
+| `PLURNK_EXECS_ONLY=<list>`          | Only named tags remain; empty registers none. |
+| `Policy.enabledAcross(tag, layers)` | Every layer must admit the tag.               |
 
 Policy is subtractive; a downstream layer cannot restore a removed tag. See
 {§executor-discovery}, {§executor-trust}, and {§executor-policy}.

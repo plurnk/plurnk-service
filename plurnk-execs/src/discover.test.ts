@@ -392,6 +392,18 @@ test("runtime policy: PLURNK_EXECS_ONLY registers only the allowlist; the rest l
     });
 });
 
+test("{§executor-policy} #162: an explicitly empty ONLY registers no runtime", async () => {
+    const dir = await makePkg({
+        name: "@plurnk/plurnk-execs-common",
+        plurnk: { kind: "exec", runtimes: [{ name: "node" }, { name: "sh" }] },
+    });
+    await withEnv({ PLURNK_EXECS_ONLY: "" }, async () => {
+        const { registry, disabled } = await Discover.scan({ packageDirs: [dir] });
+        assert.equal(registry.size, 0, "a present empty allowlist admits no declared tag");
+        assert.deepEqual(disabled, ["node", "sh"], "every declared tag remains visible as policy-disabled");
+    });
+});
+
 test("runtime policy: PLURNK_EXECS_<tag>=0 removes a single tag uniformly", async () => {
     const dir = await makePkg({
         name: "@plurnk/plurnk-execs-common",
