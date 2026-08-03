@@ -1,4 +1,6 @@
-import type { MimeSymbol, SymbolKind } from "../types.ts";
+import { treeSitterSpan } from "../ParserCoordinates.ts";
+import type { TreeSitterSymbolProjection } from "../ParserCoordinates.ts";
+import type { SymbolKind } from "../types.ts";
 import type { TreeSitterNode } from "../TreeSitterExtractor.ts";
 
 // CSS SPEC §3 mapping for tree-sitter-css.
@@ -7,13 +9,13 @@ import type { TreeSitterNode } from "../TreeSitterExtractor.ts";
 //   keyframes_statement     → module, name = keyframe name
 //   media_statement         → module, name = "@media <query>"
 //   :root custom properties → constant per --name
-export function extract(root: TreeSitterNode, _content: string): MimeSymbol[] {
-    const out: MimeSymbol[] = [];
+export function extract(root: TreeSitterNode, _content: string): TreeSitterSymbolProjection[] {
+    const out: TreeSitterSymbolProjection[] = [];
     walk(root, out, "");
     return out;
 }
 
-function walk(node: TreeSitterNode, out: MimeSymbol[], container: string): void {
+function walk(node: TreeSitterNode, out: TreeSitterSymbolProjection[], container: string): void {
     for (let i = 0; i < node.namedChildCount; i += 1) {
         const child = node.namedChild(i);
         if (!child) continue;
@@ -21,7 +23,7 @@ function walk(node: TreeSitterNode, out: MimeSymbol[], container: string): void 
     }
 }
 
-function dispatch(node: TreeSitterNode, out: MimeSymbol[], container: string): void {
+function dispatch(node: TreeSitterNode, out: TreeSitterSymbolProjection[], container: string): void {
     switch (node.type) {
         case "rule_set": {
             const selectors = findChildOfType(node, "selectors");
@@ -55,7 +57,7 @@ function dispatch(node: TreeSitterNode, out: MimeSymbol[], container: string): v
     }
 }
 
-function emitCustomProperties(block: TreeSitterNode, out: MimeSymbol[], container: string): void {
+function emitCustomProperties(block: TreeSitterNode, out: TreeSitterSymbolProjection[], container: string): void {
     for (let i = 0; i < block.namedChildCount; i += 1) {
         const child = block.namedChild(i);
         if (!child || child.type !== "declaration") continue;
@@ -75,7 +77,7 @@ function findChildOfType(node: TreeSitterNode, type: string): TreeSitterNode | n
 }
 
 function push(
-    out: MimeSymbol[],
+    out: TreeSitterSymbolProjection[],
     kind: SymbolKind,
     name: string,
     node: TreeSitterNode,
@@ -84,10 +86,7 @@ function push(
     out.push({
         name,
         kind,
-        line: node.startPosition.row + 1,
-        endLine: node.endPosition.row + 1,
-        column: node.startPosition.column + 1,
-        endColumn: node.endPosition.column + 1,
+        span: treeSitterSpan(node),
         ...(container.length > 0 && { container }),
     });
 }

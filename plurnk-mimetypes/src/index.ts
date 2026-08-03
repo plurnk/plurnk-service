@@ -2,6 +2,20 @@
 export { default as Mimetypes } from "./Mimetypes.ts";
 export { default as TextCoordinates } from "./TextCoordinates.ts";
 export type { TextLine, TextPosition } from "./TextCoordinates.ts";
+export {
+    default as ParserCoordinates,
+    isParserCoordinateError,
+    materializeTreeSitterSymbols,
+    ParserCoordinateError,
+    treeSitterSpan,
+} from "./ParserCoordinates.ts";
+export type {
+    TreeSitterEndBoundary,
+    TreeSitterPoint,
+    TreeSitterSourceNode,
+    TreeSitterSpan,
+    TreeSitterSymbolProjection,
+} from "./ParserCoordinates.ts";
 export type { TextRegion } from "@plurnk/plurnk-contracts";
 export type {
     Channel,

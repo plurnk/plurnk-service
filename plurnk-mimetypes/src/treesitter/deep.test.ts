@@ -56,6 +56,24 @@ describe("TreeSitterLanguageHandler.deepJson — Python", () => {
         // The identifier 'f' is preserved in some text node.
         assert.ok(xml.includes(">f<") || xml.includes(">f</"));
     });
+
+    it("uses code-point columns for nodes after astral text", async () => {
+        const source = "def f(): \"😀\"; g()\n";
+        const h = new TreeSitterLanguageHandler(md, entry);
+        type N = { type: string; text?: string; column?: number; endColumn?: number; children?: N[] };
+        const root = await h.deepJson(source) as N;
+        const stack = [root];
+        let g: N | undefined;
+        while (stack.length > 0) {
+            const current = stack.pop()!;
+            if (current.type === "identifier" && current.text === "g") g = current;
+            if (current.children) stack.push(...current.children);
+        }
+        assert.deepEqual({ column: g?.column, endColumn: g?.endColumn }, {
+            column: 15,
+            endColumn: 16,
+        });
+    });
 });
 
 describe("TreeSitterLanguageHandler.deepJson — shares parser cache with extractRaw", () => {

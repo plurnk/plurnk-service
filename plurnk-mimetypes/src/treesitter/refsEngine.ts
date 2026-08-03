@@ -1,4 +1,5 @@
 import type { MimeRef, MimeSymbol, RefKind } from "../types.ts";
+import ParserCoordinates from "../ParserCoordinates.ts";
 import type { TreeSitterNode, TreeSitterTree } from "../TreeSitterExtractor.ts";
 
 // References-channel engine (issue #19). Executes a language's refs query
@@ -16,10 +17,12 @@ import type { TreeSitterNode, TreeSitterTree } from "../TreeSitterExtractor.ts";
 // its source span. Blessed as a public type (issue #26) so a Tier 2 adapter
 // composing a qualified name from several capture nodes (HCL `TYPE.NAME`) can
 // construct an honest capture node — no cast through TreeSitterNode relying on
-// a comment-only "engine reads only these three" contract. A real
+// a comment-only field-subset contract. A real
 // web-tree-sitter node satisfies it structurally, so widening is non-breaking.
 export interface RefsCaptureNode {
     readonly text: string;
+    readonly startIndex?: number;
+    readonly endIndex?: number;
     readonly startPosition: { readonly row: number; readonly column: number };
     readonly endPosition: { readonly row: number; readonly column: number };
 }
@@ -45,6 +48,7 @@ export function collectReferences(
     tree: TreeSitterTree,
     symbols: readonly MimeSymbol[],
 ): MimeRef[] {
+    const coordinates = new ParserCoordinates(tree.rootNode.text);
     const defs = containerIndex(symbols);
     const seen = new Set<string>();
     const out: MimeRef[] = [];
@@ -54,8 +58,9 @@ export function collectReferences(
         if (!REF_KINDS.has(kind)) continue;
         const name = capture.node.text;
         if (name.length === 0) continue;
-        const line = capture.node.startPosition.row + 1;
-        const column = capture.node.startPosition.column + 1;
+        const region = coordinates.treeSitterNode(capture.node);
+        const line = region.startLine;
+        const column = region.startColumn;
         // Overlapping patterns can capture the same node under the same kind
         // (e.g. a call that is also matched by a more specific pattern) —
         // dedupe by position + kind.
@@ -68,8 +73,8 @@ export function collectReferences(
             kind: kind as RefKind,
             line,
             column,
-            endLine: capture.node.endPosition.row + 1,
-            endColumn: capture.node.endPosition.column + 1,
+            endLine: region.endLine,
+            endColumn: region.endColumn,
             ...(container !== null && { container }),
         });
     }

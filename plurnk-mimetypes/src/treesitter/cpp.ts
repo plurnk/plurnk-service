@@ -1,4 +1,6 @@
-import type { MimeSymbol, SymbolKind } from "../types.ts";
+import { treeSitterSpan } from "../ParserCoordinates.ts";
+import type { TreeSitterSymbolProjection } from "../ParserCoordinates.ts";
+import type { SymbolKind } from "../types.ts";
 import type { TreeSitterNode } from "../TreeSitterExtractor.ts";
 
 // C++ SPEC §3 mapping via tree-sitter-cpp.
@@ -18,13 +20,13 @@ import type { TreeSitterNode } from "../TreeSitterExtractor.ts";
 // named enums are containers — members carry the dotted path of enclosing
 // emitted scope names. `container` is the path; `inClass` stays a separate
 // flag because namespace members keep function/variable kinds.
-export function extract(root: TreeSitterNode, _content: string): MimeSymbol[] {
-    const out: MimeSymbol[] = [];
+export function extract(root: TreeSitterNode, _content: string): TreeSitterSymbolProjection[] {
+    const out: TreeSitterSymbolProjection[] = [];
     walk(root, out, "", /*inClass*/ false);
     return out;
 }
 
-function walk(node: TreeSitterNode, out: MimeSymbol[], container: string, inClass: boolean): void {
+function walk(node: TreeSitterNode, out: TreeSitterSymbolProjection[], container: string, inClass: boolean): void {
     for (let i = 0; i < node.namedChildCount; i += 1) {
         const child = node.namedChild(i);
         if (!child) continue;
@@ -36,7 +38,7 @@ function joined(container: string, name: string): string {
     return container.length > 0 ? `${container}.${name}` : name;
 }
 
-function dispatch(node: TreeSitterNode, out: MimeSymbol[], container: string, inClass: boolean): void {
+function dispatch(node: TreeSitterNode, out: TreeSitterSymbolProjection[], container: string, inClass: boolean): void {
     switch (node.type) {
         case "function_definition": {
             const name = declaratorName(node.childForFieldName("declarator"));
@@ -192,16 +194,11 @@ function firstIdentifierText(node: TreeSitterNode): string | null {
     return null;
 }
 
-function position(node: TreeSitterNode): Pick<MimeSymbol, "line" | "endLine" | "column" | "endColumn"> {
-    return {
-        line: node.startPosition.row + 1,
-        endLine: node.endPosition.row + 1,
-        column: node.startPosition.column + 1,
-        endColumn: node.endPosition.column + 1,
-    };
+function position(node: TreeSitterNode): Pick<TreeSitterSymbolProjection, "span"> {
+    return { span: treeSitterSpan(node) };
 }
 
-function push(out: MimeSymbol[], kind: SymbolKind, name: string, node: TreeSitterNode, container = ""): void {
+function push(out: TreeSitterSymbolProjection[], kind: SymbolKind, name: string, node: TreeSitterNode, container = ""): void {
     out.push({
         name,
         kind,

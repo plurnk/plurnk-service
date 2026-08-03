@@ -1,4 +1,6 @@
-import type { MimeSymbol, SymbolKind } from "../types.ts";
+import { treeSitterSpan } from "../ParserCoordinates.ts";
+import type { TreeSitterSymbolProjection } from "../ParserCoordinates.ts";
+import type { SymbolKind } from "../types.ts";
 import type { TreeSitterNode } from "../TreeSitterExtractor.ts";
 
 // Scala SPEC §3 mapping via tree-sitter-scala.
@@ -20,13 +22,13 @@ import type { TreeSitterNode } from "../TreeSitterExtractor.ts";
 // container path but are NOT class scope — defs/vals inside stay
 // function/constant — so classness travels as a separate flag; container
 // presence alone can't distinguish package bodies from template bodies.
-export function extract(root: TreeSitterNode, _content: string): MimeSymbol[] {
-    const out: MimeSymbol[] = [];
+export function extract(root: TreeSitterNode, _content: string): TreeSitterSymbolProjection[] {
+    const out: TreeSitterSymbolProjection[] = [];
     walk(root, out, "", /*inClass*/ false);
     return out;
 }
 
-function walk(node: TreeSitterNode, out: MimeSymbol[], container: string, inClass: boolean): void {
+function walk(node: TreeSitterNode, out: TreeSitterSymbolProjection[], container: string, inClass: boolean): void {
     for (let i = 0; i < node.namedChildCount; i += 1) {
         const child = node.namedChild(i);
         if (!child) continue;
@@ -34,7 +36,7 @@ function walk(node: TreeSitterNode, out: MimeSymbol[], container: string, inClas
     }
 }
 
-function dispatch(node: TreeSitterNode, out: MimeSymbol[], container: string, inClass: boolean): void {
+function dispatch(node: TreeSitterNode, out: TreeSitterSymbolProjection[], container: string, inClass: boolean): void {
     switch (node.type) {
         case "package_clause": {
             const name = childFieldText(node, "name") ?? firstIdentifierText(node);
@@ -113,13 +115,8 @@ function qualify(container: string, name: string): string {
     return container.length > 0 ? `${container}.${name}` : name;
 }
 
-function position(node: TreeSitterNode): Pick<MimeSymbol, "line" | "endLine" | "column" | "endColumn"> {
-    return {
-        line: node.startPosition.row + 1,
-        endLine: node.endPosition.row + 1,
-        column: node.startPosition.column + 1,
-        endColumn: node.endPosition.column + 1,
-    };
+function position(node: TreeSitterNode): Pick<TreeSitterSymbolProjection, "span"> {
+    return { span: treeSitterSpan(node) };
 }
 
 function patternName(node: TreeSitterNode | null): string | null {
@@ -156,7 +153,7 @@ function extractParams(parametersNode: TreeSitterNode | null): string[] {
     return out;
 }
 
-function push(out: MimeSymbol[], kind: SymbolKind, name: string, node: TreeSitterNode, container: string): void {
+function push(out: TreeSitterSymbolProjection[], kind: SymbolKind, name: string, node: TreeSitterNode, container: string): void {
     out.push({
         name,
         kind,

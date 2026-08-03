@@ -1,4 +1,6 @@
-import type { MimeSymbol, SymbolKind } from "../types.ts";
+import { treeSitterSpan } from "../ParserCoordinates.ts";
+import type { TreeSitterSymbolProjection } from "../ParserCoordinates.ts";
+import type { SymbolKind } from "../types.ts";
 import type { TreeSitterNode } from "../TreeSitterExtractor.ts";
 
 // Lua SPEC §3 mapping via @tree-sitter-grammars/tree-sitter-lua.
@@ -11,8 +13,8 @@ import type { TreeSitterNode } from "../TreeSitterExtractor.ts";
 //
 // Issue #18: flat mapping — no recursion into named scopes, so no containers;
 // symbols carry 1-indexed columns only.
-export function extract(root: TreeSitterNode, _content: string): MimeSymbol[] {
-    const out: MimeSymbol[] = [];
+export function extract(root: TreeSitterNode, _content: string): TreeSitterSymbolProjection[] {
+    const out: TreeSitterSymbolProjection[] = [];
     for (let i = 0; i < root.namedChildCount; i += 1) {
         const child = root.namedChild(i);
         if (!child) continue;
@@ -21,24 +23,21 @@ export function extract(root: TreeSitterNode, _content: string): MimeSymbol[] {
     return out;
 }
 
-function dispatch(node: TreeSitterNode, out: MimeSymbol[]): void {
+function dispatch(node: TreeSitterNode, out: TreeSitterSymbolProjection[]): void {
     switch (node.type) {
         case "function_declaration": {
             const nameNode = node.childForFieldName("name");
             if (!nameNode) return;
             const params = extractParams(node.childForFieldName("parameters"));
-            const line = node.startPosition.row + 1;
-            const endLine = node.endPosition.row + 1;
-            const column = node.startPosition.column + 1;
-            const endColumn = node.endPosition.column + 1;
+            const span = treeSitterSpan(node);
             if (nameNode.type === "identifier") {
-                out.push({ name: nameNode.text, kind: "function", line, endLine, column, endColumn, params });
+                out.push({ name: nameNode.text, kind: "function", span, params });
             } else if (nameNode.type === "dot_index_expression") {
                 const field = nameNode.childForFieldName("field");
-                if (field) out.push({ name: field.text, kind: "method", line, endLine, column, endColumn, params });
+                if (field) out.push({ name: field.text, kind: "method", span, params });
             } else if (nameNode.type === "method_index_expression") {
                 const method = nameNode.childForFieldName("method");
-                if (method) out.push({ name: method.text, kind: "method", line, endLine, column, endColumn, params });
+                if (method) out.push({ name: method.text, kind: "method", span, params });
             }
             return;
         }
@@ -113,14 +112,11 @@ function isScreamingSnake(name: string): boolean {
     return hasLetter;
 }
 
-function push(out: MimeSymbol[], kind: SymbolKind, name: string, node: TreeSitterNode): void {
+function push(out: TreeSitterSymbolProjection[], kind: SymbolKind, name: string, node: TreeSitterNode): void {
     out.push({
         name,
         kind,
-        line: node.startPosition.row + 1,
-        endLine: node.endPosition.row + 1,
-        column: node.startPosition.column + 1,
-        endColumn: node.endPosition.column + 1,
+        span: treeSitterSpan(node),
     });
 }
 

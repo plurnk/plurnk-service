@@ -1,4 +1,6 @@
-import type { MimeSymbol, SymbolKind } from "../types.ts";
+import { treeSitterSpan } from "../ParserCoordinates.ts";
+import type { TreeSitterSymbolProjection } from "../ParserCoordinates.ts";
+import type { SymbolKind } from "../types.ts";
 import type { TreeSitterNode } from "../TreeSitterExtractor.ts";
 
 // Ruby SPEC §3 mapping via tree-sitter-ruby.
@@ -12,13 +14,13 @@ import type { TreeSitterNode } from "../TreeSitterExtractor.ts";
 //
 // Container semantics (issue #18): symbols inside a module/class carry the
 // dotted path of enclosing emitted names. Top-level symbols carry none.
-export function extract(root: TreeSitterNode, _content: string): MimeSymbol[] {
-    const out: MimeSymbol[] = [];
+export function extract(root: TreeSitterNode, _content: string): TreeSitterSymbolProjection[] {
+    const out: TreeSitterSymbolProjection[] = [];
     walk(root, out, "");
     return out;
 }
 
-function walk(node: TreeSitterNode, out: MimeSymbol[], container: string): void {
+function walk(node: TreeSitterNode, out: TreeSitterSymbolProjection[], container: string): void {
     for (let i = 0; i < node.namedChildCount; i += 1) {
         const child = node.namedChild(i);
         if (!child) continue;
@@ -26,7 +28,7 @@ function walk(node: TreeSitterNode, out: MimeSymbol[], container: string): void 
     }
 }
 
-function dispatch(node: TreeSitterNode, out: MimeSymbol[], container: string): void {
+function dispatch(node: TreeSitterNode, out: TreeSitterSymbolProjection[], container: string): void {
     switch (node.type) {
         case "module": {
             const name = firstNamedOfTypes(node, ["constant", "scope_resolution"]);
@@ -117,20 +119,17 @@ function extractRubyParams(node: TreeSitterNode | null): string[] {
 }
 
 function push(
-    out: MimeSymbol[],
+    out: TreeSitterSymbolProjection[],
     kind: SymbolKind,
     name: string,
     node: TreeSitterNode,
     container: string,
     params?: string[],
 ): void {
-    const sym: MimeSymbol = {
+    const sym: TreeSitterSymbolProjection = {
         name,
         kind,
-        line: node.startPosition.row + 1,
-        endLine: node.endPosition.row + 1,
-        column: node.startPosition.column + 1,
-        endColumn: node.endPosition.column + 1,
+        span: treeSitterSpan(node),
     };
     if (container.length > 0) sym.container = container;
     if (params !== undefined) sym.params = params;

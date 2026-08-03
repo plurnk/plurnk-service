@@ -1,5 +1,6 @@
 import BaseHandler from "./BaseHandler.ts";
 import type { HandlerContent } from "./BaseHandler.ts";
+import ParserCoordinates, { isParserCoordinateError } from "./ParserCoordinates.ts";
 import type { ExtractionVisitor, MimeRef, MimeSymbol } from "./types.ts";
 
 // ANTLR handler adapter ({§mimetype-backend-selection}). Subclasses supply the
@@ -18,9 +19,11 @@ export default abstract class AntlrExtractor extends BaseHandler {
         if (tree === null || tree === undefined) return [];
 
         const visitor = this.createVisitor();
+        visitor.bindContent?.(content);
         try {
             visitor.visit(tree);
-        } catch {
+        } catch (error) {
+            if (isParserCoordinateError(error)) throw error;
             return [];
         }
         return visitor.symbols;
@@ -38,9 +41,11 @@ export default abstract class AntlrExtractor extends BaseHandler {
         if (tree === null || tree === undefined) return [];
 
         const visitor = this.createVisitor();
+        visitor.bindContent?.(content);
         try {
             visitor.visit(tree);
-        } catch {
+        } catch (error) {
+            if (isParserCoordinateError(error)) throw error;
             return [];
         }
         return visitor.refs ?? [];
@@ -58,29 +63,43 @@ export default abstract class AntlrExtractor extends BaseHandler {
         }
         if (tree === null || tree === undefined) return null;
         try {
-            return walkAntlrTree(tree);
-        } catch {
+            return walkAntlrTree(tree, content);
+        } catch (error) {
+            if (isParserCoordinateError(error)) throw error;
             return null;
         }
     }
 }
 
-// Duck-typed walk over an antlr4ng parse tree. The framework doesn't depend
-// on antlr4ng directly — it's a peer dep — so we read fields defensively.
+// Duck-typed walk over an antlr4ng parse tree. Generated grammar packages can
+// expose distinct concrete context classes, so the shared walker reads only
+// the stable runtime fields it owns.
 //
 // ParserRuleContext has: { children?, start?, stop?, parser?, constructor.name }.
 // TerminalNode has: { symbol: { line, type, text, ... } }.
-export function walkAntlrTree(node: unknown): unknown {
+export function walkAntlrTree(node: unknown, content?: string): unknown {
+    return walkAntlrNode(
+        node,
+        content === undefined ? undefined : new ParserCoordinates(content),
+    );
+}
+
+function walkAntlrNode(node: unknown, coordinates: ParserCoordinates | undefined): unknown {
     if (node === null || node === undefined) return null;
     const n = node as Record<string, unknown>;
 
     // Terminal node — wraps a single token under `symbol`.
     if (typeof n.symbol === "object" && n.symbol !== null && !("children" in n)) {
         const sym = n.symbol as { line?: number; text?: string; type?: number };
+        const region = coordinates?.antlrToken(sym);
         return {
             type: tokenTypeName(node, sym),
-            line: sym.line ?? 1,
-            endLine: sym.line ?? 1,
+            line: region?.startLine ?? sym.line ?? 1,
+            endLine: region?.endLine ?? sym.line ?? 1,
+            ...(region === undefined ? {} : {
+                column: region.startColumn,
+                endColumn: region.endColumn,
+            }),
             text: sym.text ?? "",
         };
     }
@@ -89,22 +108,27 @@ export function walkAntlrTree(node: unknown): unknown {
     // recursive descent.
     const start = n.start as { line?: number } | undefined;
     const stop = n.stop as { line?: number } | undefined;
-    // An epsilon/empty-match rule context has its `stop` token set to the token
-    // BEFORE `start` (ANTLR convention), so stop.line < start.line. Clamp endLine
-    // to start.line so a span is never inverted (#41: endLine >= line always).
+    // Source-bound walks use absolute offsets. This line-only fallback keeps
+    // the public source-less helper ordered for synthetic callers.
     const startLine = start?.line ?? 1;
     const stopLine = stop?.line;
+    const region = coordinates?.antlrContext(n);
     const out: Record<string, unknown> = {
         type: ruleNameOf(node),
-        line: startLine,
-        endLine: typeof stopLine === "number" && stopLine >= startLine ? stopLine : startLine,
+        line: region?.startLine ?? startLine,
+        endLine: region?.endLine
+            ?? (typeof stopLine === "number" && stopLine >= startLine ? stopLine : startLine),
+        ...(region === undefined ? {} : {
+            column: region.startColumn,
+            endColumn: region.endColumn,
+        }),
     };
 
     const children = n.children as unknown[] | undefined;
     if (Array.isArray(children) && children.length > 0) {
         const walked: unknown[] = [];
         for (const child of children) {
-            const w = walkAntlrTree(child);
+            const w = walkAntlrNode(child, coordinates);
             if (w !== null) walked.push(w);
         }
         if (walked.length > 0) out.children = walked;

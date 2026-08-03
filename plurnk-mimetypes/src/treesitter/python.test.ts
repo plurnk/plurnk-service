@@ -146,4 +146,33 @@ describe("text/x-python — container + columns (issue #18)", () => {
         assert.equal(solo?.column, 1);
         assert.ok((solo?.endColumn ?? 0) >= 1);
     });
+
+    it("normalizes astral and combining characters to code-point columns", async () => {
+        const astral = await makeHandler().extractRaw("def 𝐀(): return 1\n");
+        assert.deepEqual(astral.find((symbol) => symbol.name === "𝐀"), {
+            name: "𝐀",
+            kind: "function",
+            line: 1,
+            column: 1,
+            endLine: 1,
+            endColumn: 18,
+            params: [],
+        });
+
+        const combining = await makeHandler().extractRaw("def cafe\u0301(): return 1\n");
+        assert.equal(combining.find((symbol) => symbol.name === "cafe\u0301")?.endColumn, 22);
+    });
+
+    it("normalizes reference columns after astral source text", async () => {
+        const refs = await makeHandler().references("def f(): \"😀\"; g()\n");
+        assert.deepEqual(refs.find((ref) => ref.name === "g"), {
+            name: "g",
+            kind: "call",
+            line: 1,
+            column: 15,
+            endLine: 1,
+            endColumn: 16,
+            container: "f",
+        });
+    });
 });

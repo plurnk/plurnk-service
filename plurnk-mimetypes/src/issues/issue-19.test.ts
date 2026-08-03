@@ -17,8 +17,9 @@
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
+import { ParserCoordinateError } from "../ParserCoordinates.ts";
 import { collectReferences } from "../treesitter/refsEngine.ts";
-import type { RefsQuery } from "../treesitter/refsEngine.ts";
+import type { RefsCaptureNode, RefsQuery } from "../treesitter/refsEngine.ts";
 import type { MimeSymbol } from "../types.ts";
 import type { TreeSitterNode, TreeSitterTree } from "../TreeSitterExtractor.ts";
 
@@ -30,11 +31,15 @@ function fakeNode(text: string, line: number, column: number): TreeSitterNode {
     } as TreeSitterNode;
 }
 
-function fakeQuery(captures: Array<{ name: string; node: TreeSitterNode }>): RefsQuery {
+function fakeQuery(captures: Array<{ name: string; node: RefsCaptureNode }>): RefsQuery {
     return { captures: () => captures };
 }
 
-const fakeTree = { rootNode: {} as TreeSitterNode } as TreeSitterTree;
+const fakeTree = {
+    rootNode: {
+        text: Array.from({ length: 40 }, () => " ".repeat(40)).join("\n"),
+    } as TreeSitterNode,
+} as TreeSitterTree;
 
 const SYMBOLS: MimeSymbol[] = [
     { name: "Parser", kind: "class", line: 1, endLine: 20 },
@@ -114,6 +119,27 @@ describe("Issue #19 — C2: engine hygiene", () => {
             endColumn: 16,
             container: "Parser",
         });
+    });
+
+    it("surfaces a capture span that bisects an astral character", () => {
+        const tree = {
+            rootNode: { text: "😀" } as TreeSitterNode,
+        } as TreeSitterTree;
+        const node = {
+            text: "😀",
+            startIndex: 1,
+            endIndex: 2,
+            startPosition: { row: 0, column: 1 },
+            endPosition: { row: 0, column: 2 },
+        };
+        assert.throws(
+            () => collectReferences(
+                fakeQuery([{ name: "ref.use", node }]),
+                tree,
+                [],
+            ),
+            ParserCoordinateError,
+        );
     });
 });
 

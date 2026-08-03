@@ -1,4 +1,6 @@
-import type { MimeSymbol, SymbolKind } from "../types.ts";
+import { treeSitterSpan } from "../ParserCoordinates.ts";
+import type { TreeSitterSymbolProjection } from "../ParserCoordinates.ts";
+import type { SymbolKind } from "../types.ts";
 import type { TreeSitterNode } from "../TreeSitterExtractor.ts";
 
 // TOML SPEC §3 mapping via @tree-sitter-grammars/tree-sitter-toml.
@@ -18,8 +20,8 @@ export async function deepJson(content: string): Promise<unknown> {
     }
 }
 
-export function extract(root: TreeSitterNode, _content: string): MimeSymbol[] {
-    const out: MimeSymbol[] = [];
+export function extract(root: TreeSitterNode, _content: string): TreeSitterSymbolProjection[] {
+    const out: TreeSitterSymbolProjection[] = [];
     for (let i = 0; i < root.namedChildCount; i += 1) {
         const child = root.namedChild(i);
         if (!child) continue;
@@ -28,7 +30,7 @@ export function extract(root: TreeSitterNode, _content: string): MimeSymbol[] {
     return out;
 }
 
-function dispatch(node: TreeSitterNode, out: MimeSymbol[]): void {
+function dispatch(node: TreeSitterNode, out: TreeSitterSymbolProjection[]): void {
     switch (node.type) {
         case "table":
         case "table_array_element": {
@@ -70,7 +72,7 @@ function firstKeyText(node: TreeSitterNode): string | null {
 }
 
 function push(
-    out: MimeSymbol[],
+    out: TreeSitterSymbolProjection[],
     kind: SymbolKind,
     name: string,
     node: TreeSitterNode,
@@ -79,10 +81,7 @@ function push(
     out.push({
         name,
         kind,
-        line: node.startPosition.row + 1,
-        endLine: node.endPosition.row + 1,
-        column: node.startPosition.column + 1,
-        endColumn: node.endPosition.column + 1,
+        span: treeSitterSpan(node),
         ...(container.length > 0 && { container }),
     });
 }

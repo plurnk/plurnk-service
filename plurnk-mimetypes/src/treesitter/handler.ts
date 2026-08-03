@@ -1,5 +1,9 @@
 import TreeSitterExtractor, { walkDeepNode } from "../TreeSitterExtractor.ts";
 import type { QueryConstructor, TreeSitterParser, TreeSitterTree } from "../TreeSitterExtractor.ts";
+import {
+    isParserCoordinateError,
+    materializeTreeSitterSymbols,
+} from "../ParserCoordinates.ts";
 import type { HandlerMetadata, MimeRef, MimeSymbol } from "../types.ts";
 import type { TreeSitterLanguageEntry, TreeSitterLanguageMapping } from "./registry.ts";
 
@@ -40,7 +44,11 @@ export default class TreeSitterLanguageHandler extends TreeSitterExtractor {
         if (typeof content !== "string") return [];
         const mapping = await this.#getMappingCached();
         if (mapping.refsQuery === undefined) return [];
-        return this.collectRefs(content, mapping.refsQuery, (root, c) => mapping.extract(root, c));
+        return this.collectRefs(
+            content,
+            mapping.refsQuery,
+            (root, source) => materializeTreeSitterSymbols(source, mapping.extract(root, source)),
+        );
     }
 
     protected override extractFromTree(_tree: TreeSitterTree, _content: string): MimeSymbol[] {
@@ -74,8 +82,10 @@ export default class TreeSitterLanguageHandler extends TreeSitterExtractor {
             return [];
         }
         try {
-            return mapping.extract(tree.rootNode, content);
-        } catch {
+            const projections = mapping.extract(tree.rootNode, content);
+            return materializeTreeSitterSymbols(content, projections);
+        } catch (error) {
+            if (isParserCoordinateError(error)) throw error;
             return [];
         } finally {
             tree.delete?.();
@@ -90,7 +100,8 @@ export default class TreeSitterLanguageHandler extends TreeSitterExtractor {
         if (typeof mapping.deepJson === "function") {
             try {
                 return await mapping.deepJson(content);
-            } catch {
+            } catch (error) {
+                if (isParserCoordinateError(error)) throw error;
                 return null;
             }
         }
@@ -110,7 +121,8 @@ export default class TreeSitterLanguageHandler extends TreeSitterExtractor {
         }
         try {
             return walkDeepNode(tree.rootNode, content);
-        } catch {
+        } catch (error) {
+            if (isParserCoordinateError(error)) throw error;
             return null;
         } finally {
             tree.delete?.();

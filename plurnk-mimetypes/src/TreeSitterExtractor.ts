@@ -1,9 +1,9 @@
 import BaseHandler from "./BaseHandler.ts";
 import type { HandlerContent } from "./BaseHandler.ts";
+import ParserCoordinates, { isParserCoordinateError } from "./ParserCoordinates.ts";
 import type { MimeRef, MimeSymbol } from "./types.ts";
 import { collectReferences } from "./treesitter/refsEngine.ts";
 import type { RefsQuery } from "./treesitter/refsEngine.ts";
-import TextCoordinates from "./TextCoordinates.ts";
 
 // web-tree-sitter's Query constructor, typed locally. Produces a raw query
 // object; for most languages it already satisfies RefsQuery (it exposes
@@ -24,6 +24,10 @@ export interface TreeSitterTree {
 export interface TreeSitterNode {
     readonly type: string;
     readonly text: string;
+    // Present on web-tree-sitter nodes. Optional here preserves the public
+    // structural seam for adapters that supply point-only synthetic nodes.
+    readonly startIndex?: number;
+    readonly endIndex?: number;
     readonly startPosition: { row: number; column: number };
     readonly endPosition: { row: number; column: number };
     readonly childCount: number;
@@ -79,7 +83,8 @@ export default abstract class TreeSitterExtractor extends BaseHandler {
         }
         try {
             return collectReferences(query, tree, extractDefs(tree.rootNode, content));
-        } catch {
+        } catch (error) {
+            if (isParserCoordinateError(error)) throw error;
             return [];
         } finally {
             tree?.delete?.();
@@ -118,7 +123,8 @@ export default abstract class TreeSitterExtractor extends BaseHandler {
         }
         try {
             return this.extractFromTree(tree, content);
-        } catch {
+        } catch (error) {
+            if (isParserCoordinateError(error)) throw error;
             return [];
         } finally {
             tree?.delete?.();
@@ -144,7 +150,8 @@ export default abstract class TreeSitterExtractor extends BaseHandler {
         }
         try {
             return walkDeepNode(tree.rootNode, content);
-        } catch {
+        } catch (error) {
+            if (isParserCoordinateError(error)) throw error;
             return null;
         } finally {
             tree?.delete?.();
@@ -192,20 +199,17 @@ export interface DeepTreeNode {
 export function walkDeepNode(node: TreeSitterNode, content?: string): DeepTreeNode {
     return walkIndexedDeepNode(
         node,
-        content === undefined ? undefined : new TextCoordinates(content),
+        content === undefined ? undefined : new ParserCoordinates(content),
     );
 }
 
 function walkIndexedDeepNode(
     node: TreeSitterNode,
-    coordinates: TextCoordinates | undefined,
+    coordinates: ParserCoordinates | undefined,
 ): DeepTreeNode {
     const region = coordinates === undefined
         ? null
-        : coordinates.regionFromUtf8Points(
-            node.startPosition,
-            node.endPosition,
-        );
+        : coordinates.treeSitterNode(node);
     const out: DeepTreeNode = {
         type: node.type,
         line: region?.startLine ?? node.startPosition.row + 1,

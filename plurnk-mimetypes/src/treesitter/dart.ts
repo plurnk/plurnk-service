@@ -1,4 +1,6 @@
-import type { MimeSymbol, SymbolKind } from "../types.ts";
+import { treeSitterSpan } from "../ParserCoordinates.ts";
+import type { TreeSitterSymbolProjection } from "../ParserCoordinates.ts";
+import type { SymbolKind } from "../types.ts";
 import type { TreeSitterNode } from "../TreeSitterExtractor.ts";
 
 // Dart SPEC §3 mapping via tree-sitter-dart.
@@ -18,13 +20,13 @@ import type { TreeSitterNode } from "../TreeSitterExtractor.ts";
 // Container semantics (issue #18): members inside a class/mixin/extension
 // body carry its name (dotted for nesting); enum constants carry the enum
 // name. Top-level symbols carry no container.
-export function extract(root: TreeSitterNode, _content: string): MimeSymbol[] {
-    const out: MimeSymbol[] = [];
+export function extract(root: TreeSitterNode, _content: string): TreeSitterSymbolProjection[] {
+    const out: TreeSitterSymbolProjection[] = [];
     walk(root, out, "");
     return out;
 }
 
-function walk(node: TreeSitterNode, out: MimeSymbol[], container: string): void {
+function walk(node: TreeSitterNode, out: TreeSitterSymbolProjection[], container: string): void {
     for (let i = 0; i < node.namedChildCount; i += 1) {
         const child = node.namedChild(i);
         if (!child) continue;
@@ -32,7 +34,7 @@ function walk(node: TreeSitterNode, out: MimeSymbol[], container: string): void 
     }
 }
 
-function dispatch(node: TreeSitterNode, out: MimeSymbol[], container: string): void {
+function dispatch(node: TreeSitterNode, out: TreeSitterSymbolProjection[], container: string): void {
     switch (node.type) {
         case "class_definition":
         case "mixin_declaration":
@@ -163,13 +165,8 @@ function extractParams(parametersNode: TreeSitterNode | null): string[] {
     return out;
 }
 
-function position(node: TreeSitterNode): Pick<MimeSymbol, "line" | "endLine" | "column" | "endColumn"> {
-    return {
-        line: node.startPosition.row + 1,
-        endLine: node.endPosition.row + 1,
-        column: node.startPosition.column + 1,
-        endColumn: node.endPosition.column + 1,
-    };
+function position(node: TreeSitterNode): Pick<TreeSitterSymbolProjection, "span"> {
+    return { span: treeSitterSpan(node) };
 }
 
 // tree-sitter-dart parses a function/method body as a SIBLING of its
@@ -178,18 +175,14 @@ function position(node: TreeSitterNode): Pick<MimeSymbol, "line" | "endLine" | "
 // end to the body so container resolution lands refs on the method, not the
 // enclosing class. Bodyless (abstract) signatures parse as `declaration`
 // nodes and never reach here with a function_body sibling.
-function positionWithBody(node: TreeSitterNode): Pick<MimeSymbol, "line" | "endLine" | "column" | "endColumn"> {
-    const pos = position(node);
+function positionWithBody(node: TreeSitterNode): Pick<TreeSitterSymbolProjection, "span"> {
     const body = node.nextNamedSibling;
-    if (body?.type !== "function_body") return pos;
-    return {
-        ...pos,
-        endLine: body.endPosition.row + 1,
-        endColumn: body.endPosition.column + 1,
-    };
+    return body?.type === "function_body"
+        ? { span: treeSitterSpan(node, body) }
+        : position(node);
 }
 
-function push(out: MimeSymbol[], kind: SymbolKind, name: string, node: TreeSitterNode, container: string): void {
+function push(out: TreeSitterSymbolProjection[], kind: SymbolKind, name: string, node: TreeSitterNode, container: string): void {
     out.push({
         name,
         kind,

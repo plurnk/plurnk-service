@@ -35,6 +35,9 @@ export interface HandlerMetadata {
 
 export interface ExtractionVisitor {
     visit(tree: unknown): unknown;
+    // Source binding lets parser-native absolute offsets materialize through
+    // the shared {§text-region} coordinate contract before results escape.
+    bindContent?(content: string): void;
     readonly symbols: MimeSymbol[];
     // Optional classified uses from the same traversal.
     readonly refs?: MimeRef[];

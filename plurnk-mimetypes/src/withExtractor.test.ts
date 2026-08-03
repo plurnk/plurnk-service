@@ -195,4 +195,64 @@ describe("withExtractor — addRef (ANTLR refs grind)", () => {
         v.gateContainer("v_report", ctx(1, 0, 9, 0) as never);
         assert.equal(v.refs[0].container, "v_report");
     });
+
+    it("materializes ANTLR code-point offsets without widening astral stop tokens", () => {
+        const V = withExtractor(StubVisitorBase);
+        const v = new V();
+        v.bindContent("SET 😀 value");
+        v.addRef("use", "😀", {
+            start: { start: 4 },
+            stop: { stop: 4 },
+        } as never);
+        assert.deepEqual(v.refs, [{
+            name: "😀",
+            kind: "use",
+            line: 1,
+            column: 5,
+            endLine: 1,
+            endColumn: 6,
+        }]);
+    });
+
+    it("materializes multiline contexts and terminal insertion points from absolute offsets", () => {
+        const V = withExtractor(StubVisitorBase);
+        const v = new V();
+        const source = "first😀\r\nlast";
+        v.bindContent(source);
+        v.addSymbol("function", "all", {
+            start: { start: 0 },
+            stop: { stop: [...source].length - 1 },
+        } as never);
+        v.addSymbol("variable", "end", {
+            start: { start: [...source].length },
+            stop: { stop: [...source].length - 1 },
+        } as never);
+        assert.deepEqual(v.symbols.map(({ line, column, endLine, endColumn }) => ({
+            line,
+            column,
+            endLine,
+            endColumn,
+        })), [
+            { line: 1, column: 1, endLine: 2, endColumn: 5 },
+            { line: 2, column: 5, endLine: 2, endColumn: 5 },
+        ]);
+    });
+
+    it("derives ANTLR lines from absolute offsets across CR and LF separators", () => {
+        const V = withExtractor(StubVisitorBase);
+        const v = new V();
+        v.bindContent("a\r😀\nb");
+        v.addRef("use", "😀", {
+            start: { start: 2 },
+            stop: { stop: 2 },
+        } as never);
+        assert.deepEqual(v.refs, [{
+            name: "😀",
+            kind: "use",
+            line: 2,
+            column: 1,
+            endLine: 2,
+            endColumn: 2,
+        }]);
+    });
 });

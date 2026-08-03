@@ -1,4 +1,6 @@
-import type { MimeSymbol, SymbolKind } from "../types.ts";
+import { treeSitterSpan } from "../ParserCoordinates.ts";
+import type { TreeSitterSymbolProjection } from "../ParserCoordinates.ts";
+import type { SymbolKind } from "../types.ts";
 import type { TreeSitterNode } from "../TreeSitterExtractor.ts";
 
 // Zig SPEC §3 mapping via @tree-sitter-grammars/tree-sitter-zig.
@@ -14,8 +16,8 @@ import type { TreeSitterNode } from "../TreeSitterExtractor.ts";
 //
 // Container semantics (issue #18): container_fields of a named
 // struct/enum/union declaration carry the declared name as container.
-export function extract(root: TreeSitterNode, _content: string): MimeSymbol[] {
-    const out: MimeSymbol[] = [];
+export function extract(root: TreeSitterNode, _content: string): TreeSitterSymbolProjection[] {
+    const out: TreeSitterSymbolProjection[] = [];
     for (let i = 0; i < root.namedChildCount; i += 1) {
         const child = root.namedChild(i);
         if (!child) continue;
@@ -24,7 +26,7 @@ export function extract(root: TreeSitterNode, _content: string): MimeSymbol[] {
     return out;
 }
 
-function dispatch(node: TreeSitterNode, out: MimeSymbol[]): void {
+function dispatch(node: TreeSitterNode, out: TreeSitterSymbolProjection[]): void {
     switch (node.type) {
         case "function_declaration": {
             const name = childFieldText(node, "name") ?? firstIdentifierText(node);
@@ -83,7 +85,7 @@ function dispatch(node: TreeSitterNode, out: MimeSymbol[]): void {
     }
 }
 
-function emitContainerFields(node: TreeSitterNode, out: MimeSymbol[], kind: SymbolKind, container: string): void {
+function emitContainerFields(node: TreeSitterNode, out: TreeSitterSymbolProjection[], kind: SymbolKind, container: string): void {
     for (let i = 0; i < node.namedChildCount; i += 1) {
         const child = node.namedChild(i);
         if (!child) continue;
@@ -141,16 +143,11 @@ function isScreamingSnake(name: string): boolean {
     return hasLetter;
 }
 
-function position(node: TreeSitterNode): Pick<MimeSymbol, "line" | "endLine" | "column" | "endColumn"> {
-    return {
-        line: node.startPosition.row + 1,
-        endLine: node.endPosition.row + 1,
-        column: node.startPosition.column + 1,
-        endColumn: node.endPosition.column + 1,
-    };
+function position(node: TreeSitterNode): Pick<TreeSitterSymbolProjection, "span"> {
+    return { span: treeSitterSpan(node) };
 }
 
-function push(out: MimeSymbol[], kind: SymbolKind, name: string, node: TreeSitterNode, container = ""): void {
+function push(out: TreeSitterSymbolProjection[], kind: SymbolKind, name: string, node: TreeSitterNode, container = ""): void {
     out.push({
         name,
         kind,

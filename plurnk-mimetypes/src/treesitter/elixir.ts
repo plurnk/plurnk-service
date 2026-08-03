@@ -1,4 +1,6 @@
-import type { MimeSymbol, SymbolKind } from "../types.ts";
+import { treeSitterSpan } from "../ParserCoordinates.ts";
+import type { TreeSitterSymbolProjection } from "../ParserCoordinates.ts";
+import type { SymbolKind } from "../types.ts";
 import type { TreeSitterNode } from "../TreeSitterExtractor.ts";
 
 // Elixir SPEC §3 mapping via tree-sitter-elixir.
@@ -20,13 +22,13 @@ const FUNCTION_MACROS = new Set([
     "defmacro", "defmacrop", "defn", "defnp",
 ]);
 
-export function extract(root: TreeSitterNode, _content: string): MimeSymbol[] {
-    const out: MimeSymbol[] = [];
+export function extract(root: TreeSitterNode, _content: string): TreeSitterSymbolProjection[] {
+    const out: TreeSitterSymbolProjection[] = [];
     walk(root, out, "");
     return out;
 }
 
-function walk(node: TreeSitterNode, out: MimeSymbol[], container: string): void {
+function walk(node: TreeSitterNode, out: TreeSitterSymbolProjection[], container: string): void {
     for (let i = 0; i < node.namedChildCount; i += 1) {
         const child = node.namedChild(i);
         if (!child) continue;
@@ -38,7 +40,7 @@ function walk(node: TreeSitterNode, out: MimeSymbol[], container: string): void 
     }
 }
 
-function handleCall(call: TreeSitterNode, out: MimeSymbol[], container: string): void {
+function handleCall(call: TreeSitterNode, out: TreeSitterSymbolProjection[], container: string): void {
     const target = call.childForFieldName("target");
     if (!target || target.type !== "identifier") {
         walk(call, out, container);
@@ -62,10 +64,7 @@ function handleCall(call: TreeSitterNode, out: MimeSymbol[], container: string):
             out.push({
                 name: fnInfo.name,
                 kind: "function" as SymbolKind,
-                line: call.startPosition.row + 1,
-                endLine: call.endPosition.row + 1,
-                column: call.startPosition.column + 1,
-                endColumn: call.endPosition.column + 1,
+                span: treeSitterSpan(call),
                 ...(container.length > 0 && { container }),
                 params: fnInfo.params,
             });
@@ -163,14 +162,11 @@ function findDoBlock(call: TreeSitterNode): TreeSitterNode | null {
     return null;
 }
 
-function push(out: MimeSymbol[], kind: SymbolKind, name: string, node: TreeSitterNode, container: string): void {
+function push(out: TreeSitterSymbolProjection[], kind: SymbolKind, name: string, node: TreeSitterNode, container: string): void {
     out.push({
         name,
         kind,
-        line: node.startPosition.row + 1,
-        endLine: node.endPosition.row + 1,
-        column: node.startPosition.column + 1,
-        endColumn: node.endPosition.column + 1,
+        span: treeSitterSpan(node),
         ...(container.length > 0 && { container }),
     });
 }

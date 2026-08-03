@@ -1,4 +1,5 @@
-import type { MimeSymbol } from "../types.ts";
+import { treeSitterSpan } from "../ParserCoordinates.ts";
+import type { TreeSitterSymbolProjection } from "../ParserCoordinates.ts";
 import type { TreeSitterNode } from "../TreeSitterExtractor.ts";
 
 // Haskell SPEC §3 mapping via tree-sitter-haskell.
@@ -32,8 +33,8 @@ import type { TreeSitterNode } from "../TreeSitterExtractor.ts";
 // Container semantics (issue #18): module-level declarations are flat (the
 // header module is a sibling, not a structural parent). Only class-body
 // method signatures carry a container — the type class name.
-export function extract(root: TreeSitterNode, _content: string): MimeSymbol[] {
-    const out: MimeSymbol[] = [];
+export function extract(root: TreeSitterNode, _content: string): TreeSitterSymbolProjection[] {
+    const out: TreeSitterSymbolProjection[] = [];
     const emittedFns = new Set<string>();
 
     // Module header
@@ -92,15 +93,18 @@ export function extract(root: TreeSitterNode, _content: string): MimeSymbol[] {
                 // Issue #22: the def's span must cover the function's body —
                 // each equation is a sibling `function` node sharing the
                 // variable name, so extend to the last consecutive equation.
-                const pos = position(node);
+                let endNode = node;
                 for (let j = i + 1; j < decls.namedChildCount; j += 1) {
                     const sib = decls.namedChild(j);
                     if (!sib || sib.type !== "function") break;
                     if (findFirstNamedChild(sib, "variable")?.text !== v.text) break;
-                    pos.endLine = sib.endPosition.row + 1;
-                    pos.endColumn = sib.endPosition.column + 1;
+                    endNode = sib;
                 }
-                out.push({ name: v.text, kind: "function", ...pos });
+                out.push({
+                    name: v.text,
+                    kind: "function",
+                    span: treeSitterSpan(node, endNode),
+                });
                 break;
             }
             default:
@@ -119,17 +123,12 @@ function findFirstNamedChild(node: TreeSitterNode, type: string): TreeSitterNode
     return null;
 }
 
-function position(node: TreeSitterNode): Pick<MimeSymbol, "line" | "endLine" | "column" | "endColumn"> {
-    return {
-        line: node.startPosition.row + 1,
-        endLine: node.endPosition.row + 1,
-        column: node.startPosition.column + 1,
-        endColumn: node.endPosition.column + 1,
-    };
+function position(node: TreeSitterNode): Pick<TreeSitterSymbolProjection, "span"> {
+    return { span: treeSitterSpan(node) };
 }
 
 function push(
-    out: MimeSymbol[],
+    out: TreeSitterSymbolProjection[],
     kind: "class" | "type" | "interface" | "function" | "method" | "module",
     name: string,
     node: TreeSitterNode,

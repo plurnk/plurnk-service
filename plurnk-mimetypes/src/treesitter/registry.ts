@@ -1,4 +1,4 @@
-import type { MimeSymbol } from "../types.ts";
+import type { TreeSitterSymbolProjection } from "../ParserCoordinates.ts";
 import type { TreeSitterNode } from "../TreeSitterExtractor.ts";
 
 // One entry per tree-sitter-supported language. The framework's registry
@@ -20,13 +20,13 @@ export interface TreeSitterLanguageEntry {
     readonly slug: string;
     /**
      * Dynamic-import factory for the mapping module. The module must
-     * export `extract(root, content)` returning MimeSymbol[].
+     * export `extract(root, content)` returning semantic symbol projections.
      */
     readonly importMapping: () => Promise<TreeSitterLanguageMapping>;
 }
 
 export interface TreeSitterLanguageMapping {
-    extract(root: TreeSitterNode, content: string): MimeSymbol[];
+    extract(root: TreeSitterNode, content: string): TreeSitterSymbolProjection[];
     // Optional override for the deep-json channel (issue #10). When present,
     // TreeSitterLanguageHandler.deepJson() bypasses the default tree-sitter
     // AST walker and uses this function instead. Used by languages where the

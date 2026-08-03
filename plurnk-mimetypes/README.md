@@ -159,9 +159,9 @@ before importing handler code.
 | Family              | Root exports                                                                                                               |
 |---------------------|----------------------------------------------------------------------------------------------------------------------------|
 | Orchestration       | `Mimetypes`: discovery, detection, processing, querying, classification, embedding/tokenizer seams, lifecycle.             |
-| Handler authoring   | `BaseHandler`, `TreeSitterExtractor`, `AntlrExtractor`, `withExtractor`, tree/reference primitives.                        |
+| Handler authoring   | `BaseHandler`, parser extractors, `withExtractor`, parser-coordinate materializers, and tree/reference primitives.         |
 | Detection/discovery | `detect`, `discover`, `emptyRegistry`.                                                                                     |
-| Query/projection    | Matcher parser, four dialect helpers, `projectJsonToXml`, `buildJsonOutline`, `TextCoordinates`, and typed query failures. |
+| Query/projection    | Matcher parser, four dialect helpers, JSON/XML projection, text coordinates, and typed query/coordinate failures.         |
 | Classification      | `classifyMimetype`, `matchSearchExclusion`.                                                                                |
 | Formatting          | `format`, `buildTree`, `renderTree`, `maxDepth`, `pruneToMaxDepth`.                                                        |
 | Grammar build       | `runCompile`, `rewriteImports`, `injectBaseImports`.                                                                       |

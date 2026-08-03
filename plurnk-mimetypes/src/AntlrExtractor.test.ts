@@ -2,6 +2,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import AntlrExtractor from "./AntlrExtractor.ts";
+import { ParserCoordinateError } from "./ParserCoordinates.ts";
 import type { ExtractionVisitor, MimeSymbol } from "./types.ts";
 
 const metadata = {
@@ -94,6 +95,24 @@ describe("AntlrExtractor", () => {
         assert.deepEqual(e.extractRaw("content"), []);
     });
 
+    it("does not collapse a parser-coordinate invariant failure", () => {
+        class Extractor extends AntlrExtractor {
+            protected parseTree(_content: string): unknown {
+                return { fake: "tree" };
+            }
+            protected createVisitor(): ExtractionVisitor {
+                return {
+                    visit: () => null,
+                    get symbols(): MimeSymbol[] {
+                        throw new ParserCoordinateError("invalid native span");
+                    },
+                };
+            }
+        }
+        const e = new Extractor(metadata);
+        assert.throws(() => e.extractRaw("anything"), ParserCoordinateError);
+    });
+
     it("calls visit on the tree returned by parseTree", () => {
         let visitedTree: unknown = null;
         class Extractor extends AntlrExtractor {
@@ -141,31 +160,40 @@ describe("AntlrExtractor.deepJson — duck-typed ANTLR parse tree walk", () => {
     // Mock the antlr4ng parse-tree shape: ParserRuleContext with start/stop
     // and children; TerminalNode with `symbol`.
     class Compilation_unitContext {
-        readonly start = { line: 1 };
-        readonly stop = { line: 5 };
+        readonly start;
+        readonly stop;
         readonly children: unknown[];
-        constructor(children: unknown[]) { this.children = children; }
+        constructor(children: unknown[], start: number, stop: number) {
+            this.children = children;
+            this.start = { line: 1, start };
+            this.stop = { line: 5, stop };
+        }
     }
     class Class_declarationContext {
-        readonly start = { line: 2 };
-        readonly stop = { line: 4 };
+        readonly start;
+        readonly stop;
         readonly children: unknown[];
-        constructor(children: unknown[]) { this.children = children; }
+        constructor(children: unknown[], start: number, stop: number) {
+            this.children = children;
+            this.start = { line: 2, start };
+            this.stop = { line: 4, stop };
+        }
     }
-    function term(text: string, line: number): unknown {
-        return { symbol: { line, text, type: 1 } };
+    function term(text: string, line: number, start: number): unknown {
+        return { symbol: { line, text, type: 1, start, stop: start + [...text].length - 1 } };
     }
 
     it("walks rule contexts emitting type from constructor.name (stripped of Context)", async () => {
+        const source = "\nclass Foo\n\n\nx";
         const fakeTree = new Compilation_unitContext([
-            new Class_declarationContext([term("class", 2), term("Foo", 2)]),
-        ]);
+            new Class_declarationContext([term("class", 2, 1), term("Foo", 2, 7)], 1, 11),
+        ], 0, 13);
         class Extractor extends AntlrExtractor {
             protected parseTree(_content: string): unknown { return fakeTree; }
             protected createVisitor(): ExtractionVisitor { return visitorReturning([]); }
         }
         const e = new Extractor(metadata);
-        const tree = await e.deepJson("anything") as { type: string; line: number; endLine: number; children?: unknown[] };
+        const tree = await e.deepJson(source) as { type: string; line: number; endLine: number; children?: unknown[] };
         assert.equal(tree.type, "compilation_unit");
         assert.equal(tree.line, 1);
         assert.equal(tree.endLine, 5);
@@ -175,13 +203,14 @@ describe("AntlrExtractor.deepJson — duck-typed ANTLR parse tree walk", () => {
     });
 
     it("walks terminal nodes as { type, line, endLine, text }", async () => {
-        const fakeTree = new Compilation_unitContext([term("hello", 3)]);
+        const source = "\n\nhello";
+        const fakeTree = new Compilation_unitContext([term("hello", 3, 2)], 0, 6);
         class Extractor extends AntlrExtractor {
             protected parseTree(_content: string): unknown { return fakeTree; }
             protected createVisitor(): ExtractionVisitor { return visitorReturning([]); }
         }
         const e = new Extractor(metadata);
-        const tree = await e.deepJson("anything") as { children: Array<{ type: string; text: string; line: number }> };
+        const tree = await e.deepJson(source) as { children: Array<{ type: string; text: string; line: number }> };
         const leaf = tree.children[0];
         assert.equal(leaf.text, "hello");
         assert.equal(leaf.line, 3);
@@ -200,7 +229,7 @@ describe("AntlrExtractor.deepJson — duck-typed ANTLR parse tree walk", () => {
 
     it("returns null for binary content", async () => {
         class Extractor extends AntlrExtractor {
-            protected parseTree(_content: string): unknown { return new Compilation_unitContext([]); }
+            protected parseTree(_content: string): unknown { return new Compilation_unitContext([], 0, 0); }
             protected createVisitor(): ExtractionVisitor { return visitorReturning([]); }
         }
         const e = new Extractor(metadata);

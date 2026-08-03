@@ -1,4 +1,6 @@
-import type { MimeSymbol, SymbolKind } from "../types.ts";
+import { treeSitterSpan } from "../ParserCoordinates.ts";
+import type { TreeSitterSymbolProjection } from "../ParserCoordinates.ts";
+import type { SymbolKind } from "../types.ts";
 import type { TreeSitterNode } from "../TreeSitterExtractor.ts";
 
 // Odin SPEC §3 mapping via tree-sitter-odin.
@@ -15,8 +17,8 @@ import type { TreeSitterNode } from "../TreeSitterExtractor.ts";
 // Container semantics (issue #18): top-level declarations are flat (procs are
 // never nested in structs). Struct/union fields carry the struct name as
 // container; enum constants carry the enum name.
-export function extract(root: TreeSitterNode, _content: string): MimeSymbol[] {
-    const out: MimeSymbol[] = [];
+export function extract(root: TreeSitterNode, _content: string): TreeSitterSymbolProjection[] {
+    const out: TreeSitterSymbolProjection[] = [];
     for (let i = 0; i < root.namedChildCount; i += 1) {
         const child = root.namedChild(i);
         if (!child) continue;
@@ -25,7 +27,7 @@ export function extract(root: TreeSitterNode, _content: string): MimeSymbol[] {
     return out;
 }
 
-function dispatch(node: TreeSitterNode, out: MimeSymbol[]): void {
+function dispatch(node: TreeSitterNode, out: TreeSitterSymbolProjection[]): void {
     switch (node.type) {
         case "package_declaration": {
             const ident = firstIdentifierText(node);
@@ -128,16 +130,11 @@ function extractParams(parametersNode: TreeSitterNode | null): string[] {
     return out;
 }
 
-function position(node: TreeSitterNode): Pick<MimeSymbol, "line" | "endLine" | "column" | "endColumn"> {
-    return {
-        line: node.startPosition.row + 1,
-        endLine: node.endPosition.row + 1,
-        column: node.startPosition.column + 1,
-        endColumn: node.endPosition.column + 1,
-    };
+function position(node: TreeSitterNode): Pick<TreeSitterSymbolProjection, "span"> {
+    return { span: treeSitterSpan(node) };
 }
 
-function push(out: MimeSymbol[], kind: SymbolKind, name: string, node: TreeSitterNode, container: string): void {
+function push(out: TreeSitterSymbolProjection[], kind: SymbolKind, name: string, node: TreeSitterNode, container: string): void {
     out.push({
         name,
         kind,

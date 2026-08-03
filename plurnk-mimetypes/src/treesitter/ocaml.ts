@@ -1,4 +1,6 @@
-import type { MimeSymbol, SymbolKind } from "../types.ts";
+import { treeSitterSpan } from "../ParserCoordinates.ts";
+import type { TreeSitterSymbolProjection } from "../ParserCoordinates.ts";
+import type { SymbolKind } from "../types.ts";
 import type { TreeSitterNode } from "../TreeSitterExtractor.ts";
 
 // OCaml SPEC §3 mapping via tree-sitter-ocaml.
@@ -15,13 +17,13 @@ import type { TreeSitterNode } from "../TreeSitterExtractor.ts";
 // Container semantics (issue #18): symbols inside `module M = struct ... end`
 // carry the dotted path of enclosing module names; top-level symbols carry
 // no container.
-export function extract(root: TreeSitterNode, _content: string): MimeSymbol[] {
-    const out: MimeSymbol[] = [];
+export function extract(root: TreeSitterNode, _content: string): TreeSitterSymbolProjection[] {
+    const out: TreeSitterSymbolProjection[] = [];
     walk(root, out, "");
     return out;
 }
 
-function walk(node: TreeSitterNode, out: MimeSymbol[], container: string): void {
+function walk(node: TreeSitterNode, out: TreeSitterSymbolProjection[], container: string): void {
     for (let i = 0; i < node.namedChildCount; i += 1) {
         const child = node.namedChild(i);
         if (!child) continue;
@@ -29,7 +31,7 @@ function walk(node: TreeSitterNode, out: MimeSymbol[], container: string): void 
     }
 }
 
-function dispatch(node: TreeSitterNode, out: MimeSymbol[], container: string): void {
+function dispatch(node: TreeSitterNode, out: TreeSitterSymbolProjection[], container: string): void {
     switch (node.type) {
         case "module_definition": {
             const binding = firstNamedOfType(node, "module_binding");
@@ -153,17 +155,12 @@ function extractOcamlParams(binding: TreeSitterNode): string[] {
     return out;
 }
 
-function position(node: TreeSitterNode): Pick<MimeSymbol, "line" | "endLine" | "column" | "endColumn"> {
-    return {
-        line: node.startPosition.row + 1,
-        endLine: node.endPosition.row + 1,
-        column: node.startPosition.column + 1,
-        endColumn: node.endPosition.column + 1,
-    };
+function position(node: TreeSitterNode): Pick<TreeSitterSymbolProjection, "span"> {
+    return { span: treeSitterSpan(node) };
 }
 
 function push(
-    out: MimeSymbol[],
+    out: TreeSitterSymbolProjection[],
     kind: SymbolKind,
     name: string,
     node: TreeSitterNode,

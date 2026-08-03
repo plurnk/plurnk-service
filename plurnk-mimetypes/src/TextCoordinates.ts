@@ -12,16 +12,10 @@ export interface TextPosition {
     readonly column: number;
 }
 
-interface Utf8Point {
-    readonly row: number;
-    readonly column: number;
-}
-
 export default class TextCoordinates {
     readonly #content: string;
     readonly #lines: TextLine[];
     readonly #columnOffsets = new Map<number, number[]>();
-    readonly #utf8Columns = new Map<number, ReadonlyMap<number, number>>();
 
     constructor(content: string) {
         this.#content = content;
@@ -167,35 +161,6 @@ export default class TextCoordinates {
         };
     }
 
-    static regionFromUtf8Points(
-        content: string,
-        start: Utf8Point,
-        end: Utf8Point,
-    ): TextRegion | null {
-        return new TextCoordinates(content).regionFromUtf8Points(start, end);
-    }
-
-    regionFromUtf8Points(
-        start: Utf8Point,
-        end: Utf8Point,
-    ): TextRegion | null {
-        const first = this.#positionAtUtf8Point(start);
-        const final = this.#positionAtUtf8Point(end);
-        if (first === null || final === null) return null;
-        if (
-            final.line < first.line
-            || (final.line === first.line && final.column < first.column)
-        ) {
-            return null;
-        }
-        return {
-            startLine: first.line,
-            startColumn: first.column,
-            endLine: final.line,
-            endColumn: final.column,
-        };
-    }
-
     static lineRegion(
         content: string,
         startLine: number,
@@ -266,40 +231,6 @@ export default class TextCoordinates {
         return next === undefined
             ? null
             : { line: index + 2, column: 1 };
-    }
-
-    #positionAtUtf8Point(
-        point: Utf8Point,
-    ): TextPosition | null {
-        if (
-            !Number.isSafeInteger(point.row)
-            || !Number.isSafeInteger(point.column)
-            || point.row < 0
-            || point.column < 0
-        ) {
-            return null;
-        }
-        const line = this.#lines[point.row];
-        if (line === undefined) return null;
-        let columns = this.#utf8Columns.get(point.row);
-        if (columns === undefined) {
-            const indexed = new Map<number, number>();
-            const encoder = new TextEncoder();
-            const codePoints = [...this.#content.slice(line.start, line.contentEnd)];
-            let bytes = 0;
-            for (let index = 0; index <= codePoints.length; index += 1) {
-                indexed.set(bytes, index + 1);
-                if (index < codePoints.length) {
-                    bytes += encoder.encode(codePoints[index]!).length;
-                }
-            }
-            columns = indexed;
-            this.#utf8Columns.set(point.row, indexed);
-        }
-        const column = columns.get(point.column);
-        return column === undefined
-            ? null
-            : { line: point.row + 1, column };
     }
 
     #offsetsForLine(index: number): number[] {

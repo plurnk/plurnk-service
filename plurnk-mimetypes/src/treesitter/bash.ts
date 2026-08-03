@@ -1,4 +1,5 @@
-import type { MimeSymbol } from "../types.ts";
+import { treeSitterSpan } from "../ParserCoordinates.ts";
+import type { TreeSitterSymbolProjection } from "../ParserCoordinates.ts";
 import type { TreeSitterNode } from "../TreeSitterExtractor.ts";
 
 // Bash SPEC §3 mapping via tree-sitter-bash.
@@ -6,8 +7,8 @@ import type { TreeSitterNode } from "../TreeSitterExtractor.ts";
 //   function_definition          → function
 //   variable_assignment          → variable (or constant if `readonly`)
 //   declaration_command          → variable/constant (readonly | local | declare | export)
-export function extract(root: TreeSitterNode, _content: string): MimeSymbol[] {
-    const out: MimeSymbol[] = [];
+export function extract(root: TreeSitterNode, _content: string): TreeSitterSymbolProjection[] {
+    const out: TreeSitterSymbolProjection[] = [];
     for (let i = 0; i < root.namedChildCount; i += 1) {
         const node = root.namedChild(i);
         if (!node) continue;
@@ -16,7 +17,7 @@ export function extract(root: TreeSitterNode, _content: string): MimeSymbol[] {
     return out;
 }
 
-function dispatch(node: TreeSitterNode, out: MimeSymbol[], forceConstant: boolean): void {
+function dispatch(node: TreeSitterNode, out: TreeSitterSymbolProjection[], forceConstant: boolean): void {
     switch (node.type) {
         case "function_definition": {
             // first named child is the function name (a `word`)
@@ -54,7 +55,7 @@ function firstNamedChild(node: TreeSitterNode): TreeSitterNode | null {
 }
 
 function push(
-    out: MimeSymbol[],
+    out: TreeSitterSymbolProjection[],
     kind: "function" | "variable" | "constant",
     name: string,
     node: TreeSitterNode,
@@ -62,10 +63,7 @@ function push(
     out.push({
         name,
         kind,
-        line: node.startPosition.row + 1,
-        endLine: node.endPosition.row + 1,
-        column: node.startPosition.column + 1,
-        endColumn: node.endPosition.column + 1,
+        span: treeSitterSpan(node),
     });
 }
 

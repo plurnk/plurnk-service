@@ -1,4 +1,5 @@
-import type { MimeSymbol, SymbolKind } from "../types.ts";
+import type { TreeSitterSymbolProjection } from "../ParserCoordinates.ts";
+import type { SymbolKind } from "../types.ts";
 import type { TreeSitterNode } from "../TreeSitterExtractor.ts";
 import {
     walk as walkJs,
@@ -21,13 +22,13 @@ import {
 // Container semantics (issue #18): symbols inside a class, interface, enum,
 // or namespace/module carry the dotted path of enclosing emitted scope names.
 // Top-level symbols carry no container.
-export function extract(root: TreeSitterNode, _content: string): MimeSymbol[] {
-    const out: MimeSymbol[] = [];
+export function extract(root: TreeSitterNode, _content: string): TreeSitterSymbolProjection[] {
+    const out: TreeSitterSymbolProjection[] = [];
     walk(root, out, "");
     return out;
 }
 
-function walk(node: TreeSitterNode, out: MimeSymbol[], container: string): void {
+function walk(node: TreeSitterNode, out: TreeSitterSymbolProjection[], container: string): void {
     for (let i = 0; i < node.namedChildCount; i += 1) {
         const child = node.namedChild(i);
         if (!child) continue;
@@ -42,7 +43,7 @@ function walk(node: TreeSitterNode, out: MimeSymbol[], container: string): void 
     }
 }
 
-function dispatch(node: TreeSitterNode, out: MimeSymbol[], container: string): void {
+function dispatch(node: TreeSitterNode, out: TreeSitterSymbolProjection[], container: string): void {
     switch (node.type) {
         case "interface_declaration": {
             const name = childFieldText(node, "name");
@@ -126,7 +127,7 @@ function qualify(container: string, name: string): string {
     return container.length > 0 ? `${container}.${name}` : name;
 }
 
-function push(out: MimeSymbol[], kind: SymbolKind, name: string, node: TreeSitterNode, container: string): void {
+function push(out: TreeSitterSymbolProjection[], kind: SymbolKind, name: string, node: TreeSitterNode, container: string): void {
     out.push({
         name,
         kind,

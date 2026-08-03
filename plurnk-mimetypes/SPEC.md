@@ -169,14 +169,14 @@ The family follows a single resolution order. Authors of new handlers MUST consu
 The exported `MimeSymbol` and `SymbolKind` types own the executable shape and
 closed kind vocabulary. Their behavioral invariants are:
 
-| Field group           | Invariant                                                                             |
-|-----------------------|---------------------------------------------------------------------------------------|
-| `name`, `kind`        | Identify one named structural definition using the exported `SymbolKind` vocabulary.  |
-| `line`, `endLine`     | Required, 1-based, inclusive source lines with `endLine >= line`.                     |
-| `column`, `endColumn` | Optional together; 1-based Unicode code-point columns with an exclusive end.          |
-| `params`              | Function/method parameter spellings when the grammar exposes them; omitted otherwise. |
-| `level`               | Heading depth from 1 through 6; meaningful only for `heading`.                        |
-| `container`           | Qualified path of enclosing emitted definitions; absent at top level.                 |
+| Field group           | Invariant                                                                                                     |
+|-----------------------|---------------------------------------------------------------------------------------------------------------|
+| `name`, `kind`        | Identify one named structural definition using the exported `SymbolKind` vocabulary.                          |
+| `line`, `endLine`     | Positive and 1-based. Line-only symbols use an inclusive interval; complete regions use exact endpoint lines. |
+| `column`, `endColumn` | Present together; complete {§text-region}: Unicode code points, start included, end excluded.                 |
+| `params`              | Function/method parameter spellings when the grammar exposes them; omitted otherwise.                         |
+| `level`               | Heading depth from 1 through 6; meaningful only for `heading`.                                                |
+| `container`           | Qualified path of enclosing emitted definitions; absent at top level.                                         |
 
 ### §mimetype-symbol-container 3.1 Container
 
@@ -351,9 +351,9 @@ For ANTLR-backed handlers (existing pattern, still supported):
 3. Run `npx plurnk-mimetypes-compile` — invokes `antlr-ng -D language=TypeScript -o src/generated --generate-visitor true --generate-listener false grammar/*.g4` and post-processes the output to rewrite `.js` import extensions to `.ts` (so Node's native TS strip works without a separate build pass). Invoke via `npx` so node_modules/.bin/ is on PATH when the spawn happens.
 4. Extend `AntlrExtractor` instead of `BaseHandler`.
 5. Implement `parseTree(content)` (return a parser rule context) and `createVisitor()` (return an `ExtractionVisitor`).
-6. Build the visitor by extending `withExtractor(GeneratedVisitor)` — the mixin adds `symbols`, `inBody`, `addSymbol(kind, name, ctx, params?, extra?)`, and `gateBody(ctx)` to the antlr4ng visitor.
+6. Build the visitor by extending `withExtractor(GeneratedVisitor)` — the mixin adds `symbols`, `inBody`, `addSymbol(kind, name, ctx, params?, extra?)`, and `gateBody(ctx)` to the antlr4ng visitor. `AntlrExtractor` binds the exact source before traversal; handlers never compute public coordinates themselves ({§mimetype-parser-coordinates}).
 
-Parse failures and visit-time exceptions are caught by `AntlrExtractor.extractRaw()` and converted to an empty `MimeSymbol[]` — the symbols channel comes back empty rather than erroring; there is no substitution to text content.
+Parse failures and ordinary visit-time exceptions are caught by `AntlrExtractor.extractRaw()` and converted to an empty `MimeSymbol[]` — the symbols channel comes back empty rather than erroring; there is no substitution to text content. A `ParserCoordinateError` is an internal contract failure and propagates.
 
 ### 9.3 Async `extractRaw` contract
 
@@ -366,9 +366,43 @@ For tree-sitter-backed handlers:
 1. The `web-tree-sitter` runtime ships with the framework as a direct dependency; no handler-side install needed.
 2. Own the language's WASM: a pre-built `.wasm` committed in the handler package from a pinned upstream commit (§13.5).
 3. Extend `TreeSitterExtractor` instead of `BaseHandler`.
-4. Implement `loadParser()` (async; init web-tree-sitter, load the language WASM, return a ready parser) and `extractFromTree(tree, content)` (return `MimeSymbol[]` from the parsed tree). The base class handles parser lifecycle and async coordination via a primed-promise cache.
+4. Implement `loadParser()` (async; init web-tree-sitter, load the language WASM, return a ready parser) and `extractFromTree(tree, content)` (return `MimeSymbol[]` from the parsed tree). Preserve that public method contract; construct parser-derived regions with `treeSitterSpan(...)` and `materializeTreeSitterSymbols(...)` ({§mimetype-parser-coordinates}). The base class handles parser lifecycle and async coordination via a primed-promise cache.
 
-Parse failures are caught by `TreeSitterExtractor.extractRaw()` and converted to an empty `MimeSymbol[]`, mirroring AntlrExtractor's error policy.
+Parse failures are caught by `TreeSitterExtractor.extractRaw()` and converted to an empty `MimeSymbol[]`, mirroring AntlrExtractor's error policy. A `ParserCoordinateError` propagates.
+
+### §mimetype-parser-coordinates 9.4.1 Parser coordinate boundary
+
+Parser-native coordinates remain provenance until one framework owner
+materializes the contracts-owned region:
+
+```mermaid
+flowchart LR
+    S["Exact readable source"] --> P["Semantic projection<br/>plus native absolute span"]
+    P --> C["ParserCoordinates"]
+    S --> C
+    C --> R["TextRegion<br/>1-based code points<br/>exclusive end"]
+    R --> O["Symbols / references / deep nodes"]
+```
+
+| Producer                                 | Retained native span                                      | Materialization rule                                                                         |
+|------------------------------------------|-----------------------------------------------------------|----------------------------------------------------------------------------------------------|
+| `antlr4ng`                               | Code-point `start` and inclusive `stop` offsets.          | Make the stop exclusive, then map both offsets against the exact source.                     |
+| `web-tree-sitter` string input           | JavaScript `startIndex` and exclusive `endIndex` offsets. | Map the UTF-16 offsets against the exact source; never publish native point columns.         |
+| Point-only synthetic Tree-sitter capture | Zero-based row and JavaScript column offsets.             | Resolve against the exact source; retain absolute indices whenever source nodes expose them. |
+
+Framework registry mappings return `TreeSitterSymbolProjection[]`: semantic
+fields plus `TreeSitterSpan`, never public coordinate arithmetic. The registry
+handler materializes those projections before they reach any channel. The
+published `TreeSitterExtractor.extractFromTree(...): MimeSymbol[]` signature
+remains stable for dedicated handlers; its additive materializer supplies the
+same boundary inside that method.
+
+Every successful materialization yields all four ordered coordinates. Astral
+characters count once, combining code points remain distinct, LF/CRLF/CR are
+line separators, and equal boundaries remain zero-width. An unaddressable,
+partial, inverted, or code-point-bisecting native span throws
+`ParserCoordinateError`; parser error containment never converts that internal
+contract failure into an empty channel.
 
 ### 9.5 Hand-rolled extractor
 
@@ -528,10 +562,12 @@ Native vocabulary per algebra — we lean on community conventions rather than i
 - **ANTLR / hand-rolled handlers** — handler authors as appropriate for the algebra.
 
 The exported `DeepTreeNode` type owns the tree-sitter walker shape. Nodes carry
-their native `type`, 1-based inclusive line range, optional columns, leaf text,
-and recursive named children.
-
-`endLine >= line` is an invariant, never an inverted span. The ANTLR walker enforces it explicitly: an epsilon/empty-match rule context has its `stop` token set *before* its `start` (so `stop.line < start.line`), and the walker clamps `endLine` to `start.line` rather than emit `endLine < line`. The query line resolvers rely on this (`endLine` defaults to `line` whenever a stored `endLine` is missing or smaller).
+their native `type`, a 1-based line range, optional complete columns, leaf text,
+and recursive named children. Framework Tree-sitter and ANTLR walkers derive
+complete parser-backed regions through {§mimetype-parser-coordinates}; an ANTLR
+epsilon context whose stop precedes its start becomes a zero-width region.
+`endLine >= line` is invariant. Query line resolvers retain `line` as the
+fallback when a custom algebra omits or inverts `endLine`.
 
 ### 12.3 `deep-xml` projection rule
 
@@ -737,7 +773,8 @@ the field. The value must equal a path produced from that entry's symbols.
 
 All references satisfy these invariants:
 
-- Positions are complete, 1-based text regions with `endLine >= line`.
+- Positions are complete, 1-based text regions materialized through
+  {§mimetype-parser-coordinates}, with `endLine >= line`.
 - `container`, when present, names an emitted definition path from the same
   entry.
 - Definitions, string/comment decoys, and function-local identifier noise do

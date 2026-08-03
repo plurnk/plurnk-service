@@ -2,6 +2,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import TreeSitterExtractor from "./TreeSitterExtractor.ts";
+import { ParserCoordinateError } from "./ParserCoordinates.ts";
 import type { TreeSitterParser, TreeSitterTree, TreeSitterNode } from "./TreeSitterExtractor.ts";
 import type { MimeSymbol } from "./types.ts";
 
@@ -83,6 +84,19 @@ describe("TreeSitterExtractor", () => {
         }
         const h = new Fake(metadata);
         assert.deepEqual(await h.extractRaw("anything"), []);
+    });
+
+    it("does not collapse a parser-coordinate invariant failure", async () => {
+        class Fake extends TreeSitterExtractor {
+            protected async loadParser(): Promise<TreeSitterParser> {
+                return { parse: (content) => ({ rootNode: fakeNode(content) }) };
+            }
+            protected override extractFromTree(): MimeSymbol[] {
+                throw new ParserCoordinateError("invalid native span");
+            }
+        }
+        const h = new Fake(metadata);
+        await assert.rejects(h.extractRaw("anything"), ParserCoordinateError);
     });
 
     it("returns [] when parser.parse returns null", async () => {

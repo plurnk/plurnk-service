@@ -1,4 +1,6 @@
-import type { MimeSymbol, SymbolKind } from "../types.ts";
+import { treeSitterSpan } from "../ParserCoordinates.ts";
+import type { TreeSitterSymbolProjection } from "../ParserCoordinates.ts";
+import type { SymbolKind } from "../types.ts";
 import type { TreeSitterNode } from "../TreeSitterExtractor.ts";
 
 // F# SPEC §3 mapping via tree-sitter-fsharp.
@@ -21,13 +23,13 @@ import type { TreeSitterNode } from "../TreeSitterExtractor.ts";
 // Container semantics (issue #18): declarations inside a named module or
 // namespace carry its name; record fields, union cases, and members carry
 // the owning type appended to that path.
-export function extract(root: TreeSitterNode, _content: string): MimeSymbol[] {
-    const out: MimeSymbol[] = [];
+export function extract(root: TreeSitterNode, _content: string): TreeSitterSymbolProjection[] {
+    const out: TreeSitterSymbolProjection[] = [];
     walk(root, out, "");
     return out;
 }
 
-function walk(node: TreeSitterNode, out: MimeSymbol[], container: string): void {
+function walk(node: TreeSitterNode, out: TreeSitterSymbolProjection[], container: string): void {
     for (let i = 0; i < node.namedChildCount; i += 1) {
         const child = node.namedChild(i);
         if (!child) continue;
@@ -35,7 +37,7 @@ function walk(node: TreeSitterNode, out: MimeSymbol[], container: string): void 
     }
 }
 
-function dispatch(node: TreeSitterNode, out: MimeSymbol[], container: string): void {
+function dispatch(node: TreeSitterNode, out: TreeSitterSymbolProjection[], container: string): void {
     switch (node.type) {
         case "named_module":
         case "namespace": {
@@ -90,7 +92,7 @@ function dispatch(node: TreeSitterNode, out: MimeSymbol[], container: string): v
     }
 }
 
-function handleFnOrValue(node: TreeSitterNode, out: MimeSymbol[], container: string): void {
+function handleFnOrValue(node: TreeSitterNode, out: TreeSitterSymbolProjection[], container: string): void {
     const fnLeft = findChildOfType(node, "function_declaration_left");
     if (fnLeft) {
         const name = firstIdentifierText(fnLeft);
@@ -131,7 +133,7 @@ function deepFirstIdentifier(node: TreeSitterNode): string | null {
 // member_defn shapes: function_declaration_left (extension members),
 // method_or_prop_defn (implicit-constructor type bodies, `member this.Run x`),
 // member_signature (abstract members), bare property_or_ident (`member val`).
-function handleMemberDefn(node: TreeSitterNode, out: MimeSymbol[], container: string): void {
+function handleMemberDefn(node: TreeSitterNode, out: TreeSitterSymbolProjection[], container: string): void {
     const left = findChildOfType(node, "function_declaration_left");
     if (left) {
         const name = firstIdentifierText(left);
@@ -200,7 +202,7 @@ function methodParams(node: TreeSitterNode): string[] {
     return out;
 }
 
-function handleTypeDefnVariant(node: TreeSitterNode, out: MimeSymbol[], container: string): void {
+function handleTypeDefnVariant(node: TreeSitterNode, out: TreeSitterSymbolProjection[], container: string): void {
     switch (node.type) {
         case "record_type_defn": {
             const name = typeName(node);
@@ -317,16 +319,11 @@ function extractArgPatterns(argsNode: TreeSitterNode | null): string[] {
     return out;
 }
 
-function position(node: TreeSitterNode): Pick<MimeSymbol, "line" | "endLine" | "column" | "endColumn"> {
-    return {
-        line: node.startPosition.row + 1,
-        endLine: node.endPosition.row + 1,
-        column: node.startPosition.column + 1,
-        endColumn: node.endPosition.column + 1,
-    };
+function position(node: TreeSitterNode): Pick<TreeSitterSymbolProjection, "span"> {
+    return { span: treeSitterSpan(node) };
 }
 
-function push(out: MimeSymbol[], kind: SymbolKind, name: string, node: TreeSitterNode, container: string): void {
+function push(out: TreeSitterSymbolProjection[], kind: SymbolKind, name: string, node: TreeSitterNode, container: string): void {
     out.push({
         name,
         kind,
