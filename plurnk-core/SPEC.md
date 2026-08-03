@@ -98,6 +98,15 @@ Independent axes on entries and channels. Confusion across them is a recurring s
 | **live** | `test/live/` | Real | Wire-level assertions |
 | **demo** | `test/demo/` | Real | Holistic outcome assertions |
 
+§test-artifact-retention **File-backed test databases use current-run
+retention.** The normal intg runner clears `test/intg/.tmp/` once before the
+suite, reports that forensic directory, and retains every artifact the current
+run creates. A failed suite therefore leaves its evidence intact; the next
+normal intg run removes it before creating anything. Direct `node --test`
+invocations bypass the runner boundary and must invoke the same cleanup
+procedure explicitly when isolation matters. Live/demo run directories are
+benchmark artifacts outside `.tmp` and retain their separate lifecycle.
+
 ---
 
 ## §arch Architecture

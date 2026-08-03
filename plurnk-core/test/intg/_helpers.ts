@@ -69,11 +69,11 @@ const TMP_DIR = resolve(PROJECT_ROOT, "test/intg/.tmp");
 //
 // DBs are KEPT on close — any test that surfaces something worth review
 // can be tossed straight at `npm run test:digest -- test/intg/.tmp/db-<id>.db`
-// without rebuilding plumbing. The path is logged on close so a failed
-// test's forensic db is one grep away. The intg/demo/live runner scripts
-// pre-clean .tmp (test:clean-tmp) so only the current worker's DBs remain —
-// no cross-worker accumulation. A bare `node --test <file>` bypasses that, so
-// run `npm run test:clean-tmp` yourself first if you go around the script.
+// without rebuilding plumbing. The normal integration runner clears the prior
+// run once before starting, reports this directory, and retains everything
+// created by the current run ({§test-artifact-retention}). A bare `node --test
+// <file>` bypasses that boundary; use `npm run test:clean-tmp` first when
+// invoking the integration tests directly.
 export const openMigrated = async (atPath?: string): Promise<Db> => {
     const dbPath = atPath ?? join(TMP_DIR, `db-${crypto.randomUUID()}.db`);
     await mkdir(dirname(dbPath), { recursive: true });
@@ -90,11 +90,6 @@ export const openMigrated = async (atPath?: string): Promise<Db> => {
         ],
         functions: [resolve(PROJECT_ROOT, "src/schemes/cosine.ts")],
     })) as unknown as Db;
-    const originalClose = db.close.bind(db);
-    db.close = async () => {
-        await originalClose();
-        console.error(`[openMigrated] db kept: ${dbPath}`);
-    };
     return db;
 };
 
