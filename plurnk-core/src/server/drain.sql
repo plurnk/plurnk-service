@@ -1,6 +1,5 @@
--- Drain queries for the worker-level loop queue (SPEC §_run_drain — TBD).
--- Mirrors rummy's AgentLoop drain pattern: enqueue loop at status=100,
--- claim atomically (100 → 102), execute, repeat.
+-- {§worker-loop-lifecycle} — the worker-level loop queue: enqueue at status 100,
+-- claim atomically (100 → 102) in FIFO order, execute, and continue draining.
 
 -- PREP: drain_enqueue_loop
 -- Insert a loop at queued state. Sequence is per-worker, 1-based.
