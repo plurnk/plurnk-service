@@ -1,20 +1,37 @@
-# plurnk-docs
+# plurnk teaching corpus
 
-The plurnk teaching corpus. Markdown consumed by [plurnk-service](https://github.com/plurnk/plurnk-service) at runtime — no code, no build.
+Authored defaults published by `@plurnk/plurnk-meta` and consumed by
+`@plurnk/plurnk-service`. The membership and ownership boundary is specified at
+{§teaching-corpus}; core owns runtime projection.
 
 ## Contents
 
-- `docs/<scheme>.md` — per-scheme long-form teaching, materialized as `plurnk://docs/<scheme>.md` entries the model READs (known, unknown, worker, log).
-- `PLURNK_PERSONALITY.md` — the default operating policy, seeded once to `~/.plurnk/AGENTS.md` and foisted as `## Plurnk Service Policy`.
-- `requirements.md` — the static contract appended to every user packet (`system_requirements` default).
+| Source                          | Runtime role                                                                 |
+| ------------------------------- | ---------------------------------------------------------------------------- |
+| `PLURNK_PERSONALITY.md`         | First-run seed for the user-owned `~/.plurnk/AGENTS.md` policy.              |
+| `requirements.md`               | Default compact operational recap rendered under `## Recap`.                 |
+| `docs/log.md`, `docs/worker.md` | Deep docs pulled through the registered built-in scheme names.               |
+| `docs/questions.md`             | Pull doc materialized only when operator questions are enabled.              |
+
+Core materializes eligible pull docs at `worker://plurnk/docs/<name>.md` and
+exposes them through the turn-0 `FIND(worker://plurnk/docs/**)` catalog. Merely
+placing a file in `docs/` does not register a scheme or make speculative
+teaching current.
 
 ## The teaching split
 
-**Contracts teach the language; docs teach the world.** [plurnk-contracts](https://github.com/plurnk/plurnk-service/tree/main/plurnk-contracts)'s ANTLR grammar and `plurnk.md` own op syntax and the model-facing language. This package owns scheme behavior, delegation workflow, disposition, and standing rules. Live model evidence tests whether that teaching is legible without turning telemetry into unsolicited workflow direction.
+**Contracts teach the language; docs teach the world.** The contracts parser and
+`plurnk.md` own operation syntax and model-facing language. Core and capability
+specifications own runtime semantics; this package owns their authored teaching
+projections. Live model evidence tests whether that teaching is legible without
+turning telemetry into unsolicited workflow direction.
 
 ## Contract
 
-plurnk-service resolves these files from this package (`Paths`), pins the version, and validates teaching changes with its live/demo tiers. A teaching change ships as a bump here; the service adopts it like any plugin. File teaching asks and steer-wording issues HERE, not on the daemon.
+plurnk-service resolves these files from the installed package through `Paths`
+rather than carrying copies in core. Model-facing teaching changes are verified
+through the composed product gates and tracked against the meta owner in the
+monorepo forge.
 
 ## Teaching doctrine (adopted from the grammar lane, #392 — data-backed, evidence cited)
 

@@ -21,7 +21,7 @@ import type { CoreSchemeAdapter, CoreSchemeServices } from "./CoreSchemeServices
 import type { RuntimeSchemeFacet } from "../server/DaemonModule.ts";
 
 // Core-owned scheme depth may live in the metaproject teaching corpus
-// (Paths.schemeDocs), loaded once at module evaluation. docs() prefers that
+// ({§teaching-corpus}, Paths.schemeDocs), loaded once at module evaluation. docs() prefers that
 // corpus over a manifest's inline `documentation`; plugin schemes and core
 // schemes without a corpus entry use the manifest field. Absent dir → empty map.
 const SCHEME_DOCS: ReadonlyMap<string, string> = await (async () => {

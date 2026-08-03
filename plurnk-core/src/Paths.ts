@@ -14,13 +14,13 @@ import { homedir } from "node:os";
 export default class Paths {
     static #PACKAGE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
     static #CONTRACTS_ROOT = dirname(fileURLToPath(import.meta.resolve("@plurnk/plurnk-contracts/package.json")));
-    // {§schemes-self-doc-materialization}/{§requirements} — core consumes the
-    // teaching corpus owned by @plurnk/plurnk-meta.
+    // {§teaching-corpus} — core consumes the teaching sources owned by
+    // @plurnk/plurnk-meta; admission and projection remain core-owned.
     static #DOCS_ROOT = dirname(fileURLToPath(import.meta.resolve("@plurnk/plurnk-meta/package.json")));
 
     static migrations = resolve(Paths.#PACKAGE_ROOT, "migrations");
     static instructionsSystem = resolve(Paths.#CONTRACTS_ROOT, "plurnk.md");
-    // The default operating policy (seeded to ~/.plurnk/AGENTS.md) + the per-scheme teaching docs.
+    // The first-run policy seed and built-in/conditional pull-doc sources.
     static personality = resolve(Paths.#DOCS_ROOT, "PLURNK_PERSONALITY.md");
     static schemeDocs = resolve(Paths.#DOCS_ROOT, "docs");
     // (GBNF artifact resolution moved to Engine.#grammarConstraint — the env value

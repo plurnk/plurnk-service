@@ -452,7 +452,7 @@ export default class PacketBuilder {
     // docs) so the catalog can expose each doc's token weight.
     async docEntries(workspaceId: number): Promise<Array<{ name: string; content: string }>> {
         const out = this.#schemes.docs(); // scheme docs already drop PLURNK_SERVICE_DOCS_EXCLUDE names
-        // {§send-300-choices} — the conditional teaching: questions.md (from the docs corpus)
+        // {§send-300-choices} {§teaching-corpus} — the conditional teaching: questions.md
         // materializes ONLY for enabled workspaces — the same conditional-doc mechanism as the EXEC
         // plugin docs below. An un-enabled workspace is never taught the op it can't use.
         if (await WorkspaceSettings.questionsEnabled(this.#db, workspaceId)) {

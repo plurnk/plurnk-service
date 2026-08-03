@@ -44,7 +44,7 @@ export interface SchemeManifest {
     readonly flags?: SchemeFlagAffinity;
     // Self-doc, mirroring the exec contract: terse pushes, depth pulls (#25).
     // example = terse hot-path usage line (rendered every turn); documentation =
-    // deep doc the consumer materializes as a pull-able plurnk://docs/<name>.md;
+    // deep doc the consumer materializes as a pull-able worker://plurnk/docs/<name>.md;
     // glyph = display icon (consumer renders `glyph ?? name`). Field-by-field
     // contract: SPEC {§manifest-self-doc}.
     readonly example?: string;

@@ -19,4 +19,7 @@ OPEN and FOLD change packet visibility, not history. Applying the current state 
 
 KILL permanently erases a log row.
 
-The Budget section reports the packet ceiling, usage, free capacity, rendered log weight by turn, and the largest currently open bodies. If a packet exceeds its ceiling, the engine folds only the newest turn boundary. It never selects older history by relevance. Continued overflow follows the reported recovery or hard-413 contract.
+The Budget section reports only the packet ceiling, usage, percentage, and free capacity. Each
+log row carries its own token weight. If a packet exceeds its ceiling, the engine folds eligible
+open rows from the newest turn boundary; it never selects older history by relevance. Continued
+overflow follows the reported recovery or hard-413 contract.
