@@ -12,8 +12,8 @@
 import { PlurnkParser } from "@plurnk/plurnk-contracts";
 import type { ErrorSource, LineMarker, PlurnkStatement, Severity } from "@plurnk/plurnk-contracts";
 
-// A parse failure surfaced from raw DSL — an error item or an unterminated tail. Positions refer
-// to the CALLER's text after the injected PLAN line is de-offset. {§methods} {§parse-diagnostics} #128
+// A parse failure surfaced from raw DSL — an error item or an unterminated tail. Parser points
+// refer to the CALLER's text after the injected PLAN line is de-offset. {§methods} {§parser-position}
 export type ParseFailure = {
     message: string;
     line: number;

@@ -2,12 +2,19 @@
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "$id": "https://schemas.plurnk.dev/v0/Position.json",
     "title": "Position",
-    "description": "A line/column position in a parsed plurnk document. ANTLR emits 1-based lines and 0-based columns; degraded positions may use 0 for both when the source token's location is unknown.",
+    "description": "A source point in parsed PLURNK input. Lines are 1-based; columns are 0-based Unicode code points. LF and CRLF delimit lines, while a lone CR occupies one column. The exact pair {line: 0, column: 0} is the sole unknown/degraded position.",
     "type": "object",
     "required": ["line", "column"],
     "additionalProperties": false,
     "properties": {
         "line": { "type": "integer", "minimum": 0 },
         "column": { "type": "integer", "minimum": 0 }
+    },
+    "if": {
+        "properties": { "line": { "const": 0 } },
+        "required": ["line"]
+    },
+    "then": {
+        "properties": { "column": { "const": 0 } }
     }
 }

@@ -78,6 +78,12 @@ test("Notice rejects missing and malformed contract fields", () => {
             level: "error",
             position: { type: "byte-offset", offset: 42 },
         },
+        {
+            source: "grammar",
+            kind: "parse_error",
+            level: "error",
+            position: { type: "content-offset", line: 0, column: 0 },
+        },
     ]) {
         assert.equal(Validator.validateNotice(notice).valid, false);
     }

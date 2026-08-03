@@ -694,6 +694,28 @@ class PlurnkParseError extends Error {
 }
 ```
 
+§parser-position Parser source locations are points, not text regions. An AST
+statement's `position` identifies the first `<` of its open tag; a diagnostic
+identifies the offending or recovery point; a text item and `unparsedTail.from`
+identify the first point at which that item or undefined tail begins.
+
+| Representation                      | Line                     | Column                                   | Absence or extent                                      |
+|-------------------------------------|--------------------------|------------------------------------------|--------------------------------------------------------|
+| Parser/AST `Position`               | 1-based                  | 0-based Unicode code points              | `{ line: 0, column: 0 }` is the sole unknown sentinel  |
+| Notice `content-offset`             | 1-based                  | 0-based Unicode code points              | Omit or set `position` to null when unknown            |
+| Contracts `TextRegion`              | 1-based                  | 1-based Unicode code points              | Start included, end excluded; equality is zero-width   |
+| SARIF 2.1.0 line/column region      | 1-based                  | 1-based, declared by `columnKind`        | End excluded; equality is zero-width                   |
+
+Parser columns count code points, not UTF-16 code units or grapheme clusters.
+LF and CRLF delimit source lines; a lone CR occupies one column. A point may sit
+immediately after the final code point and carries no implicit character extent.
+Consumers preserve parser points unchanged inside PLURNK. A SARIF adapter that
+preserves one must add one to `column`, declare `columnKind` as
+`"unicodeCodePoints"`, and emit equal start/end coordinates rather than
+inventing an extent. `TextRegion` already uses SARIF's base and exclusive-end algebra but
+remains a distinct contracts-owned representation. See [SARIF 2.1.0 §§3.14.26–27
+and 3.30.2](https://docs.oasis-open.org/sarif/sarif/v2.1.0/sarif-v2.1.0.html).
+
 | Source      | Boundary                                                                               |
 |-------------|----------------------------------------------------------------------------------------|
 | `"lexer"`   | Token-level failure, such as an unrecognized character or malformed `<L>` integer.     |

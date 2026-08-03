@@ -13,6 +13,11 @@ test("Validator: Position accepts well-formed", () => {
     assert.deepEqual(errors, []);
 });
 
+test("Validator: Position accepts only the complete unknown sentinel", () => {
+    assert.equal(Validator.validatePosition({ line: 0, column: 0 }).valid, true);
+    assert.equal(Validator.validatePosition({ line: 0, column: 1 }).valid, false);
+});
+
 test("Validator: Position rejects missing column", () => {
     const { valid } = Validator.validatePosition({ line: 1 });
     assert.equal(valid, false);

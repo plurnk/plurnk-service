@@ -142,13 +142,14 @@ test("#58: op.parse projects the parser-owned diagnostic and structured position
     const { seam } = mockSeam();
     const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
     try {
+        const text = "<<EXEC(😀)[-1,300]:x:EXEC";
         const events = await post(mod.address().port, {
             threadId: "parse-diagnostic",
             runId: "parse-diagnostic-run",
             forwardedProps: {
                 plurnk: {
                     workspace: "parse-diagnostic",
-                    action: { kind: "op.parse", text: "<<EXEC[-1,300]:x:EXEC" },
+                    action: { kind: "op.parse", text },
                 },
             },
         });
@@ -176,8 +177,9 @@ test("#58: op.parse projects the parser-owned diagnostic and structured position
         assert.doesNotMatch(failure.detail ?? "", /Plurnk lexer error at line/);
         assert.deepEqual(
             { line: failure.line, column: failure.column, source: failure.source, severity: failure.severity },
-            { line: 1, column: 7, source: "lexer", severity: "error" },
+            { line: 1, column: 10, source: "lexer", severity: "error" },
         );
+        assert.equal(text.indexOf("-1"), 11, "the client projection retains code-point, not UTF-16, columns");
         assert.equal(failure.recovery, undefined, "AG-UI does not author generic parser recovery");
     } finally { await mod.close(); }
 });

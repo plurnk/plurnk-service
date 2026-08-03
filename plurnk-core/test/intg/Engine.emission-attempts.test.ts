@@ -417,11 +417,12 @@ test("digest preserves rejected emissions as forensic artifacts without putting 
     const dbPath = join(dir, "plurnk.db");
     const digestDir = join(dir, "digest");
     const { db, workspaceId, workerId, loopId, engine } = await setup(dbPath);
+    const rejected = "😀rejected bytes";
     try {
         const provider = new AttemptWitness({
             contextWindow: 100_000,
             responses: [
-                invalid("rejected bytes", { prompt: 10, completion: 2, total: 12 }, "rejected reasoning"),
+                invalid(rejected, { prompt: 10, completion: 2, total: 12 }, "rejected reasoning"),
                 valid("accepted bytes", { prompt: 10, completion: 3, total: 13 }),
             ],
         });
@@ -440,16 +441,20 @@ test("digest preserves rejected emissions as forensic artifacts without putting 
         Digest.run({ dbPath, digestDir });
         assert.equal(
             await readFile(join(digestDir, "packet000.attempt001.rejected.assistant.md"), "utf8"),
-            "rejected bytes",
+            rejected,
         );
         const rejectedResponse = JSON.parse(
             await readFile(join(digestDir, "packet000.attempt001.rejected.response.json"), "utf8"),
         ) as { assistant?: { content?: string } };
-        assert.equal(rejectedResponse.assistant?.content, "rejected bytes");
+        assert.equal(rejectedResponse.assistant?.content, rejected);
         const parseErrors = JSON.parse(
             await readFile(join(digestDir, "packet000.attempt001.rejected.parse-errors.json"), "utf8"),
-        ) as unknown[];
-        assert.ok(parseErrors.length > 0);
+        ) as Array<{ line?: number; column?: number; source?: string }>;
+        assert.deepEqual(
+            { line: parseErrors[0]?.line, column: parseErrors[0]?.column, source: parseErrors[0]?.source },
+            { line: 1, column: 15, source: "parser" },
+            "the persisted digest evidence retains parser code-point coordinates",
+        );
         assert.equal(
             await readFile(join(digestDir, "packet000.assistant.md"), "utf8"),
             "<<PLAN:complete the task:PLAN\n<<SEND[200]:accepted bytes:SEND",

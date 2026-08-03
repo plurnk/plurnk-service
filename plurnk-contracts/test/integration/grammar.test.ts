@@ -269,6 +269,44 @@ test("value-add: near-miss op swallowed as prose surfaces a warning, not an erro
     assert.equal(r.items.filter((i) => i.kind === "statement").length, 2);
 });
 
+// {§parser-position}
+test("parser points count Unicode code points across native and advisory diagnostics", () => {
+    const emission = "<<PLAN:😀é:PLAN 😀<<CLOSE:x:CLOSE <<EXEC[-1,300]:x:EXEC <<SEND[200]:d:SEND";
+    const result = PlurnkParser.parse(emission);
+    const warning = result.items.find(
+        (item) => item.kind === "error" && item.error.severity === "warning" && item.error.message.includes("<<CLOSE"),
+    );
+    const lexerError = result.items.find(
+        (item) => item.kind === "error" && item.error.source === "lexer",
+    );
+    assert.ok(warning && warning.kind === "error");
+    assert.ok(lexerError && lexerError.kind === "error");
+
+    const codePointColumn = (needle: string): number => Array.from(
+        emission.slice(0, emission.indexOf(needle)),
+    ).length;
+    assert.notEqual(codePointColumn("<<CLOSE"), emission.indexOf("<<CLOSE"), "the specimen distinguishes code points from UTF-16 units");
+    assert.deepEqual(
+        { line: warning.error.line, column: warning.error.column },
+        { line: 1, column: codePointColumn("<<CLOSE") },
+    );
+    assert.deepEqual(
+        { line: lexerError.error.line, column: lexerError.error.column },
+        { line: 1, column: codePointColumn("-1") },
+    );
+});
+
+// {§parser-position}
+test("parser points use LF and CRLF line boundaries while lone CR remains a code point", () => {
+    const crlf = PlurnkParser.parseStatements("<<EDIT(a):x:EDIT\r\n<<READ(a)::READ");
+    const cr = PlurnkParser.parseStatements("<<EDIT(a):x:EDIT\r<<READ(a)::READ");
+    const positions = (result: ReturnType<typeof PlurnkParser.parseStatements>) => result.items
+        .filter((item) => item.kind === "statement")
+        .map((item) => item.statement.position);
+    assert.deepEqual(positions(crlf), [{ line: 1, column: 0 }, { line: 2, column: 0 }]);
+    assert.deepEqual(positions(cr), [{ line: 1, column: 0 }, { line: 1, column: 17 }]);
+});
+
 test("value-add: near-miss is immune to bodies — embedded `<<CLOSE` in an EDIT is not flagged", () => {
     const r = PlurnkParser.parse("<<PLAN:t:PLAN <<EDIT(x):close via <<CLOSE later:CLOSE done:EDIT <<SEND[200]:d:SEND");
     assert.equal(r.items.filter((i) => i.kind === "error").length, 0);
@@ -684,6 +722,14 @@ test("invented closer: a never-closed body with NO imposter tag keeps the plain 
     assert.ok(result.unparsedTail);
     assert.match(result.unparsedTail!.reason, /never closed - add `:WORK` to terminate/);
     assert.doesNotMatch(result.unparsedTail!.reason, /which is body text/);
+});
+
+test("invented closer: Unicode offset conversion cannot scan a pre-op tag as body text", () => {
+    const cut = `<<PLAN::PLAN ${"😀".repeat(10)}:BEFORE<<EDIT(x):body :INSIDE`;
+    const result = PlurnkParser.parse(cut);
+    assert.ok(result.unparsedTail);
+    assert.match(result.unparsedTail.reason, /found `:INSIDE`, which is body text/);
+    assert.doesNotMatch(result.unparsedTail.reason, /found `:BEFORE`/);
 });
 
 // {§plan-body-op-advisory}

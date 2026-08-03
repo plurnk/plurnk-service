@@ -36,12 +36,13 @@
     },
     "$defs": {
         "ContentOffset": {
+            "description": "A point in model output using the parser-point convention: 1-based line and 0-based Unicode-code-point column. Absence or a null Notice.position represents an unknown location.",
             "type": "object",
             "required": ["type", "line", "column"],
             "additionalProperties": false,
             "properties": {
                 "type": { "const": "content-offset" },
-                "line": { "type": "integer", "minimum": 0 },
+                "line": { "type": "integer", "minimum": 1 },
                 "column": { "type": "integer", "minimum": 0 }
             }
         },

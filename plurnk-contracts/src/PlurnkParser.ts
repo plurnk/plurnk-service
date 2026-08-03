@@ -78,17 +78,14 @@ export default class PlurnkParser {
                 // Op-shape gate: require a matching close `:Word` in the same run, so a bare
                 // prose mention without a heredoc close is never flagged.
                 if (!new RegExp(":" + m[1] + "\\b").test(text)) continue;
-                const before = text.slice(0, m.index);
-                const nl = before.split("\n").length - 1;
-                const line = item.position.line + nl;
-                const column = nl === 0 ? item.position.column + m.index : m.index - before.lastIndexOf("\n") - 1;
+                const position = PlurnkParser.#advancePosition(item.position, text.slice(0, m.index));
                 additions.push({
                     at: idx,
                     item: {
                         kind: "error",
                         error: new PlurnkParseError(
-                            line,
-                            column,
+                            position.line,
+                            position.column,
                             "parser",
                             `\`<<${m[1]}\` is not a Plurnk operation, so it was read as text; did you mean ${suggestion}?`,
                             "warning",
@@ -323,12 +320,41 @@ export default class PlurnkParser {
     // Name an ALLCAPS close lookalike only inside a never-closed statement; healthy
     // bodies are never scanned by this path. {§invented-closer-advisory}
     static #inventedCloser(input: string, from: { line: number; column: number }, openTag: string): string {
-        const lines = input.split("\n");
-        const offset = lines.slice(0, from.line - 1).reduce((sum, l) => sum + l.length + 1, 0) + from.column;
+        const offset = PlurnkParser.#offsetAtPosition(input, from);
         const body = input.slice(offset);
         const m = /:([A-Z][A-Z0-9_]{2,})\b/.exec(body);
         if (!m || m[1] === openTag.toUpperCase()) return "";
         return ` (found \`:${m[1]}\`, which is body text - the closer echoes the op's name)`;
+    }
+
+    // JavaScript offsets count UTF-16 code units; parser source points count Unicode code
+    // points and advance only at LF. Keep that translation inside the parser. {§parser-position}
+    static #advancePosition(from: Position, text: string): Position {
+        let { line, column } = from;
+        for (const character of text) {
+            if (character === "\n") {
+                line++;
+                column = 0;
+            } else {
+                column++;
+            }
+        }
+        return { line, column };
+    }
+
+    static #offsetAtPosition(input: string, target: Position): number {
+        if (target.line < 1 || target.column < 0) {
+            throw new RangeError(`cannot resolve degraded parser position ${target.line}:${target.column}`);
+        }
+        let position: Position = { line: 1, column: 0 };
+        let offset = 0;
+        for (const character of input) {
+            if (position.line === target.line && position.column === target.column) return offset;
+            position = PlurnkParser.#advancePosition(position, character);
+            offset += character.length;
+        }
+        if (position.line === target.line && position.column === target.column) return offset;
+        throw new RangeError(`parser position ${target.line}:${target.column} is outside its source`);
     }
 
     // Walk a parse tree, appending statement/error/text items in source order. Statement rules

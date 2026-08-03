@@ -555,7 +555,7 @@ export default class Engine {
     }
 
     // A mapped rail divergence is a CODE-POINT offset into the model's content;
-    // the snippet/notices surface speaks 1-based line + 0-based column.
+    // the snippet/notices surface speaks the parser-point convention. {§parser-position}
     // Convert over code points (not UTF-16 units) so an astral char doesn't skew the line,
     // clamping out-of-range offsets to the content's end.
     #offsetToLineColumn(content: string, offset: number): { line: number; column: number } {

@@ -139,7 +139,7 @@ dialect: "glob"
 raw: string
 }
 /**
- * A line/column position in a parsed plurnk document. ANTLR emits 1-based lines and 0-based columns; degraded positions may use 0 for both when the source token's location is unknown.
+ * A source point in parsed PLURNK input. Lines are 1-based; columns are 0-based Unicode code points. LF and CRLF delimit lines, while a lone CR occupies one column. The exact pair {line: 0, column: 0} is the sole unknown/degraded position.
  */
 
 export interface Position {
@@ -326,6 +326,9 @@ message?: (string | null)
 position?: (ContentOffset | LogCoordinate | null)
 [k: string]: unknown
 }
+/**
+ * A point in model output using the parser-point convention: 1-based line and 0-based Unicode-code-point column. Absence or a null Notice.position represents an unknown location.
+ */
 
 export interface ContentOffset {
 type: "content-offset"

@@ -257,10 +257,11 @@ test("a parser warning remains an advisory — valid statements complete and no 
                 broadcasts.push({ payload: payload as { loopId: number; notice: Record<string, unknown> } });
             },
         });
+        const emission = "<<PLAN:😀:PLAN <<CLOSE(log://x)::CLOSE <<SEND[200]:done:SEND";
         const provider = new Mock({
             contextWindow: 100000,
             responses: [
-                contentResponse("<<PLAN:t:PLAN <<CLOSE(log://x)::CLOSE <<SEND[200]:done:SEND"),
+                contentResponse(emission),
             ],
         });
 
@@ -276,6 +277,7 @@ test("a parser warning remains an advisory — valid statements complete and no 
             { type: "content-offset", line: 1, column: 14 },
             "the Notice retains the parser's typed source position",
         );
+        assert.equal(emission.indexOf("<<CLOSE"), 15, "the specimen distinguishes code-point and UTF-16 columns");
         assert.deepEqual(
             await db.test_error_rows_for_worker.all({ worker_id: workerId }),
             [],

@@ -154,7 +154,7 @@ test("op.parse surfaces a parse failure as a 400 result with its line:col — no
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "parse-err" });
             // A valid statement (line 1) + a malformed one (line 2: non-integer signal 'x').
-            const text = `<<EDIT(worker:///a):alpha:EDIT\n<<SEND[x]:y:SEND`;
+            const text = `<<EDIT(worker:///a):alpha:EDIT\n<<SEND(😀)[x]:y:SEND`;
             const response = await rpcCall(ws, 2, "op.parse", { text });
             const result = response.result as {
                 results: Array<{
@@ -177,6 +177,7 @@ test("op.parse surfaces a parse failure as a 400 result with its line:col — no
             assert.match(err!.problem?.detail ?? "", /unrecognized character 'x' in signal/);
             assert.doesNotMatch(err!.problem?.detail ?? "", /Plurnk lexer error at line/);
             assert.equal(err!.problem?.line, 2, "the failure's line is in the caller's submitted text (PLAN-prefix de-offset)");
+            assert.equal(err!.problem?.column, 10, "the failure retains the parser's code-point column");
             assert.deepEqual(
                 { source: err!.problem?.source, severity: err!.problem?.severity },
                 { source: "lexer", severity: "error" },
