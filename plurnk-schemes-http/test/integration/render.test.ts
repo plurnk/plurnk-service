@@ -13,7 +13,6 @@ import type {
     SchemeCtx, SchemeResult, SubscriptionHandle, ReadStatement, UrlPath,
 } from "@plurnk/plurnk-schemes";
 import Browser from "../../src/Browser.ts";
-import Guard from "../../src/Guard.ts";
 import Http from "../../src/Http.ts";
 
 // A page whose REAL content exists only after JS runs: the as-served body says
@@ -95,8 +94,7 @@ const readStmt = (raw: string): ReadStatement => {
     };
 };
 
-test("Http.read: full render path against real chromium — readable body + faithful DOM", async (t) => {
-    t.mock.method(Guard, "isPublicUrl", async () => true);
+test("Http.read: full render path against real chromium — readable body + faithful DOM", async () => {
     const server = await startServer();
     const browser = new Browser();          // injected so the test owns teardown
     const { ctx, inspect } = makeCtx();

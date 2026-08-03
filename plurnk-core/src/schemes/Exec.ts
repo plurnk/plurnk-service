@@ -107,10 +107,10 @@ export const resolveStreamStatement = async <S extends { target: ReadStatement["
     return { statement: { ...statement, target: { ...t, hostname: null } }, ownerId };
 };
 
-// {§exec-entry-sink} / #455 — the guarded web-fetch the sink calls when the executor hands content:null:
-// schemes-http's WebFetcher (SSRF-guarded byte acquisition + lazy browser
+// {§exec-entry-sink} / #455 — the web-fetch the sink calls when the executor hands content:null:
+// schemes-http's WebFetcher (checked byte acquisition + lazy browser
 // fallback, dead-as-null; caller cancellation rejects per {§prefetch}).
-// Injectable because the guard refuses localhost.
+// Injectable because automatic acquisition refuses localhost.
 export type WebFetch = (url: string, opts?: { signal?: AbortSignal }) => Promise<WebFetchResult | null>;
 
 export default class Exec extends CoreSchemeAdapterBase {
@@ -131,7 +131,7 @@ export default class Exec extends CoreSchemeAdapterBase {
     };
 
     // The web-fetch the entry sink calls on content:null ({§exec-entry-sink} / #455). Default = schemes-http's
-    // guarded WebFetcher over one warm-Chromium pool shared across this handler's
+    // checked WebFetcher over one warm-Chromium pool shared across this handler's
     // fallback renders; injectable so tests substitute the network.
     readonly #fetchWeb: WebFetch;
     readonly #closeWebFetcher: () => Promise<void>;
@@ -155,7 +155,7 @@ export default class Exec extends CoreSchemeAdapterBase {
     }
 
     // {§handler-lifecycle} — idle is the streaming drain barrier; the handler
-    // hook owns release of its separate guarded-fetch browser pool.
+    // hook owns release of its separate checked-fetch browser pool.
     async close(): Promise<void> {
         await this.idle();
         await this.#closeWebFetcher();

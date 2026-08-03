@@ -1,5 +1,5 @@
-// SSRF guard unit tests. Fully hermetic — pure range checks and IP-literal URLs
-// (net.isIP short-circuits DNS). Redirect-hop count reads
+// Automatic-fetch URL-check coverage {§automatic-fetch-check}. Fully hermetic:
+// pure range checks and IP-literal URLs (net.isIP short-circuits DNS). Hop count reads
 // PLURNK_SCHEMES_HTTP_REDIRECTS from .env.defaults via --env-file.
 
 import test from "node:test";
@@ -35,14 +35,11 @@ test("isPublicAddress: blocks non-global v6 and canonical v4-mapped forms", () =
 });
 
 test("isPublicUrl: protocol / localhost / IP-literal, no DNS", async () => {
-    for (const bad of ["ftp://8.8.8.8/", "file:///etc/passwd", "http://localhost/", "http://x.localhost/", "http://127.0.0.1/", "http://169.254.169.254/latest/meta-data/", "http://[::ffff:127.0.0.1]/", "https://user:secret@8.8.8.8/", "ws://127.0.0.1/", "wss://192.168.1.1/", "not a url"]) {
+    for (const bad of ["ftp://8.8.8.8/", "file:///etc/passwd", "http://localhost/", "http://x.localhost/", "http://127.0.0.1/", "http://169.254.169.254/latest/meta-data/", "http://[::ffff:127.0.0.1]/", "https://user:secret@8.8.8.8/", "ws://8.8.8.8/", "wss://93.184.216.34/", "not a url"]) {
         assert.equal(await Guard.isPublicUrl(bad), false, `${bad} should be refused`);
     }
     assert.equal(await Guard.isPublicUrl("https://8.8.8.8/"), true);
     assert.equal(await Guard.isPublicUrl("http://[2606:4700:4700::1111]/"), true);
-    // ws(s):// ride the same range check (the Ws engine guards its target here).
-    assert.equal(await Guard.isPublicUrl("wss://8.8.8.8/"), true);
-    assert.equal(await Guard.isPublicUrl("ws://93.184.216.34/feed"), true);
 });
 
 test("Guard.fetch: a private target is refused before any fetch", async () => {
@@ -53,20 +50,6 @@ test("Guard.fetch: a private target is refused before any fetch", async () => {
         await assert.rejects(
             Guard.fetch("http://127.0.0.1/", { method: "GET", body: undefined, headers: [] }, AbortSignal.timeout(2000)),
             (e) => e instanceof GuardBlockedError,
-        );
-        assert.equal(called, false);
-    } finally { globalThis.fetch = orig; }
-});
-
-test("Guard.fetch: ws(s) remains valid for socket validation but not byte transport", async () => {
-    const orig = globalThis.fetch;
-    let called = false;
-    globalThis.fetch = (async () => { called = true; return new Response("x"); }) as typeof fetch;
-    try {
-        assert.equal(await Guard.isPublicUrl("wss://8.8.8.8/"), true);
-        await assert.rejects(
-            Guard.fetch("wss://8.8.8.8/", { method: "GET", body: undefined, headers: [] }, AbortSignal.timeout(2000)),
-            (error) => error instanceof GuardBlockedError,
         );
         assert.equal(called, false);
     } finally { globalThis.fetch = orig; }

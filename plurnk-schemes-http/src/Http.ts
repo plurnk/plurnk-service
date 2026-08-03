@@ -22,7 +22,6 @@ import { MimetypeClassifier, NetworkAddress, PathSyntax, Results } from "@plurnk
 import { readFile } from "node:fs/promises";
 import Browser, { BROWSER_UA, requireNumEnv, type RenderResult } from "./Browser.ts";
 import ErrorDetail from "./ErrorDetail.ts";
-import Guard, { GuardBlockedError } from "./Guard.ts";
 import WebFetcher, {
     rewriteAcquisitionTarget,
     WebMaterializationError,
@@ -68,7 +67,7 @@ const documentation = await readFile(new URL("../docs/http.md", import.meta.url)
 // What Http needs from the render foundation — narrow, so tests inject a fake.
 interface Renderer {
     ready?(): Promise<string>;
-    render(url: string, opts: { workerId: number; signal?: AbortSignal; headers?: ReadonlyArray<readonly [string, string]>; guard?: (url: string) => Promise<boolean> }): Promise<RenderResult>;
+    render(url: string, opts: { workerId: number; signal?: AbortSignal; headers?: ReadonlyArray<readonly [string, string]> }): Promise<RenderResult>;
     close?(): Promise<void>;
 }
 
@@ -117,7 +116,7 @@ export default class Http implements SchemeHandler {
 
     // FIND itself is the consumer's standard entry query. This hook owns only
     // HTTP's prerequisite: an exact URL that is not already an entry must be
-    // acquired through the same guarded byte/render path used by search
+    // acquired through the same checked byte and lazy-render path used by search
     // prefetch. Glob targets only query already-known web entries.
     async prepareFind(statement: FindStatement, ctx: SchemeCtx): Promise<PassthroughResult> {
         const target = statement.target;
@@ -301,7 +300,7 @@ export default class Http implements SchemeHandler {
         );
     }
 
-    // {§http-lifecycle} One guarded direct-operation path owns seeding,
+    // {§http-lifecycle} One direct-operation path owns seeding,
     // subscription cancellation, response materialization, and settlement.
     async #fetchStream(target: UrlPath, ctx: SchemeCtx, method: string, body: string | undefined): Promise<PassthroughResult> {
         const address = Http.#address(target);
@@ -377,17 +376,18 @@ export default class Http implements SchemeHandler {
         composed.addEventListener("abort", onAbort, { once: true });
 
         try {
-            const requestHeaders: Array<[string, string]> = headers.some(([k]) => k.toLowerCase() === "user-agent")
-                ? [...headers, ...conditional]
-                : [["User-Agent", BROWSER_UA], ...headers, ...conditional];
-            const response = await Guard.fetch(url, {
+            const response = await fetch(url, {
                 method,
                 body,
                 // One browser identity on the wire (never Node's default "node"
                 // UA — a loud automated-client fingerprint). The model's own
                 // {User-Agent: …} block wins when present.
-                headers: requestHeaders,
-            }, local.signal);
+                headers: headers.some(([k]) => k.toLowerCase() === "user-agent")
+                    ? [...headers, ...conditional]
+                    : [["User-Agent", BROWSER_UA] as [string, string], ...headers, ...conditional],
+                signal: local.signal,
+                redirect: "follow",
+            });
 
             // {§revalidation} A 304 restores the GET representation into the
             // freshly seeded channels and remains an ordinary streaming READ.
@@ -415,7 +415,6 @@ export default class Http implements SchemeHandler {
                         workerId: ctx.workerId,
                         signal: local.signal,
                         headers,
-                        guard: Guard.isPublicUrl,
                     });
                 } catch (cause) {
                     throw new WebMaterializationError("render", responseMime, cause);
@@ -495,29 +494,26 @@ export default class Http implements SchemeHandler {
                 await ctx.subscriptions.close(result, result.problem?.detail);
                 return result;
             }
-            const blocked = err instanceof GuardBlockedError;
-            if (!blocked && err instanceof WebMaterializationError) {
+            if (err instanceof WebMaterializationError) {
                 const result = Http.#materializationFailure(url, method, err);
                 await ctx.subscriptions.close(result, result.problem?.detail);
                 return result;
             }
-            if (!blocked) console.error("HTTP acquisition failed", { method, url, err });
+            console.error("HTTP acquisition failed", { method, url, err });
             const cause = ErrorDetail.preview(err, this.#errorDetailLimit);
-            const reason = blocked
-                ? `${err.url} is not a public http(s) target.`
-                : `HTTP ${method} ${url} failed: ${cause}`;
-            // The remaining catch owns target refusal and acquisition failure;
-            // cancellation and typed materialization failures settled above.
+            const reason = `HTTP ${method} ${url} failed: ${cause}`;
+            // The remaining catch owns acquisition failure; cancellation and
+            // typed materialization failures settled above.
             const result = Http.#bad(
-                blocked ? 403 : 502,
+                502,
                 "http",
-                blocked ? "ssrf-blocked" : "fetch-failed",
+                "fetch-failed",
                 reason,
                 {
-                    target: blocked ? err.url : url,
+                    target: url,
                     method,
-                    stage: blocked ? "target-validation" : "acquisition",
-                    retryable: !blocked,
+                    stage: "acquisition",
+                    retryable: true,
                 },
             );
             await ctx.subscriptions.close(result, reason);

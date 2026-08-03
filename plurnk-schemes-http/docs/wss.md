@@ -1,6 +1,6 @@
 # wss:// — WebSocket
 
-Use WebSocket for a guarded, persistent, bidirectional connection. `wss` is a
+Use WebSocket for a persistent, bidirectional connection. `wss` is a
 stateful scheme, not an HTTP content type: READ claims a workspace address and
 owns its socket until terminal settlement, while concurrent SEND and KILL
 operations address that owner.
@@ -31,10 +31,6 @@ subscription and the READ resolves with streaming status `102`.
 Connection identity includes the workspace, exact `ws`/`wss` protocol, host,
 non-default port, path, and ordered query. A fragment does not change socket
 identity; `messages` is the only current channel.
-
-The target is resolved and checked before socket construction. Loopback,
-link-local, RFC-1918/CGNAT, and other non-public address ranges are refused with
-`403`.
 
 | Current transport boundary | Behavior                                                              |
 | -------------------------- | --------------------------------------------------------------------- |

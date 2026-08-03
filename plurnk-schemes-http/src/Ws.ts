@@ -16,7 +16,6 @@ import type {
 } from "@plurnk/plurnk-schemes";
 import { NetworkAddress, Results } from "@plurnk/plurnk-schemes";
 import { readFile } from "node:fs/promises";
-import Guard from "./Guard.ts";
 
 // The inbound-frame channel - every message the origin pushes streams here.
 const MESSAGES = "messages";
@@ -99,13 +98,6 @@ export default class Ws implements SchemeHandler {
         const address = Ws.#address(statement.target);
         if (!(address instanceof NetworkAddress)) return address;
         const { url, pathname } = address;
-        if (!(await Guard.isPublicUrl(url))) {
-            return Ws.#bad(403, "ssrf-blocked", `${url} is not a public ws(s):// target.`, {
-                target: url,
-                stage: "target-validation",
-                retryable: false,
-            });
-        }
         const key = Ws.#key(ctx.workspaceId, address);
         const existing = this.#sockets.get(key);
         if (existing !== undefined) {

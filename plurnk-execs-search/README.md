@@ -46,8 +46,8 @@ does not fetch result pages ({§executor-entry-sink}).
 
 The executor emits the digest but never fetches. It hands each unique candidate
 URL to `entry(url, null, { tags: [slug] })`; the consumer acquires,
-MIME-projects, and materializes the `https://` entry behind its own guards.
-Useful server-rendered HTML is projected directly; guarded browser rendering
+MIME-projects, and materializes the `https://` entry behind its own URL check.
+Useful server-rendered HTML is projected directly; browser rendering
 is attempted only when that projection is empty.
 
 - **Materialized:** `entry()` resolves — the row carries `materialized: true`; its body lives in the ordinary HTTP entry.

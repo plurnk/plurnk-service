@@ -71,7 +71,7 @@ export const liveWorkspace = async (opts: { name: string; projectRoot?: string; 
     const dbPath = join(runDir, "plurnk.db");
     const db = await openMigrated(dbPath);
     // #530 — a caller-supplied WebFetch (the canned-web gate fixture) rides the sink's injectable
-    // seam; absent, the registry wires the real guarded WebFetcher as in production.
+    // seam; absent, the registry wires the real checked WebFetcher as in production.
     const daemon = new Daemon({ db, provider, ...(opts.fetchWeb !== undefined ? { schemes: new SchemeRegistry({ fetchWeb: opts.fetchWeb }) } : {}) });
     await daemon.start(); // listenerless — the harness rides the seam (#364)
     const ws = await connect({ daemon });

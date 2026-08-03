@@ -39,7 +39,8 @@ WebFetcher prunes them because they cannot satisfy a text query.
 
 ## Design
 
-- Direct HTTP requests and WebFetcher use one redirect-aware network guard.
+- WebFetcher checks automatic byte targets and redirects; direct HTTP,
+  Playwright, and WebSocket use their ordinary configured transports.
 - Direct GET HTML is rendered through Playwright, projected into `body`, and
   retained faithfully in `html`.
 - GET representations carry method and acquisition-time metadata for the
@@ -51,7 +52,7 @@ WebFetcher prunes them because they cannot satisfy a text query.
 - All storage and streaming work uses `SchemeCtx` capabilities rather than a
   raw database handle.
 
-The same package registers `wss` (with `ws` routing to it) for guarded,
+The same package registers `wss` (with `ws` routing to it) for
 workspace-scoped full-duplex connections. See [`docs/wss.md`](docs/wss.md) for
 its operation surface and current transport limits.
 
@@ -64,8 +65,9 @@ npm i @plurnk/plurnk-schemes-http
 plurnk start
 ```
 
-Normal installation provisions Playwright's compatible Chromium. The shipped
-`.env.defaults` is the canonical operator configuration registry.
+The Playwright client is included. Provision a compatible local browser
+separately, select an external Playwright/CDP endpoint, or disable rendering.
+The shipped `.env.defaults` is the canonical operator configuration registry.
 
 ## Verify
 

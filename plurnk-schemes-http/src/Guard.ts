@@ -1,7 +1,7 @@
-// {§http-security-boundary} — every initial HTTP target and redirect hop must
-// resolve only to ordinary globally reachable unicast addresses. Redirects are
-// followed manually so validation and Fetch-standard request transitions share
-// one transport seam.
+// {§automatic-fetch-check} — WebFetcher's initial byte target and every
+// redirect hop must resolve only to ordinary globally reachable unicast
+// addresses. Redirects are followed manually so checking and Fetch-standard
+// request transitions share one automatic-acquisition seam.
 
 import dns from "node:dns/promises";
 import net from "node:net";
@@ -59,13 +59,13 @@ const safeUrl = (raw: string): string => {
     }
 };
 
-// A target (or a redirect hop) that resolved to a non-public address. Http maps
-// it to a 403 dead-signal, distinct from a network 502.
+// A target (or redirect hop) that automatic acquisition cannot follow.
+// WebFetcher collapses this with other unavailable-page outcomes to `null`.
 export class GuardBlockedError extends Error {
     readonly url: string;
     constructor(url: string) {
         const sanitized = safeUrl(url);
-        super(`SSRF guard: ${sanitized} is not a public http(s) target`);
+        super(`Automatic fetch check: ${sanitized} is not a public http(s) target`);
         this.name = "GuardBlockedError";
         this.url = sanitized;
     }
@@ -82,14 +82,12 @@ export default class Guard {
         return GLOBAL_IPV6.check(ip, "ipv6") && !BLOCKED.check(ip, "ipv6");
     }
 
-    // http(s)/ws(s) only, no localhost, and EVERY resolved address public. An IP
+    // http(s) only, no localhost, and EVERY resolved address public. An IP
     // literal skips DNS; a hostname resolves and every A/AAAA must be public.
-    // ws:/wss: ride the same range check — a WebSocket into private space is the
-    // same SSRF as a fetch (the Ws scheme guards its target through here).
     static async isPublicUrl(raw: string): Promise<boolean> {
         let url: URL;
         try { url = new URL(raw); } catch { return false; }
-        if (!["http:", "https:", "ws:", "wss:"].includes(url.protocol)) return false;
+        if (!["http:", "https:"].includes(url.protocol)) return false;
         if (url.username !== "" || url.password !== "") return false;
         const host = url.hostname.toLowerCase().replace(/^\[|\]$/g, "");
         if (host === "localhost" || host.endsWith(".localhost")) return false;
@@ -102,7 +100,7 @@ export default class Guard {
         }
     }
 
-    // Guarded fetch: re-guard every hop, follow up to PLURNK_SCHEMES_HTTP_REDIRECTS
+    // Automatic fetch: re-check every hop, follow up to PLURNK_SCHEMES_HTTP_REDIRECTS
     // manually (floor-set knob — unset crashes). Method, body, body headers, and
     // cross-origin Authorization follow WHATWG HTTP-redirect fetch. Throws
     // GuardBlockedError on a non-public hop; hands back the final response

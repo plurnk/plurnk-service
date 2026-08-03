@@ -12,11 +12,11 @@ import type { ProjectionCaps } from "@plurnk/plurnk-schemes";
 const PUB = "https://93.184.216.34/x"; // public IP literal — skips DNS
 
 const fakeBrowser = (html: string) => {
-    const calls: Array<{ url: string; guarded: boolean; signal: AbortSignal | undefined }> = [];
+    const calls: Array<{ url: string; signal: AbortSignal | undefined }> = [];
     return {
         calls,
-        render: async (url: string, opts: { workerId: number; signal?: AbortSignal; headers?: ReadonlyArray<readonly [string, string]>; guard?: (u: string) => Promise<boolean> }): Promise<RenderResult> => {
-            calls.push({ url, guarded: typeof opts.guard === "function", signal: opts.signal });
+        render: async (url: string, opts: { workerId: number; signal?: AbortSignal; headers?: ReadonlyArray<readonly [string, string]> }): Promise<RenderResult> => {
+            calls.push({ url, signal: opts.signal });
             return { status: 200, statusText: "OK", headers: [["content-type", "text/html"]], html };
         },
     };
@@ -65,7 +65,7 @@ test("GitHub blob acquisition uses one source target for byte fetch and render",
     assert.equal(browser.calls[0]?.url, raw);
 });
 
-test("HTML → byte response first; guarded browser render is a lazy fallback", async () => {
+test("HTML → guarded byte response first; ordinary browser render is a lazy fallback", async () => {
     const b = fakeBrowser("<html><body>rendered</body></html>");
     await withFetch((async () => resp("<html></html>", 200, { "content-type": "text/html; charset=utf-8" })) as typeof fetch, async () => {
         const fetched = await new WebFetcher(b).fetch(PUB);
@@ -74,7 +74,6 @@ test("HTML → byte response first; guarded browser render is a lazy fallback", 
         assert.equal(b.calls.length, 0, "a valid byte response does not launch the browser eagerly");
         assert.deepEqual(await fetched?.render?.(), { body: "<html><body>rendered</body></html>", mimetype: "text/html" });
     });
-    assert.equal(b.calls[0].guarded, true);
     assert.equal(b.calls[0].signal, undefined,
         "the byte-probe timeout does not close render at its salvage deadline");
 });
@@ -165,7 +164,7 @@ test("caller cancellation during the byte probe rejects with the exact caller re
     );
 });
 
-test("a pre-aborted caller rejects before target admission", async (t) => {
+test("a pre-aborted caller rejects before the automatic URL check", async (t) => {
     const caller = new AbortController();
     const reason = new Error("already cancelled");
     caller.abort(reason);
@@ -214,7 +213,7 @@ test("close releases the owned renderer", async () => {
     assert.equal(closed, 1);
 });
 
-test("SSRF-refused target → null, and never fetches", async () => {
+test("automatic URL check refusal → null, and never fetches", async () => {
     let called = false;
     await withFetch((async () => { called = true; return resp("x", 200); }) as typeof fetch, async () => {
         assert.equal(await new WebFetcher().fetch("http://169.254.169.254/latest/meta-data/"), null);

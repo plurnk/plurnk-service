@@ -36,11 +36,11 @@ import WebFetcher from "./WebFetcher.ts";
 // A fake render foundation: returns a canned rendered page, records the call
 // including ordered request-header metadata {§op-surface}.
 const fakeBrowser = (html: string) => {
-    const calls: Array<{ url: string; workerId: number; headers?: ReadonlyArray<readonly [string, string]>; guarded: boolean }> = [];
+    const calls: Array<{ url: string; workerId: number; headers?: ReadonlyArray<readonly [string, string]> }> = [];
     return {
         calls,
-        render: async (url: string, opts: { workerId: number; signal?: AbortSignal; headers?: ReadonlyArray<readonly [string, string]>; guard?: (url: string) => Promise<boolean> }): Promise<RenderResult> => {
-            calls.push({ url, workerId: opts.workerId, headers: opts.headers, guarded: opts.guard !== undefined });
+        render: async (url: string, opts: { workerId: number; signal?: AbortSignal; headers?: ReadonlyArray<readonly [string, string]> }): Promise<RenderResult> => {
+            calls.push({ url, workerId: opts.workerId, headers: opts.headers });
             return { status: 200, statusText: "OK", headers: [["content-type", "text/html"]], html };
         },
     };
@@ -229,7 +229,7 @@ test("manifest: documentation is loaded verbatim from docs/http.md", async () =>
     assert.match(Http.manifest.documentation ?? "", /^# http\(s\):\/\//);
 });
 
-test("prepareFind materializes an exact URL through the guarded readable path", async () => {
+test("prepareFind materializes an exact URL through the checked readable path", async () => {
     const { ctx, inspect } = makeCtx();
     const http = new Http(fakeBrowser("<html>browser fallback</html>"));
     const target = urlTarget("https://example.com/dist/index.json", "/dist/index.json");
@@ -606,12 +606,19 @@ test("HTTP userinfo is rejected without transport or secret-bearing diagnostics"
     assert.equal(fetched, false);
 });
 
-test("READ/POST/PUT/DELETE: a non-public target is a 403 and never reaches transport", async () => {
-    let fetched = false;
-    await withFetch(async () => {
-        fetched = true;
-        return new Response("private");
-    }, async () => {
+test("READ/POST/PUT/DELETE: explicit loopback targets use the native transport", async () => {
+    const requests: Array<{ url: string; method: string; redirect: RequestRedirect | undefined }> = [];
+    await withFetch((async (input, init) => {
+        requests.push({
+            url: String(input),
+            method: init?.method ?? "GET",
+            redirect: init?.redirect,
+        });
+        return new Response("private", {
+            status: 200,
+            headers: { "content-type": "text/plain" },
+        });
+    }) as typeof fetch, async () => {
         const target = urlTarget("http://127.0.0.1/private", "/private");
         const operations = [
             (http: Http, ctx: SchemeCtx) => http.read(readStmt(target), ctx),
@@ -621,53 +628,17 @@ test("READ/POST/PUT/DELETE: a non-public target is a 403 and never reaches trans
         ];
         for (const operation of operations) {
             const { ctx, inspect } = makeCtx();
-            const result = await operation(new Http(), ctx);
-            assert.equal(result.status, 403);
-            assert.equal(result.problem?.type, "https://problems.plurnk.dev/scheme/http/ssrf-blocked");
-            assert.equal(result.problem?.stage, "target-validation");
-            assert.equal(inspect().closed?.result.problem, result.problem);
+            assert.equal((await operation(new Http(), ctx)).status, 102);
+            assert.equal(inspect().closed?.result.status, 200);
         }
     }, false);
-    assert.equal(fetched, false);
-});
-
-test("READ: a public target reaches the guarded transport", async () => {
-    const { ctx, inspect } = makeCtx();
-    let fetched = false;
-    await withFetch(async () => {
-        fetched = true;
-        return new Response("public", { status: 200, headers: { "content-type": "text/plain" } });
-    }, async () => {
-        const result = await new Http().read(
-            readStmt(urlTarget("https://8.8.8.8/public", "/public")),
-            ctx,
-        );
-        assert.equal(result.status, 102);
-    }, false);
-    assert.equal(fetched, true);
-    assert.equal(inspect().closed?.result.status, 200);
-});
-
-test("READ: a public redirect into private space is refused before its second request", async () => {
-    const { ctx, inspect } = makeCtx();
-    let calls = 0;
-    await withFetch(async () => {
-        calls += 1;
-        return new Response(null, {
-            status: 302,
-            headers: { location: "http://127.0.0.1/private" },
-        });
-    }, async () => {
-        const result = await new Http().read(
-            readStmt(urlTarget("https://8.8.8.8/public", "/public")),
-            ctx,
-        );
-        assert.equal(result.status, 403);
-        assert.equal(result.problem?.type, "https://problems.plurnk.dev/scheme/http/ssrf-blocked");
-        assert.equal(result.problem?.target, "http://127.0.0.1/private");
-        assert.equal(inspect().closed?.result.problem, result.problem);
-    }, false);
-    assert.equal(calls, 1);
+    assert.deepEqual(requests.map(({ url, method }) => ({ url, method })), [
+        { url: "http://127.0.0.1/private", method: "GET" },
+        { url: "http://127.0.0.1/private", method: "POST" },
+        { url: "http://127.0.0.1/private", method: "PUT" },
+        { url: "http://127.0.0.1/private", method: "DELETE" },
+    ]);
+    assert.ok(requests.every(({ redirect }) => redirect === "follow"));
 });
 
 test("scoped READ observes the materialized readable entry without refetching", async () => {
@@ -921,7 +892,7 @@ test("READ: rendered HTML archives the DOM while body carries the model-facing p
         assert.equal(r.status, 102);
     });
     const { chunks, closed } = inspect();
-    assert.deepEqual(browser.calls, [{ url: "https://example.com/spa", workerId: 1, headers: [], guarded: true }]);
+    assert.deepEqual(browser.calls, [{ url: "https://example.com/spa", workerId: 1, headers: [] }]);
     const bodyChunks = chunks.filter((c) => c.channel === "body");
     assert.equal(bodyChunks.length, 1);
     assert.equal(bodyChunks[0].chunk, "rendered");

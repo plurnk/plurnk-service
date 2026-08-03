@@ -1,7 +1,7 @@
 # plurnk-schemes-http — Specification
 
 This package owns the `http(s)://` request/response scheme, the `ws(s)://`
-full-duplex scheme, and their shared guarded acquisition and browser-rendering
+full-duplex scheme, plus automatic entry-acquisition and browser-rendering
 foundations. Both handlers implement the DB-free `SchemeCtx` author contract.
 
 ## §http-manifest §1 HTTP manifest
@@ -49,7 +49,7 @@ encode them again.
 | `SEND[410](url)`                  | None                                  | Delete the local stored entry                                                              |
 | `SEND[499](url)`                  | Cancellation is engine-routed         | The routed subscription handle aborts acquisition; scheme dispatch itself is a `200` no-op |
 
-Every direct network method uses the same guarded streaming path. Request
+Every direct network method uses the same streaming path. Request
 headers are ordered target metadata: one trailing `{Key: value}` block per
 header. The loop `SEND[code]` is never the remote HTTP status; remote status and
 headers are persisted in `header`.
@@ -76,11 +76,9 @@ flowchart TD
     fresh -->|no| stream["Seed entry → open subscription"]
     op -->|POST, PUT, or DELETE| stream
 
-    prefetch --> guard["Guard.fetch validates every followed hop"]
-    stream --> guard
-    guard --> owner{"Consumer"}
-
-    owner -->|WebFetcher| prefetchType{"Accepted response?"}
+    prefetch --> guard["Guard.fetch checks the target<br/>and every followed redirect"]
+    guard -->|refused or unavailable| dead
+    guard -->|response| prefetchType{"Accepted response?"}
     prefetchType -->|2xx HTML| prefetchHtml["Shared HTML materialization;<br/>render lazily only if absent"]
     prefetchType -->|2xx text| prefetchText["Materialize complete text"]
     prefetchType -->|dead| dead["404 not-materialized"]
@@ -89,9 +87,9 @@ flowchart TD
     prefetchText --> materialize
     materialize --> query
 
-    owner -->|direct operation| response{"Response path"}
+    stream --> response{"Response path"}
     response -->|304 with stored GET| restore["Restore stored channels and refresh stamp"]
-    response -->|GET + HTML| render["Guarded browser → rendered HTML"]
+    response -->|GET + HTML| render["Browser → rendered HTML"]
     response -->|GET + SSE| events["Event data → body chunks"]
     response -->|other| representation{"Body representation"}
     representation -->|none| empty["Header only"]
@@ -109,7 +107,7 @@ flowchart TD
 
 | Consumer / response                      | `body`                                                          | Auxiliary materialization                 | Completion                              |
 | ---------------------------------------- | --------------------------------------------------------------- | ----------------------------------------- | --------------------------------------- |
-| Direct GET + HTML                        | Present projection of the guarded rendered DOM, including `""`  | Rendered DOM in `html`; render headers    | `102`; absent projection is `422`       |
+| Direct GET + HTML                        | Present projection of the rendered DOM, including `""`          | Rendered DOM in `html`; render headers    | `102`; absent projection is `422`       |
 | Direct GET + `text/event-stream`         | One `data` value plus newline per `text/plain` chunk            | Initial response in `header`              | Origin close ends the subscription      |
 | Direct request + no response body        | Empty seed                                                      | Response and package metadata in `header` | Subscription closes; op is `102`        |
 | Direct request + textual response        | Incremental UTF-8 text under the declared type                  | Response and package metadata in `header` | Response-body end closes the stream     |
@@ -135,7 +133,7 @@ GET, exact query preparation, and executor entry acquisition.
 | HTML with an absent projection       | Render once when the caller supplies a renderer    | Rendered projection in `body`; rendered `html`           |
 | HTML still absent after fallback     | Stop                                               | `null`; the consumer applies its absence policy          |
 | Projection implementation throws     | Stop and preserve the cause                        | `WebMaterializationError` with stage `projection`        |
-| Lazy guarded renderer throws         | Stop before another projection attempt             | `WebMaterializationError` with stage `render`            |
+| Lazy renderer throws                 | Stop before another projection attempt             | `WebMaterializationError` with stage `render`            |
 
 A projection object is present even when its content is `""`; only `null`
 denotes absence. A materialization exception retains its original `cause`; it
@@ -154,7 +152,6 @@ never enters the absence channel.
 | `SEND[410]`                                           | Exact entry-delete result                        |
 | Routed `SEND[499]` dispatch                           | `200`                                            |
 | Client-cancelled acquisition                          | `499` (`cancelled`)                              |
-| Target fails network admission                        | `403` (`ssrf-blocked`)                           |
 | Multi-statement HTTP edit batch                       | `409` (`non-atomic-edit-batch`)                  |
 | Invalid target, channel, line edit, or URL userinfo   | `400` with the corresponding stable Problem kind |
 | Direct network or acquisition exception               | `502` (`fetch-failed`)                           |
@@ -182,7 +179,7 @@ sniff or decode unknown bytes.
 | ----------------- | -------------------------------------------------------------------------------- |
 | Platform          | Node ≥26 native fetch, streams, abort signals, decoding, DNS, and `WebSocket`    |
 | SSE               | `eventsource-parser` for bounded WHATWG event-stream framing                     |
-| Browser rendering | Lazy-loaded `playwright`; normal installation provisions its compatible Chromium |
+| Browser rendering | Lazy-loaded `playwright` client with an explicitly selected browser method           |
 
 ### §http-config Operator configuration
 
@@ -198,28 +195,31 @@ sniff or decode unknown bytes.
 advertised. Disabled rendering is a valid configured route and fails clearly
 if an HTML operation later requires the browser.
 
-### §http-security-boundary Network security boundary
+### §automatic-fetch-check Automatic acquisition URL check
 
-Direct HTTP operations and WebFetcher share `Guard.fetch`. It accepts
-credential-free HTTP(S) targets only when every resolved address is ordinary
-globally reachable unicast, and repeats admission before every manually
-followed redirect. A refused or unresolvable direct target returns `403`;
-WebFetcher returns its ordinary dead value. The browser applies the same
-predicate to every navigation and subresource. WebSocket applies it to the
-initial target before constructing a socket.
+`WebFetcher` is the sole caller of `Guard.fetch`. Before automatic byte
+acquisition, it accepts credential-free HTTP(S) targets only when every
+resolved address is ordinary globally reachable unicast, and repeats the check
+before every manually followed redirect. A refused or unresolvable target is
+the ordinary unavailable `null` result.
+
+Direct HTTP operations, WebSocket connections, Playwright navigation, browser
+subresources, and Playwright/CDP endpoints do not use this check. Loopback,
+private, and link-local destinations are therefore valid explicit targets.
 
 Redirect transitions follow WHATWG Fetch: 301/302 rewrite POST to GET; 303
 rewrites methods other than GET/HEAD to GET; 307/308 preserve method and body.
 A body rewrite removes body headers, cross-origin redirects remove
 `Authorization`, and followed redirect bodies are cancelled. The configured
 hop limit returns the last redirect rather than following beyond the limit.
-Validation-time DNS answers are not pinned to connection-time resolution.
+Validation-time DNS answers are not pinned to connection-time resolution. This
+check therefore makes no DNS-rebinding, browser-sandbox, or total-egress claim.
 
 ## §render-lifecycle §6 Render lifecycle
 
 | Concern       | Contract                                                                                                      |
 | ------------- | ------------------------------------------------------------------------------------------------------------- |
-| Direct gate   | A GET HTML response cancels the byte probe body and navigates through the guarded browser                     |
+| Direct gate   | A GET HTML response cancels the byte probe body and navigates through the browser                             |
 | Prefetch gate | Server HTML is primary; browser rendering is a lazy fallback only when its readable projection is absent      |
 | Pool          | One warm browser per `Browser`; one atomically acquired context per worker; prefetch uses worker `0`          |
 | Navigation    | Mobile-emulated by default; `networkidle` with bounded substantive-DOM timeout salvage                        |
@@ -235,11 +235,11 @@ Only acquisition GETs are eligible for host rewriting. A GitHub
 both byte and browser transport. Direct READ, exact FIND, matcher READ, and
 WebFetcher prefetch share that rule. The originally addressed GitHub URL remains
 entry identity. POST, PUT, and DELETE are never retargeted. Rewritten targets
-enter {§http-security-boundary} normally.
+are checked under {§automatic-fetch-check} only when `WebFetcher` acquires them.
 
 ### §revalidation GET representation freshness
 
-Guarded responses append package-owned `x-plurnk-request-method` and
+Acquired GET responses append package-owned `x-plurnk-request-method` and
 `x-plurnk-fetched-at` fields after origin headers; the last value is
 authoritative. Only a GET representation can supply a direct READ's body, TTL
 stamp, or conditional validators. A copy inside `PLURNK_SCHEMES_HTTP_TTL_MS`
@@ -265,7 +265,7 @@ accumulate until the origin closes or the operation is cancelled.
 
 | Result                       | Meaning                                                                              |
 | ---------------------------- | ------------------------------------------------------------------------------------ |
-| Non-empty 2xx HTML           | Server body, MIME type, package-stamped headers, and a lazy guarded browser renderer |
+| Non-empty 2xx HTML           | Server body, MIME type, package-stamped headers, and a lazy browser renderer         |
 | Non-empty accepted text      | Complete body, MIME type, and package-stamped headers                                |
 | Lazy renderer value          | Non-empty rendered HTML, or `null` only when rendering yields no HTML                |
 | Lazy renderer failure        | Rejects with the complete browser failure; materialization preserves stage and cause |
@@ -274,7 +274,7 @@ accumulate until the origin closes or the operation is cancelled.
 | Accepted textual family      | Shared `MimetypeClassifier` taxonomy {§mimetype-classifier}                          |
 
 Top-level `null` is a liveness value rather than a thrown failure. Caller
-cancellation is not liveness: a pre-aborted caller fails before admission, and
+cancellation is not liveness: a pre-aborted caller fails before acquisition, and
 the first abort reason selected between the caller and configured byte-probe
 deadline owns the outcome. The probe deadline remains `null`. WebFetcher owns
 no entry identity, projection verdict, or query policy; its consumer projects
@@ -294,7 +294,7 @@ is bidirectional and stateful, not an HTTP content type. It uses `messages` as a
 ```mermaid
 stateDiagram-v2
     [*] --> Idle
-    Idle --> Claimed: guard target and claim canonical workspace address
+    Idle --> Claimed: claim canonical workspace address
     Claimed --> Connecting: seed entry, open subscription, construct socket
     Claimed --> Idle: setup or construction failure
     Connecting --> Open: native open; messages becomes active

@@ -48,7 +48,7 @@ export default class SchemeRegistry {
     #reserved: ReadonlySet<string> = new Set();
 
     // `fetchWeb` ({§exec-entry-sink} / #455) is forwarded to the exec handler's content:null sink; default
-    // = schemes-http's guarded WebFetcher, injectable so tests substitute the network the guard would block.
+    // = schemes-http's checked WebFetcher, injectable so tests substitute automatic network acquisition.
     constructor(opts?: { fetchWeb?: WebFetch }) {
         this.register("log",    new Log());
         // #527 — "exec" is INTERNAL machinery, not an addressable scheme: the EXEC op routes here

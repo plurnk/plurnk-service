@@ -1,4 +1,4 @@
-// Guarded entry-acquisition primitive {§prefetch}. The byte response is primary;
+// Checked entry-acquisition primitive {§prefetch}. The byte response is primary;
 // HTML carries a lazy browser fallback for the consumer to invoke only when its
 // readable projection is absent. Top-level deadness is the `null` value; caller
 // cancellation rejects with that signal's exact reason.
@@ -22,7 +22,6 @@ interface Renderer {
         workerId: number;
         signal?: AbortSignal;
         headers?: ReadonlyArray<readonly [string, string]>;
-        guard?: (url: string) => Promise<boolean>;
     }): Promise<RenderResult>;
     close?(): Promise<void>;
 }
@@ -34,7 +33,7 @@ export interface WebFetchResult {
     // direct Http READ uses for TTL/conditional revalidation.
     header?: string;
     // HTML byte responses are authoritative when their model-facing MIME
-    // projection is present. Core calls this guarded browser acquisition only
+    // projection is present. Core calls browser acquisition only
     // when that projection is absent. Null means no rendered HTML; a render
     // failure rejects with its cause.
     render?: () => Promise<{ body: string; mimetype: string } | null>;
@@ -128,7 +127,7 @@ export default class WebFetcher {
             if (opts?.signal?.aborted === true && probeSignal.reason === opts.signal.reason) {
                 opts.signal.throwIfAborted();
             }
-            return null; // SSRF-refused or unreachable — both dead
+            return null; // refused or unreachable — both unavailable
         }
         const mimetype = (response.headers.get("content-type") ?? "").split(";")[0].trim().toLowerCase()
             || "application/octet-stream";
@@ -151,7 +150,6 @@ export default class WebFetcher {
                         // The renderer supplies its own per-navigation deadline.
                         signal: opts?.signal,
                         headers: [["User-Agent", BROWSER_UA]],
-                        guard: Guard.isPublicUrl,
                     });
                     return rendered.html.length > 0 ? { body: rendered.html, mimetype: "text/html" } : null;
                 },

@@ -17,7 +17,7 @@ const response = (status: number, statusText: string, headers: Record<string, st
 interface FakeConfig {
     html?: string;
     goto?: () => Promise<PwResponseLike | null>;
-    route?: () => Promise<void>;
+    setExtraHTTPHeaders?: () => Promise<void>;
     bodyLen?: number; // evaluate() salvage probe
     onClose?: () => void; // page.close hook (for abort timing)
     pageClose?: () => Promise<void>;
@@ -33,8 +33,7 @@ const makeEngine = (cfg: FakeConfig = {}) => {
     const endpoints: string[] = [];
     const contextOptions: Array<{ isMobile?: boolean; userAgent?: string } | undefined> = [];
     const makePage = () => ({
-        async route() { await cfg.route?.(); },
-        async setExtraHTTPHeaders() {},
+        async setExtraHTTPHeaders() { await cfg.setExtraHTTPHeaders?.(); },
         async goto() {
             calls.goto++;
             if (cfg.goto) return cfg.goto();
@@ -259,15 +258,15 @@ test("#125: abort-driven navigation and page-close failures retain both causes",
 // {§render-lifecycle}
 test("#125: setup failure still closes the opened page before navigation", async () => {
     const { engine, calls } = makeEngine({
-        route: async () => { throw new Error("route setup failed"); },
+        setExtraHTTPHeaders: async () => { throw new Error("header setup failed"); },
     });
     const browser = new Browser(() => Promise.resolve(engine));
     await assert.rejects(
         () => browser.render("https://example.com/", {
             workerId: 1,
-            guard: async () => true,
+            headers: [["Authorization", "Bearer test"]],
         }),
-        /route setup failed/,
+        /header setup failed/,
     );
     assert.equal(calls.goto, 0);
     assert.equal(calls.pageClose, 1);

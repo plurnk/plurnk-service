@@ -1,7 +1,6 @@
 // WebSocket ownership and settlement coverage {§ws-lifecycle}. Hermetic:
-// injected fake socket (no real WebSocket),
-// IP-literal targets (net.isIP short-circuits DNS in the guard). The fake
-// preserves native CONNECTING/OPEN/CLOSING send semantics, and close() fires
+// injected fake socket (no real WebSocket). The fake preserves native
+// CONNECTING/OPEN/CLOSING send semantics, and close() fires
 // its own `close` listener, mirroring the real WebSocket.
 
 import test from "node:test";
@@ -226,13 +225,18 @@ test("READ: terminal settlement waits for in-flight message persistence", async 
     assert.equal(inspect().closed?.result.status, 200);
 });
 
-test("READ: an SSRF target is refused (403) and never connects", async () => {
-    let connected = false;
+test("READ: an explicit loopback target reaches the configured socket transport", async () => {
+    const sock = fakeSocket();
+    let connected: string | null = null;
     const { ctx } = makeCtx();
-    const r = await new Ws(() => { connected = true; return fakeSocket(); }).read(readStmt(wss("ws://127.0.0.1/x", "/x")), ctx);
-    assert.equal(r.status, 403);
-    assert.equal(r.problem?.type, "https://problems.plurnk.dev/scheme/wss/ssrf-blocked");
-    assert.equal(connected, false);
+    const read = new Ws((url) => { connected = url; return sock; })
+        .read(readStmt(wss("ws://127.0.0.1/x", "/x")), ctx);
+    await flush();
+    assert.equal(connected, "ws://127.0.0.1/x");
+    sock.emit("open");
+    await flush();
+    sock.close(1000);
+    assert.equal((await read).status, 102);
 });
 
 test("READ: a connect throw settles error (502), not an unhandled throw", async () => {
@@ -492,7 +496,7 @@ test("socket lookup isolates addressed protocol, port, and ordered query", async
     await read;
 });
 
-test("WebSocket userinfo is rejected before guard or connection", async () => {
+test("WebSocket userinfo is rejected before connection", async () => {
     let connected = false;
     const { ctx } = makeCtx();
     const result = await new Ws(() => {

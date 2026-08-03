@@ -9,7 +9,7 @@ export { default as Ws } from "./Ws.ts";
 export { default as Browser } from "./Browser.ts";
 export type { ChromiumEngine, ChromiumFactory, RenderResult } from "./Browser.ts";
 
-// Guarded entry-acquisition primitive {§prefetch} and network boundary.
+// Automatic entry-acquisition primitive {§prefetch} and its URL check.
 export { default as WebFetcher } from "./WebFetcher.ts";
 export { WebMaterializationError } from "./WebFetcher.ts";
 export type { WebFetchResult, WebMaterializedResult } from "./WebFetcher.ts";

@@ -21,13 +21,7 @@ interface PwResponse {
     statusText(): string;
     headers(): Record<string, string>;
 }
-interface PwRoute {
-    request(): { url(): string };
-    continue(): Promise<void>;
-    abort(): Promise<void>;
-}
 interface PwPage {
-    route(pattern: string, handler: (route: PwRoute) => Promise<void>): Promise<void>;
     goto(url: string, opts: { waitUntil: "networkidle"; timeout: number }): Promise<PwResponse | null>;
     setExtraHTTPHeaders(headers: Record<string, string>): Promise<void>;
     content(): Promise<string>;
@@ -202,8 +196,8 @@ export default class Browser {
     // the page. Throws on navigation failure (the caller maps it to a status).
     async render(
         url: string,
-        { workerId, signal, headers, guard, timeout = requireNumEnv("PLURNK_SCHEMES_HTTP_FETCH_TIMEOUT") }:
-            { workerId: number; signal?: AbortSignal; headers?: ReadonlyArray<readonly [string, string]>; guard?: (url: string) => Promise<boolean>; timeout?: number },
+        { workerId, signal, headers, timeout = requireNumEnv("PLURNK_SCHEMES_HTTP_FETCH_TIMEOUT") }:
+            { workerId: number; signal?: AbortSignal; headers?: ReadonlyArray<readonly [string, string]>; timeout?: number },
     ): Promise<RenderResult> {
         const context = await this.#getContext(workerId);
         const page = await context.newPage();
@@ -226,8 +220,6 @@ export default class Browser {
                 onAbort();
                 signal.throwIfAborted();
             }
-            // {§http-security-boundary}
-            if (guard) await page.route("**", async (r) => { (await guard(r.request().url())) ? await r.continue() : await r.abort(); });
             // Playwright's page header API is single-valued; byte acquisition preserves duplicates.
             if (headers && headers.length > 0) await page.setExtraHTTPHeaders(Object.fromEntries(headers));
             const response = await this.#safeGoto(page, url, timeout);

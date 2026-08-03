@@ -386,8 +386,8 @@ test("an absolute web URL ending in slash is one fetchable resource, not a folde
     }
 });
 
-test("entry(content:null) fetches through the guarded sink — live XHTML materializes, unavailable does not (#455)", async () => {
-    // The sink's WebFetch is faked: the SSRF guard blocks localhost, so no live server can stand in for
+test("entry(content:null) fetches through the checked sink — live XHTML materializes, unavailable does not (#455)", async () => {
+    // The sink's WebFetch is faked: automatic acquisition blocks localhost, so no live server can stand in for
     // the fetch. A /dead URL resolves null; anything else returns useful server XHTML.
     let browserFallbacks = 0;
     const fetchWeb: WebFetch = async (url) =>
@@ -439,7 +439,7 @@ test("entry(content:null) preserves caller cancellation through the real WebFetc
     globalThis.fetch = ((_input: string | URL | Request, init?: RequestInit) => new Promise<Response>((_resolve, reject) => {
         const signal = init?.signal;
         if (!(signal instanceof AbortSignal)) {
-            reject(new Error("guarded fetch did not receive its acquisition signal"));
+            reject(new Error("checked fetch did not receive its acquisition signal"));
             return;
         }
         const cancel = () => reject(signal.reason);

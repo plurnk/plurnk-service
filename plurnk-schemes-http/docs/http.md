@@ -1,6 +1,6 @@
 # http(s)://
 
-Use a web URL as an addressable entry. An unscoped READ performs a guarded GET
+Use a web URL as an addressable entry. An unscoped READ performs a GET
 or reuses a fresh stored GET representation, then streams the selected response
 channel. HTML becomes a readable model-facing body (normally markdown); its
 faithful DOM is retained separately. Auxiliary channels are never presented by
@@ -24,7 +24,7 @@ independent byte-probe deadline remains an ordinary unavailable result.
 
 | Direct response           | `body`                                                       | Other channel                    |
 | ------------------------- | ------------------------------------------------------------ | -------------------------------- |
-| GET HTML                  | Readable projection of the guarded rendered page             | Faithful rendered DOM in `#html` |
+| GET HTML                  | Readable projection of the rendered page                     | Faithful rendered DOM in `#html` |
 | GET `text/event-stream`   | One event `data` value per chunk                             | Initial response in `#header`    |
 | Other textual response    | Incremental UTF-8 text under its declared type               | Status and headers in `#header`  |
 | Binary or undeclared type | Empty marker under its type or `application/octet-stream`    | Status and headers in `#header`  |
