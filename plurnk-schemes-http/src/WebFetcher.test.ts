@@ -19,7 +19,7 @@ const fakeBrowser = (html: string) => {
     const calls: Array<{ url: string; guarded: boolean; signal: AbortSignal | undefined }> = [];
     return {
         calls,
-        render: async (url: string, opts: { workerId: number; signal?: AbortSignal; headers?: ReadonlyArray<readonly [string, string]>; guard?: (u: string) => Promise<GuardAdmission> }): Promise<RenderResult> => {
+        render: async (url: string, opts: { workerId: number; signal?: AbortSignal; headers?: ReadonlyArray<readonly [string, string]>; guard: (u: string) => Promise<GuardAdmission> }): Promise<RenderResult> => {
             calls.push({ url, guarded: typeof opts.guard === "function", signal: opts.signal });
             return { status: 200, statusText: "OK", headers: [["content-type", "text/html"]], html };
         },

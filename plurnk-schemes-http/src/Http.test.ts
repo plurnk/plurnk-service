@@ -43,7 +43,7 @@ const fakeBrowser = (html: string) => {
     const calls: Array<{ url: string; workerId: number; headers?: ReadonlyArray<readonly [string, string]>; guarded: boolean }> = [];
     return {
         calls,
-        render: async (url: string, opts: { workerId: number; signal?: AbortSignal; headers?: ReadonlyArray<readonly [string, string]>; guard?: (url: string) => Promise<GuardAdmission> }): Promise<RenderResult> => {
+        render: async (url: string, opts: { workerId: number; signal?: AbortSignal; headers?: ReadonlyArray<readonly [string, string]>; guard: (url: string) => Promise<GuardAdmission> }): Promise<RenderResult> => {
             calls.push({ url, workerId: opts.workerId, headers: opts.headers, guarded: opts.guard !== undefined });
             return { status: 200, statusText: "OK", headers: [["content-type", "text/html"]], html };
         },

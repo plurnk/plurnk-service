@@ -221,15 +221,20 @@ and mechanically prune that candidate from its digest {§exec-entry-sink}.
 Generic transport failure after admission remains WebFetcher's ordinary
 liveness value.
 
-The browser applies admission to requests delivered through its installed
-Playwright page route. A denied or unresolved main navigation is the typed
-render failure; an intercepted non-main-frame request is aborted and omitted
-from an otherwise useful page. Unexpected guard or route-action errors remain
-owned render failures rather than escaping the callback. Service-worker traffic,
-page-created WebSockets, and the first request of a popup are not covered by
-that page-route claim; #145 owns those interception gaps. WebSocket applies
-admission to its initial target before claiming an address or constructing a
-socket.
+The browser installs its enforcement surfaces before navigation:
+
+| Browser surface                                       | Enforcement                                                                           | Denied or unresolved outcome                                            |
+| ----------------------------------------------------- | ------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| Render page HTTP, redirects, frames, and subresources | Required page route using that render's Guard; admitted traffic continues directly    | Main navigation is the typed render failure; other requests are omitted |
+| Render page-created `ws:` / `wss:`                    | Required page WebSocket route using that render's Guard                               | Socket is closed before transport                                       |
+| Popup or otherwise unprovisioned page                 | Context HTTP and WebSocket routes default to deny; render page routes take precedence | Requests and sockets are stopped; popup is closed                       |
+| Service Worker                                        | Browser context is created with Service Workers blocked                               | No worker-owned transport exists                                        |
+
+The context fallback is policy-free, so concurrent renders sharing a worker
+context cannot replace one another's Guard or headers. Unexpected guard or
+route-action errors remain owned render failures rather than escaping their
+callbacks. The registered WebSocket scheme likewise applies admission to its
+initial target before claiming an address or constructing a socket.
 
 Redirect transitions follow WHATWG Fetch: 301/302 rewrite POST to GET; 303
 rewrites methods other than GET/HEAD to GET; 307/308 preserve method and body.
@@ -240,17 +245,17 @@ Validation-time DNS answers are not pinned to connection-time resolution.
 
 ## §render-lifecycle §6 Render lifecycle
 
-| Concern           | Contract                                                                                                      |
-| ----------------- | ------------------------------------------------------------------------------------------------------------- |
-| Direct gate       | A GET HTML response cancels the byte probe body and navigates through the guarded browser                     |
-| Prefetch gate     | Server HTML is primary; browser rendering is a lazy fallback only when its readable projection is absent      |
-| Request admission | Main-navigation failure surfaces; an intercepted non-main-frame request is omitted; gaps belong to #145      |
-| Pool              | One warm browser per `Browser`; one atomically acquired context per worker; prefetch uses worker `0`          |
-| Navigation        | Mobile-emulated by default; `networkidle` with bounded substantive-DOM timeout salvage                        |
-| Projection        | A present result, including `""`, becomes `body`; exact HTML used becomes `html`                              |
-| Cancellation      | The render-owned page close aborts in-flight navigation; an already-aborted render never navigates            |
-| Page cleanup      | Close each opened page once and await it; preserve its failure alone or aggregate it after a primary failure  |
-| Shutdown          | Attempt every context and browser close, await all, then aggregate failures under {§handler-lifecycle}        |
+| Concern           | Contract                                                                                                              |
+| ----------------- | --------------------------------------------------------------------------------------------------------------------- |
+| Direct gate       | A GET HTML response cancels the byte probe body and navigates through the guarded browser                             |
+| Prefetch gate     | Server HTML is primary; browser rendering is a lazy fallback only when its readable projection is absent              |
+| Request admission | Render-page HTTP and WebSockets use its required Guard; unprovisioned pages default-deny; Service Workers are blocked |
+| Pool              | One warm browser per `Browser`; one atomically acquired context per worker; prefetch uses worker `0`                  |
+| Navigation        | Mobile-emulated by default; `networkidle` with bounded substantive-DOM timeout salvage                                |
+| Projection        | A present result, including `""`, becomes `body`; exact HTML used becomes `html`                                      |
+| Cancellation      | The render-owned page close aborts in-flight navigation; an already-aborted render never navigates                    |
+| Page cleanup      | Close the render page and every popup once; preserve cleanup failure alone or aggregate it after a primary failure    |
+| Shutdown          | Attempt every context and browser close, await all, then aggregate failures under {§handler-lifecycle}                |
 
 ### §host-rewrite Acquisition target rewrite
 

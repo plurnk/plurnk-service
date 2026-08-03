@@ -30,20 +30,29 @@ interface FakeConfig {
         continue?: () => Promise<void>;
         abort?: () => Promise<void>;
     }>;
+    webSockets?: ReadonlyArray<{
+        url: string;
+        connect?: () => void;
+        close?: () => void;
+    }>;
+    popups?: ReadonlyArray<{ close?: () => Promise<void> }>;
     bodyLen?: number; // evaluate() salvage probe
     onClose?: () => void; // page.close hook (for abort timing)
     pageClose?: () => Promise<void>;
+    contextRoute?: () => Promise<void>;
+    contextWebSocketRoute?: () => Promise<void>;
     contextClose?: (contextNumber: number) => Promise<void>;
     browserClose?: () => Promise<void>;
 }
 
 const timeoutError = () => Object.assign(new Error("Timeout 30000ms exceeded"), { name: "TimeoutError" });
+const admitAll = async (): Promise<GuardAdmission> => ({ admitted: true });
 
 const makeEngine = (cfg: FakeConfig = {}) => {
-    const calls = { newContext: 0, newPage: 0, goto: 0, routeContinue: 0, routeAbort: 0, pageClose: 0, contextClose: 0, browserClose: 0, launch: 0, connect: 0, connectOverCDP: 0 };
+    const calls = { newContext: 0, newPage: 0, goto: 0, routeContinue: 0, routeAbort: 0, webSocketConnect: 0, webSocketClose: 0, popupClose: 0, pageClose: 0, contextClose: 0, browserClose: 0, launch: 0, connect: 0, connectOverCDP: 0 };
     const launchOptions: Array<{ channel?: string; executablePath?: string; headless?: boolean; chromiumSandbox?: boolean; timeout?: number }> = [];
     const endpoints: string[] = [];
-    const contextOptions: Array<{ isMobile?: boolean; userAgent?: string } | undefined> = [];
+    const contextOptions: Array<{ serviceWorkers?: "block"; isMobile?: boolean; userAgent?: string } | undefined> = [];
     const makePage = () => {
         const mainFrame = {};
         let routeHandler: ((route: {
@@ -51,11 +60,23 @@ const makeEngine = (cfg: FakeConfig = {}) => {
             continue(): Promise<void>;
             abort(): Promise<void>;
         }) => Promise<void>) | undefined;
+        let webSocketHandler: ((route: {
+            url(): string;
+            connectToServer(): object;
+            close(): void;
+        }) => Promise<void>) | undefined;
+        let popupHandler: ((page: { close(): Promise<void> }) => void) | undefined;
         return {
             mainFrame: () => mainFrame,
+            on(_event: "popup", listener: typeof popupHandler) {
+                popupHandler = listener;
+            },
             async route(_pattern: string, handler: typeof routeHandler) {
                 await cfg.route?.();
                 routeHandler = handler;
+            },
+            async routeWebSocket(_pattern: string, handler: typeof webSocketHandler) {
+                webSocketHandler = handler;
             },
             async setExtraHTTPHeaders() {},
             async goto() {
@@ -79,6 +100,29 @@ const makeEngine = (cfg: FakeConfig = {}) => {
                         },
                     });
                 }
+                for (const webSocket of cfg.webSockets ?? []) {
+                    const route = {
+                        url: () => webSocket.url,
+                        connectToServer: () => {
+                            calls.webSocketConnect++;
+                            webSocket.connect?.();
+                            return route;
+                        },
+                        close: () => {
+                            calls.webSocketClose++;
+                            webSocket.close?.();
+                        },
+                    };
+                    await webSocketHandler?.(route);
+                }
+                for (const popup of cfg.popups ?? []) {
+                    popupHandler?.({
+                        close: async () => {
+                            calls.popupClose++;
+                            await popup.close?.();
+                        },
+                    });
+                }
                 if (navigationAborted) throw new Error("net::ERR_FAILED");
                 if (cfg.goto) return cfg.goto();
                 return response(200, "OK", { "content-type": "text/html; charset=utf-8" });
@@ -89,11 +133,13 @@ const makeEngine = (cfg: FakeConfig = {}) => {
         };
     };
     const makeContext = (contextNumber: number) => ({
+        async route() { await cfg.contextRoute?.(); },
+        async routeWebSocket() { await cfg.contextWebSocketRoute?.(); },
         async newPage() { calls.newPage++; return makePage(); },
         async close() { calls.contextClose++; await cfg.contextClose?.(contextNumber); },
     });
     const makeBrowser = () => ({
-        async newContext(options?: { isMobile?: boolean; userAgent?: string }) { calls.newContext++; contextOptions.push(options); return makeContext(calls.newContext); },
+        async newContext(options?: { serviceWorkers?: "block"; isMobile?: boolean; userAgent?: string }) { calls.newContext++; contextOptions.push(options); return makeContext(calls.newContext); },
         on() {},
         async close() { calls.browserClose++; await cfg.browserClose?.(); },
     });
@@ -124,7 +170,7 @@ const withEnv = async (values: Record<string, string | undefined>, fn: () => Pro
 test("render: returns status, headers, and the serialized DOM", async () => {
     const { engine } = makeEngine({ html: "<html><body>hi</body></html>" });
     const browser = new Browser(() => Promise.resolve(engine));
-    const r = await browser.render("https://example.com/", { workerId: 1 });
+    const r = await browser.render("https://example.com/", { workerId: 1, guard: admitAll });
     assert.equal(r.status, 200);
     assert.equal(r.statusText, "OK");
     assert.equal(r.html, "<html><body>hi</body></html>");
@@ -135,7 +181,7 @@ test("render: returns status, headers, and the serialized DOM", async () => {
 test("render: launches the bundled browser by default and serializes", async () => {
     const { engine, calls } = makeEngine();
     const browser = new Browser(() => Promise.resolve(engine));
-    await browser.render("https://example.com/", { workerId: 1 });
+    await browser.render("https://example.com/", { workerId: 1, guard: admitAll });
     assert.equal(calls.launch, 1);
     assert.equal(calls.connect, 0);
     assert.equal(calls.connectOverCDP, 0);
@@ -220,7 +266,7 @@ test("ready: disabled performs no browser work and render fails clearly", async 
         const browser = new Browser(() => Promise.resolve(engine));
         assert.equal(await browser.ready(), "disabled");
         assert.equal(calls.launch, 0);
-        await assert.rejects(browser.render("https://example.com/", { workerId: 1 }), /HTML rendering is disabled/);
+        await assert.rejects(browser.render("https://example.com/", { workerId: 1, guard: admitAll }), /HTML rendering is disabled/);
         await browser.close();
     });
 });
@@ -239,7 +285,7 @@ test("configuration rejects incompatible Playwright selections", async () => {
 test("salvage: networkidle timeout with substantive body text → returns html, status 200", async () => {
     const { engine } = makeEngine({ goto: async () => { throw timeoutError(); }, bodyLen: 500, html: "<html><body>chatty</body></html>" });
     const browser = new Browser(() => Promise.resolve(engine));
-    const r = await browser.render("https://example.com/", { workerId: 1 });
+    const r = await browser.render("https://example.com/", { workerId: 1, guard: admitAll });
     assert.equal(r.status, 200);
     assert.equal(r.html, "<html><body>chatty</body></html>");
     assert.deepEqual(r.headers, []); // salvage path has no Response
@@ -249,14 +295,14 @@ test("salvage: networkidle timeout with substantive body text → returns html, 
 test("salvage: timeout below the body-text threshold → throws (skeleton, not a page)", async () => {
     const { engine } = makeEngine({ goto: async () => { throw timeoutError(); }, bodyLen: 10 });
     const browser = new Browser(() => Promise.resolve(engine));
-    await assert.rejects(browser.render("https://example.com/", { workerId: 1 }), /Timeout/);
+    await assert.rejects(browser.render("https://example.com/", { workerId: 1, guard: admitAll }), /Timeout/);
     await browser.close();
 });
 
 test("non-timeout navigation error re-throws (not salvaged)", async () => {
     const { engine } = makeEngine({ goto: async () => { throw new Error("net::ERR_NAME_NOT_RESOLVED"); } });
     const browser = new Browser(() => Promise.resolve(engine));
-    await assert.rejects(browser.render("https://nope.invalid/", { workerId: 1 }), /ERR_NAME_NOT_RESOLVED/);
+    await assert.rejects(browser.render("https://nope.invalid/", { workerId: 1, guard: admitAll }), /ERR_NAME_NOT_RESOLVED/);
     await browser.close();
 });
 
@@ -360,6 +406,60 @@ test("route admission: a route-action failure is owned by render", async () => {
     await browser.close();
 });
 
+test("route admission: page WebSockets connect only after an admitted verdict", async () => {
+    const target = "wss://socket.example/feed";
+    const admitted = makeEngine({ webSockets: [{ url: target }] });
+    const admittedBrowser = new Browser(() => Promise.resolve(admitted.engine));
+    await admittedBrowser.render("https://example.com/", { workerId: 1, guard: admitAll });
+    assert.equal(admitted.calls.webSocketConnect, 1);
+    assert.equal(admitted.calls.webSocketClose, 0);
+    await admittedBrowser.close();
+
+    const refused = makeEngine({ webSockets: [{ url: target }] });
+    const refusedBrowser = new Browser(() => Promise.resolve(refused.engine));
+    await refusedBrowser.render("https://example.com/", {
+        workerId: 1,
+        guard: async () => ({ admitted: false, error: new GuardBlockedError(target) }),
+    });
+    assert.equal(refused.calls.webSocketConnect, 0);
+    assert.equal(refused.calls.webSocketClose, 1);
+    await refusedBrowser.close();
+});
+
+test("route admission: an unexpected page-WebSocket Guard failure belongs to render", async () => {
+    const cause = new Error("WebSocket Guard failed");
+    const { engine, calls } = makeEngine({ webSockets: [{ url: "wss://socket.example/feed" }] });
+    const browser = new Browser(() => Promise.resolve(engine));
+    await assert.rejects(
+        browser.render("https://example.com/", {
+            workerId: 1,
+            guard: async () => { throw cause; },
+        }),
+        (error: unknown) => error === cause,
+    );
+    assert.equal(calls.webSocketConnect, 0);
+    assert.equal(calls.webSocketClose, 1);
+    await browser.close();
+});
+
+test("route admission: popup pages close inside the render boundary", async () => {
+    const { engine, calls } = makeEngine({ popups: [{}] });
+    const browser = new Browser(() => Promise.resolve(engine));
+    await browser.render("https://example.com/", { workerId: 1, guard: admitAll });
+    assert.equal(calls.popupClose, 1);
+    await browser.close();
+
+    const cause = new Error("popup close failed");
+    const failing = makeEngine({ popups: [{ close: async () => { throw cause; } }] });
+    const failingBrowser = new Browser(() => Promise.resolve(failing.engine));
+    await assert.rejects(
+        failingBrowser.render("https://example.com/", { workerId: 1, guard: admitAll }),
+        (error: unknown) => error === cause,
+    );
+    assert.equal(failing.calls.popupClose, 1);
+    await failingBrowser.close();
+});
+
 // {§render-lifecycle}
 test("#125: a page-close failure becomes the render failure", async () => {
     const { engine, calls } = makeEngine({
@@ -367,7 +467,7 @@ test("#125: a page-close failure becomes the render failure", async () => {
     });
     const browser = new Browser(() => Promise.resolve(engine));
     await assert.rejects(
-        () => browser.render("https://example.com/", { workerId: 1 }),
+        () => browser.render("https://example.com/", { workerId: 1, guard: admitAll }),
         /page close failed/,
     );
     assert.equal(calls.pageClose, 1);
@@ -386,7 +486,7 @@ test("#125: abort-driven navigation and page-close failures retain both causes",
     });
     const browser = new Browser(() => Promise.resolve(engine));
     await assert.rejects(
-        () => browser.render("https://example.com/", { workerId: 1, signal: controller.signal }),
+        () => browser.render("https://example.com/", { workerId: 1, signal: controller.signal, guard: admitAll }),
         (error: unknown) => {
             assert.ok(error instanceof AggregateError);
             assert.deepEqual(error.errors.map((cause) => String(cause)), [
@@ -418,6 +518,21 @@ test("#125: setup failure still closes the opened page before navigation", async
     await browser.close();
 });
 
+test("context admission setup failure closes the acquired context before opening a page", async () => {
+    const cause = new Error("context route setup failed");
+    const { engine, calls } = makeEngine({
+        contextRoute: async () => { throw cause; },
+    });
+    const browser = new Browser(() => Promise.resolve(engine));
+    await assert.rejects(
+        browser.render("https://example.com/", { workerId: 1, guard: admitAll }),
+        (error: unknown) => error === cause,
+    );
+    assert.equal(calls.newPage, 0);
+    assert.equal(calls.contextClose, 1);
+    await browser.close();
+});
+
 // {§render-lifecycle}
 test("#125: an already-aborted render closes once and never navigates", async () => {
     const { engine, calls } = makeEngine();
@@ -426,6 +541,7 @@ test("#125: an already-aborted render closes once and never navigates", async ()
         () => browser.render("https://example.com/", {
             workerId: 1,
             signal: AbortSignal.abort(new Error("render cancelled")),
+            guard: admitAll,
         }),
         /render cancelled/,
     );
@@ -446,7 +562,7 @@ test("abort: aborting the signal closes the page, unblocking an in-flight naviga
         onClose: () => tripClose(),
     });
     const browser = new Browser(() => Promise.resolve(engine));
-    const p = browser.render("https://example.com/", { workerId: 1, signal: controller.signal });
+    const p = browser.render("https://example.com/", { workerId: 1, signal: controller.signal, guard: admitAll });
     await assert.rejects(p, /Target closed/);
     assert.equal(calls.pageClose, 1, "abort and final settlement share one page close");
     await browser.close();
@@ -455,7 +571,8 @@ test("abort: aborting the signal closes the page, unblocking an in-flight naviga
 test("mobile emulation: contexts default to the configured mobile profile", async () => {
     const { engine, contextOptions } = makeEngine();
     const browser = new Browser(() => Promise.resolve(engine));
-    await browser.render("https://example.com/", { workerId: 1 });
+    await browser.render("https://example.com/", { workerId: 1, guard: admitAll });
+    assert.equal(contextOptions[0]?.serviceWorkers, "block");
     assert.equal(contextOptions[0]?.isMobile, true);
     assert.match(contextOptions[0]?.userAgent ?? "", /Mobile/);
     await browser.close();
@@ -467,8 +584,8 @@ test("mobile emulation: PLURNK_SCHEMES_HTTP_MOBILE=0 renders desktop (no emulati
     try {
         const { engine, contextOptions } = makeEngine();
         const browser = new Browser(() => Promise.resolve(engine));
-        await browser.render("https://example.com/", { workerId: 1 });
-        assert.equal(contextOptions[0], undefined);
+        await browser.render("https://example.com/", { workerId: 1, guard: admitAll });
+        assert.deepEqual(contextOptions[0], { serviceWorkers: "block" });
         await browser.close();
     } finally {
         if (prev === undefined) delete process.env.PLURNK_SCHEMES_HTTP_MOBILE;
@@ -482,7 +599,7 @@ test("mobile emulation: unset MOBILE crashes naming the var (floor-set knob, no 
     try {
         const { engine } = makeEngine();
         const browser = new Browser(() => Promise.resolve(engine));
-        await assert.rejects(browser.render("https://example.com/", { workerId: 1 }), /PLURNK_SCHEMES_HTTP_MOBILE is unset/);
+        await assert.rejects(browser.render("https://example.com/", { workerId: 1, guard: admitAll }), /PLURNK_SCHEMES_HTTP_MOBILE is unset/);
         await browser.close();
     } finally {
         if (prev === undefined) delete process.env.PLURNK_SCHEMES_HTTP_MOBILE;
@@ -493,13 +610,13 @@ test("mobile emulation: unset MOBILE crashes naming the var (floor-set knob, no 
 test("per-worker context: reused across renders, dropped by closeContext", async () => {
     const { engine, calls } = makeEngine();
     const browser = new Browser(() => Promise.resolve(engine));
-    await browser.render("https://example.com/a", { workerId: 7 });
-    await browser.render("https://example.com/b", { workerId: 7 });
+    await browser.render("https://example.com/a", { workerId: 7, guard: admitAll });
+    await browser.render("https://example.com/b", { workerId: 7, guard: admitAll });
     assert.equal(calls.newContext, 1); // one context for the worker, two pages
     assert.equal(calls.newPage, 2);
     await browser.closeContext(7);
     assert.equal(calls.contextClose, 1);
-    await browser.render("https://example.com/c", { workerId: 7 }); // fresh context after drop
+    await browser.render("https://example.com/c", { workerId: 7, guard: admitAll }); // fresh context after drop
     assert.equal(calls.newContext, 2);
     await browser.close();
 });
@@ -509,8 +626,8 @@ test("per-worker context: overlapping renders share one atomic context acquisiti
     const browser = new Browser(() => Promise.resolve(engine));
 
     await Promise.all([
-        browser.render("https://example.com/a", { workerId: 7 }),
-        browser.render("https://example.com/b", { workerId: 7 }),
+        browser.render("https://example.com/a", { workerId: 7, guard: admitAll }),
+        browser.render("https://example.com/b", { workerId: 7, guard: admitAll }),
     ]);
 
     assert.equal(calls.newContext, 1, "overlapping calls cannot overwrite and leak a second worker context");
@@ -524,8 +641,8 @@ test("close attempts every context and browser close, then aggregates every fail
         browserClose: async () => { throw new Error("browser close failed"); },
     });
     const browser = new Browser(() => Promise.resolve(engine));
-    await browser.render("https://example.com/a", { workerId: 1 });
-    await browser.render("https://example.com/b", { workerId: 2 });
+    await browser.render("https://example.com/a", { workerId: 1, guard: admitAll });
+    await browser.render("https://example.com/b", { workerId: 2, guard: admitAll });
 
     await assert.rejects(
         () => browser.close(),

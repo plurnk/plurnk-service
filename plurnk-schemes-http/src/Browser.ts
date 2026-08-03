@@ -29,8 +29,15 @@ interface PwRoute {
     continue(): Promise<void>;
     abort(): Promise<void>;
 }
+interface PwWebSocketRoute {
+    url(): string;
+    connectToServer(): PwWebSocketRoute;
+    close(options?: { code?: number; reason?: string }): void;
+}
 interface PwPage {
     route(pattern: string, handler: (route: PwRoute) => Promise<void>): Promise<void>;
+    routeWebSocket(pattern: string, handler: (route: PwWebSocketRoute) => Promise<void>): Promise<void>;
+    on(event: "popup", listener: (page: PwPage) => void): void;
     mainFrame(): PwFrame;
     goto(url: string, opts: { waitUntil: "networkidle"; timeout: number }): Promise<PwResponse | null>;
     setExtraHTTPHeaders(headers: Record<string, string>): Promise<void>;
@@ -39,16 +46,49 @@ interface PwPage {
     close(): Promise<void>;
 }
 interface PwContext {
+    route(pattern: string, handler: (route: PwRoute) => Promise<void>): Promise<void>;
+    routeWebSocket(pattern: string, handler: (route: PwWebSocketRoute) => Promise<void>): Promise<void>;
     newPage(): Promise<PwPage>;
     close(): Promise<void>;
 }
+interface FailureRecord {
+    cause: unknown;
+}
+interface WorkerContext {
+    context: PwContext;
+    routeTasks: Set<Promise<void>>;
+    routeFailure?: FailureRecord;
+}
+
+const appendFailure = (
+    current: FailureRecord | undefined,
+    cause: unknown,
+    message: string,
+): FailureRecord => {
+    if (current === undefined) return { cause };
+    if (current.cause === cause) return current;
+    const causes = current.cause instanceof AggregateError
+        ? [...current.cause.errors, cause]
+        : [current.cause, cause];
+    return { cause: new AggregateError(causes, message) };
+};
+
+const trackTask = (tasks: Set<Promise<void>>, task: Promise<void>): Promise<void> => {
+    tasks.add(task);
+    void task.then(
+        () => tasks.delete(task),
+        () => tasks.delete(task),
+    );
+    return task;
+};
 // The subset of Playwright's newContext options we set for device emulation.
 interface PwContextOptions {
-    userAgent: string;
-    viewport: { width: number; height: number };
-    deviceScaleFactor: number;
-    isMobile: boolean;
-    hasTouch: boolean;
+    serviceWorkers: "block";
+    userAgent?: string;
+    viewport?: { width: number; height: number };
+    deviceScaleFactor?: number;
+    isMobile?: boolean;
+    hasTouch?: boolean;
 }
 interface PwBrowser {
     newContext(options?: PwContextOptions): Promise<PwContext>;
@@ -88,12 +128,14 @@ export interface RenderResult {
 
 // Mobile device emulation (a Pixel-5-class profile) is the configured default;
 // PLURNK_SCHEMES_HTTP_MOBILE=0 selects a desktop context {§http-config}.
+// Service workers stay blocked in either profile because request interception
+// is the browser's security boundary {§http-security-boundary}.
 // The ONE browser identity both acquisition paths present (render context AND
 // the byte-path fetch) — ordinary Chrome traffic, never an automated-client or
 // plurnk fingerprint. Model-supplied {User-Agent: …} target blocks override it.
 export const BROWSER_UA = "Mozilla/5.0 (Linux; Android 13; Pixel 5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36";
 
-const MOBILE_CONTEXT: PwContextOptions = Object.freeze({
+const MOBILE_CONTEXT: Omit<PwContextOptions, "serviceWorkers"> = Object.freeze({
     userAgent: BROWSER_UA,
     viewport: { width: 393, height: 851 },
     deviceScaleFactor: 2.75,
@@ -101,10 +143,13 @@ const MOBILE_CONTEXT: PwContextOptions = Object.freeze({
     hasTouch: true,
 });
 // Required floor-set knob; unset is a configuration failure {§http-config}.
-const mobileEmulation = (): PwContextOptions | undefined => {
+const browserContextOptions = (): PwContextOptions => {
     const raw = process.env.PLURNK_SCHEMES_HTTP_MOBILE;
     if (raw === undefined) throw new Error("Browser: required env PLURNK_SCHEMES_HTTP_MOBILE is unset — see .env.defaults");
-    return raw === "0" ? undefined : MOBILE_CONTEXT;
+    return {
+        serviceWorkers: "block",
+        ...(raw === "0" ? {} : MOBILE_CONTEXT),
+    };
 };
 
 // Required numeric lookup. `.env.defaults` owns values; call sites own when a
@@ -184,10 +229,10 @@ export default class Browser {
     #factory: ChromiumFactory;
     #browser: PwBrowser | null = null;
     #launching: Promise<PwBrowser> | null = null;
-    // One atomically acquired BrowserContext per worker — cookies / cache /
-    // storage scoped to the worker that opened it, no cross-worker bleed.
+    // One atomically acquired BrowserContext per worker — cookies and storage
+    // scoped to the worker that opened it, no cross-worker bleed.
     // Promises make overlapping first renders share the same acquisition.
-    #contexts = new Map<number, Promise<PwContext>>();
+    #contexts = new Map<number, Promise<WorkerContext>>();
     #idleTimer: ReturnType<typeof setTimeout> | null = null;
 
     // Inject a factory in tests; production lazy-imports playwright.
@@ -207,11 +252,13 @@ export default class Browser {
     async render(
         url: string,
         { workerId, signal, headers, guard, timeout = requireNumEnv("PLURNK_SCHEMES_HTTP_FETCH_TIMEOUT") }:
-            { workerId: number; signal?: AbortSignal; headers?: ReadonlyArray<readonly [string, string]>; guard?: (url: string) => Promise<GuardAdmission>; timeout?: number },
+            { workerId: number; signal?: AbortSignal; headers?: ReadonlyArray<readonly [string, string]>; guard: (url: string) => Promise<GuardAdmission>; timeout?: number },
     ): Promise<RenderResult> {
-        const context = await this.#getContext(workerId);
+        const workerContext = await this.#getContext(workerId);
+        if (workerContext.routeFailure !== undefined) throw workerContext.routeFailure.cause;
+        const { context } = workerContext;
         const page = await context.newPage();
-        let closeFailure: { cause: unknown } | undefined;
+        let closeFailure: FailureRecord | undefined;
         let closePromise: Promise<void> | undefined;
         // {§render-lifecycle} Abort and final settlement share one immediately
         // observed close promise, so neither a duplicate call nor an unhandled
@@ -225,17 +272,10 @@ export default class Browser {
         const onAbort = () => { void closePage(); };
         signal?.addEventListener("abort", onAbort, { once: true });
         let outcome: { result: RenderResult } | { cause: unknown } | undefined;
-        let routeFailure: { cause: unknown } | undefined;
+        let routeFailure: FailureRecord | undefined;
+        const pageRouteTasks = new Set<Promise<void>>();
         const rememberRouteFailure = (cause: unknown): void => {
-            if (routeFailure === undefined) {
-                routeFailure = { cause };
-                return;
-            }
-            if (routeFailure.cause === cause) return;
-            const causes = routeFailure.cause instanceof AggregateError
-                ? [...routeFailure.cause.errors, cause]
-                : [routeFailure.cause, cause];
-            routeFailure = { cause: new AggregateError(causes, "Browser request admission failed") };
+            routeFailure = appendFailure(routeFailure, cause, "Browser request admission failed");
         };
         const abortAfterRouteFailure = async (route: PwRoute): Promise<void> => {
             try {
@@ -245,7 +285,24 @@ export default class Browser {
             }
         };
         const throwIfRouteFailed = (): void => {
-            if (routeFailure !== undefined) throw routeFailure.cause;
+            const failures: unknown[] = [];
+            if (workerContext.routeFailure !== undefined) {
+                failures.push(...(workerContext.routeFailure.cause instanceof AggregateError
+                    ? workerContext.routeFailure.cause.errors
+                    : [workerContext.routeFailure.cause]));
+            }
+            if (routeFailure !== undefined) {
+                failures.push(...(routeFailure.cause instanceof AggregateError
+                    ? routeFailure.cause.errors
+                    : [routeFailure.cause]));
+            }
+            if (failures.length === 1) throw failures[0];
+            if (failures.length > 1) throw new AggregateError(failures, "Browser request admission failed");
+        };
+        const drainRoutes = async (): Promise<void> => {
+            while (pageRouteTasks.size > 0 || workerContext.routeTasks.size > 0) {
+                await Promise.all([...pageRouteTasks, ...workerContext.routeTasks]);
+            }
         };
         try {
             if (signal?.aborted) {
@@ -253,53 +310,80 @@ export default class Browser {
                 signal.throwIfAborted();
             }
             // {§http-security-boundary}
-            if (guard) {
-                await page.route("**", async (route) => {
+            page.on("popup", (popup) => {
+                trackTask(pageRouteTasks, Promise.resolve()
+                    .then(() => popup.close())
+                    .catch(rememberRouteFailure));
+            });
+            await page.route("**", async (route) => {
+                try {
+                    const request = route.request();
+                    let admission: GuardAdmission;
                     try {
-                        const request = route.request();
-                        let admission: GuardAdmission;
-                        try {
-                            admission = await guard(request.url());
-                        } catch (cause) {
-                            rememberRouteFailure(cause);
-                            await abortAfterRouteFailure(route);
-                            return;
-                        }
-                        if (!admission.admitted) {
-                            // A refused non-main-frame request is an honest
-                            // omission from an otherwise useful page. A refused
-                            // main navigation is the render outcome and must
-                            // survive Playwright's generic net::ERR_FAILED.
-                            if (request.isNavigationRequest() && request.frame() === page.mainFrame()) {
-                                rememberRouteFailure(admission.error);
-                            }
-                            await abortAfterRouteFailure(route);
-                            return;
-                        }
-                        try {
-                            await route.continue();
-                        } catch (cause) {
-                            rememberRouteFailure(cause);
-                            await abortAfterRouteFailure(route);
-                        }
+                        admission = await guard(request.url());
                     } catch (cause) {
-                        // Synchronous request-surface failures belong to the
-                        // render boundary just like asynchronous route actions.
+                        rememberRouteFailure(cause);
+                        await abortAfterRouteFailure(route);
+                        return;
+                    }
+                    if (!admission.admitted) {
+                        // A refused non-main-frame request is an honest
+                        // omission from an otherwise useful page. A refused
+                        // main navigation is the render outcome and must
+                        // survive Playwright's generic net::ERR_FAILED.
+                        if (request.isNavigationRequest() && request.frame() === page.mainFrame()) {
+                            rememberRouteFailure(admission.error);
+                        }
+                        await abortAfterRouteFailure(route);
+                        return;
+                    }
+                    try {
+                        await route.continue();
+                    } catch (cause) {
                         rememberRouteFailure(cause);
                         await abortAfterRouteFailure(route);
                     }
-                });
-            }
+                } catch (cause) {
+                    // Synchronous request-surface failures belong to the
+                    // render boundary just like asynchronous route actions.
+                    rememberRouteFailure(cause);
+                    await abortAfterRouteFailure(route);
+                }
+            });
+            await page.routeWebSocket("**", (route) => trackTask(pageRouteTasks, (async () => {
+                try {
+                    const admission = await guard(route.url());
+                    if (!admission.admitted) {
+                        route.close({ code: 1008, reason: "Network admission denied" });
+                        return;
+                    }
+                    route.connectToServer();
+                } catch (cause) {
+                    rememberRouteFailure(cause);
+                    try {
+                        route.close({ code: 1011, reason: "Network admission failed" });
+                    } catch (closeCause) {
+                        rememberRouteFailure(closeCause);
+                    }
+                }
+            })()));
             // Playwright's page header API is single-valued; byte acquisition preserves duplicates.
             if (headers && headers.length > 0) await page.setExtraHTTPHeaders(Object.fromEntries(headers));
             let response: PwResponse | null;
             try {
                 response = await this.#safeGoto(page, url, timeout);
             } catch (cause) {
-                throw routeFailure?.cause ?? cause;
+                try {
+                    throwIfRouteFailed();
+                } catch (routeCause) {
+                    throw routeCause;
+                }
+                throw cause;
             }
+            await drainRoutes();
             throwIfRouteFailed();
             const html = await page.content();
+            await drainRoutes();
             throwIfRouteFailed();
             outcome = {
                 result: {
@@ -313,9 +397,39 @@ export default class Browser {
             outcome = { cause };
         } finally {
             signal?.removeEventListener("abort", onAbort);
+            await drainRoutes();
             await closePage();
+            await drainRoutes();
         }
         if (outcome === undefined) throw new Error("Browser render settled without an outcome");
+        let boundaryFailure: { cause: unknown } | undefined;
+        try {
+            throwIfRouteFailed();
+        } catch (cause) {
+            boundaryFailure = { cause };
+        }
+        if (boundaryFailure !== undefined) {
+            const { cause: boundaryCause } = boundaryFailure;
+            if ("result" in outcome) {
+                outcome = { cause: boundaryCause };
+            } else {
+                const ownedCauses = outcome.cause instanceof AggregateError
+                    ? outcome.cause.errors
+                    : [outcome.cause];
+                const boundaryCauses = boundaryCause instanceof AggregateError
+                    ? boundaryCause.errors
+                    : [boundaryCause];
+                const additions = boundaryCauses.filter((cause) => !ownedCauses.includes(cause));
+                if (additions.length > 0) {
+                    outcome = {
+                        cause: new AggregateError(
+                            [...ownedCauses, ...additions],
+                            "Browser render and request admission failed",
+                        ),
+                    };
+                }
+            }
+        }
         if ("cause" in outcome) {
             if (closeFailure !== undefined) {
                 throw new AggregateError(
@@ -377,16 +491,60 @@ export default class Browser {
         return browser;
     }
 
-    // Get-or-create the worker's BrowserContext. Mobile-emulated by default (a
-    // lighter responsive layout is the better generation hint); desktop when
-    // PLURNK_SCHEMES_HTTP_MOBILE=0.
-    async #getContext(workerId: number): Promise<PwContext> {
+    // Get-or-create the worker's BrowserContext. Its static routes default-deny
+    // pages that lack render-owned page routes (notably popup first
+    // requests); Playwright page routes take precedence and continue admitted
+    // traffic directly. This preserves worker cookies/storage without making
+    // per-render policy context-global {§http-security-boundary}.
+    async #getContext(workerId: number): Promise<WorkerContext> {
         this.#touchIdle();
         let context = this.#contexts.get(workerId);
         if (context === undefined) {
             context = (async () => {
                 const browser = await this.#getBrowser();
-                return browser.newContext(mobileEmulation());
+                const playwrightContext = await browser.newContext(browserContextOptions());
+                const state: WorkerContext = { context: playwrightContext, routeTasks: new Set() };
+                try {
+                    await playwrightContext.route("**", (route) => {
+                        const task = (async () => {
+                            try {
+                                await route.abort();
+                            } catch (cause) {
+                                state.routeFailure = appendFailure(
+                                    state.routeFailure,
+                                    cause,
+                                    "Browser context default-deny failed",
+                                );
+                            }
+                        })();
+                        return trackTask(state.routeTasks, task);
+                    });
+                    await playwrightContext.routeWebSocket("**", (route) => {
+                        const task = (async () => {
+                            try {
+                                route.close({ code: 1008, reason: "Unprovisioned page" });
+                            } catch (cause) {
+                                state.routeFailure = appendFailure(
+                                    state.routeFailure,
+                                    cause,
+                                    "Browser context WebSocket default-deny failed",
+                                );
+                            }
+                        })();
+                        return trackTask(state.routeTasks, task);
+                    });
+                    return state;
+                } catch (cause) {
+                    try {
+                        await playwrightContext.close();
+                    } catch (closeCause) {
+                        throw new AggregateError(
+                            [cause, closeCause],
+                            "Browser context setup and close failed",
+                        );
+                    }
+                    throw cause;
+                }
             })();
             this.#contexts.set(workerId, context);
         }
@@ -404,7 +562,7 @@ export default class Browser {
         const context = this.#contexts.get(workerId);
         if (!context) return;
         this.#contexts.delete(workerId);
-        await (await context).close();
+        await (await context).context.close();
     }
 
     #touchIdle(): void {
@@ -423,7 +581,7 @@ export default class Browser {
         if (this.#idleTimer) { clearTimeout(this.#idleTimer); this.#idleTimer = null; }
         const contexts = [...this.#contexts.values()];
         this.#contexts.clear();
-        const contextResults = await Promise.allSettled(contexts.map(async (context) => (await context).close()));
+        const contextResults = await Promise.allSettled(contexts.map(async (context) => (await context).context.close()));
         const browser = this.#browser;
         this.#browser = null;
         this.#launching = null;
