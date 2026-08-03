@@ -244,15 +244,13 @@ test("parsePath: the ws op trio (READ open+stream, SEND push, KILL close) parses
 // source core's auto-namer and schemes' registry derive from. The parser stays permissive
 // (any authority decomposes); this pins the CONTRACT constant, not ingestion behavior.
 test("worker-name contract: WORKER_NAME is a lowercase DNS label", () => {
-    for (const ok of ["alice", "child3", "brisk-otter", "3com", "a", "plurnk"]) {
+    for (const ok of ["alice", "child3", "brisk-otter", "3com", "a", "self", "plurnk"]) {
         assert.ok(WORKER_NAME.test(ok), `${ok} must be mintable`);
     }
     for (const bad of ["Alice", "-lead", "trail-", "under_score", "dot.name", "~", "", "sp ace"]) {
         assert.ok(!WORKER_NAME.test(bad), `${bad} must NOT be mintable`);
     }
-    // Reserved authorities are resolver-interpreted; `plurnk` is charset-legal but reserved by list.
-    // `self` reserved too: a worker named self would impersonate the `~` idiom.
-    assert.deepEqual([...RESERVED_AUTHORITIES], ["plurnk", "self"]);
+    assert.deepEqual([...RESERVED_AUTHORITIES], ["commons", "plurnk"]);
 });
 
 test("worker-name contract: the case footgun is real — parser preserves authority case", () => {

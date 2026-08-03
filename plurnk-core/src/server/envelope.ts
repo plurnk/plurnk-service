@@ -55,7 +55,7 @@ export default class Envelope {
     // attach to a worker under a reserved name (origin-impersonation — `plurnk`
     // is the runtime actor, {§authority-terms}/{§actor-boundary}). Checked case-insensitively, before
     // lookup, so a client can neither forge nor hijack one (SPEC {§methods}).
-    static readonly RESERVED_WORKER_NAMES: ReadonlySet<string> = Owner.RESERVED; // {§methods-worker-name-reserved} + {§entry-owner} (commons/plurnk rows, ~ self-sigil)
+    static readonly RESERVED_WORKER_NAMES: ReadonlySet<string> = Owner.RESERVED; // {§methods-worker-name-reserved}
 
     // Workspace names default to `workspace-{unixtime}-{random}`; the suffix avoids
     // collisions when two creations land in the same second. Worker names use the

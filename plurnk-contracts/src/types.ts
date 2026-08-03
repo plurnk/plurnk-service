@@ -18,8 +18,8 @@ export type PlurnkOp = (typeof PLURNK_OPS)[number];
 // Minting predicate only; URL ingestion deliberately remains permissive. {§worker-name}
 export const WORKER_NAME = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/;
 
-// Resolver-owned authority names excluded from minting. {§worker-name}
-export const RESERVED_AUTHORITIES = Object.freeze(["plurnk", "self"] as const);
+// Authority-shaped internal worker names excluded from minting. {§worker-name}
+export const RESERVED_AUTHORITIES = Object.freeze(["commons", "plurnk"] as const);
 
 // Structurally synthesized statements have no parsed source point. {§parser-position}
 export const UNKNOWN_POSITION: Readonly<Position> = Object.freeze({ line: 0, column: 0 });

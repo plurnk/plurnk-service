@@ -1,3 +1,4 @@
+import { RESERVED_AUTHORITIES } from "@plurnk/plurnk-contracts";
 import type { Db } from "./Db.ts";
 import type { PlurnkSchemeContext } from "./scheme-types.ts";
 
@@ -7,9 +8,8 @@ import type { PlurnkSchemeContext } from "./scheme-types.ts";
 // owners by NAME in the authority slot, and an empty authority resolves to the ambient principal
 // (the caller on streams). 'plurnk' (the kernel) and 'commons' are the two reserved rows.
 export default class Owner {
-    // Names no client- or model-supplied worker may take: the two reserved rows plus the
-    // self-sigil the #527 wave gives worker:// (reserving it now keeps the namespace clean).
-    static readonly RESERVED = Object.freeze(new Set(["commons", "plurnk", "~", "self"])); // 'self' joins per grammar's canon — a worker named self would impersonate the ~ idiom
+    // Contracts owns the internal names; core adds the non-mintable current-worker sigil. {§worker-name}
+    static readonly RESERVED = Object.freeze(new Set([...RESERVED_AUTHORITIES, "~"]));
 
     // The workspace's reserved commons worker — lazily ensured, one per workspace. A real row
     // (never a NULL owner: NULLs are distinct under UNIQUE, so a nullable owner_id would let

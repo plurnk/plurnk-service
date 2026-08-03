@@ -1,16 +1,18 @@
 # `worker://` — workers and their entries
 
-Workers inhabit one workspace. `worker://<name>` addresses a named worker;
-`worker://~/path` addresses your private entries; `worker:///path` addresses the shared commons.
+Workers inhabit one workspace. `worker://<name>` addresses a named worker; `worker://~` is the
+current-worker control sigil; `worker://~/path` addresses your private entries; `worker:///path`
+addresses the shared commons.
 `WORK(worker://<name>):task` spawns a fresh worker with an empty log. `FORK(worker://<name>):task`
 branches your current history. `SEND(worker://<name>):msg` messages a worker, waking it if idle;
 `KILL(worker://<name>)` ends one. Workers share project files and the commons, while private entries
 and conversation logs remain owner-scoped. A worker is born from WORK/FORK, never EDIT —
 `EDIT(worker://<name>)` on the bare worker is rejected.
 
-**The path is the discriminator.** `worker://<name>` with no path addresses the worker itself for
-spawn, SEND, READ, or KILL. `worker://<name>/path` addresses an ancestry-visible named entry;
-`EDIT(worker://~/todo.md):…` writes your own private entry.
+**The path is the discriminator.** `worker://<name>` with no path addresses a literal worker name
+for WORK, FORK, SEND, READ, or KILL; `worker://~` addresses the caller for SEND or KILL.
+`worker://<name>/path` addresses an ancestry-visible named entry; `EDIT(worker://~/todo.md):…`
+writes your own private entry.
 
 **WORK to delegate, FORK to branch.** For fan-out, WORK a distinct-named worker per job. Each gets
 a fresh task. FORK only to carry *your own* context down an alternate path.

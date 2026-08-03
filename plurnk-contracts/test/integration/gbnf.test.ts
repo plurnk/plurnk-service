@@ -203,7 +203,7 @@ test("GBNF: zero-op [102] is excluded and one statement restores it", () => {
     // The idle turn: PLAN straight into a [102] terminal. Not derivable.
     assert.equal(derivesTurn("<<PLAN:think:PLAN\n<<SEND[102]:working:SEND"), false);
     // Targeted changes nothing — still idle.
-    assert.equal(derivesTurn("<<PLAN:p:PLAN\n<<SEND[102](worker://self):working:SEND"), false);
+    assert.equal(derivesTurn("<<PLAN:p:PLAN\n<<SEND[102](worker://~):working:SEND"), false);
     // One real op before it: derives.
     assert.equal(derivesTurn("<<PLAN:p:PLAN\n<<READ(worker:///x)::READ\n<<SEND[102]:working:SEND"), true);
     // A mid-comms SEND is a statement too (report-progress-and-continue): derives.

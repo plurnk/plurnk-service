@@ -94,7 +94,7 @@ test("the commons is a real reserved row — shared-content identity cannot frag
     } finally { await db.close(); }
 });
 
-test("auto-names are id-free per-workspace ordinals; reserved names refused", async () => {
+test("auto-names are id-free per-workspace ordinals; only internal names and ~ are refused", async () => {
     const db = await openMigrated();
     try {
         const ws = await insertWorkspace(db, `owner-name-${crypto.randomUUID()}`);
@@ -106,6 +106,7 @@ test("auto-names are id-free per-workspace ordinals; reserved names refused", as
 
         await assert.rejects(Envelope.createModelWorker(db, ws, "commons"), /reserved/, "the commons row's name is refused");
         await assert.rejects(Envelope.createModelWorker(db, ws, "plurnk"), /reserved/, "the kernel row's name is refused");
-        await assert.rejects(Envelope.createModelWorker(db, ws, "~"), /reserved/, "the #527 self-sigil is refused");
+        await assert.rejects(Envelope.createModelWorker(db, ws, "~"), /reserved/, "the #527 current-worker sigil is refused");
+        assert.equal((await Envelope.createModelWorker(db, ws, "self")).name, "self", "self is an ordinary literal worker name");
     } finally { await db.close(); }
 });

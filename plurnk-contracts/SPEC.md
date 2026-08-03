@@ -325,10 +325,12 @@ not the language parser, define the meaning and authorization of the metadata.
 
 §worker-name The exported `WORKER_NAME` contract governs names minted for URI
 authority slots: a lowercase DNS label matching
-`[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?`. `RESERVED_AUTHORITIES` contains names
-interpreted by the resolver and therefore unavailable for minting. This is a
-minting and registry invariant, not an ingestion restriction: the parser
-decomposes arbitrary URL authorities.
+`[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?`. `RESERVED_AUTHORITIES` contains the
+authority-shaped internal worker names `commons` and `plurnk`, which are
+unavailable for minting. `~` is the sole current-worker sigil and falls outside
+the mintable alphabet; every matching unreserved value, including `self`, is an
+ordinary literal worker name. This is a minting and registry invariant, not an
+ingestion restriction: the parser decomposes arbitrary URL authorities.
 
 ## §matcher-prefix-claims 6. Bulk pattern matching
 
@@ -603,7 +605,7 @@ following supported consumer values. All other root exports are TypeScript types
 | `InvalidTextRegionError`              | Typed failure from `Validator.assertTextRegion`                     | {§text-region}                              |
 | `Problems`                            | RFC 9457 Problem construction                                       | {§problem-details}                          |
 | `PLURNK_OPS`                          | Runtime tuple from which the closed `PlurnkOp` union is derived     | {§canonical-statement}                      |
-| `WORKER_NAME`, `RESERVED_AUTHORITIES` | Authority minting predicate and resolver-reserved names             | {§worker-name}                              |
+| `WORKER_NAME`, `RESERVED_AUTHORITIES` | Authority minting predicate and internal reserved names             | {§worker-name}                              |
 | `UNKNOWN_POSITION`                    | Frozen sentinel for an AST statement without retained parsed source | {§parser-position}                          |
 
 §parser-construction-boundary Parser construction components are internal rather

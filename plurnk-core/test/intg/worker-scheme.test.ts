@@ -16,15 +16,15 @@ import Fork from "../../src/core/fork.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, makeSchemeCtx } from "./_helpers.ts";
 import { editStmt, sendStmt, readStmt, fullReplace } from "./_dsl.ts";
 
-// {§worker-scheme} — the worker is the authority: worker://<name> (name in hostname), worker://self for the current worker.
-// worker://self is the self-marker; the control ops (spawn/irc/fork/kill) carry no entry path.
+// {§worker-scheme} — the authority is a worker name or the current-worker sigil `~`.
+// Control operations carry no entry path; storage operations do.
 const workerPath = (name: string): ParsedPath => ({
     kind: "url", raw: `worker://${name}`, scheme: "worker",
     username: null, password: null, hostname: name, port: null,
     pathname: "", query: null, fragment: null,
 });
 
-// A worker-scope storage address: worker://<owner>/<path> (owner "self" = the current worker), entry path present.
+// A worker-scope storage address: worker://<owner>/<path>, entry path present.
 const workerEntry = (owner: string, path: string): ParsedPath => ({
     kind: "url", raw: `worker://${owner}/${path}`, scheme: "worker",
     username: null, password: null, hostname: owner, port: null,
@@ -56,14 +56,14 @@ const recordingInjectWorker = () => {
 
 const tokenize = (text: string): number => Math.ceil(text.length / 4);
 
-// A worker-scope FIND: worker://<owner>/<glob> (owner "self" = the current worker).
+// A worker-scope FIND: worker://<owner>/<glob>.
 const findEntry = (owner: string, glob: string): FindStatement => ({
     op: "FIND", suffix: "", signal: null,
     target: { kind: "url", raw: `worker://${owner}/${glob}`, scheme: "worker", username: null, password: null, hostname: owner, port: null, pathname: `/${glob}`, query: null, fragment: null },
     lineMarker: null, body: null, position: { line: 1, column: 1 },
 });
 
-// A worker-scope READ: worker://<owner>/<path> (owner "self" = the current worker).
+// A worker-scope READ: worker://<owner>/<path>.
 const readEntry = (owner: string, path: string): ReadStatement => ({
     op: "READ", suffix: "", signal: null,
     target: { kind: "url", raw: `worker://${owner}/${path}`, scheme: "worker", username: null, password: null, hostname: owner, port: null, pathname: `/${path}`, query: null, fragment: null },
@@ -160,6 +160,62 @@ test("WORK(worker://name):task spawns a same-workspace sister, seeded via inject
         const { flags: spawnFlags, ...spawnRest } = calls[0] as { flags?: object; workspaceId: number; workerId: number; prompt: string };
         assert.deepEqual(spawnRest, { workspaceId, workerId: worker.id, prompt: "investigate the bug" }, "the new worker is started with the prompt");
         assert.equal((spawnFlags as { auto?: boolean } | undefined)?.auto, false, "the delegating loop's flags ride the injection ({§worker-delegation-inherits-flags})");
+    } finally { await db.close(); }
+});
+
+test("~ is the sole current-worker sigil; self is an ordinary worker name", async () => {
+    const db = await openMigrated();
+    try {
+        const { calls, injectWorker } = recordingInjectWorker();
+        const killed: number[] = [];
+        const engine = new Engine({
+            db,
+            schemes: new SchemeRegistry(),
+            injectWorker,
+            cancelWorker: async (workerId: number): Promise<void> => { killed.push(workerId); },
+            tokenize,
+        });
+        const workspaceId = await insertWorkspace(db, `worker-self-address-${crypto.randomUUID()}`);
+        const actorId = await insertWorker(db, workspaceId, null, "actor");
+        const loopId = await insertLoop(db, actorId, 1, "go");
+        const turnId = await insertTurn(db, loopId, 1, 102);
+
+        const spawn = await engine.dispatch({
+            statement: spawnedWorker("self", "be the literally named worker"),
+            workspaceId, workerId: actorId, loopId, turnId, sequence: 1, origin: "model",
+        });
+        assert.equal(spawn.status, 200, "self is mintable as an ordinary worker name");
+        const named = await db.worker_resolve_by_name.get<{ id: number }>({ workspace_id: workspaceId, name: "self" });
+        if (named === undefined) throw new Error("WORK(worker://self) must create the literally named worker");
+
+        assert.equal((await engine.dispatch({
+            statement: sendStmt(null, workerPath("~"), "message the caller"),
+            workspaceId, workerId: actorId, loopId, turnId, sequence: 2, origin: "model",
+        })).status, 200);
+        assert.equal((await engine.dispatch({
+            statement: sendStmt(null, workerPath("self"), "message the named worker"),
+            workspaceId, workerId: actorId, loopId, turnId, sequence: 3, origin: "model",
+        })).status, 200);
+        assert.deepEqual(
+            calls.slice(1).map(({ workerId }) => workerId),
+            [actorId, named.id],
+            "~ routes to the caller while self resolves through the ordinary named-worker namespace",
+        );
+
+        assert.equal((await engine.dispatch({
+            statement: editStmt(workerEntry("~", "notes.md"), "private"),
+            workspaceId, workerId: actorId, loopId, turnId, sequence: 4, origin: "model",
+        })).status, 201, "worker://~/path is writable own-space storage");
+        assert.equal((await engine.dispatch({
+            statement: editStmt(workerEntry("self", "notes.md"), "not mine"),
+            workspaceId, workerId: actorId, loopId, turnId, sequence: 5, origin: "model",
+        })).status, 403, "worker://self/path is the named worker's space, not an own-space alias");
+
+        const killCurrent: KillStatement = { op: "KILL", suffix: "", signal: null, target: workerPath("~"), lineMarker: null, body: null, position: { line: 1, column: 1 } };
+        const killNamed: KillStatement = { ...killCurrent, target: workerPath("self") };
+        assert.equal((await engine.dispatch({ statement: killCurrent, workspaceId, workerId: actorId, loopId, turnId, sequence: 6, origin: "model" })).status, 200);
+        assert.equal((await engine.dispatch({ statement: killNamed, workspaceId, workerId: actorId, loopId, turnId, sequence: 7, origin: "model" })).status, 200);
+        assert.deepEqual(killed, [actorId, named.id], "KILL distinguishes the current-worker sigil from the literal name");
     } finally { await db.close(); }
 });
 

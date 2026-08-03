@@ -144,7 +144,7 @@ if (selection?.target.kind !== "url" || JSON.stringify(selection.lineMarker?.mar
 }
 if (PathSyntax.encodeParens("/draft(1)") !== "/draft%281%29") throw new Error("PathSyntax encode failed");
 if (PathSyntax.decodeParens("/draft%281%29") !== "/draft(1)") throw new Error("PathSyntax decode failed");
-if (!PLURNK_OPS.includes("PLAN") || !WORKER_NAME.test("worker-1") || !RESERVED_AUTHORITIES.includes("self")) {
+if (!PLURNK_OPS.includes("PLAN") || !WORKER_NAME.test("worker-1") || RESERVED_AUTHORITIES.join(",") !== "commons,plurnk") {
     throw new Error("contracts constants are not usable");
 }
 if (UNKNOWN_POSITION.line !== 0 || UNKNOWN_POSITION.column !== 0 || !Object.isFrozen(UNKNOWN_POSITION)) {

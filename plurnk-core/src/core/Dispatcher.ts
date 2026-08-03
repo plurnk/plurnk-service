@@ -923,17 +923,8 @@ export default class Dispatcher {
         return statement.op === "FORK" || statement.op === "WORK"; // worker control targets worker://<name> (grammar 0.74.55)
     }
 
-    // FORK/WORK(worker://<name>):task — worker control (grammar 0.74.55):
-    //   • worker://self   → FORK: deep-copy the current worker's log into a new sister (Fork), then
-    //     continue it with the prompt ({§machine-processes-fork-copies-the-log}).
-    //   • worker://<name> → SPAWN: a fresh sister (empty log) named <name>, started on the prompt.
-    //     A LIVE sister already holding <name> is a 409 conflict; a free or terminated name is
-    //     reclaimed ({§worker-scheme-spawn}). The self form is fork; only a name spawns.
-    // Both ride the daemon inject and obey the active-worker cap (508, {§worker-scheme-cap}).
-    // FORK/WORK — worker control (grammar 0.74.55). Both name a new worker in the target authority
-    // (worker://<name>) and carry its seed task in the body. WORK spawns a fresh worker; FORK branches
-    // the current worker's log into a named sister. Replaces the COPY(worker://) overload — one verb, one
-    // intent, so the model never conflates the target slot with the body (grammar#52).
+    // WORK and FORK name the new worker in the target authority and carry its seed task in the body.
+    // Their distinct fresh/branched histories are specified by {§worker-scheme-spawn} and {§worker-scheme-fork}.
     async #handleWorkerControl(statement: WorkStatement | ForkStatement, ctx: PlurnkSchemeContext): Promise<DispatchResult> {
         const target = statement.target;
         if (target === null) {
@@ -955,16 +946,7 @@ export default class Dispatcher {
                 { operation: statement.op, retryable: false },
             );
         }
-        if (name === "self") {
-            return Dispatcher.#failure(
-                "worker-name-reserved",
-                400,
-                "Worker name 'self' is reserved for the current worker.",
-                {},
-                { operation: statement.op, worker: name, retryable: false },
-            );
-        }
-        // {§entry-owner} — 'commons'/'plurnk' are the reserved owner rows, '~' the self-sigil; no spawn takes them.
+        // {§worker-name} — internal names and the `~` current-worker sigil cannot be minted.
         if (Owner.RESERVED.has(name)) {
             return Dispatcher.#failure(
                 "worker-name-reserved",
@@ -1132,8 +1114,8 @@ export default class Dispatcher {
                 }
                 return await workerHandler.killEntry(statement, handlerCtx);
             }
-            // Terminate an addressed worker's structured scope. `worker://self` = self.
-            // An idle worker is a no-op 200; a missing worker is 404.
+            // `~` is the sole current-worker sigil; every other authority is a literal name.
+            // An idle worker is a no-op 200; a missing named worker is 404. {§worker-control-addressing}
             const name = path.kind === "url" ? (path.hostname ?? "") : ""; // {§worker-scheme} — the worker is the AUTHORITY
             if (name === "") {
                 return Dispatcher.#failure(

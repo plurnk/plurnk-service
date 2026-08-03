@@ -28,7 +28,7 @@ export const markTerminal = (terminatedBy: string | null, message: string | null
 //   worker://~/draft.md        — the calling worker's own private space
 //   worker://<name>/result.md  — a named worker's space, ancestry-gated read (owner + ancestors)
 //   worker://plurnk/docs/x.md  — the kernel's published surface, world-readable
-// Writes are self-and-commons only ({§worker-write-scoping}): a named authority is read-only to
+// Writes are own-space-and-commons only ({§worker-write-scoping}): a named authority is read-only to
 // the model, so nothing worker-authored can ever land under another principal — worker://plurnk/
 // included, which is what makes the kernel's surface the trust boundary with no guard to forget.
 // Path-absent forms are control on the worker-as-actor: READ collects the deliverable, SEND ircs;
@@ -73,7 +73,7 @@ export default class Worker extends CoreSchemeAdapterBase {
         if (authority === "~") return { ownerId: ctx.workerId, writable: true };
         const named = await ctx.db.worker_resolve_by_name.get<{ id: number }>({ workspace_id: ctx.workspaceId, name: authority });
         if (named === undefined) return null;
-        if (named.id === ctx.workerId) return { ownerId: named.id, writable: true }; // naming yourself IS ~
+        if (named.id === ctx.workerId) return { ownerId: named.id, writable: true }; // a literal own name resolves to the same owner without becoming a sigil
         if (authority === "plurnk") return { ownerId: named.id, writable: false };  // the kernel's published surface
         const permitted = await ctx.db.owner_is_ancestor_or_self.get<{ permitted: number }>({ owner_id: named.id, reader_id: ctx.workerId });
         return permitted === undefined ? null : { ownerId: named.id, writable: false };
@@ -184,7 +184,7 @@ export default class Worker extends CoreSchemeAdapterBase {
         return this.editBatch([statement], ctx);
     }
 
-    // KILL an ENTRY (path present). Same write-scoping as EDIT: self + commons only. The
+    // KILL an ENTRY (path present). Same write-scoping as EDIT: own space + commons only. The
     // path-ABSENT KILL form is worker cancellation, handled in Dispatcher.#handleKill.
     async killEntry(statement: KillStatement, ctx: CoreSchemeCallContext): Promise<SchemeResultBase> {
         const core = this.coreContext(ctx);
