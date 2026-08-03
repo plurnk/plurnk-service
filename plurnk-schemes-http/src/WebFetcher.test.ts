@@ -39,6 +39,14 @@ test("live public textual URL → { body, mimetype }", async () => {
     });
 });
 
+test("the shared textual taxonomy accepts application/yaml", async () => {
+    await withFetch((async () => resp("name: plurnk", 200, { "content-type": "application/yaml" })) as typeof fetch, async () => {
+        const fetched = await new WebFetcher().fetch(PUB);
+        assert.equal(fetched?.body, "name: plurnk");
+        assert.equal(fetched?.mimetype, "application/yaml");
+    });
+});
+
 test("GitHub blob acquisition uses one source target for byte fetch and render", async (t) => {
     t.mock.method(Guard, "isPublicUrl", async () => true);
     const browser = fakeBrowser("<html><body>rendered source</body></html>");

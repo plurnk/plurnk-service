@@ -19,11 +19,17 @@ A path-pattern FIND searches only web entries already materialized in the
 workspace; a pattern cannot discover the remote web. FIND returns navigation
 metadata, not the selected page body. Use READ for content.
 
-| Direct response           | `body`                                           | Other channel                    |
-| ------------------------- | ------------------------------------------------ | -------------------------------- |
-| GET HTML                  | Readable projection of the guarded rendered page | Faithful rendered DOM in `#html` |
-| GET `text/event-stream`   | One event `data` value per chunk                 | Initial response in `#header`    |
-| Any other direct response | Decoded response content under its declared type | Status and headers in `#header`  |
+| Direct response           | `body`                                                       | Other channel                    |
+| ------------------------- | ------------------------------------------------------------ | -------------------------------- |
+| GET HTML                  | Readable projection of the guarded rendered page             | Faithful rendered DOM in `#html` |
+| GET `text/event-stream`   | One event `data` value per chunk                             | Initial response in `#header`    |
+| Other textual response    | Incremental UTF-8 text under its declared type               | Status and headers in `#header`  |
+| Binary or undeclared type | Empty marker under its type or `application/octet-stream`    | Status and headers in `#header`  |
+
+A non-textual direct response returns `415 binary-response-unsupported`. The
+remote response was received and its metadata remains in `#header`; do not
+retry a POST, PUT, or DELETE solely to retrieve its binary body. Exact FIND
+instead prunes non-textual responses because they cannot satisfy a text query.
 
 `#header` contains the remote HTTP status line and headers. The PLURNK
 operation result describes the streaming lifecycle; `SEND[code]` is never the

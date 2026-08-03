@@ -18,7 +18,7 @@ import type {
     FindStatement,
     SchemeResult,
 } from "@plurnk/plurnk-schemes";
-import { NetworkAddress, Results } from "@plurnk/plurnk-schemes";
+import { MimetypeClassifier, NetworkAddress, Results } from "@plurnk/plurnk-schemes";
 import { readFile } from "node:fs/promises";
 import Browser, { BROWSER_UA, requireNumEnv, type RenderResult } from "./Browser.ts";
 import ErrorDetail from "./ErrorDetail.ts";
@@ -437,12 +437,36 @@ export default class Http implements SchemeHandler {
                 return await Http.#streamEvents(ctx, response);
             }
 
-            // Byte path: stream the body labelled with its real content type.
+            // {§http-lifecycle}/{§mimetype-classifier} String channels retain
+            // textual response data. Binary responses become typed empty markers;
+            // decoding bytes while preserving their origin MIME type would lie
+            // about the stored representation.
             await Http.#writeHeader(ctx, method, response.status, response.statusText, [...response.headers]);
-            const bodyMime = contentType.split(";")[0].trim() || "application/octet-stream";
+            const bodyMime = contentType.split(";")[0].trim().toLowerCase() || "application/octet-stream";
             if (response.body === null) {
                 await ctx.subscriptions.close({ status: 200 }, `HTTP ${response.status}; empty body`);
                 return { shape: "passthrough", status: 102 };
+            }
+            if (MimetypeClassifier.isBinary(bodyMime)) {
+                await response.body.cancel();
+                await ctx.subscriptions.notifyChunk(BODY, "", bodyMime);
+                const detail = `HTTP ${method} ${url} returned ${bodyMime}. The remote response was received, but its binary body cannot be represented in a Plurnk text channel.`;
+                const result = Http.#bad(
+                    415,
+                    "http",
+                    "binary-response-unsupported",
+                    detail,
+                    {
+                        target: url,
+                        method,
+                        mimetype: bodyMime,
+                        stage: "materialization",
+                        recovery: "Do not retry the request solely to retrieve this body; inspect #header or use a byte-capable client.",
+                        retryable: false,
+                    },
+                );
+                await ctx.subscriptions.close(result, detail);
+                return result;
             }
             let bytes = 0;
             const decoder = new TextDecoder();

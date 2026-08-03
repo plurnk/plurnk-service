@@ -603,11 +603,63 @@ test("READ: an unknown channel fails before fetching or subscribing", async () =
 
 test("READ: non-HTML body is labelled with its real content-type", async () => {
     const { ctx, inspect } = makeCtx();
-    await withFetch(mockFetch(200, "OK", ['{"a":1}'], { "content-type": "application/json" }), async () => {
+    await withFetch(mockFetch(200, "OK", ['{"a":1}'], { "content-type": "Application/JSON; charset=utf-8" }), async () => {
         await new Http().read(readStmt(urlTarget("https://example.com/d.json", "/d.json")), ctx);
     });
     const body = inspect().chunks.filter((c) => c.channel === "body");
     assert.equal(body[0]?.mimetype, "application/json");
+});
+
+test("SEND[200]: a binary response becomes a typed marker and explicit non-retryable 415", async () => {
+    let cancelled = false;
+    const stream = new ReadableStream<Uint8Array>({
+        start(controller) {
+            controller.enqueue(new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x00, 0xff]));
+        },
+        cancel() { cancelled = true; },
+    });
+    const { ctx, inspect } = makeCtx();
+    let result: Awaited<ReturnType<Http["send"]>> | undefined;
+    await withFetch(async () => new Response(stream, {
+        status: 200,
+        statusText: "OK",
+        headers: { "content-type": "image/png" },
+    }), async () => {
+        result = await new Http().send(sendStmt(200, urlTarget("https://example.com/logo.png", "/logo.png"), "create"), ctx);
+    });
+
+    assert.equal(result?.status, 415);
+    assert.equal(result?.problem?.type, "https://problems.plurnk.dev/scheme/http/binary-response-unsupported");
+    assert.equal(result?.problem?.mimetype, "image/png");
+    assert.equal(result?.problem?.method, "POST");
+    assert.equal(result?.problem?.stage, "materialization");
+    assert.equal(result?.problem?.retryable, false);
+    assert.match(result?.problem?.recovery ?? "", /Do not retry/);
+    assert.equal(cancelled, true);
+    assert.deepEqual(
+        inspect().chunks.filter(({ channel }) => channel === "body"),
+        [{ channel: "body", chunk: "", mimetype: "image/png" }],
+    );
+    assert.equal(inspect().closed?.result.problem, result?.problem);
+    assert.match(inspect().chunks.find(({ channel }) => channel === "header")?.chunk ?? "", /^HTTP 200 OK/m);
+});
+
+test("READ: an undeclared body is an application/octet-stream marker, not guessed text", async () => {
+    const { ctx, inspect } = makeCtx();
+    let result: Awaited<ReturnType<Http["read"]>> | undefined;
+    await withFetch(async () => new Response(new Uint8Array([0x68, 0x69]), {
+        status: 200,
+        statusText: "OK",
+    }), async () => {
+        result = await new Http().read(readStmt(urlTarget("https://example.com/unknown", "/unknown")), ctx);
+    });
+
+    assert.equal(result?.status, 415);
+    assert.equal(result?.problem?.mimetype, "application/octet-stream");
+    assert.deepEqual(
+        inspect().chunks.filter(({ channel }) => channel === "body"),
+        [{ channel: "body", chunk: "", mimetype: "application/octet-stream" }],
+    );
 });
 
 // ── server-sent events {§sse} ─────────────────────────────────────────────
@@ -806,7 +858,11 @@ test("SEND[200]: POSTs the body and streams the response", async () => {
     let seenMethod = "", seenBody: unknown = null;
     const probe = async (_url: string | URL | Request, init?: RequestInit) => {
         seenMethod = init?.method ?? "GET"; seenBody = init?.body ?? null;
-        return new Response(new ReadableStream<Uint8Array>({ start(c) { c.enqueue(new TextEncoder().encode("ok")); c.close(); } }), { status: 200, statusText: "OK" });
+        return new Response(new ReadableStream<Uint8Array>({ start(c) { c.enqueue(new TextEncoder().encode("ok")); c.close(); } }), {
+            status: 200,
+            statusText: "OK",
+            headers: { "content-type": "text/plain" },
+        });
     };
     await withFetch(probe as typeof fetch, async () => {
         const r = await new Http().send(sendStmt(200, urlTarget("https://example.com/p", "/p"), "payload"), ctx);

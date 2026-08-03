@@ -27,13 +27,15 @@ catalog, matcher evidence, weighting, pagination, and status contract.
 
 | Channel  | Content                                                                 |
 | -------- | ----------------------------------------------------------------------- |
-| `body`   | Response payload, SSE event data, or readable HTML projection (default) |
+| `body`   | Text, typed binary marker, SSE data, or readable HTML (default)         |
 | `header` | HTTP status line, headers, and package acquisition metadata             |
 | `html`   | Faithful HTML used to produce the readable body                         |
 
 A fragmentless operation publishes only `body`; auxiliary channels remain
 durable and can be addressed explicitly. Remote HTTP status is stored in
 `header`; the PLURNK operation result reports the streaming lifecycle.
+Non-textual direct responses preserve a typed empty marker and return `415`;
+WebFetcher prunes them because they cannot satisfy a text query.
 
 ## Design
 

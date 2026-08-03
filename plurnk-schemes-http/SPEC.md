@@ -18,7 +18,7 @@ foundations. Both handlers implement the DB-free `SchemeCtx` author contract.
 
 | Channel  | Seed type                  | Meaning                                                         |
 | -------- | -------------------------- | --------------------------------------------------------------- |
-| `body`   | `application/octet-stream` | Response payload, SSE data, or readable HTML projection         |
+| `body`   | `application/octet-stream` | Text response, binary marker, SSE data, or readable HTML        |
 | `header` | `text/plain`               | Status line, response headers, and package acquisition metadata |
 | `html`   | `text/html`                | Faithful HTML used to produce the readable body                 |
 
@@ -89,20 +89,27 @@ flowchart TD
     response -->|304 with stored GET| restore["Restore stored channels and refresh stamp"]
     response -->|GET + HTML| render["Guarded browser → readable body + html"]
     response -->|GET + SSE| events["Event data → body chunks"]
-    response -->|other| bytes["Decoded response chunks → body"]
+    response -->|other| representation{"Body representation"}
+    representation -->|none| empty["Header only"]
+    representation -->|textual| text["UTF-8 response chunks → body"]
+    representation -->|binary or unknown| binary["Cancel bytes → typed empty marker + 415"]
     restore --> close["Persist/publish → close exact result"]
     render --> close
     events --> close
-    bytes --> close
+    empty --> close
+    text --> close
+    binary --> close
 ```
 
-| Consumer / response                      | `body`                                                           | Auxiliary materialization                 | Completion                          |
-| ---------------------------------------- | ---------------------------------------------------------------- | ----------------------------------------- | ----------------------------------- |
-| Direct GET + HTML                        | Readable projection of the guarded rendered DOM                  | Rendered DOM in `html`; render headers    | Subscription closes; op is `102`    |
-| Direct GET + `text/event-stream`         | One `data` value plus newline per `text/plain` chunk             | Initial response in `header`              | Origin close ends the subscription  |
-| Direct request + every other response    | `TextDecoder` output under the response type or octet fallback   | Response and package metadata in `header` | Response-body end closes the stream |
-| WebFetcher + non-empty 2xx HTML          | Readable projection of server HTML or the lazy rendered fallback | Selected HTML in `html`; byte headers     | Materialize, then universal query   |
-| WebFetcher + accepted non-empty 2xx text | Complete textual response                                        | Byte response in `header`                 | Materialize, then universal query   |
+| Consumer / response                       | `body`                                                           | Auxiliary materialization                 | Completion                           |
+| ----------------------------------------- | ---------------------------------------------------------------- | ----------------------------------------- | ------------------------------------ |
+| Direct GET + HTML                         | Readable projection of the guarded rendered DOM                  | Rendered DOM in `html`; render headers    | Subscription closes; op is `102`     |
+| Direct GET + `text/event-stream`          | One `data` value plus newline per `text/plain` chunk             | Initial response in `header`              | Origin close ends the subscription   |
+| Direct request + no response body         | Empty seed                                                       | Response and package metadata in `header` | Subscription closes; op is `102`     |
+| Direct request + textual response         | Incremental UTF-8 text under the declared type                   | Response and package metadata in `header` | Response-body end closes the stream  |
+| Direct request + binary or unknown type   | Empty marker; declared type or `application/octet-stream`        | Response and package metadata in `header` | `415 binary-response-unsupported`    |
+| WebFetcher + non-empty 2xx HTML           | Readable projection of server HTML or the lazy rendered fallback | Selected HTML in `html`; byte headers     | Materialize, then universal query    |
+| WebFetcher + accepted non-empty 2xx text  | Complete textual response                                        | Byte response in `header`                 | Materialize, then universal query    |
 
 A fragmentless direct operation publishes only `body`. An explicit fragment
 publishes that named channel. Every acquired channel remains durable even when
@@ -118,7 +125,8 @@ evidence.
 | Exact FIND / matcher READ after preparation         | Exact universal query result                     |
 | Exact acquisition returns no WebFetcher value       | `404` (`not-materialized`)                       |
 | Exact acquisition has no non-empty HTML projection  | `422` (`no-readable-projection`)                 |
-| Direct response lifecycle completes                 | `102`                                            |
+| Direct textual or empty response completes          | `102`                                            |
+| Direct non-textual response                         | `415` (`binary-response-unsupported`)            |
 | `SEND[410]`                                         | Exact entry-delete result                        |
 | Routed `SEND[499]` dispatch                         | `200`                                            |
 | Client-cancelled acquisition                        | `499` (`cancelled`)                              |
@@ -134,6 +142,13 @@ treats a non-2xx response as unmaterializable. Handler failures use RFC 9457
 Problem Details. Caught direct-acquisition diagnostics are bounded by
 `PLURNK_SCHEMES_HTTP_ERROR_DETAIL_LIMIT` in model-facing detail while complete
 errors remain in daemon diagnostics.
+
+A direct non-textual response preserves its status and headers plus an empty
+body marker carrying the true media type. Its `415` describes Plurnk's response
+materialization boundary, not the remote HTTP outcome. It is non-retryable: a
+POST, PUT, or DELETE might already have changed the remote resource. Missing
+`Content-Type` is treated as `application/octet-stream`; the handler does not
+sniff or decode unknown bytes.
 
 ## §5 Dependencies and configuration
 
@@ -228,7 +243,7 @@ accumulate until the origin closes or the operation is cancelled.
 | Non-empty accepted text | Complete body, MIME type, and package-stamped headers                                |
 | Lazy renderer value     | Non-empty rendered HTML, or `null` when rendering fails or yields no HTML            |
 | Top-level `null`        | Refused, unreachable, non-2xx, non-textual, or empty byte response                   |
-| Accepted textual family | `text/*`, JSON/XML/XHTML, and `+json` / `+xml` structured suffixes                   |
+| Accepted textual family | Shared `MimetypeClassifier` taxonomy {§mimetype-classifier}                          |
 
 Top-level `null` is a liveness value rather than a thrown failure. WebFetcher
 owns no entry identity, projection verdict, or query policy; its consumer

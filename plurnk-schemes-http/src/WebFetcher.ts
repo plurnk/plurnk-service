@@ -2,14 +2,9 @@
 // HTML carries a lazy browser fallback for the consumer to invoke only when its
 // readable projection is empty. Top-level deadness is the `null` value.
 
+import { MimetypeClassifier } from "@plurnk/plurnk-schemes";
 import Browser, { BROWSER_UA, requireNumEnv, type RenderResult } from "./Browser.ts";
 import Guard from "./Guard.ts";
-
-// {§prefetch} Only textual bodies can enter the string-valued entry contract.
-const isTextual = (mimetype: string): boolean =>
-    mimetype.startsWith("text/")
-    || ["application/json", "application/xml", "application/xhtml+xml"].includes(mimetype)
-    || mimetype.endsWith("+json") || mimetype.endsWith("+xml");
 
 const isHtml = (mimetype: string): boolean =>
     mimetype === "text/html" || mimetype === "application/xhtml+xml";
@@ -71,7 +66,8 @@ export default class WebFetcher {
         } catch {
             return null; // SSRF-refused or unreachable — both dead
         }
-        const mimetype = (response.headers.get("content-type") ?? "").split(";")[0].trim().toLowerCase();
+        const mimetype = (response.headers.get("content-type") ?? "").split(";")[0].trim().toLowerCase()
+            || "application/octet-stream";
         if (!response.ok) { await response.body?.cancel(); return null; } // non-2xx dead
         const header = WebFetcher.#header(response);
 
@@ -102,7 +98,9 @@ export default class WebFetcher {
             };
         }
 
-        if (!isTextual(mimetype)) { await response.body?.cancel(); return null; } // binary pruned
+        // {§prefetch}/{§mimetype-classifier} Query preparation admits only the
+        // shared textual family; binary responses have no string entry value.
+        if (MimetypeClassifier.isBinary(mimetype)) { await response.body?.cancel(); return null; }
         const body = await response.text();
         return body.length > 0 ? { body, mimetype, header } : null; // empty is dead
     }
