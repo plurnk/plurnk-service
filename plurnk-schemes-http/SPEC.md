@@ -183,22 +183,19 @@ sniff or decode unknown bytes.
 
 | Surface           | Runtime contract                                                                 |
 | ----------------- | -------------------------------------------------------------------------------- |
-| Platform          | Node ≥26 streams, abort signals, decoding, DNS, and TCP                           |
-| Network client    | `undici` HTTP, WebSocket, and SOCKS5 dispatcher                                  |
+| Platform          | Node ≥26 native fetch, streams, abort signals, decoding, DNS, and `WebSocket`    |
 | SSE               | `eventsource-parser` for bounded WHATWG event-stream framing                     |
 | Browser rendering | Lazy-loaded `playwright`; normal installation provisions its compatible Chromium |
 
 ### §http-config Operator configuration
 
-| Concern                       | Contract                                                                                                                       |
-| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| Canonical registry            | Shipped `.env.defaults`; the daemon assembles it as a set-if-unset floor {§operator-config-env-defaults}                       |
-| Required values               | Missing or invalid required values fail at their owning read; code carries no hidden fallback                                  |
-| Browser method                | Exactly one of `launch`, `connect`, `connectOverCDP`, or `disabled`                                                            |
-| Method-specific data          | Endpoint belongs to connection methods; channel/executable belong to launch and are mutually exclusive                         |
-| Local admission broker        | Required port is `0` for an ephemeral listener or a fixed nonzero loopback port                                                |
-| Remote-browser broker address | Required for connection methods and forbidden otherwise; a `socks5:` URL the remote browser reaches through an operator tunnel |
-| Native Playwright             | Operator-set installation variables remain authoritative                                                                       |
+| Concern              | Contract                                                                                                 |
+| -------------------- | -------------------------------------------------------------------------------------------------------- |
+| Canonical registry   | Shipped `.env.defaults`; the daemon assembles it as a set-if-unset floor {§operator-config-env-defaults} |
+| Required values      | Missing or invalid required values fail at their owning read; code carries no hidden fallback            |
+| Browser method       | Exactly one of `launch`, `connect`, `connectOverCDP`, or `disabled`                                      |
+| Method-specific data | Endpoint belongs to connection methods; channel/executable belong to launch and are mutually exclusive   |
+| Native Playwright    | Operator-set installation variables remain authoritative                                                 |
 
 `Http.ready()` verifies the selected browser route before the handler is
 advertised. Disabled rendering is a valid configured route and fails clearly
@@ -206,41 +203,11 @@ if an HTML operation later requires the browser.
 
 ### §http-security-boundary Network security boundary
 
-Every HTTP, WebSocket, and browser socket crosses one package-wide SOCKS5
-admission broker. `Guard` is its typed pre-admission facade, not an independent
-resolver. Admission accepts credential-free HTTP(S)/WS(S) targets only when
-every resolved address is ordinary globally reachable unicast. The broker
-retains that exact validated set for the ensuing SOCKS connection and supplies
-only those addresses to the TCP connector; no downstream connection lookup can
-replace it. `Guard.fetch` repeats admission before every manually followed
-redirect.
-
-```mermaid
-sequenceDiagram
-    participant C as HTTP / WebSocket / browser route
-    participant G as Guard facade
-    participant B as Admission broker
-    participant D as DNS
-    participant T as Undici / Chromium
-    participant O as Origin
-
-    C->>G: Admit URL
-    G->>B: Classify target
-    B->>D: Resolve hostname once
-    D-->>B: Complete address set
-    B->>B: Require every address public<br/>and retain the exact set
-    B-->>G: Typed verdict
-    G-->>C: Admitted
-    C->>T: Start request through SOCKS5
-    T->>B: CONNECT hostname and port
-    B->>O: Connect using only the validated set
-    B-->>T: Tunnel or fail closed
-```
-
-A SOCKS request without a fresh pre-admission set defensively performs the same
-broker-owned resolution and classification before connection. The successful
-set is cached only briefly: staleness may make an origin temporarily
-unreachable, but cannot authorize an unclassified or private address.
+Direct HTTP operations and WebFetcher share `Guard.fetch`; WebSocket and
+browser routing use the same `Guard.admit` verdict. Admission accepts
+credential-free HTTP(S)/WS(S) targets only when every resolved address is
+ordinary globally reachable unicast. `Guard.fetch` repeats it before every
+manually followed redirect.
 
 | Admission outcome                         | Guard representation     | HTTP / WebSocket projection                         |
 | ----------------------------------------- | ------------------------ | --------------------------------------------------- |
@@ -256,12 +223,12 @@ liveness value.
 
 The browser installs its enforcement surfaces before navigation:
 
-| Browser surface                                       | Enforcement                                                                                        | Denied or unresolved outcome                                            |
-| ----------------------------------------------------- | -------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
-| Render page HTTP, redirects, frames, and subresources | Required page route uses that render's Guard; admitted traffic continues through the context proxy | Main navigation is the typed render failure; other requests are omitted |
-| Render page-created `ws:` / `wss:`                    | Required page WebSocket route uses that render's Guard; admitted sockets use the context proxy     | Socket is closed before transport                                       |
-| Popup or otherwise unprovisioned page                 | Context HTTP and WebSocket routes default to deny; render page routes take precedence              | Requests and sockets are stopped; popup is closed                       |
-| Service Worker                                        | Browser context is created with Service Workers blocked                                            | No worker-owned transport exists                                        |
+| Browser surface                                       | Enforcement                                                                           | Denied or unresolved outcome                                            |
+| ----------------------------------------------------- | ------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| Render page HTTP, redirects, frames, and subresources | Required page route using that render's Guard; admitted traffic continues directly    | Main navigation is the typed render failure; other requests are omitted |
+| Render page-created `ws:` / `wss:`                    | Required page WebSocket route using that render's Guard                               | Socket is closed before transport                                       |
+| Popup or otherwise unprovisioned page                 | Context HTTP and WebSocket routes default to deny; render page routes take precedence | Requests and sockets are stopped; popup is closed                       |
+| Service Worker                                        | Browser context is created with Service Workers blocked                               | No worker-owned transport exists                                        |
 
 The context fallback is policy-free, so concurrent renders sharing a worker
 context cannot replace one another's Guard or headers. Unexpected guard or
@@ -269,34 +236,26 @@ route-action errors remain owned render failures rather than escaping their
 callbacks. The registered WebSocket scheme likewise applies admission to its
 initial target before claiming an address or constructing a socket.
 
-The broker binds an unauthenticated listener only to daemon loopback. Node
-clients use its derived local URL. A locally launched browser does likewise.
-For `connect` and `connectOverCDP`, readiness requires a fixed local broker port
-and an explicit SOCKS URL that reaches that listener through operator-managed
-forwarding; the package neither opens a public proxy nor treats an external
-firewall as equivalent enforcement. The broker starts lazily, is shared by all
-package consumers, and closes its dispatchers, listener, and active tunnels
-after its final owner releases it.
-
 Redirect transitions follow WHATWG Fetch: 301/302 rewrite POST to GET; 303
 rewrites methods other than GET/HEAD to GET; 307/308 preserve method and body.
 A body rewrite removes body headers, cross-origin redirects remove
 `Authorization`, and followed redirect bodies are cancelled. The configured
 hop limit returns the last redirect rather than following beyond the limit.
+Validation-time DNS answers are not pinned to connection-time resolution.
 
 ## §render-lifecycle §6 Render lifecycle
 
-| Concern           | Contract                                                                                                                               |
-| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| Direct gate       | A GET HTML response cancels the byte probe body and navigates through the guarded browser                                              |
-| Prefetch gate     | Server HTML is primary; browser rendering is a lazy fallback only when its readable projection is absent                               |
-| Request admission | Render-page HTTP and WebSockets use its required Guard and broker proxy; unprovisioned pages default-deny; Service Workers are blocked |
-| Pool              | One warm browser per `Browser`; one atomically acquired context per worker; prefetch uses worker `0`                                   |
-| Navigation        | Mobile-emulated by default; `networkidle` with bounded substantive-DOM timeout salvage                                                 |
-| Projection        | A present result, including `""`, becomes `body`; exact HTML used becomes `html`                                                       |
-| Cancellation      | The render-owned page close aborts in-flight navigation; an already-aborted render never navigates                                     |
-| Page cleanup      | Close the render page and every popup once; preserve cleanup failure alone or aggregate it after a primary failure                     |
-| Shutdown          | Attempt every context and browser close, await all, then aggregate failures under {§handler-lifecycle}                                 |
+| Concern           | Contract                                                                                                              |
+| ----------------- | --------------------------------------------------------------------------------------------------------------------- |
+| Direct gate       | A GET HTML response cancels the byte probe body and navigates through the guarded browser                             |
+| Prefetch gate     | Server HTML is primary; browser rendering is a lazy fallback only when its readable projection is absent              |
+| Request admission | Render-page HTTP and WebSockets use its required Guard; unprovisioned pages default-deny; Service Workers are blocked |
+| Pool              | One warm browser per `Browser`; one atomically acquired context per worker; prefetch uses worker `0`                  |
+| Navigation        | Mobile-emulated by default; `networkidle` with bounded substantive-DOM timeout salvage                                |
+| Projection        | A present result, including `""`, becomes `body`; exact HTML used becomes `html`                                      |
+| Cancellation      | The render-owned page close aborts in-flight navigation; an already-aborted render never navigates                    |
+| Page cleanup      | Close the render page and every popup once; preserve cleanup failure alone or aggregate it after a primary failure    |
+| Shutdown          | Attempt every context and browser close, await all, then aggregate failures under {§handler-lifecycle}                |
 
 ### §host-rewrite Acquisition target rewrite
 

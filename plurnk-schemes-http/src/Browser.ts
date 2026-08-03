@@ -13,11 +13,6 @@
 // in unit tests, and a remote CDP endpoint (Lightpanda/browserless/shared
 // chromium) swapped in via env with zero code change.
 
-import {
-    admissionBroker,
-    type AdmissionBrokerOwner,
-    type AdmissionLease,
-} from "./AdmissionBroker.ts";
 import type { GuardAdmission } from "./Guard.ts";
 
 // ── the structural Playwright surface we drive ────────────────────────────
@@ -89,7 +84,6 @@ const trackTask = (tasks: Set<Promise<void>>, task: Promise<void>): Promise<void
 // The subset of Playwright's newContext options we set for device emulation.
 interface PwContextOptions {
     serviceWorkers: "block";
-    proxy: { server: string };
     userAgent?: string;
     viewport?: { width: number; height: number };
     deviceScaleFactor?: number;
@@ -141,7 +135,7 @@ export interface RenderResult {
 // plurnk fingerprint. Model-supplied {User-Agent: …} target blocks override it.
 export const BROWSER_UA = "Mozilla/5.0 (Linux; Android 13; Pixel 5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36";
 
-const MOBILE_CONTEXT: Omit<PwContextOptions, "serviceWorkers" | "proxy"> = Object.freeze({
+const MOBILE_CONTEXT: Omit<PwContextOptions, "serviceWorkers"> = Object.freeze({
     userAgent: BROWSER_UA,
     viewport: { width: 393, height: 851 },
     deviceScaleFactor: 2.75,
@@ -149,12 +143,11 @@ const MOBILE_CONTEXT: Omit<PwContextOptions, "serviceWorkers" | "proxy"> = Objec
     hasTouch: true,
 });
 // Required floor-set knob; unset is a configuration failure {§http-config}.
-const browserContextOptions = (proxyServer: string): PwContextOptions => {
+const browserContextOptions = (): PwContextOptions => {
     const raw = process.env.PLURNK_SCHEMES_HTTP_MOBILE;
     if (raw === undefined) throw new Error("Browser: required env PLURNK_SCHEMES_HTTP_MOBILE is unset — see .env.defaults");
     return {
         serviceWorkers: "block",
-        proxy: { server: proxyServer },
         ...(raw === "0" ? {} : MOBILE_CONTEXT),
     };
 };
@@ -186,22 +179,8 @@ const requireBoolEnv = (key: string): boolean => {
 type BrowserConfig =
     | { method: "disabled" }
     | { method: "launch"; options: PwLaunchOptions }
-    | { method: "connect"; endpoint: string; brokerUrl: string; options: PwConnectOptions }
-    | { method: "connectOverCDP"; endpoint: string; brokerUrl: string; options: PwConnectOptions };
-
-const remoteBrokerUrl = (raw: string): string => {
-    let url: URL;
-    try {
-        url = new URL(raw);
-    } catch (cause) {
-        throw new Error(`Browser: PLURNK_SCHEMES_HTTP_PLAYWRIGHT_BROKER_URL=${raw} is not a URL`, { cause });
-    }
-    if (url.protocol !== "socks5:" || url.hostname === "" || url.username !== "" || url.password !== ""
-        || (url.pathname !== "" && url.pathname !== "/") || url.search !== "" || url.hash !== "") {
-        throw new Error("Browser: PLURNK_SCHEMES_HTTP_PLAYWRIGHT_BROKER_URL must be a credential-free socks5:// authority");
-    }
-    return url.href;
-};
+    | { method: "connect"; endpoint: string; options: PwConnectOptions }
+    | { method: "connectOverCDP"; endpoint: string; options: PwConnectOptions };
 
 const browserConfig = (): BrowserConfig => {
     const raw = process.env.PLURNK_SCHEMES_HTTP_PLAYWRIGHT_METHOD;
@@ -211,7 +190,6 @@ const browserConfig = (): BrowserConfig => {
     }
     const method = raw as PlaywrightMethod;
     const endpoint = process.env.PLURNK_SCHEMES_HTTP_PLAYWRIGHT_ENDPOINT;
-    const brokerUrl = process.env.PLURNK_SCHEMES_HTTP_PLAYWRIGHT_BROKER_URL;
     const channel = process.env.PLURNK_SCHEMES_HTTP_PLAYWRIGHT_CHANNEL;
     const executablePath = process.env.PLURNK_SCHEMES_HTTP_PLAYWRIGHT_EXECUTABLE_PATH;
     if ((method === "connect" || method === "connectOverCDP") && !endpoint) {
@@ -219,12 +197,6 @@ const browserConfig = (): BrowserConfig => {
     }
     if (method !== "connect" && method !== "connectOverCDP" && endpoint) {
         throw new Error(`Browser: PLURNK_SCHEMES_HTTP_PLAYWRIGHT_ENDPOINT is incompatible with ${method}`);
-    }
-    if ((method === "connect" || method === "connectOverCDP") && !brokerUrl) {
-        throw new Error(`Browser: ${method} requires PLURNK_SCHEMES_HTTP_PLAYWRIGHT_BROKER_URL`);
-    }
-    if (method !== "connect" && method !== "connectOverCDP" && brokerUrl) {
-        throw new Error(`Browser: PLURNK_SCHEMES_HTTP_PLAYWRIGHT_BROKER_URL is incompatible with ${method}`);
     }
     if (method !== "launch" && (channel || executablePath)) {
         throw new Error(`Browser: Playwright channel and executable path are incompatible with ${method}`);
@@ -235,7 +207,7 @@ const browserConfig = (): BrowserConfig => {
     if (method === "disabled") return { method };
     const timeout = requireNumEnv("PLURNK_SCHEMES_HTTP_PLAYWRIGHT_TIMEOUT");
     if (method === "connect" || method === "connectOverCDP") {
-        return { method, endpoint: endpoint!, brokerUrl: remoteBrokerUrl(brokerUrl!), options: { timeout } };
+        return { method, endpoint: endpoint!, options: { timeout } };
     }
     const args: string[] = [];
     const heapMb = process.env.PLURNK_SCHEMES_HTTP_CHROMIUM_HEAP_MB;
@@ -255,9 +227,6 @@ const browserConfig = (): BrowserConfig => {
 
 export default class Browser {
     #factory: ChromiumFactory;
-    readonly #broker: AdmissionBrokerOwner;
-    #admission: AdmissionLease | null = null;
-    #proxyServer: string | null = null;
     #browser: PwBrowser | null = null;
     #launching: Promise<PwBrowser> | null = null;
     // One atomically acquired BrowserContext per worker — cookies and storage
@@ -267,9 +236,8 @@ export default class Browser {
     #idleTimer: ReturnType<typeof setTimeout> | null = null;
 
     // Inject a factory in tests; production lazy-imports playwright.
-    constructor(factory: ChromiumFactory = defaultFactory, broker: AdmissionBrokerOwner = admissionBroker) {
+    constructor(factory: ChromiumFactory = defaultFactory) {
         this.#factory = factory;
-        this.#broker = broker;
     }
 
     async ready(): Promise<PlaywrightMethod> {
@@ -506,10 +474,6 @@ export default class Browser {
         this.#launching ??= (async () => {
             const config = browserConfig();
             if (config.method === "disabled") throw new Error("Browser: HTML rendering is disabled by PLURNK_SCHEMES_HTTP_PLAYWRIGHT_METHOD=disabled");
-            const admission = this.#admission ??= this.#broker.acquire();
-            this.#proxyServer = config.method === "launch"
-                ? await admission.localProxyUrl()
-                : (await admission.localProxyUrl(true), config.brokerUrl);
             const chromium = await this.#factory();
             if (config.method === "connect") return chromium.connect(config.endpoint, config.options);
             if (config.method === "connectOverCDP") return chromium.connectOverCDP(config.endpoint, config.options);
@@ -538,8 +502,7 @@ export default class Browser {
         if (context === undefined) {
             context = (async () => {
                 const browser = await this.#getBrowser();
-                if (this.#proxyServer === null) throw new Error("Browser admission proxy was not initialized");
-                const playwrightContext = await browser.newContext(browserContextOptions(this.#proxyServer));
+                const playwrightContext = await browser.newContext(browserContextOptions());
                 const state: WorkerContext = { context: playwrightContext, routeTasks: new Set() };
                 try {
                     await playwrightContext.route("**", (route) => {
@@ -622,12 +585,8 @@ export default class Browser {
         const browser = this.#browser;
         this.#browser = null;
         this.#launching = null;
-        this.#proxyServer = null;
-        const admission = this.#admission;
-        this.#admission = null;
         const browserResults = browser === null ? [] : await Promise.allSettled([browser.close()]);
-        const admissionResults = admission === null ? [] : await Promise.allSettled([admission.close()]);
-        const errors = [...contextResults, ...browserResults, ...admissionResults]
+        const errors = [...contextResults, ...browserResults]
             .filter((result): result is PromiseRejectedResult => result.status === "rejected")
             .flatMap((result) => result.reason instanceof AggregateError
                 ? [...result.reason.errors]
