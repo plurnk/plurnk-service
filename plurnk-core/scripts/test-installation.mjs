@@ -118,7 +118,11 @@ ok(existsSync(resolve(sandbox, ".plurnk", ".env")) && existsSync(resolve(sandbox
     "first run bootstraps ~/.plurnk (.env seeded + DB homed there, not CWD)");
 void home;
 
-const boot = await bootStart({ PLURNK_DB_PATH: resolve(sandbox, "start.db") });
+const boot = await bootStart({
+    PLURNK_DB_PATH: resolve(sandbox, "start.db"),
+    // {§browser-provisioning}: this fixture provisions no operator browser.
+    PLURNK_SCHEMES_HTTP_PLAYWRIGHT_METHOD: "disabled",
+});
 ok(boot.listening === true, "`start` boots the daemon (the AG-UI listener bound — single-listener production, #357)");
 ok(!/embedder inactive/.test(boot.stderr), "no embedder-inactive notice — the shipped embedder is active");
 // #307 — a fresh install resolves NO model: the boot line says so, the stderr pointer names the
