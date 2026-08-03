@@ -1,26 +1,9 @@
-// DSL helpers — clean-shape params → HEREDOC → PlurnkStatement. {§methods-op-mirror}
-//
-// Per the "Speak in DSL, not plumbing" Standing Rule: every op.* RPC method
-// constructs a HEREDOC string from clean-shape params and parses it via the
-// canonical grammar. This guarantees the resulting PlurnkStatement is
-// IDENTICAL in shape to what the model would emit, including all
-// scheme-specific path parsing rules (grammar 0.3.0+).
-//
-// The path-parser helper would let us bypass HEREDOC construction; tracked
-// in the canonical contracts grammar.
+// Test fixture builders route clean parameters through the contracts-owned
+// statement parser so Core receives production AST shapes. {§tier-entrypoints}
+// {§methods-op-mirror}
 
 import { PlurnkParser } from "@plurnk/plurnk-contracts";
-import type { ErrorSource, LineMarker, PlurnkStatement, Severity } from "@plurnk/plurnk-contracts";
-
-// A parse failure surfaced from raw DSL — an error item or an unterminated tail. Parser points
-// refer to the CALLER's text after the injected PLAN line is de-offset. {§methods} {§parser-position}
-export type ParseFailure = {
-    message: string;
-    line: number;
-    column: number;
-    source: ErrorSource | "grammar";
-    severity: Severity;
-};
+import type { LineMarker, PlurnkStatement } from "@plurnk/plurnk-contracts";
 
 interface OpWithMatcher {
     target: string;
@@ -100,63 +83,22 @@ export default class Dsl {
         return `<<${op}${suffix}${signal}${target}${lineMarker}:${body}:${op}${suffix}`;
     }
 
-    // grammar 0.70: a turn must lead with PLAN (plurnk.md "Imperatives"), so the
-    // canonical parse of an op.*-built HEREDOC needs a PLAN prefix; we add it (when
-    // absent) and strip the PLAN back out, returning only the real op(s).
-    static #planPrefixed(text: string): string {
-        return text.startsWith("<<PLAN") ? text : `<<PLAN::PLAN\n${text}`;
-    }
-
     static parseSingleStatement(text: string): PlurnkStatement {
-        const result = PlurnkParser.parse(Dsl.#planPrefixed(text));
-        for (const item of result.items) {
-            if (item.kind === "statement" && item.statement.op !== "PLAN") return item.statement;
-        }
-        throw new Error(`expected a parsed statement, got none from: ${text}`);
-    }
-
-    // Parse raw DSL into its statements AND its parse failures (error items + an unterminated
-    // `unparsedTail`), so a caller surfaces failures instead of silently dropping them. Positions
-    // are in the CALLER's text: when #planPrefixed injects a PLAN lead (one line), the parser's
-    // line numbers are de-offset by 1.
-    static parseAllStatements(text: string): { statements: PlurnkStatement[]; errors: ParseFailure[] } {
-        const prefixed = !text.startsWith("<<PLAN");
-        const result = PlurnkParser.parse(Dsl.#planPrefixed(text));
-        const line = (l: number): number => prefixed ? Math.max(1, l - 1) : l;
+        const result = PlurnkParser.parseStatements(text);
         const statements: PlurnkStatement[] = [];
-        const errors: ParseFailure[] = [];
+        const failures: string[] = [];
         for (const item of result.items) {
-            if (item.kind === "statement") {
-                if (item.statement.op !== "PLAN") statements.push(item.statement);
-            } else if (item.kind === "error") {
-                const { message } = item.error;
-                // The parser emits benign turn-structure items for parse-and-dispatch input that isn't a
-                // full turn — "unexpected end of input" (pre-0.74.34) / the imperative "a turn must begin
-                // with PLAN" + "a turn must end with a terminal SEND" (0.74.34+). op.parse dispatches a
-                // statement set, not a turn, so these are noise; the genuine unterminated case is the
-                // unparsedTail below. Drop the scaffolding; keep real errors.
-                if (message.startsWith("unexpected end of input") || message.startsWith("a turn must ")) continue;
-                errors.push({
-                    message,
-                    line: line(item.error.line),
-                    column: item.error.column,
-                    source: item.error.source,
-                    severity: item.error.severity,
-                });
-            }
+            if (item.kind === "statement") statements.push(item.statement);
+            else if (item.kind === "error") failures.push(item.error.message);
+            else failures.push("unexpected interstatement text");
         }
-        if (result.unparsedTail !== undefined) {
-            const { from, reason } = result.unparsedTail;
-            const deLined = prefixed ? reason.replace(/opened at line (\d+)/g, (_m, n) => `opened at line ${line(Number(n))}`) : reason;
-            errors.push({
-                message: deLined,
-                line: line(from.line),
-                column: from.column,
-                source: "grammar",
-                severity: "error",
-            });
+        if (result.unparsedTail !== undefined) failures.push(result.unparsedTail.reason);
+        const [statement] = statements;
+        if (statement === undefined || statements.length !== 1 || failures.length !== 0) {
+            const detail = failures.length === 0 ? "" : `: ${failures.join("; ")}`;
+            throw new Error(`expected exactly one parsed statement, got ${statements.length}${detail}`);
         }
-        return { statements, errors };
+        return statement;
     }
 
     static buildEdit(p: OpEditParams): PlurnkStatement {

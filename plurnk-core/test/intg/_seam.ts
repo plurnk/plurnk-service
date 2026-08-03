@@ -1,12 +1,8 @@
-// #364 — the harness rides the CoreSeam. SeamSocket mimics the retired WS connection's surface
-// (send/on/once/off/close + JSON-RPC 'message' events) but every method dispatches DIRECTLY into
-// the daemon's seam — the same contract agui consumes — so the whole intg tier certifies the one
-// client surface and nothing else. No socket, no port, no bonus surface for a capability to creep
-// onto: a method not on the seam is not reachable from a test.
-//
-// The shim holds the CLIENT state a transport module holds at its edge (the attached envelope,
-// the lazily-resolved model worker) and the protocol niceties tests rely on (JSON-RPC envelopes,
-// notification fan-in via subscribeToEvents filtered to the attached workspace).
+// Test-only JSON-RPC-shaped adapter over CoreSeam. It is harness plumbing, not a
+// product protocol or AG-UI projection; client parsing remains AG-UI-owned.
+// {§methods} {§agui-op-parse}
+// It holds the attached envelope, lazy model-worker binding, and workspace-filtered
+// notification fan-in that integration tests need.
 import type { PlurnkStatement } from "@plurnk/plurnk-contracts";
 import Dsl from "./dsl.ts";
 import type Daemon from "../../src/server/Daemon.ts";
@@ -228,32 +224,6 @@ export default class SeamSocket {
                 const s = this.#attached();
                 const statement = Dsl.parseSingleStatement(p.text as string);
                 return daemon.look({ workspaceId: s.workspaceId, workerId: s.workerId, statement });
-            }
-            case "op.parse": {
-                // Parse text, dispatch each statement, surface parse failures as 400 results.
-                const s = this.#attached();
-                const { statements, errors } = Dsl.parseAllStatements(p.text as string);
-                const results: Array<{ status: number; [k: string]: unknown }> = [];
-                for (const statement of statements) results.push(await daemon.dispatchAsClient({ workspaceId: s.workspaceId, workerId: s.workerId, statement }));
-                for (const e of errors) {
-                    results.push(Results.failure(
-                        "daemon:input",
-                        "parse-failed",
-                        400,
-                        e.message,
-                        {},
-                        {
-                            context: "op.parse",
-                            stage: "parsing",
-                            line: e.line,
-                            column: e.column,
-                            source: e.source,
-                            severity: e.severity,
-                            retryable: false,
-                        },
-                    ));
-                }
-                return { results };
             }
             case "op.dispatch": {
                 const s = this.#attached();

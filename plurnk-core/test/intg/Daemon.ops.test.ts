@@ -129,64 +129,6 @@ test("op.dispatch accepts a raw PlurnkStatement AST and dispatches it", async ()
     });
 });
 
-test("op.parse parses multi-statement text and dispatches each", async () => {
-    await withDaemon(null, async (db, _daemon, addr) => {
-        const ws = await connect(addr);
-        try {
-            await rpcCall(ws, 1, "workspace.create", { name: "parse-test" });
-            const text = `<<EDIT(worker:///a):alpha:EDIT
-<<EDIT(worker:///b):beta:EDIT`;
-            const response = await rpcCall(ws, 2, "op.parse", { text });
-            const result = response.result as { results: Array<{ status: number }> };
-            assert.equal(result.results.length, 2);
-            assert.equal(result.results[0].status, 201);
-            assert.equal(result.results[1].status, 201);
-
-            const entries = await db.test_parser_pathnames.all<{ pathname: string }>();
-            assert.deepEqual(entries.map((e) => e.pathname).filter((p) => p === "/a" || p === "/b"), ["/a", "/b"]);
-        } finally { ws.close(); }
-    });
-});
-
-test("op.parse surfaces a parse failure as a 400 result with its line:col — not silently dropped (#284)", async () => {
-    await withDaemon(null, async (_db, _daemon, addr) => {
-        const ws = await connect(addr);
-        try {
-            await rpcCall(ws, 1, "workspace.create", { name: "parse-err" });
-            // A valid statement (line 1) + a malformed one (line 2: non-integer signal 'x').
-            const text = `<<EDIT(worker:///a):alpha:EDIT\n<<SEND(😀)[x]:y:SEND`;
-            const response = await rpcCall(ws, 2, "op.parse", { text });
-            const result = response.result as {
-                results: Array<{
-                    status: number;
-                    problem?: {
-                        type: string;
-                        detail?: string;
-                        line?: number;
-                        column?: number;
-                        source?: string;
-                        severity?: string;
-                        recovery?: string;
-                    };
-                }>;
-            };
-            assert.ok(result.results.some((r) => r.status === 201), "the valid EDIT dispatched");
-            const err = result.results.find((r) => r.status === 400);
-            assert.ok(err !== undefined, "the parse failure surfaced as a 400 result, not silently dropped");
-            assert.equal(err!.problem?.type, "https://problems.plurnk.dev/daemon/input/parse-failed");
-            assert.match(err!.problem?.detail ?? "", /unrecognized character 'x' in signal/);
-            assert.doesNotMatch(err!.problem?.detail ?? "", /Plurnk lexer error at line/);
-            assert.equal(err!.problem?.line, 2, "the failure's line is in the caller's submitted text (PLAN-prefix de-offset)");
-            assert.equal(err!.problem?.column, 10, "the failure retains the parser's code-point column");
-            assert.deepEqual(
-                { source: err!.problem?.source, severity: err!.problem?.severity },
-                { source: "lexer", severity: "error" },
-            );
-            assert.equal(err!.problem?.recovery, undefined, "the client seam does not author generic parser recovery");
-        } finally { ws.close(); }
-    });
-});
-
 test("op.* fires log/entry notification with the entry shape", async () => {
     await withDaemon(null, async (_db, _daemon, addr) => {
         const ws = await connect(addr);

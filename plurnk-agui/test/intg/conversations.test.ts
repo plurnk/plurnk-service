@@ -46,11 +46,14 @@ test("two threads, one world: distinct workers, shared filesystem (the environme
     const port = (module as unknown as Module).address().port;
 
     try {
-        // Thread A (== workspace name: the default conversation) EDITs a shared entry.
-        const edit = await action(port, "shared-world", "shared-world", "op.parse", { text: "<<EDIT(worker:///notes.md):the world is one:EDIT\n" });
+        // Thread A (== workspace name: the default conversation) dispatches one ordered
+        // multi-statement action against a shared entry. {§agui-op-parse}
+        const edit = await action(port, "shared-world", "shared-world", "op.parse", {
+            text: "<<EDIT(worker:///notes.md):first:EDIT\n<<EDIT(worker:///notes.md)<1,-1>:the world is one:EDIT\n",
+        });
         assert.equal(edit.ok, true, edit.error ?? "");
         const editResults = (edit.result as { results: Array<{ status: number }> }).results;
-        assert.ok(editResults.every((r) => r.status < 300), `EDIT dispatched clean: ${JSON.stringify(editResults)}`);
+        assert.deepEqual(editResults.map(({ status }) => status), [201, 200]);
 
         // {§agui-op-parse} {§unparsed-tail-boundary} — one real daemon action keeps the
         // valid prefix, surfaces the boundary loss once, and never mutates from recovered tail AST.
@@ -85,6 +88,7 @@ test("two threads, one world: distinct workers, shared filesystem (the environme
         assert.equal(read.ok, true, read.error ?? "");
         const readResults = (read.result as { results: Array<{ status: number; [k: string]: unknown }> }).results;
         assert.equal(readResults[0]?.status, 200, `thread B READs what thread A wrote: ${JSON.stringify(readResults)}`);
+        assert.equal(readResults[0]?.content, "the world is one", "the action dispatched both EDITs in source order");
 
         // The workers are DISTINCT: the workspace holds thread B's own conversation worker,
         // named for it, alongside the model worker — histories split, world shared.
