@@ -965,21 +965,20 @@ Rules:
 3. §channel-selection-unknown-channel-400 Unknown channel name → 400, carrying the fact that names the tried fragment and the declared universe (`no channel #results at sh:///1/1/2; channels: stdout, stderr`) — one miss teaches the topology.
 4. Schemes without `defaultChannel` reject fragment-less EDIT/READ.
 5. §channel-selection-fragment-on-nonexistent-404 Non-default channel EDIT requires entry to exist (404 if absent); default-channel EDIT creates.
-| URI | Channel |
-|---|---|
-| `known:///france/capital` | body (default) |
-| `known:///france/capital#symbols` | symbols |
-| `sh:///1/1/2#stdout` | stdout |
-| `sh:///1/1/2#stderr` | stderr |
-| `sse://feed/y#data` | data |
-| `log:///N/T/A` | (no channel concept; atomic log row) |
+| URI                                  | Channel                              |
+| ------------------------------------ | ------------------------------------ |
+| `worker:///france/capital`           | body (default)                       |
+| `sh:///1/1/2#stdout`                 | stdout                               |
+| `sh:///1/1/2#stderr`                 | stderr                               |
+| `sse://feed/y#data`                  | data                                 |
+| `log:///N/T/A`                       | (no channel concept; atomic log row) |
 
 Op implications:
 
 - EDIT to undeclared channel → 400; read-only channel → 405.
 - COPY/MOVE source and destination fragments independently select channels.
 
-Client-interface target parameters carry fragments inline (`{ target: "known:///x#stderr" }`).
+Client-interface target parameters carry fragments inline (`{ target: "sh:///1/1/2#stderr" }`).
 
 **Wire rendering: default channel is path-only.** Heredoc fence omits `#channel` when channel matches `defaultChannel`. Single-channel entries render path-only; multi-channel entries render the default path-only and only non-default carries `#name`.
 
@@ -1049,8 +1048,8 @@ The `## Log` section renders as a fenced `jsonplurnk` block - a JSON array of en
 
 §model-entry-log-curation A `model` log row is the model's **verbatim admitted emission**, mirrored back so it can inspect and curate its own behavior. Actionless, like an `op='error'` row ({§operation-results}): no target, no op executed; `tx` is empty and the emission lives in `rx.content`, typed `text/vnd.plurnk`. **Always born FOLDED** (budget-neutral), line-numbered like all content, and OPEN/FOLD/KILL-able like any log row. Log-KILL clears the `writableBy` gate for the model (the DB-storage curation lever plurnk.md teaches; Log's handler surface — kill only — keeps every other mutating op at 501). The engine writes one after each admitted model turn. Rejected attempts never create model rows.
 
-- §log-coordinate-hierarchy **Log coordinates are a hierarchical prefix; the trailing slash is optional** — a coordinate is `loop/turn/sequence`, and a PARTIAL coordinate selects its descendants: `log:///1` = loop 1's rows, `log:///1/2` = turn 1/2's rows, `log:///1/2/3` = the one row. A full coordinate is always three parts, so a one- or two-part path is unambiguously a prefix — the trailing slash is an optional alias (`log:///1/2` ≡ `log:///1/2/`), uniform with `READ(known:///docs/)`. Rendered row paths append `/OP` as optional self-documentation, not a fourth resource level: `log:///1/2/*` selects the turn's item rows, while `log:///**/READ` may deliberately filter that decoration.
-- §log-curation-folder-idiom **Log curation speaks the folder idiom; a zero-match sweep is a no-op success** — OPEN/FOLD/KILL take a concrete coordinate or a path-glob, and a **trailing slash or a partial coordinate means "the contents"** ({§log-coordinate-hierarchy}) exactly as `READ(known:///docs/)` fans out a folder: `FOLD(log:///1/2)` folds turn 1/2's rows. A **well-formed glob that matches nothing is 204 with `matched: 0`**; a successful sweep's rx carries `matched: N`. 400 remains for a malformed target only (no coordinate, no glob, no slash).
+- §log-coordinate-hierarchy **Log coordinates are a hierarchical prefix; the trailing slash is optional** — a coordinate is `loop/turn/sequence`, and a PARTIAL coordinate selects its descendants: `log:///1` = loop 1's rows, `log:///1/2` = turn 1/2's rows, `log:///1/2/3` = the one row. A full coordinate is always three parts, so a one- or two-part path is unambiguously a prefix — the trailing slash is an optional alias (`log:///1/2` ≡ `log:///1/2/`), uniform with `READ(worker:///docs/)`. Rendered row paths append `/OP` as optional self-documentation, not a fourth resource level: `log:///1/2/*` selects the turn's item rows, while `log:///**/READ` may deliberately filter that decoration.
+- §log-curation-folder-idiom **Log curation speaks the folder idiom; a zero-match sweep is a no-op success** — OPEN/FOLD/KILL take a concrete coordinate or a path-glob, and a **trailing slash or a partial coordinate means "the contents"** ({§log-coordinate-hierarchy}) exactly as `READ(worker:///docs/)` fans out a folder: `FOLD(log:///1/2)` folds turn 1/2's rows. A **well-formed glob that matches nothing is 204 with `matched: 0`**; a successful sweep's rx carries `matched: N`. 400 remains for a malformed target only (no coordinate, no glob, no slash).
 - §log-region-tagging **Named region tagging: FOLD applies, OPEN/FIND filter** — the log's write-op is **FOLD**, because EDIT can't reach engine-written rows (the OP×resource matrix): `FOLD[tag](region)` folds the region AND stamps the tag on it, additively ({§edit-tags-additive}), via `log_tags` (CASCADE-erased with the row on KILL). The read-ops filter: `OPEN[tag]` and `FIND[tag]` select rows carrying EVERY listed tag ({§find-tag-filter-and-semantics}) — a **targetless** `OPEN[tag]` recalls the whole tagged working-set across the worker, a scoped one filters within its glob; an unknown tag matches nothing (204, no-op success). `[tag]`-applies-on-the-write-op / `[tag]`-filters-on-the-read-ops is the same split entries already use (EDIT vs FIND); FOLD merely stands in for EDIT because the log is not an entry scheme. A fork carries a row's tags with its fold-state ({§machine-processes-fork-copies-the-log}). The model curates named working-sets of its own memory: file-away-under-a-name, recall-by-name.
 - §log-curation-set-selection **Set selection, never positional curation** — target/glob, optional body matcher, and (for OPEN) tag filters compose into the affected row set. FOLD's tags apply after selection. OPEN and FOLD have no `<L>` marker and never paginate that set; FIND owns result pagination.
 
@@ -2374,12 +2373,12 @@ second structural scope or structural EDIT language.
 
 `resolveEntryMimetype` (exported from `@plurnk/plurnk-schemes`): pathname extension → `Mimetypes.detect({ ext })` (with `text/plain` normalized to `text/markdown` per the text-primitive rule {§markdown-primitive}); falls back to scheme manifest channel default when no extension.
 
-- `known:///users.json` → `application/json` (extension wins)
-- `known:///notes.md` → `text/markdown` (extension; matches default)
-- `known:///config.yaml` → `application/yaml`
-- `known:///users` (no suffix) → `text/markdown` (Known manifest default)
+- `worker:///users.json` → `application/json` (extension wins)
+- `worker:///notes.md` → `text/markdown` (extension; matches default)
+- `worker:///config.yaml` → `application/yaml`
+- `worker:///users` (no suffix) → `text/markdown` (worker manifest default)
 
-§ext-mimetype-extension-mimetype Same rule applies across Known, Unknown, Skill, Plurnk, File. Effective
+§ext-mimetype-extension-mimetype The same rule applies to every entry-bearing scheme. Effective
 mimetype is stored in `entry_channels.mimetype` on write and drives matcher,
 projection, and binary handling. Text scope meaning does not vary by mimetype.
 

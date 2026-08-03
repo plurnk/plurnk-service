@@ -159,7 +159,7 @@ test("File.read: symlink pointing outside workspace → 404 (never a member)", a
 test("File.read: headless workspace (no entries) → 404", async () => {
     await withHeadlessWorkspace(async (ctx) => {
         // Entry-backed read: a headless workspace materializes no file entries, so
-        // any file read finds nothing → 404 (uniform with Known; the old
+        // any file read finds nothing → 404 (uniform with stored entries; the old
         // project_root precondition lived on the deleted disk-read path).
         const result = await new File().read(readStmt(urlPath("file", "/hello.txt")), ctx);
         assert.equal(result.status, 404);
@@ -327,7 +327,7 @@ test("File.read: non-empty tag filter on file:/// returns 404 (no tag concept)",
         await writeFile(join(root, "f.txt"), "x");
         await addMember(ctx, "f.txt");
         // Entry exists, but file entries carry no tags → a tag-filtered read 404s
-        // via the EntryOps tag gate, same as Known.
+        // via the shared EntryOps tag gate.
         const r = await new File().read(readStmt(urlPath("file", "/f.txt"), { tags: ["any"] }), ctx);
         assert.equal(r.status, 404);
     });

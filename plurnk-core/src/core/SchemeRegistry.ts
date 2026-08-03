@@ -53,8 +53,8 @@ export default class SchemeRegistry {
         this.register("log",    new Log());
         // #527 — "exec" is INTERNAL machinery, not an addressable scheme: the EXEC op routes here
         // and the spawn-abort/idle state lives here, but the model addresses output via the tag
-        // schemes (sh://, jq://) and process-KILLs the tag coordinate. plurnk/known/unknown retired:
-        // the knowledgebase is worker:// (commons/~/name/plurnk), task frames are prompt://.
+        // schemes (sh://, jq://) and process-KILLs the tag coordinate. The knowledgebase
+        // is worker:// (commons/~/name/plurnk), and task frames are prompt://.
         this.register("exec",   new Exec(opts?.fetchWeb));
         this.register("prompt", new Prompt());
         this.register("skill",  new Skill());

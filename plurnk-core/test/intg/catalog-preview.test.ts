@@ -56,7 +56,7 @@ test("PLURNK_SERVICE_FILES_ITEMS foists complete shallow catalogs; the files cap
     }
 });
 
-// The catalog is FIND-served — there is no plurnk:///manifest.json entry. With the preview
+// The catalog is FIND-served — there is no materialized manifest entry. With the preview
 // off, the worker opens with no foisted catalog; the model FINDs each scheme on demand (the
 // "always a single directory to READ" invariant retired with the manifest.json entry).
 test("no manifest.json entry — the catalog is FIND-served; preview-off foists no FIND", async () => {

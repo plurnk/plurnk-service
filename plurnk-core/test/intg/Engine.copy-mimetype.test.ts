@@ -1,6 +1,6 @@
 // SPEC {§channel-mimetype} — cross-mimetype COPY/MOVE → 415. A destination scheme fixes its
-// channel mimetypes via its manifest (Known: body=text/markdown); a source
-// channel of a different mimetype can't be copied in. Seed a known entry with a
+// channel mimetypes via its manifest (Worker: body=text/markdown); a source
+// channel of a different mimetype can't be copied in. Seed a worker entry with a
 // json body (the seed bypasses write-time markdown enforcement) to get the
 // non-markdown source the guard needs.
 
@@ -29,7 +29,7 @@ test("COPY a json-bodied source into a markdown-fixed worker:/// dst returns 415
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1, "copy mismatch");
         const turnId = await insertTurn(db, loopId, 1, 102);
-        // Non-markdown source — the seed sidesteps Known's write-time markdown lock.
+        // Non-markdown source — the seed sidesteps Worker's write-time markdown lock.
         await seedEntryWithChannel(db, { workspaceId, workerId, scheme: "worker", pathname: "/data/blob", channel: "body", content: "{\"k\":1}", mimetype: "application/json" });
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
 
@@ -37,7 +37,7 @@ test("COPY a json-bodied source into a markdown-fixed worker:/// dst returns 415
             statement: copyStmt(urlPath("worker", "/data/blob"), urlPath("worker", "/data/copy")),
             workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
         });
-        assert.equal(copy.status, 415, "json body cannot be copied into a markdown-fixed known channel");
+        assert.equal(copy.status, 415, "json body cannot be copied into a markdown-fixed worker channel");
         assert.equal(copy.problem?.type, "https://problems.plurnk.dev/engine/dispatcher/mimetype-mismatch");
         assert.equal(copy.problem?.channel, "body");
         assert.equal(copy.problem?.sourceMimetype, "application/json");

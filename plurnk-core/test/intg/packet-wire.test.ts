@@ -566,8 +566,8 @@ test("log render: FIND@200 renders its result catalog, not just the echoed query
         origin: "plurnk",
         op: "FIND",
         status: 200,
-        target: { scheme: "plurnk", pathname: "" },
-        tx: { op: "FIND", suffix: "", target: { kind: "url", raw: "plurnk:///**", scheme: "plurnk", pathname: "", fragment: null }, body: null, signal: null, lineMarker: null },
+        target: { scheme: "worker", pathname: "/**" },
+        tx: { op: "FIND", suffix: "", target: { kind: "url", raw: "worker:///**", scheme: "worker", pathname: "/**", fragment: null }, body: null, signal: null, lineMarker: null },
         rx: { content: catalog, mimetype: "application/json" },
     }], tok);
     assert.match(out, /"path": "prompt:\/\/\/1\/1"/, "FIND@200 renders its result body - the model sees what the FIND returned");

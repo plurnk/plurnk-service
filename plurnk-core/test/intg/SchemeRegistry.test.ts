@@ -18,9 +18,9 @@ const manifest = (name: string): SchemeManifest => ({
 
 const handler = (name: string): object => ({ manifest: manifest(name) });
 
-test("SchemeRegistry: constructor registers all eight bundled schemes", () => {
+test("SchemeRegistry: constructor registers the complete bundled scheme roster", () => {
     const r = new SchemeRegistry();
-    assert.deepEqual(r.list().toSorted(), ["exec", "file", "log", "prompt", "skill", "worker"], "the #527 roster — plurnk/known/unknown retired, prompt emerged");
+    assert.deepEqual(r.list().toSorted(), ["exec", "file", "log", "prompt", "skill", "worker"], "the bundled roster is exact");
 });
 
 test("SchemeRegistry: get(name) returns the registered handler instance", () => {
@@ -28,8 +28,8 @@ test("SchemeRegistry: get(name) returns the registered handler instance", () => 
     assert.ok(r.get("worker") instanceof Worker);
     assert.ok(r.get("prompt") instanceof Prompt);
     assert.equal(r.get("plurnk"), undefined, "plurnk:// is retired");
-    assert.equal(r.get("known"), undefined, "worker:/// is retired");
-    assert.equal(r.get("unknown"), undefined, "unworker:/// is retired");
+    assert.equal(r.get("known"), undefined, "known:// is retired");
+    assert.equal(r.get("unknown"), undefined, "unknown:// is retired");
 });
 
 test("SchemeRegistry: get(name) returns undefined for unknown scheme", () => {

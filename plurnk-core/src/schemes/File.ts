@@ -62,10 +62,10 @@ const detectFileMimetype = async (canonical: string, ctx: PlurnkSchemeContext): 
     return MimetypeBinary.TEXT_PRIMITIVE_MIMETYPE;
 };
 
-// SECURITY — File is entry-backed, identical to Known: read()/find()/readEntry()
+// SECURITY — File is entry-backed: read()/find()/readEntry()
 // delegate to the shared Entry* helpers over the membership-materialized entries
 // (scheme=null). The membership gate is now ENTRY-EXISTENCE — a non-member has no
-// entry, so read/find/readEntry 404 it for free, the same invariant Known runs on
+// entry, so read/find/readEntry 404 it at the shared entry boundary
 // (a gitignored `.env` is never a member → never an entry → never readable). Disk
 // I/O is confined to the two edges that own it: the git-membership materialize-IN
 // and edit()/applyResolution()'s proposal-gated write-OUT ({§membership}), where the

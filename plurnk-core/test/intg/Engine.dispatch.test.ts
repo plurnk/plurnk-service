@@ -249,7 +249,7 @@ test("Engine.dispatch: an external scheme cannot acquire OPEN by defining an ope
     } finally { await db.close(); }
 });
 
-test("Engine.dispatch: EDIT against worker:/// routes to Known.edit, returns 201, writes entry", async () => {
+test("Engine.dispatch: EDIT against worker:/// routes to Worker.edit, returns 201, writes entry", async () => {
     const { db, engine, env } = await setup();
     try {
         const result = await engine.dispatch({
@@ -300,7 +300,7 @@ test("Engine.dispatch: writes log_entry with statement + result fields", async (
     } finally { await db.close(); }
 });
 
-test("Engine.dispatch: READ against worker:/// routes to Known.read", async () => {
+test("Engine.dispatch: READ against worker:/// routes to Worker.read", async () => {
     const { db, engine, env } = await setup();
     try {
         await engine.dispatch({

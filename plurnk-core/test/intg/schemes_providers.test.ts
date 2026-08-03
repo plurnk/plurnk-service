@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import type { Db } from "../../src/core/Db.ts";
 import { openMigrated } from "./_helpers.ts";
 
-const registerKnown = async (db: Db, name: string = "known"): Promise<void> => {
+const registerScheme = async (db: Db, name: string = "notes"): Promise<void> => {
     await db.test_schemes_register.run({ name, writable_by: JSON.stringify(["model"]) });
 };
 
@@ -16,17 +16,17 @@ test("schemes: table is STRICT and WITHOUT ROWID", async () => {
     } finally { await db.close(); }
 });
 
-test("schemes: insert minimal known scheme", async () => {
+test("schemes: insert minimal scheme", async () => {
     const db = await openMigrated();
     try {
-        await registerKnown(db);
+        await registerScheme(db);
         const row = await db.test_schemes_get.get<{
             name: string; model_visible: number; category: string; default_scope: string; default_channel: string;
             channel_orientations: string | null; writable_by: string; volatile: number; handler: string | null;
-        }>({ name: "known" });
-        assert.equal(row?.name, "known");
+        }>({ name: "notes" });
+        assert.equal(row?.name, "notes");
         assert.equal(row?.model_visible, 1);
-        assert.equal(row?.category, "knowledge");
+        assert.equal(row?.category, "data");
         assert.equal(row?.default_scope, "workspace");
         assert.equal(row?.default_channel, "body");
         assert.equal(row?.channel_orientations, null);
@@ -39,9 +39,9 @@ test("schemes: insert minimal known scheme", async () => {
 test("schemes: PK on name — duplicate registration rejected", async () => {
     const db = await openMigrated();
     try {
-        await registerKnown(db);
+        await registerScheme(db);
         await assert.rejects(
-            () => registerKnown(db),
+            () => registerScheme(db),
             /UNIQUE constraint failed|PRIMARY KEY/,
         );
     } finally { await db.close(); }
@@ -123,10 +123,10 @@ test("schemes: handler nullable", async () => {
     const db = await openMigrated();
     try {
         await db.test_schemes_insert_with_handler.run({ name: "core", model_visible: 1, category: "c", default_scope: "workspace", default_channel: "body", writable_by: "[]", volatile: 0, handler: null });
-        await db.test_schemes_insert_with_handler.run({ name: "plug", model_visible: 1, category: "c", default_scope: "workspace", default_channel: "body", writable_by: "[]", volatile: 0, handler: "plurnk:///handlers/plug" });
+        await db.test_schemes_insert_with_handler.run({ name: "plug", model_visible: 1, category: "c", default_scope: "workspace", default_channel: "body", writable_by: "[]", volatile: 0, handler: "@example/plurnk-schemes-plug" });
         const handlers = await db.test_schemes_list_handlers.all<{ name: string; handler: string | null }>();
         assert.equal(handlers.find((s) => s.name === "core")?.handler, null);
-        assert.equal(handlers.find((s) => s.name === "plug")?.handler, "plurnk:///handlers/plug");
+        assert.equal(handlers.find((s) => s.name === "plug")?.handler, "@example/plurnk-schemes-plug");
     } finally { await db.close(); }
 });
 

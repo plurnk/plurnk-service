@@ -29,8 +29,8 @@ test("catalog is mtime-ordered — a re-edited entry sorts to the tail, the rest
         await k.edit(editStmt(url("a.md"), "alpha-2", fullReplace), ctx); // re-edit a — now most-recently-modified
 
         const catalog = await EntryManifest.catalogRowsFor(ctx);
-        const known = catalog.map((e) => e.path).filter((p) => p.startsWith("worker:///"));
-        assert.deepEqual(known, ["worker:///b.md", "worker:///c.md", "worker:///a.md"],
+        const workerEntries = catalog.map((e) => e.path).filter((p) => p.startsWith("worker:///"));
+        assert.deepEqual(workerEntries, ["worker:///b.md", "worker:///c.md", "worker:///a.md"],
             "b, c, then the re-edited a at the tail — oldest-modified first");
     } finally { await db.close(); }
 });

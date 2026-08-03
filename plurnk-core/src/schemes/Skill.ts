@@ -1,5 +1,5 @@
-// PROVISIONAL: this scheme handler exists structurally (parallel to Known/
-// Unknown) but its semantics are NOT yet designed.
+// PROVISIONAL: this handler delegates to the shared entry operation surface,
+// but its scheme-specific semantics are not yet designed.
 
 import type { EntryEditResult, EntryFindResult, EntryReadResult, SchemeCtx, SchemeHandler, SchemeManifest, SchemeResult } from "@plurnk/plurnk-schemes";
 import type { EditStatement, FindStatement, ReadStatement, SendStatement } from "@plurnk/plurnk-contracts";

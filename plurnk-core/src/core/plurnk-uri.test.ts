@@ -1,6 +1,5 @@
-// The plurnk:// addressing convention (plurnk-uri.ts): a namespace lives in the URL authority
-// slot, but storage keys by the full folded path. fold (parse) and render (the inverse) must
-// round-trip, and a single-segment singleton must stay empty-authority root.
+// Non-network scheme authorities fold into the stored pathname. Rendering uses the
+// canonical empty-authority form; no retired scheme receives a private inverse.
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -16,11 +15,11 @@ test("foldAuthorityIntoPath folds a namespace authority into the canonical path"
 });
 
 test("entryPathnameOf preserves namespace and network authorities in canonical storage identity", () => {
-    const known = parsePath("known://docs/fact.md");
+    const notes = parsePath("notes://docs/fact.md");
     const wikipedia = parsePath("https://en.wikipedia.org/wiki/Igor_Smirnov_%28politician%29");
-    assert.ok(known);
+    assert.ok(notes);
     assert.ok(wikipedia);
-    assert.equal(entryPathnameOf(known), "/docs/fact.md");
+    assert.equal(entryPathnameOf(notes), "/docs/fact.md");
     assert.equal(
         entryPathnameOf(wikipedia),
         "/en.wikipedia.org/wiki/Igor_Smirnov_(politician)",
@@ -33,18 +32,13 @@ test("network entry identity includes non-default port and serialized query", ()
     assert.equal(entryPathnameOf(target), "/example.org:8443/a(b)?b=2&a=1&a=3");
 });
 
-test("renderAddress promotes a multi-segment plurnk path to authority form", () => {
-    assert.equal(renderAddress("plurnk", "/docs/x.md"), "plurnk://docs/x.md");
-    assert.equal(renderAddress("plurnk", "/skills/x.md"), "plurnk://skills/x.md");
+test("renderAddress gives retired and arbitrary non-network schemes no private rendering rule", () => {
+    assert.equal(renderAddress("plurnk", "/docs/x.md"), "plurnk:///docs/x.md");
+    assert.equal(renderAddress("notes", "/docs/x.md"), "notes:///docs/x.md");
 });
 
-test("renderAddress keeps a single-segment plurnk singleton at empty-authority root", () => {
-    assert.equal(renderAddress("plurnk", "/manifest.json"), "plurnk:///manifest.json");
-    assert.equal(renderAddress("plurnk", "/POLICY.md"), "plurnk:///POLICY.md");
-});
-
-test("renderAddress: known keeps empty-authority :///; url schemes take the authority form (#370)", () => {
-    assert.equal(renderAddress("known", "/france/capital"), "known:///france/capital");
+test("renderAddress: non-network schemes keep empty-authority :///; network schemes restore the authority (#370)", () => {
+    assert.equal(renderAddress("notes", "/france/capital"), "notes:///france/capital");
     // {§scheme-address} — the folded first segment renders as the network host.
     assert.equal(renderAddress("http", "/en.wikipedia.org/wiki/Paris"), "http://en.wikipedia.org/wiki/Paris");
     assert.equal(
@@ -59,7 +53,7 @@ test("schemeNameOf: https rides http; ws rides wss — two first-class schemes, 
     assert.equal(schemeNameOf(parsePath("http://example.org/x")), "http");
     assert.equal(schemeNameOf(parsePath("wss://example.org/socket")), "wss");
     assert.equal(schemeNameOf(parsePath("ws://example.org/socket")), "wss");
-    assert.equal(schemeNameOf(parsePath("known:///fact")), "known");
+    assert.equal(schemeNameOf(parsePath("notes:///fact")), "notes");
 });
 
 test("renderAddress: ws/wss render the authority form like http/https (#470)", () => {
@@ -67,12 +61,10 @@ test("renderAddress: ws/wss render the authority form like http/https (#470)", (
     assert.equal(renderAddress("wss", "/example.org/socket"), "wss://example.org/socket");
 });
 
-test("fold then render round-trips a model-emitted authority-form address", () => {
-    // model writes plurnk://docs/x.md → grammar parses hostname="docs", pathname="/x.md"
+test("fold then render canonicalizes a non-network authority into the pathname", () => {
     const stored = foldAuthorityIntoPath("docs", "/x.md");
     assert.equal(stored, "/docs/x.md");
-    assert.equal(renderAddress("plurnk", stored), "plurnk://docs/x.md");
-    // the empty-authority form folds to the SAME canonical key — both addressings agree
+    assert.equal(renderAddress("notes", stored), "notes:///docs/x.md");
     assert.equal(foldAuthorityIntoPath(null, "/docs/x.md"), stored);
 });
 

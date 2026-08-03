@@ -38,7 +38,7 @@ const setupContext = async () => {
     return { db, workspaceId, workerId };
 };
 
-test("Known.edit: new entry — inserts entries row, body channel, tags", async () => {
+test("Worker.edit: new entry — inserts entries row, body channel, tags", async () => {
     const { db, workspaceId, workerId } = await setupContext();
     try {
         const stmt = editStatement({
@@ -65,7 +65,7 @@ test("Known.edit: new entry — inserts entries row, body channel, tags", async 
     } finally { await db.close(); }
 });
 
-test("Known.edit: second EDIT against same path — same entry id, body replaced, status 200", async () => {
+test("Worker.edit: second EDIT against same path — same entry id, body replaced, status 200", async () => {
     const { db, workspaceId, workerId } = await setupContext();
     try {
         const k = new Worker();
@@ -98,7 +98,7 @@ test("EDIT that changes nothing returns 304; content change or new tag is still 
     } finally { await db.close(); }
 });
 
-test("Known.edit: empty body clears the channel content (does not delete the entry)", async () => {
+test("Worker.edit: empty body clears the channel content (does not delete the entry)", async () => {
     const { db, workspaceId, workerId } = await setupContext();
     try {
         const k = new Worker();
@@ -111,7 +111,7 @@ test("Known.edit: empty body clears the channel content (does not delete the ent
     } finally { await db.close(); }
 });
 
-test("Known.edit: tags merge additively across multiple EDITs", async () => {
+test("Worker.edit: tags merge additively across multiple EDITs", async () => {
     const { db, workspaceId, workerId } = await setupContext();
     try {
         const k = new Worker();
@@ -124,7 +124,7 @@ test("Known.edit: tags merge additively across multiple EDITs", async () => {
     } finally { await db.close(); }
 });
 
-test("Known.edit: null tags signal and empty tag array both produce no tag rows", async () => {
+test("Worker.edit: null tags signal and empty tag array both produce no tag rows", async () => {
     const { db, workspaceId, workerId } = await setupContext();
     try {
         const k = new Worker();
@@ -137,7 +137,7 @@ test("Known.edit: null tags signal and empty tag array both produce no tag rows"
     } finally { await db.close(); }
 });
 
-test("Known.edit: lineMarker on non-existent entry — body becomes content", async () => {
+test("Worker.edit: lineMarker on non-existent entry — body becomes content", async () => {
     const { db, workspaceId, workerId } = await setupContext();
     try {
         const stmt = editStatement({ target: urlPath("worker", "/new"), body: "first line\nsecond line", lineMarker: { marks: [0] } });
@@ -148,7 +148,7 @@ test("Known.edit: lineMarker on non-existent entry — body becomes content", as
     } finally { await db.close(); }
 });
 
-test("Known.edit: lineMarker <N> on existing entry replaces line N", async () => {
+test("Worker.edit: lineMarker <N> on existing entry replaces line N", async () => {
     const { db, workspaceId, workerId } = await setupContext();
     try {
         const k = new Worker();
@@ -160,7 +160,7 @@ test("Known.edit: lineMarker <N> on existing entry replaces line N", async () =>
     } finally { await db.close(); }
 });
 
-test("Known.edit: lineMarker <0> on existing entry prepends", async () => {
+test("Worker.edit: lineMarker <0> on existing entry prepends", async () => {
     const { db, workspaceId, workerId } = await setupContext();
     try {
         const k = new Worker();
@@ -171,7 +171,7 @@ test("Known.edit: lineMarker <0> on existing entry prepends", async () => {
     } finally { await db.close(); }
 });
 
-test("Known.edit: lineMarker <-1> on existing entry appends", async () => {
+test("Worker.edit: lineMarker <-1> on existing entry appends", async () => {
     const { db, workspaceId, workerId } = await setupContext();
     try {
         const k = new Worker();
@@ -182,7 +182,7 @@ test("Known.edit: lineMarker <-1> on existing entry appends", async () => {
     } finally { await db.close(); }
 });
 
-test("Known.edit: lineMarker <1,-1> empty body clears", async () => {
+test("Worker.edit: lineMarker <1,-1> empty body clears", async () => {
     const { db, workspaceId, workerId } = await setupContext();
     try {
         const k = new Worker();
@@ -193,7 +193,7 @@ test("Known.edit: lineMarker <1,-1> empty body clears", async () => {
     } finally { await db.close(); }
 });
 
-test("Known.edit: lineMarker out of range returns 416", async () => {
+test("Worker.edit: lineMarker out of range returns 416", async () => {
     const { db, workspaceId, workerId } = await setupContext();
     try {
         const k = new Worker();
@@ -203,7 +203,7 @@ test("Known.edit: lineMarker out of range returns 416", async () => {
     } finally { await db.close(); }
 });
 
-test("Known.edit: null path returns 400", async () => {
+test("Worker.edit: null path returns 400", async () => {
     const { db, workspaceId, workerId } = await setupContext();
     try {
         const stmt = editStatement({ target: null, body: "x" });
@@ -215,7 +215,7 @@ test("Known.edit: null path returns 400", async () => {
 
 
 
-test("Known.edit: exact coordinates edit minified JSON as text", async () => {
+test("Worker.edit: exact coordinates edit minified JSON as text", async () => {
     const { db, workspaceId, workerId } = await setupContext();
     const mimetypes = new Mimetypes();
     await mimetypes.ready();
@@ -249,7 +249,7 @@ test("Known.edit: exact coordinates edit minified JSON as text", async () => {
     } finally { await db.close(); }
 });
 
-test("Known.edit: line shorthand edits JSON physical lines and can replace the whole resource", async () => {
+test("Worker.edit: line shorthand edits JSON physical lines and can replace the whole resource", async () => {
     const { db, workspaceId, workerId } = await setupContext();
     const mimetypes = new Mimetypes();
     await mimetypes.ready();
@@ -286,7 +286,7 @@ test("Known.edit: line shorthand edits JSON physical lines and can replace the w
     } finally { await db.close(); }
 });
 
-test("Known.edit: line shorthand has the same meaning without a path suffix", async () => {
+test("Worker.edit: line shorthand has the same meaning without a path suffix", async () => {
     const { db, workspaceId, workerId } = await setupContext();
     const mimetypes = new Mimetypes();
     await mimetypes.ready();
@@ -300,7 +300,7 @@ test("Known.edit: line shorthand has the same meaning without a path suffix", as
     } finally { await db.close(); }
 });
 
-test("Known.edit: textual JSON edits do not introduce a hidden parse gate", async () => {
+test("Worker.edit: textual JSON edits do not introduce a hidden parse gate", async () => {
     const { db, workspaceId, workerId } = await setupContext();
     const mimetypes = new Mimetypes();
     await mimetypes.ready();
@@ -317,7 +317,7 @@ test("Known.edit: textual JSON edits do not introduce a hidden parse gate", asyn
     } finally { await db.close(); }
 });
 
-test("Known.edit result carries a bounded effect receipt with revision identity", async () => {
+test("Worker.edit result carries a bounded effect receipt with revision identity", async () => {
     const { db, workspaceId, workerId } = await setupContext();
     try {
         const ctx = makeSchemeCtx({ db, workspaceId, workerId });

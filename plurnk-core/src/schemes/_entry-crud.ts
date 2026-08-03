@@ -1,4 +1,4 @@
-// Shared CRUD primitives for entry-bearing schemes (Known, Unknown, Skill).
+// Shared CRUD primitives for entry-bearing schemes.
 // Per SPEC {§crud} — uniform read/write/delete that the engine drives for
 // cross-scheme orchestration of COPY/MOVE/SEND[410].
 
@@ -25,7 +25,7 @@ export interface WriteEntryResult extends SchemeResultBase {
     entryId: number | null;
     // 202 proposal: a write INTO file:/// is a disk write under {§membership} review —
     // carries the udiff for the client + the applyResolution inputs. Absent for
-    // synchronous entry schemes (known/unknown/skill write directly).
+    // synchronous entry schemes.
     body?: string;
     attrs?: object;
 }

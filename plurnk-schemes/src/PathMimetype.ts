@@ -9,15 +9,15 @@
 //
 // This makes structural ops (`<L>` item-index, matcher dialect dispatch)
 // fire correctly without content-sniffing: a model writing JSON to
-// `known://users.json` opts into JSON treatment via the `.json` suffix,
-// while `known://notes` (no suffix) stays at Known's default of
+// `notes:///users.json` opts into JSON treatment via the `.json` suffix,
+// while `notes:///scratch` (no suffix) stays at that scheme's default of
 // `text/markdown`.
 //
 // Consistent across:
-//   - known://users.json     → application/json
-//   - known://notes.md       → text/markdown
-//   - known://config.yaml    → application/yaml
-//   - known://users          → scheme default (text/markdown for Known)
+//   - notes:///users.json     → application/json
+//   - notes:///scratch.md     → text/markdown
+//   - notes:///config.yaml    → application/yaml
+//   - notes:///scratch        → scheme default
 
 import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import MimetypeClassifier from "./MimetypeClassifier.ts";

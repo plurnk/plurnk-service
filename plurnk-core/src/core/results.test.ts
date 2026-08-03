@@ -48,13 +48,13 @@ test("isErrorStatus marks 4xx/5xx and only those", () => {
 
 test("failure delegates to the shared RFC 9457 contract", () => {
     const result = Results.failure(
-        "scheme:known",
+        "scheme:worker",
         "entry-not-found",
         404,
-        "No entry exists at known:///missing.",
+        "No entry exists at worker:///missing.",
         { shape: "entry", entryId: null, channel: "body" },
     ) as EntryResult;
-    assert.equal(result.problem?.type, "https://problems.plurnk.dev/scheme/known/entry-not-found");
+    assert.equal(result.problem?.type, "https://problems.plurnk.dev/scheme/worker/entry-not-found");
     assert.equal(result.problem?.title, "Entry not found");
     assert.equal(result.problem?.status, result.status);
     assert.equal("error" in result, false);
@@ -64,7 +64,7 @@ test("assert rejects a bare failure and mismatched statuses", () => {
     assert.throws(() => Results.assert({ status: 404 }), /invalid operation result/);
     assert.throws(() => Results.assert({
         status: 404,
-        problem: Results.problem("scheme:known", "entry-not-found", 409, "Missing."),
+        problem: Results.problem("scheme:worker", "entry-not-found", 409, "Missing."),
     }), /does not match/);
 });
 

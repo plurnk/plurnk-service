@@ -1,8 +1,6 @@
-// SPEC {§packet} — plurnk:///manifest.json is the complete, unranked directory of the
-// workspace's entries, rewritten every turn by Engine.runTurn. This drives the
-// LIVE path: a real turn materializes the manifest; we parse its body and assert
-// the directory contract — every entry listed, NO `shown`/relevance field, the
-// catalog never lists itself.
+// SPEC {§packet} — the FIND-served catalog is the complete, unranked directory of
+// workspace entries. A real turn updates its search projection; this test reads
+// the same catalog surface and asserts every entry is listed with no visibility field.
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -44,7 +42,7 @@ test("the catalog is the complete, unranked directory — every entry, no `shown
         assert.ok(paths.includes("worker:///france/capital"), `catalog lists france; got ${JSON.stringify(paths)}`);
         assert.ok(paths.includes("worker:///germany/capital"), `catalog lists germany; got ${JSON.stringify(paths)}`);
         // It does not list itself.
-        assert.ok(!paths.includes("plurnk:///manifest.json"), "catalog does not list itself");
+        assert.ok(!paths.includes("worker:///manifest.json"), "catalog has no synthetic manifest entry");
         // Unranked directory: NO `shown` (or any visibility/relevance) field anywhere.
         for (const e of catalog) assert.equal("shown" in e, false, `no \`shown\` field — the directory is unranked (offender: ${e.path})`);
 

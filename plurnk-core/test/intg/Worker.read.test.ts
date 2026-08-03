@@ -41,7 +41,7 @@ const setupContext = async () => {
     return { db, workspaceId, workerId };
 };
 
-test("Known.read: existing entry — returns body content and mimetype with status 200", async () => {
+test("Worker.read: existing entry — returns body content and mimetype with status 200", async () => {
     const { db, workspaceId, workerId } = await setupContext();
     try {
         const k = new Worker();
@@ -53,7 +53,7 @@ test("Known.read: existing entry — returns body content and mimetype with stat
     } finally { db.close(); }
 });
 
-test("Known.read: nonexistent path returns 404 with null content/mimetype", async () => {
+test("Worker.read: nonexistent path returns 404 with null content/mimetype", async () => {
     const { db, workspaceId } = await setupContext();
     try {
         const result = await new Worker().read(readStatement({ target: urlPath("worker", "/nope") }), makeSchemeCtx({ db, workspaceId }));
@@ -63,7 +63,7 @@ test("Known.read: nonexistent path returns 404 with null content/mimetype", asyn
     } finally { db.close(); }
 });
 
-test("Known.read: null path returns 400", async () => {
+test("Worker.read: null path returns 400", async () => {
     const { db, workspaceId } = await setupContext();
     try {
         const result = await new Worker().read(readStatement({ target: null }), makeSchemeCtx({ db, workspaceId }));
@@ -73,7 +73,7 @@ test("Known.read: null path returns 400", async () => {
     } finally { db.close(); }
 });
 
-test("Known.read: lineMarker <N> on text source returns raw line + text/markdown mimetype", async () => {
+test("Worker.read: lineMarker <N> on text source returns raw line + text/markdown mimetype", async () => {
     const { db, workspaceId, workerId } = await setupContext();
     try {
         const k = new Worker();
@@ -87,7 +87,7 @@ test("Known.read: lineMarker <N> on text source returns raw line + text/markdown
     } finally { db.close(); }
 });
 
-test("Known.read: four-coordinate scope returns an exact Unicode text region", async () => {
+test("Worker.read: four-coordinate scope returns an exact Unicode text region", async () => {
     const { db, workspaceId, workerId } = await setupContext();
     try {
         const k = new Worker();
@@ -117,7 +117,7 @@ test("Known.read: four-coordinate scope returns an exact Unicode text region", a
     } finally { db.close(); }
 });
 
-test("Known.read: an empty exact scope retains its region and matcher evidence", async () => {
+test("Worker.read: an empty exact scope retains its region and matcher evidence", async () => {
     const { db, workspaceId, workerId } = await setupContext();
     try {
         const k = new Worker();
@@ -147,7 +147,7 @@ test("Known.read: an empty exact scope retains its region and matcher evidence",
     } finally { db.close(); }
 });
 
-test("Known.read: regex matcher selects the resource and reports coordinates", async () => {
+test("Worker.read: regex matcher selects the resource and reports coordinates", async () => {
     const { db, workspaceId, workerId } = await setupContext();
     try {
         const k = new Worker();
@@ -164,7 +164,7 @@ test("Known.read: regex matcher selects the resource and reports coordinates", a
     } finally { db.close(); }
 });
 
-test("Known.read: glob matcher selects the resource and reports match coordinates", async () => {
+test("Worker.read: glob matcher selects the resource and reports match coordinates", async () => {
     const { db, workspaceId, workerId } = await setupContext();
     try {
         const k = new Worker();
@@ -181,7 +181,7 @@ test("Known.read: glob matcher selects the resource and reports match coordinate
     } finally { db.close(); }
 });
 
-test("Known.read: tag filter — entry has all requested tags → 200", async () => {
+test("Worker.read: tag filter — entry has all requested tags → 200", async () => {
     const { db, workspaceId, workerId } = await setupContext();
     try {
         const k = new Worker();
@@ -192,7 +192,7 @@ test("Known.read: tag filter — entry has all requested tags → 200", async ()
     } finally { db.close(); }
 });
 
-test("Known.read: tag filter — entry missing requested tag → 404", async () => {
+test("Worker.read: tag filter — entry missing requested tag → 404", async () => {
     const { db, workspaceId, workerId } = await setupContext();
     try {
         const k = new Worker();
@@ -202,7 +202,7 @@ test("Known.read: tag filter — entry missing requested tag → 404", async () 
     } finally { db.close(); }
 });
 
-test("Known.read: matcher selects the full resource before <L> projects text", async () => {
+test("Worker.read: matcher selects the full resource before <L> projects text", async () => {
     const { db, workspaceId, workerId } = await setupContext();
     try {
         const k = new Worker();
@@ -221,7 +221,7 @@ test("Known.read: matcher selects the full resource before <L> projects text", a
     } finally { db.close(); }
 });
 
-test("Known.read: empty tag signal ([]) is treated as no filter — read proceeds", async () => {
+test("Worker.read: empty tag signal ([]) is treated as no filter — read proceeds", async () => {
     const { db, workspaceId, workerId } = await setupContext();
     try {
         const k = new Worker();
@@ -232,7 +232,7 @@ test("Known.read: empty tag signal ([]) is treated as no filter — read proceed
     } finally { db.close(); }
 });
 
-test("Known.read: edited entry round-trips through read — content matches what edit wrote", async () => {
+test("Worker.read: edited entry round-trips through read — content matches what edit wrote", async () => {
     const { db, workspaceId, workerId } = await setupContext();
     try {
         const k = new Worker();
@@ -251,7 +251,7 @@ test("Known.read: edited entry round-trips through read — content matches what
 
 
 
-test("Known.read: different workspaces see different entries at the same path", async () => {
+test("Worker.read: different workspaces see different entries at the same path", async () => {
     const db = await openMigrated();
     try {
         const workspaceA = await insertWorkspace(db, "ws-readiso-a");
@@ -268,7 +268,7 @@ test("Known.read: different workspaces see different entries at the same path", 
     } finally { db.close(); }
 });
 
-test("Known.read: read against workspace A doesn't surface workspace B's entry", async () => {
+test("Worker.read: read against workspace A doesn't surface workspace B's entry", async () => {
     const db = await openMigrated();
     try {
         const workspaceA = await insertWorkspace(db, "ws-rd-a");
@@ -284,7 +284,7 @@ test("Known.read: read against workspace A doesn't surface workspace B's entry",
 
 // --- Extension-based mimetype ----------------------------------------
 
-test("Known: path suffix `.json` declares mimetype; READ returns application/json", async () => {
+test("Worker: path suffix `.json` declares mimetype; READ returns application/json", async () => {
     const { db, workspaceId, workerId } = await setupContext();
     const mimetypes = new Mimetypes();
     await mimetypes.ready();
@@ -304,7 +304,7 @@ test("Known: path suffix `.json` declares mimetype; READ returns application/jso
     } finally { db.close(); }
 });
 
-test("Known: extension `.json` does not change line shorthand semantics", async () => {
+test("Worker: extension `.json` does not change line shorthand semantics", async () => {
     const { db, workspaceId, workerId } = await setupContext();
     const mimetypes = new Mimetypes();
     await mimetypes.ready();
@@ -328,7 +328,7 @@ test("Known: extension `.json` does not change line shorthand semantics", async 
     } finally { db.close(); }
 });
 
-test("Known: no path suffix → scheme default (text/markdown); <L> is line-based", async () => {
+test("Worker: no path suffix → scheme default (text/markdown); <L> is line-based", async () => {
     const { db, workspaceId, workerId } = await setupContext();
     const mimetypes = new Mimetypes();
     await mimetypes.ready();

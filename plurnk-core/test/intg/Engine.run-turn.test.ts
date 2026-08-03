@@ -303,10 +303,10 @@ test("Engine.runTurn: PLURNK_SERVICE_MAX_COMMANDS caps dispatched ops; overflow 
 
             // Confirm only 3 model EDITs landed — overflow didn't sneak through.
             // Scope to scheme='worker' to exclude the engine's prompt:/// entry.
-            const known = await db.test_count_entries_by_workspace_scheme.get<{ n: number }>({
+            const workerEntries = await db.test_count_entries_by_workspace_scheme.get<{ n: number }>({
                 workspace_id: workspaceId, scheme: "worker",
             });
-            assert.equal(known?.n, 3, "3 worker:/// entries; overflow ops never reached schemes");
+            assert.equal(workerEntries?.n, 3, "3 worker:/// entries; overflow ops never reached schemes");
 
             // Turn 2 packet carries the cap failure as a terse 'Max Commands Exceeded' (429) log row,
             // surfaced via its derived LogCoordinate pointer. The emitted/dropped counts live on the row.
@@ -345,10 +345,10 @@ test("Engine.runTurn: PLURNK_SERVICE_MAX_COMMANDS=-1 (default) leaves the op cei
             });
             const t1 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
             assert.equal(t1.statuses.length, 5, "all 5 ops dispatched — no cap");
-            const known = await db.test_count_entries_by_workspace_scheme.get<{ n: number }>({
+            const workerEntries = await db.test_count_entries_by_workspace_scheme.get<{ n: number }>({
                 workspace_id: workspaceId, scheme: "worker",
             });
-            assert.equal(known?.n, 5, "5 worker:/// entries; nothing dropped");
+            assert.equal(workerEntries?.n, 5, "5 worker:/// entries; nothing dropped");
 
             // Next packet carries NO max_commands_exceeded — the ceiling never engaged.
             const t2 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });

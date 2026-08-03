@@ -1,5 +1,5 @@
-// Shared READ selection-to-projection resolution for entry-bearing schemes
-// (Known/Skill/Unknown/Exec/Plurnk via `_entry-ops`), plus `Log` and `File`.
+// Shared READ selection-to-projection resolution for entry-bearing schemes,
+// plus `Log` and `File`.
 // A body matcher selects the resource against its full readable content; `<L>`
 // then projects text from that selected resource. Without `<L>`, READ returns
 // the complete selected resource. Match coordinates remain metadata in both

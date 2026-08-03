@@ -6,7 +6,7 @@
 // do not invoke handlers).
 //
 // Vehicles are the real production paths:
-//   - {§matcher-dispatch} / {§slice-semantics-compose-pattern} - Known.read matcher dispatch
+//   - {§matcher-dispatch} / {§slice-semantics-compose-pattern} - Worker.read matcher dispatch
 //                     (Matcher.matchAgainstContent -> 203) plus coordinate-guided READ.
 //   - {§send-dispatch} - _entry-send.sendToWorkspaceEntry 410-with-fragment over Engine.dispatch.
 //   - {§mimetype-methods} / {§mimetype} - Mimetypes.process shape + a spy handler
@@ -179,7 +179,7 @@ test("SEND[410](path#fragment) deletes only the named channel; siblings remain (
         const { workspaceId, workerId, loopId, turnId } = env;
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
 
-        // Seed a two-channel entry directly (production Known is single-channel;
+        // Seed a two-channel entry directly (production Worker is single-channel;
         // the 410-fragment path is channel-generic, so seed both channels).
         const entry = await db.test_seed_entry_workspace.get<{ id: number }>({
             workspace_id: workspaceId, owner_id: await Owner.commonsId(db, workspaceId), scheme: "worker", pathname: "/multi",
@@ -268,7 +268,7 @@ test("write resolves mimetype without firing the handler; explicit projection fi
         });
         await mimetypes.ready();
 
-        // WRITE phase: Known.edit on a `.spy` path. Resolves mimetype via
+        // WRITE phase: Worker.edit on a `.spy` path. Resolves mimetype via
         // detect; must not touch content/query.
         const edited = await new Worker().edit(
             editStmt(urlPath("worker", "/notes.spy"), "alpha\nbeta\ngamma"),

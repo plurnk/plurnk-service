@@ -153,29 +153,29 @@ const makeCtx = () => {
 test("ctx: entries cap does real CRUD scoped to the store", async () => {
     const { ctx } = makeCtx();
     const data: EntryData = { channels: { body: { content: "hi", mimetype: "text/markdown" } }, tags: ["a"] };
-    assert.equal((await ctx.entries.read("known://x")).status, 404);
-    const w = await ctx.entries.write("known://x", data);
+    assert.equal((await ctx.entries.read("notes:///x")).status, 404);
+    const w = await ctx.entries.write("notes:///x", data);
     assert.equal(w.status, 201);
     assert.equal(w.created, true);
-    const r = await ctx.entries.read("known://x");
+    const r = await ctx.entries.read("notes:///x");
     assert.equal(r.status, 200);
     assert.equal(r.entry?.channels.body.content, "hi");
-    assert.equal((await ctx.entries.delete("known://x")).status, 200);
-    assert.equal((await ctx.entries.read("known://x")).status, 404);
+    assert.equal((await ctx.entries.delete("notes:///x")).status, 200);
+    assert.equal((await ctx.entries.read("notes:///x")).status, 404);
 });
 
 test("ctx: channels append accumulates (append-only store)", async () => {
     const { ctx } = makeCtx();
-    await ctx.entries.write("known://x", { channels: {}, tags: [] });
-    await ctx.channels.append("known://x", "body", "foo");
-    await ctx.channels.append("known://x", "body", "bar");
-    const r = await ctx.entries.read("known://x");
+    await ctx.entries.write("notes:///x", { channels: {}, tags: [] });
+    await ctx.channels.append("notes:///x", "body", "foo");
+    await ctx.channels.append("notes:///x", "body", "bar");
+    const r = await ctx.entries.read("notes:///x");
     assert.equal(r.entry?.channels.body.content, "foobar");
 });
 
 test("ctx: tags return 404 for absent entries", async () => {
     const { ctx } = makeCtx();
-    assert.equal((await ctx.tags.list("known://nope")).status, 404);
+    assert.equal((await ctx.tags.list("notes:///nope")).status, 404);
 });
 
 test("ctx: subscriptions.open returns an awaitable AbortSignal", async () => {

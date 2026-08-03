@@ -2918,12 +2918,9 @@ export default class Dispatcher {
         // `local` (bare path) carries no URL parts — store the raw text as the pathname for the log record, scheme=null.
         if (path.kind === "local") return { scheme: null, username: null, password: null, hostname: null, port: null, pathname: PathSyntax.decodeParens(path.raw), query: null, fragment: null }; // #239 item 4
         const scheme = path.scheme === "file" ? null : path.scheme;
-        // Every registered (plurnk-namespace) scheme uses its authority as a namespace segment — fold
-        // it into the canonical pathname so known://x ≡ known:///x ≡ /x and the log keys identically to
-        // the entry (/prompt/<worker>/<loop>/<N>, /docs/x.md). A foreign web host (http://, unregistered) is NOT a
-        // namespace: keep it in hostname. worker:// is the one registered EXCEPTION — its authority IS the
-        // worker selector ({§worker-scheme}), and worker://self must stay distinct from worker://name, so Worker.ts
-        // folds the owner into the storage path itself, never here.
+        // {§scheme-address-namespace-fold} — a registered non-network scheme folds its
+        // namespace authority into the canonical pathname. Network authorities remain hosts;
+        // worker:// is the registered exception because its authority selects the owner.
         const foldNs = scheme !== null
             && scheme !== "worker"
             && !NetworkAddress.supports(scheme)

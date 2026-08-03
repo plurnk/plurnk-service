@@ -16,9 +16,9 @@ Class-level manifest (static field on the default export):
 ```ts
 import type { SchemeManifest } from "@plurnk/plurnk-schemes";
 
-class Known {
+class Notes {
     static manifest: SchemeManifest = {
-        name: "known",
+        name: "notes",
         channels: { body: "text/markdown", preview: "text/markdown" },
         defaultChannel: "body",
         category: "data",

@@ -14,7 +14,7 @@ const minimalSchemeReg = () => ({
     default_channel: "body",
     writable_by: ["model" as const],
     volatile: false,
-    handler: "plurnk://handlers/wiki",
+    handler: "@example/plurnk-schemes-wiki",
 });
 
 test("Validator: SchemeRegistration accepts minimal row", () => {

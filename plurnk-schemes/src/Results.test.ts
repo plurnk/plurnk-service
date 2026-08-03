@@ -57,19 +57,19 @@ test("isErrorStatus marks 4xx/5xx and only those", () => {
 });
 
 test("problem mints a stable RFC 9457 type and title", () => {
-    const problem = Results.problem("scheme:known", "entry-not-found", 404, "No entry exists at known:///missing.");
-    assert.equal(problem.type, "https://problems.plurnk.dev/scheme/known/entry-not-found");
+    const problem = Results.problem("scheme:notes", "entry-not-found", 404, "No entry exists at notes:///missing.");
+    assert.equal(problem.type, "https://problems.plurnk.dev/scheme/notes/entry-not-found");
     assert.equal(problem.title, "Entry not found");
     assert.equal(problem.status, 404);
-    assert.equal(problem.detail, "No entry exists at known:///missing.");
+    assert.equal(problem.detail, "No entry exists at notes:///missing.");
 });
 
 test("failure carries plugin metadata beside one problem", () => {
     const result = Results.failure(
-        "scheme:known",
+        "scheme:notes",
         "entry-not-found",
         404,
-        "No entry exists at known:///missing.",
+        "No entry exists at notes:///missing.",
         { shape: "entry", entryId: null, channel: "body" },
         { availableChannels: ["body"] },
     ) as EntryResult;
@@ -87,7 +87,7 @@ test("assert rejects a bare failure and a mismatched problem status", () => {
     assert.throws(
         () => Results.assert({
             status: 404,
-            problem: Results.problem("scheme:known", "entry-not-found", 409, "Missing."),
+            problem: Results.problem("scheme:notes", "entry-not-found", 409, "Missing."),
         }),
         /does not match/,
     );
@@ -107,8 +107,8 @@ test("attachInstance adds the durable operation coordinate", () => {
 });
 
 test("problem identifiers fail hard instead of minting ambiguous types", () => {
-    assert.throws(() => Results.problem("Scheme:Known", "entry-not-found", 404, "Missing."), /problem owner/);
-    assert.throws(() => Results.problem("scheme:known", "Entry_Not_Found", 404, "Missing."), /problem code/);
+    assert.throws(() => Results.problem("Scheme:Notes", "entry-not-found", 404, "Missing."), /problem owner/);
+    assert.throws(() => Results.problem("scheme:notes", "Entry_Not_Found", 404, "Missing."), /problem code/);
 });
 
 test("match evidence requires a locator, a complete TextRegion, or both", () => {

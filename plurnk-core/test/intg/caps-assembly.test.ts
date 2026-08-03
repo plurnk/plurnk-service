@@ -14,7 +14,7 @@ test("SchemeCtxImpl: identity and the six capabilities are wired", async () => {
     try {
         const workspaceId = await insertWorkspace(db, `caps-asm-${crypto.randomUUID()}`);
         const ctx = makeSchemeCtx({ db, workspaceId, workerId: 7, loopId: 8, turnId: 9, writer: "model" });
-        const sctx = new SchemeCtxImpl(ctx, "known", schemeManifest("known"), new LiveSubscriptions());
+        const sctx = new SchemeCtxImpl(ctx, "notes", schemeManifest("notes"), new LiveSubscriptions());
 
         // identity lifted off the PlurnkSchemeContext
         assert.equal(sctx.workspaceId, workspaceId);

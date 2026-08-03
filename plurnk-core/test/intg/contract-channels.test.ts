@@ -21,7 +21,7 @@ const setup = async () => {
 };
 
 // Seed a multi-channel exec entry (stdout + stderr) directly, bypassing the
-// subprocess. exec is the production multi-channel vehicle (Known is single-
+// subprocess. exec is the production multi-channel vehicle (Worker is single-
 // channel); fragment routing in _entry-ops.ts is exercised through Exec's
 // manifest (defaultChannel="stdout").
 const seedExecEntry = async (

@@ -11,9 +11,9 @@ import type { EditBatchReceipt } from "../content/index.ts";
 import type { TextRegion } from "@plurnk/plurnk-contracts";
 import Results, { type MatchEvidence, type SchemeResultBase } from "../core/results.ts";
 
-// Shared static-method helpers for workspace-scope entry-bearing schemes
-// (Known, Unknown, Skill). Each scheme passes its manifest; helpers
-// extract scheme name + channels + defaultChannel. Channel routing
+// Shared static-method helpers for workspace-scope entry-bearing schemes.
+// Each scheme passes its manifest; helpers extract scheme name, channels,
+// and defaultChannel. Channel routing
 // follows SPEC {§channel-selection}: path.fragment ?? manifest.defaultChannel.
 
 // Produce the aggregate scheme receipt owned by
@@ -170,8 +170,8 @@ export default class EntryOps {
 
         // Effective mimetype for this entry, per the shared contracts:
         // "Path suffix declares mimetype; absent suffix defers to scheme default."
-        // `known:///users.json` → application/json (extension wins).
-        // `known:///users`      → text/markdown (scheme manifest default).
+        // `worker:///users.json` → application/json (extension wins).
+        // `worker:///users`      → text/markdown (scheme manifest default).
         const channelManifestDefault = channels[targetChannel];
         const effectiveMimetype = await PathMimetype.resolveEntryMimetype(pathname, channelManifestDefault, ctx.mimetypes);
 

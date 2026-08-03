@@ -447,7 +447,7 @@ test("story: draft a brief, tighten it, then file it away", { timeout: TIMEOUT }
 });
 
 test("story: remember a fact, then recall it later", { timeout: TIMEOUT }, async () => {
-    // known:// persistent-memory round-trip. The deploy key is in NO file — a correct recall on a
+    // worker:// persistent-memory round-trip. The deploy key is in NO file — a correct recall on a
     // LATER turn proves the model stored it in its own memory and retrieved it. Natural prompts.
     const chain = await runStoryChain({
         label: "memory",

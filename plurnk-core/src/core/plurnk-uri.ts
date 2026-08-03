@@ -1,16 +1,6 @@
-// The plurnk:// addressing convention. A namespace lives in the URL authority slot
-// (plurnk://docs/x.md, plurnk://skills/x.md), but the canonical STORAGE key is the full
-// path with the namespace folded in (/docs/x.md) — entries are keyed by (scope, scheme,
-// pathname) with no authority column, so the authority MUST fold into the path.
-//
-//   fold   = parse-side: authority → path. Generic; a no-op when there's no authority.
-//   render = the inverse: path → model-facing URI. A multi-segment plurnk path promotes its
-//            first segment to the authority slot; a single-segment singleton (manifest.json,
-//            an alias doc) stays empty-authority root. Non-plurnk schemes are untouched.
-//
-// Network hosts are not plurnk namespaces, but storage has no separate authority
-// column. They therefore use the same mechanical fold while retaining their
-// addressed protocol as the scheme identity.
+// {§scheme-address} — registered non-network scheme authorities mechanically fold
+// into the stored pathname. Rendering uses the canonical empty-authority form.
+// Network schemes instead restore the stored host to the authority slot.
 
 import { PathSyntax, type ParsedPath } from "@plurnk/plurnk-contracts";
 import { NetworkAddress } from "@plurnk/plurnk-schemes";
@@ -69,9 +59,6 @@ export function promptLoopPrefix(loopSeq: number): string {
 export function renderAddress(scheme: string, pathname: string): string {
     if (NetworkAddress.supports(scheme)) return NetworkAddress.render(scheme, pathname);
     const encoded = PathSyntax.encodeParens(pathname);
-    if (scheme === "plurnk" && pathname.split("/").filter((s) => s.length > 0).length >= 2) {
-        return `plurnk://${encoded.replace(/^\//, "")}`;
-    }
     // {§scheme-address} — network storage folds the host into the pathname and
     // model-facing rendering restores it to the authority slot.
     // worker:// renders :/// — the owner rides owner_id ({§entry-owner}), so empty authority IS

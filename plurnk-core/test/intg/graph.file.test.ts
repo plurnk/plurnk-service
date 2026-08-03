@@ -1,7 +1,7 @@
 // @graph over file:/// — the PRIMARY case (codebase navigation). Proves the
 // symbol dialect resolves uniformly on file entries (scheme=null, bare-rendered):
 // materialize files the way git-membership does → derive at manifest-add → FIND
-// the graph dialect through File (entry-backed, identical to Known).
+// the graph dialect through File (using the shared entry backing).
 
 import test from "node:test";
 import assert from "node:assert/strict";

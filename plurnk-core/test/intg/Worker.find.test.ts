@@ -39,7 +39,7 @@ const seedEntries = async (db: import("../../src/core/Db.ts").Db, workspaceId: n
     }
 };
 
-test("Known.find returns the scheme's catalog rows (JSON), filtered to matches", async () => {
+test("Worker.find returns the scheme's catalog rows (JSON), filtered to matches", async () => {
     const { db, workspaceId, workerId } = await setup();
     try {
         await seedEntries(db, workspaceId, workerId, [
@@ -68,7 +68,7 @@ test("Known.find returns the scheme's catalog rows (JSON), filtered to matches",
     } finally { db.close(); }
 });
 
-test("Known.find with scope prefix filters to that subtree", async () => {
+test("Worker.find with scope prefix filters to that subtree", async () => {
     const { db, workspaceId, workerId } = await setup();
     try {
         await seedEntries(db, workspaceId, workerId, [
@@ -167,7 +167,7 @@ test("path globs use shell segment semantics and support native brace patterns",
     } finally { db.close(); }
 });
 
-test("Known.find with glob matcher filters by CONTENT", async () => {
+test("Worker.find with glob matcher filters by CONTENT", async () => {
     const { db, workspaceId, workerId } = await setup();
     try {
         // Pathnames are neutral (a/b/c); the matchable token lives in the content.
@@ -202,7 +202,7 @@ test("a content match emits one item per resource with match coordinates", async
     } finally { db.close(); }
 });
 
-test("Known.find with tag filter — AND semantics", async () => {
+test("Worker.find with tag filter — AND semantics", async () => {
     const { db, workspaceId, workerId } = await setup();
     try {
         await seedEntries(db, workspaceId, workerId, [
@@ -218,7 +218,7 @@ test("Known.find with tag filter — AND semantics", async () => {
     } finally { db.close(); }
 });
 
-test("Known.find combining glob (content) + tag filter", async () => {
+test("Worker.find combining glob (content) + tag filter", async () => {
     const { db, workspaceId, workerId } = await setup();
     try {
         await seedEntries(db, workspaceId, workerId, [
@@ -233,7 +233,7 @@ test("Known.find combining glob (content) + tag filter", async () => {
     } finally { db.close(); }
 });
 
-test("Known.find with regex matcher filters by CONTENT", async () => {
+test("Worker.find with regex matcher filters by CONTENT", async () => {
     const { db, workspaceId, workerId } = await setup();
     try {
         await seedEntries(db, workspaceId, workerId, [["a", "alpha"], ["b", "beta"], ["c", "aardvark"]]);
@@ -243,7 +243,7 @@ test("Known.find with regex matcher filters by CONTENT", async () => {
     } finally { db.close(); }
 });
 
-test("Known.find preserves an invalid matcher's parser cause and recovery facts", async () => {
+test("Worker.find preserves an invalid matcher's parser cause and recovery facts", async () => {
     const { db, workspaceId, workerId } = await setup();
     try {
         await seedEntries(db, workspaceId, workerId, [["a.json", "{\"answer\":42}"]]);
@@ -266,7 +266,7 @@ test("Known.find preserves an invalid matcher's parser cause and recovery facts"
     }
 });
 
-test("Known.find regex honors flags — case-insensitive (i) on content", async () => {
+test("Worker.find regex honors flags — case-insensitive (i) on content", async () => {
     const { db, workspaceId, workerId } = await setup();
     try {
         await seedEntries(db, workspaceId, workerId, [["a", "Alpha"], ["b", "alpine"], ["c", "beta"]]);
@@ -279,7 +279,7 @@ test("Known.find regex honors flags — case-insensitive (i) on content", async 
     } finally { db.close(); }
 });
 
-test("Known.find regex accepts `g` flag on content (no throw)", async () => {
+test("Worker.find regex accepts `g` flag on content (no throw)", async () => {
     const { db, workspaceId, workerId } = await setup();
     try {
         await seedEntries(db, workspaceId, workerId, [["a", "foo here"], ["b", "a foo"], ["c", "bar"]]);
@@ -291,7 +291,7 @@ test("Known.find regex accepts `g` flag on content (no throw)", async () => {
     } finally { db.close(); }
 });
 
-test("Known.find regex `y` (sticky) anchors at content start", async () => {
+test("Worker.find regex `y` (sticky) anchors at content start", async () => {
     const { db, workspaceId, workerId } = await setup();
     try {
         await seedEntries(db, workspaceId, workerId, [["a", "foobar"], ["b", "a foobar"]]);
@@ -303,7 +303,7 @@ test("Known.find regex `y` (sticky) anchors at content start", async () => {
     } finally { db.close(); }
 });
 
-test("Known.find xpath matcher with no structural match → entry excluded (200, empty)", async () => {
+test("Worker.find xpath matcher with no structural match → entry excluded (200, empty)", async () => {
     const { db, workspaceId, workerId } = await setup();
     try {
         // xpath runs over the markdown deepXml; `//x` matches no element →
@@ -315,7 +315,7 @@ test("Known.find xpath matcher with no structural match → entry excluded (200,
     } finally { db.close(); }
 });
 
-test("Known.find with <L> paginates results", async () => {
+test("Worker.find with <L> paginates results", async () => {
     const { db, workspaceId, workerId } = await setup();
     try {
         await seedEntries(db, workspaceId, workerId, [["a", "1"], ["b", "2"], ["c", "3"], ["d", "4"]]);
@@ -332,7 +332,7 @@ test("Known.find with <L> paginates results", async () => {
     } finally { db.close(); }
 });
 
-test("Known.find with no matches returns 200 with empty results", async () => {
+test("Worker.find with no matches returns 200 with empty results", async () => {
     const { db, workspaceId, workerId } = await setup();
     try {
         await seedEntries(db, workspaceId, workerId, [["a", "x"]]);
@@ -343,7 +343,7 @@ test("Known.find with no matches returns 200 with empty results", async () => {
     } finally { db.close(); }
 });
 
-test("Known.find names a zero-match selection before rejecting its requested range", async () => {
+test("Worker.find names a zero-match selection before rejecting its requested range", async () => {
     const { db, workspaceId, workerId } = await setup();
     try {
         await seedEntries(db, workspaceId, workerId, [["a", "alpha"], ["b", "beta"]]);
@@ -377,7 +377,7 @@ test("Known.find names a zero-match selection before rejecting its requested ran
     } finally { db.close(); }
 });
 
-test("Known.find is scoped to the workspace (doesn't leak across workspaces)", async () => {
+test("Worker.find is scoped to the workspace (doesn't leak across workspaces)", async () => {
     const { db, workspaceId, workerId } = await setup();
     try {
         // Seed in this workspace

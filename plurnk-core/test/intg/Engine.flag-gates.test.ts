@@ -92,7 +92,7 @@ test("flag gate active: mode=ask rejects side-effecting scheme with 403", async 
     } finally { await db.close(); }
 });
 
-test("noProposals is not a dispatch gate — non-proposing schemes dispatch normally (known)", async () => {
+test("noProposals is not a dispatch gate — non-proposing schemes dispatch normally (worker)", async () => {
     const { db, workspaceId, workerId, loopId, turnId, engine } = await setup();
     try {
         await setLoopFlags(db, loopId, { noProposals: true });
