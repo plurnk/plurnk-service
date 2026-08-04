@@ -52,3 +52,30 @@ test("plugin packet control: a scheme adds, removes, and reorders packet section
         assert.ok(!userOrder.includes("budget"), "budget removed from the user slot");
     } finally { await db.close(); }
 });
+
+test("plugin packet control: duplicate section names fail at the owning scheme boundary", async () => {
+    const schemes = new SchemeRegistry();
+    schemes.register("broken", {
+        manifest: {
+            name: "broken",
+            channels: {},
+            defaultChannel: "",
+            category: "control",
+            scope: "workspace",
+            writableBy: ["plugin"],
+            volatile: false,
+            modelVisible: false,
+        },
+        transformSections(): PacketSection[] {
+            return [
+                { name: "duplicate", slot: "user", header: null, content: "first", tokens: 0 },
+                { name: "duplicate", slot: "user", header: null, content: "second", tokens: 0 },
+            ];
+        },
+    });
+
+    await assert.rejects(
+        schemes.transformSections([]),
+        /scheme 'broken' transformSections result has duplicate section name 'duplicate'/,
+    );
+});
