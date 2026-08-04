@@ -7,7 +7,7 @@ import { resetTestArtifacts, testArtifactDirectory } from "../plurnk-core/script
 
 const root = new URL("..", import.meta.url);
 
-test("core test runners retain only the current run's database artifacts", async () => {
+test("integration test runners retain only the current run's database artifacts", async () => {
     const fixtureRoot = await mkdtemp(join(tmpdir(), "plurnk-test-artifacts-"));
     try {
         const artifacts = testArtifactDirectory(fixtureRoot);
@@ -28,9 +28,12 @@ test("core test runners retain only the current run's database artifacts", async
     }
 });
 
-test("the core integration tier begins through the one retention procedure", async () => {
-    const packageJson = JSON.parse(await readFile(new URL("plurnk-core/package.json", root), "utf8"));
-    const scripts = packageJson.scripts;
-    assert.equal(scripts["pretest:intg"], "npm run test:artifacts:begin");
-    assert.equal(scripts["test:clean-tmp"], "node scripts/test-artifacts.mjs clean");
+test("each file-backed integration lane begins through the shared retention procedure", async () => {
+    for (const workspace of ["plurnk-core", "plurnk-agui"]) {
+        const packageJson = JSON.parse(await readFile(new URL(`${workspace}/package.json`, root), "utf8"));
+        const scripts = packageJson.scripts;
+        assert.equal(scripts["test:artifacts:begin"], "node ../scripts/test-artifacts.mjs begin", workspace);
+        assert.equal(scripts["pretest:intg"], "npm run test:artifacts:begin", workspace);
+        assert.equal(scripts["test:clean-tmp"], "node ../scripts/test-artifacts.mjs clean", workspace);
+    }
 });
