@@ -2053,7 +2053,17 @@ materialization verdicts and folded ambient rows for every acquired page.
 
 §derivation-dedup-parallel **The index dedups then parallelizes.** The derivation identity hashes the exact READ body, mimetype, reader behavior, embedding configuration, and applicable search exclusion. A resource attaches the immutable artifact only after it is complete; identical entry and log bodies therefore share one FTS row, one symbol graph, and one vector set without copying. Distinct artifacts run with bounded producer concurrency (`PLURNK_SERVICE_DERIVE_CONCURRENCY`). Unset uses a host-relative square-root fan-out; a positive integer is an exact operator budget and `-1` claims every core. Token-count and embedding batches retain only a pool-sized promise window; graph persistence writes at most `PLURNK_SERVICE_DERIVE_STORE_BATCH` definitions or references per SQLite statement. Every pending resource attaches a terminal classified artifact, identical at concurrency 1 and N. Multi-item warming reports aggregate milestones and heartbeat notices according to `PLURNK_SERVICE_DERIVE_PROGRESS_STEPS` and `PLURNK_SERVICE_DERIVE_PROGRESS_HEARTBEAT_MS`.
 
-Every completed artifact records one terminal disposition: `vector`, `lexical` (only no embedder or an operator size ceiling), `excluded` (the configured search-exclusion table), `nonsemantic` (empty/binary/no embedding content), or `failed` (a resource-local reader/processor failure). Cancellation and operational failures remain `building`, unattached, and retryable; database, index-persistence, and embedding-service failures propagate rather than being mislabeled as bad content. A failed specimen therefore cannot brick workspace readiness, and the digest reports every non-vector attachment with its disposition and reason.
+Every completed artifact records one terminal disposition: `vector`, `lexical`
+(only no embedder or an operator size ceiling), `excluded` (the configured
+search-exclusion table), `nonsemantic` (empty/binary/no embedding content), or
+`failed` (only a typed `{§mimetype-error-policy}` invalid-source failure).
+Cancellation and implementation, loading, database, index-persistence, and
+embedding-service failures remain `building`, unattached, and retryable; Core
+never guesses that an arbitrary projection exception is bad content. A failed
+specimen therefore cannot brick workspace readiness, and the digest reports
+every non-vector attachment with its disposition and reason. Successful
+optional projection degradations continue indexing and surface their framework
+Notice once per identical observation in a maintenance pass.
 
 §semantic-embed-dedup **Identical content embeds once.** The metaproject's repeated `tokenizer.json` bodies - and any log result exposing the same exact READ body - attach one content-addressed derivation artifact. Graph, FTS, and chunk vectors exist once; addresses join through the artifact hash. One pass-wide semantic plan binds the selected chunk counter to this identity: the embedder's own counter is covered by model-space identity, while a separately resolved fallback counter contributes its `tokenizerId` and exactness. Model, vocabulary, vector-wire encoding ({§mimetype-embedding-wire}), or configuration changes therefore produce a different identity, so incompatible vector spaces, encodings, or chunk boundaries never share.
 

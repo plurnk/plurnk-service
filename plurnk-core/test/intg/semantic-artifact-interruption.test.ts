@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { EmbeddingVector } from "@plurnk/plurnk-mimetypes";
-import type { EditStatement, UrlPath } from "@plurnk/plurnk-contracts";
+import type { EditStatement, Notice, UrlPath } from "@plurnk/plurnk-contracts";
 import Worker from "../../src/schemes/Worker.ts";
 import SearchIndex from "../../src/schemes/_search-index.ts";
 import { openMigrated, insertWorkspace, insertWorker, makeSchemeCtx, mimetypesFixture } from "./_helpers.ts";
@@ -64,8 +64,12 @@ test("an entry-local derivation failure is terminal, explicit, and does not bloc
         const workerId = await insertWorker(db, workspaceId);
         await new Worker().edit(statement, makeSchemeCtx({ db, workspaceId, workerId }));
 
+        const inputFailure = Object.assign(new Error("fixture reader rejected malformed input"), {
+            name: "MimetypeInputError",
+            mimetype: "text/markdown",
+        });
         const mimetypes = mimetypesFixture({
-            process: async () => { throw new Error("fixture reader exploded"); },
+            process: async () => { throw inputFailure; },
             embedderInfo: () => ({ contextWindow: 128, countTokens: async () => 1, model: "stub@failure" }),
         });
 
@@ -73,10 +77,108 @@ test("an entry-local derivation failure is terminal, explicit, and does not bloc
         const entry = await db.test_entries_by_pathname.get<{ id: number }>({ pathname: "/interrupted.md" });
         const disposition = await db.test_derivation_disposition.get<{ disposition: string; reason: string }>({ entry_id: entry?.id ?? -1 });
         assert.equal(disposition?.disposition, "failed");
-        assert.equal(disposition?.reason, "fixture reader exploded");
+        assert.equal(disposition?.reason, "fixture reader rejected malformed input");
         const state = await db.test_derivation_interruption_state.get<{ deep_hash: string | null; building: number; complete: number }>({ workspace_id: workspaceId });
         assert.ok(state?.deep_hash, "the terminal failure attaches an explicit artifact");
         assert.deepEqual({ building: state?.building, complete: state?.complete }, { building: 0, complete: 1 });
+    } finally {
+        await db.close();
+    }
+});
+
+test("an internal projection defect propagates and leaves the artifact retryable", async () => {
+    const db = await openMigrated();
+    try {
+        const workspaceId = await insertWorkspace(db, `projection-defect-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        await new Worker().edit(statement, makeSchemeCtx({ db, workspaceId, workerId }));
+
+        const failure = new Error("fixture projection implementation failed");
+        const mimetypes = mimetypesFixture({
+            process: async () => { throw failure; },
+            embedderInfo: () => ({ contextWindow: 128, countTokens: async () => 1, model: "stub@failure" }),
+        });
+
+        await assert.rejects(
+            SearchIndex.maintain(makeSchemeCtx({ db, workspaceId, workerId, mimetypes })),
+            (error) => error === failure,
+        );
+        const state = await db.test_derivation_interruption_state.get<{
+            deep_hash: string | null;
+            building: number;
+            complete: number;
+        }>({ workspace_id: workspaceId });
+        assert.deepEqual(
+            state,
+            { deep_hash: null, building: 1, complete: 0 },
+            "the internal defect is not reclassified as a terminal bad specimen",
+        );
+    } finally {
+        await db.close();
+    }
+});
+
+test("successful projection degradations surface once per maintenance pass", async () => {
+    const db = await openMigrated();
+    try {
+        const workspaceId = await insertWorkspace(db, `projection-notice-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        await new Worker().edit(statement, makeSchemeCtx({ db, workspaceId, workerId }));
+        await new Worker().edit({
+            ...statement,
+            target: {
+                ...target,
+                raw: "worker:///second.md",
+                pathname: "/second.md",
+            },
+            body: "a second source with the same optional grammar degradation",
+        }, makeSchemeCtx({ db, workspaceId, workerId }));
+
+        const projectionNotice: Notice = {
+            source: "mimetype:text-markdown",
+            kind: "grammar_degraded",
+            level: "warn",
+            message: "fixture grammar is unavailable",
+            position: null,
+        };
+        const mimetypes = mimetypesFixture({
+            process: async (input: { content: string }) => ({
+                mimetype: "text/markdown",
+                ok: true,
+                totalLines: 1,
+                symbols: [],
+                references: [],
+                content: input.content,
+                notices: [projectionNotice],
+            }),
+            embedderInfo: async () => null,
+        });
+        const notices: Notice[] = [];
+
+        await SearchIndex.maintain(makeSchemeCtx({
+            db,
+            workspaceId,
+            workerId,
+            mimetypes,
+            pushNotice: (notice) => { notices.push(notice); },
+        }));
+
+        assert.deepEqual(
+            notices.filter(({ kind }) => kind === "grammar_degraded"),
+            [projectionNotice],
+            "identical successful degradation observations are deduplicated per pass",
+        );
+        for (const pathname of ["/interrupted.md", "/second.md"]) {
+            const entry = await db.test_entries_by_pathname.get<{ id: number }>({ pathname });
+            const disposition = await db.test_derivation_disposition.get<{
+                disposition: string;
+                reason: string;
+                deep_hash: string;
+            }>({ entry_id: entry?.id ?? -1 });
+            assert.equal(disposition?.disposition, "lexical");
+            assert.equal(disposition?.reason, "embedder_unavailable");
+            assert.ok(disposition?.deep_hash);
+        }
     } finally {
         await db.close();
     }

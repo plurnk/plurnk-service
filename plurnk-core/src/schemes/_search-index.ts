@@ -3,7 +3,8 @@
 // FTS, vectors, and graph relationships consume those artifacts uniformly.
 
 import type { PlurnkSchemeContext } from "../core/scheme-types.ts";
-import type { ProcessResult } from "@plurnk/plurnk-mimetypes";
+import { isMimetypeInputError } from "@plurnk/plurnk-mimetypes";
+import type { Notice, ProcessResult } from "@plurnk/plurnk-mimetypes";
 import { createHash } from "node:crypto";
 import { availableParallelism } from "node:os";
 import EntryGraph from "./_entry-graph.ts";
@@ -33,21 +34,29 @@ type PendingDerivation = {
     searchExcluded: string | undefined;
     binary: boolean;
 };
+type DerivationCallbacks = {
+    onProgress?: (progress: {
+        phase: "planning" | "embedding";
+        completed: number;
+        total: number;
+    }) => void;
+    onNotice?: (notice: Notice) => void;
+};
 const NO_PROJECTION_IDENTITY = "projection:none";
 
 export default class SearchIndex {
     // The index materializes one immutable artifact per exact READ body and
     // configuration identity, then atomically attaches resource addresses to it.
-    // Cancellation leaves a building artifact unattached for retry; a local failure
-    // is terminal and observable so
+    // Cancellation leaves a building artifact unattached for retry; a typed
+    // invalid-source failure is terminal and observable so
     // one malformed specimen cannot hold workspace readiness hostage.
     // Hash-keyed chains serialize concurrent workspace warm requests for the same
     // artifact while distinct artifacts remain parallel.
     static #deriveChains = new Map<string, Promise<void>>();
 
-    static async #deriveOne(ctx: PlurnkSchemeContext, r: DerivationRow, hash: string, semanticPlan: SemanticPlan, searchExcluded: string | undefined, binary: boolean, onProgress?: (progress: { phase: "planning" | "embedding"; completed: number; total: number }) => void): Promise<void> {
+    static async #deriveOne(ctx: PlurnkSchemeContext, r: DerivationRow, hash: string, semanticPlan: SemanticPlan, searchExcluded: string | undefined, binary: boolean, callbacks: DerivationCallbacks = {}): Promise<void> {
         const prior = SearchIndex.#deriveChains.get(hash) ?? Promise.resolve();
-        const run = prior.then(() => SearchIndex.#deriveOneUnlocked(ctx, r, hash, semanticPlan, searchExcluded, binary, onProgress));
+        const run = prior.then(() => SearchIndex.#deriveOneUnlocked(ctx, r, hash, semanticPlan, searchExcluded, binary, callbacks));
         const tail = run.catch(() => {}); // the chain survives a failed link; deriveOne's caller sees the rejection
         SearchIndex.#deriveChains.set(hash, tail);
         void tail.finally(() => {
@@ -56,7 +65,7 @@ export default class SearchIndex {
         return run;
     }
 
-    static async #deriveOneUnlocked(ctx: PlurnkSchemeContext, r: DerivationRow, hash: string, semanticPlan: SemanticPlan, searchExcluded: string | undefined, binary: boolean, onProgress?: (progress: { phase: "planning" | "embedding"; completed: number; total: number }) => void): Promise<void> {
+    static async #deriveOneUnlocked(ctx: PlurnkSchemeContext, r: DerivationRow, hash: string, semanticPlan: SemanticPlan, searchExcluded: string | undefined, binary: boolean, callbacks: DerivationCallbacks): Promise<void> {
         const { db, mimetypes } = ctx;
         if (mimetypes === undefined) throw new Error("deriveOne: ctx.mimetypes is required");
         const attach = async (): Promise<void> => {
@@ -102,14 +111,15 @@ export default class SearchIndex {
                 { channels: ["symbols", "references"] },
             );
         } catch (error) {
-            if (ctx.signal?.aborted === true) throw error;
+            if (ctx.signal?.aborted === true || !isMimetypeInputError(error)) throw error;
             await EntryGraph.populateFrom(db, derivationId, [], []);
             await EntrySemantic.indexFts(db, derivationId, "");
             await EntrySemantic.indexEmbedding(db, derivationId, [], undefined);
             await attachComplete("failed", error instanceof Error ? error.message : String(error));
             return;
         }
-        // Persistence and embedding operations are outside reader-failure
+        for (const notice of result.notices ?? []) callbacks.onNotice?.(notice);
+        // Persistence and embedding operations are outside typed input-failure
         // containment. An internal/operational failure leaves the artifact
         // building and propagates so a later warm can retry; it is never
         // mislabeled as one malformed resource.
@@ -131,7 +141,7 @@ export default class SearchIndex {
             await attachComplete("lexical", "embedder_unavailable");
             return;
         }
-        const { chunks, model } = await EntrySemantic.deriveEmbeddings(semanticPlan, semanticSource, result.symbols ?? [], undefined, undefined, ctx.signal, onProgress);
+        const { chunks, model } = await EntrySemantic.deriveEmbeddings(semanticPlan, semanticSource, result.symbols ?? [], undefined, undefined, ctx.signal, callbacks.onProgress);
         await EntrySemantic.indexEmbedding(db, derivationId, chunks, model);
         await attachComplete(chunks.length > 0 ? "vector" : "nonsemantic", chunks.length > 0 ? null : "no_embedding_content");
     }
@@ -268,6 +278,13 @@ export default class SearchIndex {
         const total = pending.length;
         const step = total > 1 ? Math.max(1, Math.floor(total / progressSteps)) : 0;
         let completed = 0;
+        const projectionNotices = new Set<string>();
+        const forwardProjectionNotice = (notice: Notice): void => {
+            const key = JSON.stringify(notice);
+            if (projectionNotices.has(key)) return;
+            projectionNotices.add(key);
+            ctx.pushNotice?.(notice);
+        };
         const tick = (): void => {
             completed++;
             if (step > 0 && (completed === total || completed % step === 0)) {
@@ -304,25 +321,28 @@ export default class SearchIndex {
                     const group = work[next++];
                     for (const { r, hash, searchExcluded, binary } of group) {
                         if (Boolean(ctx.signal?.aborted)) return;
-                        await SearchIndex.#deriveOne(ctx, r, hash, semanticPlan, searchExcluded, binary, (progress) => {
-                            if (step === 0 || progress.total <= 1) return;
-                            const milestone = progress.completed === progress.total
-                                || progress.completed % Math.max(1, Math.floor(progress.total / progressSteps)) === 0;
-                            if (!milestone) return;
-                            const now = Date.now();
-                            if (now - lastHeartbeatAt < progressHeartbeatMs) return;
-                            lastHeartbeatAt = now;
-                            const percent = Math.floor((completed / total) * 100);
-                            ctx.pushNotice?.({
-                                source: "engine:derivation",
-                                kind: "embed_progress",
-                                message: `Indexing repository semantics: ${percent}% (${completed}/${total})`,
-                                completed,
-                                total,
-                                percent,
-                                phase: progress.phase,
-                                level: "info",
-                            });
+                        await SearchIndex.#deriveOne(ctx, r, hash, semanticPlan, searchExcluded, binary, {
+                            onNotice: forwardProjectionNotice,
+                            onProgress: (progress) => {
+                                if (step === 0 || progress.total <= 1) return;
+                                const milestone = progress.completed === progress.total
+                                    || progress.completed % Math.max(1, Math.floor(progress.total / progressSteps)) === 0;
+                                if (!milestone) return;
+                                const now = Date.now();
+                                if (now - lastHeartbeatAt < progressHeartbeatMs) return;
+                                lastHeartbeatAt = now;
+                                const percent = Math.floor((completed / total) * 100);
+                                ctx.pushNotice?.({
+                                    source: "engine:derivation",
+                                    kind: "embed_progress",
+                                    message: `Indexing repository semantics: ${percent}% (${completed}/${total})`,
+                                    completed,
+                                    total,
+                                    percent,
+                                    phase: progress.phase,
+                                    level: "info",
+                                });
+                            },
                         });
                         tick();
                     }
