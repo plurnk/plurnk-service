@@ -154,7 +154,10 @@ export default class Service {
             const db = await SqlRite.open({
                 path: dbPath,
                 dir: [resolve(Service.#projectRoot, "migrations"), Service.#codeDir],
-                functions: [resolve(Service.#codeDir, `schemes/cosine${Service.#ext}`)],
+                functions: [
+                    resolve(Service.#codeDir, `schemes/cosine${Service.#ext}`),
+                    resolve(Service.#codeDir, `core/ruler_count${Service.#ext}`),
+                ],
                 ...tuning,
             });
             if (lock !== null) {

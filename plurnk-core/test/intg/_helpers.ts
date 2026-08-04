@@ -98,7 +98,10 @@ export const openMigrated = async (atPath?: string): Promise<Db> => {
             resolve(PROJECT_ROOT, "src"),
             resolve(PROJECT_ROOT, "test/intg"),
         ],
-        functions: [resolve(PROJECT_ROOT, "src/schemes/cosine.ts")],
+        functions: [
+            resolve(PROJECT_ROOT, "src/schemes/cosine.ts"),
+            resolve(PROJECT_ROOT, "src/core/ruler_count.ts"),
+        ],
     })) as unknown as Db;
     return db;
 };

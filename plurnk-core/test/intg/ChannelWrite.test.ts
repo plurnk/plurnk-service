@@ -8,6 +8,7 @@ import type { StreamEventPayload } from "../../src/core/ChannelWrite.ts";
 import { Results } from "@plurnk/plurnk-schemes";
 import { openMigrated, insertWorkspace, insertWorker } from "./_helpers.ts";
 import Owner from "../../src/core/Owner.ts";
+import { rulerCount } from "../../src/core/token-ruler.ts";
 
 const seedEntryWithChannel = async (channelName: string, channelMime: string, initialContent: string, channelState: "static" | "active" | "closed" | "errored" = "active") => {
     const db = await openMigrated();
@@ -29,6 +30,21 @@ test("appendToChannel: appends chunk to existing channel content", async () => {
         await ChannelWrite.appendToChannel(db, { entryId, channel: "body", chunk: " world" });
         const row = await db.test_get_channel.get<{ content: string }>({ entry_id: entryId, name: "body" });
         assert.equal(row?.content, "hello world");
+    } finally { await db.close(); }
+});
+
+test("appendToChannel: every append stores the ruler weight of the complete channel (#178)", async () => {
+    const { db, entryId } = await seedEntryWithChannel("body", "text/plain", "A😀");
+    try {
+        await ChannelWrite.appendToChannel(db, { entryId, channel: "body", chunk: "é" });
+        const first = await db.test_get_channel.get<{ content: string; tokens: number }>({ entry_id: entryId, name: "body" });
+        assert.equal(first?.content, "A😀é");
+        assert.equal(first?.tokens, rulerCount("A😀é"));
+
+        await ChannelWrite.appendToChannel(db, { entryId, channel: "body", chunk: "Z" });
+        const second = await db.test_get_channel.get<{ content: string; tokens: number }>({ entry_id: entryId, name: "body" });
+        assert.equal(second?.content, "A😀éZ");
+        assert.equal(second?.tokens, rulerCount("A😀éZ"));
     } finally { await db.close(); }
 });
 

@@ -78,7 +78,7 @@ SELECT id FROM entries
 WHERE workspace_id = $workspace_id AND scheme = $scheme AND pathname = $pathname;
 
 -- PREP: test_get_channel
-SELECT content, mimetype, state FROM entry_channels
+SELECT content, mimetype, tokens, state FROM entry_channels
 WHERE entry_id = $entry_id AND name = $name;
 
 -- PREP: test_list_entry_tags
