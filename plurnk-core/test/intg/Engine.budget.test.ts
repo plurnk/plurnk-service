@@ -63,18 +63,15 @@ test("Engine.runTurn: budget readout — partition-derived ceiling, free reconci
         });
         const row = await db.test_get_packet.get<{ packet: string }>({ id: result.turnId });
         if (row === undefined) throw new Error("turn not found");
-        const packet = JSON.parse(row.packet) as { tokens: number; sections: Array<{ tokens: number }> };
+        const packet = JSON.parse(row.packet) as { tokens: number };
         const budget = packetSection(packet, "budget");
         // partition: provider window 4000 − test reserves (256+1024+64) = 2656
-        assert.match(budget, /Token Ceiling 2656 · Token Usage \d+ \(\d+%\) · Tokens Free \d+/, "headline carries the partition-derived ceiling, usage, percent, and free");
-        const free = Number(/Tokens Free (\d+)/.exec(budget)?.[1]);
-        // #63 owns exact reconciliation against the rendered slots; this legacy
-        // assertion uses the non-authoritative section sum as a bounded proxy.
-        const total = packet.sections.reduce((n, s) => n + s.tokens, 0);
+        assert.match(budget, /Token Ceiling 2656 · Token Usage\s+\d+ \(\s*\d+%\) · Tokens Free\s+\d+/, "headline carries the partition-derived ceiling, usage, percent, and free");
+        const usage = Number(/Token Usage\s+(\d+)/.exec(budget)?.[1]);
+        const free = Number(/Tokens Free\s+(\d+)/.exec(budget)?.[1]);
         assert.ok(free > 0 && free < 2656, `free ${free} within (0, 2656)`);
-        // Reconciles to ceiling − assembled total, within the placeholder/number
-        // substitution delta (tokensFree's own digits change the packet's size).
-        assert.ok(Math.abs(free - (2656 - total)) <= 25, `free ${free} ~= 2656 - ${total}`);
+        assert.equal(usage, packet.tokens, "headline usage equals the exact stored request weight");
+        assert.equal(usage + free, 2656, "the exact packet ledger closes against its ceiling");
     } finally { await db.close(); }
 });
 

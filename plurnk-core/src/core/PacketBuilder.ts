@@ -26,12 +26,7 @@ import type { Provider } from "@plurnk/plurnk-providers";
 import { scopeEnvToAlias, resolveActiveAlias } from "@plurnk/plurnk-providers";
 import ProviderInstantiate from "./ProviderInstantiate.ts";
 import BudgetOverflow from "./BudgetOverflow.ts";
-
-// Substituted into the budget readout after the assembled packet is measured
-// (the figure depends on the packet's own rendered size — chicken/egg).
-const TOKENS_FREE_PLACEHOLDER = "{{tokensFree}}";
-const TOKEN_USAGE_PLACEHOLDER = "{{tokenUsage}}";
-const TOKEN_PERCENT_PLACEHOLDER = "{{tokenPercent}}";
+import BudgetReadout from "./BudgetReadout.ts";
 
 const trimHorizontal = (value: string): string => value.replace(/^[\t ]+|[\t ]+$/gu, "");
 
@@ -292,11 +287,8 @@ export default class PacketBuilder {
         // model is never taught a tag it'll then be 403'd on (the taught→emitted→rejected→508 spiral).
         const activeSchemes = this.#schemes.resolveForLoop(await LoopFlagsReader.read(this.#db, loopId));
         const tools = this.#collectTools(await this.#workspaceEnabled(workspaceId), await WorkspaceSettings.questionsEnabled(this.#db, workspaceId), activeSchemes);
-        // Budget readout (SPEC.md {§tokenomics}). Two-pass: render the headline
-        // with placeholders, build the section list, measure the assembled total,
-        // then substitute usage, percent, and free.
         const ceiling = this.ceilingFor(provider);
-        const budgetReadout = this.#renderBudget(ceiling);
+        const budgetReadout = BudgetReadout.draft(ceiling);
         // The canonical default order, trust boundary, and cache-locality bias are
         // specified at {§packet-cache-monotone}. Budget placeholders resolve only
         // after trusted whole-list transforms establish the packet being measured.
@@ -344,40 +336,23 @@ export default class PacketBuilder {
         // Plugin packet control ({§packet-assembly}): trusted schemes rewrite the
         // default list — add, remove, reorder — in-process, before measurement.
         let drafts = await this.#schemes.transformSections(defaults);
-        // Pass 1: measure the assembled total with the placeholder budget in
-        // place, resolve free/percent, substitute into the budget section.
-        const total = countTokens(PacketWire.renderSlot(drafts, "system")) + countTokens(PacketWire.renderSlot(drafts, "user"));
-        {
-            const budgetSec = drafts.find((s) => s.name === "budget"); // a plugin may have removed it
-            // A null ceiling (#421 - unbounded window) has no headline to calibrate and therefore no
-            // percent/free substitution. #renderBudget already omitted the headline.
-            if (budgetSec && ceiling !== null) {
-                const tokensFree = Math.max(0, ceiling - total); // free floors at 0 on overshoot — {§tokenomics-over-budget-floor}
-                const percent = (total / ceiling) * 100; // usage as % of the ceiling — {§tokenomics-context-percent}
-                const content = budgetSec.content
-                    .replace(TOKEN_USAGE_PLACEHOLDER, String(total))
-                    // Any nonzero usage under 1% is "<1" — Math.round alone claimed "1%" from 0.51%,
-                    // overstating a near-empty window.
-                    .replace(TOKEN_PERCENT_PLACEHOLDER, total > 0 && percent < 1 ? "<1" : String(Math.round(percent)))
-                    .replace(TOKENS_FREE_PLACEHOLDER, String(tokensFree));
-                drafts = drafts.map((section) => section === budgetSec ? { ...section, content } : section);
-            }
+        const budgetSection = drafts.find((section) => section.name === "budget");
+        if (budgetSection !== undefined && ceiling !== null) {
+            const content = BudgetReadout.resolve(budgetSection.content, ceiling, (candidate) => {
+                const candidateDrafts = drafts.map((section) =>
+                    section === budgetSection ? { ...section, content: candidate } : section);
+                return countTokens(PacketWire.renderSlot(candidateDrafts, "system"))
+                    + countTokens(PacketWire.renderSlot(candidateDrafts, "user"));
+            });
+            drafts = drafts.map((section) => section === budgetSection ? { ...section, content } : section);
         }
-        // Pass 2: per-section render-weight + the assembled packet total after
-        // substitution. #63 owns the remaining self-measurement mismatch.
+        // Core alone turns validated drafts into measured durable sections.
         const sections = drafts.map((section): StoredPacketSection => ({
             ...section,
             tokens: countTokens(PacketWire.renderSection(section)),
         }));
         const packetTokens = countTokens(PacketWire.renderSlot(sections, "system")) + countTokens(PacketWire.renderSlot(sections, "user"));
         return { tokens: packetTokens, sections };
-    }
-
-    // The model-facing budget is one measured headline. Per-entry token weights
-    // remain on log rows; richer telemetry belongs in clients, not the prompt.
-    #renderBudget(ceiling: number | null): string {
-        if (ceiling === null) return "";
-        return `Token Ceiling ${ceiling} · Token Usage ${TOKEN_USAGE_PLACEHOLDER} (${TOKEN_PERCENT_PLACEHOLDER}%) · Tokens Free ${TOKENS_FREE_PLACEHOLDER}`;
     }
 
     // #328 — the per-workspace client execs policy narrows what the packet ADVERTISES, matching what

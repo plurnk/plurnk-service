@@ -95,7 +95,7 @@ test("budget headline carries a populated ceiling/usage/free ledger", async () =
         const row = await db.test_get_packet.get<{ packet: string }>({ id: result.turnId });
         const packet = JSON.parse(row!.packet) as { tokens: number };
         const budget = packetSection(packet, "budget");
-        const m = budget.match(/Token Ceiling (\d+) · Token Usage (\d+) \((?:<1|\d+)%\) · Tokens Free (\d+)/);
+        const m = budget.match(/Token Ceiling (\d+) · Token Usage\s+(\d+) \(\s*(?:<1|\d+)%\) · Tokens Free\s+(\d+)/);
         assert.ok(m, `budget headline carries ceiling/usage/free; got: ${budget}`);
         assert.equal(budget.split("\n").length, 1, "the model-facing budget is one line");
         const ceiling = Number(m![1]); const usage = Number(m![2]); const free = Number(m![3]);
@@ -115,7 +115,7 @@ test("budget headline shows usage as a percent of the ceiling", async () => {
         const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(200)] } }] });
         const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
         const budget = packetSection(JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: result.turnId }))!.packet), "budget");
-        const m = budget.match(/Token Ceiling (\d+) · Token Usage (\d+) \((<1|\d+)%\) · Tokens Free (\d+)/);
+        const m = budget.match(/Token Ceiling (\d+) · Token Usage\s+(\d+) \(\s*(<1|\d+)%\) · Tokens Free\s+(\d+)/);
         assert.ok(m, `headline carries usage percent; got: ${budget}`);
         const ceiling = Number(m![1]); const usage = Number(m![2]); const pct = m![3];
         const exact = (usage / ceiling) * 100;
@@ -151,7 +151,7 @@ test("the UN-FOLDABLE hard-413 record renders the overshoot honestly (free floor
         assert.equal(result.status, 413, "un-foldable → hard-413; the loop fails rather than deliver an over-budget packet");
         // The STORED failure record renders the overshoot honestly — never clamped to hide the degenerate state.
         const budget = packetSection(JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: result.turnId }))!.packet), "budget");
-        const m = budget.match(/Token Ceiling (\d+) · Token Usage (\d+) \((\d+)%\) · Tokens Free (\d+)/);
+        const m = budget.match(/Token Ceiling (\d+) · Token Usage\s+(\d+) \(\s*(\d+)%\) · Tokens Free\s+(\d+)/);
         assert.ok(m, `headline present; got: ${budget}`);
         const usage = Number(m![2]); const percent = Number(m![3]); const free = Number(m![4]);
         assert.ok(usage > 9, `usage ${usage} exceeds the ceiling of 9`);

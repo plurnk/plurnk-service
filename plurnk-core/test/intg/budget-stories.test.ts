@@ -74,7 +74,7 @@ const packetOf = async (db: Db, turnId: number): Promise<{ tokens: number; assis
 const budgetHeadline = (packet: object): { ceiling: number; usage: number; percent: number; free: number } => {
     const budget = packetSection(packet, "budget");
     // percent renders `<1` for sub-1% usage (be85626 — never a bare 0%); accept it, mapping to 0.5.
-    const m = budget.match(/Token Ceiling (\d+) · Token Usage (\d+) \((<1|\d+)%\) · Tokens Free (\d+)/);
+    const m = budget.match(/Token Ceiling (\d+) · Token Usage\s+(\d+) \(\s*(<1|\d+)%\) · Tokens Free\s+(\d+)/);
     assert.ok(m, `budget headline present; got: ${budget}`);
     return { ceiling: Number(m![1]), usage: Number(m![2]), percent: m![3] === "<1" ? 0.5 : Number(m![3]), free: Number(m![4]) };
 };
@@ -337,7 +337,7 @@ test("the model-facing budget is a single measured headline", async () => {
         await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: MESSAGES });
         const t2 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: MESSAGES });
         const budget = packetSection((await packetOf(db, t2.turnId)).packet, "budget");
-        assert.match(budget, /Token Ceiling \d+ · Token Usage \d+ \((<1|\d+)%\) · Tokens Free \d+/, "the ceiling/usage/free line stays");
+        assert.match(budget, /Token Ceiling \d+ · Token Usage\s+\d+ \(\s*(<1|\d+)%\) · Tokens Free\s+\d+/, "the ceiling/usage/free line stays");
         assert.equal(budget.split("\n").length, 1, "no packet-level composition or ranking follows the headline");
         assert.doesNotMatch(budget, /\{\{/, "no placeholder survives");
     } finally { await db.close(); }
