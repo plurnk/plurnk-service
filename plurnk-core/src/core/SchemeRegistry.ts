@@ -12,25 +12,11 @@ import type { PacketSectionTransformer, SchemeManifest } from "./scheme-types.ts
 import ExecOutputScheme from "../schemes/ExecOutputScheme.ts";
 import type ExecutorRegistry from "./ExecutorRegistry.ts";
 import type { Executor } from "./ExecutorRegistry.ts";
-import { readdir, readFile } from "node:fs/promises";
-import { resolve } from "node:path";
-import Paths from "../Paths.ts";
 import { docsExcludeSet } from "./teaching.ts";
 import type { CoreSchemeAdapter, CoreSchemeServices } from "./CoreSchemeServices.ts";
 import type { RuntimeSchemeFacet } from "../server/DaemonModule.ts";
-import type { PluginAttribution } from "@plurnk/plurnk-meta";
-
-// Core-owned scheme depth may live in the metaproject teaching corpus
-// ({§teaching-corpus}, Paths.schemeDocs), loaded once at module evaluation. docs() prefers that
-// corpus over a manifest's inline `documentation`; plugin schemes and core
-// schemes without a corpus entry use the manifest field. Absent dir → empty map.
-const SCHEME_DOCS: ReadonlyMap<string, string> = await (async () => {
-    try {
-        const files = (await readdir(Paths.schemeDocs)).filter((f) => f.endsWith(".md"));
-        const loaded = await Promise.all(files.map(async (f) => [f.slice(0, -3), await readFile(resolve(Paths.schemeDocs, f), "utf8")] as const));
-        return new Map(loaded);
-    } catch { return new Map(); }
-})();
+import { TEACHING_CORPUS, type PluginAttribution } from "@plurnk/plurnk-meta";
+import { readTeachingSource, type ReadTeaching } from "./teaching-corpus.ts";
 
 export default class SchemeRegistry {
     // Handler store. Dispatcher supplies one context implementation to bundled
@@ -46,10 +32,14 @@ export default class SchemeRegistry {
     #runtimeSchemes = new Set<string>();
     // #240 — built-in scheme names (captured at construction), reserved namespace-wide.
     #reserved: ReadonlySet<string> = new Set();
+    #readTeaching: ReadTeaching;
+    #schemeDocs: Promise<ReadonlyMap<string, string>> | undefined;
+    #questionsDoc: Promise<string> | undefined;
 
     // `fetchWeb` ({§exec-entry-sink} / #455) is forwarded to the exec handler's content:null sink; default
     // = schemes-http's checked WebFetcher, injectable so tests substitute automatic network acquisition.
-    constructor(opts?: { fetchWeb?: WebFetch }) {
+    constructor(opts?: { fetchWeb?: WebFetch; readTeaching?: ReadTeaching }) {
+        this.#readTeaching = opts?.readTeaching ?? readTeachingSource;
         this.register("log",    new Log());
         // #527 — "exec" is INTERNAL machinery, not an addressable scheme: the EXEC op routes here
         // and the spawn-abort/idle state lives here, but the model addresses output via the tag
@@ -191,19 +181,33 @@ export default class SchemeRegistry {
         return lines.length > 0 ? `\`\`\`plurnk\n${lines.join("\n")}\n\`\`\`` : "";
     }
 
-    // Scheme docs for materialization at worker://plurnk/docs/<name>.md.
-    // A metaproject corpus entry wins; otherwise use manifest.documentation.
-    docs(): Array<{ name: string; content: string }> {
+    async #requiredSchemeDocs(): Promise<ReadonlyMap<string, string>> {
+        this.#schemeDocs ??= Promise.all(
+            Object.entries(TEACHING_CORPUS.schemeDocs).map(async ([name, source]) =>
+                [name, await this.#readTeaching(source)] as const),
+        ).then((entries) => new Map(entries));
+        return this.#schemeDocs;
+    }
+
+    // {§teaching-corpus} — exact meta-owned sources are required; manifest-owned
+    // documentation is the deliberately optional fallback for every other scheme.
+    async docs(): Promise<Array<{ name: string; content: string }>> {
+        const schemeDocs = await this.#requiredSchemeDocs();
         const out: Array<{ name: string; content: string }> = [];
         const excluded = docsExcludeSet();
         for (const [name, handler] of this.#handlers) {
             if (this.#runtimeSchemes.has(name)) continue; // {§exec} — runtime aliases share exec's doc, not their own
             if (excluded.has(name)) continue; // #240 — PLURNK_SERVICE_DOCS_EXCLUDE drops the doc
             const inline = this.manifestFor(name)?.documentation;
-            const content = SCHEME_DOCS.get(name) ?? (typeof inline === "string" && inline.length > 0 ? inline : undefined);
+            const content = schemeDocs.get(name) ?? (typeof inline === "string" && inline.length > 0 ? inline : undefined);
             if (content !== undefined && content.length > 0) out.push({ name, content });
         }
         return out;
+    }
+
+    questionsDoc(): Promise<string> {
+        this.#questionsDoc ??= this.#readTeaching(TEACHING_CORPUS.questions);
+        return this.#questionsDoc;
     }
 
     // {§scheme-packet-transform} {§packet-plugin-transform} — apply trusted

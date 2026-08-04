@@ -10,32 +10,41 @@
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 import { homedir } from "node:os";
+import { TEACHING_CORPUS, type TeachingCorpusSource } from "@plurnk/plurnk-meta";
 
 export default class Paths {
     static #PACKAGE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
     static #CONTRACTS_ROOT = dirname(fileURLToPath(import.meta.resolve("@plurnk/plurnk-contracts/package.json")));
     // {§teaching-corpus} — core consumes the teaching sources owned by
     // @plurnk/plurnk-meta; admission and projection remain core-owned.
-    static #DOCS_ROOT = dirname(fileURLToPath(import.meta.resolve("@plurnk/plurnk-meta/package.json")));
+    static readonly teachingRoot = dirname(fileURLToPath(import.meta.resolve("@plurnk/plurnk-meta/package.json")));
 
     static migrations = resolve(Paths.#PACKAGE_ROOT, "migrations");
     static instructionsSystem = resolve(Paths.#CONTRACTS_ROOT, "plurnk.md");
     // The first-run policy seed and built-in/conditional pull-doc sources.
-    static personality = resolve(Paths.#DOCS_ROOT, "PLURNK_PERSONALITY.md");
-    static schemeDocs = resolve(Paths.#DOCS_ROOT, "docs");
+    static personality = Paths.teachingSource(TEACHING_CORPUS.personality);
     // (GBNF artifact resolution moved to Engine.#grammarConstraint — the env value
     // SELECTS the variant from @plurnk/plurnk-contracts; no hardcoded default here, #225.)
     // {§requirements} — static recap appended at the end of the user slot.
-    static defaultRequirements = Paths.#resolveDefaultRequirements();
+    static #DEFAULT_REQUIREMENTS = Paths.#resolveDefaultRequirements();
+    static defaultRequirements = Paths.#DEFAULT_REQUIREMENTS.path;
+    static defaultRequirementsTeachingSource = Paths.#DEFAULT_REQUIREMENTS.source;
+
+    static teachingSource(source: TeachingCorpusSource): string {
+        return resolve(Paths.teachingRoot, source);
+    }
 
     // Resolve the default requirements file: `PLURNK_SERVICE_REQUIREMENTS` env (absolute
     // or relative-to-package-root) overrides the docs package's `requirements.md`.
-    static #resolveDefaultRequirements(): string {
+    static #resolveDefaultRequirements(): { path: string; source: TeachingCorpusSource | null } {
         const env = process.env.PLURNK_SERVICE_REQUIREMENTS;
         if (typeof env === "string" && env.length > 0) {
-            return resolve(Paths.#PACKAGE_ROOT, env);
+            return { path: resolve(Paths.#PACKAGE_ROOT, env), source: null };
         }
-        return resolve(Paths.#DOCS_ROOT, "requirements.md");
+        return {
+            path: Paths.teachingSource(TEACHING_CORPUS.requirements),
+            source: TEACHING_CORPUS.requirements,
+        };
     }
 
     // Operator reference docs auto-READ into every model worker at turn 0.

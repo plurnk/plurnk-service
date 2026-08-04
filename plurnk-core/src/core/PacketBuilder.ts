@@ -14,8 +14,8 @@ import { DEFAULT_LOOP_FLAGS } from "./scheme-types.ts";
 import type { LoopFlags } from "./types.ts";
 import { readPacketInject, readSystemPolicy, readProjectPolicy } from "./packet-inject.ts";
 import { readFile } from "node:fs/promises";
-import { resolve as resolvePath } from "node:path";
 import Paths from "../Paths.ts";
+import { readTeachingSource } from "./teaching-corpus.ts";
 // Shared module imported by both Engine and bin/digest.ts, so wire
 // projection and digest projection are structurally one function — no
 // drift between wire and digest possible.
@@ -290,7 +290,11 @@ export default class PacketBuilder {
         // exactly how it went missing (callers read the sysprompt but never the
         // requirements). Read Paths.defaultRequirements (PLURNK_SERVICE_REQUIREMENTS env →
         // requirements.md) fresh each build so edits take effect; a non-empty param wins.
-        const baseRequirements = requirements.length > 0 ? requirements : await readFile(Paths.defaultRequirements, "utf8");
+        const baseRequirements = requirements.length > 0
+            ? requirements
+            : Paths.defaultRequirementsTeachingSource === null
+                ? await readFile(Paths.defaultRequirements, "utf8")
+                : await readTeachingSource(Paths.defaultRequirementsTeachingSource);
         // No injected syntax line: the grammar already headlines the system definition ("Syntax") and
         // leads requirements.md, so a third copy here was pure duplication in the model's packet. PLAN
         // is mandated unconditionally by plurnk.md "Imperatives" (grammar 0.70 requires every turn to
@@ -451,15 +455,13 @@ export default class PacketBuilder {
     // materialized at worker://plurnk/docs/<name>.md by LoopDocs (like operator
     // docs) so the catalog can expose each doc's token weight.
     async docEntries(workspaceId: number): Promise<Array<{ name: string; content: string }>> {
-        const out = this.#schemes.docs(); // scheme docs already drop PLURNK_SERVICE_DOCS_EXCLUDE names
+        const out = await this.#schemes.docs(); // scheme docs already drop PLURNK_SERVICE_DOCS_EXCLUDE names
         // {§send-300-choices} {§teaching-corpus} — the conditional teaching: questions.md
         // materializes ONLY for enabled workspaces — the same conditional-doc mechanism as the EXEC
         // plugin docs below. An un-enabled workspace is never taught the op it can't use.
         if (await WorkspaceSettings.questionsEnabled(this.#db, workspaceId)) {
-            try {
-                const q = await readFile(resolvePath(Paths.schemeDocs, "questions.md"), "utf8");
-                if (q.length > 0) out.push({ name: "questions", content: q });
-            } catch { /* docs package without questions.md — nothing to inject */ }
+            const q = await this.#schemes.questionsDoc();
+            if (q.length > 0) out.push({ name: "questions", content: q });
         }
         const executors = this.#executors();
         if (executors !== undefined) {

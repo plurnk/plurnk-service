@@ -3,7 +3,21 @@ import assert from "node:assert/strict";
 import { mkdtemp, mkdir, writeFile, symlink, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import Meta from "./index.ts";
+import Meta, { TEACHING_CORPUS } from "./index.ts";
+
+test("teaching corpus: the meta owner publishes one exact immutable membership", () => {
+    assert.deepEqual(TEACHING_CORPUS, {
+        personality: "PLURNK_PERSONALITY.md",
+        requirements: "requirements.md",
+        schemeDocs: {
+            log: "docs/log.md",
+            worker: "docs/worker.md",
+        },
+        questions: "docs/questions.md",
+    });
+    assert.equal(Object.isFrozen(TEACHING_CORPUS), true);
+    assert.equal(Object.isFrozen(TEACHING_CORPUS.schemeDocs), true);
+});
 
 test("isTrusted: gate off (unset / empty / '0') trusts everything", () => {
     for (const v of [undefined, "", "0"]) {

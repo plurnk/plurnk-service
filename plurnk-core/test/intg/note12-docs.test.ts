@@ -17,7 +17,7 @@ class DocStub {
     };
 }
 
-test("[note 12] teach() surfaces a scheme's example (no inline doc-link); docs() carries it for materialization", () => {
+test("[note 12] teach() surfaces a scheme's example (no inline doc-link); docs() carries it for materialization", async () => {
     const registry = new SchemeRegistry();
     registry.register("docstub", new DocStub() as unknown as Parameters<typeof registry.register>[1]);
 
@@ -26,7 +26,7 @@ test("[note 12] teach() surfaces a scheme's example (no inline doc-link); docs()
     assert.match(teaching, /<<READ\(docstub:\/\/\/x\)::READ/, "the scheme's canonical example is its bare op line (no bullet, no redundant scheme prefix — the example self-documents)");
     assert.doesNotMatch(teaching, /\(docs:/, "no inline doc-link in the raw packet — docs are discovered via the turn-0 FIND(worker://plurnk/docs/**) foist (#270)");
 
-    const stub = registry.docs().find((d) => d.name === "docstub");
+    const stub = (await registry.docs()).find((d) => d.name === "docstub");
     assert.equal(stub?.content, "# docstub\nFuller reference content.", "docs() carries the content for materialization at worker://plurnk/docs/<name>.md");
 
     // A scheme with no example (provisional, e.g. skill) is omitted from the directory entirely.

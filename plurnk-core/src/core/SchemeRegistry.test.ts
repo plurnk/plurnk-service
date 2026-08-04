@@ -193,7 +193,7 @@ test("register requires one identity-matched static or instance manifest", () =>
 
 // #240 — PLURNK_SERVICE_DOCS_EXCLUDE drops a name from BOTH the teaching oneliner and the materialized
 // pull-doc, on load. A non-listed name is untouched; a stray name is inert (a filter, not a contract).
-test("teach()/docs(): PLURNK_SERVICE_DOCS_EXCLUDE drops the oneliner + the doc; stray names inert (#240)", () => {
+test("teach()/docs(): PLURNK_SERVICE_DOCS_EXCLUDE drops the oneliner + the doc; stray names inert (#240)", async () => {
     const registry = new SchemeRegistry();
     const prior = process.env.PLURNK_SERVICE_DOCS_EXCLUDE;
     try {
@@ -201,8 +201,8 @@ test("teach()/docs(): PLURNK_SERVICE_DOCS_EXCLUDE drops the oneliner + the doc; 
         const teaching = registry.teach();
         assert.doesNotMatch(teaching, /log:\/\/\//, "an excluded scheme contributes no oneliner");
         assert.match(teaching, /worker:\/\/\/notes\.md/, "a non-excluded scheme still teaches (stray 'nonsuch' is inert)");
-        assert.equal(registry.docs().find((d) => d.name === "log"), undefined, "an excluded scheme materializes no doc");
-        assert.ok(registry.docs().find((d) => d.name === "worker"), "a non-excluded scheme still materializes its doc");
+        assert.equal((await registry.docs()).find((d) => d.name === "log"), undefined, "an excluded scheme materializes no doc");
+        assert.ok((await registry.docs()).find((d) => d.name === "worker"), "a non-excluded scheme still materializes its doc");
 
         process.env.PLURNK_SERVICE_DOCS_EXCLUDE = "";
         assert.match(registry.teach(), /log:\/\/\//, "cleared exclude → log teaches again");
@@ -210,4 +210,20 @@ test("teach()/docs(): PLURNK_SERVICE_DOCS_EXCLUDE drops the oneliner + the doc; 
         if (prior === undefined) delete process.env.PLURNK_SERVICE_DOCS_EXCLUDE;
         else process.env.PLURNK_SERVICE_DOCS_EXCLUDE = prior;
     }
+});
+
+test("docs(): absent manifest documentation is optional; present external documentation is the fallback", async () => {
+    const registry = new SchemeRegistry();
+    registry.register("undocumented", handler("undocumented"));
+    registry.register("documented", {
+        manifest: {
+            ...manifest("documented"),
+            documentation: "# documented\nExternal depth.",
+        },
+    });
+
+    const docs = await registry.docs();
+
+    assert.equal(docs.find((doc) => doc.name === "undocumented"), undefined, "an absent optional manifest document contributes nothing");
+    assert.equal(docs.find((doc) => doc.name === "documented")?.content, "# documented\nExternal depth.", "an external manifest document materializes when meta owns no same-name source");
 });

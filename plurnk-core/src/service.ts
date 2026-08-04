@@ -1,8 +1,7 @@
 #!/usr/bin/env node
 
-import Paths from "./Paths.ts";
 import { parseArgs } from "node:util";
-import { existsSync, mkdirSync, copyFileSync, writeFileSync, rmSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 import { homedir } from "node:os";
@@ -13,12 +12,13 @@ import DaemonLock from "./server/DaemonLock.ts";
 import EnvFlags from "./core/EnvFlags.ts";
 import EnvDefaults from "./core/env-defaults.ts";
 import ProviderInstantiate from "./core/ProviderInstantiate.ts";
-import Meta from "@plurnk/plurnk-meta";
+import Meta, { TEACHING_CORPUS } from "@plurnk/plurnk-meta";
 import { parseAliasesFromEnv, resolveActiveAlias } from "@plurnk/plurnk-providers";
 import { Module as AguiModule } from "@plurnk/plurnk-agui";
 import { Module as McpModule } from "@plurnk/plurnk-mcp";
 import { formatBuildInfo, getBuildInfo } from "./build-info.ts";
 import ServiceTeardown from "./core/ServiceTeardown.ts";
+import { readTeachingSourceSync } from "./core/teaching-corpus.ts";
 
 // The `plurnk-service` executable: launches the daemon (start) or applies the schema baseline.
 // Not the user-facing client — that is the separate `plurnk` project.
@@ -38,6 +38,9 @@ export default class Service {
         // ({§operator-config-env-defaults}); `~/.plurnk/.env.defaults` is its rendered catalog,
         // machine-owned and regenerated each boot. Wiping the whole dir is a deliberate reset.
         if (existsSync(Service.#homeDir)) return;
+        // Read the required seed before mutating the home. A broken installed corpus
+        // fails the first-run boundary without leaving an apparently initialized home.
+        const shippedPolicy = readTeachingSourceSync(TEACHING_CORPUS.personality);
         mkdirSync(Service.#homeDir, { recursive: true });
         // The first-run model selection lives HERE, as commented peers — an honest surfaced
         // choice (no active default ships; #307). One uncomment per option; agents read this
@@ -65,8 +68,7 @@ export default class Service {
         ].join("\n"));
         // Seed the default operating policy rendered as ## Policy. The user owns the seeded file;
         // later edits or deletion persist.
-        const shippedPolicy = Paths.personality; // the docs corpus ships the default policy
-        if (existsSync(shippedPolicy)) copyFileSync(shippedPolicy, resolve(Service.#homeDir, "AGENTS.md"));
+        writeFileSync(resolve(Service.#homeDir, "AGENTS.md"), shippedPolicy);
         process.stderr.write(`plurnk-service: created ${Service.#homeDir} — config in ${resolve(Service.#homeDir, ".env")}\n`);
     }
 

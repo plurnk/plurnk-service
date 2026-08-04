@@ -7,22 +7,30 @@ teaching sources listed below.
 
 ## §teaching-corpus Published teaching sources
 
-The package owns the authored defaults below. Consumers own admission, runtime
-projection, and model-facing placement; copying these sources into a consuming
-package would create a second teaching owner.
+The package owns the authored defaults and exact membership below. Consumers
+own admission, runtime projection, and model-facing placement; copying these
+sources into a consuming package would create a second teaching owner.
 
-| Source                          | Meta-owned content                                 | Consuming contract                                      |
-| ------------------------------- | -------------------------------------------------- | ------------------------------------------------------- |
-| `PLURNK_PERSONALITY.md`         | First-run default operating policy                 | Core policy bootstrap and projection {§policy-sections} |
-| `requirements.md`               | Default compact operational recap                  | Core user-slot Recap {§requirements}                    |
-| `docs/log.md`, `docs/worker.md` | Deep reference prose for reserved built-in schemes | Core pull-doc materialization {§schemes-directory}      |
-| `docs/questions.md`             | Conditional operator-question reference prose      | Core capability/teaching gate {§send-300-choices}       |
+| Source                          | Membership | Meta-owned content                                 | Core read boundary                                      |
+| ------------------------------- | ---------- | -------------------------------------------------- | ------------------------------------------------------- |
+| `PLURNK_PERSONALITY.md`         | Required   | First-run default operating policy                 | Policy bootstrap {§policy-sections}                     |
+| `requirements.md`               | Required   | Default compact operational recap                  | Default user-slot Recap {§requirements}                 |
+| `docs/log.md`, `docs/worker.md` | Required   | Deep reference prose for reserved built-in schemes | Pull-doc materialization {§schemes-directory}           |
+| `docs/questions.md`             | Required   | Conditional operator-question reference prose      | Enabled capability/teaching gate {§send-300-choices}    |
+
+Required is a package-membership statement, not unconditional packet
+projection. Each source is read only at its consuming boundary; absence or an
+unrelated read failure fails that boundary with the original cause. Consumers
+resolve the exported membership exactly: they do not scan `docs/`, infer new
+members from filenames, or treat a missing required source as empty teaching.
 
 A file in `docs/` does not declare a capability. A built-in scheme document is
 eligible only when its basename matches a registered reserved scheme; plugin
 documentation remains owned by that plugin's manifest. `questions.md` is the
 one explicit non-scheme document consumer. Retired or unregistered names do not
-ship as speculative teaching.
+ship as speculative teaching. Manifest `documentation` is deliberately
+optional: an absent field contributes no pull doc, while a present field is the
+fallback only when meta owns no source for that scheme name.
 
 ## §plugin-discovery Installed capability discovery
 

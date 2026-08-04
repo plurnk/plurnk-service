@@ -6,17 +6,19 @@ Authored defaults published by `@plurnk/plurnk-meta` and consumed by
 
 ## Contents
 
-| Source                          | Runtime role                                                                 |
+| Source                          | Consumer admission                                                           |
 | ------------------------------- | ---------------------------------------------------------------------------- |
-| `PLURNK_PERSONALITY.md`         | First-run seed for the user-owned `~/.plurnk/AGENTS.md` policy.              |
-| `requirements.md`               | Default compact operational recap rendered under `## Recap`.                 |
-| `docs/log.md`, `docs/worker.md` | Deep docs pulled through the registered built-in scheme names.               |
-| `docs/questions.md`             | Pull doc materialized only when operator questions are enabled.              |
+| `PLURNK_PERSONALITY.md`         | Read before the first-run seed of user-owned `~/.plurnk/AGENTS.md`.          |
+| `requirements.md`               | Read for the default compact recap rendered under `## Recap`.                |
+| `docs/log.md`, `docs/worker.md` | Read when registered built-in pull docs are materialized.                    |
+| `docs/questions.md`             | Read only when operator questions are enabled, then materialized as a doc.   |
 
 Core materializes eligible pull docs at `worker://plurnk/docs/<name>.md` and
 exposes them through the turn-0 `FIND(worker://plurnk/docs/**)` catalog. Merely
 placing a file in `docs/` does not register a scheme or make speculative
-teaching current.
+teaching current. Every listed source is a required package member; a missing
+or failed read surfaces at the admission boundary rather than silently reducing
+the corpus.
 
 ## The teaching split
 
