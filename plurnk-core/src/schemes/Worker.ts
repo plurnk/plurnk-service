@@ -13,6 +13,7 @@ import { CoreSchemeAdapterBase } from "../core/CoreSchemeServices.ts";
 import type { CoreSchemeCallContext } from "../core/CoreSchemeServices.ts";
 import Results, { type SchemeResultBase } from "../core/results.ts";
 import BranchReceipt from "../core/BranchReceipt.ts";
+import WorkerControlAddress from "../core/WorkerControlAddress.ts";
 
 // A loop cancelled outside the worker names that act as state before preserving the
 // model's last words. NULL terminated_by = the model's own terminal, including an
@@ -268,7 +269,12 @@ export default class Worker extends CoreSchemeAdapterBase {
         // still running hasn't delivered yet → 425 steers the model to park until it does (the
         // same deliverable the wake/collect-delta will push). The pull complements the push; neither is lost.
         if (entryPath === "") {
-            if (authority === "" || authority === "~") {
+            const address = WorkerControlAddress.resolve(statement.target, "READ");
+            if (!address.ok) {
+                return { ...address.result, content: null, mimetype: null, channel: null } as ReadResult;
+            }
+            const controlAuthority = address.authority;
+            if (controlAuthority === "~") {
                 return failure(
                     "named-worker-required",
                     400,
@@ -280,15 +286,15 @@ export default class Worker extends CoreSchemeAdapterBase {
                     },
                 );
             } // collect names a WORKER
-            const row = await core.db.worker_deliverable_by_name.get<{ worker_id: number; status: number; terminal_message: string | null; terminated_by: string | null }>({ workspace_id: core.workspaceId, name: authority });
+            const row = await core.db.worker_deliverable_by_name.get<{ worker_id: number; status: number; terminal_message: string | null; terminated_by: string | null }>({ workspace_id: core.workspaceId, name: controlAuthority });
             if (row === undefined) {
                 return failure(
                     "worker-not-found",
                     404,
-                    `Worker '${authority}' does not exist in this workspace.`,
+                    `Worker '${controlAuthority}' does not exist in this workspace.`,
                     {},
                     {
-                        worker: authority,
+                        worker: controlAuthority,
                         retryable: false,
                     },
                 );
@@ -297,19 +303,19 @@ export default class Worker extends CoreSchemeAdapterBase {
             // arms the join (awaitWorker), and the turn's bare SEND[102] parks until the worker delivers.
             // The model doesn't drive the park — the engine does (a blocking read() hiding the scheduler).
             if (!Worker.#TERMINAL_LOOP.has(row.status)) {
-                const detail = `Worker '${authority}' is still running and has no deliverable yet.`;
+                const detail = `Worker '${controlAuthority}' is still running and has no deliverable yet.`;
                 return failure("worker-still-running", 425, detail, {
                     content: `[ ${detail} ]`,
                     mimetype: "text/markdown",
-                    awaitWorker: authority,
+                    awaitWorker: controlAuthority,
                 }, {
-                    worker: authority,
+                    worker: controlAuthority,
                     recovery: "Continue once; the engine will wait for the worker's deliverable.",
                     retryable: false,
                 });
             }
             const deliverable = markTerminal(row.terminated_by, row.terminal_message)
-                ?? `[ worker '${authority}' concluded with no deliverable (status ${row.status}) ]`;
+                ?? `[ worker '${controlAuthority}' concluded with no deliverable (status ${row.status}) ]`;
             return {
                 status: 200,
                 content: BranchReceipt.append(deliverable, await BranchReceipt.render(core.db, row.worker_id)),
@@ -432,32 +438,22 @@ export default class Worker extends CoreSchemeAdapterBase {
             }
             return EntrySend.sendToWorkspaceEntry(Worker.#stripAuthority(statement), core, Worker.manifest.name, resolved.ownerId);
         }
-        if (authority === "") {
-            return Results.failure(
-                "scheme:worker",
-                "named-worker-required",
-                400,
-                "Directed worker SEND requires a named worker.",
-                {},
-                {
-                    recovery: "Address the worker by name.",
-                    retryable: false,
-                },
-            );
-        }
+        const address = WorkerControlAddress.resolve(statement.target, "SEND");
+        if (!address.ok) return address.result;
+        const controlAuthority = address.authority;
         if (core.injectWorker === undefined) throw new Error("worker.send: injectWorker capability absent");
         let workerId = core.workerId;
-        if (authority !== "~") {
-            const row = await core.db.worker_resolve_by_name.get<{ id: number }>({ workspace_id: core.workspaceId, name: authority });
+        if (controlAuthority !== "~") {
+            const row = await core.db.worker_resolve_by_name.get<{ id: number }>({ workspace_id: core.workspaceId, name: controlAuthority });
             if (row === undefined) {
                 return Results.failure(
                     "scheme:worker",
                     "worker-not-found",
                     404,
-                    `Worker '${authority}' does not exist in this workspace.`,
+                    `Worker '${controlAuthority}' does not exist in this workspace.`,
                     {},
                     {
-                        worker: authority,
+                        worker: controlAuthority,
                         retryable: false,
                     },
                 );

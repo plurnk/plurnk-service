@@ -17,6 +17,7 @@ import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import type { Db } from "./Db.ts";
 import Owner from "./Owner.ts";
 import WorkerName, { WorkerNameError } from "./WorkerName.ts";
+import WorkerControlAddress from "./WorkerControlAddress.ts";
 import type SchemeRegistry from "./SchemeRegistry.ts";
 import type ExecutorRegistry from "./ExecutorRegistry.ts";
 import type NoticeChannel from "./NoticeChannel.ts";
@@ -966,26 +967,9 @@ export default class Dispatcher {
     // WORK and FORK name the new worker in the target authority and carry its seed task in the body.
     // Their distinct fresh/branched histories are specified by {§worker-scheme-spawn} and {§worker-scheme-fork}.
     async #handleWorkerControl(statement: WorkStatement | ForkStatement, ctx: PlurnkSchemeContext): Promise<DispatchResult> {
-        const target = statement.target;
-        if (target === null) {
-            return Dispatcher.#failure(
-                "worker-target-required",
-                400,
-                `${statement.op} requires a worker target.`,
-                {},
-                { operation: statement.op, retryable: false },
-            );
-        }
-        const name = target.kind === "url" ? (target.hostname ?? "") : ""; // {§worker-scheme} — the worker is the AUTHORITY (worker://<name>), not the path
-        if (name === "") {
-            return Dispatcher.#failure(
-                "worker-name-required",
-                400,
-                `${statement.op} requires a worker name.`,
-                {},
-                { operation: statement.op, retryable: false },
-            );
-        }
+        const address = WorkerControlAddress.resolve(statement.target, statement.op);
+        if (!address.ok) return address.result;
+        const name = address.authority;
         try {
             WorkerName.assert(name); // {§worker-name-minting}
         } catch (error) {
@@ -1161,18 +1145,11 @@ export default class Dispatcher {
                 }
                 return await workerHandler.killEntry(statement, handlerCtx);
             }
+            const address = WorkerControlAddress.resolve(path, "KILL");
+            if (!address.ok) return address.result;
             // `~` is the sole current-worker sigil; every other authority is a literal name.
             // An idle worker is a no-op 200; a missing named worker is 404. {§worker-control-addressing}
-            const name = path.kind === "url" ? (path.hostname ?? "") : ""; // {§worker-scheme} — the worker is the AUTHORITY
-            if (name === "") {
-                return Dispatcher.#failure(
-                    "worker-name-required",
-                    400,
-                    "KILL requires a worker name.",
-                    {},
-                    { retryable: false },
-                );
-            }
+            const name = address.authority;
             let workerId = ctx.workerId;
             if (name !== "~") {
                 const row = await this.#db.worker_resolve_by_name.get<{ id: number }>({ workspace_id: ctx.workspaceId, name });

@@ -7,7 +7,17 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import type { ParsedPath, CopyStatement, WorkStatement, ForkStatement, KillStatement, ReadStatement, FindStatement } from "@plurnk/plurnk-contracts";
+import { parsePath } from "@plurnk/plurnk-contracts";
+import type {
+    ParsedPath,
+    PlurnkStatement,
+    CopyStatement,
+    WorkStatement,
+    ForkStatement,
+    KillStatement,
+    ReadStatement,
+    FindStatement,
+} from "@plurnk/plurnk-contracts";
 import Engine from "../../src/core/Engine.ts";
 import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
@@ -23,6 +33,12 @@ const workerPath = (name: string): ParsedPath => ({
     username: null, password: null, hostname: name, port: null,
     pathname: "", query: null, fragment: null,
 });
+
+const authoredWorkerPath = (raw: string): ParsedPath => {
+    const target = parsePath(raw);
+    if (target?.kind !== "url" || target.scheme !== "worker") throw new Error(`Expected a worker URL: ${raw}`);
+    return target;
+};
 
 // A worker-scope storage address: worker://<owner>/<path>, entry path present.
 const workerEntry = (owner: string, path: string): ParsedPath => ({
@@ -160,6 +176,109 @@ test("WORK(worker://name):task spawns a same-workspace sister, seeded via inject
         const { flags: spawnFlags, ...spawnRest } = calls[0] as { flags?: object; workspaceId: number; workerId: number; prompt: string };
         assert.deepEqual(spawnRest, { workspaceId, workerId: worker.id, prompt: "investigate the bug" }, "the new worker is started with the prompt");
         assert.equal((spawnFlags as { auto?: boolean } | undefined)?.auto, false, "the delegating loop's flags ride the injection ({§worker-delegation-inherits-flags})");
+    } finally { await db.close(); }
+});
+
+// {§worker-control-addressing} Parser tolerance does not grant semantics to
+// components outside the exact authority-only worker control address.
+test("worker control rejects every non-authority URI component before spawning (#160)", async () => {
+    const db = await openMigrated();
+    try {
+        const { calls, injectWorker } = recordingInjectWorker();
+        const engine = new Engine({ db, schemes: new SchemeRegistry(), injectWorker, tokenize });
+        const workspaceId = await insertWorkspace(db, `worker-control-shape-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const loopId = await insertLoop(db, workerId, 1, "go");
+        const turnId = await insertTurn(db, loopId, 1, 102);
+        const malformed = [
+            "worker:///",
+            "worker://user@userinfo",
+            "worker://user:secret@password",
+            "worker://port:42",
+            "worker://slash/",
+            "worker://path/ignored",
+            "worker://empty-query?",
+            "worker://query?mode=x",
+            "worker://empty-fragment#",
+            "worker://fragment#body",
+            "worker://metadata{X-Trace: value}",
+        ];
+
+        for (const [index, raw] of malformed.entries()) {
+            const result = await engine.dispatch({
+                statement: { ...spawnedWorker("unused", "investigate"), target: authoredWorkerPath(raw) },
+                workspaceId,
+                workerId,
+                loopId,
+                turnId,
+                sequence: index + 1,
+                origin: "model",
+            });
+            assert.equal(result.status, 400, raw);
+            assert.equal(result.problem?.type, "https://problems.plurnk.dev/scheme/worker/control-address-invalid", raw);
+            assert.equal(result.problem?.operation, "WORK", raw);
+            assert.equal(result.problem?.retryable, false, raw);
+        }
+        assert.equal(calls.length, 0, "invalid address components never reach child startup");
+        for (const raw of malformed) {
+            const target = authoredWorkerPath(raw);
+            if (target.kind !== "url" || target.hostname === null) continue;
+            assert.equal(
+                await db.worker_resolve_by_name.get({ workspace_id: workspaceId, name: target.hostname }),
+                undefined,
+                `${raw} never mints a worker`,
+            );
+        }
+    } finally { await db.close(); }
+});
+
+test("the exact worker control address is enforced before every operation path (#160)", async () => {
+    const db = await openMigrated();
+    try {
+        const { calls, injectWorker } = recordingInjectWorker();
+        const killed: number[] = [];
+        const engine = new Engine({
+            db,
+            schemes: new SchemeRegistry(),
+            injectWorker,
+            cancelWorker: async (workerId: number): Promise<void> => { killed.push(workerId); },
+            tokenize,
+        });
+        const workspaceId = await insertWorkspace(db, `worker-control-ops-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const loopId = await insertLoop(db, workerId, 1, "go");
+        const turnId = await insertTurn(db, loopId, 1, 102);
+        const sisterId = await insertWorker(db, workspaceId, null, "worker");
+        await insertLoop(db, sisterId, 1, "working");
+        const target = authoredWorkerPath("worker://worker?ignored=true");
+        const statements: PlurnkStatement[] = [
+            { ...spawnedWorker("worker", "spawn"), target },
+            { ...forkWorker("worker", "fork"), target },
+            sendStmt(null, target, "message"),
+            readStmt(target),
+            { op: "KILL", suffix: "", signal: null, target, lineMarker: null, body: null, position: { line: 1, column: 1 } },
+        ];
+
+        const results = [];
+        for (const [index, statement] of statements.entries()) {
+            results.push(await engine.dispatch({
+                statement,
+                workspaceId,
+                workerId,
+                loopId,
+                turnId,
+                sequence: index + 1,
+                origin: "model",
+            }));
+        }
+        assert.deepEqual(results.map(({ status }) => status), [400, 400, 400, 400, 400]);
+        assert.deepEqual(
+            results.map(({ problem }) => problem?.type),
+            Array.from({ length: 5 }, () => "https://problems.plurnk.dev/scheme/worker/control-address-invalid"),
+        );
+        assert.deepEqual(results.map(({ problem }) => problem?.operation), ["WORK", "FORK", "SEND", "READ", "KILL"]);
+        assert.equal(calls.length, 0, "invalid controls never inject a worker message or task");
+        assert.equal(killed.length, 0, "invalid controls never cancel a worker");
     } finally { await db.close(); }
 });
 

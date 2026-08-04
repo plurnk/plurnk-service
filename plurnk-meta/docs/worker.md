@@ -11,6 +11,8 @@ and conversation logs remain owner-scoped. A worker is born from WORK/FORK, neve
 
 **The path is the discriminator.** `worker://<name>` with no path addresses a literal worker name
 for WORK, FORK, SEND, READ, or KILL; `worker://~` addresses the caller for SEND or KILL.
+The control form is exact: a trailing slash, userinfo, port, query, fragment, or request metadata
+is invalid rather than ignored.
 `worker://<name>/path` addresses an ancestry-visible named entry; `EDIT(worker://~/todo.md):…`
 writes your own private entry.
 

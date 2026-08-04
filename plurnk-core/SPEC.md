@@ -302,7 +302,23 @@ continues to decompose other authorities without treating them as mintable.
 
 §worker-write-scoping **Writes are own-space-and-commons only**: a model writes `worker://~/` and `worker:///` — every named authority is read-only to it (403), and owner_id is engine-stamped from the dispatch context, never model-set. Nothing worker-authored can land under another principal — `worker://plurnk/` included, which is what makes the kernel surface the trust boundary with no guard to forget (only the kernel, dispatching as itself, authors it). The entry-copy seam (COPY/MOVE) is pathname-keyed and addresses the commons; a space's content moves via READ + EDIT.
 
-§worker-control-addressing **A missing entry path selects worker control.** Control is same-workspace only ({§actor-boundary}); an empty authority is invalid. `~` means the calling worker only where the operation admits current-worker control, while every mintable authority is a literal `workers.name` value.
+§worker-control-addressing **Only an exact authority-only address selects worker
+control.** Control is same-workspace only ({§actor-boundary}). Generic URI
+parsing remains tolerant, but worker control admits no component it cannot
+interpret and never silently normalizes one away.
+
+| URI component     | Control requirement                                                          |
+|-------------------|------------------------------------------------------------------------------|
+| Scheme            | `worker`                                                                     |
+| Authority         | Exactly one non-empty worker authority                                       |
+| Path              | Absent; a trailing `/` is a path, not a control alias                        |
+| Userinfo or port  | Absent                                                                         |
+| Query or fragment | Absent, including an empty delimiter                                          |
+| Request metadata  | Absent                                                                         |
+
+After structural admission, `~` means the calling worker only where the
+operation admits current-worker control, while every mintable authority is a
+literal `workers.name` value.
 
 | Operation | Accepted pathless authority | Effect                                  |
 |-----------|-----------------------------|-----------------------------------------|
