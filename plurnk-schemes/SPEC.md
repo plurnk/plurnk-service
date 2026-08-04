@@ -50,7 +50,9 @@ class Notes {
 | `storedScheme?` | Value persisted to `entries.scheme`, which may differ from the addressing `name`. Absent defaults to `name`. It must be a non-null string because every persisted identity component is non-null. |
 
 §manifest-flag-affinity `flags` is a closed environmental-authority declaration.
-Unknown fields fail manifest admission; absent fields are false.
+Unknown fields fail manifest admission; absent fields are false. Only registered
+schemes enter affinity evaluation; an unknown name remains the consumer's
+registration failure.
 
 | Field                  | Scheme is inactive when          | Declared requirement                    |
 | ---------------------- | -------------------------------- | --------------------------------------- |

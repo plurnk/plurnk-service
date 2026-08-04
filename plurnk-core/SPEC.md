@@ -766,6 +766,14 @@ There is no fictional cross-scheme SQL transaction.
 - Other delegated operations use the corresponding lowercase `SchemeHandler` method, with standard FIND supplied for a data scheme that omits a custom implementation.
 - COPY and MOVE are engine-owned compositions over CRUD primitives ({§copy}/{§move}).
 
+Registration precedes loop affinity:
+
+| Scheme state                       | Dispatch result                                                        |
+|------------------------------------|------------------------------------------------------------------------|
+| Unregistered                       | The operation owner returns `501 scheme-not-found`.                     |
+| Registered but inactive under flag | The flag gate returns `403 scheme-unavailable`.                         |
+| Registered and active              | Dispatch continues to the operation owner.                              |
+
 - §op-mode-phases **A continuing turn executes in MODE phases.** A model turn describes intended effects and requested observations; it is not an imperative program whose later statements can consume invisible same-turn results. The engine therefore performs four stable phases: **Mutate** (`EDIT`, `COPY`, `MOVE`, `KILL`, `FOLD`), **Observe** (`FIND`, `READ`, `OPEN`), **Do** (all remaining non-terminal actions, including `EXEC`, `WORK`, `FORK`, and directed `SEND`), then **End** (the terminal `SEND`). `PLAN` remains the turn anchor and is recorded before those phases. Authored order is preserved within each phase. A result still lands in the next packet; phasing makes that result describe settled state instead of an accidental intermediate state.
 
 - §op-synchronous **Decisive operations settle before the next scheduled operation.** The dispatcher `await`s every decisive operation. The only operations that return tracked work still in flight are the operations whose purpose is to create concurrency: `FORK`, `WORK`, and stream-producing `EXEC` handlers. MODE changes scheduling, not completion semantics. This is why a same-turn `KILL + SEND[200]` concludes ({§send-premature-terminate}): `KILL` synchronously flips the worker's live loops terminal (`engine_terminate_worker_live_loops`) before the End phase judges the pending set, while the physical scope reap rides `cancelWorker` asynchronously and invisibly.

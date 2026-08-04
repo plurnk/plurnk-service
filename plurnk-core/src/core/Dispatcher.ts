@@ -874,8 +874,9 @@ export default class Dispatcher {
     // Per-loop flag gating. Schemes self-declare their flag affinity in
     // their manifest (excludedInAsk / requiresWeb /
     // requiresInteraction); SchemeRegistry.resolveForLoop returns the
-    // active set under the loop's persisted flags. Anything outside the
-    // set returns 403 — action-entry-as-outcome carries the rejection.
+    // active set under the loop's persisted flags. A registered scheme outside
+    // that set returns 403; unknown names continue to their operation owner for
+    // the ordinary registration failure. Action-entry-as-outcome carries either.
     async #checkFlagsGate(statement: PlurnkStatement, loopId: number): Promise<DispatchResult | null> {
         // Broadcast SEND has no scheme to gate.
         if (statement.op === "SEND" && statement.target === null) return null;
@@ -924,7 +925,7 @@ export default class Dispatcher {
             : flags.noWeb ? "web access is disabled for this loop"
             : "interaction is disabled for this loop";
         const checkScheme = (scheme: string | null): DispatchResult | null => {
-            if (scheme === null) return null;
+            if (scheme === null || !this.#schemes.has(scheme)) return null;
             if (active.has(scheme)) return null;
             return Dispatcher.#failure(
                 "scheme-unavailable",

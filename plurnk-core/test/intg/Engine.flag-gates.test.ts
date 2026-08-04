@@ -153,6 +153,66 @@ test("flag gate active: broadcast SEND is never gated (no scheme to check)", asy
     } finally { await db.close(); }
 });
 
+// {§op-methods-op-dispatch} Loop affinity narrows registered schemes; it does
+// not turn an unknown name into a registered-but-unavailable authority.
+test("unregistered direct targets remain scheme-not-found under every loop flag (#166)", async () => {
+    const { db, workspaceId, workerId, loopId, turnId, engine } = await setup();
+    try {
+        const flagSets = [
+            { mode: "act" },
+            { mode: "act", noWeb: true },
+            { mode: "act", noInteraction: true },
+            { mode: "act", noWeb: true, noInteraction: true },
+            { mode: "ask" },
+            { mode: "ask", noWeb: true },
+            { mode: "ask", noInteraction: true },
+            { mode: "ask", noWeb: true, noInteraction: true },
+        ];
+        for (const [index, flags] of flagSets.entries()) {
+            await setLoopFlags(db, loopId, flags);
+            const result = await engine.dispatch({
+                statement: readStmt(urlPath("unknown-source", "/item")),
+                workspaceId,
+                workerId,
+                loopId,
+                turnId,
+                sequence: index + 1,
+                origin: "client",
+            });
+            assert.equal(result.status, 501);
+            assert.equal(result.problem?.type, "https://problems.plurnk.dev/engine/dispatcher/scheme-not-found");
+            assert.equal(result.problem?.scheme, "unknown-source");
+        }
+    } finally { await db.close(); }
+});
+
+test("unregistered EXEC sources remain scheme-not-found when the exec authority is active (#166)", async () => {
+    const { db, workspaceId, workerId, loopId, turnId, engine, exec } = await setup();
+    try {
+        const flagSets = [
+            { mode: "act", noWeb: true },
+            { mode: "act", noInteraction: true },
+            { mode: "act", noWeb: true, noInteraction: true },
+        ];
+        for (const [index, flags] of flagSets.entries()) {
+            await setLoopFlags(db, loopId, flags);
+            const result = await engine.dispatch({
+                statement: execStmt("flag-tool", "transform", urlPath("unknown-source", "/item")),
+                workspaceId,
+                workerId,
+                loopId,
+                turnId,
+                sequence: index + 1,
+                origin: "client",
+            });
+            assert.equal(result.status, 501);
+            assert.equal(result.problem?.type, "https://problems.plurnk.dev/engine/dispatcher/scheme-not-found");
+            assert.equal(result.problem?.scheme, "unknown-source");
+        }
+        await exec.idle();
+    } finally { await exec.idle(); await db.close(); }
+});
+
 // {§exec-target-routing} EXEC consumes operation and optional source authority independently.
 test("ask mode gates the exec operation before every target form (#164)", async () => {
     const { db, workspaceId, workerId, loopId, turnId, engine, schemes, exec } = await setup();
