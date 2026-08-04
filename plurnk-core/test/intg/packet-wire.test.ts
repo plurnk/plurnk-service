@@ -415,6 +415,56 @@ test("log render: model EDIT receipt renders revision and bounded join context v
     assert.doesNotMatch(out, new RegExp(revision));
 });
 
+test("reviewer-replaced EDIT rows render authored dispositions and one landed replacement", () => {
+    const replacement = {
+        requested: "<1,-1>",
+        source: "1-4",
+        result: "1-2",
+        removed: 4,
+        inserted: 2,
+        context: "1:reviewer\n2:replacement",
+    };
+    const head = {
+        revision,
+        unit: "lines",
+        before: 4,
+        after: 2,
+        disposition: "superseded",
+    } as const;
+    const out = PacketWire.renderLog([
+        {
+            coordinate: "1/1/3",
+            origin: "model",
+            op: "EDIT",
+            status: 200,
+            target: { scheme: "worker", pathname: "/draft" },
+            rx: {
+                status: 200,
+                receipt: { ...head, requested: "<2>", replacement },
+            },
+        },
+        {
+            coordinate: "1/1/4",
+            origin: "model",
+            op: "EDIT",
+            status: 200,
+            target: { scheme: "worker", pathname: "/draft" },
+            rx: {
+                status: 200,
+                receipt: { ...head, requested: "<4>" },
+            },
+        },
+    ], tok);
+    assert.equal(out.match(/"disposition":"superseded"/g)?.length, 2);
+    assert.match(out, /"requested":"<2>"/);
+    assert.match(out, /"requested":"<4>"/);
+    assert.match(out, /"replacement":"<1,-1> 1-4->1-2"/);
+    assert.match(out, /"change":"-4 \+2"/);
+    assert.equal(out.match(/1:reviewer/g)?.length, 1);
+    assert.equal(out.match(/2:replacement/g)?.length, 1);
+    assert.doesNotMatch(out, new RegExp(revision));
+});
+
 test("render guard: every content-emitting op applies the N: convention uniformly", () => {
     // The model orients on line numbers, so EVERY op that emits a content body
     // must number textual content regardless of mimetype. Pins the invariant

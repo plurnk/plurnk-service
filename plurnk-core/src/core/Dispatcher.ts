@@ -90,12 +90,17 @@ type LogCurationHandler = {
     open(statement: OpenStatement, ctx: SchemeCtx): Promise<DispatchResult>;
     fold(statement: FoldStatement, ctx: SchemeCtx): Promise<DispatchResult>;
 };
+type PreparedEditBatch = {
+    readonly initial: DispatchResult;
+    readonly settled: Promise<DispatchResult>;
+    aggregate: EditBatchReceipt | undefined;
+    settle(result: DispatchResult): void;
+};
+
 type PreparedEdit = {
     readonly first: boolean;
     readonly index: number;
-    readonly initial: DispatchResult;
-    readonly settled: Promise<DispatchResult>;
-    settle(result: DispatchResult): void;
+    readonly batch: PreparedEditBatch;
 };
 
 interface SchemeWithCrud {
@@ -459,16 +464,18 @@ export default class Dispatcher {
             }
             let resolveSettled!: (result: DispatchResult) => void;
             const settled = new Promise<DispatchResult>((resolve) => { resolveSettled = resolve; });
-            const prepared: PreparedEdit = {
-                first: true,
-                index: 0,
+            const candidate = initial.editReceipt;
+            const batch: PreparedEditBatch = {
                 initial,
                 settled,
+                aggregate: candidate === undefined || candidate === null
+                    ? undefined
+                    : assertEditBatchReceipt(candidate),
                 settle: resolveSettled,
             };
-            this.#preparedEdits.set(first, prepared);
+            this.#preparedEdits.set(first, { first: true, index: 0, batch });
             for (const [index, statement] of group.slice(1).entries()) {
-                this.#preparedEdits.set(statement, { ...prepared, first: false, index: index + 1 });
+                this.#preparedEdits.set(statement, { first: false, index: index + 1, batch });
             }
         }
     }
@@ -477,7 +484,7 @@ export default class Dispatcher {
         const result = await this.#dispatchOne(context);
         if (context.statement.op === "EDIT") {
             const prepared = this.#preparedEdits.get(context.statement);
-            if (prepared?.first === true) prepared.settle(result);
+            if (prepared?.first === true) prepared.batch.settle(result);
         }
         return result;
     }
@@ -532,8 +539,10 @@ export default class Dispatcher {
                     if (prepared === undefined) {
                         throw new InvalidOperationResultError("EDIT reached dispatch without a prepared resource batch.");
                     } else {
-                        const settled = prepared.first ? prepared.initial : await prepared.settled;
-                        const aggregate = settled.editReceipt ?? prepared.initial.editReceipt;
+                        const settled = prepared.first
+                            ? prepared.batch.initial
+                            : await prepared.batch.settled;
+                        const aggregate = prepared.batch.aggregate;
                         if (aggregate !== undefined) {
                             const receipt = assertEditBatchReceipt(aggregate);
                             const { editReceipt: _editReceipt, ...withoutAggregate } = settled;
@@ -639,6 +648,7 @@ export default class Dispatcher {
                     ctx: schemeCtx,
                     ids: { workspaceId, workerId, loopId, turnId },
                 });
+                this.#recordEditSettlement(statement, effective);
                 return this.#proposals.applyResolution(logEntryId, effective);
             }
             // Register the resolution waiter SYNCHRONOUSLY before any await
@@ -682,6 +692,7 @@ export default class Dispatcher {
                 ctx: schemeCtx,
                 ids: { workspaceId, workerId, loopId, turnId },
             });
+            this.#recordEditSettlement(statement, effective);
             const post = await this.#proposals.applyResolution(logEntryId, effective);
             return post;
         }
@@ -1570,9 +1581,14 @@ export default class Dispatcher {
         const single = batch === undefined && exact.receipt !== undefined
             ? assertEditReceipt(exact.receipt)
             : undefined;
-        if (batch !== undefined && batch.effects.length !== pending.length) {
+        const batchSize = batch === undefined
+            ? undefined
+            : "disposition" in batch
+                ? batch.superseded.length
+                : batch.effects.length;
+        if (batchSize !== undefined && batchSize !== pending.length) {
             throw new InvalidOperationResultError(
-                `COPY/MOVE expected ${pending.length} receipt effects, got ${batch.effects.length}.`,
+                `COPY/MOVE expected ${pending.length} receipt projections, got ${batchSize}.`,
             );
         }
         if (single !== undefined && pending.length !== 1) {
@@ -1676,10 +1692,12 @@ export default class Dispatcher {
             return settlement;
         }
         const projected = settlement.resolution.result ?? {};
+        const aggregate = settlement.applied.editReceipt;
         const applied = Dispatcher.#appliedEffects(
             {
                 ...projected,
                 status: settlement.applied.status,
+                ...(aggregate === undefined ? {} : { editReceipt: aggregate }),
             },
             pending,
         );
@@ -1699,6 +1717,37 @@ export default class Dispatcher {
                 result,
             },
         };
+    }
+
+    #recordEditSettlement(
+        statement: PlurnkStatement,
+        settlement: ProposalSettlement,
+    ): void {
+        if (statement.op !== "EDIT") return;
+        const prepared = this.#preparedEdits.get(statement);
+        if (prepared === undefined || !prepared.first) {
+            throw new InvalidOperationResultError(
+                "An EDIT proposal settled without its prepared batch owner.",
+            );
+        }
+        const { resolution, applied } = settlement;
+        if (
+            resolution.decision !== "accept"
+            || applied === undefined
+            || applied.status >= 300
+        ) {
+            prepared.batch.aggregate = undefined;
+            return;
+        }
+        if (applied.editReceipt === null) {
+            prepared.batch.aggregate = undefined;
+            return;
+        }
+        if (applied.editReceipt !== undefined) {
+            prepared.batch.aggregate = assertEditBatchReceipt(applied.editReceipt);
+            return;
+        }
+        if (resolution.body !== undefined) prepared.batch.aggregate = undefined;
     }
 
     static #settlementEffects(settlement: ProposalSettlement): readonly ResourceEffect[] {

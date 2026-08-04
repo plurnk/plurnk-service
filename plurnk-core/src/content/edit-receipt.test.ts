@@ -6,6 +6,7 @@ import {
     assertResourceEffects,
     editReceipt,
     projectEditReceipt,
+    reviewerReplacementReceipt,
 } from "./edit-receipt.ts";
 
 test("editReceipt correlates disjoint edits to one bounded resulting revision", () => {
@@ -41,6 +42,52 @@ test("editReceipt preserves authored statement correlation while computing snaps
         { requested: "<4>", source: "4", result: "5" },
         { requested: "<2>", source: "2", result: "2-3" },
     ]);
+});
+
+test("reviewerReplacementReceipt separates one landed replacement from superseded authored EDITs", () => {
+    const authored = editReceipt(
+        "one\ntwo\nthree\nfour\n",
+        "one\nTWO\nthree\nFOUR\n",
+        [
+            { marker: { marks: [2] }, body: "TWO" },
+            { marker: { marks: [4] }, body: "FOUR" },
+        ],
+    );
+    const reviewed = reviewerReplacementReceipt(
+        "one\ntwo\nthree\nfour\n",
+        "reviewer\nreplacement\n",
+        authored,
+    );
+    assert.deepEqual(reviewed.superseded, ["<2>", "<4>"]);
+    assert.deepEqual(reviewed.replacement, {
+        requested: "<1,-1>",
+        source: "1-4",
+        result: "1-2",
+        removed: 4,
+        inserted: 2,
+        context: "1:reviewer\n2:replacement",
+    });
+    assert.deepEqual(projectEditReceipt(reviewed, 0), {
+        revision: reviewed.revision,
+        unit: "lines",
+        before: 4,
+        after: 2,
+        disposition: "superseded",
+        requested: "<2>",
+        replacement: reviewed.replacement,
+    });
+    assert.deepEqual(projectEditReceipt(reviewed, 1), {
+        revision: reviewed.revision,
+        unit: "lines",
+        before: 4,
+        after: 2,
+        disposition: "superseded",
+        requested: "<4>",
+    });
+    assert.throws(
+        () => reviewerReplacementReceipt("before", "after", reviewed),
+        /already replaced/,
+    );
 });
 
 test("editReceipt reports creation, prepend, append, and deletion boundaries explicitly", () => {

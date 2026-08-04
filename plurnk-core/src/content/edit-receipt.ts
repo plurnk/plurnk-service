@@ -2,10 +2,12 @@ import { createHash } from "node:crypto";
 import { InvalidOperationResultError } from "@plurnk/plurnk-contracts";
 import type { LineMarker } from "@plurnk/plurnk-contracts";
 import type {
+    AppliedEditBatchReceipt,
     EditBatchReceipt,
     EditEffectReceipt,
     EditReceipt,
     EditReceiptUnit,
+    ReviewerReplacementEditBatchReceipt,
 } from "@plurnk/plurnk-schemes";
 import LineMarkerOps from "./line-marker.ts";
 
@@ -15,10 +17,12 @@ export interface ReceiptEdit {
 }
 
 export type {
+    AppliedEditBatchReceipt,
     EditBatchReceipt,
     EditEffectReceipt,
     EditReceipt,
     EditReceiptUnit,
+    ReviewerReplacementEditBatchReceipt,
 } from "@plurnk/plurnk-schemes";
 
 export type ResourceEffectAction = "create" | "update" | "delete";
@@ -104,6 +108,23 @@ const assertReceiptHead = (
 
 export const assertEditReceipt = (value: unknown): EditReceipt => {
     const receipt = receiptRecord(value, "EDIT receipt");
+    if (receipt.disposition === "superseded") {
+        exactFields(
+            receipt,
+            Object.hasOwn(receipt, "replacement")
+                ? ["revision", "unit", "before", "after", "disposition", "requested", "replacement"]
+                : ["revision", "unit", "before", "after", "disposition", "requested"],
+            "EDIT receipt",
+        );
+        assertReceiptHead(receipt, "EDIT receipt");
+        if (typeof receipt.requested !== "string" || receipt.requested.length === 0) {
+            throw new InvalidOperationResultError(
+                "A superseded EDIT receipt requested marker must be a non-empty string.",
+            );
+        }
+        if (Object.hasOwn(receipt, "replacement")) assertEffectReceipt(receipt.replacement);
+        return value as EditReceipt;
+    }
     exactFields(receipt, ["revision", "unit", "before", "after", "effect"], "EDIT receipt");
     assertReceiptHead(receipt, "EDIT receipt");
     assertEffectReceipt(receipt.effect);
@@ -112,6 +133,25 @@ export const assertEditReceipt = (value: unknown): EditReceipt => {
 
 export const assertEditBatchReceipt = (value: unknown): EditBatchReceipt => {
     const receipt = receiptRecord(value, "EDIT batch receipt");
+    if (receipt.disposition === "reviewer-replaced") {
+        exactFields(
+            receipt,
+            ["revision", "unit", "before", "after", "disposition", "superseded", "replacement"],
+            "EDIT batch receipt",
+        );
+        assertReceiptHead(receipt, "EDIT batch receipt");
+        if (
+            !Array.isArray(receipt.superseded)
+            || receipt.superseded.length === 0
+            || receipt.superseded.some((requested) => typeof requested !== "string" || requested.length === 0)
+        ) {
+            throw new InvalidOperationResultError(
+                "A reviewer-replaced EDIT batch receipt superseded list must contain non-empty requested markers.",
+            );
+        }
+        assertEffectReceipt(receipt.replacement);
+        return value as unknown as EditBatchReceipt;
+    }
     exactFields(receipt, ["revision", "unit", "before", "after", "effects"], "EDIT batch receipt");
     assertReceiptHead(receipt, "EDIT batch receipt");
     if (!Array.isArray(receipt.effects) || receipt.effects.length === 0) {
@@ -162,6 +202,19 @@ export const assertResourceEffects = (value: unknown): readonly ResourceEffect[]
 
 export const projectEditReceipt = (receipt: EditBatchReceipt, index: number): EditReceipt => {
     const exact = assertEditBatchReceipt(receipt);
+    if ("disposition" in exact) {
+        const requested = exact.superseded[index];
+        if (requested === undefined) throw new Error(`EDIT receipt has no superseded request at index ${index}`);
+        return {
+            revision: exact.revision,
+            unit: exact.unit,
+            before: exact.before,
+            after: exact.after,
+            disposition: "superseded",
+            requested,
+            ...(index === 0 ? { replacement: exact.replacement } : {}),
+        };
+    }
     const effect = exact.effects[index];
     if (effect === undefined) throw new Error(`EDIT receipt has no effect at index ${index}`);
     return {
@@ -368,7 +421,7 @@ export const editReceipt = (
     original: string,
     updated: string,
     edits: readonly ReceiptEdit[],
-): EditBatchReceipt => {
+): AppliedEditBatchReceipt => {
     const unit: EditReceiptUnit = edits.some(({ marker }) => marker.marks.length === 4)
         ? "codePoints"
         : "lines";
@@ -385,5 +438,36 @@ export const editReceipt = (
             ? codePointCount(updated)
             : splitLines(updated).length,
         effects: addContext(effects, updated),
+    };
+};
+
+export const reviewerReplacementReceipt = (
+    original: string,
+    updated: string,
+    authored: EditBatchReceipt,
+): ReviewerReplacementEditBatchReceipt => {
+    const exact = assertEditBatchReceipt(authored);
+    if ("disposition" in exact) {
+        throw new InvalidOperationResultError(
+            "A reviewer replacement cannot supersede an already replaced EDIT batch receipt.",
+        );
+    }
+    const landed = editReceipt(
+        original,
+        updated,
+        [{ marker: { marks: [1, -1] }, body: updated }],
+    );
+    const replacement = landed.effects[0];
+    if (replacement === undefined) {
+        throw new Error("Reviewer replacement receipt omitted its landed effect.");
+    }
+    return {
+        revision: landed.revision,
+        unit: landed.unit,
+        before: landed.before,
+        after: landed.after,
+        disposition: "reviewer-replaced",
+        superseded: exact.effects.map(({ requested }) => requested),
+        replacement,
     };
 };

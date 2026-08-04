@@ -44,11 +44,15 @@ export { default as Results } from "./Results.ts";
 export { InvalidOperationResultError } from "./Results.ts";
 export { PathSyntax } from "@plurnk/plurnk-contracts";
 export type {
+    AppliedEditBatchReceipt,
+    AppliedEditReceipt,
     EditBatchReceipt,
     EditBatchResult,
     EditEffectReceipt,
     EditReceipt,
     EditReceiptUnit,
+    ReviewerReplacementEditBatchReceipt,
+    SupersededEditReceipt,
 } from "./edit-receipt.ts";
 export type {
     EntryResult,

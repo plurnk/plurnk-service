@@ -276,11 +276,18 @@ test("file.edit: reviewer-modified acceptance receipts the content that actually
         assert.equal(await readFile(join(root, target), "utf8"), reviewed);
         const row = await ctx.db.test_get_log_entry_by_id.get<{ rx: string }>({ id: logEntryId });
         const rx = JSON.parse(row?.rx ?? "{}") as {
-            receipt?: { revision?: string; effect?: { context?: string } };
+            receipt?: {
+                revision?: string;
+                disposition?: string;
+                requested?: string;
+                replacement?: { context?: string };
+            };
         };
         assert.equal(rx.receipt?.revision, createHash("sha256").update(reviewed).digest("hex"));
-        assert.match(rx.receipt?.effect?.context ?? "", /1:reviewer revision/);
-        assert.doesNotMatch(rx.receipt?.effect?.context ?? "", /model proposal/);
+        assert.equal(rx.receipt?.disposition, "superseded");
+        assert.equal(rx.receipt?.requested, "<1,-1>");
+        assert.match(rx.receipt?.replacement?.context ?? "", /1:reviewer revision/);
+        assert.doesNotMatch(rx.receipt?.replacement?.context ?? "", /model proposal/);
     });
 });
 

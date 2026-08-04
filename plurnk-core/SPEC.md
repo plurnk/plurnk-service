@@ -2166,9 +2166,11 @@ flowchart LR
 
 §edit-result-receipt-projection **EDIT projects the scheme-owned batch
 receipt.** The scheme framework owns the exact aggregate shape
-({§scheme-edit-batch-receipt}). Core validates it, projects the effect matching
-each authored EDIT's batch index, and stores that receipt structurally on the
-row's `rx`.
+({§scheme-edit-batch-receipt}). Core validates it and projects the result
+matching each authored EDIT's batch index: either that statement's applied
+effect or its superseded disposition. The proposal-owning row alone carries a
+reviewer replacement effect. Core stores only that per-row projection on `rx`;
+the aggregate remains dispatch coordination state.
 
 | Durable receipt fact                   | Packet projection                                                 | Meaning                                                                                                                   |
 | -------------------------------------- | ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
@@ -2177,15 +2179,31 @@ row's `rx`.
 | `effect.requested`, `source`, `result` | `range`                                                           | The admitted marker and its normalized mapping from the common source snapshot into the landed body.                      |
 | `effect.removed`, `inserted`           | `change`                                                          | Removed and inserted counts in the receipt unit.                                                                          |
 | `effect.context`                       | Canonical row body                                                | Numbered physical lines around the landed join, bounded by `PLURNK_SERVICE_EDIT_RECEIPT_CONTEXT_LINES`.                   |
+| `disposition`, `requested`             | `disposition`, `requested`                                       | A reviewer-replaced batch preserves the authored marker while stating that its attributed effect was superseded.          |
+| `replacement`                          | `replacement`, `change`, canonical proposal-owner body           | The one whole-resource effect actually applied by the reviewer replacement; never duplicated across authored rows.        |
 
 §edit-result-receipt-truth **Receipts describe committed state.** Every row in
-one resource-channel EDIT batch carries the same landed revision and extent but
-its own requested marker, source/result mapping, counts, and context. A proposal whose
-reviewer changes the body must recompute from the bytes that actually land
-without inventing per-row effects; #68 tracks the current multi-EDIT violation.
-There is no JSON row/item receipt mode. A deliberate same-turn READ executes
-after mutation ({§op-mode-phases}) and remains the universal request for
-arbitrary current content.
+one resource-channel EDIT batch carries the same landed revision and extent.
+When the proposed batch lands unchanged, each row also carries its own requested
+marker, source/result mapping, counts, and context.
+
+§edit-result-reviewer-replacement **A resolver replacement is one effect, not a
+guess at authorship.** An arbitrary accepted body replaces the batch's proposed
+body. Its correspondence to the authored EDITs is unknowable, so every authored
+row retains its requested marker with disposition `superseded`. The durable
+proposal-owning row additionally carries the one whole-resource replacement
+effect and its bounded landed context; sibling rows identify the same revision
+without duplicating that effect.
+
+| Acceptance                     | Per-authored-row receipt               | Applied effect                                    |
+| ------------------------------ | -------------------------------------- | ------------------------------------------------- |
+| Proposed body unchanged        | Requested marker and its exact mapping | One per authored EDIT                             |
+| Resolver body replaced proposal | Requested marker plus `superseded`     | One whole-resource replacement, carried once     |
+
+Durable `tx` always remains the model's admitted statement. There is no JSON
+row/item receipt mode. A deliberate same-turn READ executes after mutation
+({§op-mode-phases}) and remains the universal request for arbitrary current
+content.
 
 System-narrated environment EDITs are state-diff events rather than authored
 mutation receipts. They carry the resulting span defined by

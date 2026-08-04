@@ -262,11 +262,27 @@ export default class PacketWire {
 
     static #receiptMeta(value: unknown): Record<string, string> {
         const receipt: EditReceipt = assertEditReceipt(value);
-        return {
+        const head = {
             rev: receipt.revision.slice(0, editReceiptRevisionChars()),
             extent: `${receipt.unit} ${receipt.before}->${receipt.after}`,
-            change: `-${receipt.effect.removed} +${receipt.effect.inserted}`,
-            range: `${receipt.effect.requested} ${receipt.effect.source}->${receipt.effect.result}`,
+        };
+        if ("effect" in receipt) {
+            return {
+                ...head,
+                change: `-${receipt.effect.removed} +${receipt.effect.inserted}`,
+                range: `${receipt.effect.requested} ${receipt.effect.source}->${receipt.effect.result}`,
+            };
+        }
+        return {
+            ...head,
+            disposition: receipt.disposition,
+            requested: receipt.requested,
+            ...(receipt.replacement === undefined
+                ? {}
+                : {
+                    change: `-${receipt.replacement.removed} +${receipt.replacement.inserted}`,
+                    replacement: `${receipt.replacement.requested} ${receipt.replacement.source}->${receipt.replacement.result}`,
+                }),
         };
     }
 

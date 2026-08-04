@@ -8,7 +8,7 @@ import type { WriterTier } from "./types.ts";
 import type { EditStatement, FindStatement, ReadStatement, SendStatement } from "@plurnk/plurnk-contracts";
 import type { TextRegion } from "@plurnk/plurnk-contracts";
 import type { MatchEvidence, SchemeResult } from "./Results.ts";
-import type { EditBatchResult } from "./edit-receipt.ts";
+import type { EditBatchReceipt, EditBatchResult } from "./edit-receipt.ts";
 // Channel streaming-lifecycle state (mirrors plurnk-service's ChannelState /
 // grammar ChannelContent.state). Metadata, not an engine gate (service SPEC: channel lifecycle state).
 export type ChannelState = "static" | "active" | "closed" | "errored";
@@ -248,6 +248,7 @@ export interface ProposalApplyResult extends SchemeResult {
     readonly outcome?: string;
     readonly body?: string;
     readonly result?: object;
+    readonly editReceipt?: EditBatchReceipt | null;
 }
 
 export interface ProposalAware {

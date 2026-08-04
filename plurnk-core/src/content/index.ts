@@ -23,12 +23,15 @@ export {
     assertResourceEffects,
     editReceipt,
     projectEditReceipt,
+    reviewerReplacementReceipt,
 } from "./edit-receipt.ts";
 export type {
+    AppliedEditBatchReceipt,
     EditBatchReceipt,
     EditEffectReceipt,
     EditReceipt,
     EditReceiptUnit,
+    ReviewerReplacementEditBatchReceipt,
     ReceiptEdit,
     ResourceEffect,
     ResourceEffectAction,

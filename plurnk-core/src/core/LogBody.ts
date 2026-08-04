@@ -54,7 +54,12 @@ export default class LogBody {
         // bounded landed context, not the authored mutation text.
         if (receipts.length === 0) return EMPTY_BODY;
         return {
-            content: receipts.map(({ effect }) => effect.context).join("\n\n"),
+            content: receipts
+                .map((receipt) => "effect" in receipt
+                    ? receipt.effect.context
+                    : receipt.replacement?.context ?? "")
+                .filter((context) => context.length > 0)
+                .join("\n\n"),
             mimetype: "text/plain",
             startLine: null,
         };

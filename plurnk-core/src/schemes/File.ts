@@ -18,7 +18,10 @@ import { CoreSchemeAdapterBase } from "../core/CoreSchemeServices.ts";
 import type { CoreSchemeCallContext } from "../core/CoreSchemeServices.ts";
 import ErrorDetail from "../core/ErrorDetail.ts";
 import Results, { type SchemeResultBase } from "../core/results.ts";
-import { InvalidOperationResultError } from "@plurnk/plurnk-schemes";
+import {
+    InvalidOperationResultError,
+    type ProposalApplyResult,
+} from "@plurnk/plurnk-schemes";
 
 // Resolved + {§membership-change-gated-sync} disk-write target, or the error status to return.
 type WriteTarget =
@@ -30,12 +33,18 @@ type WriteTarget =
         detail: string;
         extensions?: Readonly<Record<string, unknown>>;
     };
-import { LineMarkerOps, MimetypeBinary, editReceipt, projectEditReceipt } from "../content/index.ts";
+import {
+    LineMarkerOps,
+    MimetypeBinary,
+    editReceipt,
+    projectEditReceipt,
+    reviewerReplacementReceipt,
+} from "../content/index.ts";
 import type { EditBatchReceipt } from "../content/index.ts";
 
 type EditResult = SchemeResultBase & { body?: string; attrs?: object; editReceipt?: EditBatchReceipt };
 type ApplyArgs = { attrs: { path?: string; canonical?: string; patched?: string; editReceipt?: EditBatchReceipt; deletePath?: string; baseSig?: string | null; existed?: boolean; [k: string]: unknown }; body?: string };
-type ApplyResult = SchemeResultBase & { outcome?: string; body?: string; result?: object };
+type ApplyResult = ProposalApplyResult;
 
 // Workspace root for file ops is sourced from `workspaces.project_root`,
 // supplied by the client at workspace.create (headless is forever; issue
@@ -557,16 +566,19 @@ export default class File extends CoreSchemeAdapterBase {
         let receipt = attrs.editReceipt;
         if (body !== undefined && body !== attrs.patched) {
             const original = existed ? await readFile(canonical, "utf8") : "";
-            const reviewed = editReceipt(
-                original,
-                patched,
-                [{ marker: { marks: [1, -1] as [number, number] }, body: patched }],
-            );
-            const statementCount = attrs.editReceipt?.effects.length ?? 1;
-            receipt = {
-                ...reviewed,
-                effects: Array.from({ length: statementCount }, () => reviewed.effects[0]!),
-            };
+            if (receipt === undefined) {
+                if (typeof attrs.patched !== "string") {
+                    throw new InvalidOperationResultError(
+                        "The reviewer-modified file proposal is missing its proposed content.",
+                    );
+                }
+                receipt = editReceipt(
+                    original,
+                    attrs.patched,
+                    [{ marker: { marks: [1, -1] }, body: attrs.patched }],
+                );
+            }
+            receipt = reviewerReplacementReceipt(original, patched, receipt);
         }
         try {
             // A write into a not-yet-existing subtree creates it — an accepted proposal must not
@@ -628,7 +640,11 @@ export default class File extends CoreSchemeAdapterBase {
             ) as ApplyResult;
         }
         if (receipt === undefined) return { status: 200 };
-        return { status: 200, result: { receipt: projectEditReceipt(receipt, 0), editReceipt: receipt } };
+        return {
+            status: 200,
+            editReceipt: receipt,
+            result: { receipt: projectEditReceipt(receipt, 0) },
+        };
     }
 
     // deleteEntry — the KILL / MOVE-source counterpart of writeEntry. Deleting a host file is

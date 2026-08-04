@@ -20,7 +20,7 @@ import type { DispatchResult } from "./Dispatcher.ts";
 import { schemeNameOf } from "./plurnk-uri.ts";
 import SchemeCtxImpl from "./caps/SchemeCtxImpl.ts";
 import type LiveSubscriptions from "./LiveSubscriptions.ts";
-import type { SchemeCtx } from "@plurnk/plurnk-schemes";
+import type { ProposalApplyResult, SchemeCtx } from "@plurnk/plurnk-schemes";
 import Results, { OperationFailureError } from "./results.ts";
 
 // Proposal lifecycle types. A scheme returns DispatchResult{status:202,attrs}
@@ -429,7 +429,7 @@ export default class ProposalLifecycle {
                     : schemeNameOf(statement.target);
         if (schemeName === null) return { resolution };
         const handler = this.#schemes.get(schemeName) as
-            | { applyResolution?: (args: { attrs: object; body?: string }, ctx: SchemeCtx) => Promise<{ status: number; outcome?: string; body?: string; result?: object }> }
+            | { applyResolution?: (args: { attrs: object; body?: string }, ctx: SchemeCtx) => Promise<ProposalApplyResult> }
             | undefined;
         if (handler === undefined || typeof handler.applyResolution !== "function") return { resolution };
         try {

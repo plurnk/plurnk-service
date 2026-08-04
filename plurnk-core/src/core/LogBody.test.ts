@@ -57,6 +57,51 @@ test("LogBody resolves built-in result-backed bodies", () => {
         { content: "10:before\n11:after", mimetype: "text/plain", startLine: null },
     );
 
+    assert.deepEqual(
+        LogBody.resolve({
+            op: "EDIT",
+            tx: { body: "model edit" },
+            rx: {
+                receipt: {
+                    revision: receipt("").revision,
+                    unit: "lines",
+                    before: 4,
+                    after: 2,
+                    disposition: "superseded",
+                    requested: "<2>",
+                    replacement: {
+                        requested: "<1,-1>",
+                        source: "1-4",
+                        result: "1-2",
+                        removed: 4,
+                        inserted: 2,
+                        context: "1:reviewer\n2:replacement",
+                    },
+                },
+            },
+        }),
+        { content: "1:reviewer\n2:replacement", mimetype: "text/plain", startLine: null },
+    );
+
+    assert.equal(
+        LogBody.resolve({
+            op: "EDIT",
+            tx: { body: "another model edit" },
+            rx: {
+                receipt: {
+                    revision: receipt("").revision,
+                    unit: "lines",
+                    before: 4,
+                    after: 2,
+                    disposition: "superseded",
+                    requested: "<4>",
+                },
+            },
+        }).content,
+        "",
+        "only the proposal-owning row carries reviewer replacement context",
+    );
+
     for (const [op, rx] of [
         ["EDIT", { span: "1:edited" }],
     ] as const) {

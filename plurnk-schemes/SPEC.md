@@ -153,7 +153,7 @@ interface EditEffectReceipt {
     readonly context: string;
 }
 
-interface EditBatchReceipt {
+interface AppliedEditBatchReceipt {
     readonly revision: string;
     readonly unit: EditReceiptUnit;
     readonly before: number;
@@ -161,10 +161,35 @@ interface EditBatchReceipt {
     readonly effects: readonly EditEffectReceipt[];
 }
 
+interface ReviewerReplacementEditBatchReceipt {
+    readonly revision: string;
+    readonly unit: EditReceiptUnit;
+    readonly before: number;
+    readonly after: number;
+    readonly disposition: "reviewer-replaced";
+    readonly superseded: readonly string[];
+    readonly replacement: EditEffectReceipt;
+}
+
+type EditBatchReceipt =
+    | AppliedEditBatchReceipt
+    | ReviewerReplacementEditBatchReceipt;
+
 interface EditBatchResult extends SchemeResult {
     readonly editReceipt?: EditBatchReceipt | null;
 }
 ```
+
+| Batch outcome                        | Authored correlation                              | Landed effects                                                        |
+| ------------------------------------ | ------------------------------------------------- | --------------------------------------------------------------------- |
+| Applied as proposed                  | `effects[N]` describes authored EDIT `N`          | One truthful effect per authored EDIT                                 |
+| Resolver replaced the proposed body  | `superseded[N]` retains authored marker `N`       | One `replacement` effect describes the bytes that actually landed     |
+
+The replacement form is not a heuristic attribution. An arbitrary resolver
+body supersedes every authored EDIT because its correspondence to those edits
+cannot be known. The consumer projects the replacement once on the durable
+proposal-owning row and projects each authored marker's superseded disposition
+on its own row.
 
 The engine validates that receipt and owns the ordered COPY/MOVE resource
 effects shown to consumers; plugins do not invent a second effect envelope.
@@ -331,7 +356,14 @@ the call, but must not retain the context after the handler returns. Retained
 handler-owned resources follow {§handler-lifecycle}; they are not retained
 contexts.
 
-**Proposals are not a capability.** A side-effecting scheme proposes by *returning* a `ProposalResult` (status 202); the engine owns the resolution lifecycle. On acceptance it calls the handler's optional `applyResolution({ attrs, body }, ctx)` hook. `attrs` is the payload returned by the proposing operation and `body` is the resolver-approved body, when present. The hook returns a `SchemeResult`: a status below 400 completes the accept; a failure preserves the applying scheme's Problem Details as the proposal's final result.
+**Proposals are not a capability.** A side-effecting scheme proposes by *returning* a `ProposalResult` (status 202); the engine owns the resolution lifecycle. On acceptance it calls the handler's optional `applyResolution({ attrs, body }, ctx)` hook. `attrs` is the payload returned by the proposing operation and `body` is the resolver-approved body, when present. The hook returns a `ProposalApplyResult`: a status below 400 completes the accept; a failure preserves the applying scheme's Problem Details as the proposal's final result.
+
+§scheme-edit-proposal-receipt An accepted EDIT proposal may return its final
+aggregate `editReceipt` alongside its per-row model-facing `result`. A resolver
+replacement must use the reviewer-replaced form from
+{§scheme-edit-batch-receipt}. Core consumes that aggregate as transient batch
+coordination and COPY/MOVE composition input; it persists only per-row receipts
+or ordered resource effects.
 
 ## §4 What's NOT in this repo
 

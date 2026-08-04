@@ -58,5 +58,7 @@ test("SchemeHandler: a partial handler (read+send only) satisfies the contract",
 test("SchemeHandler: editBatch exposes the typed aggregate receipt contract", () => {
     assert.equal(typeof editable.editBatch, "function");
     assert.equal(editResult.editReceipt?.unit, "codePoints");
-    assert.equal(editResult.editReceipt?.effects[0]?.requested, "<1,2,1,2>");
+    assert.ok(editResult.editReceipt !== null && editResult.editReceipt !== undefined);
+    assert.ok("effects" in editResult.editReceipt);
+    assert.equal(editResult.editReceipt.effects[0]?.requested, "<1,2,1,2>");
 });

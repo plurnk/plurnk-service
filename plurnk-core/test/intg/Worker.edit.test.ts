@@ -327,13 +327,15 @@ test("Worker.edit result carries a bounded effect receipt with revision identity
         assert.equal(r1.status, 201);
         assert.match(r1.editReceipt?.revision ?? "", /^[a-f0-9]{64}$/);
         assert.deepEqual({ unit: r1.editReceipt?.unit, before: r1.editReceipt?.before, after: r1.editReceipt?.after }, { unit: "lines", before: 0, after: 3 });
-        assert.match(r1.editReceipt?.effects[0]?.context ?? "", /1:alpha\n2:beta\n3:gamma/);
+        assert.ok(r1.editReceipt !== null && r1.editReceipt !== undefined && "effects" in r1.editReceipt);
+        assert.match(r1.editReceipt.effects[0]?.context ?? "", /1:alpha\n2:beta\n3:gamma/);
         const r2 = await k.edit(editStatement({ target: urlPath("worker", "/notes"), body: "alpha\nBETA\ngamma", lineMarker: fullReplace }), ctx);
         assert.equal(r2.status, 200);
+        assert.ok(r2.editReceipt !== null && r2.editReceipt !== undefined && "effects" in r2.editReceipt);
         assert.deepEqual(
-            r2.editReceipt?.effects.map(({ requested, source, result, removed, inserted }) => ({ requested, source, result, removed, inserted })),
+            r2.editReceipt.effects.map(({ requested, source, result, removed, inserted }) => ({ requested, source, result, removed, inserted })),
             [{ requested: "<1,-1>", source: "1-3", result: "1-3", removed: 3, inserted: 3 }],
         );
-        assert.match(r2.editReceipt?.effects[0]?.context ?? "", /1:alpha\n2:BETA\n3:gamma/);
+        assert.match(r2.editReceipt.effects[0]?.context ?? "", /1:alpha\n2:BETA\n3:gamma/);
     } finally { await db.close(); }
 });
