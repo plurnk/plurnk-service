@@ -5,21 +5,22 @@
 import test from "node:test";
 import { hermeticGitEnv } from "../../src/core/git-env.ts";
 import assert from "node:assert/strict";
-import { setTimeout as sleep } from "node:timers/promises";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import Engine from "../../src/core/Engine.ts";
+import Fork from "../../src/core/fork.ts";
 import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 import Results from "../../src/core/results.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
+import Log from "../../src/schemes/Log.ts";
 import { Mock } from "@plurnk/plurnk-providers";
 import type { MockResponse } from "@plurnk/plurnk-providers";
 import type { SendStatement, EditStatement, UrlPath } from "@plurnk/plurnk-contracts";
 import type { Db } from "../../src/core/Db.ts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, rootWorkspace } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, makeSchemeCtx, rootWorkspace } from "./_helpers.ts";
 
 const execFileP = promisify(execFile);
 
@@ -34,6 +35,40 @@ const MESSAGES = [{ role: "system" as const, content: "You are an agent." }, { r
 
 // #507 — the envelope rides the provider; the wide Mock windows in this file keep the grinder out.
 const makeEngine = (db: Db): Engine => new Engine({ db, schemes: new SchemeRegistry() });
+
+// Controlled concurrency specimen: let one real prepared statement finish, then
+// inject an occurrence before Engine can consume its result. This fixes the race
+// at the exact persistence boundary without sleeps or an Engine-only test seam.
+const afterFirstStatement = (
+    db: Db,
+    statementName: string,
+    methodName: "all" | "get" | "run",
+    after: () => Promise<void>,
+): Db => {
+    type Statement = Record<string, (...args: unknown[]) => Promise<unknown>>;
+    const statement = (db as unknown as Record<string, Statement>)[statementName];
+    if (statement === undefined) throw new Error(`missing prepared statement ${statementName}`);
+    let pending = true;
+    const wrapped = new Proxy(statement, {
+        get(target, property) {
+            const value = Reflect.get(target, property, target) as unknown;
+            if (property !== methodName || typeof value !== "function") return value;
+            return async (...args: unknown[]) => {
+                const result = await Reflect.apply(value, target, args) as unknown;
+                if (pending) {
+                    pending = false;
+                    await after();
+                }
+                return result;
+            };
+        },
+    });
+    return new Proxy(db as unknown as object, {
+        get(target, property) {
+            return property === statementName ? wrapped : Reflect.get(target, property, target);
+        },
+    }) as Db;
+};
 
 const urlPath = (scheme: string, pathname: string): UrlPath => ({
     kind: "url", raw: `${scheme}://${pathname}`, scheme,
@@ -66,8 +101,6 @@ test("worker-entry deltas follow shared visibility without leaking private scrat
         const provider = new Mock({ contextWindow: 4096, responses: [okSend(), okSend()] });
 
         await eng.runTurn({ provider, workspaceId, workerId: observer, loopId: observerLoop, messages: MESSAGES, turnNumber: 1 });
-        await sleep(2);
-
         assert.equal((await eng.dispatch({
             statement: editStmt(urlPath("worker", "/shared.md"), "shared bulletin"),
             workspaceId, workerId: sibling, loopId: siblingLoop, turnId: siblingTurn, sequence: 1, origin: "model",
@@ -123,8 +156,6 @@ test("a worker learns a sibling's edit through its own log — pulled from the s
 
         // A's turn 1 sets its "last looked" boundary; nothing happened before it, so no deltas.
         await eng.runTurn({ provider, workspaceId, workerId: workerA, loopId: loopA, messages: MESSAGES, turnNumber: 1 });
-        await sleep(2);  // ms-resolution timestamps — ensure B's edit lands strictly after A's turn 1
-
         // B edits a shared entry — a real EDIT row in B's own log.
         const edit = await eng.dispatch({ statement: editStmt(urlPath("worker", "/shared.md"), "from sibling B"), workspaceId, workerId: workerB, loopId: loopB, turnId: turnB, sequence: 1, origin: "model" });
         assert.ok(edit.status === 200 || edit.status === 201, "B's edit to the shared entry lands");
@@ -183,6 +214,179 @@ test("ambient delivery follows monotonic occurrence identity, never wall-clock o
     }
 });
 
+test("a closed pull boundary assigns before, during, and after races exactly once", async () => {
+    const db = await openMigrated();
+    try {
+        const workspaceId = await insertWorkspace(db, `closed-boundary-${crypto.randomUUID()}`);
+        const observer = await insertWorker(db, workspaceId, null, "observer");
+        const observerLoop = await insertLoop(db, observer, 1, "observe");
+        const producer = await insertWorker(db, workspaceId, null, "producer");
+        const producerLoop = await insertLoop(db, producer, 1, "produce");
+        const producerTurn = await insertTurn(db, producerLoop, 1);
+        const eng = makeEngine(db);
+        let producerSequence = 1;
+        const emit = async (pathname: string): Promise<void> => {
+            const result = await eng.dispatch({
+                statement: editStmt(urlPath("worker", pathname), pathname),
+                workspaceId,
+                workerId: producer,
+                loopId: producerLoop,
+                turnId: producerTurn,
+                sequence: producerSequence++,
+                origin: "model",
+            });
+            assert.ok(result.status === 200 || result.status === 201);
+        };
+
+        await eng.runTurn({
+            provider: new Mock({ contextWindow: 4096, responses: [okSend()] }),
+            workspaceId, workerId: observer, loopId: observerLoop, messages: MESSAGES, turnNumber: 1,
+        });
+
+        let racedDb = afterFirstStatement(db, "engine_open_turn", "get", () => emit("/before-boundary.md"));
+        racedDb = afterFirstStatement(racedDb, "engine_pull_ambient_events", "all", () => emit("/during-boundary.md"));
+        await makeEngine(racedDb).runTurn({
+            provider: new Mock({ contextWindow: 4096, responses: [okSend()] }),
+            workspaceId, workerId: observer, loopId: observerLoop, messages: MESSAGES, turnNumber: 2,
+        });
+        await emit("/after-boundary.md");
+
+        const tailProvider = new Mock({ contextWindow: 4096, responses: [okSend(), okSend()] });
+        await eng.runTurn({ provider: tailProvider, workspaceId, workerId: observer, loopId: observerLoop, messages: MESSAGES, turnNumber: 3 });
+        await eng.runTurn({ provider: tailProvider, workspaceId, workerId: observer, loopId: observerLoop, messages: MESSAGES, turnNumber: 4 });
+
+        const rows = await db.engine_render_log.all<{
+            turn_seq: number; origin: string; op: string; pathname: string | null;
+        }>({ worker_id: observer });
+        assert.deepEqual(
+            rows
+                .filter((row) => row.origin === "plurnk" && row.op === "EDIT" && row.pathname?.endsWith("-boundary.md") === true)
+                .map(({ turn_seq, pathname }) => ({ turn: turn_seq, pathname }))
+                .sort((a, b) => (a.pathname ?? "").localeCompare(b.pathname ?? "")),
+            [
+                { turn: 3, pathname: "/after-boundary.md" },
+                { turn: 2, pathname: "/before-boundary.md" },
+                { turn: 3, pathname: "/during-boundary.md" },
+            ],
+            "the captured window owns only the event already inside it; both later events wait for the next pull",
+        );
+    } finally {
+        await db.close();
+    }
+});
+
+test("a fresh worker baselines history but retains an event racing its first packet", async () => {
+    const db = await openMigrated();
+    try {
+        const workspaceId = await insertWorkspace(db, `first-boundary-${crypto.randomUUID()}`);
+        const observer = await insertWorker(db, workspaceId, null, "observer");
+        const observerLoop = await insertLoop(db, observer, 1, "observe");
+        const producer = await insertWorker(db, workspaceId, null, "producer");
+        const producerLoop = await insertLoop(db, producer, 1, "produce");
+        const producerTurn = await insertTurn(db, producerLoop, 1);
+        const eng = makeEngine(db);
+        let producerSequence = 1;
+        const emit = async (pathname: string): Promise<void> => {
+            await eng.dispatch({
+                statement: editStmt(urlPath("worker", pathname), pathname),
+                workspaceId, workerId: producer, loopId: producerLoop, turnId: producerTurn,
+                sequence: producerSequence++, origin: "model",
+            });
+        };
+
+        await emit("/historical.md");
+        const racedDb = afterFirstStatement(db, "engine_initialize_ambient_cursor", "get", () => emit("/first-turn-race.md"));
+        const provider = new Mock({ contextWindow: 4096, responses: [okSend(), okSend()] });
+        await makeEngine(racedDb).runTurn({
+            provider, workspaceId, workerId: observer, loopId: observerLoop, messages: MESSAGES, turnNumber: 1,
+        });
+        await eng.runTurn({ provider, workspaceId, workerId: observer, loopId: observerLoop, messages: MESSAGES, turnNumber: 2 });
+
+        const rows = await db.engine_render_log.all<{ origin: string; op: string; pathname: string | null }>({ worker_id: observer });
+        const observed = rows
+            .filter((row) => row.origin === "plurnk" && row.op === "EDIT" && ["/historical.md", "/first-turn-race.md"].includes(row.pathname ?? ""))
+            .map((row) => row.pathname);
+        assert.deepEqual(observed, ["/first-turn-race.md"], "pre-baseline history stays out; a post-baseline race remains deliverable once");
+    } finally {
+        await db.close();
+    }
+});
+
+test("ambient occurrence evidence survives source-log curation", async () => {
+    const db = await openMigrated();
+    try {
+        const workspaceId = await insertWorkspace(db, `curated-source-${crypto.randomUUID()}`);
+        const observer = await insertWorker(db, workspaceId, null, "observer");
+        const observerLoop = await insertLoop(db, observer, 1, "observe");
+        const producer = await insertWorker(db, workspaceId, null, "producer");
+        const producerLoop = await insertLoop(db, producer, 1, "produce");
+        const producerTurn = await insertTurn(db, producerLoop, 1);
+        const eng = makeEngine(db);
+        const provider = new Mock({ contextWindow: 4096, responses: [okSend(), okSend()] });
+
+        await eng.runTurn({ provider, workspaceId, workerId: observer, loopId: observerLoop, messages: MESSAGES, turnNumber: 1 });
+        await eng.dispatch({
+            statement: editStmt(urlPath("worker", "/curated.md"), "durable occurrence"),
+            workspaceId, workerId: producer, loopId: producerLoop, turnId: producerTurn, sequence: 1, origin: "model",
+        });
+        const killed = await new Log().kill("/1/1/1", null, makeSchemeCtx({
+            db, workspaceId, workerId: producer, loopId: producerLoop, turnId: producerTurn, writer: "model",
+        }));
+        assert.equal(killed.status, 200, "the producer really curated away its source row");
+
+        await eng.runTurn({ provider, workspaceId, workerId: observer, loopId: observerLoop, messages: MESSAGES, turnNumber: 2 });
+        const rows = await db.engine_render_log.all<{ origin: string; op: string; pathname: string | null; rx: string }>({ worker_id: observer });
+        const delta = rows.find((row) => row.origin === "plurnk" && row.op === "EDIT" && row.pathname === "/curated.md");
+        assert.match(delta?.rx ?? "", /durable occurrence/, "curating the producer's log cannot erase the ambient event");
+    } finally {
+        await db.close();
+    }
+});
+
+test("a fork inherits observed progress and independently receives pending events", async () => {
+    const db = await openMigrated();
+    try {
+        const workspaceId = await insertWorkspace(db, `fork-cursor-${crypto.randomUUID()}`);
+        const parent = await insertWorker(db, workspaceId, null, "parent");
+        const parentLoop = await insertLoop(db, parent, 1, "observe");
+        const producer = await insertWorker(db, workspaceId, null, "producer");
+        const producerLoop = await insertLoop(db, producer, 1, "produce");
+        const producerTurn = await insertTurn(db, producerLoop, 1);
+        const eng = makeEngine(db);
+        const parentProvider = new Mock({ contextWindow: 4096, responses: [okSend(), okSend(), okSend()] });
+
+        await eng.runTurn({ provider: parentProvider, workspaceId, workerId: parent, loopId: parentLoop, messages: MESSAGES, turnNumber: 1 });
+        await eng.dispatch({
+            statement: editStmt(urlPath("worker", "/seen-before-fork.md"), "seen"),
+            workspaceId, workerId: producer, loopId: producerLoop, turnId: producerTurn, sequence: 1, origin: "model",
+        });
+        await eng.runTurn({ provider: parentProvider, workspaceId, workerId: parent, loopId: parentLoop, messages: MESSAGES, turnNumber: 2 });
+        await eng.dispatch({
+            statement: editStmt(urlPath("worker", "/pending-at-fork.md"), "pending"),
+            workspaceId, workerId: producer, loopId: producerLoop, turnId: producerTurn, sequence: 2, origin: "model",
+        });
+
+        const branch = await Fork.fork(db, parent, "branch");
+        const branchLoop = await insertLoop(db, branch, 2, "continue");
+        await eng.runTurn({
+            provider: new Mock({ contextWindow: 4096, responses: [okSend()] }),
+            workspaceId, workerId: branch, loopId: branchLoop, messages: MESSAGES, turnNumber: 1,
+        });
+        await eng.runTurn({ provider: parentProvider, workspaceId, workerId: parent, loopId: parentLoop, messages: MESSAGES, turnNumber: 3 });
+
+        for (const [workerId, label] of [[branch, "branch"], [parent, "parent"]] as const) {
+            const rows = await db.engine_render_log.all<{ origin: string; op: string; pathname: string | null }>({ worker_id: workerId });
+            const paths = rows
+                .filter((row) => row.origin === "plurnk" && row.op === "EDIT" && row.pathname?.endsWith("-fork.md") === true)
+                .map((row) => row.pathname)
+                .sort();
+            assert.deepEqual(paths, ["/pending-at-fork.md", "/seen-before-fork.md"], `${label} has copied history plus the pending event, with no replay`);
+        }
+    } finally {
+        await db.close();
+    }
+});
+
 test("an environment delta preserves typed source attributes for model-facing projection", async () => {
     const db = await openMigrated();
     try {
@@ -196,7 +400,6 @@ test("an environment delta preserves typed source attributes for model-facing pr
         const provider = new Mock({ contextWindow: 4096, responses: [okSend(), okSend()] });
 
         await eng.runTurn({ provider, workspaceId, workerId: observer, loopId: observerLoop, messages: MESSAGES, turnNumber: 1 });
-        await sleep(2);
         await db.engine_insert_log_entry.get({
             worker_id: plurnk, loop_id: plurnkLoop, turn_id: plurnkTurn, sequence: 1,
             origin: "plurnk", source: String(observer), op: "EDIT", suffix: "", signal: null,
@@ -232,8 +435,6 @@ test("exactly two cross-worker channels — state via the env-delta, a message v
         const provider = new Mock({ contextWindow: 4096, responses: [okSend(), okSend()] });
 
         await eng.runTurn({ provider, workspaceId, workerId: workerA, loopId: loopA, messages: MESSAGES, turnNumber: 1 });
-        await sleep(2);
-
         // ENVIRONMENT DOOR — *state*: B's edit to a shared entry crosses to A as a FOLDED delta, not a message.
         await eng.dispatch({ statement: editStmt(urlPath("worker", "/shared.md"), "from sibling B"), workspaceId, workerId: workerB, loopId: loopB, turnId: turnB, sequence: 1, origin: "model" });
         await eng.runTurn({ provider, workspaceId, workerId: workerA, loopId: loopA, messages: MESSAGES, turnNumber: 2 });
@@ -275,8 +476,6 @@ test("an out-of-band disk change surfaces as a source=file delta narrated by the
         await eng.runTurn({ provider, workspaceId, workerId: workerA, loopId: loopA, messages: MESSAGES, turnNumber: 1 });
         const afterT1 = await db.engine_render_log.all<{ origin: string; op: string; source: string | null }>({ worker_id: workerA });
         assert.ok(!afterT1.some((r) => r.origin === "plurnk" && r.op === "EDIT" && r.source === "file"), "first sight reconciles silently — no fs delta");
-        await sleep(2);
-
         // The file changes out-of-band (an external editor, a git pull).
         await writeFile(join(root, "notes.md"), "line1\nline2\nline3-external\n");
 
@@ -314,8 +513,6 @@ test("a sibling's loop-termination surfaces — a 2xx deliverable born OPEN + aw
 
         // A's turn 1 sets its "last looked" boundary; the siblings are still running.
         await eng.runTurn({ provider, workspaceId, workerId: workerA, loopId: loopA, messages: MESSAGES, turnNumber: 1 });
-        await sleep(2);  // ms-resolution — terminations must land strictly after A's turn 1
-
         // worker SENDs[200] its result (its deliverable); grinder is abandoned (budget).
         const lifecycle = new LoopLifecycle(db);
         assert.deepEqual(

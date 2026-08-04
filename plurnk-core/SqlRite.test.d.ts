@@ -371,6 +371,7 @@ export class SqlRiteSync {
 	test_derivation_for_entry: SqlRiteSyncPreparedStatements;
 	test_derivation_disposition: SqlRiteSyncPreparedStatements;
 	test_get_log_entry_attrs_by_turn: SqlRiteSyncPreparedStatements;
+	test_insert_shared_edit_at: SqlRiteSyncPreparedStatements;
 	test_embedding_insertion_order: SqlRiteSyncPreparedStatements;
 	test_log_entries_by_worker_op: SqlRiteSyncPreparedStatements;
 	test_count_entries_by_scheme: SqlRiteSyncPreparedStatements;
@@ -862,6 +863,7 @@ export default class SqlRite {
 	test_derivation_for_entry: SqlRitePreparedStatements;
 	test_derivation_disposition: SqlRitePreparedStatements;
 	test_get_log_entry_attrs_by_turn: SqlRitePreparedStatements;
+	test_insert_shared_edit_at: SqlRitePreparedStatements;
 	test_embedding_insertion_order: SqlRitePreparedStatements;
 	test_log_entries_by_worker_op: SqlRitePreparedStatements;
 	test_count_entries_by_scheme: SqlRitePreparedStatements;
