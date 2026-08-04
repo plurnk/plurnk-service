@@ -33,7 +33,7 @@ const MODEL_PACKET = (worker: string) => JSON.stringify({
         { name: "system", slot: "system", header: null, content: `system for ${worker}`, tokens: 1 },
         { name: "log", slot: "user", header: "Log", content: `log for ${worker}`, tokens: 1 },
     ],
-    assistant: { content: `last emission of ${worker}`, ops: [], reasoning: null, usage: { prompt: 0, completion: 0, reasoning: 0, cached: 0, total: 0 }, finishReason: "stop", model: "mock" },
+    assistant: { content: `last emission of ${worker}`, ops: [], reasoning: null },
     assistantRaw: null,
 });
 
