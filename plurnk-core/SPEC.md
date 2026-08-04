@@ -946,6 +946,18 @@ that compose the default install ({§bundled-set}).
 
 plurnk-service is mimetype-illiterate. Engine hands channel content + mimetype label to `Mimetypes.process({content, hint})`; the manifest build uses `result.totalLines` for each channel's `lines`. Content reaches the model on READ, not as a rendered preview.
 
+§mimetype-classification-consumption Every engine-owned binary decision uses
+the configured `Mimetypes.classify()` path. An installed handler declaration
+is authoritative; only an unregistered label reaches the framework's taxonomy.
+Absence of the configured registry at an engine classification boundary is an
+internal contract failure, never a reason to substitute the pure heuristic.
+
+| Core boundary                  | Classification effect                                      |
+|--------------------------------|------------------------------------------------------------|
+| File membership materializing | Decode textual content or retain a typed empty binary body. |
+| READ/EDIT and COPY/MOVE scope  | Admit text regions or return 415.                           |
+| Search derivation              | Build graph/FTS/vector artifacts or mark nonsemantic.       |
+
 The default service installation includes its structured, document, embedding,
 and tokenizer leaves through the service manifest. The lean framework also
 supports direct consumers that assemble a different set. Tree-sitter grammar
@@ -960,7 +972,7 @@ model-independent ruler for stored/catalog weights and the model-facing budget
 confined to provider-physical recovery admission
 ({§tokenomics-physical-admission}).
 
-**Persistent search index.** `SearchIndex.maintain` is the pre-model engine pass. Each searchable resource supplies an address and the exact readable body its READ exposes. Entries supply their default body; `LogBody` resolves each log row's canonical full body from its durable tx/rx envelope. Acquisition schemes project remote source material before storing that body; search never introduces a second hidden text projection. The readable body, mimetype, reader configuration, embedder configuration, and applicable search exclusion form a content hash. Complete artifacts own FTS, vectors, symbol definitions, and references; resource rows hold only the attachment hash.
+**Persistent search index.** `SearchIndex.maintain` is the pre-model engine pass. Each searchable resource supplies an address and the exact readable body its READ exposes. Entries supply their default body; `LogBody` resolves each log row's canonical full body from its durable tx/rx envelope. Acquisition schemes project remote source material before storing that body; search never introduces a second hidden text projection. The readable body, mimetype, resolved text/binary classification, reader configuration, embedder configuration, and applicable search exclusion form a content hash. Complete artifacts own FTS, vectors, symbol definitions, and references; resource rows hold only the attachment hash. #175 owns the still-missing stable reader-configuration identity.
 
 §search-exclusion **File-search eligibility is Core policy.**
 `PLURNK_SERVICE_SEARCH_EXCLUDE` is a comma-separated table of anchored
@@ -2692,7 +2704,7 @@ Carried from the contract walk; durable.
 - **FIND body matcher** applies to entry content (all dialects), per-candidate via the in-tree `Matcher.matchAgainstContent` ({§matcher-dispatch}; status 200 = content hit → entry selected). Scope + tags select candidates in SQL; the path-glob is the (target).
 - **OPEN/FOLD** operate on the **log** (`log:///`), not entries ({§open-fold}) — FOLD collapses a log row to its path, OPEN restores its body. Aimed at an entry scheme they return 501.
 - **SEND[410]** deletes as a side-effect (not the model idiom; {§move}): with `#fragment`, that channel only; without, the whole entry. **SEND[499]** resolves the durable open-subscription row and invokes that subscription's exact callable owner through the process-local live registry ({§subscriptions}).
-- **File scheme** reads disk content with mimetype detected via `Mimetypes.detect({ path })` (plumbed through `PlurnkSchemeContext.mimetypes`). Binary mimetypes → 415 on READ and EDIT.
+- **File scheme** detects with `Mimetypes.detect({ path })` and classifies with the same configured service ({§mimetype-classification-consumption}). Handler-declared binary mimetypes → 415 on READ and EDIT.
 
 ### §send-status-policy Directed-SEND status code policy
 

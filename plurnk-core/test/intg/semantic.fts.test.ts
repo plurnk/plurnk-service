@@ -9,8 +9,8 @@ import type { Db } from "../../src/core/Db.ts";
 import Worker from "../../src/schemes/Worker.ts";
 import SearchIndex from "../../src/schemes/_search-index.ts";
 import EntrySemantic from "../../src/schemes/_entry-semantic.ts";
-import { EmbeddingVector, type Mimetypes } from "@plurnk/plurnk-mimetypes";
-import { openMigrated, insertWorkspace, insertWorker, makeSchemeCtx } from "./_helpers.ts";
+import { EmbeddingVector } from "@plurnk/plurnk-mimetypes";
+import { openMigrated, insertWorkspace, insertWorker, makeSchemeCtx, mimetypesFixture } from "./_helpers.ts";
 
 // Despite the name, this suite includes chunked-embedding e2e cases that assert REAL vector ranking —
 // re-enable the embedder the Mock bootstrap turns off; per-file isolation.
@@ -197,12 +197,12 @@ test("[#semantic-e2e] chunked ~query full pipeline: tile → embed → store →
         // semantic.test.ts — this asserts the chunked CHAIN: derive → store → rank.)
         const wc = (t: string) => (t.match(/\S+/g) ?? []).length;
         const vec = (t: string) => EmbeddingVector.encode(t.includes("photosynthesis") ? [1, 0, 0] : [0, 1, 0]);
-        const embedder = {
+        const embedder = mimetypesFixture({
             // process embeds the QUERY vector (rankCandidates); embedBatch embeds the chunk corpus (deriveEmbeddings, #272).
             process: async (input: { content: string }) => ({ embedding: vec(input.content), embeddingModel: "stub@e2e" }),
             embedBatch: async (texts: readonly string[]) => texts.map(vec),
             embedderInfo: () => ({ contextWindow: 30, countTokens: wc, model: "stub@e2e" }),
-        } as unknown as Mimetypes;
+        });
         // Filler, then a distinctive late line → the concept lands in a NON-first chunk.
         const content = Array.from({ length: 40 }, () => "common filler words around here").join(" ") +
             "\nchloroplasts drive photosynthesis in green plants";
@@ -231,7 +231,7 @@ test("semantic FIND maps a terminal-newline chunk to an addressable TextRegion",
         const workspaceId = await insertWorkspace(db, `newline-region-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
         const vector = EmbeddingVector.encode([1, 0]);
-        const embedder = {
+        const embedder = mimetypesFixture({
             process: async () => ({ embedding: vector, embeddingModel: "stub@newline" }),
             embedBatch: async (texts: readonly string[]) => texts.map(() => vector),
             embedderInfo: () => ({
@@ -239,7 +239,7 @@ test("semantic FIND maps a terminal-newline chunk to an addressable TextRegion",
                 countTokens: (text: string) => (text.match(/\S+/g) ?? []).length,
                 model: "stub@newline",
             }),
-        } as unknown as Mimetypes;
+        });
         const seed = makeSchemeCtx({ db, workspaceId, workerId });
         await new Worker().edit(
             editStmt(url("todo.ts"), "export const ready = true;\n// TODO audit this\n"),
@@ -272,14 +272,14 @@ test("[#semantic-json-tile] deriveEmbeddings embeds tiled chunks via embedBatch 
     // process. The process stub here throws on application/json precisely to catch a regression to it.
     const wc = (t: string) => (t.match(/\S+/g) ?? []).length;
     const batched: string[][] = [];
-    const embedder = {
+    const embedder = mimetypesFixture({
         process: async (input: { content: string; hint: string }) => {
             if (input.hint === "application/json") JSON.parse(input.content); // throws on a partial tile — must NEVER be hit for chunks
             return { embedding: EmbeddingVector.encode([1, 0]), embeddingModel: "stub" };
         },
         embedBatch: async (texts: readonly string[]) => { batched.push([...texts]); return texts.map(() => EmbeddingVector.encode([1, 0])); },
         embedderInfo: () => ({ contextWindow: 20, countTokens: wc, model: "stub" }),
-    } as unknown as Mimetypes;
+    });
 
     const json = JSON.stringify({ a: 1, b: 2, c: 3, d: 4, e: 5, f: 6, g: 7, h: 8, items: [1, 2, 3, 4, 5, 6, 7, 8] }, null, 2);
     const plan = await EntrySemantic.prepareEmbeddings(embedder);
@@ -303,10 +303,10 @@ test("[#fts-fallback] no embedder uses FTS for unthresholded rank; <0.x> stays 5
         await mk("light.ts", "payment once");
         await mk("auth.ts", "authenticate user");
         // No embedder: process() yields no embedding channel → the fallback fires.
-        const noEmbedder = {
+        const noEmbedder = mimetypesFixture({
             process: async () => ({}),
             embedderInfo: () => null,
-        } as unknown as Mimetypes;
+        });
         await SearchIndex.maintain(makeSchemeCtx({ db, workspaceId, workerId, mimetypes: noEmbedder }));
         const candidates = await searchCandidates(db, workspaceId);
 

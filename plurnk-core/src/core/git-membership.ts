@@ -140,16 +140,13 @@ export default class GitMembership {
         return [...members];
     }
 
-    // Detect a tracked file's mimetype (mirrors File.detectFileMimetype): route
-    // through the Mimetypes service when present, normalizing the auto-text result
-    // to the text primitive (plurnk-service never auto-derives text/plain). No
-    // service → text primitive.
+    // Detect a tracked file's mimetype (mirrors File.detectFileMimetype) through
+    // the configured registry, normalizing auto-derived text/plain to the text
+    // primitive.
     static async #detectMimetype(canonical: string, mimetypes: Mimetypes | undefined): Promise<string> {
-        if (mimetypes !== undefined) {
-            const detected = await mimetypes.detect({ path: canonical });
-            return MimetypeBinary.normalizeAutoTextMimetype(detected);
-        }
-        return MimetypeBinary.TEXT_PRIMITIVE_MIMETYPE;
+        if (mimetypes === undefined) throw new Error("GitMembership: configured mimetype registry is required");
+        const detected = await mimetypes.detect({ path: canonical });
+        return MimetypeBinary.normalizeAutoTextMimetype(detected);
     }
 
     // Shared overlay inputs — the candidate sets (git tracked+untracked union, pick scan) and
@@ -332,7 +329,7 @@ export default class GitMembership {
         if (known !== undefined && known.synced_sig === sig) return null;  // unchanged — the change-gate
 
         const mimetype = await GitMembership.#detectMimetype(canonical, ctx.mimetypes);
-        if (MimetypeBinary.isBinaryMimetype(mimetype)) {
+        if (await MimetypeBinary.isBinaryMimetype(mimetype, ctx.mimetypes)) {
             // Empty body channel stamped with the real binary mimetype — a first-
             // class entry that READ-415s through readWorkspaceEntry's isBinaryMimetype
             // gate (#186), not a channel-less row that would read as 404.

@@ -240,7 +240,7 @@ resource identity.
 
 ### §mimetype-classifier Mimetype classification — `MimetypeClassifier`
 
-- `MimetypeClassifier.isBinary(mimetype)` — enforces 415 boundary on binary entries. Delegates to `classifyMimetype` from @plurnk/plurnk-mimetypes (the framework owns the text/binary taxonomy — mimetypes#43; the former local allowlists were absorbed upstream verbatim and retired).
+- `MimetypeClassifier.isBinary(mimetype)` — pure taxonomy for a registry-free boundary. Delegates to `classifyMimetype` from `@plurnk/plurnk-mimetypes`; a consumer with a configured `Mimetypes` service uses `Mimetypes.classify()` so installed handler declarations remain authoritative ({§mimetype-classification}).
 - `MimetypeClassifier.isHtml(mimetype)` — recognizes the normalized web-projection family: `text/html` and `application/xhtml+xml`.
 - `MimetypeClassifier.isJson(mimetype)` - `application/json` plus `+json` variants, used only by result summarization.
 - `MimetypeClassifier.normalizeAutoText(mimetype)` — `text/plain` / null / undefined → `TEXT_PRIMITIVE_MIMETYPE` (`text/markdown`).

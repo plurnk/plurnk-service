@@ -10,7 +10,7 @@ import assert from "node:assert/strict";
 import type { EditStatement, FindStatement, LineMarker, MatcherBody, UrlPath } from "@plurnk/plurnk-contracts";
 import Worker from "../../src/schemes/Worker.ts";
 import SearchIndex from "../../src/schemes/_search-index.ts";
-import { openMigrated, insertWorkspace, insertWorker, makeSchemeCtx, DEFAULT_MIMETYPES } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, makeSchemeCtx, DEFAULT_MIMETYPES, mimetypesFixture } from "./_helpers.ts";
 
 const url = (pathname: string): UrlPath => ({
     kind: "url", raw: `worker:///${pathname}`, scheme: "worker",
@@ -146,12 +146,12 @@ test("[#186-graph-gate] manifest-add re-derives only on content change (the deep
         // Fresh counting wrapper — never mutate the shared DEFAULT_MIMETYPES (intg
         // runs concurrently). Counts only the symbols+references parse.
         let parses = 0;
-        const counting = {
+        const counting = mimetypesFixture({
             process: (...args: Parameters<typeof DEFAULT_MIMETYPES.process>) => {
                 if (args[1]?.channels?.includes("symbols")) parses++;
                 return DEFAULT_MIMETYPES.process(...args);
             },
-        } as unknown as typeof DEFAULT_MIMETYPES;
+        });
         const gctx = { ...ctx, mimetypes: counting };
 
         await SearchIndex.maintain(gctx);

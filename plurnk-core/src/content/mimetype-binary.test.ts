@@ -1,43 +1,35 @@
 import test from "node:test";
 import { strict as assert } from "node:assert";
+import { emptyRegistry, Mimetypes } from "@plurnk/plurnk-mimetypes";
 import MimetypeBinary from "./mimetype-binary.ts";
 
-test("text/* is text", () => {
-    assert.equal(MimetypeBinary.isBinaryMimetype("text/plain"), false);
-    assert.equal(MimetypeBinary.isBinaryMimetype("text/markdown"), false);
-    assert.equal(MimetypeBinary.isBinaryMimetype("text/html"), false);
-    assert.equal(MimetypeBinary.isBinaryMimetype("text/csv"), false);
+const mimetypes = new Mimetypes({
+    discovery: { registry: emptyRegistry(), handlers: new Map(), skipped: [] },
 });
 
-test("application/json + relatives are text", () => {
-    assert.equal(MimetypeBinary.isBinaryMimetype("application/json"), false);
-    assert.equal(MimetypeBinary.isBinaryMimetype("application/yaml"), false);
-    assert.equal(MimetypeBinary.isBinaryMimetype("application/toml"), false);
-    assert.equal(MimetypeBinary.isBinaryMimetype("application/xml"), false);
-});
+const classifications: ReadonlyArray<readonly [string, boolean, readonly string[]]> = [
+    ["text types", false, ["text/plain", "text/markdown", "text/html", "text/csv"]],
+    ["known application text types", false, ["application/json", "application/yaml", "application/toml", "application/xml"]],
+    ["structured text suffixes", false, ["application/vnd.api+json", "image/svg+xml", "application/cloudevents+yaml"]],
+    ["media types", true, ["image/png", "image/jpeg", "audio/mpeg", "video/mp4"]],
+    ["binary application types", true, ["application/pdf", "application/octet-stream", "application/zip"]],
+    ["malformed labels", true, ["noslashhere"]],
+    ["empty label", false, [""]],
+];
 
-test("+json / +xml / +yaml suffix is text", () => {
-    assert.equal(MimetypeBinary.isBinaryMimetype("application/vnd.api+json"), false);
-    assert.equal(MimetypeBinary.isBinaryMimetype("image/svg+xml"), false);
-    assert.equal(MimetypeBinary.isBinaryMimetype("application/cloudevents+yaml"), false);
-});
+for (const [name, expected, labels] of classifications) {
+    test(`configured registry classifies ${name}`, async () => {
+        for (const label of labels) {
+            assert.equal(await MimetypeBinary.isBinaryMimetype(label, mimetypes), expected, label);
+        }
+    });
+}
 
-test("image/audio/video are binary", () => {
-    assert.equal(MimetypeBinary.isBinaryMimetype("image/png"), true);
-    assert.equal(MimetypeBinary.isBinaryMimetype("image/jpeg"), true);
-    assert.equal(MimetypeBinary.isBinaryMimetype("audio/mpeg"), true);
-    assert.equal(MimetypeBinary.isBinaryMimetype("video/mp4"), true);
-});
-
-test("application/pdf and friends are binary", () => {
-    assert.equal(MimetypeBinary.isBinaryMimetype("application/pdf"), true);
-    assert.equal(MimetypeBinary.isBinaryMimetype("application/octet-stream"), true);
-    assert.equal(MimetypeBinary.isBinaryMimetype("application/zip"), true);
-});
-
-test("malformed input", () => {
-    assert.equal(MimetypeBinary.isBinaryMimetype(""), false);
-    assert.equal(MimetypeBinary.isBinaryMimetype("noslashhere"), true);
+test("binary classification requires the configured registry", async () => {
+    await assert.rejects(
+        MimetypeBinary.isBinaryMimetype("text/plain", undefined),
+        /configured mimetype registry is required/,
+    );
 });
 
 // --- MimetypeBinary.normalizeAutoTextMimetype ---

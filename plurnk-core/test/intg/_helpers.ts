@@ -25,6 +25,16 @@ import LiveSubscriptions from "../../src/core/LiveSubscriptions.ts";
 // tests that build PlurnkSchemeContext directly (File.read, SEND, Engine tests).
 export const DEFAULT_MIMETYPES = new Mimetypes();
 
+// Override only the capability under test while retaining a complete configured
+// Mimetypes service, including registry-aware classification.
+export const mimetypesFixture = (overrides: object): Mimetypes => new Proxy(DEFAULT_MIMETYPES, {
+    get(target, property) {
+        const source = Object.hasOwn(overrides, property) ? overrides : target;
+        const value = Reflect.get(source, property, source) as unknown;
+        return typeof value === "function" ? value.bind(source) : value;
+    },
+});
+
 // Test helper: build a PlurnkSchemeContext with sensible defaults. Override
 // any field via the argument. Tests that don't exercise db ops can omit it
 // (File.read, etc); the unset slot is a tripwire — any unexpected db access

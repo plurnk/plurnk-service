@@ -178,11 +178,11 @@ export default class EntryOps {
         // 415 on binary entries (SPEC.md {§op-invariants}).
         if (existing !== undefined) {
             const channel = await db.ops_read_channel.get<{ mimetype: string }>({ ...{ workspace_id: workspaceId, scheme, pathname, channel: targetChannel }, owner_id: ownerId });
-            if (channel !== undefined && MimetypeBinary.isBinaryMimetype(channel.mimetype)) {
+            if (channel !== undefined && await MimetypeBinary.isBinaryMimetype(channel.mimetype, ctx.mimetypes)) {
                 return failure("binary-edit-unsupported", 415, `The #${targetChannel} channel is binary and cannot be edited.`, { entryId: existing.id, channel: targetChannel });
             }
         }
-        if (MimetypeBinary.isBinaryMimetype(effectiveMimetype)) {
+        if (await MimetypeBinary.isBinaryMimetype(effectiveMimetype, ctx.mimetypes)) {
             return failure("binary-edit-unsupported", 415, `The #${targetChannel} channel is binary and cannot be edited.`, { entryId: existing?.id ?? null, channel: targetChannel });
         }
 
@@ -378,7 +378,7 @@ export default class EntryOps {
         // canon: the model distinguishes wrong-address from wrong-range by the strings alone.
         if (row === undefined) return failure("entry-not-found", 404, `No entry exists at ${EntryManifest.toPath(scheme, pathname)}.`, { content: null, mimetype: null, channel: targetChannel });
 
-        if (MimetypeBinary.isBinaryMimetype(row.mimetype)) {
+        if (await MimetypeBinary.isBinaryMimetype(row.mimetype, ctx.mimetypes)) {
             return failure("binary-read-unsupported", 415, `The #${targetChannel} channel is binary and cannot be rendered.`, { content: null, mimetype: row.mimetype, channel: targetChannel });
         }
 

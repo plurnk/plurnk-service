@@ -3,12 +3,12 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { EmbeddingVector, type Mimetypes } from "@plurnk/plurnk-mimetypes";
+import { EmbeddingVector } from "@plurnk/plurnk-mimetypes";
 import type { EditStatement, UrlPath } from "@plurnk/plurnk-contracts";
 import Worker from "../../src/schemes/Worker.ts";
 import SearchIndex from "../../src/schemes/_search-index.ts";
 import EntrySemantic from "../../src/schemes/_entry-semantic.ts";
-import { openMigrated, insertWorkspace, insertWorker, makeSchemeCtx } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, makeSchemeCtx, mimetypesFixture } from "./_helpers.ts";
 
 process.env.PLURNK_SERVICE_EMBED_DISABLE = "0";
 
@@ -30,14 +30,14 @@ test("identical entries attach one complete semantic artifact and both remain ad
         const workerId = await insertWorker(db, workspaceId);
         let embeddedTexts = 0;
         const vector = EmbeddingVector.encode([1, 0]);
-        const mimetypes = {
+        const mimetypes = mimetypesFixture({
             process: async (input: { content: string }) => ({ content: input.content, embedding: vector, embeddingModel: "stub@shared" }),
             embedBatch: async (texts: readonly string[]) => {
                 embeddedTexts += texts.length;
                 return texts.map(() => vector);
             },
             embedderInfo: () => ({ contextWindow: 128, countTokens: (text: string) => text.split(/\s+/u).filter(Boolean).length, model: "stub@shared" }),
-        } as unknown as Mimetypes;
+        });
         const writeCtx = makeSchemeCtx({ db, workspaceId, workerId });
         const deriveCtx = makeSchemeCtx({ db, workspaceId, workerId, mimetypes });
 
@@ -79,7 +79,7 @@ test("fallback tokenizer identity invalidates an otherwise identical semantic de
         let tokenizerResolutions = 0;
         let embeddedTexts = 0;
         const vector = EmbeddingVector.encode([1, 0]);
-        const mimetypes = {
+        const mimetypes = mimetypesFixture({
             process: async () => ({ symbols: [], references: [] }),
             embedBatch: async (texts: readonly string[]) => {
                 embeddedTexts += texts.length;
@@ -100,7 +100,7 @@ test("fallback tokenizer identity invalidates an otherwise identical semantic de
                     exact: true,
                 };
             },
-        } as unknown as Mimetypes;
+        });
         const writeCtx = makeSchemeCtx({ db, workspaceId, workerId });
         const deriveCtx = makeSchemeCtx({ db, workspaceId, workerId, mimetypes });
 
@@ -132,6 +132,53 @@ test("fallback tokenizer identity invalidates an otherwise identical semantic de
     }
 });
 
+test("resolved binary classification participates in derivation identity (#93)", async () => {
+    const db = await openMigrated();
+    try {
+        const workspaceId = await insertWorkspace(db, `classification-identity-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        let binary = false;
+        const mimetypes = mimetypesFixture({
+            classify: async () => ({ binary, source: "handler" as const }),
+            process: async () => ({ symbols: [], references: [] }),
+            embedderInfo: async () => null,
+        });
+        const ctx = makeSchemeCtx({ db, workspaceId, workerId, mimetypes });
+        await new Worker().edit(edit("classified.md", "classification needle"), makeSchemeCtx({ db, workspaceId, workerId }));
+
+        const hash = async (): Promise<string> => {
+            const [row] = await db.test_entries_with_hash_by_scheme_prefix.all<{ deep_hash: string }>({
+                workspace_id: workspaceId,
+                scheme: "worker",
+                prefix: "/classified.md",
+            });
+            assert.ok(row);
+            return row.deep_hash;
+        };
+        const hits = async (): Promise<string[]> => (await db.test_fts_search.all<{ pathname: string }>({
+            workspace_id: workspaceId,
+            query: "needle",
+        })).map(({ pathname }) => pathname);
+
+        await SearchIndex.maintain(ctx);
+        const textHash = await hash();
+        assert.deepEqual(await hits(), ["/classified.md"]);
+
+        binary = true;
+        await SearchIndex.maintain(ctx);
+        const binaryHash = await hash();
+        assert.notEqual(binaryHash, textHash, "changed classification cannot reuse the textual artifact");
+        assert.deepEqual(await hits(), [], "binary classification detaches the entry from lexical search");
+
+        binary = false;
+        await SearchIndex.maintain(ctx);
+        assert.equal(await hash(), textHash, "the same classification deterministically reuses its prior artifact");
+        assert.deepEqual(await hits(), ["/classified.md"]);
+    } finally {
+        await db.close();
+    }
+});
+
 test("an unmatched fallback tokenizer fails semantic maintenance before derivation or embedding (#95)", async () => {
     const db = await openMigrated();
     const previousMaxEmbedSize = process.env.PLURNK_SERVICE_MAX_EMBED_SIZE;
@@ -147,7 +194,7 @@ test("an unmatched fallback tokenizer fails semantic maintenance before derivati
             message: "No exact tokenizer for the remote embedding model.",
             position: null,
         } as const;
-        const mimetypes = {
+        const mimetypes = mimetypesFixture({
             process: async () => {
                 processCalls++;
                 return { symbols: [], references: [] };
@@ -168,7 +215,7 @@ test("an unmatched fallback tokenizer fails semantic maintenance before derivati
                 exact: false,
                 notices: [tokenizerNotice],
             }),
-        } as unknown as Mimetypes;
+        });
         const notices: unknown[] = [];
         const recordNotice = (notice: unknown): void => { notices.push(notice); };
 

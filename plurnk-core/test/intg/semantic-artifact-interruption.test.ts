@@ -1,10 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { EmbeddingVector, type Mimetypes } from "@plurnk/plurnk-mimetypes";
+import { EmbeddingVector } from "@plurnk/plurnk-mimetypes";
 import type { EditStatement, UrlPath } from "@plurnk/plurnk-contracts";
 import Worker from "../../src/schemes/Worker.ts";
 import SearchIndex from "../../src/schemes/_search-index.ts";
-import { openMigrated, insertWorkspace, insertWorker, makeSchemeCtx } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, makeSchemeCtx, mimetypesFixture } from "./_helpers.ts";
 
 process.env.PLURNK_SERVICE_EMBED_DISABLE = "0";
 
@@ -28,7 +28,7 @@ test("an interrupted artifact stays building and unattached; retry completes and
         const abort = new AbortController();
         let failOnce = true;
         const vector = EmbeddingVector.encode([1, 0]);
-        const mimetypes = {
+        const mimetypes = mimetypesFixture({
             process: async (input: { content: string }) => ({ content: input.content, embedding: vector, embeddingModel: "stub@interrupt" }),
             embedderInfo: () => ({ contextWindow: 128, countTokens: (text: string) => text.split(/\s+/u).filter(Boolean).length, model: "stub@interrupt" }),
             embedBatch: async (texts: readonly string[]) => {
@@ -39,7 +39,7 @@ test("an interrupted artifact stays building and unattached; retry completes and
                 }
                 return texts.map(() => vector);
             },
-        } as unknown as Mimetypes;
+        });
 
         await assert.rejects(
             SearchIndex.maintain(makeSchemeCtx({ db, workspaceId, workerId, mimetypes, signal: abort.signal })),
@@ -64,10 +64,10 @@ test("an entry-local derivation failure is terminal, explicit, and does not bloc
         const workerId = await insertWorker(db, workspaceId);
         await new Worker().edit(statement, makeSchemeCtx({ db, workspaceId, workerId }));
 
-        const mimetypes = {
+        const mimetypes = mimetypesFixture({
             process: async () => { throw new Error("fixture reader exploded"); },
             embedderInfo: () => ({ contextWindow: 128, countTokens: async () => 1, model: "stub@failure" }),
-        } as unknown as Mimetypes;
+        });
 
         await SearchIndex.maintain(makeSchemeCtx({ db, workspaceId, workerId, mimetypes }));
         const entry = await db.test_entries_by_pathname.get<{ id: number }>({ pathname: "/interrupted.md" });
@@ -89,7 +89,7 @@ test("an index-persistence contract failure propagates and remains retryable ins
         const workerId = await insertWorker(db, workspaceId);
         await new Worker().edit(statement, makeSchemeCtx({ db, workspaceId, workerId }));
 
-        const mimetypes = {
+        const mimetypes = mimetypesFixture({
             embedderInfo: async () => null,
             process: async (input: { content: string }) => ({
                 content: input.content,
@@ -103,7 +103,7 @@ test("an index-persistence contract failure propagates and remains retryable ins
                     endColumn: 1,
                 }],
             }),
-        } as unknown as Mimetypes;
+        });
 
         await assert.rejects(
             SearchIndex.maintain(makeSchemeCtx({ db, workspaceId, workerId, mimetypes })),

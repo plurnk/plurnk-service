@@ -6,7 +6,6 @@ import type { PlurnkSchemeContext } from "../core/scheme-types.ts";
 import type { ProcessResult } from "@plurnk/plurnk-mimetypes";
 import { createHash } from "node:crypto";
 import { availableParallelism } from "node:os";
-import { MimetypeBinary } from "../content/index.ts";
 import EntryGraph from "./_entry-graph.ts";
 import EntrySemantic, { type SemanticPlan } from "./_entry-semantic.ts";
 import LogBody from "../core/LogBody.ts";
@@ -28,6 +27,12 @@ type DerivationRow = {
     content: string;
     mimetype: string;
 };
+type PendingDerivation = {
+    r: DerivationRow;
+    hash: string;
+    searchExcluded: string | undefined;
+    binary: boolean;
+};
 export default class SearchIndex {
     // The index materializes one immutable artifact per exact READ body and
     // configuration identity, then atomically attaches resource addresses to it.
@@ -38,9 +43,9 @@ export default class SearchIndex {
     // artifact while distinct artifacts remain parallel.
     static #deriveChains = new Map<string, Promise<void>>();
 
-    static async #deriveOne(ctx: PlurnkSchemeContext, r: DerivationRow, hash: string, semanticPlan: SemanticPlan, searchExcluded: string | undefined, onProgress?: (progress: { phase: "planning" | "embedding"; completed: number; total: number }) => void): Promise<void> {
+    static async #deriveOne(ctx: PlurnkSchemeContext, r: DerivationRow, hash: string, semanticPlan: SemanticPlan, searchExcluded: string | undefined, binary: boolean, onProgress?: (progress: { phase: "planning" | "embedding"; completed: number; total: number }) => void): Promise<void> {
         const prior = SearchIndex.#deriveChains.get(hash) ?? Promise.resolve();
-        const run = prior.then(() => SearchIndex.#deriveOneUnlocked(ctx, r, hash, semanticPlan, searchExcluded, onProgress));
+        const run = prior.then(() => SearchIndex.#deriveOneUnlocked(ctx, r, hash, semanticPlan, searchExcluded, binary, onProgress));
         const tail = run.catch(() => {}); // the chain survives a failed link; deriveOne's caller sees the rejection
         SearchIndex.#deriveChains.set(hash, tail);
         void tail.finally(() => {
@@ -49,7 +54,7 @@ export default class SearchIndex {
         return run;
     }
 
-    static async #deriveOneUnlocked(ctx: PlurnkSchemeContext, r: DerivationRow, hash: string, semanticPlan: SemanticPlan, searchExcluded: string | undefined, onProgress?: (progress: { phase: "planning" | "embedding"; completed: number; total: number }) => void): Promise<void> {
+    static async #deriveOneUnlocked(ctx: PlurnkSchemeContext, r: DerivationRow, hash: string, semanticPlan: SemanticPlan, searchExcluded: string | undefined, binary: boolean, onProgress?: (progress: { phase: "planning" | "embedding"; completed: number; total: number }) => void): Promise<void> {
         const { db, mimetypes } = ctx;
         if (mimetypes === undefined) throw new Error("deriveOne: ctx.mimetypes is required");
         const attach = async (): Promise<void> => {
@@ -73,7 +78,7 @@ export default class SearchIndex {
             await db.derivation_complete.run({ derivation_id: derivationId, disposition, reason });
             await attach();
         };
-        const wantGraph = r.content.length > 0 && !MimetypeBinary.isBinaryMimetype(r.mimetype);
+        const wantGraph = r.content.length > 0 && !binary;
         if (searchExcluded !== undefined) {
             await EntryGraph.populateFrom(db, derivationId, [], []);
             await EntrySemantic.indexFts(db, derivationId, "");
@@ -163,12 +168,13 @@ export default class SearchIndex {
         // The changed-entry worklist (body channel, deep_hash stale), computed up front so the
         // corpus total is known — a multi-entry pass (the initial ingest, which otherwise looks
         // frozen) emits a throttled progress signal; a normal turn (0-1 entries) stays silent. #272
-        const pending: Array<{ r: DerivationRow; hash: string; searchExcluded: string | undefined }> = [];
+        const pending: PendingDerivation[] = [];
         for (const r of entryRows) {
             if (r.channel !== "body") continue; // derivation fires on the body channel only
             const searchExcluded = matchSearchExclusion(r);
             const dispositionIdentity = searchExcluded === undefined ? "included" : `excluded:${searchExcluded}`;
-            const hash = createHash("sha256").update(r.content).update("\0").update(r.mimetype).update("\0").update(deepCfgSig).update("\0").update(dispositionIdentity).digest("hex");
+            const binary = (await mimetypes.classify(r.mimetype)).binary;
+            const hash = createHash("sha256").update(r.content).update("\0").update(r.mimetype).update("\0").update(binary ? "binary" : "text").update("\0").update(deepCfgSig).update("\0").update(dispositionIdentity).digest("hex");
             if (hash !== r.deep_hash) pending.push({
                 r: {
                     id: r.entry_id,
@@ -179,6 +185,7 @@ export default class SearchIndex {
                 },
                 hash,
                 searchExcluded,
+                binary,
             }); // unchanged since last derivation → deep rows persist
         }
         for (const row of logRows) {
@@ -189,10 +196,13 @@ export default class SearchIndex {
                 mimetypeTx: row.mimetype_tx,
                 mimetypeRx: row.mimetype_rx,
             });
+            const binary = (await mimetypes.classify(projection.mimetype)).binary;
             const hash = createHash("sha256")
                 .update(projection.content)
                 .update("\0")
                 .update(projection.mimetype)
+                .update("\0")
+                .update(binary ? "binary" : "text")
                 .update("\0")
                 .update(deepCfgSig)
                 .update("\0included")
@@ -207,12 +217,13 @@ export default class SearchIndex {
                 },
                 hash,
                 searchExcluded: undefined,
+                binary,
             });
         }
-        const hasVectorCandidate = semanticPlan.info !== null && pending.some(({ r, searchExcluded }) =>
+        const hasVectorCandidate = semanticPlan.info !== null && pending.some(({ r, searchExcluded, binary }) =>
             searchExcluded === undefined
             && r.content.length > 0
-            && !MimetypeBinary.isBinaryMimetype(r.mimetype)
+            && !binary
             && EntrySemantic.embedSizeRejection(r.content) === null,
         );
         if (hasVectorCandidate) EntrySemantic.assertExactChunking(semanticPlan, ctx.pushNotice);
@@ -232,7 +243,7 @@ export default class SearchIndex {
 
         // {§derivation-dedup-parallel} (#416) — each content+mimetype+configuration identity builds
         // one shared artifact while distinct artifacts run with bounded concurrency.
-        const groups = new Map<string, Array<{ r: DerivationRow; hash: string; searchExcluded: string | undefined }>>();
+        const groups = new Map<string, PendingDerivation[]>();
         for (const p of pending) {
             const g = groups.get(p.hash);
             if (g === undefined) groups.set(p.hash, [p]); else g.push(p);
@@ -250,15 +261,15 @@ export default class SearchIndex {
         }
         const concurrency = configuredConcurrency === -1 ? availableParallelism() : configuredConcurrency;
         let lastHeartbeatAt = 0;
-        const workerPool = async (work: Array<Array<{ r: DerivationRow; hash: string; searchExcluded: string | undefined }>>): Promise<void> => {
+        const workerPool = async (work: PendingDerivation[][]): Promise<void> => {
             let next = 0;
             const worker = async (): Promise<void> => {
                 while (next < work.length) {
                     if (ctx.signal?.aborted === true) return;
                     const group = work[next++];
-                    for (const { r, hash, searchExcluded } of group) {
+                    for (const { r, hash, searchExcluded, binary } of group) {
                         if (Boolean(ctx.signal?.aborted)) return;
-                        await SearchIndex.#deriveOne(ctx, r, hash, semanticPlan, searchExcluded, (progress) => {
+                        await SearchIndex.#deriveOne(ctx, r, hash, semanticPlan, searchExcluded, binary, (progress) => {
                             if (step === 0 || progress.total <= 1) return;
                             const milestone = progress.completed === progress.total
                                 || progress.completed % Math.max(1, Math.floor(progress.total / progressSteps)) === 0;

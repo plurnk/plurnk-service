@@ -58,17 +58,14 @@ const loadWorkspaceRoot = async (db: Db, workspaceId: number): Promise<string | 
 };
 
 
-// Detect mimetype from a file's path. Routes through the Mimetypes service
-// when available; falls back to the text primitive (text/markdown). The
+// Detect mimetype from a file's path through the configured registry. The
 // `MimetypeBinary.normalizeAutoTextMimetype` wrapper ensures text/plain returned by the
 // service is normalized to text/markdown — plurnk-service never auto-
 // derives text/plain (see mimetype-binary.ts MimetypeBinary.TEXT_PRIMITIVE_MIMETYPE).
 const detectFileMimetype = async (canonical: string, ctx: PlurnkSchemeContext): Promise<string> => {
-    if (ctx.mimetypes !== undefined) {
-        const detected = await ctx.mimetypes.detect({ path: canonical });
-        return MimetypeBinary.normalizeAutoTextMimetype(detected);
-    }
-    return MimetypeBinary.TEXT_PRIMITIVE_MIMETYPE;
+    if (ctx.mimetypes === undefined) throw new Error("detectFileMimetype: configured mimetype registry is required");
+    const detected = await ctx.mimetypes.detect({ path: canonical });
+    return MimetypeBinary.normalizeAutoTextMimetype(detected);
 };
 
 // SECURITY — File is entry-backed: read()/find()/readEntry()
@@ -313,7 +310,7 @@ export default class File extends CoreSchemeAdapterBase {
         }
 
         const mimetype = await detectFileMimetype(canonical, ctx);
-        if (MimetypeBinary.isBinaryMimetype(mimetype)) {
+        if (await MimetypeBinary.isBinaryMimetype(mimetype, ctx.mimetypes)) {
             return {
                 ok: false,
                 code: "binary-write-unsupported",

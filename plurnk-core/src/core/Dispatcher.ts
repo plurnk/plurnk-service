@@ -1519,7 +1519,7 @@ export default class Dispatcher {
         }
         let content = selected.content;
         if (selection.lineMarker !== null) {
-            if (MimetypeBinary.isBinaryMimetype(selected.mimetype)) {
+            if (await MimetypeBinary.isBinaryMimetype(selected.mimetype, ctx.mimetypes)) {
                 return Dispatcher.#failure(
                     "binary-range-unsupported",
                     415,
@@ -1954,7 +1954,7 @@ export default class Dispatcher {
                     },
                 );
             }
-            if (MimetypeBinary.isBinaryMimetype(destinationChannel.mimetype)) {
+            if (await MimetypeBinary.isBinaryMimetype(destinationChannel.mimetype, ctx.mimetypes)) {
                 return Dispatcher.#failure(
                     "binary-region-unsupported",
                     415,

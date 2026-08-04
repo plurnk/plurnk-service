@@ -202,7 +202,7 @@ test("Log.read: a matcher READ writes one resource row with surgical coordinates
     try {
         await new Worker().edit(
             { ...editStmt("/notes", "alpha\nbeta\ngamma"), target: { kind: "url", raw: "worker:///notes", scheme: "worker", username: null, password: null, hostname: null, port: null, pathname: "/notes", query: null, fragment: null } },
-            { db, workspaceId, workerId, loopId, turnId, writer: "model", signal: undefined, tokenize: (t: string) => Math.ceil(t.length / 4) },
+            makeSchemeCtx({ db, workspaceId, workerId, loopId, turnId }),
         );
         const result = await engine.dispatch({
             statement: {

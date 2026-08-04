@@ -1,11 +1,8 @@
 // Mimetype classifiers used at op-handler boundaries.
 //
-// Binary/text taxonomy delegates to @plurnk/plurnk-mimetypes'
-// `classifyMimetype` (mimetypes#43, delivered 0.18.0) — the framework is the
-// single source of filetype truth, and our former local allowlists were a
-// drift surface (schemes#28: NDJSON classified binary → READ 415). The 44-case
-// truth table those tables encoded was absorbed upstream byte-for-byte; the
-// unit suite here remains as the conformance guard on that absorption.
+// Binary/text taxonomy delegates to @plurnk/plurnk-mimetypes. This adapter is
+// the registry-free surface; a consumer with a configured Mimetypes service
+// uses Mimetypes.classify() so installed handler declarations remain authoritative.
 //
 // What stays LOCAL is scheme semantics, not filetype fact (ruled in #43):
 //   isJson           - JSON receipt summarization (RFC 6839).
@@ -24,7 +21,7 @@ import { classifyMimetype } from "@plurnk/plurnk-mimetypes";
 export const TEXT_PRIMITIVE_MIMETYPE = "text/markdown";
 
 export default class MimetypeClassifier {
-    // 415 boundary on binary entries (SPEC {§mimetype-classifier}).
+    // Pure taxonomy for registry-free boundaries (SPEC {§mimetype-classifier}).
     static isBinary(mimetype: string): boolean {
         return classifyMimetype(mimetype).binary;
     }

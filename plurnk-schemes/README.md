@@ -93,7 +93,7 @@ That's the whole contract: declare, `implements SchemeHandler`, manifest with se
 ### Helpers (`export default class`, static methods)
 
 - `SchemeResolver.forLoop(handlers, flags)` — active-scheme resolution under loop flags.
-- `MimetypeClassifier.isBinary` / `.isJson` / `.normalizeAutoText` (+ `TEXT_PRIMITIVE_MIMETYPE` named export) - mimetype classification.
+- `MimetypeClassifier.isBinary` / `.isJson` / `.normalizeAutoText` (+ `TEXT_PRIMITIVE_MIMETYPE` named export) - registry-free mimetype taxonomy and scheme-local helpers. Configured consumers use `Mimetypes.classify()` for handler-aware binary decisions.
 - `Slicer.lines` / `.linesRaw` / `.textReplacement` / `.lineMarkerEdit` / `.lineMarkerEditBatch` - universal text-region projection and same-snapshot replacement; `Slicer.page` handles ordered results separately.
 - `PathMimetype.resolve(pathname, default, mimetypes)` — path-extension mimetype resolver.
 - `Matcher.matchAgainstContent(body, content, mimetype, mimetypes)` - boolean resource selection over `Mimetypes.query` (glob/regex/jsonpath/xpath), returning locator/exact-region `MatchEvidence`.
