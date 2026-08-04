@@ -8,19 +8,8 @@ import { resolve, dispose } from "./index.js";
 
 const manifest = JSON.parse(readFileSync(new URL("./tokenizers/manifest.json", import.meta.url), "utf-8"));
 
-// One representative ref per family — the routing truth table.
-const REFS = {
-    o200k: "gpt-4o-mini",
-    cl100k: "gpt-4-turbo",
-    llama3: "llama-3.1-8b-instruct",
-    llama2: "Llama-2-13b-chat",
-    gemma: "gemma-4-26b",
-    deepseek: "deepseek-v4-pro",
-    qwen: "qwen2.5-coder-32b",
-    mistral: "mistral-large-latest",
-    bert: "bert-base-uncased",
-    t5: "flan-t5-xl",
-};
+// The family key is the caller's explicit vocabulary selection.
+const REFS = Object.fromEntries(Object.keys(manifest).map((family) => [family, family]));
 
 // The #44 measurement text shape: English + code + plurnk DSL.
 const SAMPLE = 'READ<<EDIT[fix](src/index.ts)<12>:const x = users.filter((u) => u.active);:EDIT — apply the patch, then re-run the failing test and report the count.';
@@ -40,23 +29,15 @@ describe("every bundled family loads and counts", () => {
     }
 });
 
-describe("routing precedence and honesty", () => {
-    it("gpt-4o routes to o200k, not the gpt-4 cl100k rule", async () => {
-        assert.equal((await resolve("gpt-4o")).tokenizerId, manifest.o200k.tokenizerId);
-        assert.equal((await resolve("gpt-4")).tokenizerId, manifest.cl100k.tokenizerId);
+describe("exact selection and honesty", () => {
+    it("every pinned source ref selects its own manifest vocabulary", async () => {
+        for (const [family, entry] of Object.entries(manifest)) {
+            assert.equal((await resolve(entry.repo)).tokenizerId, entry.tokenizerId, family);
+        }
     });
-    it("llama-3 routes past the llama-2 catch-all; bare llama falls to llama2", async () => {
-        assert.equal((await resolve("meta-llama/llama-3.3-70b")).tokenizerId, manifest.llama3.tokenizerId);
-        assert.equal((await resolve("llama-2-7b")).tokenizerId, manifest.llama2.tokenizerId);
-    });
-    it("o-series reasoning refs route to o200k", async () => {
-        assert.equal((await resolve("o3-mini")).tokenizerId, manifest.o200k.tokenizerId);
-        assert.equal((await resolve("openai/o1")).tokenizerId, manifest.o200k.tokenizerId);
-    });
-    it("vocab identity is shared across model refs on the same vocabulary (#44)", async () => {
-        const pro = await resolve("deepseek-v4-pro");
-        const flash = await resolve("deepseek-v4-flash");
-        assert.equal(pro.tokenizerId, flash.tokenizerId);
+    it("the embedding-space wrapper preserves an exact pinned source ref", async () => {
+        const hit = await resolve("remote:Qwen/Qwen2.5-7B-Instruct@d768");
+        assert.equal(hit.tokenizerId, manifest.qwen.tokenizerId);
     });
     it("an unknown ref is an honest null, never a close-enough guess", async () => {
         assert.equal(await resolve("claude-fable-5"), null);

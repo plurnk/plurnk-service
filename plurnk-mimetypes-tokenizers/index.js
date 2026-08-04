@@ -25,23 +25,19 @@ import { Tokenizer } from "@huggingface/tokenizers";
 const here = path.dirname(fileURLToPath(import.meta.url));
 const manifest = JSON.parse(readFileSync(path.join(here, "tokenizers", "manifest.json"), "utf-8"));
 
-// Model-ref → family. ORDER MATTERS: more specific patterns first (gpt-4o must
-// hit o200k before the gpt-4 → cl100k rule; llama-3/4 before the llama-2
-// catch-all). An unmatched ref returns null — the honest data gap; extend the
-// table (and the bundled set) via issues, never by guessing a "close enough"
-// vocab.
-const REGISTRY = [
-    { family: "o200k", match: /gpt-4o|gpt-4\.1|gpt-5|o200k|(^|[^a-z0-9])o[134](?![0-9])/i },
-    { family: "cl100k", match: /gpt-4|gpt-3\.5|cl100k/i },
-    { family: "llama3", match: /llama[-_ .]?[34]/i },
-    { family: "llama2", match: /llama/i },
-    { family: "gemma", match: /gemma/i },
-    { family: "deepseek", match: /deepseek/i },
-    { family: "qwen", match: /qwen|qwq/i },
-    { family: "mistral", match: /mistral|mixtral|ministral|codestral/i },
-    { family: "bert", match: /(^|[^a-z])bert/i },
-    { family: "t5", match: /(^|[^a-z])t5/i },
-];
+// Exact selector → family. The manifest owns both selectors the artifact can
+// prove: its explicit family key and the pinned source repository whose bytes
+// it verifies. Model-name resemblance is not vocabulary evidence (#173).
+const EXACT_REFS = new Map(Object.entries(manifest).flatMap(([family, entry]) => [
+    [family.toLowerCase(), family],
+    [entry.repo.toLowerCase(), family],
+]));
+
+function familyFor(modelRef) {
+    const wrapped = /^remote:(.+)@d[1-9][0-9]*$/i.exec(modelRef);
+    const exactRef = wrapped?.[1] ?? modelRef;
+    return EXACT_REFS.get(exactRef.toLowerCase());
+}
 
 // family → constructed Tokenizer, built once per process on first resolve.
 const engines = new Map();
@@ -63,16 +59,11 @@ export async function resolve(modelRef) {
     if (typeof modelRef !== "string" || modelRef.length === 0) {
         throw new TypeError(`resolve(modelRef): modelRef must be a non-empty string; got ${JSON.stringify(modelRef)}`);
     }
-    const entry = REGISTRY.find((e) => e.match.test(modelRef));
-    if (entry === undefined) return null;
-    if (!manifest[entry.family]) {
-        // Registry names a family the manifest doesn't carry — a broken package
-        // build, not a data gap. Crash, never degrade past a contract violation.
-        throw new Error(`registry maps ${JSON.stringify(modelRef)} to family "${entry.family}" but the manifest carries no such tokenizer — rebuild via fetch:tokenizers`);
-    }
-    const engine = engineFor(entry.family);
+    const family = familyFor(modelRef);
+    if (family === undefined) return null;
+    const engine = engineFor(family);
     return {
-        tokenizerId: manifest[entry.family].tokenizerId,
+        tokenizerId: manifest[family].tokenizerId,
         async countTokens(text) {
             return engine.encode(text, { add_special_tokens: false }).ids.length;
         },

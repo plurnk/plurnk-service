@@ -917,7 +917,10 @@ resolutions sharing a vocabulary therefore share the identity. A persisted
 tokenizer-dependent derivation must include it in its derivation key.
 
 The artifact exposes `resolve(modelRef)` and may expose `dispose()`. A `null`
-resolution means no bundled vocabulary matches. Artifact availability follows
+resolution means no bundled vocabulary matches. A match is exact at both
+layers: the counter executes pinned vocabulary bytes, and selection requires
+the manifest family key or its exact pinned source ref; model-name resemblance
+never establishes vocabulary identity. Artifact availability follows
 {§mimetype-artifact-absence}; an installed module without `resolve()` is an
 incompatible artifact and fails hard. `Mimetypes.dispose()` forwards artifact
 disposal and clears the lazy cache.
