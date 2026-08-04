@@ -38,6 +38,7 @@ describe("Issue #18 — C1: container + columns flow through the symbols channel
             mimetype: "text/x-v2",
             glyph: "🧪",
             packageName: "@plurnk/x",
+            projectionRevision: "test-1",
             extensions: [".v2"],
             binary: false,
             source: "package",

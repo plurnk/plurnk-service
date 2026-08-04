@@ -15,6 +15,7 @@
         "handlers": [
             {
                 "name": "application/x-ipynb+json",
+                "revision": "1",
                 "glyph": "📓",
                 "extensions": [
                     ".ipynb"

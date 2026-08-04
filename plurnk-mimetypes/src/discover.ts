@@ -87,6 +87,7 @@ export async function discover(options: DiscoverOptions = {}): Promise<Discovery
             mimetype: entry.mimetype,
             glyph: entry.glyph,
             packageName: `@plurnk/plurnk-mimetypes-grammar-${entry.slug}`,
+            projectionRevision: entry.revision,
             extensions: entry.extensions,
             binary: false,
             source: "treesitter",
@@ -217,12 +218,20 @@ function readHandlerInfos(
         }
         const e = entry as Record<string, unknown>;
         const name = e.name;
+        const revision = e.revision;
         const glyph = e.glyph;
         const extensions = e.extensions;
         if (typeof name !== "string" || !MEDIA_TYPE_NAME.test(name)) {
             fail(`plurnk.handlers entry ${index} must declare a media-type name`, typeof name === "string" ? name : undefined);
         }
         const mimetype = name as string;
+        if (
+            typeof revision !== "string"
+            || revision.length === 0
+            || revision !== revision.trim()
+        ) {
+            fail(`plurnk.handlers entry ${index} must declare a non-empty revision without surrounding whitespace`, mimetype);
+        }
         if (glyph !== undefined && typeof glyph !== "string") {
             fail(`plurnk.handlers entry ${index} glyph must be a string`, mimetype);
         }
@@ -236,6 +245,7 @@ function readHandlerInfos(
             mimetype,
             glyph: typeof glyph === "string" ? glyph : "",
             packageName,
+            projectionRevision: revision as string,
             extensions: (extensions ?? []) as string[],
             binary,
             source: "package",

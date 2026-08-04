@@ -138,7 +138,7 @@ export default class TreeSitterLanguageHandler extends TreeSitterExtractor {
 }
 
 // Resolve only the reproducible leaf artifact ({§mimetype-grammar-leaves}).
-async function resolveWasmPath(entry: TreeSitterLanguageEntry): Promise<string> {
+export async function resolveWasmPath(entry: TreeSitterLanguageEntry): Promise<string> {
     const { createRequire } = await import("node:module");
     const require = createRequire(import.meta.url);
     const path = await import("node:path");

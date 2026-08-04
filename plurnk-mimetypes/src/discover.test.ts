@@ -13,10 +13,27 @@ async function makePackage(
     root: string,
     folder: string,
     pkg: Record<string, unknown>,
+    options: { defaultHandlerRevision?: boolean } = {},
 ): Promise<string> {
     const dir = path.join(root, folder);
     await fs.mkdir(dir, { recursive: true });
-    await fs.writeFile(path.join(dir, "package.json"), JSON.stringify(pkg, null, 2));
+    const plurnk = pkg.plurnk;
+    const packageJson = options.defaultHandlerRevision === false
+        || typeof plurnk !== "object"
+        || plurnk === null
+        || !Array.isArray((plurnk as { handlers?: unknown }).handlers)
+        ? pkg
+        : {
+            ...pkg,
+            plurnk: {
+                ...plurnk,
+                handlers: (plurnk as { handlers: unknown[] }).handlers.map((entry) =>
+                    typeof entry === "object" && entry !== null
+                        ? { revision: "test-1", ...entry }
+                        : entry),
+            },
+        };
+    await fs.writeFile(path.join(dir, "package.json"), JSON.stringify(packageJson, null, 2));
     return dir;
 }
 
@@ -28,6 +45,7 @@ const THIRD_PARTY_HANDLER_SOURCE = `
             this.extensions = extensions;
         }
         validate() {}
+        projectionConfiguration() { return ""; }
         extractRaw() { return []; }
         deepJson() { return null; }
         deepXml() { return ""; }
@@ -83,6 +101,7 @@ describe("discover", () => {
         assert.ok(info);
         assert.equal(info.glyph, "🐍");
         assert.equal(info.packageName, "@plurnk/plurnk-mimetypes-text-x-python");
+        assert.equal(info.projectionRevision, "test-1");
         assert.deepEqual([...info.extensions], [".py", ".pyw"]);
         assert.equal(result.registry.byExtension.get(".py"), "text/x-python");
         assert.equal(result.registry.byExtension.get(".pyw"), "text/x-python");
@@ -216,6 +235,30 @@ describe("discover", () => {
             () => discover({ packageDirs: [dir], includeTreeSitter: false }),
             (error: Error) => error.name === "MimetypePluginError" && /media-type name/.test(error.message),
         );
+    });
+
+    it("rejects a handler entry without a canonical projection revision", async () => {
+        for (const [folder, revision] of [
+            ["pkg-revision-missing", undefined],
+            ["pkg-revision-empty", ""],
+            ["pkg-revision-whitespace", " reader-1 "],
+        ] as const) {
+            const dir = await makePackage(tmpRoot, folder, {
+                name: `@plurnk/${folder}`,
+                plurnk: {
+                    kind: "mimetype",
+                    handlers: [{
+                        name: `text/${folder}`,
+                        extensions: [`.${folder}`],
+                        ...(revision !== undefined && { revision }),
+                    }],
+                },
+            }, { defaultHandlerRevision: false });
+            await assert.rejects(
+                () => discover({ packageDirs: [dir], includeTreeSitter: false }),
+                (error: Error) => error.name === "MimetypePluginError" && /revision/.test(error.message),
+            );
+        }
     });
 
     it("rejects the whole declaration when a handler entry is not an object", async () => {
@@ -443,6 +486,10 @@ describe("discover — scope-agnostic scan (issue #28)", () => {
             assert.equal(result.ok, true);
             assert.equal(result.mimetype, "text/x-cobol");
             assert.deepEqual(result.symbols, []);
+            assert.match(
+                await mimetypes.projectionIdentity("text/x-cobol"),
+                /^[a-f0-9]{64}$/u,
+            );
         } finally {
             await fs.rm(root, { recursive: true, force: true });
         }

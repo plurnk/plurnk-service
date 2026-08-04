@@ -18,6 +18,7 @@ const info = (mimetype: string, extra: Partial<HandlerInfo> = {}): HandlerInfo =
     mimetype,
     glyph: "",
     packageName: `@plurnk/plurnk-mimetypes-test`,
+    projectionRevision: "test-1",
     extensions: [],
     binary: false,
     source: "package",

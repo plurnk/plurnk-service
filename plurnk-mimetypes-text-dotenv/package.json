@@ -15,6 +15,7 @@
         "handlers": [
             {
                 "name": "text/x-dotenv",
+                "revision": "1",
                 "glyph": "🔑",
                 "extensions": [
                     ".env",

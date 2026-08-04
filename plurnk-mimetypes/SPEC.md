@@ -16,17 +16,18 @@ types own the executable TypeScript surface. Handler packages normally extend
 `BaseHandler`, `TreeSitterExtractor`, or `AntlrExtractor` and override only the
 behavior their content algebra supports.
 
-| Surface                   | Default                                         | Handler responsibility                                                        |
-|---------------------------|-------------------------------------------------|-------------------------------------------------------------------------------|
-| `extractRaw(content)`     | `[]`                                            | Emit structured definitions for the `symbols` channel.                        |
-| `deepJson(content)`       | `null`                                          | Emit the algebra's faithful structural value for JSONPath.                    |
-| `deepXml(content)`        | Project `deepJson`, then the symbol outline.    | Override only when native markup is more faithful.                            |
-| `references(content)`     | `[]`                                            | Emit classified symbol uses, never definitions.                               |
-| `content(content)`        | `undefined`                                     | Emit readable text only when it differs from the raw body.                    |
-| `validate(content)`       | No-op                                           | Reject content only when the mimetype has a meaningful validity check.        |
-| `query(...)`              | Text and structural dialect dispatch.           | Override when native parsing can provide more faithful evidence.              |
-| `symbolsRaw(content)`     | `format(await extractRaw(content))`             | Human/diagnostic outline; not a model-facing projection channel.              |
-| `toText(content)`         | String passthrough; binary content unsupported. | Supply readable text for binary regex/glob matching and embedding when valid. |
+| Surface                     | Default                                         | Handler responsibility                                                        |
+|-----------------------------|-------------------------------------------------|-------------------------------------------------------------------------------|
+| `extractRaw(content)`       | `[]`                                            | Emit structured definitions for the `symbols` channel.                        |
+| `deepJson(content)`         | `null`                                          | Emit the algebra's faithful structural value for JSONPath.                    |
+| `deepXml(content)`          | Project `deepJson`, then the symbol outline.    | Override only when native markup is more faithful.                            |
+| `references(content)`       | `[]`                                            | Emit classified symbol uses, never definitions.                               |
+| `content(content)`          | `undefined`                                     | Emit readable text only when it differs from the raw body.                    |
+| `validate(content)`         | No-op                                           | Reject content only when the mimetype has a meaningful validity check.        |
+| `query(...)`                | Text and structural dialect dispatch.           | Override when native parsing can provide more faithful evidence.              |
+| `symbolsRaw(content)`       | `format(await extractRaw(content))`             | Human/diagnostic outline; not a model-facing projection channel.              |
+| `toText(content)`           | String passthrough; binary content unsupported. | Supply readable text for binary regex/glob matching and embedding when valid. |
+| `projectionConfiguration()` | `""`                                            | Return a canonical string for effective settings that can change projections. |
 
 §mimetype-handler-authority The handler owns the material in each projection.
 The framework owns detection, handler routing, channel selection, the default
@@ -64,6 +65,30 @@ idempotent: it releases the embedding/tokenizer seams and drops handler
 instances while retaining discovery. A disposed orchestrator may be used again;
 handlers and artifacts then resolve lazily.
 
+### §mimetype-projection-identity 1.2 Projection identity
+
+`Mimetypes.projectionIdentity(mimetype)` returns an opaque SHA-256 identity for
+the installed behavior that can project that mimetype. Consumers include it
+only in artifacts that actually depend on handler output.
+
+| Identity component                         | Owner                                      |
+|--------------------------------------------|--------------------------------------------|
+| Framework projection revision              | `@plurnk/plurnk-mimetypes`.                |
+| Mimetype, source kind, and npm package name | Discovery.                                 |
+| Per-handler `revision`                      | The handler declaration.                   |
+| Effective projection configuration          | `projectionConfiguration()`.               |
+| Mapping revision and grammar state/bytes    | Each built-in Tree-sitter registry entry.  |
+
+Handler authors increment `revision` whenever handler code or a dependency can
+change projection output without changing effective configuration. The
+configuration method returns one deterministic canonical string and fails hard
+on invalid settings. Tree-sitter identity fingerprints the installed WASM
+bytes; an absent grammar is an explicit, distinct state. Package versions,
+glyphs, extensions, and attribution are excluded because release cadence,
+routing, and presentation do not define projection behavior. An unregistered
+mimetype has a stable identity and loads no plugin code. `dispose()` clears
+cached grammar fingerprints as well as handler instances.
+
 ## 2. `package.json` `plurnk` discovery block
 
 A package declares one or more mimetype handlers via a uniform `handlers` array. Single-handler and multi-handler packages use the same shape — no primary/alias asymmetry.
@@ -73,7 +98,7 @@ A package declares one or more mimetype handlers via a uniform `handlers` array.
     "plurnk": {
         "kind": "mimetype",
         "handlers": [
-            { "name": "text/x-python", "glyph": "🐍", "extensions": [".py", ".pyw"] }
+            { "name": "text/x-python", "revision": "1", "glyph": "🐍", "extensions": [".py", ".pyw"] }
         ]
     }
 }
@@ -86,8 +111,8 @@ Multi-handler example (one package serving variants of the same content type):
     "plurnk": {
         "kind": "mimetype",
         "handlers": [
-            { "name": "application/json",  "glyph": "📋", "extensions": [".json"] },
-            { "name": "application/jsonc", "glyph": "📋", "extensions": [".jsonc"] }
+            { "name": "application/json",  "revision": "1", "glyph": "📋", "extensions": [".json"] },
+            { "name": "application/jsonc", "revision": "1", "glyph": "📋", "extensions": [".jsonc"] }
         ]
     }
 }
@@ -107,6 +132,7 @@ The containing `package.json` `name` must be a valid current npm package name.
 | Field        | Type     | Required | Contract                                                                                                        |
 |--------------|----------|----------|-----------------------------------------------------------------------------------------------------------------|
 | `name`       | string   | yes      | RFC 6838 restricted type/subtype name registered by this entry (`text/markdown`, `application/json`, …).        |
+| `revision`   | string   | yes      | Non-empty handler-owned projection revision ({§mimetype-projection-identity}).                                  |
 | `glyph`      | string   | no       | Display marker; defaults to an empty string.                                                                    |
 | `extensions` | string[] | no       | Dotted entries are case-insensitive extensions; bare entries are case-sensitive filenames such as `Dockerfile`. |
 
@@ -181,9 +207,9 @@ The family follows a single resolution order. Authors of new handlers MUST consu
     "plurnk": {
         "kind": "mimetype",
         "handlers": [
-            { "name": "text/x-cpp",     "glyph": "🟦", "extensions": [".cpp", ".cc", ".cxx", ".hpp", ".hh", ".hxx", ".h"] },
-            { "name": "text/x-c++src",  "glyph": "🟦", "extensions": [".cpp", ".cc", ".cxx", ".hpp", ".hh", ".hxx", ".h"] },
-            { "name": "text/x-c++",     "glyph": "🟦", "extensions": [".cpp", ".cc", ".cxx", ".hpp", ".hh", ".hxx", ".h"] }
+            { "name": "text/x-cpp",    "revision": "1", "glyph": "🟦", "extensions": [".cpp", ".cc", ".cxx", ".hpp", ".hh", ".hxx", ".h"] },
+            { "name": "text/x-c++src", "revision": "1", "glyph": "🟦", "extensions": [".cpp", ".cc", ".cxx", ".hpp", ".hh", ".hxx", ".h"] },
+            { "name": "text/x-c++",    "revision": "1", "glyph": "🟦", "extensions": [".cpp", ".cc", ".cxx", ".hpp", ".hh", ".hxx", ".h"] }
         ]
     }
 }
@@ -668,6 +694,7 @@ interface TreeSitterLanguageEntry {
     readonly glyph: string;
     readonly extensions: readonly string[];
     readonly slug: string;                           // → @plurnk/.../grammar-{slug}/{slug}.wasm
+    readonly revision: string;                       // mapping projection revision
     readonly importMapping: () => Promise<TreeSitterLanguageMapping>;
 }
 ```

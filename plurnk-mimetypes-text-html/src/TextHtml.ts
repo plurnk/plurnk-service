@@ -14,6 +14,7 @@ import type { DefaultTreeAdapterMap } from "parse5";
 import { DOMParser } from "@xmldom/xmldom";
 import * as xpath from "xpath";
 import { htmlToMarkdown } from "./htmlToMarkdown.ts";
+import { markdownWrapColumns } from "./wrapMarkdown.ts";
 
 // text/html + application/xhtml+xml handler. Parses with parse5 and emits
 // structural symbols.
@@ -41,6 +42,10 @@ type ParentNode = DefaultTreeAdapterMap["parentNode"];
 const HEADING_TAGS = new Set(["h1", "h2", "h3", "h4", "h5", "h6"]);
 
 export default class TextHtml extends BaseHandler {
+    override projectionConfiguration(): string {
+        return JSON.stringify({ wrapColumns: markdownWrapColumns() });
+    }
+
     override extractRaw(content: string | Uint8Array): MimeSymbol[] {
         const html = typeof content === "string"
             ? content

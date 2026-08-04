@@ -15,6 +15,7 @@
         "handlers": [
             {
                 "name": "text/csv",
+                "revision": "1",
                 "glyph": "📊",
                 "extensions": [
                     ".csv"

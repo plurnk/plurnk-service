@@ -44,6 +44,7 @@ const FAKE_INFO: HandlerInfo = {
     mimetype: "text/x-fake",
     glyph: "🧪",
     packageName: "@plurnk/plurnk-mimetypes-grammar-fake",
+    projectionRevision: "test-1",
     extensions: [".fake"],
     binary: false,
     // 'package' so the test loader (FakeMissingGrammarHandler) is used.

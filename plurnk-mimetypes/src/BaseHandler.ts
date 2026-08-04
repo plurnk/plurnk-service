@@ -59,6 +59,12 @@ export default class BaseHandler {
         // Default: anything is valid.
     }
 
+    // Canonical effective settings that can change projection output
+    // ({§mimetype-projection-identity}).
+    projectionConfiguration(): string | Promise<string> {
+        return "";
+    }
+
     // Unbudgeted human/diagnostic rendering ({§mimetype-outline}).
     async symbolsRaw(content: HandlerContent): Promise<string> {
         return format(await this.extractRaw(content));

@@ -15,6 +15,7 @@ const info: HandlerInfo = {
     mimetype: "text/fixture",
     glyph: "F",
     packageName: "@fixture/mimetype-handler",
+    projectionRevision: "test-1",
     extensions: [".fixture"],
     binary: false,
     source: "package",

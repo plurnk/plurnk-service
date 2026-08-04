@@ -15,6 +15,7 @@
         "handlers": [
             {
                 "name": "text/plain",
+                "revision": "1",
                 "glyph": "📄",
                 "extensions": [
                     ".txt"
@@ -22,6 +23,7 @@
             },
             {
                 "name": "text/stream",
+                "revision": "1",
                 "glyph": "📡",
                 "extensions": []
             }

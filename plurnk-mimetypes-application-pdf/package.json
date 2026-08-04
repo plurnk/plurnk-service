@@ -16,6 +16,7 @@
         "handlers": [
             {
                 "name": "application/pdf",
+                "revision": "1",
                 "glyph": "📕",
                 "extensions": [
                     ".pdf"

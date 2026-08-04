@@ -15,6 +15,7 @@
         "handlers": [
             {
                 "name": "application/xml",
+                "revision": "1",
                 "glyph": "📐",
                 "extensions": [
                     ".xml"
@@ -22,6 +23,7 @@
             },
             {
                 "name": "text/xml",
+                "revision": "1",
                 "glyph": "📐",
                 "extensions": []
             }

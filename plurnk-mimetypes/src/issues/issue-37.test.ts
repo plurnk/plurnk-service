@@ -33,7 +33,7 @@ describe("discover attribution", () => {
             plurnk: {
                 kind: "mimetype",
                 attribution: "acme",
-                handlers: [{ name: "application/x-foo", glyph: "🅰", extensions: [".foo"] }],
+                handlers: [{ name: "application/x-foo", revision: "test-1", glyph: "🅰", extensions: [".foo"] }],
             },
         });
         const { handlers, packageAttributions } = await discover({ packageDirs: [dir], includeTreeSitter: false });
@@ -48,8 +48,8 @@ describe("discover attribution", () => {
                 kind: "mimetype",
                 attribution: ["acme", "acme-pro"],
                 handlers: [
-                    { name: "application/x-a", glyph: "A", extensions: [".a"] },
-                    { name: "application/x-b", glyph: "B", extensions: [".b"] },
+                    { name: "application/x-a", revision: "test-1", glyph: "A", extensions: [".a"] },
+                    { name: "application/x-b", revision: "test-1", glyph: "B", extensions: [".b"] },
                 ],
             },
         });
@@ -64,7 +64,7 @@ describe("discover attribution", () => {
             name: "@acme/acme-mime-bare",
             plurnk: {
                 kind: "mimetype",
-                handlers: [{ name: "application/x-bare", glyph: "·", extensions: [".bare"] }],
+                handlers: [{ name: "application/x-bare", revision: "test-1", glyph: "·", extensions: [".bare"] }],
             },
         });
         const { handlers, packageAttributions } = await discover({ packageDirs: [dir], includeTreeSitter: false });
@@ -83,7 +83,7 @@ describe("discover attribution", () => {
                 plurnk: {
                     kind: "mimetype",
                     attribution: value,
-                    handlers: [{ name: `application/x-${folder}`, glyph: "?", extensions: [`.${folder}`] }],
+                    handlers: [{ name: `application/x-${folder}`, revision: "test-1", glyph: "?", extensions: [`.${folder}`] }],
                 },
             });
             await assert.rejects(
@@ -98,7 +98,7 @@ describe("discover attribution", () => {
             plurnk: {
                 kind: "mimetype",
                 attribution: "@plurnk/staff",
-                handlers: [{ name: "application/x-reserved", extensions: [".reserved"] }],
+                handlers: [{ name: "application/x-reserved", revision: "test-1", extensions: [".reserved"] }],
             },
         });
         await assert.rejects(discover({ packageDirs: [reserved], includeTreeSitter: false }), /'@plurnk\/' is reserved/);
@@ -110,7 +110,7 @@ describe("discover attribution", () => {
             plurnk: {
                 kind: "mimetype",
                 attribution: ["keep", 1],
-                handlers: [{ name: "application/x-untrusted", extensions: [".untrusted"] }],
+                handlers: [{ name: "application/x-untrusted", revision: "test-1", extensions: [".untrusted"] }],
             },
         });
         const result = await discover({

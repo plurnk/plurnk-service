@@ -37,6 +37,7 @@ const INFO: HandlerInfo = {
     mimetype: "text/x-test",
     glyph: "🧪",
     packageName: "@plurnk/x",
+    projectionRevision: "test-1",
     extensions: [".tst"],
     binary: false,
     source: "package",

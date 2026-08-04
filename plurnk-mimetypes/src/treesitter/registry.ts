@@ -18,6 +18,8 @@ export interface TreeSitterLanguageEntry {
      * name (`{slug}.wasm`).
      */
     readonly slug: string;
+    /** Mapping-owned behavior revision ({§mimetype-projection-identity}). */
+    readonly revision: string;
     /**
      * Dynamic-import factory for the mapping module. The module must
      * export `extract(root, content)` returning semantic symbol projections.
@@ -53,6 +55,7 @@ export const TREE_SITTER_REGISTRY: readonly TreeSitterLanguageEntry[] = [
         glyph: "🐍",
         extensions: [".py", ".pyw"],
         slug: "python",
+        revision: "1",
         importMapping: () => import("./python.ts"),
     },
     {
@@ -60,6 +63,7 @@ export const TREE_SITTER_REGISTRY: readonly TreeSitterLanguageEntry[] = [
         glyph: "λ",
         extensions: [".hs", ".lhs"],
         slug: "haskell",
+        revision: "1",
         importMapping: () => import("./haskell.ts"),
     },
     {
@@ -67,6 +71,7 @@ export const TREE_SITTER_REGISTRY: readonly TreeSitterLanguageEntry[] = [
         glyph: "💎",
         extensions: [".rb", ".rake", ".gemspec", "Rakefile", "Gemfile"],
         slug: "ruby",
+        revision: "1",
         importMapping: () => import("./ruby.ts"),
     },
     {
@@ -74,6 +79,7 @@ export const TREE_SITTER_REGISTRY: readonly TreeSitterLanguageEntry[] = [
         glyph: "🐚",
         extensions: [".sh", ".bash", ".zsh", ".bashrc", ".zshrc"],
         slug: "bash",
+        revision: "1",
         importMapping: () => import("./bash.ts"),
     },
     {
@@ -81,6 +87,7 @@ export const TREE_SITTER_REGISTRY: readonly TreeSitterLanguageEntry[] = [
         glyph: "🐫",
         extensions: [".ml", ".mli"],
         slug: "ocaml",
+        revision: "1",
         importMapping: () => import("./ocaml.ts"),
     },
     {
@@ -88,6 +95,7 @@ export const TREE_SITTER_REGISTRY: readonly TreeSitterLanguageEntry[] = [
         glyph: "☕",
         extensions: [".java"],
         slug: "java",
+        revision: "1",
         importMapping: () => import("./java.ts"),
     },
     {
@@ -95,6 +103,7 @@ export const TREE_SITTER_REGISTRY: readonly TreeSitterLanguageEntry[] = [
         glyph: "🐹",
         extensions: [".go"],
         slug: "go",
+        revision: "1",
         importMapping: () => import("./go.ts"),
     },
     {
@@ -102,6 +111,7 @@ export const TREE_SITTER_REGISTRY: readonly TreeSitterLanguageEntry[] = [
         glyph: "🦀",
         extensions: [".rs"],
         slug: "rust",
+        revision: "1",
         importMapping: () => import("./rust.ts"),
     },
     {
@@ -109,6 +119,7 @@ export const TREE_SITTER_REGISTRY: readonly TreeSitterLanguageEntry[] = [
         glyph: "🇨",
         extensions: [".c", ".h"],
         slug: "c",
+        revision: "1",
         importMapping: () => import("./c.ts"),
     },
     {
@@ -116,6 +127,7 @@ export const TREE_SITTER_REGISTRY: readonly TreeSitterLanguageEntry[] = [
         glyph: "🇨",
         extensions: [".cpp", ".cc", ".cxx", ".hpp", ".hh", ".hxx", ".h++"],
         slug: "cpp",
+        revision: "1",
         importMapping: () => import("./cpp.ts"),
     },
     {
@@ -125,6 +137,7 @@ export const TREE_SITTER_REGISTRY: readonly TreeSitterLanguageEntry[] = [
         glyph: "🇨",
         extensions: [],
         slug: "cpp",
+        revision: "1",
         importMapping: () => import("./cpp.ts"),
     },
     {
@@ -132,6 +145,7 @@ export const TREE_SITTER_REGISTRY: readonly TreeSitterLanguageEntry[] = [
         glyph: "🟨",
         extensions: [".js", ".mjs", ".cjs"],
         slug: "javascript",
+        revision: "1",
         importMapping: () => import("./javascript.ts"),
     },
     {
@@ -139,6 +153,7 @@ export const TREE_SITTER_REGISTRY: readonly TreeSitterLanguageEntry[] = [
         glyph: "🟦",
         extensions: [".ts", ".mts", ".cts"],
         slug: "typescript",
+        revision: "1",
         importMapping: () => import("./typescript.ts"),
     },
     {
@@ -146,6 +161,7 @@ export const TREE_SITTER_REGISTRY: readonly TreeSitterLanguageEntry[] = [
         glyph: "🟦",
         extensions: [".tsx", ".jsx"],
         slug: "tsx",
+        revision: "1",
         importMapping: () => import("./tsx.ts"),
     },
     {
@@ -155,6 +171,7 @@ export const TREE_SITTER_REGISTRY: readonly TreeSitterLanguageEntry[] = [
         glyph: "🟦",
         extensions: [],
         slug: "tsx",
+        revision: "1",
         importMapping: () => import("./tsx.ts"),
     },
     {
@@ -162,6 +179,7 @@ export const TREE_SITTER_REGISTRY: readonly TreeSitterLanguageEntry[] = [
         glyph: "🐘",
         extensions: [".php", ".phtml", ".php3", ".php4", ".php5", ".php7", ".phps"],
         slug: "php",
+        revision: "1",
         importMapping: () => import("./php.ts"),
     },
     {
@@ -169,6 +187,7 @@ export const TREE_SITTER_REGISTRY: readonly TreeSitterLanguageEntry[] = [
         glyph: "🇸",
         extensions: [".scala", ".sc"],
         slug: "scala",
+        revision: "1",
         importMapping: () => import("./scala.ts"),
     },
     {
@@ -176,6 +195,7 @@ export const TREE_SITTER_REGISTRY: readonly TreeSitterLanguageEntry[] = [
         glyph: "💧",
         extensions: [".ex", ".exs"],
         slug: "elixir",
+        revision: "1",
         importMapping: () => import("./elixir.ts"),
     },
     {
@@ -183,6 +203,7 @@ export const TREE_SITTER_REGISTRY: readonly TreeSitterLanguageEntry[] = [
         glyph: "🎯",
         extensions: [".dart"],
         slug: "dart",
+        revision: "1",
         importMapping: () => import("./dart.ts"),
     },
     {
@@ -190,6 +211,7 @@ export const TREE_SITTER_REGISTRY: readonly TreeSitterLanguageEntry[] = [
         glyph: "🟣",
         extensions: [".jl"],
         slug: "julia",
+        revision: "1",
         importMapping: () => import("./julia.ts"),
     },
     {
@@ -197,6 +219,7 @@ export const TREE_SITTER_REGISTRY: readonly TreeSitterLanguageEntry[] = [
         glyph: "♯",
         extensions: [".fs", ".fsx"],
         slug: "fsharp",
+        revision: "1",
         importMapping: () => import("./fsharp.ts"),
     },
     {
@@ -204,6 +227,7 @@ export const TREE_SITTER_REGISTRY: readonly TreeSitterLanguageEntry[] = [
         glyph: "♯",
         extensions: [".fsi"],
         slug: "fsharp-signature",
+        revision: "1",
         importMapping: () => import("./fsharp.ts"),
     },
     {
@@ -211,6 +235,7 @@ export const TREE_SITTER_REGISTRY: readonly TreeSitterLanguageEntry[] = [
         glyph: "🔨",
         extensions: [".mk", "Makefile", "makefile", "GNUmakefile"],
         slug: "make",
+        revision: "1",
         importMapping: () => import("./make.ts"),
     },
     {
@@ -218,6 +243,7 @@ export const TREE_SITTER_REGISTRY: readonly TreeSitterLanguageEntry[] = [
         glyph: "🌙",
         extensions: [".lua"],
         slug: "lua",
+        revision: "1",
         importMapping: () => import("./lua.ts"),
     },
     {
@@ -225,6 +251,7 @@ export const TREE_SITTER_REGISTRY: readonly TreeSitterLanguageEntry[] = [
         glyph: "🇰",
         extensions: [".kt", ".kts"],
         slug: "kotlin",
+        revision: "1",
         importMapping: () => import("./kotlin.ts"),
     },
     {
@@ -232,6 +259,7 @@ export const TREE_SITTER_REGISTRY: readonly TreeSitterLanguageEntry[] = [
         glyph: "⚡",
         extensions: [".zig", ".zon"],
         slug: "zig",
+        revision: "1",
         importMapping: () => import("./zig.ts"),
     },
     {
@@ -239,6 +267,7 @@ export const TREE_SITTER_REGISTRY: readonly TreeSitterLanguageEntry[] = [
         glyph: "📄",
         extensions: [".yaml", ".yml"],
         slug: "yaml",
+        revision: "1",
         importMapping: () => import("./yaml.ts"),
     },
     {
@@ -246,6 +275,7 @@ export const TREE_SITTER_REGISTRY: readonly TreeSitterLanguageEntry[] = [
         glyph: "📄",
         extensions: [".toml"],
         slug: "toml",
+        revision: "1",
         importMapping: () => import("./toml.ts"),
     },
     {
@@ -253,6 +283,7 @@ export const TREE_SITTER_REGISTRY: readonly TreeSitterLanguageEntry[] = [
         glyph: "🪶",
         extensions: [".odin"],
         slug: "odin",
+        revision: "1",
         importMapping: () => import("./odin.ts"),
     },
     {
@@ -260,6 +291,7 @@ export const TREE_SITTER_REGISTRY: readonly TreeSitterLanguageEntry[] = [
         glyph: "🎨",
         extensions: [".css"],
         slug: "css",
+        revision: "1",
         importMapping: () => import("./css.ts"),
     },
 ];

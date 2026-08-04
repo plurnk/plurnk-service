@@ -144,6 +144,15 @@ interface PdfDocModel {
 }
 
 export default class ApplicationPdf extends BaseHandler {
+    override projectionConfiguration(): string {
+        const maxBytes = envCap("PLURNK_MIMETYPES_PDF_MAX_BYTES");
+        const maxPages = envCap("PLURNK_MIMETYPES_PDF_MAX_PAGES");
+        return JSON.stringify({
+            maxBytes: Number.isFinite(maxBytes) ? maxBytes : null,
+            maxPages: Number.isFinite(maxPages) ? maxPages : null,
+        });
+    }
+
     override validate(content: string | Uint8Array): void {
         const bytes = toBytes(content);
         const offset = startsWith(bytes, UTF8_BOM) ? UTF8_BOM.length : 0;

@@ -36,6 +36,7 @@ const info: HandlerInfo = {
     mimetype: "text/x-fake",
     glyph: "🧪",
     packageName: "@plurnk/plurnk-mimetypes-text-fake",
+    projectionRevision: "test-1",
     extensions: [".fake"],
     binary: false,
     source: "package",

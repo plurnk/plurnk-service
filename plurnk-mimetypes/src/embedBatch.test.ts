@@ -12,6 +12,7 @@ const TEXT_INFO: HandlerInfo = {
     mimetype: "text/plain",
     glyph: "📄",
     packageName: "@plurnk/plurnk-mimetypes-text-plain",
+    projectionRevision: "test-1",
     extensions: [".txt"],
     binary: false,
     source: "package",

@@ -80,6 +80,8 @@ export interface HandlerInfo {
     mimetype: string;
     glyph: string;
     packageName: string;
+    // Handler-owned behavior revision ({§mimetype-projection-identity}).
+    projectionRevision: string;
     extensions: readonly string[];
     // Package-level file-decoding declaration ({§mimetype-handler-content}).
     binary: boolean;

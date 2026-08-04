@@ -57,14 +57,15 @@ Ship a handler by publishing a package — **under any scope** (`@acme/whatever`
   "plurnk": {
     "kind": "mimetype",
     "handlers": [
-      { "name": "text/x-cobol", "glyph": "🗄", "extensions": [".cbl", ".cob"] }
+      { "name": "text/x-cobol", "revision": "1", "glyph": "🗄", "extensions": [".cbl", ".cob"] }
     ]
   }
 }
 ```
 
 One package may declare many handlers; each `handlers[]` entry registers
-independently. Add `"binary": true` at the top of the `plurnk` block for
+independently. Increment its required `revision` whenever code or dependencies
+can change projection output. Add `"binary": true` at the top of the `plurnk` block for
 byte-oriented formats. The framework then reads filesystem paths as
 `Uint8Array`; inline callers supply the declared shape directly. Override
 `toText()` when binary content has a readable regex/glob and embedding
@@ -77,15 +78,16 @@ root requires the consumer to inject a `HandlerLoader`
 
 The framework instantiates one handler per mimetype, injecting `{ mimetype, glyph, extensions }` (`HandlerMetadata`), and calls only the channels a `process()` request asks for. Every channel has a working default — **override only what your algebra supports**:
 
-| Override                     | Channel / purpose                                     | Default                           |
-|------------------------------|-------------------------------------------------------|-----------------------------------|
-| `extractRaw(content)`        | `symbols`: structural definitions as `MimeSymbol[]`.  | `[]`                              |
-| `deepJson(content)`          | `deepJson`: faithful JSONPath target.                 | `null`                            |
-| `deepXml(content)`           | `deepXml`: faithful XPath target.                     | Projects deep JSON, then symbols. |
-| `references(content)`        | `references`: classified symbol uses.                 | `[]`                              |
-| `content(content)`           | Derived model-readable text and primary embed source. | `undefined`                       |
-| `validate(content)`          | Reject malformed input when validity is meaningful.   | No-op.                            |
-| `query(...)` / `toText(...)` | Body-matcher dispatch and readable-text projection.   | Standard four-dialect dispatch.   |
+| Override                      | Channel / purpose                                               | Default                           |
+|-------------------------------|-----------------------------------------------------------------|-----------------------------------|
+| `extractRaw(content)`         | `symbols`: structural definitions as `MimeSymbol[]`.            | `[]`                              |
+| `deepJson(content)`           | `deepJson`: faithful JSONPath target.                           | `null`                            |
+| `deepXml(content)`            | `deepXml`: faithful XPath target.                               | Projects deep JSON, then symbols. |
+| `references(content)`         | `references`: classified symbol uses.                           | `[]`                              |
+| `content(content)`            | Derived model-readable text and primary embed source.           | `undefined`                       |
+| `validate(content)`           | Reject malformed input when validity is meaningful.             | No-op.                            |
+| `query(...)` / `toText(...)`  | Body-matcher dispatch and readable-text projection.             | Standard four-dialect dispatch.   |
+| `projectionConfiguration()`   | Canonical effective settings that can change projection output. | `""`                              |
 
 ```ts
 import { BaseHandler } from "@plurnk/plurnk-mimetypes";
@@ -166,7 +168,7 @@ before importing handler code.
 
 | Family              | Root exports                                                                                                               |
 |---------------------|----------------------------------------------------------------------------------------------------------------------------|
-| Orchestration       | `Mimetypes`: discovery, detection, processing, querying, classification, embedding/tokenizer seams, lifecycle.             |
+| Orchestration       | `Mimetypes`: discovery, detection, processing, querying, classification, projection identity, artifact seams, lifecycle.   |
 | Handler authoring   | `BaseHandler`, parser extractors, `withExtractor`, parser-coordinate materializers, and tree/reference primitives.         |
 | Detection/discovery | `detect`, `discover`, `emptyRegistry`, `MimetypePluginError`.                                                              |
 | Query/projection    | Matcher and dialect primitives, JSON/XML projection, text coordinates, and typed query/coordinate failures.                |

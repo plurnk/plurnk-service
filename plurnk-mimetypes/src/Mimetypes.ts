@@ -1,4 +1,5 @@
 import fs from "node:fs/promises";
+import { createHash } from "node:crypto";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -31,6 +32,7 @@ import type {
 export type Channel = "symbols" | "deepJson" | "deepXml" | "references" | "content" | "embedding";
 
 const DEFAULT_CHANNELS: readonly Channel[] = ["symbols", "deepJson", "deepXml", "references", "content"];
+const FRAMEWORK_PROJECTION_REVISION = "1";
 const HANDLER_METHODS = [
     "extractRaw",
     "deepJson",
@@ -38,6 +40,7 @@ const HANDLER_METHODS = [
     "references",
     "content",
     "validate",
+    "projectionConfiguration",
     "query",
     "symbolsRaw",
     "toText",
@@ -124,6 +127,7 @@ export default class Mimetypes {
     readonly #loader: HandlerLoader;
     readonly #defaultMimetype: string | null;
     readonly #handlerInstances = new Map<string, BaseHandler>();
+    readonly #grammarFingerprints = new Map<string, Promise<string>>();
     readonly #embeddings: Embeddings;
     readonly #tokenizers: Tokenizers;
     #discovery: DiscoveryResult | null = null;
@@ -173,6 +177,63 @@ export default class Mimetypes {
         const info = this.#discovery!.handlers.get(mimetype);
         if (info === undefined) return classifyMimetype(mimetype);
         return classifyWithHandler(mimetype, { binary: info.binary });
+    }
+
+    // Opaque identity for installed projection behavior
+    // ({§mimetype-projection-identity}).
+    async projectionIdentity(mimetype: string): Promise<string> {
+        await this.ready();
+        const info = this.#discovery!.handlers.get(mimetype);
+        if (info === undefined) {
+            return projectionDigest({
+                contract: 1,
+                mimetype,
+                registration: null,
+            });
+        }
+
+        const handler = await this.getHandler(mimetype);
+        if (handler === null) {
+            throw new MimetypePluginError({
+                reason: "registered handler could not be resolved",
+                packageName: info.packageName,
+                mimetype,
+            });
+        }
+
+        let configuration: unknown;
+        try {
+            configuration = await handler.projectionConfiguration();
+        } catch (cause) {
+            throw new MimetypePluginError({
+                reason: "projection configuration failed",
+                packageName: info.packageName,
+                mimetype,
+                cause,
+            });
+        }
+        if (typeof configuration !== "string") {
+            throw new MimetypePluginError({
+                reason: "projectionConfiguration() must return a string",
+                packageName: info.packageName,
+                mimetype,
+                cause: new TypeError(`received ${typeof configuration}`),
+            });
+        }
+
+        const grammar = info.source === "treesitter"
+            ? await this.#treeSitterGrammarFingerprint(info)
+            : null;
+        return projectionDigest({
+            contract: 1,
+            frameworkRevision: FRAMEWORK_PROJECTION_REVISION,
+            mimetype,
+            source: info.source,
+            packageName: info.packageName,
+            handlerRevision: info.projectionRevision,
+            configuration,
+            grammar,
+        });
     }
 
     async getHandler(mimetype: string): Promise<BaseHandler | null> {
@@ -382,6 +443,7 @@ export default class Mimetypes {
         await this.#embeddings.dispose();
         await this.#tokenizers.dispose();
         this.#handlerInstances.clear();
+        this.#grammarFingerprints.clear();
     }
 
     // Raw standalone matchers and grammar-parsed matchers converge on one
@@ -453,6 +515,61 @@ export default class Mimetypes {
             return null;
         }
     }
+
+    async #treeSitterGrammarFingerprint(info: HandlerInfo): Promise<string> {
+        const cached = this.#grammarFingerprints.get(info.packageName);
+        if (cached !== undefined) return cached;
+
+        const fingerprint = (async (): Promise<string> => {
+            const { lookupTreeSitterLanguage } = await import("./treesitter/registry.ts");
+            const entry = lookupTreeSitterLanguage(info.mimetype);
+            if (entry === null) {
+                throw new MimetypePluginError({
+                    reason: "framework registry entry is absent",
+                    packageName: info.packageName,
+                    mimetype: info.mimetype,
+                });
+            }
+            const { resolveWasmPath } = await import("./treesitter/handler.ts");
+            let wasmPath: string;
+            try {
+                wasmPath = await resolveWasmPath(entry);
+            } catch (cause) {
+                if (isGrammarNotInstalled(cause)) return "absent";
+                throw cause;
+            }
+            try {
+                const wasm = await fs.readFile(wasmPath);
+                return `sha256:${createHash("sha256").update(wasm).digest("hex")}`;
+            } catch (cause) {
+                if (isMissingFile(cause)) return "absent";
+                throw new MimetypePluginError({
+                    reason: "grammar artifact fingerprint failed",
+                    packageName: info.packageName,
+                    mimetype: info.mimetype,
+                    cause,
+                });
+            }
+        })();
+        this.#grammarFingerprints.set(info.packageName, fingerprint);
+        void fingerprint.catch(() => {
+            if (this.#grammarFingerprints.get(info.packageName) === fingerprint) {
+                this.#grammarFingerprints.delete(info.packageName);
+            }
+        });
+        return fingerprint;
+    }
+}
+
+function projectionDigest(value: object): string {
+    return createHash("sha256").update(JSON.stringify(value)).digest("hex");
+}
+
+function isMissingFile(error: unknown): boolean {
+    return typeof error === "object"
+        && error !== null
+        && "code" in error
+        && (error as { code?: unknown }).code === "ENOENT";
 }
 
 // One metadata-only returned-error shape ({§mimetype-error-policy}).

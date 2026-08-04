@@ -38,6 +38,11 @@ describe("BaseHandler", () => {
         assert.doesNotThrow(() => h.validate("anything"));
     });
 
+    it("declares no effective projection configuration by default", () => {
+        const h = new BaseHandler(metadata);
+        assert.equal(h.projectionConfiguration(), "");
+    });
+
     it("returns an empty references list by default (#19 lands the engine)", async () => {
         const h = new BaseHandler(metadata);
         assert.deepEqual(await h.references("anything"), []);
