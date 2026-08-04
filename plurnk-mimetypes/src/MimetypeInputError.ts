@@ -23,5 +23,8 @@ export function isMimetypeInputError(error: unknown): error is MimetypeInputErro
     if (error instanceof MimetypeInputError) return true;
     if (typeof error !== "object" || error === null) return false;
     const name = (error as { name?: unknown }).name;
-    return name === "MimetypeInputError" || name === "QueryParseFailureError";
+    const mimetype = (error as { mimetype?: unknown }).mimetype;
+    return (name === "MimetypeInputError" || name === "QueryParseFailureError")
+        && typeof mimetype === "string"
+        && mimetype.length > 0;
 }

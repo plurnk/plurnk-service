@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import MimetypeInputError from "./MimetypeInputError.ts";
+import MimetypeInputError, { isMimetypeInputError } from "./MimetypeInputError.ts";
 import {
     InvalidExpressionError,
     QueryParseFailureError,
@@ -55,5 +55,13 @@ describe("QueryParseFailureError", () => {
         assert.equal(err.cause, cause);
         assert.equal(err.name, "QueryParseFailureError");
         assert.ok(err instanceof MimetypeInputError);
+    });
+
+    it("recognizes independently installed typed errors without trusting a name alone", () => {
+        assert.equal(isMimetypeInputError({
+            name: "MimetypeInputError",
+            mimetype: "application/json",
+        }), true);
+        assert.equal(isMimetypeInputError({ name: "MimetypeInputError" }), false);
     });
 });
