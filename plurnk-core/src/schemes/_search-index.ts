@@ -213,6 +213,13 @@ export default class SearchIndex {
                 searchExcluded: undefined,
             });
         }
+        const hasVectorCandidate = semanticPlan.info !== null && pending.some(({ r, searchExcluded }) =>
+            searchExcluded === undefined
+            && r.content.length > 0
+            && !MimetypeBinary.isBinaryMimetype(r.mimetype)
+            && EntrySemantic.embedSizeRejection(r.content) === null,
+        );
+        if (hasVectorCandidate) EntrySemantic.assertExactChunking(semanticPlan, ctx.pushNotice);
         // {§derivation-dedup-parallel} — warm smaller projections before an
         // expensive outlier; ordering never changes exhaustive derivation.
         pending.sort((a, b) => a.r.content.length - b.r.content.length);

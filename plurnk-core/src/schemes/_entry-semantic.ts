@@ -3,7 +3,7 @@
 // vector in scope; FTS is only the explicit no-embedder fallback.
 
 import type { Db } from "../core/Db.ts";
-import type { LineMarker } from "@plurnk/plurnk-contracts";
+import type { LineMarker, Notice } from "@plurnk/plurnk-contracts";
 import {
     TextCoordinates,
     type Mimetypes,
@@ -150,6 +150,7 @@ export default class EntrySemantic {
             if (fallbackEmbedding === undefined || fallbackEmbedding.byteLength === 0 || totalLines === 0) return { chunks: [], model: undefined };
             return { chunks: [{ lineStart: 1, lineEnd: totalLines, vector: fallbackEmbedding }], model: fallbackModel };
         }
+        EntrySemantic.assertExactChunking(plan);
         // Symbol edges (a @graph endLine, or the line before a symbol starts) are the
         // tiler's preferred cut points; it still tiles every line if there are none.
         const boundaries = new Set<number>();
@@ -189,6 +190,18 @@ export default class EntrySemantic {
             if (vector !== undefined && vector.byteLength > 0) chunks.push({ lineStart: spec.lineStart, lineEnd: spec.lineEnd, vector });
         }
         return { chunks, model: chunks.length > 0 ? info.model : undefined };
+    }
+
+    // {§semantic-embed-dedup} — an estimate may inform callers but cannot prove
+    // that a chunk fits an embedder's declared token window.
+    static assertExactChunking(plan: SemanticPlan, pushNotice?: (notice: Notice) => void): void {
+        const { info, tokenizer } = plan;
+        if (info === null || info.countTokens !== null || tokenizer === null || tokenizer.exact) return;
+        for (const notice of tokenizer.notices ?? []) pushNotice?.(notice);
+        throw new Error(
+            `semantic chunking requires an exact token counter for ${JSON.stringify(info.model)}; `
+            + `${JSON.stringify(tokenizer.tokenizerId)} is an estimate and cannot prove the declared ${info.contextWindow}-token window`,
+        );
     }
 
     // Chunk budget in tokens — `.env.defaults` is the law, no code fallback. EMPTY =
@@ -235,7 +248,9 @@ export default class EntrySemantic {
             ? await mimetypes.tokenizer(info.model ?? "")
             : null;
         const countTokens = info.countTokens ?? tokenizer?.countTokens ?? null;
-        const tokenizerIdentity = tokenizer === null ? "" : `:tokenizer=${tokenizer.tokenizerId}`;
+        const tokenizerIdentity = tokenizer === null
+            ? ""
+            : `:tokenizer=${tokenizer.tokenizerId}:${tokenizer.exact ? "exact" : "estimate"}`;
         const base = `embed:${info.model ?? "?"}:${info.contextWindow}:${info.contextWindow === null ? "?" : EntrySemantic.#chunkBudget(info.contextWindow)}:${EntrySemantic.#chunkOverlap()}${tokenizerIdentity}`;
         const maxBytes = EntrySemantic.maxEmbedSize();
         return {

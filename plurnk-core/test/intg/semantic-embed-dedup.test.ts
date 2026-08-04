@@ -134,6 +134,7 @@ test("fallback tokenizer identity invalidates an otherwise identical semantic de
 
 test("an unmatched fallback tokenizer fails semantic maintenance before derivation or embedding (#95)", async () => {
     const db = await openMigrated();
+    const previousMaxEmbedSize = process.env.PLURNK_SERVICE_MAX_EMBED_SIZE;
     try {
         const workspaceId = await insertWorkspace(db, `tokenizer-refusal-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
@@ -169,6 +170,7 @@ test("an unmatched fallback tokenizer fails semantic maintenance before derivati
             }),
         } as unknown as Mimetypes;
         const notices: unknown[] = [];
+        const recordNotice = (notice: unknown): void => { notices.push(notice); };
 
         await new Worker().edit(edit("unicode.json", JSON.stringify({ specimen: "漢字🙂".repeat(8) })), makeSchemeCtx({ db, workspaceId, workerId }));
         await assert.rejects(
@@ -177,7 +179,7 @@ test("an unmatched fallback tokenizer fails semantic maintenance before derivati
                 workspaceId,
                 workerId,
                 mimetypes,
-                pushNotice: (notice) => notices.push(notice),
+                pushNotice: recordNotice,
             })),
             /exact token counter.*remote:unmatched-embedding-model@d2/i,
         );
@@ -196,7 +198,28 @@ test("an unmatched fallback tokenizer fails semantic maintenance before derivati
             { building: 0, complete: 0 },
             "preflight refusal leaves no partial derivation artifact",
         );
+
+        process.env.PLURNK_SERVICE_MAX_EMBED_SIZE = "1";
+        await SearchIndex.maintain(makeSchemeCtx({
+            db,
+            workspaceId,
+            workerId,
+            mimetypes,
+            pushNotice: recordNotice,
+        }));
+        assert.equal(processCalls, 1, "the readable body still receives graph and lexical derivation");
+        assert.equal(embedCalls, 0);
+        assert.deepEqual(notices, [tokenizerNotice], "a deliberately non-vector pass does not repeat the tokenizer refusal");
+        const entry = await db.test_entries_by_pathname.get<{ id: number }>({ pathname: "/unicode.json" });
+        const disposition = await db.test_derivation_disposition.get<{ disposition: string; reason: string }>({ entry_id: entry?.id ?? -1 });
+        assert.deepEqual(
+            { disposition: disposition?.disposition, reason: disposition?.reason },
+            { disposition: "lexical", reason: "max_embed_size" },
+            "the established operator ceiling remains a successful lexical-only disposition",
+        );
     } finally {
+        if (previousMaxEmbedSize === undefined) delete process.env.PLURNK_SERVICE_MAX_EMBED_SIZE;
+        else process.env.PLURNK_SERVICE_MAX_EMBED_SIZE = previousMaxEmbedSize;
         await db.close();
     }
 });

@@ -366,6 +366,7 @@ export class SqlRiteSync {
 	test_entries_with_hash_by_scheme_prefix: SqlRiteSyncPreparedStatements;
 	test_artifact_counts: SqlRiteSyncPreparedStatements;
 	test_derivation_interruption_state: SqlRiteSyncPreparedStatements;
+	test_derivation_state_counts: SqlRiteSyncPreparedStatements;
 	test_entries_by_pathname: SqlRiteSyncPreparedStatements;
 	test_count_embeddings: SqlRiteSyncPreparedStatements;
 	test_derivation_for_entry: SqlRiteSyncPreparedStatements;
@@ -855,6 +856,7 @@ export default class SqlRite {
 	test_entries_with_hash_by_scheme_prefix: SqlRitePreparedStatements;
 	test_artifact_counts: SqlRitePreparedStatements;
 	test_derivation_interruption_state: SqlRitePreparedStatements;
+	test_derivation_state_counts: SqlRitePreparedStatements;
 	test_entries_by_pathname: SqlRitePreparedStatements;
 	test_count_embeddings: SqlRitePreparedStatements;
 	test_derivation_for_entry: SqlRitePreparedStatements;
