@@ -13,7 +13,7 @@ INSERT INTO workers (workspace_id, name, parent_worker_id) VALUES ($workspace_id
 INSERT INTO loops (worker_id, sequence, prompt) VALUES ($worker_id, $sequence, $prompt) RETURNING id;
 
 -- PREP: test_insert_turn
--- Minimal turn with empty packet shape.
+-- Minimal turn with a caller-supplied packet state.
 INSERT INTO turns (loop_id, sequence, status, packet) VALUES ($loop_id, $sequence, $status, $packet) RETURNING id;
 
 -- Generic data-access PREPs for test setup/assertion. Avoid one-off SQL in

@@ -66,9 +66,9 @@ const envelope = async (db: Db): Promise<{ workspaceId: number; workerId: number
     const loopId = await insertLoop(db, workerId, 1, "go");
     return { workspaceId, workerId, loopId };
 };
-const packetOf = async (db: Db, turnId: number): Promise<{ tokens: number; assistant: { ops: unknown[] }; packet: object }> => {
+const packetOf = async (db: Db, turnId: number): Promise<{ tokens: number; assistant?: { ops: unknown[] }; packet: object }> => {
     const row = await db.test_get_packet.get<{ packet: string }>({ id: turnId });
-    const packet = JSON.parse(row!.packet) as { tokens: number; assistant: { ops: unknown[] } };
+    const packet = JSON.parse(row!.packet) as { tokens: number; assistant?: { ops: unknown[] } };
     return { ...packet, packet };
 };
 const budgetHeadline = (packet: object): { ceiling: number; usage: number; percent: number; free: number } => {
@@ -196,8 +196,7 @@ test("budget: folding a fat log strictly reduces the measured packet", async () 
     } finally { await db.close(); }
 });
 
-// 6 — a hard-413 never reaches the model. The stored turn carries an EMPTY
-// assistant — generate() was skipped.
+// 6 — a hard-413 never reaches the model. The stored turn remains request-only.
 test("budget: an un-foldable hard-413 short-circuits dispatch — the model is never called", async () => {
     const db = await openMigrated();
     try {
@@ -210,7 +209,7 @@ test("budget: an un-foldable hard-413 short-circuits dispatch — the model is n
         assert.equal(t.status, 413, "recovery declined → hard-413");
         assert.equal(t.budgetHardStop, true, "the hard-stop fired before generate()");
         const packet = await packetOf(db, t.turnId);
-        assert.equal(packet.assistant.ops.length, 0, "stored assistant is empty — the model never spoke (dispatch short-circuited)");
+        assert.equal(packet.assistant, undefined, "no assistant is fabricated when dispatch short-circuits");
     } finally { await db.close(); }
 });
 

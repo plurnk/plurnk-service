@@ -28,7 +28,7 @@ test("demo: complete a multi-source briefing under a tight prompt budget", async
             const { finalStatus, turnIds, lastContent } = await liveLoop(s, 2, { prompt: userPromptText }, { timeoutMs: 240_000 });
 
             // #74 owns replacement of this section-sum proxy with production
-            // slot rendering; completed packet.tokens also includes response content.
+            // slot rendering, which includes separators and rounds each slot once.
             let peak = 0;
             for (const tid of turnIds) {
                 const row = await s.db.test_get_turn.get<{ packet: string }>({ id: tid });

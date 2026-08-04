@@ -11,12 +11,11 @@
 //   test/digest/reasoning.md        Every provider attempt's reasoning and admission result
 //   test/digest/requiem.md          Out-of-band model audit
 //   test/digest/requiem.json        Exact audit messages, responses, usage, and cost
+//   test/digest/packetNNN.packet.md       Journal-only turn note when no model request exists.
 //   test/digest/packetNNN.system.md       BYTE-FOR-BYTE the system message the LLM
-//                                         received on TURN N (0-based). Turn 0 is the
-//                                         plurnk doc-materialization / setup turn (no model
-//                                         packet — a one-line note); the model's turns are
-//                                         Turn 1, 2, … (packet001, packet002, …).
+//                                         received on TURN N (0-based).
 //   test/digest/packetNNN.user.md         Same for the user message.
+//   test/digest/packetNNN.response.md      Request-only note when no response was admitted.
 //   test/digest/packetNNN.assistant.md     Model emission (content string).
 //   test/digest/packetNNN.assistantRaw.json  Opaque provider response.
 //   test/digest/packetNNN.attemptNNN.rejected.assistant.md
@@ -44,6 +43,7 @@ import type { SqlRiteSyncPreparedStatements } from "@possumtech/sqlrite";
 // block accessor to the shipped generic statement shape at the site (#535).
 type SyncPrep<T> = SqlRiteSyncPreparedStatements<T>;
 import PacketWire from "../core/packet-wire.ts";
+import StoredPacket, { type DurablePacket } from "../core/StoredPacket.ts";
 import { renderTarget } from "../core/plurnk-uri.ts";
 import ProviderInstantiate from "../core/ProviderInstantiate.ts";
 import type { ChatMessage, Provider, ProviderResponse, ProviderUsage } from "@plurnk/plurnk-providers";
@@ -84,12 +84,13 @@ interface LoopRow {
     terminal_result: string | null;
 }
 interface TurnRow {
-    id: number; loop_id: number; sequence: number; status: number; packet: string;
+    id: number; loop_id: number; sequence: number; status: number; packet: DurablePacket | null;
     usage_prompt: number; usage_completion: number; usage_reasoning: number;
     usage_cached: number; usage_cost_usd: number;
     finish_reason: string | null; model: string | null;
     meta: string | null;  // #498 — provider passthrough (timings, railsAttached/railsVerdict); digest consumers need rail truth
 }
+type StoredTurnRow = Omit<TurnRow, "packet"> & { packet: string | null };
 interface TurnAttemptRow {
     id: number; turn_id: number; sequence: number; accepted: number;
     response: string; parse_errors: string;
@@ -270,10 +271,10 @@ export default class Digest {
     }
 
     static #renderTurnLine(turn: TurnRow, m: DigestModel): string {
-        const packet = Digest.#parseJson(turn.packet, {}) as { assistant?: { content?: unknown; reasoning?: unknown } };
-        const assistant = packet.assistant ?? {};
-        const content = typeof assistant.content === "string" ? assistant.content : "";
-        const reasoning = typeof assistant.reasoning === "string" ? assistant.reasoning : null;
+        const packet = turn.packet;
+        const assistant = packet !== null && StoredPacket.isAdmitted(packet) ? packet.assistant : null;
+        const content = assistant?.content ?? "";
+        const reasoning = assistant?.reasoning ?? null;
         const tokens = `prompt=${turn.usage_prompt} completion=${turn.usage_completion} reasoning=${turn.usage_reasoning} cached=${turn.usage_cached}`;
         const cost = turn.usage_cost_usd > 0 ? ` cost=$${turn.usage_cost_usd.toFixed(6)}` : "";
         const finishReason = turn.finish_reason ?? "—";
@@ -290,11 +291,15 @@ export default class Digest {
         const rejected = attempts.filter((attempt) => attempt.accepted === 0).length;
         const attemptBadge = rejected > 0 ? `  ⚠ rejected-emissions=${rejected}/${attempts.length}` : "";
         const head = `T${turn.sequence}: status=${turn.status} finish=${finishReason}${rails} model=${model} ${tokens}${cost}${errBadge}${attemptBadge}`;
-        const summary = content.length > 0
+        const summary = packet === null
+            ? "  ↳ model packet: (none)"
+            : content.length > 0
             ? `  ↳ emission: ${Digest.#summarize(content, 100)}`
+            : assistant !== null
+            ? "  ↳ emission: (admitted empty)"
             : rejected > 0
-            ? `  ↳ emission: (none accepted)`
-            : `  ↳ emission: (empty)`;
+            ? `  ↳ emission: (none admitted; ${rejected} rejected)`
+            : "  ↳ emission: (none admitted)";
         const reasoningLine = reasoning && reasoning.length > 0
             ? `  ↳ reasoning: ${Digest.#summarize(reasoning, 100)}`
             : null;
@@ -389,11 +394,12 @@ export default class Digest {
             lines.push(`## Worker ${worker?.id ?? "?"} / Loop ${loop?.sequence ?? "?"} / Turn ${t.sequence} (id=${t.id})`);
             const attempts = m.attemptsByTurn.get(t.id) ?? [];
             if (attempts.length === 0) {
-                const packet = Digest.#parseJson(t.packet, {}) as { assistant?: { reasoning?: unknown } };
-                const reasoning = packet.assistant?.reasoning ?? null;
+                const reasoning = t.packet !== null && StoredPacket.isAdmitted(t.packet)
+                    ? t.packet.assistant.reasoning
+                    : null;
                 lines.push("");
                 if (typeof reasoning === "string" && reasoning.length > 0) lines.push(reasoning);
-                else lines.push("(no provider attempt or reasoning_content)");
+                else lines.push("(no admitted provider reasoning)");
                 continue;
             }
             for (const attempt of attempts) {
@@ -421,34 +427,34 @@ export default class Digest {
     // project through PacketWire). system/user are markdown; assistantRaw is JSON.
     static #writePacketFiles(m: DigestModel): string[] {
         const written: string[] = [];
-        // 0-based TURN index, NOT the DB id: Turn 0 is the plurnk doc-materialization
-        // (setup) turn; the model's turns are Turn 1, 2, …, so the model's first packet is
-        // packet001 — not packet002-by-id. id-sorted so the index is chronological.
+        // 0-based TURN index, NOT the DB id. id-sorted so the index is chronological.
         m.turns.toSorted((a, b) => a.id - b.id).forEach((t, index) => {
-            const packet = Digest.#parseJson(t.packet, {}) as {
-                sections?: unknown; assistant?: { content?: unknown }; assistantRaw?: unknown;
-            };
-            const sections = (Array.isArray(packet.sections) ? packet.sections : []) as Parameters<typeof PacketWire.renderSlot>[0];
+            const packet = t.packet;
             const padded = String(index).padStart(3, "0");
-            if (sections.length === 0) {
-                // No assembled packet — the setup turn dispatches its doc EDITs without one.
-                // Write ONE labeled note rather than four blank files, so opening Turn 0 reads
-                // as "setup," not "the packet is empty, where is it?".
-                const note = `# Turn ${index} — setup, no model packet\n\nThe plurnk doc-materialization turn dispatched its ops (the scheme/exec docs) without assembling a model packet. The model's first packet is Turn 1 — packet001. See digest.md for this turn's ops.\n`;
-                writeFileSync(join(m.digestDir, `packet${padded}.system.md`), note);
-                written.push(`packet${padded}.system.md`);
+            if (packet === null) {
+                const file = `packet${padded}.packet.md`;
+                const note = `# Turn ${index} — no model packet\n\nThis journal-only turn dispatched operations without assembling a model request. See digest.md for its log rows.\n`;
+                writeFileSync(join(m.digestDir, file), note);
+                written.push(file);
                 return;
             }
-            const systemMd = PacketWire.renderSlot(sections, "system");
-            const userMd = PacketWire.renderSlot(sections, "user");
-            const assistantText = typeof packet.assistant?.content === "string" ? packet.assistant.content : "";
-            const assistantRawJson = JSON.stringify(packet.assistantRaw ?? null, null, 2);
+            const systemMd = PacketWire.renderSlot(packet.sections, "system");
+            const userMd = PacketWire.renderSlot(packet.sections, "user");
             const files: Array<[string, string]> = [
                 [`packet${padded}.system.md`, systemMd],
                 [`packet${padded}.user.md`, userMd],
-                [`packet${padded}.assistant.md`, assistantText],
-                [`packet${padded}.assistantRaw.json`, assistantRawJson],
             ];
+            if (StoredPacket.isAdmitted(packet)) {
+                files.push(
+                    [`packet${padded}.assistant.md`, packet.assistant.content],
+                    [`packet${padded}.assistantRaw.json`, JSON.stringify(packet.assistantRaw, null, 2)],
+                );
+            } else {
+                files.push([
+                    `packet${padded}.response.md`,
+                    `# Turn ${index} — request only\n\nNo provider response was admitted. Rejected attempt evidence, when present, is written separately.\n`,
+                ]);
+            }
             for (const [file, body] of files) {
                 writeFileSync(join(m.digestDir, file), body);
                 written.push(file);
@@ -570,8 +576,8 @@ export default class Digest {
             attemptsByTurn.set(attempt.turn_id, attempts);
         }
 
-        // Each worker's turns that carry a MODEL packet (non-empty sections — setup/plurnk turns have none),
-        // ordered; the last is the worker's final context. A worker with no model packet (client/plurnk) is silent.
+        // Each worker's turns that carry a model request, ordered; the last is
+        // the worker's final context. A worker with only journal turns is silent.
         const byWorker = new Map<number, Array<{
             loopSeq: number;
             turnSeq: number;
@@ -584,18 +590,17 @@ export default class Digest {
                 parseErrors: unknown;
             }>;
         }>>();
-        for (const t of (db.digest_turns as SyncPrep<TurnRow>).all()) {
+        for (const t of (db.digest_turns as SyncPrep<StoredTurnRow>).all()) {
             const loop = loopById.get(t.loop_id);
             if (loop === undefined) continue;
-            const packet = Digest.#parseJson(t.packet, {}) as { sections?: unknown; assistant?: { content?: unknown } };
-            const sections = (Array.isArray(packet.sections) ? packet.sections : []) as Parameters<typeof PacketWire.renderSlot>[0];
-            if (sections.length === 0) continue;
+            const packet = StoredPacket.parse(t.packet, `requiem turn ${t.id}`);
+            if (packet === null) continue;
             const arr = byWorker.get(loop.worker_id) ?? [];
             arr.push({
                 loopSeq: loop.sequence,
                 turnSeq: t.sequence,
-                sections,
-                assistant: typeof packet.assistant?.content === "string" ? packet.assistant.content : "",
+                sections: packet.sections,
+                assistant: StoredPacket.isAdmitted(packet) ? packet.assistant.content : "",
                 providerAttempts: (attemptsByTurn.get(t.id) ?? [])
                     .map((attempt) => ({
                         sequence: attempt.sequence,
@@ -717,7 +722,11 @@ export default class Digest {
         let workspaces = (db.digest_workspaces as SyncPrep<WorkspaceRow>).all();
         let workers = (db.digest_workers as SyncPrep<WorkerRow>).all();
         let loops = (db.digest_loops as SyncPrep<LoopRow>).all();
-        let turns = (db.digest_turns as SyncPrep<TurnRow>).all();
+        let turns = (db.digest_turns as SyncPrep<StoredTurnRow>).all()
+            .map((turn): TurnRow => ({
+                ...turn,
+                packet: StoredPacket.parse(turn.packet, `digest turn ${turn.id}`),
+            }));
         let turnAttempts = (db.digest_turn_attempts as SyncPrep<TurnAttemptRow>).all();
         let logEntries = (db.digest_log_entries as SyncPrep<LogRow>).all();
         let workerRollupRows = (db.digest_worker_rollups as SyncPrep<WorkerRollupRow>).all();

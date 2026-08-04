@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import type { Db } from "../../src/core/Db.ts";
-import ClientTurn from "../../src/server/clientTurn.ts";
+import JournalTurn from "../../src/core/JournalTurn.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop } from "./_helpers.ts";
 
 const MIN_PACKET = JSON.stringify({
@@ -155,11 +155,11 @@ test("turns: packet CHECK enforces the request/admitted-response root algebra", 
     } finally { await db.close(); }
 });
 
-test("ClientTurn: journal-only turn stores no model packet", async () => {
+test("JournalTurn: journal-only turn stores no model packet", async () => {
     const { db, loopId } = await setup();
     try {
-        const turnId = await ClientTurn.insertClientTurn(db, loopId);
-        const row = await db.test_get_packet.get<{ packet: string | null }>({ id: turnId });
+        const turn = await JournalTurn.insert(db, loopId);
+        const row = await db.test_get_packet.get<{ packet: string | null }>({ id: turn.id });
         assert.equal(row?.packet, null);
     } finally { await db.close(); }
 });

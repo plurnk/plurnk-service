@@ -1,5 +1,4 @@
 import type { Notice } from "@plurnk/plurnk-contracts";
-import type { PlurnkStatement } from "@plurnk/plurnk-contracts";
 import type { Db } from "./Db.ts";
 import type SchemeRegistry from "./SchemeRegistry.ts";
 import type ExecutorRegistry from "./ExecutorRegistry.ts";
@@ -19,6 +18,7 @@ import { readTeachingSource } from "./teaching-corpus.ts";
 // projection and digest projection are structurally one function — no
 // drift between wire and digest possible.
 import PacketWire, { type PacketSection } from "./packet-wire.ts";
+import type { RequestPacket } from "./StoredPacket.ts";
 
 // Provider contract owned by @plurnk/plurnk-providers; engine is the consumer.
 import type { Provider } from "@plurnk/plurnk-providers";
@@ -121,21 +121,6 @@ const readOptionalPositiveIntFrom = (env: NodeJS.ProcessEnv, name: string): numb
 };
 
 export type ChatMessage = { role: "system" | "user" | "assistant"; content: string };
-
-// {§packet-stored-shape} — normalized admitted emission. Call metadata
-// (usage, finishReason, model) belongs to the Turn row instead.
-export type PacketAssistant = {
-    content: string;
-    ops: PlurnkStatement[];
-    reasoning: string | null;
-};
-
-// {§packet-stored-shape} — exact measured request prior to any admitted
-// response. The same sections feed the provider wire and durable packet.
-export type RequestPacket = {
-    tokens: number;
-    sections: PacketSection[];
-};
 
 // Packet assembly (SPEC {§packet-assembly}) + the budget grinder ({§grinder}):
 // builds the spec'd request packet, measures it, and reclaims window on overflow.
@@ -529,18 +514,6 @@ export default class PacketBuilder {
     providerPacketTokens(packet: RequestPacket, provider: Provider): number {
         return provider.countTokens(PacketWire.renderSlot(packet.sections, "system"))
             + provider.countTokens(PacketWire.renderSlot(packet.sections, "user"));
-    }
-
-    // {§packet-stored-shape} — add normalized and raw provider response data
-    // to the exact request sections sent on the wire.
-    completePacket(requestPacket: RequestPacket, assistant: PacketAssistant, assistantRaw: unknown, provider: Provider): object {
-        const assistantTokens = rulerCount(assistant.content); // {§tokenomics-agnostic-ruler} — render-weight in ruler units (usage_* keep the provider's real count)
-        return {
-            tokens: requestPacket.tokens + assistantTokens,
-            sections: requestPacket.sections,
-            assistant,
-            assistantRaw,
-        };
     }
 
     // Every prior-turn operation failure is durable before packet assembly.

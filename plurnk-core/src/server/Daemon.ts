@@ -27,7 +27,7 @@ import type { LogEntryWire } from "./logEntry.ts";
 import Envelope from "./envelope.ts";
 import ClientInput from "./client-input.ts";
 import type { ClientEnvelope } from "./envelope.ts";
-import ClientTurn from "./clientTurn.ts";
+import JournalTurn from "../core/JournalTurn.ts";
 import LoopDocs from "./loopDocs.ts";
 import GitMembership from "../core/git-membership.ts";
 import Fork from "../core/fork.ts";
@@ -543,7 +543,7 @@ export default class Daemon {
         const { workspaceId, workerId, loopId, statement } = args;
         const release = await this.#workspaceGate.acquireTurn(workspaceId, workerId);
         try {
-            const turnId = await ClientTurn.insertClientTurn(this.#db, loopId);
+            const { id: turnId } = await JournalTurn.insert(this.#db, loopId);
             const entryIds: number[] = [];
             const result = await this.#engine.dispatch({
                 statement, workspaceId, workerId, loopId, turnId, sequence: 1,

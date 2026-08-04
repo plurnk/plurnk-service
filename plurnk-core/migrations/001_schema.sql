@@ -253,7 +253,35 @@ CREATE TABLE IF NOT EXISTS turns (
     -- gauge denominator matches the loop's actual model under any /model switch. NULL = the
     -- provider can't report a window (the client omits the gauge).
     usage_prompt_budget INTEGER                  CHECK (usage_prompt_budget IS NULL OR usage_prompt_budget >= 1),
-    packet           TEXT    NOT NULL           CHECK (json_valid(packet)),
+    -- {§packet-stored-shape}: NULL means no model request was assembled. A
+    -- present packet is either the measured request or that request extended
+    -- by the paired admitted-response fields.
+    packet           TEXT                       CHECK (
+        CASE
+            WHEN packet IS NULL THEN 1
+            WHEN json_valid(packet) = 0 THEN 0
+            ELSE COALESCE(
+                json_type(packet) = 'object'
+                AND json_type(packet, '$.tokens') = 'integer'
+                AND json_extract(packet, '$.tokens') >= 0
+                AND json_type(packet, '$.sections') = 'array'
+                AND (
+                    (
+                        json_type(packet, '$.assistant') IS NULL
+                        AND json_type(packet, '$.assistantRaw') IS NULL
+                    )
+                    OR (
+                        json_type(packet, '$.assistant') = 'object'
+                        AND json_type(packet, '$.assistant.content') = 'text'
+                        AND json_type(packet, '$.assistant.ops') = 'array'
+                        AND json_type(packet, '$.assistant.reasoning') IN ('text', 'null')
+                        AND json_type(packet, '$.assistantRaw') IS NOT NULL
+                    )
+                ),
+                0
+            )
+        END
+    ),
     finish_reason    TEXT,
     model            TEXT    NOT NULL DEFAULT 'unknown' CHECK (length(model) >= 1),
     -- #252 — opaque provider→client metadata passthrough (e.g. balancePico). Stored

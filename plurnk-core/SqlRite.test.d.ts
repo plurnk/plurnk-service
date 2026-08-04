@@ -134,8 +134,6 @@ export class SqlRiteSync {
 	find_open_subscriptions_for_worker: SqlRiteSyncPreparedStatements;
 	find_open_turn_scoped_subscriptions_for_worker: SqlRiteSyncPreparedStatements;
 	find_exec_close_status: SqlRiteSyncPreparedStatements;
-	client_turn_next_sequence: SqlRiteSyncPreparedStatements;
-	client_turn_insert: SqlRiteSyncPreparedStatements;
 	digest_workspaces: SqlRiteSyncPreparedStatements;
 	digest_workers: SqlRiteSyncPreparedStatements;
 	digest_loops: SqlRiteSyncPreparedStatements;
@@ -231,6 +229,8 @@ export class SqlRiteSync {
 	fork_insert_worker_scope_entry: SqlRiteSyncPreparedStatements;
 	fork_copy_entry_channels: SqlRiteSyncPreparedStatements;
 	fork_copy_entry_tags: SqlRiteSyncPreparedStatements;
+	journal_turn_next_sequence: SqlRiteSyncPreparedStatements;
+	journal_turn_insert: SqlRiteSyncPreparedStatements;
 	recovery_fail_active_loops: SqlRiteSyncPreparedStatements;
 	recovery_fail_ownerless_proposals: SqlRiteSyncPreparedStatements;
 	recovery_error_orphan_subscription_channels: SqlRiteSyncPreparedStatements;
@@ -623,8 +623,6 @@ export default class SqlRite {
 	find_open_subscriptions_for_worker: SqlRitePreparedStatements;
 	find_open_turn_scoped_subscriptions_for_worker: SqlRitePreparedStatements;
 	find_exec_close_status: SqlRitePreparedStatements;
-	client_turn_next_sequence: SqlRitePreparedStatements;
-	client_turn_insert: SqlRitePreparedStatements;
 	digest_workspaces: SqlRitePreparedStatements;
 	digest_workers: SqlRitePreparedStatements;
 	digest_loops: SqlRitePreparedStatements;
@@ -720,6 +718,8 @@ export default class SqlRite {
 	fork_insert_worker_scope_entry: SqlRitePreparedStatements;
 	fork_copy_entry_channels: SqlRitePreparedStatements;
 	fork_copy_entry_tags: SqlRitePreparedStatements;
+	journal_turn_next_sequence: SqlRitePreparedStatements;
+	journal_turn_insert: SqlRitePreparedStatements;
 	recovery_fail_active_loops: SqlRitePreparedStatements;
 	recovery_fail_ownerless_proposals: SqlRitePreparedStatements;
 	recovery_error_orphan_subscription_channels: SqlRitePreparedStatements;

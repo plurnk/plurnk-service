@@ -10,7 +10,7 @@ import type { PlurnkStatement } from "@plurnk/plurnk-contracts";
 import type { Db } from "../core/Db.ts";
 import type Engine from "../core/Engine.ts";
 import Envelope from "./envelope.ts";
-import ClientTurn from "./clientTurn.ts";
+import JournalTurn from "../core/JournalTurn.ts";
 import Results, { OperationFailureError } from "../core/results.ts";
 
 export default class DispatchAsPlurnk {
@@ -18,7 +18,7 @@ export default class DispatchAsPlurnk {
         if (statements.length === 0) return;
         const workerId = await Envelope.ensurePlurnkWorker(db, workspaceId);
         const loopId = await Envelope.ensureClientLoop(db, workerId);
-        const turnId = await ClientTurn.insertClientTurn(db, loopId);
+        const { id: turnId } = await JournalTurn.insert(db, loopId);
         let sequence = 1;
         try {
             for (const statement of statements) {

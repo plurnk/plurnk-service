@@ -42,7 +42,7 @@ const dispatchTurn = async (
     ctx: { workspaceId: number; workerId: number; loopId: number },
 ): Promise<{ turnId: number; statuses: number[] }> => {
     const { assistant } = await provider.generate({ messages: [] });
-    const seqRow = await db.client_turn_next_sequence.get<{ next: number }>({ loop_id: ctx.loopId });
+    const seqRow = await db.engine_next_turn_sequence.get<{ next: number }>({ loop_id: ctx.loopId });
     if (seqRow === undefined) throw new Error("seq query returned no row");
     const ops = (assistant.ops ?? []) as PlurnkStatement[];
     const sendOp = ops.find((o): o is SendStatement => o.op === "SEND");

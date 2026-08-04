@@ -151,14 +151,14 @@ FROM loops l, turns t
 WHERE l.id = $loop_id AND t.id = $turn_id;
 
 -- PREP: engine_open_turn
--- Turn-as-container model: insert a turn row at runTurn open with a
--- placeholder packet and status=102 (in-progress). Pre-model writes
+-- Turn-as-container model: insert a turn row at runTurn open with no assembled
+-- model request and status=102 (in-progress). Pre-model writes
 -- (the user prompt; later, system signals/notices) land into
 -- this row before the provider is called. The turn is then "closed"
 -- via engine_close_turn with the final packet + status + usage stats
 -- after dispatch completes.
-INSERT INTO turns (loop_id, sequence, status, packet)
-VALUES ($loop_id, $sequence, 102, '{}')
+INSERT INTO turns (loop_id, sequence, status)
+VALUES ($loop_id, $sequence, 102)
 RETURNING id;
 
 -- PREP: engine_close_turn

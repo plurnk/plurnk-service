@@ -35,6 +35,7 @@ import Results, { OperationFailureError, type SchemeResult, type SchemeResultBas
 import { InvalidOperationResultError, NetworkAddress } from "@plurnk/plurnk-schemes";
 import DbProjectionCaps from "../core/caps/DbProjectionCaps.ts";
 import WorkerControlAddress from "../core/WorkerControlAddress.ts";
+import JournalTurn from "../core/JournalTurn.ts";
 
 type ExecResult = SchemeResultBase & { body?: string; attrs?: object };
 
@@ -680,9 +681,7 @@ export default class Exec extends CoreSchemeAdapterBase {
                     if (worker === undefined) throw new Error("entry(): plurnk worker resolution returned no row");
                     const loop = await db.envelope_insert_client_loop.get<{ id: number; sequence: number }>({ worker_id: worker.id });
                     if (loop === undefined) throw new Error("entry(): loop insert returned no row");
-                    const seqRow = await db.client_turn_next_sequence.get<{ next: number }>({ loop_id: loop.id });
-                    const turn = await db.client_turn_insert.get<{ id: number; sequence: number }>({ loop_id: loop.id, sequence: seqRow?.next ?? 1, packet: "{}" });
-                    if (turn === undefined) throw new Error("entry(): turn insert returned no row");
+                    const turn = await JournalTurn.insert(db, loop.id);
                     narration = {
                         workerId: worker.id,
                         loopId: loop.id,

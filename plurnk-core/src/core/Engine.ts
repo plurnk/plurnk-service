@@ -44,13 +44,15 @@ import Results, { OperationFailureError, type SchemeResult } from "./results.ts"
 import BranchReceipt from "./BranchReceipt.ts";
 import BudgetOverflow, { type BudgetOverflowMeasurement } from "./BudgetOverflow.ts";
 import WorkerControlAddress from "./WorkerControlAddress.ts";
+import JournalTurn from "./JournalTurn.ts";
 
 // The engine's collaborators — each owns one machine; Engine owns the loop/turn
 // lifecycle and wires them together as the public facade.
 import NoticeChannel from "./NoticeChannel.ts";
 import ProblemLog from "./ProblemLog.ts";
 import StrikeRail from "./StrikeRail.ts";
-import PacketBuilder, { type ChatMessage, type PacketAssistant } from "./PacketBuilder.ts";
+import PacketBuilder, { type ChatMessage } from "./PacketBuilder.ts";
+import StoredPacket, { type PacketAssistant } from "./StoredPacket.ts";
 import ProposalLifecycle from "./ProposalLifecycle.ts";
 import type { ProposalResolution, ProposalPendingEvent } from "./ProposalLifecycle.ts";
 import type { ProposalProjection } from "@plurnk/plurnk-contracts";
@@ -1220,9 +1222,8 @@ export default class Engine {
                 });
             }
             // Skip the LLM, close the turn, and let runLoop abandon.
-            const hardPacket = this.#packets.completePacket(requestPacket, { content: "", ops: [], reasoning: null }, null, provider);
             await this.#db.engine_close_turn.run({
-                id: turnId, status: 413, packet: JSON.stringify(hardPacket),
+                id: turnId, status: 413, packet: StoredPacket.stringify(requestPacket),
                 usage_prompt: 0, usage_completion: 0, usage_reasoning: 0, usage_cached: 0, usage_cost_usd: 0,
                 usage_prompt_budget: this.#packets.promptBudgetFor(provider), // #274 — the enforced model-facing budget, even on a hard-413 turn
                 finish_reason: "budget_hard_stop", model: provider.model, meta: "{}",
@@ -1365,7 +1366,7 @@ export default class Engine {
                 await this.#db.engine_close_turn.run({
                     id: turnId,
                     status: providerSignal.reason === LOOP_TIMEOUT_REASON ? 504 : 499,
-                    packet: JSON.stringify(requestPacket),
+                    packet: StoredPacket.stringify(requestPacket),
                     usage_prompt: usage.prompt,
                     usage_completion: usage.completion,
                     usage_reasoning: usage.reasoning,
@@ -1409,7 +1410,7 @@ export default class Engine {
             await this.#db.engine_close_turn.run({
                 id: turnId,
                 status: recorded.result.status,
-                packet: JSON.stringify(requestPacket),
+                packet: StoredPacket.stringify(requestPacket),
                 usage_prompt: usage.prompt,
                 usage_completion: usage.completion,
                 usage_reasoning: usage.reasoning,
@@ -1430,7 +1431,7 @@ export default class Engine {
             await this.#db.engine_close_turn.run({
                 id: turnId,
                 status: 500,
-                packet: JSON.stringify(requestPacket),
+                packet: StoredPacket.stringify(requestPacket),
                 usage_prompt: usage.prompt,
                 usage_completion: usage.completion,
                 usage_reasoning: usage.reasoning,
@@ -1556,11 +1557,11 @@ export default class Engine {
         }
 
         // Close the turn with the final packet, status, and usage stats.
-        const packet = this.#packets.completePacket(requestPacket, packetAssistant, response.assistantRaw, provider);
+        const packet = StoredPacket.admit(requestPacket, packetAssistant, response.assistantRaw);
         await this.#db.engine_close_turn.run({
             id: turnId,
             status: turnStatus,
-            packet: JSON.stringify(packet),
+            packet: StoredPacket.stringify(packet),
             usage_prompt: usage.prompt,
             usage_completion: usage.completion,
             usage_reasoning: usage.reasoning,
@@ -1752,7 +1753,7 @@ export default class Engine {
 
         // Zero ops is NOT an error to report — the model knows it emitted
         // nothing. Strike accounting (engine-internal) treats it as a
-        // struck turn; the model just sees an empty packet next turn.
+        // struck turn; no corresponding error is added to the next packet.
         // Per SPEC {§operation-results} gamification policy.
 
         return {
@@ -2063,9 +2064,7 @@ export default class Engine {
         if (worker === undefined) throw new Error("logFsFictions: plurnk worker resolution returned no row");
         const loop = await this.#db.envelope_insert_client_loop.get<{ id: number }>({ worker_id: worker.id });
         if (loop === undefined) throw new Error("logFsFictions: loop insert returned no row");
-        const seq = await this.#db.client_turn_next_sequence.get<{ next: number }>({ loop_id: loop.id });
-        const turn = await this.#db.client_turn_insert.get<{ id: number }>({ loop_id: loop.id, sequence: seq?.next ?? 1, packet: "{}" });
-        if (turn === undefined) throw new Error("logFsFictions: turn insert returned no row");
+        const turn = await JournalTurn.insert(this.#db, loop.id);
         let sequence = 1;
         for (const d of divergences) {
             const span = editedSpan(d.before, d.after);

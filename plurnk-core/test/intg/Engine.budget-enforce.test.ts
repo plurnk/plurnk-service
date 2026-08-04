@@ -111,7 +111,7 @@ test("a PLAN row at the newest boundary survives the overflow fold — the check
         // Turn 1 emits PLAN + SEND under a WIDE ceiling — both land as open (expanded=1) log
         // rows. Turn 2 under TINY overflows: the grinder folds the boundary's WORK (the SEND)
         // while the PLAN — the model's orientation surface — stays OPEN, like errors + prompt.
-        const planStmt = { op: "PLAN", suffix: "", signal: null, target: null, lineMarker: null, body: { raw: "1. read the doc\n2. answer" }, position: { line: 1, column: 1 } } as unknown as PlurnkStatement;
+        const planStmt = { op: "PLAN", suffix: "", signal: null, target: null, lineMarker: null, body: "1. read the doc\n2. answer", position: { line: 1, column: 1 } } as PlurnkStatement;
         const engine = plainEngine(db);
         const wideP = mockAt(4096, [response([planStmt, sendStmt(200, "ok")])]);
         const tinyP = mockAt(TINY, okSends(1));

@@ -85,7 +85,7 @@ Independent axes on entries and channels. Confusion across them is a recurring s
 
 | Term       | Meaning |
 | ---------- | ------- |
-| **packet** | A model turn's durable request record: measured `sections`, extended with `assistant` and `assistantRaw` when an emission is admitted. Persisted on `turns.packet`; #76 owns the inconsistent placeholders used by turns with no model exchange. |
+| **packet** | A Turn's optional model-exchange record: measured request `sections`, extended with `assistant` and `assistantRaw` only when an emission is admitted. `NULL` means no model request was assembled. |
 | **log**    | The `log` section. Chronological list of `log_entries` in scope this turn. |
 | **render** | The act of computing the packet from current DB state at turn boundaries. Mimetype handlers fire at render time. |
 
@@ -2283,20 +2283,32 @@ before the turn closes; a failed provider call or exhausted invalid emission
 leaves the request-only record, while rejected exchanges remain in
 `turn_attempts`.
 
+| Turn state                    | `turns.packet`                                  |
+| ----------------------------- | ----------------------------------------------- |
+| No model request assembled    | SQL `NULL`                                      |
+| Request assembled             | `{ tokens, sections }`                         |
+| Response admitted             | `{ tokens, sections, assistant, assistantRaw }` |
+
 | Field                   | Presence                         | Contract                                                                                                                                                                      |
 | ----------------------- | -------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `tokens`                | Every assembled model request    | Ruler weight of both rendered request slots. After an admitted response, core adds the ruler weight of `assistant.content`. It is never provider usage.                        |
+| `tokens`                | Every assembled model request    | Ruler weight of both rendered request slots. Admission does not change its meaning; it is never response weight or provider usage.                                             |
 | `sections`              | Every assembled model request    | Ordered post-transform request sections. `PacketWire.renderSlot` groups them into system and user messages, and the digest re-renders those stored sections byte-for-byte.     |
 | `sections[].tokens`     | Every stored section             | Independently measured render-weight of that section. Their sum is not the rendered request weight because slot separators and independent rounding remain outside each row.  |
 | `assistant.content`     | Admitted response only           | Accepted model content from which operations were parsed.                                                                                                                     |
 | `assistant.ops`         | Admitted response only           | Parsed operations admitted from that content.                                                                                                                                |
 | `assistant.reasoning`   | Admitted response only           | Normalized readable reasoning text, or `null`.                                                                                                                               |
-| `assistantRaw`          | Admitted response only           | Opaque provider-owned transport record retained for forensics.                                                                                                               |
+| `assistantRaw`          | Admitted response only           | Opaque provider-owned transport record retained for forensics; `null` when the provider supplies no raw record.                                                               |
 
-#76 owns the current hard-stop and non-model placeholder variants and the lack
-of one validated stored-packet algebra. The external transformation surface is
-owned by {§scheme-packet-transform}. #73 tracks the current type's conflation of
-a pre-measure draft with a measured stored section; #74 tracks coverage that
+`StoredPacket` is the one core type and validation path for this algebra. The
+flat schema enforces its root states; typed reads additionally validate every
+section and parsed operation. A hard budget stop remains request-only. Client,
+setup, filesystem-narration, and executor-materialization turns are
+journal-only and therefore store `NULL`. Digest writes an explicit journal-only
+or request-only note instead of fabricating response files.
+
+The external transformation surface is owned by
+{§scheme-packet-transform}. #73 tracks the current type's conflation of a
+pre-measure draft with a measured stored section; #74 tracks coverage that
 mistakes the sum of section weights for the rendered request weight.
 
 §definition-table-projection The authored `plurnk.md` remains human-aligned. Its `definition` section deterministically removes Markdown table-cell padding and shortens separator cells to three dashes before plugin transforms, measurement, storage, and wire rendering; alignment colons survive, while fenced blocks and all non-table whitespace remain exact.
