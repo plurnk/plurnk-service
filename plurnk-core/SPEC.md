@@ -76,7 +76,7 @@ Independent axes on entries and channels. Confusion across them is a recurring s
 | **emission attempt**         | One completed provider exchange beneath an engine turn. ANTLR admits it when it has a trustworthy PLAN...SEND frame and no boundary-destroying tail. A hard error bounded to an interior statement becomes a failed operation inside the admitted turn; a rejected attempt is forensic evidence, not another turn or an engine strike. |
 | **cycle**                    | A repeated turn fingerprint across consecutive turns. Detected silently; model never sees the trigger. Strike accumulates internally. |
 | **sudden death**             | The last `MAX_STRIKES` turns of a loop's `MAX_LOOP_TURNS` window emit soft 429 warnings so the model can wrap up cleanly. `soft=true`: no strike, no streak increment. |
-| §mode-ask-read-only **mode** | `"ask" \| "act"`. Per-loop. Ask = read-only: the dispatch gate refuses every side-effecting op (a filesystem write — EDIT/COPY-dest/MOVE/KILL on the `file` scheme — or an EXEC host runtime); reads of the workspace stay open. `act` = full surface. Ask never changes the world. |
+| §mode-ask-read-only **mode** | `"ask" \| "act"`. Per-loop. Ask = read-only: the dispatch gate refuses every side-effecting op (a filesystem write — EDIT/COPY-dest/MOVE/KILL on the `file` scheme — or any EXEC invocation); reads of the workspace stay open. `act` = full surface. Ask never changes the world. |
 | **flag**                     | Per-loop value shaping authority or toolset: `auto` (resolve proposals inside the loop), `noWeb`, `noInteraction`, `noProposals`, `mode`. |
 | **proposal**                 | A deferred side-effecting action. State machine: `proposed → resolved` (accept), `→ failed` (reject), or `→ cancelled` (cancel). With `flags.auto=true`, authority remains inside the loop and resolution is immediate. |
 | **resolution**               | Accept, reject, or cancel of a durable proposal. Client-owned authority enters core through `resolveProposal`; AG-UI carries it in standard resume entries ({§methods-proposal-resolve}, {§agui-proposal-resolve}). |
@@ -1246,6 +1246,13 @@ unscoped READ through that scheme's ordinary handler and addressed context.
 | Local/file file or stat miss          | Any       | Authored local path     | Path is the program/data target; body is its input.   |
 | Readable data-scheme address           | Empty     | `null`                  | Selected READ content becomes the command.            |
 | Readable data-scheme address           | Non-empty | Authored address        | Selected READ content becomes a local target.         |
+
+Loop-flag authority follows the same target classification:
+
+| Target class                   | Schemes that must be active              |
+| ------------------------------ | ---------------------------------------- |
+| Absent, local, or `file://`     | `exec`                                   |
+| Non-file scheme address        | `exec` and the addressed source scheme   |
 
 A stat miss takes the file arm so the runtime reports its own not-found rather
 than dispatch returning 400. An empty body is legal for a local file or scheme

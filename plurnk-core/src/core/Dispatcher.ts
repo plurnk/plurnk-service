@@ -923,8 +923,7 @@ export default class Dispatcher {
             : flags.noWeb && flags.noInteraction ? "web and interaction are disabled for this loop"
             : flags.noWeb ? "web access is disabled for this loop"
             : "interaction is disabled for this loop";
-        const check = (target: PlurnkStatement["target"]): DispatchResult | null => {
-            const scheme = schemeNameOf(target);
+        const checkScheme = (scheme: string | null): DispatchResult | null => {
             if (scheme === null) return null;
             if (active.has(scheme)) return null;
             return Dispatcher.#failure(
@@ -939,10 +938,19 @@ export default class Dispatcher {
                 },
             );
         };
+        const check = (target: PlurnkStatement["target"]): DispatchResult | null => checkScheme(schemeNameOf(target));
 
         if (this.#isWorkerControl(statement)) return check(statement.target); // body is a spawn/fork task, not a dst path
         if (statement.op === "COPY" || statement.op === "MOVE") {
             return check(statement.target) ?? check(statement.body?.target ?? null);
+        }
+        // {§exec-target-routing} — the operation owner and a non-file source
+        // are independent authorities; local/file targets stay executor-local.
+        if (statement.op === "EXEC") {
+            const operationDenial = checkScheme("exec");
+            if (operationDenial !== null) return operationDenial;
+            const sourceScheme = schemeNameOf(statement.target);
+            return sourceScheme === null || sourceScheme === "file" ? null : checkScheme(sourceScheme);
         }
         return check(statement.target);
     }

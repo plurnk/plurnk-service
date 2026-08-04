@@ -1,17 +1,21 @@
 // Per-loop flag gating at dispatch time. Schemes self-declare affinity in
 // their manifest (excludedInAsk / requiresWeb / requiresInteraction);
 // SchemeRegistry.resolveForLoop returns the active set under the loop's
-// persisted flags; Engine.#checkFlagsGate rejects dispatch to inactive
-// schemes with 403 action-entry-as-outcome.
+// persisted flags; Dispatcher rejects each inactive operation/resource
+// authority with a 403 action-entry-as-outcome.
 
 import test from "node:test";
 import assert from "node:assert/strict";
 import { Mimetypes, emptyRegistry } from "@plurnk/plurnk-mimetypes";
+import type { Effect } from "@plurnk/plurnk-execs";
 import Engine from "../../src/core/Engine.ts";
+import ExecutorRegistry from "../../src/core/ExecutorRegistry.ts";
+import type { Executor } from "../../src/core/ExecutorRegistry.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import type { SchemeManifest } from "../../src/core/scheme-types.ts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn } from "./_helpers.ts";
-import { urlPath, localPath, editStmt, readStmt, copyStmt, moveStmt, sendStmt } from "./_dsl.ts";
+import Exec from "../../src/schemes/Exec.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, schemeManifest } from "./_helpers.ts";
+import { urlPath, localPath, editStmt, readStmt, copyStmt, moveStmt, sendStmt, execStmt } from "./_dsl.ts";
 
 const makeMimetypes = (): Mimetypes => new Mimetypes({
     discovery: { registry: emptyRegistry(), handlers: new Map(), skipped: [] },
@@ -36,6 +40,40 @@ class SideEffectingScheme {
     }
 }
 
+class AffinitySource {
+    readonly manifest: SchemeManifest;
+    reads = 0;
+
+    constructor(name: string, flags: NonNullable<SchemeManifest["flags"]>) {
+        this.manifest = { ...schemeManifest(name), flags };
+    }
+
+    async read(): Promise<{ status: number; content: string; mimetype: string; channel: string }> {
+        this.reads += 1;
+        return { status: 200, content: "source", mimetype: "text/plain", channel: "body" };
+    }
+}
+
+const flagExecutor: Executor = {
+    runtime: "flag-tool",
+    glyph: "🧪",
+    get manifest(): SchemeManifest {
+        return {
+            ...schemeManifest("flag-tool", { results: "text/plain" }, "results"),
+            scope: "worker",
+            volatile: true,
+        };
+    },
+    get defaultChannel(): string { return "results"; },
+    get channels() { return { results: { mimetype: "text/plain" } }; },
+    async run({ setState }) {
+        setState("results", "closed");
+        return { status: 200 };
+    },
+    async probe() { return { available: true }; },
+    effect(target: string | null): Effect { return target === null ? "pure" : "read"; },
+};
+
 const setup = async () => {
     const db = await openMigrated();
     const workspaceId = await insertWorkspace(db, `ws-${crypto.randomUUID()}`);
@@ -45,7 +83,10 @@ const setup = async () => {
     const schemes = new SchemeRegistry();
     schemes.register("sideeffect-test", new SideEffectingScheme());
     const engine = new Engine({ db, schemes, mimetypes: makeMimetypes() });
-    return { db, workspaceId, workerId, loopId, turnId, engine };
+    engine.setExecutors(new ExecutorRegistry(new Map([
+        ["flag-tool", { executor: flagExecutor, glyph: "🧪", example: "", documentation: "", available: true, detail: undefined }],
+    ])));
+    return { db, workspaceId, workerId, loopId, turnId, engine, schemes, exec: schemes.get("exec") as Exec };
 };
 
 const setLoopFlags = async (db: Awaited<ReturnType<typeof openMigrated>>, loopId: number, flags: object): Promise<void> => {
@@ -110,4 +151,85 @@ test("flag gate active: broadcast SEND is never gated (no scheme to check)", asy
         const r = await engine.dispatch({ statement: stmt, workspaceId, workerId, loopId, turnId, sequence: 1, origin: "client" });
         assert.equal(r.status, 200);
     } finally { await db.close(); }
+});
+
+// {§exec-target-routing} EXEC consumes operation and optional source authority independently.
+test("ask mode gates the exec operation before every target form (#164)", async () => {
+    const { db, workspaceId, workerId, loopId, turnId, engine, schemes, exec } = await setup();
+    const web = new AffinitySource("web-source", { requiresWeb: true });
+    schemes.register("web-source", web);
+    try {
+        await setLoopFlags(db, loopId, { mode: "ask", noWeb: true });
+        const targets = [
+            null,
+            localPath("input.txt"),
+            urlPath("file", "/input.txt"),
+            urlPath("worker", "/source"),
+            urlPath("web-source", "/source"),
+        ];
+        for (const [index, target] of targets.entries()) {
+            const result = await engine.dispatch({
+                statement: execStmt("flag-tool", "transform", target),
+                workspaceId,
+                workerId,
+                loopId,
+                turnId,
+                sequence: index + 1,
+                origin: "client",
+            });
+            assert.equal(result.status, 403);
+            assert.equal(result.problem?.type, "https://problems.plurnk.dev/engine/dispatcher/scheme-unavailable");
+            assert.equal(result.problem?.scheme, "exec", "the unavailable operation owner wins before its source");
+        }
+        assert.equal(web.reads, 0);
+        await exec.idle();
+    } finally { await exec.idle(); await db.close(); }
+});
+
+test("EXEC additionally gates non-file sources by their own affinity (#164)", async () => {
+    const { db, workspaceId, workerId, loopId, turnId, engine, schemes, exec } = await setup();
+    const web = new AffinitySource("web-source", { requiresWeb: true });
+    const interaction = new AffinitySource("interaction-source", { requiresInteraction: true });
+    schemes.register("web-source", web);
+    schemes.register("interaction-source", interaction);
+    try {
+        await setLoopFlags(db, loopId, { mode: "act", noWeb: true });
+        const webResult = await engine.dispatch({
+            statement: execStmt("flag-tool", "transform", urlPath("web-source", "/source")),
+            workspaceId, workerId, loopId, turnId, sequence: 1, origin: "client",
+        });
+        assert.equal(webResult.status, 403);
+        assert.equal(webResult.problem?.scheme, "web-source");
+
+        await setLoopFlags(db, loopId, { mode: "act", noInteraction: true });
+        const interactionResult = await engine.dispatch({
+            statement: execStmt("flag-tool", "transform", urlPath("interaction-source", "/source")),
+            workspaceId, workerId, loopId, turnId, sequence: 2, origin: "client",
+        });
+        assert.equal(interactionResult.status, 403);
+        assert.equal(interactionResult.problem?.scheme, "interaction-source");
+        assert.equal(web.reads, 0);
+        assert.equal(interaction.reads, 0);
+    } finally { await exec.idle(); await db.close(); }
+});
+
+test("noWeb and noInteraction do not reinterpret local/file EXEC targets as scheme operations (#164)", async () => {
+    const { db, workspaceId, workerId, loopId, turnId, engine, exec } = await setup();
+    try {
+        await setLoopFlags(db, loopId, { mode: "act", noWeb: true, noInteraction: true });
+        const targets = [null, localPath("input.txt"), urlPath("file", "/input.txt")];
+        for (const [index, target] of targets.entries()) {
+            const result = await engine.dispatch({
+                statement: execStmt("flag-tool", "transform", target),
+                workspaceId,
+                workerId,
+                loopId,
+                turnId,
+                sequence: index + 1,
+                origin: "client",
+            });
+            assert.equal(result.status, 200, "the active exec owner may use an executor-local target");
+        }
+        await exec.idle();
+    } finally { await exec.idle(); await db.close(); }
 });
