@@ -9,8 +9,8 @@ import type { EditStatement, FindStatement, ReadStatement, SendStatement } from 
 import type { TextRegion } from "@plurnk/plurnk-contracts";
 import type { MatchEvidence, SchemeResult } from "./Results.ts";
 import type { EditBatchReceipt, EditBatchResult } from "./edit-receipt.ts";
-// Channel streaming-lifecycle state (mirrors plurnk-service's ChannelState /
-// grammar ChannelContent.state). Metadata, not an engine gate (service SPEC: channel lifecycle state).
+// Channel streaming-lifecycle state. Metadata, not an engine gate
+// (service SPEC {§channel-state}).
 export type ChannelState = "static" | "active" | "closed" | "errored";
 
 // Entry write shape. Omitting state selects the consumer's `static` default.

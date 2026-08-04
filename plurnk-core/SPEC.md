@@ -23,7 +23,7 @@ flowchart LR
 
 | Term              | Layer                 | Meaning |
 |-------------------|-----------------------|---------|
-| **agent**         | PLURNK                | The plurnk runtime. Acts in-workspace as the reserved `plurnk` worker ({§actor-boundary} self-hosting), never a privileged singleton owning its own entries (entry scope is `workspace` / `worker`, {§machine-processes}). |
+| **agent**         | PLURNK                | The plurnk runtime. Acts in-workspace as the reserved `plurnk` worker ({§actor-boundary} self-hosting), never a privileged singleton owning its own entries ({§entry-owner}, {§machine-processes}). |
 | **workspace**     | Core                  | Durable user-named shared world. Persists across workers and process restarts. Identity: `workspaces.id` + unique `workspaces.name`. |
 | **worker**        | Core                  | Durable actor and private history over one workspace. Owns its loops and log rows, may carry a `parent_worker_id`, and has one process-local cancellation scope while active. |
 | **loop**          | Core                  | Queued-to-terminal unit of model or client work within a worker. Status ∈ {100 pending · 102 running · 200 done · 202 waiting (blocked on a live obligation, {§send}) · 413 budget-overflow · 429 turn-ceiling · 499 cancelled · 500 failed · 504 wall-clock timeout ({§operator-config-loop-timeout}) · 508 runaway}. Many loops may belong to one worker. |
@@ -43,7 +43,7 @@ flowchart LR
 |---|---|
 | **entry** | The unit of canonical state. Identity: `(workspace, owner, scheme, pathname)` ({§entry-identity-no-null}). Holds one or more `channels` of content plus `tags` and `attributes`. |
 | **channel** | A named content buffer on an entry. Examples: `body`, `stdout`, `stderr`, `headers`, `symbols`. Each channel has `content`, `mimetype`, `tokens`, `state`. |
-| **scope** | A scheme-manifest declaration. Core persists only `workspace` registrations; entry sharing and privacy are owner-based. The unresolved `worker` alternative is tracked in #80. |
+| **scope** | A scheme-manifest declaration ignored by core; registrations are discovered at boot and are not persisted. Entry sharing and privacy are owner-based; #80 owns retiring this residual axis. |
 | **scheme** | An addressed capability family + handler. Built-ins include `worker`, `prompt`, `log`, and bare/file paths; discovered schemes and executor-runtime tags extend that set. Internal `exec` routes the EXEC op but is not an addressable model namespace. Consumption surface {§scheme-surface}; author contract: [plurnk-schemes](https://github.com/plurnk/plurnk-schemes). |
 | **mimetype** | A channel's content type. Drives the handler that produces the structural projections (`symbols`, `deepJson`, `deepXml`). Consumption surface {§mimetype-surface}; author contract: [plurnk-mimetypes](https://github.com/plurnk/plurnk-mimetypes). |
 | **provider** | An LLM transport implementing the `@plurnk/plurnk-providers` `Provider` interface. Core supplies an assembled request and generation context; the provider owns endpoint adaptation and normalized response evidence. Consumption surface {§provider}; author contract: [plurnk-providers](https://github.com/plurnk/plurnk-providers). |
@@ -1481,7 +1481,7 @@ pretends to reconstruct an opaque plugin connection.
 
 ### §chunk-accumulation Chunk accumulation
 
-§chunk-accumulation-chunks-accumulate SSE event types, WS message types, exec stdout/stderr each map to a named channel. Channel record (`ChannelContent`): `content`, `mimetype`, `tokens`. Active-connection state lives in the subscription registry, not on the channel. Chunks accumulate into the channel as they arrive — not buffered until close.
+§chunk-accumulation-chunks-accumulate SSE event types, WS message types, exec stdout/stderr each map to a named channel. Each stored channel carries `content`, `mimetype`, `tokens`, and lifecycle `state` ({§channel-state}). The subscription registry owns durable subscription identity and process-local cancellation routing, not a second channel-state representation. Chunks accumulate into the channel as they arrive — not buffered until close.
 
 ### §no-chunk-rows No per-chunk log rows
 
@@ -1616,7 +1616,7 @@ service manifest edit.
 
 ### §service-tracks What plurnk-service tracks (NOT in grammar)
 
-- Channel state (`active`/`closed`/`errored`) — subscription registry, not on `ChannelContent`.
+- Channel state (`static`/`active`/`closed`/`errored`) — persisted channel metadata owned by core and exposed through the schemes capability contract ({§channel-state}).
 - Backpressure caps — none ({§stream-constraints}).
 - Stream cancel — `SEND[499]` ({§stream-control}).
 - Delete — `KILL` (entry-KILL, the canonical delete, {§move}); `SEND[410]` also deletes as a side-effect ({§send-dispatch}).

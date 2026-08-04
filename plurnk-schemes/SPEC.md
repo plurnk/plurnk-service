@@ -37,7 +37,7 @@ class Notes {
 | `channels` | `Record<channelName, mimetype>`. Channel names lowercase. Empty = dynamic per-call. |
 | `defaultChannel` | Channel targeted when path has no `#fragment`. Dynamic-channel schemes may name it without fixing a mimetype; empty means no default. |
 | `category` | `"data"` (entry-bearing) \| `"logging"` (`log://` rows) \| `"control"` (addresses sister workers, owns no entries — e.g. `worker://`). |
-| `scope` | `"workspace"` \| `"worker"` (grammar 0.67 `default_scope`; `worker` = per-worker scratch backing `worker://`). |
+| `scope` | `"workspace"` \| `"worker"`; core does not persist or dispatch by this residual axis, whose retirement is owned by plurnk-service#80. |
 | `writableBy` | Subset of `["model", "client", "plurnk", "plugin"]`; empty declares an immutable scheme. Consumer returns 403 for outside-set writes. |
 | `volatile` | Boolean. |
 | `modelVisible` | Boolean. |

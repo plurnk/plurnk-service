@@ -8,7 +8,7 @@ SELECT sql FROM sqlite_master WHERE name = 'workspaces';
 INSERT INTO workspaces (name) VALUES ($name);
 
 -- PREP: test_workspaces_get_by_name
-SELECT id, version, name, created_at, cost_usd, scheme_registry_additions
+SELECT id, version, name, created_at, cost_usd
 FROM workspaces WHERE name = $name;
 
 -- PREP: test_workspaces_insert_with_cost
@@ -16,12 +16,6 @@ INSERT INTO workspaces (name, cost_usd) VALUES ($name, $cost_usd);
 
 -- PREP: test_workspaces_insert_with_version
 INSERT INTO workspaces (name, version) VALUES ($name, $version);
-
--- PREP: test_workspaces_insert_with_sra
-INSERT INTO workspaces (name, scheme_registry_additions) VALUES ($name, $sra);
-
--- PREP: test_workspaces_get_sra
-SELECT scheme_registry_additions FROM workspaces WHERE name = $name;
 
 -- PREP: test_workspaces_get_cost
 SELECT cost_usd FROM workspaces WHERE name = $name;

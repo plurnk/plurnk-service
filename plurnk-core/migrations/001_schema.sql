@@ -12,7 +12,6 @@ CREATE TABLE IF NOT EXISTS workspaces (
     name                      TEXT    NOT NULL UNIQUE CHECK (length(name) > 0),
     created_at                TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
     cost_usd                  REAL    NOT NULL DEFAULT 0 CHECK (cost_usd >= 0),
-    scheme_registry_additions TEXT    NOT NULL DEFAULT '[]' CHECK (json_valid(scheme_registry_additions)),
     project_root              TEXT,
     -- #231 client-chosen workspace-open context: { manifestItems?, mdDocs? }, read at turn-0
     -- with precedence over env (manifestItems replaces PLURNK_MANIFEST_ITEMS; mdDocs unions PLURNK_MD_*).
@@ -653,34 +652,6 @@ BEGIN
     WHERE w.id = NEW.worker_id;
     UPDATE log_entries SET ambient_event_id = last_insert_rowid() WHERE id = NEW.id;
 END;
-
--- schemes_providers
--- Scheme/provider catalog. Schemes are static (registered at boot);
--- providers carry per-model metadata for cost accounting and selection.
-CREATE TABLE IF NOT EXISTS schemes (
-    name                 TEXT    NOT NULL PRIMARY KEY CHECK (length(name) > 0),
-    model_visible        INTEGER NOT NULL             CHECK (model_visible IN (0, 1)),
-    category             TEXT    NOT NULL             CHECK (length(category) > 0),
-    default_scope        TEXT    NOT NULL             CHECK (default_scope IN ('workspace')),
-    default_channel      TEXT    NOT NULL             CHECK (length(default_channel) > 0),
-    channel_orientations TEXT                         CHECK (channel_orientations IS NULL OR json_valid(channel_orientations)),
-    writable_by          TEXT    NOT NULL             CHECK (json_valid(writable_by)),
-    volatile             INTEGER NOT NULL             CHECK (volatile IN (0, 1)),
-    handler              TEXT
-) STRICT, WITHOUT ROWID;
-
-CREATE TABLE IF NOT EXISTS providers (
-    id          INTEGER NOT NULL PRIMARY KEY,
-    version     INTEGER NOT NULL DEFAULT 0 CHECK (version >= 0),
-    provider    TEXT    NOT NULL           CHECK (length(provider) > 0),
-    family      TEXT    NOT NULL           CHECK (length(family) > 0),
-    model       TEXT    NOT NULL           CHECK (length(model) > 0),
-    contextSize INTEGER NOT NULL           CHECK (contextSize >= 1),
-    currency    TEXT    NOT NULL           CHECK (length(currency) = 3),
-    created_at  TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
-) STRICT;
-
-CREATE INDEX IF NOT EXISTS providers_created_at ON providers (created_at);
 
 -- cost_rollups
 -- Triggers maintaining denormalized USD totals on workers and workspaces

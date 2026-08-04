@@ -10,13 +10,13 @@ test("workspaces: table is STRICT", async () => {
     } finally { await db.close(); }
 });
 
-test("workspaces: insert with name only — defaults populate version, created_at, cost_usd, scheme_registry_additions", async () => {
+test("workspaces: insert with name only — defaults populate version, created_at, and cost_usd", async () => {
     const db = await openMigrated();
     try {
         await db.test_workspaces_insert_name_only.run({ name: "opus-1747400000" });
         const row = await db.test_workspaces_get_by_name.get<{
             id: number; version: number; name: string; created_at: string;
-            cost_usd: number; scheme_registry_additions: string;
+            cost_usd: number;
         }>({ name: "opus-1747400000" });
         assert.equal(typeof row?.id, "number");
         assert.ok((row?.id ?? 0) >= 1);
@@ -24,7 +24,6 @@ test("workspaces: insert with name only — defaults populate version, created_a
         assert.equal(row?.name, "opus-1747400000");
         assert.match(row?.created_at ?? "", /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
         assert.equal(row?.cost_usd, 0);
-        assert.equal(row?.scheme_registry_additions, "[]");
     } finally { await db.close(); }
 });
 
@@ -66,28 +65,6 @@ test("workspaces: negative version rejected by CHECK", async () => {
             () => db.test_workspaces_insert_with_version.run({ name: "workspace-c", version: -1 }),
             /CHECK constraint failed/,
         );
-    } finally { await db.close(); }
-});
-
-test("workspaces: malformed JSON in scheme_registry_additions rejected by CHECK (json_valid)", async () => {
-    const db = await openMigrated();
-    try {
-        await assert.rejects(
-            () => db.test_workspaces_insert_with_sra.run({ name: "workspace-d", sra: "{not json" }),
-            /CHECK constraint failed/,
-        );
-    } finally { await db.close(); }
-});
-
-test("workspaces: well-formed JSON object in scheme_registry_additions accepted", async () => {
-    const db = await openMigrated();
-    try {
-        const sra = JSON.stringify([{ name: "wiki", model_visible: true, category: "external", default_scope: "workspace", default_channel: "body", writable_by: ["model"], volatile: false, handler: null }]);
-        await db.test_workspaces_insert_with_sra.run({ name: "workspace-e", sra });
-        const row = await db.test_workspaces_get_sra.get<{ scheme_registry_additions: string }>({ name: "workspace-e" });
-        const parsed = JSON.parse(row?.scheme_registry_additions ?? "[]");
-        assert.equal(parsed.length, 1);
-        assert.equal(parsed[0].name, "wiki");
     } finally { await db.close(); }
 });
 

@@ -25,9 +25,6 @@ export interface SchemeManifest {
     // data: entry-bearing content. logging: log:// rows. control: addresses
     // sister workers and owns no entries (worker://: spawn/fork/irc).
     readonly category: "data" | "logging" | "control";
-    // Matches grammar's SchemeRegistration.default_scope enum (0.67: `agent`
-    // dropped — nothing used it — `worker` added for per-worker scratch backing
-    // `worker://`). New schemes default `workspace`; opt into `worker` only for per-worker.
     readonly scope: "workspace" | "worker";
     readonly writableBy: ReadonlyArray<WriterTier>;
     readonly volatile: boolean;
