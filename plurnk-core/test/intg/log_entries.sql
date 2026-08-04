@@ -3,13 +3,13 @@ SELECT sql FROM sqlite_master WHERE name = 'log_entries';
 
 -- PREP: test_log_entries_insert_full
 INSERT INTO log_entries (
-    worker_id, loop_id, turn_id, sequence, origin, op, suffix, signal,
+    worker_id, loop_id, turn_id, sequence, origin, source, op, suffix, signal,
     scheme, pathname, port, query,
-    lineMarker, tx, mimetype_tx, rx, mimetype_rx, status_rx, tokens
+    lineMarker, tx, mimetype_tx, rx, mimetype_rx, status_rx, tokens, attrs
 ) VALUES (
-    $worker_id, $loop_id, $turn_id, $sequence, $origin, $op, $suffix, $signal,
+    $worker_id, $loop_id, $turn_id, $sequence, $origin, $source, $op, $suffix, $signal,
     $scheme, $pathname, $port, $query,
-    $lineMarker, $tx, $mimetype_tx, $rx, $mimetype_rx, $status_rx, $tokens
+    $lineMarker, $tx, $mimetype_tx, $rx, $mimetype_rx, $status_rx, $tokens, $attrs
 ) RETURNING id;
 
 -- PREP: test_log_entries_get_by_id

@@ -133,7 +133,7 @@ const wire = async (opts?: {
         glyph: "?", example: "", documentation: "", available: true, detail: undefined,
     });
     const workspaceId = await insertWorkspace(db, `sink-${crypto.randomUUID()}`);
-    const workerId = await insertWorker(db, workspaceId);
+    const workerId = await insertWorker(db, workspaceId, null, "researcher");
     const loopId = await insertLoop(db, workerId, 1, "sink test");
     const turnId = await insertTurn(db, loopId, 1, 102);
     return { db, engine, schemes, workspaceId, workerId, loopId, turnId, tag };
@@ -164,7 +164,7 @@ test("entry() materializes a tagged https entry (upsert UNIONS tags) and the plu
         const rows = await db.test_log_entries_by_worker_op.all<{ pathname: string; source: string; tokens: number; attrs: string }>({ worker_id: plurnkWorker.id, op: "EDIT" });
         const narrations = rows.filter((r) => r.pathname === "/example.org/turkeys");
         assert.equal(narrations.length, 2, "one narration row per entry() write");
-        assert.equal(narrations[0]?.source, String(workerId), "source attributes the calling worker");
+        assert.equal(narrations[0]?.source, "worker://researcher", "source uses the calling worker's control identity");
         assert.ok((narrations[0]?.tokens ?? 0) > 0, "the row carries the write's real token weight");
         assert.ok(/turkeys_query/.test(narrations[0]?.attrs ?? ""), "attrs carry the slug tags for the meta line");
         assert.equal(JSON.parse(narrations[0]?.attrs ?? "{}").kind, "entry_materialized", "machine acquisition is typed so live clients compact it without erasing durable history");
@@ -186,7 +186,7 @@ test("entry() materializes a tagged https entry (upsert UNIONS tags) and the plu
             coordinate: "1/1/2", origin: "plurnk", op: "EDIT", suffix: "", signal: null,
             target: { scheme: "https", username: null, password: null, hostname: null, port: null, pathname: "/example.org/turkeys", query: null, fragment: null },
             status: rx.status, rx, mimetype_rx: "application/json", tx, mimetype_tx: "application/json",
-            folded, source: String(workerId), attrs: { kind: "entry_materialized", tags: ["turkeys_query"] },
+            folded, source: "worker://researcher", attrs: { kind: "entry_materialized", tags: ["turkeys_query"] },
         }];
         const countTokens = (t: string): number => Math.ceil(t.length / 4);
         const foldedLine = PacketWire.renderLog(view(true), countTokens);

@@ -10,12 +10,13 @@ const minimalLog = async (db: Db, ctx: { workerId: number; loopId: number; turnI
     const params: Record<string, SqlValue> = {
         worker_id: ctx.workerId, loop_id: ctx.loopId, turn_id: ctx.turnId,
         sequence: 1, origin: "model", op: "EDIT", suffix: "",
+        source: null,
         signal: JSON.stringify(["philosophy"]),
         scheme: "worker", pathname: "/meaning", port: null, query: null,
         lineMarker: null,
         tx: "<<EDIT[philosophy](worker:///meaning):42:EDIT", mimetype_tx: "text/x-plurnk",
         rx: "", mimetype_rx: "text/plain", status_rx: 201,
-        tokens: 32,
+        tokens: 32, attrs: "{}",
         ...overrides,
     };
     const row = await db.test_log_entries_insert_full.get<{ id: number }>(params);
@@ -36,6 +37,23 @@ test("fetchLogEntry surfaces loop_seq/turn_seq (ordinals), not just DB ids", asy
         assert.equal(wire.turn_seq, 2, "turn ordinal on the wire");
         assert.equal(wire.loop_id, loopId, "DB loop id still present");
         assert.equal(wire.turn_id, turnId, "DB turn id still present");
+    } finally { await db.close(); }
+});
+
+test("fetchLogEntry preserves causal source and structured attributes", async () => {
+    const db = await openMigrated();
+    try {
+        const ctx = await seedEnvelope(db, `wire-provenance-${crypto.randomUUID()}`);
+        const id = await minimalLog(db, ctx, {
+            origin: "plurnk",
+            source: "worker://researcher",
+            attrs: JSON.stringify({ kind: "entry_materialized", tags: ["research"] }),
+            tx: JSON.stringify("in"),
+            rx: JSON.stringify("out"),
+        });
+        const wire = await LogEntry.fetchLogEntry(db, id);
+        assert.equal(wire.source, "worker://researcher");
+        assert.deepEqual(wire.attrs, { kind: "entry_materialized", tags: ["research"] });
     } finally { await db.close(); }
 });
 

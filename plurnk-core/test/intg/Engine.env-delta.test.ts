@@ -19,7 +19,7 @@ import { Mock } from "@plurnk/plurnk-providers";
 import type { MockResponse } from "@plurnk/plurnk-providers";
 import type { SendStatement, EditStatement, UrlPath } from "@plurnk/plurnk-contracts";
 import type { Db } from "../../src/core/Db.ts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, makeSchemeCtx, rootWorkspace } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, logEntries, makeSchemeCtx, rootWorkspace } from "./_helpers.ts";
 
 const execFileP = promisify(execFile);
 
@@ -130,8 +130,8 @@ test("worker-entry deltas follow shared visibility without leaking private scrat
                 .map(({ hostname, pathname, source }) => ({ hostname, pathname, source }))
                 .sort((a, b) => (a.pathname ?? "").localeCompare(b.pathname ?? "")),
             [
-                { hostname: "plurnk", pathname: "/bulletin.md", source: String(kernel) },
-                { hostname: null, pathname: "/shared.md", source: String(sibling) },
+                { hostname: "plurnk", pathname: "/bulletin.md", source: "worker://plurnk" },
+                { hostname: null, pathname: "/shared.md", source: "worker://sibling" },
             ],
             "only commons and the published kernel surface cross, under their original addresses",
         );
@@ -145,9 +145,9 @@ test("a worker learns a sibling's edit through its own log — pulled from the s
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `xrun-${crypto.randomUUID()}`);
-        const workerA = await insertWorker(db, workspaceId);            // the model worker
+        const workerA = await insertWorker(db, workspaceId, null, "observer");
         const loopA = await insertLoop(db, workerA, 1, "go");
-        const workerB = await insertWorker(db, workspaceId);            // a sibling worker on the same world
+        const workerB = await insertWorker(db, workspaceId, null, "sibling");
         const loopB = await insertLoop(db, workerB, 1);
         const turnB = await insertTurn(db, loopB, 1);
         const eng = makeEngine(db);
@@ -161,12 +161,16 @@ test("a worker learns a sibling's edit through its own log — pulled from the s
 
         // A's turn 2 pulls B's edit from the shared log as a FOLDED delta — A consulted no
         // per-worker snapshot; it learned its world moved purely through its own log.
-        await eng.runTurn({ provider, workspaceId, workerId: workerA, loopId: loopA, messages: MESSAGES, turnNumber: 2 });
+        const turn = await eng.runTurn({ provider, workspaceId, workerId: workerA, loopId: loopA, messages: MESSAGES, turnNumber: 2 });
         const rows = await db.engine_render_log.all<{ scheme: string | null; origin: string; op: string; pathname: string; source: string | null; expanded: number }>({ worker_id: workerA });
         const delta = rows.find((r) => r.op === "EDIT" && r.origin === "plurnk" && r.scheme === "worker" && r.pathname === "/shared.md");
         assert.ok(delta, "A's turn-2 log carries a delta for B's edit");
-        assert.equal(delta!.source, String(workerB), "the delta is attributed to the sibling worker that caused it");
+        assert.equal(delta!.source, "worker://sibling", "the durable delta uses the sibling's addressable identity");
         assert.equal(delta!.expanded, 0, "the broadcast delta lands FOLDED — listed, collapsed until the model OPENs it");
+
+        const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: turn.turnId }))!.packet);
+        const packetDelta = logEntries(packet).find((entry) => entry.target === "worker:///shared.md" && entry.op === "EDIT");
+        assert.equal(packetDelta?.source, "worker://sibling", "the model sees the same worker identity used by worker control");
     } finally {
         await db.close();
     }
@@ -434,12 +438,15 @@ test("a fork inherits observed progress and independently receives pending event
         await eng.runTurn({ provider: parentProvider, workspaceId, workerId: parent, loopId: parentLoop, messages: MESSAGES, turnNumber: 3 });
 
         for (const [workerId, label] of [[branch, "branch"], [parent, "parent"]] as const) {
-            const rows = await db.engine_render_log.all<{ origin: string; op: string; pathname: string | null }>({ worker_id: workerId });
+            const rows = await db.engine_render_log.all<{ origin: string; op: string; pathname: string | null; source: string | null }>({ worker_id: workerId });
             const paths = rows
                 .filter((row) => row.origin === "plurnk" && row.op === "EDIT" && row.pathname?.endsWith("-fork.md") === true)
-                .map((row) => row.pathname)
-                .sort();
-            assert.deepEqual(paths, ["/pending-at-fork.md", "/seen-before-fork.md"], `${label} has copied history plus the pending event, with no replay`);
+                .map(({ pathname, source }) => ({ pathname, source }))
+                .sort((a, b) => (a.pathname ?? "").localeCompare(b.pathname ?? ""));
+            assert.deepEqual(paths, [
+                { pathname: "/pending-at-fork.md", source: "worker://producer" },
+                { pathname: "/seen-before-fork.md", source: "worker://producer" },
+            ], `${label} preserves the public cause across copied history and pending delivery`);
         }
     } finally {
         await db.close();
@@ -450,7 +457,7 @@ test("an environment delta preserves typed source attributes for model-facing pr
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `typed-delta-${crypto.randomUUID()}`);
-        const observer = await insertWorker(db, workspaceId);
+        const observer = await insertWorker(db, workspaceId, null, "observer");
         const observerLoop = await insertLoop(db, observer, 1, "go");
         const plurnk = await insertWorker(db, workspaceId, null, "plurnk");
         const plurnkLoop = await insertLoop(db, plurnk, 1);
@@ -461,7 +468,7 @@ test("an environment delta preserves typed source attributes for model-facing pr
         await eng.runTurn({ provider, workspaceId, workerId: observer, loopId: observerLoop, messages: MESSAGES, turnNumber: 1 });
         await db.engine_insert_log_entry.get({
             worker_id: plurnk, loop_id: plurnkLoop, turn_id: plurnkTurn, sequence: 1,
-            origin: "plurnk", source: String(observer), op: "EDIT", suffix: "", signal: null,
+            origin: "plurnk", source: "worker://observer", op: "EDIT", suffix: "", signal: null,
             scheme: "https", username: null, password: null, hostname: "example.org", port: null,
             pathname: "/page", query: null, fragment: null, lineMarker: null,
             tx: JSON.stringify({ op: "EDIT", body: "page" }), mimetype_tx: "application/json",
@@ -471,8 +478,9 @@ test("an environment delta preserves typed source attributes for model-facing pr
         });
 
         await eng.runTurn({ provider, workspaceId, workerId: observer, loopId: observerLoop, messages: MESSAGES, turnNumber: 2 });
-        const rows = await db.engine_render_log.all<{ origin: string; op: string; pathname: string; attrs: string }>({ worker_id: observer });
+        const rows = await db.engine_render_log.all<{ origin: string; op: string; pathname: string; source: string | null; attrs: string }>({ worker_id: observer });
         const delta = rows.find((row) => row.origin === "plurnk" && row.op === "EDIT" && row.pathname === "/page");
+        assert.equal(delta?.source, "worker://observer");
         assert.deepEqual(JSON.parse(delta?.attrs ?? "{}"), { kind: "entry_materialized", tags: ["query"] });
     } finally {
         await db.close();
@@ -485,9 +493,9 @@ test("exactly two cross-worker channels — state via the env-delta, a message v
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `two-doors-${crypto.randomUUID()}`);
-        const workerA = await insertWorker(db, workspaceId);
+        const workerA = await insertWorker(db, workspaceId, null, "observer");
         const loopA = await insertLoop(db, workerA, 1, "go");
-        const workerB = await insertWorker(db, workspaceId);
+        const workerB = await insertWorker(db, workspaceId, null, "sibling");
         const loopB = await insertLoop(db, workerB, 1);
         const turnB = await insertTurn(db, loopB, 1);
         const eng = makeEngine(db);
@@ -499,7 +507,7 @@ test("exactly two cross-worker channels — state via the env-delta, a message v
         await eng.runTurn({ provider, workspaceId, workerId: workerA, loopId: loopA, messages: MESSAGES, turnNumber: 2 });
         const rows = await db.engine_render_log.all<{ origin: string; op: string; pathname: string; source: string | null }>({ worker_id: workerA });
         assert.ok(
-            rows.some((r) => r.op === "EDIT" && r.origin === "plurnk" && r.pathname === "/shared.md" && r.source === String(workerB)),
+            rows.some((r) => r.op === "EDIT" && r.origin === "plurnk" && r.pathname === "/shared.md" && r.source === "worker://sibling"),
             "environment door: B's shared-entry edit crossed to A as a delta (state, ambient)",
         );
 
@@ -593,7 +601,7 @@ test("a sibling's loop-termination surfaces — a 2xx deliverable born OPEN + aw
         const win = rows.find((r) => r.op === "SEND" && r.scheme === "worker" && r.pathname === "/worker");
         assert.ok(win, "worker's SEND[200] termination surfaced as a worker delta in A's log");
         assert.equal(win!.origin, "plurnk", "the termination delta is the engine's narration");
-        assert.equal(win!.source, String(worker), "attributed to the worker that terminated");
+        assert.equal(win!.source, "worker://worker", "attributed with the terminating worker's control identity");
         assert.equal(win!.status_rx, 200, "the terminal status rides");
         assert.equal(win!.rx, "the answer is 42", "the SEND body — the loop's deliverable — rides the delta");
         assert.equal(win!.expanded, 1, "born OPEN — a child's 2xx deliverable reaches the parent open + awakening, not hidden behind a fold");
@@ -602,7 +610,7 @@ test("a sibling's loop-termination surfaces — a 2xx deliverable born OPEN + aw
         assert.ok(grind, "the abandoned loop surfaced too — every death-path stamps terminated_at uniformly");
         assert.equal(grind!.status_rx, 413, "budget abandonment is a 413 Content Too Large termination");
         assert.equal(grind!.rx, "budget_overflow", "the abandon reason rides as the terminal message");
-        assert.equal(grind!.source, String(grinder), "attributed to the abandoned worker");
+        assert.equal(grind!.source, "worker://grinder", "attributed with the abandoned worker's control identity");
         assert.equal(grind!.expanded, 0, "an abandonment (non-2xx) stays folded — only a 2xx deliverable is born open");
     } finally {
         await db.close();
