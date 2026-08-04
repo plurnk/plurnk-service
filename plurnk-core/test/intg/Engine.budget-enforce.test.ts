@@ -640,3 +640,60 @@ test("a proven prompt-token upper bound can authorize the one physical recovery 
         await db.close();
     }
 });
+
+test("physical admission includes the recovery occurrence added by the final rebuild (#65)", async () => {
+    const db = await openMigrated();
+    try {
+        const { workspaceId, workerId, loopId } = await envelope(db);
+        const engine = plainEngine(db);
+        const recoveryInstruction = "Curate context by FOLDing or KILLing irrelevant log items to restore working room.";
+        const measuredRequests: string[] = [];
+        const mock = Object.assign(
+            mockAt(1, [response([sendStmt(200, "must not run")])], 3),
+            {
+                countPromptTokens: async (messages: readonly { role: string; content: string }[]) => {
+                    const request = messages.map(({ role, content }) => `${role}:${content}`).join("\n");
+                    measuredRequests.push(request);
+                    return {
+                        kind: "exact" as const,
+                        tokens: request.includes(recoveryInstruction) ? 2 : 1,
+                        source: "test:recovery-occurrence-vocabulary",
+                    };
+                },
+            },
+        );
+
+        const result = await engine.runLoop({
+            provider: mock,
+            workspaceId,
+            workerId,
+            loopId,
+            messages: MESSAGES,
+            maxTurns: 5,
+        });
+
+        assert.equal(result.result.status, 413);
+        assert.equal(mock.remaining, 1, "the final unsendable request never reaches provider.generate");
+        assert.equal(measuredRequests.length, 2, "admission measures both the pre-occurrence and final requests");
+        assert.doesNotMatch(measuredRequests[0] ?? "", new RegExp(recoveryInstruction));
+        assert.match(measuredRequests[1] ?? "", new RegExp(recoveryInstruction));
+
+        const errors = await db.test_error_rows_for_worker.all<{ rx: string }>({ worker_id: workerId });
+        const hardStop = errors
+            .map(({ rx }) => JSON.parse(rx) as {
+                problem?: {
+                    physicalAdmission?: string;
+                    physicalCapacity?: number;
+                    physicalTokens?: number;
+                    physicalTokenSource?: string;
+                };
+            })
+            .find(({ problem }) => problem?.physicalTokenSource === "test:recovery-occurrence-vocabulary")
+            ?.problem;
+        assert.equal(hardStop?.physicalAdmission, "over_capacity");
+        assert.equal(hardStop?.physicalCapacity, 1);
+        assert.equal(hardStop?.physicalTokens, 2);
+    } finally {
+        await db.close();
+    }
+});
