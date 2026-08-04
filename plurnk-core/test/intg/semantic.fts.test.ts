@@ -282,7 +282,8 @@ test("[#semantic-json-tile] deriveEmbeddings embeds tiled chunks via embedBatch 
     } as unknown as Mimetypes;
 
     const json = JSON.stringify({ a: 1, b: 2, c: 3, d: 4, e: 5, f: 6, g: 7, h: 8, items: [1, 2, 3, 4, 5, 6, 7, 8] }, null, 2);
-    const { chunks } = await EntrySemantic.deriveEmbeddings(embedder, json, [], undefined, undefined);
+    const plan = await EntrySemantic.prepareEmbeddings(embedder);
+    const { chunks } = await EntrySemantic.deriveEmbeddings(plan, json, [], undefined, undefined);
     assert.ok(chunks.length > 1, `the JSON body tiled into multiple chunks (got ${chunks.length})`);
     assert.equal(batched.length, 1, "the chunk corpus embeds in ONE embedBatch call — never the per-chunk mimetype process");
     assert.equal(batched[0].length, chunks.length, "the single batch carried every tile's raw text (no JSON re-validation)");

@@ -4,13 +4,25 @@
 
 import type { Db } from "../core/Db.ts";
 import type { LineMarker } from "@plurnk/plurnk-contracts";
-import { TextCoordinates, type Mimetypes } from "@plurnk/plurnk-mimetypes";
+import {
+    TextCoordinates,
+    type Mimetypes,
+    type TokenizerResolution,
+} from "@plurnk/plurnk-mimetypes";
 
 // mimetypes' package entry doesn't re-export EmbedderInfo (asked on mimetypes#51) — project it
 // from the contract method itself so this stays the REAL type, never a local fiction.
 type EmbedderInfo = NonNullable<Awaited<ReturnType<Mimetypes["embedderInfo"]>>>;
 import EntryChunk from "./_entry-chunk.ts";
 import type { SearchCandidate } from "./_search-candidate.ts";
+
+export interface SemanticPlan {
+    readonly mimetypes: Mimetypes;
+    readonly info: EmbedderInfo | null;
+    readonly countTokens: ((text: string) => Promise<number>) | null;
+    readonly tokenizer: TokenizerResolution | null;
+    readonly signature: string;
+}
 
 type SemanticResultSelection = {
     threshold: number | null;
@@ -124,7 +136,7 @@ export default class EntrySemantic {
     // behavior, no extra embed call); PRESENT → lossless tile, embed each chunk.
     // Returns the chunk list + model for indexEmbedding; never touches the DB.
     static async deriveEmbeddings(
-        mimetypes: Mimetypes,
+        plan: SemanticPlan,
         content: string,
         symbols: readonly { line?: number; endLine?: number }[],
         fallbackEmbedding: Uint8Array | undefined,
@@ -132,7 +144,7 @@ export default class EntrySemantic {
         signal?: AbortSignal,
         onProgress?: (progress: { phase: "planning" | "embedding"; completed: number; total: number }) => void,
     ): Promise<{ chunks: { lineStart: number; lineEnd: number; vector: Uint8Array }[]; model: string | undefined }> {
-        const info = await EntrySemantic.#embedderInfo(mimetypes);
+        const { info } = plan;
         if (info === null) {
             const totalLines = TextCoordinates.logicalLines(content).length;
             if (fallbackEmbedding === undefined || fallbackEmbedding.byteLength === 0 || totalLines === 0) return { chunks: [], model: undefined };
@@ -145,12 +157,13 @@ export default class EntrySemantic {
             if (typeof s.endLine === "number") boundaries.add(s.endLine);
             if (typeof s.line === "number" && s.line > 1) boundaries.add(s.line - 1);
         }
-        // mimetypes#50 — a REMOTE embedder is present with an incomplete self-report: the window
-        // is the operator's to declare (their knob), and the counter resolves through the seam's
-        // tokenizers by the embedder's model name — the chars/2 upper bound when inexact is the
-        // surfaced conservative fallback (smaller chunks are correct chunks).
+        // A remote embedder may omit its own counter. The pass-wide semantic plan
+        // preserves the one fallback tokenizer resolution, including identity and
+        // exactness; {§semantic-embed-dedup} owns its derivation identity and #95
+        // owns whether an inexact resolution may authorize chunking.
         if (info.contextWindow === null) throw new Error("remote embedder reports no input context window — set PLURNK_MIMETYPES_EMBED_CONTEXT_WINDOW to the endpoint's limit");
-        const counter = info.countTokens ?? (await mimetypes.tokenizer(info.model ?? "")).countTokens;
+        const counter = plan.countTokens;
+        if (counter === null) throw new Error("semantic plan has no token counter for an embedder with a declared context window");
         const budget = EntrySemantic.#chunkBudget(info.contextWindow);
         let specs = await EntryChunk.tile(
             content,
@@ -166,7 +179,7 @@ export default class EntrySemantic {
         // so no re-embed). Each tile embeds as PLAIN TEXT: a chunk is a fragment, not a
         // standalone document, so embedding under the entry's mimetype (e.g. application/json)
         // re-validates the partial and throws — embedBatch embeds raw text directly.
-        const vectors = await mimetypes.embedBatch(specs.map((s) => s.text), {
+        const vectors = await plan.mimetypes.embedBatch(specs.map((s) => s.text), {
             signal,
             onProgress: (progress) => onProgress?.({ phase: "embedding", ...progress }),
         });
@@ -204,17 +217,34 @@ export default class EntrySemantic {
         return await mimetypes.embedderInfo();
     }
 
-    // Folded into the entry's deep_hash so a derivation re-runs when the EMBEDDING
-    // inputs change, not just content: installing/swapping the embedder (the window
-    // flips none→N, activating tiling), the embedder's model id changing at the SAME
-    // window (#31 — else stale vectors from the old model's space survive the swap and
-    // get cosine-compared against the new model's), or sweeping the chunk knobs.
-    static async deepConfigSignature(mimetypes: Mimetypes): Promise<string> {
+    // Resolve the pass-wide semantic facts once. The plan binds the selected
+    // counter to the same identity folded into every derivation hash, so entries
+    // cannot be tiled with provenance different from the configuration key.
+    static async prepareEmbeddings(mimetypes: Mimetypes): Promise<SemanticPlan> {
         const info = await EntrySemantic.#embedderInfo(mimetypes);
-        if (info === null) return "embed:none";
-        const base = `embed:${info.model ?? "?"}:${info.contextWindow}:${info.contextWindow === null ? "?" : EntrySemantic.#chunkBudget(info.contextWindow)}:${EntrySemantic.#chunkOverlap()}`;
+        if (info === null) {
+            return {
+                mimetypes,
+                info: null,
+                countTokens: null,
+                tokenizer: null,
+                signature: "embed:none",
+            };
+        }
+        const tokenizer = info.countTokens === null && info.contextWindow !== null
+            ? await mimetypes.tokenizer(info.model ?? "")
+            : null;
+        const countTokens = info.countTokens ?? tokenizer?.countTokens ?? null;
+        const tokenizerIdentity = tokenizer === null ? "" : `:tokenizer=${tokenizer.tokenizerId}`;
+        const base = `embed:${info.model ?? "?"}:${info.contextWindow}:${info.contextWindow === null ? "?" : EntrySemantic.#chunkBudget(info.contextWindow)}:${EntrySemantic.#chunkOverlap()}${tokenizerIdentity}`;
         const maxBytes = EntrySemantic.maxEmbedSize();
-        return maxBytes === 0 ? base : `${base}:max-bytes=${maxBytes}`;
+        return {
+            mimetypes,
+            info,
+            countTokens,
+            tokenizer,
+            signature: maxBytes === 0 ? base : `${base}:max-bytes=${maxBytes}`,
+        };
     }
 
     // Build the FTS5 query used only by the no-embedder keyword fallback.

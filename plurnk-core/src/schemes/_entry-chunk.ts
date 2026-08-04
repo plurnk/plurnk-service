@@ -7,8 +7,8 @@
 // EVERY LINE (losslessness — no truncation, ever), preferring to break at a
 // `boundaries` line (a @graph symbol edge) when one falls within budget. Pure: no
 // I/O, no DB, no plugin — `countTokens` is injected (the embedder's real
-// tokenizer in production; a conservative char-count upper bound until it reports
-// one; a stub in tests). Every tunable is a parameter — no constants live here.
+// tokenizer selected by the pass-wide semantic plan in production; a stub in
+// tests). Every tunable is a parameter — no constants live here.
 
 import { availableParallelism } from "node:os";
 import { TextCoordinates } from "@plurnk/plurnk-mimetypes";

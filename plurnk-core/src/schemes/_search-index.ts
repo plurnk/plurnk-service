@@ -8,7 +8,7 @@ import { createHash } from "node:crypto";
 import { availableParallelism } from "node:os";
 import { MimetypeBinary } from "../content/index.ts";
 import EntryGraph from "./_entry-graph.ts";
-import EntrySemantic from "./_entry-semantic.ts";
+import EntrySemantic, { type SemanticPlan } from "./_entry-semantic.ts";
 import LogBody from "../core/LogBody.ts";
 
 type EntryRow = {
@@ -37,9 +37,9 @@ export default class SearchIndex {
     // artifact while distinct artifacts remain parallel.
     static #deriveChains = new Map<string, Promise<void>>();
 
-    static async #deriveOne(ctx: PlurnkSchemeContext, r: DerivationRow, hash: string, embedActive: boolean, searchExcluded: string | undefined, onProgress?: (progress: { phase: "planning" | "embedding"; completed: number; total: number }) => void): Promise<void> {
+    static async #deriveOne(ctx: PlurnkSchemeContext, r: DerivationRow, hash: string, semanticPlan: SemanticPlan, searchExcluded: string | undefined, onProgress?: (progress: { phase: "planning" | "embedding"; completed: number; total: number }) => void): Promise<void> {
         const prior = SearchIndex.#deriveChains.get(hash) ?? Promise.resolve();
-        const run = prior.then(() => SearchIndex.#deriveOneUnlocked(ctx, r, hash, embedActive, searchExcluded, onProgress));
+        const run = prior.then(() => SearchIndex.#deriveOneUnlocked(ctx, r, hash, semanticPlan, searchExcluded, onProgress));
         const tail = run.catch(() => {}); // the chain survives a failed link; deriveOne's caller sees the rejection
         SearchIndex.#deriveChains.set(hash, tail);
         void tail.finally(() => {
@@ -48,7 +48,7 @@ export default class SearchIndex {
         return run;
     }
 
-    static async #deriveOneUnlocked(ctx: PlurnkSchemeContext, r: DerivationRow, hash: string, embedActive: boolean, searchExcluded: string | undefined, onProgress?: (progress: { phase: "planning" | "embedding"; completed: number; total: number }) => void): Promise<void> {
+    static async #deriveOneUnlocked(ctx: PlurnkSchemeContext, r: DerivationRow, hash: string, semanticPlan: SemanticPlan, searchExcluded: string | undefined, onProgress?: (progress: { phase: "planning" | "embedding"; completed: number; total: number }) => void): Promise<void> {
         const { db, mimetypes } = ctx;
         if (mimetypes === undefined) throw new Error("deriveOne: ctx.mimetypes is required");
         const attach = async (): Promise<void> => {
@@ -118,12 +118,12 @@ export default class SearchIndex {
             await attachComplete("lexical", "max_embed_size");
             return;
         }
-        if (!embedActive) {
+        if (semanticPlan.info === null) {
             await EntrySemantic.indexEmbedding(db, derivationId, [], undefined);
             await attachComplete("lexical", "embedder_unavailable");
             return;
         }
-        const { chunks, model } = await EntrySemantic.deriveEmbeddings(mimetypes, semanticSource, result.symbols ?? [], undefined, undefined, ctx.signal, onProgress);
+        const { chunks, model } = await EntrySemantic.deriveEmbeddings(semanticPlan, semanticSource, result.symbols ?? [], undefined, undefined, ctx.signal, onProgress);
         await EntrySemantic.indexEmbedding(db, derivationId, chunks, model);
         await attachComplete(chunks.length > 0 ? "vector" : "nonsemantic", chunks.length > 0 ? null : "no_embedding_content");
     }
@@ -153,13 +153,12 @@ export default class SearchIndex {
             mimetype_rx: string;
             deep_hash: string | null;
         }>({ workspace_id: workspaceId });
-        // The embedding config signature is identical for every entry this pass — compute it
-        // once and fold it into each deep_hash (re-derive on model/knob change).
-        const deepCfgSig = await EntrySemantic.deepConfigSignature(mimetypes);
-        // No embedder (absent OR PLURNK_SERVICE_EMBED_DISABLE) → don't request the embedding channel: it loads/
-        // runs the model independent of the capability probe, and deriveEmbeddings would only discard the
-        // vector. The signature already collapses to "embed:none" in that case, so reuse it (no new flag read).
-        const embedActive = deepCfgSig !== "embed:none";
+        // One resolved plan supplies both chunking and the configuration identity
+        // for every entry in this pass ({§semantic-embed-dedup}).
+        const semanticPlan = await EntrySemantic.prepareEmbeddings(mimetypes);
+        const deepCfgSig = semanticPlan.signature;
+        // No embedder (absent OR PLURNK_SERVICE_EMBED_DISABLE) is represented by
+        // the same plan and `embed:none` signature; derivation keeps only graph/FTS.
         // The changed-entry worklist (body channel, deep_hash stale), computed up front so the
         // corpus total is known — a multi-entry pass (the initial ingest, which otherwise looks
         // frozen) emits a throttled progress signal; a normal turn (0-1 entries) stays silent. #272
@@ -256,7 +255,7 @@ export default class SearchIndex {
                     const group = work[next++];
                     for (const { r, hash, searchExcluded } of group) {
                         if (Boolean(ctx.signal?.aborted)) return;
-                        await SearchIndex.#deriveOne(ctx, r, hash, embedActive, searchExcluded, (progress) => {
+                        await SearchIndex.#deriveOne(ctx, r, hash, semanticPlan, searchExcluded, (progress) => {
                             if (step === 0 || progress.total <= 1) return;
                             const milestone = progress.completed === progress.total
                                 || progress.completed % Math.max(1, Math.floor(progress.total / progressSteps)) === 0;

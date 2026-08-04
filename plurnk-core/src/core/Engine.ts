@@ -990,8 +990,8 @@ export default class Engine {
         // NOT an action: no log entry, no sequence slot,
         // not dispatched. There is no materialized manifest entry — the catalog
         // is served on demand by FIND: recursive when asked, shallow-mapped below.
-        // #312 — the turn's token gauge: the ACTIVE provider's tokenizer identity + exact counter
-        // (mimetypes seam; provider upper bound surfaced as tokenizer_unavailable when inexact).
+        // {§semantic-embed-dedup} — one pass-wide semantic plan binds every
+        // chunk counter to the derivation identity it produces.
         // SPEC {§membership} D4/D5 — git-ls-files workspace membership, resolved at
         // prompt-composition (EMI is eager + exhaustive — git is the only bound). When the
         // workspace's project_root is a git working tree, tracked files are
