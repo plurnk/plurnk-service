@@ -51,15 +51,25 @@ export default class WorkspaceSettings {
 
     // The turn-0 reference-doc set: server env docs (PLURNK_SERVICE_MD_*, read from disk) UNION the
     // workspace's client docs (content), keyed by `<alias>.md`. On alias collision the client
-    // wins — it may deliberately shadow a server doc, but by default the policy doc rides
-    // along. Missing env files are skipped (same as the env-only path before #231). The set
-    // is the single source for BOTH the loop_run materialize and the Engine turn-0 READ foist.
+    // wins before I/O — a shadowed operator path is not selected. An unshadowed configured
+    // path is required and fails causally if unreadable ({§operator-config-workspace-md-docs}).
+    // The set is the single source for BOTH materialization and the Engine turn-0 READ foist.
     static async resolveDocs(clientDocs: ReadonlyArray<ClientMdDoc>): Promise<Array<{ entryName: string; content: string }>> {
+        const clientByEntry = new Map(clientDocs.map(({ alias, content }) => [`${alias}.md`, content]));
         const byEntry = new Map<string, string>();
         for (const { entryName, path } of Paths.docs()) {
-            try { byEntry.set(entryName, await readFile(path, "utf8")); } catch { /* missing → skip */ }
+            const clientContent = clientByEntry.get(entryName);
+            if (clientContent !== undefined) {
+                byEntry.set(entryName, clientContent);
+                continue;
+            }
+            try {
+                byEntry.set(entryName, await readFile(path, "utf8"));
+            } catch (cause) {
+                throw new Error(`configured operator reference doc '${entryName}' could not be read`, { cause });
+            }
         }
-        for (const { alias, content } of clientDocs) byEntry.set(`${alias}.md`, content); // client wins
+        for (const [entryName, content] of clientByEntry) byEntry.set(entryName, content);
         return [...byEntry].map(([entryName, content]) => ({ entryName, content }));
     }
 }

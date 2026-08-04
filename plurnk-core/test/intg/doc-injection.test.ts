@@ -95,11 +95,10 @@ test("workspace.create settings.mdDocs UNIONs with env PLURNK_SERVICE_MD_* — e
     const dir = await mkdtemp(join(tmpdir(), "plurnk-md-union-"));
     const policyPath = join(dir, "policy.md");
     const guidePath = join(dir, "guide.md");
-    await writeFile(policyPath, "# Server policy\nObey.\n", "utf8");
     await writeFile(guidePath, "# Server guide\nRefer.\n", "utf8");
     const prevPolicy = process.env.PLURNK_SERVICE_MD_POLICY;
     const prevGuide = process.env.PLURNK_SERVICE_MD_GUIDE;
-    process.env.PLURNK_SERVICE_MD_POLICY = policyPath; // operator policy doc — the client shadows this one
+    process.env.PLURNK_SERVICE_MD_POLICY = policyPath; // deliberately absent — the client shadows it before I/O
     process.env.PLURNK_SERVICE_MD_GUIDE = guidePath;   // operator doc the client leaves alone — must survive
     try {
         const mock = new Mock({ contextWindow: 8192, responses: [makeMockResponse("<<SEND[200]:done:SEND", 50)] });
