@@ -186,12 +186,11 @@ test("[#209-semantic-threshold] a decimal threshold composes with ordinary FIND 
 });
 
 
-test("[#47] PLURNK_MIMETYPES_SEARCH_EXCLUDE applies to project files, not arbitrary scheme paths", async () => {
-    // The operator's decision table (mimetypes 0.18.1 §21) consumed in the pump: the knob IS the
-    // classification — a lockfile-class entry remains directly readable but
-    // contributes no graph, FTS, or vectors. No caps, no heuristics in code.
-    const prev = process.env.PLURNK_MIMETYPES_SEARCH_EXCLUDE;
-    process.env.PLURNK_MIMETYPES_SEARCH_EXCLUDE = "*/dist/*";
+test("[#91] PLURNK_SERVICE_SEARCH_EXCLUDE applies only to file-scheme entries", async () => {
+    const prev = process.env.PLURNK_SERVICE_SEARCH_EXCLUDE;
+    const obsoletePrev = process.env.PLURNK_MIMETYPES_SEARCH_EXCLUDE;
+    process.env.PLURNK_SERVICE_SEARCH_EXCLUDE = "*/dist/*";
+    process.env.PLURNK_MIMETYPES_SEARCH_EXCLUDE = "";
     const mimetypes = new Mimetypes();
     await mimetypes.ready();
     const db = await openMigrated();
@@ -200,38 +199,41 @@ test("[#47] PLURNK_MIMETYPES_SEARCH_EXCLUDE applies to project files, not arbitr
         const workerId = await insertWorker(db, workspaceId);
         const ctx = makeSchemeCtx({ db, workspaceId, workerId, mimetypes });
         const identical = '{"name":"x","version":"24.18.0","packages":{"":{"deps":{"y":"1.0.0"}}}}';
-        await EntryCrud.writeEntry("/repo/dist/index.json", {
+        const pathname = "/repo/dist/index.json";
+        await EntryCrud.writeEntry(pathname, {
             channels: { body: { content: identical, mimetype: "application/json" } },
             tags: [],
         }, ctx, "file");
-        await EntryCrud.writeEntry("/example.com/dist/index.json", {
+        await EntryCrud.writeEntry(pathname, {
             channels: { body: { content: identical, mimetype: "application/json" } },
             tags: [],
         }, ctx, "https");
         await new Worker().edit(editStmt(url("notes.md"), "the database connection failed with a timeout"), ctx);
         await SearchIndex.maintain(ctx);
-        const lock = await db.test_entries_by_pathname.get<{ id: number }>({ pathname: "/repo/dist/index.json" });
+        const fileEntry = await db.test_get_entry_by_pathname_scheme.get<{ id: number }>({ scheme: "file", pathname });
+        const httpsEntry = await db.test_get_entry_by_pathname_scheme.get<{ id: number }>({ scheme: "https", pathname });
         const notes = await db.test_entries_by_pathname.get<{ id: number }>({ pathname: "/notes.md" });
-        const fixture = await db.test_entries_by_pathname.get<{ id: number }>({ pathname: "/example.com/dist/index.json" });
-        const lockVecs = await db.test_count_embeddings.get<{ n: number }>({ entry_id: lock?.id ?? -1 });
+        const fileVecs = await db.test_count_embeddings.get<{ n: number }>({ entry_id: fileEntry?.id ?? -1 });
+        const httpsVecs = await db.test_count_embeddings.get<{ n: number }>({ entry_id: httpsEntry?.id ?? -1 });
         const noteVecs = await db.test_count_embeddings.get<{ n: number }>({ entry_id: notes?.id ?? -1 });
-        assert.equal(lockVecs?.n, 0, "the lockfile matched the pattern — zero vectors");
+        assert.equal(fileVecs?.n, 0, "the file pathname matched the pattern — zero vectors");
+        assert.ok((httpsVecs?.n ?? 0) > 0, "the identical pathname under HTTPS remains vector-searchable");
         assert.ok((noteVecs?.n ?? 0) > 0, "the unmatched entry embeds fully");
-        const lockFts = await db.test_fts_search.all({ workspace_id: workspaceId, query: "version" });
-        assert.ok(!lockFts.some((row) => (row as { pathname: string }).pathname === "/repo/dist/index.json"), "excluded project content contributes no lexical result");
-        assert.ok(lockFts.some((row) => (row as { pathname: string }).pathname === "/example.com/dist/index.json"), "the same resource path under HTTPS remains searchable");
-        const disposition = await db.test_derivation_disposition.get<{ disposition: string; reason: string }>({ entry_id: lock?.id ?? -1 });
-        const includedDisposition = await db.test_derivation_disposition.get<{ disposition: string; reason: string | null; deep_hash: string }>({ entry_id: fixture?.id ?? -1 });
-        assert.equal(disposition?.disposition, "excluded");
-        assert.equal(disposition?.reason, "*/dist/*");
-        assert.equal(includedDisposition?.disposition, "vector", "identical bytes at a non-file resource path remain searchable");
+        const fts = await db.test_fts_search.all<{ pathname: string }>({ workspace_id: workspaceId, query: "version" });
+        assert.equal(fts.filter((row) => row.pathname === pathname).length, 1, "only the HTTPS entry contributes the shared pathname to lexical search");
+        const fileDisposition = await db.test_derivation_disposition.get<{ disposition: string; reason: string }>({ entry_id: fileEntry?.id ?? -1 });
+        const httpsDisposition = await db.test_derivation_disposition.get<{ disposition: string; reason: string | null; deep_hash: string }>({ entry_id: httpsEntry?.id ?? -1 });
+        assert.equal(fileDisposition?.disposition, "excluded");
+        assert.equal(fileDisposition?.reason, "*/dist/*");
+        assert.equal(httpsDisposition?.disposition, "vector", "identical bytes at a non-file pathname remain searchable");
         // stamped: a second pass derives nothing (no eternal re-attempt of the suppressed entry)
         await SearchIndex.maintain(ctx);
-        const lockVecs2 = await db.test_count_embeddings.get<{ n: number }>({ entry_id: lock?.id ?? -1 });
-        assert.equal(lockVecs2?.n, 0, "still zero after a second pump pass — classified once, skipped");
+        const fileVecs2 = await db.test_count_embeddings.get<{ n: number }>({ entry_id: fileEntry?.id ?? -1 });
+        assert.equal(fileVecs2?.n, 0, "still zero after a second pump pass — classified once, skipped");
     } finally {
         db.close();
-        if (prev === undefined) delete process.env.PLURNK_MIMETYPES_SEARCH_EXCLUDE; else process.env.PLURNK_MIMETYPES_SEARCH_EXCLUDE = prev;
+        if (prev === undefined) delete process.env.PLURNK_SERVICE_SEARCH_EXCLUDE; else process.env.PLURNK_SERVICE_SEARCH_EXCLUDE = prev;
+        if (obsoletePrev === undefined) delete process.env.PLURNK_MIMETYPES_SEARCH_EXCLUDE; else process.env.PLURNK_MIMETYPES_SEARCH_EXCLUDE = obsoletePrev;
     }
 });
 
