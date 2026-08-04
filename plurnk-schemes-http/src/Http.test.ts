@@ -211,7 +211,6 @@ test("manifest: name http, default channel body, requiresWeb, network-volatile",
     assert.equal(Http.manifest.volatile, true);
     assert.deepEqual(Object.keys(Http.manifest.channels).sort(), ["body", "header", "html"]);
     // Self-doc for the model's packet listing (deep docs ride worker://plurnk/docs/http.md).
-    assert.equal(Http.manifest.glyph, "🌐");
     // The manifest example must be one complete copy-pasteable operation.
     // it verbatim into the scheme directory, so a `<<`-less / `::OP`-less form
     // mis-trains small models on op shape. Guard the well-formed `<<OP(…)::OP`

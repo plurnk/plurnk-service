@@ -155,13 +155,12 @@ const killStmt = (target: UrlPath): KillStatement => ({ op: "KILL", suffix: "KIL
 
 const flush = () => new Promise((r) => setImmediate(r));
 
-test("manifest: wss scheme - messages channel, plug glyph, requiresWeb, network-volatile", () => {
+test("manifest: wss scheme - messages channel, requiresWeb, network-volatile", () => {
     assert.equal(Ws.manifest.name, "wss");
     assert.equal(Ws.manifest.defaultChannel, "messages");
     assert.deepEqual(Object.keys(Ws.manifest.channels), ["messages"]);
     assert.equal(Ws.manifest.flags?.requiresWeb, true);
     assert.equal(Ws.manifest.volatile, true);
-    assert.equal(Ws.manifest.glyph, "🔌");
     const op = (Ws.manifest.example ?? "").match(/^<<([A-Z]+)\(.+\)::([A-Z]+)$/);
     assert.ok(op, `example must be a well-formed <<OP(…)::OP heredoc, got: ${Ws.manifest.example}`);
     assert.equal(op[1], op[2], "example opener and closer op must match");

@@ -82,9 +82,11 @@ test("BaseExecutor.run: matched tag flows through to the executor", async () => 
 // --- executor-is-a-scheme face (schemes#20 / service#240) ---
 
 test("BaseExecutor: scheme manifest derives from the tag + declared channels", () => {
-    const m = new EchoExecutor({ runtime: "sqlite", glyph: "🗃" }).manifest;
+    const executor = new EchoExecutor({ runtime: "sqlite", glyph: "🗃" });
+    const m = executor.manifest;
     assert.equal(m.name, "sqlite", "scheme name is the tag");
-    assert.equal(m.glyph, "🗃");
+    assert.equal(executor.glyph, "🗃", "executor presentation remains executor-owned");
+    assert.equal(Object.hasOwn(m, "glyph"), false, "executor display metadata does not leak into the scheme face");
     assert.deepEqual(m.channels, { results: "application/json" }, "channels derive from the declared output channels");
     assert.equal(m.defaultChannel, "results");
     // the read-only-output default an executor-scheme inherits

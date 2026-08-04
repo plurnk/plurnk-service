@@ -64,7 +64,6 @@ static manifest: SchemeManifest = {
   writableBy: ["model", "client"],
   volatile: false,
   modelVisible: true,
-  glyph: "🦊",                          // display icon; omit → the name is shown
   example: "READ(foo://thing/42)",      // terse hot-path one-liner, rendered every turn
   documentation,                        // deep doc from docs/foo.md, pulled at worker://plurnk/docs/foo.md
 };
@@ -72,11 +71,10 @@ static manifest: SchemeManifest = {
 
 - **`example`** — the scheme's terse **hot-path** one-liner, rendered in the live catalogue every turn (like an execs runtime's `example`). Keep it to one canonical usage line; depth goes in `documentation`. Omit → not advertised.
 - **`documentation`** — the **deep doc** (ops, channels, edge cases). The consumer materializes it as a pull-able `worker://plurnk/docs/<name>.md` entry the model READs on demand — off the hot path. Mirrors `ExecInfo.documentation`. **Convention:** keep it in a **`docs/<name>.md`** file (root) and load it at module init with the snippet above — `../` resolves the same from `src/` (test) and `dist/` (built); add `docs/**/*` to `files`. A missing file fails-hard at import.
-- **`glyph`** — a display icon (emoji / nerdfont). Omit it and the scheme `name` is rendered in its place.
 
 ### 4. Self-doc: terse pushes, depth pulls
 
-`example`/`glyph` render every turn — keep them terse. `documentation` is the deep prose; the consumer materializes it at `worker://plurnk/docs/<name>.md` for the model to READ on demand. Don't dump prose into `example` (it floods the hot path) — put it in `documentation`.
+`example` renders every turn — keep it terse. `documentation` is the deep prose; the consumer materializes it at `worker://plurnk/docs/<name>.md` for the model to READ on demand. Don't dump prose into `example` (it floods the hot path) — put it in `documentation`.
 
 That's the whole contract: declare, `implements SchemeHandler`, manifest with self-doc. Publish, install, discovered.
 
@@ -84,7 +82,7 @@ That's the whole contract: declare, `implements SchemeHandler`, manifest with se
 
 ### Types
 
-- Manifest/flags: `SchemeManifest` (incl. `example` / `documentation` / `glyph` self-doc), `SchemeFlagAffinity`, and `WriterTier`; contracts-owned `LoopFlags` / `DEFAULT_LOOP_FLAGS` are re-exported.
+- Manifest/flags: `SchemeManifest` (including `example` / `documentation` self-doc), `SchemeFlagAffinity`, and `WriterTier`; contracts-owned `LoopFlags` / `DEFAULT_LOOP_FLAGS` are re-exported.
 - Behavior contract: `SchemeHandler` + optional `PacketSectionTransformer` (`PacketSectionDraft`); the re-exported scheme-facing grammar types (`PlurnkStatement` + per-op statements + `ParsedPath` / `LocalPath` / `UrlPath`).
 - Results: universal `SchemeResult` plus RFC 9457 `ProblemDetails`, optional `EntryResult` / `ProposalResult` / `PassthroughResult` authoring shapes, `SchemeResultBase`, and matcher navigation `MatchEvidence`.
 - Capability ctx: `SchemeCtx` and its entry, channel, tag, notification, projection, and subscription domains. Entry schemes can reuse typed standard operations with semantic commons/worker ownership.

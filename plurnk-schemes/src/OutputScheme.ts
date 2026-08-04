@@ -1,18 +1,17 @@
 // Derive an output-scheme manifest from an executor's per-tag runtime
 // declaration — the executor-is-a-scheme RFC (schemes#20 / service#240). An
 // executor authors NO SchemeManifest: its `plurnk.runtimes[]` entry already
-// carries name / glyph / example / output-channels, and everything else is the
-// shared read-only-output default. So `EXEC[sh]` gets `sh://` for free, and a
-// multi-tag executor (search/news/images) derives a distinct manifest per tag.
+// carries name / example / output-channels, and everything else is the shared
+// read-only-output default. So `EXEC[sh]` gets `sh://` for free, and a multi-tag
+// executor (search/news/images) derives a distinct manifest per tag.
 
 import type { SchemeManifest } from "./types.ts";
 
 // The slice of an executor's runtime declaration the scheme face needs. Mirrors
-// plurnk-execs' `plurnk.runtimes[]` entry (name/glyph/example) plus the output
-// channel shape the executor writes.
+// its address, teaching, and output-channel shape; executor presentation stays
+// on the executor surface.
 export interface RuntimeDecl {
     readonly name: string;                       // the tag → the scheme's URI prefix
-    readonly glyph?: string;
     readonly example?: string;
     readonly channels: Record<string, string>;   // output channel → seed mimetype
     readonly defaultChannel: string;
@@ -36,7 +35,6 @@ export default class OutputScheme {
             modelVisible: true,
             folderScopes: true,
             foldedByDefault: true,
-            glyph: decl.glyph,
             example: decl.example,
         };
     }

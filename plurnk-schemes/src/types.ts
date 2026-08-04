@@ -39,12 +39,10 @@ export interface SchemeManifest {
     readonly flags?: SchemeFlagAffinity;
     // Self-doc, mirroring the exec contract: terse pushes, depth pulls (#25).
     // example = terse hot-path usage line (rendered every turn); documentation =
-    // deep doc the consumer materializes as a pull-able worker://plurnk/docs/<name>.md;
-    // glyph = display icon (consumer renders `glyph ?? name`). Field-by-field
-    // contract: SPEC {§manifest-self-doc}.
+    // deep doc the consumer materializes as a pull-able worker://plurnk/docs/<name>.md.
+    // Field-by-field contract: SPEC {§manifest-self-doc}.
     readonly example?: string;
     readonly documentation?: string;
-    readonly glyph?: string;
     // Value persisted to `entries.scheme`, which may differ from the addressing
     // `name`. Absent defaults to `name`; identity components are never null.
     readonly storedScheme?: string;

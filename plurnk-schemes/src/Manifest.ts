@@ -15,7 +15,6 @@ const MANIFEST_FIELD_NAMES = new Set<string>(Object.keys({
     flags: true,
     example: true,
     documentation: true,
-    glyph: true,
     storedScheme: true,
 } satisfies Record<keyof SchemeManifest, true>));
 const FLAG_AFFINITIES = ["excludedInAsk", "requiresWeb", "requiresInteraction"] as const satisfies ReadonlyArray<keyof SchemeFlagAffinity>;
@@ -64,7 +63,7 @@ export default class Manifest {
         Manifest.#boolean(manifest, "volatile");
         Manifest.#boolean(manifest, "modelVisible");
         for (const field of ["folderScopes", "foldedByDefault"] as const) Manifest.#optionalBoolean(manifest, field);
-        for (const field of ["example", "documentation", "glyph", "storedScheme"] as const) Manifest.#optionalString(manifest, field);
+        for (const field of ["example", "documentation", "storedScheme"] as const) Manifest.#optionalString(manifest, field);
         Manifest.#flags(manifest.flags, name);
         return value as SchemeManifest;
     }
