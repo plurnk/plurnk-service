@@ -49,9 +49,12 @@ test("Worker.edit: new entry — inserts entries row, body channel, tags", async
         const result = await new Worker().edit(stmt, makeSchemeCtx({ db, workspaceId, workerId }));
         assert.equal(result.status, 201);
         assert.ok(result.entryId !== null);
-        const entry = await db.entry_read_lookup.get<{ workspace_id: number; owner_id: number; scheme: string; pathname: string }>({
-            workspace_id: workspaceId, scheme: "worker", pathname: "/countries/france/capital",
-        });
+        const entry = await db.test_get_entry_by_id.get<{
+            workspace_id: number;
+            owner_id: number;
+            scheme: string;
+            pathname: string;
+        }>({ id: result.entryId });
         assert.ok((entry?.owner_id ?? 0) >= 1, "owner stamped ({§entry-owner})");
         assert.equal(entry?.workspace_id, workspaceId);
         assert.equal(entry?.scheme, "worker");

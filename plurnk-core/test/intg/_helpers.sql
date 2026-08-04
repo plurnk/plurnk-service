@@ -188,7 +188,7 @@ SELECT name, content, mimetype, state FROM entry_channels WHERE entry_id = $entr
 SELECT COUNT(*) AS n FROM log_entries WHERE worker_id = $worker_id;
 
 -- PREP: test_get_entry_by_id
-SELECT pathname FROM entries WHERE id = $id;
+SELECT workspace_id, owner_id, scheme, pathname FROM entries WHERE id = $id;
 
 -- PREP: test_first_log_entry_for_turn
 SELECT * FROM log_entries WHERE turn_id = $turn_id ORDER BY sequence LIMIT 1;
