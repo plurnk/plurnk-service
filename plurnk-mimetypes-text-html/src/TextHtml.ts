@@ -148,7 +148,7 @@ export default class TextHtml extends BaseHandler {
             // omits the namespace assignment, so queries work as the model
             // expects. Cost: content must be reasonably well-formed XML;
             // malformed HTML (unclosed tags, void elements written without
-            // self-closing) throws QueryParseFailureError → 422.
+            // self-closing) follows {§mimetype-query}.
             let doc;
             try {
                 doc = new DOMParser().parseFromString(html, "text/xml");

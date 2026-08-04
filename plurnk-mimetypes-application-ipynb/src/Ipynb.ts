@@ -78,8 +78,8 @@ export default class Ipynb extends BaseHandler {
         return Promise.resolve(projectJsonToXml(this.deepJson(content), "root", span));
     }
 
-    // Strict: a malformed notebook IS a validation failure (unlike the other
-    // channels, which degrade to empty per the family's error policy).
+    // Strict source gate; orchestrated projections and structural queries call
+    // this before consuming notebook structure.
     override validate(content: HandlerContent): void {
         JSON.parse(toStr(content));
     }

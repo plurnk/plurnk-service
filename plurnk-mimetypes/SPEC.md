@@ -501,7 +501,7 @@ Every successful materialization yields all four ordered coordinates. Astral
 characters count once, combining code points remain distinct, LF/CRLF/CR are
 line separators, and equal boundaries remain zero-width. An unaddressable,
 partial, inverted, or code-point-bisecting native span throws
-`ParserCoordinateError`; parser error containment never converts that internal
+`ParserCoordinateError`; projection adapters never convert that internal
 contract failure into an empty channel.
 
 ### 9.5 Hand-rolled extractor
