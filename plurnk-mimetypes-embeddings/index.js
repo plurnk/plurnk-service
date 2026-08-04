@@ -1,6 +1,6 @@
 // Portable implementation of @plurnk/plurnk-mimetypes' explicitly requested
 // embedding seam ({§mimetype-embedding}). The framework duck-checks this surface:
-// embed(text) → Promise<Uint8Array> of native-endian raw Float32 bytes
+// embed(text) → Promise<Uint8Array> in {§mimetype-embedding-wire}
 // (4 × dimension), plus the dimension constant.
 //
 // TWO MODES, chosen at load (plurnk-mimetypes#46, routed from service#319):
@@ -25,6 +25,7 @@ import { availableParallelism } from "node:os";
 import path from "node:path";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { EmbeddingVector } from "@plurnk/plurnk-mimetypes";
 import {
     loadRuntime, embedText, releaseRuntime,
     dimension as localDimension, contextWindow as localContextWindow,
@@ -130,7 +131,11 @@ async function remoteEmbedMany(texts, signal) {
         if (dimension !== undefined && item.embedding.length !== dimension) {
             throw new Error(`remote embeddings: ${REMOTE.url} returned dimension ${item.embedding.length}, expected ${dimension} — vectors from mixed dimensions are incomparable`);
         }
-        out[item.index] = new Uint8Array(Float32Array.from(item.embedding).buffer);
+        out[item.index] = EmbeddingVector.encode(
+            item.embedding,
+            dimension,
+            `remote embeddings: vector ${item.index} from ${REMOTE.url}`,
+        );
     }
     if (out.some((v) => v === undefined)) throw new Error(`remote embeddings: response from ${REMOTE.url} missing indices`);
     return out;
@@ -171,7 +176,12 @@ function runtime() {
 // degrade-to-FTS + Notice handling is service-side, per #46).
 export async function embed(text) {
     if (REMOTE) return (await remoteEmbedMany([text]))[0];
-    return embedText(await runtime(), text);
+    const bytes = await embedText(await runtime(), text);
+    return EmbeddingVector.encode(
+        new Float32Array(bytes.buffer, bytes.byteOffset, bytes.byteLength / Float32Array.BYTES_PER_ELEMENT),
+        dimension,
+        "local embedding",
+    );
 }
 
 // Untruncated token count in the bundled model's own tokenizer (CLS/SEP
@@ -215,7 +225,10 @@ function pool() {
                     job.cleanup();
                     if (message.error) job.reject(new Error(message.error));
                     else if (job.kind === "count") job.resolve(message.count);
-                    else job.resolve(new Uint8Array(message.buffer));
+                    else {
+                        const values = new Float32Array(message.buffer);
+                        job.resolve(EmbeddingVector.encode(values, dimension, "local batch embedding"));
+                    }
                 }
                 dispatchPool(state);
             });

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
+import { EmbeddingVector, type Mimetypes } from "@plurnk/plurnk-mimetypes";
 import type { EditStatement, UrlPath } from "@plurnk/plurnk-contracts";
 import Worker from "../../src/schemes/Worker.ts";
 import SearchIndex from "../../src/schemes/_search-index.ts";
@@ -27,7 +27,7 @@ test("an interrupted artifact stays building and unattached; retry completes and
 
         const abort = new AbortController();
         let failOnce = true;
-        const vector = new Uint8Array(new Float32Array([1, 0]).buffer);
+        const vector = EmbeddingVector.encode([1, 0]);
         const mimetypes = {
             process: async (input: { content: string }) => ({ content: input.content, embedding: vector, embeddingModel: "stub@interrupt" }),
             embedderInfo: () => ({ contextWindow: 128, countTokens: (text: string) => text.split(/\s+/u).filter(Boolean).length, model: "stub@interrupt" }),

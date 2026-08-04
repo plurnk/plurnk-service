@@ -26,9 +26,12 @@ describe("EmbeddingVector", () => {
 
     it("rejects invalid dimensions, byte extents, and non-finite values at the codec", () => {
         assert.throws(() => EmbeddingVector.encode([1], 2), /dimension 2.*1 value/i);
+        assert.throws(() => EmbeddingVector.encode([]), /positive safe-integer dimension/i);
+        assert.throws(() => EmbeddingVector.decode(new Uint8Array(0)), /positive safe-integer dimension/i);
         assert.throws(() => EmbeddingVector.decode(new Uint8Array(5)), /multiple of 4/i);
         assert.throws(() => EmbeddingVector.decode(EmbeddingVector.encode([1]), 2), /dimension 2.*4 bytes/i);
         assert.throws(() => EmbeddingVector.encode([Number.NaN]), /finite/i);
+        assert.throws(() => EmbeddingVector.encode([Number.MAX_VALUE]), /finite binary32/i);
 
         const nonfinite = new Uint8Array(4);
         new DataView(nonfinite.buffer).setFloat32(0, Number.POSITIVE_INFINITY, true);

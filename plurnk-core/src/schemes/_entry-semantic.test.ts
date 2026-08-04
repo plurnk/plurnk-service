@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
+import { EmbeddingVector, type Mimetypes } from "@plurnk/plurnk-mimetypes";
 import EntrySemantic from "./_entry-semantic.ts";
 
 // These exercise the CAPABLE-embedder path (via a stub embedder), so the embedder must be ON —
@@ -9,13 +9,8 @@ import EntrySemantic from "./_entry-semantic.ts";
 process.env.PLURNK_SERVICE_EMBED_DISABLE = "0";
 
 const wordCount = (t: string): number => (t.match(/\S+/g) ?? []).length;
-const fakeVector = (s: string): Uint8Array => new Uint8Array(new Float32Array([s.length, wordCount(s), 0]).buffer);
-const wireVector = (values: readonly number[]): Uint8Array => {
-    const bytes = new Uint8Array(values.length * 4);
-    const view = new DataView(bytes.buffer);
-    for (const [index, value] of values.entries()) view.setFloat32(index * 4, value, true);
-    return bytes;
-};
+const fakeVector = (s: string): Uint8Array => EmbeddingVector.encode([s.length, wordCount(s), 0]);
+const wireVector = (values: readonly number[]): Uint8Array => EmbeddingVector.encode(values);
 
 // A capable embedder: reports a window + a word-count tokenizer + model id, batch-"embeds"
 // any texts (the framework embedBatch seam — #272; vectors map 1:1 to inputs, in order).
@@ -30,6 +25,7 @@ const dormant = { embedderInfo: async () => null, process: async () => ({ embedd
 test("EntrySemantic.cosine decodes the owned wire and refuses malformed operands (#94)", () => {
     assert.ok(Math.abs(EntrySemantic.cosine(wireVector([1, 0]), wireVector([1, 1])) - Math.SQRT1_2) < 1e-6);
     assert.throws(() => EntrySemantic.cosine(wireVector([1, 0]), wireVector([1])), /same dimension/i);
+    assert.throws(() => EntrySemantic.cosine(new Uint8Array(0), wireVector([1, 0])), /positive safe-integer dimension/i);
 
     const nonfinite = wireVector([1, 0]);
     new DataView(nonfinite.buffer).setFloat32(0, Number.NaN, true);
@@ -189,7 +185,7 @@ test("EntrySemantic.deriveEmbeddings reports planning and embedding progress wit
 });
 
 test("EntrySemantic.deriveEmbeddings: no embedder capability → one whole-entry chunk from the fallback vector", async () => {
-    const fallback = new Uint8Array(new Float32Array([1, 2, 3]).buffer);
+    const fallback = EmbeddingVector.encode([1, 2, 3]);
     const plan = await EntrySemantic.prepareEmbeddings(dormant);
     const { chunks, model } = await EntrySemantic.deriveEmbeddings(plan, "a\nb\nc", [], fallback, "real@1");
     assert.equal(chunks.length, 1, "one whole-entry chunk");

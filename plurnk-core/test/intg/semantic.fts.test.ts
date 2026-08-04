@@ -9,7 +9,7 @@ import type { Db } from "../../src/core/Db.ts";
 import Worker from "../../src/schemes/Worker.ts";
 import SearchIndex from "../../src/schemes/_search-index.ts";
 import EntrySemantic from "../../src/schemes/_entry-semantic.ts";
-import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
+import { EmbeddingVector, type Mimetypes } from "@plurnk/plurnk-mimetypes";
 import { openMigrated, insertWorkspace, insertWorker, makeSchemeCtx } from "./_helpers.ts";
 
 // Despite the name, this suite includes chunked-embedding e2e cases that assert REAL vector ranking —
@@ -91,10 +91,10 @@ test("semantic artifacts index the exact READ body rather than a hidden mimetype
     } finally { db.close(); }
 });
 
-test("[#186-cosine] the cosine SqlRite function ranks Float32-BLOB vectors", async () => {
+test("[#186-cosine] the cosine SqlRite function ranks canonical wire vectors", async () => {
     const db = await openMigrated();
     try {
-        const blob = (arr: number[]) => Buffer.from(new Float32Array(arr).buffer);
+        const blob = (arr: number[]) => Buffer.from(EmbeddingVector.encode(arr));
         const sim = async (a: number[], b: number[]): Promise<number> => {
             const r = await db.test_cosine.get<{ sim: number }>({ a: blob(a), b: blob(b) });
             assert.ok(r, "cosine returned a row");
@@ -112,7 +112,7 @@ test("[#186-cosine-recall] semantic_rank searches every vector without a lexical
         const workspaceId = await insertWorkspace(db, `fusion-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
         const ctx = makeSchemeCtx({ db, workspaceId, workerId });
-        const blob = (arr: number[]) => Buffer.from(new Float32Array(arr).buffer);
+        const blob = (arr: number[]) => Buffer.from(EmbeddingVector.encode(arr));
 
         // The auth entry has no query words but is the strongest semantic match.
         // A lexical prefilter would incorrectly make it invisible.
@@ -152,7 +152,7 @@ test("[#chunk-maxpool] semantic_rank_threshold max-pools chunks — a hit in a n
         const workspaceId = await insertWorkspace(db, `maxpool-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
         const ctx = makeSchemeCtx({ db, workspaceId, workerId });
-        const blob = (arr: number[]) => Buffer.from(new Float32Array(arr).buffer);
+        const blob = (arr: number[]) => Buffer.from(EmbeddingVector.encode(arr));
         // Both FTS-match "payment". doc.ts gets two chunks — first orthogonal to the
         // query, second a PERFECT match (the passage truncation would hide). other.ts
         // gets only an orthogonal chunk.
@@ -196,7 +196,7 @@ test("[#semantic-e2e] chunked ~query full pipeline: tile → embed → store →
         // (The fast tier declines the real model; real-model ~query is covered in
         // semantic.test.ts — this asserts the chunked CHAIN: derive → store → rank.)
         const wc = (t: string) => (t.match(/\S+/g) ?? []).length;
-        const vec = (t: string) => new Uint8Array(new Float32Array(t.includes("photosynthesis") ? [1, 0, 0] : [0, 1, 0]).buffer);
+        const vec = (t: string) => EmbeddingVector.encode(t.includes("photosynthesis") ? [1, 0, 0] : [0, 1, 0]);
         const embedder = {
             // process embeds the QUERY vector (rankCandidates); embedBatch embeds the chunk corpus (deriveEmbeddings, #272).
             process: async (input: { content: string }) => ({ embedding: vec(input.content), embeddingModel: "stub@e2e" }),
@@ -230,7 +230,7 @@ test("semantic FIND maps a terminal-newline chunk to an addressable TextRegion",
     try {
         const workspaceId = await insertWorkspace(db, `newline-region-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
-        const vector = new Uint8Array(new Float32Array([1, 0]).buffer);
+        const vector = EmbeddingVector.encode([1, 0]);
         const embedder = {
             process: async () => ({ embedding: vector, embeddingModel: "stub@newline" }),
             embedBatch: async (texts: readonly string[]) => texts.map(() => vector),
@@ -275,9 +275,9 @@ test("[#semantic-json-tile] deriveEmbeddings embeds tiled chunks via embedBatch 
     const embedder = {
         process: async (input: { content: string; hint: string }) => {
             if (input.hint === "application/json") JSON.parse(input.content); // throws on a partial tile — must NEVER be hit for chunks
-            return { embedding: new Uint8Array(new Float32Array([1, 0]).buffer), embeddingModel: "stub" };
+            return { embedding: EmbeddingVector.encode([1, 0]), embeddingModel: "stub" };
         },
-        embedBatch: async (texts: readonly string[]) => { batched.push([...texts]); return texts.map(() => new Uint8Array(new Float32Array([1, 0]).buffer)); },
+        embedBatch: async (texts: readonly string[]) => { batched.push([...texts]); return texts.map(() => EmbeddingVector.encode([1, 0])); },
         embedderInfo: () => ({ contextWindow: 20, countTokens: wc, model: "stub" }),
     } as unknown as Mimetypes;
 

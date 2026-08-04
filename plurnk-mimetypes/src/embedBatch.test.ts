@@ -3,25 +3,39 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import Mimetypes from "./Mimetypes.ts";
-import type { Discovery, Registry } from "./types.ts";
+import BaseHandler from "./BaseHandler.ts";
+import EmbeddingVector from "./EmbeddingVector.ts";
+import type { Discovery, HandlerInfo, Registry } from "./types.ts";
 
 const EMB_PKG = "@plurnk/plurnk-mimetypes-embeddings";
+const TEXT_INFO: HandlerInfo = {
+    mimetype: "text/plain",
+    glyph: "📄",
+    packageName: "@plurnk/plurnk-mimetypes-text-plain",
+    extensions: [".txt"],
+    binary: false,
+    source: "package",
+};
 
-function emptyDiscovery(): Discovery {
+function testDiscovery(): Discovery {
     const registry: Registry = { byExtension: new Map(), byFilename: new Map() };
-    return { registry, handlers: new Map(), skipped: [] };
+    return {
+        registry,
+        handlers: new Map([[TEXT_INFO.mimetype, TEXT_INFO]]),
+        skipped: [],
+    };
 }
 
 // Deterministic embedder: vector = [text length], 4 bytes. embedBatch returns
 // the SAME bytes as embed() per text, in input order — the bit-identity the
 // issue depends on (no re-embed of stored vectors).
 function bytesFor(text: string): Uint8Array {
-    return new Uint8Array(new Float32Array([text.length]).buffer);
+    return EmbeddingVector.encode([text.length]);
 }
 
 function makeMimetypes(embedder: unknown | null): Mimetypes {
     return new Mimetypes({
-        discovery: emptyDiscovery(),
+        discovery: testDiscovery(),
         loader: async (pkg: string) => {
             if (pkg === EMB_PKG) {
                 if (embedder === null) {
@@ -32,7 +46,7 @@ function makeMimetypes(embedder: unknown | null): Mimetypes {
                 }
                 return embedder;
             }
-            return { default: class {} };
+            return { default: BaseHandler };
         },
     });
 }
@@ -50,7 +64,7 @@ describe("Mimetypes.embedBatch (plurnk-service#272)", () => {
         });
         const out = await m.embedBatch(["a", "bb", "ccc"]);
         assert.deepEqual(seen, [["a", "bb", "ccc"]], "delegated once with input order");
-        assert.deepEqual(out.map((v) => new Float32Array(v.buffer)[0]), [1, 2, 3]);
+        assert.deepEqual(out.map((v) => EmbeddingVector.decode(v)[0]), [1, 2, 3]);
     });
 
     it("passes onProgress and signal through to the embedder", async () => {
@@ -128,6 +142,20 @@ describe("Mimetypes.embedBatch (plurnk-service#272)", () => {
         await assert.rejects(
             () => malformedIndex.embedBatch(["a", "b"]),
             /embedBatch\(\).*vector 1.*dimension 2.*4 bytes/i,
+        );
+    });
+
+    it("preserves an artifact failure instead of replacing its cause (#94)", async () => {
+        const artifactFailure = new Error("embedding artifact failed");
+        const m = makeMimetypes({
+            dimension: 1,
+            embed: async (text: string) => bytesFor(text),
+            embedBatch: async () => { throw artifactFailure; },
+        });
+
+        await assert.rejects(
+            () => m.embedBatch(["a"]),
+            (error) => error === artifactFailure,
         );
     });
 });

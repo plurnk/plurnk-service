@@ -13,6 +13,7 @@ import path from "node:path";
 const pexec = promisify(execFile);
 const indexPath = path.join(import.meta.dirname, "index.js");
 const DIM = 8;
+const nodeEvalArgs = (source) => ["--conditions=plurnk-dev", "--input-type=module", "--eval", source];
 
 let server;
 let baseUrl;
@@ -48,7 +49,7 @@ async function inRemote(snippet, envExtra = {}) {
     const env = { ...process.env, PLURNK_MIMETYPES_EMBED_BASE_URL: baseUrl, PLURNK_MIMETYPES_EMBED_MODEL: "test-model", ...envExtra };
     delete env.PLURNK_MIMETYPES_EMBED_WORKERS; // remote must not require it
     const src = `import * as e from ${JSON.stringify(indexPath)};\n${snippet}`;
-    const { stdout } = await pexec(process.execPath, ["--input-type=module", "--eval", src], { env, timeout: 30000 });
+    const { stdout } = await pexec(process.execPath, nodeEvalArgs(src), { env, timeout: 30000 });
     return stdout;
 }
 
@@ -61,10 +62,11 @@ describe("remote mode (#46)", () => {
     it("embed() returns 4×dimension bytes from the endpoint; API key rides as Bearer", async () => {
         const out = await inRemote(
             `const v = await e.embed("hello");\n`
-            + `console.log(JSON.stringify({ len: v.byteLength, first: new Float32Array(v.buffer)[0] }));`,
+            + `const first = new DataView(v.buffer, v.byteOffset, v.byteLength).getFloat32(0, true);\n`
+            + `console.log(JSON.stringify({ len: v.byteLength, first, bytes: [...v.subarray(0, 4)] }));`,
             { PLURNK_MIMETYPES_EMBED_API_KEY: "sekrit" },
         );
-        assert.deepEqual(JSON.parse(out), { len: 4 * DIM, first: 5 });
+        assert.deepEqual(JSON.parse(out), { len: 4 * DIM, first: 5, bytes: [0x00, 0x00, 0xa0, 0x40] });
         const authed = requests.find((r) => r.auth === "Bearer sekrit");
         assert.ok(authed, "expected a request carrying the Bearer key");
     });
@@ -74,7 +76,8 @@ describe("remote mode (#46)", () => {
         const out = await inRemote(
             `let prog = null;\n`
             + `const vs = await e.embedBatch(["a", "bbb", "cc"], { onProgress: (p) => { prog = p; } });\n`
-            + `console.log(JSON.stringify({ firsts: vs.map((v) => new Float32Array(v.buffer)[0]), prog }));`,
+            + `const firsts = vs.map((v) => new DataView(v.buffer, v.byteOffset, v.byteLength).getFloat32(0, true));\n`
+            + `console.log(JSON.stringify({ firsts, prog }));`,
         );
         assert.deepEqual(JSON.parse(out), { firsts: [1, 3, 2], prog: { completed: 3, total: 3 } });
         const batchReqs = requests.slice(mark).filter((r) => Array.isArray(r.body.input) && r.body.input.length === 3);

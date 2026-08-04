@@ -5,6 +5,7 @@
 import type { Db } from "../core/Db.ts";
 import type { LineMarker, Notice } from "@plurnk/plurnk-contracts";
 import {
+    EmbeddingVector,
     TextCoordinates,
     type Mimetypes,
     type TokenizerResolution,
@@ -101,13 +102,14 @@ export default class EntrySemantic {
         if (content.length > 0) await db.fts_insert.run({ derivation_id: derivationId, content });
     }
 
-    // Cosine similarity over two Float32 vectors stored as BLOBs — the SqlRite
+    // Cosine similarity over the framework-owned embedding wire — the SqlRite
     // `cosine()` function delegates here (cosine.ts is the registration adapter).
-    // Alignment-proof: the BLOB Uint8Array may be an unaligned view, so copy the
-    // exact bytes to a fresh buffer before the Float32 view. A zero vector → 0.
     static cosine(a: Uint8Array, b: Uint8Array): number {
-        const x = new Float32Array(a.buffer.slice(a.byteOffset, a.byteOffset + a.byteLength));
-        const y = new Float32Array(b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength));
+        const x = EmbeddingVector.decode(a, undefined, "cosine left operand");
+        const y = EmbeddingVector.decode(b, undefined, "cosine right operand");
+        if (x.length !== y.length) {
+            throw new RangeError(`cosine operands must have the same dimension, got ${x.length} and ${y.length}`);
+        }
         let dot = 0, nx = 0, ny = 0;
         for (let i = 0; i < x.length; i++) { dot += x[i] * y[i]; nx += x[i] * x[i]; ny += y[i] * y[i]; }
         const denom = Math.sqrt(nx) * Math.sqrt(ny);
@@ -251,7 +253,7 @@ export default class EntrySemantic {
         const tokenizerIdentity = tokenizer === null
             ? ""
             : `:tokenizer=${tokenizer.tokenizerId}:${tokenizer.exact ? "exact" : "estimate"}`;
-        const base = `embed:${info.model ?? "?"}:${info.contextWindow}:${info.contextWindow === null ? "?" : EntrySemantic.#chunkBudget(info.contextWindow)}:${EntrySemantic.#chunkOverlap()}${tokenizerIdentity}`;
+        const base = `embed:${info.model ?? "?"}:${info.contextWindow}:${info.contextWindow === null ? "?" : EntrySemantic.#chunkBudget(info.contextWindow)}:${EntrySemantic.#chunkOverlap()}:wire=${EmbeddingVector.encoding}${tokenizerIdentity}`;
         const maxBytes = EntrySemantic.maxEmbedSize();
         return {
             mimetypes,

@@ -3,10 +3,13 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import path from "node:path";
+import { EmbeddingVector } from "@plurnk/plurnk-mimetypes";
 import { contextWindow, countTokens, dimension, dispose, embed, embedBatch, model } from "./index.js";
 
+const nodeEvalArgs = (source) => ["--conditions=plurnk-dev", "--input-type=module", "--eval", source];
+
 function toVector(bytes) {
-    return new Float32Array(bytes.buffer, bytes.byteOffset, bytes.byteLength / 4);
+    return EmbeddingVector.decode(bytes, dimension);
 }
 
 function l2Norm(v) {
@@ -126,7 +129,7 @@ describe("embedder duck surface", () => {
             + `const inList = (process.moduleLoadList || []).filter((m) => /protobuf/i.test(m)).length;\n`
             + `if (inCache || inList) { console.error("protobufjs loaded: cache=" + inCache + " list=" + inList); process.exit(3); }\n`;
         // Throws on non-zero exit (protobufjs detected) or timeout.
-        execFileSync(process.execPath, ["--input-type=module", "--eval", src], {
+        execFileSync(process.execPath, nodeEvalArgs(src), {
             timeout: 60000,
             stdio: "ignore",
         });
@@ -150,7 +153,7 @@ describe("embedder duck surface", () => {
             + `await embed("hello");\n`
             + `await dispose();\n`;
         // Throws on timeout (hang) or non-zero exit; returning = clean self-exit.
-        execFileSync(process.execPath, ["--input-type=module", "--eval", src], {
+        execFileSync(process.execPath, nodeEvalArgs(src), {
             timeout: 60000,
             stdio: "ignore",
         });
@@ -165,7 +168,7 @@ describe("embedder duck surface", () => {
         const indexPath = path.join(import.meta.dirname, "index.js");
         const src = `import { embed } from ${JSON.stringify(indexPath)};\n`
             + `await embed("hello");\n`; // no dispose() — must still exit
-        execFileSync(process.execPath, ["--input-type=module", "--eval", src], {
+        execFileSync(process.execPath, nodeEvalArgs(src), {
             timeout: 60000,
             stdio: "ignore",
         });
@@ -220,7 +223,7 @@ describe("embedder duck surface", () => {
         const indexPath = path.join(import.meta.dirname, "index.js");
         const src = `import { embedBatch } from ${JSON.stringify(indexPath)};\n`
             + `await embedBatch(["one", "two", "three"]);\n`;
-        execFileSync(process.execPath, ["--input-type=module", "--eval", src], {
+        execFileSync(process.execPath, nodeEvalArgs(src), {
             timeout: 60000,
             stdio: "ignore",
         });
@@ -248,7 +251,7 @@ describe("PLURNK_MIMETYPES_EMBED_WORKERS contract (embeddings#2: -1 = match core
         const env = { ...process.env };
         if (value === undefined) delete env.PLURNK_MIMETYPES_EMBED_WORKERS;
         else env.PLURNK_MIMETYPES_EMBED_WORKERS = value;
-        execFileSync(process.execPath, ["--input-type=module", "--eval", `import ${JSON.stringify(indexPath)};`], {
+        execFileSync(process.execPath, nodeEvalArgs(`import ${JSON.stringify(indexPath)};`), {
             env, timeout: 30000, stdio: "pipe",
         });
     };

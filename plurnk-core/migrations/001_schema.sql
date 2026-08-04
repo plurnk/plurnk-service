@@ -461,7 +461,7 @@ CREATE INDEX IF NOT EXISTS symbol_refs_source ON symbol_refs (derivation_id, con
 CREATE VIRTUAL TABLE IF NOT EXISTS derivation_fts USING fts5(content);
 
 -- derivation_embeddings (~semantic vector half — plurnk-service#186; Project
--- Semantics chunking). One Float32 vector per CHUNK: a derivation tiles into N chunks,
+-- Semantics chunking). One canonical wire vector ({§mimetype-embedding-wire}) per CHUNK: a derivation tiles into N chunks,
 -- each addressed by its <L> line range (line_start..line_end) and embedded
 -- separately, so a large body is fully searchable instead of truncated at the
 -- embedder's window. line_start/line_end are stored for Project Findings to expose;

@@ -4,6 +4,7 @@
 // every pending entry is fully derived exactly once, without a global tail barrier.
 import test from "node:test";
 import assert from "node:assert/strict";
+import { EmbeddingVector } from "@plurnk/plurnk-mimetypes";
 import SearchIndex from "../../src/schemes/_search-index.ts";
 import { openMigrated, insertWorkspace, insertWorker, seedEntryWithChannel, makeSchemeCtx, DEFAULT_MIMETYPES } from "./_helpers.ts";
 
@@ -64,7 +65,7 @@ test("a completed representative releases its duplicates while an unrelated repr
     let releaseSlow!: () => void;
     const slowGate = new Promise<void>((accept) => { releaseSlow = accept; });
     try {
-        const vector = new Uint8Array(new Float32Array([1, 0]).buffer);
+        const vector = EmbeddingVector.encode([1, 0]);
         const mimetypes = new Proxy(DEFAULT_MIMETYPES, {
             get(target, property, receiver) {
                 if (property === "embedderInfo") return async () => ({

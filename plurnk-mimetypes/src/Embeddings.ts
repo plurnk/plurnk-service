@@ -1,6 +1,7 @@
 import type BaseHandler from "./BaseHandler.ts";
 import type { HandlerLoader } from "./Mimetypes.ts";
 import { isExactModuleAbsent } from "./module-absence.ts";
+import EmbeddingVector from "./EmbeddingVector.ts";
 
 // Fixed embedding artifact seam, resolved lazily ({§mimetype-embedding}).
 const EMBEDDINGS_PACKAGE = "@plurnk/plurnk-mimetypes-embeddings";
@@ -18,7 +19,7 @@ export interface EmbedBatchOptions {
 
 // Internal artifact boundary; optional members represent declared capability.
 interface Embedder {
-    // Current vector representation ({§mimetype-embedding-wire}).
+    // Canonical vector representation ({§mimetype-embedding-wire}).
     embed(text: string): Promise<Uint8Array>;
     // Input-order bulk surface.
     embedBatch(texts: readonly string[], options?: EmbedBatchOptions): Promise<Uint8Array[]>;
@@ -88,8 +89,10 @@ export default class Embeddings {
             return { embedding: new Uint8Array(0) };
         }
         if (text === undefined || text.length === 0) return { embedding: new Uint8Array(0) };
+        const embedding: unknown = await embedder.embed(text);
+        EmbeddingVector.assert(embedding, embedder.dimension, `${EMBEDDINGS_PACKAGE}.embed()`);
         return {
-            embedding: await embedder.embed(text),
+            embedding,
             ...(typeof embedder.model === "string" && { embeddingModel: embedder.model }),
         };
     }
@@ -116,8 +119,8 @@ export default class Embeddings {
             if (typeof surface.embedBatch !== "function") {
                 throw new TypeError(`${EMBEDDINGS_PACKAGE} does not implement embedBatch()`);
             }
-            if (typeof surface.dimension !== "number") {
-                throw new TypeError(`${EMBEDDINGS_PACKAGE} does not declare a numeric dimension`);
+            if (!Number.isSafeInteger(surface.dimension) || (surface.dimension as number) < 1) {
+                throw new TypeError(`${EMBEDDINGS_PACKAGE} does not declare a positive safe-integer dimension`);
             }
             return surface as unknown as Embedder;
         })();
@@ -149,7 +152,23 @@ export default class Embeddings {
                 + `npm install ${EMBEDDINGS_PACKAGE} to enable it.`,
             );
         }
-        return embedder.embedBatch(texts, options);
+        const vectors: unknown = await embedder.embedBatch(texts, options);
+        if (!Array.isArray(vectors)) {
+            throw new TypeError(`${EMBEDDINGS_PACKAGE}.embedBatch() must return an array of vectors`);
+        }
+        if (vectors.length !== texts.length) {
+            throw new RangeError(
+                `${EMBEDDINGS_PACKAGE}.embedBatch() received ${texts.length} inputs but returned ${vectors.length} vectors`,
+            );
+        }
+        for (const [index, vector] of vectors.entries()) {
+            EmbeddingVector.assert(
+                vector,
+                embedder.dimension,
+                `${EMBEDDINGS_PACKAGE}.embedBatch() vector ${index}`,
+            );
+        }
+        return vectors;
     }
 
     // Idempotent cache teardown; later use resolves lazily again.

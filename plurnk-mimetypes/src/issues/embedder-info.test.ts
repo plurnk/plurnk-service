@@ -4,6 +4,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import Mimetypes from "../Mimetypes.ts";
 import BaseHandler from "../BaseHandler.ts";
+import EmbeddingVector from "../EmbeddingVector.ts";
 import type { Discovery, HandlerInfo, Registry } from "../types.ts";
 
 const EMB_PKG = "@plurnk/plurnk-mimetypes-embeddings";
@@ -32,10 +33,10 @@ const fullEmbedder = {
     model: "fake@1",
     contextWindow: 512,
     async embed(): Promise<Uint8Array> {
-        return new Uint8Array(new Float32Array(4).buffer);
+        return EmbeddingVector.encode([0, 0, 0, 0]);
     },
     async embedBatch(texts: readonly string[]): Promise<Uint8Array[]> {
-        return texts.map(() => new Uint8Array(new Float32Array(4).buffer));
+        return texts.map(() => EmbeddingVector.encode([0, 0, 0, 0]));
     },
     async countTokens(text: string): Promise<number> {
         return text.length;
@@ -47,10 +48,10 @@ const fullEmbedder = {
 const minimalEmbedder = {
     dimension: 4,
     async embed(): Promise<Uint8Array> {
-        return new Uint8Array(new Float32Array(4).buffer);
+        return EmbeddingVector.encode([0, 0, 0, 0]);
     },
     async embedBatch(texts: readonly string[]): Promise<Uint8Array[]> {
-        return texts.map(() => new Uint8Array(new Float32Array(4).buffer));
+        return texts.map(() => EmbeddingVector.encode([0, 0, 0, 0]));
     },
 };
 

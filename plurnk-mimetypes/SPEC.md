@@ -849,18 +849,29 @@ configured OpenAI-compatible endpoint without changing this seam.
 | `embedBatch(texts, ...)`   | Returns one vector per input in input order and honors progress/cancellation through the artifact.        | Throws.                                                                |
 | `embedderInfo()`           | Returns dimension plus optional model, context-window, and exact-counter facts; unknown facts are `null`. | Returns `null`.                                                        |
 
-An installed artifact must expose `embed()`, `embedBatch()`, and a numeric
-`dimension`; an incompatible surface fails hard rather than masquerading as an
-absent artifact. The framework owns artifact resolution, lifecycle, and result
-shape; the artifact owns model execution, model-space identity, dimension, and
-optional token-counting facts. Chunk planning, persistence, and re-derivation
-policy are consumer responsibilities.
+An installed artifact must expose `embed()`, `embedBatch()`, and a positive
+safe-integer `dimension`; an incompatible surface fails hard rather than
+masquerading as an absent artifact. The framework owns artifact resolution,
+lifecycle, and result shape; the artifact owns model execution, model-space
+identity, dimension, and optional token-counting facts. Chunk planning,
+persistence, and re-derivation policy are consumer responsibilities.
 
-§mimetype-embedding-wire A nonempty vector is currently a `Uint8Array` of raw
-native-endian `Float32` values, so its byte length is four times the artifact's
-declared dimension. `ProcessResult.embeddingModel`, when present, identifies the
-model space. Consumers preserve that identity with stored vectors and never
-compare vectors from different spaces.
+§mimetype-embedding-wire `EmbeddingVector` owns one portable vector wire:
+
+| Property       | Contract                                                                                      |
+|----------------|-----------------------------------------------------------------------------------------------|
+| Container      | `Uint8Array`.                                                                                 |
+| Elements       | Finite IEEE-754 binary32 values in little-endian byte order.                                  |
+| Extent         | Exactly four bytes for each element in the artifact's positive declared dimension.            |
+| Conversion     | Artifacts encode and consumers decode through `EmbeddingVector`; host-native views are local. |
+| Scalar / batch | `embed()` and every ordered `embedBatch()` result use the identical representation.          |
+
+The framework validates each artifact result and requires batch cardinality to
+equal input cardinality before vectors cross its public seam. Empty embedding
+bytes are a `ProcessResult` absence sentinel, never a zero-dimensional vector.
+`ProcessResult.embeddingModel`, when present, identifies the model space.
+Consumers preserve that identity with stored vectors and never compare vectors
+from different spaces.
 
 A missing tree-sitter grammar does not prevent embedding readable string input:
 the result may carry both `grammarMissing` and a real vector. Artifact

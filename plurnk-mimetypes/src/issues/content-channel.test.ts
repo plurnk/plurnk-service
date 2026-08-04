@@ -4,6 +4,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import Mimetypes from "../Mimetypes.ts";
 import BaseHandler from "../BaseHandler.ts";
+import EmbeddingVector from "../EmbeddingVector.ts";
 import type { Discovery, HandlerInfo, Registry } from "../types.ts";
 
 const EMB_PKG = "@plurnk/plurnk-mimetypes-embeddings";
@@ -14,7 +15,7 @@ const fakeEmbedder = {
     async embed(text: string): Promise<Uint8Array> {
         // Encode the embedded text's length + first char so a test can prove
         // WHICH text was embedded.
-        return new Uint8Array(new Float32Array([text.length, text.charCodeAt(0) || 0]).buffer);
+        return EmbeddingVector.encode([text.length, text.charCodeAt(0) || 0]);
     },
     async embedBatch(texts: readonly string[]): Promise<Uint8Array[]> {
         return Promise.all(texts.map((text) => fakeEmbedder.embed(text)));
@@ -120,7 +121,7 @@ describe("content channel — C4: embedding embeds the readable projection", () 
             { channels: ["embedding"] },
         );
         // content() = "# x" (len 3, first char '#'=35), NOT "<b>x</b>" (len 8).
-        const v = new Float32Array(r.embedding!.buffer, r.embedding!.byteOffset, 2);
+        const v = EmbeddingVector.decode(r.embedding!, fakeEmbedder.dimension);
         assert.equal(v[0], 3, "embedded the markdown projection length, not the markup");
         assert.equal(v[1], "#".charCodeAt(0));
     });
@@ -128,7 +129,7 @@ describe("content channel — C4: embedding embeds the readable projection", () 
     it("a plain handler (no content) still embeds its body via passthrough", async () => {
         const m = mk(BaseHandler, true);
         const r = await m.process({ path: "a.tst", content: "hello" }, { channels: ["embedding"] });
-        const v = new Float32Array(r.embedding!.buffer, r.embedding!.byteOffset, 2);
+        const v = EmbeddingVector.decode(r.embedding!, fakeEmbedder.dimension);
         assert.equal(v[0], 5, "embedded the raw body ('hello')");
     });
 });

@@ -110,7 +110,7 @@ export interface ProcessResult {
     references?: MimeRef[];
     // Derived readable text ({§mimetype-content}).
     content?: string;
-    // Opt-in vector in the current byte representation
+    // Opt-in vector in the canonical portable byte representation
     // ({§mimetype-embedding-wire}).
     embedding?: Uint8Array;
     // Missing artifact for a non-strict embedding degradation.

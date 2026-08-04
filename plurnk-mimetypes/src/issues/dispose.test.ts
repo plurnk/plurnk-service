@@ -4,6 +4,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import Mimetypes from "../Mimetypes.ts";
 import BaseHandler from "../BaseHandler.ts";
+import EmbeddingVector from "../EmbeddingVector.ts";
 import type { Discovery, HandlerInfo, Registry } from "../types.ts";
 
 const EMB_PKG = "@plurnk/plurnk-mimetypes-embeddings";
@@ -32,10 +33,10 @@ function makeEmbedder() {
         disposed: () => disposed,
         dimension: 2,
         async embed(): Promise<Uint8Array> {
-            return new Uint8Array(new Float32Array(2).buffer);
+            return EmbeddingVector.encode([0, 0]);
         },
         async embedBatch(texts: readonly string[]): Promise<Uint8Array[]> {
-            return texts.map(() => new Uint8Array(new Float32Array(2).buffer));
+            return texts.map(() => EmbeddingVector.encode([0, 0]));
         },
         async dispose(): Promise<void> {
             disposed += 1;

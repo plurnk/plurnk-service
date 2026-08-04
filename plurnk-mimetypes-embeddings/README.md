@@ -42,21 +42,24 @@ const result = await mimetypes.process(
     { content: "hello", hint: "text/plain" },
     { channels: ["embedding"] },
 );
-// result.embedding: Uint8Array, 1536 bytes — native-endian raw Float32 × 384,
-// mean-pooled, L2-normalized. Store verbatim as a BLOB; cosine-rank over a
-// Float32Array view. The same embed() serves entry bodies and query text.
+// result.embedding: Uint8Array, 1536 canonical float32-le bytes × 384,
+// mean-pooled and L2-normalized. Store verbatim as a BLOB. Decode through
+// EmbeddingVector from @plurnk/plurnk-mimetypes. The same embed() serves entry
+// bodies and query text.
 ```
 
 Direct surface, if you want it without the framework:
 
 ```js
+import { EmbeddingVector } from "@plurnk/plurnk-mimetypes";
 import { embed, dimension, model, contextWindow, countTokens } from "@plurnk/plurnk-mimetypes-embeddings";
 const bytes = await embed("database connection error"); // byteLength === 4 * dimension
+const values = EmbeddingVector.decode(bytes, dimension);
 ```
 
 ## Exports
 
-- `embed(text) → Promise<Uint8Array>` — a `4 × dimension`-byte vector, computed on the calling thread in local mode or by one endpoint request in remote mode. The framework's per-entry path.
+- `embed(text) → Promise<Uint8Array>` — a canonical little-endian binary32 `4 × dimension`-byte vector, computed on the calling thread in local mode or by one endpoint request in remote mode. The framework's per-entry path.
 - `embedBatch(texts, { onProgress, signal }) → Promise<Uint8Array[]>` — returns vectors **in input order**, each **bit-identical** to `embed()` of the same text. Local mode schedules a shared pool of single-threaded workers; remote mode sends one request containing the full input array. `onProgress({ completed, total })` reports completion and `signal` (`AbortSignal`) cancels in flight. The local pool is lazy, persistent, unref'd while idle, and torn down by `dispose()`.
 - `dimension` — `384` in local mode; probed from the configured endpoint in remote mode.
 - `model` — the vector-space identity: derived from the local pin and quantization, or from the remote model declaration and probed dimension. Store it next to each vector; vectors from different identities are silently incomparable.

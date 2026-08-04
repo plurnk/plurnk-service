@@ -3,7 +3,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
+import { EmbeddingVector, type Mimetypes } from "@plurnk/plurnk-mimetypes";
 import type { EditStatement, UrlPath } from "@plurnk/plurnk-contracts";
 import Worker from "../../src/schemes/Worker.ts";
 import SearchIndex from "../../src/schemes/_search-index.ts";
@@ -29,7 +29,7 @@ test("identical entries attach one complete semantic artifact and both remain ad
         const workspaceId = await insertWorkspace(db, `artifact-share-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
         let embeddedTexts = 0;
-        const vector = new Uint8Array(new Float32Array([1, 0]).buffer);
+        const vector = EmbeddingVector.encode([1, 0]);
         const mimetypes = {
             process: async (input: { content: string }) => ({ content: input.content, embedding: vector, embeddingModel: "stub@shared" }),
             embedBatch: async (texts: readonly string[]) => {
@@ -78,7 +78,7 @@ test("fallback tokenizer identity invalidates an otherwise identical semantic de
         let tokenizerId = "vocab-a";
         let tokenizerResolutions = 0;
         let embeddedTexts = 0;
-        const vector = new Uint8Array(new Float32Array([1, 0]).buffer);
+        const vector = EmbeddingVector.encode([1, 0]);
         const mimetypes = {
             process: async () => ({ symbols: [], references: [] }),
             embedBatch: async (texts: readonly string[]) => {

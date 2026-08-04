@@ -5,6 +5,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import Mimetypes from "../Mimetypes.ts";
 import BaseHandler from "../BaseHandler.ts";
+import EmbeddingVector from "../EmbeddingVector.ts";
 import type { Discovery, HandlerInfo, MimeSymbol, Registry } from "../types.ts";
 
 const EMB_PKG = "@plurnk/plurnk-mimetypes-embeddings";
@@ -15,8 +16,7 @@ const fakeEmbedderModule = {
     dimension: 4,
     model: "fake-model@abc123",
     async embed(text: string): Promise<Uint8Array> {
-        const v = new Float32Array([text.length, text.charCodeAt(0) || 0, 0.5, -1]);
-        return new Uint8Array(v.buffer);
+        return EmbeddingVector.encode([text.length, text.charCodeAt(0) || 0, 0.5, -1]);
     },
     async embedBatch(texts: readonly string[]): Promise<Uint8Array[]> {
         return Promise.all(texts.map((text) => fakeEmbedderModule.embed(text)));
@@ -111,7 +111,7 @@ describe("Issue #24 — C1: the embedding channel is request-only", () => {
 });
 
 describe("Issue #24 — C2: Float32 bytes, scalar per entry, arbitrary text", () => {
-    it("returns 4×dimension bytes readable as a Float32Array view", async () => {
+    it("returns 4×dimension bytes readable through the owned codec", async () => {
         const m = makeMimetypes({ withEmbedder: true });
         const r = await m.process(
             { path: "a.txt", content: "hello" },
@@ -119,7 +119,7 @@ describe("Issue #24 — C2: Float32 bytes, scalar per entry, arbitrary text", ()
         );
         assert.ok(r.embedding instanceof Uint8Array);
         assert.equal(r.embedding.length, 4 * fakeEmbedderModule.dimension);
-        const v = new Float32Array(r.embedding.buffer, r.embedding.byteOffset, 4);
+        const v = EmbeddingVector.decode(r.embedding, fakeEmbedderModule.dimension);
         assert.equal(v[0], 5, "embeds the entry text ('hello'.length)");
         assert.equal(v[3], -1);
     });
@@ -130,7 +130,7 @@ describe("Issue #24 — C2: Float32 bytes, scalar per entry, arbitrary text", ()
             { content: "find the auth retry logic", hint: "text/plain" },
             { channels: ["embedding"] },
         );
-        const v = new Float32Array(r.embedding!.buffer, r.embedding!.byteOffset, 4);
+        const v = EmbeddingVector.decode(r.embedding!, fakeEmbedderModule.dimension);
         assert.equal(v[0], "find the auth retry logic".length);
     });
 
@@ -202,7 +202,7 @@ describe("Issue #24 — C5: grammar-degrade still embeds", () => {
         assert.equal(r.ok, true);
         assert.equal(r.grammarMissing, "@plurnk/plurnk-mimetypes-grammar-fake");
         assert.deepEqual(r.symbols, []);
-        const v = new Float32Array(r.embedding!.buffer, r.embedding!.byteOffset, 4);
+        const v = EmbeddingVector.decode(r.embedding!, fakeEmbedderModule.dimension);
         assert.equal(v[0], "still searchable text".length);
     });
 });
