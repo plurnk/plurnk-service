@@ -93,12 +93,14 @@ test("budget headline carries a populated ceiling/usage/free ledger", async () =
         const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(200)] } }] });
         const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
         const row = await db.test_get_packet.get<{ packet: string }>({ id: result.turnId });
-        const budget = packetSection(JSON.parse(row!.packet), "budget");
+        const packet = JSON.parse(row!.packet) as { tokens: number };
+        const budget = packetSection(packet, "budget");
         const m = budget.match(/Token Ceiling (\d+) · Token Usage (\d+) \((?:<1|\d+)%\) · Tokens Free (\d+)/);
         assert.ok(m, `budget headline carries ceiling/usage/free; got: ${budget}`);
         assert.equal(budget.split("\n").length, 1, "the model-facing budget is one line");
         const ceiling = Number(m![1]); const usage = Number(m![2]); const free = Number(m![3]);
         assert.ok(usage > 0, "usage is populated, not zero or a leftover placeholder");
+        assert.equal(usage, packet.tokens, "displayed usage is the exact persisted request render-weight");
         assert.equal(usage + free, ceiling, "usage + free = ceiling (the accounting closes)");
     } finally { await db.close(); }
 });
