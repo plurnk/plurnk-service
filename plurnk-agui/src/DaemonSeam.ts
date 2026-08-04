@@ -15,7 +15,7 @@ export interface ProposalResolution {
 // Core's contracts-owned pending-proposal projection. Persistence never crosses
 // this seam; live delivery and reconnect expose the same domain shape.
 export type { ProposalProjection as PendingProposal } from "@plurnk/plurnk-contracts";
-import type { ProposalProjection } from "@plurnk/plurnk-contracts";
+import type { EntryReadResult, ProposalProjection } from "@plurnk/plurnk-contracts";
 
 // The grammar owns the protocol: the statement handed to dispatchAsClient IS
 // @plurnk/plurnk-contracts's PlurnkStatement (parsed at the module's edge). Type-only
@@ -76,8 +76,8 @@ export interface DaemonSeam {
     listMembers(workspaceId: number): Promise<{ members: Array<{ path: string; effect: string }>; hidden: string[] }>;
     // The pure READ projection after AG-UI has admitted and rewritten one LOOK. {§agui-op-look} {§op-look}
     look(args: { workspaceId: number; workerId: number; statement: PlurnkStatement }): Promise<{ status: number; [key: string]: unknown }>;
-    // Entry shape/channel read + worker branching.
-    readEntry(args: { workspaceId: number; target: string; channel?: string; offset?: number }): Promise<OperationResult & { entry: unknown }>;
+    // Contracts {§entry-read-result}: the thread worker supplies the reader perspective.
+    readEntry(args: { workspaceId: number; workerId: number; target: string; channel?: string; offset?: number }): Promise<EntryReadResult>;
     forkWorker(args: { workspaceId: number; workerId: number; name?: string }): Promise<{ workerId: number; workerName: string | null; parentWorkerId: number }>;
     // The third door (svc#366): a named, empty-log, model-origin root worker — a fresh
     // conversation over the same world. ensureModelWorker = the stable default,

@@ -39,7 +39,15 @@ const mockSeam = () => {
         unconstrain: async (_id, effect, glob) => ({ effect, glob }),
         listConstraints: async () => [{ effect: "pick", glob: "src/**" }],
         workspaceDerivationStatus: () => null,
-        readEntry: async () => ({ status: 200, entry: { body: "x" } }),
+        readEntry: async () => ({
+            status: 200,
+            entry: {
+                entryId: 1,
+                target: "worker:///x",
+                channels: {},
+                tags: [],
+            },
+        }),
         forkWorker: async () => ({ workerId: 11, workerName: "fork-1", parentWorkerId: 10 }),
         createConversationWorker: async (a) => ({ workerId: 77, workerName: a.name ?? "model-fresh" }),
         listMembers: async () => ({ members: [{ path: "a.ts", effect: "member" }], hidden: [] }),
@@ -163,6 +171,62 @@ test("a management-action AG-UI Run executes via the seam: result custom + RUN_F
         assert.equal(err.value.problem.retryable, false);
         assert.doesNotMatch(err.value.problem.detail, /seam surface/, "no internal jargon leaks to the client");
     } finally { await mod.close(); }
+});
+
+test("entry.read uses the thread worker and preserves the contracts-owned wire", async () => {
+    const { seam } = mockSeam();
+    const calls: Array<Parameters<DaemonSeam["readEntry"]>[0]> = [];
+    const entry = {
+        entryId: 42,
+        target: "worker://~/notes.md",
+        channels: {
+            body: {
+                content: "hello",
+                contentOffset: 0,
+                contentLength: 5,
+                mimetype: "text/markdown",
+                tokens: 3,
+                state: "static" as const,
+            },
+        },
+        tags: ["research"],
+    };
+    seam.readEntry = async (args) => {
+        calls.push(args);
+        return Validator.assertEntryReadResult({ status: 200, entry });
+    };
+    const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
+    try {
+        const events = await post(mod.address().port, {
+            threadId: "entry-wire-thread",
+            forwardedProps: {
+                plurnk: {
+                    workspace: "agui-t",
+                    action: {
+                        kind: "entry.read",
+                        target: "worker://~/notes.md",
+                        channel: "body",
+                        offset: 0,
+                    },
+                },
+            },
+        });
+        assert.deepEqual(calls, [{
+            workspaceId: 3,
+            workerId: 77,
+            target: "worker://~/notes.md",
+            channel: "body",
+            offset: 0,
+        }]);
+        const event = events.find((candidate) => candidate.type === "CUSTOM"
+            && (candidate as { name?: string }).name === "plurnk.action.result") as {
+            value?: { ok?: boolean; result?: unknown };
+        } | undefined;
+        assert.equal(event?.value?.ok, true);
+        assert.deepEqual(event?.value?.result, { status: 200, entry });
+    } finally {
+        await mod.close();
+    }
 });
 
 test("#131: structured op.exec dispatches one valid statement with unknown source position", async () => {

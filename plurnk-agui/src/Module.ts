@@ -738,12 +738,14 @@ export default class Module {
                             { field: "target", recovery: "Provide an entry URI." },
                         );
                     }
-                    return operationOutcome(await this.#seam.readEntry({
+                    const result = Validator.assertEntryReadResult(await this.#seam.readEntry({
                         workspaceId: env.workspaceId,
+                        workerId: conversationWorkerId ?? await this.#seam.ensureModelWorker(env.workspaceId),
                         target: p.target,
                         ...(Object.hasOwn(p, "channel") ? { channel: p.channel as string } : {}),
                         ...(Object.hasOwn(p, "offset") ? { offset: p.offset as number } : {}),
                     }));
+                    return operationOutcome(result);
                 }
                 case "op.exec": {
                     // EXEC constructed structurally (no DSL text): the model-facing shape,

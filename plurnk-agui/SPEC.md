@@ -25,7 +25,7 @@ recompute them.
   if it doesn't. The core workspace envelope carries only the workspace and selected client
   actor ({§methods-rebind}); AG-UI owns the separate per-thread conversation binding.
   World-scoped actions (`loop.inject`, `loop.cancel`, `log.read` default,
-  `run.fork`) operate on the THREAD's conversation, never blindly on the model worker.
+  `entry.read`, `run.fork`) operate on the THREAD's conversation, never blindly on the model worker.
   Extended context persists across AG-UI Runs because the worker's log does.
 - §agui-run-authority **AG-UI owns the client lifecycle** — `threadId`, `runId`,
   `RUN_STARTED`, `RUN_FINISHED`, `RUN_ERROR`, interrupt outcomes, and `RunAgentInput.resume`
@@ -186,7 +186,7 @@ successfully transported management Run; it does not turn the Run into
 | `workspace.unconstrain`  | Workspace | `effect`, `glob`                                     | `CoreSeam.unconstrain`.                                                                                            |
 | `workspace.constraints`  | Workspace | none                                                 | `CoreSeam.listConstraints`.                                                                                        |
 | `workspace.derivation`   | Workspace | none                                                 | `CoreSeam.workspaceDerivationStatus`.                                                                              |
-| `entry.read`             | Workspace | `target`, `channel?`, `offset?`                      | `CoreSeam.readEntry`.                                                                                              |
+| `entry.read`             | Workspace | `target`, `channel?`, `offset?`                      | Calls `CoreSeam.readEntry` with the thread's conversation worker and preserves validated {§entry-read-result}.     |
 | `op.exec`                | Workspace | `command`                                            | Constructs one EXEC statement and calls `CoreSeam.dispatchClientAction` on the client worker.                      |
 | `op.parse`               | Workspace | `text`                                               | Parses and projects PLURNK text under {§agui-op-parse}.                                                            |
 | `workspace.members`      | Workspace | none                                                 | `CoreSeam.listMembers`.                                                                                            |
