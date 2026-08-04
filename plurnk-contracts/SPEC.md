@@ -666,7 +666,40 @@ point. A producer supplies all four coordinates or omits the region. It never
 substitutes UTF-16 offsets, readable-row indices, or partial coordinates.
 `Validator.assertTextRegion` rejects an end before its start.
 
-### 13.2 Operation results
+### §entry-read-result 13.2 Client entry reads
+
+`EntryReadResult` is the exact transport-neutral projection of one entry. It
+does not expose workspace IDs, storage owner IDs, split scheme/pathname fields,
+scope, or other persistence columns.
+
+| Outcome | Exact shape                                                      |
+|---------|------------------------------------------------------------------|
+| Success | `{ status: 200, entry: ClientEntry }`                            |
+| Failure | `{ status: 400..599, problem: ProblemDetails, entry: null }`      |
+
+| `ClientEntry` field | Contract                                                                                     |
+|---------------------|----------------------------------------------------------------------------------------------|
+| `entryId`           | Positive durable entry identifier                                                            |
+| `target`            | Client selector for the resolved entry, with any channel fragment removed                    |
+| `channels`          | Every channel for a full read, or exactly the selected channel for a sliced read             |
+| `tags`              | Unique non-empty entry tags                                                                  |
+
+| Channel field   | Contract                                                                                                      |
+|-----------------|---------------------------------------------------------------------------------------------------------------|
+| `content`       | Full content, or the suffix beginning at `contentOffset`                                                      |
+| `contentOffset` | Actual Unicode-code-point offset of `content`; zero for a full read and capped at `contentLength`              |
+| `contentLength` | Unicode-code-point length of the complete stored channel                                                      |
+| `mimetype`      | Stored channel mimetype                                                                                        |
+| `tokens`        | Stored token count for the complete channel                                                                   |
+| `state`         | `static`, `active`, `closed`, or `errored`                                                                     |
+
+For every returned channel,
+`contentOffset + codePointLength(content) === contentLength`. Therefore an
+offset beyond the current end returns empty content at `contentLength`, not the
+unbounded requested offset. `Validator.assertEntryReadResult` enforces the
+schema, this suffix invariant, and Problem status equality.
+
+### 13.3 Operation results
 
 §operation-result Every public PLURNK operation returns one `OperationResult`:
 
@@ -680,7 +713,7 @@ fields and Problem Details extension members remain open. A malformed result is
 an internal producer contract violation; it is not converted into a second
 model-facing failure envelope.
 
-### 13.3 Problem Details
+### 13.4 Problem Details
 
 §problem-details `ProblemDetails` requires `type`, `title`, `status`, and `detail`;
 `instance` is optional until a durable host can attach the occurrence URI.
@@ -710,7 +743,7 @@ Internal invariant violations throw and preserve their cause. An external
 protocol may require its own error envelope; its adapter maps that envelope to
 or from the canonical Problem without creating another PLURNK failure contract.
 
-### 13.4 Notices
+### 13.5 Notices
 
 §notice A `Notice` is a transient, nonterminal observation. It cannot determine durable
 failure truth, lifecycle, scheduling, or recovery. Sharing a renderer with

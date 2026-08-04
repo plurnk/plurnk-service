@@ -85,6 +85,7 @@ import type { EditBatchResult, SchemeHandler } from "@plurnk/plurnk-schemes";
 export interface SchemeHandler {
     ready?(): Promise<void>;
     close?(): Promise<void>;
+    resolveEntryAddress?(target: ParsedPath, ctx: SchemeCtx): Promise<EntryAddress | null>;
     prepareFind?(statement: FindStatement, ctx: SchemeCtx): Promise<SchemeResult>;
     read?(statement: ReadStatement, ctx: SchemeCtx): Promise<SchemeResult>;
     find?(statement: FindStatement, ctx: SchemeCtx): Promise<SchemeResult>;
@@ -110,6 +111,24 @@ standard query through the same canonical entry identity used by
 `ctx.entries`: a URL authority remains part of that identity and cannot be
 dropped between preparation and lookup. A custom `find()` replaces the whole
 operation only where the scheme owns genuinely different candidate semantics.
+
+§entry-address-resolution `resolveEntryAddress?` gives a client observation the
+same address law as model-facing operations without creating a second CRUD
+protocol. It returns the canonical stored `pathname` and a semantic owner:
+
+| Return                                  | Meaning                                           |
+|-----------------------------------------|---------------------------------------------------|
+| `{ pathname, owner: "commons" }`        | Resolve in the shared workspace namespace        |
+| `{ pathname, owner: "worker" }`         | Resolve in the calling worker's namespace         |
+| `null`                                  | The selector names no client-visible entry        |
+| Hook absent                             | Use the standard pathname and `commons` ownership |
+
+The consumer supplies the observing worker through `SchemeCtx`, lowers the
+semantic owner to its private storage identity, and performs the read. A plugin
+never receives or returns database owner IDs. Schemes implement the hook only
+when their standard operation path has scheme-specific canonicalization or
+caller ownership; the hook must apply that same rule rather than inventing a
+client-only address vocabulary.
 
 A sibling does `export default class X implements SchemeHandler` (with `static manifest: SchemeManifest`) and gets compile-time signature checking. Every registered handler exposes either that static manifest or an instance `manifest` for dynamically derived identities; `Manifest.of` validates the complete resolved declaration and its registration name before the handler becomes dispatchable. The interface is the handler-delegable subset of grammar's operation union. `LOOK`/`BUFF` are client-facing operations, while OPEN/FOLD are core-owned log curation; none is dispatchable to a plugin scheme. **The statement + path types (`ReadStatement`, `SendStatement`, `UrlPath`, …) are re-exported from this barrel**, so a sibling depends on and peers (`^1`) ONLY `@plurnk/plurnk-schemes` — grammar rides underneath as the framework's transitive dep (§3).
 
@@ -208,7 +227,7 @@ effects shown to consumers; plugins do not invent a second effect envelope.
 - Executor-scheme (RFC schemes#20 - "an executor is a scheme"): `OutputScheme.manifestFromRuntime(decl)` derives a read-only-output `SchemeManifest` from an executor's `RuntimeDecl` (zero scheme-authoring); `DefaultRead.read(content, mimetype, statement, mimetypes)` -> `ReadResolution` is the free text-scope/matcher read over produced output (reuses `Slicer`/`Matcher`). A matcher selects the complete output resource before `<scope>` projects text; without a scope, READ returns the complete resource. Match evidence remains metadata for a model-chosen follow-up READ. `Summarize.summarize(content, mimetype)` -> `OrientIndex` is the structural-only EXEC-receipt index (no content - universal-receipt containment). A per-tag executor-scheme supplies its manifest via instance `get manifest()` (§2 `SchemeHandler.manifest?`).
 - Results: `SchemeResult` is the universal operation-result contract. Statuses below 400 carry no `problem`; statuses 400–599 require RFC 9457 `ProblemDetails`, and the legacy `error` member is forbidden. `EntryResult`, `ProposalResult`, and `PassthroughResult` are optional conventional shapes, not engine routing discriminators. Guards inspect those optional shapes; proposal routing itself is engine-owned and follows status plus operation semantics.
 - Standard FIND results may carry `omittedItems` and `maximumItems` when a selected catalog is too large to enumerate. `omittedItems` is the exact selected-resource count and `maximumItems` is the active materialization limit. These names cannot collide with the model-facing string `overflow` metadata used for truncated packet bodies.
-- Capability ctx (see §3.bis): `SchemeCtx` and its domain capabilities. Entry authors additionally receive `EntryOperationCaps`, semantic `EntryOwner`, and typed standard-operation results. `editBatch` receives every same-turn EDIT for one canonical resource and channel; it validates against one snapshot and commits one revision or none. There is no sequential single-EDIT fallback.
+- Capability ctx (see §3.bis): `SchemeCtx` and its domain capabilities. Entry authors additionally receive `EntryOperationCaps`, semantic `EntryOwner`/`EntryAddress`, and typed standard-operation results. `editBatch` receives every same-turn EDIT for one canonical resource and channel; it validates against one snapshot and commits one revision or none. There is no sequential single-EDIT fallback.
 
 Behavior ships as `export default class` (one class per file, static methods) — the ecosystem class paradigm. Type-only modules, the barrel, and the frozen `DEFAULT_LOOP_FLAGS` constant are the only non-class files.
 
