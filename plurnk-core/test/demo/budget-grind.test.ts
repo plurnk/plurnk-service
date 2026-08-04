@@ -8,6 +8,9 @@ import assert from "node:assert/strict";
 import { liveWorkspace, liveLoop, pinAliasBudget } from "../_live-harness.ts";
 import { measureFloor } from "./_floor-probe.ts";
 import { seedDemoFixture } from "./_fixture.ts";
+import PacketWire from "../../src/core/packet-wire.ts";
+import StoredPacket from "../../src/core/StoredPacket.ts";
+import { rulerCount } from "../../src/core/token-ruler.ts";
 
 const CEILING_FACTOR = 1.6;
 const REASONING_RESERVE = 1;
@@ -27,15 +30,19 @@ test("demo: complete a multi-source briefing under a tight prompt budget", async
         try {
             const { finalStatus, turnIds, lastContent } = await liveLoop(s, 2, { prompt: userPromptText }, { timeoutMs: 240_000 });
 
-            // #74 owns replacement of this section-sum proxy with production
-            // slot rendering, which includes separators and rounds each slot once.
             let peak = 0;
             for (const tid of turnIds) {
-                const row = await s.db.test_get_turn.get<{ packet: string }>({ id: tid });
-                const p = JSON.parse(row?.packet ?? "{}") as { sections?: Array<{ tokens?: number }> };
-                peak = Math.max(peak, (p.sections ?? []).reduce((n, sec) => n + (sec.tokens ?? 0), 0));
+                const row = await s.db.test_get_turn.get<{ packet: string | null }>({ id: tid });
+                const packet = StoredPacket.parse(row?.packet ?? null, `budget demo turn ${tid}`);
+                if (packet === null) throw new Error(`budget demo turn ${tid} has no model request`);
+                // {§tokenomics-render-weight-budget}: measure the delivered slots,
+                // including their separators and one rounding boundary per slot.
+                const delivered = rulerCount(PacketWire.renderSlot(packet.sections, "system"))
+                    + rulerCount(PacketWire.renderSlot(packet.sections, "user"));
+                assert.equal(delivered, packet.tokens, `turn ${tid} stores its exact delivered request weight`);
+                peak = Math.max(peak, delivered);
             }
-            console.error(`[budget-grind] floor=${floor} ceiling=${CEILING} turns=${turnIds.length} finalStatus=${finalStatus} peakTotal=${peak}`);
+            console.error(`[budget-grind] floor=${floor} ceiling=${CEILING} turns=${turnIds.length} finalStatus=${finalStatus} peakRequest=${peak}`);
 
             assert.equal(finalStatus, 200, "model completes the briefing under the communicated ceiling");
             assert.ok(peak <= CEILING, `delivered request peaked at ${peak}, above the communicated ceiling ${CEILING}`);
