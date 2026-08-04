@@ -7,7 +7,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { OperationFailureError } from "../../src/core/results.ts";
-import type { EditStatement } from "@plurnk/plurnk-contracts";
+import { InvalidLoopFlagsError, type EditStatement } from "@plurnk/plurnk-contracts";
 import Engine from "../../src/core/Engine.ts";
 import type { ProposalResolution } from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
@@ -15,9 +15,16 @@ import type { Db } from "../../src/core/Db.ts";
 import type { SchemeManifest } from "../../src/core/scheme-types.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn } from "./_helpers.ts";
 import { parseDsl } from "./_rpc.ts";
+import { sendStmt, urlPath } from "./_dsl.ts";
 
 // Minimal proposing scheme. `edit` returns 202 with attrs the test asserts on.
 class ProposingTest {
+    #beforePropose: (() => Promise<void>) | undefined;
+
+    constructor(beforePropose?: () => Promise<void>) {
+        this.#beforePropose = beforePropose;
+    }
+
     static manifest: SchemeManifest = {
         name: "proposing-test",
         channels: {},
@@ -29,11 +36,16 @@ class ProposingTest {
         modelVisible: true,
     };
     async editBatch(): Promise<{ status: number; attrs: object; body: string }> {
+        await this.#beforePropose?.();
         return {
             status: 202,
             body: "--- proposed-test\n+++ proposed-test\n@@ +x @@",
             attrs: { path: "/proposed-test", patch: "@@ +x @@" },
         };
+    }
+
+    async send(): Promise<{ status: number; attrs: object; body: string }> {
+        return this.editBatch();
     }
 }
 
@@ -45,11 +57,11 @@ const editStmt = (pathname: string, body: string): EditStatement => ({
     lineMarker: null, body, position: { line: 1, column: 1 },
 });
 
-const setupEngine = async (db: Db): Promise<{
+const setupEngine = async (db: Db, proposing: ProposingTest = new ProposingTest()): Promise<{
     engine: Engine; workspaceId: number; workerId: number; loopId: number; turnId: number;
 }> => {
     const schemes = new SchemeRegistry();
-    schemes.register("proposing-test", new ProposingTest());
+    schemes.register("proposing-test", proposing);
     const engine = new Engine({ db, schemes });
     const workspaceId = await insertWorkspace(db, `prop-${crypto.randomUUID()}`);
     const workerId = await insertWorker(db, workspaceId);
@@ -346,15 +358,18 @@ test("proposal: an observational failure is visible and cannot derail loop-owned
 test("proposal: a policy-preparation failure preserves its cause and terminalizes the durable row", async () => {
     const db = await openMigrated();
     try {
-        const ctx = await setupEngine(db);
-        await db.engine_set_loop_flags.run({
-            loop_id: ctx.loopId,
-            flags: JSON.stringify({ auto: "yes" }),
-        });
+        let loopId = 0;
+        const ctx = await setupEngine(db, new ProposingTest(async () => {
+            await db.engine_set_loop_flags.run({
+                loop_id: loopId,
+                flags: JSON.stringify({ auto: "yes" }),
+            });
+        }));
+        loopId = ctx.loopId;
         let logEntryId: number | undefined;
         await assert.rejects(
             ctx.engine.dispatch({
-                statement: editStmt("/x", "y"),
+                statement: sendStmt(200, urlPath("proposing-test", "/x"), "y"),
                 workspaceId: ctx.workspaceId,
                 workerId: ctx.workerId,
                 loopId: ctx.loopId,
@@ -363,7 +378,12 @@ test("proposal: a policy-preparation failure preserves its cause and terminalize
                 origin: "model",
                 onDispatch: (id) => { logEntryId = id; },
             }),
-            /non-boolean persisted loop flag "auto"/,
+            (error: unknown) => {
+                assert.ok(error instanceof Error);
+                assert.equal(error.message, `Loop ${ctx.loopId} has invalid persisted flags.`);
+                assert.ok(error.cause instanceof InvalidLoopFlagsError);
+                return true;
+            },
         );
         assert.notEqual(logEntryId, undefined);
         assert.deepEqual(ctx.engine.pendingProposalIds(), []);
