@@ -255,5 +255,42 @@ test("EntrySemantic.prepareEmbeddings preserves one fallback tokenizer resolutio
     assert.equal(resolutions, 1);
     assert.equal(plan.tokenizer, resolution, "identity, exactness, and degradation evidence stay together");
     assert.equal(plan.countTokens, resolution.countTokens, "chunking consumes the counter from that same resolution");
-    assert.match(plan.signature, /tokenizer=heuristic:chars2/, "the selected counter identity enters the derivation key");
+    assert.match(plan.signature, /tokenizer=heuristic:chars2:estimate/, "counter identity and exactness enter the derivation key");
+});
+
+test("EntrySemantic.deriveEmbeddings refuses degraded counters before embedding arbitrary content (#95)", async () => {
+    let embedCalls = 0;
+    const remote = {
+        embedderInfo: async () => ({
+            dimension: 3,
+            contextWindow: 8,
+            countTokens: null,
+            model: "remote:unmatched-embedding-model@d3",
+        }),
+        tokenizer: async () => ({
+            countTokens: async (text: string) => Math.ceil(text.length / 2),
+            tokenizerId: "heuristic:chars2",
+            exact: false,
+            notices: [{
+                source: "tokenizer",
+                kind: "tokenizer_unavailable",
+                level: "warn",
+                message: "no exact tokenizer",
+                position: null,
+            }],
+        }),
+        embedBatch: async () => {
+            embedCalls++;
+            return [];
+        },
+    } as unknown as Mimetypes;
+    const plan = await EntrySemantic.prepareEmbeddings(remote);
+
+    for (const specimen of ["漢字🙂".repeat(8), JSON.stringify({ compact: ["punctuation", 1, true, null] })]) {
+        await assert.rejects(
+            EntrySemantic.deriveEmbeddings(plan, specimen, [], undefined, undefined),
+            /exact token counter.*remote:unmatched-embedding-model@d3/i,
+        );
+    }
+    assert.equal(embedCalls, 0, "no content reaches the remote embedder under an estimated admission count");
 });

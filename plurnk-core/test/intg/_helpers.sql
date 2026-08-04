@@ -361,6 +361,11 @@ SELECT e.deep_hash,
 FROM entries e
 WHERE e.workspace_id = $workspace_id AND e.pathname = '/interrupted.md';
 
+-- PREP: test_derivation_state_counts
+SELECT count(*) FILTER (WHERE state = 'building') AS building,
+       count(*) FILTER (WHERE state = 'complete') AS complete
+FROM derivations;
+
 -- PREP: test_entries_by_pathname
 SELECT id, scheme, pathname FROM entries WHERE pathname = $pathname;
 

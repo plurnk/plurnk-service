@@ -131,3 +131,72 @@ test("fallback tokenizer identity invalidates an otherwise identical semantic de
         await db.close();
     }
 });
+
+test("an unmatched fallback tokenizer fails semantic maintenance before derivation or embedding (#95)", async () => {
+    const db = await openMigrated();
+    try {
+        const workspaceId = await insertWorkspace(db, `tokenizer-refusal-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        let processCalls = 0;
+        let embedCalls = 0;
+        const tokenizerNotice = {
+            source: "tokenizer",
+            kind: "tokenizer_unavailable",
+            level: "warn",
+            message: "No exact tokenizer for the remote embedding model.",
+            position: null,
+        } as const;
+        const mimetypes = {
+            process: async () => {
+                processCalls++;
+                return { symbols: [], references: [] };
+            },
+            embedBatch: async () => {
+                embedCalls++;
+                return [];
+            },
+            embedderInfo: () => ({
+                dimension: 2,
+                contextWindow: 8,
+                countTokens: null,
+                model: "remote:unmatched-embedding-model@d2",
+            }),
+            tokenizer: async () => ({
+                countTokens: async (text: string) => Math.ceil(text.length / 2),
+                tokenizerId: "heuristic:chars2",
+                exact: false,
+                notices: [tokenizerNotice],
+            }),
+        } as unknown as Mimetypes;
+        const notices: unknown[] = [];
+
+        await new Worker().edit(edit("unicode.json", JSON.stringify({ specimen: "漢字🙂".repeat(8) })), makeSchemeCtx({ db, workspaceId, workerId }));
+        await assert.rejects(
+            SearchIndex.maintain(makeSchemeCtx({
+                db,
+                workspaceId,
+                workerId,
+                mimetypes,
+                pushNotice: (notice) => notices.push(notice),
+            })),
+            /exact token counter.*remote:unmatched-embedding-model@d2/i,
+        );
+
+        assert.deepEqual(notices, [tokenizerNotice], "the original structured degradation evidence is forwarded once");
+        assert.equal(processCalls, 0, "the pass rejects the global capability gap before resource processing");
+        assert.equal(embedCalls, 0, "no content reaches the remote embedder");
+        const rows = await db.test_entries_with_hash_by_scheme_prefix.all<{ deep_hash: string | null }>({
+            workspace_id: workspaceId,
+            scheme: "worker",
+            prefix: "/unicode.json",
+        });
+        assert.equal(rows[0]?.deep_hash, null, "the entry remains unattached");
+        assert.deepEqual(
+            await db.test_derivation_state_counts.get<{ building: number; complete: number }>({}),
+            { building: 0, complete: 0 },
+            "preflight refusal leaves no partial derivation artifact",
+        );
+    } finally {
+        await db.close();
+    }
+});
