@@ -185,7 +185,13 @@ export default class ProposalLifecycle {
 
     async list(workspaceId: number): Promise<ProposalProjection[]> {
         const rows = await this.#db.proposal_list_pending.all<ProposalRow>({ workspace_id: workspaceId });
-        const projected = await Promise.all(rows.map((row) => this.#project(row)));
+        // {§proposal-list} — the durable row carries review material, while
+        // #pending carries this process's callable resolution owner. Discovery
+        // exposes only their intersection; persistence alone cannot fabricate
+        // a resolvable stopped world.
+        const projected = await Promise.all(
+            rows.filter((row) => this.#pending.has(row.logEntryId)).map((row) => this.#project(row)),
+        );
         return projected.map(({ workspaceId: _workspaceId, ...proposal }) => proposal);
     }
 

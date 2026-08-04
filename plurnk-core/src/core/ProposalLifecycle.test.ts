@@ -9,21 +9,23 @@ import type ExecutorRegistry from "./ExecutorRegistry.ts";
 import type NoticeChannel from "./NoticeChannel.ts";
 import LiveSubscriptions from "./LiveSubscriptions.ts";
 
+const lifecycleWithDb = (db: Db): ProposalLifecycle => new ProposalLifecycle({
+    db,
+    schemes: new SchemeRegistry(),
+    notices: { push() {} } as unknown as NoticeChannel,
+    tokenize: (text) => text.length,
+    executors: () => undefined,
+    loopSignal: () => undefined,
+    liveSubscriptions: new LiveSubscriptions(),
+});
+
 test("proposal timeout rejects every explicit non-positive or non-finite value at its owner", (t) => {
     const prior = process.env.PLURNK_SERVICE_PROPOSAL_TIMEOUT_MS;
     t.after(() => {
         if (prior === undefined) delete process.env.PLURNK_SERVICE_PROPOSAL_TIMEOUT_MS;
         else process.env.PLURNK_SERVICE_PROPOSAL_TIMEOUT_MS = prior;
     });
-    const lifecycle = new ProposalLifecycle({
-        db: {} as Db,
-        schemes: new SchemeRegistry(),
-        notices: { push() {} } as unknown as NoticeChannel,
-        tokenize: (text) => text.length,
-        executors: () => undefined,
-        loopSignal: () => undefined,
-        liveSubscriptions: new LiveSubscriptions(),
-    });
+    const lifecycle = lifecycleWithDb({} as Db);
 
     for (const raw of ["invalid", "0", "-1", "Infinity", "NaN", " "]) {
         process.env.PLURNK_SERVICE_PROPOSAL_TIMEOUT_MS = raw;
@@ -38,6 +40,45 @@ test("proposal timeout rejects every explicit non-positive or non-finite value a
                 return true;
             },
         );
+    }
+});
+
+test("pending projection rejects malformed durable review material at its owner", async () => {
+    const base = {
+        logEntryId: 7,
+        workspaceId: 11,
+        workerId: 12,
+        loopId: 13,
+        turnId: 14,
+        op: "EDIT",
+        signal: null,
+        scheme: "worker",
+        pathname: "/x",
+        rx: JSON.stringify({ status: 202 }),
+        attrs: "{}",
+        loop_flags: "{}",
+    };
+    const cases = [
+        {
+            row: { ...base, attrs: "[]" },
+            error: /Pending proposal 7 has invalid attrs JSON/,
+        },
+        {
+            row: { ...base, loop_flags: JSON.stringify({ auto: "yes" }) },
+            error: /Pending proposal 7 has non-boolean persisted loop flag "auto"/,
+        },
+        {
+            row: { ...base, op: "SEND", signal: JSON.stringify(300), scheme: null, pathname: null },
+            error: /Pending SEND\[300\] proposal 7 has no question/,
+        },
+    ];
+
+    for (const { row, error } of cases) {
+        const db = {
+            proposal_get_pending: { get: async () => row },
+            engine_target_diverged_this_turn: { get: async () => undefined },
+        } as unknown as Db;
+        await assert.rejects(lifecycleWithDb(db).pending(7), error);
     }
 });
 
@@ -127,15 +168,7 @@ test("applyResolution preserves an accepted scheme's failed result and durable o
             },
         },
     } as unknown as Db;
-    const lifecycle = new ProposalLifecycle({
-        db,
-        schemes: new SchemeRegistry(),
-        notices: { push() {} } as unknown as NoticeChannel,
-        tokenize: (text) => text.length,
-        executors: () => undefined,
-        loopSignal: () => undefined,
-        liveSubscriptions: new LiveSubscriptions(),
-    });
+    const lifecycle = lifecycleWithDb(db);
     const applied = Results.failure(
         "scheme:file",
         "write-conflict",
@@ -164,15 +197,7 @@ test("applyResolution preserves an accepted scheme's failed result and durable o
 });
 
 test("applyResolution rejects projected fields that could override the operation result contract", async () => {
-    const lifecycle = new ProposalLifecycle({
-        db: {} as Db,
-        schemes: new SchemeRegistry(),
-        notices: { push() {} } as unknown as NoticeChannel,
-        tokenize: (text) => text.length,
-        executors: () => undefined,
-        loopSignal: () => undefined,
-        liveSubscriptions: new LiveSubscriptions(),
-    });
+    const lifecycle = lifecycleWithDb({} as Db);
 
     await assert.rejects(
         lifecycle.applyResolution(41, {

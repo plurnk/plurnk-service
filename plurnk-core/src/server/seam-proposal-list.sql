@@ -1,7 +1,7 @@
 -- PREP: proposal_list_pending
--- {§proposal-list} — durable facts for every stopped-world proposal in a workspace.
--- ProposalLifecycle owns their validated client projection; neither Daemon nor an
--- interface module reconstructs a proposal from this persistence shape.
+-- {§proposal-list} — durable candidates in a workspace. ProposalLifecycle intersects
+-- them with its live resolution owners before projecting a stopped world; neither
+-- Daemon nor an interface module reconstructs authority from this persistence shape.
 SELECT le.id AS logEntryId, r.workspace_id AS workspaceId,
     le.worker_id AS workerId, le.loop_id AS loopId, le.turn_id AS turnId,
     le.op, le.signal, le.scheme, le.pathname, le.rx, le.attrs, l.flags AS loop_flags

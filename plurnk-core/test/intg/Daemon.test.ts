@@ -459,14 +459,13 @@ test("the client-interface seam — subscribeToEvents delivers workspace-scoped 
     });
 });
 
-test("the client-interface seam — pendingProposals reads a workspace's stopped-world; resolveProposal delegates the decision (#355)", async () => {
+test("the client-interface seam does not manufacture a resolver from an ownerless durable row", async () => {
     await withDaemon(null, async (db, daemon, _addr) => {
         const workspaceId = await insertWorkspace(db, `prop-seam-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1, "p");
         const turnId = await insertTurn(db, loopId, 1, 102);
-        // A stopped-world proposal (state='proposed') the module would render as a TOOL_CALL.
-        await db.engine_insert_log_entry.get({
+        const row = await db.engine_insert_log_entry.get<{ id: number }>({
             worker_id: workerId, loop_id: loopId, turn_id: turnId, sequence: 1,
             origin: "model", source: null, op: "EDIT", suffix: "", signal: null,
             scheme: "worker", username: null, password: null, hostname: null, port: null,
@@ -475,89 +474,13 @@ test("the client-interface seam — pendingProposals reads a workspace's stopped
             rx: JSON.stringify({ status: 202 }), mimetype_rx: "application/json",
             status_rx: 202, tokens: 0, state: "proposed", outcome: null, attrs: "{}",
         });
+        assert.ok(row !== undefined);
         const pending = await daemon.pendingProposals(workspaceId);
-        assert.equal(pending.length, 1, "the seam reads the workspace's stopped-world proposal");
-        assert.equal(pending[0].op, "EDIT");
-        assert.equal(pending[0].loopId, loopId);
-        // resolveProposal delegates to Engine.resolveProposal — an unknown id throws (no registered waiter),
-        // proving the seam routes into the engine's proposal machinery, not a shadow implementation.
-        const problem = await rejectedProblem(() => daemon.resolveProposal(999999, { decision: "accept" }));
+        assert.deepEqual(pending, [], "persistence without this process's lifecycle owner is not a stopped world");
+        const problem = await rejectedProblem(() => daemon.resolveProposal(row.id, { decision: "accept" }));
         assert.equal(problem.type, "https://problems.plurnk.dev/proposal/resolution/proposal-not-pending");
         assert.equal(problem.status, 409);
-        assert.equal(problem.logEntryId, 999999);
-    });
-});
-
-test("the proposal seam rejects malformed durable projection fields at core", async () => {
-    await withDaemon(null, async (db, daemon, _addr) => {
-        const workspaceId = await insertWorkspace(db, `prop-invalid-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1, "p");
-        const turnId = await insertTurn(db, loopId, 1, 102);
-        await db.engine_insert_log_entry.get({
-            worker_id: workerId, loop_id: loopId, turn_id: turnId, sequence: 1,
-            origin: "model", source: null, op: "EDIT", suffix: "", signal: null,
-            scheme: "worker", username: null, password: null, hostname: null, port: null,
-            pathname: "/x", query: null, fragment: null, lineMarker: null,
-            tx: "{}", mimetype_tx: "application/json",
-            rx: JSON.stringify({ status: 202 }), mimetype_rx: "application/json",
-            status_rx: 202, tokens: 0, state: "proposed", outcome: null, attrs: "[]",
-        });
-
-        await assert.rejects(
-            daemon.pendingProposals(workspaceId),
-            /Pending proposal \d+ has invalid attrs JSON/,
-        );
-    });
-});
-
-test("the proposal seam rejects malformed persisted loop policy instead of changing authority", async () => {
-    await withDaemon(null, async (db, daemon, _addr) => {
-        const workspaceId = await insertWorkspace(db, `prop-flags-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1, "p");
-        await db.engine_set_loop_flags.run({
-            loop_id: loopId,
-            flags: JSON.stringify({ auto: "yes" }),
-        });
-        const turnId = await insertTurn(db, loopId, 1, 102);
-        await db.engine_insert_log_entry.get({
-            worker_id: workerId, loop_id: loopId, turn_id: turnId, sequence: 1,
-            origin: "model", source: null, op: "EDIT", suffix: "", signal: null,
-            scheme: "worker", username: null, password: null, hostname: null, port: null,
-            pathname: "/x", query: null, fragment: null, lineMarker: null,
-            tx: "{}", mimetype_tx: "application/json",
-            rx: JSON.stringify({ status: 202 }), mimetype_rx: "application/json",
-            status_rx: 202, tokens: 0, state: "proposed", outcome: null, attrs: "{}",
-        });
-
-        await assert.rejects(
-            daemon.pendingProposals(workspaceId),
-            /non-boolean persisted loop flag "auto"/,
-        );
-    });
-});
-
-test("the proposal seam derives operator-question authority from SEND[300], not attrs alone", async () => {
-    await withDaemon(null, async (db, daemon, _addr) => {
-        const workspaceId = await insertWorkspace(db, `prop-question-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1, "p");
-        const turnId = await insertTurn(db, loopId, 1, 102);
-        await db.engine_insert_log_entry.get({
-            worker_id: workerId, loop_id: loopId, turn_id: turnId, sequence: 1,
-            origin: "model", source: null, op: "SEND", suffix: "", signal: JSON.stringify(300),
-            scheme: null, username: null, password: null, hostname: null, port: null,
-            pathname: null, query: null, fragment: null, lineMarker: null,
-            tx: "{}", mimetype_tx: "application/json",
-            rx: JSON.stringify({ status: 202 }), mimetype_rx: "application/json",
-            status_rx: 202, tokens: 0, state: "proposed", outcome: null, attrs: "{}",
-        });
-
-        await assert.rejects(
-            daemon.pendingProposals(workspaceId),
-            /Pending SEND\[300\] proposal \d+ has no question/,
-        );
+        assert.equal(problem.logEntryId, row.id);
     });
 });
 

@@ -63,6 +63,48 @@ test("effect-gating: sqlite :memory: (pure) auto-runs ungated — no proposal, n
     } finally { await db.close(); }
 });
 
+test("effect-gating: a pure EXEC being applied is never discoverable as a client proposal", async () => {
+    const { db, engine, exec, workspaceId, workerId, loopId, turnId } = await wire();
+    const applyEntered = deferred<void>();
+    const releaseApply = deferred<void>();
+    const originalApply = exec.applyResolution.bind(exec);
+    exec.applyResolution = async (args, ctx) => {
+        applyEntered.resolve();
+        await releaseApply.promise;
+        return originalApply(args, ctx);
+    };
+    const idDeferred = deferred<number>();
+    const dispatched = engine.dispatch({
+        statement: execStmt("sqlite", null, "SELECT 1 AS n;"),
+        workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
+        onDispatch: (id) => idDeferred.resolve(id),
+    });
+    try {
+        const logEntryId = await idDeferred.promise;
+        await applyEntered.promise;
+
+        assert.deepEqual(engine.pendingProposalIds(), [], "effect-auto execution has no resolution waiter");
+        assert.deepEqual(
+            await engine.pendingProposals(workspaceId),
+            [],
+            "reconnect discovery cannot advertise an operation the public resolution seam does not own",
+        );
+
+        releaseApply.resolve();
+        const result = await dispatched;
+        assert.equal(result.status, 200);
+        const row = await db.test_get_log_entry_by_id.get<{ state: string; status_rx: number; attrs: string }>({ id: logEntryId });
+        assert.equal(row?.state, "resolved");
+        assert.equal(row?.status_rx, 200);
+        assert.equal((JSON.parse(row?.attrs ?? "{}") as { effect?: unknown }).effect, "pure");
+    } finally {
+        releaseApply.resolve();
+        await dispatched.catch(() => undefined);
+        await exec.idle();
+        await db.close();
+    }
+});
+
 // Regression for #216 (execs-sqlite 0.1.4). In a WORKSPACE workspace the service
 // defaults the exec cwd to project_root, and sqlite uses cwd as its db path — a
 // DIRECTORY there used to 500 the open. The test above runs headless (cwd=null →
