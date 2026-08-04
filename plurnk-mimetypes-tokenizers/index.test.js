@@ -62,6 +62,11 @@ describe("routing precedence and honesty", () => {
         assert.equal(await resolve("claude-fable-5"), null);
         assert.equal(await resolve("roberta-base"), null, "roberta is not bert");
     });
+    it("family-looking future generations and custom labels are not exact vocabulary claims (#173)", async () => {
+        for (const ref of ["llama-5", "gemma-4-26b", "deepseek-v4-pro", "mistral-custom"]) {
+            assert.equal(await resolve(ref), null, `${ref} has no exact pinned mapping`);
+        }
+    });
     it("a non-string / empty ref is a contract violation", async () => {
         await assert.rejects(() => resolve(""), TypeError);
         await assert.rejects(() => resolve(undefined), TypeError);
