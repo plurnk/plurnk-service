@@ -767,7 +767,7 @@ invalid range, read-only authority, and occupied hidden state without guessing.
 
 ### §scheme-manifest Manifest
 
-§scheme-manifest-manifest Per author contract. Each scheme declares a `static manifest: SchemeManifest` with `name`, `channels`, `defaultChannel`, `category`, `scope`, `writableBy`, `volatile`, `modelVisible`, optional `flags`. Identity match enforced at plugin load: `manifest.name` must equal `package.json#plurnk.name`.
+§scheme-manifest-manifest Per the framework-owned author contract ({§manifest}), each registered scheme exposes one closed `SchemeManifest`. `Manifest.of` validates the complete declaration and enforces that `manifest.name` matches `package.json#plurnk.name` before registration.
 
 ### §crud CRUD primitives
 
