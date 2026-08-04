@@ -65,6 +65,7 @@ const values = EmbeddingVector.decode(bytes, dimension);
 - `model` — the vector-space identity: derived from the local pin and quantization, or from the remote model declaration and probed dimension. Store it next to each vector; vectors from different identities are silently incomparable.
 - `contextWindow` — `512` in local mode; operator-declared or absent in remote mode.
 - `countTokens(text) → Promise<number>` — local-mode token count in the model's **own** tokenizer, special tokens (CLS/SEP) included, **untruncated**. Local counts use the same host-adaptive worker pool as `embedBatch`, so exact chunk planning scales across cores instead of blocking the daemon thread. The export is absent in remote mode because an OpenAI-compatible embedding endpoint does not expose its tokenizer. The local losslessness primitive is `countTokens(chunk) <= contextWindow`; a char/word proxy cannot make that guarantee.
+- `dispose() → Promise<void>` — releases the local runtime and every worker, attempting all teardown paths and aggregating their failures. Concurrent calls join one attempt; later use resolves a fresh generation. Remote mode is a no-op.
 
 In local mode, input beyond the 512-token window is truncated by `embed()`;
 `contextWindow` + `countTokens` let a caller (e.g. plurnk-service's chunker)

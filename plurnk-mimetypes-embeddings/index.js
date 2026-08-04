@@ -166,6 +166,7 @@ if (REMOTE) {
 }
 
 let runtimePromise = null;
+let disposePromise = null;
 function runtime() {
     runtimePromise ??= loadRuntime();
     return runtimePromise;
@@ -203,16 +204,49 @@ function pool() {
         // execArgv: [] — don't inherit the parent's entry-point flags (--eval,
         // --input-type, --test, --watch); they don't apply to a file-based worker
         // and ERR_INPUT_TYPE_NOT_ALLOWED if --input-type leaks through.
-        const workers = Array.from({ length: WORKERS }, () => new Worker(url, { execArgv: [] }));
-        await Promise.all(workers.map((w) => new Promise((resolve, reject) => {
-            const ready = (m) => {
-                w.off("error", reject);
-                if (m?.ready) resolve();
-                else reject(new Error(`embed worker failed to load: ${m?.error ?? "unknown"}`));
-            };
-            w.once("message", ready);
-            w.once("error", reject);
-        })));
+        const workers = [];
+        try {
+            for (let index = 0; index < WORKERS; index += 1) {
+                workers.push(new Worker(url, { execArgv: [] }));
+            }
+        } catch (cause) {
+            const errors = await workerTerminationErrors(workers);
+            if (errors.length > 0) {
+                throw new AggregateError([cause, ...errors], "embed worker pool construction cleanup failed");
+            }
+            throw cause;
+        }
+        const readiness = workers.map((worker) => {
+            let cleanup = () => {};
+            const promise = new Promise((resolve, reject) => {
+                const ready = (message) => {
+                    cleanup();
+                    if (message?.ready) resolve();
+                    else reject(new Error(`embed worker failed to load: ${message?.error ?? "unknown"}`));
+                };
+                const failed = (error) => {
+                    cleanup();
+                    reject(error);
+                };
+                cleanup = () => {
+                    worker.off("message", ready);
+                    worker.off("error", failed);
+                };
+                worker.once("message", ready);
+                worker.once("error", failed);
+            });
+            return { cleanup, promise };
+        });
+        try {
+            await Promise.all(readiness.map(({ promise }) => promise));
+        } catch (cause) {
+            for (const { cleanup } of readiness) cleanup();
+            const errors = await workerTerminationErrors(workers);
+            if (errors.length > 0) {
+                throw new AggregateError([cause, ...errors], "embed worker pool startup cleanup failed");
+            }
+            throw cause;
+        }
         const state = { workers, queue: [], active: new Map() };
         for (const worker of workers) {
             worker.on("message", (message) => {
@@ -318,29 +352,62 @@ export async function embedBatch(texts, { onProgress, signal } = {}) {
     return results;
 }
 
+async function disposePool(state) {
+    const error = new Error("embedder disposed");
+    for (const job of [...state.queue, ...state.active.values()]) {
+        if (!job.settled) {
+            job.settled = true;
+            job.cleanup();
+            job.reject(error);
+        }
+    }
+    state.queue.length = 0;
+    state.active.clear();
+    const errors = await workerTerminationErrors(state.workers);
+    if (errors.length > 0) throw new AggregateError(errors, "embed worker pool shutdown failed");
+}
+
+async function workerTerminationErrors(workers) {
+    const results = await Promise.allSettled(
+        workers.map((worker) => Promise.resolve().then(() => worker.terminate())),
+    );
+    return rejectedReasons(results);
+}
+
+function rejectedReasons(results) {
+    return results
+        .filter((result) => result.status === "rejected")
+        .flatMap((result) => result.reason instanceof AggregateError
+            ? [...result.reason.errors]
+            : [result.reason]);
+}
+
 // Release the WASM session and tear down the worker pool so the process exits.
-// Idempotent; embed()/embedBatch() re-lazy-init afterward. Remote mode holds no
-// native state — nothing to release.
+// Concurrent calls join one attempt; later use re-lazy-inits a new generation.
+// Remote mode holds no native state — nothing to release.
 export async function dispose() {
-    if (runtimePromise) {
-        const pending = runtimePromise;
-        runtimePromise = null;
-        try { await releaseRuntime(await pending); } catch { /* never loaded */ }
+    if (disposePromise !== null) return disposePromise;
+    const disposal = disposeResources();
+    disposePromise = disposal;
+    try {
+        await disposal;
+    } finally {
+        if (disposePromise === disposal) disposePromise = null;
     }
-    if (poolPromise) {
-        const pending = poolPromise;
-        poolPromise = null;
-        try {
-            const state = await pending;
-            const error = new Error("embedder disposed");
-            for (const job of [...state.queue, ...state.active.values()]) {
-                if (!job.settled) {
-                    job.settled = true;
-                    job.cleanup();
-                    job.reject(error);
-                }
-            }
-            await Promise.all(state.workers.map((w) => w.terminate()));
-        } catch { /* never started */ }
-    }
+}
+
+async function disposeResources() {
+    const runtime = runtimePromise;
+    const workerPool = poolPromise;
+    runtimePromise = null;
+    poolPromise = null;
+    // Initialization failures are already delivered to the operation that
+    // created each promise. Pool initialization also releases partial workers;
+    // only failures from releasing an acquired resource belong to teardown.
+    const results = await Promise.allSettled([
+        runtime === null ? Promise.resolve() : runtime.then(releaseRuntime, () => undefined),
+        workerPool === null ? Promise.resolve() : workerPool.then(disposePool, () => undefined),
+    ]);
+    const errors = rejectedReasons(results);
+    if (errors.length > 0) throw new AggregateError(errors, "embedder shutdown failed");
 }
