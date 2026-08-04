@@ -6,12 +6,14 @@
 types, parser, model rail, and runtime-neutral wire envelopes. Its package root
 is the single code API for those contracts.
 
-| Surface                                                            | Canonical export or artifact                        |
-|--------------------------------------------------------------------|-----------------------------------------------------|
-| Parser, AST, validators, Problems, results, Notices, text regions  | `@plurnk/plurnk-contracts`                          |
-| JSON Schemas                                                       | `@plurnk/plurnk-contracts/schema/*.json`            |
-| Local-model rail                                                   | `@plurnk/plurnk-contracts/plurnk.gbnf`              |
-| Model language reference                                           | `plurnk.md` in the package                          |
+| Surface                                                                         | Canonical export or artifact                        |
+| ------------------------------------------------------------------------------- | --------------------------------------------------- |
+| Parser, AST, validators, Problems, results, Notices, text regions               | `@plurnk/plurnk-contracts`                          |
+| Effective loop policy and its default                                           | `LoopFlags`, `DEFAULT_LOOP_FLAGS`                   |
+| Stopped-world client contract                                                   | `ProposalDisposition`, `ProposalProjection`         |
+| JSON Schemas                                                                    | `@plurnk/plurnk-contracts/schema/*.json`            |
+| Local-model rail                                                                | `@plurnk/plurnk-contracts/plurnk.gbnf`              |
+| Model language reference                                                        | `plurnk.md` in the package                          |
 
 §contract-representations JSON Schema is authoritative for shared data shapes. TypeScript types are
 generated from the schemas; ANTLR is authoritative for accepted model-language
@@ -59,6 +61,18 @@ The runtime owner decides facts that require state or operation-specific
 meaning, including registered scheme resolution, target existence, tag
 selection, text-region bounds, result ordering, semantic similarity, mutation
 effects, executor behavior, and numeric operation-code semantics.
+
+### §contract-proposal-projection Loop policy and stopped-world projection
+
+The schemas own the runtime-neutral shapes; core owns their stateful values.
+
+| Contract                  | Shape invariant                                                                 | Runtime responsibility                                                                 |
+| ------------------------- | ------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| `LoopFlags`               | Complete effective `mode`, `auto`, `noWeb`, `noInteraction`, and `noProposals`  | Validate/expand persisted partial policy before use                                    |
+| `ProposalDisposition`     | Client authority, or the loop's exact automatic accept/reject                   | Compute precedence from effective loop policy, proposal kind, and stale-target truth   |
+| `ProposalProjection`      | Identity, review target/body/attrs, effective flags, stale signal, disposition  | Derive one validated projection for live delivery and durable reconnect discovery      |
+
+`DEFAULT_LOOP_FLAGS` is the contracts-owned effective default value. A consumer may persist a partial object as an implementation detail, but it never exposes or acts on that partial representation as though it were the complete contract.
 
 The parser returns ordered statement, error, and text items. It recovers at a
 trustworthy statement boundary when possible and sets `unparsedTail` when a

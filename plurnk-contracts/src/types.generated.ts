@@ -303,6 +303,14 @@ body: MatcherBodyOrNull
 position: Position
 }
 
+export interface LoopFlags {
+mode: ("ask" | "act")
+auto: boolean
+noWeb: boolean
+noInteraction: boolean
+noProposals: boolean
+}
+
 export interface Notice {
 /**
  * Producer identifier. Top-level for self-contained subsystems; colon-namespaced for parameterized producers such as `provider:openai` or `exec:search`.
@@ -400,6 +408,36 @@ retryable?: boolean
 export type ResourceSelectionOrNull = (ResourceSelection | null)
 
 export type SendBodyOrNull = (SendBody | null)
+
+export type ProposalDisposition = ({
+owner: "client"
+} | {
+owner: "loop"
+decision: ("accept" | "reject")
+outcome?: string
+})
+
+export interface ProposalProjection {
+logEntryId: number
+workerId: number
+loopId: number
+turnId: number
+op: ("FIND" | "READ" | "EDIT" | "COPY" | "MOVE" | "OPEN" | "FOLD" | "SEND" | "EXEC" | "WORK" | "FORK" | "KILL" | "PLAN")
+target: {
+scheme: (string | null)
+pathname: (string | null)
+}
+body: string
+attrs: {
+[k: string]: unknown
+}
+flags: LoopFlags
+staleClobberRisk: boolean
+disposition: ProposalDisposition
+}
+/**
+ * The complete effective policy posture of one model loop. Persisted partial objects are expanded to this shape by the runtime owner before use or projection.
+ */
 
 export interface ProviderDeclaration {
 /**

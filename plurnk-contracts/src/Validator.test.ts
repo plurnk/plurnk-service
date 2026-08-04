@@ -4,6 +4,7 @@ import Validator, {
     InvalidNoticeError,
     InvalidOperationResultError,
     InvalidProblemDetailsError,
+    InvalidProposalProjectionError,
     InvalidTextRegionError,
 } from "./Validator.ts";
 import Problems from "./Problems.ts";
@@ -201,4 +202,40 @@ test("OperationResult rejects mismatched envelope and Problem statuses", () => {
         },
     };
     assert.throws(() => Validator.assertOperationResult(mismatch), InvalidOperationResultError);
+});
+
+test("ProposalProjection validates one complete disposition-bearing client view", () => {
+    const proposal = {
+        logEntryId: 1,
+        workerId: 2,
+        loopId: 3,
+        turnId: 4,
+        op: "SEND" as const,
+        target: { scheme: null, pathname: null },
+        body: "",
+        attrs: { question: "Which environment?" },
+        flags: {
+            mode: "act" as const,
+            auto: true,
+            noWeb: false,
+            noInteraction: false,
+            noProposals: true,
+        },
+        staleClobberRisk: false,
+        disposition: { owner: "client" as const },
+    };
+    assert.equal(Validator.assertProposalProjection(proposal), proposal);
+
+    for (const invalid of [
+        { ...proposal, disposition: { owner: "loop" } },
+        { ...proposal, flags: { ...proposal.flags, auto: "true" } },
+        { ...proposal, staleClobberRisk: null },
+        { ...proposal, workspaceId: 9 },
+    ]) {
+        assert.equal(Validator.validateProposalProjection(invalid).valid, false);
+        assert.throws(
+            () => Validator.assertProposalProjection(invalid as never),
+            InvalidProposalProjectionError,
+        );
+    }
 });

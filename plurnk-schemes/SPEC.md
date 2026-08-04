@@ -173,7 +173,7 @@ effects shown to consumers; plugins do not invent a second effect envelope.
 
 ### Types
 
-- Manifest/flags: `SchemeManifest`, `SchemeFlagAffinity`, `WriterTier`, `LoopFlags`, `DEFAULT_LOOP_FLAGS`.
+- Manifest/flags: `SchemeManifest`, `SchemeFlagAffinity`, and `WriterTier`; contracts-owned `LoopFlags` and `DEFAULT_LOOP_FLAGS` are re-exported for compatibility.
 - Mutation receipts: `EditBatchResult`, `EditBatchReceipt`, `EditReceipt`, `EditEffectReceipt`, and `EditReceiptUnit`.
 - §scheme-packet-transform **Packet-section transformation.** A scheme may implement `transformSections(sections: PacketSection[]) → PacketSection[] | Promise<…>` to add, remove, or reorder sections before core measures the packet. Core invokes implementations in registration order. The current `PacketSection` shape is `{ name; slot: "system"|"user"; header: string|null; content; tokens }`; #73 tracks its conflation of pre-measure drafts with measured sections.
 - Behavior contract: `SchemeHandler` (§2). Scheme-facing grammar types re-exported here so siblings pin only this package: `PlurnkStatement` + the per-op statement types (`ReadStatement`, `FindStatement`, `OpenStatement`, `FoldStatement`, `EditStatement`, `CopyStatement`, `MoveStatement`, `SendStatement`, `ExecStatement`, `WorkStatement`, `ForkStatement`, `KillStatement`, `PlanStatement`) and path types (`ParsedPath` = `LocalPath` | `UrlPath`).

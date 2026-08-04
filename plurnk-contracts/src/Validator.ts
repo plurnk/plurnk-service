@@ -14,7 +14,10 @@ import noticeSchema from "../schema/Notice.json" with { type: "json" };
 import problemDetailsSchema from "../schema/ProblemDetails.json" with { type: "json" };
 import operationResultSchema from "../schema/OperationResult.json" with { type: "json" };
 import textRegionSchema from "../schema/TextRegion.json" with { type: "json" };
-import type { Notice, OperationResult, ProblemDetails, TextRegion } from "./types.generated.ts";
+import proposalProjectionSchema from "../schema/ProposalProjection.json" with { type: "json" };
+import proposalDispositionSchema from "../schema/ProposalDisposition.json" with { type: "json" };
+import loopFlagsSchema from "../schema/LoopFlags.json" with { type: "json" };
+import type { Notice, OperationResult, ProblemDetails, ProposalProjection, TextRegion } from "./types.generated.ts";
 
 export type ValidationResult = { valid: boolean; errors: OutputUnit[] };
 
@@ -22,6 +25,7 @@ export class InvalidNoticeError extends TypeError {}
 export class InvalidProblemDetailsError extends TypeError {}
 export class InvalidOperationResultError extends TypeError {}
 export class InvalidTextRegionError extends TypeError {}
+export class InvalidProposalProjectionError extends TypeError {}
 
 export default class Validator {
     static #position = new CfValidator(positionSchema as Schema, "2020-12");
@@ -59,6 +63,10 @@ export default class Validator {
     static #problemDetails = new CfValidator(problemDetailsSchema as Schema, "2020-12");
     static #operationResult = Validator.#withRefs(operationResultSchema, [problemDetailsSchema]);
     static #textRegion = new CfValidator(textRegionSchema as Schema, "2020-12");
+    static #proposalProjection = Validator.#withRefs(
+        proposalProjectionSchema,
+        [proposalDispositionSchema, loopFlagsSchema],
+    );
 
     static #withRefs(mainSchema: unknown, refSchemas: unknown[]): CfValidator {
         const validator = new CfValidator(mainSchema as Schema, "2020-12");
@@ -126,6 +134,10 @@ export default class Validator {
         return Validator.#validate(Validator.#textRegion, value);
     }
 
+    static validateProposalProjection(value: unknown): ValidationResult {
+        return Validator.#validate(Validator.#proposalProjection, value);
+    }
+
     static assertNotice<T extends Notice>(value: T): T {
         const result = Validator.validateNotice(value);
         if (!result.valid) throw new InvalidNoticeError(`invalid Notice: ${JSON.stringify(result.errors)}`);
@@ -163,6 +175,16 @@ export default class Validator {
             || (value.endLine === value.startLine && value.endColumn < value.startColumn)
         ) {
             throw new InvalidTextRegionError("TextRegion ends before it starts");
+        }
+        return value;
+    }
+
+    static assertProposalProjection<T extends ProposalProjection>(value: T): T {
+        const result = Validator.validateProposalProjection(value);
+        if (!result.valid) {
+            throw new InvalidProposalProjectionError(
+                `invalid ProposalProjection: ${JSON.stringify(result.errors)}`,
+            );
         }
         return value;
     }

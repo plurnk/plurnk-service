@@ -63,6 +63,9 @@ const MAPPING: Record<string, SchemaMapping> = {
     OperationResult: { kind: "skip", reason: "wire envelope stored whole in owner-defined JSON fields, including log_entries.rx, loops.terminal_result, and subscriptions.close_result" },
     ProblemDetails:  { kind: "skip", reason: "nested failure value inside persisted OperationResult JSON; never an independent relational record" },
     TextRegion:      { kind: "skip", reason: "nested optional result metadata inside owner-defined JSON; never an independent relational record" },
+    LoopFlags:       { kind: "skip", reason: "runtime-effective policy projection; loops.flags persists only the owner-defined partial JSON input" },
+    ProposalDisposition: { kind: "skip", reason: "core-derived settlement authority; never persisted independently" },
+    ProposalProjection: { kind: "skip", reason: "core-derived client view over proposed log and loop state; never persisted independently" },
 };
 
 const TABLE_PREP = {

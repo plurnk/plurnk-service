@@ -1,0 +1,44 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "https://schemas.plurnk.dev/v0/ProposalProjection.json",
+    "title": "ProposalProjection",
+    "description": "The runtime-neutral client-interface projection of one durable stopped-world proposal. Live delivery and reconnect discovery expose this same shape.",
+    "type": "object",
+    "required": [
+        "logEntryId",
+        "workerId",
+        "loopId",
+        "turnId",
+        "op",
+        "target",
+        "body",
+        "attrs",
+        "flags",
+        "staleClobberRisk",
+        "disposition"
+    ],
+    "additionalProperties": false,
+    "properties": {
+        "logEntryId": { "type": "integer", "minimum": 1 },
+        "workerId": { "type": "integer", "minimum": 1 },
+        "loopId": { "type": "integer", "minimum": 1 },
+        "turnId": { "type": "integer", "minimum": 1 },
+        "op": {
+            "enum": ["FIND", "READ", "EDIT", "COPY", "MOVE", "OPEN", "FOLD", "SEND", "EXEC", "WORK", "FORK", "KILL", "PLAN"]
+        },
+        "target": {
+            "type": "object",
+            "required": ["scheme", "pathname"],
+            "additionalProperties": false,
+            "properties": {
+                "scheme": { "type": ["string", "null"] },
+                "pathname": { "type": ["string", "null"] }
+            }
+        },
+        "body": { "type": "string" },
+        "attrs": { "type": "object", "additionalProperties": true },
+        "flags": { "$ref": "https://schemas.plurnk.dev/v0/LoopFlags.json" },
+        "staleClobberRisk": { "type": "boolean" },
+        "disposition": { "$ref": "https://schemas.plurnk.dev/v0/ProposalDisposition.json" }
+    }
+}

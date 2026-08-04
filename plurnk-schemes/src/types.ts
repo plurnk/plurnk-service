@@ -54,18 +54,7 @@ export interface SchemeManifest {
     readonly storedScheme?: string;
 }
 
-export interface LoopFlags {
-    readonly mode: "ask" | "act";
-    readonly auto: boolean;
-    readonly noWeb: boolean;
-    readonly noInteraction: boolean;
-    readonly noProposals: boolean;
-}
-
-export const DEFAULT_LOOP_FLAGS: LoopFlags = Object.freeze({
-    mode: "act",
-    auto: false,
-    noWeb: false,
-    noInteraction: false,
-    noProposals: false,
-});
+// Loop flags are part of the public PLURNK request/proposal contract. This
+// framework re-exports their contracts-owned definition for compatibility.
+export type { LoopFlags } from "@plurnk/plurnk-contracts";
+export { DEFAULT_LOOP_FLAGS } from "@plurnk/plurnk-contracts";

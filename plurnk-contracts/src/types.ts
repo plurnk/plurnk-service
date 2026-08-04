@@ -2,7 +2,7 @@
 // the single import surface for consumers. Run `npm run build:types` to regenerate.
 export * from "./types.generated.ts";
 
-import type { Position, PlurnkStatement } from "./types.generated.ts";
+import type { LoopFlags, Position, PlurnkStatement } from "./types.generated.ts";
 import type PlurnkParseError from "./PlurnkParseError.ts";
 
 // Non-schema types — depend on the PlurnkParseError class and so can't be
@@ -14,6 +14,14 @@ export const PLURNK_OPS = [
 ] as const;
 
 export type PlurnkOp = (typeof PLURNK_OPS)[number];
+
+export const DEFAULT_LOOP_FLAGS: LoopFlags = Object.freeze({
+    mode: "act",
+    auto: false,
+    noWeb: false,
+    noInteraction: false,
+    noProposals: false,
+});
 
 // Minting predicate only; URL ingestion deliberately remains permissive. {§worker-name}
 export const WORKER_NAME = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/;
