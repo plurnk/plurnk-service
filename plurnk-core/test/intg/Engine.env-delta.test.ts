@@ -396,6 +396,7 @@ test("ambient occurrence evidence survives source-log curation", async () => {
         const rows = await db.engine_render_log.all<{ origin: string; op: string; pathname: string | null; rx: string }>({ worker_id: observer });
         const delta = rows.find((row) => row.origin === "plurnk" && row.op === "EDIT" && row.pathname === "/curated.md");
         assert.match(delta?.rx ?? "", /durable occurrence/, "curating the producer's log cannot erase the ambient event");
+        await db.test_workspaces_delete.run({ id: workspaceId });
     } finally {
         await db.close();
     }
