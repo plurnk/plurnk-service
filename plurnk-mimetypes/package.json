@@ -48,8 +48,7 @@
         "dist/**/*",
         "bin/*.js",
         "README.md",
-        "SPEC.md",
-        ".env.defaults"
+        "SPEC.md"
     ],
     "scripts": {
         "build:dist": "tsc -p tsconfig.build.json",

@@ -66,6 +66,7 @@ export type { ParsedBodyMatcher } from "./parseBodyMatcher.ts";
 export { buildJsonOutline } from "./buildJsonOutline.ts";
 export type { JsonOutline } from "./buildJsonOutline.ts";
 export {
+    globToRegex,
     queryGlob,
     queryJsonpathObject,
     queryRegex,
@@ -94,9 +95,6 @@ export type {
 // Registry-free half of {§mimetype-classification}.
 export { classifyMimetype } from "./classify.ts";
 export type { MimeClassification } from "./classify.ts";
-
-// Current path matcher ({§mimetype-search-exclusion}); #91 owns consolidation.
-export { matchSearchExclusion } from "./searchExcluded.ts";
 
 // Public embedding seam types ({§mimetype-embedding}).
 export type { EmbedderInfo, EmbedProgress, EmbedBatchOptions } from "./Embeddings.ts";

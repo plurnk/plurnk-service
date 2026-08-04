@@ -3,13 +3,14 @@
 // FTS, vectors, and graph relationships consume those artifacts uniformly.
 
 import type { PlurnkSchemeContext } from "../core/scheme-types.ts";
-import { matchSearchExclusion, type ProcessResult } from "@plurnk/plurnk-mimetypes";
+import type { ProcessResult } from "@plurnk/plurnk-mimetypes";
 import { createHash } from "node:crypto";
 import { availableParallelism } from "node:os";
 import { MimetypeBinary } from "../content/index.ts";
 import EntryGraph from "./_entry-graph.ts";
 import EntrySemantic, { type SemanticPlan } from "./_entry-semantic.ts";
 import LogBody from "../core/LogBody.ts";
+import matchSearchExclusion from "./_search-exclusion.ts";
 
 type EntryRow = {
     entry_id: number;
@@ -165,12 +166,7 @@ export default class SearchIndex {
         const pending: Array<{ r: DerivationRow; hash: string; searchExcluded: string | undefined }> = [];
         for (const r of entryRows) {
             if (r.channel !== "body") continue; // derivation fires on the body channel only
-            // SEARCH_EXCLUDE classifies generated project members. URI paths in
-            // other schemes are resource identities, not repository layout:
-            // https://host/dist/index.json is not a generated local artifact.
-            const searchExcluded = r.scheme === "file"
-                ? matchSearchExclusion(r.pathname)
-                : undefined;
+            const searchExcluded = matchSearchExclusion(r);
             const dispositionIdentity = searchExcluded === undefined ? "included" : `excluded:${searchExcluded}`;
             const hash = createHash("sha256").update(r.content).update("\0").update(r.mimetype).update("\0").update(deepCfgSig).update("\0").update(dispositionIdentity).digest("hex");
             if (hash !== r.deep_hash) pending.push({

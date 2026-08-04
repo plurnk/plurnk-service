@@ -959,6 +959,24 @@ confined to provider-physical recovery admission
 
 **Persistent search index.** `SearchIndex.maintain` is the pre-model engine pass. Each searchable resource supplies an address and the exact readable body its READ exposes. Entries supply their default body; `LogBody` resolves each log row's canonical full body from its durable tx/rx envelope. Acquisition schemes project remote source material before storing that body; search never introduces a second hidden text projection. The readable body, mimetype, reader configuration, embedder configuration, and applicable search exclusion form a content hash. Complete artifacts own FTS, vectors, symbol definitions, and references; resource rows hold only the attachment hash.
 
+§search-exclusion **File-search eligibility is Core policy.**
+`PLURNK_SERVICE_SEARCH_EXCLUDE` is a comma-separated table of anchored
+body-glob patterns. Patterns containing `/` match the full pathname; every
+other pattern matches the basename. Whitespace around entries is ignored, an
+empty setting excludes nothing, and the first match is the observable reason.
+
+| Search subject     | Exclusion evaluation                                    |
+|--------------------|---------------------------------------------------------|
+| `file` entry       | Apply the configured repository-path patterns once.     |
+| Other-scheme entry | Always eligible; its pathname is a resource identity.   |
+| Log projection     | Always eligible; it has no repository-path membership.  |
+
+A match produces the `excluded` derivation disposition and suppresses graph,
+FTS, and vectors while leaving the stored body and direct READ unchanged. The
+same reason participates in the derivation hash and is surfaced by diagnostics
+and digests. Mimetype detection and projection do not read or report this
+scheme policy.
+
 ```mermaid
 flowchart LR
     E["entry default body"] --> P["exact READ body"]

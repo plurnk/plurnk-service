@@ -169,8 +169,8 @@ before importing handler code.
 | Orchestration       | `Mimetypes`: discovery, detection, processing, querying, classification, embedding/tokenizer seams, lifecycle.             |
 | Handler authoring   | `BaseHandler`, parser extractors, `withExtractor`, parser-coordinate materializers, and tree/reference primitives.         |
 | Detection/discovery | `detect`, `discover`, `emptyRegistry`, `MimetypePluginError`.                                                              |
-| Query/projection    | Matcher parser, four dialect helpers, JSON/XML projection, text coordinates, and typed query/coordinate failures.          |
-| Classification      | `classifyMimetype`, `matchSearchExclusion`.                                                                                |
+| Query/projection    | Matcher and dialect primitives, JSON/XML projection, text coordinates, and typed query/coordinate failures.                |
+| Classification      | `classifyMimetype`.                                                                                                        |
 | Formatting          | `format`, `buildTree`, `renderTree`, `maxDepth`, `pruneToMaxDepth`.                                                        |
 | Grammar build       | `runCompile`, `rewriteImports`, `injectBaseImports`.                                                                       |
 | Types               | Public handler, discovery, projection, reference, coordinate, Notice, embedding, and tokenizer types.                      |

@@ -188,9 +188,7 @@ test("[#209-semantic-threshold] a decimal threshold composes with ordinary FIND 
 
 test("[#91] PLURNK_SERVICE_SEARCH_EXCLUDE applies only to file-scheme entries", async () => {
     const prev = process.env.PLURNK_SERVICE_SEARCH_EXCLUDE;
-    const obsoletePrev = process.env.PLURNK_MIMETYPES_SEARCH_EXCLUDE;
     process.env.PLURNK_SERVICE_SEARCH_EXCLUDE = "*/dist/*";
-    process.env.PLURNK_MIMETYPES_SEARCH_EXCLUDE = "";
     const mimetypes = new Mimetypes();
     await mimetypes.ready();
     const db = await openMigrated();
@@ -226,6 +224,8 @@ test("[#91] PLURNK_SERVICE_SEARCH_EXCLUDE applies only to file-scheme entries", 
         assert.equal(fileDisposition?.disposition, "excluded");
         assert.equal(fileDisposition?.reason, "*/dist/*");
         assert.equal(httpsDisposition?.disposition, "vector", "identical bytes at a non-file pathname remain searchable");
+        const readable = await EntryCrud.readEntry(pathname, ctx, "file");
+        assert.equal(readable.entry?.channels.body?.content, identical, "search exclusion does not alter direct readability");
         // stamped: a second pass derives nothing (no eternal re-attempt of the suppressed entry)
         await SearchIndex.maintain(ctx);
         const fileVecs2 = await db.test_count_embeddings.get<{ n: number }>({ entry_id: fileEntry?.id ?? -1 });
@@ -233,7 +233,6 @@ test("[#91] PLURNK_SERVICE_SEARCH_EXCLUDE applies only to file-scheme entries", 
     } finally {
         db.close();
         if (prev === undefined) delete process.env.PLURNK_SERVICE_SEARCH_EXCLUDE; else process.env.PLURNK_SERVICE_SEARCH_EXCLUDE = prev;
-        if (obsoletePrev === undefined) delete process.env.PLURNK_MIMETYPES_SEARCH_EXCLUDE; else process.env.PLURNK_MIMETYPES_SEARCH_EXCLUDE = obsoletePrev;
     }
 });
 

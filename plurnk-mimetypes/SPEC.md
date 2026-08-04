@@ -313,7 +313,6 @@ The exported `ProcessResult` type owns the executable field shape.
 | Projection channel fields            | Present exactly when requested; an honest empty projection differs from an unrequested field (§5). |
 | `grammarMissing`, `embeddingMissing` | Present only for the corresponding non-strict degradation.                                         |
 | `embeddingModel`                     | Present only when the returned vector carries a model-space identity.                              |
-| `searchExcluded`                     | Present when the current path matched the configured exclusion helper (§21).                       |
 | `notices`                            | Present only when a successful result carries one or more non-fatal degradations ({§notice}).      |
 
 `totalLines` is the editor-convention line count of the source content. Conventions:
@@ -472,6 +471,10 @@ already-parsed dialect to the resolved handler's
 | otherwise      | glob     | `pattern`                                                              |
 
 Implemented by the framework's `parseBodyMatcher(expr)`. Order matters — `//` is tested before `/` because both begin with `/`.
+
+`queryGlob` and the exported `globToRegex` primitive share one compiler.
+Consumers that need the same anchored dialect as a predicate can therefore
+reuse it without manufacturing a second glob language or query-evidence shape.
 
 §mimetype-query-input `Mimetypes.query(input, matcher)` accepts either a raw
 string classified by the table above or an already-parsed
@@ -960,25 +963,3 @@ authoritative. The pure taxonomy applies these rules in order:
 Navigation is not a classification property. Readable projections use the
 universal text-region algebra, while JSONPath and XPath are structural
 locators.
-
-## §mimetype-search-exclusion 21. Search-exclusion signal
-
-`PLURNK_MIMETYPES_SEARCH_EXCLUDE` is a comma-separated list interpreted by the
-exported `matchSearchExclusion(path)` helper:
-
-| Pattern form        | Match target | Rule                                |
-|---------------------|--------------|-------------------------------------|
-| Contains `/`        | Full path.   | Body-matcher glob syntax; anchored. |
-| Contains no `/`     | Basename.    | Body-matcher glob syntax; anchored. |
-| Empty configuration | None.        | No hidden code fallback.            |
-
-Whitespace around entries is ignored, `*` crosses `/`, and the first match is
-returned verbatim as the observable reason. The standard defaults live in this
-package's `.env.defaults`.
-
-`Mimetypes.process()` currently evaluates every supplied `input.path` without
-scheme identity and surfaces the match as `ProcessResult.searchExcluded`,
-including on grammar-degraded results. The signal never changes direct
-readability. The standard core search pipeline separately limits its use to
-file-scheme entries and omits matching entries from graph, lexical, and vector
-derivations.

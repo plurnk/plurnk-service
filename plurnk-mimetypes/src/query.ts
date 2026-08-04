@@ -298,11 +298,9 @@ function shapeMatched(m: RegExpExecArray): unknown {
     return m.slice(1); // anonymous captures → array
 }
 
-// Translate a glob pattern to an anchored regex. Supports `*`, `?`, and
-// `[...]` character classes; escapes regex metacharacters elsewhere.
-// Exported for searchExcluded.ts (SPEC §21): ONE glob engine per family — the
-// body-matcher dialect's semantics (*, ?, [...]; anchored) apply everywhere a
-// glob appears, never a second hand-rolled variant.
+// Translate the {§mimetype-query} glob dialect to an anchored regex. Exported
+// so consumers can reuse its exact semantics without inventing another glob
+// language when they need a predicate rather than query evidence.
 export function globToRegex(glob: string): RegExp {
     let pat = "^";
     let i = 0;

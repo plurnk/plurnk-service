@@ -12,7 +12,6 @@ import BaseHandler from "./BaseHandler.ts";
 import Embeddings, { type EmbedBatchOptions, type EmbedderInfo } from "./Embeddings.ts";
 import Tokenizers, { type TokenizerResolution } from "./Tokenizers.ts";
 import { classifyMimetype, classifyWithHandler, type MimeClassification } from "./classify.ts";
-import { matchSearchExclusion } from "./searchExcluded.ts";
 import { mimetypeSource, type Notice } from "./Notice.ts";
 import MimetypePluginError from "./MimetypePluginError.ts";
 import type {
@@ -95,9 +94,6 @@ export interface ProcessResult {
     totalLines: number;
     // Missing grammar package for a non-strict structural degradation.
     grammarMissing?: string;
-    // Matched operator pattern, without changing readability
-    // ({§mimetype-search-exclusion}).
-    searchExcluded?: string;
 
     // Projection fields are present iff requested.
     // Structured definitions and outline source.
@@ -303,9 +299,6 @@ export default class Mimetypes {
             return errorResult(mimetype);
         }
 
-        // Current path-only signal; scheme-aware ownership is tracked in #91.
-        const searchExcluded = matchSearchExclusion(input.path);
-
         // Validate errors propagate per error policy — caller's contract.
         // Await in case the handler returns a Promise (async validators).
         await handler.validate(content);
@@ -345,7 +338,6 @@ export default class Mimetypes {
                     content,
                     channels,
                     (err as { plurnkPackage?: string }).plurnkPackage ?? "",
-                    searchExcluded,
                 );
             }
             throw err;
@@ -359,7 +351,6 @@ export default class Mimetypes {
             mimetype,
             ok: true,
             totalLines,
-            ...(searchExcluded !== undefined && { searchExcluded }),
             ...(channels.has("symbols") && { symbols }),
             ...(channels.has("deepJson") && { deepJson: deepJsonValue }),
             ...(channels.has("deepXml") && { deepXml }),
@@ -430,7 +421,6 @@ export default class Mimetypes {
         content: string | Uint8Array,
         channels: ReadonlySet<Channel>,
         plurnkPackage: string,
-        searchExcluded: string | undefined,
     ): Promise<ProcessResult> {
         const totalLines = typeof content === "string" ? countLines(content) : 0;
         // The embedding channel does not need the grammar — a degraded entry
@@ -444,7 +434,6 @@ export default class Mimetypes {
             ok: true,
             totalLines,
             grammarMissing: plurnkPackage,
-            ...(searchExcluded !== undefined && { searchExcluded }),
             ...(channels.has("symbols") && { symbols: [] }),
             ...(channels.has("deepJson") && { deepJson: null }),
             ...(channels.has("deepXml") && { deepXml: "" }),
