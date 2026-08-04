@@ -281,7 +281,7 @@ type Channel = "symbols" | "deepJson" | "deepXml" | "references" | "content" | "
 - **Default set: `symbols`, `deepJson`, `deepXml`, `references`, `content`** (five). `content` performs no model inference ({§mimetype-content}); `embedding` does and must be requested explicitly ({§mimetype-embedding}).
 - **Unrequested channels are not computed and their fields are absent** from `ProcessResult`. A channel an entry legitimately lacks (flat text has no deep tree) comes back *present but empty* (`[]` / `null` / `""`) — absence means "not asked," emptiness means "asked, nothing there."
 - **`channels: []` is valid** — metadata only (`mimetype`, `ok`, `totalLines`), with no projection parse.
-- The default deep-xml projection consumes the deep-json value; when `deepXml` alone is requested the framework computes deep-json internally without exposing it.
+- The default deep-xml projection consumes one deep-json result, then lazily falls back to one symbol outline. Already-requested dependency results are reused; dependencies computed only for `deepXml` remain unexposed.
 
 Current plurnk-service consumers:
 

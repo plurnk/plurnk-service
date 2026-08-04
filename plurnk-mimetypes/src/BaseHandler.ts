@@ -1,7 +1,7 @@
 import { buildJsonOutline } from "./buildJsonOutline.ts";
 import { format } from "./format.ts";
-import { projectJsonToXml } from "./projectJsonToXml.ts";
-import { outlineLineFor, queryGlob, queryJsonpathObject, queryRegex, queryXpathString } from "./query.ts";
+import { projectDeepXml } from "./projectDeepXml.ts";
+import { queryGlob, queryJsonpathObject, queryRegex, queryXpathString } from "./query.ts";
 import { InvalidExpressionError, UnsupportedDialectError } from "./QueryError.ts";
 import type {
     HandlerMetadata,
@@ -42,12 +42,10 @@ export default class BaseHandler {
     // Default XPath target: project deep JSON, then the symbol outline
     // ({§mimetype-handler-contract}).
     async deepXml(content: HandlerContent): Promise<string> {
-        const tree = await this.deepJson(content);
-        if (tree !== null && tree !== undefined) return projectJsonToXml(tree);
-        // Preserve structural-dialect symmetry for symbols-only handlers.
-        const outline = buildJsonOutline(await this.extractRaw(content));
-        if (Object.keys(outline).length === 0) return "";
-        return projectJsonToXml(outline, "root", outlineLineFor(outline));
+        return projectDeepXml(
+            await this.deepJson(content),
+            () => this.extractRaw(content),
+        );
     }
 
     // Derived readable text is absent when the raw body is already readable

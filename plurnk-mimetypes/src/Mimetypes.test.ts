@@ -284,7 +284,7 @@ describe("Mimetypes — process: channel selection (#17)", () => {
         const r = await m.process({ path: "foo.txt", content: "hello" });
         assert.deepEqual(r.symbols, [{ name: "Plain", kind: "module", line: 1, endLine: 1 }]);
         assert.equal(r.deepJson, null);
-        assert.equal(r.deepXml, "");
+        assert.match(r.deepXml!, /<Plain\b/);
         assert.deepEqual(r.references, []);
         assert.equal(r.ok, true);
     });

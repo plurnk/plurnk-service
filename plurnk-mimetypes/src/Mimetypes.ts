@@ -5,7 +5,7 @@ import { pathToFileURL } from "node:url";
 import { detect } from "./detect.ts";
 import { discover } from "./discover.ts";
 import { parseBodyMatcher, type ParsedBodyMatcher } from "./parseBodyMatcher.ts";
-import { projectJsonToXml } from "./projectJsonToXml.ts";
+import { projectDeepXml } from "./projectDeepXml.ts";
 import { UnsupportedDialectError } from "./QueryError.ts";
 import { isGrammarNotInstalled } from "./TreeSitterExtractor.ts";
 import BaseHandler from "./BaseHandler.ts";
@@ -310,13 +310,14 @@ export default class Mimetypes {
         // Await in case the handler returns a Promise (async validators).
         await handler.validate(content);
 
-        // Materialize requested channels in parallel. The default deep-xml
-        // projection needs deep-json, so deepJson is computed (unexposed) when
-        // only deepXml is requested and the handler hasn't overridden deepXml().
-        // GrammarNotInstalledError selects the non-strict degradation path.
+        // Materialize requested channels in parallel. Default deep-XML
+        // dependencies are reused and remain unexposed when not requested
+        // ({§mimetype-channel-selection}). GrammarNotInstalledError selects the
+        // non-strict degradation path.
         //
-        const needsDeepJson = channels.has("deepJson")
-            || (channels.has("deepXml") && handler.deepXml === BaseHandler.prototype.deepXml);
+        const usesDefaultDeepXml = channels.has("deepXml")
+            && handler.deepXml === BaseHandler.prototype.deepXml;
+        const needsDeepJson = channels.has("deepJson") || usesDefaultDeepXml;
         let symbols: MimeSymbol[] | undefined;
         let deepJsonValue: unknown;
         let references: MimeRef[] | undefined;
@@ -330,10 +331,11 @@ export default class Mimetypes {
                 channels.has("content") ? handler.content(content) : undefined,
             ]);
             if (channels.has("deepXml")) {
-                deepXml = handler.deepXml === BaseHandler.prototype.deepXml
-                    ? (deepJsonValue === null || deepJsonValue === undefined
-                        ? ""
-                        : projectJsonToXml(deepJsonValue))
+                deepXml = usesDefaultDeepXml
+                    ? await projectDeepXml(deepJsonValue, async () => {
+                        symbols ??= await handler.extractRaw(content);
+                        return symbols;
+                    })
                     : await handler.deepXml(content);
             }
         } catch (err) {
