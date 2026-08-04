@@ -79,12 +79,17 @@ const PROPOSAL_OPS = new Set<string>(PLURNK_OPS);
 const LOOP_FLAG_KEYS = new Set(["mode", "auto", "noWeb", "noInteraction", "noProposals"]);
 
 // {§proposal-timeout-cancels} — empty means an indefinite wait; a positive
-// millisecond value opts into a bound. #82 owns invalid explicit values.
+// millisecond value opts into a bound. An explicit invalid value is a broken
+// operator contract, never another spelling of the indefinite default.
 const readProposalTimeoutMs = (): number | null => {
     const raw = process.env.PLURNK_SERVICE_PROPOSAL_TIMEOUT_MS;
     if (raw === undefined || raw.length === 0) return null;
     const n = Number(raw);
-    if (!Number.isFinite(n) || n <= 0) return null;
+    if (!Number.isFinite(n) || n <= 0) {
+        throw new RangeError(
+            `PLURNK_SERVICE_PROPOSAL_TIMEOUT_MS must be empty or a finite positive number of milliseconds; got ${JSON.stringify(raw)}`,
+        );
+    }
     return n;
 };
 

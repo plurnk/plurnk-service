@@ -22,7 +22,7 @@ import type SchemeRegistry from "./SchemeRegistry.ts";
 import type ExecutorRegistry from "./ExecutorRegistry.ts";
 import type NoticeChannel from "./NoticeChannel.ts";
 import type ProposalLifecycle from "./ProposalLifecycle.ts";
-import type { ProposalSettlement } from "./ProposalLifecycle.ts";
+import type { ProposalResolution, ProposalSettlement } from "./ProposalLifecycle.ts";
 import type { EntryData, ReadEntryResult, WriteEntryResult, DeleteEntryResult } from "../schemes/_entry-crud.ts";
 import { entryPathnameOf, foldAuthorityIntoPath, renderAddress, renderTarget, schemeNameOf } from "./plurnk-uri.ts";
 import Fork from "./fork.ts";
@@ -646,12 +646,13 @@ export default class Dispatcher {
             // awaits the onDispatch callback and immediately resolves) must
             // find the waiter registered — adding an await between insert
             // and waiter-registration would open a race window.
-            const resolutionPromise = this.#proposals.awaitResolution(logEntryId);
             // Core derives one validated projection from the durable row for both
             // this live event and reconnect discovery ({§proposal-projection}). Its
             // disposition is also the one automatic settlement decision: policy is
             // not an observer and cannot silently degrade into client ownership.
+            let resolutionPromise: Promise<ProposalResolution>;
             try {
+                resolutionPromise = this.#proposals.awaitResolution(logEntryId);
                 const event = await this.#proposals.pending(logEntryId);
                 this.#proposals.settleOwned(event);
                 this.#proposals.notifyPending(event);

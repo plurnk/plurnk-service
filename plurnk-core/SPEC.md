@@ -1372,7 +1372,7 @@ stream cannot fall through an internal `exec`-only query. {§stream-control}
 
 - **Client disposition** ({§methods-proposal-resolve}) — a client interface delivers accept, reject, or cancel; AG-UI uses standard resume entries ({§agui-proposal-resolve}).
 - **Loop disposition** ({§proposal-disposition}) — core applies the exact automatic accept/reject before observational subscribers run; automatic policy is not an event listener or client fallback.
-- §proposal-timeout-cancels **Timeout is OPT-IN; the shipped default is a world that WAITS** - `PLURNK_SERVICE_PROPOSAL_TIMEOUT_MS` empty (shipped) means a pending proposal - a file edit awaiting review or a [300] question - waits indefinitely for its human: absence is not an answer, so the service does not synthesize a cancellation. An operator whose lane needs a bound sets milliseconds; then elapsing synthesizes `cancel` (outcome `timeout`), server-side, needing no client.
+- §proposal-timeout-cancels **Timeout is OPT-IN; the shipped default is a world that WAITS** - `PLURNK_SERVICE_PROPOSAL_TIMEOUT_MS` empty (shipped) means a pending proposal - a file edit awaiting review or a [300] question - waits indefinitely for its human: absence is not an answer, so the service does not synthesize a cancellation. A finite positive millisecond value establishes the bound; then elapsing synthesizes `cancel` (outcome `timeout`), server-side, needing no client. Every other explicit value fails at the proposal lifecycle owner and terminalizes an already-written proposal rather than silently choosing an indefinite wait.
 
 **The decision drives a one-way state transition** on `log_entries.state` (resolution is idempotent — `WHERE state='proposed'`, so a second resolution 404s):
 
@@ -1619,7 +1619,7 @@ Model selection: separate alias cascade in `ProviderRegistry` ({§provider-insta
 | `PLURNK_SERVICE_MAX_CYCLE_PERIOD`                           | `4` | Max period length cycle detection examines ({§engine-rails}). |
 | `PLURNK_SERVICE_MD_<ALIAS>`                                 | (unset) | Operator reference doc: materializes `<path>` as `worker://plurnk/<ALIAS>.md`, auto-READ into every model worker's turn 0 ({§actor-boundary-doc-injection}). `~` expands to home. |
 | `PLURNK_SERVICE_FILES_ITEMS`                                | `-1` | Turn-0 catalog preview. Folder-capable schemes render a complete one-level `*` map with `dir/**` rollups; kernel docs remain recursive. `-1` = complete maps; positive `N` caps only file-map rows; `0` / unset = off ({§actor-boundary-catalog-preview}). |
-| `PLURNK_SERVICE_PROPOSAL_TIMEOUT_MS`                        | (empty — waits indefinitely) | Milliseconds before a proposal is cancelled with outcome `timeout`; empty leaves the proposal waiting. |
+| `PLURNK_SERVICE_PROPOSAL_TIMEOUT_MS`                        | (empty — waits indefinitely) | Finite positive milliseconds before cancellation with outcome `timeout`; empty waits, and every other explicit value fails ({§proposal-timeout-cancels}). |
 
 Every core knob listed is enforced at its owning read site; `.env.defaults` is the authoritative default ({§operator-config-env-defaults}). Provider, scheme, executor, mimetype, and client-interface knobs are documented by their owning packages and appear in the assembled catalog.
 

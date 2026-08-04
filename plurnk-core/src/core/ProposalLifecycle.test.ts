@@ -9,6 +9,38 @@ import type ExecutorRegistry from "./ExecutorRegistry.ts";
 import type NoticeChannel from "./NoticeChannel.ts";
 import LiveSubscriptions from "./LiveSubscriptions.ts";
 
+test("proposal timeout rejects every explicit non-positive or non-finite value at its owner", (t) => {
+    const prior = process.env.PLURNK_SERVICE_PROPOSAL_TIMEOUT_MS;
+    t.after(() => {
+        if (prior === undefined) delete process.env.PLURNK_SERVICE_PROPOSAL_TIMEOUT_MS;
+        else process.env.PLURNK_SERVICE_PROPOSAL_TIMEOUT_MS = prior;
+    });
+    const lifecycle = new ProposalLifecycle({
+        db: {} as Db,
+        schemes: new SchemeRegistry(),
+        notices: { push() {} } as unknown as NoticeChannel,
+        tokenize: (text) => text.length,
+        executors: () => undefined,
+        loopSignal: () => undefined,
+        liveSubscriptions: new LiveSubscriptions(),
+    });
+
+    for (const raw of ["invalid", "0", "-1", "Infinity", "NaN", " "]) {
+        process.env.PLURNK_SERVICE_PROPOSAL_TIMEOUT_MS = raw;
+        assert.throws(
+            () => lifecycle.awaitResolution(1),
+            (error: unknown) => {
+                assert.ok(error instanceof RangeError);
+                assert.equal(
+                    error.message,
+                    `PLURNK_SERVICE_PROPOSAL_TIMEOUT_MS must be empty or a finite positive number of milliseconds; got ${JSON.stringify(raw)}`,
+                );
+                return true;
+            },
+        );
+    }
+});
+
 test("workerApply invokes a discovered scheme through the public proposal context", async () => {
     const schemes = new SchemeRegistry();
     await schemes.discoverExternal();

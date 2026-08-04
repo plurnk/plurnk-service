@@ -380,6 +380,57 @@ test("proposal: a policy-preparation failure preserves its cause and terminalize
     } finally { await db.close(); }
 });
 
+test("proposal: invalid explicit timeout fails hard without orphaning the durable stopped world", async (t) => {
+    const original = process.env.PLURNK_SERVICE_PROPOSAL_TIMEOUT_MS;
+    t.after(() => {
+        if (original === undefined) delete process.env.PLURNK_SERVICE_PROPOSAL_TIMEOUT_MS;
+        else process.env.PLURNK_SERVICE_PROPOSAL_TIMEOUT_MS = original;
+    });
+    process.env.PLURNK_SERVICE_PROPOSAL_TIMEOUT_MS = "invalid";
+    const db = await openMigrated();
+    try {
+        const ctx = await setupEngine(db);
+        let logEntryId: number | undefined;
+        const dispatched = ctx.engine.dispatch({
+            statement: editStmt("/x", "y"),
+            workspaceId: ctx.workspaceId,
+            workerId: ctx.workerId,
+            loopId: ctx.loopId,
+            turnId: ctx.turnId,
+            sequence: 1,
+            origin: "model",
+            onDispatch: (id) => { logEntryId = id; },
+        });
+        const observed = dispatched.then(
+            (result) => ({ kind: "fulfilled" as const, result }),
+            (error: unknown) => ({ kind: "rejected" as const, error }),
+        );
+        const outcome = await Promise.race([
+            observed,
+            new Promise<{ kind: "pending" }>((resolve) => setTimeout(() => resolve({ kind: "pending" }), 50)),
+        ]);
+        if (outcome.kind === "pending") {
+            const [pendingId] = ctx.engine.pendingProposalIds();
+            if (pendingId !== undefined) ctx.engine.resolveProposal(pendingId, { decision: "cancel" });
+            await observed;
+        }
+
+        assert.equal(outcome.kind, "rejected", "invalid explicit configuration cannot become an indefinite wait");
+        if (outcome.kind !== "rejected") return;
+        assert.match(String(outcome.error), /PLURNK_SERVICE_PROPOSAL_TIMEOUT_MS.*"invalid"/);
+        assert.notEqual(logEntryId, undefined);
+        assert.deepEqual(ctx.engine.pendingProposalIds(), []);
+        const row = await db.test_get_log_entry_by_id.get<{
+            state: string;
+            status_rx: number;
+            outcome: string | null;
+        }>({ id: logEntryId! });
+        assert.equal(row?.state, "failed");
+        assert.equal(row?.status_rx, 500);
+        assert.equal(row?.outcome, "policy_failed");
+    } finally { await db.close(); }
+});
+
 test("proposal: loop auto-approval does NOT engage when flags.auto is absent / false", async (t) => {
     // Tight timeout so the test doesn't wait the full 5m default.
     const original = process.env.PLURNK_SERVICE_PROPOSAL_TIMEOUT_MS;
@@ -434,7 +485,7 @@ test("proposal: timeout fires after PLURNK_SERVICE_PROPOSAL_TIMEOUT_MS", async (
     } finally { await db.close(); }
 });
 
-test("the SHIPPED default is INDEFINITE — a stopped world waits for its human (owner ruling)", async (t) => {
+test("the shipped empty default is indefinite — a stopped world waits for its human", async (t) => {
     // The AG-UI migration's first surfaced decision: absence is not an answer. With the knob
     // unset, a pending proposal outlives any would-be window and resolves only when the human
     // does — the [202]<-1> doctrine's sibling. The operator-bounded lane above keeps its test.
@@ -443,7 +494,7 @@ test("the SHIPPED default is INDEFINITE — a stopped world waits for its human 
         if (original === undefined) delete process.env.PLURNK_SERVICE_PROPOSAL_TIMEOUT_MS;
         else process.env.PLURNK_SERVICE_PROPOSAL_TIMEOUT_MS = original;
     });
-    delete process.env.PLURNK_SERVICE_PROPOSAL_TIMEOUT_MS;
+    process.env.PLURNK_SERVICE_PROPOSAL_TIMEOUT_MS = "";
     const db = await openMigrated();
     try {
         const ctx = await setupEngine(db);
