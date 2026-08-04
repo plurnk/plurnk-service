@@ -24,10 +24,12 @@ test("Mock.provider: contextWindow exposed", () => {
     assert.equal(mock.contextWindow, 200000);
 });
 
-test("Mock.provider: countTokens returns a non-negative integer", () => {
+test("Mock.provider: prompt measurement carries exact provenance", async () => {
     const mock = new Mock({ contextWindow: 200000, responses: [] });
-    const n = mock.countTokens("alpha beta gamma");
-    assert.ok(Number.isInteger(n) && n >= 0, `countTokens returns a non-negative integer; got ${n}`);
+    assert.deepEqual(
+        await mock.countPromptTokens([{ role: "user", content: "alpha beta gamma" }]),
+        { kind: "exact", tokens: 8, source: "mock:chars2" },
+    );
 });
 
 test("Mock.provider: returns queued responses in order", async () => {

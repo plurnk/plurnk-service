@@ -326,6 +326,11 @@ test("the 413 row reports the exact measured budget violation", async () => {
                     deficit?: number;
                     stage?: string;
                     retryable?: boolean;
+                    physicalAdmission?: string;
+                    physicalCapacity?: number;
+                    physicalTokens?: number;
+                    physicalTokenKind?: string;
+                    physicalTokenSource?: string;
                 };
             })
             .find((row) => row.problem?.type === "https://problems.plurnk.dev/engine/grinder/budget-overflow")
@@ -338,9 +343,14 @@ test("the 413 row reports the exact measured budget violation", async () => {
         assert.equal(overflow.deficit, (overflow.usage ?? 0) - TINY);
         assert.equal(overflow.stage, "overflow-detection");
         assert.equal(overflow.retryable, false);
+        assert.equal(overflow.physicalAdmission, "over_capacity");
+        assert.equal(overflow.physicalCapacity, TINY);
+        assert.equal(overflow.physicalTokens, overflow.usage);
+        assert.equal(overflow.physicalTokenKind, "exact");
+        assert.equal(overflow.physicalTokenSource, "mock:chars2");
         assert.equal(
             overflow.detail,
-            `At overflow detection, Token Usage ${(overflow.usage ?? 0).toLocaleString("en-US")} exceeds Token Ceiling ${TINY.toLocaleString("en-US")} by ${(overflow.deficit ?? 0).toLocaleString("en-US")}. No working room remains.`,
+            `At overflow detection, Token Usage ${(overflow.usage ?? 0).toLocaleString("en-US")} exceeds Token Ceiling ${TINY.toLocaleString("en-US")} by ${(overflow.deficit ?? 0).toLocaleString("en-US")}. No working room remains. Physical recovery was not admitted: exact prompt measurement ${overflow.physicalTokens} exceeds physical prompt capacity ${overflow.physicalCapacity}.`,
         );
     } finally { await db.close(); }
 });
@@ -580,7 +590,52 @@ test("an estimate cannot authorize physical recovery, even when chars/2 reports 
         }
         assert.equal(result.result.status, 413);
         assert.equal(mock.remaining, 3, "an empirical estimate cannot spend the one recovery call");
-        assert.ok(measuredMessages?.some(({ content }) => content.includes("漢漢漢")), "physical admission measured the rendered user slot");
+        assert.deepEqual(
+            measuredMessages?.map(({ role }) => role),
+            ["system", "user"],
+            "physical admission measured the same two rendered slots dispatched by PacketWire",
+        );
+        const errors = await db.test_error_rows_for_worker.all<{ rx: string }>({ worker_id: workerId });
+        const physical = errors
+            .map(({ rx }) => JSON.parse(rx) as {
+                problem?: {
+                    physicalAdmission?: string;
+                    physicalTokenKind?: string;
+                    physicalTokenSource?: string;
+                    detail?: string;
+                };
+            })
+            .find(({ problem }) => problem?.physicalAdmission === "estimate")
+            ?.problem;
+        assert.equal(physical?.physicalTokenKind, "estimate");
+        assert.equal(physical?.physicalTokenSource, "heuristic:chars2");
+        assert.match(physical?.detail ?? "", /cannot authorize physical recovery/);
+    } finally {
+        await db.close();
+    }
+});
+
+test("a proven prompt-token upper bound can authorize the one physical recovery turn", async () => {
+    const db = await openMigrated();
+    try {
+        const { workspaceId, workerId, loopId } = await envelope(db);
+        const engine = plainEngine(db);
+        const mock = Object.assign(mockAt(199_998, [response([sendStmt(200, "recovered")])], 200_000), {
+            countPromptTokens: async () => ({
+                kind: "upper_bound" as const,
+                tokens: 1,
+                source: "test:proven-request-bound",
+            }),
+        });
+        const restore = pinSafety(199_990);
+        let result: Awaited<ReturnType<Engine["runLoop"]>>;
+        try {
+            result = await engine.runLoop({ provider: mock, workspaceId, workerId, loopId, messages: MESSAGES, maxTurns: 5 });
+        } finally {
+            restore();
+        }
+        assert.equal(result.result.status, 200);
+        assert.equal(mock.remaining, 0, "the bounded request spent exactly one recovery call");
     } finally {
         await db.close();
     }

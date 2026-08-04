@@ -21,7 +21,7 @@ const staticProvider = (response: ProviderResponse): Provider => ({
     contextWindow: 100000,
     constrainsOutput: true,
     generate: async () => response,
-    countTokens: () => 1,
+    countPromptTokens: async () => ({ kind: "exact", tokens: 1, source: "test:exact" }),
     calculateCost: () => 0,
 }) as Provider;
 
@@ -35,7 +35,7 @@ const recordingProvider = (): { provider: Provider; calls: Array<{ grammar?: str
     const provider = {
         get contextWindow() { return base.contextWindow; },
         get model() { return base.model; },
-        countTokens: (s: string) => base.countTokens(s),
+        countPromptTokens: (...args: Parameters<Mock["countPromptTokens"]>) => base.countPromptTokens(...args),
         calculateCost: (u: never) => base.calculateCost(u),
         generate: (args: { grammar?: string }) => { calls.push({ grammar: args.grammar }); return base.generate(args as never); },
     } as unknown as Provider;

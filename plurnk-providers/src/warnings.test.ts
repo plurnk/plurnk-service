@@ -7,18 +7,18 @@ test.afterEach(() => { mock.restoreAll(); resetEmittedWarnings(); });
 test("#40: same (code, message) fires once per process", () => {
     const seen: string[] = [];
     mock.method(process, "emitWarning", (msg: string | Error) => { seen.push(String(msg)); });
-    emitWarningOnce("openai provider: heuristic", "PLURNK_TOKENIZER_HEURISTIC");
-    emitWarningOnce("openai provider: heuristic", "PLURNK_TOKENIZER_HEURISTIC");
-    emitWarningOnce("openai provider: heuristic", "PLURNK_TOKENIZER_HEURISTIC");
-    assert.deepEqual(seen, ["openai provider: heuristic"]);
+    emitWarningOnce("openai provider: estimate", "PLURNK_PROMPT_COUNT_ESTIMATE");
+    emitWarningOnce("openai provider: estimate", "PLURNK_PROMPT_COUNT_ESTIMATE");
+    emitWarningOnce("openai provider: estimate", "PLURNK_PROMPT_COUNT_ESTIMATE");
+    assert.deepEqual(seen, ["openai provider: estimate"]);
 });
 
 test("#40: dedup is by (code, MESSAGE), not code — a second provider's surfacing is never suppressed", () => {
     const seen: string[] = [];
     mock.method(process, "emitWarning", (msg: string | Error) => { seen.push(String(msg)); });
-    emitWarningOnce("openai provider: heuristic", "PLURNK_TOKENIZER_HEURISTIC");
-    emitWarningOnce("groq provider: heuristic", "PLURNK_TOKENIZER_HEURISTIC"); // same code, different provider
-    assert.deepEqual(seen, ["openai provider: heuristic", "groq provider: heuristic"]);
+    emitWarningOnce("openai provider: estimate", "PLURNK_PROMPT_COUNT_ESTIMATE");
+    emitWarningOnce("groq provider: estimate", "PLURNK_PROMPT_COUNT_ESTIMATE"); // same code, different provider
+    assert.deepEqual(seen, ["openai provider: estimate", "groq provider: estimate"]);
 });
 
 test("#40: resetEmittedWarnings clears the set (test-order independence)", () => {

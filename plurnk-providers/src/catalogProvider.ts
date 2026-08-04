@@ -57,8 +57,8 @@ export const providerFromSdkModel = ({
     info?: ModelInfo;
 }): Provider => {
     emitWarningOnce(
-        `${name} provider: countTokens is a chars/2 upper bound — exact counts come from the mimetypes tokenizer seam or tokenize()`,
-        "PLURNK_TOKENIZER_HEURISTIC",
+        `${name} provider: physical prompt counting is a chars/2 estimate; over-policy recovery fails closed without exact or bounded request evidence`,
+        "PLURNK_PROMPT_COUNT_ESTIMATE",
     );
 
     const reasoning = reasoningFromEnv(env, name);
@@ -134,11 +134,6 @@ export const catalogProviderFromEnv = (
     const wireModel = resolved?.id ?? model;
     const sdk = createSdkModel(name, wireModel, env, baseUrlOverride);
     if (sdk === null) return null;
-
-    emitWarningOnce(
-        `${name} provider: countTokens is a chars/2 upper bound — exact counts come from the mimetypes tokenizer seam or tokenize()`,
-        "PLURNK_TOKENIZER_HEURISTIC",
-    );
 
     const info = resolved?.info;
     const contextWindow = effectiveContextWindow(contextOverride, info?.contextWindow ?? null);

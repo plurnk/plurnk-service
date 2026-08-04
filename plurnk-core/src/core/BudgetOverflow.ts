@@ -11,6 +11,15 @@ export interface BudgetOverflowMeasurement {
     readonly deficit: number;
 }
 
+export interface BudgetOverflowPhysicalFailure {
+    readonly reason: string;
+    readonly detail: string;
+    readonly capacity: number | null;
+    readonly tokens?: number;
+    readonly tokenKind?: string;
+    readonly tokenSource?: string;
+}
+
 const formatTokens = (tokens: number): string => tokens.toLocaleString("en-US");
 
 export default class BudgetOverflow {
@@ -37,19 +46,30 @@ export default class BudgetOverflow {
         usage: number,
         ceiling: number,
         recovery: boolean,
+        physical?: BudgetOverflowPhysicalFailure,
     ): OperationResult {
         const measurement = BudgetOverflow.measure(usage, ceiling);
+        const physicalDetail = physical === undefined
+            ? ""
+            : ` Physical recovery was not admitted: ${physical.detail}.`;
         return Validator.assertOperationResult({
             status: 413,
             problem: Problems.create(
                 "engine:grinder",
                 "budget-overflow",
                 413,
-                `At overflow detection, Token Usage ${formatTokens(measurement.usage)} exceeds Token Ceiling ${formatTokens(measurement.ceiling)} by ${formatTokens(measurement.deficit)}. No working room remains.`,
+                `At overflow detection, Token Usage ${formatTokens(measurement.usage)} exceeds Token Ceiling ${formatTokens(measurement.ceiling)} by ${formatTokens(measurement.deficit)}. No working room remains.${physicalDetail}`,
                 {
                     ...measurement,
                     stage: "overflow-detection",
                     retryable: false,
+                    ...(physical === undefined ? {} : {
+                        physicalAdmission: physical.reason,
+                        physicalCapacity: physical.capacity,
+                        ...(physical.tokens === undefined ? {} : { physicalTokens: physical.tokens }),
+                        ...(physical.tokenKind === undefined ? {} : { physicalTokenKind: physical.tokenKind }),
+                        ...(physical.tokenSource === undefined ? {} : { physicalTokenSource: physical.tokenSource }),
+                    }),
                     ...(recovery
                         ? {
                             allowedOperations: [...BudgetOverflow.recoveryOperations],

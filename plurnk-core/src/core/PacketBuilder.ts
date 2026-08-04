@@ -22,8 +22,8 @@ import PacketWire from "./packet-wire.ts";
 import type { RequestPacket, StoredPacketSection } from "./StoredPacket.ts";
 
 // Provider contract owned by @plurnk/plurnk-providers; engine is the consumer.
-import type { Provider } from "@plurnk/plurnk-providers";
-import { scopeEnvToAlias, resolveActiveAlias } from "@plurnk/plurnk-providers";
+import type { ChatMessage, PromptTokenMeasurement, Provider } from "@plurnk/plurnk-providers";
+import { assertPromptTokenMeasurement, scopeEnvToAlias, resolveActiveAlias } from "@plurnk/plurnk-providers";
 import ProviderInstantiate from "./ProviderInstantiate.ts";
 import BudgetOverflow from "./BudgetOverflow.ts";
 import BudgetReadout from "./BudgetReadout.ts";
@@ -116,7 +116,21 @@ const readOptionalPositiveIntFrom = (env: NodeJS.ProcessEnv, name: string): numb
     return n;
 };
 
-export type ChatMessage = { role: "system" | "user" | "assistant"; content: string };
+export type { ChatMessage } from "@plurnk/plurnk-providers";
+
+export type PhysicalPromptAdmission =
+    | {
+        readonly admitted: true;
+        readonly capacity: number;
+        readonly measurement: PromptTokenMeasurement;
+    }
+    | {
+        readonly admitted: false;
+        readonly reason: "unknown_context_window" | "unknown_output_envelope" | "estimate" | "over_capacity";
+        readonly detail: string;
+        readonly capacity: number | null;
+        readonly measurement?: PromptTokenMeasurement;
+    };
 
 // Packet assembly (SPEC {§packet-assembly}) + the budget grinder ({§grinder}):
 // builds the spec'd request packet, measures it, and reclaims window on overflow.
@@ -207,8 +221,8 @@ export default class PacketBuilder {
     // {§tokenomics-agnostic-ruler} — the ceiling is the real window partition (window − reserves),
     // NO calibration ratio: the model-facing measure is the chars/2 ruler (an over-count for
     // typical text), so comparing ruler-weight to the real-token ceiling is itself the conservative
-    // bias - the packet reports less room than the provider usually has; the exact provider count
-    // guards the pathological tail at the materialization gate.
+    // bias - the packet reports less room than the provider usually has; authoritative
+    // provider request evidence guards the pathological tail at recovery admission.
     ceilingFor(provider: Provider): number | null {
         const alias = ProviderInstantiate.aliasOf(provider) ?? resolveActiveAlias(process.env)?.alias ?? "";
         const operatorCap = this.#promptBudgetCapFor(alias);
@@ -446,8 +460,9 @@ export default class PacketBuilder {
     }): Promise<{ packet: RequestPacket; fit: boolean; struck: boolean; recorded: boolean }> {
         const ceiling = this.ceilingFor(provider);
         const measure = (p: RequestPacket): number => p.tokens;
-        // #421 — a null ceiling is an unbounded window: always fit, never fold or strike (the backend
-        // clamps; this mirrors Engine's physicallySendable, which treats a null contextWindow as sendable).
+        // #421 — a null policy ceiling never triggers grinding. If a virtual ceiling
+        // does trigger recovery while provider physics is unknown, physical admission
+        // separately fails closed under {§tokenomics-physical-admission}.
         if (ceiling === null || measure(packet) <= ceiling) {
             return { packet, fit: true, struck: false, recorded: false };
         }
@@ -488,12 +503,58 @@ export default class PacketBuilder {
         };
     }
 
-    // {§tokenomics-agnostic-ruler}: provider-owned physical-window count for an
-    // over-policy recovery candidate. It may be exact or the provider contract's
-    // conservative fallback; the model-facing packet weight remains ruler-based.
-    providerPacketTokens(packet: RequestPacket, provider: Provider): number {
-        return provider.countTokens(PacketWire.renderSlot(packet.sections, "system"))
-            + provider.countTokens(PacketWire.renderSlot(packet.sections, "user"));
+    // {§tokenomics-physical-admission}: one request-shaped physical predicate.
+    // The exact PacketWire messages used for dispatch are the measurement input;
+    // empirical estimates cannot authorize recovery against a hard window.
+    async physicalAdmission(
+        packet: RequestPacket,
+        provider: Provider,
+        signal?: AbortSignal,
+    ): Promise<PhysicalPromptAdmission> {
+        if (provider.contextWindow === null) {
+            return {
+                admitted: false,
+                reason: "unknown_context_window",
+                detail: `provider ${JSON.stringify(provider.model)} reports no physical context window`,
+                capacity: null,
+            };
+        }
+        const maxTokens = this.maxTokensFor(provider);
+        if (maxTokens === null) {
+            return {
+                admitted: false,
+                reason: "unknown_output_envelope",
+                detail: `provider ${JSON.stringify(provider.model)} reports no resolved output envelope`,
+                capacity: null,
+            };
+        }
+        const capacity = provider.contextWindow - maxTokens;
+        const measurement = assertPromptTokenMeasurement(
+            await provider.countPromptTokens(
+                PacketWire.packetToWireMessages(packet) as ChatMessage[],
+                signal,
+            ),
+            `provider ${JSON.stringify(provider.model)}`,
+        );
+        if (measurement.kind === "estimate") {
+            return {
+                admitted: false,
+                reason: "estimate",
+                detail: `${measurement.source} is an empirical estimate and cannot authorize physical recovery: ${measurement.detail}`,
+                capacity,
+                measurement,
+            };
+        }
+        if (measurement.tokens > capacity) {
+            return {
+                admitted: false,
+                reason: "over_capacity",
+                detail: `${measurement.kind} prompt measurement ${measurement.tokens} exceeds physical prompt capacity ${capacity}`,
+                capacity,
+                measurement,
+            };
+        }
+        return { admitted: true, capacity, measurement };
     }
 
     // Every prior-turn operation failure is durable before packet assembly.

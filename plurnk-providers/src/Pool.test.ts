@@ -2,7 +2,7 @@ import test from "node:test";
 import { strict as assert } from "node:assert";
 import Pool from "./Pool.ts";
 import { ProviderError } from "./errors.ts";
-import type { Provider, ProviderResponse } from "./types.ts";
+import type { PromptTokenMeasurement, Provider, ProviderResponse } from "./types.ts";
 import { resetEmittedWarnings } from "./warnings.ts";
 
 test.afterEach(() => { resetEmittedWarnings(); });
@@ -14,6 +14,7 @@ type FakeOpts = {
     constrainsOutput?: boolean; requiresMaxTokens?: boolean;
     reasoningReserve?: number | null; completionReserve?: number | null;
     tokenize?: boolean; cost?: number; throws?: Error;
+    promptMeasurement?: PromptTokenMeasurement;
 };
 // A fake backend that records which workers it served, and optionally throws.
 const backend = (opts: FakeOpts = {}) => {
@@ -27,7 +28,11 @@ const backend = (opts: FakeOpts = {}) => {
         ...(opts.reasoningReserve !== undefined ? { reasoningReserve: opts.reasoningReserve } : {}),
         ...(opts.completionReserve !== undefined ? { completionReserve: opts.completionReserve } : {}),
         ...(opts.tokenize ? { tokenize: async (t: string) => [t.length] } : {}),
-        countTokens: (t: string) => t.length,
+        countPromptTokens: async (messages) => opts.promptMeasurement ?? ({
+            kind: "exact",
+            tokens: messages.reduce((sum, { content }) => sum + content.length, 0),
+            source: "test:exact",
+        }),
         calculateCost: () => opts.cost ?? 0,
         generate: async (args: Parameters<Provider["generate"]>[0]): Promise<ProviderResponse> => {
             served.push(args.workerId);
@@ -89,10 +94,30 @@ test("Pool: tokenize is exposed iff every backend has it", () => {
     assert.equal(new Pool([backend({ tokenize: true }).b, backend({ tokenize: false }).b]).tokenize, undefined);
 });
 
-test("Pool: countTokens + calculateCost delegate to a backend", () => {
+test("Pool: prompt counting + calculateCost delegate to a backend", async () => {
     const p = new Pool([backend({ cost: 42 }).b]);
-    assert.equal(p.countTokens("abcd"), 4);
+    assert.deepEqual(await p.countPromptTokens([{ role: "user", content: "abcd" }]), {
+        kind: "exact", tokens: 4, source: "pool:test:exact",
+    });
     assert.equal(p.calculateCost({ prompt: 0, completion: 0, reasoning: 0, cached: 0, total: 0 }), 42);
+});
+
+test("Pool: prompt evidence is conservative across every routable backend", async () => {
+    const exact = backend({ promptMeasurement: { kind: "exact", tokens: 8, source: "test:a" } }).b;
+    const larger = backend({ promptMeasurement: { kind: "exact", tokens: 11, source: "test:b" } }).b;
+    assert.deepEqual(await new Pool([exact, larger]).countPromptTokens([]), {
+        kind: "upper_bound", tokens: 11, source: "pool:test:a,test:b",
+    });
+
+    const estimate = backend({ promptMeasurement: {
+        kind: "estimate", tokens: 3, source: "heuristic:chars2", detail: "unknown framing",
+    } }).b;
+    assert.deepEqual(await new Pool([exact, estimate]).countPromptTokens([]), {
+        kind: "estimate",
+        tokens: 8,
+        source: "pool:test:a,heuristic:chars2",
+        detail: "at least one interchangeable backend has only an estimate: unknown framing",
+    });
 });
 
 // --- dispatch: round-robin + affinity ---

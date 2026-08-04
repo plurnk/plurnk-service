@@ -9,6 +9,7 @@ export type {
     ProviderAttemptFinishReason,
     ProviderResponse,
     ProviderUsage,
+    PromptTokenMeasurement,
     TokenAlternative,
     TokenLogprob,
 } from "./types.ts";

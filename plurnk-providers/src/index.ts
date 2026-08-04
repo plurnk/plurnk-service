@@ -10,9 +10,11 @@ export type {
     ProviderOptions,
     ProviderResponse,
     ProviderUsage,
+    PromptTokenMeasurement,
     TokenLogprob,
     TokenAlternative,
 } from "./types.ts";
+export { assertPromptTokenMeasurement } from "./promptTokens.ts";
 
 // Alias cascade — re-exported from the zero-dep @plurnk/plurnk-aliases (#27), so
 // the "." surface is unchanged for existing importers and there's one source of

@@ -34,6 +34,7 @@ test("#608: the OpenAI-compatible entrypoint excludes Node-owned provider machin
         "errors.ts",
         "notices.ts",
         "openai.ts",
+        "promptTokens.ts",
         "types.ts",
         "usage.ts",
         "warnings.ts",

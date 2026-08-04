@@ -23,7 +23,9 @@ class MetaProvider implements Provider {
     }
     get contextWindow(): number | null { return this.#base.contextWindow; }
     get model(): string { return this.#base.model; }
-    countTokens(text: string): number { return this.#base.countTokens(text); }
+    countPromptTokens(...args: Parameters<Mock["countPromptTokens"]>): ReturnType<Mock["countPromptTokens"]> {
+        return this.#base.countPromptTokens(...args);
+    }
     calculateCost(usage: Parameters<Mock["calculateCost"]>[0]): number { return this.#base.calculateCost(usage); }
     async generate(args: Parameters<Mock["generate"]>[0]): Promise<ProviderResponse> {
         return { ...(await this.#base.generate(args)), meta: this.#meta };

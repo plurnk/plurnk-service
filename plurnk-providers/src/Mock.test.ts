@@ -24,11 +24,14 @@ test("Mock: contextWindow passes null through", () => {
 
 // — Tokenomics (SPEC §10.3, §10.4, §10.5) —
 
-test("Mock: countTokens('') is 0; non-empty is a positive integer", () => {
+test("Mock: prompt counting is exact for its declared mock vocabulary", async () => {
     const m = build();
-    assert.equal(m.countTokens(""), 0);
-    const n = m.countTokens("four");
-    assert.ok(Number.isInteger(n) && n > 0);
+    assert.deepEqual(await m.countPromptTokens([]), {
+        kind: "exact", tokens: 0, source: "mock:chars2",
+    });
+    assert.deepEqual(await m.countPromptTokens([{ role: "user", content: "four" }]), {
+        kind: "exact", tokens: 2, source: "mock:chars2",
+    });
 });
 
 test("Mock: calculateCost returns its deliberate zero estimate", () => {

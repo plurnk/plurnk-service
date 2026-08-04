@@ -1171,10 +1171,12 @@ export default class Engine {
             // {§grinder-hard-413-recovery}/{§grinder-hard-413-abort} — admit
             // one physically sendable constrained recovery turn; a physical
             // overflow or consecutive policy overflow terminates immediately.
-            const physicallySendable = provider.contextWindow === null
-                ? true
-                : this.#packets.providerPacketTokens(requestPacket, provider) <= provider.contextWindow - (this.#packets.maxTokensFor(provider) ?? 0);
-            if (physicallySendable && !this.#hardOverflowRecovery.has(loopId)) {
+            const physicalAdmission = await this.#packets.physicalAdmission(
+                requestPacket,
+                provider,
+                this.#loopAborts.get(loopId)?.signal,
+            );
+            if (physicalAdmission.admitted && !this.#hardOverflowRecovery.has(loopId)) {
                 const ceiling = this.#packets.ceilingFor(provider);
                 if (ceiling === null) {
                     throw new Error("an unbounded prompt budget cannot enter budget recovery");
@@ -1214,7 +1216,21 @@ export default class Engine {
                     sequence: nextActionIndex++,
                     origin: "plurnk",
                     source: "engine",
-                    result: BudgetOverflow.result(requestPacket.tokens, ceiling, false),
+                    result: BudgetOverflow.result(
+                        requestPacket.tokens,
+                        ceiling,
+                        false,
+                        physicalAdmission.admitted
+                            ? undefined
+                            : {
+                                reason: physicalAdmission.reason,
+                                detail: physicalAdmission.detail,
+                                capacity: physicalAdmission.capacity,
+                                tokens: physicalAdmission.measurement?.tokens,
+                                tokenKind: physicalAdmission.measurement?.kind,
+                                tokenSource: physicalAdmission.measurement?.source,
+                            },
+                    ),
                 });
                 requestPacket = await this.#packets.buildRequestPacket({
                     initialMessages: messages, requirements, workspaceId, workerId, loopId,

@@ -36,7 +36,10 @@ interface Provider {
   readonly reasoningReserve?: number | null;
   readonly completionReserve?: number | null;
 
-  countTokens(text: string): number;
+  countPromptTokens(
+    messages: readonly ChatMessage[],
+    signal?: AbortSignal,
+  ): Promise<PromptTokenMeasurement>;
   tokenize?(text: string): Promise<number[]>;
   calculateCost(usage: ProviderUsage): number;
   generate(args: GenerateArgs): Promise<ProviderResponse>;
@@ -48,9 +51,26 @@ interface Provider {
 invent a stand-in. The context-window knob never carries model-facing prompt
 policy or grinder pressure.
 
-`countTokens` is synchronous and non-negative. The common fallback is a
-conservative chars/2 ruler and is announced once. `tokenize` exists only when
-the endpoint exposes its real vocabulary.
+`PromptTokenMeasurement` is a discriminated request-level result:
+
+| `kind`        | Meaning                                                | May authorize physical admission |
+| ------------- | ------------------------------------------------------ | -------------------------------- |
+| `exact`       | Exact count for the complete provider request.         | Yes.                             |
+| `upper_bound` | Proven upper bound for the complete provider request.  | Yes.                             |
+| `estimate`    | Empirical prediction with required causal `detail`.    | No.                              |
+
+Every result carries a non-negative integer `tokens` and a non-empty `source`.
+`countPromptTokens` receives the same messages supplied to `generate` and may
+perform cancellable provider I/O. The common fallback is chars/2 over message
+content; it is announced once and reported honestly as an estimate because it
+knows neither the serving vocabulary nor provider-owned request framing.
+An unavailable optional counting endpoint likewise returns an estimate naming
+the cause. A malformed measurement is a provider contract violation and fails
+hard; consumers do not reinterpret it as ordinary unavailability.
+
+`tokenize` is the separate content-token capability and exists only when the
+endpoint exposes its real vocabulary. Content tokenization does not substitute
+for complete-request measurement.
 
 `calculateCost` returns the local USD estimate defined by
 {§model-fact-resolution}. It is not an authoritative upstream-settled charge.
@@ -234,7 +254,8 @@ also expose:
 - GBNF constrained sampling;
 - slot count and worker-sticky slot affinity;
 - EOS marker removal;
-- exact `/tokenize`;
+- exact complete-request counting through `/v1/chat/completions/input_tokens`;
+- exact content token IDs through `/tokenize`;
 - the requirement that the caller provide `maxTokens`.
 
 `PLURNK_PROVIDERS_LLAMA_SERVER` may force or disable detection. Probe attempts
@@ -380,6 +401,10 @@ decision, not inferred from provider names. Overflow is limited to transport
 availability and rate-limit failures that carry no normalized response attempt;
 {§provider-interrupted-attempt} propagates without overflow.
 
+Prompt measurement covers every backend that could receive the request. The
+pool takes the largest result; differing exact counts or any proven bound yield
+an `upper_bound`, while any estimate makes the aggregate an estimate.
+
 ## §14 Conformance
 
 Coverage MUST prove:
@@ -390,6 +415,7 @@ Coverage MUST prove:
 - compatible extension preservation;
 - timeout, retry, cancellation, interrupted-attempt, and final-error behavior;
 - local capability probes and pins;
+- exact, bounded, and estimated complete-request token measurements;
 - local reasoning activation, response-wide allowance, and GBNF coexistence;
 - usage, costs, evidence, metadata isolation, and grammar observation;
 - alias scoping and fail-hard invalid configuration.

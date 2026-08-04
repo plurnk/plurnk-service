@@ -702,11 +702,20 @@ test("template reasoning does not invent pre-projection evidence when the wire o
 test("#488 channel-escape detector: billed completion tokens vastly beyond visible channels attach grammar_unenforced", async () => {
     // The run105 shape: tiny visible content, no reasoning, thousands billed — the decode
     // escaped into a discarded reasoning block, unconstrained.
-    const p = new AiSdkProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "adaptive", budget: null }, retryAttempts: 0, reasoningStyle: "template", grammarStyle: "llamacpp" });
-    installFetch([
+    const chunks = [
         { choices: [{ delta: { content: "x" }, finish_reason: "length" }] },
         { usage: { prompt_tokens: 10, completion_tokens: 5000, total_tokens: 5010 } },
-    ]);
+    ];
+    const fetch: typeof globalThis.fetch = async (input, init) => {
+        if (String(input).endsWith("/tokenize")) {
+            const body = JSON.parse(String(init?.body)) as { content: string };
+            return new Response(JSON.stringify({
+                tokens: body.content.length === 0 ? [] : [1],
+            }), { headers: { "content-type": "application/json" } });
+        }
+        return new Response(sseStream(chunks), { status: 200 });
+    };
+    const p = new AiSdkProvider({ model: "m", url: "http://x/v1/chat/completions", fetch, tokenizeUrl: "http://x/tokenize", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "adaptive", budget: null }, retryAttempts: 0, reasoningStyle: "template", grammarStyle: "llamacpp" });
     const res = await p.generate({ workerId: "r", messages: [], grammar: 'root ::= "x"' });
     const escape = res.notices?.find((e) => e.message.includes("escaped the grammar"));
     assert.ok(escape, "escape notice attached");

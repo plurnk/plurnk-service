@@ -6,13 +6,15 @@
 // ordinary vendor protocol. The compatible URL path remains only for PLURNK
 // extensions and local endpoint probes the SDK cannot represent.
 
-import type { ChatMessage, GrammarEvidence, Provider, ProviderResponse, ProviderUsage } from "./types.ts";
+import type { ChatMessage, GrammarEvidence, PromptTokenMeasurement, Provider, ProviderResponse, ProviderUsage } from "./types.ts";
 import type { Reasoning, ReserveSpec } from "./env.ts";
 import { executeAiSdkModel, executeOpenAICompatible } from "./aiSdkTransport.ts";
 import type { LanguageModel } from "ai";
 import { toProviderError, ProviderError } from "./errors.ts";
 import type { ProviderNotice } from "./notices.ts";
 import { validateGbnf } from "@plurnk/gbnf";
+import { assertPromptTokenMeasurement, estimatePromptTokens } from "./promptTokens.ts";
+import { emitWarningOnce } from "./warnings.ts";
 
 export type ProviderFetch = typeof globalThis.fetch;
 
@@ -34,7 +36,7 @@ export type AiSdkProviderConfig = {
     fetch?: ProviderFetch;                    // per-instance request executor; default globalThis.fetch
     contextWindow?: number | null;              // default null; caller resolves-or-fails (#419), narrows to required with the interface
     reasoningStyle?: ReasoningStyle;          // default "none"
-    countTokens?: (text: string) => number;   // default chars/2 upper-bound heuristic
+    countPromptTokens?: (messages: readonly ChatMessage[], signal?: AbortSignal) => PromptTokenMeasurement | Promise<PromptTokenMeasurement>;
     calculateCost?: (usage: ProviderUsage) => number; // default () => 0
     source?: string;                           // notice/problem source, e.g. "provider:openai"; default "provider"
     grammarStyle?: GrammarStyle;               // how a GBNF grammar is carried; default "none" (not sent)
@@ -59,6 +61,9 @@ export type AiSdkProviderConfig = {
     // provider exposes the optional `tokenize()` capability — the model's OWN
     // vocab, no client-side tokenizer data needed; default unset (capability absent).
     tokenizeUrl?: string;
+    // Provider-authoritative count of a complete chat-completions request. This
+    // is distinct from /tokenize, which sees content but not the chat template.
+    promptTokensUrl?: string;
     // #37: the backend's self-reported served model id (from the /v1/models probe),
     // surfaced as Provider.servedModel. For a local llama-server the wire `model` is
     // the alias; this is the real name (the .gguf) the tokenizer seam maps. Absent
@@ -145,9 +150,6 @@ export const effortFromBudget = (budget: number): "low" | "medium" | "high" => {
     return "high";
 };
 
-// chars/2 upper bound (see ./tokenizers.ts) — overcounts safely, never under.
-const heuristicTokens = (text: string): number => (text.length === 0 ? 0 : Math.ceil(text.length / 2));
-
 // Body keys the provider owns — a caller's `sampling` passthrough may not set
 // these. Two families (#477 audit):
 //   transport/managed — grammar transport, the stream/JSON choice, slot pinning,
@@ -191,7 +193,8 @@ export default class AiSdkProvider implements Provider {
     #dryAllowedLength: number | undefined;
     #repeatLastN: number | undefined;
     #reasoningStyle: ReasoningStyle;
-    #countTokens: (text: string) => number;
+    #countPromptTokens: (messages: readonly ChatMessage[], signal?: AbortSignal) => PromptTokenMeasurement | Promise<PromptTokenMeasurement>;
+    #promptTokensUrl: string | undefined;
     #calculateCost: (usage: ProviderUsage) => number;
     #source: string;
     #grammarStyle: GrammarStyle;
@@ -247,7 +250,11 @@ export default class AiSdkProvider implements Provider {
         this.#retryAttempts = config.retryAttempts;
         this.#errorDetailLimit = config.errorDetailLimit;
         this.#reasoningStyle = config.reasoningStyle ?? "none";
-        this.#countTokens = config.countTokens ?? heuristicTokens;
+        if (config.countPromptTokens !== undefined && config.promptTokensUrl !== undefined) {
+            throw new Error(`${config.source ?? "provider"}: configure countPromptTokens or promptTokensUrl, not both`);
+        }
+        this.#countPromptTokens = config.countPromptTokens ?? ((messages) => estimatePromptTokens(messages));
+        this.#promptTokensUrl = config.promptTokensUrl;
         this.#calculateCost = config.calculateCost ?? (() => 0);
         this.#source = config.source ?? "provider";
         this.#grammarStyle = config.grammarStyle ?? "none";
@@ -314,7 +321,56 @@ export default class AiSdkProvider implements Provider {
     // are LIVE without spending a generation on a forcing-grammar probe.
     get constrainsOutput(): boolean { return this.#grammarStyle !== "none"; }
 
-    countTokens(text: string): number { return this.#countTokens(text); }
+    async countPromptTokens(
+        messages: readonly ChatMessage[],
+        signal?: AbortSignal,
+    ): Promise<PromptTokenMeasurement> {
+        if (this.#promptTokensUrl === undefined) {
+            return assertPromptTokenMeasurement(
+                await this.#countPromptTokens(messages, signal),
+                this.#source,
+            );
+        }
+
+        signal?.throwIfAborted();
+        try {
+            const timeout = AbortSignal.timeout(this.#fetchTimeoutMs);
+            const response = await this.#fetch(this.#promptTokensUrl, {
+                method: "POST",
+                headers: { "Content-Type": "application/json", ...this.#headers },
+                body: JSON.stringify({
+                    model: this.#model,
+                    messages,
+                    ...this.#reasoningBody(),
+                }),
+                signal: signal === undefined ? timeout : AbortSignal.any([signal, timeout]),
+            });
+            if (!response.ok) {
+                return estimatePromptTokens(
+                    messages,
+                    `llama-server input-token endpoint returned HTTP ${response.status}`,
+                );
+            }
+            const body = await response.json() as { input_tokens?: unknown };
+            if (!Number.isInteger(body.input_tokens) || (body.input_tokens as number) < 0) {
+                return estimatePromptTokens(
+                    messages,
+                    "llama-server input-token endpoint returned no non-negative integer input_tokens",
+                );
+            }
+            return {
+                kind: "exact",
+                tokens: body.input_tokens as number,
+                source: "llama-server:/v1/chat/completions/input_tokens",
+            };
+        } catch (cause) {
+            signal?.throwIfAborted();
+            return estimatePromptTokens(
+                messages,
+                `llama-server input-token measurement failed: ${cause instanceof Error ? cause.message : String(cause)}`,
+            );
+        }
+    }
     calculateCost(usage: ProviderUsage): number { return this.#calculateCost(usage); }
 
     // Reasoning intent maps independently of grammar transport. The llama-server
@@ -629,22 +685,31 @@ export default class AiSdkProvider implements Provider {
 
         let notices: ProviderNotice[] | undefined;
         const usage = raw.usage;
-        if (sendGrammar !== undefined) {
+        if (sendGrammar !== undefined && this.tokenize !== undefined) {
             // #488 channel-escape detector (the run105 class): completion tokens
             // billed far beyond every visible channel mean the decode ESCAPED into
-            // a server-discarded reasoning block mid-emission — unconstrained,
-            // invisible, billed (12,288 billed vs 1,033 chars visible, live).
-            // countTokens OVERCOUNTS text (chars/2 upper bound), so billed
-            // exceeding visible-plus-slack is real vanishing, not estimator noise.
-            const visible = this.#countTokens(raw.content) + this.#countTokens(raw.reasoning);
-            if (usage.completion > visible + 64) {
-                (notices ??= []).push({
-                    source: this.#source,
-                    kind: "grammar_unenforced",
-                    level: "warn",
-                    message: `decode escaped the grammar: ${usage.completion} completion tokens billed but only ~${visible} visible across content+reasoning — the balance ran unconstrained in a discarded reasoning channel`,
-                    position: [...raw.content].length,
-                });
+            // a server-discarded reasoning block mid-emission. This diagnostic
+            // requires the serving vocabulary; an estimate cannot prove absence.
+            try {
+                const [contentTokens, reasoningTokens] = await Promise.all([
+                    this.tokenize(raw.content),
+                    this.tokenize(raw.reasoning),
+                ]);
+                const visible = contentTokens.length + reasoningTokens.length;
+                if (usage.completion > visible + 64) {
+                    (notices ??= []).push({
+                        source: this.#source,
+                        kind: "grammar_unenforced",
+                        level: "warn",
+                        message: `decode escaped the grammar: ${usage.completion} completion tokens billed but only ${visible} visible across content+reasoning — the balance ran unconstrained in a discarded reasoning channel`,
+                        position: [...raw.content].length,
+                    });
+                }
+            } catch (cause) {
+                emitWarningOnce(
+                    `${this.#source}: exact visible-token diagnostic unavailable (${cause instanceof Error ? cause.message : String(cause)})`,
+                    "PLURNK_VISIBLE_TOKEN_COUNT_UNAVAILABLE",
+                );
             }
         }
 

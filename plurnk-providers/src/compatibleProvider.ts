@@ -151,6 +151,7 @@ export const compatibleProviderFromEnv = async (
     let slotCount: number | null = null;
     let eosText: string | undefined;
     let tokenizeUrl: string | undefined;
+    let promptTokensUrl: string | undefined;
     if (llamaServer) {
         grammarStyle = "llamacpp";
         reasoningStyle = "template";
@@ -158,12 +159,15 @@ export const compatibleProviderFromEnv = async (
         slotCount = props.slotCount;
         eosText = props.eosText ?? undefined;
         tokenizeUrl = url.replace(/\/v1\/chat\/completions$/, "/tokenize");
+        promptTokensUrl = url.replace(/\/v1\/chat\/completions$/, "/v1/chat/completions/input_tokens");
     }
 
-    emitWarningOnce(
-        `${provider} provider: countTokens is a chars/2 upper bound — exact counts come from the mimetypes tokenizer seam or tokenize()`,
-        "PLURNK_TOKENIZER_HEURISTIC",
-    );
+    if (!llamaServer) {
+        emitWarningOnce(
+            `${provider} provider: physical prompt counting is a chars/2 estimate; over-policy recovery fails closed without exact or bounded request evidence`,
+            "PLURNK_PROMPT_COUNT_ESTIMATE",
+        );
+    }
     const { reasoningReserve, completionReserve } = envelopeFromEnv(env, provider);
     return new AiSdkProvider({
         model,
@@ -201,6 +205,7 @@ export const compatibleProviderFromEnv = async (
         slotCount,
         eosText,
         tokenizeUrl,
+        promptTokensUrl,
         servedModel: probe.servedModel ?? undefined,
         requiresMaxTokens: llamaServer || undefined,
     });

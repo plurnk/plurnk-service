@@ -116,3 +116,25 @@ test("detected llama-server measures the complete chat request through input_tok
     assert.equal(countBody?.model, "local");
     assert.deepEqual(countBody?.chat_template_kwargs, { enable_thinking: false });
 });
+
+test("a missing llama-server input-token endpoint degrades explicitly, never to a claimed bound", async () => {
+    mock.method(globalThis, "fetch", async (input: string | URL | Request) => {
+        const url = String(input);
+        if (url.endsWith("/models")) {
+            return new Response(JSON.stringify({
+                data: [{ id: "served.gguf", meta: { n_ctx: 8192 } }],
+            }));
+        }
+        if (url.endsWith("/props")) return new Response(JSON.stringify({ total_slots: 1 }));
+        if (url.endsWith("/chat/completions/input_tokens")) return new Response("missing", { status: 404 });
+        throw new Error(`unexpected request ${url}`);
+    });
+
+    const provider = await compatibleProviderFromEnv("openai", env, "local");
+    assert.deepEqual(await provider.countPromptTokens([{ role: "user", content: "漢漢漢" }]), {
+        kind: "estimate",
+        tokens: 2,
+        source: "heuristic:chars2",
+        detail: "llama-server input-token endpoint returned HTTP 404",
+    });
+});

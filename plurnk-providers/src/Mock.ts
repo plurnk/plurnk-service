@@ -5,7 +5,7 @@
 // Provider contract. Production providers don't expose the `ops` escape
 // hatch — that's an intg-only convenience.
 
-import type { ChatMessage, FinishReason, GrammarEvidence, Provider, ProviderAssistant, ProviderResponse, ProviderUsage } from "./types.ts";
+import type { ChatMessage, FinishReason, GrammarEvidence, PromptTokenMeasurement, Provider, ProviderAssistant, ProviderResponse, ProviderUsage } from "./types.ts";
 import { resolveEnvelopeFromEnv } from "./env.ts";
 
 export type MockAssistant = {
@@ -62,10 +62,15 @@ export default class Mock implements Provider {
     get completionReserve(): number | null { return this.#completionReserve; }
     get model(): string { return "mock"; }
 
-    // Provider count fallback: the same conservative chars/2 upper bound used
-    // when a production provider has no exact synchronous counter.
-    countTokens(text: string): number {
-        return text.length === 0 ? 0 : Math.ceil(text.length / 2);
+    // Mock's deliberately simple vocabulary defines each two content code units
+    // as one token and has no hidden request framing. This is exact for the mock,
+    // unlike a production adapter applying the same arithmetic to an unknown model.
+    async countPromptTokens(messages: readonly ChatMessage[]): Promise<PromptTokenMeasurement> {
+        return {
+            kind: "exact",
+            tokens: messages.reduce((sum, { content }) => sum + Math.ceil(content.length / 2), 0),
+            source: "mock:chars2",
+        };
     }
 
     // Mock is free.

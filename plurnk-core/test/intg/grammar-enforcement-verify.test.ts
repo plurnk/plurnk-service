@@ -24,7 +24,8 @@ const fakeProvider = (content: string, calls: Array<{ grammar?: string }> = []):
             },
         };
     },
-    countTokens: () => 1, calculateCost: () => 0,
+    countPromptTokens: async () => ({ kind: "exact", tokens: 1, source: "test:exact" }),
+    calculateCost: () => 0,
 }) as unknown as Provider;
 
 test("an enforcing backend proves the required raw reasoning-plus-content sentence", async () => {

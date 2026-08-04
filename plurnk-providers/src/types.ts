@@ -10,6 +10,21 @@ export interface ChatMessage {
     content: string;
 }
 
+// Preflight evidence for the complete provider request. An empirical estimate
+// is useful telemetry but cannot authorize a hard physical-capacity decision.
+export type PromptTokenMeasurement =
+    | {
+        readonly kind: "exact" | "upper_bound";
+        readonly tokens: number;
+        readonly source: string;
+    }
+    | {
+        readonly kind: "estimate";
+        readonly tokens: number;
+        readonly source: string;
+        readonly detail: string;
+    };
+
 // Normalized token accounting. Invariant (enforced by normalizeUsage at the
 // provider boundary): total = prompt + completion + reasoning; cached is a
 // subset of prompt. `completion` is visible output EXCLUDING reasoning; the
@@ -181,10 +196,10 @@ export interface Provider {
     // as null). All first-party providers claim, so null means genuinely-unknown.
     readonly reasoningReserve?: number | null;
     readonly completionReserve?: number | null;
-    // Provider-owned tokenizer. Synchronous, non-negative integer. Without an
-    // exact family configured this is the chars/2 UPPER BOUND (surfaced at
-    // construction, never silent) — safe for refusal math, not an exact count.
-    countTokens(text: string): number;
+    // Provider-owned preflight measurement of the complete chat request,
+    // including provider/template framing when the adapter can know it.
+    // Estimates are explicit and MUST NOT authorize hard physical admission.
+    countPromptTokens(messages: readonly ChatMessage[], signal?: AbortSignal): Promise<PromptTokenMeasurement>;
     // OPTIONAL capability: exact tokenization served by the backend's own vocab
     // (llama-server /tokenize) — token ids in the model's real vocabulary.
     // Present ONLY when the backend exposes such an endpoint (probe-gated);

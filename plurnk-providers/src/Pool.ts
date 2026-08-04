@@ -1,6 +1,7 @@
-import type { Provider, ProviderResponse, ProviderUsage, ChatMessage } from "./types.ts";
+import type { Provider, ProviderResponse, ProviderUsage, ChatMessage, PromptTokenMeasurement } from "./types.ts";
 import { ProviderError, type ProviderErrorKind } from "./errors.ts";
 import { emitWarningOnce } from "./warnings.ts";
+import { assertPromptTokenMeasurement } from "./promptTokens.ts";
 
 // A backend-AVAILABILITY failure: the sub-provider already exhausted its OWN
 // transient retries (#18) before throwing one of these, so re-hitting the same
@@ -82,7 +83,34 @@ export default class Pool implements Provider {
         return this.#backends.some((b) => b.requiresMaxTokens === true) ? true : undefined;
     }
 
-    countTokens(text: string): number { return this.#backends[0].countTokens(text); }
+    async countPromptTokens(
+        messages: readonly ChatMessage[],
+        signal?: AbortSignal,
+    ): Promise<PromptTokenMeasurement> {
+        const measurements = await Promise.all(this.#backends.map(async (backend) =>
+            assertPromptTokenMeasurement(
+                await backend.countPromptTokens(messages, signal),
+                `Pool backend ${backend.model}`,
+            )));
+        const tokens = Math.max(...measurements.map((measurement) => measurement.tokens));
+        const sources = [...new Set(measurements.map(({ source }) => source))].join(",");
+        const estimate = measurements.find((measurement) => measurement.kind === "estimate");
+        if (estimate?.kind === "estimate") {
+            return {
+                kind: "estimate",
+                tokens,
+                source: `pool:${sources}`,
+                detail: `at least one interchangeable backend has only an estimate: ${estimate.detail}`,
+            };
+        }
+        const exact = measurements.every((measurement) => measurement.kind === "exact")
+            && measurements.every((measurement) => measurement.tokens === tokens);
+        return {
+            kind: exact ? "exact" : "upper_bound",
+            tokens,
+            source: `pool:${sources}`,
+        };
+    }
     calculateCost(usage: ProviderUsage): number { return this.#backends[0].calculateCost(usage); }
 
     // --- dispatch ---
