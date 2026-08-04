@@ -48,7 +48,7 @@ CREATE        INDEX IF NOT EXISTS workers_workspace_name          ON workers (wo
 -- flags: per-loop runtime flags (auto, noProposals, noWeb, noInteraction,
 -- mode). JSON column, merged over DEFAULT_LOOP_FLAGS in code so missing
 -- keys read as their defaults. SchemeRegistry.resolveForLoop gates schemes
--- by manifest affinity (proposes / excludedInAsk / requiresWeb / etc).
+-- by manifest affinity (excludedInAsk / requiresWeb / requiresInteraction).
 CREATE TABLE IF NOT EXISTS loops (
     id       INTEGER NOT NULL PRIMARY KEY,
     version  INTEGER NOT NULL DEFAULT 0   CHECK (version >= 0),

@@ -77,10 +77,10 @@ test("SchemeResolver.forLoop: requiresInteraction filters under noInteraction", 
     assert.deepEqual([...SchemeResolver.forLoop(m, flags)], []);
 });
 
-test("SchemeResolver.forLoop: proposes filters under noProposals", () => {
+test("SchemeResolver.forLoop: noProposals does not change scheme affinity (#165)", () => {
     const m = handlers([
-        ["exec", makeScheme("exec", baseManifest("exec", { proposes: true }))],
+        ["http", makeScheme("http", baseManifest("http", { requiresWeb: true }))],
     ]);
     const flags: LoopFlags = { ...DEFAULT_LOOP_FLAGS, noProposals: true };
-    assert.deepEqual([...SchemeResolver.forLoop(m, flags)], []);
+    assert.deepEqual([...SchemeResolver.forLoop(m, flags)], ["http"]);
 });

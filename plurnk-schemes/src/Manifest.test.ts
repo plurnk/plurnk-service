@@ -46,4 +46,12 @@ test("Manifest.of validates dispatch-critical fields", () => {
         () => Manifest.of({ manifest: { ...manifest("null-storage"), storedScheme: null } }, "null-storage"),
         /storedScheme/,
     );
+    assert.throws(
+        () => Manifest.of({ manifest: { ...manifest("stale-affinity"), flags: { proposes: true } } }, "stale-affinity"),
+        /unknown.*proposes/,
+    );
+    assert.throws(
+        () => Manifest.of({ manifest: { ...manifest("unknown-affinity"), flags: { requiresGpu: true } } }, "unknown-affinity"),
+        /unknown.*requiresGpu/,
+    );
 });

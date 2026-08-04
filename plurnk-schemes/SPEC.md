@@ -42,12 +42,25 @@ class Notes {
 | `volatile` | Boolean. |
 | `modelVisible` | Boolean. |
 | `folderScopes?` | `true` declares that a trailing slash on FIND or READ is a collection scope. Absent/false means `/` is ordinary resource syntax. Matcher bodies and explicit globs remain queries independently. |
-| `flags?` | Optional `SchemeFlagAffinity`. |
+| `flags?` | Optional exact `SchemeFlagAffinity`; see {§manifest-flag-affinity}. |
 | `example?` | The scheme's terse **hot-path** one-liner (e.g. `"READ(foo://thing/42)"`) — renders in the live catalogue every turn, so keep it to one canonical usage line. Omit → not advertised. Depth goes in `documentation`. |
 | `documentation?` | The **deep doc** (semantics / channels / edge cases). Consumer materializes it as a pull-able `worker://plurnk/docs/<name>.md` entry READ on demand; never hits the hot path. Mirrors `ExecInfo.documentation` (schemes#25). |
 | `glyph?` | Display icon (emoji / nerdfont). Omit → consumer renders the `name` (`glyph ?? name`). |
 | `foldedByDefault?` | Entries land FOLDED, off the ranked manifest surface (READable via address, not poured into the ranked view). For executor-output streams (`<tag>://`) — containment one level up (schemes#20/service#240). Absent/false → ranked/first-class. |
 | `storedScheme?` | Value persisted to `entries.scheme`, which may differ from the addressing `name`. Absent defaults to `name`. It must be a non-null string because every persisted identity component is non-null. |
+
+§manifest-flag-affinity `flags` is a closed environmental-authority declaration.
+Unknown fields fail manifest admission; absent fields are false.
+
+| Field                  | Scheme is inactive when          | Declared requirement                    |
+| ---------------------- | -------------------------------- | --------------------------------------- |
+| `excludedInAsk`        | `mode === "ask"`                 | Act-mode operation authority            |
+| `requiresWeb`          | `noWeb === true`                 | Web access                              |
+| `requiresInteraction`  | `noInteraction === true`         | Interactive access                      |
+
+Proposal behavior is not scheme affinity. A handler proposes by returning 202;
+the consumer's proposal lifecycle decides whether a client, loop auto,
+`noProposals`, or a timeout resolves it.
 
 §manifest-self-doc **Self-doc split (terse pushes, depth pulls).** `example` + `glyph` are the hot-path listing rendered every turn — keep them terse. `documentation` is the deep prose (every op, channel, status code, gotcha); the consumer materializes it as a pull-able **`worker://plurnk/docs/<name>.md`** entry the model READs on demand, off the hot path. Both live on the manifest; the consumer decides what's pushed vs pulled.
 

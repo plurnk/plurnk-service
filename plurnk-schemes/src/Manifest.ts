@@ -3,6 +3,8 @@ import type { SchemeFlagAffinity, SchemeManifest, WriterTier } from "./types.ts"
 const WRITERS = new Set<WriterTier>(["model", "client", "plurnk", "plugin"]);
 const CATEGORIES = new Set<SchemeManifest["category"]>(["data", "logging", "control"]);
 const SCOPES = new Set<SchemeManifest["scope"]>(["workspace", "worker"]);
+const FLAG_AFFINITIES = ["excludedInAsk", "requiresWeb", "requiresInteraction"] as const satisfies ReadonlyArray<keyof SchemeFlagAffinity>;
+const FLAG_AFFINITY_NAMES = new Set<string>(FLAG_AFFINITIES);
 
 export default class Manifest {
     static of(handler: unknown, expectedName?: string): SchemeManifest {
@@ -80,8 +82,12 @@ export default class Manifest {
         if (typeof value !== "object" || value === null || Array.isArray(value)) {
             throw new Error(`scheme '${name}' manifest.flags must be an object`);
         }
-        const flags = value as Record<keyof SchemeFlagAffinity, unknown>;
-        for (const field of ["excludedInAsk", "requiresWeb", "requiresInteraction", "proposes"] as const) {
+        const flags = value as Record<string, unknown>;
+        const unknown = Object.keys(flags).find((field) => !FLAG_AFFINITY_NAMES.has(field));
+        if (unknown !== undefined) {
+            throw new Error(`scheme '${name}' manifest.flags has unknown field '${unknown}'`);
+        }
+        for (const field of FLAG_AFFINITIES) {
             if (flags[field] !== undefined && typeof flags[field] !== "boolean") {
                 throw new Error(`scheme '${name}' manifest.flags.${field} must be boolean`);
             }

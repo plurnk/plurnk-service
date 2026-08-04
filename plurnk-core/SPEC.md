@@ -77,7 +77,7 @@ Independent axes on entries and channels. Confusion across them is a recurring s
 | **cycle**                    | A repeated turn fingerprint across consecutive turns. Detected silently; model never sees the trigger. Strike accumulates internally. |
 | **sudden death**             | The last `MAX_STRIKES` turns of a loop's `MAX_LOOP_TURNS` window emit soft 429 warnings so the model can wrap up cleanly. `soft=true`: no strike, no streak increment. |
 | §mode-ask-read-only **mode** | `"ask" \| "act"`. Per-loop. Ask = read-only: the dispatch gate refuses every side-effecting op (a filesystem write — EDIT/COPY-dest/MOVE/KILL on the `file` scheme — or any EXEC invocation); reads of the workspace stay open. `act` = full surface. Ask never changes the world. |
-| **flag**                     | Per-loop value shaping authority or toolset: `auto` (resolve proposals inside the loop), `noWeb`, `noInteraction`, `noProposals`, `mode`. |
+| **flag**                     | Per-loop value: `mode`, `noWeb`, and `noInteraction` shape scheme authority ({§manifest-flag-affinity}); `auto` and `noProposals` select proposal settlement. |
 | **proposal**                 | A deferred side-effecting action. State machine: `proposed → resolved` (accept), `→ failed` (reject), or `→ cancelled` (cancel). With `flags.auto=true`, authority remains inside the loop and resolution is immediate. |
 | **resolution**               | Accept, reject, or cancel of a durable proposal. Client-owned authority enters core through `resolveProposal`; AG-UI carries it in standard resume entries ({§methods-proposal-resolve}, {§agui-proposal-resolve}). |
 
