@@ -1,4 +1,5 @@
 import type { QueryDialect } from "./types.ts";
+import MimetypeInputError from "./MimetypeInputError.ts";
 
 // Thrown when a handler doesn't support a dialect for its mimetype. Consumer
 // (plurnk-service) maps to HTTP 415 (Unsupported Media Type).
@@ -42,12 +43,14 @@ export class InvalidExpressionError extends Error {
 // broken JSON when running jsonpath against application/json). The standard
 // scheme adapter returns a 203 raw-content fallback; other consumers own their
 // operation-boundary policy.
-export class QueryParseFailureError extends Error {
-    readonly mimetype: string;
-
+export class QueryParseFailureError extends MimetypeInputError {
     constructor(args: { mimetype: string; cause: unknown }) {
-        super(`Failed to parse content for query against ${args.mimetype}`, { cause: args.cause });
+        super({
+            mimetype: args.mimetype,
+            cause: args.cause,
+            reason: "content cannot be parsed for this query",
+        });
         this.name = "QueryParseFailureError";
-        this.mimetype = args.mimetype;
+        this.message = `Failed to parse content for query against ${args.mimetype}`;
     }
 }

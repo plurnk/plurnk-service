@@ -7,10 +7,11 @@ import { detect } from "./detect.ts";
 import { discover } from "./discover.ts";
 import { parseBodyMatcher, type ParsedBodyMatcher } from "./parseBodyMatcher.ts";
 import { projectDeepXml } from "./projectDeepXml.ts";
-import { UnsupportedDialectError } from "./QueryError.ts";
+import { QueryParseFailureError, UnsupportedDialectError } from "./QueryError.ts";
 import { isGrammarNotInstalled } from "./TreeSitterExtractor.ts";
 import BaseHandler from "./BaseHandler.ts";
 import Embeddings, { type EmbedBatchOptions, type EmbedderInfo } from "./Embeddings.ts";
+import MimetypeInputError, { isMimetypeInputError } from "./MimetypeInputError.ts";
 import Tokenizers, { type TokenizerResolution } from "./Tokenizers.ts";
 import { classifyMimetype, classifyWithHandler, type MimeClassification } from "./classify.ts";
 import { mimetypeSource, type Notice } from "./Notice.ts";
@@ -366,9 +367,7 @@ export default class Mimetypes {
             return errorResult(mimetype);
         }
 
-        // Validate errors propagate per error policy — caller's contract.
-        // Await in case the handler returns a Promise (async validators).
-        await handler.validate(content);
+        await this.#validateInput(handler, content, mimetype);
 
         // Materialize requested channels in parallel. Default deep-XML
         // dependencies are reused and remain unexposed when not requested
@@ -500,7 +499,36 @@ export default class Mimetypes {
             });
         }
 
-        return handler.query(content, parsed.dialect, parsed.pattern, parsed.flags);
+        try {
+            // Structural matchers require a valid structural source. Text
+            // matchers remain available against malformed structured files
+            // because they do not consume that structure.
+            if (parsed.dialect === "jsonpath" || parsed.dialect === "xpath") {
+                await this.#validateInput(handler, content, mimetype);
+            }
+            return await handler.query(content, parsed.dialect, parsed.pattern, parsed.flags);
+        } catch (cause) {
+            if (isMimetypeInputError(cause)) {
+                if ((cause as Error).name === "QueryParseFailureError") throw cause;
+                throw new QueryParseFailureError({ mimetype, cause });
+            }
+            throw cause;
+        }
+    }
+
+    // validate() is the one handler-owned source-rejection gate. Classify its
+    // failure once; projection/load defects retain their identities.
+    async #validateInput(
+        handler: BaseHandler,
+        content: string | Uint8Array,
+        mimetype: string,
+    ): Promise<void> {
+        try {
+            await handler.validate(content);
+        } catch (cause) {
+            if (isMimetypeInputError(cause)) throw cause;
+            throw new MimetypeInputError({ mimetype, cause });
+        }
     }
 
     // Missing grammar preserves mimetype/body metadata and reports empty

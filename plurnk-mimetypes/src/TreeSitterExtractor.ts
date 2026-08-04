@@ -1,6 +1,6 @@
 import BaseHandler from "./BaseHandler.ts";
 import type { HandlerContent } from "./BaseHandler.ts";
-import ParserCoordinates, { isParserCoordinateError } from "./ParserCoordinates.ts";
+import ParserCoordinates from "./ParserCoordinates.ts";
 import type { MimeRef, MimeSymbol } from "./types.ts";
 import { collectReferences } from "./treesitter/refsEngine.ts";
 import type { RefsQuery } from "./treesitter/refsEngine.ts";
@@ -40,7 +40,7 @@ export interface TreeSitterNode {
 }
 
 // Shared tree-sitter adapter ({§mimetype-backend-selection}). Subclasses supply
-// parser loading and symbol projection; current failure collapsing is #92.
+// parser loading and symbol projection; thrown failures remain causal.
 export default abstract class TreeSitterExtractor extends BaseHandler {
     #parserPromise: Promise<unknown> | null = null;
     // loadParser() primes the language/query pair used by the shared engine.
@@ -68,28 +68,14 @@ export default abstract class TreeSitterExtractor extends BaseHandler {
         wrap?: (rawQuery: unknown) => RefsQuery,
     ): Promise<MimeRef[]> {
         if (typeof content !== "string") return [];
-        let parser: TreeSitterParser;
-        try {
-            parser = await this.getParser();
-        } catch (err) {
-            if (isGrammarNotInstalled(err)) throw err;
-            return [];
-        }
+        const parser = await this.getParser();
         const query = this.#primeRefsQuery(querySource, wrap);
-        let tree: TreeSitterTree | null;
-        try {
-            tree = parser.parse(content);
-            if (!tree) return [];
-        } catch {
-            return [];
-        }
+        const tree = parser.parse(content);
+        if (!tree) return [];
         try {
             return collectReferences(query, tree, extractDefs(tree.rootNode, content));
-        } catch (error) {
-            if (isParserCoordinateError(error)) throw error;
-            return [];
         } finally {
-            tree?.delete?.();
+            tree.delete?.();
         }
     }
 
@@ -108,56 +94,26 @@ export default abstract class TreeSitterExtractor extends BaseHandler {
 
     override async extractRaw(content: HandlerContent): Promise<MimeSymbol[]> {
         if (typeof content !== "string") return [];
-        let parser: TreeSitterParser;
-        try {
-            parser = await this.getParser();
-        } catch (err) {
-            // Missing grammar selects the explicit structural degradation;
-            // #92 owns separating every other load/parse defect.
-            if (isGrammarNotInstalled(err)) throw err;
-            return [];
-        }
-        let tree: TreeSitterTree | null;
-        try {
-            tree = parser.parse(content);
-            if (!tree) return [];
-        } catch {
-            return [];
-        }
+        const parser = await this.getParser();
+        const tree = parser.parse(content);
+        if (!tree) return [];
         try {
             return this.extractFromTree(tree, content);
-        } catch (error) {
-            if (isParserCoordinateError(error)) throw error;
-            return [];
         } finally {
-            tree?.delete?.();
+            tree.delete?.();
         }
     }
 
     // Native named-node structural walk ({§mimetype-channel-architecture}).
     override async deepJson(content: HandlerContent): Promise<unknown> {
         if (typeof content !== "string") return null;
-        let parser: TreeSitterParser;
-        try {
-            parser = await this.getParser();
-        } catch (err) {
-            if (isGrammarNotInstalled(err)) throw err;
-            return null;
-        }
-        let tree: TreeSitterTree | null;
-        try {
-            tree = parser.parse(content);
-            if (!tree) return null;
-        } catch {
-            return null;
-        }
+        const parser = await this.getParser();
+        const tree = parser.parse(content);
+        if (!tree) return null;
         try {
             return walkDeepNode(tree.rootNode, content);
-        } catch (error) {
-            if (isParserCoordinateError(error)) throw error;
-            return null;
         } finally {
-            tree?.delete?.();
+            tree.delete?.();
         }
     }
 

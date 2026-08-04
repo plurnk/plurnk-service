@@ -1,6 +1,7 @@
 // Top-level orchestrator
 export { default as Mimetypes } from "./Mimetypes.ts";
 export { default as MimetypePluginError } from "./MimetypePluginError.ts";
+export { default as MimetypeInputError, isMimetypeInputError } from "./MimetypeInputError.ts";
 export { default as TextCoordinates } from "./TextCoordinates.ts";
 export type { TextLine, TextPosition } from "./TextCoordinates.ts";
 export { default as EmbeddingVector } from "./EmbeddingVector.ts";

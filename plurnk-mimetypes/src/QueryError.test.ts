@@ -1,5 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
+import MimetypeInputError from "./MimetypeInputError.ts";
 import {
     InvalidExpressionError,
     QueryParseFailureError,
@@ -53,5 +54,6 @@ describe("QueryParseFailureError", () => {
         assert.equal(err.mimetype, "application/json");
         assert.equal(err.cause, cause);
         assert.equal(err.name, "QueryParseFailureError");
+        assert.ok(err instanceof MimetypeInputError);
     });
 });

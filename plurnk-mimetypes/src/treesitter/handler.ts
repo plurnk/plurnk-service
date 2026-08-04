@@ -1,9 +1,7 @@
 import TreeSitterExtractor, { walkDeepNode } from "../TreeSitterExtractor.ts";
 import type { QueryConstructor, TreeSitterParser, TreeSitterTree } from "../TreeSitterExtractor.ts";
-import {
-    isParserCoordinateError,
-    materializeTreeSitterSymbols,
-} from "../ParserCoordinates.ts";
+import { materializeTreeSitterSymbols } from "../ParserCoordinates.ts";
+import { isExactModuleAbsent } from "../module-absence.ts";
 import type { HandlerMetadata, MimeRef, MimeSymbol } from "../types.ts";
 import type { TreeSitterLanguageEntry, TreeSitterLanguageMapping } from "./registry.ts";
 
@@ -61,32 +59,15 @@ export default class TreeSitterLanguageHandler extends TreeSitterExtractor {
     // Parser and mapping imports form one coordinated extraction boundary.
     override async extractRaw(content: import("../BaseHandler.ts").HandlerContent): Promise<MimeSymbol[]> {
         if (typeof content !== "string") return [];
-        let parser: TreeSitterParser;
-        let mapping: TreeSitterLanguageMapping;
-        try {
-            [parser, mapping] = await Promise.all([
-                this.getParser(),
-                this.#getMappingCached(),
-            ]);
-        } catch (err) {
-            // Missing grammar selects explicit structural degradation; #92
-            // owns separating every other import/parse defect.
-            if (err instanceof GrammarNotInstalledError) throw err;
-            return [];
-        }
-        let tree: TreeSitterTree | null;
-        try {
-            tree = parser.parse(content) as TreeSitterTree | null;
-            if (!tree) return [];
-        } catch {
-            return [];
-        }
+        const [parser, mapping] = await Promise.all([
+            this.getParser(),
+            this.#getMappingCached(),
+        ]);
+        const tree = parser.parse(content) as TreeSitterTree | null;
+        if (!tree) return [];
         try {
             const projections = mapping.extract(tree.rootNode, content);
             return materializeTreeSitterSymbols(content, projections);
-        } catch (error) {
-            if (isParserCoordinateError(error)) throw error;
-            return [];
         } finally {
             tree.delete?.();
         }
@@ -98,32 +79,13 @@ export default class TreeSitterLanguageHandler extends TreeSitterExtractor {
         if (typeof content !== "string") return null;
         const mapping = await this.#getMappingCached();
         if (typeof mapping.deepJson === "function") {
-            try {
-                return await mapping.deepJson(content);
-            } catch (error) {
-                if (isParserCoordinateError(error)) throw error;
-                return null;
-            }
+            return mapping.deepJson(content);
         }
-        let parser: TreeSitterParser;
-        try {
-            parser = await this.getParser();
-        } catch (err) {
-            if (err instanceof GrammarNotInstalledError) throw err;
-            return null;
-        }
-        let tree: TreeSitterTree | null;
-        try {
-            tree = parser.parse(content) as TreeSitterTree | null;
-            if (!tree) return null;
-        } catch {
-            return null;
-        }
+        const parser = await this.getParser();
+        const tree = parser.parse(content) as TreeSitterTree | null;
+        if (!tree) return null;
         try {
             return walkDeepNode(tree.rootNode, content);
-        } catch (error) {
-            if (isParserCoordinateError(error)) throw error;
-            return null;
         } finally {
             tree.delete?.();
         }
@@ -144,17 +106,20 @@ export async function resolveWasmPath(entry: TreeSitterLanguageEntry): Promise<s
     const path = await import("node:path");
 
     const plurnkPackage = `@plurnk/plurnk-mimetypes-grammar-${entry.slug}`;
+    const manifestSpecifier = `${plurnkPackage}/package.json`;
     try {
-        const pkgJsonPath = require.resolve(`${plurnkPackage}/package.json`);
+        const pkgJsonPath = require.resolve(manifestSpecifier);
         return path.join(path.dirname(pkgJsonPath), `${entry.slug}.wasm`);
-    } catch {
-        throw new GrammarNotInstalledError(entry, plurnkPackage);
+    } catch (cause) {
+        if (isExactModuleAbsent(cause, manifestSpecifier)) {
+            throw new GrammarNotInstalledError(entry, plurnkPackage);
+        }
+        throw cause;
     }
 }
 
-// Thrown when the grammar leaf is absent. Caller
-// (TreeSitterExtractor.extractRaw) catches this and routes to the
-// empty-symbols error policy; plurnk-service can surface the install hint.
+// Thrown when the grammar leaf is absent. Mimetypes.process() owns the
+// non-strict empty-channel degradation and install Notice.
 export class GrammarNotInstalledError extends Error {
     readonly mimetype: string;
     readonly slug: string;

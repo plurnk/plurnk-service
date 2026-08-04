@@ -1,4 +1,5 @@
 import { treeSitterSpan } from "../ParserCoordinates.ts";
+import MimetypeInputError from "../MimetypeInputError.ts";
 import type { TreeSitterSymbolProjection } from "../ParserCoordinates.ts";
 import type { SymbolKind } from "../types.ts";
 import type { TreeSitterNode } from "../TreeSitterExtractor.ts";
@@ -13,12 +14,18 @@ import type { TreeSitterNode } from "../TreeSitterExtractor.ts";
 //     expect the parsed value tree, not the AST. The framework projects
 //     this to deep-xml.
 export async function deepJson(content: string): Promise<unknown> {
-    const { parse } = await import("yaml" as string) as { parse(text: string): unknown };
+    const { parse, YAMLParseError } = await import("yaml" as string) as {
+        parse(text: string): unknown;
+        YAMLParseError: new (...args: never[]) => Error;
+    };
     try {
         const value = parse(content);
         return value ?? null;
-    } catch {
-        return null;
+    } catch (cause) {
+        if (cause instanceof YAMLParseError) {
+            throw new MimetypeInputError({ mimetype: "application/yaml", cause });
+        }
+        throw cause;
     }
 }
 

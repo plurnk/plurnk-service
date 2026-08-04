@@ -1,4 +1,5 @@
 import { treeSitterSpan } from "../ParserCoordinates.ts";
+import MimetypeInputError from "../MimetypeInputError.ts";
 import type { TreeSitterSymbolProjection } from "../ParserCoordinates.ts";
 import type { SymbolKind } from "../types.ts";
 import type { TreeSitterNode } from "../TreeSitterExtractor.ts";
@@ -12,11 +13,17 @@ import type { TreeSitterNode } from "../TreeSitterExtractor.ts";
 //     what jsonpath queries against — users writing `$.server.host` want
 //     the parsed value tree.
 export async function deepJson(content: string): Promise<unknown> {
-    const { parse } = await import("smol-toml" as string) as { parse(text: string): unknown };
+    const { parse, TomlError } = await import("smol-toml" as string) as {
+        parse(text: string): unknown;
+        TomlError: new (...args: never[]) => Error;
+    };
     try {
         return parse(content);
-    } catch {
-        return null;
+    } catch (cause) {
+        if (cause instanceof TomlError) {
+            throw new MimetypeInputError({ mimetype: "application/toml", cause });
+        }
+        throw cause;
     }
 }
 

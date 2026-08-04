@@ -1,5 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
+import { TomlError } from "smol-toml";
+import MimetypeInputError from "../MimetypeInputError.ts";
 import TreeSitterLanguageHandler from "./handler.ts";
 import { lookupTreeSitterLanguage } from "./registry.ts";
 
@@ -14,13 +16,17 @@ describe("YAML deepJson via parsed value", () => {
         assert.deepEqual(tree, { name: "Alice", server: { host: "localhost", port: 8080 } });
     });
 
-    it("returns null on malformed yaml without throwing", async () => {
+    it("classifies malformed YAML and preserves the parser cause", async () => {
         const h = new TreeSitterLanguageHandler(md, entry);
-        assert.doesNotThrow(async () => {
-            const v = await h.deepJson(":\n:\n\t");
-            // smol-toml/yaml may or may not error on this; null OR a value is fine
-            void v;
-        });
+        await assert.rejects(
+            h.deepJson(":\n:\n\t"),
+            (error: unknown) => {
+                assert.ok(error instanceof MimetypeInputError);
+                assert.equal(error.mimetype, "application/yaml");
+                assert.equal((error.cause as Error).name, "YAMLParseError");
+                return true;
+            },
+        );
     });
 });
 
@@ -35,9 +41,16 @@ describe("TOML deepJson via parsed value", () => {
         assert.deepEqual(tree, { server: { host: "localhost", port: 8080 } });
     });
 
-    it("returns null on malformed toml without throwing", async () => {
+    it("classifies malformed TOML and preserves the parser cause", async () => {
         const h = new TreeSitterLanguageHandler(md, entry);
-        const v = await h.deepJson("[[[invalid");
-        assert.equal(v, null);
+        await assert.rejects(
+            h.deepJson("[[[invalid"),
+            (error: unknown) => {
+                assert.ok(error instanceof MimetypeInputError);
+                assert.equal(error.mimetype, "application/toml");
+                assert.ok(error.cause instanceof TomlError);
+                return true;
+            },
+        );
     });
 });

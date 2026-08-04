@@ -1,73 +1,43 @@
 import BaseHandler from "./BaseHandler.ts";
 import type { HandlerContent } from "./BaseHandler.ts";
-import ParserCoordinates, { isParserCoordinateError } from "./ParserCoordinates.ts";
+import ParserCoordinates from "./ParserCoordinates.ts";
 import type { ExtractionVisitor, MimeRef, MimeSymbol } from "./types.ts";
 
 // ANTLR handler adapter ({§mimetype-backend-selection}). Subclasses supply the
-// entry parse and visitor; current failure collapsing is tracked in #92.
+// entry parse and visitor. A null tree is honest absence; thrown parser or
+// visitor failures retain their causal identity.
 export default abstract class AntlrExtractor extends BaseHandler {
     protected abstract parseTree(content: string): unknown;
     protected abstract createVisitor(): ExtractionVisitor;
 
     extractRaw(content: string): MimeSymbol[] {
-        let tree: unknown;
-        try {
-            tree = this.parseTree(content);
-        } catch {
-            return [];
-        }
+        const tree = this.parseTree(content);
         if (tree === null || tree === undefined) return [];
 
         const visitor = this.createVisitor();
         visitor.bindContent?.(content);
-        try {
-            visitor.visit(tree);
-        } catch (error) {
-            if (isParserCoordinateError(error)) throw error;
-            return [];
-        }
+        visitor.visit(tree);
         return visitor.symbols;
     }
 
     // Classified uses from the same visitor contract ({§mimetype-references}).
     override references(content: HandlerContent): MimeRef[] {
         if (typeof content !== "string") return [];
-        let tree: unknown;
-        try {
-            tree = this.parseTree(content);
-        } catch {
-            return [];
-        }
+        const tree = this.parseTree(content);
         if (tree === null || tree === undefined) return [];
 
         const visitor = this.createVisitor();
         visitor.bindContent?.(content);
-        try {
-            visitor.visit(tree);
-        } catch (error) {
-            if (isParserCoordinateError(error)) throw error;
-            return [];
-        }
+        visitor.visit(tree);
         return visitor.refs ?? [];
     }
 
-    // Native-rule structural walk ({§mimetype-channel-architecture}); #92 owns
-    // distinguishing malformed input from internal walk defects.
+    // Native-rule structural walk ({§mimetype-channel-architecture}).
     override deepJson(content: HandlerContent): unknown {
         if (typeof content !== "string") return null;
-        let tree: unknown;
-        try {
-            tree = this.parseTree(content);
-        } catch {
-            return null;
-        }
+        const tree = this.parseTree(content);
         if (tree === null || tree === undefined) return null;
-        try {
-            return walkAntlrTree(tree, content);
-        } catch (error) {
-            if (isParserCoordinateError(error)) throw error;
-            return null;
-        }
+        return walkAntlrTree(tree, content);
     }
 }
 

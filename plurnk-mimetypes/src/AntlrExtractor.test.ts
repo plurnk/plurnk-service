@@ -41,17 +41,18 @@ describe("AntlrExtractor", () => {
         assert.deepEqual(e.extractRaw("content"), expected);
     });
 
-    it("returns [] when parseTree throws (parse failure)", () => {
+    it("preserves a thrown parser defect instead of guessing that it is malformed input", () => {
+        const failure = new Error("parser implementation failed");
         class Extractor extends AntlrExtractor {
             protected parseTree(_content: string): unknown {
-                throw new Error("syntax error");
+                throw failure;
             }
             protected createVisitor(): ExtractionVisitor {
                 throw new Error("should not be called");
             }
         }
         const e = new Extractor(metadata);
-        assert.deepEqual(e.extractRaw("malformed"), []);
+        assert.throws(() => e.extractRaw("content"), (error) => error === failure);
     });
 
     it("returns [] when parseTree returns null or undefined", () => {
@@ -75,7 +76,8 @@ describe("AntlrExtractor", () => {
         assert.deepEqual(new UndefExtractor(metadata).extractRaw("x"), []);
     });
 
-    it("returns [] when visit throws (visitor bug, defensively contained)", () => {
+    it("preserves a visitor defect instead of converting it to an empty channel", () => {
+        const failure = new Error("visitor implementation failed");
         class Extractor extends AntlrExtractor {
             protected parseTree(_content: string): unknown {
                 return { fake: "tree" };
@@ -83,7 +85,7 @@ describe("AntlrExtractor", () => {
             protected createVisitor(): ExtractionVisitor {
                 return {
                     visit(): unknown {
-                        throw new Error("visitor crash");
+                        throw failure;
                     },
                     get symbols(): MimeSymbol[] {
                         return [];
@@ -92,7 +94,7 @@ describe("AntlrExtractor", () => {
             }
         }
         const e = new Extractor(metadata);
-        assert.deepEqual(e.extractRaw("content"), []);
+        assert.throws(() => e.extractRaw("content"), (error) => error === failure);
     });
 
     it("does not collapse a parser-coordinate invariant failure", () => {
@@ -218,13 +220,14 @@ describe("AntlrExtractor.deepJson — duck-typed ANTLR parse tree walk", () => {
         assert.equal(leaf.type, "hello");
     });
 
-    it("returns null when parseTree throws", async () => {
+    it("preserves a parser defect on the deep projection", async () => {
+        const failure = new Error("deep parser implementation failed");
         class Extractor extends AntlrExtractor {
-            protected parseTree(_content: string): unknown { throw new Error("parse err"); }
+            protected parseTree(_content: string): unknown { throw failure; }
             protected createVisitor(): ExtractionVisitor { return visitorReturning([]); }
         }
         const e = new Extractor(metadata);
-        assert.equal(await e.deepJson("malformed"), null);
+        await assert.rejects(Promise.resolve().then(() => e.deepJson("content")), (error) => error === failure);
     });
 
     it("returns null for binary content", async () => {
@@ -261,12 +264,13 @@ describe("AntlrExtractor — references channel (ANTLR refs grind)", () => {
         assert.deepEqual(await e.references("content"), []);
     });
 
-    it("returns [] on parse failure (refs error policy mirrors extractRaw)", async () => {
+    it("preserves a parser defect on the references projection", async () => {
+        const failure = new Error("references parser implementation failed");
         class Extractor extends AntlrExtractor {
-            protected parseTree(_content: string): unknown { throw new Error("parse fail"); }
+            protected parseTree(_content: string): unknown { throw failure; }
             protected createVisitor(): ExtractionVisitor { return visitorReturning([]); }
         }
         const e = new Extractor(metadata);
-        assert.deepEqual(await e.references("content"), []);
+        await assert.rejects(Promise.resolve().then(() => e.references("content")), (error) => error === failure);
     });
 });

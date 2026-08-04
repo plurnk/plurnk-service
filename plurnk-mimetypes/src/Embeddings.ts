@@ -2,6 +2,7 @@ import type BaseHandler from "./BaseHandler.ts";
 import type { HandlerLoader } from "./Mimetypes.ts";
 import { isExactModuleAbsent } from "./module-absence.ts";
 import EmbeddingVector from "./EmbeddingVector.ts";
+import { UnsupportedDialectError } from "./QueryError.ts";
 
 // Fixed embedding artifact seam, resolved lazily ({§mimetype-embedding}).
 const EMBEDDINGS_PACKAGE = "@plurnk/plurnk-mimetypes-embeddings";
@@ -83,10 +84,11 @@ export default class Embeddings {
             } else if (typeof content === "string") {
                 text = content;
             }
-        } catch {
-            // Current behavior collapses unsupported projection and projection
-            // defects to empty bytes; #92 owns the causal failure taxonomy.
-            return { embedding: new Uint8Array(0) };
+        } catch (cause) {
+            if (isUnsupportedReadableProjection(cause)) {
+                return { embedding: new Uint8Array(0) };
+            }
+            throw cause;
         }
         if (text === undefined || text.length === 0) return { embedding: new Uint8Array(0) };
         const embedding: unknown = await embedder.embed(text);
@@ -179,4 +181,11 @@ export default class Embeddings {
         const embedder = await pending;
         if (embedder && typeof embedder.dispose === "function") await embedder.dispose();
     }
+}
+
+function isUnsupportedReadableProjection(error: unknown): boolean {
+    return error instanceof UnsupportedDialectError
+        || (typeof error === "object"
+            && error !== null
+            && (error as { name?: unknown }).name === "UnsupportedDialectError");
 }

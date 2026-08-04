@@ -338,7 +338,10 @@ is the unbudgeted human/diagnostic renderer for structured symbols.
 
 Default: no-op. Override only for mimetypes with a real syntax check that can fail (e.g., `application/json` throws on malformed JSON).
 
-When `validate` throws inside `Mimetypes.process`, the error propagates to the caller per the error policy (§7).
+When `validate` throws inside `Mimetypes.process`, the orchestrator wraps its
+cause once as `MimetypeInputError` (§7). `Mimetypes.query` invokes the same gate
+for JSONPath and XPath, whose projections require valid structure; regex and
+glob remain available against the readable text without structural validation.
 
 ## §mimetype-error-policy 7. Error policy
 
@@ -358,14 +361,28 @@ The exported `ProcessResult` type owns the executable field shape.
 - **Binary content** (mimetypes flagged `binary: true` in their `plurnk` block - PDF, future images/archives): `totalLines: 0`. Lines are not a meaningful unit for the source bytes. A handler's readable `content` projection is independently line-addressable; `totalLines` does not describe that derived text.
 - `0` on every returned error result (detection null or content unreadable). A propagated exception returns no `ProcessResult`.
 
-| Failure                             | Current behavior                                                                                                                               |
-|-------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------|
-| Detection returns null              | `{ mimetype: null, ok: false, totalLines: 0 }`; no channel fields.                                                                             |
-| Content path cannot be read         | `{ mimetype, ok: false, totalLines: 0 }`; no channel fields.                                                                                   |
-| Registered handler cannot be loaded | `MimetypePluginError` propagates; no `ProcessResult`.                                                                                         |
-| Tree-sitter grammar leaf is absent  | Non-strict mode preserves the mimetype and extent, returns empty requested structural channels, and sets `grammarMissing`; strict mode throws. |
-| `validate()` throws                 | Propagates to the caller.                                                                                                                      |
-| Handler channel method throws       | Propagates unless the selected extractor explicitly classifies the failure as an empty/null parse result.                                      |
+The failure classification is causal rather than exception-shaped:
+
+| Class                               | Producer representation                                         | Result / failure truth                                                                                      |
+|-------------------------------------|-----------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------|
+| Honest capability absence           | Declared empty value, or a typed unsupported-dialect error.     | Successful empty channel; 415 only when the requested dialect requires the absent capability.               |
+| Permitted optional artifact absence | Exact typed grammar or embedding-package absence.               | Non-strict successful degradation plus a warning Notice; strict mode throws.                                |
+| Invalid external content            | `MimetypeInputError`, preserving the parser or validator cause. | `process()` throws; query specializes it as `QueryParseFailureError`; consumers own durable failure policy. |
+| Implementation/load defect          | The original exception and cause.                               | Propagates unchanged; never becomes an empty channel or degradation Notice.                                 |
+
+`QueryParseFailureError` is the query-specific `MimetypeInputError` subtype.
+Notices remain nonterminal observations and never represent either hard-failure
+class.
+
+| Condition                           | `process()` behavior                                                                                                                      |
+|-------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------|
+| Detection returns null              | `{ mimetype: null, ok: false, totalLines: 0 }`; no channel fields.                                                                        |
+| Content path cannot be read         | `{ mimetype, ok: false, totalLines: 0 }`; no channel fields.                                                                              |
+| Registered handler cannot be loaded | `MimetypePluginError` propagates; no `ProcessResult`.                                                                                     |
+| Tree-sitter grammar leaf is absent  | Non-strict preserves the mimetype and extent, returns empty requested structural channels, and sets `grammarMissing`; strict mode throws. |
+| `validate()` throws                 | The orchestrator throws `MimetypeInputError` with the original cause; no `ProcessResult`.                                                 |
+| Channel returns empty value         | The requested channel is successfully present with its declared empty representation.                                                     |
+| Channel throws                      | A typed source rejection or original defect propagates; adapters never infer source invalidity from an arbitrary exception.               |
 
 §mimetype-artifact-absence A fixed artifact is absent only when module
 resolution names that exact requested package as missing. A missing dependency,
@@ -429,7 +446,10 @@ For ANTLR-backed handlers (existing pattern, still supported):
 5. Implement `parseTree(content)` (return a parser rule context) and `createVisitor()` (return an `ExtractionVisitor`).
 6. Build the visitor by extending `withExtractor(GeneratedVisitor)` — the mixin adds `symbols`, `inBody`, `addSymbol(kind, name, ctx, params?, extra?)`, and `gateBody(ctx)` to the antlr4ng visitor. `AntlrExtractor` binds the exact source before traversal; handlers never compute public coordinates themselves ({§mimetype-parser-coordinates}).
 
-Parse failures and ordinary visit-time exceptions are caught by `AntlrExtractor.extractRaw()` and converted to an empty `MimeSymbol[]` — the symbols channel comes back empty rather than erroring; there is no substitution to text content. A `ParserCoordinateError` is an internal contract failure and propagates.
+`parseTree()` returning `null` or `undefined` declares an honest empty
+projection. A thrown parser, visitor, getter, or deep-walk failure propagates
+unchanged. ANTLR normally returns an error-recovered tree for malformed source;
+the adapter never guesses that an arbitrary exception is source invalidity.
 
 ### 9.3 Async `extractRaw` contract
 
@@ -444,7 +464,11 @@ For tree-sitter-backed handlers:
 3. Extend `TreeSitterExtractor` instead of `BaseHandler`.
 4. Implement `loadParser()` (async; init web-tree-sitter, load the language WASM, return a ready parser) and `extractFromTree(tree, content)` (return `MimeSymbol[]` from the parsed tree). Preserve that public method contract; construct parser-derived regions with `treeSitterSpan(...)` and `materializeTreeSitterSymbols(...)` ({§mimetype-parser-coordinates}). The base class handles parser lifecycle and async coordination via a primed-promise cache.
 
-Parse failures are caught by `TreeSitterExtractor.extractRaw()` and converted to an empty `MimeSymbol[]`, mirroring AntlrExtractor's error policy. A `ParserCoordinateError` propagates.
+`parser.parse()` returning `null` declares an honest empty projection. Parser
+loading, WASM loading, parse execution, mapping import, query compilation or
+execution, extraction, and deep-walk exceptions propagate unchanged. Only an
+exact absent grammar package becomes `GrammarNotInstalledError`; a corrupt or
+inaccessible installed artifact is not absence.
 
 ### §mimetype-parser-coordinates 9.4.1 Parser coordinate boundary
 
@@ -581,16 +605,16 @@ precise source evidence while preserving the same result contract.
 
 ### 11.4 Error policy
 
-| Condition                                   | Framework behavior        | Standard scheme-adapter result |
-|---------------------------------------------|---------------------------|--------------------------------|
-| Detection returns null                      | `ReferenceError`          | Propagates                     |
-| Content is unreadable                       | `ReferenceError`          | Propagates                     |
-| Resolved mimetype has no registered handler | `UnsupportedDialectError` | 415                            |
-| Registered handler cannot be loaded         | `MimetypePluginError`     | Propagates                     |
-| Dialect is unsupported                      | `UnsupportedDialectError` | 415                            |
-| Expression is malformed                     | `InvalidExpressionError`  | 400                            |
-| Content cannot be parsed for the dialect    | `QueryParseFailureError`  | 203 with readable content      |
-| Matcher succeeds with zero findings         | `[]`                      | 204                            |
+| Condition                                   | Framework behavior                              | Standard scheme-adapter result |
+|---------------------------------------------|-------------------------------------------------|--------------------------------|
+| Detection returns null                      | `ReferenceError`                                | Propagates                     |
+| Content is unreadable                       | `ReferenceError`                                | Propagates                     |
+| Resolved mimetype has no registered handler | `UnsupportedDialectError`                       | 415                            |
+| Registered handler cannot be loaded         | `MimetypePluginError`                           | Propagates                     |
+| Dialect is unsupported                      | `UnsupportedDialectError`                       | 415                            |
+| Expression is malformed                     | `InvalidExpressionError`                        | 400                            |
+| Content cannot be parsed for the dialect    | `QueryParseFailureError` (`MimetypeInputError`) | 203 with readable content      |
+| Matcher succeeds with zero findings         | `[]`                                            | 204                            |
 
 ### 11.5 Notices and failures
 
@@ -603,7 +627,7 @@ successful non-strict degradation:
 | `grammarMissing`    | `grammar_degraded`    | Mimetype and missing grammar package.        |
 | `embeddingMissing`  | `embedding_degraded`  | Mimetype and missing embedding package.      |
 
-Hard failures are not Notices. `MimetypePluginError`,
+Hard failures are not Notices. `MimetypePluginError`, `MimetypeInputError`,
 `UnsupportedDialectError`, `InvalidExpressionError`, and strict
 `GrammarNotInstalledError` remain typed exceptions. `QueryParseFailureError` is
 also typed, but the standard scheme adapter treats it as a successful 203
@@ -884,11 +908,11 @@ channel set: callers request it explicitly. Installation and computation are
 independent axes. The artifact may execute its bundled local model or target a
 configured OpenAI-compatible endpoint without changing this seam.
 
-| Surface                    | Input and result                                                                                          | Artifact unavailable                                                   |
-|----------------------------|-----------------------------------------------------------------------------------------------------------|------------------------------------------------------------------------|
-| `process(...embedding...)` | Embeds `content()` when present, then `toText()`; empty/unavailable readable text yields empty bytes.     | Non-strict returns empty bytes plus `embeddingMissing`; strict throws. |
-| `embedBatch(texts, ...)`   | Returns one vector per input in input order and honors progress/cancellation through the artifact.        | Throws.                                                                |
-| `embedderInfo()`           | Returns dimension plus optional model, context-window, and exact-counter facts; unknown facts are `null`. | Returns `null`.                                                        |
+| Surface                    | Input and result                                                                                                                                      | Artifact unavailable                                                   |
+|----------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------|------------------------------------------------------------------------|
+| `process(...embedding...)` | Embeds `content()` when present, then `toText()`; an honestly unsupported readable projection yields empty bytes, while projection defects propagate. | Non-strict returns empty bytes plus `embeddingMissing`; strict throws. |
+| `embedBatch(texts, ...)`   | Returns one vector per input in input order and honors progress/cancellation through the artifact.                                                    | Throws.                                                                |
+| `embedderInfo()`           | Returns dimension plus optional model, context-window, and exact-counter facts; unknown facts are `null`.                                             | Returns `null`.                                                        |
 
 An installed artifact must expose `embed()`, `embedBatch()`, and a positive
 safe-integer `dimension`; an incompatible surface fails hard rather than
@@ -916,8 +940,9 @@ from different spaces.
 
 A missing tree-sitter grammar does not prevent embedding readable string input:
 the result may carry both `grammarMissing` and a real vector. Artifact
-availability follows {§mimetype-artifact-absence}. A readable-projection
-exception currently produces empty embedding bytes rather than an
+availability follows {§mimetype-artifact-absence}. A typed unsupported-readable
+outcome produces empty embedding bytes. Every other readable-projection
+exception propagates with its cause and never becomes an empty vector or
 `embeddingMissing` signal.
 
 ## §mimetype-content 18. Content channel

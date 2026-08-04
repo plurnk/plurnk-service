@@ -55,26 +55,27 @@ describe("TreeSitterExtractor", () => {
         assert.equal(c[0]?.name, "gamma");
     });
 
-    it("returns [] when loadParser throws", async () => {
+    it("preserves a parser-load defect instead of converting it to an empty channel", async () => {
+        const failure = new Error("WASM init failed");
         class Fake extends TreeSitterExtractor {
             protected async loadParser(): Promise<TreeSitterParser> {
-                throw new Error("WASM init failed");
+                throw failure;
             }
             protected override extractFromTree(): MimeSymbol[] {
                 return [{ name: "unreachable", kind: "class", line: 1, endLine: 1 }];
             }
         }
         const h = new Fake(metadata);
-        const syms = await h.extractRaw("anything");
-        assert.deepEqual(syms, []);
+        await assert.rejects(h.extractRaw("anything"), (error) => error === failure);
     });
 
-    it("returns [] when parser.parse throws", async () => {
+    it("preserves a parser execution defect", async () => {
+        const failure = new Error("parse failed");
         class Fake extends TreeSitterExtractor {
             protected async loadParser(): Promise<TreeSitterParser> {
                 return {
                     parse: () => {
-                        throw new Error("parse failed");
+                        throw failure;
                     },
                 };
             }
@@ -83,7 +84,7 @@ describe("TreeSitterExtractor", () => {
             }
         }
         const h = new Fake(metadata);
-        assert.deepEqual(await h.extractRaw("anything"), []);
+        await assert.rejects(h.extractRaw("anything"), (error) => error === failure);
     });
 
     it("does not collapse a parser-coordinate invariant failure", async () => {
@@ -112,17 +113,18 @@ describe("TreeSitterExtractor", () => {
         assert.deepEqual(await h.extractRaw("anything"), []);
     });
 
-    it("returns [] when extractFromTree throws", async () => {
+    it("preserves an extractor defect", async () => {
+        const failure = new Error("visit failed");
         class Fake extends TreeSitterExtractor {
             protected async loadParser(): Promise<TreeSitterParser> {
                 return { parse: (content) => ({ rootNode: fakeNode(content) }) };
             }
             protected override extractFromTree(): MimeSymbol[] {
-                throw new Error("visit failed");
+                throw failure;
             }
         }
         const h = new Fake(metadata);
-        assert.deepEqual(await h.extractRaw("anything"), []);
+        await assert.rejects(h.extractRaw("anything"), (error) => error === failure);
     });
 
     it("returns [] when content is binary", async () => {

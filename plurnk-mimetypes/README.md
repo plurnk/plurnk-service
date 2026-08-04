@@ -89,6 +89,12 @@ The framework instantiates one handler per mimetype, injecting `{ mimetype, glyp
 | `query(...)` / `toText(...)`  | Body-matcher dispatch and readable-text projection.             | Standard four-dialect dispatch.   |
 | `projectionConfiguration()`   | Canonical effective settings that can change projection output. | `""`                              |
 
+`validate()` rejects malformed source; `Mimetypes.process()` wraps that cause
+as `MimetypeInputError`. A channel with no applicable projection returns its
+declared empty value. A projection-specific source rejection may throw
+`MimetypeInputError`; every other channel exception is an implementation or
+operational failure and propagates.
+
 ```ts
 import { BaseHandler } from "@plurnk/plurnk-mimetypes";
 import type { MimeSymbol } from "@plurnk/plurnk-mimetypes";
