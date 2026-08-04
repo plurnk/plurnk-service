@@ -1171,7 +1171,7 @@ export default class Engine {
             // {§grinder-hard-413-recovery}/{§grinder-hard-413-abort} — admit
             // one physically sendable constrained recovery turn; a physical
             // overflow or consecutive policy overflow terminates immediately.
-            const physicalAdmission = await this.#packets.physicalAdmission(
+            let physicalAdmission = await this.#packets.physicalAdmission(
                 requestPacket,
                 provider,
                 this.#loopAborts.get(loopId)?.signal,
@@ -1181,7 +1181,6 @@ export default class Engine {
                 if (ceiling === null) {
                     throw new Error("an unbounded prompt budget cannot enter budget recovery");
                 }
-                this.#hardOverflowRecovery.add(loopId);
                 await this.#problems.record({
                     workerId,
                     loopId,
@@ -1191,71 +1190,80 @@ export default class Engine {
                     source: "engine",
                     result: BudgetOverflow.result(requestPacket.tokens, ceiling, true),
                 });
-                operationConstraint = {
-                    code: "budget-recovery",
-                    detail: "budget recovery is active",
-                    allowedOperations: BudgetOverflow.recoveryOperations,
-                };
                 // Rebuild so the recovery-steer row just minted renders in THIS packet's log +
                 // errors sections (the same re-derive contract the soft grind uses).
                 requestPacket = await this.#packets.buildRequestPacket({
                     initialMessages: messages, requirements, workspaceId, workerId, loopId,
                     currentTurnSeq: seq, provider, gitStatus, notices,
                 });
-            } else {
-            // Hard 413: physically unsendable, or still over after the constrained recovery turn.
-            const ceiling = this.#packets.ceilingFor(provider);
-            if (ceiling === null) {
-                throw new Error("an unbounded prompt budget cannot hard-stop");
+                physicalAdmission = await this.#packets.physicalAdmission(
+                    requestPacket,
+                    provider,
+                    this.#loopAborts.get(loopId)?.signal,
+                );
+                if (physicalAdmission.admitted) {
+                    this.#hardOverflowRecovery.add(loopId);
+                    operationConstraint = {
+                        code: "budget-recovery",
+                        detail: "budget recovery is active",
+                        allowedOperations: BudgetOverflow.recoveryOperations,
+                    };
+                }
             }
-            if (!enforced.recorded) {
-                await this.#problems.record({
-                    workerId,
-                    loopId,
+            if (operationConstraint === undefined) {
+                // Hard 413: physically unsendable, or still over after the constrained recovery turn.
+                const ceiling = this.#packets.ceilingFor(provider);
+                if (ceiling === null) {
+                    throw new Error("an unbounded prompt budget cannot hard-stop");
+                }
+                if (!enforced.recorded || !physicalAdmission.admitted) {
+                    await this.#problems.record({
+                        workerId,
+                        loopId,
+                        turnId,
+                        sequence: nextActionIndex++,
+                        origin: "plurnk",
+                        source: "engine",
+                        result: BudgetOverflow.result(
+                            requestPacket.tokens,
+                            ceiling,
+                            false,
+                            physicalAdmission.admitted
+                                ? undefined
+                                : {
+                                    reason: physicalAdmission.reason,
+                                    detail: physicalAdmission.detail,
+                                    capacity: physicalAdmission.capacity,
+                                    tokens: physicalAdmission.measurement?.tokens,
+                                    tokenKind: physicalAdmission.measurement?.kind,
+                                    tokenSource: physicalAdmission.measurement?.source,
+                                },
+                        ),
+                    });
+                    requestPacket = await this.#packets.buildRequestPacket({
+                        initialMessages: messages, requirements, workspaceId, workerId, loopId,
+                        currentTurnSeq: seq, provider, gitStatus, notices,
+                    });
+                }
+                // Skip the LLM, close the turn, and let runLoop abandon.
+                await this.#db.engine_close_turn.run({
+                    id: turnId, status: 413, packet: StoredPacket.stringify(requestPacket),
+                    usage_prompt: 0, usage_completion: 0, usage_reasoning: 0, usage_cached: 0, usage_cost_usd: 0,
+                    usage_prompt_budget: this.#packets.promptBudgetFor(provider), // #274 — the enforced model-facing budget, even on a hard-413 turn
+                    finish_reason: "budget_hard_stop", model: provider.model, meta: "{}",
+                });
+                return {
                     turnId,
-                    sequence: nextActionIndex++,
-                    origin: "plurnk",
-                    source: "engine",
-                    result: BudgetOverflow.result(
-                        requestPacket.tokens,
-                        ceiling,
-                        false,
-                        physicalAdmission.admitted
-                            ? undefined
-                            : {
-                                reason: physicalAdmission.reason,
-                                detail: physicalAdmission.detail,
-                                capacity: physicalAdmission.capacity,
-                                tokens: physicalAdmission.measurement?.tokens,
-                                tokenKind: physicalAdmission.measurement?.kind,
-                                tokenSource: physicalAdmission.measurement?.source,
-                            },
-                    ),
-                });
-                requestPacket = await this.#packets.buildRequestPacket({
-                    initialMessages: messages, requirements, workspaceId, workerId, loopId,
-                    currentTurnSeq: seq, provider, gitStatus, notices,
-                });
-            }
-            // Skip the LLM, close the turn, and let runLoop abandon.
-            await this.#db.engine_close_turn.run({
-                id: turnId, status: 413, packet: StoredPacket.stringify(requestPacket),
-                usage_prompt: 0, usage_completion: 0, usage_reasoning: 0, usage_cached: 0, usage_cost_usd: 0,
-                usage_prompt_budget: this.#packets.promptBudgetFor(provider), // #274 — the enforced model-facing budget, even on a hard-413 turn
-                finish_reason: "budget_hard_stop", model: provider.model, meta: "{}",
-            });
-            return {
-                turnId,
-                status: 413,
-                statuses: [],
-                fingerprint: "",
-                budgetStruck: enforced.struck,
-                budgetHardStop: true,
-                steerStruck: false,
-                emissionAttempts: 0,
-                emissionExhausted: false,
-                budget: BudgetOverflow.measure(requestPacket.tokens, ceiling),
-            };
+                    status: 413,
+                    statuses: [],
+                    fingerprint: "",
+                    budgetStruck: enforced.struck,
+                    budgetHardStop: true,
+                    steerStruck: false,
+                    emissionAttempts: 0,
+                    emissionExhausted: false,
+                    budget: BudgetOverflow.measure(requestPacket.tokens, ceiling),
+                };
             }
         } else {
             // A fitting turn clears the recovery grant; a later independent overflow can earn
