@@ -33,6 +33,8 @@ type PendingDerivation = {
     searchExcluded: string | undefined;
     binary: boolean;
 };
+const NO_PROJECTION_IDENTITY = "projection:none";
+
 export default class SearchIndex {
     // The index materializes one immutable artifact per exact READ body and
     // configuration identity, then atomically attaches resource addresses to it.
@@ -163,6 +165,22 @@ export default class SearchIndex {
         // for every entry in this pass ({§semantic-embed-dedup}).
         const semanticPlan = await EntrySemantic.prepareEmbeddings(mimetypes);
         const deepCfgSig = semanticPlan.signature;
+        const projectionIdentities = new Map<string, Promise<string>>();
+        const projectionIdentityFor = (
+            mimetype: string,
+            content: string,
+            binary: boolean,
+            searchExcluded: string | undefined,
+        ): Promise<string> => {
+            if (searchExcluded !== undefined || content.length === 0 || binary) {
+                return Promise.resolve(NO_PROJECTION_IDENTITY);
+            }
+            const cached = projectionIdentities.get(mimetype);
+            if (cached !== undefined) return cached;
+            const identity = mimetypes.projectionIdentity(mimetype);
+            projectionIdentities.set(mimetype, identity);
+            return identity;
+        };
         // No embedder (absent OR PLURNK_SERVICE_EMBED_DISABLE) is represented by
         // the same plan and `embed:none` signature; derivation keeps only graph/FTS.
         // The changed-entry worklist (body channel, deep_hash stale), computed up front so the
@@ -174,7 +192,20 @@ export default class SearchIndex {
             const searchExcluded = matchSearchExclusion(r);
             const dispositionIdentity = searchExcluded === undefined ? "included" : `excluded:${searchExcluded}`;
             const binary = (await mimetypes.classify(r.mimetype)).binary;
-            const hash = createHash("sha256").update(r.content).update("\0").update(r.mimetype).update("\0").update(binary ? "binary" : "text").update("\0").update(deepCfgSig).update("\0").update(dispositionIdentity).digest("hex");
+            const projectionIdentity = await projectionIdentityFor(
+                r.mimetype,
+                r.content,
+                binary,
+                searchExcluded,
+            );
+            const hash = derivationHash({
+                content: r.content,
+                mimetype: r.mimetype,
+                binary,
+                projectionIdentity,
+                semanticIdentity: deepCfgSig,
+                dispositionIdentity,
+            });
             if (hash !== r.deep_hash) pending.push({
                 r: {
                     id: r.entry_id,
@@ -197,16 +228,20 @@ export default class SearchIndex {
                 mimetypeRx: row.mimetype_rx,
             });
             const binary = (await mimetypes.classify(projection.mimetype)).binary;
-            const hash = createHash("sha256")
-                .update(projection.content)
-                .update("\0")
-                .update(projection.mimetype)
-                .update("\0")
-                .update(binary ? "binary" : "text")
-                .update("\0")
-                .update(deepCfgSig)
-                .update("\0included")
-                .digest("hex");
+            const projectionIdentity = await projectionIdentityFor(
+                projection.mimetype,
+                projection.content,
+                binary,
+                undefined,
+            );
+            const hash = derivationHash({
+                content: projection.content,
+                mimetype: projection.mimetype,
+                binary,
+                projectionIdentity,
+                semanticIdentity: deepCfgSig,
+                dispositionIdentity: "included",
+            });
             if (hash !== row.deep_hash) pending.push({
                 r: {
                     id: row.id,
@@ -300,4 +335,27 @@ export default class SearchIndex {
         await workerPool([...groups.values()]);
     }
 
+}
+
+function derivationHash(input: {
+    content: string;
+    mimetype: string;
+    binary: boolean;
+    projectionIdentity: string;
+    semanticIdentity: string;
+    dispositionIdentity: string;
+}): string {
+    return createHash("sha256")
+        .update(input.content)
+        .update("\0")
+        .update(input.mimetype)
+        .update("\0")
+        .update(input.binary ? "binary" : "text")
+        .update("\0")
+        .update(input.projectionIdentity)
+        .update("\0")
+        .update(input.semanticIdentity)
+        .update("\0")
+        .update(input.dispositionIdentity)
+        .digest("hex");
 }

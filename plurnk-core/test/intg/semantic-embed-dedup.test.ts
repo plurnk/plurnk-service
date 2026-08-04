@@ -138,8 +138,13 @@ test("resolved binary classification participates in derivation identity (#93)",
         const workspaceId = await insertWorkspace(db, `classification-identity-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
         let binary = false;
+        let projectionIdentityCalls = 0;
         const mimetypes = mimetypesFixture({
             classify: async () => ({ binary, source: "handler" as const }),
+            projectionIdentity: async () => {
+                projectionIdentityCalls++;
+                return "stable-projection";
+            },
             process: async () => ({ symbols: [], references: [] }),
             embedderInfo: async () => null,
         });
@@ -163,17 +168,20 @@ test("resolved binary classification participates in derivation identity (#93)",
         await SearchIndex.maintain(ctx);
         const textHash = await hash();
         assert.deepEqual(await hits(), ["/classified.md"]);
+        assert.equal(projectionIdentityCalls, 1);
 
         binary = true;
         await SearchIndex.maintain(ctx);
         const binaryHash = await hash();
         assert.notEqual(binaryHash, textHash, "changed classification cannot reuse the textual artifact");
         assert.deepEqual(await hits(), [], "binary classification detaches the entry from lexical search");
+        assert.equal(projectionIdentityCalls, 1, "binary derivation does not depend on handler output");
 
         binary = false;
         await SearchIndex.maintain(ctx);
         assert.equal(await hash(), textHash, "the same classification deterministically reuses its prior artifact");
         assert.deepEqual(await hits(), ["/classified.md"]);
+        assert.equal(projectionIdentityCalls, 2);
     } finally {
         await db.close();
     }

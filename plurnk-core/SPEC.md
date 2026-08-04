@@ -913,6 +913,7 @@ consume these public methods:
 |-------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------|
 | `ready`, `skippedPackages`                | Complete trust-gated discovery and present withheld-package evidence at daemon boot.                                        |
 | `detect`, `process`                       | Resolve mimetypes, extents, readable content, symbols, and references.                                                      |
+| `projectionIdentity`                      | Identify installed reader behavior for search artifacts that consume symbols and references.                               |
 | `query`                                   | Execute glob/regex/JSONPath/XPath through `@plurnk/plurnk-schemes/Matcher`, which maps typed outcomes to operation results. |
 | `embedderInfo`, `embedBatch`, `tokenizer` | Plan and derive semantic-search chunks without reaching into artifact packages.                                             |
 
@@ -925,7 +926,7 @@ Cross-cutting promises service relies on:
 
 - Storage writes do not implicitly project; query, indexing, and presentation
   invoke the exact public surface they need.
-- Handler projections are deterministic for a given `(content, mimetype)` pair.
+- Handler projections are deterministic for a given `(content, mimetype, projection identity)` tuple.
 - Validation errors propagate (fail-hard).
 - Degraded projection (a `grammarMissing` marker) rather than throw when a grammar is absent.
 
@@ -972,7 +973,7 @@ model-independent ruler for stored/catalog weights and the model-facing budget
 confined to provider-physical recovery admission
 ({§tokenomics-physical-admission}).
 
-**Persistent search index.** `SearchIndex.maintain` is the pre-model engine pass. Each searchable resource supplies an address and the exact readable body its READ exposes. Entries supply their default body; `LogBody` resolves each log row's canonical full body from its durable tx/rx envelope. Acquisition schemes project remote source material before storing that body; search never introduces a second hidden text projection. The readable body, mimetype, resolved text/binary classification, reader configuration, embedder configuration, and applicable search exclusion form a content hash. Complete artifacts own FTS, vectors, symbol definitions, and references; resource rows hold only the attachment hash. #175 owns the still-missing stable reader-configuration identity.
+**Persistent search index.** `SearchIndex.maintain` is the pre-model engine pass. Each searchable resource supplies an address and the exact readable body its READ exposes. Entries supply their default body; `LogBody` resolves each log row's canonical full body from its durable tx/rx envelope. Acquisition schemes project remote source material before storing that body; search never introduces a second hidden text projection. The readable body, mimetype, resolved text/binary classification, mimetype projection identity, embedder configuration, and applicable search exclusion form a content hash. Complete artifacts own FTS, vectors, symbol definitions, and references; resource rows hold only the attachment hash. Binary, empty, and excluded derivations do not invoke handler projections and therefore use one fixed no-projection identity.
 
 §search-exclusion **File-search eligibility is Core policy.**
 `PLURNK_SERVICE_SEARCH_EXCLUDE` is a comma-separated table of anchored
