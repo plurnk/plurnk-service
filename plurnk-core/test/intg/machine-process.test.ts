@@ -113,7 +113,7 @@ test("a fork shares workspace-commons entries live and uncopied", async () => {
     } finally { db.close(); }
 });
 
-test("a workspace cannot be forked; the fork is worker-scoped", async () => {
+test("a fork creates a worker while retaining the shared workspace", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `ws-${crypto.randomUUID()}`);

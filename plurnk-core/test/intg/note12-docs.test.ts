@@ -12,7 +12,7 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 class DocStub {
     static manifest = {
         name: "docstub", channels: { body: "text/plain" }, defaultChannel: "body",
-        category: "data", scope: "workspace", writableBy: ["model"], volatile: false, modelVisible: true,
+        category: "data", writableBy: ["model"], volatile: false, modelVisible: true,
         example: "<<READ(docstub:///x)::READ", documentation: "# docstub\nFuller reference content.",
     };
 }

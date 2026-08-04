@@ -72,15 +72,7 @@ WHERE worker_id = $worker_id AND turn_id = $turn_id
   AND scheme IS $scheme AND pathname = $pathname
 LIMIT 1;
 
--- PREP: engine_list_workspace_entry_tags
--- #note13 — every (entry, tag) in the workspace, for the manifest catalog's tags field.
-SELECT et.entry_id, et.tag
-FROM entry_tags et
-JOIN entries e ON e.id = et.entry_id
-WHERE e.workspace_id = $workspace_id
-ORDER BY et.entry_id, et.tag;
-
--- PREP: engine_list_worker_entries
+-- PREP: engine_list_owner_entries
 -- {§entry-owner} — one principal's entries (catalogRowsFor source for an owner-scoped FIND/foist):
 -- the commons, a worker's own space, or a named space — exactly one owner's rows, its perspective.
 SELECT e.id AS entry_id, e.scheme, e.pathname, ec.name AS channel, ec.content, ec.mimetype, ec.tokens AS tokens, e.deep_hash,
@@ -102,7 +94,7 @@ LEFT JOIN subscriptions s ON s.id = (
 WHERE e.workspace_id = $workspace_id AND e.owner_id = $owner_id
 ORDER BY e.updated_at ASC, e.id ASC, ec.name;
 
--- PREP: engine_list_worker_entry_tags
+-- PREP: engine_list_owner_entry_tags
 -- {§entry-owner} — (entry, tag) for one principal's entries (the owner-scoped catalog's tags field).
 SELECT et.entry_id, et.tag
 FROM entry_tags et
@@ -212,9 +204,9 @@ VALUES (
 );
 
 -- PREP: engine_list_workspace_entries
--- Every entry of a workspace — all schemes, all channels — the source behind the entry
--- catalog (catalogRowsFor / FIND) and the persistent search-index pass.
--- Workspace-scoped (persists across workers); FOLD doesn't drop from the catalog.
+-- Every owner-held entry of a workspace — all schemes, all channels — for
+-- internal indexing and aggregate inspection. Addressable catalogs use the
+-- owner-filtered statements above.
 -- The latest subscription carries stream lifecycle into the catalog. `seconds`
 -- is the live age of an open stream; close_status is the exact terminal status
 -- of a closed one. Entries with no subscription remain ordinary static entries.
@@ -234,7 +226,6 @@ LEFT JOIN subscriptions s ON s.id = (
     ORDER BY latest.id DESC
     LIMIT 1
 )
--- entries are workspace-scoped, shared across workers — {§machine-processes-one-filesystem}
 WHERE e.workspace_id = $workspace_id
 -- User Note 5 — mtime-ascending: dormant entries hold the stable prompt-cache prefix; churn clusters at the tail.
 ORDER BY e.updated_at ASC, e.id ASC, ec.name;

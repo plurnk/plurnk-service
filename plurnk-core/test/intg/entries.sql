@@ -7,7 +7,7 @@ INSERT INTO entries (workspace_id, owner_id, scheme, pathname) VALUES ($workspac
 -- PREP: test_entries_get_first
 SELECT id, version, workspace_id, owner_id, scheme, pathname, attributes FROM entries LIMIT 1;
 
--- PREP: test_entries_get_first_scope_workspace
+-- PREP: test_entries_get_first_identity
 SELECT workspace_id, owner_id FROM entries LIMIT 1;
 
 -- PREP: test_entries_insert_with_workspace_id_only

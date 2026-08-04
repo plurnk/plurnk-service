@@ -70,7 +70,6 @@ export default class Log extends CoreSchemeAdapterBase {
         channels: {},  // logs render through read(), not channel storage
         defaultChannel: "",
         category: "logging",
-        scope: "workspace",
         // Log KILL is model-authorized curation. Other mutations remain unavailable
         // because Log exposes no edit/writeEntry handler. {§model-entry-log-curation}
         writableBy: ["plurnk", "model"],

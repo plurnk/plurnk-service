@@ -29,7 +29,6 @@ class SideEffectingScheme {
         channels: {},
         defaultChannel: "body",
         category: "data",
-        scope: "workspace",
         writableBy: ["model", "client", "plurnk"],
         volatile: false,
         modelVisible: true,
@@ -60,7 +59,6 @@ const flagExecutor: Executor = {
     get manifest(): SchemeManifest {
         return {
             ...schemeManifest("flag-tool", { results: "text/plain" }, "results"),
-            scope: "worker",
             volatile: true,
         };
     },

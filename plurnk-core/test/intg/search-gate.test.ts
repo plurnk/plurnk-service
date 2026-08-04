@@ -30,7 +30,7 @@ const stubExecutor = (behavior: { fail?: boolean } = {}) => ({
     get manifest() {
         return {
             name: "search", channels: { "#results": "application/json" }, defaultChannel: "#results",
-            category: "data" as const, scope: "workspace" as const, writableBy: ["model" as const],
+            category: "data" as const, writableBy: ["model" as const],
             volatile: true, modelVisible: true, example: "", documentation: "stub",
         };
     },

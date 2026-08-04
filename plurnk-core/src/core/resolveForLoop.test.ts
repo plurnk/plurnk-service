@@ -17,7 +17,6 @@ const baseManifest = (name: string, flags?: SchemeManifest["flags"]): SchemeMani
     channels: { body: "text/plain" },
     defaultChannel: "body",
     category: "data",
-    scope: "workspace",
     writableBy: ["model"],
     volatile: false,
     modelVisible: true,

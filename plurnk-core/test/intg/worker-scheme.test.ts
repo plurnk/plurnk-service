@@ -40,7 +40,7 @@ const authoredWorkerPath = (raw: string): ParsedPath => {
     return target;
 };
 
-// A worker-scope storage address: worker://<owner>/<path>, entry path present.
+// An owner-addressed private entry: worker://<owner>/<path>, entry path present.
 const workerEntry = (owner: string, path: string): ParsedPath => ({
     kind: "url", raw: `worker://${owner}/${path}`, scheme: "worker",
     username: null, password: null, hostname: owner, port: null,
@@ -72,28 +72,28 @@ const recordingInjectWorker = () => {
 
 const tokenize = (text: string): number => Math.ceil(text.length / 4);
 
-// A worker-scope FIND: worker://<owner>/<glob>.
+// FIND in one owner's space: worker://<owner>/<glob>.
 const findEntry = (owner: string, glob: string): FindStatement => ({
     op: "FIND", suffix: "", signal: null,
     target: { kind: "url", raw: `worker://${owner}/${glob}`, scheme: "worker", username: null, password: null, hostname: owner, port: null, pathname: `/${glob}`, query: null, fragment: null },
     lineMarker: null, body: null, position: { line: 1, column: 1 },
 });
 
-// A worker-scope READ: worker://<owner>/<path>.
+// READ from one owner's space: worker://<owner>/<path>.
 const readEntry = (owner: string, path: string): ReadStatement => ({
     op: "READ", suffix: "", signal: null,
     target: { kind: "url", raw: `worker://${owner}/${path}`, scheme: "worker", username: null, password: null, hostname: owner, port: null, pathname: `/${path}`, query: null, fragment: null },
     lineMarker: null, body: null, position: { line: 1, column: 1 },
 });
 
-// A worker-scope ENTRY KILL: worker://<owner>/<path> — deletes the scratch entry (path present).
+// KILL in one owner's space: worker://<owner>/<path> — deletes the private entry (path present).
 const killEntry = (owner: string, path: string): KillStatement => ({
     op: "KILL", suffix: "", signal: null,
     target: { kind: "url", raw: `worker://${owner}/${path}`, scheme: "worker", username: null, password: null, hostname: owner, port: null, pathname: `/${path}`, query: null, fragment: null },
     lineMarker: null, body: null, position: { line: 1, column: 1 },
 });
 
-test("a fork inherits the parent's worker-scope scratch (owner-remapped), then diverges", async () => {
+test("a fork inherits the parent's private entries under its own owner, then diverges", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `fork-scratch-${crypto.randomUUID()}`);
@@ -544,7 +544,7 @@ test("worker IRC rejects contract-invalid delegator flags before inheritance (#1
     } finally { await db.close(); }
 });
 
-// Dispatch-path coverage (#282): KILL of a worker-scope ENTRY must DELETE the entry, NOT
+// Dispatch-path coverage (#282): KILL of an owner-addressed entry must DELETE it, NOT
 // cancel the worker — and stay self-only. Driven through engine.dispatch (the real routing),
 // not a bare Worker instance, because the bug lived in Dispatcher.#handleKill's worker branch.
 test("entry KILL: a child naming upward is 404 (no existence leak); an ancestor sees but cannot write (403); the worker survives — #282", async () => {

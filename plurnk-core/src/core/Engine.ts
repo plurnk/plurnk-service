@@ -1022,7 +1022,7 @@ export default class Engine {
             const { filesItems: workspaceMI } = await WorkspaceSettings.read(this.#db, workspaceId);
             const filesItems = workspaceMI !== null ? normalizeFilesItems(workspaceMI) : readFilesItems();
             if (filesItems !== null && workerFirstLoop) { // #269 — catalog preview appears once per worker
-                // engine_scheme_catalog_summary is the scheme source: workspace-scoped, ordered,
+                // engine_scheme_catalog_summary is the workspace-bounded scheme source: ordered,
                 // one row per stored entry scheme. log:// is absent —
                 // it lives in log_entries, not the catalog (present-mode, the # Log section).
                 const catalogSchemes = await this.#db.engine_scheme_catalog_summary.all<{ scheme: string; entries: number; shallow_items: number }>({ workspace_id: workspaceId });

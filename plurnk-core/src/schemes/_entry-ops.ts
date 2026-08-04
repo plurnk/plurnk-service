@@ -11,7 +11,7 @@ import type { EditBatchReceipt } from "../content/index.ts";
 import type { TextRegion } from "@plurnk/plurnk-contracts";
 import Results, { type MatchEvidence, type SchemeResultBase } from "../core/results.ts";
 
-// Shared static-method helpers for workspace-scope entry-bearing schemes.
+// Shared static-method helpers for owner-addressed entry-bearing schemes.
 // Each scheme passes its manifest; helpers extract scheme name, channels,
 // and defaultChannel. Channel routing
 // follows SPEC {§channel-selection}: path.fragment ?? manifest.defaultChannel.
@@ -295,9 +295,8 @@ export default class EntryOps {
         };  // {§edit-status-201-200}
     }
 
-    // Scope-aware entry delete — the KILL counterpart of editWorkspaceEntry. Resolves the
-    // entry via the scope's crud_find variant (so a worker-scope row is found, not just
-    // workspace), then deletes by id (channels/tags CASCADE). 404 when the entry is absent.
+    // Owner-aware entry delete — the KILL counterpart of editWorkspaceEntry. Resolves
+    // the exact owner-held row, then deletes by id (channels/tags CASCADE). 404 when absent.
     static async deleteWorkspaceEntry(statement: { target: EditStatement["target"] }, ctx: PlurnkSchemeContext, manifest: SchemeManifest, explicitOwnerId?: number): Promise<SchemeResultBase> {
         if (statement.target === null) {
             return Results.failure(

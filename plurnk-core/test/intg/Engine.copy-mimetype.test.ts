@@ -30,7 +30,7 @@ test("COPY a json-bodied source into a markdown-fixed worker:/// dst returns 415
         const loopId = await insertLoop(db, workerId, 1, "copy mismatch");
         const turnId = await insertTurn(db, loopId, 1, 102);
         // Non-markdown source — the seed sidesteps Worker's write-time markdown lock.
-        await seedEntryWithChannel(db, { workspaceId, workerId, scheme: "worker", pathname: "/data/blob", channel: "body", content: "{\"k\":1}", mimetype: "application/json" });
+        await seedEntryWithChannel(db, { workspaceId, scheme: "worker", pathname: "/data/blob", channel: "body", content: "{\"k\":1}", mimetype: "application/json" });
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
 
         const copy = await engine.dispatch({

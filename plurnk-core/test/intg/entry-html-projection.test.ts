@@ -50,7 +50,7 @@ test("a FETCHED html page (via the exec sink) projects: decisive markdown body +
     engine.registerRuntime("fetchstub", {
         executor: {
             runtime: "fetchstub", glyph: "?",
-            get manifest() { return { name: "fetchstub", channels: { results: "text/html" }, defaultChannel: "results", category: "data", scope: "workspace", writableBy: ["plugin"], volatile: true, modelVisible: true } as never; },
+            get manifest() { return { name: "fetchstub", channels: { results: "text/html" }, defaultChannel: "results", category: "data", writableBy: ["plugin"], volatile: true, modelVisible: true } as never; },
             get defaultChannel() { return "results"; },
             get channels() { return { results: { mimetype: "text/html" } }; },
             effect: () => "pure" as const,

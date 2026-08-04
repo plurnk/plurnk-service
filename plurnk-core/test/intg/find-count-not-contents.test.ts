@@ -22,7 +22,7 @@ test("over the budget, FIND returns a count + narrow steer, not the enumerated r
     try {
         const workspaceId = await insertWorkspace(db, `findcap-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
-        for (let i = 0; i < 6; i++) await seedEntryWithChannel(db, { workspaceId, workerId, scheme: "worker", pathname: `/e${i}`, channel: "body", content: `entry ${i}`, mimetype: "text/markdown" });
+        for (let i = 0; i < 6; i++) await seedEntryWithChannel(db, { workspaceId, scheme: "worker", pathname: `/e${i}`, channel: "body", content: `entry ${i}`, mimetype: "text/markdown" });
         const ctx = makeSchemeCtx({ db, workspaceId, workerId });
         const r = await EntryFind.findWorkspaceEntries(findAll(), ctx, Worker.manifest);
         assert.equal(r.status, 200);
@@ -46,7 +46,7 @@ test("under the budget, FIND enumerates the catalog rows as before (#418)", asyn
     try {
         const workspaceId = await insertWorkspace(db, `findsmall-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
-        await seedEntryWithChannel(db, { workspaceId, workerId, scheme: "worker", pathname: "/one", channel: "body", content: "just one", mimetype: "text/markdown" });
+        await seedEntryWithChannel(db, { workspaceId, scheme: "worker", pathname: "/one", channel: "body", content: "just one", mimetype: "text/markdown" });
         const ctx = makeSchemeCtx({ db, workspaceId, workerId });
         const r = await EntryFind.findWorkspaceEntries(findAll(), ctx, Worker.manifest);
         assert.equal(r.omittedItems, undefined, "no items are omitted under budget");

@@ -73,7 +73,7 @@ test("an empty failed child stream is observed by the child before its terminal 
             decl: { name: "emptyfail", glyph: "×", example: "", documentation: "" },
             executor: {
                 runtime: "emptyfail", glyph: "×",
-                get manifest() { return { name: "emptyfail", channels: { results: "text/plain" }, defaultChannel: "results", category: "data", scope: "workspace", writableBy: ["plugin"], volatile: true, modelVisible: true } as never; },
+                get manifest() { return { name: "emptyfail", channels: { results: "text/plain" }, defaultChannel: "results", category: "data", writableBy: ["plugin"], volatile: true, modelVisible: true } as never; },
                 get defaultChannel() { return "results"; },
                 get channels() { return { results: { mimetype: "text/plain" } }; },
                 effect: () => "pure",

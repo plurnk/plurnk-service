@@ -9,8 +9,8 @@ const insertWorkspaceEntry = async (db: Db, workspaceId: number, scheme: string,
     return row.id;
 };
 
-// Convenience for tests that just need "an entry" — agent-scope (the old workspaceless shortcut)
-// is gone, so this gives a workspace-scope entry on its own fresh workspace.
+// Convenience for tests that just need an entry: create a fresh workspace and
+// let the fixture assign its reserved commons owner.
 const insertEntry = async (db: Db, scheme: string, pathname: string): Promise<number> => {
     const workspaceId = await insertWorkspace(db, `ws-entry-${crypto.randomUUID()}`);
     return insertWorkspaceEntry(db, workspaceId, scheme, pathname);
@@ -29,7 +29,7 @@ test("entries: insert — workspace_id + owner_id populate", async () => {
     try {
         const workspaceId = await insertWorkspace(db, "ws-entries-workspace");
         await insertWorkspaceEntry(db, workspaceId, "worker", "foo");
-        const row = await db.test_entries_get_first_scope_workspace.get<{ workspace_id: number; owner_id: number }>();
+        const row = await db.test_entries_get_first_identity.get<{ workspace_id: number; owner_id: number }>();
         assert.equal(row?.workspace_id, workspaceId);
         assert.ok((row?.owner_id ?? 0) >= 1, "the commons owner is stamped ({§entry-owner})");
     } finally { await db.close(); }
@@ -154,7 +154,7 @@ test("entries: partial indexes exist", async () => {
     try {
         const indexes = await db.test_entries_partial_indexes.all<{ name: string; sql: string }>();
         const names = indexes.map((i) => i.name).sort();
-        assert.deepEqual(names, ["entries_identity"]); // ONE owner-keyed identity ({§entry-owner}) — scope is dead
+        assert.deepEqual(names, ["entries_identity"]); // one owner-keyed identity ({§entry-owner})
         for (const idx of indexes) {
             assert.match(idx.sql, /\(workspace_id, owner_id, scheme, pathname\)/);
             assert.match(idx.sql, /UNIQUE/);

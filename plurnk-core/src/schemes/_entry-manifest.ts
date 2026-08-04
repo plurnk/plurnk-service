@@ -1,12 +1,13 @@
-// The entry catalog ({§packet-catalog}) — the complete, unranked directory of every
-// entry the workspace holds. FIND(**) serves it recursively; FIND(*) projects
-// it as a one-level map in _entry-find.
+// The entry catalog ({§packet-catalog}) — the complete, unranked directory for
+// one addressed owner. FIND(**) serves it recursively; FIND(*) projects it as
+// a one-level map in _entry-find. An omitted owner selects the shared commons.
 // Each item carries its address, optional stream lifecycle and tags, and addressable
 // channels. Search indexing is owned separately by SearchIndex.
 
 import type { PlurnkSchemeContext } from "../core/scheme-types.ts";
 import { PathSyntax } from "@plurnk/plurnk-contracts";
 import { renderAddress } from "../core/plurnk-uri.ts";
+import Owner from "../core/Owner.ts";
 
 type ManifestRow = {
     entry_id: number;
@@ -43,14 +44,17 @@ export default class EntryManifest {
         const { db, workspaceId, mimetypes, tokenize } = ctx;
         if (mimetypes === undefined) throw new Error("catalogRowsFor: ctx.mimetypes is required for the lines (extent) field");
         if (tokenize === undefined) throw new Error("catalogRowsFor: ctx.tokenize is required — the model-agnostic ruler, re-counted at render");
-        const all = ownerId === undefined
-            ? await db.engine_list_workspace_entries.all<ManifestRow>({ workspace_id: workspaceId })
-            : await db.engine_list_worker_entries.all<ManifestRow>({ workspace_id: workspaceId, owner_id: ownerId });
+        const resolvedOwnerId = ownerId ?? await Owner.commonsId(db, workspaceId);
+        const all = await db.engine_list_owner_entries.all<ManifestRow>({
+            workspace_id: workspaceId,
+            owner_id: resolvedOwnerId,
+        });
         const rows = schemeFilter === undefined ? all : all.filter((row) => row.scheme === schemeFilter);
         const tagsById = new Map<number, string[]>();
-        const tagRows = ownerId === undefined
-            ? await db.engine_list_workspace_entry_tags.all<{ entry_id: number; tag: string }>({ workspace_id: workspaceId })
-            : await db.engine_list_worker_entry_tags.all<{ entry_id: number; tag: string }>({ workspace_id: workspaceId, owner_id: ownerId });
+        const tagRows = await db.engine_list_owner_entry_tags.all<{ entry_id: number; tag: string }>({
+            workspace_id: workspaceId,
+            owner_id: resolvedOwnerId,
+        });
         for (const { entry_id, tag } of tagRows) {
             const tags = tagsById.get(entry_id);
             if (tags === undefined) tagsById.set(entry_id, [tag]);

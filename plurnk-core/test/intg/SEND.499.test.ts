@@ -80,7 +80,7 @@ test("End-to-end: synthetic streaming scheme — SEND[499] tears down subscripti
         class FakeStream {
             static manifest = {
                 name: "fakestream", channels: { data: "text/plain" }, defaultChannel: "data",
-                category: "data" as const, scope: "workspace" as const,
+                category: "data" as const,
                 writableBy: ["model" as const, "client" as const], volatile: true, modelVisible: true,
             };
             async read(statement: ReadStatement, ctx: SchemeCtx): Promise<{ status: number }> {

@@ -2,7 +2,22 @@ import type { SchemeFlagAffinity, SchemeManifest, WriterTier } from "./types.ts"
 
 const WRITERS = new Set<WriterTier>(["model", "client", "plurnk", "plugin"]);
 const CATEGORIES = new Set<SchemeManifest["category"]>(["data", "logging", "control"]);
-const SCOPES = new Set<SchemeManifest["scope"]>(["workspace", "worker"]);
+const MANIFEST_FIELD_NAMES = new Set<string>(Object.keys({
+    name: true,
+    channels: true,
+    defaultChannel: true,
+    category: true,
+    writableBy: true,
+    volatile: true,
+    modelVisible: true,
+    folderScopes: true,
+    foldedByDefault: true,
+    flags: true,
+    example: true,
+    documentation: true,
+    glyph: true,
+    storedScheme: true,
+} satisfies Record<keyof SchemeManifest, true>));
 const FLAG_AFFINITIES = ["excludedInAsk", "requiresWeb", "requiresInteraction"] as const satisfies ReadonlyArray<keyof SchemeFlagAffinity>;
 const FLAG_AFFINITY_NAMES = new Set<string>(FLAG_AFFINITIES);
 
@@ -18,6 +33,10 @@ export default class Manifest {
         }
         const manifest = value as Record<string, unknown>;
         const name = Manifest.#string(manifest, "name");
+        const unknown = Object.keys(manifest).find((field) => !MANIFEST_FIELD_NAMES.has(field));
+        if (unknown !== undefined) {
+            throw new Error(`scheme '${name}' manifest has unknown field '${unknown}'`);
+        }
         if (expectedName !== undefined && name !== expectedName) {
             throw new Error(`scheme identity mismatch: registered '${expectedName}', manifest declares '${name}'`);
         }
@@ -35,9 +54,6 @@ export default class Manifest {
         }
         if (!CATEGORIES.has(manifest.category as SchemeManifest["category"])) {
             throw new Error(`scheme '${name}' manifest.category must be data, logging, or control`);
-        }
-        if (!SCOPES.has(manifest.scope as SchemeManifest["scope"])) {
-            throw new Error(`scheme '${name}' manifest.scope must be workspace or worker`);
         }
         const writableBy = manifest.writableBy;
         if (!Array.isArray(writableBy)

@@ -135,7 +135,6 @@ export default class Exec extends CoreSchemeAdapterBase {
         channels: { stdout: "text/stream", stderr: "text/stream" },
         defaultChannel: "stdout",
         category: "data",
-        scope: "workspace",
         writableBy: ["model", "client"],
         volatile: true,
         modelVisible: true,

@@ -10,7 +10,7 @@ ORDER BY id DESC LIMIT 1;
 
 -- PREP: worker_name_by_id
 -- A worker's name from its id ({§worker-scheme}) — the worker:/// self-fold resolves the
--- acting worker (ctx.workerId) to its name to key its worker-scope entries by authority.
+-- acting worker (ctx.workerId) to the owner named by the URI authority.
 SELECT name FROM workers WHERE id = $worker_id;
 
 -- PREP: worker_deliverable_by_name

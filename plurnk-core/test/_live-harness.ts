@@ -98,7 +98,7 @@ export const liveWorkspace = async (opts: { name: string; projectRoot?: string; 
 // The single loop-driver for the live/demo tier: fire loop.run (loop auto — the
 // tier auto-accepts so an unattended model worker isn't blocked on review), await
 // loop/terminated, and return the outcome + the model's final reply. modelWorkerId
-// (the worker the model's ops landed in, for worker-scoped forensic queries) is
+// (the worker the model's ops landed in, for worker-filtered forensic queries) is
 // guaranteed by loop.run; absence is a hard failure, not a silent 0.
 export const liveLoop = async (
     s: { ws: SeamSocket; db: Db },

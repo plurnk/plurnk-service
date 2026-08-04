@@ -4,7 +4,7 @@
 // model and clients use. Mirrors _dispatchAsClient, but the work is the
 // runtime's own (e.g. materializing operator doc entries). The ops land in the
 // plurnk worker's log, NOT the model's; other workers see only the resulting
-// workspace-scoped entries through the shared filesystem ({§machine-processes}), never the log.
+// commons-owned entries through the shared filesystem ({§machine-processes}), never the log.
 
 import type { PlurnkStatement } from "@plurnk/plurnk-contracts";
 import type { Db } from "../core/Db.ts";

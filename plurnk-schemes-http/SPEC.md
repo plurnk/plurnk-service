@@ -6,15 +6,15 @@ foundations. Both handlers implement the DB-free `SchemeCtx` author contract.
 
 ## §http-manifest §1 HTTP manifest
 
-| Field            | Value                         |
-| ---------------- | ----------------------------- |
-| Registered name  | `http` (`https` routes to it) |
-| Category / scope | `data` / `workspace`          |
-| Writers          | `model`, `client`             |
-| Volatile         | `true`                        |
-| Model-visible    | `true`                        |
-| Requires web     | `true`                        |
-| Default channel  | `body`                        |
+| Field           | Value                         |
+| --------------- | ----------------------------- |
+| Registered name | `http` (`https` routes to it) |
+| Category        | `data`                        |
+| Writers         | `model`, `client`             |
+| Volatile        | `true`                        |
+| Model-visible   | `true`                        |
+| Requires web    | `true`                        |
+| Default channel | `body`                        |
 
 | Channel  | Seed type                  | Meaning                                                         |
 | -------- | -------------------------- | --------------------------------------------------------------- |

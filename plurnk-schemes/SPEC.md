@@ -22,7 +22,6 @@ class Notes {
         channels: { body: "text/markdown", preview: "text/markdown" },
         defaultChannel: "body",
         category: "data",
-        scope: "workspace",
         writableBy: ["model", "client"],
         volatile: false,
         modelVisible: true,
@@ -37,7 +36,6 @@ class Notes {
 | `channels` | `Record<channelName, mimetype>`. Channel names lowercase. Empty = dynamic per-call. |
 | `defaultChannel` | Channel targeted when path has no `#fragment`. Dynamic-channel schemes may name it without fixing a mimetype; empty means no default. |
 | `category` | `"data"` (entry-bearing) \| `"logging"` (`log://` rows) \| `"control"` (addresses sister workers, owns no entries — e.g. `worker://`). |
-| `scope` | `"workspace"` \| `"worker"`; core does not persist or dispatch by this residual axis, whose retirement is owned by plurnk-service#80. |
 | `writableBy` | Subset of `["model", "client", "plurnk", "plugin"]`; empty declares an immutable scheme. Consumer returns 403 for outside-set writes. |
 | `volatile` | Boolean. |
 | `modelVisible` | Boolean. |
@@ -49,8 +47,12 @@ class Notes {
 | `foldedByDefault?` | Entries land FOLDED, off the ranked manifest surface (READable via address, not poured into the ranked view). For executor-output streams (`<tag>://`) — containment one level up (schemes#20/service#240). Absent/false → ranked/first-class. |
 | `storedScheme?` | Value persisted to `entries.scheme`, which may differ from the addressing `name`. Absent defaults to `name`. It must be a non-null string because every persisted identity component is non-null. |
 
+The manifest is closed: unknown top-level fields fail admission. Entry
+visibility is not manifest metadata; the consumer resolves it through the
+entry owner's identity.
+
 §manifest-flag-affinity `flags` is a closed environmental-authority declaration.
-Unknown fields fail manifest admission; absent fields are false. Only registered
+Unknown flag fields fail manifest admission; absent fields are false. Only registered
 schemes enter affinity evaluation; an unknown name remains the consumer's
 registration failure.
 

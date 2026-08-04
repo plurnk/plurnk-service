@@ -83,7 +83,6 @@ export default class Http implements SchemeHandler {
         channels: { [BODY]: "application/octet-stream", [HEADER]: "text/plain", html: "text/html" },
         defaultChannel: BODY,
         category: "data",
-        scope: "workspace",
         writableBy: ["model", "client"],
         volatile: true,        // remote content can change between fetches
         modelVisible: true,

@@ -89,7 +89,6 @@ test("BaseExecutor: scheme manifest derives from the tag + declared channels", (
     assert.equal(m.defaultChannel, "results");
     // the read-only-output default an executor-scheme inherits
     assert.equal(m.category, "data");
-    assert.equal(m.scope, "workspace");
     assert.deepEqual(m.writableBy, ["plugin"]);
     assert.equal(m.volatile, true);
     assert.equal(m.foldedByDefault, true, "output streams land folded — the containment default");

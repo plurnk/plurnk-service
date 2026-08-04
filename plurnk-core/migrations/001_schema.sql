@@ -378,7 +378,7 @@ CREATE TABLE IF NOT EXISTS entries (
     FOREIGN KEY (deep_hash)    REFERENCES derivations(deep_hash)
 ) STRICT;
 
--- {§entry-owner} / {§stream-owner-scoped} — ONE identity: the owner is the axis (scope is dead).
+-- {§entry-owner} / {§stream-owner-scoped} — owner is the sole visibility and identity axis.
 -- Concurrent workers' capability streams share the loop-relative coordinate (every worker's first
 -- loop is seq 1), so identity keys on the owner and identical coordinates are DISTINCT rows (#526).
 CREATE UNIQUE INDEX IF NOT EXISTS entries_identity ON entries (workspace_id, owner_id, scheme, pathname);

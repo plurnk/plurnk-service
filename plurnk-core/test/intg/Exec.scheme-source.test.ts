@@ -52,7 +52,6 @@ const execStatement = (target: string, body: string): ExecStatement => ({
 
 const runtimeManifest = (name: string): SchemeManifest => ({
     ...schemeManifest(name, { results: "text/plain" }, "results"),
-    scope: "worker",
     volatile: true,
     foldedByDefault: true,
 });

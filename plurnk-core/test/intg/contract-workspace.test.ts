@@ -279,7 +279,7 @@ test("membership is the workspace's — one overlay, identical for every worker"
         const { members } = await GitMembership.resolveMembershipEffects(db, ctx.workspaceId, undefined);
         assert.ok(members.some((m) => m.path === trackedPath && m.effect === "member"), "the git-tracked file is a member of the workspace (not of a worker)");
         const entry = await db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: ctx.workspaceId, owner_id: await Owner.commonsId(db, ctx.workspaceId), scheme: "file", pathname: `${trackedPath}` });
-        assert.ok(entry, "the member entry is workspace-scoped — worker A and worker B see the identical row (one filesystem)");
+        assert.ok(entry, "the member entry is commons-owned — worker A and worker B see the identical row (one filesystem)");
     });
 });
 

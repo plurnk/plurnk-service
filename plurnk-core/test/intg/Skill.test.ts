@@ -12,7 +12,7 @@ const setup = async () => {
     return { db, workspaceId, workerId };
 };
 
-test("Skill.edit: writes entry with scope='workspace' and scheme='skill'", async () => {
+test("Skill.edit writes a commons-owned entry with scheme='skill'", async () => {
     const { db, workspaceId, workerId } = await setup();
     try {
         const r = await new Skill().edit(editStmt(urlPath("skill", "/shell/grep"), "find text in files using grep", ["shell", "search"]), makeHandlerCtx(makeSchemeCtx({ db, workspaceId, workerId }), Skill.manifest));

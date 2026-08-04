@@ -128,7 +128,7 @@ test("KILL rejects streams whose terminal state is already durable", async () =>
         const close = async (pathname: string, result: { status: number; problem?: never } | ReturnType<typeof Results.failure>): Promise<void> => {
             const entryId = await seedEntryWithChannel(db, {
                 workspaceId,
-                workerId,
+                ownerId: workerId,
                 scheme: "sh",
                 pathname,
                 channel: "stdout",

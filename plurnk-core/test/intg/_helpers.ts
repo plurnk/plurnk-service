@@ -208,7 +208,6 @@ export const seedEntryWithChannel = async (
     db: Db,
     opts: {
         workspaceId: number;
-        workerId?: number;
         // {§entry-owner} — the seeded entry's owner; absent = the workspace commons (shared
         // content). A stream seed passes the owning worker.
         ownerId?: number;
@@ -241,7 +240,6 @@ export const schemeManifest = (name: string, channels: Record<string, string> = 
     channels,
     defaultChannel,
     category: "data",
-    scope: "workspace",
     writableBy: ["model", "client", "plurnk", "plugin"],
     volatile: false,
     modelVisible: true,

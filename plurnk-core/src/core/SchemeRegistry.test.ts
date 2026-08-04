@@ -9,7 +9,6 @@ const manifest = (name: string): SchemeManifest => ({
     channels: { body: "text/plain" },
     defaultChannel: "body",
     category: "data",
-    scope: "workspace",
     writableBy: ["model"],
     volatile: false,
     modelVisible: true,

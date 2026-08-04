@@ -54,10 +54,10 @@ test("assembled packet: the turn-0 catalog foist renders its entries into the lo
         const workspaceId = await insertWorkspace(db, `pkt-backbone-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1, "what do I have?"); // worker's first loop → foist fires (#269)
-        await seedEntryWithChannel(db, { workspaceId, workerId, scheme: "worker", pathname: "/note.md", channel: "body", content: "the answer is 42", mimetype: "text/markdown" });
-        await seedEntryWithChannel(db, { workspaceId, workerId, scheme: "worker", pathname: "/nested/deep.md", channel: "body", content: "nested", mimetype: "text/markdown" });
-        await seedEntryWithChannel(db, { workspaceId, workerId, scheme: "worker", pathname: "/.env.defaults", channel: "body", content: "KNOB=1", mimetype: "text/plain" });
-        await seedEntryWithChannel(db, { workspaceId, workerId, scheme: "worker", pathname: "/.github/settings.yml", channel: "body", content: "setting: true", mimetype: "text/yaml" });
+        await seedEntryWithChannel(db, { workspaceId, scheme: "worker", pathname: "/note.md", channel: "body", content: "the answer is 42", mimetype: "text/markdown" });
+        await seedEntryWithChannel(db, { workspaceId, scheme: "worker", pathname: "/nested/deep.md", channel: "body", content: "nested", mimetype: "text/markdown" });
+        await seedEntryWithChannel(db, { workspaceId, scheme: "worker", pathname: "/.env.defaults", channel: "body", content: "KNOB=1", mimetype: "text/plain" });
+        await seedEntryWithChannel(db, { workspaceId, scheme: "worker", pathname: "/.github/settings.yml", channel: "body", content: "setting: true", mimetype: "text/yaml" });
 
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(200)] } }] });
@@ -113,7 +113,6 @@ test("assembled packet: matcher READ shows the resource and surgical coordinates
         const loopId = await insertLoop(db, workerId, 1, "find the target");
         await seedEntryWithChannel(db, {
             workspaceId,
-            workerId,
             scheme: "worker",
             pathname: "/notes.md",
             channel: "body",
@@ -233,7 +232,7 @@ test("assembled packet: the docs foist — FIND(worker://plurnk/docs/**) surface
         // A materialized scheme doc (what loop_run writes in production — the demo's runLoop doesn't) —
         // kernel-owned at worker://plurnk/docs/… ({§entry-owner}).
         const Owner = (await import("../../src/core/Owner.ts")).default;
-        await seedEntryWithChannel(db, { workspaceId, workerId, ownerId: await Owner.kernelId(db, workspaceId), scheme: "worker", pathname: "/docs/worker.md", channel: "body", content: "# worker\nYour shared blackboard.", mimetype: "text/markdown" });
+        await seedEntryWithChannel(db, { workspaceId, ownerId: await Owner.kernelId(db, workspaceId), scheme: "worker", pathname: "/docs/worker.md", channel: "body", content: "# worker\nYour shared blackboard.", mimetype: "text/markdown" });
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(200)] } }] });
         const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });

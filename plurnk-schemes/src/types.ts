@@ -25,7 +25,6 @@ export interface SchemeManifest {
     // data: entry-bearing content. logging: log:// rows. control: addresses
     // sister workers and owns no entries (worker://: spawn/fork/irc).
     readonly category: "data" | "logging" | "control";
-    readonly scope: "workspace" | "worker";
     readonly writableBy: ReadonlyArray<WriterTier>;
     readonly volatile: boolean;
     readonly modelVisible: boolean;

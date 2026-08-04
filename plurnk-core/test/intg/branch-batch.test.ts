@@ -777,7 +777,7 @@ test("branch preflight refuses a workspace with a still-open stream", async () =
         const parentTurnId = await insertTurn(db, parentLoopId, 1, 102);
         const entryId = await seedEntryWithChannel(db, {
             workspaceId,
-            workerId: parentWorkerId,
+            ownerId: parentWorkerId,
             pathname: "/stream",
         });
         const subscription = await db.open_subscription.get<{ id: number }>({

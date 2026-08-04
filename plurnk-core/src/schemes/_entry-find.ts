@@ -142,7 +142,7 @@ export default class EntryFind {
         const tagsParam = tags.length > 0 ? JSON.stringify(tags) : "[]";
 
         const { db, workspaceId } = ctx;
-        // Candidates are workspace-scoped — a FIND never reaches across workspaces ({§find-scoped-isolation})
+        // Candidates are workspace-bounded — a FIND never reaches across workspaces ({§find-scoped-isolation})
         // — and owner-keyed ({§entry-owner}): an owner-carved face passes its resolved owner; every
         // other scheme draws from the commons.
         type Candidate = { entry_id: number; pathname: string; deep_hash: string | null; content?: string; mimetype?: string };

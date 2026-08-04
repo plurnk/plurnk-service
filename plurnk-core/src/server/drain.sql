@@ -42,7 +42,7 @@ SELECT COALESCE(MAX(sequence), 0) + 1 AS next FROM turns WHERE loop_id = $loop_i
 -- PREP: drain_get_worker_workspace
 -- Resolve workerId → workspaceId. Needed when wake/inject paths only have the
 -- workerId (e.g., a stream concluded in worker X; daemon needs the workspace
--- context to write entries under the worker's workspace scope).
+-- context paired with that worker's owner identity).
 SELECT workspace_id FROM workers WHERE id = $worker_id;
 
 -- PREP: drain_count_prompts_for_loop

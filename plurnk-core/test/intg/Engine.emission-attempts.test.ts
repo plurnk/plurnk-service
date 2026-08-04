@@ -703,7 +703,6 @@ test("a valid turn with a failed operation remains recoverable and model-visible
                 channels: {},
                 defaultChannel: "",
                 category: "data",
-                scope: "workspace",
                 writableBy: ["plurnk"],
                 volatile: false,
                 modelVisible: true,

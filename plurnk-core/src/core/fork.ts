@@ -3,9 +3,9 @@
 // A fork is a new worker in the same workspace (`parent_worker_id` records the lineage),
 // holding a deep copy of the parent's log: loops → turns → entries, with their
 // fold-state (`expanded`) and attribution (`origin`/`source`) intact. It copies
-// nothing of the shared WORLD — the workspace's entries and overlay are shared, never
-// copied, because a worker never owned them. But it DOES inherit the parent's worker-scope
-// SCRATCH ({§worker-scheme} — the worker's private workspace, owner-remapped parent → branch):
+// nothing of the shared WORLD — commons-owned entries and the overlay are shared, never
+// copied, because the worker never owned them. It DOES inherit the parent's private
+// entries ({§worker-scheme}, owner-remapped parent → branch):
 // "fork = everything-in-common-but-name, then diverges". Its ambient observation
 // cursor is copied with that inherited history, then diverges independently.
 
@@ -113,14 +113,14 @@ export default class Fork {
         // {§worker-scheme} — inherit the parent's private scratch: same pathnames, the BRANCH as owner
         // ({§entry-owner} — ownership is the column, never the pathname), so the branch's private
         // workspace is independent and diverges on its own edits.
-        const scratch = await db.fork_get_worker_scope_entries.all<{ id: number; scheme: string; pathname: string; deep_hash: string | null; attributes: string }>(
+        const scratch = await db.fork_get_private_entries.all<{ id: number; scheme: string; pathname: string; deep_hash: string | null; attributes: string }>(
             { workspace_id: parent.workspace_id, owner_id: parentWorkerId },
         );
         for (const s of scratch) {
-            const ne = await db.fork_insert_worker_scope_entry.get<{ id: number }>(
+            const ne = await db.fork_insert_private_entry.get<{ id: number }>(
                 { workspace_id: parent.workspace_id, owner_id: branchWorkerId, scheme: s.scheme, pathname: s.pathname, deep_hash: s.deep_hash, attributes: s.attributes },
             );
-            if (ne === undefined) throw new Error("fork: worker-scope entry copy returned no row");
+            if (ne === undefined) throw new Error("fork: private entry copy returned no row");
             await db.fork_copy_entry_channels.run({ old_entry_id: s.id, new_entry_id: ne.id });
             await db.fork_copy_entry_tags.run({ old_entry_id: s.id, new_entry_id: ne.id });
         }

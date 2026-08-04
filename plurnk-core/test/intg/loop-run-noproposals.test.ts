@@ -20,7 +20,6 @@ class ProposingTest {
         channels: {},
         defaultChannel: "body",
         category: "data",
-        scope: "workspace",
         writableBy: ["model", "client", "plugin"],
         volatile: false,
         modelVisible: true,

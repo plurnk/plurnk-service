@@ -30,7 +30,6 @@ class ProposingTest {
         channels: {},
         defaultChannel: "body",
         category: "data",
-        scope: "workspace",
         writableBy: ["model", "client", "plugin"],
         volatile: false,
         modelVisible: true,
@@ -174,7 +173,7 @@ test("proposal: status=202 + state='proposed' rows hidden from the log section r
         const logEntryId = await idDeferred.promise;
 
         // Render the log — proposed entry should be invisible.
-        // engine_render_log is worker-scoped per SPEC {§packet-terms} (workers own log entries).
+        // engine_render_log selects the worker's own log rows per SPEC {§packet-terms}.
         const rendered = await db.engine_render_log.all<{ status_rx: number; state: string }>({ worker_id: ctx.workerId });
         const proposedVisible = rendered.find((r) => r.status_rx === 202 && r.state === "proposed");
         assert.equal(proposedVisible, undefined, "proposed entries must be invisible to log render");

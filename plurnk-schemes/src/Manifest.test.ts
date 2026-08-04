@@ -8,7 +8,6 @@ const manifest = (name: string): SchemeManifest => ({
     channels: { body: "text/plain" },
     defaultChannel: "body",
     category: "data",
-    scope: "workspace",
     writableBy: ["model"],
     volatile: false,
     modelVisible: true,
@@ -53,5 +52,14 @@ test("Manifest.of validates dispatch-critical fields", () => {
     assert.throws(
         () => Manifest.of({ manifest: { ...manifest("unknown-affinity"), flags: { requiresGpu: true } } }, "unknown-affinity"),
         /unknown.*requiresGpu/,
+    );
+});
+
+test("Manifest.of admits only declared top-level fields", () => {
+    const ownerManifest = manifest("owner");
+    assert.doesNotThrow(() => Manifest.of({ manifest: ownerManifest }, "owner"));
+    assert.throws(
+        () => Manifest.of({ manifest: { ...ownerManifest, scope: "worker" } }, "owner"),
+        /unknown.*scope/,
     );
 });

@@ -230,7 +230,7 @@ test("Engine.dispatch: an external scheme cannot acquire OPEN by defining an ope
     class Trap {
         static manifest = {
             name: "trap", channels: {}, defaultChannel: "",
-            category: "data" as const, scope: "workspace" as const,
+            category: "data" as const,
             writableBy: ["model" as const], volatile: false, modelVisible: true,
         };
         async open() { invoked = true; return { status: 200 }; }
@@ -507,7 +507,6 @@ test("Engine.dispatch: an instance manifest enforces writableBy like a static ma
                 channels: {},
                 defaultChannel: "",
                 category: "data" as const,
-                scope: "workspace" as const,
                 writableBy: ["plugin" as const],
                 volatile: false,
                 modelVisible: true,
@@ -553,7 +552,7 @@ test("Engine.dispatch: scheme handler that throws → action-entry at status 500
     class Boom {
         static manifest = {
             name: "boom", channels: {}, defaultChannel: "",
-            category: "data" as const, scope: "workspace" as const,
+            category: "data" as const,
             writableBy: ["model" as const], volatile: false, modelVisible: true,
         };
         async editBatch() { throw new Error("scheme handler deliberately threw"); }
@@ -590,7 +589,7 @@ test("Engine.dispatch: non-Error throw becomes the same generic contract Problem
     class BoomString {
         static manifest = {
             name: "boomstr", channels: {}, defaultChannel: "",
-            category: "data" as const, scope: "workspace" as const,
+            category: "data" as const,
             writableBy: ["model" as const], volatile: false, modelVisible: true,
         };
         async editBatch(): Promise<never> { throw "raw string thrown"; }

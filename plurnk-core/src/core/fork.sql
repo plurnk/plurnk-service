@@ -78,20 +78,20 @@ RETURNING id;
 INSERT INTO log_tags (log_entry_id, tag)
 SELECT $new_log_id, tag FROM log_tags WHERE log_entry_id = $old_log_id;
 
--- {§worker-scheme} — a fork inherits the parent's worker-scope SCRATCH (its private workspace), distinct
+-- {§worker-scheme} — a fork inherits the parent's private entries, distinct
 -- from the shared workspace world above: "fork = everything-in-common-but-name, then diverges". The
--- entries are deep-copied (new ids) with the owner remapped in the pathname (parent → branch), so
+-- entries are deep-copied (new ids) with the owner remapped (parent → branch), so
 -- the branch's scratch is independent — it edits its own without touching the parent's.
 
--- PREP: fork_get_worker_scope_entries
--- The parent's worker-scope entries. Content-addressed deep artifact pointers
+-- PREP: fork_get_private_entries
+-- The parent's private entries. Content-addressed deep artifact pointers
 -- and attributes ride along; copying the channels keeps the pointer valid so
 -- the next-turn pump skips re-derivation (the content is byte-identical).
 SELECT id, scheme, pathname, deep_hash, attributes
 FROM entries WHERE workspace_id = $workspace_id AND owner_id = $owner_id ORDER BY id;
 
--- PREP: fork_insert_worker_scope_entry
--- A worker-scope entry copy with the owner-remapped pathname. synced_sig/membership_origin are NULL
+-- PREP: fork_insert_private_entry
+-- A private entry copy with the branch as owner. synced_sig/membership_origin are NULL
 -- (scratch is never disk-synced nor a file member); version defaults 0.
 INSERT INTO entries (workspace_id, owner_id, scheme, pathname, deep_hash, attributes)
 VALUES ($workspace_id, $owner_id, $scheme, $pathname, $deep_hash, $attributes)

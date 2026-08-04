@@ -23,7 +23,6 @@ const fakeEntry = (tag: string): RegistryEntry => ({
                 channels: { results: "application/json" },
                 defaultChannel: "results",
                 category: "data",
-                scope: "workspace",
                 writableBy: ["plugin"],
                 volatile: true,
                 modelVisible: true,

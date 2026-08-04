@@ -88,7 +88,6 @@ export default class File extends CoreSchemeAdapterBase {
         channels: {},  // dynamic mimetype per file extension
         defaultChannel: "body",
         category: "data",
-        scope: "workspace",
         writableBy: ["model", "client", "plugin"],
         volatile: false,
         modelVisible: true,

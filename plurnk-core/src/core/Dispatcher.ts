@@ -1118,7 +1118,7 @@ export default class Dispatcher {
             return await killable.kill(entryPathnameOf(path), statement.signal, handlerCtx, schemeName);
         }
         if (schemeName === "worker") {
-            // Entry-path present → KILL a worker-scope scratch ENTRY (delete it), self-only —
+            // Entry-path present → KILL a private owner-held entry (delete it), self-only —
             // NOT worker cancellation. The authority (hostname) names the owner, the pathname the
             // entry; only the path-ABSENT form (worker://<name>) terminates the worker-as-actor. {§worker-scheme}
             const entryPath = path.kind === "url" ? (path.pathname ?? "") : "";

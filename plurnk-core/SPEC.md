@@ -345,7 +345,7 @@ literal `workers.name` value.
   own work is a fresh loop, so an inherited mid-flight loop never makes the
   branch look forever-live to the {§send-premature-terminate} gate.
 - §worker-scheme-fork-scratch **Forked scratch.** A fork also inherits the
-  worker-scope scratch — its private workspace deep-copied with the owner
+  parent's private entries — its own space deep-copied with the owner
   remapped (source → branch) — so the branch opens with the parent's notes and
   diverges on its own edits: *fork = everything-in-common-but-name*.
 - **Git branch batch** — `WORK[feature/x](worker://<name>):task` and `FORK[feature/x](worker://<name>):task` retain their worker meanings while placing the child in the serialized Git transaction defined by {§worker-branch-batch}. The signal is one branch ref, not tags; an untagged WORK/FORK keeps the ordinary concurrent shared-world behavior.

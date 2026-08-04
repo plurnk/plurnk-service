@@ -179,7 +179,6 @@ test("the dispatcher preserves READ text scope across a registered scheme bounda
             channels: { body: "text/plain" },
             defaultChannel: "body",
             category: "data" as const,
-            scope: "workspace" as const,
             writableBy: ["plugin"] as const,
             volatile: false,
             modelVisible: true,
@@ -288,7 +287,6 @@ test("semantic READ separates similarity threshold from text projection", async 
                 channels: { body: "text/plain" },
                 defaultChannel: "body",
                 category: "data" as const,
-                scope: "workspace" as const,
                 writableBy: ["plugin"] as const,
                 volatile: false,
                 modelVisible: true,
@@ -367,7 +365,7 @@ test("trailing slash is ordinary resource syntax unless the scheme declares fold
     class OpaqueResource {
         static manifest = {
             name: "opaque", channels: { body: "text/markdown" }, defaultChannel: "body",
-            category: "data" as const, scope: "workspace" as const, writableBy: ["plugin"] as const,
+            category: "data" as const, writableBy: ["plugin"] as const,
             volatile: false, modelVisible: true,
         };
         async read() { return { status: 200, content: "opaque root resource", mimetype: "text/markdown" }; }

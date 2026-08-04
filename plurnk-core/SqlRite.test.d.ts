@@ -168,9 +168,8 @@ export class SqlRiteSync {
 	engine_reclaim_queued_loop: SqlRiteSyncPreparedStatements;
 	workspace_get_settings: SqlRiteSyncPreparedStatements;
 	engine_target_diverged_this_turn: SqlRiteSyncPreparedStatements;
-	engine_list_workspace_entry_tags: SqlRiteSyncPreparedStatements;
-	engine_list_worker_entries: SqlRiteSyncPreparedStatements;
-	engine_list_worker_entry_tags: SqlRiteSyncPreparedStatements;
+	engine_list_owner_entries: SqlRiteSyncPreparedStatements;
+	engine_list_owner_entry_tags: SqlRiteSyncPreparedStatements;
 	engine_next_turn_sequence: SqlRiteSyncPreparedStatements;
 	engine_loop_usage: SqlRiteSyncPreparedStatements;
 	engine_loop_turn_seqs: SqlRiteSyncPreparedStatements;
@@ -225,8 +224,8 @@ export class SqlRiteSync {
 	fork_get_log_entries: SqlRiteSyncPreparedStatements;
 	fork_insert_log_entry: SqlRiteSyncPreparedStatements;
 	fork_copy_log_tags: SqlRiteSyncPreparedStatements;
-	fork_get_worker_scope_entries: SqlRiteSyncPreparedStatements;
-	fork_insert_worker_scope_entry: SqlRiteSyncPreparedStatements;
+	fork_get_private_entries: SqlRiteSyncPreparedStatements;
+	fork_insert_private_entry: SqlRiteSyncPreparedStatements;
 	fork_copy_entry_channels: SqlRiteSyncPreparedStatements;
 	fork_copy_entry_tags: SqlRiteSyncPreparedStatements;
 	journal_turn_next_sequence: SqlRiteSyncPreparedStatements;
@@ -413,7 +412,7 @@ export class SqlRiteSync {
 	test_entries_table_sql: SqlRiteSyncPreparedStatements;
 	test_entries_insert_workspace: SqlRiteSyncPreparedStatements;
 	test_entries_get_first: SqlRiteSyncPreparedStatements;
-	test_entries_get_first_scope_workspace: SqlRiteSyncPreparedStatements;
+	test_entries_get_first_identity: SqlRiteSyncPreparedStatements;
 	test_entries_insert_with_workspace_id_only: SqlRiteSyncPreparedStatements;
 	test_entries_insert_with_attributes: SqlRiteSyncPreparedStatements;
 	test_entries_count_all: SqlRiteSyncPreparedStatements;
@@ -634,9 +633,8 @@ export default class SqlRite {
 	engine_reclaim_queued_loop: SqlRitePreparedStatements;
 	workspace_get_settings: SqlRitePreparedStatements;
 	engine_target_diverged_this_turn: SqlRitePreparedStatements;
-	engine_list_workspace_entry_tags: SqlRitePreparedStatements;
-	engine_list_worker_entries: SqlRitePreparedStatements;
-	engine_list_worker_entry_tags: SqlRitePreparedStatements;
+	engine_list_owner_entries: SqlRitePreparedStatements;
+	engine_list_owner_entry_tags: SqlRitePreparedStatements;
 	engine_next_turn_sequence: SqlRitePreparedStatements;
 	engine_loop_usage: SqlRitePreparedStatements;
 	engine_loop_turn_seqs: SqlRitePreparedStatements;
@@ -691,8 +689,8 @@ export default class SqlRite {
 	fork_get_log_entries: SqlRitePreparedStatements;
 	fork_insert_log_entry: SqlRitePreparedStatements;
 	fork_copy_log_tags: SqlRitePreparedStatements;
-	fork_get_worker_scope_entries: SqlRitePreparedStatements;
-	fork_insert_worker_scope_entry: SqlRitePreparedStatements;
+	fork_get_private_entries: SqlRitePreparedStatements;
+	fork_insert_private_entry: SqlRitePreparedStatements;
 	fork_copy_entry_channels: SqlRitePreparedStatements;
 	fork_copy_entry_tags: SqlRitePreparedStatements;
 	journal_turn_next_sequence: SqlRitePreparedStatements;
@@ -879,7 +877,7 @@ export default class SqlRite {
 	test_entries_table_sql: SqlRitePreparedStatements;
 	test_entries_insert_workspace: SqlRitePreparedStatements;
 	test_entries_get_first: SqlRitePreparedStatements;
-	test_entries_get_first_scope_workspace: SqlRitePreparedStatements;
+	test_entries_get_first_identity: SqlRitePreparedStatements;
 	test_entries_insert_with_workspace_id_only: SqlRitePreparedStatements;
 	test_entries_insert_with_attributes: SqlRitePreparedStatements;
 	test_entries_count_all: SqlRitePreparedStatements;

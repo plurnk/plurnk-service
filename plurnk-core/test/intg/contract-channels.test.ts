@@ -33,7 +33,7 @@ const seedExecEntry = async (
     stderr: string,
 ): Promise<number> => {
     const entryId = await seedEntryWithChannel(db, {
-        workspaceId, workerId, ownerId: workerId, scheme: "exec", pathname, channel: "stdout", content: stdout, mimetype: "text/stream",
+        workspaceId, ownerId: workerId, scheme: "exec", pathname, channel: "stdout", content: stdout, mimetype: "text/stream",
     });
     // Second channel on the SAME entry — the (entry_id, name) keying means a
     // distinct name is a distinct row under the same entry.
@@ -167,7 +167,7 @@ test("channel state does not gate reads — errored/closed channels still return
         // Seed an entry whose channel is in the 'errored' terminal state with
         // partial content still present.
         await seedEntryWithChannel(db, {
-            workspaceId, workerId, scheme: "worker", pathname: "/partial", channel: "body",
+            workspaceId, scheme: "worker", pathname: "/partial", channel: "body",
             content: "partial-but-readable", mimetype: "text/markdown", state: "errored",
         });
         const k = new Worker();
