@@ -44,7 +44,7 @@ interface ExecAttrs {
     command: string;        // body of the EXEC op
     pathname: string;       // stamped by Dispatcher.#writeLog as /<loop>/<turn>/<seq>; output persists under the runtime tag, e.g. sh:///1/1/2 ({§executor-output-address}).
     effect: Effect;         // one admission fact, preserved through apply and stream/hold bookkeeping
-    schemeTarget?: { scheme: string; pathname: string; fragment: string | null };  // non-file scheme target resolved by the consumer at apply time
+    schemeSource?: string;    // complete authored non-file address, resolved through ordinary READ at apply time
     timeoutSec?: number;    // `<T,P>` mark[0] > 0: kill the spawn after T seconds (504). Absent/-1 = unbounded.
     turnScoped?: boolean;   // `<0>`: turn-scoped — reaped at the worker's next pre-turn, never surviving into the subsequent turn. {§exec-poll}
     pollSec?: number;       // `<T,P>` mark[1]: absent = default backoff; 0 = disabled; positive = fixed cadence. {§exec-poll}
@@ -56,7 +56,7 @@ interface ExecAttrs {
 
 // The local path a subprocess EXEC's `(target)` slot names — a bare local path or a file:/// URL (both
 // decode to a filesystem path). Stat-routed at dispatch (#462): a directory becomes cwd, a file is the
-// program/data-source. A plurnk-scheme target is NOT local — schemeTargetOf handles that.
+// program/data-source. A plurnk-scheme target is NOT local — schemeSourceOf handles that.
 const localPathFromTarget = (target: ExecStatement["target"]): string | null => {
     if (target === null) return null;
     if (target.kind === "local") return target.raw;
@@ -69,10 +69,10 @@ const localPathFromTarget = (target: ExecStatement["target"]): string | null => 
 // A non-file scheme target is distinct from the local path handled above. The
 // consumer resolves its content at apply time; executors stay scheme-blind
 // ({§executor-role}).
-const schemeTargetOf = (target: ExecStatement["target"]): { scheme: string; pathname: string; fragment: string | null } | null => {
+const schemeSourceOf = (target: ExecStatement["target"]): string | null => {
     if (target === null || target.kind !== "url") return null;
     if (target.scheme === null || target.scheme === "file") return null;
-    return { scheme: target.scheme, pathname: target.pathname, fragment: target.fragment };
+    return target.raw;
 };
 
 // {§exec-target-routing} — effect classifies the invocation core is admitting,
@@ -83,9 +83,9 @@ const schemeTargetOf = (target: ExecStatement["target"]): { scheme: string; path
 const effectTargetOf = (
     authoredTarget: ExecStatement["target"],
     routedTarget: string | null,
-    schemeTarget: ReturnType<typeof schemeTargetOf>,
+    schemeSource: ReturnType<typeof schemeSourceOf>,
     command: string,
-): string | null => schemeTarget !== null && command.length > 0
+): string | null => schemeSource !== null && command.length > 0
     ? authoredTarget?.raw ?? null
     : routedTarget;
 
@@ -262,7 +262,7 @@ export default class Exec extends CoreSchemeAdapterBase {
         let command = statement.body ?? "";
         // #201 — a plurnk-scheme target carries content the scheme resolves at
         // apply-time; an empty body is then legal (the target IS the script).
-        const schemeTarget = schemeTargetOf(statement.target);
+        const schemeSource = schemeSourceOf(statement.target);
         // #462 — stat-route the local (target): a DIRECTORY overrides cwd (run the body IN it); a FILE is
         // the program/data-source the executor runs (body = stdin). A stat-miss falls to the file arm so the
         // runtime reports its own not-found, never a dispatch 400. cwd otherwise = the workspace workspace
@@ -279,7 +279,7 @@ export default class Exec extends CoreSchemeAdapterBase {
         // Empty body is legal when the target IS the program: a #201 scheme target (the target is the
         // script) or a #462 FILE target (run it, no stdin). Empty body with a directory target (nothing
         // to run) or no target at all → 400.
-        if (command.length === 0 && schemeTarget === null && routedTarget === null) {
+        if (command.length === 0 && schemeSource === null && routedTarget === null) {
             return Results.failure(
                 "scheme:exec",
                 "command-required",
@@ -367,7 +367,7 @@ export default class Exec extends CoreSchemeAdapterBase {
         // Derive one effect from the canonical logical target before any policy
         // consumes it, then preserve that fact with the invocation (#107,
         // {§executor-effect}). Leaves never receive authored command text.
-        const effectTarget = effectTargetOf(statement.target, target, schemeTarget, command);
+        const effectTarget = effectTargetOf(statement.target, target, schemeSource, command);
         const effect = resolved.executor.effect(effectTarget);
         // cwd is the workspace WORKSPACE (project_root) — the directory File writes to and a relative
         // data-source target resolves against ({§executor-sinks}) — UNLESS a #462 directory target overrode
@@ -386,7 +386,7 @@ export default class Exec extends CoreSchemeAdapterBase {
         const pollSec = typeof marks?.[1] === "number" && marks[1] >= 0 ? Math.floor(marks[1]) : undefined;
         const attrs: ExecAttrs = {
             runtime, cwd, command, target, pathname: "", effect,
-            ...(schemeTarget !== null ? { schemeTarget } : {}),
+            ...(schemeSource !== null ? { schemeSource } : {}),
             ...(timeoutSec !== undefined ? { timeoutSec } : {}),
             ...(turnScoped ? { turnScoped: true } : {}),
             ...(pollSec !== undefined ? { pollSec } : {}),
@@ -421,36 +421,34 @@ export default class Exec extends CoreSchemeAdapterBase {
         // Non-empty body → materialize the content to a temp file whose path becomes
         // the runtime's data-source TARGET (the input for filters/sqlite/wasm).
         let tempPath: string | null = null;
-        if (attrs.schemeTarget !== undefined) {
-            const { scheme, pathname: tPath, fragment } = attrs.schemeTarget;
-            const read = await EntryCrud.readEntry(tPath, core, scheme);
-            if (read.entry === null) {
-                if (read.problem === undefined) throw new Error("Exec.applyResolution: failed scheme target read omitted Problem Details");
-                return Results.assert({
-                    status: read.status,
-                    problem: read.problem,
-                    outcome: "scheme_target_not_found",
-                });
+        if (attrs.schemeSource !== undefined) {
+            const sourceTarget = parsePath(attrs.schemeSource);
+            if (sourceTarget?.kind !== "url" || sourceTarget.scheme === null || sourceTarget.scheme === "file") {
+                throw new InvalidOperationResultError("The accepted EXEC proposal has an invalid scheme source address.");
             }
-            const channels = read.entry.channels;
-            const channelName = fragment ?? (channels.body !== undefined ? "body" : Object.keys(channels)[0]);
-            const content = channelName === undefined ? undefined : channels[channelName]?.content;
-            // {§channel-selection-unknown-channel-400} sibling fact — the miss names what exists.
-            if (content === undefined) {
-                const availableChannels = Object.keys(channels);
-                const requestedChannel = channelName ?? fragment ?? "";
+            const read = await this.readExecSource({
+                op: "READ",
+                suffix: "",
+                signal: null,
+                target: sourceTarget,
+                lineMarker: null,
+                body: null,
+                position: { line: 0, column: 0 },
+            }, core);
+            if (read.status >= 400) {
+                return Results.assert({ ...read, outcome: "scheme_source_read_failed" });
+            }
+            const content = (read as { content?: unknown }).content;
+            if (typeof content !== "string") {
                 return Results.failure(
                     "scheme:exec",
-                    "scheme-target-channel-not-found",
-                    404,
-                    `Channel #${requestedChannel} does not exist at ${scheme}:///${tPath.replace(/^\//, "")}.`,
-                    { outcome: "scheme_target_channel_not_found" },
+                    "source-content-unavailable",
+                    422,
+                    `Scheme '${sourceTarget.scheme}' did not supply content for the EXEC source.`,
+                    { outcome: "scheme_source_content_unavailable" },
                     {
-                        requestedChannel,
-                        availableChannels,
-                        ...(availableChannels.length === 0
-                            ? {}
-                            : { recovery: `Use one of the available channels: ${availableChannels.map((channel) => `#${channel}`).join(", ")}.` }),
+                        scheme: sourceTarget.scheme,
+                        sourceStatus: read.status,
                         retryable: false,
                     },
                 );
@@ -466,6 +464,16 @@ export default class Exec extends CoreSchemeAdapterBase {
         // {§exec-target-routing} — a local file target is itself the program, so
         // its body may be empty; no target and no command remains invalid.
         if (command.length === 0 && target === null) {
+            if (attrs.schemeSource !== undefined) {
+                return Results.failure(
+                    "scheme:exec",
+                    "source-command-empty",
+                    422,
+                    "The EXEC source resolved to an empty command.",
+                    { outcome: "scheme_source_command_empty" },
+                    { retryable: false },
+                );
+            }
             throw new InvalidOperationResultError("The accepted EXEC proposal has neither a command nor a target.");
         }
 

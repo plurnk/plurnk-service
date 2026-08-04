@@ -717,6 +717,27 @@ export default class Dispatcher {
         return this.#run(schemeNameOf(statement.target), statement, schemeCtx);
     }
 
+    // An accepted EXEC reads a non-file source through the same registered
+    // handler and addressed context as an authored READ. {§exec-target-routing}
+    async readExecSource(statement: ReadStatement, ctx: PlurnkSchemeContext): Promise<DispatchResult> {
+        const schemeName = schemeNameOf(statement.target);
+        const manifest = schemeName === null ? undefined : this.#schemes.manifestFor(schemeName);
+        if (manifest !== undefined && manifest.category !== "data") {
+            return Dispatcher.#failure(
+                "exec-source-not-data",
+                501,
+                `Scheme '${schemeName}' is not a data source for EXEC.`,
+                {},
+                {
+                    scheme: schemeName,
+                    category: manifest.category,
+                    retryable: false,
+                },
+            );
+        }
+        return Results.assertReadResult(await this.#run(schemeName, statement, ctx));
+    }
+
     #buildSchemeCtx(ids: { workspaceId: number; workerId: number; loopId: number; turnId: number; origin: WriterTier }): PlurnkSchemeContext {
         const { workspaceId, workerId, loopId, turnId, origin } = ids;
         return {

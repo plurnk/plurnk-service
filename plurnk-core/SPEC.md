@@ -1234,15 +1234,18 @@ AST: `{ op: "EXEC", target (optional input source, program, or cwd), body: strin
 §exec-target-routing Engine routes unconditionally to the `exec` scheme and
 canonicalizes `(target)` before effect admission. With no directory override,
 `cwd` is the workspace's `project_root`, where the File scheme writes — never
-the daemon's own cwd.
+the daemon's own cwd. A non-file scheme address is an eligible content source
+only when the registered scheme is a data scheme implementing READ. After
+acceptance, core reparses the complete authored address and resolves one exact,
+unscoped READ through that scheme's ordinary handler and addressed context.
 
 | Authored target                       | Body      | Canonical effect target | Accepted executor realization                         |
 | ------------------------------------- | --------- | ----------------------- | ----------------------------------------------------- |
 | Absent                                | Non-empty | `null`                  | Body is the command; target is absent.                |
 | Local/file directory                  | Non-empty | `null`                  | Directory becomes `cwd`; target is absent.            |
 | Local/file file or stat miss          | Any       | Authored local path     | Path is the program/data target; body is its input.   |
-| Entry-backed scheme address           | Empty     | `null`                  | Selected channel content becomes the command.         |
-| Entry-backed scheme address           | Non-empty | Authored address        | Selected content is materialized as the local target. |
+| Readable data-scheme address           | Empty     | `null`                  | Selected READ content becomes the command.            |
+| Readable data-scheme address           | Non-empty | Authored address        | Selected READ content becomes a local target.         |
 
 A stat miss takes the file arm so the runtime reports its own not-found rather
 than dispatch returning 400. An empty body is legal for a local file or scheme
@@ -1250,6 +1253,12 @@ command source; it remains a 400 with no target or a directory target. For a
 scheme-data target, the authored address is an opaque target-present identity:
 the executor neither resolves it nor sees it during `run()`; core materializes
 the selected content only after acceptance and supplies that local path.
+Worker and runtime-stream authorities, query, fragment, request metadata, and
+every other address component therefore retain their owning READ semantics. A
+failed source READ is preserved as the proposal-application failure. A
+successful READ with no string representation is refused 422; `""` remains a
+present representation, although it cannot by itself become an executable
+command.
 
 Core calls `effect()` once against this canonical target, without command text,
 stores the resulting fact with the invocation, and reuses it unchanged for

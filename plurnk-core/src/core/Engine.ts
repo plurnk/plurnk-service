@@ -432,18 +432,6 @@ export default class Engine {
         const loopSignal = (loopId: number): AbortSignal | undefined => this.#loopAborts.get(loopId)?.signal;
         this.#notices = new NoticeChannel({ notify: noticeNotify });
         this.#problems = new ProblemLog(db);
-        schemes.bindCore({
-            db,
-            mimetypes: this.#mimetypes,
-            executors,
-            tokenize: this.#tokenize,
-            streamEventNotify,
-            wakeWorkerNotify,
-            injectWorker,
-            pushNotice: (workspaceId, loopId, notice) => this.#notices.push(workspaceId, loopId, notice),
-            defaultChannelFor: (scheme) => schemes.defaultChannelFor(scheme),
-            liveSubscriptions: this.#liveSubscriptions,
-        });
         this.#strikes = new StrikeRail();
         this.#packets = new PacketBuilder({
             db,
@@ -465,6 +453,19 @@ export default class Engine {
             streamEventNotify, wakeWorkerNotify, injectWorker, branchWorker, branchCompletionGate, cancelWorker, cancelDescendants,
             parkDeadlines: this.parkDeadlines,
             joinTargets: this.joinTargets,
+            liveSubscriptions: this.#liveSubscriptions,
+        });
+        schemes.bindCore({
+            db,
+            mimetypes: this.#mimetypes,
+            executors,
+            tokenize: this.#tokenize,
+            streamEventNotify,
+            wakeWorkerNotify,
+            injectWorker,
+            pushNotice: (workspaceId, loopId, notice) => this.#notices.push(workspaceId, loopId, notice),
+            defaultChannelFor: (scheme) => schemes.defaultChannelFor(scheme),
+            readExecSource: (statement, ctx) => this.#dispatcher.readExecSource(statement, ctx),
             liveSubscriptions: this.#liveSubscriptions,
         });
     }
