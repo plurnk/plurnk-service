@@ -28,7 +28,7 @@ FROM turn_attempts
 ORDER BY turn_id, sequence;
 
 -- PREP: digest_log_entries
-SELECT id, worker_id, loop_id, turn_id, sequence, at, origin,
+SELECT id, worker_id, loop_id, turn_id, sequence, at, origin, source,
        op, suffix, signal,
        scheme, hostname, port, pathname, query, fragment,
        tx, rx, status_rx, mimetype_rx,

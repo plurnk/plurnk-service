@@ -145,7 +145,7 @@ BEGIN
         workspace_id, producer_worker_id, kind, source_record_id, source,
         op, scheme, pathname, rx, status_rx, prompt, terminated_by
     )
-    SELECT w.workspace_id, NEW.worker_id, 'loop_termination', NEW.id, CAST(NEW.worker_id AS TEXT),
+    SELECT w.workspace_id, NEW.worker_id, 'loop_termination', NEW.id, NULL,
            'SEND', 'worker', '/' || w.name, NEW.terminal_message, NEW.status, NEW.prompt, NEW.terminated_by
     FROM workers w
     WHERE w.id = NEW.worker_id;
@@ -472,8 +472,8 @@ CREATE TABLE IF NOT EXISTS log_entries (
     sequence        INTEGER NOT NULL           CHECK (sequence >= 1),
     at              TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
     origin          TEXT    NOT NULL           CHECK (origin IN ('model', 'client', 'plurnk', 'plugin')),
-    -- {§env-delta} environment-delta cause: a sibling worker id or a scheme ('file');
-    -- NULL = the owning worker itself (self), rendered without a worker= label.
+    -- {§env-delta-attribution}: a worker:// name or stable subsystem token ('file');
+    -- NULL = the owning worker itself, rendered without causal attribution.
     source          TEXT,
     -- Engine-owned occurrence identity. Source rows are stamped NULL→id by the
     -- journal trigger; observer and fork copies carry it at insertion.

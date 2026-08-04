@@ -99,7 +99,7 @@ interface TurnAttemptRow {
 }
 interface LogRow {
     id: number; worker_id: number; loop_id: number; turn_id: number; sequence: number;
-    origin: string; attrs: string;
+    origin: string; source: string | null; attrs: string;
     op: string; scheme: string | null; hostname: string | null; port: number | null;
     pathname: string | null; query: string | null; fragment: string | null;
     rx: string | null; status_rx: number; state: string; outcome: string | null;
@@ -211,6 +211,7 @@ export default class Digest {
         const state = le.state !== "resolved" ? ` state=${le.state}` : "";
         const outcome = le.outcome !== null ? ` outcome=${le.outcome}` : "";
         const streamLink = stream === null ? "" : ` stream=${stream}`;
+        const source = le.source === null ? "" : ` source=${le.source}`;
         const fail = le.status_rx >= 400 ? " ✗" : "";
         // For failed outcomes, surface the Problem Details explanation from rx so
         // the waterfall explains WHY each failure happened without opening packets.
@@ -218,7 +219,7 @@ export default class Digest {
         if (le.status_rx >= 400) {
             errLine = `\n    -> ${Digest.#summarize(Digest.#rowProblem(le).detail, 140)}`;
         }
-        return `  ← [${le.origin}] ${label}[${le.status_rx}] ${target}${state}${outcome}${streamLink}${fail}${errLine}`;
+        return `  ← [${le.origin}] ${label}[${le.status_rx}] ${target}${source}${state}${outcome}${streamLink}${fail}${errLine}`;
     }
 
     static #renderGroupedOpLine(row: LogRow): string {
@@ -516,6 +517,7 @@ export default class Digest {
             log_entries: m.logEntries.map((le) => ({
                 id: le.id, worker_id: le.worker_id, loop_id: le.loop_id,
                 turn_id: le.turn_id, sequence: le.sequence, origin: le.origin,
+                source: le.source, attrs: Digest.#parseJson(le.attrs, {}),
                 op: le.op, target: Digest.#renderTarget(le),
                 status_rx: le.status_rx, state: le.state, outcome: le.outcome,
                 ...(Digest.#renderStream(le) === null

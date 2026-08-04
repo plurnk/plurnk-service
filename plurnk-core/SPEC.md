@@ -1770,6 +1770,10 @@ malformed durable selection.
 beside database ids, so a client can render and resolve the logical `L/T/S`
 coordinate without fetching all rows and matching locally.
 
+§methods-log-entry-wire **Log entry wire fidelity.** `readLog` and `log/entry`
+preserve causal `source` and parse the row's JSON `attrs` into structured data;
+client interfaces do not reconstruct either field from operation or origin.
+
 §op-look **LOOK ownership.** A client-interface module owns the public LOOK
 spelling and grammar parsing. It rewrites a valid LOOK statement to READ and
 hands the AST to core's `look`; core owns the full resolver and the no-log
@@ -2138,11 +2142,11 @@ cross this door, while an ancestry-authorized explicit READ remains available.
 
 §env-delta-attribution **Ownership, authorship, and cause are independent.**
 
-| Field       | Meaning                                                                                                                  |
-| ----------- | ------------------------------------------------------------------------------------------------------------------------ |
-| `worker_id` | The worker whose self-contained log owns the materialized row.                                                           |
-| `origin`    | The actor tier that wrote the row; a materialized delta is `plurnk`.                                                     |
-| `source`    | The causal actor or `file`; self-authored rows omit it. #67 owns the unresolved model-facing spelling for worker causes. |
+| Field       | Meaning                                                                                                                                                                                 |
+| ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `worker_id` | The worker whose self-contained log owns the materialized row.                                                                                                                          |
+| `origin`    | The actor tier that wrote the row; a materialized delta is `plurnk`.                                                                                                                    |
+| `source`    | The causal identity. Worker causes use the canonical `worker://<name>` control identity; non-worker causes use a stable subsystem token (currently `file`); self-authored rows omit it. |
 
 §env-delta-no-coalescing **Only filesystem observation nets.** One filesystem
 event is `editedSpan(entry-as-of-last-align, disk-now)`, inherently netting any
@@ -2417,7 +2421,7 @@ retain distinct contracts and lifetimes.
 
 §notice-event-notify **Client surface.** Engine Notices broadcast live via the `notice/event` WS notification — `{ loopId, notice: { source, kind, level, message?, position?, …kind-specific } }` per the grammar's `Notice` schema — the moment they land, scoped to the loop's workspace. AG-UI projects the same observation as the custom `plurnk.notice` event. Failures do not broadcast on this surface: they are log rows, and the client reads them through `log.read` / the `log/entry` notification, the durable log.
 
-**Forensic fidelity and cardinality.** The digest's machine-readable JSON preserves every log row, the exact Problem on every failed row, and each loop's exact terminal result. The human Markdown waterfall may preview only the Problem detail because it remains a triage projection, not the machine record. Targets reconstruct the model-visible address, including hostname, port, serialized query, and fragment; an authority-bearing URL must never degrade from `https://host/path` to `https:///path`, and folded network-entry storage paths render back to their authority form. Its human Markdown waterfall groups identical per-turn op outcomes and typed `entry_materialized` narrations, reporting the exact count and sequence span (`xN (seq A-B)`). Grouping keys include the complete target, so distinct authorities or channels never collapse. Thus amplification is conspicuous without making the diagnostic artifact itself pathological; packet files remain byte-identical records of what the model saw.
+§digest-forensic-fidelity **Forensic fidelity and cardinality.** The digest's machine-readable JSON preserves every log row, including causal `source` and structured `attrs`, the exact Problem on every failed row, and each loop's exact terminal result. The human Markdown waterfall shows a present causal source and may preview only the Problem detail because it remains a triage projection, not the machine record. Targets reconstruct the model-visible address, including hostname, port, serialized query, and fragment; an authority-bearing URL must never degrade from `https://host/path` to `https:///path`, and folded network-entry storage paths render back to their authority form. Its human Markdown waterfall groups identical per-turn op outcomes and typed `entry_materialized` narrations, reporting the exact count and sequence span (`xN (seq A-B)`). Grouping keys include source and the complete target, so distinct causes, authorities, or channels never collapse. Thus amplification is conspicuous without making the diagnostic artifact itself pathological; packet files remain byte-identical records of what the model saw.
 
 §turn-lifecycle **Turn-lifecycle liveness.** Provider generation is the long, opaque window in a turn — one or more same-packet emission attempts may occur before the first committed op. A static client screen there is indistinguishable from a hang. The engine brackets the complete attempt window with two `notice/event` notices (`source: "engine:turn"`, `level: "info"`): `turn_awaiting_model` before the first call and `turn_generated` when an emission is accepted or the attempt budget is exhausted. Rejected content never rides the notice channel. Both are suppressed on an aborted loop and broadcast to the workspace like any notice ({§notice-event-notify}).
 

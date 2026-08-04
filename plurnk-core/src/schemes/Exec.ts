@@ -34,6 +34,7 @@ import ErrorDetail from "../core/ErrorDetail.ts";
 import Results, { OperationFailureError, type SchemeResult, type SchemeResultBase } from "../core/results.ts";
 import { InvalidOperationResultError, NetworkAddress } from "@plurnk/plurnk-schemes";
 import DbProjectionCaps from "../core/caps/DbProjectionCaps.ts";
+import WorkerControlAddress from "../core/WorkerControlAddress.ts";
 
 type ExecResult = SchemeResultBase & { body?: string; attrs?: object };
 
@@ -616,6 +617,14 @@ export default class Exec extends CoreSchemeAdapterBase {
             turnSeq: number;
             seq: number;
         } | null = null;
+        let callerSource: string | undefined;
+        const resolveCallerSource = async (): Promise<string> => {
+            if (callerSource !== undefined) return callerSource;
+            const caller = await db.worker_name_by_id.get<{ name: string }>({ worker_id: ctx.workerId });
+            if (caller === undefined) throw new Error(`entry(): calling worker ${ctx.workerId} does not exist`);
+            callerSource = WorkerControlAddress.render(caller.name);
+            return callerSource;
+        };
         const entrySink = (path: string, content: string | null, opts: { tags: string[]; mimetype?: string }): Promise<string> => {
             const parsed = parsePath(path);
             if (parsed === null || parsed.kind !== "url") return Promise.reject(new Error(`entry(): '${path.slice(0, 80)}' is not a URL`));
@@ -661,6 +670,7 @@ export default class Exec extends CoreSchemeAdapterBase {
                 };
                 const decisive = web.body.content;
                 const source = web.html?.content ?? decisive;
+                const causalSource = await resolveCallerSource();
                 const written = Results.assert(
                     await EntryCrud.writeEntry(pathname, { channels, tags }, ctx, scheme),
                 );
@@ -693,7 +703,7 @@ export default class Exec extends CoreSchemeAdapterBase {
                     worker_id: narration.workerId, loop_id: narration.loopId, turn_id: narration.turnId, sequence,
                     // signal carries the tags — the SAME slot a model's EDIT[tags] uses, so the
                     // ambient row renders its tags natively everywhere (packet meta line, digest).
-                    origin: "plurnk", source: String(ctx.workerId), op: "EDIT", suffix: "", signal: JSON.stringify(tags),
+                    origin: "plurnk", source: causalSource, op: "EDIT", suffix: "", signal: JSON.stringify(tags),
                     scheme, username: null, password: null, hostname: null, port: null,
                     pathname, query: null, fragment: null, lineMarker: null,
                     tx: JSON.stringify({ op: "EDIT", body: source }), mimetype_tx: "application/json",

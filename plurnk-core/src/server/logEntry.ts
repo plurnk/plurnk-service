@@ -1,5 +1,5 @@
 // Hydrate a log_entries row for the wire. Re-parses JSON-encoded columns
-// (signal, lineMarker, tx, rx) so the client receives
+// (signal, lineMarker, tx, rx, attrs) so the client receives
 // structured values, not opaque strings.
 
 import type { Db } from "../core/Db.ts";
@@ -18,6 +18,7 @@ export type LogEntryWire = {
     sequence: number;
     at: string;
     origin: string;
+    source: string | null;
     op: string;
     suffix: string;
     signal: unknown;
@@ -36,6 +37,7 @@ export type LogEntryWire = {
     mimetype_rx: string;
     status_rx: number;
     tokens: number;
+    attrs: unknown;
 };
 
 export default class LogEntry {
@@ -60,6 +62,7 @@ export default class LogEntry {
             sequence: row.sequence as number,
             at: row.at as string,
             origin: row.origin as string,
+            source: row.source as string | null,
             op: row.op as string,
             suffix: row.suffix as string,
             signal: LogEntry.#parseJsonOrNull(row.signal),
@@ -78,6 +81,7 @@ export default class LogEntry {
             mimetype_rx: row.mimetype_rx as string,
             status_rx: row.status_rx as number,
             tokens: row.tokens as number,
+            attrs: LogEntry.#parseJsonOrNull(row.attrs),
         };
     }
 }

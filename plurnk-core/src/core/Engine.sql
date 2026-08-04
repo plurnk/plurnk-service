@@ -284,7 +284,8 @@ WITH observation AS (
     WHERE w.id = $worker_id AND w.workspace_id = $workspace_id
 )
 SELECT o.cursor, o.boundary,
-       ae.id AS event_id, ae.producer_worker_id, ae.kind, ae.source,
+       ae.id AS event_id, ae.producer_worker_id, producer.name AS producer_worker_name,
+       ae.kind, ae.source,
        ae.op, ae.scheme, ae.hostname, ae.pathname, ae.rx, ae.attrs,
        ae.status_rx, ae.prompt, ae.terminated_by
 FROM observation o
@@ -293,6 +294,7 @@ LEFT JOIN ambient_events ae
  AND ae.id > o.cursor
  AND ae.id <= o.boundary
  AND ae.producer_worker_id != $worker_id
+LEFT JOIN workers producer ON producer.id = ae.producer_worker_id
 ORDER BY ae.id;
 
 -- PREP: engine_insert_ambient_delta

@@ -43,6 +43,7 @@ import PacketWire from "./packet-wire.ts";
 import Results, { OperationFailureError, type SchemeResult } from "./results.ts";
 import BranchReceipt from "./BranchReceipt.ts";
 import BudgetOverflow, { type BudgetOverflowMeasurement } from "./BudgetOverflow.ts";
+import WorkerControlAddress from "./WorkerControlAddress.ts";
 
 // The engine's collaborators — each owns one machine; Engine owns the loop/turn
 // lifecycle and wires them together as the public facade.
@@ -1889,6 +1890,7 @@ export default class Engine {
             boundary: number;
             event_id: number | null;
             producer_worker_id: number | null;
+            producer_worker_name: string | null;
             kind: "edit" | "loop_termination" | null;
             source: string | null;
             op: "EDIT" | "SEND" | null;
@@ -1905,7 +1907,7 @@ export default class Engine {
         if (window === undefined) throw new Error(`ambient pull: worker ${workerId} has no observation window`);
         let written = 0;
         for (const r of rows) {
-            if (r.event_id === null || r.producer_worker_id === null || r.kind === null
+            if (r.event_id === null || r.producer_worker_id === null || r.producer_worker_name === null || r.kind === null
                 || r.op === null || r.status_rx === null) continue;
             const termination = r.kind === "loop_termination";
             const rx = termination
@@ -1918,7 +1920,7 @@ export default class Engine {
             const inserted = await this.#db.engine_insert_ambient_delta.get<{ id: number }>({
                 worker_id: workerId, loop_id: loopId, turn_id: turnId, sequence: fromSequence + written,
                 event_id: r.event_id,
-                source: r.source ?? String(r.producer_worker_id),
+                source: r.source ?? WorkerControlAddress.render(r.producer_worker_name),
                 op: r.op,
                 scheme: r.scheme,
                 hostname: r.hostname,

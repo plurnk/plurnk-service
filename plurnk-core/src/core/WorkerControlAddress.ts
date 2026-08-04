@@ -11,6 +11,10 @@ type WorkerControlAddressResolution =
 // {§worker-control-addressing} Generic URI parsing remains permissive, but a
 // worker-as-actor address is exactly an authority with no other URI component.
 export default class WorkerControlAddress {
+    static render(authority: string): string {
+        return `worker://${authority}`;
+    }
+
     static resolve(target: ParsedPath | null, operation: WorkerControlOperation): WorkerControlAddressResolution {
         const authority = WorkerControlAddress.#authorityOf(target);
         if (authority !== null) return { ok: true, authority };

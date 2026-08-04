@@ -353,8 +353,8 @@ export default class PacketWire {
             const path = PacketWire.#entryPath(coordinate, renderedOp);
             if (path !== null) meta.path = path;
             if (typeof e.origin === "string") meta.origin = e.origin;
-            // {§env-delta}: the environment-delta cause (a sibling worker or a scheme),
-            // rendered when present; absent means the owning worker itself (self).
+            // {§env-delta-attribution}: render the causal worker address or
+            // subsystem token when present; absence means the owning worker.
             if (typeof e.source === "string" && e.source.length > 0) meta.source = e.source;
             if (renderedOp !== null) meta.op = renderedOp;
             if (typeof e.status === "number") meta.status = e.status;
