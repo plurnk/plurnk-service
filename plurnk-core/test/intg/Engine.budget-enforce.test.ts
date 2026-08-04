@@ -545,5 +545,10 @@ test("physically unsendable → 413 IMMEDIATELY, no recovery generate — physic
         const result = await engine.runLoop({ provider: mock, workspaceId, workerId, loopId, messages: MESSAGES, maxTurns: 5 });
         assert.equal(result.result.status, 413);
         assert.equal(mock.remaining, 3, "generate never ran — an unsendable packet earns no recovery turn");
+        const row = await db.test_get_packet.get<{ packet: string | null }>({ id: result.turnIds[0] });
+        assert.ok(row?.packet !== null && row?.packet !== undefined);
+        const packet = JSON.parse(row.packet) as Record<string, unknown>;
+        assert.equal("assistant" in packet, false, "a hard stop preserves the request without inventing a response");
+        assert.equal("assistantRaw" in packet, false, "opaque response evidence exists only after admission");
     } finally { await db.close(); }
 });

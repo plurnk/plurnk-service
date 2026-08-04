@@ -2,7 +2,9 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import type { EditStatement, LineMarker, PlanStatement, PlurnkStatement, ReadStatement, SendStatement, UrlPath } from "@plurnk/plurnk-contracts";
 import Engine from "../../src/core/Engine.ts";
+import PacketWire, { type PacketSection } from "../../src/core/packet-wire.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
+import { rulerCount } from "../../src/core/token-ruler.ts";
 import { Mock } from "@plurnk/plurnk-providers";
 import type { MockResponse, ProviderUsage } from "@plurnk/plurnk-providers";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, packetSection, logEntries } from "./_helpers.ts";
@@ -182,6 +184,23 @@ test("Engine.runTurn: packet stores system + user content from messages when the
         assert.match(packetSection(packet, "schemes"), /<<EDIT\(worker:\/\/\/notes\.md\)/, "the scheme directory is its own section now, not appended to the definition");
         assert.equal(packetSection(packet, "prompt"), "first user msg\n\nsecond user msg");
         assert.ok(packet.assistant !== null);
+    } finally { await db.close(); }
+});
+
+test("Engine.runTurn: admitted response does not change packet request-weight semantics", async () => {
+    const { db, engine, workspaceId, workerId, loopId } = await setup();
+    try {
+        const provider = new Mock({
+            contextWindow: 100000,
+            responses: [response([sendStmt(200, "ok")], "a deliberately non-empty admitted response")],
+        });
+        const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
+        const row = await db.test_get_packet.get<{ packet: string }>({ id: result.turnId });
+        assert.ok(row !== undefined);
+        const packet = JSON.parse(row.packet) as { tokens: number; sections: PacketSection[] };
+        const requestWeight = rulerCount(PacketWire.renderSlot(packet.sections, "system"))
+            + rulerCount(PacketWire.renderSlot(packet.sections, "user"));
+        assert.equal(packet.tokens, requestWeight);
     } finally { await db.close(); }
 });
 

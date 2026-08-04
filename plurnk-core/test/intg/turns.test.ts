@@ -1,16 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import type { Db } from "../../src/core/Db.ts";
+import ClientTurn from "../../src/server/clientTurn.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop } from "./_helpers.ts";
 
 const MIN_PACKET = JSON.stringify({
     tokens: 0,
     sections: [],
-    assistant: {
-        content: "", ops: [], reasoning: null,
-        usage: { prompt: 0, completion: 0, reasoning: 0, cached: 0, total: 0 },
-        finishReason: null, model: "mock",
-    },
+    assistant: { content: "", ops: [], reasoning: null },
     assistantRaw: null,
 });
 
@@ -128,13 +125,42 @@ test("turns: status NOT NULL", async () => {
     } finally { await db.close(); }
 });
 
-test("turns: packet NOT NULL", async () => {
+test("turns: NULL packet means no model request was assembled", async () => {
     const { db, loopId } = await setup();
     try {
-        await assert.rejects(
-            () => db.test_turns_insert_missing_packet.run({ loop_id: loopId, sequence: 1, status: 200 }),
-            /NOT NULL constraint failed: turns\.packet/,
-        );
+        await db.test_turns_insert_missing_packet.run({ loop_id: loopId, sequence: 1, status: 200 });
+        const row = await db.test_turns_get_full.get<{ packet: string | null }>({ loop_id: loopId });
+        assert.equal(row?.packet, null);
+    } finally { await db.close(); }
+});
+
+test("turns: packet CHECK enforces the request/admitted-response root algebra", async () => {
+    const { db, loopId } = await setup();
+    try {
+        const invalid = [
+            "{}",
+            "[]",
+            "null",
+            JSON.stringify({ tokens: 0 }),
+            JSON.stringify({ tokens: 0, sections: [], assistant: { content: "", ops: [], reasoning: null } }),
+            JSON.stringify({ tokens: 0, sections: [], assistantRaw: null }),
+        ];
+        for (const [index, packet] of invalid.entries()) {
+            await assert.rejects(
+                () => db.test_turns_insert.run({ loop_id: loopId, sequence: index + 1, status: 200, packet }),
+                /CHECK constraint failed/,
+                `invalid packet ${packet}`,
+            );
+        }
+    } finally { await db.close(); }
+});
+
+test("ClientTurn: journal-only turn stores no model packet", async () => {
+    const { db, loopId } = await setup();
+    try {
+        const turnId = await ClientTurn.insertClientTurn(db, loopId);
+        const row = await db.test_get_packet.get<{ packet: string | null }>({ id: turnId });
+        assert.equal(row?.packet, null);
     } finally { await db.close(); }
 });
 
