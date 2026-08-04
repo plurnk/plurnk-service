@@ -257,43 +257,70 @@ WHERE e.workspace_id = $workspace_id
 GROUP BY e.scheme
 ORDER BY e.scheme;
 
--- PREP: engine_worker_prior_turn_time
--- Current implementation of {§env-delta-log-pull}'s observation boundary.
--- #66 owns replacement of this wall-clock cursor with lossless progress.
-SELECT MAX(t.timestamp) AS since
-FROM turns t JOIN loops l ON l.id = t.loop_id
-WHERE l.worker_id = $worker_id AND t.id != $turn_id;
+-- PREP: engine_initialize_ambient_cursor
+-- A worker's first packet reads current shared state directly, so pre-existing
+-- occurrences are its baseline rather than historical deltas. The NULL guard
+-- makes this safe on every turn and preserves a fork's inherited progress.
+UPDATE workers
+SET ambient_event_cursor = COALESCE((
+    SELECT MAX(ae.id) FROM ambient_events ae WHERE ae.workspace_id = $workspace_id
+), 0)
+WHERE id = $worker_id
+  AND workspace_id = $workspace_id
+  AND ambient_event_cursor IS NULL
+RETURNING ambient_event_cursor;
 
--- PREP: engine_pull_env_deltas
--- Materialize other actors' shared-state events ({§env-delta-log-pull}).
--- #66 and #67 own the remaining cursor and actor-identity defects.
-SELECT le.worker_id, le.scheme, le.hostname, le.pathname, le.rx, le.source, le.attrs
-FROM log_entries le
-JOIN workers r ON r.id = le.worker_id
-WHERE r.workspace_id = $workspace_id
-  AND le.op = 'EDIT'
-  AND le.state = 'resolved'
-  AND le.status_rx IN (200, 201)
-  AND (le.scheme IS NULL OR le.scheme != 'plurnk')
-  -- {§env-delta-worker-entry-visibility}: worker commons and the published
-  -- kernel surface are shared; current-worker and ordinary named spaces are private.
-  AND (le.scheme IS NULL OR le.scheme != 'worker' OR le.hostname IS NULL OR le.hostname = 'plurnk')
-  AND le.worker_id != $worker_id
-  AND le.at > $since
-  AND (le.origin != 'plurnk'
-       OR le.worker_id = (SELECT id FROM workers WHERE workspace_id = $workspace_id AND name = 'plurnk'))
-ORDER BY le.at;
+-- PREP: engine_pull_ambient_events
+-- One SQLite snapshot captures both ends of the closed observation window.
+-- The LEFT JOIN returns the boundary even when the window contains no event.
+WITH observation AS (
+    SELECT w.ambient_event_cursor AS cursor,
+           COALESCE(
+               (SELECT MAX(ae.id) FROM ambient_events ae WHERE ae.workspace_id = $workspace_id),
+               w.ambient_event_cursor,
+               0
+           ) AS boundary
+    FROM workers w
+    WHERE w.id = $worker_id AND w.workspace_id = $workspace_id
+)
+SELECT o.cursor, o.boundary,
+       ae.id AS event_id, ae.producer_worker_id, ae.kind, ae.source,
+       ae.op, ae.scheme, ae.hostname, ae.pathname, ae.rx, ae.attrs,
+       ae.status_rx, ae.prompt, ae.terminated_by
+FROM observation o
+LEFT JOIN ambient_events ae
+  ON ae.workspace_id = $workspace_id
+ AND ae.id > o.cursor
+ AND ae.id <= o.boundary
+ AND ae.producer_worker_id != $worker_id
+ORDER BY ae.id;
 
--- PREP: engine_insert_env_delta
--- {§env-delta-log-pull} — persist the observation folded in the receiving
--- worker's log while retaining its cause, effect, and typed attributes.
+-- PREP: engine_insert_ambient_delta
+-- Materialize one occurrence into the observer's self-contained log. The
+-- targeted conflict rule makes crash replay idempotent without swallowing any
+-- unrelated sequence, FK, or shape violation.
 INSERT INTO log_entries (
-    worker_id, loop_id, turn_id, sequence, origin, source,
-    op, scheme, hostname, pathname, tx, mimetype_tx, rx, mimetype_rx, status_rx, expanded, attrs
+    worker_id, loop_id, turn_id, sequence, origin, source, ambient_event_id,
+    op, scheme, hostname, pathname, tx, mimetype_tx,
+    rx, mimetype_rx, status_rx, expanded, attrs
 ) VALUES (
-    $worker_id, $loop_id, $turn_id, $sequence, 'plurnk', $source,
-    'EDIT', $scheme, $hostname, $pathname, '', 'text/plain', $rx, 'application/json', 200, 0, $attrs
-);
+    $worker_id, $loop_id, $turn_id, $sequence, 'plurnk', $source, $event_id,
+    $op, $scheme, $hostname, $pathname, '', 'text/plain',
+    $rx, $mimetype_rx, $status, $expanded, $attrs
+)
+ON CONFLICT(worker_id, ambient_event_id) WHERE ambient_event_id IS NOT NULL DO NOTHING
+RETURNING id;
+
+-- PREP: engine_advance_ambient_cursor
+-- Advance only from the snapshot that was actually materialized. A concurrent
+-- pull winning the CAS is safe; a loser replays idempotently on its next turn.
+UPDATE workers
+SET ambient_event_cursor = $boundary
+WHERE id = $worker_id
+  AND workspace_id = $workspace_id
+  AND ambient_event_cursor IS $cursor
+  AND $boundary >= ambient_event_cursor
+RETURNING ambient_event_cursor;
 
 -- PREP: engine_worker_stream_channels
 -- {§exec-stream} — every stream channel the worker owns (an EXEC's stdout/stderr live on the
@@ -329,34 +356,6 @@ INSERT INTO log_entries (
 ) VALUES (
     $worker_id, $loop_id, $turn_id, $sequence, 'plurnk', NULL,
     'READ', $scheme, $pathname, $fragment, '', 'text/plain', $rx, 'application/json', $status, $attrs, $expanded
-);
-
--- PREP: engine_pull_loop_terminations
--- {§worker-scheme} — sibling workers' loops that reached a terminal status since this worker last
--- looked (the loop-termination ambient delta). Carries terminal_message — the SEND[200]
--- deliverable or the abandonment reason — plus terminated_by so a cancellation renders
--- its marker (#379). Excludes this worker's own loops.
-SELECT l.worker_id, r.name AS worker_name, l.status, l.prompt, l.terminal_message, l.terminated_by
-FROM loops l
-JOIN workers r ON r.id = l.worker_id
-WHERE r.workspace_id = $workspace_id
-  AND l.terminated_at IS NOT NULL
-  AND l.terminated_at > $since
-  AND l.worker_id != $worker_id
-ORDER BY l.terminated_at;
-
--- PREP: engine_insert_loop_termination_delta
--- {§worker-scheme} — materialize a sibling's loop-termination as a delta: a SEND from
--- worker:///<name> carrying the terminal status + message (the deliverable). origin=plurnk,
--- source=the terminated worker — uniform with the env-delta. Born OPEN for a 2xx deliverable
--- (a child's success must reach the parent open + awakening), folded otherwise.
-INSERT INTO log_entries (
-    worker_id, loop_id, turn_id, sequence, origin, source,
-    op, scheme, pathname, tx, mimetype_tx, rx, mimetype_rx, status_rx, expanded
-) VALUES (
-    $worker_id, $loop_id, $turn_id, $sequence, 'plurnk', $source,
-    'SEND', 'worker', $pathname, '', 'text/plain', $rx, 'text/markdown', $status,
-    CASE WHEN $status >= 200 AND $status < 300 THEN 1 ELSE 0 END
 );
 
 -- PREP: engine_entry_tags
@@ -597,14 +596,15 @@ WITH RECURSIVE lineage(id, parent_worker_id) AS (
 SELECT id FROM lineage WHERE parent_worker_id IS NULL;
 
 -- PREP: engine_worker_has_undelivered_child_term
--- A child worker whose loop TERMINATED after the current turn's timestamp — its deliverable
--- (the {§worker-scheme} collect delta) is queued for the NEXT packet build and has not been seen.
--- The 1ms-wide fan-out race: workers concluding DURING the parent's generation are not "live"
--- (the wait's J leg misses them) but their results are pending — concluding or ∅-collapsing
--- over them silently discards deliverables the model spawned. {§send-undelivered-child-term}
-SELECT 1 AS pending FROM loops l
-JOIN workers r ON r.id = l.worker_id
-WHERE r.parent_worker_id = $worker_id
-  AND l.terminated_at IS NOT NULL
-  AND l.terminated_at > (SELECT timestamp FROM turns WHERE id = $turn_id)
+-- A child conclusion newer than the parent's observation cursor is complete but
+-- not delivered. This is the same durable boundary the next packet consumes,
+-- not a second timestamp race. {§send-undelivered-child-term}
+SELECT 1 AS pending
+FROM ambient_events ae
+JOIN workers child ON child.id = ae.producer_worker_id
+JOIN workers parent ON parent.id = $worker_id
+WHERE ae.workspace_id = parent.workspace_id
+  AND ae.kind = 'loop_termination'
+  AND child.parent_worker_id = parent.id
+  AND ae.id > COALESCE(parent.ambient_event_cursor, 0)
 LIMIT 1;

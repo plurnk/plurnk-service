@@ -1,6 +1,5 @@
 // Contract specimens for {§env-delta-log-pull} and
-// {§env-delta-worker-entry-visibility}. #66 and #67 retain the known cursor
-// and model-facing provenance gaps.
+// {§env-delta-worker-entry-visibility}. #67 retains the model-facing actor-name gap.
 
 import test from "node:test";
 import { hermeticGitEnv } from "../../src/core/git-env.ts";
@@ -209,6 +208,65 @@ test("ambient delivery follows monotonic occurrence identity, never wall-clock o
             .map((row) => row.pathname)
             .sort();
         assert.deepEqual(observed, ["/equal-a.md", "/equal-b.md"], "both equal-time events arrive, once each");
+
+        const links = async (workerId: number) => (await db.test_log_entries_by_worker.all<{
+            ambient_event_id: number | null; pathname: string | null;
+        }>({ worker_id: workerId }))
+            .filter((row) => row.pathname?.startsWith("/equal-") === true)
+            .map(({ pathname, ambient_event_id }) => ({ pathname, eventId: ambient_event_id }))
+            .sort((a, b) => (a.pathname ?? "").localeCompare(b.pathname ?? ""));
+        const produced = await links(producer);
+        assert.ok(produced.every(({ eventId }) => eventId !== null), "each source row is atomically linked to its occurrence");
+        assert.ok((produced[0]?.eventId ?? 0) < (produced[1]?.eventId ?? 0), "equal wall time does not disturb total occurrence order");
+        assert.deepEqual(await links(observer), produced, "observer rows carry the same stable event identities as their sources");
+    } finally {
+        await db.close();
+    }
+});
+
+test("a proposed shared EDIT publishes only on successful resolution", async () => {
+    const db = await openMigrated();
+    try {
+        const workspaceId = await insertWorkspace(db, `proposal-event-${crypto.randomUUID()}`);
+        const observer = await insertWorker(db, workspaceId, null, "observer");
+        const observerLoop = await insertLoop(db, observer, 1, "observe");
+        const producer = await insertWorker(db, workspaceId, null, "producer");
+        const producerLoop = await insertLoop(db, producer, 1, "propose");
+        const producerTurn = await insertTurn(db, producerLoop, 1);
+        const eng = makeEngine(db);
+        const provider = new Mock({ contextWindow: 4096, responses: [okSend(), okSend()] });
+        await eng.runTurn({ provider, workspaceId, workerId: observer, loopId: observerLoop, messages: MESSAGES, turnNumber: 1 });
+
+        const propose = async (sequence: number, pathname: string): Promise<number> => {
+            const row = await db.engine_insert_log_entry.get<{ id: number }>({
+                worker_id: producer, loop_id: producerLoop, turn_id: producerTurn, sequence,
+                origin: "model", source: null, op: "EDIT", suffix: "", signal: null,
+                scheme: "worker", username: null, password: null, hostname: null, port: null,
+                pathname, query: null, fragment: null, lineMarker: null,
+                tx: "", mimetype_tx: "text/plain", rx: JSON.stringify({ status: 202 }),
+                mimetype_rx: "application/json", status_rx: 202, tokens: 0,
+                state: "proposed", outcome: null, attrs: "{}",
+            });
+            if (row === undefined) throw new Error("proposal fixture was not persisted");
+            return row.id;
+        };
+        const accepted = await propose(1, "/accepted-proposal.md");
+        const rejected = await propose(2, "/rejected-proposal.md");
+        await db.engine_resolve_log_entry.run({
+            id: accepted, state: "resolved", outcome: "accepted", status_rx: 201,
+            rx: JSON.stringify({ status: 201, span: "1:accepted" }),
+        });
+        await db.engine_resolve_log_entry.run({
+            id: rejected, state: "failed", outcome: "rejected", status_rx: 403,
+            rx: JSON.stringify({ status: 403 }),
+        });
+
+        await eng.runTurn({ provider, workspaceId, workerId: observer, loopId: observerLoop, messages: MESSAGES, turnNumber: 2 });
+        const rows = await db.engine_render_log.all<{ origin: string; op: string; pathname: string | null }>({ worker_id: observer });
+        const observed = rows
+            .filter((row) => row.origin === "plurnk" && row.op === "EDIT" && row.pathname?.endsWith("-proposal.md") === true)
+            .map((row) => row.pathname);
+        assert.deepEqual(observed, ["/accepted-proposal.md"], "acceptance publishes once; rejection never becomes ambient state");
     } finally {
         await db.close();
     }

@@ -874,6 +874,13 @@ export default class Engine {
         });
         if (openRow === undefined) throw new Error("Engine.runTurn: turn open returned no row");
         const turnId = openRow.id;
+        // {§env-delta-log-pull} — establish a fresh worker's observation
+        // baseline immediately after its first turn opens. A fork already has
+        // its parent's cursor, so the NULL-guarded statement leaves it intact.
+        // Events committed after this statement belong to this or a later
+        // closed pull window; pre-existing state is read through the ordinary
+        // shared-world projections in this first packet.
+        await this.#db.engine_initialize_ambient_cursor.get({ workspace_id: workspaceId, worker_id: workerId });
         // Threaded per turn, never engine state, so concurrent loops on
         // different providers each read their own honest tokenizer values.
         const systemCtx: PlurnkSchemeContext = {
@@ -1870,45 +1877,66 @@ export default class Engine {
         return this.#packets.docEntries(workspaceId);
     }
 
-    // {§env-delta-log-pull} — copy ambient shared-state events into this
-    // worker's self-contained log. #66 and #67 own the remaining cursor and
-    // model-facing actor-identity violations respectively.
+    // {§env-delta-log-pull} — materialize one closed interval of the ambient
+    // occurrence journal into this worker's self-contained log. #67 owns only
+    // the remaining model-facing actor-name projection.
     async #materializeEnvironmentDeltas(args: {
         workspaceId: number; workerId: number; loopId: number; turnId: number; fromSequence: number;
     }): Promise<number> {
         const { workspaceId, workerId, loopId, turnId, fromSequence } = args;
-        const boundary = await this.#db.engine_worker_prior_turn_time.get<{ since: string | null }>({ worker_id: workerId, turn_id: turnId });
-        const since = boundary?.since ?? null;
-        if (since === null) return 0;  // first turn — nothing prior; the model reads current state fresh
-        const rows = await this.#db.engine_pull_env_deltas.all<{
-            worker_id: number; scheme: string | null; hostname: string | null; pathname: string; rx: string; source: string | null; attrs: string;
-        }>({ workspace_id: workspaceId, worker_id: workerId, since });
+        const rows = await this.#db.engine_pull_ambient_events.all<{
+            cursor: number;
+            boundary: number;
+            event_id: number | null;
+            producer_worker_id: number | null;
+            kind: "edit" | "loop_termination" | null;
+            source: string | null;
+            op: "EDIT" | "SEND" | null;
+            scheme: string | null;
+            hostname: string | null;
+            pathname: string | null;
+            rx: string | null;
+            attrs: string | null;
+            status_rx: number | null;
+            prompt: string | null;
+            terminated_by: string | null;
+        }>({ workspace_id: workspaceId, worker_id: workerId });
+        const window = rows[0];
+        if (window === undefined) throw new Error(`ambient pull: worker ${workerId} has no observation window`);
         let written = 0;
         for (const r of rows) {
-            // Preserve the producer's cause and effect ({§env-delta-attribution}).
-            await this.#db.engine_insert_env_delta.run({
+            if (r.event_id === null || r.producer_worker_id === null || r.kind === null
+                || r.op === null || r.status_rx === null) continue;
+            const termination = r.kind === "loop_termination";
+            const rx = termination
+                ? BranchReceipt.append(
+                    markTerminal(r.terminated_by, r.rx) ?? `loop "${r.prompt ?? ""}" ended (${r.status_rx})`,
+                    await BranchReceipt.render(this.#db, r.producer_worker_id),
+                )
+                : r.rx;
+            if (rx === null) throw new Error(`ambient event ${r.event_id} has no materializable result`);
+            const inserted = await this.#db.engine_insert_ambient_delta.get<{ id: number }>({
                 worker_id: workerId, loop_id: loopId, turn_id: turnId, sequence: fromSequence + written,
-                source: r.source ?? String(r.worker_id), scheme: r.scheme, hostname: r.hostname,
-                pathname: r.pathname, rx: r.rx, attrs: r.attrs,
+                event_id: r.event_id,
+                source: r.source ?? String(r.producer_worker_id),
+                op: r.op,
+                scheme: r.scheme,
+                hostname: r.hostname,
+                pathname: r.pathname,
+                rx,
+                mimetype_rx: termination ? "text/markdown" : "application/json",
+                status: r.status_rx,
+                expanded: termination && r.status_rx >= 200 && r.status_rx < 300 ? 1 : 0,
+                attrs: r.attrs ?? "{}",
             });
-            written++;
+            if (inserted !== undefined) written++;
         }
-        // {§worker-scheme} — loop-terminations: a sibling's loop reaching terminal surfaces the
-        // same way an entry-change does, carrying its deliverable (the SEND body) or the
-        // abandonment reason. Folded, attributed to the terminated worker.
-        const terms = await this.#db.engine_pull_loop_terminations.all<{
-            worker_id: number; worker_name: string; status: number; prompt: string; terminal_message: string | null; terminated_by: string | null;
-        }>({ workspace_id: workspaceId, worker_id: workerId, since });
-        for (const t of terms) {
-            const deliverable = markTerminal(t.terminated_by, t.terminal_message) ?? `loop "${t.prompt}" ended (${t.status})`;
-            await this.#db.engine_insert_loop_termination_delta.run({
-                worker_id: workerId, loop_id: loopId, turn_id: turnId, sequence: fromSequence + written,
-                source: String(t.worker_id), pathname: `/${t.worker_name}`,
-                rx: BranchReceipt.append(deliverable, await BranchReceipt.render(this.#db, t.worker_id)),
-                status: t.status,
-            });
-            written++;
-        }
+        await this.#db.engine_advance_ambient_cursor.get({
+            workspace_id: workspaceId,
+            worker_id: workerId,
+            cursor: window.cursor,
+            boundary: window.boundary,
+        });
         return written;
     }
 

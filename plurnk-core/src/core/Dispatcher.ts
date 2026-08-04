@@ -2495,7 +2495,7 @@ export default class Dispatcher {
             this.#db.engine_worker_has_undelivered_stream_term
                 .get<{ pending: number }>({ worker_id: workerId }),
             this.#db.engine_worker_has_undelivered_child_term
-                .get<{ pending: number }>({ worker_id: workerId, turn_id: turnId }),
+                .get<{ pending: number }>({ worker_id: workerId }),
         ]);
         return {
             retrievals: retrievals.length > 0,

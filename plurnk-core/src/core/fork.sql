@@ -3,16 +3,23 @@
 -- fold-state (expanded) and attribution (origin/source) intact; only the worker/loop/
 -- turn ids are remapped. Nothing of the world is copied
 -- ({§machine-processes-fork-shares-the-world}); workspace entries and the
--- overlay remain shared. #66 owns the event-cursor initialization for a fork.
+-- overlay remain shared. The branch inherits the parent's ambient observation
+-- cursor from the same initial fork snapshot as its copied log.
 
 -- PREP: fork_get_worker
-SELECT workspace_id, name, origin FROM workers WHERE id = $id;
+SELECT workspace_id, name, origin, ambient_event_cursor FROM workers WHERE id = $id;
 
 -- PREP: fork_insert_worker
 -- A new worker in the parent's workspace; lineage recorded via parent_worker_id ({§lifecycle-terms}).
 INSERT INTO workers (workspace_id, name, parent_worker_id, origin)
 VALUES ($workspace_id, $name, $parent_worker_id, $origin)
 RETURNING id;
+
+-- PREP: fork_set_ambient_cursor
+-- Use the cursor captured before log copying. If the parent observes more while
+-- the fork is in flight, the branch stays conservatively behind and replays the
+-- copied event ids idempotently rather than skipping unseen history.
+UPDATE workers SET ambient_event_cursor = $ambient_event_cursor WHERE id = $worker_id;
 
 -- PREP: fork_get_loops
 SELECT id, sequence, status, prompt, flags, terminal_result
@@ -53,6 +60,7 @@ RETURNING id;
 -- the caller can carry {§log-region-tagging} tags across (old id → new id). origin/source (attribution)
 -- and expanded (fold-state) ride along too. {§machine-processes-fork-copies-the-log}
 SELECT id, loop_id, turn_id, sequence, at, origin, source, op, suffix, signal,
+       ambient_event_id,
        scheme, username, password, hostname, port, pathname, query, fragment,
        lineMarker, tx, mimetype_tx, rx, mimetype_rx, status_rx, tokens,
        state, outcome, attrs, expanded
@@ -60,8 +68,8 @@ FROM log_entries WHERE worker_id = $worker_id ORDER BY id;
 
 -- PREP: fork_insert_log_entry
 -- RETURNING the new id so the caller can copy the row's region tags onto it ({§log-region-tagging}).
-INSERT INTO log_entries (worker_id, loop_id, turn_id, sequence, at, origin, source, op, suffix, signal, scheme, username, password, hostname, port, pathname, query, fragment, lineMarker, tx, mimetype_tx, rx, mimetype_rx, status_rx, tokens, state, outcome, attrs, expanded)
-VALUES ($worker_id, $loop_id, $turn_id, $sequence, $at, $origin, $source, $op, $suffix, $signal, $scheme, $username, $password, $hostname, $port, $pathname, $query, $fragment, $lineMarker, $tx, $mimetype_tx, $rx, $mimetype_rx, $status_rx, $tokens, $state, $outcome, $attrs, $expanded)
+INSERT INTO log_entries (worker_id, loop_id, turn_id, sequence, at, origin, source, ambient_event_id, op, suffix, signal, scheme, username, password, hostname, port, pathname, query, fragment, lineMarker, tx, mimetype_tx, rx, mimetype_rx, status_rx, tokens, state, outcome, attrs, expanded)
+VALUES ($worker_id, $loop_id, $turn_id, $sequence, $at, $origin, $source, $ambient_event_id, $op, $suffix, $signal, $scheme, $username, $password, $hostname, $port, $pathname, $query, $fragment, $lineMarker, $tx, $mimetype_tx, $rx, $mimetype_rx, $status_rx, $tokens, $state, $outcome, $attrs, $expanded)
 RETURNING id;
 
 -- PREP: fork_copy_log_tags

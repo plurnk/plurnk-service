@@ -23,15 +23,18 @@ CREATE INDEX IF NOT EXISTS workspaces_created_at ON workspaces (created_at);
 
 -- workers
 CREATE TABLE IF NOT EXISTS workers (
-    id            INTEGER NOT NULL PRIMARY KEY,
-    version       INTEGER NOT NULL DEFAULT 0 CHECK (version >= 0),
+    id              INTEGER NOT NULL PRIMARY KEY,
+    version         INTEGER NOT NULL DEFAULT 0 CHECK (version >= 0),
     workspace_id    INTEGER NOT NULL,
-    name          TEXT    NOT NULL CHECK (length(name) > 0),
-    created_at    TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+    name            TEXT    NOT NULL CHECK (length(name) > 0),
+    created_at      TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
     -- workers fork via parent_worker_id; workspaces carry no parent — {§machine-processes-no-fork-workspace}
     parent_worker_id INTEGER          CHECK (parent_worker_id IS NULL OR parent_worker_id != id),
-    cost_usd      REAL    NOT NULL DEFAULT 0 CHECK (cost_usd >= 0),
-    origin        TEXT    NOT NULL DEFAULT 'client' CHECK (origin IN ('model', 'client', 'plurnk')),
+    cost_usd        REAL    NOT NULL DEFAULT 0 CHECK (cost_usd >= 0),
+    origin          TEXT    NOT NULL DEFAULT 'client' CHECK (origin IN ('model', 'client', 'plurnk')),
+    -- {§env-delta-log-pull}: monotonic observation progress, not a private world snapshot.
+    -- NULL means the worker has not established its first-turn baseline yet.
+    ambient_event_cursor INTEGER      CHECK (ambient_event_cursor IS NULL OR ambient_event_cursor >= 0),
     FOREIGN KEY (workspace_id)    REFERENCES workspaces(id) ON DELETE CASCADE,
     FOREIGN KEY (parent_worker_id) REFERENCES workers(id)     ON DELETE CASCADE
 ) STRICT;
@@ -43,6 +46,42 @@ CREATE        INDEX IF NOT EXISTS workers_parent_worker_id         ON workers (p
 -- worker_resolve_by_name picks the newest. A LIVE collision is refused at the spawn gate (Worker.edit
 -- → worker_live_by_name → 409), never by this index. Indexed for the by-name resolve/spawn lookup.
 CREATE        INDEX IF NOT EXISTS workers_workspace_name          ON workers (workspace_id, name);
+
+-- {§env-delta-log-pull}: one append-only occurrence journal gives every ambient
+-- producer a shared monotonic order. It snapshots only what the observer row
+-- needs; shared-world contents remain owned by entries/files, never copied here.
+-- source_record_id is forensic identity for the originating log/loop row, not a
+-- foreign key: model log curation must not erase an already-recorded occurrence.
+CREATE TABLE IF NOT EXISTS ambient_events (
+    id                 INTEGER NOT NULL PRIMARY KEY,
+    workspace_id       INTEGER NOT NULL,
+    producer_worker_id INTEGER NOT NULL,
+    kind               TEXT    NOT NULL CHECK (kind IN ('edit', 'loop_termination')),
+    source_record_id   INTEGER NOT NULL CHECK (source_record_id >= 1),
+    source             TEXT,
+    op                 TEXT    NOT NULL CHECK (op IN ('EDIT', 'SEND')),
+    scheme             TEXT,
+    hostname           TEXT,
+    pathname           TEXT,
+    rx                 TEXT,
+    attrs              TEXT    NOT NULL DEFAULT '{}' CHECK (json_valid(attrs)),
+    status_rx          INTEGER NOT NULL CHECK (status_rx BETWEEN 100 AND 599),
+    prompt             TEXT,
+    terminated_by      TEXT             CHECK (terminated_by IS NULL OR terminated_by IN ('collapse', 'cancel')),
+    created_at         TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+    CHECK (
+        (kind = 'edit' AND op = 'EDIT' AND rx IS NOT NULL AND prompt IS NULL AND terminated_by IS NULL)
+        OR
+        (kind = 'loop_termination' AND op = 'SEND' AND scheme = 'worker' AND prompt IS NOT NULL)
+    ),
+    FOREIGN KEY (workspace_id)       REFERENCES workspaces(id) ON DELETE CASCADE,
+    FOREIGN KEY (producer_worker_id) REFERENCES workers(id)    ON DELETE CASCADE
+) STRICT;
+
+CREATE INDEX IF NOT EXISTS ambient_events_workspace_id_id
+    ON ambient_events (workspace_id, id);
+CREATE INDEX IF NOT EXISTS ambient_events_producer_kind_id
+    ON ambient_events (producer_worker_id, kind, id);
 
 -- loops
 -- flags: per-loop runtime flags (auto, noProposals, noWeb, noInteraction,
@@ -93,6 +132,23 @@ AFTER UPDATE OF status ON loops
 WHEN NEW.status IN (200, 413, 429, 499, 500, 504, 508) AND OLD.status NOT IN (200, 413, 429, 499, 500, 504, 508)
 BEGIN
     UPDATE loops SET terminated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = NEW.id;
+END;
+
+-- A terminal transition is an ambient occurrence in the same total order as a
+-- shared EDIT. Directly inserted fork history never crosses this transition and
+-- therefore cannot fabricate a new conclusion event.
+CREATE TRIGGER IF NOT EXISTS loops_append_ambient_event
+AFTER UPDATE OF status ON loops
+WHEN NEW.status IN (200, 413, 429, 499, 500, 504, 508) AND OLD.status NOT IN (200, 413, 429, 499, 500, 504, 508)
+BEGIN
+    INSERT INTO ambient_events (
+        workspace_id, producer_worker_id, kind, source_record_id, source,
+        op, scheme, pathname, rx, status_rx, prompt, terminated_by
+    )
+    SELECT w.workspace_id, NEW.worker_id, 'loop_termination', NEW.id, CAST(NEW.worker_id AS TEXT),
+           'SEND', 'worker', '/' || w.name, NEW.terminal_message, NEW.status, NEW.prompt, NEW.terminated_by
+    FROM workers w
+    WHERE w.id = NEW.worker_id;
 END;
 
 CREATE TRIGGER IF NOT EXISTS loops_result_contract_insert
@@ -419,6 +475,9 @@ CREATE TABLE IF NOT EXISTS log_entries (
     -- {§env-delta} environment-delta cause: a sibling worker id or a scheme ('file');
     -- NULL = the owning worker itself (self), rendered without a worker= label.
     source          TEXT,
+    -- Engine-owned occurrence identity. Source rows are stamped NULL→id by the
+    -- journal trigger; observer and fork copies carry it at insertion.
+    ambient_event_id INTEGER                  REFERENCES ambient_events(id),
     -- Search derivation attached to this durable log result, when available.
     deep_hash       TEXT                       REFERENCES derivations(deep_hash),
 
@@ -473,6 +532,9 @@ CREATE UNIQUE INDEX IF NOT EXISTS log_entries_turn_id_sequence ON log_entries (t
 CREATE        INDEX IF NOT EXISTS log_entries_worker_id           ON log_entries (worker_id);
 CREATE        INDEX IF NOT EXISTS log_entries_loop_id          ON log_entries (loop_id);
 CREATE        INDEX IF NOT EXISTS log_entries_at               ON log_entries (at);
+CREATE UNIQUE INDEX IF NOT EXISTS log_entries_worker_ambient_event
+    ON log_entries (worker_id, ambient_event_id)
+    WHERE ambient_event_id IS NOT NULL;
 
 -- {§log-region-tagging} — named log-region curation. FOLD is the log's write-op (EDIT can't
 -- reach engine-written rows): FOLD[tag] stamps a tag on a region; OPEN[tag]/FIND[tag] filter
@@ -499,6 +561,69 @@ BEFORE UPDATE OF
 ON log_entries
 BEGIN
     SELECT RAISE(ABORT, 'log_entries core fields are immutable; only state/outcome/status_rx/rx/expanded may change');
+END;
+
+-- The engine may stamp an originating row exactly once. No later reassignment
+-- can sever or counterfeit the occurrence identity.
+CREATE TRIGGER IF NOT EXISTS log_entries_ambient_event_once
+BEFORE UPDATE OF ambient_event_id ON log_entries
+WHEN NOT (OLD.ambient_event_id IS NULL AND NEW.ambient_event_id IS NOT NULL)
+BEGIN
+    SELECT RAISE(ABORT, 'log_entries ambient event identity may only be assigned once');
+END;
+
+-- Immediate successful shared EDITs append their occurrence in the same SQL
+-- statement that persists the receipt. Rows already carrying an event id are
+-- observer/fork history and can never republish themselves.
+CREATE TRIGGER IF NOT EXISTS log_entries_append_ambient_event_insert
+AFTER INSERT ON log_entries
+WHEN NEW.ambient_event_id IS NULL
+ AND NEW.op = 'EDIT'
+ AND NEW.state = 'resolved'
+ AND NEW.status_rx IN (200, 201)
+ AND (NEW.scheme IS NULL OR NEW.scheme != 'plurnk')
+ AND (NEW.scheme IS NULL OR NEW.scheme != 'worker' OR NEW.hostname IS NULL OR NEW.hostname = 'plurnk')
+ AND (
+     NEW.origin != 'plurnk'
+     OR EXISTS (SELECT 1 FROM workers w WHERE w.id = NEW.worker_id AND w.name = 'plurnk')
+ )
+BEGIN
+    INSERT INTO ambient_events (
+        workspace_id, producer_worker_id, kind, source_record_id, source,
+        op, scheme, hostname, pathname, rx, attrs, status_rx
+    )
+    SELECT w.workspace_id, NEW.worker_id, 'edit', NEW.id, NEW.source,
+           'EDIT', NEW.scheme, NEW.hostname, NEW.pathname, NEW.rx, NEW.attrs, NEW.status_rx
+    FROM workers w
+    WHERE w.id = NEW.worker_id;
+    UPDATE log_entries SET ambient_event_id = last_insert_rowid() WHERE id = NEW.id;
+END;
+
+-- A proposed EDIT becomes an occurrence only when its one lifecycle transition
+-- resolves successfully. Rejection, cancellation, and failed application publish nothing.
+CREATE TRIGGER IF NOT EXISTS log_entries_append_ambient_event_resolve
+AFTER UPDATE OF state, status_rx ON log_entries
+WHEN OLD.state = 'proposed'
+ AND NEW.state = 'resolved'
+ AND NEW.ambient_event_id IS NULL
+ AND NEW.op = 'EDIT'
+ AND NEW.status_rx IN (200, 201)
+ AND (NEW.scheme IS NULL OR NEW.scheme != 'plurnk')
+ AND (NEW.scheme IS NULL OR NEW.scheme != 'worker' OR NEW.hostname IS NULL OR NEW.hostname = 'plurnk')
+ AND (
+     NEW.origin != 'plurnk'
+     OR EXISTS (SELECT 1 FROM workers w WHERE w.id = NEW.worker_id AND w.name = 'plurnk')
+ )
+BEGIN
+    INSERT INTO ambient_events (
+        workspace_id, producer_worker_id, kind, source_record_id, source,
+        op, scheme, hostname, pathname, rx, attrs, status_rx
+    )
+    SELECT w.workspace_id, NEW.worker_id, 'edit', NEW.id, NEW.source,
+           'EDIT', NEW.scheme, NEW.hostname, NEW.pathname, NEW.rx, NEW.attrs, NEW.status_rx
+    FROM workers w
+    WHERE w.id = NEW.worker_id;
+    UPDATE log_entries SET ambient_event_id = last_insert_rowid() WHERE id = NEW.id;
 END;
 
 -- schemes_providers

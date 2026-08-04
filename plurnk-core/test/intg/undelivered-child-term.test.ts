@@ -1,13 +1,10 @@
-// {§send-undelivered-child-term} — the 1ms fan-out race (the recurring "heavy-topo variance",
-// root-caused): workers concluding DURING the parent's generation are no longer live (the wait's
-// J leg misses them) but their collect deltas are queued for the NEXT packet. An empty-join
-// conclusion here would discard the delivered results;
-// a [200] in the same window discards them identically. Both gates now treat a child terminated
-// after the current turn's timestamp as PENDING: the wait continues (R semantics), the [200]
-// refuses with the steer.
+// {§send-undelivered-child-term}: workers concluding DURING the parent's generation are no
+// longer live, but their ambient event is newer than the parent's observation cursor and queued
+// for the NEXT packet. Both dispositions must preserve that completed-but-unobserved result.
 import test from "node:test";
 import assert from "node:assert/strict";
 import Engine from "../../src/core/Engine.ts";
+import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, DEFAULT_MIMETYPES } from "./_helpers.ts";
 import { sendStmt } from "./_dsl.ts";
@@ -17,14 +14,10 @@ async function raceScenario(db: Awaited<ReturnType<typeof openMigrated>>) {
     const parent = await insertWorker(db, workspaceId);
     const parentLoop = await insertLoop(db, parent, 1, "orchestrate");
     const parentTurn = await insertTurn(db, parentLoop, 1, 102);
-    // a child spawned by the parent, whose loop TERMINATED AFTER the parent's turn opened —
-    // the exact race window (terminated_at strictly greater than the turn's timestamp).
+    // A child spawned by the parent concludes after the parent's turn opened.
     const child = await insertWorker(db, workspaceId, parent, "worker-x");
     const childLoop = await insertLoop(db, child, 1, "fetch the value");
-    await db.test_terminate_loop_after_turn.run({ loop_id: childLoop, turn_id: parentTurn });
-    // the terminated_at trigger re-stamps 'now' on the status transition — the second update
-    // (terminated_at only, no trigger) makes the fixture's +2s deterministic.
-    await db.test_stamp_terminated_after_turn.run({ loop_id: childLoop, turn_id: parentTurn });
+    await new LoopLifecycle(db).finish(childLoop, { status: 200 }, { message: "the value is 42" });
     const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
     return { workspaceId, parent, parentLoop, parentTurn, engine };
 }

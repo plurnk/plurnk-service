@@ -6,8 +6,8 @@
 // nothing of the shared WORLD — the workspace's entries and overlay are shared, never
 // copied, because a worker never owned them. But it DOES inherit the parent's worker-scope
 // SCRATCH ({§worker-scheme} — the worker's private workspace, owner-remapped parent → branch):
-// "fork = everything-in-common-but-name, then diverges". #66 owns the
-// ambient-event cursor initialization for a fork.
+// "fork = everything-in-common-but-name, then diverges". Its ambient observation
+// cursor is copied with that inherited history, then diverges independently.
 
 import type { Db } from "./Db.ts";
 import WorkerName, { type WorkerOrigin } from "./WorkerName.ts";
@@ -17,7 +17,12 @@ export default class Fork {
     static #TERMINAL_LOOP = new Set([200, 413, 429, 499, 500, 504, 508]);
 
     static async fork(db: Db, parentWorkerId: number, name?: string): Promise<number> {
-        const parent = await db.fork_get_worker.get<{ workspace_id: number; name: string; origin: WorkerOrigin }>({ id: parentWorkerId });
+        const parent = await db.fork_get_worker.get<{
+            workspace_id: number;
+            name: string;
+            origin: WorkerOrigin;
+            ambient_event_cursor: number | null;
+        }>({ id: parentWorkerId });
         if (parent === undefined) throw new Error(`fork: worker ${parentWorkerId} not found`);
 
         // #248 — name the branch at instantiation (immutable after). An explicit name wins; the default
@@ -38,6 +43,10 @@ export default class Fork {
             });
         if (branch === undefined) throw new Error("fork: explicit branch worker insert returned no row");
         const branchWorkerId = branch.id;
+        await db.fork_set_ambient_cursor.run({
+            worker_id: branchWorkerId,
+            ambient_event_cursor: parent.ambient_event_cursor,
+        });
 
         // loops → new loops, mapping old id → new id. A copied loop is INHERITED HISTORY, never the
         // branch's live work (its own loop is enqueued fresh by injectWorker) — so a non-terminal status

@@ -248,14 +248,14 @@ flowchart TB
 §machine-processes-fork-copies-the-log **A fork copies the parent's log as
 terminal history.**
 
-| State                                                 | Owner             | Fork behavior                                                                               |
-| ----------------------------------------------------- | ----------------- | ------------------------------------------------------------------------------------------- |
-| Project files ({§machine-processes-one-filesystem})   | Workspace         | Shared live; a fork does not create another checkout.                                       |
-| Shared worker entries (`worker:///...`)               | Workspace commons | Shared live.                                                                                |
-| Membership overlay ({§machine-processes-one-overlay}) | Workspace         | Shared unchanged; divergent membership requires another workspace.                          |
-| Log items ({§machine-processes-fork-copies-the-log})  | Worker            | Rows, tags, and fold state are copied as terminal history.                                  |
-| Private worker entries (`worker://~/...`)             | Worker            | Deep-copied with ownership remapped; parent and child then diverge.                         |
-| Active loops, turns, and cancellation                 | Worker            | Never copied as live work; inherited structure is terminal history, then a new loop starts. |
+| State                                                 | Owner             | Fork behavior                                                                                                      |
+| ----------------------------------------------------- | ----------------- | ------------------------------------------------------------------------------------------------------------------ |
+| Project files ({§machine-processes-one-filesystem})   | Workspace         | Shared live; a fork does not create another checkout.                                                              |
+| Shared worker entries (`worker:///...`)               | Workspace commons | Shared live.                                                                                                       |
+| Membership overlay ({§machine-processes-one-overlay}) | Workspace         | Shared unchanged; divergent membership requires another workspace.                                                 |
+| Log items ({§machine-processes-fork-copies-the-log})  | Worker            | Rows, event identities, tags, fold state, and the matching observation cursor are copied as terminal history.      |
+| Private worker entries (`worker://~/...`)             | Worker            | Deep-copied with ownership remapped; parent and child then diverge.                                                 |
+| Active loops, turns, and cancellation                 | Worker            | Never copied as live work; inherited structure is terminal history, then a new loop starts.                        |
 
 §machine-processes-worker-is-its-log **A worker's conversational memory of
 the shared world is its log, with no hidden per-worker snapshot beside it.**
@@ -2097,7 +2097,7 @@ flowchart LR
     sink["Executor entry() sink<br/>materializes readable entry"] --> typed["Reserved plurnk worker<br/>records typed EDIT event"]
     kernel --> events
     typed --> events
-    events --> pull["Pre-turn lossless pull<br/>after observer boundary"]
+    events --> pull["Pre-turn lossless pull<br/>(cursor, captured high-water]"]
     pull --> log["Observer's self-contained log<br/>origin=plurnk; born FOLDed"]
     log --> packet["Packet lists coordinate;<br/>OPEN recalls exact body"]
 ```
@@ -2106,9 +2106,21 @@ flowchart LR
 pre-turn, a worker materializes every other actor's event on shared state after
 its last completed observation boundary into its own log. The set is
 exhaustive, unranked, and exactly once; the engine makes no relevance decision.
-Each copied event retains its effect, cause, and typed attributes. The first
-turn needs no historical delta because it reads current state fresh. #66 tracks
-the current wall-clock cursor, which can omit or duplicate boundary events.
+Each copied event retains its effect, cause, and typed attributes. Every
+producer appends to one workspace-scoped occurrence journal with a monotonic
+identity. A pull captures one closed `(worker cursor, high-water]` interval,
+materializes each identity idempotently, then advances the cursor only after the
+whole interval is durable. An event racing the capture is therefore in this
+interval or a later one, never neither or both. Source-log curation cannot erase
+the occurrence record.
+
+The cursor is observation progress, not a private copy of entry contents. A
+fresh worker baselines the current high-water immediately after opening its
+first turn: older state arrives through the ordinary current-world projections,
+while events racing that first packet remain deliverable. A fork copies the
+parent's captured cursor with its log; copied event identities cannot republish,
+and occurrences the parent had not observed remain pending independently for
+both workers.
 
 §env-delta-worker-entry-visibility **Worker-entry visibility follows the
 authority contract.** Commons mutations (`worker:///...`) and mutations to the
