@@ -8,21 +8,19 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
 import Module from "../../src/Module.ts";
 import type { DaemonSeam } from "../../src/DaemonSeam.ts";
-
-const SERVICE = resolve(import.meta.dirname, "../../../plurnk-core");
+import { openTestDatabase, SERVICE } from "./_helpers.ts";
 const gated = (process.env.PLURNK_MODEL ?? "") === "" || (process.env.PLURNK_PROVIDERS_FETCH_TIMEOUT ?? "") === "";
 
 test("the official @ag-ui/client accepts the full stream (create-ag-ui-app conformance)", { skip: gated, timeout: 180_000 }, async () => {
     await import(join(SERVICE, "test/floor.ts"));
-    const { openMigrated } = await import(join(SERVICE, "test/intg/_helpers.ts"));
     const { liveProvider } = await import(join(SERVICE, "test/_live-harness.ts"));
     const { default: Daemon } = await import(join(SERVICE, "src/server/Daemon.ts"));
     const { HttpAgent } = await import("@ag-ui/client");
 
-    const db = await openMigrated();
+    const db = await openTestDatabase();
     const provider = await liveProvider();
     const daemon = new Daemon({ db, provider, nodeModulesPath: join(SERVICE, "node_modules") });
     let module: Module | null = null;

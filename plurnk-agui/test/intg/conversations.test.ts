@@ -7,12 +7,11 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
 import Module from "../../src/Module.ts";
 import type { DaemonSeam } from "../../src/DaemonSeam.ts";
 import type { AguiEvent } from "../../src/types.ts";
-
-const SERVICE = resolve(import.meta.dirname, "../../../plurnk-core");
+import { openTestDatabase, SERVICE } from "./_helpers.ts";
 
 const action = async (port: number, threadId: string, workspace: string, kind: string, params: Record<string, unknown> = {}): Promise<{ ok: boolean; result?: Record<string, unknown>; problem?: Record<string, unknown> }> => {
     const res = await fetch(`http://127.0.0.1:${port}/`, {
@@ -29,10 +28,9 @@ const action = async (port: number, threadId: string, workspace: string, kind: s
 test("two threads, one world: distinct workers, shared filesystem (the environment door)", { timeout: 60_000 }, async () => {
     // Apply the same assembled package-default floor as the daemon's own test tiers.
     await import(join(SERVICE, "test/floor.ts"));
-    const { openMigrated } = await import(join(SERVICE, "test/intg/_helpers.ts"));
     const { default: Daemon } = await import(join(SERVICE, "src/server/Daemon.ts"));
 
-    const db = await openMigrated();
+    const db = await openTestDatabase();
     const daemon = new Daemon({ db, provider: null, nodeModulesPath: join(SERVICE, "node_modules") });
     let module: Module | null = null;
     const registration = Module.init({ host: "127.0.0.1", port: 0 });

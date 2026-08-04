@@ -98,14 +98,17 @@ Independent axes on entries and channels. Confusion across them is a recurring s
 | **live** | `test/live/` | Real | Wire-level assertions |
 | **demo** | `test/demo/` | Real | Holistic outcome assertions |
 
-§test-artifact-retention **File-backed test databases use current-run
-retention.** The normal intg runner clears `test/intg/.tmp/` once before the
-suite, reports that forensic directory, and retains every artifact the current
-run creates. A failed suite therefore leaves its evidence intact; the next
-normal intg run removes it before creating anything. Direct `node --test`
-invocations bypass the runner boundary and must invoke the same cleanup
-procedure explicitly when isolation matters. Live/demo run directories are
-benchmark artifacts outside `.tmp` and retain their separate lifecycle.
+§test-artifact-retention **File-backed test databases use lane-local current-run
+retention.** Each workspace's normal intg runner clears its own
+`test/intg/.tmp/` once before the suite, reports that forensic directory, and
+retains every artifact the current run creates. A cross-package test may reuse
+Core's migration fixture only by passing a path inside the caller's artifact
+directory; independently scheduled lanes never share a reset target. A failed
+suite therefore leaves its own evidence intact, and the next normal run of that
+lane removes it before creating anything. Direct `node --test` invocations
+bypass the runner boundary and must invoke the same cleanup procedure
+explicitly when isolation matters. Live/demo run directories are benchmark
+artifacts outside `.tmp` and retain their separate lifecycle.
 
 ---
 

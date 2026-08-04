@@ -3,7 +3,7 @@ import { mkdtemp, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promis
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { resetTestArtifacts, testArtifactDirectory } from "../plurnk-core/scripts/test-artifacts.mjs";
+import { resetTestArtifacts, testArtifactDirectory } from "./test-artifacts.mjs";
 
 const root = new URL("..", import.meta.url);
 
@@ -23,6 +23,29 @@ test("integration test runners retain only the current run's database artifacts"
 
         await resetTestArtifacts(fixtureRoot);
         assert.deepEqual(await readdir(artifacts), [], "the next run removes the previously retained run");
+    } finally {
+        await rm(fixtureRoot, { recursive: true, force: true });
+    }
+});
+
+test("one integration lane cannot clear a sibling lane's artifacts", async () => {
+    const fixtureRoot = await mkdtemp(join(tmpdir(), "plurnk-test-lanes-"));
+    const laneA = join(fixtureRoot, "a");
+    const laneB = join(fixtureRoot, "b");
+    try {
+        const [artifactsA, artifactsB] = await Promise.all([
+            resetTestArtifacts(laneA),
+            resetTestArtifacts(laneB),
+        ]);
+        await Promise.all([
+            writeFile(join(artifactsA, "a.db"), "a"),
+            writeFile(join(artifactsB, "b.db"), "b"),
+        ]);
+
+        await resetTestArtifacts(laneA);
+
+        assert.deepEqual(await readdir(artifactsA), []);
+        assert.equal(await readFile(join(artifactsB, "b.db"), "utf8"), "b");
     } finally {
         await rm(fixtureRoot, { recursive: true, force: true });
     }
