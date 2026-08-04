@@ -71,14 +71,22 @@ const fileMember = async (ctx: Ctx, rel: string) =>
 
 const killStmt = (target: ParsedPath): KillStatement => ({ op: "KILL", suffix: "", signal: null, target, lineMarker: null, body: null, position: { line: 1, column: 1 } });
 
-const proposeAndResolve = async (ctx: Ctx, statement: Parameters<Engine["dispatch"]>[0]["statement"], decision: "accept" | "reject") => {
+const proposeAndResolve = async (
+    ctx: Ctx,
+    statement: Parameters<Engine["dispatch"]>[0]["statement"],
+    decision: "accept" | "reject",
+    body?: string,
+) => {
     const id = deferred<number>();
     const dispatchPromise = ctx.engine.dispatch({
         statement, workspaceId: ctx.workspaceId, workerId: ctx.workerId, loopId: ctx.loopId, turnId: ctx.turnId,
         sequence: 1, origin: "model", onDispatch: (logId) => id.resolve(logId),
     });
     const logEntryId = await id.promise;
-    ctx.engine.resolveProposal(logEntryId, { decision });
+    ctx.engine.resolveProposal(logEntryId, {
+        decision,
+        ...(body === undefined ? {} : { body }),
+    });
     return dispatchPromise;
 };
 
@@ -244,6 +252,109 @@ test("a same-file regional MOVE reports both accepted effects from one batch", a
             effects.map(({ receipt }) => receipt?.effect?.requested),
             ["<1,7,1,7>", "<1,2,1,4>"],
         );
+    });
+});
+
+test("a reviewer-rewritten same-file MOVE reports its one landed replacement effect (#172)", async () => {
+    await withWorkspace(async (root, ctx) => {
+        await seedFileMember(ctx, root, "document.md", "abcdef");
+        const reviewed = "reviewer\nreplacement\n";
+        const result = await proposeAndResolve(
+            ctx,
+            moveStmt(
+                localPath("document.md"),
+                localPath("document.md"),
+                null,
+                { marks: [1, 2, 1, 4] },
+                { marks: [1, 7, 1, 7] },
+            ),
+            "accept",
+            reviewed,
+        );
+
+        assert.equal(result.status, 200);
+        assert.equal(await readFile(join(root, "document.md"), "utf8"), reviewed);
+        assert.ok(Array.isArray(result.effects));
+        const effects = result.effects as Array<{
+            target: string;
+            action: string;
+            receipt?: {
+                disposition?: string;
+                requested?: string;
+                replacement?: {
+                    requested: string;
+                    source: string;
+                    result: string;
+                    removed: number;
+                    inserted: number;
+                    context: string;
+                };
+            };
+        }>;
+        assert.equal(effects.length, 1, "one arbitrary resource replacement earns one effect");
+        assert.deepEqual(
+            effects.map(({ target, action }) => ({ target, action })),
+            [{ target: "document.md", action: "update" }],
+        );
+        assert.equal(effects[0]?.receipt?.disposition, "superseded");
+        assert.equal(effects[0]?.receipt?.requested, "<1,7,1,7>");
+        assert.deepEqual(effects[0]?.receipt?.replacement, {
+            requested: "<1,-1>",
+            source: "1",
+            result: "1-2",
+            removed: 1,
+            inserted: 2,
+            context: "1:reviewer\n2:replacement",
+        });
+    });
+});
+
+test("a reviewer-rewritten cross-resource MOVE still reports its landed source removal (#172)", async () => {
+    await withWorkspace(async (root, ctx) => {
+        await seedWorker(ctx, "source", "alpha\nbeta\ngamma\n");
+        await seedFileMember(ctx, root, "destination.md", "before\nreplace\nafter\n");
+        const reviewed = "reviewer\ndestination\n";
+        const result = await proposeAndResolve(
+            ctx,
+            moveStmt(
+                urlPath("worker", "/source"),
+                localPath("destination.md"),
+                null,
+                { marks: [2] },
+                { marks: [2] },
+            ),
+            "accept",
+            reviewed,
+        );
+
+        assert.equal(result.status, 200);
+        assert.equal(await readFile(join(root, "destination.md"), "utf8"), reviewed);
+        const source = await ctx.db.test_get_channel_by_pathname_scheme.get<{
+            content: string;
+        }>({ pathname: "/source", scheme: "worker", name: "body" });
+        assert.equal(source?.content, "alpha\ngamma\n");
+        assert.ok(Array.isArray(result.effects));
+        const effects = result.effects as Array<{
+            target: string;
+            action: string;
+            receipt?: {
+                disposition?: string;
+                requested?: string;
+                effect?: { requested?: string };
+                replacement?: { context?: string };
+            };
+        }>;
+        assert.deepEqual(
+            effects.map(({ target, action }) => ({ target, action })),
+            [
+                { target: "destination.md", action: "update" },
+                { target: "worker:///source", action: "update" },
+            ],
+        );
+        assert.equal(effects[0]?.receipt?.disposition, "superseded");
+        assert.equal(effects[0]?.receipt?.requested, "<2>");
+        assert.match(effects[0]?.receipt?.replacement?.context ?? "", /1:reviewer\n2:destination/);
+        assert.equal(effects[1]?.receipt?.effect?.requested, "<2>");
     });
 });
 

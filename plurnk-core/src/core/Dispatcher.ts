@@ -1596,14 +1596,35 @@ export default class Dispatcher {
                 `COPY/MOVE received one receipt for ${pending.length} resource effects.`,
             );
         }
-        const effects = pending.map((effect, index): ResourceEffect => ({
-            ...effect,
-            ...(batch !== undefined
-                ? { receipt: projectEditReceipt(batch, index) }
-                : single !== undefined
-                    ? { receipt: single }
-                    : {}),
-        }));
+        let effects: ResourceEffect[];
+        if (batch !== undefined && "disposition" in batch) {
+            const replacement = pending[0];
+            if (replacement === undefined) {
+                throw new InvalidOperationResultError(
+                    "A reviewer-replaced COPY/MOVE batch has no resource effect.",
+                );
+            }
+            if (pending.some(({ target, action }) =>
+                target !== replacement.target || action !== replacement.action
+            )) {
+                throw new InvalidOperationResultError(
+                    "A reviewer-replaced COPY/MOVE batch spans incompatible resource effects.",
+                );
+            }
+            effects = [{
+                ...replacement,
+                receipt: projectEditReceipt(batch, 0),
+            }];
+        } else {
+            effects = pending.map((effect, index): ResourceEffect => ({
+                ...effect,
+                ...(batch !== undefined
+                    ? { receipt: projectEditReceipt(batch, index) }
+                    : single !== undefined
+                        ? { receipt: single }
+                        : {}),
+            }));
+        }
         assertResourceEffects(effects);
         const {
             editReceipt: _editReceipt,

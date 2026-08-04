@@ -200,6 +200,56 @@ test("COPY/MOVE render operand selections and scoped textual materialization rec
     assert.match(unchanged, /"display":"none"/);
 });
 
+test("a reviewer-rewritten same-resource MOVE renders one replacement effect and both operands (#172)", () => {
+    const out = PacketWire.renderLog([{
+        coordinate: "1/2/9",
+        origin: "model",
+        op: "MOVE",
+        status: 200,
+        target: { scheme: "worker", pathname: "/document" },
+        tx: {
+            target: { scheme: "worker", pathname: "/document" },
+            lineMarker: { marks: [1, 2, 1, 4] },
+            body: {
+                target: { scheme: "worker", pathname: "/document" },
+                lineMarker: { marks: [1, 7, 1, 7] },
+            },
+        },
+        rx: {
+            status: 200,
+            effects: [{
+                target: "worker:///document",
+                action: "update",
+                receipt: {
+                    revision,
+                    unit: "lines",
+                    before: 1,
+                    after: 2,
+                    disposition: "superseded",
+                    requested: "<1,7,1,7>",
+                    replacement: {
+                        requested: "<1,-1>",
+                        source: "1",
+                        result: "1-2",
+                        removed: 1,
+                        inserted: 2,
+                        context: "1:reviewer\n2:replacement",
+                    },
+                },
+            }],
+        },
+    }], tok);
+
+    assert.match(out, /"source":"worker:\/\/\/document<1,2,1,4>"/);
+    assert.match(out, /"destination":"worker:\/\/\/document<1,7,1,7>"/);
+    assert.match(
+        out,
+        /"effects":\[\{"target":"worker:\/\/\/document","action":"update","rev":"abcdef01","extent":"lines 1->2","disposition":"superseded","requested":"<1,7,1,7>","change":"-1 \+2","replacement":"<1,-1> 1->1-2"\}\]/,
+    );
+    assert.equal(out.match(/1:reviewer/g)?.length, 1);
+    assert.equal(out.match(/2:replacement/g)?.length, 1);
+});
+
 test("log entry: a worker:// spawn renders the worker NAME in the target — authority survives ()", () => {
     // The spawn-blindness root cause: the worker name lives in the URI authority (worker://<name>),
     // not the path. Rendering scheme+path alone collapsed every spawn to a bare `worker://`, so the

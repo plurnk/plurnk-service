@@ -2218,13 +2218,14 @@ landed.
 | -------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
 | `target`             | Canonical model-facing address. The default channel is path-only; an explicitly selected non-default channel retains its fragment. |
 | `action`             | Exactly `create`, `update`, or `delete`.                                                                                           |
-| `receipt`            | Optional ordinary EDIT receipt. Only textual `create` and `update` effects may carry one; a creation receipt has `before=0`.       |
+| `receipt`            | Optional validated EDIT projection. Only textual `create` and `update` effects may carry one; a creation receipt has `before=0`.   |
 
 | Outcome                                                                       | Ordered `effects`                                                                                         |
 | ----------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
 | Landed COPY                                                                   | Its destination effect.                                                                                   |
 | Landed MOVE between different resource-channel selections                     | Any destination effect, then any source effect.                                                           |
-| Landed regional MOVE within one resource channel                              | Insertion, then removal; both name the same target because they are distinct effects in one atomic batch. |
+| Landed regional MOVE within one resource channel, unchanged by its resolver   | Insertion, then removal; both name the same target because they are distinct effects in one atomic batch. |
+| Resolver body replaces a proposed COPY/MOVE mutation                          | One actual replacement effect. Cross-resource MOVE still appends an independently landed source effect.   |
 | Textual create/update caused by a scope on either operand                     | The effect carries the ordinary bounded EDIT receipt.                                                     |
 | Textual create/update with no scoped operand; binary mutation; channel delete | Structural effect only; no invented text receipt. Scoped source removal is an `update` with a receipt.    |
 | `304`, rejection, or cancellation with no landed mutation                     | `effects` omitted.                                                                                        |
