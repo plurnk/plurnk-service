@@ -23,14 +23,17 @@ import { withProviderDefaults } from "./defaults.ts";
 // a real package on disk) and the discovery scan (tests inject a fixed map).
 type ImportModule = (specifier: string) => Promise<unknown>;
 const importModule: ImportModule = (specifier) => import(specifier);
-type DiscoverFn = (options?: DiscoverOptions) => Promise<Discovery>;
+type DiscoveryInput = Omit<Discovery, "packageAttributions"> & {
+    packageAttributions?: Discovery["packageAttributions"];
+};
+type DiscoverFn = (options?: DiscoverOptions) => Promise<DiscoveryInput>;
 
 // The node_modules scan is filesystem work that never changes within a process,
 // so it runs once and the result is memoized. A long-lived daemon pays one scan
 // at first bespoke instantiation; every later run reuses it. The trust gate is
 // boot config, so the env from the first scan stands for the process.
-let discoveredCache: Discovery | null = null;
-const providerPackages = async (discoverFn: DiscoverFn, env: NodeJS.ProcessEnv): Promise<Discovery> => {
+let discoveredCache: DiscoveryInput | null = null;
+const providerPackages = async (discoverFn: DiscoverFn, env: NodeJS.ProcessEnv): Promise<DiscoveryInput> => {
     discoveredCache ??= await discoverFn({ env });
     return discoveredCache;
 };

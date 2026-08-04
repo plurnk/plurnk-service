@@ -33,7 +33,8 @@ flowchart LR
     manifest[package.json plurnk manifest] --> scanner
     policy[Meta.isTrusted] --> gate{Trusted?}
     scanner --> gate
-    gate -->|yes| family[Family-owned loading and registry]
+    gate -->|yes| attribution[Meta.normalizeAttribution]
+    attribution --> family[Family-owned validation, loading, and registry]
     gate -->|no| skipped[Skipped-package evidence]
     family --> host[Composed host]
     skipped --> host
@@ -41,8 +42,8 @@ flowchart LR
 
 | Layer                 | Owns                                                                                                                              | Does not own                                                           |
 | --------------------- | --------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
-| `plurnk-meta`         | Node package enumeration, exact capability-family identity, and the one trust predicate.                                          | Family fields, capability collisions, plugin imports, or presentation. |
-| Family implementation | Family-field validation, deterministic ordering/collisions, trust enforcement before any plugin import, and trusted code loading. | A second trust policy or cross-family composition.                     |
+| `plurnk-meta`         | Node package enumeration, exact capability-family identity, the one trust predicate, and package-attribution normalization.       | Family fields, capability collisions, plugin imports, or presentation. |
+| Family implementation | Family-field validation, deterministic ordering/collisions, trust enforcement before any plugin import, and trusted code loading. | A second trust or attribution policy, or cross-family composition.     |
 | Composed host         | Cross-family arbitration and presentation of skipped-package evidence.                                                            | Re-parsing manifests or importing a declined package.                  |
 
 The installed dependency graph is the compatibility boundary. Enumeration is
@@ -67,6 +68,21 @@ family-owned collection.
 Coordinated capabilities spanning families use explicit daemon-module
 composition ({§module-lifecycle}); a multi-kind manifest is not a parallel
 module mechanism.
+
+### §plugin-attribution One package attribution fact
+
+| Stage                  | Contract                                                                                                                                                     |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Declaration            | Optional `plurnk.attribution` is one non-empty string or an array of non-empty strings. `null`, absence, and an empty array normalize to no tags.             |
+| Trust                  | The family applies {§plugin-trust-boundary} before attribution validation; a withheld declaration is not interpreted.                                             |
+| Normalization          | `Meta.normalizeAttribution(raw, packageName)` produces one readonly, ordered list of opaque tags. A malformed trusted declaration fails package admission.   |
+| Namespace reservation  | A tag beginning `@plurnk/` is valid only when `packageName` also begins `@plurnk/`; a violating trusted package fails admission.                              |
+| Discovery result       | Each family returns `packageAttributions`, keyed once by package name. Only non-empty lists for packages represented after family admission are present.       |
+| Published projections  | Existing per-tag, per-handler, or name-keyed attribution fields may project the validated declaration for 1.x compatibility; they do not own another policy. |
+
+Manifest acquisition and attribution validation therefore occur once in the
+family discovery path. A composed host consumes the admitted package map and
+never reopens a plugin manifest for this fact.
 
 ### §plugin-trust-boundary One policy, enforcement before import
 

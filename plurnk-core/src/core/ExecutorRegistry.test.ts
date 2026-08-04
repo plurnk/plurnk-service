@@ -1,5 +1,9 @@
-import test from "node:test";
+import test, { type TestContext } from "node:test";
 import assert from "node:assert/strict";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { createRequire } from "node:module";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import ExecutorRegistry from "./ExecutorRegistry.ts";
 
 // A fake executor whose probe() diverges by tag (this.runtime). build() only
@@ -57,6 +61,38 @@ test("ExecutorRegistry probes per-tag — divergent availability within one pack
     // #7: the self-documenting example flows through; absent → "" (not undefined).
     assert.equal(registry.entry("alpha")?.example, "EXEC[alpha]:do a thing:EXEC", "the declared example is carried to the tools sheet");
     assert.equal(registry.entry("beta")?.example, "", "a tag with no example defaults to empty");
+});
+
+test("ExecutorRegistry consumes discovery attribution without reopening a strict-export package manifest", async (t: TestContext) => {
+    const root = await mkdtemp(join(tmpdir(), "core-strict-exec-"));
+    t.after(() => rm(root, { recursive: true, force: true }));
+    const packageName = "@plurnk/plurnk-execs-strict-fixture";
+    const dir = join(root, "node_modules", "@plurnk", "plurnk-execs-strict-fixture");
+    await mkdir(dir, { recursive: true });
+    await writeFile(join(dir, "package.json"), JSON.stringify({
+        name: packageName,
+        type: "module",
+        exports: { ".": "./index.js" },
+        plurnk: {
+            kind: "exec",
+            attribution: "@plurnk/strict",
+            runtimes: [{ name: "alpha" }, { name: "beta" }],
+        },
+    }));
+    await writeFile(join(dir, "index.js"), "export default class Strict {}\n");
+    const require = createRequire(join(root, "consumer.mjs"));
+    assert.throws(
+        () => require.resolve(`${packageName}/package.json`),
+        (error: NodeJS.ErrnoException) => error.code === "ERR_PACKAGE_PATH_NOT_EXPORTED",
+        "the fixture must actually deny package.json through Node resolution",
+    );
+
+    const registry = await ExecutorRegistry.build({
+        cwd: root,
+        load: loadFake,
+    });
+
+    assert.deepEqual(registry.attributions(), ["@plurnk/strict"], "one package fact survives its two runtime tags");
 });
 
 test("build() notes untrusted packages that discover() skipped (#229)", async () => {

@@ -45,22 +45,57 @@ test("discover: scope-agnostic — finds @plurnk, third-party scopes, AND unscop
     assert.equal(skipped.length, 0);
 });
 
-test("discover: plurnk.attribution passes through verbatim — string, string[], absent, invalid", async () => {
+test("discover: normalizes attribution once per package and preserves the published scheme projection", async () => {
     const cwd = await makeTree([
         ["one-credit", { name: "one-credit", plurnk: { kind: "scheme", name: "one", attribution: "Ada Lovelace" } }],
         ["many-credit", { name: "many-credit", plurnk: { kind: "scheme", name: "many", attribution: ["Ada", "Grace"] } }],
         ["no-credit", scheme("no-credit", "none")],
-        ["bad-credit", { name: "bad-credit", plurnk: { kind: "scheme", name: "bad", attribution: { who: "nope" } } }],
     ]);
-    const { schemes } = await SchemeDiscovery.discover({ cwd });
+    const { schemes, packageAttributions } = await SchemeDiscovery.discover({ cwd });
     const by = (n: string) => schemes.find((s) => s.name === n);
     assert.equal(by("one")?.attribution, "Ada Lovelace");
     assert.deepEqual(by("many")?.attribution, ["Ada", "Grace"]);
-    // Absent → the property is omitted entirely (not present as undefined).
     assert.deepEqual(by("none"), { name: "none", packageName: "no-credit" });
     assert.equal("attribution" in by("none")!, false);
-    // A non-string, non-string[] value is not credit → dropped.
-    assert.deepEqual(by("bad"), { name: "bad", packageName: "bad-credit" });
+    assert.deepEqual([...packageAttributions], [
+        ["many-credit", ["Ada", "Grace"]],
+        ["one-credit", ["Ada Lovelace"]],
+    ]);
+});
+
+test("discover: trusted malformed or reserved attribution fails before scheme admission", async () => {
+    const invalid = await makeTree([
+        ["bad-credit", { name: "bad-credit", plurnk: { kind: "scheme", name: "bad", attribution: { who: "nope" } } }],
+    ]);
+    await assert.rejects(
+        SchemeDiscovery.discover({ cwd: invalid }),
+        /plugin 'bad-credit': plurnk\.attribution must be a non-empty string or string\[\]/,
+    );
+
+    const reserved = await makeTree([
+        ["squatter", { name: "squatter", plurnk: { kind: "scheme", name: "squat", attribution: "@plurnk/staff" } }],
+    ]);
+    await assert.rejects(SchemeDiscovery.discover({ cwd: reserved }), /'@plurnk\/' is reserved/);
+});
+
+test("discover: trust withholding precedes attribution and family-field validation", async () => {
+    const cwd = await makeTree([
+        ["@acme/broken", {
+            name: "@acme/broken",
+            plurnk: { kind: "scheme", attribution: ["valid", 42], schemes: [{ name: "broken" }] },
+        }],
+    ]);
+    const previous = process.env.PLURNK_PLUGINS_TRUSTED_ONLY;
+    process.env.PLURNK_PLUGINS_TRUSTED_ONLY = "1";
+    try {
+        const result = await SchemeDiscovery.discover({ cwd });
+        assert.deepEqual(result.schemes, []);
+        assert.deepEqual(result.skipped, ["@acme/broken"]);
+        assert.equal(result.packageAttributions.size, 0);
+    } finally {
+        if (previous === undefined) delete process.env.PLURNK_PLUGINS_TRUSTED_ONLY;
+        else process.env.PLURNK_PLUGINS_TRUSTED_ONLY = previous;
+    }
 });
 
 // ── multi-scheme packages: plurnk.schemes (#473) ──────────────────────────
@@ -83,14 +118,15 @@ test("discover: plurnk.name sugar omits exportName (consumer defaults to \"defau
     assert.equal("exportName" in schemes.find((s) => s.name === "solo")!, false);
 });
 
-test("discover: a package's schemes each carry the package attribution", async () => {
+test("discover: a package's schemes each carry one package attribution fact", async () => {
     const cwd = await makeTree([["p", {
         name: "p",
         plurnk: { kind: "scheme", attribution: "Grace", schemes: [{ name: "a", export: "default" }, { name: "b", export: "B" }] },
     }]]);
-    const { schemes } = await SchemeDiscovery.discover({ cwd });
+    const { schemes, packageAttributions } = await SchemeDiscovery.discover({ cwd });
     assert.equal(schemes.find((s) => s.name === "a")?.attribution, "Grace");
     assert.equal(schemes.find((s) => s.name === "b")?.attribution, "Grace");
+    assert.deepEqual([...packageAttributions], [["p", ["Grace"]]]);
 });
 
 test("discover: an array kind claims no scheme family", async () => {

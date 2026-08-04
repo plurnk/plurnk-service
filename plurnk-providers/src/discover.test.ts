@@ -82,18 +82,48 @@ test("discover: node_modules entries with no package.json or malformed JSON are 
     assert.deepEqual([...registry.keys()], ["native"]); // only the well-formed provider survives
 });
 
-test("discover: surfaces plurnk.attribution (string or string[]) for registered providers (#21)", async (t) => {
+test("discover: normalizes attribution per package and preserves the published provider projection", async (t) => {
     const root = await buildModules(t, {
         "@acme/provider-solo": { name: "@acme/provider-solo", plurnk: { kind: "provider", name: "solo", attribution: "@acme/solo" } },
         "@acme/provider-multi": { name: "@acme/provider-multi", plurnk: { kind: "provider", name: "multi", attribution: ["@acme/a", "@acme/b"] } },
         "@acme/provider-none": { name: "@acme/provider-none", plurnk: { kind: "provider", name: "none" } },
-        "@acme/provider-bad": { name: "@acme/provider-bad", plurnk: { kind: "provider", name: "bad", attribution: 42 } }, // non-string/array
     });
-    const { attributions } = await discover({ cwd: root });
+    const { attributions, packageAttributions } = await discover({ cwd: root });
     assert.equal(attributions.get("solo"), "@acme/solo");
     assert.deepEqual(attributions.get("multi"), ["@acme/a", "@acme/b"]);
-    assert.equal(attributions.has("none"), false); // declared none → absent
-    assert.equal(attributions.has("bad"), false);  // non-string/array ignored, not surfaced
+    assert.equal(attributions.has("none"), false);
+    assert.deepEqual([...packageAttributions], [
+        ["@acme/provider-multi", ["@acme/a", "@acme/b"]],
+        ["@acme/provider-solo", ["@acme/solo"]],
+    ]);
+});
+
+test("discover: validates trusted attribution before provider admission", async (t) => {
+    const root = await buildModules(t, {
+        "@acme/provider-bad": { name: "@acme/provider-bad", plurnk: { kind: "provider", name: "bad", attribution: 42 } },
+    });
+    await assert.rejects(
+        discover({ cwd: root }),
+        /plugin '@acme\/provider-bad': plurnk\.attribution must be a non-empty string or string\[\]/,
+    );
+
+    const reservedRoot = await buildModules(t, {
+        "@acme/provider-reserved": { name: "@acme/provider-reserved", plurnk: { kind: "provider", name: "reserved", attribution: "@plurnk/staff" } },
+    });
+    await assert.rejects(discover({ cwd: reservedRoot }), /'@plurnk\/' is reserved/);
+});
+
+test("discover: an untrusted malformed attribution is withheld before validation", async (t) => {
+    const root = await buildModules(t, {
+        "@acme/provider-bad": { name: "@acme/provider-bad", plurnk: { kind: "provider", name: "bad", attribution: ["ok", 42] } },
+    });
+    const result = await discover({
+        cwd: root,
+        env: { PLURNK_PLUGINS_TRUSTED_ONLY: "1" } as NodeJS.ProcessEnv,
+    });
+    assert.equal(result.registry.size, 0);
+    assert.equal(result.skipped.get("bad"), "@acme/provider-bad");
+    assert.equal(result.packageAttributions.size, 0);
 });
 
 test("discover: missing node_modules yields an empty registry, not an error", async (t) => {

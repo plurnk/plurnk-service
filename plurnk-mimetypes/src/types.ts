@@ -1,4 +1,5 @@
 import type { TextRegion } from "@plurnk/plurnk-contracts";
+import type { PackageAttributions } from "@plurnk/plurnk-meta";
 
 export type SymbolKind =
     | "class"
@@ -84,16 +85,24 @@ export interface HandlerInfo {
     binary: boolean;
     // Package-discovered handler or framework tree-sitter registry entry.
     source: "package" | "treesitter";
-    // Normalized package attribution; framework registry entries omit it.
+    // Published per-handler projection; framework registry entries omit it.
     attribution?: string | string[];
 }
 
 export interface Discovery {
     registry: Registry;
     handlers: ReadonlyMap<string, HandlerInfo>;
+    // Optional only for compatibility with pre-attribution programmatic
+    // registries accepted by MimetypesOptions.discovery.
+    packageAttributions?: PackageAttributions;
     // Package names withheld by the shared trust predicate before handler code
     // can be imported. The consumer owns how this evidence is presented.
     skipped: readonly string[];
+}
+
+// Filesystem discovery always supplies the canonical package map.
+export interface DiscoveryResult extends Discovery {
+    packageAttributions: PackageAttributions;
 }
 
 export interface DiscoverOptions {

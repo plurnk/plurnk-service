@@ -1,21 +1,3 @@
-// Issue #37: discover() surfaces plurnk.attribution so mimetype plugins can be
-// attributed (plurnk-service#249).
-// https://github.com/plurnk/plurnk-mimetypes/issues/37
-//
-// Load-bearing claims, restated as testable contracts:
-//
-//   C1. A package declaring `plurnk.attribution: "tag"` surfaces that raw
-//       string on the discovered handler's metadata.
-//   C2. Array form (`["a","b"]`) passes through verbatim, and — being
-//       package-level like `binary` — applies to EVERY handler entry in a
-//       multi-handler package.
-//   C3. A package with no `plurnk.attribution` yields no attribution
-//       (undefined) — the field is absent, not an empty value.
-//   C4. Malformed declarations are treated as absent by the dumb scanner:
-//       empty string, empty array, non-string array elements (filtered), and
-//       non-string/array values (number, object). discover() never throws.
-//   C5. Tree-sitter built-ins (source "treesitter") carry no attribution.
-
 import { after, before, describe, it } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
@@ -34,7 +16,7 @@ async function makePackage(
     return dir;
 }
 
-describe("issue #37 — discover() surfaces plurnk.attribution", () => {
+describe("discover attribution", () => {
     let tmpRoot: string;
 
     before(async () => {
@@ -45,7 +27,7 @@ describe("issue #37 — discover() surfaces plurnk.attribution", () => {
         await fs.rm(tmpRoot, { recursive: true, force: true });
     });
 
-    it("C1: a single-string attribution surfaces verbatim", async () => {
+    it("a single-string attribution surfaces through both representations", async () => {
         const dir = await makePackage(tmpRoot, "c1", {
             name: "@acme/acme-mime-foo",
             plurnk: {
@@ -54,11 +36,12 @@ describe("issue #37 — discover() surfaces plurnk.attribution", () => {
                 handlers: [{ name: "application/x-foo", glyph: "🅰", extensions: [".foo"] }],
             },
         });
-        const { handlers } = await discover({ packageDirs: [dir], includeTreeSitter: false });
+        const { handlers, packageAttributions } = await discover({ packageDirs: [dir], includeTreeSitter: false });
         assert.equal(handlers.get("application/x-foo")?.attribution, "acme");
+        assert.deepEqual(packageAttributions.get("@acme/acme-mime-foo"), ["acme"]);
     });
 
-    it("C2: array attribution passes through and applies to every handler in the package", async () => {
+    it("one canonical package attribution projects onto every published handler descriptor", async () => {
         const dir = await makePackage(tmpRoot, "c2", {
             name: "@acme/acme-mime-multi",
             plurnk: {
@@ -70,12 +53,13 @@ describe("issue #37 — discover() surfaces plurnk.attribution", () => {
                 ],
             },
         });
-        const { handlers } = await discover({ packageDirs: [dir], includeTreeSitter: false });
+        const { handlers, packageAttributions } = await discover({ packageDirs: [dir], includeTreeSitter: false });
         assert.deepEqual(handlers.get("application/x-a")?.attribution, ["acme", "acme-pro"]);
         assert.deepEqual(handlers.get("application/x-b")?.attribution, ["acme", "acme-pro"]);
+        assert.deepEqual([...packageAttributions], [["@acme/acme-mime-multi", ["acme", "acme-pro"]]]);
     });
 
-    it("C3: no attribution declared → undefined", async () => {
+    it("an absent attribution produces no package fact or handler projection", async () => {
         const dir = await makePackage(tmpRoot, "c3", {
             name: "@acme/acme-mime-bare",
             plurnk: {
@@ -83,20 +67,16 @@ describe("issue #37 — discover() surfaces plurnk.attribution", () => {
                 handlers: [{ name: "application/x-bare", glyph: "·", extensions: [".bare"] }],
             },
         });
-        const { handlers } = await discover({ packageDirs: [dir], includeTreeSitter: false });
+        const { handlers, packageAttributions } = await discover({ packageDirs: [dir], includeTreeSitter: false });
         const info = handlers.get("application/x-bare");
         assert.ok(info);
         assert.equal(info.attribution, undefined);
         assert.equal("attribution" in info, false);
+        assert.equal(packageAttributions.size, 0);
     });
 
-    it("C4: malformed attribution is treated as absent, never throws", async () => {
-        const cases: Array<[string, unknown]> = [
-            ["empty-string", ""],
-            ["empty-array", []],
-            ["number", 7],
-            ["object", { tag: "x" }],
-        ];
+    it("a trusted malformed attribution fails whole-package admission", async () => {
+        const cases: Array<[string, unknown]> = [["empty-string", ""], ["number", 7], ["object", { tag: "x" }], ["mixed", ["keep", 1]]];
         for (const [folder, value] of cases) {
             const dir = await makePackage(tmpRoot, `c4-${folder}`, {
                 name: `@acme/acme-mime-${folder}`,
@@ -106,27 +86,47 @@ describe("issue #37 — discover() surfaces plurnk.attribution", () => {
                     handlers: [{ name: `application/x-${folder}`, glyph: "?", extensions: [`.${folder}`] }],
                 },
             });
-            const { handlers } = await discover({ packageDirs: [dir], includeTreeSitter: false });
-            assert.equal(handlers.get(`application/x-${folder}`)?.attribution, undefined, folder);
+            await assert.rejects(
+                discover({ packageDirs: [dir], includeTreeSitter: false }),
+                /plurnk\.attribution must be a non-empty string or string\[\]/,
+                folder,
+            );
         }
 
-        // Non-string array elements are filtered; surviving strings are kept.
-        const mixed = await makePackage(tmpRoot, "c4-mixed", {
-            name: "@acme/acme-mime-mixed",
+        const reserved = await makePackage(tmpRoot, "reserved", {
+            name: "@acme/acme-mime-reserved",
             plurnk: {
                 kind: "mimetype",
-                attribution: ["keep", 1, "", null, "also"],
-                handlers: [{ name: "application/x-mixed", glyph: "M", extensions: [".mixed"] }],
+                attribution: "@plurnk/staff",
+                handlers: [{ name: "application/x-reserved", extensions: [".reserved"] }],
             },
         });
-        const { handlers } = await discover({ packageDirs: [mixed], includeTreeSitter: false });
-        assert.deepEqual(handlers.get("application/x-mixed")?.attribution, ["keep", "also"]);
+        await assert.rejects(discover({ packageDirs: [reserved], includeTreeSitter: false }), /'@plurnk\/' is reserved/);
     });
 
-    it("C5: tree-sitter built-ins carry no attribution", async () => {
-        const { handlers } = await discover({ packageDirs: [] });
+    it("an untrusted malformed attribution is withheld before validation", async () => {
+        const dir = await makePackage(tmpRoot, "untrusted-invalid", {
+            name: "@acme/acme-mime-untrusted",
+            plurnk: {
+                kind: "mimetype",
+                attribution: ["keep", 1],
+                handlers: [{ name: "application/x-untrusted", extensions: [".untrusted"] }],
+            },
+        });
+        const result = await discover({
+            packageDirs: [dir],
+            includeTreeSitter: false,
+            env: { PLURNK_PLUGINS_TRUSTED_ONLY: "1" },
+        });
+        assert.deepEqual(result.skipped, ["@acme/acme-mime-untrusted"]);
+        assert.equal(result.packageAttributions.size, 0);
+    });
+
+    it("tree-sitter built-ins carry no package attribution", async () => {
+        const { handlers, packageAttributions } = await discover({ packageDirs: [] });
         const treesitter = [...handlers.values()].find((h) => h.source === "treesitter");
         assert.ok(treesitter, "expected at least one tree-sitter handler");
         assert.equal(treesitter.attribution, undefined);
+        assert.equal(packageAttributions.size, 0);
     });
 });

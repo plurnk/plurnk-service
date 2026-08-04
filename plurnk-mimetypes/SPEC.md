@@ -93,12 +93,12 @@ Multi-handler example (one package serving variants of the same content type):
 }
 ```
 
-| Field         | Type               | Required | Contract                                                                                                                                                 |
-|---------------|--------------------|----------|----------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `kind`        | `"mimetype"`       | yes      | Selects this plugin family ({§plugin-family-kind}).                                                                                                      |
-| `binary`      | boolean            | no       | `true` when every handler entry consumes `Uint8Array`; default `false`.                                                                                  |
-| `attribution` | string \| string[] | no       | Normalized non-empty creator tags on each package-sourced `HandlerInfo`; the family does not interpret them and framework tree-sitter entries omit them. |
-| `handlers`    | `HandlerDecl[]`    | yes      | One or more peer handler entries.                                                                                                                        |
+| Field         | Type               | Required | Contract                                                                                                                                                             |
+|---------------|--------------------|----------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `kind`        | `"mimetype"`       | yes      | Selects this plugin family ({§plugin-family-kind}).                                                                                                                  |
+| `binary`      | boolean            | no       | `true` when every handler entry consumes `Uint8Array`; default `false`.                                                                                              |
+| `attribution` | string \| string[] | no       | Package declaration normalized once into `Discovery.packageAttributions`; `HandlerInfo.attribution` is its published per-handler projection ({§plugin-attribution}). |
+| `handlers`    | `HandlerDecl[]`    | yes      | One or more peer handler entries.                                                                                                                                    |
 
 The containing `package.json` `name` must be a valid current npm package name.
 
@@ -127,7 +127,8 @@ flowchart TD
     P -->|no| F["throw MimetypePluginError"]
     P -->|yes| T{"trusted?"}
     T -->|no| S["record package in skipped"]
-    T -->|yes| D{"valid handler declaration?"}
+    T -->|yes| A["normalize package attribution"]
+    A --> D{"valid handler declaration?"}
     D -->|no| F
     D -->|yes| G["register entries; later claims win"]
     G --> B["add unclaimed tree-sitter entries/keys"]
@@ -137,6 +138,11 @@ The trust predicate runs before handler code import and withheld package names
 remain observable in `skipped` ({§plugin-trust-boundary}). A package claim for a
 tree-sitter mimetype suppresses that built-in entry; otherwise the built-in
 entry fills only unclaimed extension/filename keys.
+
+`Discovery.packageAttributions` contains one canonical fact for each package
+represented by at least one final package-sourced handler. A package whose
+handlers are all replaced by the family's later-claim collision rule contributes
+no discovery attribution; tree-sitter framework entries never contribute one.
 
 §mimetype-plugin-failure A missing manifest or package outside the mimetype
 family is ignored, and a withheld package is reported without importing its

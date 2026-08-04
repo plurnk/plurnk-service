@@ -68,7 +68,7 @@ test("discover: documentation is sourced from docs/<tag>.md, inline field as fal
     assert.equal(registry.get("bc")?.documentation, "", "neither file nor inline → empty");
 });
 
-test("discover: surfaces raw plurnk.attribution (string | string[]) on each tag (#11)", async () => {
+test("discover: normalizes attribution once per package and preserves the published tag projection", async () => {
     const strDir = await makePkg({
         name: "@acme/acme-execs-multi",
         plurnk: { kind: "exec", attribution: "acme-multi", runtimes: [{ name: "alpha" }, { name: "beta" }] },
@@ -81,12 +81,46 @@ test("discover: surfaces raw plurnk.attribution (string | string[]) on each tag 
         name: "@acme/acme-execs-bare",
         plurnk: { kind: "exec", runtimes: [{ name: "bare" }] },
     });
-    const { registry } = await Discover.scan({ packageDirs: [strDir, arrDir, noneDir] });
+    const { registry, packageAttributions } = await Discover.scan({ packageDirs: [strDir, arrDir, noneDir] });
     assert.equal(registry.get("alpha")?.attribution, "acme-multi", "string attribution rides every tag of the package");
     assert.equal(registry.get("beta")?.attribution, "acme-multi");
-    assert.deepEqual(registry.get("foo")?.attribution, ["acme", "foo"], "array surfaced raw");
+    assert.deepEqual(registry.get("foo")?.attribution, ["acme", "foo"], "array compatibility projection is preserved");
     assert.equal(registry.get("bare")?.attribution, undefined, "absent → undefined");
     assert.ok(!("attribution" in (registry.get("bare") as object)), "no attribution key when omitted");
+    assert.deepEqual(
+        [...packageAttributions],
+        [
+            ["@acme/acme-execs-multi", ["acme-multi"]],
+            ["@acme/acme-execs-foo", ["acme", "foo"]],
+        ],
+        "a multi-tag package contributes one canonical package fact",
+    );
+});
+
+test("discover: validates trusted attribution before admission, but never validates a withheld package", async () => {
+    const invalid = await makePkg({
+        name: "@acme/acme-execs-invalid",
+        plurnk: { kind: "exec", attribution: ["valid", 42], runtimes: [{ name: "invalid" }] },
+    });
+    await assert.rejects(
+        Discover.scan({ packageDirs: [invalid] }),
+        /plugin '@acme\/acme-execs-invalid': plurnk\.attribution must be a non-empty string or string\[\]/,
+    );
+
+    const reserved = await makePkg({
+        name: "@acme/acme-execs-reserved-credit",
+        plurnk: { kind: "exec", attribution: "@plurnk/staff", runtimes: [{ name: "reserved-credit" }] },
+    });
+    await assert.rejects(
+        Discover.scan({ packageDirs: [reserved] }),
+        /'@plurnk\/' is reserved/,
+    );
+
+    await withGate("1", async () => {
+        const result = await Discover.scan({ packageDirs: [invalid] });
+        assert.deepEqual(result.skipped, ["@acme/acme-execs-invalid"]);
+        assert.equal(result.packageAttributions.size, 0);
+    });
 });
 
 test("discover: an array kind claims no exec family", async () => {

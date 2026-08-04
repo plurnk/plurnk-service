@@ -3,6 +3,8 @@
 //   - declaresKind:      the ONE package → capability-family representation.
 //   - isTrusted:          THE trust rule. One implementation; a second definition
 //                         of membership trust anywhere in the family is a bug.
+//   - normalizeAttribution:
+//                         one package declaration → one validated tag list.
 //   - packageDirs:        scope-agnostic, symlink-aware enumeration of the Node
 //                         resolution chain. Nearest package wins when npm splits
 //                         a deployment across nested node_modules directories.
@@ -26,6 +28,15 @@ export interface PackageCandidate {
 
 export type PluginKind = "exec" | "mimetype" | "provider" | "scheme";
 
+// Authored package.json shape retained only where a published family descriptor
+// requires that projection. Discovery and consumers exchange PluginAttribution.
+export type PluginAttributionDeclaration = string | string[];
+export type PluginAttribution = readonly string[];
+export type PackageAttributions = ReadonlyMap<string, PluginAttribution>;
+
+const RESERVED_ATTRIBUTION_PREFIX = "@plurnk/";
+const EMPTY_ATTRIBUTION: PluginAttribution = Object.freeze([] as string[]);
+
 export default class Meta {
     static declaresKind(manifest: unknown, kind: PluginKind): boolean {
         if (typeof manifest !== "object" || manifest === null) return false;
@@ -40,6 +51,25 @@ export default class Meta {
         if (value === "" || value === "0") return true;
         if (packageName.startsWith("@plurnk/")) return true;
         return value.split(",").map((s) => s.trim()).includes(packageName);
+    }
+
+    static normalizeAttribution(raw: unknown, packageName: string): PluginAttribution {
+        if (raw === undefined || raw === null) return EMPTY_ATTRIBUTION;
+        const values = Array.isArray(raw) ? raw : [raw];
+        const firstParty = packageName.startsWith(RESERVED_ATTRIBUTION_PREFIX);
+        const tags = values.map((value) => {
+            if (typeof value !== "string" || value.length === 0) {
+                throw new Error(`plugin '${packageName}': plurnk.attribution must be a non-empty string or string[]`);
+            }
+            if (value.startsWith(RESERVED_ATTRIBUTION_PREFIX) && !firstParty) {
+                throw new Error(
+                    `plugin '${packageName}': '${RESERVED_ATTRIBUTION_PREFIX}' is reserved for `
+                    + `${RESERVED_ATTRIBUTION_PREFIX}-scoped packages — '${packageName}' cannot claim '${value}'`,
+                );
+            }
+            return value;
+        });
+        return Object.freeze(tags);
     }
 
     static async #packageDirsOne(nodeModulesDir: string): Promise<PackageCandidate[]> {

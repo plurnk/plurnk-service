@@ -19,6 +19,7 @@ import type {
     DetectInput,
     DiscoverOptions,
     Discovery,
+    DiscoveryResult,
     HandlerInfo,
     HandlerMetadata,
     MimeRef,
@@ -129,7 +130,7 @@ export default class Mimetypes {
     readonly #handlerInstances = new Map<string, BaseHandler>();
     readonly #embeddings: Embeddings;
     readonly #tokenizers: Tokenizers;
-    #discovery: Discovery | null = null;
+    #discovery: DiscoveryResult | null = null;
     #readyPromise: Promise<void> | null = null;
 
     constructor(options: MimetypesOptions = {}) {
@@ -138,7 +139,12 @@ export default class Mimetypes {
         this.#defaultMimetype = options.defaultMimetype ?? null;
         this.#embeddings = new Embeddings(this.#loader);
         this.#tokenizers = new Tokenizers(this.#loader);
-        if (options.discovery !== undefined) this.#discovery = options.discovery;
+        if (options.discovery !== undefined) {
+            this.#discovery = {
+                ...options.discovery,
+                packageAttributions: options.discovery.packageAttributions ?? new Map(),
+            };
+        }
     }
 
     // Eagerly run discovery. Safe to call multiple times — subsequent calls

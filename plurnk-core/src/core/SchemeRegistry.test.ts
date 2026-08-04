@@ -1,7 +1,8 @@
-import test from "node:test";
+import test, { type TestContext } from "node:test";
 import assert from "node:assert/strict";
 import SchemeRegistry from "./SchemeRegistry.ts";
 import type { SchemeManifest } from "./scheme-types.ts";
+import { SchemeDiscovery } from "@plurnk/plurnk-schemes";
 
 const manifest = (name: string): SchemeManifest => ({
     name,
@@ -27,6 +28,20 @@ test("SchemeRegistry.discoverExternal registers the http sibling (#195)", async 
     await registry.discoverExternal();
 
     assert.equal(registry.has("http"), true, "the external http sibling is discovered + registered");
+});
+
+test("SchemeRegistry consumes one discovered package attribution without reopening its manifest", async (t: TestContext) => {
+    t.mock.method(SchemeDiscovery, "discover", async () => ({
+        schemes: [{ name: "http", packageName: "@plurnk/plurnk-schemes-http" }],
+        skipped: [],
+        packageAttributions: new Map([["@plurnk/plurnk-schemes-http", ["@plurnk/http"]]]),
+    }));
+    const registry = new SchemeRegistry();
+
+    await registry.discoverExternal();
+    await registry.discoverExternal();
+
+    assert.deepEqual(registry.attributions(), ["@plurnk/http"], "idempotent scans retain one package fact");
 });
 
 // #240 — the built-in scheme names are reserved namespace-wide; a discovered executor

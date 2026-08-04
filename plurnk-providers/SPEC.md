@@ -209,9 +209,10 @@ belongs in MCP, schemes, executors, or mimetypes instead.
 A provider plugin:
 
 1. declares the exact string `plurnk: { kind: "provider", name }` in `package.json` ({§plugin-family-kind});
-2. may use any npm scope;
-3. default-exports an AI SDK provider with `languageModel(modelId)`;
-4. peers on compatible `ai` and `@plurnk/plurnk-providers` majors.
+2. may declare package-level `plurnk.attribution` under {§plugin-attribution};
+3. may use any npm scope;
+4. default-exports an AI SDK provider with `languageModel(modelId)`;
+5. peers on compatible `ai` and `@plurnk/plurnk-providers` majors.
 
 PLURNK adapts the returned language model. The plugin does not implement the
 PLURNK `Provider`, read PLURNK tuning knobs, or reproduce transport policy.
@@ -219,7 +220,8 @@ PLURNK `Provider`, read PLURNK tuning knobs, or reproduce transport policy.
 Discovery is scope-agnostic and memoized per process. Duplicate names fail hard.
 The common plugin trust gate applies before import ({§plugin-trust-boundary}). A plugin absent from
 Models.dev requires an explicit context-window pin because PLURNK will not guess
-model physics.
+model physics. `Discovery.packageAttributions` carries the canonical package map;
+the published name-keyed `Discovery.attributions` remains its 1.x projection.
 
 ## §7 Local capabilities
 

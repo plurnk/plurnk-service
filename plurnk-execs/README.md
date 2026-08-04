@@ -92,7 +92,9 @@ produce channels; the consumer owns storage and every later READ/FIND. See
 
 `discover(options?)` scans scoped and unscoped packages under the nearest
 `node_modules`, applies trust before executable hooks, applies boot policy, and
-returns `{ registry, skipped, disabled }`. Tag collisions fail hard.
+returns `{ registry, packageAttributions, skipped, disabled }`. Tag collisions
+fail hard. Attribution is normalized once per admitted package
+({§plugin-attribution}).
 
 | Policy                              | Result                                        |
 | ----------------------------------- | --------------------------------------------- |

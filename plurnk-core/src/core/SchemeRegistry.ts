@@ -9,7 +9,6 @@ import type { LoopFlags } from "./types.ts";
 import { Manifest, SchemeDiscovery, type SchemeHandler } from "@plurnk/plurnk-schemes";
 import type { PacketSection } from "./packet-wire.ts";
 import type { PacketSectionTransformer, SchemeManifest } from "./scheme-types.ts";
-import PluginAttribution from "./plugin-attribution.ts";
 import ExecOutputScheme from "../schemes/ExecOutputScheme.ts";
 import type ExecutorRegistry from "./ExecutorRegistry.ts";
 import type { Executor } from "./ExecutorRegistry.ts";
@@ -19,6 +18,7 @@ import Paths from "../Paths.ts";
 import { docsExcludeSet } from "./teaching.ts";
 import type { CoreSchemeAdapter, CoreSchemeServices } from "./CoreSchemeServices.ts";
 import type { RuntimeSchemeFacet } from "../server/DaemonModule.ts";
+import type { PluginAttribution } from "@plurnk/plurnk-meta";
 
 // Core-owned scheme depth may live in the metaproject teaching corpus
 // ({§teaching-corpus}, Paths.schemeDocs), loaded once at module evaluation. docs() prefers that
@@ -39,7 +39,7 @@ export default class SchemeRegistry {
     #readiness = new Map<object, Promise<void>>();
     #closures = new Map<object, Promise<void>>();
     #coreServices: CoreSchemeServices | undefined;
-    #attributions: string[] = []; // #249 — declared attribution tags of discovered external schemes
+    #packageAttributions = new Map<string, PluginAttribution>();
     // {§exec} — runtime-tag schemes (sh/node/…) that ALIAS the exec handler for output-entry
     // addressing (sh:///l/t/s). Routable via get(), but NOT separately taught or doc-materialized
     // (exec is taught once); else the catalog + docs bloat by one redundant line/entry per tag.
@@ -225,7 +225,7 @@ export default class SchemeRegistry {
     // The service keeps only consumer policy: in-tree precedence (a name a built-in owns
     // is left as-is) and importing + registering the trusted descriptors.
     async discoverExternal(cwd: string = process.cwd()): Promise<void> {
-        const { schemes, skipped } = await SchemeDiscovery.discover({ cwd });
+        const { schemes, packageAttributions, skipped } = await SchemeDiscovery.discover({ cwd });
         for (const name of skipped) {
             console.warn(`scheme discovery: '${name}' is discovered but untrusted (PLURNK_PLUGINS_TRUSTED_ONLY); not registered`);
         }
@@ -239,13 +239,13 @@ export default class SchemeRegistry {
             const Handler = mod[exportName ?? "default"];
             if (typeof Handler !== "function") throw new Error(`external scheme '${name}' (${packageName}): export '${exportName ?? "default"}' is not a constructor — boot fail-hard (#473)`);
             this.register(name, new Handler());
-            this.#attributions.push(...PluginAttribution.read(packageName)); // #249 — fail-hard if it claims @plurnk/
+            const attribution = packageAttributions.get(packageName);
+            if (attribution !== undefined) this.#packageAttributions.set(packageName, attribution);
         }
     }
 
-    // #249 — declared attribution tags of the discovered external schemes (opaque; the
-    // engine unions these across plugin families onto the generate() `attributions` wire).
-    attributions(): string[] { return [...this.#attributions]; }
+    // {§attribution-discovery-placeholder}
+    attributions(): string[] { return [...this.#packageAttributions.values()].flat(); }
 
     // Active set under the given loop flags (SPEC {§engine-rails}). Delegates to
     // the in-tree ResolveForLoop utility.

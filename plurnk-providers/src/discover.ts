@@ -1,6 +1,11 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import Meta from "@plurnk/plurnk-meta";
+import type {
+    PackageAttributions,
+    PluginAttribution,
+    PluginAttributionDeclaration,
+} from "@plurnk/plurnk-meta";
 
 // Scope-agnostic discovery of installed AI SDK provider packages (SPEC §5).
 // Parallel to @plurnk/plurnk-execs' discover(): scan every installed package
@@ -31,12 +36,9 @@ export type DiscoverOptions = {
 export type Discovery = {
     registry: Map<string, string>; // trusted providers, eligible to instantiate
     skipped: Map<string, string>;  // declined by the trust gate (untrusted)
-    // name → raw `plurnk.attribution` (string | string[]) declared by a registered
-    // provider package's manifest, for crediting the provider's author (#21,
-    // plurnk-service#249). Surfaced verbatim — the consumer applies the reservation
-    // policy (`@plurnk/` tags only from `@plurnk/`-scoped packages). Absent for
-    // providers that declare none.
+    // Published name-keyed projection retained for 1.x consumers.
     attributions: Map<string, string | string[]>;
+    packageAttributions: PackageAttributions;
 };
 
 
@@ -46,7 +48,8 @@ export const discover = async (options: DiscoverOptions = {}): Promise<Discovery
 
     const registry = new Map<string, string>();
     const skipped = new Map<string, string>();
-    const attributions = new Map<string, string | string[]>();
+    const attributions = new Map<string, PluginAttributionDeclaration>();
+    const packageAttributions = new Map<string, PluginAttribution>();
     for (const dir of dirs) {
         const info = await readProviderInfo(dir);
         if (info === null) continue;
@@ -61,10 +64,13 @@ export const discover = async (options: DiscoverOptions = {}): Promise<Discovery
                 + `${existing} and ${info.packageName}`,
             );
         }
+        const tags = Meta.normalizeAttribution(info.attribution, info.packageName);
         registry.set(info.name, info.packageName);
-        if (info.attribution !== undefined) attributions.set(info.name, info.attribution);
+        const attribution = attributionProjection(info.attribution, tags);
+        if (attribution !== undefined) attributions.set(info.name, attribution);
+        if (tags.length > 0) packageAttributions.set(info.packageName, tags);
     }
-    return { registry, skipped, attributions };
+    return { registry, skipped, attributions, packageAttributions };
 };
 
 // Enumerate every installed package directory — scoped and unscoped — under
@@ -74,11 +80,10 @@ const defaultPackageDirs = async (cwd: string): Promise<string[]> => {
     return (await Meta.packageDirs(nm)).map((c) => c.dir).toSorted();
 };
 
-// One { name, packageName, attribution? } for a provider package, or null for
-// anything that isn't one (missing/invalid package.json, no plurnk block, wrong
-// kind, no name). `attribution` mirrors `plurnk.attribution` when it's a string
-// or string[] (anything else is ignored).
-type ProviderInfo = { name: string; packageName: string; attribution?: string | string[] };
+// One inert manifest record for a provider package, or null for anything that
+// isn't one. Attribution remains unknown until trust admission, then the shared
+// {§plugin-attribution} boundary validates it.
+type ProviderInfo = { name: string; packageName: string; attribution: unknown };
 
 const readProviderInfo = async (dir: string): Promise<ProviderInfo | null> => {
     let raw: string;
@@ -101,9 +106,13 @@ const readProviderInfo = async (dir: string): Promise<ProviderInfo | null> => {
     if (!Meta.declaresKind(plurnkRec, "provider")) return null;
     if (typeof plurnkRec.name !== "string" || plurnkRec.name === "") return null;
     if (typeof record.name !== "string" || record.name === "") return null;
-    const attr = plurnkRec.attribution;
-    const attribution = typeof attr === "string" ? attr
-        : Array.isArray(attr) && attr.every((x) => typeof x === "string") ? (attr as string[])
-        : undefined;
-    return { name: plurnkRec.name, packageName: record.name, attribution };
+    return { name: plurnkRec.name, packageName: record.name, attribution: plurnkRec.attribution };
+};
+
+const attributionProjection = (
+    raw: unknown,
+    tags: PluginAttribution,
+): PluginAttributionDeclaration | undefined => {
+    if (raw === undefined || raw === null) return undefined;
+    return typeof raw === "string" ? raw : [...tags];
 };

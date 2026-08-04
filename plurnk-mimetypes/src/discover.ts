@@ -1,10 +1,14 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import Meta from "@plurnk/plurnk-meta";
+import type {
+    PluginAttribution,
+    PluginAttributionDeclaration,
+} from "@plurnk/plurnk-meta";
 import MimetypePluginError from "./MimetypePluginError.ts";
 import { TREE_SITTER_REGISTRY } from "./treesitter/registry.ts";
 import type {
-    Discovery,
+    DiscoveryResult,
     DiscoverOptions,
     HandlerInfo,
     Registry,
@@ -28,7 +32,7 @@ import type {
 // last-loaded wins, and `@plurnk` is scanned LAST so a first-party (floor)
 // handler wins a collision — a third party can ADD a new mimetype but cannot
 // silently shadow a floor handler by claiming its name.
-export async function discover(options: DiscoverOptions = {}): Promise<Discovery> {
+export async function discover(options: DiscoverOptions = {}): Promise<DiscoveryResult> {
     const dirs = options.packageDirs ?? await defaultPackageDirs(options.cwd ?? process.cwd());
     const env = options.env ?? process.env;
     const isTrusted = (name: string): boolean => Meta.isTrusted(name, env);
@@ -36,6 +40,7 @@ export async function discover(options: DiscoverOptions = {}): Promise<Discovery
     const byExtension = new Map<string, string>();
     const byFilename = new Map<string, string>();
     const handlers = new Map<string, HandlerInfo>();
+    const discoveredAttributions = new Map<string, PluginAttribution>();
     const skipped = new Set<string>();
 
     for (const dir of dirs) {
@@ -45,7 +50,10 @@ export async function discover(options: DiscoverOptions = {}): Promise<Discovery
             skipped.add(manifest.packageName);
             continue;
         }
-        const infos = readHandlerInfos(manifest);
+        const tags = Meta.normalizeAttribution(manifest.plurnk.attribution, manifest.packageName);
+        const attribution = attributionProjection(manifest.plurnk.attribution, tags);
+        const infos = readHandlerInfos(manifest, attribution);
+        if (tags.length > 0) discoveredAttributions.set(manifest.packageName, tags);
         for (const info of infos) {
             handlers.set(info.mimetype, info);
             for (const entry of info.extensions) {
@@ -65,7 +73,12 @@ export async function discover(options: DiscoverOptions = {}): Promise<Discovery
     // a clean baseline. Production code never disables this.
     if (options.includeTreeSitter === false) {
         const registry: Registry = { byExtension, byFilename };
-        return { registry, handlers, skipped: [...skipped].sort() };
+        return {
+            registry,
+            handlers,
+            packageAttributions: survivingPackageAttributions(handlers, discoveredAttributions),
+            skipped: [...skipped].sort(),
+        };
     }
 
     for (const entry of TREE_SITTER_REGISTRY) {
@@ -91,7 +104,22 @@ export async function discover(options: DiscoverOptions = {}): Promise<Discovery
     }
 
     const registry: Registry = { byExtension, byFilename };
-    return { registry, handlers, skipped: [...skipped].sort() };
+    return {
+        registry,
+        handlers,
+        packageAttributions: survivingPackageAttributions(handlers, discoveredAttributions),
+        skipped: [...skipped].sort(),
+    };
+}
+
+function survivingPackageAttributions(
+    handlers: ReadonlyMap<string, HandlerInfo>,
+    discovered: ReadonlyMap<string, PluginAttribution>,
+): ReadonlyMap<string, PluginAttribution> {
+    const surviving = new Set([...handlers.values()]
+        .filter((handler) => handler.source === "package")
+        .map((handler) => handler.packageName));
+    return new Map([...discovered].filter(([packageName]) => surviving.has(packageName)));
 }
 
 // Enumerate every installed package directory under `<cwd>/node_modules` —
@@ -160,7 +188,10 @@ async function readMimetypeManifest(dir: string): Promise<MimetypeManifest | nul
 }
 
 // Produce one HandlerInfo per valid entry from one trusted family claim.
-function readHandlerInfos(manifest: MimetypeManifest): HandlerInfo[] {
+function readHandlerInfos(
+    manifest: MimetypeManifest,
+    attribution: PluginAttributionDeclaration | undefined,
+): HandlerInfo[] {
     const { manifestPath, packageName, plurnk } = manifest;
     const fail = (reason: string, mimetype?: string): never => {
         throw new MimetypePluginError({
@@ -180,9 +211,6 @@ function readHandlerInfos(manifest: MimetypeManifest): HandlerInfo[] {
     }
     // Package-level `binary: true` applies to every handler in the package.
     const binary = plurnk.binary === true;
-    // Normalized package-level attribution is copied to every handler; the host owns policy.
-    const attribution = normalizeAttribution(plurnk.attribution);
-
     return entries.map((entry, index) => {
         if (typeof entry !== "object" || entry === null) {
             fail(`plurnk.handlers entry ${index} must be an object`);
@@ -216,12 +244,10 @@ function readHandlerInfos(manifest: MimetypeManifest): HandlerInfo[] {
     });
 }
 
-// Normalize the pass-through shape without imposing host attribution policy.
-function normalizeAttribution(raw: unknown): string | string[] | undefined {
-    if (typeof raw === "string") return raw === "" ? undefined : raw;
-    if (Array.isArray(raw)) {
-        const tags = raw.filter((t): t is string => typeof t === "string" && t !== "");
-        return tags.length > 0 ? tags : undefined;
-    }
-    return undefined;
+function attributionProjection(
+    raw: unknown,
+    tags: PluginAttribution,
+): PluginAttributionDeclaration | undefined {
+    if (tags.length === 0) return undefined;
+    return typeof raw === "string" ? raw : [...tags];
 }

@@ -6,6 +6,7 @@
 // The framework surface is `BaseExecutor.run()` + `discover()`.
 
 import type { SchemeResult } from "@plurnk/plurnk-schemes";
+import type { PackageAttributions } from "@plurnk/plurnk-meta";
 import type { Notice } from "./Notice.ts";
 
 // Channel lifecycle state. Mirrors plurnk-service's per-channel state machine:
@@ -121,12 +122,8 @@ export interface ExecInfo {
     // consumer's concern, not specified by the contract.
     documentation: string;
     packageName: string;
-    // Raw `plurnk.attribution` (string | string[]) from the package's manifest —
-    // the credit a consumer unions onto the model call when this package's tags
-    // are active ({§executor-runtime-declaration}). Package-level: every tag of
-    // a package carries the same value. `undefined` when omitted. Surfaced
-    // raw — the consumer owns the reservation policy (e.g. `@plurnk/`-scoped
-    // attribution only from `@plurnk/` packages).
+    // Published per-tag projection of the package-level attribution declaration.
+    // Discovery validates it through {§plugin-attribution} before admission.
     attribution?: string | string[];
 }
 
@@ -153,6 +150,8 @@ export type ExecRegistry = ReadonlyMap<string, ExecInfo>;
 
 export interface Discovery {
     registry: ExecRegistry;
+    // Canonical package-level attribution; a multi-tag package appears once.
+    packageAttributions: PackageAttributions;
     // Installed exec packages skipped by the PLURNK_PLUGINS_TRUSTED_ONLY trust
     // gate (untrusted third-party): discovered but NOT registered. discover()
     // never crashes on an untrusted package — it returns them here so the

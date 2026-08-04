@@ -303,6 +303,27 @@ describe("discover", () => {
         assert.equal(info?.glyph, "B");
     });
 
+    it("attributes only packages represented by a surviving handler", async () => {
+        const dirA = await makePackage(tmpRoot, "pkg-attribution-conflict-a", {
+            name: "@acme/mime-a",
+            plurnk: {
+                kind: "mimetype",
+                attribution: "@acme/a",
+                handlers: [{ name: "text/attribution-conflict", extensions: [".credit"] }],
+            },
+        });
+        const dirB = await makePackage(tmpRoot, "pkg-attribution-conflict-b", {
+            name: "@acme/mime-b",
+            plurnk: {
+                kind: "mimetype",
+                attribution: "@acme/b",
+                handlers: [{ name: "text/attribution-conflict", extensions: [".credit"] }],
+            },
+        });
+        const result = await discover({ packageDirs: [dirA, dirB], includeTreeSitter: false });
+        assert.deepEqual([...result.packageAttributions], [["@acme/mime-b", ["@acme/b"]]]);
+    });
+
     it("defaults glyph to empty string when not declared in a handler entry", async () => {
         const dir = await makePackage(tmpRoot, "pkg-noglyph", {
             name: "@plurnk/plurnk-mimetypes-noglyph",

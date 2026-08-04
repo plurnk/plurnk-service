@@ -606,7 +606,8 @@ without fabricating an assistant.
 
 ### §attribution First-party plugin attribution
 
-A plugin declares an opaque attribution tag in its `package.json` so the creators behind it can be credited when the plugin is active:
+A plugin declares opaque attribution tags in its `package.json` under the
+shared discovery contract {§plugin-attribution}:
 
 ```
 { "plurnk": { "attribution": "@acme/widgets" } }   // a string, or string[]
@@ -617,12 +618,11 @@ tags of every discovered external scheme and executor package onto
 `generate({ attributions })`, deduped and sorted; an empty set is omitted. This
 is registry membership, not evidence that a capability contributed to the
 turn. Mimetype and provider declarations are not collected. #81 owns replacing
-this placeholder with grounded value-flow attribution. The service otherwise
-treats each tag as opaque.
+this placeholder with grounded value-flow attribution. The service consumes
+the family-owned package maps without reopening manifests and otherwise treats
+each tag as opaque.
 
 §strikes-first-party-metadata The loop's **current strike streak** rides `generate({ strikes })` the same way — first-party outbound metadata (`Plurnk-Strikes` under the `firstPartyMetadata` gate, providers 0.30, #313): the hosted router's escalation signal (route-after-strike). The shape is a bare number — the streak at generate-time, the same figure the 500-threshold compares; a clean turn zeroes it, every loop starts at 0, and `0` is sent explicitly (clean ≠ unreported). It is NEVER model-facing ({§rail-accounting-private}) — headers only, the packet never carries it.
-
-§attribution-plurnk-namespace-reserved **The `@plurnk/` namespace is reserved.** A package may declare an `@plurnk/` tag only if it is itself `@plurnk/`-scoped (npm enforces scope ownership at publish); otherwise it fails hard.
 
 §client-metadata **The workspace's `client` id rides the same wire.** A frontend self-identifies (e.g. `plurnk.nvim/1.4.0`) at `workspace.create({ settings: { client } })`; the engine forwards it per turn on `generate({ client })`, which only the `plurnk` provider emits (as `Plurnk-Client`). Workspace-stable and self-reported — distinct from attribution's install-grounded tags — and omitted when unset.
 

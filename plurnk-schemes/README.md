@@ -98,7 +98,7 @@ That's the whole contract: declare, `implements SchemeHandler`, manifest with se
 - `PathMimetype.resolve(pathname, default, mimetypes)` — path-extension mimetype resolver.
 - `Matcher.matchAgainstContent(body, content, mimetype, mimetypes)` - boolean resource selection over `Mimetypes.query` (glob/regex/jsonpath/xpath), returning locator/exact-region `MatchEvidence`.
 - `Results.problem` / `.failure` / `.assert` / `.assertReadResult` / `.assertMatchEvidenceList` / `.attachInstance` / `.isEntry` / `.isProposal` / `.isPassthrough` / `.isErrorStatus` - RFC 9457 result builders, validators, durable-occurrence attachment, and guards.
-- `SchemeDiscovery.discover({ cwd? })` — scope-agnostic `node_modules` scan for `plurnk.kind:"scheme"` packages (trust-gated, fail-hard on prefix collision); returns descriptors for the consumer to register (SPEC §6).
+- `SchemeDiscovery.discover({ cwd? })` — scope-agnostic `node_modules` scan for `plurnk.kind:"scheme"` packages (trust-gated, fail-hard on prefix collision); returns descriptors plus one normalized attribution fact per admitted package (SPEC §6, {§plugin-attribution}).
 
 `SchemeCtx` is the stable semantic API for trusted in-process schemes, not a
 sandbox. The consumer injects its implementation; database layout and private

@@ -1,6 +1,6 @@
 import { discover } from "@plurnk/plurnk-execs";
 import type { ChannelDecl, ExecArgs, ExecResult, Effect, RuntimeAvailability, ExecutorMetadata } from "@plurnk/plurnk-execs";
-import PluginAttribution from "./plugin-attribution.ts";
+import type { PackageAttributions } from "@plurnk/plurnk-meta";
 import type { SchemeManifest } from "./types.ts";
 
 // The executor contract surface we consume (a BaseExecutor subclass). We bind
@@ -46,7 +46,7 @@ export interface RegistryEntry {
 // plurnk-service#181, #185.
 export default class ExecutorRegistry {
     readonly #byTag: Map<string, RegistryEntry>;   // own copy — runtime-registration (#289) mutates it in place
-    readonly #attributions: readonly string[]; // #249 — declared attribution tags of discovered exec packages
+    readonly #attributions: readonly string[]; // {§attribution-discovery-placeholder}
 
     constructor(byTag: ReadonlyMap<string, RegistryEntry>, attributions: readonly string[] = []) {
         this.#byTag = new Map(byTag);
@@ -63,18 +63,24 @@ export default class ExecutorRegistry {
         this.#byTag.set(tag, entry);
     }
 
-    // #249 — declared attribution tags of the discovered exec packages (opaque; the engine
-    // unions these across plugin families onto the generate() `attributions` wire).
     attributions(): string[] { return [...this.#attributions]; }
 
     static async build({ defaultRuntime = null, probeTimeoutMs = 3000, cwd, discoverFn, load = (name: string): Promise<unknown> => import(name) }: {
         defaultRuntime?: string | null;
         probeTimeoutMs?: number;
         cwd?: string;   // discovery root — the dir whose node_modules holds the exec plugins
-        discoverFn?: () => Promise<{ registry: ReadonlyMap<string, { runtime: string; glyph: string; example?: string; documentation?: string; packageName: string }>; skipped?: string[] }>;
+        discoverFn?: () => Promise<{
+            registry: ReadonlyMap<string, { runtime: string; glyph: string; example?: string; documentation?: string; packageName: string }>;
+            packageAttributions?: PackageAttributions;
+            skipped?: string[];
+        }>;
         load?: (name: string) => Promise<unknown>;
     } = {}): Promise<ExecutorRegistry> {
-        const { registry: discovered, skipped = [] } = await (discoverFn ?? (() => discover({ cwd })))();
+        const {
+            registry: discovered,
+            packageAttributions = new Map(),
+            skipped = [],
+        } = await (discoverFn ?? (() => discover({ cwd })))();
 
         // #229 trust gate: discover() skips untrusted third-party packages
         // (PLURNK_PLUGINS_TRUSTED_ONLY) and reports them here — note each, mirror
@@ -113,10 +119,11 @@ export default class ExecutorRegistry {
         }
 
         ExecutorRegistry.#assertDefaultUsable(byTag, defaultRuntime);
-        // #249 — collect attribution per DISTINCT package (a multi-tag package — -common's
-        // sh/perl/ruby — shares one manifest); fail-hard if any claims the reserved @plurnk/.
+        // The family scanner supplies one already-admitted package fact. Core's
+        // Git ceiling may remove a package's last tag, so collect only packages
+        // still represented here ({§attribution-discovery-placeholder}).
         const packages = new Set(infos.map((info) => info.packageName));
-        const attributions = [...packages].flatMap((pkg) => PluginAttribution.read(pkg));
+        const attributions = [...packages].flatMap((pkg) => packageAttributions.get(pkg) ?? []);
         return new ExecutorRegistry(byTag, attributions);
     }
 

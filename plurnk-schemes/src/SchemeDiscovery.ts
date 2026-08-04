@@ -1,6 +1,11 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import Meta from "@plurnk/plurnk-meta";
+import type {
+    PackageAttributions,
+    PluginAttribution,
+    PluginAttributionDeclaration,
+} from "@plurnk/plurnk-meta";
 
 // Scope-agnostic discovery of installed scheme-handler packages — the schemes
 // family's parallel to plurnk-execs' discover() / plurnk-mimetypes' discover()
@@ -34,16 +39,14 @@ export interface SchemeInfo {
     // names one export per scheme, so a package may own several names — one class
     // per name, one NAME still one owner (#473).
     readonly exportName?: string;
-    // Raw `plurnk.attribution` — the human/org credit a scheme package declares
-    // for itself (a name, a handle, a list of contributors). Passed through
-    // verbatim (string | string[] | undefined): this package neither validates
-    // nor normalizes it; the @plurnk/-tags-only-from-@plurnk/-packages
-    // reservation policy is the consumer's to enforce (plurnk-service#26).
+    // Published per-scheme projection of the package declaration. Discovery
+    // validates it through {§plugin-attribution} before admission.
     readonly attribution?: string | readonly string[];
 }
 
 export interface SchemeDiscoveryResult {
     readonly schemes: ReadonlyArray<SchemeInfo>;
+    readonly packageAttributions: PackageAttributions;
     readonly skipped: ReadonlyArray<string>; // untrusted third-party packages
 }
 
@@ -53,21 +56,31 @@ export interface DiscoverOptions {
     readonly signal?: AbortSignal;
 }
 
+interface SchemePackage {
+    readonly packageName: string;
+    readonly plurnk: Record<string, unknown>;
+}
+
 export default class SchemeDiscovery {
     static async discover(options: DiscoverOptions = {}): Promise<SchemeDiscoveryResult> {
         const { signal } = options;
         const dirs = options.packageDirs ?? await SchemeDiscovery.#defaultPackageDirs(options.cwd ?? process.cwd(), signal);
         const byName = new Map<string, SchemeInfo>();
+        const packageAttributions = new Map<string, PluginAttribution>();
         const skipped = new Set<string>();
         for (const dir of dirs) {
             signal?.throwIfAborted();
-            const infos = await SchemeDiscovery.#readSchemeInfos(dir, signal);
-            if (infos.length === 0) continue;
+            const manifest = await SchemeDiscovery.#readSchemeManifest(dir, signal);
+            if (manifest === null) continue;
             // Host plugin-trust gate: an untrusted third-party package is
             // discovered but not surfaced for registration — recorded, never
-            // crashed on. All of a package's schemes share its packageName, so
-            // one trust check gates the whole package.
-            if (!Meta.isTrusted(infos[0].packageName)) { skipped.add(infos[0].packageName); continue; }
+            // crashed on. Validation of family fields and attribution follows
+            // this package-level gate ({§plugin-trust-boundary}).
+            if (!Meta.isTrusted(manifest.packageName)) { skipped.add(manifest.packageName); continue; }
+            const tags = Meta.normalizeAttribution(manifest.plurnk.attribution, manifest.packageName);
+            const attribution = SchemeDiscovery.#attributionProjection(manifest.plurnk.attribution, tags);
+            const infos = SchemeDiscovery.#readSchemeInfos(manifest, attribution);
+            let admitted = false;
             for (const info of infos) {
                 const existing = byName.get(info.name);
                 // Two packages (or two entries) claiming one scheme prefix is an
@@ -81,9 +94,11 @@ export default class SchemeDiscovery {
                     );
                 }
                 byName.set(info.name, info);
+                admitted = true;
             }
+            if (admitted && tags.length > 0) packageAttributions.set(manifest.packageName, tags);
         }
-        return { schemes: [...byName.values()], skipped: [...skipped].sort() };
+        return { schemes: [...byName.values()], packageAttributions, skipped: [...skipped].sort() };
     }
 
     // Host plugin-trust gate, read from PLURNK_PLUGINS_TRUSTED_ONLY — the SAME
@@ -109,27 +124,34 @@ export default class SchemeDiscovery {
         return err instanceof Error && err.name === "AbortError";
     }
 
-    // The SchemeInfo(s) for a package declaring plurnk.kind:"scheme"; [] for
-    // anything else (non-package dir, non-scheme, no declaration). A package
+    // The inert manifest for a package declaring plurnk.kind:"scheme"; null for
+    // anything else (non-package dir, non-scheme, no declaration). Family field
+    // validation happens only after the package trust gate.
+    static async #readSchemeManifest(dir: string, signal?: AbortSignal): Promise<SchemePackage | null> {
+        let raw: string;
+        try { raw = await fs.readFile(path.join(dir, "package.json"), { encoding: "utf-8", signal }); }
+        catch (err) { if (SchemeDiscovery.#isAbort(err)) throw err; return null; }
+        let pkg: unknown;
+        try { pkg = JSON.parse(raw); } catch { return null; }
+        if (typeof pkg !== "object" || pkg === null) return null;
+        const record = pkg as Record<string, unknown>;
+        const plurnk = record.plurnk;
+        if (typeof plurnk !== "object" || plurnk === null) return null;
+        const plurnkRec = plurnk as Record<string, unknown>;
+        if (!Meta.declaresKind(plurnkRec, "scheme")) return null;
+        if (typeof record.name !== "string" || record.name === "") return null;
+        return { packageName: record.name, plurnk: plurnkRec };
+    }
+
+    // The SchemeInfo(s) for an admitted package. A package
     // declares EITHER `plurnk.schemes: [{ name, export }, …]` (canonical, one
     // entry per scheme it owns) OR `plurnk.name: "<scheme>"` (sugar for exactly
     // one, default export) — #473. A malformed `plurnk.schemes` is an authoring
     // contract violation and fails hard (locality of error), not a silent skip.
-    static async #readSchemeInfos(dir: string, signal?: AbortSignal): Promise<SchemeInfo[]> {
-        let raw: string;
-        try { raw = await fs.readFile(path.join(dir, "package.json"), { encoding: "utf-8", signal }); }
-        catch (err) { if (SchemeDiscovery.#isAbort(err)) throw err; return []; }
-        let pkg: unknown;
-        try { pkg = JSON.parse(raw); } catch { return []; }
-        if (typeof pkg !== "object" || pkg === null) return [];
-        const record = pkg as Record<string, unknown>;
-        const plurnk = record.plurnk;
-        if (typeof plurnk !== "object" || plurnk === null) return [];
-        const plurnkRec = plurnk as Record<string, unknown>;
-        if (!Meta.declaresKind(plurnkRec, "scheme")) return [];
-        if (typeof record.name !== "string" || record.name === "") return [];
-        const packageName = record.name;
-        const attribution = SchemeDiscovery.#attribution(plurnkRec.attribution);
+    static #readSchemeInfos(
+        { packageName, plurnk: plurnkRec }: SchemePackage,
+        attribution: PluginAttributionDeclaration | undefined,
+    ): SchemeInfo[] {
         // Only carry the key when credit is actually present — an absent
         // attribution leaves the property off entirely (not `undefined`).
         const withAttr = (info: SchemeInfo): SchemeInfo => attribution === undefined ? info : { ...info, attribution };
@@ -153,13 +175,11 @@ export default class SchemeDiscovery {
         return [];
     }
 
-    // Pass `plurnk.attribution` through verbatim when it's a string or an array
-    // of strings; anything else (number, object, mixed array) is not credit and
-    // is dropped to undefined. No deeper validation — the reservation policy
-    // lives in the consumer.
-    static #attribution(value: unknown): string | readonly string[] | undefined {
-        if (typeof value === "string") return value;
-        if (Array.isArray(value) && value.every((v) => typeof v === "string")) return value;
-        return undefined;
+    static #attributionProjection(
+        raw: unknown,
+        tags: PluginAttribution,
+    ): PluginAttributionDeclaration | undefined {
+        if (raw === undefined || raw === null) return undefined;
+        return typeof raw === "string" ? raw : [...tags];
     }
 }

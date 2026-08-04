@@ -3,6 +3,7 @@ import path from "node:path";
 import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
 import Meta from "@plurnk/plurnk-meta";
+import type { PluginAttribution, PluginAttributionDeclaration } from "@plurnk/plurnk-meta";
 import Policy from "./policy.ts";
 import RuntimeTag from "./RuntimeTag.ts";
 import type { Discovery, DiscoverOptions, ExecInfo, RuntimeDecl } from "./types.ts";
@@ -40,6 +41,7 @@ export default class Discover {
         const dirs = options.packageDirs ?? await Discover.#defaultPackageDirs(options.cwd ?? process.cwd());
 
         const registry = new Map<string, ExecInfo>();
+        const packageAttributions = new Map<string, PluginAttribution>();
         const skipped = new Set<string>();
         const disabled = new Set<string>();
         for (const dir of dirs) {
@@ -51,7 +53,10 @@ export default class Discover {
                 skipped.add(manifest.packageName);
                 continue;
             }
-            for (const info of await Discover.#readExecInfos(dir, manifest)) {
+            const tags = Meta.normalizeAttribution(manifest.plurnk.attribution, manifest.packageName);
+            const attribution = Discover.#attributionProjection(manifest.plurnk.attribution, tags);
+            let admitted = false;
+            for (const info of await Discover.#readExecInfos(dir, manifest, attribution)) {
                 // Boot policy removes a tag before registration; consumer-owned
                 // layers can reuse the same parser ({§executor-policy}).
                 if (!Policy.isEnabled(info.runtime)) {
@@ -66,10 +71,12 @@ export default class Discover {
                     );
                 }
                 registry.set(info.runtime, info);
+                admitted = true;
             }
+            if (admitted && tags.length > 0) packageAttributions.set(manifest.packageName, tags);
         }
 
-        return { registry, skipped: [...skipped].sort(), disabled: [...disabled].sort() };
+        return { registry, packageAttributions, skipped: [...skipped].sort(), disabled: [...disabled].sort() };
     }
 
 
@@ -111,13 +118,11 @@ export default class Discover {
     }
 
     // Produce one ExecInfo per static or dynamic runtime declaration.
-    static async #readExecInfos(dir: string, { packageName, plurnk }: ExecManifest): Promise<ExecInfo[]> {
-        // Package-level attribution is surfaced raw on every tag
-        // ({§executor-runtime-declaration}); every tag of the package carries
-        // the same value. The consumer owns the policy.
-        const rawAttr = plurnk.attribution;
-        const attribution = typeof rawAttr === "string" || Array.isArray(rawAttr) ? rawAttr as string | string[] : undefined;
-
+    static async #readExecInfos(
+        dir: string,
+        { packageName, plurnk }: ExecManifest,
+        attribution: PluginAttributionDeclaration | undefined,
+    ): Promise<ExecInfo[]> {
         const infos: ExecInfo[] = [];
         for (const decl of await Discover.#runtimeDecls(dir, packageName, plurnk)) {
             const e = typeof decl === "object" && decl !== null
@@ -139,6 +144,16 @@ export default class Discover {
         }
 
         return infos;
+    }
+
+    // The package map is canonical. This preserves the shipped descriptor shape
+    // without preserving a second validation policy.
+    static #attributionProjection(
+        raw: unknown,
+        tags: PluginAttribution,
+    ): PluginAttributionDeclaration | undefined {
+        if (raw === undefined || raw === null) return undefined;
+        return typeof raw === "string" ? raw : [...tags];
     }
 
     // Static declarations win over a dynamic export when both are present

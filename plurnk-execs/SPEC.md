@@ -202,8 +202,9 @@ executor preserves its result without inventing a materialization verdict.
 
 `discover(options?)` scans every scoped and unscoped package under the nearest
 `node_modules` for the exact declaration `plurnk.kind === "exec"`. It returns
-`{ registry, skipped, disabled }`, where the registry maps each flat runtime
-tag to its declaration and package owner.
+`{ registry, packageAttributions, skipped, disabled }`, where the registry maps
+each flat runtime tag to its declaration and package owner and the package map
+carries the canonical attribution fact from {§plugin-attribution}.
 
 ```json
 {
@@ -255,11 +256,13 @@ at boot; changing package membership or configuration requires a restart.
 | `glyph`         | Optional presentation glyph.                                                                       |
 | `example`       | Optional compact, verbatim `plurnk` snippet. Each line is a complete `<<`-delimited operation.     |
 | `documentation` | Optional full Markdown reference. `docs/<tag>.md` wins over the inline manifest field.             |
-| `attribution`   | Optional package-level `string \| string[]`, copied raw to every declared tag for consumer policy. |
+| `attribution`   | Published per-tag projection of the validated package declaration ({§plugin-attribution}).         |
 | `packageName`   | Package that owns and default-exports the executor implementation.                                 |
 
 The framework carries example and documentation content unchanged. The
-consumer decides when and how to present either surface.
+consumer decides when and how to present either surface. A multi-tag package
+appears at most once in `Discovery.packageAttributions`, and only when at least
+one of its tags survives discovery policy.
 
 Runtime-name admission is one identity contract:
 

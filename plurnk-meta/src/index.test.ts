@@ -27,6 +27,39 @@ test("declaresKind: one exact string identifies one plugin family", () => {
     assert.equal(Meta.declaresKind(null, "exec"), false);
 });
 
+test("normalizeAttribution: absent, scalar, and array declarations have one tag-list representation", () => {
+    assert.deepEqual(Meta.normalizeAttribution(undefined, "pkg"), []);
+    assert.deepEqual(Meta.normalizeAttribution(null, "pkg"), []);
+    assert.deepEqual(Meta.normalizeAttribution("npm:jane", "pkg"), ["npm:jane"]);
+    assert.deepEqual(
+        Meta.normalizeAttribution(["@acme/widgets", "npm:jane"], "pkg"),
+        ["@acme/widgets", "npm:jane"],
+    );
+    assert.deepEqual(Meta.normalizeAttribution([], "pkg"), [], "an authored empty set is the same canonical fact as absence");
+});
+
+test("normalizeAttribution: malformed declarations fail at their shared boundary", () => {
+    for (const raw of [42, {}, "", ["ok", ""], ["ok", 42]]) {
+        assert.throws(
+            () => Meta.normalizeAttribution(raw, "pkg"),
+            /plugin 'pkg': plurnk\.attribution must be a non-empty string or string\[\]/,
+            `invalid declaration ${JSON.stringify(raw)} must not be partially admitted`,
+        );
+    }
+});
+
+test("normalizeAttribution: only @plurnk packages may claim the reserved @plurnk namespace", () => {
+    assert.throws(
+        () => Meta.normalizeAttribution(["npm:jane", "@plurnk/staff"], "evil-pkg"),
+        /'evil-pkg'.*'@plurnk\/' is reserved.*'@plurnk\/staff'/,
+    );
+    assert.deepEqual(
+        Meta.normalizeAttribution("@plurnk/creators/johnny-cash", "@plurnk/plurnk-execs-figma"),
+        ["@plurnk/creators/johnny-cash"],
+    );
+    assert.deepEqual(Meta.normalizeAttribution("@acme/widgets", "evil-pkg"), ["@acme/widgets"]);
+});
+
 test("packageDirs: enumerates the fixture plus legitimate packages farther up the open ancestor chain", async () => {
     const root = await mkdtemp(join(tmpdir(), "plugins-scan-"));
     try {

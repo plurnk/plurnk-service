@@ -1248,12 +1248,10 @@ export default class Engine {
         let usageCostUsd = 0;
         let providerCallInFlight = false;
         const providerSignal = this.#loopAborts.get(loopId)?.signal ?? signal;
-        // #249 — plugin attribution tags onto the per-turn generate() wire. Value is the
-        // active-plugin set (placeholder); real per-turn grounding is deferred.
+        // {§attribution-discovery-placeholder}
         const attributions = [...new Set([...this.#schemes.attributions(), ...(this.#executors?.attributions() ?? [])])].toSorted();
-        // #249 — tag the loop (the activity) with its active plugins' attribution tags, write-once.
         if (attributions.length > 0) await this.#db.engine_tag_loop_attributions.run({ loop_id: loopId, attributions: JSON.stringify(attributions) });
-        // #249 — workspace-stable frontend id, forwarded as Plurnk-Client by the plurnk provider only.
+        // {§client-metadata}
         const { client } = await WorkspaceSettings.read(this.#db, workspaceId);
         try {
             // {§turn-lifecycle} (#301) — the provider call is the long, opaque window (submit → first
@@ -1287,7 +1285,7 @@ export default class Engine {
                     workspaceId: String(workspaceId),
                     loop: loopSeq,
                     turn: seq,
-                }); // {§provider-surface-generate} {§provider-guarantees-signal-wired} {§provider-guarantees-serial-attempts} {§attribution-plurnk-namespace-reserved} {§client-metadata}
+                }); // {§provider-surface-generate} {§provider-guarantees-signal-wired} {§provider-guarantees-serial-attempts} {§attribution-discovery-placeholder} {§client-metadata}
                 providerCallInFlight = false;
                 railEvidence = railGrammar === undefined
                     ? undefined

@@ -111,6 +111,7 @@ export type { CompileOptions } from "./compile.ts";
 export type {
     DetectInput,
     Discovery,
+    DiscoveryResult,
     DiscoverOptions,
     ExtractionVisitor,
     HandlerInfo,
