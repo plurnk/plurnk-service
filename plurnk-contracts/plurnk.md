@@ -149,9 +149,9 @@ Examples:
 
 ## Delegation
 
-* Fork with inherited history: `<<FORK(worker://recheck):Re-derive the capital from a primary source:FORK`
 * Work on a Git branch: `<<WORK[feature/recheck](worker://recheck):Implement the alternative:WORK`
 * Send a worker another message: `<<SEND(worker://recheck):Also, what is the capital of Germany?:SEND`
+* Fork with inherited history: `<<FORK(worker://recheck):Re-derive the capital from a primary source:FORK`
 * Terminate a worker: `<<KILL(worker://recheck)::KILL`
 
 Before using a branch tag, ensure the repository is clean.
