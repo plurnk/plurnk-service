@@ -15,25 +15,32 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { execFile } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { promisify } from "node:util";
 import type {
     EditStatement, MatcherBody, ParsedPath, ReadStatement, SendStatement,
 } from "@plurnk/plurnk-contracts";
-import { Mimetypes } from "@plurnk/plurnk-mimetypes";
+import { BaseHandler, Mimetypes } from "@plurnk/plurnk-mimetypes";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import PacketWire from "../../src/core/packet-wire.ts";
 import Worker from "../../src/schemes/Worker.ts";
 import File from "../../src/schemes/File.ts";
+import SearchIndex from "../../src/schemes/_search-index.ts";
+import GitMembership from "../../src/core/git-membership.ts";
+import { hermeticGitEnv } from "../../src/core/git-env.ts";
 import type { Db } from "../../src/core/Db.ts";
 import type { PlurnkSchemeContext } from "../../src/core/scheme-types.ts";
 import {
     openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn,
-    seedEnvelope, makeSchemeCtx, DEFAULT_MIMETYPES,
+    seedEnvelope, makeSchemeCtx, DEFAULT_MIMETYPES, rootWorkspace,
 } from "./_helpers.ts";
 import Owner from "../../src/core/Owner.ts";
 import { urlPath, editStmt, readStmt, sendStmt } from "./_dsl.ts";
+
+const execFileP = promisify(execFile);
 
 const setup = async () => {
     const db = await openMigrated();
@@ -287,6 +294,117 @@ test("write resolves mimetype without firing the handler; explicit projection fi
         );
         assert.deepEqual(projectionCalls, ["alpha\nbeta\ngamma"], "explicit projection passes the stored content to the handler");
     } finally { await db.close(); }
+});
+
+test("registry-aware classification governs file decoding, operation gates, and search eligibility (#93)", async () => {
+    const root = await mkdtemp(join(tmpdir(), "plurnk-mimetype-classification-"));
+    const db = await openMigrated();
+    try {
+        await execFileP("git", ["init", "-q"], { cwd: root, env: hermeticGitEnv() });
+        await writeFile(join(root, "readable.treeish"), "registry text needle\nsecond line\n");
+        await writeFile(join(root, "opaque.encoded"), "opaque search decoy\n");
+        await execFileP("git", ["add", "readable.treeish", "opaque.encoded"], { cwd: root, env: hermeticGitEnv() });
+        await execFileP("git", [
+            "-c", "user.email=fixture@plurnk.invalid",
+            "-c", "user.name=fixture",
+            "-c", "commit.gpgsign=false",
+            "-c", "core.hooksPath=/dev/null",
+            "commit", "--no-verify", "-q", "-m", "seed",
+        ], { cwd: root, env: hermeticGitEnv() });
+
+        const workspaceId = await insertWorkspace(db, `classification-${crypto.randomUUID()}`);
+        await rootWorkspace(db, workspaceId, root);
+        const workerId = await insertWorker(db, workspaceId);
+        const textPackage = "stub://mimetype-text";
+        const binaryPackage = "stub://mimetype-binary";
+        const mimetypes = new Mimetypes({
+            discovery: {
+                registry: {
+                    byExtension: new Map([
+                        [".treeish", "application/x-treeish"],
+                        [".encoded", "text/x-encoded"],
+                    ]),
+                    byFilename: new Map(),
+                },
+                handlers: new Map([
+                    ["application/x-treeish", {
+                        mimetype: "application/x-treeish",
+                        glyph: "",
+                        extensions: ["treeish"],
+                        packageName: textPackage,
+                        binary: false,
+                        source: "package",
+                    }],
+                    ["text/x-encoded", {
+                        mimetype: "text/x-encoded",
+                        glyph: "",
+                        extensions: ["encoded"],
+                        packageName: binaryPackage,
+                        binary: true,
+                        source: "package",
+                    }],
+                ]),
+                skipped: [],
+            },
+            loader: async (packageName) => {
+                if (packageName === textPackage || packageName === binaryPackage) {
+                    return { default: BaseHandler };
+                }
+                throw Object.assign(
+                    new Error(`Cannot find package '${packageName}' imported from test`),
+                    { code: "ERR_MODULE_NOT_FOUND" },
+                );
+            },
+        });
+        const ctx = makeSchemeCtx({ db, workspaceId, workerId, mimetypes });
+        await GitMembership.indexGitMembership(ctx);
+
+        const file = new File();
+        const readable = await file.read({
+            ...readStmt(urlPath("file", "/readable.treeish")),
+            lineMarker: { marks: [1] },
+        }, ctx);
+        assert.equal(readable.status, 200);
+        assert.equal(readable.content, "registry text needle");
+        assert.equal((await file.edit(
+            editStmt(urlPath("file", "/readable.treeish"), "revised", null, { marks: [1] }),
+            ctx,
+        )).status, 202, "the handler-declared text file remains region-editable");
+
+        const opaque = await file.read({
+            ...readStmt(urlPath("file", "/opaque.encoded")),
+            lineMarker: { marks: [1] },
+        }, ctx);
+        assert.equal(opaque.status, 415, "the handler-declared binary file rejects a textual region");
+        assert.equal((await file.edit(
+            editStmt(urlPath("file", "/opaque.encoded"), "revised", null, { marks: [1] }),
+            ctx,
+        )).status, 415, "the same binary declaration governs EDIT");
+
+        await SearchIndex.maintain(ctx);
+        const searchable = await db.test_fts_search.all<{ pathname: string }>({
+            workspace_id: workspaceId,
+            query: "registry",
+        });
+        assert.deepEqual(searchable.map(({ pathname }) => pathname), ["readable.treeish"]);
+        const decoys = await db.test_fts_search.all<{ pathname: string }>({
+            workspace_id: workspaceId,
+            query: "decoy",
+        });
+        assert.deepEqual(decoys, [], "handler-declared binary content never enters lexical search");
+
+        const opaqueEntry = await db.test_get_entry_by_pathname_scheme.get<{ id: number }>({
+            scheme: "file",
+            pathname: "opaque.encoded",
+        });
+        const disposition = await db.test_derivation_disposition.get<{ disposition: string }>({
+            entry_id: opaqueEntry?.id ?? -1,
+        });
+        assert.equal(disposition?.disposition, "nonsemantic");
+    } finally {
+        await db.close();
+        await rm(root, { recursive: true, force: true });
+    }
 });
 
 // --- #524 (mimetypes#523) consumer regression: recursive descent over a DEEP parse tree ------
