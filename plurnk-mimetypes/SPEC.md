@@ -28,6 +28,7 @@ behavior their content algebra supports.
 | `symbolsRaw(content)`       | `format(await extractRaw(content))`             | Human/diagnostic outline; not a model-facing projection channel.              |
 | `toText(content)`           | String passthrough; binary content unsupported. | Supply readable text for binary regex/glob matching and embedding when valid. |
 | `projectionConfiguration()` | `""`                                            | Return a canonical string for effective settings that can change projections. |
+| `dispose()?`                | No-op when extending `BaseHandler`.             | Required only when the handler retains releasable resources.                  |
 
 §mimetype-handler-authority The handler owns the material in each projection.
 The framework owns detection, handler routing, channel selection, the default
@@ -52,18 +53,28 @@ flowchart LR
     N["new Mimetypes()"] --> R["ready(): one shared discovery"]
     R --> H["process/query/classify: lazy handler cache"]
     R --> A["embedding/tokenizer calls: lazy artifact caches"]
-    H --> D["dispose()"]
+    H --> D["dispose(): one quiescent teardown"]
     A --> D
-    D --> X["artifact teardown + handler cache cleared"]
+    D --> X["all handlers + artifacts attempted<br/>failures aggregated; caches cleared"]
     X --> H
     X --> A
 ```
 
 Every discovery-dependent public method awaits `ready()` internally, and
-concurrent first calls share the same discovery promise. `dispose()` is
-idempotent: it releases the embedding/tokenizer seams and drops handler
-instances while retaining discovery. A disposed orchestrator may be used again;
-handlers and artifacts then resolve lazily.
+concurrent first calls share the same discovery promise. Concurrent first
+handler resolutions likewise construct one instance per mimetype. The
+orchestrator owns every handler instance and artifact it resolves. A structural
+stateless handler may omit `dispose()`; a resource-owning handler implements it,
+while ordinary subclasses inherit the no-op.
+
+`dispose()` is an idempotent, quiescent boundary: the caller first stops new
+work and awaits active operations. Concurrent disposal calls join one teardown
+attempt. That attempt awaits every cached handler's declared teardown and every
+embedding/tokenizer artifact, aggregates their original failures, and clears
+their caches while retaining discovery. A disposed orchestrator may be used
+again after the teardown settles; handlers and artifacts then resolve lazily as
+a new cache generation. Tree-sitter handlers delete their cached query before
+their parser, matching the runtime's explicit resource lifecycle.
 
 ### §mimetype-projection-identity 1.2 Projection identity
 

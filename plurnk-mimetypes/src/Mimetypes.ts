@@ -126,12 +126,13 @@ export default class Mimetypes {
     readonly #discoverOptions: DiscoverOptions;
     readonly #loader: HandlerLoader;
     readonly #defaultMimetype: string | null;
-    readonly #handlerInstances = new Map<string, BaseHandler>();
+    readonly #handlerInstances = new Map<string, Promise<BaseHandler>>();
     readonly #grammarFingerprints = new Map<string, Promise<string>>();
     readonly #embeddings: Embeddings;
     readonly #tokenizers: Tokenizers;
     #discovery: DiscoveryResult | null = null;
     #readyPromise: Promise<void> | null = null;
+    #disposePromise: Promise<void> | null = null;
 
     constructor(options: MimetypesOptions = {}) {
         this.#discoverOptions = options.discoverOptions ?? {};
@@ -251,25 +252,30 @@ export default class Mimetypes {
             extensions: info.extensions,
         };
 
-        let candidate: unknown;
-        if (info.source === "treesitter") {
-            candidate = await this.#instantiateTreeSitterHandler(metadata, info);
-        } else {
-            candidate = await this.#instantiatePackageHandler(metadata, info.packageName, info.mimetype);
+        const resolution = (async (): Promise<BaseHandler> => {
+            const candidate = info.source === "treesitter"
+                ? await this.#instantiateTreeSitterHandler(metadata, info)
+                : await this.#instantiatePackageHandler(metadata, info.packageName, info.mimetype);
+            const surfaceFailure = handlerSurfaceFailure(candidate, metadata);
+            if (surfaceFailure !== null) {
+                throw new MimetypePluginError({
+                    reason: "handler surface is incompatible",
+                    packageName: info.packageName,
+                    mimetype: info.mimetype,
+                    cause: surfaceFailure,
+                });
+            }
+            return candidate as BaseHandler;
+        })();
+        this.#handlerInstances.set(mimetype, resolution);
+        try {
+            return await resolution;
+        } catch (error) {
+            if (this.#handlerInstances.get(mimetype) === resolution) {
+                this.#handlerInstances.delete(mimetype);
+            }
+            throw error;
         }
-        const surfaceFailure = handlerSurfaceFailure(candidate, metadata);
-        if (surfaceFailure !== null) {
-            throw new MimetypePluginError({
-                reason: "handler surface is incompatible",
-                packageName: info.packageName,
-                mimetype: info.mimetype,
-                cause: surfaceFailure,
-            });
-        }
-        const handler = candidate as BaseHandler;
-
-        this.#handlerInstances.set(mimetype, handler);
-        return handler;
     }
 
     async #instantiatePackageHandler(
@@ -440,10 +446,31 @@ export default class Mimetypes {
 
     // Release artifact resources and handler instances ({§mimetype-lifecycle}).
     async dispose(): Promise<void> {
-        await this.#embeddings.dispose();
-        await this.#tokenizers.dispose();
+        if (this.#disposePromise !== null) return this.#disposePromise;
+        const disposal = this.#disposeResources();
+        this.#disposePromise = disposal;
+        try {
+            await disposal;
+        } finally {
+            if (this.#disposePromise === disposal) this.#disposePromise = null;
+        }
+    }
+
+    async #disposeResources(): Promise<void> {
+        const handlers = [...this.#handlerInstances.values()];
         this.#handlerInstances.clear();
         this.#grammarFingerprints.clear();
+        const results = await Promise.allSettled([
+            this.#embeddings.dispose(),
+            this.#tokenizers.dispose(),
+            ...handlers.map(async (handler) => (await handler).dispose?.()),
+        ]);
+        const errors = results
+            .filter((result): result is PromiseRejectedResult => result.status === "rejected")
+            .flatMap((result) => result.reason instanceof AggregateError
+                ? [...result.reason.errors]
+                : [result.reason]);
+        if (errors.length > 0) throw new AggregateError(errors, "mimetype resource shutdown failed");
     }
 
     // Raw standalone matchers and grammar-parsed matchers converge on one

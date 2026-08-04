@@ -65,6 +65,11 @@ export default class BaseHandler {
         return "";
     }
 
+    // Release resources retained by this handler ({§mimetype-lifecycle}).
+    dispose(): void | Promise<void> {
+        // Default handlers retain nothing.
+    }
+
     // Unbudgeted human/diagnostic rendering ({§mimetype-outline}).
     async symbolsRaw(content: HandlerContent): Promise<string> {
         return format(await this.extractRaw(content));

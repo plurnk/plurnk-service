@@ -47,6 +47,8 @@ export default abstract class TreeSitterExtractor extends BaseHandler {
     #language: unknown = null;
     #QueryCtor: QueryConstructor | null = null;
     #refsQuery: RefsQuery | null = null;
+    #rawRefsQuery: { delete?(): void } | null = null;
+    #disposePromise: Promise<void> | null = null;
 
     protected abstract loadParser(): Promise<TreeSitterParser>;
     protected abstract extractFromTree(tree: TreeSitterTree, content: string): MimeSymbol[];
@@ -98,6 +100,7 @@ export default abstract class TreeSitterExtractor extends BaseHandler {
                 throw new Error("internal: collectRefs() before loadParser() called setQueryContext()");
             }
             const raw = new this.#QueryCtor(this.#language, source);
+            this.#rawRefsQuery = raw as { delete?(): void };
             this.#refsQuery = wrap ? wrap(raw) : (raw as RefsQuery);
         }
         return this.#refsQuery;
@@ -163,12 +166,49 @@ export default abstract class TreeSitterExtractor extends BaseHandler {
         this.#parserPromise ??= this.loadParser();
         return this.#parserPromise as Promise<TreeSitterParser>;
     }
+
+    // web-tree-sitter retains explicit parser/query resources
+    // ({§mimetype-lifecycle}). Query teardown precedes its parser owner.
+    override async dispose(): Promise<void> {
+        if (this.#disposePromise !== null) return this.#disposePromise;
+        const disposal = this.#disposeResources();
+        this.#disposePromise = disposal;
+        try {
+            await disposal;
+        } finally {
+            if (this.#disposePromise === disposal) this.#disposePromise = null;
+        }
+    }
+
+    async #disposeResources(): Promise<void> {
+        const query = this.#rawRefsQuery;
+        const parser = this.#parserPromise;
+        this.#rawRefsQuery = null;
+        this.#refsQuery = null;
+        this.#parserPromise = null;
+        this.#language = null;
+        this.#QueryCtor = null;
+
+        const queryResults = await Promise.allSettled([
+            Promise.resolve().then(() => query?.delete?.()),
+        ]);
+        const parserResults = await Promise.allSettled([
+            parser === null
+                ? Promise.resolve()
+                : parser.then((resolved) => (resolved as TreeSitterParser).delete?.()),
+        ]);
+        const errors = [...queryResults, ...parserResults]
+            .filter((result): result is PromiseRejectedResult => result.status === "rejected")
+            .map((result) => result.reason);
+        if (errors.length > 0) throw new AggregateError(errors, "Tree-sitter handler shutdown failed");
+    }
 }
 
 // Parser surface we depend on. web-tree-sitter's Parser exposes `parse`
 // which accepts a string (or callback) and returns Tree | null.
 export interface TreeSitterParser {
     parse(content: string): TreeSitterTree | null;
+    delete?(): void;
 }
 
 // Duck-typed check for GrammarNotInstalledError without a circular import.

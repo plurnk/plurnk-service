@@ -176,11 +176,7 @@ export default class Embeddings {
         if (this.#promise === null) return;
         const pending = this.#promise;
         this.#promise = null;
-        try {
-            const embedder = await pending;
-            if (embedder && typeof embedder.dispose === "function") await embedder.dispose();
-        } catch {
-            // #89 records the unresolved aggregate-disposal failure policy.
-        }
+        const embedder = await pending;
+        if (embedder && typeof embedder.dispose === "function") await embedder.dispose();
     }
 }

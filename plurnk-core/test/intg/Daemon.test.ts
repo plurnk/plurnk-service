@@ -961,6 +961,67 @@ test("module lifecycle orders setup, start, listener close, and module close", a
     }
 });
 
+test("Daemon.stop disposes its owned mimetypes after derivations exactly once", async () => {
+    const db = await openMigrated();
+    const daemon = new Daemon({ db, provider: null });
+    const events: string[] = [];
+    let disposals = 0;
+    const originalDrain = daemon.engine.drainDerivations.bind(daemon.engine);
+    daemon.engine.drainDerivations = async (): Promise<void> => {
+        await originalDrain();
+        events.push("derivations-drained");
+    };
+    const ownedMimetypes = daemon.mimetypes;
+    const originalDispose = ownedMimetypes.dispose.bind(ownedMimetypes);
+    ownedMimetypes.dispose = async (): Promise<void> => {
+        disposals += 1;
+        events.push("mimetypes-disposed");
+        await originalDispose();
+    };
+    try {
+        await daemon.stop();
+        assert.equal(disposals, 0, "pre-start stop acquires and releases nothing");
+        await daemon.start();
+        await daemon.stop();
+        await daemon.stop();
+        assert.equal(disposals, 1, "repeated stop does not repeat owned teardown");
+        assert.deepEqual(events, ["derivations-drained", "mimetypes-disposed"]);
+    } finally {
+        await daemon.stop();
+        await db.close();
+    }
+});
+
+test("Daemon.stop leaves constructor-injected mimetypes caller-owned", async () => {
+    const db = await openMigrated();
+    const injected = new Mimetypes({
+        discovery: {
+            registry: { byExtension: new Map(), byFilename: new Map() },
+            handlers: new Map(),
+            skipped: [],
+        },
+    });
+    let disposals = 0;
+    const originalDispose = injected.dispose.bind(injected);
+    injected.dispose = async (): Promise<void> => {
+        disposals += 1;
+        await originalDispose();
+    };
+    const daemon = new Daemon({ db, provider: null, mimetypes: injected });
+    try {
+        await daemon.start();
+        await daemon.stop();
+        assert.equal(disposals, 0, "the daemon does not destroy caller-owned state");
+        assert.equal((await injected.classify("text/plain")).binary, false, "caller-owned state remains usable");
+        await injected.dispose();
+        assert.equal(disposals, 1, "the caller retains explicit teardown authority");
+    } finally {
+        await daemon.stop();
+        await injected.dispose();
+        await db.close();
+    }
+});
+
 test("daemon shutdown preserves module and scheme lifecycle failures in one aggregate", async () => {
     const db = await openMigrated();
     const daemon = new Daemon({
@@ -973,6 +1034,7 @@ test("daemon shutdown preserves module and scheme lifecycle failures in one aggr
     daemon.registerModule({
         async close() { throw new Error("module close failed"); },
     });
+    daemon.mimetypes.dispose = async () => { throw new Error("mimetype dispose failed"); };
     daemon.schemes.register("broken-close", {
         manifest: {
             name: "broken-close",
@@ -995,7 +1057,11 @@ test("daemon shutdown preserves module and scheme lifecycle failures in one aggr
                 assert.equal(error.message, "daemon shutdown failed");
                 assert.deepEqual(
                     error.errors.map((cause) => String(cause)),
-                    ["Error: module close failed", "Error: scheme close failed"],
+                    [
+                        "Error: module close failed",
+                        "Error: mimetype dispose failed",
+                        "Error: scheme close failed",
+                    ],
                 );
                 return true;
             },

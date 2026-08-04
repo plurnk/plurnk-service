@@ -101,6 +101,7 @@ export default class Daemon {
     #lifecycle: LoopLifecycle;
     #schemes: SchemeRegistry;
     #mimetypes: Mimetypes;
+    readonly #ownsMimetypes: boolean;
     #provider: Provider | null;
     #nodeModulesPath: string;
     #discoveryCwd: string;
@@ -165,6 +166,9 @@ export default class Daemon {
         this.#discoveryCwd = dirname(this.#nodeModulesPath);
         // Mimetypes owns discovery + detection; default mimetype text/markdown. (Token counting
         // is NOT wired here — the engine's ruler below is {§tokenomics-agnostic-ruler}.)
+        // Constructor ownership is the lifecycle boundary
+        // ({§mimetype-owned-lifecycle}).
+        this.#ownsMimetypes = mimetypes === undefined;
         this.#mimetypes = mimetypes ?? new Mimetypes({
             defaultMimetype: "text/markdown",
             discoverOptions: { cwd: this.#discoveryCwd },
@@ -1194,8 +1198,11 @@ export default class Daemon {
         const [derivationResult] = await Promise.allSettled([
             this.#engine.drainDerivations(), // active workspace warms finish before the db closes upstream
         ]);
+        const mimetypeResults = this.#ownsMimetypes
+            ? await Promise.allSettled([this.#mimetypes.dispose()])
+            : [];
         const [schemeResult] = await Promise.allSettled([this.#schemes.close()]);
-        const closeErrors = [...closeResults, streamingResult, derivationResult, schemeResult]
+        const closeErrors = [...closeResults, streamingResult, derivationResult, ...mimetypeResults, schemeResult]
             .filter((result): result is PromiseRejectedResult => result.status === "rejected")
             .flatMap((result) => result.reason instanceof AggregateError
                 ? [...result.reason.errors]

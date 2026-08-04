@@ -110,11 +110,7 @@ export default class Tokenizers {
         if (this.#promise === null) return;
         const pending = this.#promise;
         this.#promise = null;
-        try {
-            const artifact = await pending;
-            if (artifact && typeof artifact.dispose === "function") await artifact.dispose();
-        } catch {
-            // #89 records the unresolved aggregate-disposal failure policy.
-        }
+        const artifact = await pending;
+        if (artifact && typeof artifact.dispose === "function") await artifact.dispose();
     }
 }

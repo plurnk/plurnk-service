@@ -947,6 +947,13 @@ that compose the default install ({§bundled-set}).
 
 plurnk-service is mimetype-illiterate. Engine hands channel content + mimetype label to `Mimetypes.process({content, hint})`; the manifest build uses `result.totalLines` for each channel's `lines`. Content reaches the model on READ, not as a rendered preview.
 
+§mimetype-owned-lifecycle `Daemon` owns and disposes the `Mimetypes` instance
+it constructs. A constructor-injected instance remains caller-owned. Shutdown
+quiesces model work, awaits derivation warming, then disposes the daemon-owned
+instance exactly once; mimetype teardown failures retain their causes and join
+the same aggregate as module and scheme shutdown failures. A pre-start or
+repeated stop does not acquire or dispose resources.
+
 §mimetype-classification-consumption Every engine-owned binary decision uses
 the configured `Mimetypes.classify()` path. An installed handler declaration
 is authoritative; only an unregistered label reaches the framework's taxonomy.
