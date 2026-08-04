@@ -354,6 +354,12 @@ FROM derivations d
 LEFT JOIN derivation_embeddings ee ON ee.derivation_id = d.id
 WHERE d.deep_hash = $deep_hash AND d.state = 'complete';
 
+-- PREP: test_symbol_names_for_hash
+SELECT name
+FROM symbol_defs
+WHERE derivation_id = (SELECT id FROM derivations WHERE deep_hash = $deep_hash)
+ORDER BY name;
+
 -- PREP: test_derivation_interruption_state
 SELECT e.deep_hash,
        (SELECT count(*) FROM derivations WHERE state = 'building') AS building,

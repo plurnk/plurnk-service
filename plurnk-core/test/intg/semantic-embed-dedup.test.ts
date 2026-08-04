@@ -179,6 +179,72 @@ test("resolved binary classification participates in derivation identity (#93)",
     }
 });
 
+test("mimetype projection identity invalidates derived artifacts without defeating stable reuse (#175)", async () => {
+    const db = await openMigrated();
+    try {
+        const workspaceId = await insertWorkspace(db, `projection-identity-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        let projectionIdentity = "projection-a";
+        let symbolName = "Alpha";
+        let processCalls = 0;
+        const mimetypes = mimetypesFixture({
+            projectionIdentity: async () => projectionIdentity,
+            process: async () => {
+                processCalls++;
+                return {
+                    symbols: [{ name: symbolName, kind: "function", line: 1, endLine: 1 }],
+                    references: [],
+                };
+            },
+            embedderInfo: async () => null,
+        });
+        const ctx = makeSchemeCtx({ db, workspaceId, workerId, mimetypes });
+        await new Worker().edit(
+            edit("projection.md", "one stable readable body"),
+            makeSchemeCtx({ db, workspaceId, workerId }),
+        );
+
+        const hash = async (): Promise<string> => {
+            const [row] = await db.test_entries_with_hash_by_scheme_prefix.all<{ deep_hash: string }>({
+                workspace_id: workspaceId,
+                scheme: "worker",
+                prefix: "/projection.md",
+            });
+            assert.ok(row);
+            return row.deep_hash;
+        };
+        const symbols = async (deepHash: string): Promise<string[]> =>
+            (await db.test_symbol_names_for_hash.all<{ name: string }>({ deep_hash: deepHash }))
+                .map(({ name }) => name);
+
+        await SearchIndex.maintain(ctx);
+        const first = await hash();
+        assert.deepEqual(await symbols(first), ["Alpha"]);
+        assert.equal(processCalls, 1);
+
+        await SearchIndex.maintain(ctx);
+        assert.equal(await hash(), first);
+        assert.equal(processCalls, 1, "an unchanged projection identity reuses the complete artifact");
+
+        projectionIdentity = "projection-b";
+        symbolName = "Beta";
+        await SearchIndex.maintain(ctx);
+        const revised = await hash();
+        assert.notEqual(revised, first);
+        assert.deepEqual(await symbols(revised), ["Beta"]);
+        assert.equal(processCalls, 2, "changed projection behavior derives one new artifact");
+
+        projectionIdentity = "projection-a";
+        symbolName = "Alpha";
+        await SearchIndex.maintain(ctx);
+        assert.equal(await hash(), first);
+        assert.deepEqual(await symbols(first), ["Alpha"]);
+        assert.equal(processCalls, 2, "returning to a prior identity reattaches its complete artifact");
+    } finally {
+        await db.close();
+    }
+});
+
 test("an unmatched fallback tokenizer fails semantic maintenance before derivation or embedding (#95)", async () => {
     const db = await openMigrated();
     const previousMaxEmbedSize = process.env.PLURNK_SERVICE_MAX_EMBED_SIZE;
