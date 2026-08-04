@@ -311,6 +311,87 @@ test("generate surfaces and normalizes an out-of-set finish_reason", async () =>
     }]);
 });
 
+test("#161: a streamed resource interruption is a failed exchange with complete attempt evidence", async () => {
+    const calls = installFetch([
+        { model: "served-model", choices: [{ delta: { reasoning_content: "partial thought", content: "partial answer" } }] },
+        {
+            choices: [{ delta: {}, finish_reason: "insufficient_system_resource" }],
+            usage: { prompt_tokens: 7, completion_tokens: 5, total_tokens: 12 },
+        },
+    ]);
+    const provider = new AiSdkProvider({
+        ...injectedBase,
+        retryAttempts: 2,
+        rawBody: true,
+    });
+
+    await assert.rejects(
+        provider.generate({ workerId: "interrupted", messages: [{ role: "user", content: "hello" }] }),
+        (error: unknown) => {
+            assert.ok(error instanceof ProviderError);
+            assert.equal(error.kind, "resource_interrupted");
+            assert.equal(error.status, 503);
+            assert.equal(error.problem.stage, "provider-response");
+            assert.equal(error.problem.retryable, false);
+            assert.equal(error.problem.finishReason, "resource_interrupted");
+            assert.equal(error.problem.rawFinishReason, "insufficient_system_resource");
+            assert.equal(error.attempt?.assistant.content, "partial answer");
+            assert.equal(error.attempt?.assistant.reasoning, "partial thought");
+            assert.equal(error.attempt?.assistant.finishReason, "resource_interrupted");
+            assert.deepEqual(error.attempt?.assistant.usage, {
+                prompt: 7,
+                completion: 2,
+                reasoning: 3,
+                cached: 0,
+                total: 12,
+            });
+            assert.equal(
+                (error.attempt?.assistantRaw as { rawFinishReason?: string }).rawFinishReason,
+                "insufficient_system_resource",
+            );
+            assert.ok(Array.isArray(error.attempt?.rawBody));
+            return true;
+        },
+    );
+    assert.equal(calls.length, 1, "a semantic interruption is not replayed as an HTTP failure");
+});
+
+test("#161: a buffered resource interruption preserves the successful wire response as failed-attempt evidence", async () => {
+    const wire = {
+        model: "served-model",
+        choices: [{
+            message: { content: "partial answer", reasoning_content: "partial thought" },
+            finish_reason: "insufficient_system_resource",
+        }],
+        usage: { prompt_tokens: 7, completion_tokens: 5, total_tokens: 12 },
+    };
+    const calls = installFetchJson(wire);
+    const provider = new AiSdkProvider({
+        ...injectedBase,
+        streaming: false,
+        retryAttempts: 2,
+        rawBody: true,
+    });
+
+    await assert.rejects(
+        provider.generate({ workerId: "interrupted", messages: [{ role: "user", content: "hello" }] }),
+        (error: unknown) => {
+            assert.ok(error instanceof ProviderError);
+            assert.equal(error.kind, "resource_interrupted");
+            assert.equal(error.attempt?.assistant.content, "partial answer");
+            assert.equal(error.attempt?.assistant.reasoning, "partial thought");
+            assert.equal(error.attempt?.assistant.finishReason, "resource_interrupted");
+            assert.deepEqual(error.attempt?.rawBody, wire);
+            assert.equal(
+                (error.attempt?.assistantRaw as { rawFinishReason?: string }).rawFinishReason,
+                "insufficient_system_resource",
+            );
+            return true;
+        },
+    );
+    assert.equal(calls.length, 1);
+});
+
 test("generate translates a backend cap synonym to canonical length (#425)", async () => {
     // gemini shouts MAX_TOKENS, anthropic says max_tokens -- both must reach core as
     // "length" so its truncation check (=== "length") is a cross-backend invariant.

@@ -68,11 +68,11 @@ owns that end-to-end monetary correction.
 - standard `sampling` intent;
 - first-party attribution, client, strike, workspace, loop, and turn metadata.
 
-It returns the model's raw content and reasoning, normalized usage, normalized
-finish reason, model identity, opaque evidence, optional metadata, and optional
-notices. The provider transports and observes model output; it never retries,
-discards, or repairs an otherwise completed exchange because PLURNK grammar did
-not accept it.
+A successful return carries the model's raw content and reasoning, normalized
+usage, normalized finish reason, model identity, opaque evidence, optional
+metadata, and optional notices. The provider transports and observes model
+output; it never retries, discards, or repairs an otherwise completed exchange
+because PLURNK grammar did not accept it.
 
 Usage obeys:
 
@@ -81,9 +81,10 @@ total = prompt + completion + reasoning
 cached ⊆ prompt
 ```
 
-`completion` excludes reasoning. Known vendor finish reasons normalize to
+`completion` excludes reasoning. Ordinary vendor finish reasons normalize to
 `stop`, `length`, `tool_calls`, or `content_filter`; an unknown value becomes
-`null` and emits a warning.
+`null` and emits a warning. `resource_interrupted` is the distinct failed-attempt
+disposition defined by {§provider-interrupted-attempt}.
 
 ## §3 AI SDK boundary
 
@@ -305,6 +306,21 @@ HTTP 408, 409, 429, and ordinary 5xx responses are retryable unless the endpoint
 explicitly says otherwise. Endpoint control responses 520–527 are final so a
 router can prevent multiplicative retries behind its own retry policy.
 
+### §provider-interrupted-attempt Provider-declared interruption
+
+A successful transport response can still declare that inference did not
+complete. That response is evidence for one failed provider attempt, never a
+completed exchange.
+
+| Concern                    | Contract                                                                                                                     |
+| -------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| Normalized finish reason   | Exact `insufficient_system_resource` becomes `resource_interrupted`; the raw value remains in `assistantRaw`.                |
+| `generate` outcome         | Throw `ProviderError(kind="resource_interrupted")` at local status 503 with the normalized attempt on `error.attempt`.       |
+| Partial response           | Preserve content, reasoning, usage, model, metadata, optional raw body, and other evidence without admitting it as success.  |
+| Automatic replay           | None; the Problem has `retryable: false`, and AI SDK retry scheduling has already completed at the successful transport.     |
+| Capacity-pool overflow     | None; a sibling success would erase the known billed failed attempt from the current `ProviderResponse` surface.             |
+| Consumer admission         | Persist the evidence as an unaccepted attempt; never parse it into executable work, even when its frame looks complete.      |
+
 ## §10 Grammar
 
 GBNF is a local llama-server capability, not a generic provider expectation.
@@ -360,7 +376,9 @@ cap. Model-limit precedence is defined once in {§model-fact-resolution}.
 `Pool` fronts interchangeable `Provider` instances. It keeps workers sticky for
 cache locality, selects a healthy sibling for overflow, and preserves the same
 Provider contract. Whether endpoints are interchangeable is a consumer
-decision, not inferred from provider names.
+decision, not inferred from provider names. Overflow is limited to transport
+availability and rate-limit failures that carry no normalized response attempt;
+{§provider-interrupted-attempt} propagates without overflow.
 
 ## §14 Conformance
 
@@ -370,7 +388,7 @@ Coverage MUST prove:
 - exact and unique-suffix model lookup;
 - native SDK request mapping and normalized responses;
 - compatible extension preservation;
-- timeout, retry, cancellation, and final-error behavior;
+- timeout, retry, cancellation, interrupted-attempt, and final-error behavior;
 - local capability probes and pins;
 - local reasoning activation, response-wide allowance, and GBNF coexistence;
 - usage, costs, evidence, metadata isolation, and grammar observation;

@@ -6,7 +6,7 @@
 // ordinary vendor protocol. The compatible URL path remains only for PLURNK
 // extensions and local endpoint probes the SDK cannot represent.
 
-import type { ChatMessage, FinishReason, GrammarEvidence, Provider, ProviderResponse, ProviderUsage } from "./types.ts";
+import type { ChatMessage, GrammarEvidence, Provider, ProviderResponse, ProviderUsage } from "./types.ts";
 import type { Reasoning, ReserveSpec } from "./env.ts";
 import { executeAiSdkModel, executeOpenAICompatible } from "./aiSdkTransport.ts";
 import type { LanguageModel } from "ai";
@@ -654,23 +654,47 @@ export default class AiSdkProvider implements Provider {
             ? logprobs.reduce((sum, token) => sum + token.logprob, 0) / logprobs.length
             : undefined;
 
-        return {
-            assistant: {
-                content: raw.content,
-                reasoning: raw.reasoning.length > 0 ? raw.reasoning : null,
-                ...(raw.reasoningEncrypted.length > 0
-                    ? { reasoningEncrypted: raw.reasoningEncrypted }
-                    : {}),
-                usage,
-                finishReason: raw.finishReason,
-                model: raw.model,
-                ...(logprobs !== undefined ? { logprobs, meanLogprob } : {}),
-            },
+        const assistant = {
+            content: raw.content,
+            reasoning: raw.reasoning.length > 0 ? raw.reasoning : null,
+            ...(raw.reasoningEncrypted.length > 0
+                ? { reasoningEncrypted: raw.reasoningEncrypted }
+                : {}),
+            usage,
+            model: raw.model,
+            ...(logprobs !== undefined ? { logprobs, meanLogprob } : {}),
+        };
+        const evidence = {
             assistantRaw: raw,
             ...(grammarEvidence !== undefined ? { grammarEvidence } : {}),
             ...(raw.rawBody !== undefined ? { rawBody: raw.rawBody } : {}),
             ...(meta !== undefined ? { meta } : {}),
             ...(notices !== undefined ? { notices } : {}),
+        };
+        if (raw.finishReason === "resource_interrupted") {
+            const attempt: ProviderResponse<"resource_interrupted"> = {
+                assistant: { ...assistant, finishReason: raw.finishReason },
+                ...evidence,
+            };
+            throw new ProviderError(
+                this.#source,
+                "resource_interrupted",
+                "The provider interrupted generation because inference resources were unavailable.",
+                {
+                    attempt,
+                    extensions: {
+                        stage: "provider-response",
+                        finishReason: "resource_interrupted",
+                        ...(raw.rawFinishReason === undefined
+                            ? {}
+                            : { rawFinishReason: raw.rawFinishReason }),
+                    },
+                },
+            );
+        }
+        return {
+            assistant: { ...assistant, finishReason: raw.finishReason },
+            ...evidence,
         };
     }
 }

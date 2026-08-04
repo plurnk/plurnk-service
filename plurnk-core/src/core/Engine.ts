@@ -133,7 +133,7 @@ const readFilesItems = (): number | null => {
 };
 
 // Provider contract owned by @plurnk/plurnk-providers; engine is the consumer.
-import type { GrammarEvidence, Provider, ProviderResponse, ProviderUsage } from "@plurnk/plurnk-providers";
+import type { GrammarEvidence, Provider, ProviderAttempt, ProviderAttemptFinishReason, ProviderResponse, ProviderUsage } from "@plurnk/plurnk-providers";
 import { ProviderError, scopeEnvToAlias, resolveActiveAlias } from "@plurnk/plurnk-providers";
 import { validateGbnf } from "@plurnk/gbnf";
 import ProviderInstantiate from "./ProviderInstantiate.ts";
@@ -143,7 +143,7 @@ import type { RuntimeSchemeFacet } from "../server/DaemonModule.ts";
 // Turn columns instead of packet.assistant.
 type TurnCallMetadata = {
     usage: ProviderUsage;
-    finishReason: string | null;
+    finishReason: ProviderAttemptFinishReason;
     model: string;
 };
 
@@ -1240,7 +1240,7 @@ export default class Engine {
         // Packet pressure and provider generation are independent. The grinder governs
         // only the request packet; maxTokens comes only from the provider envelope and
         // never shrinks as the virtual prompt budget fills.
-        let response: ProviderResponse | undefined;
+        let response: ProviderAttempt | undefined;
         let splitResponse: SplitProviderResponse | undefined;
         let railGrammar: string | undefined;
         let railEvidence: GrammarEvidence | undefined;
@@ -1248,12 +1248,42 @@ export default class Engine {
         const usage = { prompt: 0, completion: 0, reasoning: 0, cached: 0 };
         let usageCostUsd = 0;
         let providerCallInFlight = false;
+        let providerAttemptSequence = 0;
         const providerSignal = this.#loopAborts.get(loopId)?.signal ?? signal;
         // {§attribution-discovery-placeholder}
         const attributions = [...new Set([...this.#schemes.attributions(), ...(this.#executors?.attributions() ?? [])])].toSorted();
         if (attributions.length > 0) await this.#db.engine_tag_loop_attributions.run({ loop_id: loopId, attributions: JSON.stringify(attributions) });
         // {§client-metadata}
         const { client } = await WorkspaceSettings.read(this.#db, workspaceId);
+        const recordProviderAttempt = async (
+            attemptResponse: ProviderAttempt,
+            attemptSplit: SplitProviderResponse,
+            sequence: number,
+            accepted: boolean,
+        ): Promise<void> => {
+            const attemptUsage = attemptSplit.callMetadata.usage;
+            const attemptCost = provider.calculateCost(attemptUsage);
+            await this.#db.engine_record_turn_attempt.run({
+                turn_id: turnId,
+                sequence,
+                accepted: accepted ? 1 : 0,
+                response: JSON.stringify(attemptResponse),
+                parse_errors: JSON.stringify(attemptSplit.parseErrors),
+                usage_prompt: attemptUsage.prompt,
+                usage_completion: attemptUsage.completion,
+                usage_reasoning: attemptUsage.reasoning,
+                usage_cached: attemptUsage.cached,
+                usage_cost_usd: attemptCost,
+                finish_reason: attemptSplit.callMetadata.finishReason,
+                model: attemptSplit.callMetadata.model,
+            });
+            usage.prompt += attemptUsage.prompt;
+            usage.completion += attemptUsage.completion;
+            usage.reasoning += attemptUsage.reasoning;
+            usage.cached += attemptUsage.cached;
+            usageCostUsd += attemptCost;
+            emissionAttempts = sequence;
+        };
         try {
             // {§turn-lifecycle} (#301) — the provider call is the long, opaque window (submit → first
             // committed op is provider latency + a full first-turn generation, ~70s local): a static
@@ -1272,8 +1302,9 @@ export default class Engine {
                 // Every attempt carries the exact same packet, coordinates, limits, and
                 // engine-strike state. No failed emission is appended to messages and no
                 // new engine turn opens between calls.
+                providerAttemptSequence = attempt;
                 providerCallInFlight = true;
-                response = await provider.generate({
+                const completedResponse = await provider.generate({
                     messages: modelMessages,
                     workerId: String(workerId),
                     primaryWorkerId,
@@ -1287,33 +1318,13 @@ export default class Engine {
                     loop: loopSeq,
                     turn: seq,
                 }); // {§provider-surface-generate} {§provider-guarantees-signal-wired} {§provider-guarantees-serial-attempts} {§attribution-discovery-placeholder} {§client-metadata}
+                response = completedResponse;
                 providerCallInFlight = false;
                 railEvidence = railGrammar === undefined
                     ? undefined
-                    : Engine.#requireGrammarEvidence(response);
-                emissionAttempts = attempt;
-                splitResponse = this.#splitResponse(response);
-                const attemptUsage = splitResponse.callMetadata.usage;
-                usage.prompt += attemptUsage.prompt;
-                usage.completion += attemptUsage.completion;
-                usage.reasoning += attemptUsage.reasoning;
-                usage.cached += attemptUsage.cached;
-                const attemptCost = provider.calculateCost(attemptUsage);
-                usageCostUsd += attemptCost;
-                await this.#db.engine_record_turn_attempt.run({
-                    turn_id: turnId,
-                    sequence: attempt,
-                    accepted: splitResponse.emissionValid ? 1 : 0,
-                    response: JSON.stringify(response),
-                    parse_errors: JSON.stringify(splitResponse.parseErrors),
-                    usage_prompt: attemptUsage.prompt,
-                    usage_completion: attemptUsage.completion,
-                    usage_reasoning: attemptUsage.reasoning,
-                    usage_cached: attemptUsage.cached,
-                    usage_cost_usd: attemptCost,
-                    finish_reason: splitResponse.callMetadata.finishReason,
-                    model: splitResponse.callMetadata.model,
-                });
+                    : Engine.#requireGrammarEvidence(completedResponse);
+                splitResponse = this.#splitResponse(completedResponse);
+                await recordProviderAttempt(completedResponse, splitResponse, attempt, splitResponse.emissionValid);
                 if (splitResponse.emissionValid) break;
             }
             if (!signal?.aborted) this.#notices.push(workspaceId, loopId, { source: "engine:turn", kind: "turn_generated", level: "info", message: "parsing model response" });
@@ -1321,6 +1332,19 @@ export default class Engine {
             // This handler owns only provider-call failures. Parser, cost, SQL,
             // and engine-contract failures retain their original source.
             if (!providerCallInFlight) throw err;
+            // {§provider-interrupted-attempt} — a provider-declared interruption
+            // carries response evidence without becoming a completed exchange.
+            // Persist it as an unaccepted attempt before settling the failure.
+            if (err instanceof ProviderError && err.attempt !== undefined) {
+                response = err.attempt;
+                splitResponse = this.#splitResponse(response);
+                await recordProviderAttempt(
+                    response,
+                    splitResponse,
+                    providerAttemptSequence,
+                    false,
+                );
+            }
             // {§turn-never-blank} — a ProviderError means no completed exchange exists.
             // Persist its exact RFC 9457 result before propagating it. Grammar evidence
             // and its engine-owned verdict exist only on completed responses
@@ -1746,7 +1770,7 @@ export default class Engine {
     // its assistant payload to skip the parse roundtrip. The wire Provider
     // contract has no `ops` field; only Mock exposes one. Real providers
     // always take the parse path because their `assistant.ops` is undefined.
-    #splitResponse(response: ProviderResponse): SplitProviderResponse {
+    #splitResponse(response: ProviderAttempt): SplitProviderResponse {
         const { assistant } = response;
         const preParsedOps = (assistant as { ops?: PlurnkStatement[] }).ops;
         const ops: PlurnkStatement[] = [];

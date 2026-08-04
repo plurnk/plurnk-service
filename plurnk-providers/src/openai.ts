@@ -5,6 +5,8 @@ export type {
     FinishReason,
     Provider,
     ProviderAssistant,
+    ProviderAttempt,
+    ProviderAttemptFinishReason,
     ProviderResponse,
     ProviderUsage,
     TokenAlternative,

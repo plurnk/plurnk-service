@@ -23,9 +23,10 @@ export interface ProviderUsage {
     readonly total: number;        // prompt + completion + reasoning
 }
 
-// Closed set per SPEC §2. Relay/aggregator providers MUST normalize wire
-// values back to one of these at the provider boundary.
+// A successful exchange's closed finish set. ProviderAttemptFinishReason adds
+// the failed disposition that may occur only on ProviderError attempt evidence.
 export type FinishReason = "stop" | "length" | "tool_calls" | "content_filter" | null;
+export type ProviderAttemptFinishReason = FinishReason | "resource_interrupted";
 
 // A per-token logprob (#36, SPEC §14). `logprob` is the backend's RAW model
 // log-probability of the emitted token — the sampling-transform-invariant
@@ -45,14 +46,14 @@ export interface TokenLogprob {
     readonly top?: readonly TokenAlternative[];
 }
 
-export interface ProviderAssistant {
+export interface ProviderAssistant<TFinish extends ProviderAttemptFinishReason = FinishReason> {
     readonly content: string;
     readonly reasoning: string | null;
     // Encrypted reasoning remains distinct from readable `reasoning`; #44 owns
     // the provider-boundary identity/subtype normalization rule.
     readonly reasoningEncrypted?: ReadonlyArray<{ id: string | null; subtype: string; encrypted: ReadonlyArray<{ data: string; format: string | null }> }>;
     readonly usage: ProviderUsage;
-    readonly finishReason: FinishReason;
+    readonly finishReason: TFinish;
     readonly model: string;
     // Per-token logprobs (#36), present ONLY when PLURNK_PROVIDERS_TOP_LOGPROBS is set
     // AND the backend returned them. Absent otherwise — NEVER synthesized. Opt-in,
@@ -70,8 +71,8 @@ export interface GrammarEvidence {
     readonly transported: boolean;
 }
 
-export interface ProviderResponse {
-    readonly assistant: ProviderAssistant;
+export interface ProviderResponse<TFinish extends ProviderAttemptFinishReason = FinishReason> {
+    readonly assistant: ProviderAssistant<TFinish>;
     readonly assistantRaw: unknown;
     // {§gbnf-response-observation} — evidence only; the consumer owns the verdict.
     readonly grammarEvidence?: GrammarEvidence;
@@ -89,12 +90,13 @@ export interface ProviderResponse {
     // when PLURNK_PROVIDERS_RAWBODY is on — off by default so serving turns never
     // carry it. Absent otherwise.
     readonly rawBody?: unknown;
-    // Notices attached to a COMPLETED exchange (#24, SPEC §13). The model's
-    // bytes always flow through `assistant`; transport observations annotate them.
-    // Grammar conformance itself is consumer-owned. Absent when the turn produced
-    // no transport notice.
+    // Notices attached to the represented attempt (#24, SPEC §13). Successful
+    // returns may relay them; interrupted attempt notices remain forensic.
+    // Grammar conformance itself is consumer-owned.
     readonly notices?: readonly ProviderNotice[];
 }
+
+export type ProviderAttempt = ProviderResponse<ProviderAttemptFinishReason>;
 
 export interface Provider {
     // `grammar` is an optional GBNF string (canonically @plurnk/plurnk-contracts'

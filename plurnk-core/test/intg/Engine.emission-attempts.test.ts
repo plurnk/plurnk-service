@@ -4,7 +4,7 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Mock, ProviderError } from "@plurnk/plurnk-providers";
-import type { MockResponse, ProviderUsage } from "@plurnk/plurnk-providers";
+import type { MockResponse, ProviderAttempt, ProviderUsage } from "@plurnk/plurnk-providers";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Digest from "../../src/digest/Digest.ts";
@@ -531,6 +531,133 @@ test("a provider failure after a rejected emission preserves the completed attem
         assert.equal(turn?.usage_cost_usd, 0.012);
         const attempts = await db.test_turn_attempts.all<{ accepted: number }>({ turn_id: turn!.id });
         assert.deepEqual(attempts.map(({ accepted }) => accepted), [0]);
+    } finally {
+        await db.close();
+    }
+});
+
+test("#161: a complete-looking resource-interrupted attempt is persisted but never admitted or replayed", async () => {
+    const { db, workspaceId, workerId, loopId, engine } = await setup();
+    try {
+        const content = "<<PLAN:looks complete:PLAN\n<<SEND[200]:must never dispatch:SEND";
+        const attempt: ProviderAttempt = {
+            assistant: {
+                content,
+                reasoning: "partial reasoning",
+                usage: { prompt: 11, completion: 7, reasoning: 2, cached: 3, total: 20 },
+                finishReason: "resource_interrupted",
+                model: "interrupted-model",
+            },
+            assistantRaw: {
+                content,
+                reasoning: "partial reasoning",
+                rawFinishReason: "insufficient_system_resource",
+            },
+            rawBody: {
+                choices: [{ finish_reason: "insufficient_system_resource" }],
+            },
+            meta: { requestId: "interrupted-1" },
+        };
+        const provider = new AttemptWitness({ contextWindow: 100_000, responses: [] });
+        let calls = 0;
+        provider.generate = async (args) => {
+            calls++;
+            provider.packets.push(JSON.stringify(args.messages));
+            throw new ProviderError(
+                "mock",
+                "resource_interrupted",
+                "The provider interrupted generation because inference resources were unavailable.",
+                {
+                    attempt,
+                    extensions: {
+                        stage: "provider-response",
+                        finishReason: "resource_interrupted",
+                        rawFinishReason: "insufficient_system_resource",
+                    },
+                },
+            );
+        };
+
+        await assert.rejects(
+            () => engine.runTurn({
+                provider,
+                workspaceId,
+                workerId,
+                loopId,
+                messages: [{ role: "user", content: "do the task" }],
+            }),
+            (error: unknown) => {
+                assert.ok(error instanceof OperationFailureError);
+                assert.equal(error.result.status, 503);
+                assert.equal(
+                    error.result.problem.type,
+                    "https://problems.plurnk.dev/provider/mock/resource-interrupted",
+                );
+                return true;
+            },
+        );
+
+        assert.equal(calls, 1, "provider-declared interruption bypasses emission rerolls");
+        const turn = await db.test_turns_get_full.get<{
+            id: number;
+            status: number;
+            packet: string;
+            usage_prompt: number;
+            usage_completion: number;
+            usage_reasoning: number;
+            usage_cached: number;
+            usage_cost_usd: number;
+            finish_reason: string | null;
+            model: string;
+            meta: string;
+        }>({ loop_id: loopId });
+        assert.equal(turn?.status, 503);
+        assert.equal(turn?.usage_prompt, 11);
+        assert.equal(turn?.usage_completion, 7);
+        assert.equal(turn?.usage_reasoning, 2);
+        assert.equal(turn?.usage_cached, 3);
+        assert.equal(turn?.usage_cost_usd, 0.02);
+        assert.equal(turn?.finish_reason, "resource_interrupted");
+        assert.equal(turn?.model, "interrupted-model");
+        assert.deepEqual(JSON.parse(turn?.meta ?? "{}"), { requestId: "interrupted-1" });
+        assert.equal(
+            "assistant" in (JSON.parse(turn?.packet ?? "{}") as Record<string, unknown>),
+            false,
+            "the failed turn remains request-only",
+        );
+
+        const attempts = await db.test_turn_attempts.all<{
+            accepted: number;
+            response: string;
+            parse_errors: string;
+            usage_cost_usd: number;
+            finish_reason: string | null;
+            model: string;
+        }>({ turn_id: turn!.id });
+        assert.equal(attempts.length, 1);
+        assert.equal(attempts[0]!.accepted, 0);
+        assert.deepEqual(JSON.parse(attempts[0]!.parse_errors), [], "the frame was complete but inadmissible");
+        assert.equal(attempts[0]!.usage_cost_usd, 0.02);
+        assert.equal(attempts[0]!.finish_reason, "resource_interrupted");
+        assert.equal(attempts[0]!.model, "interrupted-model");
+        const recordedAttempt = JSON.parse(attempts[0]!.response) as ProviderAttempt;
+        assert.equal(recordedAttempt.assistant.content, content);
+        assert.equal(recordedAttempt.assistant.reasoning, "partial reasoning");
+        assert.equal(
+            (recordedAttempt.assistantRaw as { rawFinishReason?: string }).rawFinishReason,
+            "insufficient_system_resource",
+        );
+        assert.deepEqual(recordedAttempt.rawBody, {
+            choices: [{ finish_reason: "insufficient_system_resource" }],
+        });
+
+        const rows = await db.test_log_entries_by_turn.all<{ op: string; origin: string }>({ turn_id: turn!.id });
+        assert.equal(
+            rows.some(({ origin, op }) => origin === "model" && (op === "PLAN" || op === "SEND")),
+            false,
+            "no operation from the interrupted response dispatches",
+        );
+        assert.equal(rows.filter(({ op }) => op === "error").length, 1, "the ProviderError remains one durable failure");
     } finally {
         await db.close();
     }

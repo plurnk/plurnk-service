@@ -1,7 +1,7 @@
 import { createOpenAICompatible, type ProviderErrorStructure } from "@ai-sdk/openai-compatible";
 import { generateText, streamText, type JSONValue, type LanguageModel, type LanguageModelUsage } from "ai";
 import { z } from "zod/v4";
-import type { ChatMessage, FinishReason, ProviderUsage, TokenLogprob } from "./types.ts";
+import type { ChatMessage, ProviderAttemptFinishReason, ProviderUsage, TokenLogprob } from "./types.ts";
 import { normalizeUsage, type RawUsage } from "./usage.ts";
 import { emitWarningOnce } from "./warnings.ts";
 
@@ -66,7 +66,7 @@ const wireUsageOf = (
     return null;
 };
 
-const finishReasonOf = (reason: string | undefined): FinishReason => {
+const finishReasonOf = (reason: string | undefined): ProviderAttemptFinishReason => {
     switch (reason?.toLowerCase()) {
         case "stop":
         case "completed":
@@ -86,6 +86,8 @@ const finishReasonOf = (reason: string | undefined): FinishReason => {
         case "safety":
         case "recitation":
             return "content_filter";
+        case "insufficient_system_resource":
+            return "resource_interrupted";
         default:
             if (reason !== undefined && reason.length > 0) {
                 emitWarningOnce(
@@ -134,7 +136,8 @@ export type AiSdkTransportResponse = {
     content: string;
     reasoning: string;
     reasoningProjected: boolean;
-    finishReason: FinishReason;
+    finishReason: ProviderAttemptFinishReason;
+    rawFinishReason?: string;
     usage: ProviderUsage;
     metadata: Record<string, unknown>;
     reasoningEncrypted: Array<{
@@ -225,12 +228,14 @@ const executeModel = async (
         const values = [rawBody];
         const evidence = extractEvidence(values);
         const reasoningText = evidence.reasoning || result.reasoningText || "";
+        const rawFinishReason = result.rawFinishReason;
         return {
             model: result.response.modelId,
             content: result.text,
             reasoning: reasoningText,
             reasoningProjected: evidence.reasoningProjected,
-            finishReason: finishReasonOf(result.rawFinishReason),
+            finishReason: finishReasonOf(rawFinishReason),
+            ...(rawFinishReason === undefined ? {} : { rawFinishReason }),
             usage: wireUsageOf(values, reasoningText, result.text)
                 ?? usageOf(result.usage, reasoningText, result.text),
             metadata: metadataOf(values),
@@ -255,12 +260,14 @@ const executeModel = async (
     const evidence = extractEvidence(rawChunks);
     const content = await result.text;
     const reasoningText = evidence.reasoning || (await result.reasoningText) || "";
+    const rawFinishReason = await result.rawFinishReason;
     return {
         model: (await result.response).modelId,
         content,
         reasoning: reasoningText,
         reasoningProjected: evidence.reasoningProjected,
-        finishReason: finishReasonOf(await result.rawFinishReason),
+        finishReason: finishReasonOf(rawFinishReason),
+        ...(rawFinishReason === undefined ? {} : { rawFinishReason }),
         usage: wireUsageOf(rawChunks, reasoningText, content)
             ?? usageOf(await result.usage, reasoningText, content),
         metadata: metadataOf(rawChunks),

@@ -181,8 +181,8 @@ UPDATE turns SET
 WHERE id = $id;
 
 -- PREP: engine_record_turn_attempt
--- One completed provider exchange beneath a turn. Rejected emissions remain
--- operator-visible forensic evidence but never become log rows or packet history.
+-- One provider attempt carrying response evidence beneath a turn. Rejected or
+-- interrupted attempts remain forensic evidence but never become packet history.
 INSERT INTO turn_attempts (
     turn_id,
     sequence,

@@ -211,9 +211,9 @@ CREATE TABLE IF NOT EXISTS turns (
 CREATE UNIQUE INDEX IF NOT EXISTS turns_loop_id_sequence ON turns (loop_id, sequence);
 CREATE        INDEX IF NOT EXISTS turns_timestamp        ON turns (timestamp);
 
--- Provider calls are attempts beneath one engine turn. A syntactically invalid
--- emission may be retried against the identical packet without becoming a turn
--- or entering model-visible history.
+-- Provider calls are attempts beneath one engine turn. Rejected and interrupted
+-- response evidence persists without becoming a turn or entering model-visible
+-- history.
 CREATE TABLE IF NOT EXISTS turn_attempts (
     id               INTEGER NOT NULL PRIMARY KEY,
     turn_id          INTEGER NOT NULL,

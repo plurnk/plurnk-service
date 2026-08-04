@@ -4,6 +4,8 @@ export type {
     GrammarEvidence,
     Provider,
     ProviderAssistant,
+    ProviderAttempt,
+    ProviderAttemptFinishReason,
     AiSdkProviderPlugin,
     ProviderOptions,
     ProviderResponse,

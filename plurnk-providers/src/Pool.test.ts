@@ -39,6 +39,7 @@ const backend = (opts: FakeOpts = {}) => {
 };
 const netErr = () => new ProviderError("provider:x", "network_failure", "down", { status: 503 });
 const authErr = () => new ProviderError("provider:x", "unauthorized", "no key", { status: 401 });
+const interruptedErr = () => new ProviderError("provider:x", "resource_interrupted", "generation interrupted");
 const gen = (p: Pool, workerId: string, extra: Record<string, unknown> = {}) =>
     p.generate({ messages: [], workerId, ...extra } as Parameters<Provider["generate"]>[0]);
 
@@ -132,6 +133,17 @@ test("Pool: a terminal (auth) failure does NOT overflow", async () => {
     await assert.rejects(() => gen(p, "w1"), /no key/);
     assert.deepEqual(bad.served, ["w1"]);
     assert.deepEqual(other.served, []);     // never tried - auth fails the same on a peer
+});
+
+test("#161: Pool does not overflow a resource-interrupted attempt and discard its evidence", async () => {
+    const interrupted = backend({ throws: interruptedErr() }), other = backend();
+    const pool = new Pool([interrupted.b, other.b]);
+    await assert.rejects(
+        () => gen(pool, "w1"),
+        (error: unknown) => error instanceof ProviderError && error.kind === "resource_interrupted",
+    );
+    assert.deepEqual(interrupted.served, ["w1"]);
+    assert.deepEqual(other.served, []);
 });
 
 test("Pool: whole fleet unavailable throws the last error, each backend tried once", async () => {

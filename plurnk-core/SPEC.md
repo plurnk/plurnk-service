@@ -583,9 +583,9 @@ Author-facing contract: [plurnk-providers#1](https://github.com/plurnk/plurnk-pr
 
 Three entry points:
 
-- §provider-surface-generate `provider.generate(args)` — once per provider attempt. Core supplies the complete messages, worker/turn coordinates, generation envelope, optional local grammar, and first-party metadata. It consumes the framework's `ProviderResponse`: **engine parses `assistant.content`** into `PlurnkStatement[]`, persists normalized call metadata and forensic response fields, and relays provider-normalized encrypted-reasoning items without interpreting them ({§encrypted-reasoning-carrier}).
+- §provider-surface-generate `provider.generate(args)` — once per provider attempt. Core supplies the complete messages, worker/turn coordinates, generation envelope, optional local grammar, and first-party metadata. A successful `ProviderResponse` reaches emission admission; a `ProviderError.attempt` is failed evidence under {§provider-interrupted-attempt}. Core persists normalized call metadata and forensic response fields and relays encrypted-reasoning items only from an admitted response ({§encrypted-reasoning-carrier}).
 - §provider-surface-counttokens `provider.countTokens(text)` — synchronous, non-negative, and used for the provider-physical packet check ({§tokenomics-physical-admission}); model-facing stored and rendered weights use the provider-agnostic ruler.
-- §provider-surface-calculate-cost `provider.calculateCost(usage)` — once per completed provider attempt; estimated USD. Engine aggregates every attempt into `turns.usage_cost_usd`; triggers cascade to `workers.cost_usd` / `workspaces.cost_usd`.
+- §provider-surface-calculate-cost `provider.calculateCost(usage)` — once per persisted provider attempt carrying usage; estimated USD. Engine aggregates every attempt into `turns.usage_cost_usd`; triggers cascade to `workers.cost_usd` / `workspaces.cost_usd`.
 
 §provider-surface-identity Provider capacity and identity are immutable for one instance. `contextWindow` (physical token total, or `null` when unknown) and the optional reasoning/completion reserves define the natural prompt partition and physical admission check ({§tokenomics}); `model` identifies persisted turn/provider evidence. Local GBNF boot verification also consumes `constrainsOutput` ({§grammar-enforcement-verified-at-boot}).
 
@@ -601,9 +601,9 @@ Three entry points:
 
 ### §emission-admission Provider emission admission
 
-A completed provider exchange is an **emission attempt**, not necessarily an engine turn. The provider transports and observes the model's bytes; ANTLR is the admission authority. Admission asks whether the exchange has a trustworthy frame: its first parsed operation is PLAN, its last parsed operation is a terminal SEND, every hard parse error is bounded between those anchors, and no `unparsedTail` exists. Missing anchors, an error outside the frame, or a boundary-destroying tail rejects the entire exchange regardless of `finishReason`; no recovered prefix dispatches. Parser warnings remain admissible. `finish=length` is forensic evidence of likely truncation, not an independent rejection rule.
+A completed provider exchange is an **emission attempt**, not necessarily an engine turn. The provider transports and observes the model's bytes; ANTLR is the admission authority only after provider completion. Admission asks whether the exchange has a trustworthy frame: its first parsed operation is PLAN, its last parsed operation is a terminal SEND, every hard parse error is bounded between those anchors, and no `unparsedTail` exists. Missing anchors, an error outside the frame, or a boundary-destroying tail rejects the entire exchange regardless of `finishReason`; no recovered prefix dispatches. Parser warnings remain admissible. `finish=length` is forensic evidence of likely truncation, not an independent rejection rule. A provider-declared resource interruption never reaches admission, even when its partial bytes form a complete-looking frame ({§provider-interrupted-attempt}).
 
-Core retries a rejected emission against the exact same packet beneath the same engine turn, up to `PLURNK_SERVICE_EMISSION_ATTEMPTS`. Rejected bytes never dispatch, enter the Log, become model history, mint a model-facing error, or reach the engine strike rail. Every completed exchange remains durable in `turn_attempts` with its raw response, parser errors, usage, and cost. The accepted exchange alone completes `turns.packet`; all billed attempts aggregate into the turn's usage while the context gauge reads the latest attempt's prompt usage. Digest exposes rejected evidence as `packetNNN.attemptNNN.rejected.*`.
+Core retries a rejected emission against the exact same packet beneath the same engine turn, up to `PLURNK_SERVICE_EMISSION_ATTEMPTS`. Rejected bytes never dispatch, enter the Log, become model history, mint a model-facing error, or reach the engine strike rail. Every response-bearing attempt remains durable in `turn_attempts` with its raw response, parser errors, usage, and cost. The accepted exchange alone completes `turns.packet`; all billed attempts aggregate into the turn's usage while the context gauge reads the latest attempt's prompt usage. Digest exposes rejected evidence as `packetNNN.attemptNNN.rejected.*`.
 
 An admitted frame may contain bounded malformed statements. Parsed operations still dispatch; each malformed statement becomes one durable model-origin `error` row with the parser's exact diagnostic under {§parse-diagnostics} and status 400. These failures are committed before the terminal disposition, participate in the ordinary strike rail, and prevent SEND[200] or an already-drained SEND[202] from concluding before the model sees them in the next packet. This is operation recovery, not provider resampling.
 The Problem recovery states that only the failed operation needs correction
@@ -617,8 +617,9 @@ the loop at 500 without spending an engine strike.
 dispatch — is categorically different: its failed operation row enters
 model-visible history and the next engine turn may recover. A `ProviderError`
 means no completed exchange exists (auth, network beyond provider retries,
-rate limit); the attempted turn stores the exact request and failure status
-without fabricating an assistant.
+rate limit, or provider-declared interruption). When the error carries
+interrupted attempt evidence, core stores it unaccepted with its usage and cost;
+the failed turn still stores the exact request and never fabricates an assistant.
 
 ### §attribution First-party plugin attribution
 

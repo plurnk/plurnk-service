@@ -1,6 +1,7 @@
 import { Problems, type ProblemDetails } from "@plurnk/plurnk-contracts";
 import { APICallError, RetryError } from "ai";
 import { providerSource } from "./notices.ts";
+import type { ProviderAttempt } from "./types.ts";
 
 export type ProviderErrorKind =
     | "rate_limit"
@@ -9,7 +10,8 @@ export type ProviderErrorKind =
     | "invalid_response"
     | "unauthorized"
     | "quota_exceeded"
-    | "grammar_invalid";
+    | "grammar_invalid"
+    | "resource_interrupted";
 
 export interface ClassifiedProviderError {
     kind: ProviderErrorKind;
@@ -27,7 +29,8 @@ const defaultStatus = (kind: ProviderErrorKind): number => {
         case "model_refused":
         case "grammar_invalid": return 422;
         case "invalid_response": return 502;
-        case "network_failure": return 503;
+        case "network_failure":
+        case "resource_interrupted": return 503;
     }
 };
 
@@ -38,6 +41,7 @@ const retryable = (kind: ProviderErrorKind): boolean => {
             return true;
         case "invalid_response":
         case "grammar_invalid":
+        case "resource_interrupted":
         case "model_refused":
         case "unauthorized":
         case "quota_exceeded":
@@ -61,6 +65,7 @@ const buildProblem = (
         unauthorized: "unauthorized",
         quota_exceeded: "quota-exceeded",
         grammar_invalid: "grammar-invalid",
+        resource_interrupted: "resource-interrupted",
     };
     return Problems.create(source, code[kind], status, message, {
         providerKind: kind,
@@ -70,13 +75,15 @@ const buildProblem = (
     });
 };
 
-// A provider operation failed before a completed exchange existed. The
-// standardized Problem is the public failure contract; kind remains the
+// A provider operation failed before a completed exchange existed. An
+// interrupted response may still carry attempt evidence for its consumer.
+// The standardized Problem is the public failure contract; kind remains the
 // provider pool's routing discriminator and is repeated as a Problem extension.
 export class ProviderError extends Error {
     readonly source: string;
     readonly kind: ProviderErrorKind;
     readonly problem: ProblemDetails;
+    readonly attempt?: ProviderAttempt;
 
     constructor(
         source: string,
@@ -87,12 +94,14 @@ export class ProviderError extends Error {
             cause?: unknown;
             retryable?: boolean;
             extensions?: Readonly<Record<string, unknown>>;
+            attempt?: ProviderAttempt;
         } = {},
     ) {
         super(message, options.cause !== undefined ? { cause: options.cause } : undefined);
         this.name = "ProviderError";
         this.source = providerSource(source);
         this.kind = kind;
+        this.attempt = options.attempt;
         const status = options.status !== null && options.status !== undefined
             && Number.isInteger(options.status) && options.status >= 400 && options.status <= 599
             ? options.status

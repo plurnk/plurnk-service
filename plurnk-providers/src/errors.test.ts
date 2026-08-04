@@ -2,6 +2,7 @@ import test from "node:test";
 import { strict as assert } from "node:assert";
 import { APICallError, RetryError } from "ai";
 import { ProviderError, classifyProviderError, toProviderError } from "./errors.ts";
+import type { ProviderAttempt } from "./types.ts";
 import { providerSource } from "./notices.ts";
 
 const apiError = (statusCode: number, responseBody = "body") => new APICallError({
@@ -67,6 +68,45 @@ test("ProviderError marks failures that require changed external state as non-re
     const unauthorized = new ProviderError("provider:openai", "unauthorized", "Invalid API key.");
     assert.equal(unauthorized.problem.retryable, false);
     assert.equal(unauthorized.problem.stage, "provider-request");
+});
+
+test("#161: ProviderError carries resource-interrupted attempt evidence outside Problem Details", () => {
+    const attempt = {
+        assistant: {
+            content: "partial",
+            reasoning: null,
+            usage: { prompt: 3, completion: 1, reasoning: 0, cached: 0, total: 4 },
+            finishReason: "resource_interrupted",
+            model: "served-model",
+        },
+        assistantRaw: { rawFinishReason: "insufficient_system_resource" },
+    } as ProviderAttempt;
+    const error = new ProviderError(
+        "provider:deepseek",
+        "resource_interrupted",
+        "The provider interrupted generation because inference resources were unavailable.",
+        {
+            attempt,
+            extensions: {
+                stage: "provider-response",
+                finishReason: "resource_interrupted",
+                rawFinishReason: "insufficient_system_resource",
+            },
+        },
+    );
+
+    assert.equal(error.attempt, attempt);
+    assert.deepEqual(error.problem, {
+        type: "https://problems.plurnk.dev/provider/deepseek/resource-interrupted",
+        title: "Resource interrupted",
+        status: 503,
+        detail: "The provider interrupted generation because inference resources were unavailable.",
+        providerKind: "resource_interrupted",
+        stage: "provider-response",
+        retryable: false,
+        finishReason: "resource_interrupted",
+        rawFinishReason: "insufficient_system_resource",
+    });
 });
 
 test("toProviderError classifies and tags an HTTP error with the source + status", () => {
