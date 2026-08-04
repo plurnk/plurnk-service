@@ -39,6 +39,13 @@ test("[{§agui-configuration}] explicit in-process options override the assemble
         maxTurns: 3,
         heartbeatMs: 0,
     });
+    assert.equal(resolveModuleOptions({
+        host: "localhost",
+        port: 1,
+        token: "",
+        heartbeatMs: 0,
+        env: { PLURNK_AGUI_TOKEN: "environment" },
+    }).token, "", "an explicit empty token disables the environment's bearer requirement");
 });
 
 test("[{§agui-configuration}] missing and malformed numeric configuration fails at the owner", () => {
@@ -50,5 +57,15 @@ test("[{§agui-configuration}] missing and malformed numeric configuration fails
     assert.throws(
         () => resolve({ PLURNK_AGUI_HEARTBEAT_MS: "15000", PLURNK_AGUI_MAX_TURNS: "-2" }),
         /PLURNK_AGUI_MAX_TURNS must be a safe integer from -1 through 9007199254740991/,
+    );
+    assert.throws(
+        () => resolveModuleOptions({ host: "127.0.0.1", port: 0, heartbeatMs: null as unknown as number, env: floor }),
+        /ModuleOptions.heartbeatMs must be a safe integer/,
+        "an invalid explicit option fails instead of falling through to the environment",
+    );
+    assert.throws(
+        () => resolveModuleOptions({ host: "127.0.0.1", port: 0, maxTurns: "" as unknown as number, env: floor }),
+        /ModuleOptions.maxTurns must be a safe integer/,
+        "only an empty environment value means no module turn default",
     );
 });

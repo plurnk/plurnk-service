@@ -30,14 +30,14 @@ const safeInteger = (
     return value;
 };
 
-const optionalMaxTurns = (raw: unknown, name: string): number | undefined => {
+const environmentMaxTurns = (raw: string | undefined): number | undefined => {
     if (raw === undefined || raw === "") return undefined;
-    return safeInteger(raw, name, -1);
+    return safeInteger(raw, "PLURNK_AGUI_MAX_TURNS", -1);
 };
 
 export const resolveModuleOptions = (options: ModuleOptions): ResolvedModuleOptions => {
-    const env = options.env ?? process.env;
-    const token = options.token ?? env.PLURNK_AGUI_TOKEN ?? "";
+    const env = options.env === undefined ? process.env : options.env;
+    const token = options.token === undefined ? env.PLURNK_AGUI_TOKEN ?? "" : options.token;
     if (typeof token !== "string") {
         throw new Error(`ModuleOptions.token must be a string; got ${JSON.stringify(token)}.`);
     }
@@ -45,12 +45,11 @@ export const resolveModuleOptions = (options: ModuleOptions): ResolvedModuleOpti
         host: options.host,
         port: options.port,
         token,
-        maxTurns: optionalMaxTurns(
-            options.maxTurns ?? env.PLURNK_AGUI_MAX_TURNS,
-            options.maxTurns === undefined ? "PLURNK_AGUI_MAX_TURNS" : "ModuleOptions.maxTurns",
-        ),
+        maxTurns: options.maxTurns === undefined
+            ? environmentMaxTurns(env.PLURNK_AGUI_MAX_TURNS)
+            : safeInteger(options.maxTurns, "ModuleOptions.maxTurns", -1),
         heartbeatMs: safeInteger(
-            options.heartbeatMs ?? env.PLURNK_AGUI_HEARTBEAT_MS,
+            options.heartbeatMs === undefined ? env.PLURNK_AGUI_HEARTBEAT_MS : options.heartbeatMs,
             options.heartbeatMs === undefined ? "PLURNK_AGUI_HEARTBEAT_MS" : "ModuleOptions.heartbeatMs",
             0,
             MAX_TIMER_MS,
