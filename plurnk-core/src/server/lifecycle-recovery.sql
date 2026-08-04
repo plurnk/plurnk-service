@@ -20,6 +20,33 @@ SET status = 500,
     )
 WHERE status = 102;
 
+-- PREP: recovery_fail_ownerless_proposals
+-- {§worker-lifecycle-restart-recovery} Every proposed row depended on a
+-- process-local resolution waiter. At boot that owner is necessarily gone, so
+-- terminalize the occurrence before {§proposal-list} can open to clients.
+UPDATE log_entries
+SET state = 'failed',
+    outcome = 'owner_vanished',
+    status_rx = 500,
+    rx = json_object(
+        'status', 500,
+        'problem', json_object(
+            'type', 'https://problems.plurnk.dev/lifecycle/recovery/owner-vanished',
+            'title', 'Owner vanished',
+            'status', 500,
+            'detail', 'The daemon restarted while this proposal was pending; its process-local owner no longer exists.',
+            'instance', printf(
+                'log:///%d/%d/%d/%s',
+                (SELECT sequence FROM loops WHERE id = log_entries.loop_id),
+                (SELECT sequence FROM turns WHERE id = log_entries.turn_id),
+                sequence,
+                op
+            )
+        )
+    ),
+    deep_hash = NULL
+WHERE state = 'proposed';
+
 -- PREP: recovery_error_orphan_subscription_channels
 -- Every open subscription belonged to a callable in the prior process. Mark its
 -- active content terminal before closing the durable row, so an interruption

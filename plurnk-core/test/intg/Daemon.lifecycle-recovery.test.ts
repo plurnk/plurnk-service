@@ -8,6 +8,7 @@ import ProviderInstantiate from "../../src/core/ProviderInstantiate.ts";
 import {
     insertWorker,
     insertWorkspace,
+    insertTurn,
     openMigrated,
     seedEntryWithChannel,
 } from "./_helpers.ts";
@@ -59,6 +60,95 @@ test("boot restores a drain for accepted queued work", async () => {
         assert.equal(mock.remaining, 0, "the recovered queue was executed, not merely relabelled");
     } finally {
         await daemon.stop();
+        await db.close();
+    }
+});
+
+test("boot terminalizes a proposed occurrence whose process-local resolution owner vanished", async () => {
+    const db = await openMigrated();
+    const first = new Daemon({ db, provider: null });
+    const second = new Daemon({ db, provider: null });
+    try {
+        const workspaceId = await insertWorkspace(db, `recovery-proposal-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const loopId = await enqueueLoop(db, workerId, 1, "interrupted proposal");
+        await db.engine_reclaim_queued_loop.run({ loop_id: loopId });
+        const turnId = await insertTurn(db, loopId, 1, 102);
+        const inserted = await db.engine_insert_log_entry.get<{ id: number }>({
+            worker_id: workerId,
+            loop_id: loopId,
+            turn_id: turnId,
+            sequence: 1,
+            origin: "model",
+            source: null,
+            op: "EDIT",
+            suffix: "",
+            signal: null,
+            scheme: "worker",
+            username: null,
+            password: null,
+            hostname: null,
+            port: null,
+            pathname: "/interrupted",
+            query: null,
+            fragment: null,
+            lineMarker: null,
+            tx: JSON.stringify({ op: "EDIT" }),
+            mimetype_tx: "application/json",
+            rx: JSON.stringify({ status: 202, body: "review material" }),
+            mimetype_rx: "application/json",
+            status_rx: 202,
+            tokens: 0,
+            state: "proposed",
+            outcome: null,
+            attrs: "{}",
+        });
+        assert.ok(inserted !== undefined);
+
+        await first.start();
+
+        const recovered = await db.test_get_log_entry_by_id.get<{
+            state: string;
+            status_rx: number;
+            outcome: string | null;
+            rx: string;
+        }>({ id: inserted.id });
+        assert.equal(recovered?.state, "failed");
+        assert.equal(recovered?.status_rx, 500);
+        assert.equal(recovered?.outcome, "owner_vanished");
+        const result = JSON.parse(recovered?.rx ?? "null") as {
+            status?: number;
+            problem?: { type?: string; status?: number; detail?: string; instance?: string };
+        } | null;
+        assert.equal(result?.status, 500);
+        assert.equal(result?.problem?.type, "https://problems.plurnk.dev/lifecycle/recovery/owner-vanished");
+        assert.equal(result?.problem?.status, 500);
+        assert.match(result?.problem?.detail ?? "", /proposal.*process-local owner no longer exists/);
+        assert.equal(result?.problem?.instance, "log:///1/1/1/EDIT");
+        const loop = await db.lifecycle_loop_status.get<{
+            status: number;
+            terminal_result: string | null;
+        }>({ loop_id: loopId });
+        assert.equal(loop?.status, 500);
+        const loopResult = JSON.parse(loop?.terminal_result ?? "null") as {
+            status?: number;
+            problem?: { type?: string };
+        } | null;
+        assert.equal(loopResult?.status, 500);
+        assert.equal(loopResult?.problem?.type, result?.problem?.type, "the loop and its interrupted operation share one owner-loss disposition");
+        assert.deepEqual(await first.pendingProposals(workspaceId), []);
+        const rendered = await db.engine_render_log.all<{ sequence: number; op: string; state: string; status_rx: number }>({ worker_id: workerId });
+        assert.ok(
+            rendered.some((row) => row.sequence === 1 && row.op === "EDIT" && row.state === "failed" && row.status_rx === 500),
+            "the reconciled operation is visible as a truthful failed occurrence",
+        );
+
+        await first.stop();
+        await second.start();
+        const recoveredAgain = await db.test_get_log_entry_by_id.get<{ state: string; status_rx: number; outcome: string | null; rx: string }>({ id: inserted.id });
+        assert.deepEqual(recoveredAgain, recovered, "a later boot leaves the terminal occurrence unchanged");
+    } finally {
+        await Promise.allSettled([first.stop(), second.stop()]);
         await db.close();
     }
 });

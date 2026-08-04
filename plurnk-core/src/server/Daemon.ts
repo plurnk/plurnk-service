@@ -1113,6 +1113,7 @@ export default class Daemon {
 
     async #recoverLifecycle(): Promise<void> {
         await this.#db.recovery_fail_active_loops.run({});
+        await this.#db.recovery_fail_ownerless_proposals.run({});
         await this.#db.recovery_error_orphan_subscription_channels.run({});
         await this.#db.recovery_fail_orphan_subscriptions.run({});
         await this.#db.recovery_resume_unblocked_parks.run({});

@@ -226,6 +226,7 @@ export class SqlRiteSync {
 	fork_copy_entry_channels: SqlRiteSyncPreparedStatements;
 	fork_copy_entry_tags: SqlRiteSyncPreparedStatements;
 	recovery_fail_active_loops: SqlRiteSyncPreparedStatements;
+	recovery_fail_ownerless_proposals: SqlRiteSyncPreparedStatements;
 	recovery_error_orphan_subscription_channels: SqlRiteSyncPreparedStatements;
 	recovery_fail_orphan_subscriptions: SqlRiteSyncPreparedStatements;
 	recovery_resume_unblocked_parks: SqlRiteSyncPreparedStatements;
@@ -456,6 +457,7 @@ export default class SqlRite {
 	fork_copy_entry_channels: SqlRitePreparedStatements;
 	fork_copy_entry_tags: SqlRitePreparedStatements;
 	recovery_fail_active_loops: SqlRitePreparedStatements;
+	recovery_fail_ownerless_proposals: SqlRitePreparedStatements;
 	recovery_error_orphan_subscription_channels: SqlRitePreparedStatements;
 	recovery_fail_orphan_subscriptions: SqlRitePreparedStatements;
 	recovery_resume_unblocked_parks: SqlRitePreparedStatements;
