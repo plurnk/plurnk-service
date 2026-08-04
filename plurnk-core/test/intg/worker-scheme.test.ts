@@ -7,7 +7,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { parsePath } from "@plurnk/plurnk-contracts";
+import { InvalidLoopFlagsError, parsePath } from "@plurnk/plurnk-contracts";
 import type {
     ParsedPath,
     PlurnkStatement,
@@ -514,6 +514,33 @@ test("SEND(worker://name):msg delivers to a sister; a missing sister is 404", as
         });
         assert.equal(missing.status, 404, "irc to a non-existent sister is 404");
         assert.equal(calls.length, 1, "no inject for a missing sister");
+    } finally { await db.close(); }
+});
+
+test("worker IRC rejects contract-invalid delegator flags before inheritance (#169)", async () => {
+    const db = await openMigrated();
+    try {
+        const { calls, injectWorker } = recordingInjectWorker();
+        const workspaceId = await insertWorkspace(db, `worker-irc-flags-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const loopId = await insertLoop(db, workerId, 1, "go");
+        const turnId = await insertTurn(db, loopId, 1, 102);
+        await insertWorker(db, workspaceId, null, "worker");
+        await db.engine_set_loop_flags.run({ loop_id: loopId, flags: JSON.stringify({ auto: "yes" }) });
+
+        await assert.rejects(
+            new Worker().send(
+                sendStmt(null, workerPath("worker"), "what's your status?"),
+                makeSchemeCtx({ db, workspaceId, workerId, loopId, turnId, injectWorker }),
+            ),
+            (error: unknown) => {
+                assert.ok(error instanceof Error);
+                assert.equal(error.message, `Loop ${loopId} has invalid persisted flags.`);
+                assert.ok(error.cause instanceof InvalidLoopFlagsError);
+                return true;
+            },
+        );
+        assert.equal(calls.length, 0);
     } finally { await db.close(); }
 });
 

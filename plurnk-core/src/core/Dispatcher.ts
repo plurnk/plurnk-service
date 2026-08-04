@@ -29,8 +29,8 @@ import Fork from "./fork.ts";
 import WorkerCap from "./worker-cap.ts";
 import { parsePath, PathSyntax } from "@plurnk/plurnk-contracts";
 import Namespace from "./namespace.ts";
-import type { SchemeManifest, WriterTier, PlurnkSchemeContext, LoopFlags } from "./scheme-types.ts";
-import { DEFAULT_LOOP_FLAGS } from "./scheme-types.ts";
+import type { SchemeManifest, WriterTier, PlurnkSchemeContext } from "./scheme-types.ts";
+import LoopFlagsReader from "./LoopFlagsReader.ts";
 import ChannelWrite, { type StreamEventNotify, type WakeWorkerNotify, type InjectWorkerNotify, type BranchWorkerNotify, type BranchCompletionGate, type CancelWorkerNotify, type CancelDescendantsNotify } from "./ChannelWrite.ts";
 import {
     assertEditBatchReceipt,
@@ -745,19 +745,6 @@ export default class Dispatcher {
         };
     }
 
-    // Loads loops.flags (json column) and merges over DEFAULT_LOOP_FLAGS so
-    // missing keys read as their documented defaults.
-    async #loadLoopFlags(loopId: number): Promise<LoopFlags> {
-        const row = await this.#db.engine_get_loop_flags.get<{ flags: string }>({ loop_id: loopId });
-        if (row === undefined) return DEFAULT_LOOP_FLAGS;
-        try {
-            const parsed = JSON.parse(row.flags) as Partial<LoopFlags>;
-            return { ...DEFAULT_LOOP_FLAGS, ...parsed };
-        } catch {
-            return DEFAULT_LOOP_FLAGS;
-        }
-    }
-
     // SPEC {§scheme-surface}: engine rejects writes whose origin is outside the target
     // scheme's manifest.writableBy.
     // - Read-side ops (READ, FIND, OPEN, FOLD) are not gated.
@@ -869,7 +856,7 @@ export default class Dispatcher {
         // Broadcast SEND has no scheme to gate.
         if (statement.op === "SEND" && statement.target === null) return null;
 
-        const flags = await this.#loadLoopFlags(loopId);
+        const flags = await LoopFlagsReader.read(this.#db, loopId);
         // Fast path: default flags gate nothing. (auto never gates.)
         if (!flags.noWeb && !flags.noInteraction && flags.mode === "act") return null;
 
@@ -982,7 +969,7 @@ export default class Dispatcher {
         // {§worker-delegation-inherits-flags} — authority flows down the delegation edge: the child's live
         // loop runs with ITS DELEGATOR'S flags. A flagless (non-auto) child's every side-effecting op
         // proposes into a resolver-less void — 300s auto-cancel per attempt was the fan-out wedge.
-        const flags = await this.#loadLoopFlags(ctx.loopId);
+        const flags = await LoopFlagsReader.read(this.#db, ctx.loopId);
 
         // A name is frozen per worker but reclaimable across time ({§machine-processes-worker-origin}): a LIVE
         // sister holding it is a 409 (legible, never a raw UNIQUE 500); a free/terminated name reclaims.

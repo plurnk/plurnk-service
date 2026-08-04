@@ -14,12 +14,37 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { rulerCount } from "../../src/core/token-ruler.ts";
 import { Mock } from "@plurnk/plurnk-providers";
-import { Validator } from "@plurnk/plurnk-contracts";
+import { InvalidLoopFlagsError, Validator } from "@plurnk/plurnk-contracts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, seedEntryWithChannel, packetSection, logEntries, DEFAULT_MIMETYPES } from "./_helpers.ts";
 import { copyStmt, editStmt, readStmt, regex, sendStmt, urlPath } from "./_dsl.ts";
 
 const getPacket = async (db: Awaited<ReturnType<typeof openMigrated>>, turnId: number): Promise<{ sections: Array<{ name: string; slot: string; content: string; tokens: number }> }> =>
     JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: turnId }))!.packet);
+
+test("packet assembly surfaces contract-invalid persisted loop flags at the same owner (#169)", async () => {
+    const db = await openMigrated();
+    try {
+        const workspaceId = await insertWorkspace(db, `pkt-flags-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const loopId = await insertLoop(db, workerId, 1, "go");
+        await db.engine_set_loop_flags.run({ loop_id: loopId, flags: JSON.stringify({ noWeb: "yes" }) });
+        const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
+        const provider = new Mock({
+            contextWindow: 100000,
+            responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(200)] } }],
+        });
+
+        await assert.rejects(
+            engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] }),
+            (error: unknown) => {
+                assert.ok(error instanceof Error);
+                assert.equal(error.message, `Loop ${loopId} has invalid persisted flags.`);
+                assert.ok(error.cause instanceof InvalidLoopFlagsError);
+                return true;
+            },
+        );
+    } finally { await db.close(); }
+});
 
 test("assembled packet: the turn-0 catalog foist renders its entries into the log", async () => {
     const prev = process.env.PLURNK_SERVICE_FILES_ITEMS;

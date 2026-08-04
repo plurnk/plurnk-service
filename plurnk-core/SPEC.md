@@ -1578,7 +1578,7 @@ service manifest edit.
 - Backpressure caps — none ({§stream-constraints}).
 - Stream cancel — `SEND[499]` ({§stream-control}).
 - Delete — `KILL` (entry-KILL, the canonical delete, {§move}); `SEND[410]` also deletes as a side-effect ({§send-dispatch}).
-- Per-loop flags — `loops.flags` JSON column; `auto`, `noProposals`, `noWeb`, `noInteraction`, and `mode`.
+- §loop-flags-effective-read Per-loop flags — `loops.flags` persists a partial JSON object; every runtime policy read expands it over contracts-owned `DEFAULT_LOOP_FLAGS` and validates the complete `LoopFlags` before use. Missing rows or invalid values fail with the owning loop coordinate and cause. Raw archival copies and forensic rendering do not interpret policy.
 - Default-channel wire rendering — {§channel-selection}.
 
 ---

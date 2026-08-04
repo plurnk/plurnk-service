@@ -4,6 +4,7 @@
 // identical or absent flags fold clean.
 import test from "node:test";
 import assert from "node:assert/strict";
+import { InvalidLoopFlagsError } from "@plurnk/plurnk-contracts";
 import { Mock } from "@plurnk/plurnk-providers";
 import { rpcCall, rpcProblem, connect, withDaemon, makeMockResponse, subscribeNotifications, waitFor, runLoopToTerminal } from "./_rpc.ts";
 
@@ -48,6 +49,35 @@ test("inject with MATCHING or ABSENT flags folds into the live loop untouched (#
             const pending = proposals() as Array<{ logEntryId: number }>;
             await rpcCall(ws, 5, "loop.resolve", { logEntryId: pending[0].logEntryId, decision: "reject" });
             await runLoopToTerminal(ws, 6, { prompt: "wrap up", flags: { auto: false } }).catch(() => {});
+        } finally { ws.close(); }
+    });
+});
+
+test("inject surfaces contract-invalid durable posture before comparing it (#169)", async () => {
+    await withDaemon(heldLoopMock(), async (db, daemon, addr) => {
+        const ws = await connect(addr);
+        try {
+            const created = await rpcCall(ws, 1, "workspace.create", { name: "posture-invalid" });
+            const workspaceId = (created.result as { id: number }).id;
+            const proposals = subscribeNotifications(ws, "loop/proposal");
+            const started = await rpcCall(ws, 2, "loop.run", { prompt: "start working", flags: { auto: false } });
+            const { loopId, modelWorkerId } = started.result as { loopId: number; modelWorkerId: number };
+            await waitFor(() => proposals(), (p) => p.length >= 1, { timeoutMs: 10_000 });
+            await db.engine_set_loop_flags.run({ loop_id: loopId, flags: JSON.stringify({ noInteraction: "sometimes" }) });
+
+            await assert.rejects(
+                daemon.runLoop({ workspaceId, workerId: modelWorkerId, prompt: "fold this", flags: { mode: "ask" } }),
+                (error: unknown) => {
+                    assert.ok(error instanceof Error);
+                    assert.equal(error.message, `Loop ${loopId} has invalid persisted flags.`);
+                    assert.ok(error.cause instanceof InvalidLoopFlagsError);
+                    return true;
+                },
+            );
+
+            await db.engine_set_loop_flags.run({ loop_id: loopId, flags: "{}" });
+            const pending = proposals() as Array<{ logEntryId: number }>;
+            await rpcCall(ws, 3, "loop.resolve", { logEntryId: pending[0].logEntryId, decision: "reject" });
         } finally { ws.close(); }
     });
 });

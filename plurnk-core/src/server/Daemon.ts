@@ -41,6 +41,7 @@ import ProviderInstantiate from "../core/ProviderInstantiate.ts";
 import { resolveLoopAlias } from "./loop-model.ts";
 import { DEFAULT_LOOP_FLAGS } from "../core/scheme-types.ts";
 import type { LoopFlags } from "../core/types.ts";
+import LoopFlagsReader from "../core/LoopFlagsReader.ts";
 import Results, { OperationFailureError, type SchemeResult } from "../core/results.ts";
 import WorkspaceGate from "../core/WorkspaceGate.ts";
 import BranchBatches from "./BranchBatches.ts";
@@ -1246,10 +1247,11 @@ export default class Daemon {
     // absent flags fold clean.
     async #assertFoldPosture(workerId: number, flags: Partial<LoopFlags> | undefined, loopId: number): Promise<void> {
         if (flags === undefined || Object.keys(flags).length === 0) return;
-        const row = await this.#db.engine_get_loop_flags.get<{ flags: string }>({ loop_id: loopId });
-        if (row === undefined) throw new Error(`Loop ${loopId} disappeared while checking its flags`);
-        const effective: Record<string, unknown> = { ...DEFAULT_LOOP_FLAGS, ...JSON.parse(row.flags) as object };
-        const conflicts = Object.entries(flags).filter(([k, v]) => v !== undefined && effective[k] !== v).map(([k, v]) => `${k}: ${JSON.stringify(effective[k])} -> ${JSON.stringify(v)}`);
+        const effective = await LoopFlagsReader.read(this.#db, loopId);
+        const requested = Object.entries(flags) as Array<[keyof LoopFlags, LoopFlags[keyof LoopFlags] | undefined]>;
+        const conflicts = requested
+            .filter(([key, value]) => value !== undefined && effective[key] !== value)
+            .map(([key, value]) => `${key}: ${JSON.stringify(effective[key])} -> ${JSON.stringify(value)}`);
         if (conflicts.length > 0) {
             throw daemonFailure(
                 "daemon:loop",

@@ -93,6 +93,23 @@ const setLoopFlags = async (db: Awaited<ReturnType<typeof openMigrated>>, loopId
     await db.engine_set_loop_flags.run({ loop_id: loopId, flags: JSON.stringify(flags) });
 };
 
+test("dispatch surfaces contract-invalid persisted loop flags with their loop coordinate (#169)", async () => {
+    const { db, workspaceId, workerId, loopId, turnId, engine } = await setup();
+    try {
+        await db.engine_set_loop_flags.run({ loop_id: loopId, flags: JSON.stringify({ mode: "observe" }) });
+        const stmt = editStmt(urlPath("sideeffect-test", "x"), "body");
+        await assert.rejects(
+            engine.dispatch({ statement: stmt, workspaceId, workerId, loopId, turnId, sequence: 1, origin: "client" }),
+            (error: unknown) => {
+                assert.ok(error instanceof Error);
+                assert.equal(error.message, `Loop ${loopId} has invalid persisted flags.`);
+                assert.ok(error.cause instanceof TypeError);
+                return true;
+            },
+        );
+    } finally { await db.close(); }
+});
+
 test("ask mode refuses EVERY filesystem write — EDIT/COPY-dest/MOVE/KILL on the workspace (the ancient read-only contract, uncovered until now)", async () => {
     const { db, workspaceId, workerId, loopId, turnId, engine } = await setup();
     try {

@@ -14,7 +14,8 @@ import type ExecutorRegistry from "./ExecutorRegistry.ts";
 import type NoticeChannel from "./NoticeChannel.ts";
 import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import type { StreamEventNotify, WakeWorkerNotify } from "./ChannelWrite.ts";
-import { DEFAULT_LOOP_FLAGS, type PlurnkSchemeContext, type LoopFlags } from "./scheme-types.ts";
+import type { PlurnkSchemeContext, LoopFlags } from "./scheme-types.ts";
+import LoopFlagsReader from "./LoopFlagsReader.ts";
 import type { DispatchResult } from "./Dispatcher.ts";
 import { schemeNameOf } from "./plurnk-uri.ts";
 import SchemeCtxImpl from "./caps/SchemeCtxImpl.ts";
@@ -76,7 +77,6 @@ interface ProposalRow {
 }
 
 const PROPOSAL_OPS = new Set<string>(PLURNK_OPS);
-const LOOP_FLAG_KEYS = new Set(["mode", "auto", "noWeb", "noInteraction", "noProposals"]);
 
 // {§proposal-timeout-cancels} — empty means an indefinite wait; a positive
 // millisecond value opts into a bound. An explicit invalid value is a broken
@@ -269,7 +269,7 @@ export default class ProposalLifecycle {
         const op = ProposalLifecycle.#op(row);
         const attrs = ProposalLifecycle.#objectJson(row.logEntryId, "attrs", row.attrs);
         const result = ProposalLifecycle.#result(row.logEntryId, row.rx);
-        const flags = ProposalLifecycle.#flags(row.logEntryId, row.loop_flags);
+        const flags = LoopFlagsReader.parse(row.loop_flags, row.loopId);
         const target = ProposalLifecycle.#target(row, op, attrs);
         const operatorQuestion = ProposalLifecycle.#operatorQuestion(row, op, attrs);
         const diverged = await this.#db.engine_target_diverged_this_turn.get<{ hit: number }>({
@@ -323,24 +323,6 @@ export default class ProposalLifecycle {
         } catch (cause) {
             throw new Error(`Pending proposal ${logEntryId} has invalid proposed result JSON.`, { cause });
         }
-    }
-
-    static #flags(logEntryId: number, raw: string): LoopFlags {
-        const value = ProposalLifecycle.#objectJson(logEntryId, "loop flags", raw);
-        for (const key of Object.keys(value)) {
-            if (!LOOP_FLAG_KEYS.has(key)) {
-                throw new Error(`Pending proposal ${logEntryId} has unsupported persisted loop flag ${JSON.stringify(key)}.`);
-            }
-        }
-        for (const key of ["auto", "noWeb", "noInteraction", "noProposals"] as const) {
-            if (value[key] !== undefined && typeof value[key] !== "boolean") {
-                throw new Error(`Pending proposal ${logEntryId} has non-boolean persisted loop flag ${JSON.stringify(key)}.`);
-            }
-        }
-        if (value.mode !== undefined && value.mode !== "ask" && value.mode !== "act") {
-            throw new Error(`Pending proposal ${logEntryId} has invalid persisted loop mode ${JSON.stringify(value.mode)}.`);
-        }
-        return { ...DEFAULT_LOOP_FLAGS, ...value } as LoopFlags;
     }
 
     static #target(

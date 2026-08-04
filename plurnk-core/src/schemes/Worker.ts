@@ -1,5 +1,5 @@
-import type { SchemeManifest, PlurnkSchemeContext, LoopFlags } from "../core/scheme-types.ts";
-import { DEFAULT_LOOP_FLAGS } from "../core/scheme-types.ts";
+import type { SchemeManifest, PlurnkSchemeContext } from "../core/scheme-types.ts";
+import LoopFlagsReader from "../core/LoopFlagsReader.ts";
 import EntryOps from "./_entry-ops.ts";
 import type { EditResult, ReadResult } from "./_entry-ops.ts";
 import EntryFind from "./_entry-find.ts";
@@ -465,8 +465,7 @@ export default class Worker extends CoreSchemeAdapterBase {
         // {§worker-delegation-inherits-flags} — an irc that RESUMES a parked loop keeps that loop's
         // own flags (inject ignores these there); a fresh loop raised by the message acts on
         // the sender's behalf and carries the sender's authority.
-        const row = await core.db.engine_get_loop_flags.get<{ flags: string }>({ loop_id: core.loopId });
-        const flags = row === undefined ? undefined : { ...DEFAULT_LOOP_FLAGS, ...(JSON.parse(row.flags) as Partial<LoopFlags>) };
+        const flags = await LoopFlagsReader.read(core.db, core.loopId);
         await core.injectWorker({ workspaceId: core.workspaceId, workerId, prompt, flags });
         return { status: 200 };
     }

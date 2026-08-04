@@ -10,8 +10,7 @@ import { rulerCount } from "./token-ruler.ts";
 import { docsExcludeSet } from "./teaching.ts";
 import { Policy } from "@plurnk/plurnk-execs";
 import WorkspaceSettings from "./workspace-settings.ts";
-import { DEFAULT_LOOP_FLAGS } from "./scheme-types.ts";
-import type { LoopFlags } from "./types.ts";
+import LoopFlagsReader from "./LoopFlagsReader.ts";
 import { readPacketInject, readSystemPolicy, readProjectPolicy } from "./packet-inject.ts";
 import { readFile } from "node:fs/promises";
 import Paths from "../Paths.ts";
@@ -305,7 +304,7 @@ export default class PacketBuilder {
         // #367 — the capability sheet must reflect the LOOP MODE, not just workspace-enablement: an
         // ask-mode loop advertises only what its dispatch gate (resolveForLoop) will accept, so the
         // model is never taught a tag it'll then be 403'd on (the taught→emitted→rejected→508 spiral).
-        const activeSchemes = this.#schemes.resolveForLoop(await this.#loadLoopFlags(loopId));
+        const activeSchemes = this.#schemes.resolveForLoop(await LoopFlagsReader.read(this.#db, loopId));
         const tools = this.#collectTools(await this.#workspaceEnabled(workspaceId), await WorkspaceSettings.questionsEnabled(this.#db, workspaceId), activeSchemes);
         // Budget readout (SPEC.md {§tokenomics}). Two-pass: render the headline
         // with placeholders, build the section list, measure the assembled total,
@@ -403,14 +402,6 @@ export default class PacketBuilder {
     // The ## Registered Executable Tools capability sheet (SPEC {§tools}). Each available executor
     // tag contributes its self-documenting example (plurnk-execs#7); the closed heading distinguishes
     // registered selectors from the open-ended general examples above it. {§tools-capability-sheet}
-    // Mirror of Dispatcher.#loadLoopFlags — the packet reads the SAME persisted flags the gate does.
-    async #loadLoopFlags(loopId: number): Promise<LoopFlags> {
-        const row = await this.#db.engine_get_loop_flags.get<{ flags: string }>({ loop_id: loopId });
-        if (row === undefined) return DEFAULT_LOOP_FLAGS;
-        try { return { ...DEFAULT_LOOP_FLAGS, ...JSON.parse(row.flags) as Partial<LoopFlags> }; }
-        catch { return DEFAULT_LOOP_FLAGS; }
-    }
-
     #collectTools(
         workspaceEnabled: (tag: string) => boolean,
         questionsOn = false,
