@@ -69,3 +69,65 @@ test("identical entries attach one complete semantic artifact and both remain ad
         await db.close();
     }
 });
+
+test("fallback tokenizer identity invalidates an otherwise identical semantic derivation (#87)", async () => {
+    const db = await openMigrated();
+    try {
+        const workspaceId = await insertWorkspace(db, `tokenizer-identity-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        let tokenizerId = "vocab-a";
+        let tokenizerResolutions = 0;
+        let embeddedTexts = 0;
+        const vector = new Uint8Array(new Float32Array([1, 0]).buffer);
+        const mimetypes = {
+            process: async () => ({ symbols: [], references: [] }),
+            embedBatch: async (texts: readonly string[]) => {
+                embeddedTexts += texts.length;
+                return texts.map(() => vector);
+            },
+            embedderInfo: () => ({
+                dimension: 2,
+                contextWindow: 128,
+                countTokens: null,
+                model: "remote:stable@d2",
+            }),
+            tokenizer: async (modelRef: string) => {
+                assert.equal(modelRef, "remote:stable@d2");
+                tokenizerResolutions++;
+                return {
+                    countTokens: async (text: string) => text.split(/\s+/u).filter(Boolean).length,
+                    tokenizerId,
+                    exact: true,
+                };
+            },
+        } as unknown as Mimetypes;
+        const writeCtx = makeSchemeCtx({ db, workspaceId, workerId });
+        const deriveCtx = makeSchemeCtx({ db, workspaceId, workerId, mimetypes });
+
+        await new Worker().edit(edit("identity.md", "one stable semantic body"), writeCtx);
+        await SearchIndex.maintain(deriveCtx);
+        const first = await db.test_entries_with_hash_by_scheme_prefix.all<{ deep_hash: string }>({
+            workspace_id: workspaceId,
+            scheme: "worker",
+            prefix: "/identity.md",
+        });
+        assert.equal(first.length, 1);
+        assert.equal(embeddedTexts, 1);
+
+        await SearchIndex.maintain(deriveCtx);
+        assert.equal(embeddedTexts, 1, "an unchanged vocabulary identity reuses the complete artifact");
+
+        tokenizerId = "vocab-b";
+        await SearchIndex.maintain(deriveCtx);
+        const changed = await db.test_entries_with_hash_by_scheme_prefix.all<{ deep_hash: string }>({
+            workspace_id: workspaceId,
+            scheme: "worker",
+            prefix: "/identity.md",
+        });
+        assert.notEqual(changed[0]?.deep_hash, first[0]?.deep_hash, "the vocabulary change changes derivation identity");
+        assert.equal(embeddedTexts, 2, "the changed vocabulary forces one new vector derivation");
+        assert.equal(tokenizerResolutions, 3, "one fallback tokenizer resolution is shared by each indexing pass");
+    } finally {
+        await db.close();
+    }
+});
