@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import Validator, {
+    InvalidLoopFlagsError,
     InvalidNoticeError,
     InvalidOperationResultError,
     InvalidProblemDetailsError,
@@ -202,6 +203,34 @@ test("OperationResult rejects mismatched envelope and Problem statuses", () => {
         },
     };
     assert.throws(() => Validator.assertOperationResult(mismatch), InvalidOperationResultError);
+});
+
+test("LoopFlags accepts only one complete effective policy shape", () => {
+    const flags = {
+        mode: "act" as const,
+        auto: false,
+        noWeb: true,
+        noInteraction: false,
+        noProposals: true,
+    };
+    assert.equal(Validator.validateLoopFlags(flags).valid, true);
+    assert.equal(Validator.assertLoopFlags(flags), flags);
+
+    for (const invalid of [
+        { ...flags, mode: "observe" },
+        { ...flags, auto: "false" },
+        { ...flags, noWeb: 1 },
+        { ...flags, extra: false },
+        { mode: "act" },
+        null,
+        [],
+    ]) {
+        assert.equal(Validator.validateLoopFlags(invalid).valid, false);
+        assert.throws(
+            () => Validator.assertLoopFlags(invalid as never),
+            InvalidLoopFlagsError,
+        );
+    }
 });
 
 test("ProposalProjection validates one complete disposition-bearing client view", () => {

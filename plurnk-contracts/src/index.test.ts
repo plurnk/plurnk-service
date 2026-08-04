@@ -11,6 +11,7 @@ import {
 test("the package root exposes exactly the supported runtime values", () => {
     assert.deepEqual(Object.keys(Contracts).sort(), [
         "DEFAULT_LOOP_FLAGS",
+        "InvalidLoopFlagsError",
         "InvalidNoticeError",
         "InvalidOperationResultError",
         "InvalidProblemDetailsError",

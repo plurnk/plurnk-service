@@ -17,7 +17,7 @@ import textRegionSchema from "../schema/TextRegion.json" with { type: "json" };
 import proposalProjectionSchema from "../schema/ProposalProjection.json" with { type: "json" };
 import proposalDispositionSchema from "../schema/ProposalDisposition.json" with { type: "json" };
 import loopFlagsSchema from "../schema/LoopFlags.json" with { type: "json" };
-import type { Notice, OperationResult, ProblemDetails, ProposalProjection, TextRegion } from "./types.generated.ts";
+import type { LoopFlags, Notice, OperationResult, ProblemDetails, ProposalProjection, TextRegion } from "./types.generated.ts";
 
 export type ValidationResult = { valid: boolean; errors: OutputUnit[] };
 
@@ -25,6 +25,7 @@ export class InvalidNoticeError extends TypeError {}
 export class InvalidProblemDetailsError extends TypeError {}
 export class InvalidOperationResultError extends TypeError {}
 export class InvalidTextRegionError extends TypeError {}
+export class InvalidLoopFlagsError extends TypeError {}
 export class InvalidProposalProjectionError extends TypeError {}
 
 export default class Validator {
@@ -63,6 +64,7 @@ export default class Validator {
     static #problemDetails = new CfValidator(problemDetailsSchema as Schema, "2020-12");
     static #operationResult = Validator.#withRefs(operationResultSchema, [problemDetailsSchema]);
     static #textRegion = new CfValidator(textRegionSchema as Schema, "2020-12");
+    static #loopFlags = new CfValidator(loopFlagsSchema as Schema, "2020-12");
     static #proposalProjection = Validator.#withRefs(
         proposalProjectionSchema,
         [proposalDispositionSchema, loopFlagsSchema],
@@ -134,6 +136,10 @@ export default class Validator {
         return Validator.#validate(Validator.#textRegion, value);
     }
 
+    static validateLoopFlags(value: unknown): ValidationResult {
+        return Validator.#validate(Validator.#loopFlags, value);
+    }
+
     static validateProposalProjection(value: unknown): ValidationResult {
         return Validator.#validate(Validator.#proposalProjection, value);
     }
@@ -175,6 +181,14 @@ export default class Validator {
             || (value.endLine === value.startLine && value.endColumn < value.startColumn)
         ) {
             throw new InvalidTextRegionError("TextRegion ends before it starts");
+        }
+        return value;
+    }
+
+    static assertLoopFlags<T extends LoopFlags>(value: T): T {
+        const result = Validator.validateLoopFlags(value);
+        if (!result.valid) {
+            throw new InvalidLoopFlagsError(`invalid LoopFlags: ${JSON.stringify(result.errors)}`);
         }
         return value;
     }

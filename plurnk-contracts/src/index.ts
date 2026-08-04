@@ -2,6 +2,7 @@ import AstBuilder from "./AstBuilder.ts";
 
 export {
     default as Validator,
+    InvalidLoopFlagsError,
     InvalidNoticeError,
     InvalidOperationResultError,
     InvalidProblemDetailsError,
