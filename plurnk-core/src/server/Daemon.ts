@@ -19,7 +19,14 @@ import type { Provider, ProviderAlias } from "@plurnk/plurnk-providers";
 export type NotifyTarget = "all" | { workspaceId: number };
 // One drained loop's terminal shape — the drain's return currency.
 export interface DrainLoopResult { loopId: number; result: SchemeResult; hitMaxTurns: boolean; turnIds: number[]; action?: string; usage?: { promptTokens: number; completionTokens: number; costUsd: number } }
-import { parsePath, type Notice, type ProposalProjection } from "@plurnk/plurnk-contracts";
+import {
+    parsePath,
+    Validator,
+    type ClientEntryChannel,
+    type EntryReadResult,
+    type Notice,
+    type ProposalProjection,
+} from "@plurnk/plurnk-contracts";
 export type { ProposalProjection as PendingProposal } from "@plurnk/plurnk-contracts";
 import type { PlurnkStatement } from "@plurnk/plurnk-contracts";
 import LogEntry from "./logEntry.ts";
@@ -33,7 +40,7 @@ import GitMembership from "../core/git-membership.ts";
 import Fork from "../core/fork.ts";
 import WorkerName from "../core/WorkerName.ts";
 import LoopLifecycle from "../core/LoopLifecycle.ts";
-import { entryPathnameOf, promptLoopPrefix, renderAddress } from "../core/plurnk-uri.ts";
+import { promptLoopPrefix } from "../core/plurnk-uri.ts";
 import { rulerCount } from "../core/token-ruler.ts";
 import type { RegistryEntry } from "../core/ExecutorRegistry.ts";
 import { parseAliasesFromEnv, resolveActiveAlias } from "@plurnk/plurnk-providers";
@@ -80,18 +87,10 @@ const daemonFailure = (
     Results.failure(owner, code, status, detail, {}, extensions),
 );
 
-// The entry shape a client renders (#355 readEntry) — all channels + tags + metadata for one path.
-export interface ChannelShape { content: string; contentLength: number; mimetype: string; tokens: number; state: string; }
-export interface EntryShape {
-    id: number;
-    scope: string;
-    workspaceId: number;
-    scheme: string;
-    pathname: string;
-    channels: Record<string, ChannelShape>;
-    tags: string[];
-}
-type ChannelRow = { name: string } & ChannelShape;
+type ChannelRow = { name: string } & ClientEntryChannel;
+
+const entryReadResult = (result: unknown): EntryReadResult =>
+    Validator.assertEntryReadResult(result as EntryReadResult);
 
 export default class Daemon {
     #db: Db;
@@ -795,11 +794,17 @@ export default class Daemon {
         }
     }
 
-    // The entry-shape hook (#355) — one entry's channels + tags + metadata at a path. With channel+offset,
-    // returns just that channel's content sliced from the offset: the incremental streaming read (#192,
-    // the delta leaves storage, not the whole channel). The module renders growing output by re-polling.
-    async readEntry(args: { workspaceId: number; target: string; channel?: string; offset?: number }): Promise<SchemeResult & { entry: EntryShape | null }> {
+    // Contracts {§entry-read-result}: resolve through the scheme's address law,
+    // then project one owner-scoped entry without exposing persistence columns.
+    async readEntry(args: {
+        workspaceId: number;
+        workerId: number;
+        target: string;
+        channel?: string;
+        offset?: number;
+    }): Promise<EntryReadResult> {
         const workspaceId = ClientInput.assertId("entry.read", "workspaceId", args.workspaceId);
+        const workerId = ClientInput.assertId("entry.read", "workerId", args.workerId);
         if (typeof args.target !== "string" || args.target.length === 0) {
             throw daemonFailure(
                 "daemon:input",
@@ -816,7 +821,31 @@ export default class Daemon {
             );
         }
         const channel = ClientInput.assertOptionalChannel("entry.read", args.channel);
-        const release = await this.#workspaceGate.acquireTurn(workspaceId, 0);
+        const worker = await this.#db.envelope_get_worker_by_id.get<{ workspace_id: number }>({ id: workerId });
+        if (worker === undefined) {
+            throw daemonFailure(
+                "daemon:worker",
+                "worker-not-found",
+                404,
+                `Worker ${workerId} does not exist.`,
+                { workerId },
+            );
+        }
+        if (worker.workspace_id !== workspaceId) {
+            throw daemonFailure(
+                "daemon:worker",
+                "workspace-mismatch",
+                409,
+                `Worker ${workerId} does not belong to workspace ${workspaceId}.`,
+                {
+                    workerId,
+                    workspaceId,
+                    actualWorkspaceId: worker.workspace_id,
+                    retryable: false,
+                },
+            );
+        }
+        const release = await this.#workspaceGate.acquireTurn(workspaceId, workerId);
         try {
             let parsed;
             try {
@@ -825,7 +854,7 @@ export default class Daemon {
                 parsed = null;
             }
             if (parsed === null || parsed.kind !== "url") {
-                return Results.failure(
+                return entryReadResult(Results.failure(
                     "daemon:entry",
                     "target-invalid",
                     400,
@@ -837,10 +866,10 @@ export default class Daemon {
                         recovery: "Use a scheme://path target.",
                         retryable: false,
                     },
-                ) as SchemeResult & { entry: null };
+                ));
             }
             if (args.offset !== undefined && channel === undefined) {
-                return Results.failure(
+                return entryReadResult(Results.failure(
                     "daemon:entry",
                     "offset-channel-required",
                     400,
@@ -852,10 +881,10 @@ export default class Daemon {
                         recovery: "Select the channel to read from the offset.",
                         retryable: false,
                     },
-                ) as SchemeResult & { entry: null };
+                ));
             }
             if (args.offset !== undefined && (!Number.isSafeInteger(args.offset) || args.offset < 0)) {
-                return Results.failure(
+                return entryReadResult(Results.failure(
                     "daemon:entry",
                     "offset-invalid",
                     400,
@@ -867,10 +896,10 @@ export default class Daemon {
                         recovery: "Use a non-negative integer offset.",
                         retryable: false,
                     },
-                ) as SchemeResult & { entry: null };
+                ));
             }
             if (parsed.username !== null || parsed.password !== null) {
-                return Results.failure(
+                return entryReadResult(Results.failure(
                     "daemon:entry",
                     "userinfo-not-allowed",
                     400,
@@ -881,21 +910,38 @@ export default class Daemon {
                         recovery: "Remove credentials from the entry URL.",
                         retryable: false,
                     },
-                ) as SchemeResult & { entry: null };
+                ));
             }
-            const scheme = parsed.scheme;
-            const pathname = entryPathnameOf(parsed);
-            const target = renderAddress(scheme, pathname);
-            const row = await this.#db.entry_read_lookup.get<{ id: number; scope: string; workspace_id: number; scheme: string; pathname: string }>({ workspace_id: workspaceId, scheme, pathname });
-            if (row === undefined) {
-                return Results.failure(
+            const location = await this.#engine.resolveEntryAddress({
+                workspaceId,
+                workerId,
+                target: parsed,
+            });
+            if (location === null) {
+                return entryReadResult(Results.failure(
                     "daemon:entry",
                     "entry-not-found",
                     404,
-                    `No entry exists at ${target}.`,
+                    "No visible entry exists at the requested target.",
                     { entry: null },
-                    { target },
-                ) as SchemeResult & { entry: null };
+                    { target: args.target },
+                ));
+            }
+            const row = await this.#db.entry_read_lookup.get<{ id: number }>({
+                workspace_id: workspaceId,
+                owner_id: location.ownerId,
+                scheme: location.scheme,
+                pathname: location.pathname,
+            });
+            if (row === undefined) {
+                return entryReadResult(Results.failure(
+                    "daemon:entry",
+                    "entry-not-found",
+                    404,
+                    `No visible entry exists at ${location.target}.`,
+                    { entry: null },
+                    { target: location.target },
+                ));
             }
             let channelRows: ChannelRow[];
             if (channel === undefined) {
@@ -905,14 +951,14 @@ export default class Daemon {
                 if (r === undefined) {
                     const availableChannels = (await this.#db.entry_read_channels.all<ChannelRow>({ entry_id: row.id }))
                         .map(({ name }) => name);
-                    return Results.failure(
+                    return entryReadResult(Results.failure(
                         "daemon:entry",
                         "channel-not-found",
                         404,
-                        `Channel #${channel} does not exist at ${target}.`,
+                        `Channel #${channel} does not exist at ${location.target}.`,
                         { entry: null },
                         {
-                            target,
+                            target: location.target,
                             requestedChannel: channel,
                             availableChannels,
                             ...(availableChannels.length === 0
@@ -920,14 +966,31 @@ export default class Daemon {
                                 : { recovery: `Use one of the available channels: ${availableChannels.map((channel) => `#${channel}`).join(", ")}.` }),
                             retryable: false,
                         },
-                    ) as SchemeResult & { entry: null };
+                    ));
                 }
                 channelRows = [r];
             }
-            const channels: EntryShape["channels"] = {};
-            for (const c of channelRows) channels[c.name] = { content: c.content, contentLength: c.contentLength, mimetype: c.mimetype, tokens: c.tokens, state: c.state };
+            const channels: Record<string, ClientEntryChannel> = {};
+            for (const c of channelRows) {
+                channels[c.name] = {
+                    content: c.content,
+                    contentOffset: c.contentOffset,
+                    contentLength: c.contentLength,
+                    mimetype: c.mimetype,
+                    tokens: c.tokens,
+                    state: c.state,
+                };
+            }
             const tagRows = await this.#db.crud_read_tags.all<{ tag: string }>({ entry_id: row.id });
-            return { status: 200, entry: { id: row.id, scope: row.scope, workspaceId: row.workspace_id, scheme: row.scheme, pathname: row.pathname, channels, tags: tagRows.map((t) => t.tag) } };
+            return entryReadResult({
+                status: 200,
+                entry: {
+                    entryId: row.id,
+                    target: location.target,
+                    channels,
+                    tags: tagRows.map((tag) => tag.tag),
+                },
+            });
         } finally {
             release();
         }

@@ -167,7 +167,8 @@ export default class SeamSocket {
             }
             case "entry.read": {
                 const s = this.#attached();
-                return daemon.readEntry({ workspaceId: s.workspaceId, target: p.target as string, channel: p.channel as string | undefined, offset: p.offset as number | undefined });
+                const workerId = (p.workerId as number | undefined) ?? this.#modelWorkerId ?? s.workerId;
+                return daemon.readEntry({ workspaceId: s.workspaceId, workerId, target: p.target as string, channel: p.channel as string | undefined, offset: p.offset as number | undefined });
             }
             case "run.fork": {
                 // fork branches an EXISTING model worker — no worker yet is a caller error, never an implicit create.

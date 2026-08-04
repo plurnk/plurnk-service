@@ -7,6 +7,7 @@ import SeamSocket from "./_seam.ts";
 import Daemon from "../../src/server/Daemon.ts";
 import { openMigrated } from "./_helpers.ts";
 import { rpcProblem } from "./_rpc.ts";
+import { Validator, type EntryReadResult } from "@plurnk/plurnk-contracts";
 
 interface RpcResponse {
     jsonrpc: "2.0";
@@ -27,6 +28,9 @@ const rpcCall = (ws: SeamSocket, id: number, method: string, params?: object): P
         ws.send(JSON.stringify({ jsonrpc: "2.0", id, method, params }));
     });
 
+const entryRead = (response: RpcResponse): EntryReadResult =>
+    Validator.assertEntryReadResult(response.result as EntryReadResult);
+
 // #364 — the harness rides the seam; the "addr" is the daemon itself.
 const withDaemon = async <T>(fn: (db: Db, addr: { daemon: Daemon }) => Promise<T>): Promise<T> => {
     const db = await openMigrated();
@@ -38,7 +42,7 @@ const withDaemon = async <T>(fn: (db: Db, addr: { daemon: Daemon }) => Promise<T
 
 const connect = (addr: { daemon: Daemon }): Promise<SeamSocket> => Promise.resolve(new SeamSocket(addr.daemon));
 
-test("entry.read returns full entry shape (channels + tags + metadata)", async () => {
+test("entry.read returns the contracts-owned client projection", async () => {
     await withDaemon(async (_db, addr) => {
         const ws = await connect(addr);
         try {
@@ -46,11 +50,12 @@ test("entry.read returns full entry shape (channels + tags + metadata)", async (
             await rpcCall(ws, 2, "op.edit", { target: "worker:///france/capital", content: "Paris", tags: ["france", "europe"] });
 
             const r = await rpcCall(ws, 3, "entry.read", { target: "worker:///france/capital" });
-            const result = r.result as { status: number; entry: { scheme: string; pathname: string; channels: Record<string, { content: string; mimetype: string }>; tags: string[] } };
+            const result = entryRead(r);
             assert.equal(result.status, 200);
-            assert.equal(result.entry.scheme, "worker");
-            assert.equal(result.entry.pathname, "/france/capital");
+            assert.ok(result.entry !== null);
+            assert.equal(result.entry.target, "worker:///france/capital");
             assert.equal(result.entry.channels.body.content, "Paris");
+            assert.equal(result.entry.channels.body.contentOffset, 0);
             assert.equal(result.entry.channels.body.mimetype, "text/markdown");
             assert.deepEqual(result.entry.tags.toSorted(), ["europe", "france"]);
         } finally { ws.close(); }
@@ -66,23 +71,33 @@ test("entry.read channel+offset returns the incremental slice + full contentLeng
 
             // Full read now reports contentLength on every channel (the unit offset uses).
             const full = await rpcCall(ws, 3, "entry.read", { target: "worker:///doc" });
-            const fullCh = (full.result as { entry: { channels: Record<string, { content: string; contentLength: number }> } }).entry.channels.body;
+            const fullResult = entryRead(full);
+            assert.ok(fullResult.entry !== null);
+            const fullCh = fullResult.entry.channels.body;
             assert.equal(fullCh.content, "Hello, World");
+            assert.equal(fullCh.contentOffset, 0);
             assert.equal(fullCh.contentLength, 12);
 
             // Delta read: only the channel, content from the offset, full length back.
             const delta = await rpcCall(ws, 4, "entry.read", { target: "worker:///doc", channel: "body", offset: 7 });
-            const deltaResult = delta.result as { status: number; entry: { channels: Record<string, { content: string; contentLength: number }> } };
+            const deltaResult = entryRead(delta);
             assert.equal(deltaResult.status, 200);
+            assert.ok(deltaResult.entry !== null);
             assert.equal(deltaResult.entry.channels.body.content, "World", "content is the slice from the offset");
+            assert.equal(deltaResult.entry.channels.body.contentOffset, 7);
             assert.equal(deltaResult.entry.channels.body.contentLength, 12, "contentLength is the full length — the next poll reads from here");
             assert.deepEqual(Object.keys(deltaResult.entry.channels), ["body"], "channel scopes the read to just that channel");
 
             // offset 0 → whole channel; offset past the end → caught up (empty).
             const whole = await rpcCall(ws, 5, "entry.read", { target: "worker:///doc", channel: "body", offset: 0 });
-            assert.equal((whole.result as { entry: { channels: Record<string, { content: string }> } }).entry.channels.body.content, "Hello, World");
+            const wholeResult = entryRead(whole);
+            assert.ok(wholeResult.entry !== null);
+            assert.equal(wholeResult.entry.channels.body.content, "Hello, World");
             const past = await rpcCall(ws, 6, "entry.read", { target: "worker:///doc", channel: "body", offset: 100 });
-            assert.equal((past.result as { entry: { channels: Record<string, { content: string }> } }).entry.channels.body.content, "");
+            const pastResult = entryRead(past);
+            assert.ok(pastResult.entry !== null);
+            assert.equal(pastResult.entry.channels.body.content, "");
+            assert.equal(pastResult.entry.channels.body.contentOffset, 12);
 
             // offset without channel is a contract violation (which channel to slice?).
             const bad = await rpcCall(ws, 7, "entry.read", { target: "worker:///doc", offset: 3 });
@@ -100,7 +115,7 @@ test("entry.read returns 404 for missing entry", async () => {
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "404-test" });
             const r = await rpcCall(ws, 2, "entry.read", { target: "worker:///does-not-exist" });
-            const result = r.result as { status: number; entry: null };
+            const result = entryRead(r);
             assert.equal(result.status, 404);
             assert.equal(result.entry, null);
         } finally { ws.close(); }
@@ -134,8 +149,10 @@ test("entry.read with fragment strips fragment (channel selection is per-op conc
             if (r.result === undefined) {
                 throw new Error(`entry.read failed: ${JSON.stringify(r)}`);
             }
-            const result = r.result as { status: number; entry: { channels: Record<string, unknown> } };
+            const result = entryRead(r);
             assert.equal(result.status, 200);
+            assert.ok(result.entry !== null);
+            assert.equal(result.entry.target, "worker:///x");
             assert.ok(result.entry.channels.body !== undefined);
         } finally { ws.close(); }
     });

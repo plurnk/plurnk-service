@@ -10,7 +10,7 @@ import type { FindResult } from "./_entry-find.ts";
 import Owner from "../core/Owner.ts";
 import type { EditStatement, ReadStatement, SendStatement, FindStatement, KillStatement, ParsedPath } from "@plurnk/plurnk-contracts";
 import { CoreSchemeAdapterBase } from "../core/CoreSchemeServices.ts";
-import type { CoreSchemeCallContext } from "../core/CoreSchemeServices.ts";
+import type { CoreEntryAddress, CoreSchemeCallContext } from "../core/CoreSchemeServices.ts";
 import Results, { type SchemeResultBase } from "../core/results.ts";
 import BranchReceipt from "../core/BranchReceipt.ts";
 import WorkerControlAddress from "../core/WorkerControlAddress.ts";
@@ -85,6 +85,14 @@ export default class Worker extends CoreSchemeAdapterBase {
         const t = statement.target;
         if (t === null || t.kind !== "url") return statement;
         return { ...statement, target: { ...t, hostname: null } };
+    }
+
+    async resolveEntryAddress(target: ParsedPath, ctx: CoreSchemeCallContext): Promise<CoreEntryAddress | null> {
+        const authority = Worker.#authority(target);
+        const pathname = Worker.#entryPath(target);
+        if (authority === null || pathname === "") return null;
+        const resolved = await Worker.#resolveAuthority(authority, this.coreContext(ctx));
+        return resolved === null ? null : { pathname, ownerId: resolved.ownerId };
     }
 
     async editBatch(statements: readonly EditStatement[], ctx: CoreSchemeCallContext): Promise<EditResult> {

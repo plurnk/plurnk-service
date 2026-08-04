@@ -55,7 +55,9 @@ import LoopLifecycle from "./LoopLifecycle.ts";
 import Results from "./results.ts";
 import { OperationFailureError } from "./results.ts";
 import EffectPolicy from "../schemes/EffectPolicy.ts";
+import { CoreSchemeAdapterBase, type CoreEntryAddress } from "./CoreSchemeServices.ts";
 import {
+    type EntryAddress,
     InvalidOperationResultError,
     NetworkAddress,
     type MatchEvidence,
@@ -84,6 +86,13 @@ export type DispatchContext = {
 
 export type DispatchResult = SchemeResult;
 
+export interface ResolvedClientEntryAddress {
+    readonly ownerId: number;
+    readonly scheme: string;
+    readonly pathname: string;
+    readonly target: string;
+}
+
 import type { SchemeCtx, SchemeHandler } from "@plurnk/plurnk-schemes";
 type SchemeMethod = (statement: PlurnkStatement, ctx: SchemeCtx) => Promise<DispatchResult>;
 type LogCurationHandler = {
@@ -108,6 +117,13 @@ interface SchemeWithCrud {
     writeEntry?: (pathname: string, entry: EntryData, ctx: SchemeCtx) => Promise<WriteEntryResult>;
     deleteEntry?: (pathname: string, ctx: SchemeCtx) => Promise<DeleteEntryResult>;
     deleteChannel?: (pathname: string, channel: string, ctx: SchemeCtx) => Promise<DeleteEntryResult>;
+}
+
+interface SchemeWithEntryAddress {
+    resolveEntryAddress?: (
+        target: ParsedPath,
+        ctx: SchemeCtx,
+    ) => Promise<EntryAddress | CoreEntryAddress | null>;
 }
 
 type ResolvedResourceSelection = {
@@ -716,6 +732,72 @@ export default class Dispatcher {
         const denial = await this.#checkFlagsGate(statement, loopId);
         if (denial !== null) return denial;
         return this.#run(schemeNameOf(statement.target), statement, schemeCtx);
+    }
+
+    // Resolve the client selector through the owning scheme before persistence
+    // is consulted. Public schemes choose a semantic owner; core-owned authority
+    // schemes may return the already-authorized principal key.
+    async resolveEntryAddress(context: {
+        target: ParsedPath;
+        workspaceId: number;
+        workerId: number;
+    }): Promise<ResolvedClientEntryAddress | null> {
+        const { target, workspaceId, workerId } = context;
+        const routedScheme = schemeNameOf(target);
+        if (routedScheme === null) return null;
+        const handler = this.#schemes.get(routedScheme) as SchemeWithEntryAddress | undefined;
+        const manifest = this.#schemes.manifestFor(routedScheme);
+        if (handler === undefined || manifest?.category !== "data") return null;
+
+        const addressedScheme = target.kind === "url" ? target.scheme : routedScheme;
+        const coreCtx = this.#buildSchemeCtx({
+            workspaceId,
+            workerId,
+            loopId: 0,
+            turnId: 0,
+            origin: "client",
+        });
+        const schemeCtx = new SchemeCtxImpl(
+            coreCtx,
+            addressedScheme,
+            manifest,
+            this.#liveSubscriptions,
+        );
+        const resolved = handler.resolveEntryAddress === undefined
+            ? { pathname: entryPathnameOf(target), owner: "commons" as const }
+            : await handler.resolveEntryAddress(target, schemeCtx);
+        if (resolved === null) return null;
+        if (typeof resolved.pathname !== "string") {
+            throw new TypeError(`Scheme '${routedScheme}' returned an invalid entry pathname.`);
+        }
+
+        let ownerId: number;
+        if ("ownerId" in resolved) {
+            if (!(handler instanceof CoreSchemeAdapterBase)) {
+                throw new TypeError(`Scheme '${routedScheme}' returned a core-only entry owner id.`);
+            }
+            ownerId = resolved.ownerId;
+        } else if (resolved.owner === "worker") {
+            ownerId = workerId;
+        } else if (resolved.owner === "commons") {
+            ownerId = await Owner.commonsId(this.#db, workspaceId);
+        } else {
+            throw new TypeError(`Scheme '${routedScheme}' returned an invalid entry owner.`);
+        }
+        if (!Number.isSafeInteger(ownerId) || ownerId < 1) {
+            throw new TypeError(`Scheme '${routedScheme}' returned an invalid entry owner id.`);
+        }
+
+        const rendered = target.kind === "url"
+            ? renderTarget({ ...target, fragment: null })
+            : renderTarget({ scheme: null, pathname: target.raw, fragment: null });
+        if (rendered === null) throw new TypeError("Resolved entry target did not render.");
+        return {
+            ownerId,
+            scheme: manifest.storedScheme ?? addressedScheme,
+            pathname: resolved.pathname,
+            target: rendered,
+        };
     }
 
     // An accepted EXEC reads a non-file source through the same registered

@@ -2,7 +2,7 @@ import { PlurnkParser, PlurnkParseError, UNKNOWN_POSITION } from "@plurnk/plurnk
 import { RuntimeTag } from "@plurnk/plurnk-execs";
 import Owner from "./Owner.ts";
 import type { Notice } from "@plurnk/plurnk-contracts";
-import type { PlurnkStatement, EditStatement, ReadStatement, UrlPath, FindStatement } from "@plurnk/plurnk-contracts";
+import type { PlurnkStatement, EditStatement, ReadStatement, UrlPath, FindStatement, ParsedPath } from "@plurnk/plurnk-contracts";
 
 // Internal-only — collected from PlurnkParser output, then translated to
 // Notice envelopes are defined by @plurnk/plurnk-contracts.
@@ -57,7 +57,7 @@ import ProposalLifecycle from "./ProposalLifecycle.ts";
 import type { ProposalResolution, ProposalPendingEvent } from "./ProposalLifecycle.ts";
 import type { ProposalProjection } from "@plurnk/plurnk-contracts";
 import Dispatcher from "./Dispatcher.ts";
-import type { DispatchContext, DispatchResult } from "./Dispatcher.ts";
+import type { DispatchContext, DispatchResult, ResolvedClientEntryAddress } from "./Dispatcher.ts";
 import { scheduleTurnOps } from "./turn-scheduler.ts";
 
 // Proposal types are part of Engine's public API (resolveProposal/onProposalPending);
@@ -2122,6 +2122,14 @@ export default class Engine {
         origin?: WriterTier;
     }): Promise<DispatchResult> {
         return this.#dispatcher.look(context);
+    }
+
+    async resolveEntryAddress(context: {
+        target: ParsedPath;
+        workspaceId: number;
+        workerId: number;
+    }): Promise<ResolvedClientEntryAddress | null> {
+        return this.#dispatcher.resolveEntryAddress(context);
     }
 
     async #writePromptLog({

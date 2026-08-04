@@ -25,6 +25,13 @@ export interface CoreSchemeAdapter {
     bindCore(services: CoreSchemeServices): void;
 }
 
+// Core-owned schemes may resolve authorities that name a principal other than
+// the caller. This storage-key form never crosses the public scheme contract.
+export interface CoreEntryAddress {
+    readonly pathname: string;
+    readonly ownerId: number;
+}
+
 // Core-owned adapters are also exercised directly by service integration tests.
 // Production dispatch supplies SchemeCtx; direct core tests may supply the
 // daemon's own context. This union is internal to plurnk-core and is not an

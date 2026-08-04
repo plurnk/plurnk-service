@@ -735,7 +735,7 @@ test("the client-interface seam — readEntry returns an entry's shape and the #
             await daemon.dispatchAsClient({ workspaceId: created.id, workerId: clientWorker.id, statement: Dsl.buildEdit({ target: "worker:///x", content: "hello world" }) });
 
             // full shape — the written content is on one of the entry's channels.
-            const entry = (await daemon.readEntry({ workspaceId: created.id, target: "worker:///x" })).entry!;
+            const entry = (await daemon.readEntry({ workspaceId: created.id, workerId: clientWorker.id, target: "worker:///x" })).entry!;
             const found = Object.entries(entry.channels).find(([, c]) => c.content.includes("hello"));
             assert.ok(found !== undefined, "readEntry returns the entry's channels with content");
             const [channel, chan] = found!;
@@ -743,19 +743,21 @@ test("the client-interface seam — readEntry returns an entry's shape and the #
             assert.equal(chan.contentLength, 11);
 
             // #192 incremental slice — that channel's content from an offset; only the delta leaves storage.
-            const sliced = (await daemon.readEntry({ workspaceId: created.id, target: "worker:///x", channel, offset: 6 })).entry!;
+            const sliced = (await daemon.readEntry({ workspaceId: created.id, workerId: clientWorker.id, target: "worker:///x", channel, offset: 6 })).entry!;
             assert.equal(sliced.channels[channel].content, "world", "the incremental read returns only the delta from the offset");
             assert.equal(sliced.channels[channel].contentLength, 11, "contentLength is the full length — the next poll resumes from there");
 
             // a missing entry is 404; an offset without a channel is refused.
-            const missing = await daemon.readEntry({ workspaceId: created.id, target: "worker:///nope" });
+            const missing = await daemon.readEntry({ workspaceId: created.id, workerId: clientWorker.id, target: "worker:///nope" });
             assert.equal(missing.status, 404);
-            assert.equal(missing.problem?.type, "https://problems.plurnk.dev/daemon/entry/entry-not-found");
-            assert.equal(missing.problem?.target, "worker:///nope");
-            const offset = await daemon.readEntry({ workspaceId: created.id, target: "worker:///x", offset: 3 });
+            assert.ok("problem" in missing);
+            assert.equal(missing.problem.type, "https://problems.plurnk.dev/daemon/entry/entry-not-found");
+            assert.equal(missing.problem.target, "worker:///nope");
+            const offset = await daemon.readEntry({ workspaceId: created.id, workerId: clientWorker.id, target: "worker:///x", offset: 3 });
             assert.equal(offset.status, 400);
-            assert.equal(offset.problem?.type, "https://problems.plurnk.dev/daemon/entry/offset-channel-required");
-            assert.equal(offset.problem?.recovery, "Select the channel to read from the offset.");
+            assert.ok("problem" in offset);
+            assert.equal(offset.problem.type, "https://problems.plurnk.dev/daemon/entry/offset-channel-required");
+            assert.equal(offset.problem.recovery, "Select the channel to read from the offset.");
 
             const commons = await db.envelope_get_worker_by_name.get<{ id: number }>({ workspace_id: created.id, name: "commons" });
             assert.ok(commons !== undefined);
@@ -777,18 +779,21 @@ test("the client-interface seam — readEntry returns an entry's shape and the #
             });
             const network = await daemon.readEntry({
                 workspaceId: created.id,
+                workerId: clientWorker.id,
                 target: "https://example.org:8443/x?b=2&a=1&a=3#body",
             });
             assert.equal(network.status, 200);
-            assert.equal(network.entry?.pathname, "/example.org:8443/x?b=2&a=1&a=3");
+            assert.equal(network.entry?.target, "https://example.org:8443/x?b=2&a=1&a=3");
             assert.equal(network.entry?.channels.body.content, "network body");
 
             const userinfo = await daemon.readEntry({
                 workspaceId: created.id,
+                workerId: clientWorker.id,
                 target: "https://alice:secret@example.org:8443/x?b=2&a=1&a=3",
             });
             assert.equal(userinfo.status, 400);
-            assert.equal(userinfo.problem?.type, "https://problems.plurnk.dev/daemon/entry/userinfo-not-allowed");
+            assert.ok("problem" in userinfo);
+            assert.equal(userinfo.problem.type, "https://problems.plurnk.dev/daemon/entry/userinfo-not-allowed");
             assert.doesNotMatch(JSON.stringify(userinfo), /alice|secret/);
         } finally { ws.close(); }
     });

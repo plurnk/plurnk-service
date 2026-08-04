@@ -1,4 +1,4 @@
-import type { FindStatement, ReadStatement } from "@plurnk/plurnk-contracts";
+import type { FindStatement, ParsedPath, ReadStatement } from "@plurnk/plurnk-contracts";
 import type { SchemeManifest } from "../core/scheme-types.ts";
 import type { Executor } from "../core/ExecutorRegistry.ts";
 import type Exec from "./Exec.ts";
@@ -7,11 +7,12 @@ import EntryOps, { type ReadResult } from "./_entry-ops.ts";
 import EntryFind, { type FindResult } from "./_entry-find.ts";
 import EntryCrud, { type ReadEntryResult } from "./_entry-crud.ts";
 import { CoreSchemeAdapterBase } from "../core/CoreSchemeServices.ts";
-import type { CoreSchemeCallContext } from "../core/CoreSchemeServices.ts";
+import type { CoreEntryAddress, CoreSchemeCallContext } from "../core/CoreSchemeServices.ts";
 import Results, { type SchemeResultBase } from "../core/results.ts";
 import type { RuntimeSchemeFacet } from "../server/DaemonModule.ts";
 import SchemeCtxImpl from "../core/caps/SchemeCtxImpl.ts";
-import type { SchemeCtx } from "@plurnk/plurnk-schemes";
+import type { EntryAddress, SchemeCtx } from "@plurnk/plurnk-schemes";
+import Owner from "../core/Owner.ts";
 
 // #240 — an executor IS a scheme; its output lives at <tag>://. Each discovered
 // executor registers this face under its runtime tag, so READ/FIND <tag>://<coord>
@@ -52,6 +53,18 @@ export default class ExecOutputScheme extends CoreSchemeAdapterBase {
             this.#executor.manifest,
             this.liveSubscriptions(),
         );
+    }
+
+    async resolveEntryAddress(
+        target: ParsedPath,
+        ctx: CoreSchemeCallContext,
+    ): Promise<EntryAddress | CoreEntryAddress | null> {
+        if (target.kind !== "url") return null;
+        if (this.#facet?.claims(target.pathname) === true) {
+            return { pathname: target.pathname, owner: "commons" };
+        }
+        const ownerId = await Owner.resolveStreamOwner(target.hostname, this.coreContext(ctx));
+        return ownerId === null ? null : { pathname: target.pathname, ownerId };
     }
 
     // {§stream-owner-scoped} — the authority names the OWNER: empty = the calling worker (your

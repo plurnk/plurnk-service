@@ -723,6 +723,16 @@ routing and resource identity are separate:
   folder/glob expansion belongs to entry namespaces, never an HTTP origin.
 - The **`file` class is the workspace filesystem** — a mount namespace with its own resolution and naming law, specified below.
 
+§client-entry-address A client entry read carries the observing `workerId` and
+passes its selector through the registered data scheme's
+{§entry-address-resolution} before querying storage. The scheme returns its
+canonical pathname and semantic owner; core alone resolves that owner to
+`entries.owner_id` and queries the complete `(workspace, owner, scheme,
+pathname)` identity. Worker and capability-stream authorities reuse their
+ancestry checks, so unknown or unauthorized owners return the same 404 and
+cannot select an arbitrary colliding row. The result is the contracts-owned
+{§entry-read-result}; persistence columns never cross the seam.
+
 §fs-namespace **The workspace is a mount namespace; `project_root` is the model's `/`.** Chroot semantics: host paths do not exist inside the jail, and no engine surface folds a host-absolute spelling onto a member. The root is **fixed immutably at workspace creation** (headless is forever); the namespace's mount table changes only through the declared membership overlay ({§membership}), never by re-rooting. At `project_root = /` the jail is the whole filesystem and every rule below degenerates to identity — the design's proof case, and the common benchmark topology.
 
 §fs-namei **Resolution is namei over the mount table.** The model's CWD is permanently `/`, so `src/x.md` and `/src/x.md` are the same name — the slash rule is a corollary, never a legislated equivalence. Resolution is lexical: `.` and `..` resolve before anything touches storage (`..` is legal *during* traversal); the final name lands in the root subtree (a bare key), on a declared outside-root mount (a `../`-prefixed key — the git-style overlay), or names nothing (404 carrying the resolved form). Containment is the resolution semantics — there is no separate traversal check to forget.
@@ -1771,7 +1781,7 @@ Its function names are transport-neutral library calls, not public wire names.
 | §methods-op-mirror Client dispatch                | `dispatchClientAction({ workspaceId, workerId, statements })` | Dispatches already-parsed grammar statements as one client action and one journal segment. Every statement is an ordered turn; a proposal may keep the action promise and segment open until resolution. Core exposes no per-op method family. |
 | Client observation                                | `look({ workspaceId, workerId, statement })` | Runs an already-parsed READ through the full resolver without a log row. A non-READ statement is rejected ({§op-look}). |
 | §methods-log-read Reads                           | `readLog({ workspaceId, workerId, ...coordinate })` | Ownership-checks the worker, then reads by ids, recency, or the complete `loopSeq`/`turnSeq`/`sequence` display coordinate. `limit` defaults to 100 and is capped at 1000. |
-| §methods-entry-read Reads                         | `readEntry({ workspaceId, target, channel?, offset? })` | Reads the canonical entry shape, or an incremental slice of one named channel, without creating action evidence. |
+| §methods-entry-read Reads                         | `readEntry({ workspaceId, workerId, target, channel?, offset? })` | Resolves the selector from that worker's perspective and returns {§entry-read-result}, either complete or as one channel suffix, without creating action evidence. |
 | Providers                                         | `listProviders()` | Lists configured aliases with provider/model identity, active state, and the effective `promptBudget` when core can establish it. |
 | §methods-workspace-create Workspace lifecycle     | `createWorkspace({ name?, projectRoot?, settings?, constraints? })` | Creates the world and its client envelope, materializes current docs and constraints, starts derivation warming, and emits global `workspace/created`. `projectRoot` is established here or the workspace remains headless. |
 | §methods-workspace-attach Workspace lifecycle     | `attachWorkspace({ workspaceId, workerId?, workerName? })` | Validates ownership and returns a client envelope for an existing world. It does not retain caller or transport binding state in core. |

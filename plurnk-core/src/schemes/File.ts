@@ -19,6 +19,7 @@ import type { CoreSchemeCallContext } from "../core/CoreSchemeServices.ts";
 import ErrorDetail from "../core/ErrorDetail.ts";
 import Results, { type SchemeResultBase } from "../core/results.ts";
 import {
+    type EntryAddress,
     InvalidOperationResultError,
     type ProposalApplyResult,
 } from "@plurnk/plurnk-schemes";
@@ -131,6 +132,16 @@ export default class File extends CoreSchemeAdapterBase {
     // spelling canon lives on Namespace (the Dispatcher's log columns use the same one).
     static #canonSpelling(raw: string, root: string | null): string | null {
         return Namespace.canonicalizeSpelling(raw, root);
+    }
+
+    async resolveEntryAddress(target: ParsedPath, ctx: CoreSchemeCallContext): Promise<EntryAddress | null> {
+        if (target.kind !== "url") return null;
+        const core = this.coreContext(ctx);
+        const pathname = File.#canonSpelling(
+            target.pathname,
+            await loadWorkspaceRoot(core.db, core.workspaceId),
+        );
+        return pathname === null ? null : { pathname, owner: "commons" };
     }
 
     async find(statement: FindStatement, ctx: CoreSchemeCallContext): Promise<FindResult> {
