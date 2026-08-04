@@ -10,6 +10,12 @@ process.env.PLURNK_SERVICE_EMBED_DISABLE = "0";
 
 const wordCount = (t: string): number => (t.match(/\S+/g) ?? []).length;
 const fakeVector = (s: string): Uint8Array => new Uint8Array(new Float32Array([s.length, wordCount(s), 0]).buffer);
+const wireVector = (values: readonly number[]): Uint8Array => {
+    const bytes = new Uint8Array(values.length * 4);
+    const view = new DataView(bytes.buffer);
+    for (const [index, value] of values.entries()) view.setFloat32(index * 4, value, true);
+    return bytes;
+};
 
 // A capable embedder: reports a window + a word-count tokenizer + model id, batch-"embeds"
 // any texts (the framework embedBatch seam — #272; vectors map 1:1 to inputs, in order).
@@ -20,6 +26,15 @@ const capable = {
 
 // A dormant embedder: no capability surface; never tiles.
 const dormant = { embedderInfo: async () => null, process: async () => ({ embedding: undefined, embeddingModel: undefined }) } as unknown as Mimetypes;
+
+test("EntrySemantic.cosine decodes the owned wire and refuses malformed operands (#94)", () => {
+    assert.ok(Math.abs(EntrySemantic.cosine(wireVector([1, 0]), wireVector([1, 1])) - Math.SQRT1_2) < 1e-6);
+    assert.throws(() => EntrySemantic.cosine(wireVector([1, 0]), wireVector([1])), /same dimension/i);
+
+    const nonfinite = wireVector([1, 0]);
+    new DataView(nonfinite.buffer).setFloat32(0, Number.NaN, true);
+    assert.throws(() => EntrySemantic.cosine(nonfinite, wireVector([1, 0])), /finite/i);
+});
 
 test("EntrySemantic.defaultTopK reads and validates the service-owned semantic result default", () => {
     const prev = process.env.PLURNK_SERVICE_SEMANTIC_TOP_K;
@@ -220,6 +235,7 @@ test("EntrySemantic.prepareEmbeddings: folds the embedder model id — a same-wi
     const b = (await EntrySemantic.prepareEmbeddings(mk("e5@2"))).signature; // identical window + knobs, different model
     assert.notEqual(a, b, "a same-window model swap changes the signature → the deep_hash gate re-derives every entry");
     assert.equal(a, (await EntrySemantic.prepareEmbeddings(mk("e5@1"))).signature, "same model + knobs is stable → no needless re-derivation");
+    assert.match(a, /wire=float32-le/, "the persisted vector encoding participates in derivation identity");
     assert.equal((await EntrySemantic.prepareEmbeddings(dormant)).signature, "embed:none", "no embedder → dormant signature, never folds a model");
 });
 

@@ -88,4 +88,46 @@ describe("Mimetypes.embedBatch (plurnk-service#272)", () => {
         const m = makeMimetypes(null);
         await assert.rejects(() => m.embedBatch(["a"]), /not installed/);
     });
+
+    it("rejects an invalid declared dimension before accepting artifact output (#94)", async () => {
+        const m = makeMimetypes({
+            dimension: 1.5,
+            embed: async (text: string) => bytesFor(text),
+            embedBatch: async (texts: readonly string[]) => texts.map(bytesFor),
+        });
+
+        await assert.rejects(() => m.embedderInfo(), /positive safe-integer dimension/);
+    });
+
+    it("rejects malformed singleton and bulk vectors at the artifact boundary (#94)", async () => {
+        const singleton = makeMimetypes({
+            dimension: 2,
+            embed: async () => bytesFor("x"),
+            embedBatch: async (texts: readonly string[]) => texts.map(bytesFor),
+        });
+        await assert.rejects(
+            () => singleton.process({ content: "x", hint: "text/plain" }, { channels: ["embedding"] }),
+            /embed\(\).*dimension 2.*4 bytes/i,
+        );
+
+        const cardinality = makeMimetypes({
+            dimension: 1,
+            embed: async (text: string) => bytesFor(text),
+            embedBatch: async () => [],
+        });
+        await assert.rejects(
+            () => cardinality.embedBatch(["a", "b"]),
+            /embedBatch\(\).*2 inputs.*0 vectors/i,
+        );
+
+        const malformedIndex = makeMimetypes({
+            dimension: 2,
+            embed: async () => new Uint8Array(8),
+            embedBatch: async () => [new Uint8Array(8), bytesFor("bad")],
+        });
+        await assert.rejects(
+            () => malformedIndex.embedBatch(["a", "b"]),
+            /embedBatch\(\).*vector 1.*dimension 2.*4 bytes/i,
+        );
+    });
 });
