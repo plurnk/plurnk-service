@@ -266,8 +266,8 @@ WHERE l.worker_id = $worker_id AND t.id != $turn_id;
 
 -- PREP: engine_pull_env_deltas
 -- Materialize other actors' shared-state events ({§env-delta-log-pull}).
--- #62, #66, and #67 own the current scope, cursor, and actor-identity defects.
-SELECT le.worker_id, le.scheme, le.pathname, le.rx, le.source, le.attrs
+-- #66 and #67 own the remaining cursor and actor-identity defects.
+SELECT le.worker_id, le.scheme, le.hostname, le.pathname, le.rx, le.source, le.attrs
 FROM log_entries le
 JOIN workers r ON r.id = le.worker_id
 WHERE r.workspace_id = $workspace_id
@@ -275,6 +275,9 @@ WHERE r.workspace_id = $workspace_id
   AND le.state = 'resolved'
   AND le.status_rx IN (200, 201)
   AND (le.scheme IS NULL OR le.scheme != 'plurnk')
+  -- {§env-delta-worker-entry-visibility}: worker commons and the published
+  -- kernel surface are shared; current-worker and ordinary named spaces are private.
+  AND (le.scheme IS NULL OR le.scheme != 'worker' OR le.hostname IS NULL OR le.hostname = 'plurnk')
   AND le.worker_id != $worker_id
   AND le.at > $since
   AND (le.origin != 'plurnk'
@@ -286,10 +289,10 @@ ORDER BY le.at;
 -- worker's log while retaining its cause, effect, and typed attributes.
 INSERT INTO log_entries (
     worker_id, loop_id, turn_id, sequence, origin, source,
-    op, scheme, pathname, tx, mimetype_tx, rx, mimetype_rx, status_rx, expanded, attrs
+    op, scheme, hostname, pathname, tx, mimetype_tx, rx, mimetype_rx, status_rx, expanded, attrs
 ) VALUES (
     $worker_id, $loop_id, $turn_id, $sequence, 'plurnk', $source,
-    'EDIT', $scheme, $pathname, '', 'text/plain', $rx, 'application/json', 200, 0, $attrs
+    'EDIT', $scheme, $hostname, $pathname, '', 'text/plain', $rx, 'application/json', 200, 0, $attrs
 );
 
 -- PREP: engine_worker_stream_channels

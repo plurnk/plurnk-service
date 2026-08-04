@@ -1871,8 +1871,8 @@ export default class Engine {
     }
 
     // {§env-delta-log-pull} — copy ambient shared-state events into this
-    // worker's self-contained log. #62, #66, and #67 own the known predicate,
-    // cursor, and model-facing actor-identity violations respectively.
+    // worker's self-contained log. #66 and #67 own the remaining cursor and
+    // model-facing actor-identity violations respectively.
     async #materializeEnvironmentDeltas(args: {
         workspaceId: number; workerId: number; loopId: number; turnId: number; fromSequence: number;
     }): Promise<number> {
@@ -1881,14 +1881,15 @@ export default class Engine {
         const since = boundary?.since ?? null;
         if (since === null) return 0;  // first turn — nothing prior; the model reads current state fresh
         const rows = await this.#db.engine_pull_env_deltas.all<{
-            worker_id: number; scheme: string | null; pathname: string; rx: string; source: string | null; attrs: string;
+            worker_id: number; scheme: string | null; hostname: string | null; pathname: string; rx: string; source: string | null; attrs: string;
         }>({ workspace_id: workspaceId, worker_id: workerId, since });
         let written = 0;
         for (const r of rows) {
             // Preserve the producer's cause and effect ({§env-delta-attribution}).
             await this.#db.engine_insert_env_delta.run({
                 worker_id: workerId, loop_id: loopId, turn_id: turnId, sequence: fromSequence + written,
-                source: r.source ?? String(r.worker_id), scheme: r.scheme, pathname: r.pathname, rx: r.rx, attrs: r.attrs,
+                source: r.source ?? String(r.worker_id), scheme: r.scheme, hostname: r.hostname,
+                pathname: r.pathname, rx: r.rx, attrs: r.attrs,
             });
             written++;
         }

@@ -1,5 +1,6 @@
-// Contract specimens for {§env-delta-log-pull}. #62, #66, and #67 retain the
-// known ownership, cursor, and model-facing provenance gaps.
+// Contract specimens for {§env-delta-log-pull} and
+// {§env-delta-worker-entry-visibility}. #66 and #67 retain the known cursor
+// and model-facing provenance gaps.
 
 import test from "node:test";
 import { hermeticGitEnv } from "../../src/core/git-env.ts";
@@ -39,9 +40,73 @@ const urlPath = (scheme: string, pathname: string): UrlPath => ({
     username: null, password: null, hostname: null, port: null,
     pathname, query: null, fragment: null,
 });
+const workerPath = (authority: string, pathname: string): UrlPath => ({
+    kind: "url", raw: `worker://${authority}${pathname}`, scheme: "worker",
+    username: null, password: null, hostname: authority, port: null,
+    pathname, query: null, fragment: null,
+});
 const editStmt = (target: UrlPath, body: string): EditStatement => ({
     op: "EDIT", suffix: "", signal: null, target, lineMarker: null, body,
     position: { line: 1, column: 1 },
+});
+
+test("worker-entry deltas follow shared visibility without leaking private scratch", async () => {
+    const db = await openMigrated();
+    try {
+        const workspaceId = await insertWorkspace(db, `owner-delta-${crypto.randomUUID()}`);
+        const observer = await insertWorker(db, workspaceId, null, "observer");
+        const observerLoop = await insertLoop(db, observer, 1, "go");
+        const sibling = await insertWorker(db, workspaceId, observer, "sibling");
+        const siblingLoop = await insertLoop(db, sibling, 1);
+        const siblingTurn = await insertTurn(db, siblingLoop, 1);
+        const kernel = await insertWorker(db, workspaceId, null, "plurnk");
+        const kernelLoop = await insertLoop(db, kernel, 1);
+        const kernelTurn = await insertTurn(db, kernelLoop, 1);
+        const eng = makeEngine(db);
+        const provider = new Mock({ contextWindow: 4096, responses: [okSend(), okSend()] });
+
+        await eng.runTurn({ provider, workspaceId, workerId: observer, loopId: observerLoop, messages: MESSAGES, turnNumber: 1 });
+        await sleep(2);
+
+        assert.equal((await eng.dispatch({
+            statement: editStmt(urlPath("worker", "/shared.md"), "shared bulletin"),
+            workspaceId, workerId: sibling, loopId: siblingLoop, turnId: siblingTurn, sequence: 1, origin: "model",
+        })).status, 201, "the sibling creates a commons entry");
+        assert.equal((await eng.dispatch({
+            statement: editStmt(workerPath("~", "/secret.md"), "private tilde scratch"),
+            workspaceId, workerId: sibling, loopId: siblingLoop, turnId: siblingTurn, sequence: 2, origin: "model",
+        })).status, 201, "the sibling creates current-worker scratch");
+        assert.equal((await eng.dispatch({
+            statement: editStmt(workerPath("sibling", "/named-secret.md"), "private named scratch"),
+            workspaceId, workerId: sibling, loopId: siblingLoop, turnId: siblingTurn, sequence: 3, origin: "model",
+        })).status, 201, "the sibling creates the same private space through its literal name");
+        assert.equal((await eng.dispatch({
+            statement: editStmt(workerPath("plurnk", "/bulletin.md"), "kernel bulletin"),
+            workspaceId, workerId: kernel, loopId: kernelLoop, turnId: kernelTurn, sequence: 1, origin: "plurnk",
+        })).status, 201, "the kernel creates a published entry");
+
+        await eng.runTurn({ provider, workspaceId, workerId: observer, loopId: observerLoop, messages: MESSAGES, turnNumber: 2 });
+        const rows = await db.engine_render_log.all<{
+            origin: string; op: string; scheme: string | null; hostname: string | null;
+            pathname: string | null; source: string | null; rx: string;
+        }>({ worker_id: observer });
+        const deltas = rows.filter((row) => row.origin === "plurnk" && row.op === "EDIT");
+
+        assert.deepEqual(
+            deltas
+                .filter((row) => row.scheme === "worker")
+                .map(({ hostname, pathname, source }) => ({ hostname, pathname, source }))
+                .sort((a, b) => (a.pathname ?? "").localeCompare(b.pathname ?? "")),
+            [
+                { hostname: "plurnk", pathname: "/bulletin.md", source: String(kernel) },
+                { hostname: null, pathname: "/shared.md", source: String(sibling) },
+            ],
+            "only commons and the published kernel surface cross, under their original addresses",
+        );
+        assert.doesNotMatch(JSON.stringify(deltas), /private (?:tilde|named) scratch/, "private receipt content never reaches the observer log");
+    } finally {
+        await db.close();
+    }
 });
 
 test("a worker learns a sibling's edit through its own log — pulled from the shared log, no per-worker snapshot", async () => {

@@ -263,8 +263,8 @@ OPEN/FOLD changes `log_entries.expanded` on that worker's rows ({§open-fold});
 environment changes arrive as attributed log entries ({§env-delta}). Private
 worker entries are deliberate scratch that the worker reads and writes through
 `worker://~/...`, not an invisible mirror of shared state. The environment door
-therefore carries only shared project-file and shared-entry changes; #62 tracks
-the implementation defect that currently admits private scratch deltas.
+therefore carries only shared project-file and shared-entry changes
+({§env-delta-worker-entry-visibility}).
 
 §machine-processes-model-worker-readable **A worker's log is private to packets, not to the workspace.** Isolation ({§actor-boundary}) governs what an *actor* sees — its own worker, never a sibling's. It does not wall off the client interface: `readLog({ workspaceId, workerId })` may read any ownership-verified worker in that workspace, and `listWorkers` enumerates them. A client-interface module chooses the default worker from its own conversation binding. The read is observation, never packet membership — no actor sees it.
 
@@ -2110,13 +2110,17 @@ Each copied event retains its effect, cause, and typed attributes. The first
 turn needs no historical delta because it reads current state fresh. #66 tracks
 the current wall-clock cursor, which can omit or duplicate boundary events.
 
-Private worker entries are not shared-state events and never cross this door;
-an ancestry-authorized explicit READ remains their only cross-worker access.
-#62 tracks the current query's violation of that ownership boundary.
+§env-delta-worker-entry-visibility **Worker-entry visibility follows the
+authority contract.** Commons mutations (`worker:///...`) and mutations to the
+published kernel surface (`worker://plurnk/...`) are shared-state events and
+retain that authority in the observer row. Current-worker scratch
+(`worker://~/...`) and every ordinary named worker space are private: they never
+cross this door, while an ancestry-authorized explicit READ remains available.
 
 | Producer                                                 | Durable event                                                                                                               | Observer projection                                                                                                                                    |
 | -------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| §env-delta-sibling-edit Sibling shared-entry mutation    | The sibling's successful resolved `EDIT` row and its receipt.                                                               | One folded `EDIT` retaining the exact effect and typed attributes.                                                                                     |
+| §env-delta-sibling-edit Sibling commons mutation         | The sibling's successful resolved `EDIT` row and its receipt.                                                               | One folded `EDIT` retaining the exact effect and typed attributes.                                                                                     |
+| §env-delta-kernel-entry-edit Kernel-published mutation   | The reserved `plurnk` worker's successful resolved `EDIT` row on `worker://plurnk/...`.                                     | One folded `EDIT` retaining the published authority, exact effect, and typed attributes.                                                               |
 | §env-delta-filesystem-narration Project-file divergence  | The reserved `plurnk` worker records one `source=file` EDIT-shaped event during pre-turn membership reconciliation.         | One folded `EDIT` naming the file and carrying the net changed span. No model operation is fabricated as having run.                                   |
 | §env-delta-entry-materialization Executor `entry()` sink | The reserved `plurnk` worker records a typed `EDIT` event with `kind="entry_materialized"` and the calling worker as cause. | One folded system `READ` projection advertising newly readable state; the durable event remains an EDIT for replay and forensics ({§exec-entry-sink}). |
 
