@@ -1,7 +1,6 @@
 // Server-side noProposals wire path — the inverse of loop-run-auto.test.ts.
-// loop.run accepts flags.noProposals; the in-tree noProposals.ts listener
-// reads ProposalPendingEvent.flags and auto-REJECTS in-process without any
-// client loop.resolve. The model sees an ordinary 400 (the action did NOT
+// loop.run accepts flags.noProposals; core's proposal disposition rejects
+// in-process without any client loop.resolve. The model sees an ordinary 400 (the action did NOT
 // occur), NEVER the orchestration reason and NEVER a "scheme inactive" gate.
 // Proposal handling stays invisible to the model: the outcome reason is
 // forensics-only, so a noProposals reject is indistinguishable from a human
@@ -11,7 +10,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
 import type { SchemeManifest } from "../../src/core/scheme-types.ts";
-import { rpcCall, rpcProblem, connect, withDaemon, makeMockResponse, runLoopToTerminal } from "./_rpc.ts";
+import { rpcCall, rpcProblem, connect, withDaemon, makeMockResponse, runLoopToTerminal, subscribeNotifications, waitFor } from "./_rpc.ts";
 
 // Minimal always-proposing scheme (mirrors loop-run-auto.test.ts). Returns
 // 202 so the proposal lifecycle fires from a full Daemon RPC roundtrip.
@@ -31,7 +30,7 @@ class ProposingTest {
     }
 }
 
-test("loop.run flags.noProposals=true: in-tree listener auto-rejects — model sees 400 (didn't occur), not a 403 gate", async () => {
+test("loop.run flags.noProposals=true: core disposition rejects — model sees 400 (didn't occur), not a 403 gate", async () => {
     // Model emits EDIT against the proposing scheme (202), then SEND[200].
     // With noProposals on, the proposal auto-rejects in-process; the EDIT
     // lands as status 400 (action did NOT occur) — identical to a human
@@ -48,6 +47,7 @@ test("loop.run flags.noProposals=true: in-tree listener auto-rejects — model s
         daemon.schemes.register("proposing-test", new ProposingTest());
         const ws = await connect(addr);
         try {
+            const proposals = subscribeNotifications(ws, "loop/proposal");
             await rpcCall(ws, 1, "workspace.create", { name: "noproposals-resolve" });
             const result = await runLoopToTerminal(ws, 2, {
                 prompt: "trigger proposal", flags: { noProposals: true },
@@ -59,6 +59,15 @@ test("loop.run flags.noProposals=true: in-tree listener auto-rejects — model s
             assert.ok(edit !== undefined, "proposing-test EDIT log entry expected");
             assert.equal(edit!.status_rx, 400,
                 "auto-rejected to 400 via the proposal lifecycle (action didn't occur), NOT gated to 403");
+            const [proposal] = await waitFor(
+                () => proposals() as Array<{ disposition?: unknown }>,
+                (items) => items.length > 0,
+            );
+            assert.deepEqual(proposal.disposition, {
+                owner: "loop",
+                decision: "reject",
+                outcome: "no_review_channel",
+            });
         } finally { ws.close(); }
     });
 });

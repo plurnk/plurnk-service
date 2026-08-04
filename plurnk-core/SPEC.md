@@ -78,7 +78,7 @@ Independent axes on entries and channels. Confusion across them is a recurring s
 | **sudden death**             | The last `MAX_STRIKES` turns of a loop's `MAX_LOOP_TURNS` window emit soft 429 warnings so the model can wrap up cleanly. `soft=true`: no strike, no streak increment. |
 | §mode-ask-read-only **mode** | `"ask" \| "act"`. Per-loop. Ask = read-only: the dispatch gate refuses every side-effecting op (a filesystem write — EDIT/COPY-dest/MOVE/KILL on the `file` scheme — or any EXEC invocation); reads of the workspace stay open. `act` = full surface. Ask never changes the world. |
 | **flag**                     | Per-loop value: `mode`, `noWeb`, and `noInteraction` shape scheme authority ({§manifest-flag-affinity}); `auto` and `noProposals` select proposal settlement. |
-| **proposal**                 | A deferred side-effecting action. State machine: `proposed → resolved` (accept), `→ failed` (reject), or `→ cancelled` (cancel). With `flags.auto=true`, authority remains inside the loop and resolution is immediate. |
+| **proposal**                 | A deferred side-effecting action. State machine: `proposed → resolved` (accept), `→ failed` (reject), or `→ cancelled` (cancel). Its core-owned disposition says whether the client or loop owns resolution ({§proposal-disposition}). |
 | **resolution**               | Accept, reject, or cancel of a durable proposal. Client-owned authority enters core through `resolveProposal`; AG-UI carries it in standard resume entries ({§methods-proposal-resolve}, {§agui-proposal-resolve}). |
 
 ### §packet-terms Packet terms
@@ -1368,10 +1368,10 @@ stream cannot fall through an internal `exec`-only query. {§stream-control}
 
 §proposal-202-pauses A side-effecting op does not execute on dispatch — it **proposes**. The scheme returns **202** (an EXEC `host` runtime {§exec}, an EDIT to a member file {§membership}); the engine writes the log row `state='proposed'`, registers a waiter keyed by `logEntryId`, and **pauses `dispatch`** awaiting a resolution. The pause is internal to dispatch — the turn has already closed, so {§grinder} strike accounting sees the *resolved* status, never the 202. On accept the status becomes 200 and the scheme's effect runs.
 
-**Resolution arrives four ways, one surface to the model:**
-- **Client resolution** ({§methods-proposal-resolve}) — a client interface delivers accept, reject, or cancel; AG-UI uses standard resume entries ({§agui-proposal-resolve}).
-- **Loop auto** ({§proposal-ownership}) — an in-tree listener resolves `accept` in-process, same tick, no wire roundtrip.
-- **noProposals** — an in-tree listener resolves `reject` (outcome `no_review_channel`).
+**Resolution arrives through one lifecycle:**
+
+- **Client disposition** ({§methods-proposal-resolve}) — a client interface delivers accept, reject, or cancel; AG-UI uses standard resume entries ({§agui-proposal-resolve}).
+- **Loop disposition** ({§proposal-disposition}) — core applies the exact automatic accept/reject before observational subscribers run; automatic policy is not an event listener or client fallback.
 - §proposal-timeout-cancels **Timeout is OPT-IN; the shipped default is a world that WAITS** - `PLURNK_SERVICE_PROPOSAL_TIMEOUT_MS` empty (shipped) means a pending proposal - a file edit awaiting review or a [300] question - waits indefinitely for its human: absence is not an answer, so the service does not synthesize a cancellation. An operator whose lane needs a bound sets milliseconds; then elapsing synthesizes `cancel` (outcome `timeout`), server-side, needing no client.
 
 **The decision drives a one-way state transition** on `log_entries.state` (resolution is idempotent — `WHERE state='proposed'`, so a second resolution 404s):
@@ -1385,6 +1385,38 @@ stream cannot fall through an internal `exec`-only query. {§stream-control}
 §proposal-outcome-terse-error A caller-supplied `outcome` overrides the default. On an **accept** it stays forensics-only; a **non-accept** carries it as the `rx`'s terse `error` token (`write_failed` / `rejected` / `timeout` — one word, never prose), because "the action didn't occur" without the mechanical why leaves the model acting on a phantom success (the fan-out dead-park: an ENOENT apply rendered as a mute 400).
 
 §proposal-proposed-hidden **A proposed row is invisible until it resolves.** A `state='proposed'` / 202 row is withheld from the `log` section; it surfaces only after resolution, carrying its terminal status — the model sees outcomes, never pending proposals.
+
+### §proposal-projection One durable proposal, one client projection
+
+Core derives the contracts-owned `ProposalProjection` from the durable proposed log row and its loop. The live `loop/proposal` event and `pendingProposals()` reconnect discovery call the same projection function; Daemon and interface modules do not rebuild persistence fields.
+
+| Projection field      | Durable authority                                                                                                  |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| identity              | proposed log row `id`, `worker_id`, `loop_id`, `turn_id`, and validated `op`                                       |
+| `target`              | canonical `attrs.proposalTarget` for staged COPY/MOVE, otherwise the log row target                                |
+| `body`                | proposed operation result `rx.body`; absent means the empty review body                                            |
+| `attrs`               | proposed log row `attrs` object                                                                                    |
+| `flags`               | validated persisted loop flags expanded over contracts-owned defaults                                              |
+| `staleClobberRisk`    | target-matched ambient file divergence in the proposal's worker and turn                                           |
+| `disposition`         | {§proposal-disposition}; the same value drives automatic settlement and client presentation                        |
+
+Workspace scope remains the event envelope / seam argument ({§notifications-envelope-carries-workspaceid}); it is not forged into `ProposalProjection`. Malformed durable JSON, target metadata, result envelopes, loop policy, or final projection fails at core with its cause; after insertion, core terminalizes that row as a 500 `policy_failed` before propagating the internal failure, so no waiter or durable stopped world is orphaned.
+
+### §proposal-disposition Settlement authority and precedence
+
+`ProposalDisposition` is either `{ owner: "client" }` or `{ owner: "loop", decision: "accept" | "reject", outcome? }`. The decision table is complete and ordered:
+
+The `[300]` branch is identified by the durable SEND operation signal; `attrs.question` is its required presentation payload, not an independent policy switch ({§send-300-choices}).
+
+| `auto` | `[300]` question | stale target | `noProposals` | Disposition                                                        |
+| ------ | ---------------- | ------------ | ------------- | ------------------------------------------------------------------ |
+| true   | yes              | any          | any           | client                                                             |
+| true   | no               | true         | any           | loop reject, outcome `stale_read_clobber`                          |
+| true   | no               | false        | any           | loop accept                                                        |
+| false  | any              | any          | true          | loop reject, outcome `no_review_channel`                           |
+| false  | any              | any          | false         | client                                                             |
+
+Thus `auto` wins the otherwise nonsensical `auto + noProposals` combination, but its operator-question exception still leaves that question client-owned ({§send-300-choices}). Loop-owned settlement occurs before observational notification; observer failures are diagnosed with their cause and cannot change disposition or leave an eligible automatic proposal pending.
 
 ---
 
@@ -1690,7 +1722,7 @@ Its function names are transport-neutral library calls, not public wire names.
 | Area                                              | Function | Core contract |
 |---------------------------------------------------|----------|---------------|
 | §methods-event-subscribe Events                   | `subscribeToEvents(handler) -> unsubscribe` | Subscribes to the raw event source in {§notifications}. A subscriber failure is logged and cannot re-enter engine control flow. |
-| §proposal-list Proposals                          | `pendingProposals(workspaceId)` | Returns every durable `state='proposed'` row in the workspace so a reconnecting client interface can resurface stopped work. |
+| §proposal-list Proposals                          | `pendingProposals(workspaceId)` | Returns the validated {§proposal-projection} for every durable stopped world in the workspace so a reconnecting client interface can resurface client-owned work. |
 | §methods-proposal-resolve Proposals               | `resolveProposal(logEntryId, resolution)` | Validates and delivers one accept, reject, or cancel decision to the engine. An unknown or already-resolved id fails; the client protocol owns how the decision arrived. |
 | §methods-loop-run Loops                           | `runLoop({ workspaceId, workerId, prompt, maxTurns?, flags?, openPaths?, alias?, model? })` | Validates a model worker and provider selection, persists the effective turn ceiling, then returns an immediate status-100 acknowledgement with `loopId` and `action`. The exact terminal result arrives only through `loop/terminated`; parking and resuming do not replace the loop. |
 | §methods-loop-cancel Loops                        | `cancelDrain(workerId, reason?)` | Begins durable structured cancellation of the worker tree and reaps its process-local scopes. The boolean reports whether process-local work existed when called; queued or parked durable work is still terminalized when it is `false`. |
@@ -1751,7 +1783,7 @@ active lifecycle behind.
 |--------------------------------------------------------------|---------|------------|
 | §notifications-log-entry-notify `log/entry`                  | `{ entry: LogEntry }` | A `log_entries` row is committed. |
 | `loop/terminated`                                            | `{ workerId, loopId, result, hitMaxTurns, turnIds, usage }` | One loop reaches a terminal state. `result` is the exact universal operation result, including its RFC 9457 Problem Details on failure. Worker and loop are an inseparable owning coordinate. |
-| `loop/proposal`                                              | `{ logEntryId, workspaceId, workerId, loopId, turnId, op, target, body, attrs, flags }` | Dispatch pauses on a durable 202 proposal. `flags` lets a client interface suppress review UI when loop-owned policy will resolve it. |
+| `loop/proposal`                                              | contracts-owned `ProposalProjection` | Dispatch pauses on a durable 202 proposal. `disposition` is the sole authority for whether a client presents review UI; live and reconnect share {§proposal-projection}. |
 | `workspace/created`                                          | `{ id, name, projectRoot }` | A workspace is created. This is the only current global event. |
 | `workspace/branch-batch`                                     | Branch-batch lifecycle payload | A branch batch enters queued, running, completed, failed, or recovery-required state. |
 | §notifications-stream-event-on-channel-change `stream/event` | `{ entryId, channel, state, contentLength }` | Channel content grows or channel state transitions. It carries metadata, not content; consumers use `readEntry` for bytes. |
@@ -2190,16 +2222,16 @@ distinct owners:
 
 | Mechanism                                            | Authority path                                                                                                                                    | Intended use                                                       |
 | ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
-| §proposal-ownership-loop-auto **Loop auto**          | `runLoop({ flags: { auto: true } })` or client sugar sets `loops.flags.auto=true`; the in-tree listener resolves in process without a client.      | Headless automation, benchmarks, CI, fixtures, and unattended use. |
-| **Client-side YOLO** (`--yolo` / `PLURNK_YOLO`)      | The daemon emits the ordinary `loop/proposal`; the client returns an accepted proposal through its standard resolution path (AG-UI resume).       | Interactive automatic review.                                     |
+| §proposal-ownership-loop-auto **Loop auto**          | `runLoop({ flags: { auto: true } })` or client sugar sets `loops.flags.auto=true`; core's loop disposition resolves in process without a client.  | Headless automation, benchmarks, CI, fixtures, and unattended use. |
+| **Client-side YOLO** (`--yolo` / `PLURNK_YOLO`)      | The daemon emits the ordinary `loop/proposal`; the client returns an accepted proposal through its standard resolution path (AG-UI resume).       | Interactive automatic review.                                      |
 
 Core cannot distinguish client-side YOLO from a fast human acceptance and does
 not need to. Loop auto keeps authority inside the loop; client-side YOLO acts
 only after authority crosses the client boundary.
 
-§proposal-ownership-notification **The notification carries authority.** `loop/proposal` carries `flags` ({§notifications}), including `auto`, so a connected client suppresses review UI for a proposal the loop will resolve itself.
+§proposal-ownership-notification **The notification carries disposition, not policy inputs.** `loop/proposal` carries the core-owned `ProposalDisposition` ({§notifications}, {§proposal-disposition}). A connected client presents only `owner="client"`; it never reimplements precedence from flags, operation, or attrs.
 
-§proposal-ownership-auto-stale-clobber **Auto is not blind — it refuses a stale clobber.** When an EDIT's target diverged on disk this turn, accepting it would overwrite an ambient change. The engine flags the proposal `staleClobberRisk`, and the auto listener rejects it; the model can re-READ and retry. This brackets the read→propose window for loop auto, while the compare-and-swap ({§membership-edit-write-cas}) brackets propose→write for every accept path.
+§proposal-ownership-auto-stale-clobber **Auto is not blind — it refuses a stale clobber.** When an EDIT's target diverged on disk this turn, accepting it would overwrite an ambient change. The projection carries `staleClobberRisk=true`, and core's loop disposition rejects it; the model can re-READ and retry. This brackets the read→propose window for loop auto, while the compare-and-swap ({§membership-edit-write-cas}) brackets propose→write for every accept path.
 
 ---
 

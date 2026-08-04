@@ -1,12 +1,20 @@
-import type { PlurnkStatement } from "@plurnk/plurnk-contracts";
+import {
+    InvalidOperationResultError,
+    PLURNK_OPS,
+    Validator,
+    type OperationResult,
+    type PlurnkOp,
+    type PlurnkStatement,
+    type ProposalDisposition,
+    type ProposalProjection,
+} from "@plurnk/plurnk-contracts";
 import type { Db } from "./Db.ts";
 import type SchemeRegistry from "./SchemeRegistry.ts";
 import type ExecutorRegistry from "./ExecutorRegistry.ts";
 import type NoticeChannel from "./NoticeChannel.ts";
 import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
-import { InvalidOperationResultError } from "@plurnk/plurnk-contracts";
 import type { StreamEventNotify, WakeWorkerNotify } from "./ChannelWrite.ts";
-import type { PlurnkSchemeContext, LoopFlags } from "./scheme-types.ts";
+import { DEFAULT_LOOP_FLAGS, type PlurnkSchemeContext, type LoopFlags } from "./scheme-types.ts";
 import type { DispatchResult } from "./Dispatcher.ts";
 import { schemeNameOf } from "./plurnk-uri.ts";
 import SchemeCtxImpl from "./caps/SchemeCtxImpl.ts";
@@ -17,8 +25,8 @@ import Results, { OperationFailureError } from "./results.ts";
 // Proposal lifecycle types. A scheme returns DispatchResult{status:202,attrs}
 // to propose; dispatch writes a state='proposed' log entry, registers a waiter
 // in #pending, and awaits resolution. Resolution arrives via
-// Engine.resolveProposal(id, decision, body?) — from the CoreSeam resolution call
-// (Phase E.2), the in-tree auto listener (Phase E.3), or a timeout.
+// Engine.resolveProposal(id, decision, body?) — from the CoreSeam resolution call,
+// core-owned disposition, or a timeout.
 export type ProposalDecision = "accept" | "reject" | "cancel";
 export interface ProposalResolution {
     decision: ProposalDecision;
@@ -45,28 +53,30 @@ export interface ProposalSettlement {
     applied?: DispatchResult;
 }
 
-// External observers of pending-proposal events. workspaceId is included so
-// Daemon can scope its WS broadcast. attrs is the scheme-supplied payload
-// (file diff, exec command, etc.) the client needs to render review UI.
-// flags carries the loop's persisted flags so listeners (auto resolution,
-// the client-facing notification) can decide policy without a second DB
-// roundtrip — loaded once at dispatch, shared with all listeners.
-export interface ProposalPendingEvent {
+// External observation of the contracts-owned projection. workspaceId is
+// additional internal scope for Daemon's event envelope; it is deliberately
+// absent from ProposalProjection itself.
+export interface ProposalPendingEvent extends ProposalProjection {
+    workspaceId: number;
+}
+
+interface ProposalRow {
     logEntryId: number;
     workspaceId: number;
     workerId: number;
     loopId: number;
     turnId: number;
     op: string;
-    target: { scheme: string | null; pathname: string | null };
-    body: string;
-    attrs: object;
-    flags: LoopFlags;
-    // #note10 — the target entry diverged on disk this turn (ambient change since the
-    // model's prior turn), so the model's EDIT is based on a stale read. Loop auto
-    // would silently clobber the ambient change; its listener rejects when set.
-    staleClobberRisk: boolean;
+    signal: string | null;
+    scheme: string | null;
+    pathname: string | null;
+    rx: string;
+    attrs: string;
+    loop_flags: string;
 }
+
+const PROPOSAL_OPS = new Set<string>(PLURNK_OPS);
+const LOOP_FLAG_KEYS = new Set(["mode", "auto", "noWeb", "noInteraction", "noProposals"]);
 
 // {§proposal-timeout-cancels} — empty means an indefinite wait; a positive
 // millisecond value opts into a bound. #82 owns invalid explicit values.
@@ -80,7 +90,7 @@ const readProposalTimeoutMs = (): number | null => {
 
 // The proposal lifecycle (SPEC.md {§engine-rails} + {§methods-proposal-resolve}): a
 // side-effecting op that returns 202 pauses in dispatch until a resolution
-// arrives — from a client-interface resume, the in-tree auto listener, or the
+// arrives — from a client-interface resume, core-owned disposition, or the
 // timeout — then the scheme's applyResolution hook applies the accept.
 export default class ProposalLifecycle {
     #db: Db;
@@ -100,11 +110,9 @@ export default class ProposalLifecycle {
     // Engine.resolveProposal feeds the resolution back in. Map is per-log-
     // entry-id; entries clear on resolution. SPEC.md {§engine-rails} + {§methods-proposal-resolve}.
     #pending = new Map<number, ProposalWaiter>();
-    // External observers of proposal lifecycle events. Daemon subscribes
-    // here to push `loop/proposal` notifications when an entry enters
-    // pending state. auto listener (Phase E.3) subscribes here too. Lean
-    // event emitter — no priority, no veto chain at this layer; filter
-    // chains come later if a real consumer needs them.
+    // External observers of proposal lifecycle events. Correctness policy is
+    // deliberately absent: loop-owned settlement happens in this owner before
+    // observers run, so an observer cannot become a hidden policy fallback.
     #listeners: Array<(payload: ProposalPendingEvent) => void> = [];
 
     constructor({ db, schemes, notices, streamEventNotify, wakeWorkerNotify, tokenize, mimetypes, executors, loopSignal, liveSubscriptions }: {
@@ -132,8 +140,8 @@ export default class ProposalLifecycle {
     }
 
     // External API to feed a resolution into a pending proposal. Called by
-    // the CoreSeam resolution call, the in-tree auto listener
-    // (Phase E.3), or the timeout watcher. Throws when the logEntryId has no
+    // the CoreSeam resolution call, core-owned disposition, or the timeout
+    // watcher. Throws when the logEntryId has no
     // pending waiter — duplicate resolutions, IDs for non-proposed entries,
     // or entries already-resolved are caller errors.
     resolve(logEntryId: number, resolution: ProposalResolution): void {
@@ -164,6 +172,61 @@ export default class ProposalLifecycle {
         return [...this.#pending.keys()];
     }
 
+    async pending(logEntryId: number): Promise<ProposalPendingEvent> {
+        const row = await this.#db.proposal_get_pending.get<ProposalRow>({ log_entry_id: logEntryId });
+        if (row === undefined) throw new Error(`Pending proposal ${logEntryId} has no durable proposed row.`);
+        return this.#project(row);
+    }
+
+    async list(workspaceId: number): Promise<ProposalProjection[]> {
+        const rows = await this.#db.proposal_list_pending.all<ProposalRow>({ workspace_id: workspaceId });
+        const projected = await Promise.all(rows.map((row) => this.#project(row)));
+        return projected.map(({ workspaceId: _workspaceId, ...proposal }) => proposal);
+    }
+
+    settleOwned(proposal: ProposalPendingEvent): void {
+        if (proposal.disposition.owner !== "loop") return;
+        const { decision, outcome } = proposal.disposition;
+        this.resolve(proposal.logEntryId, {
+            decision,
+            ...(outcome === undefined ? {} : { outcome }),
+        });
+    }
+
+    #abandon(logEntryId: number): void {
+        const waiter = this.#pending.get(logEntryId);
+        if (waiter === undefined) return;
+        if (waiter.timeoutHandle !== null) clearTimeout(waiter.timeoutHandle);
+        this.#pending.delete(logEntryId);
+    }
+
+    async failPreparation(logEntryId: number, cause: unknown): Promise<void> {
+        this.#abandon(logEntryId);
+        const failure = Results.failure(
+            "proposal:policy",
+            "proposal-policy-failed",
+            500,
+            "Core could not establish the proposal's settlement policy.",
+            {},
+            {
+                logEntryId,
+                stage: "proposal-policy",
+                retryable: false,
+            },
+        );
+        try {
+            await this.applyResolution(logEntryId, {
+                resolution: { decision: "reject", outcome: "policy_failed" },
+                applied: failure,
+            });
+        } catch (terminalCause) {
+            throw new AggregateError(
+                [cause, terminalCause],
+                `Proposal ${logEntryId} policy failed and its durable row could not be terminalized.`,
+            );
+        }
+    }
+
     // Daemon shutdown: settle EVERY pending waiter with a cancel so the stopped world can't
     // deadlock the stop — a drain paused inside dispatch awaiting a resolution that will never
     // come held Promise.allSettled(drains) open forever (a daemon with a pending HITL proposal
@@ -177,19 +240,161 @@ export default class ProposalLifecycle {
         }
     }
 
-    // Subscribe to proposal-pending events. Daemon registers a listener
-    // that broadcasts the loop/proposal WS notification; auto listener
-    // (Phase E.3) registers one that auto-resolves. Listeners fire BEFORE
-    // dispatch awaits resolution, so synchronous (or fast-async) handlers
-    // can resolve inline.
+    // Subscribe to proposal-pending observations. These listeners never own
+    // resolution policy; client-owned proposals may resolve through the public
+    // seam after observing the event.
     onPending(listener: (event: ProposalPendingEvent) => void): void {
         this.#listeners.push(listener);
     }
 
     notifyPending(event: ProposalPendingEvent): void {
         for (const listener of this.#listeners) {
-            try { listener(event); } catch (_) { /* listener errors don't break dispatch */ }
+            try { listener(event); }
+            catch (cause) { console.error("proposal pending observer failed:", cause); }
         }
+    }
+
+    async #project(row: ProposalRow): Promise<ProposalPendingEvent> {
+        const op = ProposalLifecycle.#op(row);
+        const attrs = ProposalLifecycle.#objectJson(row.logEntryId, "attrs", row.attrs);
+        const result = ProposalLifecycle.#result(row.logEntryId, row.rx);
+        const flags = ProposalLifecycle.#flags(row.logEntryId, row.loop_flags);
+        const target = ProposalLifecycle.#target(row, op, attrs);
+        const operatorQuestion = ProposalLifecycle.#operatorQuestion(row, op, attrs);
+        const diverged = await this.#db.engine_target_diverged_this_turn.get<{ hit: number }>({
+            worker_id: row.workerId,
+            turn_id: row.turnId,
+            scheme: target.scheme,
+            pathname: target.pathname,
+        });
+        const staleClobberRisk = diverged !== undefined;
+        const proposal = Validator.assertProposalProjection({
+            logEntryId: row.logEntryId,
+            workerId: row.workerId,
+            loopId: row.loopId,
+            turnId: row.turnId,
+            op,
+            target,
+            body: typeof result.body === "string" ? result.body : "",
+            attrs,
+            flags,
+            staleClobberRisk,
+            disposition: ProposalLifecycle.#disposition(operatorQuestion, flags, staleClobberRisk),
+        });
+        return { ...proposal, workspaceId: row.workspaceId };
+    }
+
+    static #op(row: ProposalRow): PlurnkOp {
+        if (!PROPOSAL_OPS.has(row.op)) {
+            throw new Error(`Pending proposal ${row.logEntryId} has invalid operation ${JSON.stringify(row.op)}.`);
+        }
+        return row.op as PlurnkOp;
+    }
+
+    static #objectJson(logEntryId: number, field: string, raw: string): Record<string, unknown> {
+        try {
+            const value: unknown = JSON.parse(raw);
+            if (value === null || typeof value !== "object" || Array.isArray(value)) {
+                throw new TypeError(`${field} is not an object`);
+            }
+            return value as Record<string, unknown>;
+        } catch (cause) {
+            throw new Error(`Pending proposal ${logEntryId} has invalid ${field} JSON.`, { cause });
+        }
+    }
+
+    static #result(logEntryId: number, raw: string): OperationResult {
+        try {
+            const value: unknown = JSON.parse(raw);
+            const result = Validator.assertOperationResult(value as OperationResult);
+            if (result.status !== 202) throw new TypeError(`status is ${result.status}, not 202`);
+            return result;
+        } catch (cause) {
+            throw new Error(`Pending proposal ${logEntryId} has invalid proposed result JSON.`, { cause });
+        }
+    }
+
+    static #flags(logEntryId: number, raw: string): LoopFlags {
+        const value = ProposalLifecycle.#objectJson(logEntryId, "loop flags", raw);
+        for (const key of Object.keys(value)) {
+            if (!LOOP_FLAG_KEYS.has(key)) {
+                throw new Error(`Pending proposal ${logEntryId} has unsupported persisted loop flag ${JSON.stringify(key)}.`);
+            }
+        }
+        for (const key of ["auto", "noWeb", "noInteraction", "noProposals"] as const) {
+            if (value[key] !== undefined && typeof value[key] !== "boolean") {
+                throw new Error(`Pending proposal ${logEntryId} has non-boolean persisted loop flag ${JSON.stringify(key)}.`);
+            }
+        }
+        if (value.mode !== undefined && value.mode !== "ask" && value.mode !== "act") {
+            throw new Error(`Pending proposal ${logEntryId} has invalid persisted loop mode ${JSON.stringify(value.mode)}.`);
+        }
+        return { ...DEFAULT_LOOP_FLAGS, ...value } as LoopFlags;
+    }
+
+    static #target(
+        row: ProposalRow,
+        op: PlurnkOp,
+        attrs: Record<string, unknown>,
+    ): { scheme: string | null; pathname: string | null } {
+        const routed = attrs.proposalTarget;
+        if (routed === undefined) {
+            if (op === "COPY" || op === "MOVE") {
+                throw new Error(`Pending proposal ${row.logEntryId} has no canonical ${op} proposal target.`);
+            }
+            return { scheme: row.scheme, pathname: row.pathname };
+        }
+        if (
+            routed === null
+            || typeof routed !== "object"
+            || Array.isArray(routed)
+            || typeof (routed as { scheme?: unknown }).scheme !== "string"
+            || typeof (routed as { pathname?: unknown }).pathname !== "string"
+        ) {
+            throw new Error(`Pending proposal ${row.logEntryId} has an invalid canonical proposal target.`);
+        }
+        return {
+            scheme: (routed as { scheme: string }).scheme === "file"
+                ? null
+                : (routed as { scheme: string }).scheme,
+            pathname: (routed as { pathname: string }).pathname,
+        };
+    }
+
+    static #operatorQuestion(
+        row: ProposalRow,
+        op: PlurnkOp,
+        attrs: Record<string, unknown>,
+    ): boolean {
+        if (op !== "SEND" || row.signal === null) return false;
+        let signal: unknown;
+        try {
+            signal = JSON.parse(row.signal);
+        } catch (cause) {
+            throw new Error(`Pending proposal ${row.logEntryId} has invalid signal JSON.`, { cause });
+        }
+        if (signal !== 300) return false;
+        if (typeof attrs.question !== "string") {
+            throw new Error(`Pending SEND[300] proposal ${row.logEntryId} has no question.`);
+        }
+        return true;
+    }
+
+    static #disposition(
+        operatorQuestion: boolean,
+        flags: LoopFlags,
+        staleClobberRisk: boolean,
+    ): ProposalDisposition {
+        if (flags.auto) {
+            if (operatorQuestion) return { owner: "client" };
+            return staleClobberRisk
+                ? { owner: "loop", decision: "reject", outcome: "stale_read_clobber" }
+                : { owner: "loop", decision: "accept" };
+        }
+        if (flags.noProposals) {
+            return { owner: "loop", decision: "reject", outcome: "no_review_channel" };
+        }
+        return { owner: "client" };
     }
 
     awaitResolution(logEntryId: number): Promise<ProposalResolution> {

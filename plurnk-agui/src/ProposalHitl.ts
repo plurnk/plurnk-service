@@ -5,7 +5,7 @@
 // engine's pause/gate/applyResolution stay core; this is the view + the round-trip.
 
 import type { AguiEvent, ProposalNotification } from "./types.ts";
-import type { DaemonSeam, PendingProposal } from "./DaemonSeam.ts";
+import type { DaemonSeam } from "./DaemonSeam.ts";
 import { proposalToolCall, resolutionFromResume } from "./AguiPlus.ts";
 import type { ResumeEntry } from "@ag-ui/core";
 import { Problems, type ProblemDetails } from "@plurnk/plurnk-contracts";
@@ -42,13 +42,11 @@ export default class ProposalHitl {
     start(): void {
         this.#off = this.#seam.subscribeToEvents((workspaceId, method, params) => {
             if (method !== "loop/proposal" || workspaceId === null) return;
-            // Server-owned stopped-worlds (flags.auto / noProposals
-            // auto-reject) settle in-process moments later — the loop continues on this
-            // same AG-UI Run. Emitting a tool-call would terminate the AG-UI Run and orphan that
-            // continuation, so a tool-call strictly means client-owned.
-            const flags = (params as ProposalNotification).flags as Record<string, unknown> | undefined;
-            if (flags?.auto === true || flags?.noProposals === true) return;
             const proposal = params as ProposalNotification;
+            // Core's one disposition drives both settlement and presentation.
+            // A tool-call strictly means client-owned; loop-owned proposals
+            // settle in-process and the same AG-UI Run continues.
+            if (proposal.disposition.owner !== "client") return;
             this.#emit(workspaceId, proposal.workerId, proposalToolCall(proposal));
         });
     }
@@ -62,14 +60,16 @@ export default class ProposalHitl {
     // question is discoverable, not lost — each as a tool-call the frontend renders.
     async resurface(workspaceId: number, workerId?: number): Promise<AguiEvent[]> {
         const pending = (await this.#seam.pendingProposals(workspaceId))
-            .filter((p) => workerId === undefined || p.workerId === workerId);
-        return pending.flatMap((p) => proposalToolCall(ProposalHitl.#normalize(p)));
+            .filter((proposal) => proposal.disposition.owner === "client")
+            .filter((proposal) => workerId === undefined || proposal.workerId === workerId);
+        return pending.flatMap((proposal) => proposalToolCall(proposal));
     }
 
     // A standard AG-UI resume Run must address every pending interrupt for its
     // exact worker before any proposal is released.
     async resolve(workspaceId: number, entries: ResumeEntry[]): Promise<{ loopId: number; workerId: number }> {
-        const allPending = await this.#seam.pendingProposals(workspaceId);
+        const allPending = (await this.#seam.pendingProposals(workspaceId))
+            .filter((proposal) => proposal.disposition.owner === "client");
         const resolutions = entries.map(resolutionFromResume);
         if (resolutions.some((r) => r === null)) {
             throw new ProposalInputError(
@@ -133,26 +133,4 @@ export default class ProposalHitl {
         return { loopId: [...loopIds][0], workerId };
     }
 
-    // The DB-shaped pending row → the ProposalNotification AguiPlus renders. attrs/tx
-    // arrive as JSON strings; parse at the edge.
-    static #normalize(p: PendingProposal): ProposalNotification {
-        return {
-            logEntryId: p.logEntryId, workspaceId: 0, workerId: p.workerId, loopId: p.loopId, turnId: p.turnId,
-            op: p.op, target: { scheme: p.scheme, pathname: p.pathname },
-            body: p.tx ?? "", attrs: ProposalHitl.#parseAttrs(p.logEntryId, p.attrs), flags: {}, staleClobberRisk: false,
-        };
-    }
-
-    static #parseAttrs(logEntryId: number, a: string | null): Record<string, unknown> {
-        if (a === null) return {};
-        try {
-            const v: unknown = JSON.parse(a);
-            if (v === null || typeof v !== "object" || Array.isArray(v)) {
-                throw new TypeError("proposal attrs is not an object");
-            }
-            return v as Record<string, unknown>;
-        } catch (cause) {
-            throw new Error(`Pending proposal ${logEntryId} has invalid attrs JSON.`, { cause });
-        }
-    }
 }

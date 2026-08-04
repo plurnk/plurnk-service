@@ -46,7 +46,7 @@ One accepted Run or daemon notification produces zero-or-more AG-UI events:
 | `log/entry` other op (model)               | `TOOL_CALL_START/ARGS/END` (+ `TOOL_CALL_RESULT` when rx exists) |
 | `log/entry` op=model (mirror)              | A correlated `REASONING_START` / `REASONING_ENCRYPTED_VALUE`* / `REASONING_END` span when the reasoning-item `attrs.reasoning` is present (see {§agui-encrypted-reasoning}); otherwise nothing — forensic. |
 | `log/entry` origin≠model                   | `CUSTOM plurnk.ambient` (foists, deltas, narrations) |
-| `loop/proposal`                            | `TOOL_CALL_START/ARGS/END`, then `RUN_FINISHED` with an interrupt outcome |
+| client-owned `loop/proposal`               | `TOOL_CALL_START/ARGS/END`, then `RUN_FINISHED` with an interrupt outcome |
 | `loop/terminated`                          | `STATE_DELTA` (budget) + `CUSTOM plurnk.terminated` + `RAW` (the provider's native completion frame, `source: provider`, §475) + `RUN_FINISHED` (`result.status === 200`) or `RUN_ERROR` (otherwise, from the exact RFC 9457 Problem Details) |
 | transport failure after SSE opens          | `CUSTOM plurnk.problem` (exact Problem Details) + `RUN_ERROR` (`code` = Problem `type`, `message` = Problem `detail`) |
 | `notice/event`                             | `CUSTOM plurnk.notice` |
@@ -124,6 +124,15 @@ by default; absence is not an answer. AG-UI Run B on the same thread supplies st
 "prop:<logEntryId>"`; the module resolves every pending interrupt for that worker, binds
 AG-UI Run B to the persisted loop, and releases it. A resume containing foreign, partial, or
 multi-worker interrupt sets fails before any proposal is released.
+
+§agui-proposal-disposition **AG-UI consumes disposition; it does not infer policy.** Both the live `loop/proposal` payload and `CoreSeam.pendingProposals()` return the contracts-owned `ProposalProjection`. `disposition.owner` is the sole presentation branch:
+
+| Disposition owner | AG-UI behavior                                                                |
+| ----------------- | ----------------------------------------------------------------------------- |
+| `client`          | Emit/re-surface the proposal tool call and standard interrupt                 |
+| `loop`            | Emit no tool call; core applies the carried decision and the Run continues    |
+
+Raw `auto`, `noProposals`, operation, attrs, and stale-target facts remain visible evidence but are not re-evaluated here. Reconnect filters by the same disposition, so an internal policy failure cannot silently turn client presentation into an accidental fallback.
 
 ## §agui-management-plane The action surface
 

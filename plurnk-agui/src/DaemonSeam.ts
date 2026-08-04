@@ -12,20 +12,10 @@ export interface ProposalResolution {
     outcome?: string; // operational reason (rejected, timeout, policy_veto, …)
 }
 
-// The DB-shaped pending row (Daemon.pendingProposals). attrs/tx arrive as JSON
-// strings; the module parses at its edge.
-export interface PendingProposal {
-    logEntryId: number;
-    workerId: number;
-    loopId: number;
-    turnId: number;
-    op: string;
-    suffix: string;
-    scheme: string | null;
-    pathname: string | null;
-    tx: string | null;
-    attrs: string | null;
-}
+// Core's contracts-owned pending-proposal projection. Persistence never crosses
+// this seam; live delivery and reconnect expose the same domain shape.
+export type { ProposalProjection as PendingProposal } from "@plurnk/plurnk-contracts";
+import type { ProposalProjection } from "@plurnk/plurnk-contracts";
 
 // The grammar owns the protocol: the statement handed to dispatchAsClient IS
 // @plurnk/plurnk-contracts's PlurnkStatement (parsed at the module's edge). Type-only
@@ -45,7 +35,7 @@ export interface DaemonSeam {
     // event (workspace/created). Returns an unsubscribe. Core emits; the module fans out.
     subscribeToEvents(handler: (workspaceId: number | null, method: string, params: unknown) => void): () => void;
     // Hook C — a workspace's stopped-world proposals, for re-surfacing on (re)connect.
-    pendingProposals(workspaceId: number): Promise<PendingProposal[]>;
+    pendingProposals(workspaceId: number): Promise<ProposalProjection[]>;
     // Hook A-resolve — feed the human's decision. The gate/validation/applyResolution
     // stay core; this is only the resolve. Throws for an unknown/already-resolved id.
     resolveProposal(logEntryId: number, resolution: ProposalResolution): void;

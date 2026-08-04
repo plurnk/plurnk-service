@@ -488,6 +488,79 @@ test("the client-interface seam — pendingProposals reads a workspace's stopped
     });
 });
 
+test("the proposal seam rejects malformed durable projection fields at core", async () => {
+    await withDaemon(null, async (db, daemon, _addr) => {
+        const workspaceId = await insertWorkspace(db, `prop-invalid-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const loopId = await insertLoop(db, workerId, 1, "p");
+        const turnId = await insertTurn(db, loopId, 1, 102);
+        await db.engine_insert_log_entry.get({
+            worker_id: workerId, loop_id: loopId, turn_id: turnId, sequence: 1,
+            origin: "model", source: null, op: "EDIT", suffix: "", signal: null,
+            scheme: "worker", username: null, password: null, hostname: null, port: null,
+            pathname: "/x", query: null, fragment: null, lineMarker: null,
+            tx: "{}", mimetype_tx: "application/json",
+            rx: JSON.stringify({ status: 202 }), mimetype_rx: "application/json",
+            status_rx: 202, tokens: 0, state: "proposed", outcome: null, attrs: "[]",
+        });
+
+        await assert.rejects(
+            daemon.pendingProposals(workspaceId),
+            /Pending proposal \d+ has invalid attrs JSON/,
+        );
+    });
+});
+
+test("the proposal seam rejects malformed persisted loop policy instead of changing authority", async () => {
+    await withDaemon(null, async (db, daemon, _addr) => {
+        const workspaceId = await insertWorkspace(db, `prop-flags-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const loopId = await insertLoop(db, workerId, 1, "p");
+        await db.engine_set_loop_flags.run({
+            loop_id: loopId,
+            flags: JSON.stringify({ auto: "yes" }),
+        });
+        const turnId = await insertTurn(db, loopId, 1, 102);
+        await db.engine_insert_log_entry.get({
+            worker_id: workerId, loop_id: loopId, turn_id: turnId, sequence: 1,
+            origin: "model", source: null, op: "EDIT", suffix: "", signal: null,
+            scheme: "worker", username: null, password: null, hostname: null, port: null,
+            pathname: "/x", query: null, fragment: null, lineMarker: null,
+            tx: "{}", mimetype_tx: "application/json",
+            rx: JSON.stringify({ status: 202 }), mimetype_rx: "application/json",
+            status_rx: 202, tokens: 0, state: "proposed", outcome: null, attrs: "{}",
+        });
+
+        await assert.rejects(
+            daemon.pendingProposals(workspaceId),
+            /non-boolean persisted loop flag "auto"/,
+        );
+    });
+});
+
+test("the proposal seam derives operator-question authority from SEND[300], not attrs alone", async () => {
+    await withDaemon(null, async (db, daemon, _addr) => {
+        const workspaceId = await insertWorkspace(db, `prop-question-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const loopId = await insertLoop(db, workerId, 1, "p");
+        const turnId = await insertTurn(db, loopId, 1, 102);
+        await db.engine_insert_log_entry.get({
+            worker_id: workerId, loop_id: loopId, turn_id: turnId, sequence: 1,
+            origin: "model", source: null, op: "SEND", suffix: "", signal: JSON.stringify(300),
+            scheme: null, username: null, password: null, hostname: null, port: null,
+            pathname: null, query: null, fragment: null, lineMarker: null,
+            tx: "{}", mimetype_tx: "application/json",
+            rx: JSON.stringify({ status: 202 }), mimetype_rx: "application/json",
+            status_rx: 202, tokens: 0, state: "proposed", outcome: null, attrs: "{}",
+        });
+
+        await assert.rejects(
+            daemon.pendingProposals(workspaceId),
+            /Pending SEND\[300\] proposal \d+ has no question/,
+        );
+    });
+});
+
 test("the client-interface seam — runLoop drives a loop end to end on the daemon's own provider + law (#355)", async () => {
     // The loop-control hook: the module supplies only workspace/worker/prompt; runLoop fills in the provider
     // and the law-file system prompt (core's), fires the drain via the unified inject, and returns. The

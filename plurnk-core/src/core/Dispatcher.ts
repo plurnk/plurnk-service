@@ -22,7 +22,7 @@ import type SchemeRegistry from "./SchemeRegistry.ts";
 import type ExecutorRegistry from "./ExecutorRegistry.ts";
 import type NoticeChannel from "./NoticeChannel.ts";
 import type ProposalLifecycle from "./ProposalLifecycle.ts";
-import type { ProposalPendingEvent, ProposalSettlement } from "./ProposalLifecycle.ts";
+import type { ProposalSettlement } from "./ProposalLifecycle.ts";
 import type { EntryData, ReadEntryResult, WriteEntryResult, DeleteEntryResult } from "../schemes/_entry-crud.ts";
 import { entryPathnameOf, foldAuthorityIntoPath, renderAddress, renderTarget, schemeNameOf } from "./plurnk-uri.ts";
 import Fork from "./fork.ts";
@@ -607,7 +607,7 @@ export default class Dispatcher {
         // speech, not a proposal — #isProposal, #255), the entry is written
         // state='proposed'; dispatch then PAUSES on a per-entry waiter until
         // resolution arrives via Engine.resolveProposal (from a client-interface resume,
-        // auto listener, or timeout). The post-resolution status replaces 202 in the
+        // core-owned disposition, or timeout). The post-resolution status replaces 202 in the
         // result the caller sees, so runTurn never branches on a pending state.
         if (Dispatcher.#isProposal(statement, result)) {
             // Effect-gated auto-run (read/pure runtimes, {§exec-readpure-ungated}):
@@ -647,30 +647,18 @@ export default class Dispatcher {
             // find the waiter registered — adding an await between insert
             // and waiter-registration would open a race window.
             const resolutionPromise = this.#proposals.awaitResolution(logEntryId);
-            // Notify external listeners (Daemon broadcasts loop/proposal;
-            // auto listener auto-resolves) BEFORE awaiting — they may
-            // resolve synchronously inside their handlers.
-            const proposalPath = (
-                statement.op === "COPY" || statement.op === "MOVE"
-            ) && (result.attrs as OrchestrationProposalAttrs | undefined)?.moveDestinationWritten === undefined
-                ? statement.body?.target ?? null
-                : statement.target;
-            const target = this.#extractTarget(proposalPath);
-            await this.#canonColumns(target, workspaceId); // {§fs-answer-in-canon} — compare in the same canon the rows store
-            const flags = await this.#loadLoopFlags(loopId); // the proposal carries loop authority — {§proposal-ownership-notification}
-            // #note10 — if the target diverged on disk this turn, the model's EDIT is based
-            // on a stale read; flag it so a auto resolution rejects instead of clobbering.
-            const diverged = await this.#db.engine_target_diverged_this_turn.get<{ hit: number }>({ worker_id: workerId, turn_id: turnId, scheme: target.scheme, pathname: target.pathname });
-            const event: ProposalPendingEvent = {
-                logEntryId, workspaceId, workerId, loopId, turnId,
-                op: statement.op,
-                target: { scheme: target.scheme, pathname: target.pathname },
-                body: typeof result.body === "string" ? result.body : "",
-                attrs: (result.attrs ?? {}) as object,
-                flags,
-                staleClobberRisk: diverged !== undefined,
-            };
-            this.#proposals.notifyPending(event);
+            // Core derives one validated projection from the durable row for both
+            // this live event and reconnect discovery ({§proposal-projection}). Its
+            // disposition is also the one automatic settlement decision: policy is
+            // not an observer and cannot silently degrade into client ownership.
+            try {
+                const event = await this.#proposals.pending(logEntryId);
+                this.#proposals.settleOwned(event);
+                this.#proposals.notifyPending(event);
+            } catch (cause) {
+                await this.#proposals.failPreparation(logEntryId, cause);
+                throw cause;
+            }
             const resolution = await resolutionPromise;
             // Run the scheme's applyResolution hook on accept (writes the
             // file, spawns the process, etc.). Its operation result is
@@ -757,9 +745,7 @@ export default class Dispatcher {
     }
 
     // Loads loops.flags (json column) and merges over DEFAULT_LOOP_FLAGS so
-    // missing keys read as their documented defaults. Single read site —
-    // ProposalPendingEvent.flags is constructed from this, and listeners
-    // (Daemon broadcast, loop auto) share the result.
+    // missing keys read as their documented defaults.
     async #loadLoopFlags(loopId: number): Promise<LoopFlags> {
         const row = await this.#db.engine_get_loop_flags.get<{ flags: string }>({ loop_id: loopId });
         if (row === undefined) return DEFAULT_LOOP_FLAGS;

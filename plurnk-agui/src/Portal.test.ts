@@ -7,6 +7,22 @@ import assert from "node:assert/strict";
 import Portal from "./Portal.ts";
 import type { DaemonSeam, PendingProposal, ProposalResolution } from "./DaemonSeam.ts";
 import type { AguiEvent } from "./types.ts";
+import { DEFAULT_LOOP_FLAGS } from "@plurnk/plurnk-contracts";
+
+const proposal = (over: Partial<PendingProposal> = {}): PendingProposal => ({
+    logEntryId: 5,
+    workerId: 10,
+    loopId: 1,
+    turnId: 1,
+    op: "EDIT",
+    target: { scheme: "file", pathname: "a" },
+    body: "diff",
+    attrs: {},
+    flags: DEFAULT_LOOP_FLAGS,
+    staleClobberRisk: false,
+    disposition: { owner: "client" },
+    ...over,
+});
 
 const mockSeam = (pending: PendingProposal[] = []) => {
     // The real seam holds a Set of handlers (Portal subscribes twice: render + HITL);
@@ -106,7 +122,7 @@ test("a terminal arriving before the loop acknowledgement settles only its match
 });
 
 test("a worker with a durable proposal re-presents its interrupt instead of starting new work", async () => {
-    const pending: PendingProposal[] = [{ logEntryId: 5, workerId: 10, loopId: 1, turnId: 1, op: "EXEC", suffix: "", scheme: "sh", pathname: null, tx: "ls", attrs: null }];
+    const pending: PendingProposal[] = [proposal({ op: "EXEC", target: { scheme: null, pathname: null }, body: "ls" })];
     const m = mockSeam(pending);
     const seen: AguiEvent[] = [];
     const portal = new Portal(m.seam);
@@ -120,13 +136,13 @@ test("a worker with a durable proposal re-presents its interrupt instead of star
 });
 
 test("a live proposal reaches the bound thread as a tool-call; resume resolves it; cancel cancels", async () => {
-    const m = mockSeam([{ logEntryId: 42, workerId: 10, loopId: 7, turnId: 1, op: "EDIT", suffix: "", scheme: "file", pathname: "a", tx: "", attrs: null }]);
+    const m = mockSeam([proposal({ logEntryId: 42, loopId: 7 })]);
     const seen: AguiEvent[] = [];
     const portal = new Portal(m.seam);
     portal.start();
     const thread = portal.openThread({ workspaceId: 3, workerId: 10, threadId: "tui", emit: (evs) => seen.push(...evs) });
 
-    m.fire(3, "loop/proposal", { logEntryId: 42, workerId: 10, op: "EDIT", target: { scheme: "file", pathname: "a.ts" }, body: "diff", attrs: {} });
+    m.fire(3, "loop/proposal", proposal({ logEntryId: 42, loopId: 7, target: { scheme: "file", pathname: "a.ts" } }));
     const start = seen.find((e) => e.type === "TOOL_CALL_START") as { toolCallId: string; toolCallName: string } | undefined;
     assert.equal(start?.toolCallId, "prop:42", "proposal fanned to the thread as a tool-call");
     assert.equal(start?.toolCallName, "request_approval");

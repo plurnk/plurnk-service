@@ -1,9 +1,7 @@
 // Server-side auto wire path (#147). Closes the Phase E.3 deferred TODO:
 // `loop.run` accepts `flags?: { auto?: boolean }`, persists to loops.flags,
-// the in-tree auto.ts listener reads ProposalPendingEvent.flags and auto-
-// resolves without any client `loop.resolve` call. The loop/proposal
-// notification also carries flags so connected clients can suppress review
-// UI for entries that will resolve before any human can react.
+// and core's proposal disposition resolves without any client `loop.resolve`
+// call. The loop/proposal notification carries that same disposition.
 
 import test from "node:test";
 import { viableWindow } from "./_helpers.ts";
@@ -106,7 +104,7 @@ test("loop.run without flags leaves loops.flags at default ({})", async () => {
     });
 });
 
-test("loop.run with flags.auto=true: in-tree auto listener resolves proposal", async () => {
+test("loop.run with flags.auto=true: core-owned disposition resolves proposal", async () => {
     // Model emits EDIT against the proposing-test scheme (status=202), then
     // SEND[200]. With loop auto on, the proposal resolves in-process; the
     // loop completes without any client loop.resolve. Assert: final status
@@ -140,7 +138,7 @@ test("loop.run with flags.auto=true: in-tree auto listener resolves proposal", a
     });
 });
 
-test("loop/proposal notification carries flags.auto", async () => {
+test("loop/proposal notification carries client disposition and effective flags", async () => {
     // Without auto active: dispatch pauses awaiting resolution. We capture
     // the broadcast, confirm flags is present and auto=false, then send
     // loop.resolve to unblock the dispatch so the loop completes cleanly.
@@ -168,11 +166,15 @@ test("loop/proposal notification carries flags.auto", async () => {
             }
             assert.ok(captured.length > 0, "loop/proposal notification expected");
             const params = captured[0] as {
-                logEntryId: number; workerId?: number; flags?: { auto?: boolean };
+                logEntryId: number;
+                workerId?: number;
+                flags?: { auto?: boolean };
+                disposition?: unknown;
             };
             assert.equal(typeof params.workerId, "number", "proposal identifies its owning worker for client routing");
             assert.ok(params.flags !== undefined, "flags must be on loop/proposal payload");
             assert.equal(params.flags!.auto, false, "auto defaults to false");
+            assert.deepEqual(params.disposition, { owner: "client" });
 
             // Unblock the dispatch.
             await rpcCall(ws, 3, "loop.resolve", { logEntryId: params.logEntryId, decision: "accept" });
@@ -181,7 +183,7 @@ test("loop/proposal notification carries flags.auto", async () => {
     });
 });
 
-test("loop/proposal notification: flags.auto=true when loop auto is active", async () => {
+test("loop/proposal notification carries loop-accept disposition when auto is active", async () => {
     const dsl = "<<EDIT(proposing-test://x):y:EDIT\n<<SEND[200]:done:SEND";
     const mock = new Mock({ contextWindow: viableWindow(), responses: [makeMockResponse(dsl, 50)] });
 
@@ -194,10 +196,14 @@ test("loop/proposal notification: flags.auto=true when loop auto is active", asy
             await rpcCall(ws, 1, "workspace.create", { name: "flags-auto-notif" });
             await runLoopToTerminal(ws, 2, { prompt: "trigger", flags: { auto: true } });
             // loop.run returns immediately now; wait for the proposal to broadcast async.
-            const captured = await waitFor(() => proposals() as Array<{ flags?: { auto?: boolean } }>, (p) => p.length > 0);
+            const captured = await waitFor(
+                () => proposals() as Array<{ flags?: { auto?: boolean }; disposition?: unknown }>,
+                (p) => p.length > 0,
+            );
             assert.ok(captured.length > 0, "loop/proposal still broadcasts under loop auto");
-            const params = captured[0] as { flags?: { auto?: boolean } };
+            const params = captured[0] as { flags?: { auto?: boolean }; disposition?: unknown };
             assert.equal(params.flags?.auto, true, "notification reflects active loop auto");
+            assert.deepEqual(params.disposition, { owner: "loop", decision: "accept" });
         } finally { ws.close(); }
     });
 });

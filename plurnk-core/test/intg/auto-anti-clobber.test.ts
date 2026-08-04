@@ -16,7 +16,7 @@ import { mkdtemp, writeFile, rm, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Mock } from "@plurnk/plurnk-providers";
-import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal } from "./_rpc.ts";
+import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal, subscribeNotifications } from "./_rpc.ts";
 
 const execFileP = promisify(execFile);
 
@@ -38,6 +38,7 @@ test("auto rejects an EDIT to a file that diverged on disk this turn — no sile
         await withDaemon(mock, async (_db, _daemon, addr) => {
             const ws = await connect(addr);
             try {
+                const proposals = subscribeNotifications(ws, "loop/proposal");
                 await rpcCall(ws, 1, "workspace.create", { name: "clobber", projectRoot: root });
                 // loop 1 — first sight materializes doc.md = V1 (no divergence).
                 const first = await runLoopToTerminal(ws, 2, { prompt: "look", flags: { auto: true } });
@@ -50,6 +51,16 @@ test("auto rejects an EDIT to a file that diverged on disk this turn — no sile
                 // on its stale (V1) view. The anti-clobber must reject the EDIT, not apply it.
                 const second = await runLoopToTerminal(ws, 3, { prompt: "edit it", flags: { auto: true } });
                 assert.equal(second.result.status, 200, "the stale EDIT was exercised and the model concluded normally");
+
+                const stale = (proposals() as Array<{
+                    staleClobberRisk?: boolean;
+                    disposition?: { owner?: string; decision?: string; outcome?: string };
+                }>).find((proposal) => proposal.staleClobberRisk === true);
+                assert.deepEqual(stale?.disposition, {
+                    owner: "loop",
+                    decision: "reject",
+                    outcome: "stale_read_clobber",
+                }, "the same core disposition both reports and enforces the stale rejection");
 
                 const onDisk = await readFile(join(root, "doc.md"), "utf8");
                 assert.match(onDisk, /V2 ambient change/, "the ambient on-disk change survives — the stale auto EDIT was rejected, never written");

@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import Module from "./Module.ts";
 import type { DaemonSeam, PlurnkStatement, ProposalResolution } from "./DaemonSeam.ts";
 import type { AguiEvent } from "./types.ts";
-import { PlurnkParser, Problems, Validator } from "@plurnk/plurnk-contracts";
+import { DEFAULT_LOOP_FLAGS, PlurnkParser, Problems, Validator } from "@plurnk/plurnk-contracts";
 
 const mockSeam = () => {
     const resolves: Array<{ logEntryId: number; resolution: ProposalResolution }> = [];
@@ -675,7 +675,19 @@ test("client hangup cancels an unfinished streaming action instead of detaching 
 
 test("a standard resume resolves the paused proposal without driving a new loop", async () => {
     const { seam, resolves } = mockSeam();
-    seam.pendingProposals = async () => [{ logEntryId: 42, workerId: 77, loopId: 1, turnId: 1, op: "EDIT", suffix: "", scheme: "file", pathname: "a", tx: "", attrs: null }];
+    seam.pendingProposals = async () => [{
+        logEntryId: 42,
+        workerId: 77,
+        loopId: 1,
+        turnId: 1,
+        op: "EDIT",
+        target: { scheme: "file", pathname: "a" },
+        body: "diff",
+        attrs: {},
+        flags: DEFAULT_LOOP_FLAGS,
+        staleClobberRisk: false,
+        disposition: { owner: "client" },
+    }];
     const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
     try {
         const events = await post(mod.address().port, {

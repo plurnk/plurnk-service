@@ -282,16 +282,21 @@ test("#255 — a broadcast SEND[202] (parked terminal) is NOT dispatched as a pr
     } finally { await db.close(); }
 });
 
-test("proposal: loop auto-approval engages when loops.flags.auto === true", async () => {
+test("proposal: loop auto-approval is core-owned and needs no daemon listener", async (t) => {
+    const original = process.env.PLURNK_SERVICE_PROPOSAL_TIMEOUT_MS;
+    t.after(() => {
+        if (original === undefined) delete process.env.PLURNK_SERVICE_PROPOSAL_TIMEOUT_MS;
+        else process.env.PLURNK_SERVICE_PROPOSAL_TIMEOUT_MS = original;
+    });
+    process.env.PLURNK_SERVICE_PROPOSAL_TIMEOUT_MS = "25";
     const db = await openMigrated();
     try {
         const ctx = await setupEngine(db);
-        // Persist canonical loop auto-approval, then attach its listener.
+        // Persist canonical loop auto-approval. Engine owns settlement; no
+        // Daemon listener is needed to make the policy effective.
         await db.engine_set_loop_flags.run({
             loop_id: ctx.loopId, flags: JSON.stringify({ auto: true }),
         });
-        const Auto = (await import("../../src/server/auto.ts")).default;
-        Auto.attach(ctx.engine, db);
 
         const idDeferred = deferred<number>();
         const result = await ctx.engine.dispatch({
@@ -308,6 +313,73 @@ test("proposal: loop auto-approval engages when loops.flags.auto === true", asyn
     } finally { await db.close(); }
 });
 
+test("proposal: an observational failure is visible and cannot derail loop-owned settlement", async (t) => {
+    const diagnostics: unknown[][] = [];
+    t.mock.method(console, "error", (...args: unknown[]) => { diagnostics.push(args); });
+    const db = await openMigrated();
+    try {
+        const ctx = await setupEngine(db);
+        await db.engine_set_loop_flags.run({
+            loop_id: ctx.loopId,
+            flags: JSON.stringify({ auto: true }),
+        });
+        const observerCause = new Error("observer failed");
+        ctx.engine.onProposalPending(() => { throw observerCause; });
+
+        const result = await ctx.engine.dispatch({
+            statement: editStmt("/x", "y"),
+            workspaceId: ctx.workspaceId,
+            workerId: ctx.workerId,
+            loopId: ctx.loopId,
+            turnId: ctx.turnId,
+            sequence: 1,
+            origin: "model",
+        });
+
+        assert.equal(result.status, 200);
+        assert.deepEqual(ctx.engine.pendingProposalIds(), [], "observer isolation cannot leave an automatic proposal pending");
+        assert.equal(diagnostics.length, 1, "the isolated failure is reported rather than swallowed");
+        assert.equal(diagnostics[0]?.[1], observerCause, "the complete cause reaches diagnostics");
+    } finally { await db.close(); }
+});
+
+test("proposal: a policy-preparation failure preserves its cause and terminalizes the durable row", async () => {
+    const db = await openMigrated();
+    try {
+        const ctx = await setupEngine(db);
+        await db.engine_set_loop_flags.run({
+            loop_id: ctx.loopId,
+            flags: JSON.stringify({ auto: "yes" }),
+        });
+        let logEntryId: number | undefined;
+        await assert.rejects(
+            ctx.engine.dispatch({
+                statement: editStmt("/x", "y"),
+                workspaceId: ctx.workspaceId,
+                workerId: ctx.workerId,
+                loopId: ctx.loopId,
+                turnId: ctx.turnId,
+                sequence: 1,
+                origin: "model",
+                onDispatch: (id) => { logEntryId = id; },
+            }),
+            /non-boolean persisted loop flag "auto"/,
+        );
+        assert.notEqual(logEntryId, undefined);
+        assert.deepEqual(ctx.engine.pendingProposalIds(), []);
+        const row = await db.test_get_log_entry_by_id.get<{
+            state: string;
+            status_rx: number;
+            outcome: string | null;
+            rx: string;
+        }>({ id: logEntryId! });
+        assert.equal(row?.state, "failed");
+        assert.equal(row?.status_rx, 500);
+        assert.equal(row?.outcome, "policy_failed");
+        assert.match(row?.rx ?? "", /proposal-policy-failed/);
+    } finally { await db.close(); }
+});
+
 test("proposal: loop auto-approval does NOT engage when flags.auto is absent / false", async (t) => {
     // Tight timeout so the test doesn't wait the full 5m default.
     const original = process.env.PLURNK_SERVICE_PROPOSAL_TIMEOUT_MS;
@@ -319,9 +391,6 @@ test("proposal: loop auto-approval does NOT engage when flags.auto is absent / f
     const db = await openMigrated();
     try {
         const ctx = await setupEngine(db);
-        const Auto = (await import("../../src/server/auto.ts")).default;
-        Auto.attach(ctx.engine, db);
-
         const idDeferred = deferred<number>();
         const result = await ctx.engine.dispatch({
             statement: editStmt("/x", "y"),

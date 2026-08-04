@@ -7,6 +7,22 @@ import assert from "node:assert/strict";
 import ProposalHitl from "./ProposalHitl.ts";
 import type { DaemonSeam, PendingProposal, ProposalResolution } from "./DaemonSeam.ts";
 import type { AguiEvent } from "./types.ts";
+import { DEFAULT_LOOP_FLAGS } from "@plurnk/plurnk-contracts";
+
+const proposal = (over: Partial<PendingProposal> = {}): PendingProposal => ({
+    logEntryId: 5,
+    workerId: 1,
+    loopId: 1,
+    turnId: 1,
+    op: "EDIT",
+    target: { scheme: "file", pathname: "a" },
+    body: "diff",
+    attrs: {},
+    flags: DEFAULT_LOOP_FLAGS,
+    staleClobberRisk: false,
+    disposition: { owner: "client" },
+    ...over,
+});
 
 const mockSeam = (pending: PendingProposal[] = []) => {
     let handler: ((s: number | null, m: string, p: unknown) => void) | null = null;
@@ -27,7 +43,7 @@ test("start(): a loop/proposal event → a tool-call fanned to that workspace", 
     const hitl = new ProposalHitl(m.seam, collect());
     hitl.start();
     assert.ok(m.subscribed(), "subscribed to the event source");
-    m.fire(7, "loop/proposal", { logEntryId: 42, workerId: 9, op: "EDIT", target: { scheme: "file", pathname: "README.md" }, body: "diff", attrs: {} });
+    m.fire(7, "loop/proposal", proposal({ logEntryId: 42, workerId: 9, target: { scheme: "file", pathname: "README.md" } }));
     assert.equal(emitted.length, 1);
     assert.equal(emitted[0].workspaceId, 7, "fanned to the event's workspace");
     assert.equal(emitted[0].workerId, 9, "addressed to the proposal's owning worker");
@@ -41,7 +57,7 @@ test("start(): a loop/proposal event → a tool-call fanned to that workspace", 
 });
 
 test("resolve(): a complete standard resume resolves the exact worker proposal", async () => {
-    const m = mockSeam([{ logEntryId: 42, workerId: 1, loopId: 7, turnId: 1, op: "EDIT", suffix: "", scheme: "file", pathname: "a", tx: "", attrs: null }]);
+    const m = mockSeam([proposal({ logEntryId: 42, loopId: 7 })]);
     const hitl = new ProposalHitl(m.seam, collect());
     assert.deepEqual(await hitl.resolve(3, [{ interruptId: "prop:42", status: "resolved", payload: { decision: "accept", body: "edited" } }]), { loopId: 7, workerId: 1 });
     assert.deepEqual(m.resolves[0], { logEntryId: 42, resolution: { decision: "accept", body: "edited" } });
@@ -59,20 +75,22 @@ test("resolve(): a complete standard resume resolves the exact worker proposal",
 
 test("resurface(): a workspace's pending stopped-worlds come back as tool-calls", async () => {
     const pending: PendingProposal[] = [
-        { logEntryId: 5, workerId: 1, loopId: 1, turnId: 1, op: "EXEC", suffix: "", scheme: "sh", pathname: null, tx: "rm -rf /tmp/x", attrs: '{"command":"rm"}' },
-        { logEntryId: 9, workerId: 1, loopId: 1, turnId: 2, op: "SEND", suffix: "300", scheme: null, pathname: null, tx: "which env?", attrs: null },
+        proposal({ logEntryId: 5, op: "EXEC", target: { scheme: null, pathname: null }, body: "rm -rf /tmp/x", attrs: { command: "rm" } }),
+        proposal({ logEntryId: 9, turnId: 2, op: "SEND", target: { scheme: null, pathname: null }, body: "", attrs: { question: "which env?" } }),
+        proposal({ logEntryId: 10, disposition: { owner: "loop", decision: "accept" } }),
     ];
     const hitl = new ProposalHitl(mockSeam(pending).seam, collect());
     const events = await hitl.resurface(1);
     const starts = events.filter((e) => e.type === "TOOL_CALL_START") as Array<{ toolCallId: string; toolCallName: string }>;
-    assert.deepEqual(starts.map((s) => s.toolCallId), ["prop:5", "prop:9"], "both pending proposals re-surfaced");
+    assert.deepEqual(starts.map((s) => s.toolCallId), ["prop:5", "prop:9"], "only client-owned pending proposals re-surfaced");
     assert.equal(starts[1].toolCallName, "request_user_input", "the [300] SEND re-surfaces as an input request");
 });
 
 test("proposal resume validation exposes exact Problems with the pending-set facts", async () => {
     const pending: PendingProposal[] = [
-        { logEntryId: 5, workerId: 1, loopId: 7, turnId: 1, op: "EDIT", suffix: "", scheme: "file", pathname: "a", tx: "", attrs: null },
-        { logEntryId: 6, workerId: 1, loopId: 7, turnId: 1, op: "EDIT", suffix: "", scheme: "file", pathname: "b", tx: "", attrs: null },
+        proposal({ logEntryId: 5, loopId: 7 }),
+        proposal({ logEntryId: 6, loopId: 7, target: { scheme: "file", pathname: "b" } }),
+        proposal({ logEntryId: 7, loopId: 7, disposition: { owner: "loop", decision: "accept" } }),
     ];
     const hitl = new ProposalHitl(mockSeam(pending).seam, collect());
     await assert.rejects(
@@ -96,22 +114,30 @@ test("proposal resume validation exposes exact Problems with the pending-set fac
     );
 });
 
-test("resurface fails hard when durable proposal attrs are not a JSON object", async () => {
-    const pending: PendingProposal[] = [
-        { logEntryId: 5, workerId: 1, loopId: 1, turnId: 1, op: "EXEC", suffix: "", scheme: "sh", pathname: null, tx: "", attrs: "[]" },
-    ];
-    const hitl = new ProposalHitl(mockSeam(pending).seam, collect());
-    await assert.rejects(hitl.resurface(1), /Pending proposal 5 has invalid attrs JSON/);
-});
-
-test("a server-owned proposal (flags.auto / noProposals) emits NO tool-call — the worker must not terminate", () => {
+test("proposal disposition, not raw loop flags, owns live tool-call presentation", () => {
     const m = mockSeam();
     const hitl = new ProposalHitl(m.seam, collect());
     hitl.start();
-    m.fire(7, "loop/proposal", { logEntryId: 50, op: "EDIT", target: {}, body: "d", attrs: {}, flags: { auto: true } });
-    m.fire(7, "loop/proposal", { logEntryId: 51, op: "EXEC", target: {}, body: "d", attrs: {}, flags: { noProposals: true } });
+    m.fire(7, "loop/proposal", proposal({
+        logEntryId: 50,
+        flags: { ...DEFAULT_LOOP_FLAGS, auto: true },
+        disposition: { owner: "loop", decision: "accept" },
+    }));
+    m.fire(7, "loop/proposal", proposal({
+        logEntryId: 51,
+        op: "EXEC",
+        flags: { ...DEFAULT_LOOP_FLAGS, noProposals: true },
+        disposition: { owner: "loop", decision: "reject", outcome: "no_review_channel" },
+    }));
     assert.equal(emitted.length, 0, "server settles in-process; the stream continues");
-    m.fire(7, "loop/proposal", { logEntryId: 52, op: "EDIT", target: {}, body: "d", attrs: {}, flags: {} });
-    assert.equal(emitted.length, 1, "a client-owned proposal still rides the tool-call");
+    m.fire(7, "loop/proposal", proposal({
+        logEntryId: 52,
+        op: "SEND",
+        body: "",
+        attrs: { question: "Which environment?" },
+        flags: { ...DEFAULT_LOOP_FLAGS, auto: true, noProposals: true },
+        disposition: { owner: "client" },
+    }));
+    assert.equal(emitted.length, 1, "an auto-loop question remains client-owned even when both raw policy flags are true");
     hitl.stop();
 });

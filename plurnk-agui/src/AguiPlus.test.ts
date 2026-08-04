@@ -7,16 +7,18 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { proposalToolCall, proposalToolCallId, proposalToolName, resolutionFromResume, stateSnapshot, stateDelta, parseAction, actionResult } from "./AguiPlus.ts";
 import type { ProposalNotification } from "./types.ts";
+import { DEFAULT_LOOP_FLAGS } from "@plurnk/plurnk-contracts";
 
 const proposal = (over: Partial<ProposalNotification> = {}): ProposalNotification => ({
-    logEntryId: 42, workspaceId: 1, workerId: 2, loopId: 3, turnId: 4,
+    logEntryId: 42, workerId: 2, loopId: 3, turnId: 4,
     op: "EDIT", target: { scheme: "file", pathname: "README.md" },
-    body: "@@ -1 +1 @@\n-old\n+new", attrs: { patch: "…" }, flags: {}, staleClobberRisk: false,
+    body: "@@ -1 +1 @@\n-old\n+new", attrs: { patch: "…" }, flags: DEFAULT_LOOP_FLAGS,
+    staleClobberRisk: false, disposition: { owner: "client" },
     ...over,
 });
 
 test("proposalToolCall: emits START/ARGS/END with the correlating id + the op in args", () => {
-    const evs = proposalToolCall(proposal());
+    const evs = proposalToolCall(proposal({ staleClobberRisk: true }));
     assert.equal(evs.length, 3);
     assert.deepEqual(evs[0], { type: "TOOL_CALL_START", toolCallId: "prop:42", toolCallName: "request_approval" });
     assert.equal(evs[1].type, "TOOL_CALL_ARGS");
@@ -24,6 +26,7 @@ test("proposalToolCall: emits START/ARGS/END with the correlating id + the op in
     assert.equal(args.op, "EDIT");
     assert.equal(args.target.pathname, "README.md");
     assert.equal(args.body, "@@ -1 +1 @@\n-old\n+new");
+    assert.equal(args.staleClobberRisk, true, "core's true stale-target fact reaches the AG-UI tool call unchanged");
     assert.deepEqual(evs[2], { type: "TOOL_CALL_END", toolCallId: "prop:42" });
 });
 

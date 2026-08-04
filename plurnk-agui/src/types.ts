@@ -12,7 +12,7 @@ export type {
     AssistantMessage,
     RunAgentInput,
 } from "@ag-ui/core";
-import type { OperationResult } from "@plurnk/plurnk-contracts";
+import type { OperationResult, ProposalProjection } from "@plurnk/plurnk-contracts";
 
 // The daemon event shapes this module consumes from the typed in-process seam.
 // Core owns the shapes; this module owns their external AG-UI projection.
@@ -36,19 +36,7 @@ export interface LogEntryNotification {
     };
 }
 
-export interface ProposalNotification {
-    logEntryId: number;
-    workspaceId: number;
-    workerId: number;
-    loopId: number;
-    turnId: number;
-    op: string;
-    target: { scheme: string | null; pathname: string | null };
-    body: string;
-    attrs: Record<string, unknown>;
-    flags: Record<string, unknown>;
-    staleClobberRisk?: boolean;
-}
+export type ProposalNotification = ProposalProjection;
 
 export interface TerminatedNotification {
     workerId: number;

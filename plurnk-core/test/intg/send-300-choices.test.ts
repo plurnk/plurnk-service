@@ -102,12 +102,23 @@ test("e2e: the ask stops the world via loop/proposal; loop.resolve's body IS the
             await rpcCall(ws, 1, "workspace.create", { name: "choices-e2e", settings: { questions: true } });
             const terminated = subscribeNotifications(ws, "loop/terminated");
             const proposals = subscribeNotifications(ws, "loop/proposal");
-            await rpcCall(ws, 2, "loop.run", { prompt: "deploy the service", flags: { auto: true } });
+            await rpcCall(ws, 2, "loop.run", {
+                prompt: "deploy the service",
+                flags: { auto: true, noProposals: true },
+            });
             // The client SEES the ask: a loop/proposal whose attrs carry the question + choices.
             await waitFor(() => proposals() as Array<{ logEntryId?: number; attrs?: { question?: string; choices?: string[] } }>, (items) => items.some((e) => e.attrs?.question === "Which environment?"), { timeoutMs: 15_000 });
             await flush();
-            const ask = (proposals() as Array<{ logEntryId: number; attrs?: { question?: string; choices?: string[] } }>).find((e) => e.attrs?.question !== undefined)!;
+            const ask = (proposals() as Array<{
+                logEntryId: number;
+                attrs?: { question?: string; choices?: string[] };
+                flags?: { auto?: boolean; noProposals?: boolean };
+                disposition?: { owner?: string };
+            }>).find((e) => e.attrs?.question !== undefined)!;
             assert.deepEqual(ask.attrs?.choices, ["production", "staging"], "the chooser payload rides the proposal the client already renders");
+            assert.equal(ask.flags?.auto, true);
+            assert.equal(ask.flags?.noProposals, true);
+            assert.deepEqual(ask.disposition, { owner: "client" }, "auto wins the flag conflict, and its question exception keeps authority with the client");
             // The operator answers through the EXISTING resolve path — the accept body is the answer.
             await rpcCall(ws, 3, "loop.resolve", { logEntryId: ask.logEntryId, decision: "accept", body: "staging" });
             await waitFor(() => terminated() as Array<{ result: { status: number } }>, (items) => items.some((t) => t.result.status === 200), { timeoutMs: 20_000 });

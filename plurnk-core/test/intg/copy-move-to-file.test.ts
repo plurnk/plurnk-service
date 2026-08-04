@@ -10,6 +10,7 @@ import { mkdtemp, readFile, rm, writeFile, mkdir, stat } from "node:fs/promises"
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import Engine from "../../src/core/Engine.ts";
+import type { ProposalPendingEvent } from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Worker from "../../src/schemes/Worker.ts";
 import type { Db } from "../../src/core/Db.ts";
@@ -92,6 +93,35 @@ test("[#2-copy-to-file] COPY worker:/// → file:/// proposes then lands the fil
         }]);
         assert.equal(await readFile(join(root, "copied.txt"), "utf8"), "copied content\n");
         assert.notEqual(await workerEntry(ctx, "note"), undefined, "COPY leaves the source intact");
+    });
+});
+
+test("live and reconnect use one COPY destination proposal projection", async () => {
+    await withWorkspace(async (_root, ctx) => {
+        await seedWorker(ctx, "note", "copied content\n");
+        const observed = deferred<ProposalPendingEvent>();
+        ctx.engine.onProposalPending((event) => observed.resolve(event));
+        const dispatched = ctx.engine.dispatch({
+            statement: copyStmt(urlPath("worker", "/note"), urlPath("file", "/parity.txt")),
+            workspaceId: ctx.workspaceId,
+            workerId: ctx.workerId,
+            loopId: ctx.loopId,
+            turnId: ctx.turnId,
+            sequence: 1,
+            origin: "model",
+        });
+
+        const live = await observed.promise;
+        const reconnect = await ctx.engine.pendingProposals(ctx.workspaceId);
+        const { workspaceId, ...liveProjection } = live;
+        assert.equal(workspaceId, ctx.workspaceId);
+        assert.deepEqual(reconnect, [liveProjection], "live delivery and durable rediscovery are byte-for-byte the same domain projection");
+        assert.deepEqual(live.target, { scheme: null, pathname: "parity.txt" }, "COPY review addresses the applied destination, not its source");
+        assert.match(live.body, /copied content/, "review body comes from the proposed result rather than serialized statement JSON");
+        assert.deepEqual(live.disposition, { owner: "client" });
+
+        ctx.engine.resolveProposal(live.logEntryId, { decision: "reject" });
+        await dispatched;
     });
 });
 

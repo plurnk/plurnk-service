@@ -19,7 +19,8 @@ import type { Provider, ProviderAlias } from "@plurnk/plurnk-providers";
 export type NotifyTarget = "all" | { workspaceId: number };
 // One drained loop's terminal shape — the drain's return currency.
 export interface DrainLoopResult { loopId: number; result: SchemeResult; hitMaxTurns: boolean; turnIds: number[]; action?: string; usage?: { promptTokens: number; completionTokens: number; costUsd: number } }
-import { parsePath, type Notice } from "@plurnk/plurnk-contracts";
+import { parsePath, type Notice, type ProposalProjection } from "@plurnk/plurnk-contracts";
+export type { ProposalProjection as PendingProposal } from "@plurnk/plurnk-contracts";
 import type { PlurnkStatement } from "@plurnk/plurnk-contracts";
 import LogEntry from "./logEntry.ts";
 import type { LogEntryWire } from "./logEntry.ts";
@@ -38,8 +39,6 @@ import type { RegistryEntry } from "../core/ExecutorRegistry.ts";
 import { parseAliasesFromEnv, resolveActiveAlias } from "@plurnk/plurnk-providers";
 import ProviderInstantiate from "../core/ProviderInstantiate.ts";
 import { resolveLoopAlias } from "./loop-model.ts";
-import Auto from "./auto.ts";
-import NoProposals from "./noProposals.ts";
 import { DEFAULT_LOOP_FLAGS } from "../core/scheme-types.ts";
 import type { LoopFlags } from "../core/types.ts";
 import Results, { OperationFailureError, type SchemeResult } from "../core/results.ts";
@@ -79,23 +78,6 @@ const daemonFailure = (
 ): OperationFailureError => new OperationFailureError(
     Results.failure(owner, code, status, detail, {}, extensions),
 );
-
-// A stopped-world proposal a transport module renders as a TOOL_CALL (#355 seam read). The raw
-// `state='proposed'` row shape ({§proposal-list}); the module reshapes it at its edge.
-export interface PendingProposal {
-    logEntryId: number;
-    workerId: number;
-    loopId: number;
-    turnId: number;
-    op: string;
-    suffix: string;
-    scheme: string | null;
-    pathname: string | null;
-    tx: string | null;
-    attrs: string | null;
-    at: string;
-    loop_flags: string | null;
-}
 
 // The entry shape a client renders (#355 readEntry) — all channels + tags + metadata for one path.
 export interface ChannelShape { content: string; contentLength: number; mimetype: string; tokens: number; state: string; }
@@ -273,28 +255,9 @@ export default class Daemon {
         // Wire proposal-pending events to the loop/proposal WS notification.
         // Sessionid scopes the broadcast to clients on the same workspace.
         this.#engine.onProposalPending((event) => {
-            this.#broadcast({ workspaceId: event.workspaceId }, "loop/proposal", {
-                logEntryId: event.logEntryId,
-                workerId: event.workerId,
-                loopId: event.loopId,
-                turnId: event.turnId,
-                op: event.op,
-                target: event.target,
-                body: event.body,
-                attrs: event.attrs,
-                // event.flags is carried for discoverability — a client in
-                // loop-auto mode (event.flags.auto=true) knows to skip
-                // rendering review UI because the entry will resolve in-
-                // process before any human can react.
-                flags: event.flags,
-            });
+            const { workspaceId, ...proposal } = event;
+            this.#broadcast({ workspaceId }, "loop/proposal", proposal);
         });
-        // In-tree auto listener resolves proposals when persisted flags.auto is true.
-        Auto.attach(this.#engine, this.#db);
-        // Inverse policy: auto-REJECT proposals in-process when the loop's
-        // persisted flags.noProposals === true (client has no review channel).
-        // The model sees an ordinary 400, never the orchestration reason.
-        NoProposals.attachNoProposals(this.#engine, this.#db);
     }
 
 
@@ -312,9 +275,9 @@ export default class Daemon {
     // proposals for a workspace (rendering each as a TOOL_CALL) and feeds back the human's decision. The
     // gate, validation, and applyResolution stay core (Engine.resolveProposal); the seam is the read +
     // the resolve, never the mechanism. `resolveProposal` throws for an unknown/already-resolved id.
-    async pendingProposals(workspaceId: number): Promise<PendingProposal[]> {
+    async pendingProposals(workspaceId: number): Promise<ProposalProjection[]> {
         const checkedWorkspaceId = ClientInput.assertId("pendingProposals", "workspaceId", workspaceId);
-        return this.#db.proposal_list_pending.all<PendingProposal>({ workspace_id: checkedWorkspaceId });
+        return this.#engine.pendingProposals(checkedWorkspaceId);
     }
 
     resolveProposal(logEntryId: number, resolution: Omit<ProposalResolution, "result">): void {

@@ -52,6 +52,7 @@ import StrikeRail from "./StrikeRail.ts";
 import PacketBuilder, { type ChatMessage, type PacketAssistant } from "./PacketBuilder.ts";
 import ProposalLifecycle from "./ProposalLifecycle.ts";
 import type { ProposalResolution, ProposalPendingEvent } from "./ProposalLifecycle.ts";
+import type { ProposalProjection } from "@plurnk/plurnk-contracts";
 import Dispatcher from "./Dispatcher.ts";
 import type { DispatchContext, DispatchResult } from "./Dispatcher.ts";
 import { scheduleTurnOps } from "./turn-scheduler.ts";
@@ -2118,7 +2119,7 @@ export default class Engine {
     }
 
     // External API to feed a resolution into a pending proposal — the client-interface
-    // seam, the in-tree auto listener, or the timeout watcher.
+    // seam, core-owned disposition, or the timeout watcher.
     // Shutdown lane: settle every pending proposal with a cancel so a stopped world can never
     // deadlock the stop ({§proposal-cancel-aborts}; the #344 wedge class).
     cancelAllProposals(outcome: string): void {
@@ -2134,11 +2135,14 @@ export default class Engine {
         return this.#proposals.pendingIds();
     }
 
-    // Subscribe to proposal-pending events. Daemon registers a listener
-    // that broadcasts the loop/proposal WS notification; auto listener
-    // registers one that auto-resolves.
+    // Subscribe to proposal-pending observations. Automatic settlement is
+    // core-owned and happens before observers run.
     onProposalPending(listener: (event: ProposalPendingEvent) => void): void {
         this.#proposals.onPending(listener);
+    }
+
+    async pendingProposals(workspaceId: number): Promise<ProposalProjection[]> {
+        return this.#proposals.list(workspaceId);
     }
 
     // Used by wake-on-completion (daemon side): "is there any loop in this

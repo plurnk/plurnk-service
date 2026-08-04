@@ -154,28 +154,8 @@ export default class SeamSocket {
                 return { resolved: true };
             }
             case "proposal.list": {
-                // The seam hands RAW state='proposed' rows ({§proposal-list}) — the module reshapes at
-                // its edge. Mirror the retired WS handler's shape: parsed attrs/flags, tx body lifted.
                 const s = this.#attached();
-                const rows = await daemon.pendingProposals(s.workspaceId) as unknown as Array<Record<string, unknown>>;
-                const txBody = (tx: unknown): string => {
-                    if (typeof tx !== "string" || tx.length === 0) return "";
-                    try {
-                        const parsed = JSON.parse(tx) as { body?: unknown };
-                        if (typeof parsed.body === "string") return parsed.body;
-                        const raw = (parsed.body as { raw?: unknown } | null)?.raw;
-                        return typeof raw === "string" ? raw : "";
-                    } catch { return ""; }
-                };
-                return { proposals: rows.map((r) => ({
-                    logEntryId: r.logEntryId, workerId: r.workerId, loopId: r.loopId, turnId: r.turnId,
-                    op: r.op, suffix: r.suffix,
-                    target: { scheme: r.scheme ?? null, pathname: r.pathname ?? null },
-                    body: txBody(r.tx),
-                    attrs: JSON.parse((r.attrs as string | null) ?? "{}") as Record<string, unknown>,
-                    flags: JSON.parse((r.loop_flags as string | null) ?? "{}") as Record<string, unknown>,
-                    at: r.at,
-                })) };
+                return { proposals: await daemon.pendingProposals(s.workspaceId) };
             }
             case "log.read": {
                 // Default = the connection's own client worker — {§machine-processes}; the model worker is
