@@ -552,3 +552,36 @@ test("physically unsendable → 413 IMMEDIATELY, no recovery generate — physic
         assert.equal("assistantRaw" in packet, false, "opaque response evidence exists only after admission");
     } finally { await db.close(); }
 });
+
+test("an estimate cannot authorize physical recovery, even when chars/2 reports room", async () => {
+    const db = await openMigrated();
+    try {
+        const { workspaceId, workerId, loopId } = await envelope(db);
+        const engine = plainEngine(db);
+        const messages = [MESSAGES[0], { role: "user" as const, content: "漢".repeat(256) }];
+        let measuredMessages: readonly { role: string; content: string }[] | undefined;
+        const mock = Object.assign(mockAt(199_998, okSends(3), 200_000), {
+            countPromptTokens: async (candidate: readonly { role: string; content: string }[]) => {
+                measuredMessages = candidate;
+                return {
+                    kind: "estimate" as const,
+                    tokens: Math.ceil(candidate.reduce((sum, message) => sum + message.content.length, 0) / 2),
+                    source: "heuristic:chars2",
+                    detail: "request framing and serving vocabulary are unknown",
+                };
+            },
+        });
+        const restore = pinSafety(199_990);
+        let result: Awaited<ReturnType<Engine["runLoop"]>>;
+        try {
+            result = await engine.runLoop({ provider: mock, workspaceId, workerId, loopId, messages, maxTurns: 5 });
+        } finally {
+            restore();
+        }
+        assert.equal(result.result.status, 413);
+        assert.equal(mock.remaining, 3, "an empirical estimate cannot spend the one recovery call");
+        assert.ok(measuredMessages?.some(({ content }) => content.includes("漢漢漢")), "physical admission measured the rendered user slot");
+    } finally {
+        await db.close();
+    }
+});

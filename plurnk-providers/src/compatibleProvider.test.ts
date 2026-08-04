@@ -77,3 +77,42 @@ test("#567: the server-wide DRY-off floor emits no DRY request fields", async ()
     assert.equal("dry_base" in (body ?? {}), false);
     assert.equal("dry_allowed_length" in (body ?? {}), false);
 });
+
+test("detected llama-server measures the complete chat request through input_tokens", async () => {
+    let countUrl: string | undefined;
+    let countBody: Record<string, unknown> | undefined;
+    mock.method(globalThis, "fetch", async (input: string | URL | Request, init?: RequestInit) => {
+        const url = String(input);
+        if (url.endsWith("/models")) {
+            return new Response(JSON.stringify({
+                data: [{ id: "served.gguf", meta: { n_ctx: 8192 } }],
+            }));
+        }
+        if (url.endsWith("/props")) {
+            return new Response(JSON.stringify({ total_slots: 1 }));
+        }
+        if (url.endsWith("/chat/completions/input_tokens")) {
+            countUrl = url;
+            countBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
+            return new Response(JSON.stringify({ input_tokens: 37 }), {
+                headers: { "content-type": "application/json" },
+            });
+        }
+        throw new Error(`unexpected request ${url}`);
+    });
+
+    const provider = await compatibleProviderFromEnv("openai", env, "local");
+    const messages = [
+        { role: "system" as const, content: "system slot" },
+        { role: "user" as const, content: "漢漢漢" },
+    ];
+    assert.deepEqual(await provider.countPromptTokens(messages), {
+        kind: "exact",
+        tokens: 37,
+        source: "llama-server:/v1/chat/completions/input_tokens",
+    });
+    assert.equal(countUrl, "http://local.test/v1/chat/completions/input_tokens");
+    assert.deepEqual(countBody?.messages, messages, "measurement receives the exact dispatched message slots");
+    assert.equal(countBody?.model, "local");
+    assert.deepEqual(countBody?.chat_template_kwargs, { enable_thinking: false });
+});

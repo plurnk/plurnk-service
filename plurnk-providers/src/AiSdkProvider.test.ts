@@ -258,22 +258,38 @@ test("#539: only the TRAILING eos_token is stripped; a quoted one mid-body survi
     assert.equal(res.assistant.content, "quotes <eos> in the body"); // only the tail goes
 });
 
-test("identity getters and defaults", () => {
+test("identity getters and default prompt estimate", async () => {
     const p = new AiSdkProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 1000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0 });
     assert.equal(p.model, "m");
     assert.equal(p.contextWindow, null); // default
-    assert.equal(p.countTokens(""), 0);
-    assert.equal(p.countTokens("four"), 2); // default heuristic ceil(4/2) upper bound
+    assert.deepEqual(
+        await p.countPromptTokens([{ role: "user", content: "漢漢漢" }]),
+        {
+            kind: "estimate",
+            tokens: 2,
+            source: "heuristic:chars2",
+            detail: "chars/2 over message content; provider request framing is unknown",
+        },
+        "chars/2 is explicitly an estimate; high-token-density Unicode prevents an upper-bound claim",
+    );
     assert.equal(p.calculateCost({ prompt: 9, completion: 9, reasoning: 0, cached: 0, total: 18 }), 0); // current unknown-rate sentinel
 });
 
-test("injected countTokens and calculateCost are used", () => {
+test("injected prompt measurement preserves provenance and calculateCost is used", async () => {
+    const seen: string[] = [];
     const p = new AiSdkProvider({
         model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 1000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0,
-        countTokens: (t) => t.length,
+        countPromptTokens: (messages) => {
+            seen.push(...messages.map(({ content }) => content));
+            return { kind: "upper_bound", tokens: 7, source: "test:proven-bound" };
+        },
         calculateCost: (u) => u.total * 2,
     });
-    assert.equal(p.countTokens("abc"), 3);
+    assert.deepEqual(
+        await p.countPromptTokens([{ role: "system", content: "system" }, { role: "user", content: "user" }]),
+        { kind: "upper_bound", tokens: 7, source: "test:proven-bound" },
+    );
+    assert.deepEqual(seen, ["system", "user"]);
     assert.equal(p.calculateCost({ prompt: 1, completion: 1, reasoning: 0, cached: 0, total: 5 }), 10);
 });
 
