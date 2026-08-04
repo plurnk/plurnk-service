@@ -7,6 +7,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { build } from "esbuild";
+import * as SourceContracts from "../src/index.ts";
 
 const run = promisify(execFile);
 // npm exports its config as npm_config_* into lifecycle children — when this smoke runs
@@ -14,6 +15,7 @@ const run = promisify(execFile);
 // --workspaces/omit and misread the temp consumer. The consumer gets a CLEAN npm env.
 const cleanEnv = Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith("npm_")));
 const contractsDir = process.cwd();
+const expectedRootValues = Object.keys(SourceContracts).sort();
 const tempDir = await mkdtemp(join(tmpdir(), "plurnk-smoke-"));
 let tarballPath: string | undefined;
 
@@ -67,23 +69,7 @@ try {
     await writeFile(join(tempDir, "consume.js"), `
 import * as Contracts from "@plurnk/plurnk-contracts";
 
-const expectedRootValues = [
-    "Validator",
-    "InvalidNoticeError",
-    "InvalidOperationResultError",
-    "InvalidProblemDetailsError",
-    "InvalidTextRegionError",
-    "Problems",
-    "PlurnkParser",
-    "PlurnkParseError",
-    "PathSyntax",
-    "parsePath",
-    "parseResourceSelection",
-    "PLURNK_OPS",
-    "WORKER_NAME",
-    "RESERVED_AUTHORITIES",
-    "UNKNOWN_POSITION",
-].sort();
+const expectedRootValues = ${JSON.stringify(expectedRootValues)};
 const rootValues = Object.keys(Contracts).sort();
 if (JSON.stringify(rootValues) !== JSON.stringify(expectedRootValues)) {
     throw new Error("unexpected package-root values: " + JSON.stringify(rootValues));
