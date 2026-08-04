@@ -4,7 +4,7 @@
 // fresh install has NO active model (the #307 no-phone-home posture): the pointer surfaces instead.
 // The hosted-model round-trip is a deliberate red until that endpoint is live.
 import { execFileSync, spawn } from "node:child_process";
-import { existsSync, readFileSync, renameSync } from "node:fs";
+import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { resolve } from "node:path";
 import { installPacked, installSandbox, uninstallSandbox, sandbox } from "./install-sandbox.mjs";
@@ -177,6 +177,21 @@ ok(help.code === 0 && /usage: plurnk-service/.test(help.stdout), "`--help` print
 
 const mig = runBin(["migrate"], { PLURNK_DB_PATH: resolve(sandbox, "test.db") });
 ok(mig.code === 0 && /migrated:/.test(mig.stdout), "`migrate` boots the DB from installed dist (SQL + cosine load)");
+
+const firstEnv = resolve(sandbox, "cascade-first.env");
+const secondEnv = resolve(sandbox, "cascade-second.env");
+const firstDb = resolve(sandbox, "cascade-first.db");
+const secondDb = resolve(sandbox, "cascade-second.db");
+writeFileSync(firstEnv, `PLURNK_SERVICE_DB_PATH=${firstDb}\n`);
+writeFileSync(secondEnv, `PLURNK_SERVICE_DB_PATH=${secondDb}\n`);
+const cascadeEnv = { ...process.env, HOME: sandbox };
+delete cascadeEnv.PLURNK_SERVICE_DB_PATH;
+const cascade = execFileSync(bin, [`--env-file=${firstEnv}`, `--env-file=${secondEnv}`, "migrate"], {
+    cwd: sandbox,
+    encoding: "utf8",
+    env: cascadeEnv,
+});
+ok(cascade.includes(`migrated: ${secondDb}`), "the packed bin applies repeated env files in later-file-wins order");
 
 // first-run bootstrap: ~/.plurnk seeded with config (HOME → sandbox), no PLURNK_DB_PATH so it homes the DB
 const home = runBin(["migrate"], {});

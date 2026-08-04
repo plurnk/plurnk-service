@@ -1553,7 +1553,19 @@ service manifest edit.
 
 ## §operator-config Operator Configuration
 
-§operator-config-precedence Configuration source precedence, from lowest to highest, is: assembled `.env.defaults` floor < `~/.plurnk/.env` < `./.env` < explicit `--env-file`/`--config` < shell environment < CLI flags. This orders source classes; #84 owns the unresolved ordering of repeated explicit-file arguments.
+§operator-config-precedence Configuration is one environment cascade. Higher-priority sources preserve or replace values supplied by every lower source:
+
+| Priority | Source                             | Ordering                                                  |
+|---------:|------------------------------------|-----------------------------------------------------------|
+|        1 | Assembled package `.env.defaults` | Set-if-unset floor; one owner per key.                     |
+|        2 | `~/.plurnk/.env`                   | User-level ambient configuration.                         |
+|        3 | `./.env`                           | Working-directory ambient configuration.                  |
+|        4 | `--config=<path>`                  | Singular service-owned explicit file.                     |
+|        5 | `--env-file*`                      | Repeatable explicit files; later selected files win.      |
+|        6 | Initial shell environment          | Preserved over every file layer.                          |
+|        7 | Derived service CLI flags          | Assigned last.                                            |
+
+Node's pre-script env-file form and the executable's post-script form share the same later-file-wins ordering. `--env-file-if-exists` skips an absent file without changing the order of selected files.
 
 §operator-config-env-defaults **Every package owns its knobs — `.env.defaults` is the standard.** Each package in the daemon's ecosystem — internal or third-party — ships a `.env.defaults` at its package root declaring its own knobs; the file is the package's configuration reference, traveling in the tarball and changing with the code that reads it. At boot the daemon assembles every installed member's file into one floor (membership = the `@plurnk/*` scope or a `plurnk` package.json field, gated by `PLURNK_PLUGINS_TRUSTED_ONLY` with discover()'s exact semantics), applies it set-if-unset under every operator source, and renders the assembled catalog to `~/.plurnk/.env.defaults`. The catalog is machine-owned, regenerated each boot, and never read back as configuration. A key claimed by two packages fails boot naming both. With the reader-declares discipline, each key has one implementation and one defaults owner.
 

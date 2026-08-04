@@ -18,14 +18,15 @@ The default service includes local embeddings. An explicitly disabled or unavail
 
 Higher-priority source classes override lower ones ({§operator-config-precedence}):
 
-| Priority | Source                                  | Role                                                                                                |
-|---------:|-----------------------------------------|-----------------------------------------------------------------------------------------------------|
-|        1 | Installed packages' assembled defaults  | Versioned floor; one owner per key. A collision fails boot naming both owners.                      |
-|        2 | `~/.plurnk/.env`                        | User configuration, seeded once and never overwritten. **Write generated config here.**             |
-|        3 | `./.env`                                | Configuration for the current working directory.                                                    |
-|        4 | `--env-file=<path>` / `--config=<path>` | Explicit configuration file. Ordering among repeated explicit files is currently unspecified (#84). |
-|        5 | Shell environment                       | Process-level operator values.                                                                      |
-|        6 | `--<flag>`                              | Highest-priority service CLI value.                                                                 |
+| Priority | Source                                 | Role                                                                                       |
+|---------:|----------------------------------------|--------------------------------------------------------------------------------------------|
+|        1 | Installed packages' assembled defaults | Versioned floor; one owner per key. A collision fails boot naming both owners.             |
+|        2 | `~/.plurnk/.env`                       | User configuration, seeded once and never overwritten. **Write generated config here.**    |
+|        3 | `./.env`                               | Configuration for the current working directory.                                           |
+|        4 | `--config=<path>`                      | One explicit service configuration file.                                                   |
+|        5 | `--env-file*`                          | Repeatable explicit files; later files win. The `-if-exists` form skips absent files.       |
+|        6 | Shell environment                      | Process-level operator values.                                                              |
+|        7 | `--<flag>`                             | Highest-priority service CLI value.                                                         |
 
 `~/.plurnk/.env.defaults` is the regenerated assembled catalog, not another input layer. The service CLI mirrors only the `PLURNK_*` variables declared by the service package's own `.env.defaults`: strip `PLURNK_`, lowercase, and replace `_` with `-` (`PLURNK_SERVICE_MAX_TURNS` ↔ `--service-max-turns`). Installed plugin knobs remain available through env/config files and the assembled catalog without implicitly expanding the service executable's CLI ({§operator-config-cli-flags}). Feature-flag booleans use `1`, not `true`; `~/` expands to home.
 

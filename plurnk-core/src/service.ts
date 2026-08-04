@@ -112,12 +112,9 @@ export default class Service {
         }
     }
 
-    // node-style env-file flags: --env-file=<path> (required) / --env-file-if-exists=<path>
-    // (skip if missing), repeatable, in command-line order. node only loads pre-script files;
-    // a published `plurnk-service --env-file=…` needs this post-script loader.
-    // PRECEDENCE CAUTION (#84): this post-script cascade is FIRST-wins (highest-priority file
-    // first); node's own pre-script parsing of the same flags is LAST-wins. The same flag
-    // obeys opposite precedence depending on argv position relative to the script path.
+    // Node loads pre-script env-file flags itself. The published bin receives post-script
+    // flags here; main traverses them in reverse so loadEnvFile's set-if-unset behavior gives
+    // both forms the same later-file-wins ordering ({§operator-config-precedence}).
     static #envFileArgs(): Array<{ path: string; required: boolean }> {
         return process.argv.flatMap((a): Array<{ path: string; required: boolean }> => {
             if (a.startsWith("--env-file-if-exists=")) return [{ path: a.slice(a.indexOf("=") + 1), required: false }];
@@ -270,11 +267,10 @@ export default class Service {
 
     static async main(): Promise<void> {
         if (!process.argv.includes("--help") && !process.argv.includes("-h")) { Service.#ensureHome(); Service.#syncReferenceFiles(); }
-        // Env cascade — first write wins (loadEnvFile is set-if-unset), so load highest first.
-        // Precedence high→low: CLI --flags > shell env > --env-file/--config > ./.env >
-        // ~/.plurnk/.env > the assembled .env.defaults floor ({§operator-config-env-defaults}:
-        // this package's file + every installed member's, uniqueness-checked).
-        for (const { path: envFile, required } of Service.#envFileArgs()) Service.#loadEnv(envFile, required);
+        // loadEnvFile is set-if-unset, so every service-owned layer loads high→low. Within the
+        // repeatable env-file tier, loading last→first preserves Node's later-file-wins order.
+        // {§operator-config-precedence}
+        for (const { path: envFile, required } of Service.#envFileArgs().toReversed()) Service.#loadEnv(envFile, required);
 
         const configFlagIndex = process.argv.findIndex((a) => a === "--config" || a.startsWith("--config="));
         const configFile = ((): string | null => {
@@ -305,8 +301,8 @@ export default class Service {
 
 ${EnvFlags.formatFlagsHelp(flagDescriptors)}
 
-  --env-file=<path>            layer env from <path> (repeatable; errors if missing)
-  --env-file-if-exists=<path>  layer env from <path> if present (repeatable)
+  --env-file=<path>            layer env from <path> (repeatable; later wins; errors if missing)
+  --env-file-if-exists=<path>  layer env from <path> if present (repeatable; later wins)
   --config=<path>              layer additional env from <path>
   -v, --version                show executable provenance
   -h, --help                   show this help
