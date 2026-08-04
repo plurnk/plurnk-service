@@ -268,3 +268,62 @@ test("ProposalProjection validates one complete disposition-bearing client view"
         );
     }
 });
+
+test("EntryReadResult validates one exact client entry projection", () => {
+    const result = {
+        status: 200 as const,
+        entry: {
+            entryId: 17,
+            target: "worker://~/notes.md",
+            channels: {
+                body: {
+                    content: "hello",
+                    contentOffset: 0,
+                    contentLength: 5,
+                    mimetype: "text/markdown",
+                    tokens: 3,
+                    state: "static" as const,
+                },
+            },
+            tags: ["research"],
+        },
+    };
+    assert.equal(Validator.assertEntryReadResult(result), result);
+
+    const failure = {
+        status: 404,
+        problem: Problems.create(
+            "daemon:entry",
+            "entry-not-found",
+            404,
+            "No visible entry exists at the requested target.",
+        ),
+        entry: null,
+    };
+    assert.equal(Validator.assertEntryReadResult(failure), failure);
+
+    for (const invalid of [
+        { ...result, entry: { ...result.entry, scope: "workspace" } },
+        { ...result, entry: { ...result.entry, workspaceId: 2 } },
+        { ...result, entry: { ...result.entry, scheme: "worker", pathname: "/notes.md" } },
+        {
+            ...result,
+            entry: {
+                ...result.entry,
+                channels: {
+                    body: {
+                        ...result.entry.channels.body,
+                        contentOffset: 6,
+                    },
+                },
+            },
+        },
+        { status: failure.status, entry: null },
+    ]) {
+        assert.equal(Validator.validateEntryReadResult(invalid).valid, false);
+        assert.throws(
+            () => Validator.assertEntryReadResult(invalid as never),
+            /invalid EntryReadResult/,
+        );
+    }
+});

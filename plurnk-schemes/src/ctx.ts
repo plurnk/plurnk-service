@@ -28,6 +28,13 @@ export interface StoredEntryData {
 
 export type EntryOwner = "commons" | "worker";
 
+// A client-facing address resolves to the pathname stored by this scheme and a
+// semantic owner. The consumer alone lowers that owner to its persistence key.
+export interface EntryAddress {
+    readonly pathname: string;
+    readonly owner: EntryOwner;
+}
+
 export interface EntryEditResult extends EditBatchResult {
     readonly entryId: number | null;
     readonly channel: string | null;

@@ -291,6 +291,72 @@ body: MatcherBodyOrNull
 position: Position
 }
 
+export type EntryReadResult = ({
+status: 200
+entry: ClientEntry
+} | {
+status: number
+problem: ProblemDetails
+entry: null
+})
+
+export interface ClientEntry {
+entryId: number
+target: string
+channels: {
+[k: string]: ClientEntryChannel
+}
+tags: string[]
+}
+
+export interface ClientEntryChannel {
+content: string
+contentOffset: number
+contentLength: number
+mimetype: string
+tokens: number
+state: ("static" | "active" | "closed" | "errored")
+}
+/**
+ * PLURNK operation failure using RFC 9457 Problem Details. Extension members are permitted so an owning boundary can add structured causal and recovery facts without inventing a second error envelope.
+ */
+
+export interface ProblemDetails {
+/**
+ * Absolute URI identifying the stable problem class.
+ */
+type: string
+/**
+ * Short, stable summary for this problem type.
+ */
+title: string
+/**
+ * Operation status. It must equal the containing result status.
+ */
+status: number
+/**
+ * Specific, causal explanation of this occurrence.
+ */
+detail: string
+/**
+ * Absolute URI identifying the failed durable operation, normally its log URI. Core adds it at persistence when a plugin cannot know the durable coordinate.
+ */
+instance?: string
+/**
+ * Stable producer-owned stage at which the operation failed, when the operation has multiple independently recoverable stages.
+ */
+stage?: string
+/**
+ * One generally valid next action. It is omitted when recovery depends on facts the producer does not know.
+ */
+recovery?: string
+/**
+ * Whether the producer recommends automatically retrying the identical request.
+ */
+retryable?: boolean
+[k: string]: unknown
+}
+
 export interface LoopFlags {
 mode: ("ask" | "act")
 auto: boolean
@@ -356,42 +422,6 @@ status?: number
 /**
  * PLURNK operation failure using RFC 9457 Problem Details. Extension members are permitted so an owning boundary can add structured causal and recovery facts without inventing a second error envelope.
  */
-
-export interface ProblemDetails {
-/**
- * Absolute URI identifying the stable problem class.
- */
-type: string
-/**
- * Short, stable summary for this problem type.
- */
-title: string
-/**
- * Operation status. It must equal the containing result status.
- */
-status: number
-/**
- * Specific, causal explanation of this occurrence.
- */
-detail: string
-/**
- * Absolute URI identifying the failed durable operation, normally its log URI. Core adds it at persistence when a plugin cannot know the durable coordinate.
- */
-instance?: string
-/**
- * Stable producer-owned stage at which the operation failed, when the operation has multiple independently recoverable stages.
- */
-stage?: string
-/**
- * One generally valid next action. It is omitted when recovery depends on facts the producer does not know.
- */
-recovery?: string
-/**
- * Whether the producer recommends automatically retrying the identical request.
- */
-retryable?: boolean
-[k: string]: unknown
-}
 
 export type ResourceSelectionOrNull = (ResourceSelection | null)
 

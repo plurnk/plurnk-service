@@ -46,6 +46,14 @@ const editable: SchemeHandler = {
     },
 };
 
+const callerOwned: SchemeHandler = {
+    async resolveEntryAddress(target) {
+        return target.kind === "url"
+            ? { pathname: target.pathname, owner: "worker" }
+            : null;
+    },
+};
+
 test("SchemeHandler: a partial handler (read+send only) satisfies the contract", () => {
     assert.equal(typeof httpLike.read, "function");
     assert.equal(typeof httpLike.send, "function");
@@ -61,4 +69,8 @@ test("SchemeHandler: editBatch exposes the typed aggregate receipt contract", ()
     assert.ok(editResult.editReceipt !== null && editResult.editReceipt !== undefined);
     assert.ok("effects" in editResult.editReceipt);
     assert.equal(editResult.editReceipt.effects[0]?.requested, "<1,2,1,2>");
+});
+
+test("SchemeHandler: entry address resolution uses semantic owners instead of storage ids", () => {
+    assert.equal(typeof callerOwned.resolveEntryAddress, "function");
 });

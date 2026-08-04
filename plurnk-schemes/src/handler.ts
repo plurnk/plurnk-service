@@ -29,8 +29,9 @@ import type {
     ForkStatement,
     KillStatement,
     PlanStatement,
+    ParsedPath,
 } from "@plurnk/plurnk-contracts";
-import type { ProposalApplyRequest, ProposalApplyResult, SchemeCtx } from "./ctx.ts";
+import type { EntryAddress, ProposalApplyRequest, ProposalApplyResult, SchemeCtx } from "./ctx.ts";
 import type { EditBatchResult } from "./edit-receipt.ts";
 import type { SchemeResult } from "./Results.ts";
 import type { SchemeManifest } from "./types.ts";
@@ -48,6 +49,10 @@ export interface SchemeHandler {
     ready?(): Promise<void>;
     close?(): Promise<void>;
     applyResolution?(request: ProposalApplyRequest, ctx: SchemeCtx): Promise<ProposalApplyResult>;
+
+    // Resolve a client-visible address through the same pathname and ownership
+    // rules as this scheme's model-facing operations. Absent means commons.
+    resolveEntryAddress?(target: ParsedPath, ctx: SchemeCtx): Promise<EntryAddress | null>;
 
     // Entry-bearing schemes receive the standard resource-selection
     // implementation from the consumer. A scheme implements this hook only

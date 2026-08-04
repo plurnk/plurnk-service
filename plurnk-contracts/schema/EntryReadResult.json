@@ -1,0 +1,101 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "https://schemas.plurnk.dev/v0/EntryReadResult.json",
+    "title": "EntryReadResult",
+    "description": "The runtime-neutral result of reading one client-visible entry, either completely or as one channel suffix.",
+    "oneOf": [
+        {
+            "type": "object",
+            "required": ["status", "entry"],
+            "additionalProperties": false,
+            "properties": {
+                "status": { "const": 200 },
+                "entry": { "$ref": "#/$defs/entry" }
+            }
+        },
+        {
+            "type": "object",
+            "required": ["status", "problem", "entry"],
+            "additionalProperties": false,
+            "properties": {
+                "status": {
+                    "type": "integer",
+                    "minimum": 400,
+                    "maximum": 599
+                },
+                "problem": { "$ref": "https://schemas.plurnk.dev/v0/ProblemDetails.json" },
+                "entry": { "type": "null" }
+            }
+        }
+    ],
+    "$defs": {
+        "entry": {
+            "title": "ClientEntry",
+            "type": "object",
+            "required": ["entryId", "target", "channels", "tags"],
+            "additionalProperties": false,
+            "properties": {
+                "entryId": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 9007199254740991
+                },
+                "target": {
+                    "type": "string",
+                    "minLength": 1
+                },
+                "channels": {
+                    "type": "object",
+                    "propertyNames": { "minLength": 1 },
+                    "additionalProperties": { "$ref": "#/$defs/channel" }
+                },
+                "tags": {
+                    "type": "array",
+                    "uniqueItems": true,
+                    "items": {
+                        "type": "string",
+                        "minLength": 1
+                    }
+                }
+            }
+        },
+        "channel": {
+            "title": "ClientEntryChannel",
+            "type": "object",
+            "required": [
+                "content",
+                "contentOffset",
+                "contentLength",
+                "mimetype",
+                "tokens",
+                "state"
+            ],
+            "additionalProperties": false,
+            "properties": {
+                "content": { "type": "string" },
+                "contentOffset": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                },
+                "contentLength": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                },
+                "mimetype": {
+                    "type": "string",
+                    "minLength": 1
+                },
+                "tokens": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                },
+                "state": {
+                    "enum": ["static", "active", "closed", "errored"]
+                }
+            }
+        }
+    }
+}

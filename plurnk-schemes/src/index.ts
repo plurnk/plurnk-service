@@ -78,6 +78,7 @@ export type {
     EntryMatch,
     EntryOperationCaps,
     EntryOwner,
+    EntryAddress,
     EntryReadResult,
     EntryStorageReadResult,
     EntryStorageWriteResult,

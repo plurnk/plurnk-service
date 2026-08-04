@@ -10,17 +10,19 @@ import clientStatementSchema from "../schema/ClientStatement.json" with { type: 
 import noticeSchema from "../schema/Notice.json" with { type: "json" };
 import problemDetailsSchema from "../schema/ProblemDetails.json" with { type: "json" };
 import operationResultSchema from "../schema/OperationResult.json" with { type: "json" };
+import entryReadResultSchema from "../schema/EntryReadResult.json" with { type: "json" };
 import textRegionSchema from "../schema/TextRegion.json" with { type: "json" };
 import proposalProjectionSchema from "../schema/ProposalProjection.json" with { type: "json" };
 import proposalDispositionSchema from "../schema/ProposalDisposition.json" with { type: "json" };
 import loopFlagsSchema from "../schema/LoopFlags.json" with { type: "json" };
-import type { LoopFlags, Notice, OperationResult, ProblemDetails, ProposalProjection, TextRegion } from "./types.generated.ts";
+import type { EntryReadResult, LoopFlags, Notice, OperationResult, ProblemDetails, ProposalProjection, TextRegion } from "./types.generated.ts";
 
 export type ValidationResult = { valid: boolean; errors: OutputUnit[] };
 
 export class InvalidNoticeError extends TypeError {}
 export class InvalidProblemDetailsError extends TypeError {}
 export class InvalidOperationResultError extends TypeError {}
+export class InvalidEntryReadResultError extends TypeError {}
 export class InvalidTextRegionError extends TypeError {}
 export class InvalidLoopFlagsError extends TypeError {}
 export class InvalidProposalProjectionError extends TypeError {}
@@ -57,6 +59,7 @@ export default class Validator {
     static #notice = new CfValidator(noticeSchema as Schema, "2020-12");
     static #problemDetails = new CfValidator(problemDetailsSchema as Schema, "2020-12");
     static #operationResult = Validator.#withRefs(operationResultSchema, [problemDetailsSchema]);
+    static #entryReadResult = Validator.#withRefs(entryReadResultSchema, [problemDetailsSchema]);
     static #textRegion = new CfValidator(textRegionSchema as Schema, "2020-12");
     static #loopFlags = new CfValidator(loopFlagsSchema as Schema, "2020-12");
     static #proposalProjection = Validator.#withRefs(
@@ -114,6 +117,28 @@ export default class Validator {
         return Validator.#validate(Validator.#operationResult, value);
     }
 
+    static validateEntryReadResult(value: unknown): ValidationResult {
+        const result = Validator.#validate(Validator.#entryReadResult, value);
+        if (!result.valid) return result;
+        const entry = (value as EntryReadResult).entry;
+        if (entry === null) return result;
+        for (const [name, channel] of Object.entries(entry.channels)) {
+            const returnedLength = [...channel.content].length;
+            if (channel.contentOffset + returnedLength !== channel.contentLength) {
+                return {
+                    valid: false,
+                    errors: [{
+                        keyword: "entry-read-suffix",
+                        instanceLocation: `/entry/channels/${name}`,
+                        keywordLocation: "#/$defs/channel",
+                        error: "contentOffset plus the returned Unicode-code-point length must equal contentLength",
+                    }],
+                };
+            }
+        }
+        return result;
+    }
+
     static validateTextRegion(value: unknown): ValidationResult {
         return Validator.#validate(Validator.#textRegion, value);
     }
@@ -148,6 +173,21 @@ export default class Validator {
         if (value.problem !== undefined && value.problem.status !== value.status) {
             throw new InvalidOperationResultError(
                 `operation result status ${value.status} does not match problem status ${value.problem.status}`,
+            );
+        }
+        return value;
+    }
+
+    static assertEntryReadResult<T extends EntryReadResult>(value: T): T {
+        const result = Validator.validateEntryReadResult(value);
+        if (!result.valid) {
+            throw new InvalidEntryReadResultError(
+                `invalid EntryReadResult: ${JSON.stringify(result.errors)}`,
+            );
+        }
+        if ("problem" in value && value.problem.status !== value.status) {
+            throw new InvalidEntryReadResultError(
+                `EntryReadResult status ${value.status} does not match problem status ${value.problem.status}`,
             );
         }
         return value;

@@ -5,6 +5,7 @@ export {
     InvalidLoopFlagsError,
     InvalidNoticeError,
     InvalidOperationResultError,
+    InvalidEntryReadResultError,
     InvalidProblemDetailsError,
     InvalidProposalProjectionError,
     InvalidTextRegionError,
