@@ -140,8 +140,9 @@ function safeParse(content: HandlerContent): Notebook | null {
     let value: unknown;
     try {
         value = JSON.parse(toStr(content));
-    } catch {
-        return null;
+    } catch (cause) {
+        if (cause instanceof SyntaxError) return null;
+        throw cause;
     }
     return typeof value === "object" && value !== null ? value as Notebook : null;
 }

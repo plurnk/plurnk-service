@@ -130,14 +130,9 @@ function parseXmlSilent(text: string): XmlDocument | null {
     // we want a best-effort parse, not a strict gate. Anything genuinely
     // unparseable returns a document with no documentElement and we route
     // that through the "no symbols" path upstream.
-    try {
-        const doc = new DOMParser({
-            errorHandler: () => undefined,
-        }).parseFromString(text, "text/xml");
-        return doc;
-    } catch {
-        return null;
-    }
+    return new DOMParser({
+        errorHandler: () => undefined,
+    }).parseFromString(text, "text/xml");
 }
 
 // 1-indexed source line of an xmldom node (start), or undefined.

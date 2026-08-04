@@ -52,12 +52,7 @@ export default class TextMarkdown extends BaseHandler {
     // single rooted tree (matches the deep-xml projection: <document>...</document>).
     override deepJson(content: HandlerContent): unknown {
         if (typeof content !== "string") return null;
-        let tokens: Token[];
-        try {
-            tokens = new Lexer().lex(content);
-        } catch {
-            return null;
-        }
+        const tokens: Token[] = new Lexer().lex(content);
         const children: unknown[] = [];
         let currentLine = 1;
         for (const token of tokens) {

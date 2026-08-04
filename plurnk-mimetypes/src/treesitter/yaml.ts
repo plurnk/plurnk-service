@@ -22,11 +22,20 @@ export async function deepJson(content: string): Promise<unknown> {
         const value = parse(content);
         return value ?? null;
     } catch (cause) {
-        if (cause instanceof YAMLParseError) {
+        if (cause instanceof YAMLParseError || isYamlContentLimit(cause)) {
             throw new MimetypeInputError({ mimetype: "application/yaml", cause });
         }
         throw cause;
     }
+}
+
+// `yaml` reports alias-order and alias-expansion input limits with built-in
+// ReferenceError rather than YAMLParseError. Match only its documented source
+// conditions; an unrelated ReferenceError remains an implementation defect.
+function isYamlContentLimit(cause: unknown): boolean {
+    if (!(cause instanceof ReferenceError)) return false;
+    return cause.message.startsWith("Unresolved alias ")
+        || cause.message.startsWith("Excessive alias count ");
 }
 
 export function extract(root: TreeSitterNode, _content: string): TreeSitterSymbolProjection[] {

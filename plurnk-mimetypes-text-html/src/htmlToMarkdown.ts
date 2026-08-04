@@ -32,15 +32,9 @@ export function htmlToMarkdown(html: string): string | undefined {
     // Whitespace/degenerate input can leave linkedom without a root element.
     if (document.documentElement === null) return undefined;
 
-    let articleHtml: string | null | undefined;
-    try {
-        // Readability mutates the document it walks; hand it a clone so the
-        // original stays intact for the body fallback below.
-        articleHtml = new Readability(document.cloneNode(true) as Document).parse()?.content;
-    } catch {
-        // Readability is best-effort denoising — its failure is not ours.
-        articleHtml = undefined;
-    }
+    // Readability mutates the document it walks; hand it a clone so the
+    // original stays intact for the body fallback below.
+    let articleHtml = new Readability(document.cloneNode(true) as Document).parse()?.content;
 
     // No article (app shells, forms, snippets) → project the READABLE TEXT, not
     // the raw DOM: strip script/style/noscript/template first, then render what

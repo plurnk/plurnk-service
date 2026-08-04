@@ -84,12 +84,7 @@ export default class TextHtml extends BaseHandler {
         const html = typeof content === "string"
             ? content
             : new TextDecoder("utf-8").decode(content);
-        let doc;
-        try {
-            doc = parse(html, { sourceCodeLocationInfo: true });
-        } catch {
-            return null;
-        }
+        const doc = parse(html, { sourceCodeLocationInfo: true });
         const root: Record<string, unknown> = {
             type: "document",
             line: 1,

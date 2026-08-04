@@ -290,7 +290,7 @@ describe("TextHtml — deepJson (issue #10 DOM channel)", () => {
         assert.equal(found!.text, "click");
     });
 
-    it("returns null on parse failure", async () => {
+    it("recovers ill-formed HTML into a document tree", async () => {
         // parse5 is famously permissive — even garbage parses successfully
         // into a document. So we test that the method doesn't throw and
         // returns a document tree even for ill-formed input.

@@ -28,6 +28,19 @@ describe("YAML deepJson via parsed value", () => {
             },
         );
     });
+
+    it("classifies an unresolved alias without swallowing unrelated reference defects", async () => {
+        const h = new TreeSitterLanguageHandler(md, entry);
+        await assert.rejects(
+            h.deepJson("value: *missing"),
+            (error: unknown) => {
+                assert.ok(error instanceof MimetypeInputError);
+                assert.equal(error.mimetype, "application/yaml");
+                assert.match((error.cause as Error).message, /^Unresolved alias /);
+                return true;
+            },
+        );
+    });
 });
 
 describe("TOML deepJson via parsed value", () => {

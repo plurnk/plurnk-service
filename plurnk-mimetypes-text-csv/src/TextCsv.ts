@@ -55,11 +55,7 @@ export default class TextCsv extends BaseHandler {
     // as repeated sibling elements.
     override deepJson(content: HandlerContent): unknown {
         if (typeof content !== "string") return null;
-        try {
-            return parseToRowObjects(content);
-        } catch {
-            return null;
-        }
+        return parseToRowObjects(content);
     }
 
     // Override jsonpath dispatch to query against the row objects

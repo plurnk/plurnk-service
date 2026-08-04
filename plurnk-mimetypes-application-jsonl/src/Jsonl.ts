@@ -47,7 +47,10 @@ export default class Jsonl extends BaseHandler {
                 try {
                     JSON.parse(t);
                     recordLines.push(i + 1);
-                } catch { /* unparseable line skipped, mirroring scan() */ }
+                } catch (cause) {
+                    if (!(cause instanceof SyntaxError)) throw cause;
+                    // Unparseable line skipped, mirroring scan().
+                }
             }
             const regionFor = (pointer: string) => {
                 const m = pointer.match(/^\/(\d+)/);
@@ -73,7 +76,10 @@ export default class Jsonl extends BaseHandler {
             try {
                 JSON.parse(t);
                 recordLines.push(i + 1);
-            } catch { /* skip, mirroring scan() */ }
+            } catch (cause) {
+                if (!(cause instanceof SyntaxError)) throw cause;
+                // Unparseable line skipped, mirroring scan().
+            }
         }
         const span = (pointer: string): { line: number; endLine: number } | undefined => {
             if (pointer === "") return { line: 1, endLine: 1 };
@@ -108,8 +114,9 @@ export function scan(text: string): JsonlScan {
         let value: unknown;
         try {
             value = JSON.parse(line);
-        } catch {
-            continue;
+        } catch (cause) {
+            if (cause instanceof SyntaxError) continue;
+            throw cause;
         }
         records.push(value);
         if (typeof value === "object" && value !== null && !Array.isArray(value)) {
