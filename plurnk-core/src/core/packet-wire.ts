@@ -96,18 +96,6 @@ interface NoticeView {
     message?: unknown;
     position?: { type?: unknown; line?: unknown; column?: unknown } | null;
 }
-// One packet section: a named, slotted, ordered unit of rendered content. The
-// stored section holds RENDERED markdown + a measured `tokens` weight — exactly
-// what the digest re-parses and what the model saw. `slot` is the prompt-cache
-// boundary (system = the cache-stable prefix; user = the per-turn tail); order
-// within a slot is the render order. Empty `content` ⇒ the section is omitted.
-export interface PacketSection {
-    name: string;
-    slot: "system" | "user";
-    header: string | null;
-    content: string;
-    tokens: number;
-}
 // Loose view of a section re-parsed from `turns.packet` JSON (the digest path).
 interface SectionView { name?: unknown; slot?: unknown; header?: unknown; content?: unknown; tokens?: unknown }
 interface Packet { sections?: SectionView[] }

@@ -41,6 +41,7 @@ export type { RuntimeDecl } from "./OutputScheme.ts";
 export { default as DefaultRead } from "./DefaultRead.ts";
 export type { ReadResolution } from "./DefaultRead.ts";
 export { default as Results } from "./Results.ts";
+export { default as PacketSections } from "./PacketSections.ts";
 export { InvalidOperationResultError } from "./Results.ts";
 export { PathSyntax } from "@plurnk/plurnk-contracts";
 export type {
@@ -99,7 +100,7 @@ export type {
 // on and exact-pins ONLY this package; grammar is the framework's transitive pin
 // (this repo already peers it). The engine speaks one grammar — keep it single.
 export type { SchemeHandler } from "./handler.ts";
-export type { PacketSection, PacketSectionTransformer } from "./packet.ts";
+export type { PacketSectionDraft, PacketSectionTransformer } from "./packet.ts";
 export type {
     PlurnkStatement,
     FindStatement,

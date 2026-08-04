@@ -14,11 +14,12 @@ import { readPacketInject, readSystemPolicy, readProjectPolicy } from "./packet-
 import { readFile } from "node:fs/promises";
 import Paths from "../Paths.ts";
 import { readTeachingSource } from "./teaching-corpus.ts";
+import type { PacketSectionDraft } from "@plurnk/plurnk-schemes";
 // Shared module imported by both Engine and bin/digest.ts, so wire
 // projection and digest projection are structurally one function — no
 // drift between wire and digest possible.
-import PacketWire, { type PacketSection } from "./packet-wire.ts";
-import type { RequestPacket } from "./StoredPacket.ts";
+import PacketWire from "./packet-wire.ts";
+import type { RequestPacket, StoredPacketSection } from "./StoredPacket.ts";
 
 // Provider contract owned by @plurnk/plurnk-providers; engine is the consumer.
 import type { Provider } from "@plurnk/plurnk-providers";
@@ -311,59 +312,63 @@ export default class PacketBuilder {
             .map((s) => ({ status: "active", path: renderAddress(s.scheme, s.pathname) }));
         const childWorkers = (await this.#db.engine_child_workers_live.all<{ name: string; status: number }>({ worker_id: workerId }))
             .map((r) => ({ status: r.status, path: `worker://${r.name}` }));
-        const defaults: PacketSection[] = [
-            { name: "definition", slot: "system", header: null, content: system_definition, tokens: 0 },
-            { name: "tools", slot: "system", header: "Registered Executable Tools", content: tools.executors, tokens: 0 },
+        const defaults: PacketSectionDraft[] = [
+            { name: "definition", slot: "system", header: null, content: system_definition },
+            { name: "tools", slot: "system", header: "Registered Executable Tools", content: tools.executors },
             ...(tools.optionalOperations.length > 0
-                ? [{ name: "optional-operations", slot: "system" as const, header: "Enabled Optional Operations", content: tools.optionalOperations, tokens: 0 }]
+                ? [{ name: "optional-operations", slot: "system" as const, header: "Enabled Optional Operations", content: tools.optionalOperations }]
                 : []),
-            { name: "schemes", slot: "system", header: "Schemes", content: this.#schemes.teach(), tokens: 0 },
-            ...(inject !== null ? [{ name: "inject", slot: "system" as const, header: "Operator Notes", content: inject, tokens: 0 }] : []),
+            { name: "schemes", slot: "system", header: "Schemes", content: this.#schemes.teach() },
+            ...(inject !== null ? [{ name: "inject", slot: "system" as const, header: "Operator Notes", content: inject }] : []),
             // policy: the client's privileged rules — ~/.plurnk/AGENTS.md (system) then <root>/AGENTS.md (project) — below grammar/tools/schemes, above budget-the-law. AGENTS is POLICY here, never a curatable READable entry. Empty content ⇒ section omitted.
-            { name: "system-policy", slot: "system", header: "Policy", content: systemPolicy ?? "", tokens: 0 },
-            { name: "project-policy", slot: "system", header: "Project Policy", content: projectPolicy ?? "", tokens: 0 },
+            { name: "system-policy", slot: "system", header: "Policy", content: systemPolicy ?? "" },
+            { name: "project-policy", slot: "system", header: "Project Policy", content: projectPolicy ?? "" },
             // The append-mostly log leads volatile user status ({§packet-cache-monotone}).
-            { name: "log", slot: "user", header: "Log", content: PacketWire.renderLog(log, countTokens), tokens: 0 },
+            { name: "log", slot: "user", header: "Log", content: PacketWire.renderLog(log, countTokens) },
             // The per-turn status clump sits between log and recap ({§packet-cache-monotone}).
             // child-orientation: what this worker holds live — streams then child workers — just above errors. Terse
             // pointers (the path is the actionable address the model READs/OPENs/KILLs), never advice. {§child-orientation}
-            { name: "child-streams", slot: "user", header: "Child Streams", content: PacketWire.renderChildPointers(childStreams), tokens: 0 },
-            { name: "child-workers", slot: "user", header: "Active Child Workers", content: PacketWire.renderChildPointers(childWorkers), tokens: 0 },
-            { name: "errors", slot: "user", header: "Errors", content: PacketWire.renderFailurePointers(failures), tokens: 0 },
-            { name: "notices", slot: "user", header: "Notices", content: PacketWire.renderNotices(notices), tokens: 0 },
-            { name: "git", slot: "user", header: "Git Status", content: PacketWire.renderGit(gitStatus), tokens: 0 },
+            { name: "child-streams", slot: "user", header: "Child Streams", content: PacketWire.renderChildPointers(childStreams) },
+            { name: "child-workers", slot: "user", header: "Active Child Workers", content: PacketWire.renderChildPointers(childWorkers) },
+            { name: "errors", slot: "user", header: "Errors", content: PacketWire.renderFailurePointers(failures) },
+            { name: "notices", slot: "user", header: "Notices", content: PacketWire.renderNotices(notices) },
+            { name: "git", slot: "user", header: "Git Status", content: PacketWire.renderGit(gitStatus) },
             // budget — LAW (a hard ceiling the model must obey).
-            { name: "budget", slot: "user", header: "Budget", content: budgetReadout, tokens: 0 },
+            { name: "budget", slot: "user", header: "Budget", content: budgetReadout },
             // The prompts section closes the status clump as a paths-only list;
             // bodies arrive through first-class prompt rows.
-            { name: "prompt", slot: "user", header: "User Prompts", content: prompt, tokens: 0 },
+            { name: "prompt", slot: "user", header: "User Prompts", content: prompt },
             // requirements renders LAST — the user-slot footer, the syntax contract closest to the model's turn (a recency carve-out for weak models).
-            { name: "requirements", slot: "user", header: "Recap", content: baseRequirements, tokens: 0 },
+            { name: "requirements", slot: "user", header: "Recap", content: baseRequirements },
         ];
         // Plugin packet control ({§packet-assembly}): trusted schemes rewrite the
         // default list — add, remove, reorder — in-process, before measurement.
-        const sections = await this.#schemes.transformSections(defaults);
+        let drafts = await this.#schemes.transformSections(defaults);
         // Pass 1: measure the assembled total with the placeholder budget in
         // place, resolve free/percent, substitute into the budget section.
-        let total = countTokens(PacketWire.renderSlot(sections, "system")) + countTokens(PacketWire.renderSlot(sections, "user"));
+        const total = countTokens(PacketWire.renderSlot(drafts, "system")) + countTokens(PacketWire.renderSlot(drafts, "user"));
         {
-            const budgetSec = sections.find((s) => s.name === "budget"); // a plugin may have removed it
+            const budgetSec = drafts.find((s) => s.name === "budget"); // a plugin may have removed it
             // A null ceiling (#421 - unbounded window) has no headline to calibrate and therefore no
             // percent/free substitution. #renderBudget already omitted the headline.
             if (budgetSec && ceiling !== null) {
                 const tokensFree = Math.max(0, ceiling - total); // free floors at 0 on overshoot — {§tokenomics-over-budget-floor}
                 const percent = (total / ceiling) * 100; // usage as % of the ceiling — {§tokenomics-context-percent}
-                budgetSec.content = budgetSec.content
+                const content = budgetSec.content
                     .replace(TOKEN_USAGE_PLACEHOLDER, String(total))
                     // Any nonzero usage under 1% is "<1" — Math.round alone claimed "1%" from 0.51%,
                     // overstating a near-empty window.
                     .replace(TOKEN_PERCENT_PLACEHOLDER, total > 0 && percent < 1 ? "<1" : String(Math.round(percent)))
                     .replace(TOKENS_FREE_PLACEHOLDER, String(tokensFree));
+                drafts = drafts.map((section) => section === budgetSec ? { ...section, content } : section);
             }
         }
         // Pass 2: per-section render-weight + the assembled packet total after
         // substitution. #63 owns the remaining self-measurement mismatch.
-        for (const s of sections) s.tokens = countTokens(PacketWire.renderSection(s));
+        const sections = drafts.map((section): StoredPacketSection => ({
+            ...section,
+            tokens: countTokens(PacketWire.renderSection(section)),
+        }));
         const packetTokens = countTokens(PacketWire.renderSlot(sections, "system")) + countTokens(PacketWire.renderSlot(sections, "user"));
         return { tokens: packetTokens, sections };
     }

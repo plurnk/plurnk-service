@@ -1,5 +1,9 @@
 import { Validator, type PlurnkStatement } from "@plurnk/plurnk-contracts";
-import type { PacketSection } from "./packet-wire.ts";
+import type { PacketSectionDraft } from "@plurnk/plurnk-schemes";
+
+export interface StoredPacketSection extends PacketSectionDraft {
+    readonly tokens: number;
+}
 
 export type PacketAssistant = {
     content: string;
@@ -9,7 +13,7 @@ export type PacketAssistant = {
 
 export type RequestPacket = {
     tokens: number;
-    sections: PacketSection[];
+    sections: StoredPacketSection[];
 };
 
 export type AdmittedPacket = RequestPacket & {
@@ -102,7 +106,7 @@ export default class StoredPacket {
         return { content: assistant.content, ops, reasoning: assistant.reasoning };
     }
 
-    static #section(value: unknown, subject: string): PacketSection {
+    static #section(value: unknown, subject: string): StoredPacketSection {
         const section = StoredPacket.#record(value, subject);
         StoredPacket.#keys(section, ["name", "slot", "header", "content", "tokens"], ["name", "slot", "header", "content", "tokens"], subject);
         if (typeof section.name !== "string" || section.name.length === 0) {

@@ -1836,9 +1836,9 @@ rendered or measured; the grinder remains an engine-owned post-build rail.
 
 ```mermaid
 flowchart LR
-    defaults[Engine default sections] --> transforms[Trusted scheme transforms<br/>in registration order]
+    defaults[Engine section drafts] --> transforms[Trusted scheme transforms<br/>and boundary validation]
     transforms --> render[Render system and user slots]
-    render --> measure[Ruler measurement and<br/>budget substitution]
+    render --> measure[Budget substitution and<br/>core-owned measurement]
     measure --> rail[Engine grinder and dispatch]
 ```
 
@@ -1878,9 +1878,12 @@ stays in the user slot.
 
 `SchemeRegistry.transformSections` pipes the complete default list through
 every registered scheme implementing `transformSections(sections) -> sections`,
-in registration order, before rendering and measurement. Each transformer may
-inspect the section content and add, remove, or reorder sections. It receives no
-separate engine, database, actor, or request context.
+in registration order, before rendering and measurement. The schemes-owned
+`PacketSectionDraft` contains only `name`, `slot`, `header`, and `content`.
+Each initial or returned list passes the schemes-owned validator, including
+unique-name enforcement, before the next transformer or renderer. Each
+transformer may inspect the section content and add, remove, or reorder
+sections. It receives no separate engine, database, actor, or request context.
 
 This is strictly a trusted in-process seam, admitted through the common plugin
 trust gate; an external client action cannot invoke it. Whole-list transformation is
@@ -2306,10 +2309,10 @@ setup, filesystem-narration, and executor-materialization turns are
 journal-only and therefore store `NULL`. Digest writes an explicit journal-only
 or request-only note instead of fabricating response files.
 
-The external transformation surface is owned by
-{§scheme-packet-transform}. #73 tracks the current type's conflation of a
-pre-measure draft with a measured stored section; #74 tracks coverage that
-mistakes the sum of section weights for the rendered request weight.
+The external tokenless draft and transformation boundary is owned by
+{§scheme-packet-transform}. Core alone extends each validated draft with its
+measured `tokens` field for storage. #74 tracks coverage that mistakes the sum
+of section weights for the rendered request weight.
 
 §definition-table-projection The authored `plurnk.md` remains human-aligned. Its `definition` section deterministically removes Markdown table-cell padding and shortens separator cells to three dashes before plugin transforms, measurement, storage, and wire rendering; alignment colons survive, while fenced blocks and all non-table whitespace remain exact.
 

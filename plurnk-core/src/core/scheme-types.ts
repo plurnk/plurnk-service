@@ -9,7 +9,6 @@ import type { StreamEventNotify, WakeWorkerNotify, InjectWorkerNotify } from "./
 import type { WriterTier } from "./types.ts";
 import type { Notice } from "@plurnk/plurnk-contracts";
 import type { TextRegion } from "@plurnk/plurnk-contracts";
-import type { PacketSection } from "./packet-wire.ts";
 import type { SchemeResultBase } from "./results.ts";
 import type { MatchEvidence } from "@plurnk/plurnk-schemes";
 
@@ -76,10 +75,4 @@ export interface PlurnkSchemeContext {
     // Push a transient Notice. The engine drains it into the next packet's
     // Notices section and broadcasts it through `notice/event`.
     readonly pushNotice?: (notice: Notice) => void;
-}
-
-// {§scheme-packet-transform} {§packet-plugin-transform}. #73 owns removal of
-// this duplicate core declaration and the draft/measured type distinction.
-export interface PacketSectionTransformer {
-    transformSections(sections: PacketSection[]): PacketSection[] | Promise<PacketSection[]>;
 }

@@ -6,9 +6,15 @@ import File from "../schemes/File.ts";
 import Worker from "../schemes/Worker.ts";
 import ResolveForLoop from "./resolveForLoop.ts";
 import type { LoopFlags } from "./types.ts";
-import { Manifest, SchemeDiscovery, type SchemeHandler } from "@plurnk/plurnk-schemes";
-import type { PacketSection } from "./packet-wire.ts";
-import type { PacketSectionTransformer, SchemeManifest } from "./scheme-types.ts";
+import {
+    Manifest,
+    PacketSections,
+    SchemeDiscovery,
+    type PacketSectionDraft,
+    type PacketSectionTransformer,
+    type SchemeHandler,
+} from "@plurnk/plurnk-schemes";
+import type { SchemeManifest } from "./scheme-types.ts";
 import ExecOutputScheme from "../schemes/ExecOutputScheme.ts";
 import type ExecutorRegistry from "./ExecutorRegistry.ts";
 import type { Executor } from "./ExecutorRegistry.ts";
@@ -210,13 +216,16 @@ export default class SchemeRegistry {
         return this.#questionsDoc;
     }
 
-    // {§scheme-packet-transform} {§packet-plugin-transform} — apply trusted
-    // whole-list transforms in registration order. #73 owns boundary validation.
-    async transformSections(sections: PacketSection[]): Promise<PacketSection[]> {
-        let current = sections;
-        for (const handler of this.#handlers.values()) {
+    // {§scheme-packet-transform} {§packet-plugin-transform}.
+    async transformSections(sections: PacketSectionDraft[]): Promise<PacketSectionDraft[]> {
+        let current = PacketSections.assertDrafts(sections, "core packet defaults");
+        for (const [name, handler] of this.#handlers) {
             const transform = (handler as Partial<PacketSectionTransformer>).transformSections;
-            if (typeof transform === "function") current = await transform.call(handler, current);
+            if (typeof transform !== "function") continue;
+            current = PacketSections.assertDrafts(
+                await transform.call(handler, current),
+                `scheme '${name}' transformSections result`,
+            );
         }
         return current;
     }

@@ -3,7 +3,10 @@ import assert from "node:assert/strict";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { Mock } from "@plurnk/plurnk-providers";
-import type { PacketSection } from "../../src/core/packet-wire.ts";
+import type { PacketSectionDraft } from "@plurnk/plurnk-schemes";
+import PacketWire from "../../src/core/packet-wire.ts";
+import type { StoredPacketSection } from "../../src/core/StoredPacket.ts";
+import { rulerCount } from "../../src/core/token-ruler.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, packetSection } from "./_helpers.ts";
 import { sendStmt } from "./_dsl.ts";
 
@@ -30,9 +33,9 @@ test("plugin packet control: a scheme adds, removes, and reorders packet section
                 volatile: false,
                 modelVisible: false,
             },
-            transformSections(sections: PacketSection[]): PacketSection[] {
+            transformSections(sections: PacketSectionDraft[]): PacketSectionDraft[] {
                 return [
-                    { name: "demo", slot: "user", header: "Demo Plugin", content: "hello from the plugin", tokens: 0 },
+                    { name: "demo", slot: "user", header: "Demo Plugin", content: "hello from the plugin" },
                     ...sections.filter((s) => s.name !== "budget"),
                 ];
             },
@@ -44,6 +47,9 @@ test("plugin packet control: a scheme adds, removes, and reorders packet section
 
         // ADD: the plugin's section is in the packet, carrying its content.
         assert.equal(packetSection(packet, "demo"), "hello from the plugin");
+        const demo = (packet.sections as StoredPacketSection[]).find((section) => section.name === "demo");
+        assert.ok(demo !== undefined);
+        assert.equal(demo.tokens, rulerCount(PacketWire.renderSection(demo)), "core assigns the durable render-weight");
         // REMOVE: the kernel's budget section is gone.
         assert.equal(packetSection(packet, "budget"), "");
         // REORDER: the plugin's section leads the user slot.
@@ -66,10 +72,10 @@ test("plugin packet control: duplicate section names fail at the owning scheme b
             volatile: false,
             modelVisible: false,
         },
-        transformSections(): PacketSection[] {
+        transformSections(): PacketSectionDraft[] {
             return [
-                { name: "duplicate", slot: "user", header: null, content: "first", tokens: 0 },
-                { name: "duplicate", slot: "user", header: null, content: "second", tokens: 0 },
+                { name: "duplicate", slot: "user", header: null, content: "first" },
+                { name: "duplicate", slot: "user", header: null, content: "second" },
             ];
         },
     });

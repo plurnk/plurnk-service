@@ -2,7 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import type { EditStatement, LineMarker, PlanStatement, PlurnkStatement, ReadStatement, SendStatement, UrlPath } from "@plurnk/plurnk-contracts";
 import Engine from "../../src/core/Engine.ts";
-import PacketWire, { type PacketSection } from "../../src/core/packet-wire.ts";
+import PacketWire from "../../src/core/packet-wire.ts";
+import type { StoredPacketSection } from "../../src/core/StoredPacket.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { rulerCount } from "../../src/core/token-ruler.ts";
 import { Mock } from "@plurnk/plurnk-providers";
@@ -197,7 +198,7 @@ test("Engine.runTurn: admitted response does not change packet request-weight se
         const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
         const row = await db.test_get_packet.get<{ packet: string }>({ id: result.turnId });
         assert.ok(row !== undefined);
-        const packet = JSON.parse(row.packet) as { tokens: number; sections: PacketSection[] };
+        const packet = JSON.parse(row.packet) as { tokens: number; sections: StoredPacketSection[] };
         const requestWeight = rulerCount(PacketWire.renderSlot(packet.sections, "system"))
             + rulerCount(PacketWire.renderSlot(packet.sections, "user"));
         assert.equal(packet.tokens, requestWeight);
