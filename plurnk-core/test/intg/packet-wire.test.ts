@@ -200,21 +200,6 @@ test("COPY/MOVE render operand selections and scoped textual materialization rec
     assert.match(unchanged, /"display":"none"/);
 });
 
-test("EDIT with an accept-path span (rx.body from a proposed file edit) renders the line-numbered diff", () => {
-    // #69 tracks this obsolete rx.body compatibility fixture. Current authored
-    // EDITs use {§edit-result-receipt-projection}; filesystem narration uses
-    // {§env-delta-filesystem-narration}.
-    const out = PacketWire.renderLog([{
-        coordinate: "1/4/2",
-        origin: "model",
-        op: "EDIT",
-        status: 200,
-        target: { scheme: null, pathname: "/src/app.js" },
-        rx: { status: 200, body: "3:app.listen(8080);\n4:// error handler configured" },
-    }], tok);
-    assert.match(out, /<<:::src\/app\.js\n3:app\.listen\(8080\);\n4:\/\/ error handler configured\n:::src\/app\.js/, "the proposed file EDIT's accept-path span renders as the line-numbered diff — parity with the inline rx.span");
-});
-
 test("log entry: a worker:// spawn renders the worker NAME in the target — authority survives ()", () => {
     // The spawn-blindness root cause: the worker name lives in the URI authority (worker://<name>),
     // not the path. Rendering scheme+path alone collapsed every spawn to a bare `worker://`, so the

@@ -77,14 +77,9 @@ export default class LogBody {
                         assertEditReceipt(result.receipt),
                     ]);
                 }
-                const content = typeof result.span === "string"
-                    ? result.span
-                    : typeof result.body === "string"
-                        ? result.body
-                        : null;
-                if (content !== null) {
+                if (typeof result.span === "string") {
                     return {
-                        content,
+                        content: result.span,
                         mimetype: "text/plain",
                         startLine: null,
                     };
