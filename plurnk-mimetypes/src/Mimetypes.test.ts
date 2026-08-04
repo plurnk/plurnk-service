@@ -358,6 +358,42 @@ describe("Mimetypes — process: channel selection (#17)", () => {
         assert.equal("deepJson" in r, false);
     });
 
+    it("materializes the same symbols-only projection XPath queries without duplicate extraction (#86)", async () => {
+        let deepJsonCalls = 0;
+        let symbolCalls = 0;
+        class SymbolsOnlyHandler extends BaseHandler {
+            override deepJson(): null {
+                deepJsonCalls += 1;
+                return null;
+            }
+            override extractRaw(): MimeSymbol[] {
+                symbolCalls += 1;
+                return [{ name: "Section", kind: "heading", level: 1, line: 3, endLine: 3 }];
+            }
+        }
+        const m = new Mimetypes({
+            discovery: makeDiscovery([plainInfo]),
+            loader: async () => ({ default: SymbolsOnlyHandler }),
+        });
+        const input = { path: "foo.txt", content: "alpha\nbeta\ngamma" };
+
+        const materialized = await m.process(input, { channels: ["symbols", "deepJson", "deepXml"] });
+        assert.equal(deepJsonCalls, 1, "one deep-tree read for the combined request");
+        assert.equal(symbolCalls, 1, "the deep-XML fallback reuses the requested symbols");
+
+        const handler = await m.getHandler("text/plain");
+        assert.ok(handler);
+        assert.equal(materialized.deepXml, await handler.deepXml(input.content));
+
+        const matches = await m.query(input, "//Section");
+        assert.deepEqual(matches[0]?.regions, [{
+            startLine: 3,
+            startColumn: 1,
+            endLine: 3,
+            endColumn: 6,
+        }]);
+    });
+
     it("honors a handler deepXml() override for the deepXml channel", async () => {
         class SourceMarkupHandler extends BaseHandler {
             override deepJson(): unknown {
