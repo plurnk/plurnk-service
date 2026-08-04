@@ -142,6 +142,47 @@ test("a worker learns a sibling's edit through its own log — pulled from the s
     }
 });
 
+test("ambient delivery follows monotonic occurrence identity, never wall-clock order", async () => {
+    const db = await openMigrated();
+    try {
+        const workspaceId = await insertWorkspace(db, `event-id-${crypto.randomUUID()}`);
+        const observer = await insertWorker(db, workspaceId, null, "observer");
+        const observerLoop = await insertLoop(db, observer, 1, "observe");
+        const producer = await insertWorker(db, workspaceId, null, "producer");
+        const producerLoop = await insertLoop(db, producer, 1, "produce");
+        const producerTurn = await insertTurn(db, producerLoop, 1);
+        const eng = makeEngine(db);
+        const provider = new Mock({ contextWindow: 4096, responses: [okSend(), okSend(), okSend()] });
+
+        await eng.runTurn({ provider, workspaceId, workerId: observer, loopId: observerLoop, messages: MESSAGES, turnNumber: 1 });
+
+        const sameOldTime = "2000-01-01T00:00:00.000Z";
+        for (const [index, pathname] of ["/equal-a.md", "/equal-b.md"].entries()) {
+            await db.test_insert_shared_edit_at.get({
+                worker_id: producer,
+                loop_id: producerLoop,
+                turn_id: producerTurn,
+                sequence: index + 1,
+                at: sameOldTime,
+                pathname,
+                rx: JSON.stringify({ status: 201, span: `1:${pathname}` }),
+            });
+        }
+
+        await eng.runTurn({ provider, workspaceId, workerId: observer, loopId: observerLoop, messages: MESSAGES, turnNumber: 2 });
+        await eng.runTurn({ provider, workspaceId, workerId: observer, loopId: observerLoop, messages: MESSAGES, turnNumber: 3 });
+
+        const rows = await db.engine_render_log.all<{ origin: string; op: string; pathname: string | null }>({ worker_id: observer });
+        const observed = rows
+            .filter((row) => row.origin === "plurnk" && row.op === "EDIT" && row.pathname?.startsWith("/equal-") === true)
+            .map((row) => row.pathname)
+            .sort();
+        assert.deepEqual(observed, ["/equal-a.md", "/equal-b.md"], "both equal-time events arrive, once each");
+    } finally {
+        await db.close();
+    }
+});
+
 test("an environment delta preserves typed source attributes for model-facing projection", async () => {
     const db = await openMigrated();
     try {

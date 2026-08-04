@@ -386,6 +386,18 @@ WHERE e.id = $entry_id;
 -- PREP: test_get_log_entry_attrs_by_turn
 SELECT attrs FROM log_entries WHERE turn_id = $turn_id AND op = $op ORDER BY id DESC LIMIT 1;
 
+-- PREP: test_insert_shared_edit_at
+-- Cursor-contract fixture: two occurrences may deliberately share an arbitrary
+-- wall-clock stamp. Delivery identity must come from the ambient event, not `at`.
+INSERT INTO log_entries (
+    worker_id, loop_id, turn_id, sequence, at, origin, op,
+    scheme, pathname, tx, mimetype_tx, rx, mimetype_rx, status_rx
+) VALUES (
+    $worker_id, $loop_id, $turn_id, $sequence, $at, 'model', 'EDIT',
+    'worker', $pathname, '', 'text/plain', $rx, 'application/json', 201
+)
+RETURNING id;
+
 -- PREP: test_embedding_insertion_order
 SELECT e.pathname, min(ee.rowid) AS first_rowid
 FROM derivation_embeddings ee
