@@ -96,7 +96,10 @@ const runBin = (args, env = {}) => {
 const bootStart = (env = {}) => new Promise((res) => {
     // Run from OUTSIDE the install dir so discovery must resolve plugins package-relative,
     // not from CWD/node_modules — the global-dogfood scenario (start from your own project).
-    const child = spawn(bin, ["start"], { cwd: resolve(sandbox, ".."), env: { ...process.env, HOME: sandbox, PLURNK_HOST: "127.0.0.1", PLURNK_PORT: "0", ...env } });
+    const childEnv = { ...process.env };
+    for (const key of ["PLURNK_AGUI_TOKEN", "PLURNK_AGUI_MAX_TURNS", "PLURNK_AGUI_HEARTBEAT_MS"]) delete childEnv[key];
+    Object.assign(childEnv, { HOME: sandbox, PLURNK_HOST: "127.0.0.1", PLURNK_PORT: "0" }, env);
+    const child = spawn(bin, ["start"], { cwd: resolve(sandbox, ".."), env: childEnv });
     let stdout = "", stderr = "", listening = false;
     // Resolve on EXIT (after a graceful SIGTERM) so both pipes fully drain — the
     // embedder notice rides stderr and races the stdout startup line otherwise.
@@ -210,6 +213,26 @@ ok(!/embedder inactive/.test(boot.stderr), "no embedder-inactive notice — the 
 // three options, and nothing can phone the hosted relay without the user uncommenting it.
 ok(/ no model\n?$/m.test(boot.stdout) || /no model/.test(boot.stdout), "startup line reports 'no model' on an untouched install (no hosted default)");
 ok(/no model configured/.test(boot.stderr) && /local \/ cloud \/ plurnk\.ai/.test(boot.stderr), "the pointer names the three options in ~/.plurnk/.env");
+
+const aguiDefaultsPath = resolve(mods, "@plurnk", "plurnk-agui", ".env.defaults");
+const aguiDefaults = readFileSync(aguiDefaultsPath, "utf8");
+try {
+    writeFileSync(
+        aguiDefaultsPath,
+        aguiDefaults.replace(/^PLURNK_AGUI_HEARTBEAT_MS=.*$/m, "PLURNK_AGUI_HEARTBEAT_MS=invalid"),
+    );
+    const invalidAguiFloor = await bootStart({
+        PLURNK_SERVICE_DB_PATH: resolve(sandbox, "invalid-agui-floor.db"),
+        PLURNK_SCHEMES_HTTP_PLAYWRIGHT_METHOD: "disabled",
+    });
+    ok(
+        invalidAguiFloor.listening === false
+            && /PLURNK_AGUI_HEARTBEAT_MS must be a safe integer/.test(invalidAguiFloor.stderr),
+        "the packed AG-UI default reaches its owning validator before the listener binds",
+    );
+} finally {
+    writeFileSync(aguiDefaultsPath, aguiDefaults);
+}
 
 const withheldEmbedderRoot = `${embedderRoot}.withheld`;
 renameSync(embedderRoot, withheldEmbedderRoot);

@@ -792,7 +792,14 @@ test("NO workspace prop is a 400 Problem - a worker has no world to forge from t
 
 test("PLURNK-owned HTTP failures use application/problem+json with stable Problems", async () => {
     const { seam } = mockSeam();
-    const mod = await Module.init({ host: "127.0.0.1", port: 0, token: "expected" }).start(seam);
+    const mod = await Module.init({
+        host: "127.0.0.1",
+        port: 0,
+        env: {
+            PLURNK_AGUI_TOKEN: "expected",
+            PLURNK_AGUI_HEARTBEAT_MS: "0",
+        },
+    }).start(seam);
     const base = `http://127.0.0.1:${mod.address().port}`;
     const problem = async (path: string, init: RequestInit): Promise<Record<string, unknown>> => {
         const response = await fetch(`${base}${path}`, init);
@@ -998,20 +1005,71 @@ test("loop.inject on a distinct thread folds into THAT conversation, never the m
     } finally { await mod.close(); }
 });
 
-test("SSE heartbeat: a silent AG-UI Run stays alive — comment frames flow between events (agui#3: undici bodyTimeout kills silent streams)", async () => {
+test("[{§agui-configuration}] the environment heartbeat cadence reaches the SSE listener", async () => {
     const { seam, finish } = mockSeam();
     seam.listWorkspaces = async () => [{ id: 3, name: "w" }];
     seam.attachWorkspace = async () => ({ workspaceId: 3, workspaceName: "w", projectRoot: null, workerId: 10, workerName: "c" });
     seam.ensureModelWorker = async () => 20;
     // A SLOW loop: no events for ~200ms (a long model generation), then terminated.
     seam.runLoop = async (a) => { setTimeout(() => finish(a.workspaceId), 200); return { status: 100, action: "enqueued_new_loop", loopId: 9 }; };
-    const mod = await Module.init({ host: "127.0.0.1", port: 0, heartbeatMs: 40 }).start(seam);
+    const mod = await Module.init({
+        host: "127.0.0.1",
+        port: 0,
+        env: { PLURNK_AGUI_HEARTBEAT_MS: "40" },
+    }).start(seam);
     try {
         const res = await fetch(`http://127.0.0.1:${mod.address().port}/`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(standardInput({ threadId: "w", runId: "r1", messages: [{ role: "user", content: "think long" }], forwardedProps: { plurnk: { workspace: "w" } } })) });
         const raw = await res.text();
         const beats = (raw.match(/^: hb$/gm) ?? []).length;
         assert.ok(beats >= 2, `the silent window carried heartbeats (got ${beats}) — no client bodyTimeout can starve mid-generate`);
         assert.match(raw, /RUN_FINISHED/, "the worker still ends clean");
+    } finally { await mod.close(); }
+});
+
+test("[{§agui-configuration}] heartbeat cadence 0 emits no comment frames", async () => {
+    const { seam, finish } = mockSeam();
+    seam.listWorkspaces = async () => [{ id: 3, name: "w" }];
+    seam.attachWorkspace = async () => ({ workspaceId: 3, workspaceName: "w", projectRoot: null, workerId: 10, workerName: "c" });
+    seam.ensureModelWorker = async () => 20;
+    seam.runLoop = async (a) => { setTimeout(() => finish(a.workspaceId), 100); return { status: 100, action: "enqueued_new_loop", loopId: 9 }; };
+    const mod = await Module.init({
+        host: "127.0.0.1",
+        port: 0,
+        env: { PLURNK_AGUI_HEARTBEAT_MS: "0" },
+    }).start(seam);
+    try {
+        const res = await fetch(`http://127.0.0.1:${mod.address().port}/`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(standardInput({ threadId: "w", runId: "r1", messages: [{ role: "user", content: "think long" }], forwardedProps: { plurnk: { workspace: "w" } } })) });
+        assert.doesNotMatch(await res.text(), /^: hb$/m);
+    } finally { await mod.close(); }
+});
+
+test("[{§agui-configuration}] the environment turn default yields to the Run value", async () => {
+    const observed: Array<number | undefined> = [];
+    const { seam, finish } = mockSeam();
+    seam.listWorkspaces = async () => [{ id: 3, name: "w" }];
+    seam.attachWorkspace = async () => ({ workspaceId: 3, workspaceName: "w", projectRoot: null, workerId: 10, workerName: "c" });
+    seam.ensureModelWorker = async () => 20;
+    seam.runLoop = async (args) => {
+        observed.push(args.maxTurns);
+        finish(args.workspaceId);
+        return { status: 100, action: "enqueued_new_loop", loopId: 9 };
+    };
+    const mod = await Module.init({
+        host: "127.0.0.1",
+        port: 0,
+        env: {
+            PLURNK_AGUI_MAX_TURNS: "7",
+            PLURNK_AGUI_HEARTBEAT_MS: "0",
+        },
+    }).start(seam);
+    try {
+        const input = { threadId: "w", messages: [{ role: "user", content: "continue" }], forwardedProps: { plurnk: { workspace: "w" } } };
+        await post(mod.address().port, input);
+        await post(mod.address().port, {
+            ...input,
+            forwardedProps: { plurnk: { workspace: "w", maxTurns: 2 } },
+        });
+        assert.deepEqual(observed, [7, 2]);
     } finally { await mod.close(); }
 });
 

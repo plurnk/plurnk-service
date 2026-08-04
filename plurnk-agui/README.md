@@ -27,6 +27,12 @@ daemon.registerModule(Module.init({
 }));
 ```
 
+The service supplies this package's `.env.defaults` through the assembled
+environment before module startup. A direct in-process consumer must provide
+that environment or an explicit `heartbeatMs`; explicit `token`, `maxTurns`,
+and `heartbeatMs` options override their corresponding environment values.
+`SPEC.md` owns the exact value contract.
+
 The module owns transport authentication, request validation, event translation,
 and proposal delivery. Core owns persistence and model-loop policy; clients own
 rendering and local terminal/editor behavior.

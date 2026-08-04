@@ -296,6 +296,20 @@ Two consequences the module owns and a client must handle:
   shape is what svc#504 reported (a client-side single-slot handler, since fixed) and is
   pinned against here.
 
+## §agui-configuration Module configuration
+
+The daemon assembles installed package defaults through
+{§operator-config-env-defaults}; AG-UI reads and validates its own keys from that
+environment. Explicit `Module.init` options override their corresponding environment
+values for direct in-process composition. The listener address remains service-owned.
+
+| Input                              | Owner   | Empty or absent                        | Accepted value                      | Effect |
+| ---------------------------------- | ------- | -------------------------------------- | ----------------------------------- | ------ |
+| `PLURNK_HOST` / `PLURNK_PORT`      | Service | Invalid at service boot                | Service-valid host and port         | Core supplies the listener address to `Module.init`. |
+| `PLURNK_AGUI_TOKEN`                | AG-UI   | No module-level bearer requirement     | Any string                          | A non-empty value requires the exact bearer on every non-preflight request. |
+| `PLURNK_AGUI_MAX_TURNS`            | AG-UI   | No module-level default                | `-1` or a non-negative safe integer | Supplies `maxTurns` only when the Run does not carry its own value. |
+| `PLURNK_AGUI_HEARTBEAT_MS`         | AG-UI   | Invalid; the package floor is required | Integer `0` through `2147483647`    | SSE comment-frame cadence in milliseconds; `0` disables it. |
+
 ## §agui-run-endpoint The AG-UI Run endpoint
 
 `POST /` (or `/agui`) accepts a schema-valid AG-UI `RunAgentInput`: the last textual

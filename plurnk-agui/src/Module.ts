@@ -21,14 +21,9 @@ import { EventType, type AguiEvent, type RunAgentInput } from "./types.ts";
 import { RunAgentInputSchema, type Interrupt } from "@ag-ui/core";
 import { logEntryIdFromToolCallId, proposalInterrupt } from "./AguiPlus.ts";
 import { Problems, Validator, type ExecStatement, type OperationResult, type ProblemDetails } from "@plurnk/plurnk-contracts";
+import { resolveModuleOptions, type ModuleOptions, type ResolvedModuleOptions } from "./config.ts";
 
-export interface ModuleOptions {
-    host: string;
-    port: number;                 // 0 = ephemeral
-    token?: string;               // empty/undefined = local trust (loopback bind is the boundary)
-    maxTurns?: number;
-    heartbeatMs?: number;         // SSE comment-frame cadence (agui#3); default 15s, 0 disables
-}
+export type { ModuleOptions } from "./config.ts";
 
 export interface ModuleRegistration {
     start(seam: DaemonSeam): Promise<Module>;
@@ -136,7 +131,7 @@ const runErrorEvents = (problem: ProblemDetails): AguiEvent[] => [
 
 export default class Module {
     #seam: DaemonSeam;
-    #opts: ModuleOptions;
+    #opts: ResolvedModuleOptions;
     #portal: Portal;
     #http: HttpServer;
     #threads = new Map<string, ClientEnvelope>(); // threadId → envelope
@@ -166,7 +161,7 @@ export default class Module {
 
     constructor(seam: DaemonSeam, opts: ModuleOptions) {
         this.#seam = seam;
-        this.#opts = opts;
+        this.#opts = resolveModuleOptions(opts);
         this.#moduleActionNames();
         this.#portal = new Portal(seam);
         this.#http = createServer((req, res) => { void this.#route(req, res); });
@@ -395,11 +390,9 @@ export default class Module {
         res.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-cache", "connection": "keep-alive" });
         let finished = false;
         const interrupts: Interrupt[] = [];
-        // The heartbeat (agui#3): a long model generation emits NO events, and consumer
-        // stacks kill silent bodies (undici's default 300s bodyTimeout — bench's
-        // 'terminated' deaths at 371s/711s = last event + 300s). An SSE comment frame
-        // every few seconds keeps every consumer fed; parsers skip comments by spec.
-        const cadence = this.#opts.heartbeatMs ?? 15_000;
+        // {§agui-configuration}: long generations can emit no events; SSE comments keep
+        // consumers fed without adding protocol events.
+        const cadence = this.#opts.heartbeatMs;
         const heartbeat = cadence > 0 ? setInterval(() => { res.write(": hb\n\n"); }, cadence) : null;
         const finish = (): void => {
             if (finished) return;
