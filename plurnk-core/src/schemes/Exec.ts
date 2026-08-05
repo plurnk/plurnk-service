@@ -483,8 +483,8 @@ export default class Exec extends CoreSchemeAdapterBase {
         if (resolved === undefined) {
             throw new InvalidOperationResultError(`The '${runtime}' executor disappeared after its EXEC proposal.`);
         }
-        // #485/#107 — the admitted effect fact rides the hold predicate unchanged;
-        // application never asks the executor to classify the invocation again.
+        // {§executor-effect}, {§exec-hold-until-concluded}, #107: the admitted
+        // effect fact rides the hold predicate unchanged through application.
         const seedChannels: EntryData["channels"] = {};
         for (const [name, decl] of Object.entries(resolved.executor.channels)) {
             seedChannels[name] = {

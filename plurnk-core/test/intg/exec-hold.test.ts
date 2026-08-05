@@ -56,7 +56,7 @@ const streamsSection = (packetJson: string): string => {
 
 const driveLoop = async (finishAfterMs: number, midTurns: number, effect: "read" | "host" | "pure" = "pure", holdSuffix?: string) => {
     const { db, engine, workspaceId, workerId, loopId, tag } = await wire(finishAfterMs, effect);
-    // #485 — when a suffix is given, set the hold env from the ACTUAL tag (no ordering guess).
+    // The effect-qualified selector uses the runtime's actual registered tag.
     if (holdSuffix !== undefined) process.env.PLURNK_SERVICE_EXEC_HOLD = `${tag}${holdSuffix}`;
     try {
         const responses = [
@@ -100,10 +100,7 @@ test("a runtime OUTSIDE the hold set keeps the standard cycle — turn 2 sees th
     }
 });
 
-// {§exec-hold-until-concluded} per-tool refinement (#485) — a suffixed hold entry `<runtime>:<effect>`
-// holds only that effect-class. An MCP server is one runtime whose tools split (a read `get_issue`
-// vs a host `run_migration`); the operator opts the read-class in without parking on the mutation.
-test("a `:read` suffix holds a read-effect spawn — the effect-class opt-in (#485)", async () => {
+test("{§exec-hold-until-concluded}: a `:read` suffix holds a read-effect spawn", async () => {
     const prior = process.env.PLURNK_SERVICE_EXEC_HOLD;
     try {
         const { elapsed, streams } = await driveLoop(400, 0, "read", ":read");
@@ -112,7 +109,7 @@ test("a `:read` suffix holds a read-effect spawn — the effect-class opt-in (#4
     } finally { if (prior === undefined) delete process.env.PLURNK_SERVICE_EXEC_HOLD; else process.env.PLURNK_SERVICE_EXEC_HOLD = prior; }
 });
 
-test("a `:host` suffix does NOT hold a read-effect spawn — the class must match (#485)", async () => {
+test("{§exec-hold-until-concluded}: a `:host` suffix does not hold a read-effect spawn", async () => {
     const prior = process.env.PLURNK_SERVICE_EXEC_HOLD;
     try {
         const { streams } = await driveLoop(2000, 1, "read", ":host");
