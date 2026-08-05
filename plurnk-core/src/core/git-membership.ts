@@ -3,7 +3,7 @@
 // When a workspace's `project_root` is a git working tree, the git-tracked
 // files (`git ls-files`) are workspace MEMBERS without any explicit client
 // `pick`. This module resolves that membership and (when token accounting is
-// available) materializes active members' disk content into a body channel,
+// available) materializes active members' model-readable representation into a body channel,
 // so they appear in the entry catalog (FIND-served) and are READ-able.
 //
 // Decisions realized here:
@@ -17,8 +17,9 @@
 //        `(ls-files ∪ pick) − hide`; view is enforced at the File edit gate.
 //   D5 — coverage is exhaustive, work is change-gated: every member is stat'd each
 //        turn, but only one whose mtime:size signature changed is re-read,
-//        re-tokenized, and rewritten; an unchanged member is a no-op, and the EMI
-//        divergence rides that same pass. {§membership-change-gated-sync}
+//        re-tokenized, and rewritten. A binary source also compares the installed
+//        projection identity without reacquiring bytes. EMI divergence rides the
+//        same pass. {§membership-change-gated-sync}
 //
 // Git resolution uses native Git by default (subprocess + hermeticGitEnv,
 // AbortSignal-respecting). PLURNK_SERVICE_GIT_ISO=1 explicitly selects the
@@ -30,7 +31,11 @@ import GitIso from "./git-iso.ts";
 import { promisify } from "node:util";
 import { readFile, glob, stat } from "node:fs/promises";
 import { resolve, relative, join, matchesGlob } from "node:path";
-import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
+import {
+    MimetypeInputLimitError,
+    type Mimetypes,
+    type ProcessInput,
+} from "@plurnk/plurnk-mimetypes";
 import { MimetypeBinary } from "../content/index.ts";
 import type { Db } from "./Db.ts";
 import type { PlurnkSchemeContext } from "./scheme-types.ts";
@@ -39,7 +44,7 @@ import EntryCrud from "../schemes/_entry-crud.ts";
 import WorkspaceSettings from "./workspace-settings.ts";
 
 // {§env-delta} — an ambient disk divergence captured at pre-turn: the entry's content
-// before the git-membership re-read vs the disk content after. The plurnk worker narrates
+// before the git-membership refresh vs its materialized representation after. The plurnk worker narrates
 // it as a source=file EDIT so every worker pulls it through the one delta path.
 export interface FsDivergence {
     pathname: string;
@@ -48,6 +53,52 @@ export interface FsDivergence {
     before: string;
     after: string;
 }
+
+type SourceProjectionDisposition = "projected" | "unavailable" | "input-limit";
+
+interface SourceProjectionMetadata {
+    mimetype: string;
+    identity: string;
+    disposition: SourceProjectionDisposition;
+    maximumBytes?: number;
+    observedBytes?: number;
+}
+
+interface MemberSnapshot {
+    id: number;
+    synced_sig: string | null;
+    attributes: string;
+}
+
+const sourceProjectionFrom = (encoded: string): SourceProjectionMetadata | null => {
+    const attributes = JSON.parse(encoded) as unknown;
+    if (attributes === null || typeof attributes !== "object" || Array.isArray(attributes)) {
+        throw new TypeError("GitMembership: entry attributes must be a JSON object");
+    }
+    const candidate = (attributes as { sourceProjection?: unknown }).sourceProjection;
+    if (candidate === undefined) return null;
+    if (candidate === null || typeof candidate !== "object" || Array.isArray(candidate)) {
+        throw new TypeError("GitMembership: sourceProjection must be a JSON object");
+    }
+    const projection = candidate as Partial<SourceProjectionMetadata>;
+    if (
+        typeof projection.mimetype !== "string"
+        || projection.mimetype.length === 0
+        || typeof projection.identity !== "string"
+        || projection.identity.length === 0
+        || !["projected", "unavailable", "input-limit"].includes(projection.disposition ?? "")
+    ) {
+        throw new TypeError("GitMembership: sourceProjection metadata is malformed");
+    }
+    const hasLimit = Number.isSafeInteger(projection.maximumBytes)
+        && (projection.maximumBytes ?? 0) > 0
+        && Number.isSafeInteger(projection.observedBytes)
+        && (projection.observedBytes ?? 0) > (projection.maximumBytes ?? 0);
+    if ((projection.disposition === "input-limit") !== hasLimit) {
+        throw new TypeError("GitMembership: sourceProjection input-limit evidence is malformed");
+    }
+    return projection as SourceProjectionMetadata;
+};
 
 export default class GitMembership {
     // Workspace creation starts a background warm while the first model turn
@@ -147,6 +198,20 @@ export default class GitMembership {
         if (mimetypes === undefined) throw new Error("GitMembership: configured mimetype registry is required");
         const detected = await mimetypes.detect({ path: canonical });
         return MimetypeBinary.normalizeAutoTextMimetype(detected);
+    }
+
+    static #projectionIdentity(
+        mimetype: string,
+        mimetypes: Mimetypes | undefined,
+        identities: Map<string, Promise<string>>,
+    ): Promise<string> {
+        if (mimetypes === undefined) throw new Error("GitMembership: configured mimetype registry is required");
+        let identity = identities.get(mimetype);
+        if (identity === undefined) {
+            identity = mimetypes.projectionIdentity(mimetype);
+            identities.set(mimetype, identity);
+        }
+        return identity;
     }
 
     // Shared overlay inputs — the candidate sets (git tracked+untracked union, pick scan) and
@@ -292,19 +357,19 @@ export default class GitMembership {
         return [...matches];
     }
 
-    // Materialize a member's disk content into a body channel via writeEntry (the
+    // Materialize a member's model-readable snapshot into a body channel via writeEntry (the
     // entry-write paradigm) — so it appears in the manifest catalog and is READ-able
-    // (D4/D5). Change-gated: a member whose mtime:size signature is unchanged since its
-    // last sync is a no-op (the stat-gate below) — re-read + rewrite only on change.
-    // Binary members materialize as an EMPTY body
-    // channel stamped with their binary mimetype ({§mimetype-classification-consumption} — visible in the manifest
-    // and READ-415 via the one isBinaryMimetype gate, not a 404 ghost).
+    // (D4/D5). Change-gated: text changes with mtime:size; binary projections also
+    // change when their opaque reader identity changes. A binary source persists
+    // only derived Unicode when its installed handler provides it, otherwise an
+    // empty typed marker ({§membership-source-projection}).
     // Missing-on-disk (tracked but deleted in the working tree) is
     // skipped — membership stands, no channel.
     static async #materializeMember(
         pathname: string,
         root: string,
         ctx: PlurnkSchemeContext,
+        identities: Map<string, Promise<string>>,
     ): Promise<FsDivergence | null> {
         const canonical = join(root, pathname);  // pathname is namespace-absolute (`/src/foo.ts`); join roots it at the workspace
         // SPEC {§membership-change-gated-sync} — the cheap detect is a stat (mtime:size),
@@ -323,19 +388,31 @@ export default class GitMembership {
             if ((err as NodeJS.ErrnoException).code === "ENOENT") return null;
             throw err;
         }
-        const known = await ctx.db.crud_get_member_sig.get<{ id: number; synced_sig: string | null }>({
+        const known = await ctx.db.crud_get_member_sig.get<MemberSnapshot>({
             workspace_id: ctx.workspaceId, owner_id: await Owner.commonsId(ctx.db, ctx.workspaceId), scheme: "file", pathname,
         });
-        if (known !== undefined && known.synced_sig === sig) return null;  // unchanged — the change-gate
+        if (known !== undefined && known.synced_sig === sig) {
+            const sourceProjection = sourceProjectionFrom(known.attributes);
+            if (sourceProjection === null) return null;
+            const currentIdentity = await GitMembership.#projectionIdentity(
+                sourceProjection.mimetype,
+                ctx.mimetypes,
+                identities,
+            );
+            if (currentIdentity === sourceProjection.identity) return null;
+        }
 
         const mimetype = await GitMembership.#detectMimetype(canonical, ctx.mimetypes);
         if (await MimetypeBinary.isBinaryMimetype(mimetype, ctx.mimetypes)) {
-            // Empty body channel stamped with the real binary mimetype — a first-
-            // class entry that READ-415s through readWorkspaceEntry's isBinaryMimetype
-            // gate, not a channel-less row that would read as 404.
-            const r = await EntryCrud.writeEntry(pathname, { channels: { body: { content: "", mimetype } }, tags: [] }, ctx, "file");
-            if (r.entryId !== null) await ctx.db.crud_set_synced_sig.run({ entry_id: r.entryId, synced_sig: sig });
-            return null;  // binary bodies are empty markers — no text divergence to narrate
+            return GitMembership.#materializeBinary(
+                pathname,
+                { path: canonical },
+                mimetype,
+                sig,
+                known?.synced_sig !== sig,
+                ctx,
+                identities,
+            );
         }
         let buf: Buffer;
         try {
@@ -347,12 +424,17 @@ export default class GitMembership {
         // {§membership-binary-sniff} — the extension map can lie (.wasm fell through to
         // the markdown DEFAULT and a 3.3MB blob entered the corpus as prose, three copies,
         // ~10M tokens). NUL bytes in the head are binary truth regardless of the label:
-        // re-stamp octet-stream and take the binary arm (empty body, READ-415, never
-        // FTS'd/embedded/tokenized as text).
+        // re-stamp octet-stream and take the same bounded projection-or-marker arm.
         if (buf.subarray(0, 8192).includes(0)) {
-            const r = await EntryCrud.writeEntry(pathname, { channels: { body: { content: "", mimetype: "application/octet-stream" } }, tags: [] }, ctx, "file");
-            if (r.entryId !== null) await ctx.db.crud_set_synced_sig.run({ entry_id: r.entryId, synced_sig: sig });
-            return null;
+            return GitMembership.#materializeBinary(
+                pathname,
+                { content: buf, hint: "application/octet-stream" },
+                "application/octet-stream",
+                sig,
+                known?.synced_sig !== sig,
+                ctx,
+                identities,
+            );
         }
         const content = buf.toString("utf8");
         // {§env-delta-filesystem-narration} — capture the prior snapshot before
@@ -360,7 +442,12 @@ export default class GitMembership {
         const prior = await ctx.db.ops_read_channel.get<{ content: string }>({
             workspace_id: ctx.workspaceId, owner_id: await Owner.commonsId(ctx.db, ctx.workspaceId), scheme: "file", pathname, channel: "body",
         });
-        const result = await EntryCrud.writeEntry(pathname, { channels: { body: { content, mimetype } }, tags: [] }, ctx, "file");
+        const result = await EntryCrud.writeEntry(
+            pathname,
+            { channels: { body: { content, mimetype } }, tags: [], attributes: {} },
+            ctx,
+            "file",
+        );
         if (result.entryId !== null) await ctx.db.crud_set_synced_sig.run({ entry_id: result.entryId, synced_sig: sig });
         if (prior !== undefined && prior.content !== content && result.entryId !== null) {
             return { pathname, entryId: result.entryId, channel: "body", before: prior.content, after: content };
@@ -368,8 +455,85 @@ export default class GitMembership {
         return null;
     }
 
+    static async #materializeBinary(
+        pathname: string,
+        input: ProcessInput,
+        mimetype: string,
+        sig: string,
+        diskChanged: boolean,
+        ctx: PlurnkSchemeContext,
+        identities: Map<string, Promise<string>>,
+    ): Promise<FsDivergence | null> {
+        const mimetypes = ctx.mimetypes;
+        if (mimetypes === undefined) throw new Error("GitMembership: configured mimetype registry is required");
+
+        let content = "";
+        let outputMimetype = mimetype;
+        let metadata: SourceProjectionMetadata;
+        try {
+            const projected = await mimetypes.projectReadable(input);
+            if (projected === null) {
+                metadata = {
+                    mimetype,
+                    identity: await GitMembership.#projectionIdentity(mimetype, mimetypes, identities),
+                    disposition: "unavailable",
+                };
+            } else {
+                content = projected.content;
+                outputMimetype = "text/markdown";
+                metadata = {
+                    mimetype: projected.sourceMimetype,
+                    identity: projected.projectionIdentity,
+                    disposition: "projected",
+                };
+            }
+        } catch (cause) {
+            if (!(cause instanceof MimetypeInputLimitError)) throw cause;
+            metadata = {
+                mimetype,
+                identity: await GitMembership.#projectionIdentity(mimetype, mimetypes, identities),
+                disposition: "input-limit",
+                maximumBytes: cause.maximumBytes,
+                observedBytes: cause.observedBytes,
+            };
+        }
+
+        const prior = diskChanged && metadata.disposition === "projected"
+            ? await ctx.db.ops_read_channel.get<{ content: string }>({
+                workspace_id: ctx.workspaceId,
+                owner_id: await Owner.commonsId(ctx.db, ctx.workspaceId),
+                scheme: "file",
+                pathname,
+                channel: "body",
+            })
+            : undefined;
+        const result = await EntryCrud.writeEntry(
+            pathname,
+            {
+                channels: { body: { content, mimetype: outputMimetype } },
+                tags: [],
+                attributes: { sourceProjection: metadata },
+            },
+            ctx,
+            "file",
+        );
+        if (result.entryId !== null) {
+            await ctx.db.crud_set_synced_sig.run({ entry_id: result.entryId, synced_sig: sig });
+        }
+        if (prior !== undefined && prior.content !== content && result.entryId !== null) {
+            return {
+                pathname,
+                entryId: result.entryId,
+                channel: "body",
+                before: prior.content,
+                after: content,
+            };
+        }
+        return null;
+    }
+
     // Full membership + materialization pass for a worker. Registers git members,
-    // then materializes each active (on-disk, non-binary) member as an entry
+    // then materializes each active on-disk member as an entry
     // through writeEntry. Called at packet-composition time (Engine.runTurn) per
     // D5. No-ops on headless / non-git workspaces.
     static async indexGitMembership(ctx: PlurnkSchemeContext): Promise<FsDivergence[]> {
@@ -393,8 +557,9 @@ export default class GitMembership {
         if (root === null) return [];
         const tracked = await GitMembership.resolveGitMembership(ctx.db, ctx.workspaceId, ctx.signal);
         const divergences: FsDivergence[] = [];
+        const identities = new Map<string, Promise<string>>();
         for (const pathname of tracked) {
-            const divergence = await GitMembership.#materializeMember(pathname, root, ctx);
+            const divergence = await GitMembership.#materializeMember(pathname, root, ctx, identities);
             if (divergence !== null) divergences.push(divergence);
         }
         return divergences;

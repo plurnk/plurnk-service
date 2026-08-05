@@ -22,7 +22,11 @@ import { promisify } from "node:util";
 import type {
     EditStatement, MatcherBody, ParsedPath, ReadStatement, SendStatement,
 } from "@plurnk/plurnk-contracts";
-import { BaseHandler, Mimetypes } from "@plurnk/plurnk-mimetypes";
+import {
+    BaseHandler,
+    MimetypeInputLimitError,
+    Mimetypes,
+} from "@plurnk/plurnk-mimetypes";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import PacketWire from "../../src/core/packet-wire.ts";
@@ -400,6 +404,54 @@ test("a binary file persists only derived Unicode and refreshes when its project
                 disposition: "projected",
             },
         });
+
+        const limitedMimetypes = new Proxy(secondMimetypes, {
+            get(target, property, receiver) {
+                if (property === "projectionIdentity") return async () => "projection-over-limit";
+                if (property === "projectReadable") {
+                    return async () => {
+                        throw new MimetypeInputLimitError({
+                            mimetype: "application/x-readable-binary",
+                            maximumBytes: 3,
+                            observedBytes: 4,
+                        });
+                    };
+                }
+                const value = Reflect.get(target, property, receiver) as unknown;
+                return typeof value === "function" ? value.bind(target) : value;
+            },
+        });
+        const limitedCtx = makeSchemeCtx({ db, workspaceId, workerId, mimetypes: limitedMimetypes });
+        assert.deepEqual(await GitMembership.indexGitMembership(limitedCtx), []);
+        const limited = await db.test_get_entry_by_path.get<{ id: number; attributes: string }>({
+            workspace_id: workspaceId,
+            scheme: "file",
+            pathname: "document.binary",
+        });
+        assert.ok(limited);
+        assert.deepEqual(
+            await db.test_get_channel.get<{ content: string; mimetype: string }>({ entry_id: limited.id, name: "body" }),
+            {
+                content: "",
+                mimetype: "application/x-readable-binary",
+                tokens: 0,
+                state: "static",
+            },
+        );
+        assert.deepEqual(JSON.parse(limited.attributes), {
+            sourceProjection: {
+                mimetype: "application/x-readable-binary",
+                identity: "projection-over-limit",
+                disposition: "input-limit",
+                maximumBytes: 3,
+                observedBytes: 4,
+            },
+        });
+        assert.equal(
+            (await new File().read(readStmt(urlPath("file", "/document.binary")), limitedCtx)).status,
+            415,
+            "an over-limit source remains an honest typed marker rather than leaking bytes",
+        );
     } finally {
         await db.close();
         await rm(root, { recursive: true, force: true });
@@ -508,6 +560,18 @@ test("registry-aware classification governs file decoding, operation gates, and 
         const opaqueEntry = await db.test_get_entry_by_pathname_scheme.get<{ id: number }>({
             scheme: "file",
             pathname: "opaque.encoded",
+        });
+        const opaqueAttributes = await db.test_get_entry_attributes.get<{ attributes: string }>({
+            workspace_id: workspaceId,
+            scheme: "file",
+            pathname: "opaque.encoded",
+        });
+        assert.deepEqual(JSON.parse(opaqueAttributes?.attributes ?? "{}"), {
+            sourceProjection: {
+                mimetype: "text/x-encoded",
+                identity: await mimetypes.projectionIdentity("text/x-encoded"),
+                disposition: "unavailable",
+            },
         });
         const disposition = await db.test_derivation_disposition.get<{ disposition: string }>({
             entry_id: opaqueEntry?.id ?? -1,
