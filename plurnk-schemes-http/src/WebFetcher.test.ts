@@ -5,7 +5,7 @@
 import test from "node:test";
 import { strict as assert } from "node:assert";
 import Guard from "./Guard.ts";
-import WebFetcher from "./WebFetcher.ts";
+import WebFetcher, { WebMaterializationError } from "./WebFetcher.ts";
 import type { RenderResult } from "./Browser.ts";
 import { MimetypeClassifier, type ProjectionCaps } from "@plurnk/plurnk-schemes";
 
@@ -303,6 +303,56 @@ test("handler-declared binary bytes reach one readable projection without a dura
             },
         });
     });
+});
+
+test("binary materialization cancels unread response bytes after a projection returns", async () => {
+    let cancelled = false;
+    const stream = new ReadableStream<Uint8Array>({
+        start(controller) { controller.enqueue(Uint8Array.of(1, 2, 3)); },
+        cancel() { cancelled = true; },
+    });
+    const projection = projectionCaps({
+        async isBinary() { return true; },
+        async readableBytes(_chunks, mimetype) {
+            return {
+                content: "projected without reading",
+                mimetype: "text/markdown",
+                sourceMimetype: mimetype,
+                projectionIdentity: "non-consuming-reader",
+            };
+        },
+    });
+    await withFetch(async () => new Response(stream, {
+        status: 200,
+        headers: { "content-type": "text/x-binary" },
+    }), async () => {
+        const fetched = await new WebFetcher().fetch(PUB);
+        assert.ok(fetched !== null);
+        assert.equal((await WebFetcher.materialize(fetched, projection))?.body.content, "projected without reading");
+    });
+    assert.equal(cancelled, true);
+});
+
+test("registry classification failure cancels the owned response body and preserves its cause", async () => {
+    const cause = new Error("registry unavailable");
+    let cancelled = false;
+    const stream = new ReadableStream<Uint8Array>({
+        start(controller) { controller.enqueue(Uint8Array.of(1, 2, 3)); },
+        cancel() { cancelled = true; },
+    });
+    const projection = projectionCaps({ async isBinary() { throw cause; } });
+    await withFetch(async () => new Response(stream, {
+        status: 200,
+        headers: { "content-type": "text/x-binary" },
+    }), async () => {
+        const fetched = await new WebFetcher().fetch(PUB);
+        assert.ok(fetched !== null);
+        await assert.rejects(
+            WebFetcher.materialize(fetched, projection),
+            (error: unknown) => error instanceof WebMaterializationError && error.cause === cause,
+        );
+    });
+    assert.equal(cancelled, true);
 });
 
 test("an unparseable Content-Type reaches binary projection and is pruned when absent", async () => {
