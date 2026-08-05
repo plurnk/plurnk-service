@@ -76,7 +76,7 @@ test("{§derivation-exhaustive}: workspace warming derives deep channels without
     }
 });
 
-test("[#587] workspace warm materializes a fresh repository before deriving it", async () => {
+test("{§derivation-exhaustive}: workspace warm materializes a fresh repository before deriving it", async () => {
     const root = mkdtempSync(join(tmpdir(), "plurnk-warm-repo-"));
     execSync("git init -q && git config user.email fixture@plurnk.invalid && git config user.name fixture", { cwd: root, env: hermeticGitEnv() });
     writeFileSync(join(root, "orientation.md"), "repository orientation evidence\n");
