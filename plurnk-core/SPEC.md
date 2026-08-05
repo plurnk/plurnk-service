@@ -161,7 +161,7 @@ clients render and submit actions but contain no engine logic.
 
 ### §in-process In-process architecture
 
-Engine library + admin CLI + daemon. Four plug points:
+Composed daemon internals + admin CLI. Four plug points:
 
 - **Providers** ({§provider}) — LLM transports. Engine sends a turn's messages, receives raw content + usage; engine parses the content into `PlurnkStatement[]`.
 - **Schemes** ({§scheme}) — addressed capabilities. A scheme handler interprets targets under its prefix and owns its storage substrate.
@@ -173,6 +173,17 @@ The engine dispatches ops, persists state to SQLite, orchestrates cross-scheme C
 The contracts package (`@plurnk/plurnk-contracts`) owns the parser and AST contract. Schemes receive parsed statement fragments via dispatch.
 
 Server posture: this package is the one long-running runtime process. `plurnk-agui` exposes its external protocol; user-facing clients run separately and do not call core's in-process seam directly.
+
+### §service-package-exports Package export surface
+
+| Export path                           | Current contract                                                                                                                                                        |
+|---------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `@plurnk/plurnk-service`              | Frozen 1.x compatibility barrel. It retains the previously published runtime and type surface, gains no new APIs, and is not the client boundary. Removal is SemVer-major. |
+| `@plurnk/plurnk-service/digest`       | Supported programmatic forensic surface owned by {§digest-programmatic-surface}.                                                                                         |
+| `@plurnk/plurnk-service/package.json` | Supported package metadata surface.                                                                                                                                      |
+
+New clients use AG-UI. A new library contract belongs in its owning package or
+an explicitly specified subpath, not in the frozen root barrel.
 
 ### §startup-admission Startup admission
 

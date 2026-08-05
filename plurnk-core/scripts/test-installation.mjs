@@ -85,6 +85,21 @@ const packedMimetypeInventory = () => {
     }));
 };
 
+const packedPublicSurface = () => {
+    const program = `
+        const root = await import("@plurnk/plurnk-service");
+        const digest = await import("@plurnk/plurnk-service/digest");
+        process.stdout.write(JSON.stringify({
+            root: Object.keys(root).sort(),
+            digestDefault: typeof digest.default,
+        }));
+    `;
+    return JSON.parse(execFileSync(process.execPath, ["--input-type=module", "--eval", program], {
+        cwd: sandbox,
+        encoding: "utf8",
+    }));
+};
+
 const runBin = (args, env = {}) => {
     try {
         const stdout = execFileSync(bin, args, { cwd: sandbox, encoding: "utf8", env: { ...process.env, HOME: sandbox, ...env } });
@@ -127,6 +142,32 @@ ok(buildInfo.package === installedPackage.name, "packed build provenance names t
 ok(buildInfo.version === installedPackage.version, "packed build provenance matches the installed package version");
 ok(buildInfo.revision === revision, "packed build provenance matches the checkout revision");
 ok(buildInfo.dirty === dirty, "packed build provenance reports checkout cleanliness");
+
+const publicSurface = packedPublicSurface();
+ok(
+    JSON.stringify(publicSurface.root) === JSON.stringify([
+        "Daemon",
+        "Engine",
+        "EnvFlags",
+        "Exec",
+        "File",
+        "Log",
+        "Mimetypes",
+        "Mock",
+        "Paths",
+        "Prompt",
+        "SchemeRegistry",
+        "Skill",
+    ]),
+    "the packed 1.x root compatibility barrel remains frozen",
+);
+ok(publicSurface.digestDefault === "function", "the packed digest subpath remains importable");
+ok(installedPackage.name === "@plurnk/plurnk-service", "the packed package.json subpath remains addressable");
+const rootDeclarations = readFileSync(resolve(installedRoot, "dist", "index.d.ts"), "utf8");
+ok(
+    !/DaemonModule|ModuleActionHandler|ModuleSetupSeam|RuntimeRegistration|StartedModule/.test(rootDeclarations),
+    "never-published daemon-composition types do not become root API promises",
+);
 
 const serviceDependencies = Object.keys(installedPackage.dependencies ?? {});
 const defaultExecPackages = serviceDependencies.filter((name) => name.startsWith("@plurnk/plurnk-execs-"));

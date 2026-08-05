@@ -1,8 +1,6 @@
-// Public library API for @plurnk/plurnk-service.
-//
-// Consumers (plurnk CLI/TUI, future web app, etc.) import from here.
-// Internal modules and tests reach into src/ paths directly; this file
-// is the contract for external use.
+// Frozen 1.x compatibility barrel ({§service-package-exports}). Clients use
+// AG-UI; internal composition imports its owners directly. Do not add another
+// root promise without a concrete consumer and an owning contract.
 
 export { default as Engine } from "./core/Engine.ts";
 export { default as SchemeRegistry } from "./core/SchemeRegistry.ts";
@@ -11,13 +9,6 @@ export { default as SchemeRegistry } from "./core/SchemeRegistry.ts";
 export { Mimetypes } from "@plurnk/plurnk-mimetypes";
 
 export { default as Daemon } from "./server/Daemon.ts";
-export type {
-    DaemonModule,
-    ModuleActionHandler,
-    ModuleSetupSeam,
-    RuntimeRegistration,
-    StartedModule,
-} from "./server/DaemonModule.ts";
 
 export { default as Skill } from "./schemes/Skill.ts";
 export { default as Log } from "./schemes/Log.ts";

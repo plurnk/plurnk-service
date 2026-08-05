@@ -34,7 +34,11 @@ plurnk-service migrate    # apply the disposable version-1 schema baseline
 plurnk-service start      # daemon
 ```
 
-Config + state live in `~/.plurnk/` (created on first start): put your config in `~/.plurnk/.env` (yours, seeded once); the DB defaults to `~/.plurnk/plurnk.db`. Declare a provider/model as `PLURNK_MODEL_<alias>=<provider>/<model-id>`, then select that alias with `PLURNK_MODEL=<alias>`. **[`INSTALL.md`](./INSTALL.md) is the config guide** — the cascade, prefix ownership, coupled settings, and profiles; each installed package's `.env.defaults` supplies its exact machine floor. Also exports `{ Engine, Daemon, SchemeRegistry }` for in-process embedding.
+Config + state live in `~/.plurnk/` (created on first start): put your config in `~/.plurnk/.env` (yours, seeded once); the DB defaults to `~/.plurnk/plurnk.db`. Declare a provider/model as `PLURNK_MODEL_<alias>=<provider>/<model-id>`, then select that alias with `PLURNK_MODEL=<alias>`. **[`INSTALL.md`](./INSTALL.md) is the config guide** — the cascade, prefix ownership, coupled settings, and profiles; each installed package's `.env.defaults` supplies its exact machine floor.
+
+The 1.x package retains its frozen root library barrel for SemVer compatibility;
+it is not the client boundary and gains no new APIs. Programmatic forensic use
+imports `@plurnk/plurnk-service/digest`.
 
 ## Contract & siblings
 
