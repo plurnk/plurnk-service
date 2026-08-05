@@ -5,7 +5,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import type { ReadStatement, UrlPath } from "@plurnk/plurnk-contracts";
+import { PlurnkParser, type ReadStatement, type UrlPath } from "@plurnk/plurnk-contracts";
 import Http from "@plurnk/plurnk-schemes-http";
 import {
     openMigrated,
@@ -40,6 +40,17 @@ const statement = (
         body: null,
         position: { line: 1, column: 0 },
     };
+};
+
+const parsedRead = (target: string): ReadStatement => {
+    const parsed = PlurnkParser.parse(`<<PLAN:acquire the addressed representation:PLAN\n<<READ(${target})::READ\n<<SEND[102]:acquisition pending:SEND`);
+    const item = parsed.items.find(
+        (candidate) => candidate.kind === "statement" && candidate.statement.op === "READ",
+    );
+    if (item?.kind !== "statement" || item.statement.op !== "READ") {
+        throw new Error(`no READ parsed from target: ${target}`);
+    }
+    return item.statement;
 };
 
 // Minimal valid one-page PDF whose content stream contains "Hello, world!".
@@ -262,6 +273,72 @@ test("an empty direct GET transitions active → closed and remains reusable thr
         process.env.PLURNK_SCHEMES_HTTP_TTL_MS = "60000";
         assert.equal((await http.read(emptyStatement(), handlerCtx)).status, 102);
         assert.equal(requests, 2, "fresh empty representation used the TTL fast path");
+    } finally {
+        globalThis.fetch = originalFetch;
+        if (originalTtl === undefined) delete process.env.PLURNK_SCHEMES_HTTP_TTL_MS;
+        else process.env.PLURNK_SCHEMES_HTTP_TTL_MS = originalTtl;
+        await http.close();
+        await db.close();
+    }
+});
+
+// {§revalidation}: exercise the model syntax through parser, scheme, and durable entry state.
+test("parser-produced request metadata cannot share a fresh HTTP representation", async () => {
+    const db = await openMigrated();
+    const originalFetch = globalThis.fetch;
+    const originalTtl = process.env.PLURNK_SCHEMES_HTTP_TTL_MS;
+    const http = new Http();
+    try {
+        process.env.PLURNK_SCHEMES_HTTP_TTL_MS = "60000";
+        const requests: Array<{ authorization: string | null; conditional: boolean }> = [];
+        const bodies = ["public v1", "private", "public v2"];
+        globalThis.fetch = async (_url, init) => {
+            const headers = new Headers(init?.headers);
+            requests.push({
+                authorization: headers.get("authorization"),
+                conditional: headers.has("if-none-match") || headers.has("if-modified-since"),
+            });
+            return new Response(bodies[requests.length - 1], {
+                status: 200,
+                headers: { "content-type": "text/plain", etag: `"account-${requests.length}"` },
+            });
+        };
+
+        const workspaceId = await insertWorkspace(db, `http-variants-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const ctx = makeSchemeCtx({ db, workspaceId, workerId });
+        const handlerCtx = makeHandlerCtx(ctx, { ...Http.manifest, name: "https" });
+        const publicRead = parsedRead("https://93.184.216.34/account");
+        const privateRead = parsedRead(
+            "https://93.184.216.34/account{Authorization: Bearer private}",
+        );
+
+        assert.equal((await http.read(publicRead, handlerCtx)).status, 102);
+        assert.match(
+            (await handlerCtx.entries.read("/93.184.216.34/account")).entry?.channels.header.content ?? "",
+            /^x-plurnk-cache-variant: default$/m,
+        );
+
+        assert.equal((await http.read(privateRead, handlerCtx)).status, 102);
+        const privateEntry = await handlerCtx.entries.read("/93.184.216.34/account");
+        assert.equal(privateEntry.entry?.channels.body.content, "private");
+        assert.match(
+            privateEntry.entry?.channels.header.content ?? "",
+            /^x-plurnk-cache-variant: bypass$/m,
+        );
+
+        assert.equal((await http.read(publicRead, handlerCtx)).status, 102);
+        const finalEntry = await handlerCtx.entries.read("/93.184.216.34/account");
+        assert.equal(finalEntry.entry?.channels.body.content, "public v2");
+        assert.match(
+            finalEntry.entry?.channels.header.content ?? "",
+            /^x-plurnk-cache-variant: default$/m,
+        );
+        assert.deepEqual(requests, [
+            { authorization: null, conditional: false },
+            { authorization: "Bearer private", conditional: false },
+            { authorization: null, conditional: false },
+        ]);
     } finally {
         globalThis.fetch = originalFetch;
         if (originalTtl === undefined) delete process.env.PLURNK_SCHEMES_HTTP_TTL_MS;

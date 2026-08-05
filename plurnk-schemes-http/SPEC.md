@@ -297,18 +297,33 @@ are checked under {§automatic-fetch-check} only when `WebFetcher` acquires them
 
 ### §revalidation GET representation freshness
 
-Acquired GET responses append package-owned `x-plurnk-request-method` and
-`x-plurnk-fetched-at` fields after origin headers. Derived responses then append
-`x-plurnk-projection-id`; only a projection field after the package stamp is
-authoritative, so an origin cannot spoof it. Only a GET representation can
-supply a direct READ's body, TTL stamp, or conditional validators. Completion
-comes from channel lifecycle, not body length: every stored channel must be final (`static` after exact
-materialization or `closed` after a successful stream); `active`, `errored`, or
-unknown state is ineligible. A copy inside `PLURNK_SCHEMES_HTTP_TTL_MS`
-serves with no network request. Outside the window, READ sends stored ETag or
-Last-Modified validators. A 304 refreshes the package stamp and restores the
-stored channels without rendering; any other response replaces them. `0`
-disables the TTL fast path.
+Acquired responses append package-owned `x-plurnk-request-method`,
+`x-plurnk-fetched-at`, and `x-plurnk-cache-variant` fields after origin headers.
+Derived responses then append `x-plurnk-projection-id`. Only package metadata
+after the acquisition stamp is authoritative, so an origin cannot spoof it.
+Plurnk stores one representation per canonical URL rather than a variant set:
+
+| Acquisition context                          | Package variant | Later cache use |
+| -------------------------------------------- | --------------- | --------------- |
+| No explicit target metadata; no `Vary`       | `default`       | Eligible        |
+| Any explicit target metadata                 | `bypass`        | Ineligible      |
+| No explicit target metadata; any `Vary`      | `bypass`        | Ineligible      |
+| Stored response lacks authoritative evidence | Marker absent   | Ineligible      |
+
+This conservative selection avoids persisting request values or fabricating a
+multi-variant store. Exact FIND passes target metadata through acquisition but
+does not reuse that response later. A `304` that introduces `Vary` changes the
+restored representation's package marker to `bypass`.
+
+Only an eligible GET representation can supply a direct READ's body, TTL stamp,
+conditional validators, or exact-FIND preparation. Completion comes from
+channel lifecycle, not body length: every stored channel must be final (`static`
+after exact materialization or `closed` after a successful stream); `active`,
+`errored`, or unknown state is ineligible. A copy inside
+`PLURNK_SCHEMES_HTTP_TTL_MS` serves with no network request. Outside the window,
+READ sends stored ETag or Last-Modified validators. A 304 refreshes the package
+stamp and restores the stored channels without rendering; any other response
+replaces them. `0` disables the TTL fast path.
 
 A stored derived representation is reusable only while its projection identity
 matches the currently installed reader for the origin media type. A mismatch
@@ -316,9 +331,9 @@ invalidates the body, TTL shortcut, and origin validators together: a 304 can
 certify unchanged source bytes, not output from a different projection.
 
 POST, PUT, and DELETE responses retain their method marker but cannot satisfy a
-later GET or exact-FIND acquisition. An unmarked authored entry and a stored GET
-remain usable by universal FIND without revalidation. `SEND[410]` deletes the
-stored entry.
+later GET or exact-FIND acquisition. An unmarked authored entry and an eligible
+stored GET remain usable by universal FIND without revalidation. `SEND[410]`
+deletes the stored entry.
 
 ### §sse Server-sent events
 

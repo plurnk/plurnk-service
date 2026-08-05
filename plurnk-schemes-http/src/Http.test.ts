@@ -36,7 +36,7 @@ import {
 import Http from "./Http.ts";
 import type { RenderResult } from "./Browser.ts";
 import Guard from "./Guard.ts";
-import WebFetcher from "./WebFetcher.ts";
+import WebFetcher, { CACHE_VARIANT_HEADER } from "./WebFetcher.ts";
 
 // A fake render foundation: returns a canned rendered page, records the call
 // including ordered request-header metadata {§op-surface}.
@@ -1628,6 +1628,17 @@ const priorEntry = (
     tags: [],
 });
 
+const stampedHeader = (
+    ageMs: number,
+    extra = "",
+    variant: "default" | "bypass" | null = "default",
+) => [
+    `HTTP 200 OK${extra}`,
+    "x-plurnk-request-method: GET",
+    `x-plurnk-fetched-at: ${new Date(Date.now() - ageMs).toISOString()}`,
+    ...(variant === null ? [] : [`${CACHE_VARIANT_HEADER}: ${variant}`]),
+].join("\n");
+
 test("revalidation: a mutation response cannot satisfy a later GET", async () => {
     const header = [
         "HTTP 200 OK",
@@ -1677,6 +1688,7 @@ test("prepareFind reuses only a derived representation produced by the installed
             "content-type: application/pdf",
             "x-plurnk-request-method: GET",
             `x-plurnk-fetched-at: ${new Date().toISOString()}`,
+            `${CACHE_VARIANT_HEADER}: default`,
             `x-plurnk-projection-id: ${storedIdentity}`,
         ].join("\n");
         const projection = projectionCaps({
@@ -1718,7 +1730,12 @@ test("prepareFind reuses only a derived representation produced by the installed
 });
 
 test("READ revalidation: prior ETag → If-None-Match → 304 serves cached projection + DOM, skips render", async () => {
-    const { ctx, inspect } = makeCtx(priorEntry("cached page", "text/markdown", "HTTP 200 OK\netag: \"v1\"\nx-plurnk-request-method: GET", "<html>cached page</html>"));
+    const { ctx, inspect } = makeCtx(priorEntry(
+        "cached page",
+        "text/markdown",
+        stampedHeader(500_000, '\netag: "v1"'),
+        "<html>cached page</html>",
+    ));
     const browser = fakeBrowser("<html>SHOULD NOT RENDER</html>");
     let seenINM = "";
     const probe = async (_url: string | URL | Request, init?: RequestInit) => {
@@ -1738,7 +1755,7 @@ test("READ revalidation: prior ETag → If-None-Match → 304 serves cached proj
 });
 
 test("READ revalidation: 200 (changed) re-fetches + streams normally despite a prior entry", async () => {
-    const { ctx, inspect } = makeCtx(priorEntry("old", "text/plain", "HTTP 200 OK\netag: \"v1\"\nx-plurnk-request-method: GET"));
+    const { ctx, inspect } = makeCtx(priorEntry("old", "text/plain", stampedHeader(500_000, '\netag: "v1"')));
     await withFetch(mockFetch(200, "OK", ["fresh content"], { "content-type": "text/plain" }), async () => {
         await new Http().read(readStmt(urlTarget("https://example.com/p", "/p")), ctx);
     });
@@ -1762,8 +1779,6 @@ test("READ revalidation: no prior entry → no conditional headers, full fetch",
 });
 
 // ── per-URL TTL at the freshness predicate {§revalidation} ────────────────
-const stampedHeader = (ageMs: number, extra = "") =>
-    `HTTP 200 OK${extra}\nx-plurnk-request-method: GET\nx-plurnk-fetched-at: ${new Date(Date.now() - ageMs).toISOString()}`;
 const withTtl = async (ttl: string | undefined, fn: () => Promise<void>) => {
     const prev = process.env.PLURNK_SCHEMES_HTTP_TTL_MS;
     if (ttl === undefined) delete process.env.PLURNK_SCHEMES_HTTP_TTL_MS;
@@ -1773,6 +1788,195 @@ const withTtl = async (ttl: string | undefined, fn: () => Promise<void>) => {
         else process.env.PLURNK_SCHEMES_HTTP_TTL_MS = prev;
     }
 };
+
+for (const { name, requestHeaders, responseHeaders, expectedValues } of [
+    {
+        name: "the default request and a non-varying response",
+        requestHeaders: [] as [string, string][],
+        responseHeaders: { "content-type": "text/plain" },
+        expectedValues: ["default"],
+    },
+    {
+        name: "explicit request metadata",
+        requestHeaders: [["Authorization", "Bearer current"]] as [string, string][],
+        responseHeaders: { "content-type": "text/plain", [CACHE_VARIANT_HEADER]: "default" },
+        expectedValues: ["default", "bypass"],
+    },
+    {
+        name: "an origin Vary field",
+        requestHeaders: [] as [string, string][],
+        responseHeaders: { "content-type": "text/plain", vary: "Accept-Language" },
+        expectedValues: ["bypass"],
+    },
+]) {
+    test(`cache variant: ${name} receives authoritative package evidence`, async () => {
+        const { ctx, inspect } = makeCtx();
+        await withFetch(async () => new Response("fresh", { status: 200, headers: responseHeaders }), async () => {
+            await new Http().read(readStmt(urlTarget(
+                "https://example.com/variant",
+                "/variant",
+                requestHeaders,
+            )), ctx);
+        });
+        const header = inspect().chunks.find(({ channel }) => channel === "header")?.chunk ?? "";
+        const values = [...header.matchAll(new RegExp(`^${CACHE_VARIANT_HEADER}:[ \\t]*(.+)$`, "gim"))]
+            .map((match) => match[1].trim());
+        assert.deepEqual(values, expectedValues);
+        assert.ok(
+            header.lastIndexOf(`${CACHE_VARIANT_HEADER}:`) > header.lastIndexOf("x-plurnk-fetched-at:"),
+            "package cache evidence follows the acquisition stamp",
+        );
+    });
+}
+
+test("cache variant: explicit request metadata bypasses a TTL-fresh default representation", async () => {
+    const { ctx, inspect } = makeCtx(priorEntry(
+        "public representation",
+        "text/plain",
+        stampedHeader(1000, '\netag: "public"'),
+    ));
+    let fetched = false;
+    let conditional = false;
+    await withTtl("60000", async () => {
+        await withFetch(async (_url, init) => {
+            fetched = true;
+            const headers = new Headers(init?.headers);
+            conditional = headers.has("if-none-match") || headers.has("if-modified-since");
+            assert.equal(headers.get("authorization"), "Bearer private");
+            return new Response("private representation", { status: 200, headers: { "content-type": "text/plain" } });
+        }, async () => {
+            await new Http().read(readStmt(urlTarget(
+                "https://example.com/account",
+                "/account",
+                [["Authorization", "Bearer private"]],
+            )), ctx);
+        });
+    });
+    assert.equal(fetched, true);
+    assert.equal(conditional, false, "validators from the default representation do not cross request metadata");
+    assert.equal(
+        inspect().chunks.filter(({ channel }) => channel === "body").map(({ chunk }) => chunk).join(""),
+        "private representation",
+    );
+});
+
+test("cache variant: explicit request metadata also bypasses stale validators", async () => {
+    const { ctx } = makeCtx(priorEntry(
+        "public representation",
+        "text/plain",
+        stampedHeader(120_000, '\netag: "public"'),
+    ));
+    let conditional = false;
+    await withTtl("0", async () => {
+        await withFetch(async (_url, init) => {
+            const headers = new Headers(init?.headers);
+            conditional = headers.has("if-none-match") || headers.has("if-modified-since");
+            return new Response("private representation", { status: 200, headers: { "content-type": "text/plain" } });
+        }, async () => {
+            await new Http().read(readStmt(urlTarget(
+                "https://example.com/account",
+                "/account",
+                [["Authorization", "Bearer private"]],
+            )), ctx);
+        });
+    });
+    assert.equal(conditional, false);
+});
+
+for (const [name, header] of [
+    ["bypass", stampedHeader(1000, "\nvary: Accept-Language\netag: \"variant\"", "bypass")],
+    ["missing legacy", stampedHeader(1000, '\netag: "legacy"', null)],
+] as const) {
+    test(`cache variant: a ${name} marker cannot supply TTL content or validators`, async () => {
+        const { ctx, inspect } = makeCtx(priorEntry("wrong representation", "text/plain", header));
+        let fetched = false;
+        let conditional = false;
+        await withTtl("60000", async () => {
+            await withFetch(async (_url, init) => {
+                fetched = true;
+                const headers = new Headers(init?.headers);
+                conditional = headers.has("if-none-match") || headers.has("if-modified-since");
+                return new Response("current representation", { status: 200, headers: { "content-type": "text/plain" } });
+            }, async () => {
+                await new Http().read(readStmt(urlTarget("https://example.com/variant", "/variant")), ctx);
+            });
+        });
+        assert.equal(fetched, true);
+        assert.equal(conditional, false);
+        assert.equal(
+            inspect().chunks.filter(({ channel }) => channel === "body").map(({ chunk }) => chunk).join(""),
+            "current representation",
+        );
+    });
+}
+
+test("cache variant: a 304 that introduces Vary retires default reuse", async () => {
+    const { ctx, inspect } = makeCtx(priorEntry(
+        "cached",
+        "text/plain",
+        stampedHeader(120_000, '\netag: "v1"'),
+    ));
+    await withTtl("0", async () => {
+        await withFetch(async () => new Response(null, {
+            status: 304,
+            headers: { vary: "Accept-Language" },
+        }), async () => {
+            await new Http().read(readStmt(urlTarget("https://example.com/variant", "/variant")), ctx);
+        });
+    });
+    const header = inspect().chunks.find(({ channel }) => channel === "header")?.chunk ?? "";
+    assert.equal(
+        [...header.matchAll(new RegExp(`^${CACHE_VARIANT_HEADER}:[ \\t]*(.+)$`, "gim"))].at(-1)?.[1].trim(),
+        "bypass",
+    );
+});
+
+test("prepareFind reacquires request metadata through WebFetcher instead of reusing another variant", async () => {
+    const { ctx, inspect } = makeCtx(priorEntry(
+        "public",
+        "text/plain",
+        stampedHeader(1000),
+        undefined,
+        "static",
+    ));
+    let authorization = "";
+    await withFetch(async (_url, init) => {
+        authorization = new Headers(init?.headers).get("authorization") ?? "";
+        return new Response("private", { status: 200, headers: { "content-type": "text/plain" } });
+    }, async () => {
+        const result = await new Http().prepareFind(findStmt(urlTarget(
+            "https://example.com/account",
+            "/account",
+            [["Authorization", "Bearer private"]],
+        )), ctx);
+        assert.equal(result.status, 201);
+    });
+    assert.equal(authorization, "Bearer private");
+    assert.equal(inspect().wrote?.entry.channels.body?.content, "private");
+    assert.match(inspect().wrote?.entry.channels.header?.content ?? "", /x-plurnk-cache-variant: bypass$/m);
+});
+
+for (const state of ["active", "errored"] as const) {
+    test(`prepareFind cannot reuse a ${state} default representation`, async () => {
+        const { ctx, inspect } = makeCtx(priorEntry(
+            "partial",
+            "text/plain",
+            stampedHeader(1000),
+            undefined,
+            state,
+        ));
+        await withFetch(async () => new Response("complete", {
+            status: 200,
+            headers: { "content-type": "text/plain" },
+        }), async () => {
+            assert.equal((await new Http().prepareFind(
+                findStmt(urlTarget(`https://example.com/${state}`, `/${state}`)),
+                ctx,
+            )).status, 201);
+        });
+        assert.equal(inspect().wrote?.entry.channels.body?.content, "complete");
+    });
+}
 
 test("TTL: fresh stamp serves the stored copy with ZERO round-trips", async () => {
     const { ctx, inspect } = makeCtx(priorEntry("cached page", "text/html", stampedHeader(1000)));
@@ -1934,6 +2138,7 @@ test("TTL: package-appended metadata wins over a same-named origin header", asyn
         `x-plurnk-fetched-at: ${future}`,
         "x-plurnk-request-method: GET",
         `x-plurnk-fetched-at: ${stale}`,
+        `${CACHE_VARIANT_HEADER}: default`,
     ].join("\n");
     const { ctx } = makeCtx(priorEntry("old", "text/plain", header));
     let fetched = false;
