@@ -1,4 +1,4 @@
-// {§search-gate} intg tier — the DISPATCH wiring (#406, owner ruling): an identical duplicate
+// {§search-gate} integration tier: an identical duplicate
 // search strikes-and-serves (409 carrying the prior digest, no re-run), the per-turn cap 429s,
 // and a failed spawn never poisons the retry. Drives the REAL exec scheme with a stub search
 // executor through the runtime registry - no network, no SearXNG.
@@ -16,10 +16,11 @@ import { setTimeout as delay } from "node:timers/promises";
 // before closing the db (the subscription registry settles within a few ticks).
 const settle = async (db: Awaited<ReturnType<typeof openMigrated>>, workspaceId: number): Promise<void> => {
     for (let i = 0; i < 40; i++) {
-        const open = await db.test_count_open_subs_by_scheme.get<{ n: number }>({ workspace_id: workspaceId, scheme: "search" }).catch(() => undefined);
+        const open = await db.test_count_open_subs_by_scheme.get<{ n: number }>({ workspace_id: workspaceId, scheme: "search" });
         if ((open?.n ?? 0) === 0) { await delay(25); return; }
         await delay(25);
     }
+    throw new Error("search fixture stream did not settle within 1 second");
 };
 
 const DIGEST = [{ title: "Alpha", url: "http://example.org/a", snippet: "s" }];
@@ -77,7 +78,7 @@ const seed = async (db: Awaited<ReturnType<typeof openMigrated>>, opts: { fail?:
 const dispatchSearch = (engine: Engine, ids: { workspaceId: number; workerId: number; loopId: number; turnId: number }, command: string, sequence: number) =>
     engine.dispatch({ statement: execStmt(command), ...ids, sequence, origin: "model" });
 
-test("an identical duplicate strikes and serves — 409 carrying the prior digest, executor not re-run (#406)", async () => {
+test("{§search-gate}: an identical duplicate strikes, serves, and does not rerun", async () => {
     const db = await openMigrated();
     const { workspaceId, workerId, loopId, turnId, engine } = await seed(db);
     try {
@@ -90,13 +91,14 @@ test("an identical duplicate strikes and serves — 409 carrying the prior diges
         assert.equal(dup.status, 409, "the duplicate is a strike (409 — the rail counts it)");
         assert.deepEqual(dup.results, DIGEST, "…and SERVES the same results, verbatim, no prose");
         // the model-facing record: the 409 row exists with the results in its rx
-        const rows = await db.test_send_rows_for_worker.all<{ rx: string; status_rx: number }>({ worker_id: workerId }).catch(() => []);
         const struck = await db.test_count_op.get<{ n: number }>({ op: "EXEC" });
         assert.ok((struck?.n ?? 0) >= 2, "both EXEC attempts are on the log — the duplicate is recorded, never erased");
-    } finally { await settle(db, workspaceId).catch(() => {}); await db.close(); }
+    } finally {
+        try { await settle(db, workspaceId); } finally { await db.close(); }
+    }
 });
 
-test("the per-turn cap 429s the overflow search; a failed spawn never poisons the retry (#406)", async () => {
+test("{§search-gate}: the per-turn cap rejects the overflow search", async () => {
     const db = await openMigrated();
     // cap knob ships =3 (.env.defaults floor, loaded by the test cascade)
     const { workspaceId, workerId, loopId, turnId, engine } = await seed(db);
@@ -111,10 +113,12 @@ test("the per-turn cap 429s the overflow search; a failed spawn never poisons th
         assert.equal(fourth.problem?.searchLimit, 3);
         assert.equal(fourth.problem?.recovery, "Continue without another search in this turn.");
         assert.equal(fourth.problem?.retryable, false);
-    } finally { await settle(db, workspaceId).catch(() => {}); await db.close(); }
+    } finally {
+        try { await settle(db, workspaceId); } finally { await db.close(); }
+    }
 });
 
-test("a failed search does not register — the retry runs for real (#406)", async () => {
+test("{§search-gate}: a failed search does not poison its retry", async () => {
     const db = await openMigrated();
     const { workspaceId, workerId, loopId, turnId, engine } = await seed(db, { fail: true });
     try {
@@ -127,5 +131,7 @@ test("a failed search does not register — the retry runs for real (#406)", asy
         await settle(db, workspaceId);
         const retry = await dispatchSearch(engine, ids, "flaky query", 2);
         assert.notEqual(retry.status, 409, "no dedup hit off a failed spawn — the retry dispatches for real");
-    } finally { await settle(db, workspaceId).catch(() => {}); await db.close(); }
+    } finally {
+        try { await settle(db, workspaceId); } finally { await db.close(); }
+    }
 });
