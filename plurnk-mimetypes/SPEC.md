@@ -46,7 +46,25 @@ discovered package declaration at construction. The orchestrator validates the
 handler surface structurally before caching it; class identity is not part of
 the contract.
 
-### §mimetype-lifecycle 1.1 Orchestrator lifecycle
+### §mimetype-binary-input 1.1 Binary input and readable projection
+
+Durable entry representation belongs to consumers; this framework admits raw
+bytes only as transient handler input. The installed handler's `content`
+channel is the sole authority for deriving model-readable Unicode.
+
+| Surface                                  | Contract                                                                                                    |
+| ---------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `PLURNK_MIMETYPES_BINARY_INPUT_MAX_BYTES` | One positive-integer ceiling for filesystem, inline, and streamed binary inputs before handler execution   |
+| `projectReadable(input)`                 | Return derived Unicode, source mimetype, and opaque projection identity; `null` means no content projection |
+| `projectReadableStream(chunks, mimetype)` | Consume `Uint8Array` chunks within the same ceiling only for an installed binary content projection         |
+| Limit exceeded                           | Throw `MimetypeInputLimitError` with source mimetype, maximum bytes, and observed bytes                     |
+
+The framework checks projection presence before reading a binary filesystem or
+stream source. It never buffers bytes merely to discover that the installed
+handler has no readable projection. A format handler may impose a stricter
+limit; it may not weaken the framework ceiling.
+
+### §mimetype-lifecycle 1.2 Orchestrator lifecycle
 
 ```mermaid
 flowchart LR
@@ -76,7 +94,7 @@ again after the teardown settles; handlers and artifacts then resolve lazily as
 a new cache generation. Tree-sitter handlers delete their cached query before
 their parser, matching the runtime's explicit resource lifecycle.
 
-### §mimetype-projection-identity 1.2 Projection identity
+### §mimetype-projection-identity 1.3 Projection identity
 
 `Mimetypes.projectionIdentity(mimetype)` returns an opaque SHA-256 identity for
 the installed behavior that can project that mimetype. Consumers include it

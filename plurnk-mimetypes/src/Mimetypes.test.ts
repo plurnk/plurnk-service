@@ -130,6 +130,9 @@ describe("Mimetypes — bounded readable projections", () => {
     it("rejects inline and streamed binary input at the common byte ceiling", async () => {
         const prior = process.env.PLURNK_MIMETYPES_BINARY_INPUT_MAX_BYTES;
         process.env.PLURNK_MIMETYPES_BINARY_INPUT_MAX_BYTES = "3";
+        const root = await fs.mkdtemp(path.join(os.tmpdir(), "plurnk-mimetype-binary-limit-"));
+        const file = path.join(root, "oversized.binary");
+        await fs.writeFile(file, Uint8Array.of(1, 2, 3, 4));
         const mimetypes = new Mimetypes({
             discovery: makeDiscovery([binaryInfo]),
             loader: async () => ({ default: FakeReadableBinaryHandler }),
@@ -151,7 +154,14 @@ describe("Mimetypes — bounded readable projections", () => {
                     && error.maximumBytes === 3
                     && error.observedBytes === 4,
             );
+            await assert.rejects(
+                () => mimetypes.projectReadable({ path: file }),
+                (error: unknown) => error instanceof MimetypeInputLimitError
+                    && error.maximumBytes === 3
+                    && error.observedBytes === 4,
+            );
         } finally {
+            await fs.rm(root, { recursive: true, force: true });
             if (prior === undefined) delete process.env.PLURNK_MIMETYPES_BINARY_INPUT_MAX_BYTES;
             else process.env.PLURNK_MIMETYPES_BINARY_INPUT_MAX_BYTES = prior;
         }

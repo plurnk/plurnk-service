@@ -12,6 +12,7 @@ import { isGrammarNotInstalled } from "./TreeSitterExtractor.ts";
 import BaseHandler from "./BaseHandler.ts";
 import Embeddings, { type EmbedBatchOptions, type EmbedderInfo } from "./Embeddings.ts";
 import MimetypeInputError, { isMimetypeInputError } from "./MimetypeInputError.ts";
+import MimetypeInputLimitError from "./MimetypeInputLimitError.ts";
 import Tokenizers, { type TokenizerResolution } from "./Tokenizers.ts";
 import { classifyMimetype, classifyWithHandler, type MimeClassification } from "./classify.ts";
 import { mimetypeSource, type Notice } from "./Notice.ts";
@@ -120,6 +121,22 @@ export interface ProcessResult {
     // Successful degradations projected through the shared Notice contract.
     notices?: readonly Notice[];
 }
+
+export interface ReadableProjection {
+    content: string;
+    sourceMimetype: string;
+    projectionIdentity: string;
+}
+
+const binaryInputMaximum = (): number => {
+    const name = "PLURNK_MIMETYPES_BINARY_INPUT_MAX_BYTES";
+    const raw = process.env[name];
+    const value = Number(raw);
+    if (raw === undefined || raw.trim() === "" || !Number.isSafeInteger(value) || value <= 0) {
+        throw new RangeError(`${name} must be a positive safe integer; got ${JSON.stringify(raw)}.`);
+    }
+    return value;
+};
 
 // Top-level discovery, projection, and artifact orchestrator
 // ({§mimetype-lifecycle}).
@@ -279,6 +296,40 @@ export default class Mimetypes {
         }
     }
 
+    // One derived-Unicode seam for string, inline-byte, and filesystem sources
+    // ({§mimetype-binary-input}). Absence is decided before binary acquisition
+    // when the installed handler does not own a content projection.
+    async projectReadable(input: ProcessInput): Promise<ReadableProjection | null> {
+        const mimetype = await this.detect(input);
+        if (mimetype === null) return null;
+        const handler = await this.getHandler(mimetype);
+        if (handler === null || handler.content === BaseHandler.prototype.content) return null;
+        const result = await this.process(input, { channels: ["content"] });
+        if (typeof result.content !== "string") return null;
+        return {
+            content: result.content,
+            sourceMimetype: mimetype,
+            projectionIdentity: await this.projectionIdentity(mimetype),
+        };
+    }
+
+    // Streamed bytes remain within the framework-owned memory ceiling and are
+    // never retained when no installed binary content projection exists.
+    async projectReadableStream(
+        chunks: AsyncIterable<Uint8Array>,
+        mimetype: string,
+    ): Promise<ReadableProjection | null> {
+        await this.ready();
+        const info = this.#discovery!.handlers.get(mimetype);
+        if (info?.binary !== true) return null;
+        const handler = await this.getHandler(mimetype);
+        if (handler === null || handler.content === BaseHandler.prototype.content) return null;
+        return this.projectReadable({
+            content: await Mimetypes.#collectBinary(chunks, mimetype),
+            hint: mimetype,
+        });
+    }
+
     async #instantiatePackageHandler(
         metadata: HandlerMetadata,
         packageName: string,
@@ -357,7 +408,7 @@ export default class Mimetypes {
         const info = this.#discovery!.handlers.get(mimetype) ?? null;
         const isBinary = info?.binary ?? false;
 
-        const content = await this.#resolveContent(input, isBinary);
+        const content = await this.#resolveContent(input, isBinary, mimetype);
         if (content === null) {
             return errorResult(mimetype);
         }
@@ -485,7 +536,7 @@ export default class Mimetypes {
         const info = this.#discovery!.handlers.get(mimetype) ?? null;
         const isBinary = info?.binary ?? false;
 
-        const content = await this.#resolveContent(input, isBinary);
+        const content = await this.#resolveContent(input, isBinary, mimetype);
         if (content === null) {
             throw new ReferenceError(`Mimetypes.query: content unreadable for ${mimetype}`);
         }
@@ -559,15 +610,77 @@ export default class Mimetypes {
         });
     }
 
-    async #resolveContent(input: ProcessInput, binary: boolean): Promise<string | Uint8Array | null> {
-        if (input.content !== undefined) return input.content;
+    async #resolveContent(
+        input: ProcessInput,
+        binary: boolean,
+        mimetype: string,
+    ): Promise<string | Uint8Array | null> {
+        if (input.content !== undefined) {
+            if (binary && input.content instanceof Uint8Array) {
+                Mimetypes.#assertBinarySize(input.content.byteLength, mimetype);
+            }
+            return input.content;
+        }
         if (input.path === undefined || input.path === "") return null;
         try {
             return binary
-                ? new Uint8Array(await fs.readFile(input.path))
+                ? await Mimetypes.#readBinaryFile(input.path, mimetype)
                 : await fs.readFile(input.path, "utf-8");
-        } catch {
+        } catch (error) {
+            if (error instanceof MimetypeInputLimitError) throw error;
             return null;
+        }
+    }
+
+    static #assertBinarySize(
+        observedBytes: number,
+        mimetype: string,
+        maximumBytes = binaryInputMaximum(),
+    ): void {
+        if (observedBytes > maximumBytes) {
+            throw new MimetypeInputLimitError({ mimetype, maximumBytes, observedBytes });
+        }
+    }
+
+    static async #collectBinary(
+        chunks: AsyncIterable<Uint8Array>,
+        mimetype: string,
+    ): Promise<Uint8Array> {
+        const maximumBytes = binaryInputMaximum();
+        const collected: Uint8Array[] = [];
+        let observedBytes = 0;
+        for await (const chunk of chunks) {
+            if (!(chunk instanceof Uint8Array)) {
+                throw new TypeError(`Binary projection for ${mimetype} yielded a non-Uint8Array chunk.`);
+            }
+            observedBytes += chunk.byteLength;
+            Mimetypes.#assertBinarySize(observedBytes, mimetype, maximumBytes);
+            collected.push(chunk);
+        }
+        const content = new Uint8Array(observedBytes);
+        let offset = 0;
+        for (const chunk of collected) {
+            content.set(chunk, offset);
+            offset += chunk.byteLength;
+        }
+        return content;
+    }
+
+    static async #readBinaryFile(file: string, mimetype: string): Promise<Uint8Array> {
+        const handle = await fs.open(file, "r");
+        try {
+            const { size } = await handle.stat();
+            Mimetypes.#assertBinarySize(size, mimetype, binaryInputMaximum());
+            const content = new Uint8Array(size);
+            let offset = 0;
+            while (offset < content.byteLength) {
+                const { bytesRead } = await handle.read(content, offset, content.byteLength - offset, offset);
+                if (bytesRead === 0) break;
+                offset += bytesRead;
+            }
+            return offset === content.byteLength ? content : content.slice(0, offset);
+        } finally {
+            await handle.close();
         }
     }
 

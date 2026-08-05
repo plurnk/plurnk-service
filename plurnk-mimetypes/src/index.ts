@@ -2,6 +2,7 @@
 export { default as Mimetypes } from "./Mimetypes.ts";
 export { default as MimetypePluginError } from "./MimetypePluginError.ts";
 export { default as MimetypeInputError, isMimetypeInputError } from "./MimetypeInputError.ts";
+export { default as MimetypeInputLimitError } from "./MimetypeInputLimitError.ts";
 export { default as TextCoordinates } from "./TextCoordinates.ts";
 export type { TextLine, TextPosition } from "./TextCoordinates.ts";
 export { default as EmbeddingVector } from "./EmbeddingVector.ts";
@@ -27,6 +28,7 @@ export type {
     ProcessInput,
     ProcessOptions,
     ProcessResult,
+    ReadableProjection,
 } from "./Mimetypes.ts";
 
 // Base classes for handler authors
