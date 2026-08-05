@@ -31,7 +31,7 @@ const oneTwoTagPackage = async () => ({
 const loadFake = async () => ({ default: FakeExecutor });
 
 // A probe that lights up every tag — so the ONLY reason a tag is absent below is the
-// #259 git lockout filter, never a failed probe.
+// {§operator-config-git-ceiling} Git lockout filter, never a failed probe.
 class AlwaysAvailable {
     runtime: string;
     constructor({ runtime }: { runtime: string }) { this.runtime = runtime; }
@@ -118,7 +118,7 @@ test("{§executor-probe} an unavailable configured default fails boot", async ()
     );
 });
 
-test("ExecutorRegistry: PLURNK_SERVICE_GIT_ALLOWED=0 drops native and isomorphic Git executors entirely (#259)", async () => {
+test("{§operator-config-git-ceiling}: PLURNK_SERVICE_GIT_ALLOWED=0 drops native and isomorphic Git executors entirely", async () => {
     const prior = process.env.PLURNK_SERVICE_GIT_ALLOWED;
     try {
         // Denied: neither Git capability can dispatch or appear in the tools sheet.

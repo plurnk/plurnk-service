@@ -88,7 +88,7 @@ export default class ExecutorRegistry {
             console.warn(`exec discovery: '${name}' is discovered but untrusted (PLURNK_PLUGINS_TRUSTED_ONLY); not registered`);
         }
 
-        // {§membership-git-flags} PLURNK_SERVICE_GIT_ALLOWED=0 must drop every
+        // {§operator-config-git-ceiling} PLURNK_SERVICE_GIT_ALLOWED=0 must drop every
         // Git-capability executor entirely: a denied host neither dispatches
         // EXEC[git]/EXEC[isogit] nor teaches them through the tools sheet.
         const gitDenied = process.env.PLURNK_SERVICE_GIT_ALLOWED !== "1";
