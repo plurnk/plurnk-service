@@ -46,9 +46,9 @@ projection ceiling returns `413`.
   Playwright, and WebSocket use their ordinary configured transports.
 - Direct GET HTML is rendered through Playwright, projected into `body`, and
   retained faithfully in `html`.
-- GET representations carry method and acquisition-time metadata; derived
-  representations also carry projection identity. A reader change invalidates
-  the body, TTL shortcut, and conditional validators together.
+- GET representations carry method, acquisition-time, and single-variant cache
+  metadata; derived representations also carry projection identity. Explicit
+  request metadata, `Vary`, or a reader change prevents unsafe reuse.
 - HTTP(S) and WS(S) entry identity retains protocol, authority, path, ordered
   query, and explicit empty query; a fragment selects a channel.
 - Handler-owned browser and socket state follows the shared readiness, drain,

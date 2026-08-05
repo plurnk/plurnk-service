@@ -56,12 +56,15 @@ returns `102` while events continue. Origin close settles the subscription at
 `200`; later cancellation or transfer failure settles it at `499` or `502`
 without rewriting the initial READ.
 
-Re-reading without a scope uses the stored GET when it is inside the operator's
-freshness window. Outside that window, stored ETag or Last-Modified validators
-produce a conditional GET; a 304 restores the stored channels without
-rendering. Without validators, the next READ performs a full GET. Responses to
-POST, PUT, and DELETE are not reused as later GET representations. A projected
-GET is reused only while the installed reader has the same projection identity;
+Re-reading without a scope can reuse only a complete GET acquired without
+explicit request metadata whose response had no `Vary` field. Plurnk keeps one
+representation per URL, so any target metadata or `Vary` response bypasses both
+the freshness shortcut and old validators instead of creating a variant store.
+Eligible content inside the operator's freshness window is served directly;
+outside it, stored ETag or Last-Modified validators produce a conditional GET.
+A 304 restores the stored channels without rendering. Responses to POST, PUT,
+and DELETE are not reused as later GET representations. A projected GET is
+reused only while the installed reader has the same projection identity;
 changing it forces a full acquisition without old validators.
 
 A scoped READ never fetches. Its fragment, or `body` by default, selects an
@@ -78,6 +81,8 @@ blocks, one header per block:
 ```
 
 Percent-encode `)`, `<`, and `}` inside a header value.
+An exact FIND forwards these headers when it must acquire the URL, but the
+result remains intentionally ineligible for later cache reuse.
 
 GET acquisition of a GitHub `…/blob/…` URL uses its
 `raw.githubusercontent.com` source. The addressed GitHub URL remains entry
