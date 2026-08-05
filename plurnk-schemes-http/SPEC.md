@@ -324,30 +324,33 @@ stateDiagram-v2
     Claimed --> Idle: setup or construction failure
     Connecting --> Open: native open; messages active; READ 102
     Connecting --> Settling: pre-open close/error, KILL, cancel, activation failure, or shutdown
-    Open --> Open: inbound frame or SEND[200]
+    Open --> Open: ordered inbound frame or SEND[200]
     Open --> Settling: closing state, close/error, KILL, cancel, persistence failure, or shutdown
     Settling --> Idle: await retained work, close subscription, release claim
 ```
 
-| Operation                   | Contract                                                                                                         |
-| --------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| `READ(ws(s)://…)`           | Claim, seed/subscribe, construct `CONNECTING`, then return `102` after native `open` plus durable activation     |
-| Concurrent duplicate READ   | `409` in `claimed`, `connecting`, `open`, or `settling`; cleanup releases the only claim                         |
-| `SEND[200](ws(s)://…)`      | Send only for owner `open` plus native `readyState=OPEN`; absent or non-open owner is `409`; send throw is `502` |
-| `SEND[499](ws(s)://…)`      | Engine-routed cancellation closes the owning READ; scheme dispatch returns `200`                                 |
-| `KILL(ws(s)://…)`           | Close/cancel the claimed owner; no owner is `404`; an attempted close throw is `502`                             |
-| Socket closes before `open` | Close subscription with `502 connection-failed`; the pending READ returns that exact failure                     |
-| Socket closes after `open`  | Initial READ remains `102`; close the retained subscription with `200`                                           |
-| Failure after `open`        | Initial READ remains `102`; persist the exact terminal failure and wake through subscription settlement          |
+| Operation or event                | Contract                                                                                                         |
+| --------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `READ(ws(s)://…)`                 | Claim, seed/subscribe, construct `CONNECTING`, then return `102` after native `open` plus durable activation     |
+| Concurrent duplicate READ         | `409` in `claimed`, `connecting`, `open`, or `settling`; cleanup releases the only claim                         |
+| `SEND[200](ws(s)://…)`            | Send only for owner `open` plus native `readyState=OPEN`; absent or non-open owner is `409`; send throw is `502` |
+| `SEND[499](ws(s)://…)`            | Engine-routed cancellation closes the owning READ; scheme dispatch returns `200`                                 |
+| `KILL(ws(s)://…)`                 | Close/cancel the claimed owner; no owner is `404`; an attempted close throw is `502`                             |
+| Inbound frame after native `open` | Join the owner's persistence chain; the next write begins only after the preceding write succeeds               |
+| First inbound persistence failure | Retain the successful prefix, prune queued and later frames, and settle with `500 message-persistence-failed`    |
+| Socket closes before `open`       | Close subscription with `502 connection-failed`; the pending READ returns that exact failure                     |
+| Socket closes after `open`        | Drain the accepted frame prefix; initial READ remains `102`; settle with `200` unless a drained write fails       |
+| Failure after `open`              | Initial READ remains `102`; persist the exact terminal failure and wake through subscription settlement          |
 
 The in-instance registry is keyed by workspace, addressed protocol, and
 canonical network pathname. The claim remains registered through terminal
 cleanup, so a new READ cannot overlap an owner's subscription settlement. Every
-terminal path waits for already-started operation-capability work, closes the
-transport when necessary, closes the durable subscription, then releases the
-claim. Handler shutdown requests settlement for every remainder, awaits every
-owner, and aggregates transport-close failures under
-{§handler-lifecycle}. Inbound persistence ordering is separately owned by #139.
+terminal path drains retained owner work, closes the transport when necessary,
+closes the durable subscription, then releases the claim. A persistence failure
+found while draining supersedes a graceful terminal result; cancellation and
+transport failures retain their exact result. Handler shutdown requests
+settlement for every remainder, awaits every owner, and aggregates
+transport-close failures under {§handler-lifecycle}.
 
 | Transport limit    | Current contract                                                          |
 | ------------------ | ------------------------------------------------------------------------- |

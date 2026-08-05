@@ -162,10 +162,11 @@ export default class Ws implements SchemeHandler {
             const acquisition = Promise.withResolvers<PassthroughResult>();
             let messages = 0;
             let settlement: Promise<void> | null = null;
+            let persistenceFailure: { result: PassthroughResult; summary: string } | null = null;
             const pending = new Set<Promise<void>>();
             const settle = (
                 terminal: PassthroughResult,
-                summary: string,
+                summary: string | (() => string),
                 transportClose?: { code: number; reason: string },
                 initial: PassthroughResult = terminal,
             ): Promise<void> => {
@@ -177,6 +178,13 @@ export default class Ws implements SchemeHandler {
                     const errors: unknown[] = [];
                     try {
                         await Promise.allSettled([...pending]);
+                        const failedPersistence = persistenceFailure;
+                        const effectiveTerminal = !Results.isErrorStatus(terminal.status) && failedPersistence !== null
+                            ? failedPersistence.result
+                            : terminal;
+                        const effectiveSummary = !Results.isErrorStatus(terminal.status) && failedPersistence !== null
+                            ? failedPersistence.summary
+                            : typeof summary === "function" ? summary() : summary;
                         if (transportClose !== undefined) {
                             try {
                                 socket.close(transportClose.code, transportClose.reason);
@@ -185,7 +193,7 @@ export default class Ws implements SchemeHandler {
                             }
                         }
                         try {
-                            await subscription.close(terminal, summary);
+                            await subscription.close(effectiveTerminal, effectiveSummary);
                             if (!owner.opened) acquisition.resolve(initial);
                         } catch (error) {
                             if (!owner.opened) acquisition.reject(error);
@@ -222,7 +230,7 @@ export default class Ws implements SchemeHandler {
             };
             owner.shutdown = () => {
                 const result = cancelled();
-                return settle(result, `ws closed (1001); ${messages} messages`, {
+                return settle(result, () => `ws closed (1001); ${messages} messages`, {
                     code: 1001,
                     reason: "shutdown",
                 });
@@ -232,9 +240,12 @@ export default class Ws implements SchemeHandler {
             subscription.addEventListener("abort", onAbort, { once: true });
             const setChannelState = ctx.channels.setState.bind(ctx.channels);
             const streamEvent = ctx.notify.streamEvent.bind(ctx.notify);
+            let nativeOpened = false;
             let activation: Promise<void> = Promise.resolve();
+            let persistenceTail: Promise<void> = Promise.resolve();
             socket.addEventListener("open", () => {
                 if (owner.state !== "connecting") return;
+                nativeOpened = true;
                 activation = track((async () => {
                     try {
                         const activated = await setChannelState(pathname, MESSAGES, "active");
@@ -272,30 +283,40 @@ export default class Ws implements SchemeHandler {
                     }
                 })());
             }, { once: true });
+            // {§ws-lifecycle} One owner chain makes transport order independent
+            // of the subscription implementation's asynchronous scheduler.
             socket.addEventListener("message", (event) => {
-                const persistence = (async () => {
+                if (!nativeOpened || settled || persistenceFailure !== null) return;
+                const chunk = String(event.data ?? "");
+                const persistence = persistenceTail.then(async () => {
                     await activation;
-                    if (owner.state !== "open") return;
-                    messages += 1;
-                    await subscription.notifyChunk(MESSAGES, String(event.data ?? ""), "text/plain");
-                })().catch((err: unknown) => {
-                    console.error("WebSocket message persistence failed", { url, err });
-                    const result = Ws.#bad(
-                        500,
-                        "message-persistence-failed",
-                        "The received WebSocket message could not be persisted.",
-                        {
-                            target: url,
-                            stage: "persistence",
-                            retryable: false,
-                        },
-                    );
-                    void settle(
-                        result,
-                        result.problem?.detail ?? "WebSocket message persistence failed.",
-                        { code: 1011, reason: "persistence failed" },
-                    ).catch(reportCleanupFailure);
+                    if (!owner.opened || persistenceFailure !== null) return;
+                    try {
+                        await subscription.notifyChunk(MESSAGES, chunk, "text/plain");
+                        messages += 1;
+                    } catch (err) {
+                        if (persistenceFailure !== null) return;
+                        console.error("WebSocket message persistence failed", { url, err });
+                        const result = Ws.#bad(
+                            500,
+                            "message-persistence-failed",
+                            "The received WebSocket message could not be persisted.",
+                            {
+                                target: url,
+                                stage: "persistence",
+                                retryable: false,
+                            },
+                        );
+                        const failureSummary = result.problem?.detail ?? "WebSocket message persistence failed.";
+                        persistenceFailure = { result, summary: failureSummary };
+                        void settle(
+                            result,
+                            failureSummary,
+                            { code: 1011, reason: "persistence failed" },
+                        ).catch(reportCleanupFailure);
+                    }
                 });
+                persistenceTail = persistence;
                 track(persistence);
             });
             socket.addEventListener("error", (event) => {
@@ -322,7 +343,7 @@ export default class Ws implements SchemeHandler {
                     void settle(result, detail).catch(reportCleanupFailure);
                     return;
                 }
-                const summary = `ws closed (${event.code ?? 0}); ${messages} messages`;
+                const summary = () => `ws closed (${event.code ?? 0}); ${messages} messages`;
                 const initial = subscription.aborted ? cancelled() : { shape: "passthrough", status: 102 } as const;
                 const terminal = subscription.aborted ? initial : { shape: "passthrough", status: 200 } as const;
                 void settle(terminal, summary, undefined, initial).catch(reportCleanupFailure);

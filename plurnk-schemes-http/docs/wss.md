@@ -31,8 +31,10 @@ Connection identity includes the workspace, exact `ws`/`wss` protocol, host,
 non-default port, path, and ordered query. A fragment does not change socket
 identity; `messages` is the only current channel.
 
-| Current transport boundary | Behavior                                                              |
-| -------------------------- | --------------------------------------------------------------------- |
-| Inbound payload            | `String(event.data)` in `messages`; binary semantics are not retained |
-| Reconnection               | None; READ again after terminal cleanup                               |
-| Handshake headers          | Target header metadata is not applied                                 |
+| Current transport boundary | Behavior                                                                |
+| -------------------------- | ----------------------------------------------------------------------- |
+| Inbound payload            | `String(event.data)` in `messages`; binary semantics are not retained   |
+| Inbound order              | Native event order; one durable write completes before the next begins  |
+| Persistence failure        | Keep the successful prefix; prune queued and later frames; settle `500` |
+| Reconnection               | None; READ again after terminal cleanup                                 |
+| Handshake headers          | Target header metadata is not applied                                   |
