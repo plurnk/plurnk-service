@@ -292,6 +292,11 @@ SELECT id FROM loops WHERE worker_id = $worker_id LIMIT 1;
 -- PREP: test_count_loops_by_worker
 SELECT COUNT(*) AS n FROM loops WHERE worker_id = $worker_id;
 
+-- PREP: test_loop_queue_by_worker
+SELECT id, sequence, status, prompt
+FROM loops WHERE worker_id = $worker_id
+ORDER BY sequence;
+
 -- PREP: test_list_channel_names
 SELECT name FROM entry_channels WHERE entry_id = $entry_id ORDER BY name;
 

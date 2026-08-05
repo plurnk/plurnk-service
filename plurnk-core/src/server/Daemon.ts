@@ -1422,31 +1422,35 @@ export default class Daemon {
         flags?: Partial<LoopFlags>;
         openPaths?: string[];
     }): Promise<number> {
-        const seqRow = await this.#db.loop_run_next_sequence.get<{ next: number }>({
-            worker_id: args.workerId,
-        });
-        if (seqRow === undefined) throw new Error("enqueueFreshLoop: next-sequence query returned no row");
-        const loopRow = await this.#db.drain_enqueue_loop.get<{ id: number }>({
-            worker_id: args.workerId,
-            sequence: seqRow.next,
-            prompt: args.prompt,
-            provider_spec: JSON.stringify(args.providerSpec),
-            max_turns: args.maxTurns ?? Number(process.env.PLURNK_SERVICE_MAX_TURNS ?? "50"),
-        });
-        if (loopRow === undefined) throw new Error("enqueueFreshLoop: loop enqueue returned no row");
-        if (args.flags !== undefined) {
-            await this.#db.engine_set_loop_flags.run({
-                loop_id: loopRow.id,
-                flags: JSON.stringify({ ...DEFAULT_LOOP_FLAGS, ...args.flags }),
+        // {§worker-lifecycle-single-drain}: sequence allocation and insertion
+        // are one queue mutation; another accepted prompt cannot claim the gap.
+        return this.#withDrainLock(args.workerId, async () => {
+            const seqRow = await this.#db.loop_run_next_sequence.get<{ next: number }>({
+                worker_id: args.workerId,
             });
-        }
-        if (args.openPaths !== undefined && args.openPaths.length > 0) {
-            await this.#db.engine_set_loop_open_paths.run({
-                loop_id: loopRow.id,
-                open_paths: JSON.stringify(args.openPaths),
+            if (seqRow === undefined) throw new Error("enqueueFreshLoop: next-sequence query returned no row");
+            const loopRow = await this.#db.drain_enqueue_loop.get<{ id: number }>({
+                worker_id: args.workerId,
+                sequence: seqRow.next,
+                prompt: args.prompt,
+                provider_spec: JSON.stringify(args.providerSpec),
+                max_turns: args.maxTurns ?? Number(process.env.PLURNK_SERVICE_MAX_TURNS ?? "50"),
             });
-        }
-        return loopRow.id;
+            if (loopRow === undefined) throw new Error("enqueueFreshLoop: loop enqueue returned no row");
+            if (args.flags !== undefined) {
+                await this.#db.engine_set_loop_flags.run({
+                    loop_id: loopRow.id,
+                    flags: JSON.stringify({ ...DEFAULT_LOOP_FLAGS, ...args.flags }),
+                });
+            }
+            if (args.openPaths !== undefined && args.openPaths.length > 0) {
+                await this.#db.engine_set_loop_open_paths.run({
+                    loop_id: loopRow.id,
+                    open_paths: JSON.stringify(args.openPaths),
+                });
+            }
+            return loopRow.id;
+        });
     }
 
     /**

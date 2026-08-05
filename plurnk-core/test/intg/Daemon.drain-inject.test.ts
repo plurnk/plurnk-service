@@ -28,6 +28,53 @@ test("loop.run: enqueues + drains + returns first loop's result", async () => {
     });
 });
 
+test("{§worker-lifecycle-single-drain}: concurrent idle injections claim distinct ordered loops", async () => {
+    const mock = new Mock({
+        contextWindow: 16384,
+        responses: [
+            sendOnly("<<SEND[200]:first concurrent loop:SEND"),
+            sendOnly("<<SEND[200]:second concurrent loop:SEND"),
+        ],
+    });
+
+    await withDaemon(mock, async (db, daemon) => {
+        const workspace = await daemon.createWorkspace({ name: "concurrent-loop-allocation" });
+        const workerId = await daemon.ensureModelWorker(workspace.workspaceId);
+        const providerSpec = { alias: "mocktest", provider: "openai", model: "mocktest" } as const;
+        const accepted = await Promise.all([
+            daemon.inject({
+                workspaceId: workspace.workspaceId,
+                workerId,
+                prompt: "concurrent prompt one",
+                providerSpec,
+                systemPrompt: "test system",
+            }),
+            daemon.inject({
+                workspaceId: workspace.workspaceId,
+                workerId,
+                prompt: "concurrent prompt two",
+                providerSpec,
+                systemPrompt: "test system",
+            }),
+        ]);
+
+        assert.deepEqual(accepted.map(({ action }) => action), ["enqueued_new_loop", "enqueued_new_loop"]);
+        assert.equal(new Set(accepted.map(({ loopId }) => loopId)).size, 2, "both accepted prompts own a loop");
+        assert.equal(accepted.filter(({ drainPromise }) => drainPromise !== undefined).length, 1,
+            "one drain owns the complete ordered queue");
+
+        const loops = await waitForDb(
+            () => db.test_loop_queue_by_worker.all<{
+                id: number; sequence: number; status: number; prompt: string;
+            }>({ worker_id: workerId }),
+            (rows) => rows.length === 2 && rows.every(({ status }) => status === 200),
+        );
+        assert.deepEqual(loops.map(({ sequence }) => sequence), [1, 2]);
+        assert.deepEqual(new Set(loops.map(({ prompt }) => prompt)), new Set(["concurrent prompt one", "concurrent prompt two"]));
+        assert.equal(mock.remaining, 0, "the one drain processed both loops exactly once");
+    });
+});
+
 test("loop.cancel terminates a backgrounded exec; the stream concludes 499", async () => {
     // A fire-and-forget exec outlives the loop that spawned it (SEND[102] keeps
     // turn 1 going, the loop ends on turn 2, the spawn runs on). loop.cancel

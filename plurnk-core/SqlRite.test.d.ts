@@ -345,6 +345,7 @@ export class SqlRiteSync {
 	test_get_client_worker_by_workspace: SqlRiteSyncPreparedStatements;
 	test_get_loop_by_worker: SqlRiteSyncPreparedStatements;
 	test_count_loops_by_worker: SqlRiteSyncPreparedStatements;
+	test_loop_queue_by_worker: SqlRiteSyncPreparedStatements;
 	test_list_channel_names: SqlRiteSyncPreparedStatements;
 	test_get_entry_id_by_scheme_pathname: SqlRiteSyncPreparedStatements;
 	test_list_entries_by_workspace_workspace_pathname: SqlRiteSyncPreparedStatements;
@@ -815,6 +816,7 @@ export default class SqlRite {
 	test_get_client_worker_by_workspace: SqlRitePreparedStatements;
 	test_get_loop_by_worker: SqlRitePreparedStatements;
 	test_count_loops_by_worker: SqlRitePreparedStatements;
+	test_loop_queue_by_worker: SqlRitePreparedStatements;
 	test_list_channel_names: SqlRitePreparedStatements;
 	test_get_entry_id_by_scheme_pathname: SqlRitePreparedStatements;
 	test_list_entries_by_workspace_workspace_pathname: SqlRitePreparedStatements;
