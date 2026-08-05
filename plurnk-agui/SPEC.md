@@ -21,7 +21,7 @@ recompute them.
   BOTH levels: `threadId` == the workspace name binds the workspace's model worker (the default
   conversation, `ensureModelWorker` — origin identifies it, never a name parse); a DISTINCT
   `threadId` names its own conversation worker — found by name if it exists (forks and prior
-  conversations are addressable as threads), minted via `createConversationWorker` (svc#366)
+  conversations are addressable as threads), minted via `createConversationWorker`
   if it doesn't. The core workspace envelope carries only the workspace and selected client
   actor ({§methods-rebind}); AG-UI owns the separate per-thread conversation binding.
   World-scoped actions (`loop.inject`, `loop.cancel`, `log.read` default,
@@ -116,8 +116,8 @@ never recomputes the daemon's gauge.
 
 ## §agui-proposal-resolve Stop-the-world
 
-Every client-owned daemon proposal - file edits and `[300]` operator questions
-(service#346) — emits an AG-UI tool call and terminates AG-UI Run A with
+Every client-owned daemon proposal - file edits and `[300]` operator questions —
+emits an AG-UI tool call and terminates AG-UI Run A with
 `RUN_FINISHED.outcome.type = "interrupt"`. The durable loop remains paused indefinitely
 by default; absence is not an answer. AG-UI Run B on the same thread supplies standard
 `RunAgentInput.resume` entries. Each entry correlates through `interruptId = toolCallId =
@@ -300,10 +300,9 @@ Two consequences the module owns and a client must handle:
   that funnels all AG-UI Runs
   through one shared handler (e.g. a single dispatch) must serialize its management Runs —
   one action in flight, the rest queued — or a background action's stream steals the shared
-  slot. Both first-party clients do exactly this (nvim's management lane, svc#504).
-- **No silent drop.** Workspace information never routes to a lone last-binder — a regression to that
-  shape is what svc#504 reported (a client-side single-slot handler, since fixed) and is
-  pinned against here.
+  slot. Both first-party clients do exactly this through a serialized management lane.
+- **No silent drop.** Workspace information never routes to a lone last-binder; the
+  client-side single-slot regression is pinned against here.
 
 ## §agui-configuration Module configuration
 

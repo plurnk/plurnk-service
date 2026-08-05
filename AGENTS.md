@@ -98,6 +98,17 @@ assert that path in the root packed-artifact projection.
 - Forge issues record observations, investigation, competing interpretations,
   rulings, rejected alternatives, and completion evidence. Issue numbers are
   provenance; specification tags are current authority.
+- Issue provenance uses a mechanically distinct repository and host context:
+
+  | Provenance                  | Form                                                                     | Rule                                                                 |
+  |-----------------------------|--------------------------------------------------------------------------|----------------------------------------------------------------------|
+  | Current issue in this Forge | `#N`                                                                     | Bare numbers resolve only in the canonical `plurnk-service` Forge.   |
+  | Current external work       | Full canonical Forge issue URL                                          | Never abbreviate another repository to `repo#N`.                     |
+  | Archived GitHub history     | Full `https://github.com/plurnk/<repo>/issues/N` or `/pull/N` URL        | Retain only when the historical evidence adds value beyond the tag. |
+
+  Legacy shorthands such as `service#N`, `grammar#N`, or
+  `plurnk-mimetypes#N` are ambiguous and forbidden. Once a ruling is stable,
+  prefer its owning `{§tag}` and leave chronology in the issue or Git history.
 - Give every new forge issue one appropriate Conventional type label when the
   issue is created; labels are part of issue creation, not later cleanup.
 - README material teaches concise usage derived from the specification. Do not
