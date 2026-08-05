@@ -6,7 +6,8 @@
 // streamEvent is sync per the cap contract, but the StreamEventPayload's entryId
 // needs an async pathname→entryId lookup. The event is advisory (not a state
 // change), so no notifier (standalone/test) is a no-op and a vanished entry
-// yields no event. #182 owns diagnosis of exceptional lookup/notify failures.
+// yields no event. Exceptional work is isolated by
+// {§notifications-stream-event-failure-isolation}.
 
 import type { NotifyCaps, ChannelState } from "@plurnk/plurnk-schemes";
 import type { PlurnkSchemeContext } from "../scheme-types.ts";
@@ -26,9 +27,9 @@ export default class DbNotifyCaps implements NotifyCaps {
     streamEvent(pathname: string, channel: string, state: ChannelState, contentLength: number): void {
         const notify = this.#ctx.streamEventNotify;
         if (notify === undefined) return;
-        // Keep the synchronous capability fire-and-forget without producing an
-        // unhandled rejection; #182 owns preserving exceptional failure evidence.
-        this.#emit(notify, pathname, channel, state, contentLength).catch(() => {});
+        void this.#emit(notify, pathname, channel, state, contentLength).catch((cause: unknown) => {
+            console.error(`Plugin stream/event emission failed for ${this.#scheme}:${pathname}#${channel}:`, cause);
+        });
     }
 
     async #emit(notify: StreamEventNotify, pathname: string, channel: string, state: ChannelState, contentLength: number): Promise<void> {

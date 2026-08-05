@@ -1942,6 +1942,17 @@ active lifecycle behind.
 | §notifications-stream-concluded `stream/concluded`           | `{ entryId, target, subscriptionId, scheme, result, summary, wakeAction, wakeLoopId?, loop_seq?, turn_seq?, sequence? }` | A subscription closes. `target` is the canonical entry URI; the optional coordinate is copied from schemes whose addresses carry one, so clients never parse it back out of `target`. Exact result truth is preserved; `wakeAction` records whether core resumed a parked loop, folded into an active loop, skipped an aborted/cancelled worker, or found no loop. |
 | §notifications-notice-event `notice/event`                   | `{ loopId, notice: Notice }` | A transient observation or progress notice occurs. It cannot alter durable history, scheduling, recovery, or model-visible failure truth. |
 
+§notifications-stream-event-failure-isolation The plugin-facing
+`NotifyCaps.streamEvent()` remains a synchronous advisory call while core
+resolves its entry identity asynchronously.
+
+| Condition                         | Outcome                                                                                         |
+| --------------------------------- | ----------------------------------------------------------------------------------------------- |
+| No notifier is configured         | Synchronous no-op; no lookup is scheduled.                                                      |
+| The entry vanishes before lookup  | No event.                                                                                       |
+| Entry and notifier remain present | One `stream/event` is emitted.                                                                  |
+| Lookup or notifier throws          | Daemon diagnostics receive the complete cause; no rejection or engine-state transition escapes. |
+
 §notifications-envelope-carries-workspaceid **Event scope is explicit.**
 `subscribeToEvents` supplies `(workspaceId, event, payload)`: `workspaceId` is
 the authoritative scope and is `null` only for a global event. Core does not
