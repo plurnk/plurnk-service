@@ -197,7 +197,7 @@ export default class EntryOps {
         // `<scope>` always addresses the selected channel's textual representation.
         // Structured query dialects locate content but never redefine mutation coordinates.
         // A CREATE (no existing entry) has nothing to scope into, so a markerless body
-        // becomes the new entry's content. {§edit-marker-required-on-existing} (#571) — an
+        // becomes the new entry's content. {§edit-marker-required-on-existing}: an
         // EXISTING entry has no easy-clobber path: a marker is REQUIRED, even for a
         // deliberate full rewrite (`<1,-1>` states that intent explicitly).
         let newContent: string;

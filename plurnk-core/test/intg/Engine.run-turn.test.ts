@@ -16,7 +16,7 @@ const urlPath = (scheme: string, pathname: string): UrlPath => ({
     pathname, query: null, fragment: null,
 });
 
-// {§edit-marker-required-on-existing} (#571) — a fixed FULL-REPLACE marker so a
+// {§edit-marker-required-on-existing}: a fixed full-replace marker makes a
 // repeated EDIT of the same path stays a legal, IDENTICAL-fingerprint 200 across
 // turns (the cycle-detection tests below depend on that repeatability), never a
 // refusal once the first turn has created the path.

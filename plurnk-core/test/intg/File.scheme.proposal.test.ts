@@ -20,7 +20,7 @@ import type { PlurnkSchemeContext } from "../../src/core/scheme-types.ts";
 import { InvalidOperationResultError } from "@plurnk/plurnk-schemes";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, makeSchemeCtx } from "./_helpers.ts";
 
-// {§edit-marker-required-on-existing} (#571) — a marker is required on an EXISTING
+// {§edit-marker-required-on-existing}: a marker is required on an existing
 // file; `fullReplace` (marks:[1,-1]) states a deliberate whole-content rewrite
 // explicitly. Default null: callers targeting a genuinely NEW path (nothing to
 // scope into) leave it off.
@@ -313,7 +313,7 @@ test("file.edit: an accept into a NOT-YET-EXISTING subtree creates the parent di
     });
 });
 
-test("a markerless EDIT of an EXISTING file is refused, never a silent full replace (#571)", async () => {
+test("{§edit-marker-required-on-existing}: markerless EDIT refuses an existing file", async () => {
     await withWorkspaceRoot(async (root, ctx) => {
         const target = "src/Engine.ts";
         await mkdir(join(root, "src"), { recursive: true });
