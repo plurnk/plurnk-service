@@ -2,7 +2,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import ChannelWrite from "../../src/core/ChannelWrite.ts";
+import ChannelWrite, { type StreamEventPayload } from "../../src/core/ChannelWrite.ts";
 import { seedEntryWithChannel } from "./_helpers.ts";
 import { rpcCall, subscribeNotifications, flush, connect, withDaemon } from "./_rpc.ts";
 test("notifyStreamEvent broadcasts to a workspace's clients, envelope stamped with the scope", async () => {
@@ -14,12 +14,14 @@ test("notifyStreamEvent broadcasts to a workspace's clients, envelope stamped wi
             const captured = subscribeNotifications(ws, "stream/event");
 
             const entryId = await seedEntryWithChannel(db, { workspaceId, content: "hello", state: "active" });
-            daemon.notifyStreamEvent(workspaceId, { entryId, channel: "body", state: "active", contentLength: 5 });
+            daemon.notifyStreamEvent(workspaceId, {
+                entryId, target: "worker:///x", channel: "body", state: "active", contentLength: 5, mimetype: "text/markdown",
+            });
             await flush();
 
             assert.equal(captured().length, 1);
             const evt = captured()[0] as { workspaceId: number; entryId: number; channel: string; state: string; contentLength: number };
-            assert.equal(evt.workspaceId, workspaceId, "the envelope carries its workspace scope so multi-workspace clients can route it (#191)");
+            assert.equal(evt.workspaceId, workspaceId, "the envelope carries its workspace scope so multi-workspace clients can route it");
             assert.equal(evt.entryId, entryId);
             assert.equal(evt.channel, "body");
             assert.equal(evt.state, "active");
@@ -37,7 +39,7 @@ test("appendToChannel via the daemon's notify callback fires stream/event end-to
             const captured = subscribeNotifications(ws, "stream/event");
             const entryId = await seedEntryWithChannel(db, { workspaceId, content: "hi", state: "active" });
 
-            const notify = (sid: number, ev: { entryId: number; channel: string; state: string; contentLength: number }) =>
+            const notify = (sid: number, ev: StreamEventPayload) =>
                 daemon.notifyStreamEvent(sid, ev);
             await ChannelWrite.appendToChannel(db, { entryId, channel: "body", chunk: "!", notify });
             await ChannelWrite.appendToChannel(db, { entryId, channel: "body", chunk: "?", notify });
@@ -47,7 +49,7 @@ test("appendToChannel via the daemon's notify callback fires stream/event end-to
             assert.equal(events.length, 2);
             assert.equal(events[0].contentLength, 3);
             assert.equal(events[1].contentLength, 4);
-            assert.equal(events[0].target, "worker:///x", "stream/event carries the entry's target URI (#179)");
+            assert.equal(events[0].target, "worker:///x", "stream/event carries the entry's canonical target URI");
         } finally { ws.close(); }
     });
 });
@@ -85,10 +87,14 @@ test("stream/event is workspace-scoped — other workspaces don't see it", async
             const bEvents = subscribeNotifications(wsB, "stream/event");
 
             const entryIdA = await seedEntryWithChannel(db, { workspaceId: workspaceA, content: "hi", state: "active" });
-            daemon.notifyStreamEvent(workspaceA, { entryId: entryIdA, channel: "body", state: "active", contentLength: 2 });
+            daemon.notifyStreamEvent(workspaceA, {
+                entryId: entryIdA, target: "worker:///x", channel: "body", state: "active", contentLength: 2, mimetype: "text/markdown",
+            });
 
             const entryIdB = await seedEntryWithChannel(db, { workspaceId: workspaceB, content: "yo", state: "active" });
-            daemon.notifyStreamEvent(workspaceB, { entryId: entryIdB, channel: "body", state: "active", contentLength: 2 });
+            daemon.notifyStreamEvent(workspaceB, {
+                entryId: entryIdB, target: "worker:///x", channel: "body", state: "active", contentLength: 2, mimetype: "text/markdown",
+            });
 
             await flush();
 
@@ -103,7 +109,7 @@ test("stream/event is workspace-scoped — other workspaces don't see it", async
     });
 });
 
-test("appendToChannel + setChannelState forward the entry coordinate onto stream/event (#224)", async () => {
+test("appendToChannel + setChannelState forward the entry coordinate onto stream/event", async () => {
     await withDaemon(null, async (db, daemon, addr) => {
         const ws = await connect(addr);
         try {
@@ -112,7 +118,7 @@ test("appendToChannel + setChannelState forward the entry coordinate onto stream
             const captured = subscribeNotifications(ws, "stream/event");
             const entryId = await seedEntryWithChannel(db, { workspaceId, content: "hi", state: "active" });
 
-            const notify = (sid: number, ev: { entryId: number; channel: string; state: string; contentLength: number }) =>
+            const notify = (sid: number, ev: StreamEventPayload) =>
                 daemon.notifyStreamEvent(sid, ev);
             const coordinate = { loop_seq: 1, turn_seq: 2, sequence: 3 };
             await ChannelWrite.appendToChannel(db, { entryId, channel: "body", chunk: "!", notify, coordinate });
@@ -122,7 +128,7 @@ test("appendToChannel + setChannelState forward the entry coordinate onto stream
             const events = captured() as Array<{ loop_seq?: number; turn_seq?: number; sequence?: number }>;
             assert.equal(events.length, 2);
             for (const ev of events) {
-                assert.equal(ev.loop_seq, 1, "stream/event carries the coordinate as fields, not buried in the URI (#224)");
+                assert.equal(ev.loop_seq, 1, "stream/event carries the coordinate as fields, not buried in the URI");
                 assert.equal(ev.turn_seq, 2);
                 assert.equal(ev.sequence, 3);
             }
@@ -130,7 +136,7 @@ test("appendToChannel + setChannelState forward the entry coordinate onto stream
     });
 });
 
-test("appendToChannel with a mimetype retypes the channel + surfaces it on stream/event (#226)", async () => {
+test("appendToChannel with a mimetype retypes the channel + surfaces it on stream/event", async () => {
     await withDaemon(null, async (db, daemon, addr) => {
         const ws = await connect(addr);
         try {
@@ -140,7 +146,7 @@ test("appendToChannel with a mimetype retypes the channel + surfaces it on strea
             // Seeded text/markdown (the manifest default); a streaming scheme learns the real type per call.
             const entryId = await seedEntryWithChannel(db, { workspaceId, content: "", mimetype: "text/markdown", state: "active" });
 
-            const notify = (sid: number, ev: { entryId: number; channel: string; state: string; contentLength: number }) =>
+            const notify = (sid: number, ev: StreamEventPayload) =>
                 daemon.notifyStreamEvent(sid, ev);
             // First chunk carries the now-known per-call type → retype.
             await ChannelWrite.appendToChannel(db, { entryId, channel: "body", chunk: "{", notify, mimetype: "application/json" });
@@ -150,7 +156,7 @@ test("appendToChannel with a mimetype retypes the channel + surfaces it on strea
 
             const events = captured() as Array<{ mimetype?: string }>;
             assert.equal(events.length, 2);
-            assert.equal(events[0].mimetype, "application/json", "the labelled chunk retypes the channel away from text/markdown + carries it (#226)");
+            assert.equal(events[0].mimetype, "application/json", "the labelled chunk retypes the channel away from text/markdown + carries it");
             assert.equal(events[1].mimetype, "application/json", "the retype is stored — a later unlabelled chunk still reports it");
         } finally { ws.close(); }
     });

@@ -17,9 +17,10 @@ import { renderAddress } from "./plurnk-uri.ts";
 export type { ChannelState } from "@plurnk/plurnk-schemes";
 
 // The loop/turn/sequence coordinate of the entry, mirrored onto stream payloads
-// so clients read it as fields instead of re-parsing the exec URI's trailing
-// segments (#224). The owning scheme supplies it — it owns its pathname shape;
-// absent on streams that carry no coordinate.
+// so clients read it as fields instead of re-parsing the target URI. The owning
+// scheme supplies it because it owns its pathname shape; absent on streams that
+// carry no coordinate. {§notifications-stream-event-on-channel-change},
+// {§notifications-stream-concluded}
 export interface StreamCoordinate {
     loop_seq: number;
     turn_seq: number;
@@ -28,14 +29,14 @@ export interface StreamCoordinate {
 
 export interface StreamEventPayload {
     entryId: number;
-    target: string;                // the canonical entry URI — so clients route without an entryId→URI lookup (#179)
+    target: string;                // canonical entry URI — {§notifications-stream-event-on-channel-change}
     channel: string;
     state: ChannelState;
     contentLength: number;
-    loop_seq?: number;             // #224 — the entry's coordinate (see StreamCoordinate)
+    loop_seq?: number;             // entry coordinate, when the scheme has one
     turn_seq?: number;
     sequence?: number;
-    mimetype?: string;             // #226 — the channel's current stored mimetype (a streaming scheme may retype it per call)
+    mimetype?: string;             // current stored type — {§channel-mimetype}
 }
 
 export type StreamEventNotify = (workspaceId: number, event: StreamEventPayload) => void;
@@ -50,12 +51,12 @@ export interface WakeWorkerPayload {
     workspaceId: number;
     workerId: number;
     entryId: number;
-    target: string;                // the canonical entry URI — #179
+    target: string;                // canonical entry URI — {§notifications-stream-concluded}
     subscriptionId: number;
     result: SchemeResult;           // exact universal terminal result
     scheme: string;                // the scheme that owned the subscription
     summary: string;               // model-facing line, e.g. "sh:///1/2/3 completed (exit 0); stdout=N bytes, stderr=M bytes"
-    loop_seq?: number;             // #224 — the entry's coordinate (see StreamCoordinate)
+    loop_seq?: number;             // entry coordinate, when the scheme has one
     turn_seq?: number;
     sequence?: number;
 }
@@ -139,7 +140,6 @@ export default class ChannelWrite {
     static #openSubsForWorkerStmt(db: Db) { return db.find_open_subscriptions_for_worker; }
     static #execTerminalStmt(db: Db) { return db.find_exec_close_status; }
 
-    // The entry's target URI for stream notifications (#179).
     static #targetUri(scheme: string, pathname: string): string {
         return renderAddress(scheme, pathname);
     }
@@ -153,9 +153,8 @@ export default class ChannelWrite {
     ): Promise<void> {
         const result = await ChannelWrite.#appendStmt(db).run({ chunk, entry_id: entryId, channel });
         if (result.changes === 0) return;
-        // #226 — a streaming scheme labels the channel with the body's per-call
-        // type (http's Content-Type varies per fetch). Conditional UPDATE: only
-        // writes when it changed, so labelling every chunk is a steady-state no-op.
+        // A dynamic scheme may supply the body's per-call type; persist it only
+        // when it changes. {§channel-mimetype}
         if (mimetype !== undefined) await ChannelWrite.#mimetypeStmt(db).run({ mimetype, entry_id: entryId, channel });
         if (notify === undefined) return;
         const meta = await ChannelWrite.#channelMeta(db).get<ChannelMetaRow>({ entry_id: entryId, channel });

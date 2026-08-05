@@ -94,9 +94,10 @@ const effectTargetOf = (
 // EXEC's pathname is <runtime>/<loop_seq>/<turn_seq>/<sequence> (stamped by
 // Dispatcher.#writeLog). Exec owns this convention, so it — not the client — turns
 // the pathname into the entry's coordinate, mirrored onto stream payloads so
-// waterfall clients read fields instead of parsing the URI (#224). The
+// clients read fields instead of parsing the URI. The
 // coordinate is the trailing three segments (runtime-agnostic); a pathname that
 // isn't a numeric triple yields undefined (no coordinate on the wire).
+// {§notifications-stream-event-on-channel-change}, {§notifications-stream-concluded}
 const coordinateFromPathname = (pathname: string): StreamCoordinate | undefined => {
     const seg = pathname.split("/").filter(Boolean);
     if (seg.length < 3) return undefined;
@@ -578,7 +579,7 @@ export default class Exec extends CoreSchemeAdapterBase {
     }): Promise<SchemeResult> {
         const { executor, runtime, command, cwd, target, ctx, pathname, entryId, subscriptionId, signal, controller, timeoutSec, tempPath } = opts;
         const db = ctx.db;
-        const coordinate = coordinateFromPathname(pathname);  // #224 — stamped on stream/event + stream/concluded
+        const coordinate = coordinateFromPathname(pathname);
         // grammar 0.74.20 EXEC `<T>` — kill the spawn after T seconds. unref'd so a pending timer never
         // holds the process open; cleared in finally so a spawn that finishes first leaves no timer.
         let timedOut = false;

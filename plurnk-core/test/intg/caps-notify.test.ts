@@ -1,4 +1,5 @@
-// Conformance: the db-backed NotifyCaps (keystone PR-2, #180) — streamEvent
+// Conformance: plurnk-schemes {§capability-ctx} and core
+// {§notifications-stream-event-on-channel-change} — streamEvent
 // resolves the entry and fires a stream/event with the right payload; a vanished
 // entry resolves to null → no event; no notifier wired → silent no-op.
 //

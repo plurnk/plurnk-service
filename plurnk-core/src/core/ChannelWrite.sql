@@ -18,9 +18,8 @@ SET state = $state
 WHERE entry_id = $entry_id AND name = $channel;
 
 -- PREP: set_channel_mimetype
--- A streaming scheme labels the channel with the body's per-call type (#226 —
--- http's Content-Type varies per fetch). Conditional: only writes when the type
--- actually changed, so labelling every chunk is a steady-state no-op.
+-- A dynamic scheme may supply the body's per-call type. Conditional so
+-- labelling every chunk is a steady-state no-op. {§channel-mimetype}
 UPDATE entry_channels
 SET mimetype = $mimetype
 WHERE entry_id = $entry_id AND name = $channel AND mimetype != $mimetype;

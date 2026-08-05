@@ -1,12 +1,12 @@
-// db-backed NotifyCaps (@plurnk/plurnk-schemes 0.4.3) — keystone PR-2 seam (#180).
-// streamEvent fires a stream/event notification for a channel transition.
-// (wakeWorker was dropped in 0.4.3 — the rich worker wake lives on subscriptions.close,
-// the only place with the close context to populate it.)
+// Db-backed implementation of the trusted plugin notification capability.
+// plurnk-schemes {§capability-ctx}; core {§notifications-stream-event-on-channel-change}.
+// Worker wake belongs to subscriptions.close because only that seam owns the
+// complete conclusion context. {§scheme-subscriptions}
 //
 // streamEvent is sync per the cap contract, but the StreamEventPayload's entryId
 // needs an async pathname→entryId lookup. The event is advisory (not a state
-// change), so we emit best-effort: no notifier wired (standalone/test) → no-op;
-// a vanished entry → no event.
+// change), so no notifier (standalone/test) is a no-op and a vanished entry
+// yields no event. #182 owns diagnosis of exceptional lookup/notify failures.
 
 import type { NotifyCaps, ChannelState } from "@plurnk/plurnk-schemes";
 import type { PlurnkSchemeContext } from "../scheme-types.ts";
@@ -26,9 +26,8 @@ export default class DbNotifyCaps implements NotifyCaps {
     streamEvent(pathname: string, channel: string, state: ChannelState, contentLength: number): void {
         const notify = this.#ctx.streamEventNotify;
         if (notify === undefined) return;
-        // Advisory best-effort emit (sync contract, async entryId lookup): a resolve/notify
-        // failure — e.g. the db closing under a late emit — is silently no-event per the cap
-        // contract, never an unhandled rejection on the fire-and-forget.
+        // Keep the synchronous capability fire-and-forget without producing an
+        // unhandled rejection; #182 owns preserving exceptional failure evidence.
         this.#emit(notify, pathname, channel, state, contentLength).catch(() => {});
     }
 

@@ -231,17 +231,15 @@ test("wake-on-completion: a slept (202) loop resumes IN PLACE — no new loop, n
             const wake = concluded.find((c) => c.scheme === "sh");
             assert.ok(wake, "exec stream concluded");
             assert.equal(wake.result.status, 200);
-            assert.match(wake.target, /^sh:\/\/\//, "stream/concluded carries the tag-authority target URI (#179)");
+            assert.match(wake.target, /^sh:\/\/\//, "stream/concluded carries the canonical target URI");
             assert.match(wake.summary, /^sh:\/\/\/\d+\/\d+\/\d+ completed \(exit 0\)/,
                 "summary references the tag-authority <runtime>:///<loop>/<turn>/<seq> path");
             assert.equal(wake.wakeAction, "resumed-loop", "the daemon resumed the slept loop in place");
             // The resume-in-place lock: the woken loop IS the parked loop, not a new one.
             assert.equal(wake.wakeLoopId, parkedLoop, "the SAME slept loop resumed — no fresh loop opened");
 
-            // #224 — the coordinate the waterfall TUI used to parse out of the
-            // exec URI is now explicit fields; assert they agree with the URI.
             const seg = wake.target.replace(/^sh:\/\/\//, "").split("/");  // [loop, turn, seq]
-            assert.equal(wake.loop_seq, Number(seg[0]), "stream/concluded carries loop_seq as a field matching the URI (#224)");
+            assert.equal(wake.loop_seq, Number(seg[0]), "stream/concluded carries loop_seq as a field matching the URI");
             assert.equal(wake.turn_seq, Number(seg[1]), "carries turn_seq");
             assert.equal(wake.sequence, Number(seg[2]), "carries sequence");
 

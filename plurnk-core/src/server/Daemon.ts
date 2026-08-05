@@ -6,7 +6,7 @@ import { resolve, dirname } from "node:path";
 import type { Db } from "../core/Db.ts";
 import { execPollBackoffMs } from "./exec-poll-backoff.ts";
 import type { ProposalResolution } from "../core/ProposalLifecycle.ts";
-import ChannelWrite, { type WakeWorkerPayload } from "../core/ChannelWrite.ts";
+import ChannelWrite, { type StreamEventPayload, type WakeWorkerPayload } from "../core/ChannelWrite.ts";
 import { Paths } from "../index.ts";
 import Engine from "../core/Engine.ts";
 import ExecutorRegistry from "../core/ExecutorRegistry.ts";
@@ -1282,7 +1282,7 @@ export default class Daemon {
      * entry. ChannelWrite helpers (src/core/ChannelWrite.ts) invoke this when
      * they update channel content or state. SPEC {§notifications}.
      */
-    notifyStreamEvent(workspaceId: number, event: { entryId: number; channel: string; state: string; contentLength: number }): void {
+    notifyStreamEvent(workspaceId: number, event: StreamEventPayload): void {
         this.#broadcast({ workspaceId }, "stream/event", event);
     }
 

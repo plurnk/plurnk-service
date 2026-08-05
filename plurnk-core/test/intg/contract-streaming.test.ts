@@ -17,7 +17,7 @@ import type { ReadStatement } from "@plurnk/plurnk-contracts";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Exec from "../../src/schemes/Exec.ts";
-import ChannelWrite from "../../src/core/ChannelWrite.ts";
+import ChannelWrite, { type StreamEventPayload } from "../../src/core/ChannelWrite.ts";
 import { Results, type SchemeCtx } from "@plurnk/plurnk-schemes";
 import {
     openMigrated, seedEnvelope, seedEntryWithChannel,
@@ -232,7 +232,7 @@ test("daemon fires stream/event per chunk with growing contentLength", async () 
             const captured = subscribeNotifications(ws, "stream/event");
             const entryId = await seedEntryWithChannel(db, { workspaceId, content: "", state: "active" });
 
-            const notify = (sid: number, ev: { entryId: number; channel: string; state: string; contentLength: number }) =>
+            const notify = (sid: number, ev: StreamEventPayload) =>
                 daemon.notifyStreamEvent(sid, ev);
             // Three separate chunks → three separate events, fired AS content grows.
             await ChannelWrite.appendToChannel(db, { entryId, channel: "body", chunk: "aa", notify });
@@ -299,7 +299,7 @@ test("state transition fires metadata-only stream/event with new state", async (
             // Pre-existing content so we can assert contentLength is carried, not recomputed-from-chunk.
             const entryId = await seedEntryWithChannel(db, { workspaceId, content: "finished", state: "active" });
 
-            const notify = (sid: number, ev: { entryId: number; channel: string; state: string; contentLength: number }) =>
+            const notify = (sid: number, ev: StreamEventPayload) =>
                 daemon.notifyStreamEvent(sid, ev);
             await ChannelWrite.setChannelState(db, { entryId, channel: "body", state: "closed", notify });
             await flush();
@@ -311,9 +311,9 @@ test("state transition fires metadata-only stream/event with new state", async (
             assert.equal(evt.channel, "body");
             assert.equal(evt.state, "closed", "carries the NEW state (active → closed)");
             assert.equal(evt.contentLength, "finished".length, "carries the existing content length (8)");
-            assert.equal(evt.target, "worker:///x", "carries the entry's target URI (#179)");
+            assert.equal(evt.target, "worker:///x", "carries the entry's canonical target URI");
             // Metadata only — never the content body.
-            assert.deepEqual(Object.keys(evt).toSorted(), ["channel", "contentLength", "entryId", "mimetype", "state", "target", "workspaceId"], "payload is metadata-only (ids/state/length/mimetype + target URI per #179, + workspace scope per #191); no content field");
+            assert.deepEqual(Object.keys(evt).toSorted(), ["channel", "contentLength", "entryId", "mimetype", "state", "target", "workspaceId"], "payload is metadata-only (identity/state/length/mimetype + workspace scope); no content field");
         } finally { ws.close(); }
     });
 });
