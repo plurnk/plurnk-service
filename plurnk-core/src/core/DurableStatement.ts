@@ -31,6 +31,7 @@ export default class DurableStatement {
 
     static #projectPath(path: ParsedPath): ParsedPath;
     static #projectPath(path: null): null;
+    static #projectPath(path: ParsedPath | null): ParsedPath | null;
     static #projectPath(path: ParsedPath | null): ParsedPath | null {
         if (path === null || path.kind === "local") return path;
         if (path.username === null && path.password === null && (path.headers?.length ?? 0) === 0) {
