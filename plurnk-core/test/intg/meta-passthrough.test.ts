@@ -1,7 +1,5 @@
-// #252 — the provider→client metadata passthrough. The service forwards the provider's
-// opaque `meta` blob to the client (in the loop usage payload), stored UNENFORCED: it never
-// reads a field within. The metadata shape belongs to the provider
-// framework's (it normalizes) and the client's (it renders), never the service's.
+// {§meta-passthrough}: provider metadata reaches the client through loop usage
+// as an opaque, unenforced blob.
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -32,7 +30,7 @@ class MetaProvider implements Provider {
     }
 }
 
-test("a provider's opaque meta blob rides through to the loop usage payload, unenforced (#252)", async () => {
+test("a provider's opaque meta blob rides through to the loop usage payload, unenforced", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `meta-${crypto.randomUUID()}`);

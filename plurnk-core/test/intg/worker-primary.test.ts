@@ -1,4 +1,4 @@
-// #522 — the PRIMARY worker of a lineage: the no-parent root reached by walking parent_worker_id up.
+// {§worker-primary}: the PRIMARY worker is the no-parent lineage root.
 // The endpoint routes primary→strong / spawned→cheap by `Worker-Primary == Worker-Id`, so the value
 // must be the TRUE root (not "first seen"), resolvable on EVERY worker including the primary's own
 // (where it equals itself). Core supplies it on the first-party metadata channel; providers emits

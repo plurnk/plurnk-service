@@ -11,7 +11,8 @@ INSERT INTO turns (loop_id, sequence, status, packet, version) VALUES ($loop_id,
 INSERT INTO turns (loop_id, sequence, status, packet, usage_prompt) VALUES ($loop_id, $sequence, $status, $packet, $val);
 
 -- PREP: test_turns_insert_with_prompt_and_context_size
--- #274 — a turn carrying both window occupancy (usage_prompt) and the model's window (usage_prompt_budget).
+-- A turn carrying billed prompt usage and its effective packet allowance.
+-- {§tokenomics-client-gauge}
 INSERT INTO turns (loop_id, sequence, status, packet, usage_prompt, usage_prompt_budget) VALUES ($loop_id, $sequence, $status, $packet, $prompt, $context_size);
 
 -- PREP: test_turns_insert_with_usage_completion

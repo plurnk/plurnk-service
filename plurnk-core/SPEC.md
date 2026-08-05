@@ -1838,7 +1838,7 @@ active lifecycle behind.
 | Event                                                        | Payload | When fired |
 |--------------------------------------------------------------|---------|------------|
 | §notifications-log-entry-notify `log/entry`                  | `{ entry: LogEntry }` | A `log_entries` row is committed. |
-| `loop/terminated`                                            | `{ workerId, loopId, result, hitMaxTurns, turnIds, usage }` | One loop reaches a terminal state. `result` is the exact universal operation result, including its RFC 9457 Problem Details on failure. Worker and loop are an inseparable owning coordinate. |
+| §notifications-loop-terminated `loop/terminated`             | `{ workerId, loopId, result, hitMaxTurns, turnIds, usage }` | One loop reaches a terminal state. `result` is the exact universal operation result, including its RFC 9457 Problem Details on failure. Worker and loop are an inseparable owning coordinate. |
 | `loop/proposal`                                              | contracts-owned `ProposalProjection` | Dispatch pauses on a durable 202 proposal. `disposition` is the sole authority for whether a client presents review UI; live and reconnect share {§proposal-projection}. |
 | `workspace/created`                                          | `{ id, name, projectRoot }` | A workspace is created. This is the only current global event. |
 | `workspace/branch-batch`                                     | Branch-batch lifecycle payload | A branch batch enters queued, running, completed, failed, or recovery-required state. |
@@ -1972,6 +1972,16 @@ time of measurement.
   configured virtual ceiling still bounds PLURNK's packet without pretending
   to describe provider physics. An over-policy recovery candidate cannot be
   physically authorized without a known provider window and output envelope.
+
+§tokenomics-client-gauge **The client gauge pairs current occupancy with its
+effective ceiling.** A model switch changes both latest-turn values together;
+the loop-total usage fields remain billing evidence, not gauge inputs.
+
+| Surface                    | `contextTokens`                                                        | `promptBudget`                                                                |
+| -------------------------- | ---------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| `loop/terminated.usage`    | Latest provider attempt on the latest turn; `0` when none completed    | Latest turn's enforced packet allowance; `null` when uncapped or unknown      |
+| `providers.list` alias row | not present                                                            | Active alias's current enforced packet allowance; `null` when not established |
+
 - **Derivation is eager and exhaustive.** Workspace creation and searchable-resource changes start one coalesced warm. The first model turn joins that warm; later turns derive intervening changes before dispatch. No model operation observes partial graph or vector coverage. A semantic query ranks every eligible candidate in scope, so lexical overlap never gates vector recall. With no embedder, readable-content FTS is the explicit keyword fallback. Progress notices make the wait visible; latency is never hidden by partial semantics. {§derivation-exhaustive}
 - §membership-binary-sniff **Binary truth beats the label; no entry dominates the corpus.** A tracked member whose HEAD bytes contain NUL is materialized as a binary marker (empty body, `application/octet-stream`, READ-415) **regardless of what extension-based detection claims**; byte-level evidence outranks a default label. Every eligible text is tiled losslessly to the embedder window and every tile is embedded before its derivation attaches; semantic ranking max-pools the best chunk per candidate.
 - §tokenomics-agnostic-ruler **One model-agnostic ruler.** The daemon runs workers on different models in one workspace concurrently, while catalog and log accounting are workspace-wide. The complete model-facing ledger therefore uses `rulerCount = ceil(chars/2)`: one content has one number regardless of which model reads it, with no per-model workspace state or recount pass. Under-policy packets rely on that ruler. Only an over-policy packet being considered for a recovery turn invokes the shipping provider's request-shaped physical measurement.

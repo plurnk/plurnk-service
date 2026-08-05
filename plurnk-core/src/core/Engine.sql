@@ -107,10 +107,9 @@ ORDER BY et.entry_id, et.tag;
 SELECT COALESCE(MAX(sequence), 0) + 1 AS next FROM turns WHERE loop_id = $loop_id;
 
 -- PREP: engine_loop_usage
--- Per-loop usage totals — SUM the loop's turns ({§tokenomics} stores usage per turn).
--- Surfaced on loop/terminated (#197). `context` is the LAST turn's prompt tokens — the
--- latest provider attempt's honest window-occupancy numerator (#263), distinct from the summed
--- `prompt` (which includes every billed retry and overcounts a context that grows across turns).
+-- Per-loop usage totals and latest-turn gauge ({§tokenomics-client-gauge}),
+-- surfaced on {§notifications-loop-terminated}. `context` is the latest
+-- provider attempt on the latest turn, distinct from summed billed `prompt`.
 SELECT COALESCE(SUM(usage_prompt), 0)     AS prompt,
        COALESCE(SUM(usage_completion), 0) AS completion,
        COALESCE(SUM(usage_cost_usd), 0)  AS cost_usd,
@@ -127,11 +126,10 @@ SELECT COALESCE(SUM(usage_prompt), 0)     AS prompt,
            ORDER BY a.sequence DESC
            LIMIT 1
        ) AS context,
-       -- #274 — the LAST turn's effective prompt budget (denominator), so numerator + denominator
-       -- come from the same loop/model policy; NULL when no ceiling was available.
+       -- Latest turn's effective packet allowance; NULL when uncapped or unknown.
+       -- {§tokenomics-client-gauge}
        (SELECT usage_prompt_budget FROM turns WHERE loop_id = $loop_id ORDER BY sequence DESC LIMIT 1) AS context_size,
-       -- #252 — the opaque provider meta blob from the LATEST turn (for example, a
-       -- point-in-time snapshot; latest wins). Service-unenforced passthrough to the client.
+       -- Latest turn's opaque provider metadata. {§meta-passthrough}
        (SELECT meta FROM turns WHERE loop_id = $loop_id ORDER BY sequence DESC LIMIT 1) AS meta
 FROM turns WHERE loop_id = $loop_id;
 
@@ -574,10 +572,8 @@ UPDATE turns SET status = $status WHERE id = $id;
 SELECT sequence FROM loops WHERE id = $loop_id;
 
 -- PREP: engine_worker_lineage_root
--- #522 — the PRIMARY worker: the no-parent root the lineage descends from (walk parent_worker_id
--- up). A worker with no parent returns ITSELF (the primary's own turns stamp Worker-Primary ==
--- Worker-Id). The endpoint routes primary→strong, spawned→cheap by equality, so this is the
--- root-of-tree grouping key. Always resolvable (the chain is finite + acyclic — parent != id CHECK).
+-- The no-parent root of a worker lineage; a root worker returns itself.
+-- {§worker-primary}
 WITH RECURSIVE lineage(id, parent_worker_id) AS (
     SELECT id, parent_worker_id FROM workers WHERE id = $worker_id
     UNION ALL

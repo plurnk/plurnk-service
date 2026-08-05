@@ -248,9 +248,8 @@ CREATE TABLE IF NOT EXISTS turns (
     usage_reasoning  INTEGER NOT NULL DEFAULT 0 CHECK (usage_reasoning >= 0),
     usage_cached     INTEGER NOT NULL DEFAULT 0 CHECK (usage_cached >= 0),
     usage_cost_usd   REAL    NOT NULL DEFAULT 0 CHECK (usage_cost_usd >= 0),
-    -- #274 — the context window of the model that RAN this turn (provider.contextSize), so the
-    -- gauge denominator matches the loop's actual model under any /model switch. NULL = the
-    -- provider can't report a window (the client omits the gauge).
+    -- Effective packet allowance for this turn's provider and policy; NULL is
+    -- uncapped or unknown. {§tokenomics-client-gauge}
     usage_prompt_budget INTEGER                  CHECK (usage_prompt_budget IS NULL OR usage_prompt_budget >= 1),
     -- {§packet-stored-shape}: NULL means no model request was assembled. A
     -- present packet is either the measured request or that request extended
@@ -283,10 +282,8 @@ CREATE TABLE IF NOT EXISTS turns (
     ),
     finish_reason    TEXT,
     model            TEXT    NOT NULL DEFAULT 'unknown' CHECK (length(model) >= 1),
-    -- #252 — opaque provider→client metadata passthrough (e.g. balancePico). Stored
-    -- UNENFORCED (json_valid only, no schema): the canonical-field contract lives between
-    -- the provider framework (normalizes) and the client (renders) — the service authors
-    -- only the engine-stamped rail keys ({§rail-truth-engine-verdict}, #534).
+    -- Opaque provider→client metadata plus engine rail keys; JSON-valid but
+    -- otherwise unenforced. {§meta-passthrough}, {§rail-truth-engine-verdict}
     meta             TEXT    NOT NULL DEFAULT '{}'     CHECK (json_valid(meta)),
     FOREIGN KEY (loop_id) REFERENCES loops(id) ON DELETE CASCADE
 ) STRICT;

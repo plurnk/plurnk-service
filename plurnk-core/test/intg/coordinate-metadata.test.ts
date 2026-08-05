@@ -36,7 +36,7 @@ test("[#391] generate carries the turn coordinate — workspace id + loop/turn S
     } finally { await db.close(); }
 });
 
-test("generate carries primaryWorkerId — a spawned child's differs from its Worker-Id; the root's equals it (#522)", async () => {
+test("generate carries primaryWorkerId — a spawned child's differs from its Worker-Id; the root's equals it", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `primary-meta-${crypto.randomUUID()}`);

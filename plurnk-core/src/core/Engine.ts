@@ -520,20 +520,11 @@ export default class Engine {
         return text;
     }
 
-    // Per-loop usage totals (#197): SUM the loop's turns (usage is stored per
-    // turn, {§tokenomics}). Surfaced on loop/terminated so clients render real
-    // token/cost numbers. costUsd is the stored USD unit.
-    // #345 — the client-facing budget denominator, ONE meaning on every surface: the prompt
-    // budget the packet actually lives under, including optional virtual pressure.
-    // #522 — the PRIMARY worker of a turn's lineage: the no-parent root reached by walking
-    // parent_worker_id up. A no-parent worker is its OWN primary (stamped on the primary's own
-    // turns). Supplied on the first-party metadata channel alongside Worker-Id; the endpoint routes
-    // primary→strong / spawned→cheap by `Worker-Primary == Worker-Id` equality. Fail-hard if a
-    // worker resolves to no root — that is a corrupt lineage (a cycle the parent!=id CHECK forbids),
-    // never a silent "assume primary."
+    // A lineage's no-parent root; a root worker resolves to itself. Fail hard
+    // when corruption leaves a worker without one. {§worker-primary}
     async resolveWorkerPrimary(workerId: number): Promise<number> {
         const root = await this.#db.engine_worker_lineage_root.get<{ id: number }>({ worker_id: workerId });
-        if (root === undefined) throw new Error(`resolveWorkerPrimary: worker ${workerId} has no lineage root — corrupt parent chain (#522)`);
+        if (root === undefined) throw new Error(`resolveWorkerPrimary: worker ${workerId} has no lineage root — corrupt parent chain`);
         return root.id;
     }
 
@@ -541,19 +532,19 @@ export default class Engine {
         return this.#packets.promptBudgetFor(provider);
     }
 
+    // Loop totals are billing evidence; the latest-turn pair is the client
+    // occupancy gauge. {§tokenomics-client-gauge}, {§notifications-loop-terminated}
     async loopUsage(loopId: number): Promise<{ promptTokens: number; completionTokens: number; costUsd: number; contextTokens: number; promptBudget: number | null; meta: Record<string, unknown> }> {
         const row = await this.#db.engine_loop_usage.get<{ prompt: number; completion: number; cost_usd: number; context: number | null; context_size: number | null; meta: string | null }>({ loop_id: loopId });
         return {
             promptTokens: row?.prompt ?? 0,
             completionTokens: row?.completion ?? 0,
             costUsd: row?.cost_usd ?? 0,
-            // #263 — the last turn's prompt tokens = current window occupancy (gauge numerator), NOT the
-            // summed promptTokens above, which overcounts a context that grows across turns.
+            // Latest provider attempt on the latest turn, not the billed total.
             contextTokens: row?.context ?? 0,
-            // #274 — the last turn's effective prompt budget (denominator); null when uncapped.
+            // Latest effective packet allowance; null when uncapped or unknown.
             promptBudget: row?.context_size ?? null,
-            // #252 — the latest turn's opaque provider blob, parsed for the wire. Empty {} when the
-            // provider returned no meta. The service forwards it; it never reads a field within.
+            // Latest turn's opaque provider metadata. {§meta-passthrough}
             meta: JSON.parse(row?.meta ?? "{}") as Record<string, unknown>,
         };
     }
@@ -1251,7 +1242,9 @@ export default class Engine {
                 await this.#db.engine_close_turn.run({
                     id: turnId, status: 413, packet: StoredPacket.stringify(requestPacket),
                     usage_prompt: 0, usage_completion: 0, usage_reasoning: 0, usage_cached: 0, usage_cost_usd: 0,
-                    usage_prompt_budget: this.#packets.promptBudgetFor(provider), // #274 — the enforced model-facing budget, even on a hard-413 turn
+                    // The attempted turn retains its effective allowance even
+                    // when no provider exchange completed. {§tokenomics-client-gauge}
+                    usage_prompt_budget: this.#packets.promptBudgetFor(provider),
                     finish_reason: "budget_hard_stop", model: provider.model, meta: "{}",
                 });
                 return {
@@ -1593,12 +1586,11 @@ export default class Engine {
             usage_reasoning: usage.reasoning,
             usage_cached: usage.cached,
             usage_cost_usd: usageCostUsd,
-            usage_prompt_budget: this.#packets.promptBudgetFor(provider), // #274 — the enforced model-facing prompt budget
+            usage_prompt_budget: this.#packets.promptBudgetFor(provider), // {§tokenomics-client-gauge}
             finish_reason: callMetadata.finishReason,
             model: callMetadata.model,
-            // #252 — opaque provider→client metadata passthrough (for example, the
-            // provider normalized), plus the ONE service-authored carve-out: the engine's rail
-            // keys ({§rail-truth-engine-verdict}) merge over provider observations.
+            // Opaque provider metadata plus engine-authored rail keys.
+            // {§meta-passthrough}, {§rail-truth-engine-verdict}
             meta: JSON.stringify({ ...(response.meta ?? {}), ...(railKeys ?? {}) }),
         });
 

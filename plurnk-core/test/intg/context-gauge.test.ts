@@ -6,10 +6,10 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop } from "./_helpers.ts";
 import { sendStmt } from "./_dsl.ts";
 
-// #263 — loopUsage.contextTokens is the gauge's numerator: the LAST turn's prompt tokens (window
-// occupancy), distinct from the summed promptTokens (cost), which overcounts a growing context.
+// {§tokenomics-client-gauge}: loop totals are billing evidence; the latest
+// attempt occupancy and latest turn allowance form the client gauge.
 
-test("[#263] loopUsage.contextTokens is the last turn's prompt, not the summed total", async () => {
+test("loopUsage.contextTokens is the latest turn's prompt, not the summed total", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `ctx-${crypto.randomUUID()}`);
@@ -37,11 +37,7 @@ test("[#263] loopUsage.contextTokens is the last turn's prompt, not the summed t
     } finally { await db.close(); }
 });
 
-// #274 — loopUsage.promptBudget is the gauge's DENOMINATOR: the LAST turn's PROMPT BUDGET
-// (effective window minus the partition reserves — owner ruling: the raw n_ctx overstates the
-// usable room by the reserve total). A /model-switched loop reports the budget of the model
-// that actually ran (not the stale active one).
-test("[#274] loopUsage.promptBudget is the last turn's effective prompt ceiling — survives a model switch", async () => {
+test("loopUsage.promptBudget follows the latest turn across a model switch", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `ctx-size-${crypto.randomUUID()}`);
@@ -69,7 +65,7 @@ test("[#274] loopUsage.promptBudget is the last turn's effective prompt ceiling 
     } finally { await db.close(); }
 });
 
-test("[#274] loopUsage.promptBudget is null when the provider reports no window", async () => {
+test("loopUsage.promptBudget is null when the provider reports no window", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `ctx-null-${crypto.randomUUID()}`);
@@ -115,7 +111,7 @@ test("loopUsage does not reuse an earlier turn's context when the latest provide
     } finally { await db.close(); }
 });
 
-test("[#274] runTurn stores the PROMPT BUDGET, not the raw window — the client gauge never overstates room", async () => {
+test("runTurn stores the effective prompt budget, not the raw context window", async () => {
     // Mock-bootstrap partition: REASONING=256 COMPLETION=1024 SAFETY=64. A 8192-window model's stored
     // denominator = 8192 - 1344 = 6848 — the room the packet actually lives under.
     const db = await openMigrated();
@@ -132,7 +128,7 @@ test("[#274] runTurn stores the PROMPT BUDGET, not the raw window — the client
     } finally { await db.close(); }
 });
 
-test("[#274] providers.list advertises the EFFECTIVE prompt budget — one denominator meaning on every surface (#345)", async () => {
+test("providers.list advertises the effective prompt budget", async () => {
     const { rpcCall, connect, withDaemon, makeMockResponse } = await import("./_rpc.ts");
     const mock = new Mock({ contextWindow: 8192, responses: [makeMockResponse("<<SEND[200]:done:SEND", 10)] });
     await withDaemon(mock, async (_db, _daemon, addr) => {
@@ -143,7 +139,7 @@ test("[#274] providers.list advertises the EFFECTIVE prompt budget — one denom
             const result = resp.result as { aliases: Array<{ active: boolean; promptBudget: number | null }> };
             const active = result.aliases.find((a) => a.active);
             const expected = 8192 - Number(process.env.PLURNK_PROVIDERS_REASONING_RESERVE) - Number(process.env.PLURNK_PROVIDERS_COMPLETION_RESERVE) - Number(process.env.PLURNK_SERVICE_SAFETY);
-            assert.equal(active?.promptBudget, expected, `the client's gauge denominator is the budget (${expected}), never the raw window (8192) — 'ctx 38%/49k' against a 35k reality was the lie`);
+            assert.equal(active?.promptBudget, expected, `the gauge denominator is the effective budget (${expected}), not the raw window (8192)`);
         } finally { ws.close(); }
     });
 });
