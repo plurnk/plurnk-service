@@ -73,14 +73,16 @@ To launch a source-built daemon and the outside `plurnk` client as one
 reproducible candidate:
 
 ```sh
+PLURNK_CLIENT_CHECKOUT=/path/to/open-client \
 PLURNK_CANDIDATE_MODEL=<configured-alias> npm run candidate -- <client arguments>
 ```
 
-By default the launcher expects the client checkout at `../plurnk`. Set
-`PLURNK_CLIENT_CHECKOUT` to use another checkout. It builds both projects,
-creates an isolated database, reports their provenance, and preserves a digest
-under `PLURNK_BENCHMARKS`. Repeated experiment harnesses may build both
-checkouts once, then set `PLURNK_CANDIDATE_SKIP_BUILD=1` for the frozen build.
+`PLURNK_CLIENT_CHECKOUT` explicitly names the outside client checkout; the
+launcher never guesses one from the service's parent directory. It builds both
+projects, creates an isolated database, reports their provenance, and preserves
+a digest in the shared `../benchmarks` tree unless `PLURNK_BENCHMARKS` selects
+another path. Repeated experiment harnesses may build both checkouts once, then
+set `PLURNK_CANDIDATE_SKIP_BUILD=1` for the frozen build.
 
 ## Packages
 

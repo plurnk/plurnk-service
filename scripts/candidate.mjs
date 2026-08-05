@@ -3,15 +3,15 @@ import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { candidateDaemonArgs } from "./candidate-daemon.mjs";
 import { resolveCandidateModel } from "./candidate-model.mjs";
+import { resolveCandidateTopology } from "./candidate-topology.mjs";
 import { parseCandidateClientEnv } from "./candidate-env.mjs";
 
 const root = resolve(import.meta.dirname, "..");
-const clientRoot = resolve(process.env.PLURNK_CLIENT_CHECKOUT ?? resolve(root, "..", "plurnk"));
-const benchmarks = resolve(process.env.PLURNK_BENCHMARKS ?? resolve(root, "..", "..", "benchmarks"));
+const { clientRoot, benchmarks, candidateDir } = resolveCandidateTopology(root, process.env);
 mkdirSync(benchmarks, { recursive: true });
-const stateDir = process.env.PLURNK_CANDIDATE_DIR === undefined
+const stateDir = candidateDir === undefined
     ? mkdtempSync(resolve(benchmarks, "candidate-"))
-    : resolve(process.env.PLURNK_CANDIDATE_DIR);
+    : candidateDir;
 mkdirSync(stateDir, { recursive: true });
 const dbPath = resolve(stateDir, "plurnk.db");
 const candidateModel = resolveCandidateModel(process.env);
