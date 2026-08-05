@@ -56,9 +56,8 @@ interface ExecAttrs {
 // the scheme through ctx.executors ({§exec-registry-resolves}). Each runtime tag
 // resolves to its sibling executor; the scheme itself stays runtime-agnostic.
 
-// The local path a subprocess EXEC's `(target)` slot names — a bare local path or a file:/// URL (both
-// decode to a filesystem path). Stat-routed at dispatch (#462): a directory becomes cwd, a file is the
-// program/data-source. A plurnk-scheme target is NOT local — schemeSourceOf handles that.
+// Extract the local arm of {§exec-target-routing}; non-file schemes are
+// classified separately by schemeSourceOf.
 const localPathFromTarget = (target: ExecStatement["target"]): string | null => {
     if (target === null) return null;
     if (target.kind === "local") return target.raw;
@@ -263,13 +262,10 @@ export default class Exec extends CoreSchemeAdapterBase {
     async exec(statement: ExecStatement, ctx: CoreSchemeCallContext): Promise<ExecResult> {
         const core = this.coreContext(ctx);
         let command = statement.body ?? "";
-        // #201 — a plurnk-scheme target carries content the scheme resolves at
-        // apply-time; an empty body is then legal (the target IS the script).
+        // Non-file data sources resolve after acceptance. {§exec-target-routing}
         const schemeSource = schemeSourceOf(statement.target);
-        // #462 — stat-route the local (target): a DIRECTORY overrides cwd (run the body IN it); a FILE is
-        // the program/data-source the executor runs (body = stdin). A stat-miss falls to the file arm so the
-        // runtime reports its own not-found, never a dispatch 400. cwd otherwise = the workspace workspace
-        // (project_root) — the directory File writes to, and what a data-source target resolves against.
+        // A local directory overrides cwd; every other local path remains the
+        // executor target. {§exec-target-routing}
         const workspaceRow = await core.db.envelope_get_workspace.get<{ project_root: string | null }>({ id: core.workspaceId });
         const projectRoot = workspaceRow?.project_root ?? null;
         const localTarget = localPathFromTarget(statement.target);
@@ -277,11 +273,10 @@ export default class Exec extends CoreSchemeAdapterBase {
         let cwd: string | null = projectRoot;
         if (localTarget !== null) {
             const abs = projectRoot !== null ? resolve(projectRoot, localTarget) : localTarget;
-            try { if ((await stat(abs)).isDirectory()) { cwd = abs; routedTarget = null; } } catch { /* stat-miss → file arm; the runtime reports its own not-found */ }
+            try { if ((await stat(abs)).isDirectory()) { cwd = abs; routedTarget = null; } } catch { /* Absence takes the file arm; other stat failures: #185. */ }
         }
-        // Empty body is legal when the target IS the program: a #201 scheme target (the target is the
-        // script) or a #462 FILE target (run it, no stdin). Empty body with a directory target (nothing
-        // to run) or no target at all → 400.
+        // An empty body requires a file/program or scheme command source.
+        // {§exec-target-routing}
         if (command.length === 0 && schemeSource === null && routedTarget === null) {
             return Results.failure(
                 "scheme:exec",
@@ -372,9 +367,8 @@ export default class Exec extends CoreSchemeAdapterBase {
         // {§executor-effect}). Leaves never receive authored command text.
         const effectTarget = effectTargetOf(statement.target, target, schemeSource, command);
         const effect = resolved.executor.effect(effectTarget);
-        // cwd is the workspace WORKSPACE (project_root) — the directory File writes to and a relative
-        // data-source target resolves against ({§executor-sinks}) — UNLESS a #462 directory target overrode
-        // it above, in which case the body runs in that directory. A file/data-source target never moves cwd.
+        // cwd is the workspace project_root unless target routing selected a
+        // directory override. {§exec-target-routing}, {§executor-sinks}
         // Pathname is assigned by Dispatcher.#writeLog as <runtime>/<loop_seq>/
         // <turn_seq>/<sequence> (executor-domain + coordinate, e.g. sh/1/1/2).
         // `pathname` is stamped into attrs at log-write time; applyResolution
@@ -419,10 +413,9 @@ export default class Exec extends CoreSchemeAdapterBase {
             throw new InvalidOperationResultError("The accepted EXEC proposal is missing its canonical effect fact.");
         }
 
-        // #201 — resolve a scheme-URI target to content (executors stay scheme-blind).
-        // Empty body → the resolved content IS the command (run a stored script).
-        // Non-empty body → materialize the content to a temp file whose path becomes
-        // the runtime's data-source TARGET (the input for filters/sqlite/wasm).
+        // Resolve a scheme target after acceptance: empty body uses the content
+        // as the command; otherwise a temporary file becomes the data target.
+        // {§exec-target-routing}
         let tempPath: string | null = null;
         if (attrs.schemeSource !== undefined) {
             const sourceTarget = parsePath(attrs.schemeSource);
@@ -836,8 +829,8 @@ export default class Exec extends CoreSchemeAdapterBase {
             // enqueued as `.then(op, op)`, so entryChain never rejects — awaiting it in finally is safe.
             await entryChain;
             if (timeoutTimer !== null) clearTimeout(timeoutTimer); // a finished spawn leaves no pending timer
-            // #201 — a materialized data-source temp file outlives the spawn it fed;
-            // unlink it once the worker settles (open-unlink is safe on Linux).
+            // A materialized source lives through its spawn. Cleanup policy: #184.
+            // {§exec-target-routing}
             if (tempPath !== null) await unlink(tempPath).catch(() => {});
             this.#activeAborts.get(subscriptionId)?.unlink();
             this.#activeAborts.delete(subscriptionId);

@@ -225,19 +225,17 @@ test("streaming exec: the workspace catalog picks up partial channel content bet
     } finally { await db.close(); }
 });
 
-// #500 — the accept-half of the #462 stat-route: an EMPTY body with a LOCAL FILE target is the
-// "run this script" form (transient exec, owner ruling — the interpreter reads the file, no exec
-// bit consulted or set). run112: EXEC[sh](demo_greet.sh)::EXEC died 500 missing_command at ACCEPT
-// while the propose-half had already legalized it — every empty-body file target, bare and tagged.
-test("[#500] EXEC[sh](script-file) with an empty body runs the file through accept — a 0o644 EDIT-shaped script, mode untouched", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "exec500-"));
+// {§exec-target-routing}: accepting an empty-body file target runs the file
+// without changing its authored mode.
+test("an empty-body 0o644 script target survives acceptance and runs", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "exec-file-target-"));
     const db = await openMigrated();
     try {
-        await writeFile(join(dir, "demo_greet.sh"), "echo greetings-from-500\n", { mode: 0o644 });
+        await writeFile(join(dir, "demo_greet.sh"), "echo greetings-from-file-target\n", { mode: 0o644 });
         const schemes = new SchemeRegistry();
         const engine = new Engine({ db, schemes });
         engine.setExecutors(await testExecutors());
-        const workspaceId = await insertWorkspace(db, `exec500-${crypto.randomUUID()}`);
+        const workspaceId = await insertWorkspace(db, `exec-file-target-${crypto.randomUUID()}`);
         await rootWorkspace(db, workspaceId, dir);
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1, "run the script");
@@ -259,7 +257,7 @@ test("[#500] EXEC[sh](script-file) with an empty body runs the file through acce
         const entryRow = await db.test_get_entry_by_pathname_scheme.get<{ id: number }>({ scheme: "sh", pathname: "/1/1/1" });
         assert.ok(entryRow, "the sh exec entry exists at /1/1/1");
         const ch = await db.test_get_channel.get<{ content: string }>({ entry_id: entryRow!.id, name: "stdout" });
-        assert.match(ch?.content ?? "", /greetings-from-500/, "the script RAN — its stdout arrived");
+        assert.match(ch?.content ?? "", /greetings-from-file-target/, "the script ran and its stdout arrived");
         const mode = (await stat(join(dir, "demo_greet.sh"))).mode & 0o777;
         assert.equal(mode, 0o644, "transient exec: the mode is untouched — no chmod magic");
     } finally { await db.close(); await rm(dir, { recursive: true, force: true }); }

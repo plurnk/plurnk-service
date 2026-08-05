@@ -80,7 +80,7 @@ test("Exec.applyResolution: malformed accepted proposal state remains an interna
     });
 });
 
-test("EXEC[sh](worker:///script) empty body → resolves the scheme content as the command (#201)", async () => {
+test("{§exec-target-routing} an empty-body scheme target resolves as the command", async () => {
     await withWorkspace(async (ctx) => {
         // A stored script lives at worker:///script; running it runs its content.
         await seedEntryWithChannel(ctx.db, { workspaceId: ctx.workspaceId, scheme: "worker", pathname: "/script", channel: "body", content: "echo resolved-from-scheme", state: "static" });
@@ -139,7 +139,7 @@ test("bare EXEC defaults to sh and proposes with {runtime, cwd, command, pathnam
     });
 });
 
-test("EXEC: the (target) slot lands in attrs.target (the data source), NOT attrs.cwd (execs 0.4.26 #15)", async () => {
+test("{§exec-target-routing} the target slot remains distinct from cwd", async () => {
     await withWorkspace(async (ctx) => {
         const idDeferred = deferred<number>();
         // A data-source runtime with a target — EXEC[jq](data/users.json):length. The target is the
@@ -162,9 +162,9 @@ test("EXEC: the (target) slot lands in attrs.target (the data source), NOT attrs
     });
 });
 
-test("file (target) + empty body runs the file, not the old empty-body 400 (#462)", async () => {
+test("{§exec-target-routing} a file target with an empty body runs the file", async () => {
     await withWorkspace(async (ctx) => {
-        const root = await mkdtemp(join(tmpdir(), "exec462-file-"));
+        const root = await mkdtemp(join(tmpdir(), "exec-target-file-"));
         try {
             await writeFile(join(root, "greet.sh"), "echo hi\n");
             await rootWorkspace(ctx.db, ctx.workspaceId, root);
@@ -186,9 +186,9 @@ test("file (target) + empty body runs the file, not the old empty-body 400 (#462
     });
 });
 
-test("directory (target) overrides cwd; the body is the command run there (#462)", async () => {
+test("{§exec-target-routing} a directory target overrides cwd", async () => {
     await withWorkspace(async (ctx) => {
-        const root = await mkdtemp(join(tmpdir(), "exec462-dir-"));
+        const root = await mkdtemp(join(tmpdir(), "exec-target-directory-"));
         try {
             await mkdir(join(root, "sub"));
             await rootWorkspace(ctx.db, ctx.workspaceId, root);
@@ -210,9 +210,9 @@ test("directory (target) overrides cwd; the body is the command run there (#462)
     });
 });
 
-test("directory (target) + empty body → 400 — a directory has nothing to run (#462)", async () => {
+test("{§exec-target-routing} an empty-body directory target is refused", async () => {
     await withWorkspace(async (ctx) => {
-        const root = await mkdtemp(join(tmpdir(), "exec462-diremp-"));
+        const root = await mkdtemp(join(tmpdir(), "exec-target-empty-directory-"));
         try {
             await mkdir(join(root, "sub"));
             await rootWorkspace(ctx.db, ctx.workspaceId, root);
