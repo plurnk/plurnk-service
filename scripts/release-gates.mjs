@@ -18,6 +18,7 @@ const { values } = parseArgs({ options: { only: { type: "string" } } });
 const root = JSON.parse(await fs.readFile("package.json", "utf8"));
 const dirs = values.only ? [values.only] : root.workspaces;
 
+await run("node", ["scripts/package-build-policy.mjs"]);
 const provenanceArgs = ["scripts/package-provenance.mjs", "--pack"];
 if (values.only !== undefined) provenanceArgs.push("--only", values.only);
 await run("node", provenanceArgs, { maxBuffer: 64 * 1024 * 1024 });

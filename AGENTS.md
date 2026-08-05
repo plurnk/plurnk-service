@@ -53,6 +53,12 @@ Internal workspace dependencies and plugin peer dependencies use their declared
 compatible semver ranges; do not force incompatible transitive versions with
 root overrides.
 
+Every publishable workspace whose package projection includes `dist` owns one
+`build:clean` step, begins its complete public `build` with that step, keeps
+emission-only work in `build:dist`, and runs the complete build from `prepack`.
+The root package-build policy and release gates enforce this projection; do not
+introduce package-local cleanup variants.
+
 ## Monorepo contracts
 
 - JSON Schema is authoritative for shared wire shapes.

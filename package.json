@@ -49,7 +49,7 @@
         "prepare": "git config core.hooksPath .githooks",
         "metadata:write": "node scripts/package-provenance.mjs --write",
         "test:metadata": "node scripts/package-provenance.mjs",
-        "test:lint": "npm run test:metadata && node scripts/dependency-policy.mjs && node scripts/spec-references.mjs && npm run test:lint --workspaces --if-present",
+        "test:lint": "npm run test:metadata && node scripts/dependency-policy.mjs && node scripts/package-build-policy.mjs && node scripts/spec-references.mjs && npm run test:lint --workspaces --if-present",
         "test:unit": "node --test 'scripts/*.test.mjs' && npm run test:unit --workspaces --if-present",
         "test:intg": "npm run test:intg --workspaces --if-present",
         "test": "node scripts/drill.mjs",

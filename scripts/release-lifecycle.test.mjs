@@ -21,6 +21,9 @@ test("release lifecycle stamps, commits, then builds and gates before script-fre
     assert.match(publish, /\["publish", "-w", name, "--access", "public", "--ignore-scripts"\]/);
 
     const gateSweep = await readFile(new URL("./release-gates.mjs", import.meta.url), "utf8");
+    const buildPolicy = gateSweep.indexOf('["scripts/package-build-policy.mjs"]');
+    const packedCandidates = gateSweep.indexOf('["scripts/package-provenance.mjs", "--pack"]');
+    assert.ok(buildPolicy >= 0 && buildPolicy < packedCandidates);
     assert.match(
         gateSweep,
         /\["scripts\/package-provenance\.mjs", "--pack"\]/,
