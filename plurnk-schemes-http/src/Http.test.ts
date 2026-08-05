@@ -2052,10 +2052,24 @@ for (const { name, ageMs, ttl, cacheHeaders, expectedFetch } of [
         expectedFetch: true,
     },
     {
+        name: "qualified no-cache still requires validation",
+        ageMs: 1000,
+        ttl: "60000",
+        cacheHeaders: 'cache-control: no-cache="set-cookie", max-age=60',
+        expectedFetch: true,
+    },
+    {
+        name: "a comma inside an extension argument is not a no-store directive",
+        ageMs: 1000,
+        ttl: "60000",
+        cacheHeaders: 'cache-control: community="alpha,no-store", max-age=60',
+        expectedFetch: false,
+    },
+    {
         name: "quoted max-age accepted from a recipient",
         ageMs: 1000,
         ttl: "60000",
-        cacheHeaders: 'cache-control: max-age="60"',
+        cacheHeaders: 'cache-control: MAX-AGE="60"',
         expectedFetch: false,
     },
     {
@@ -2158,6 +2172,25 @@ for (const { name, cacheHeaders, expectedFetch } of [
         assert.equal(fetched, expectedFetch);
     });
 }
+
+test("prepareFind cache policy: an unset operator ceiling fails at configuration", async () => {
+    const { ctx } = makeCtx(priorEntry(
+        "stored",
+        "text/plain",
+        stampedHeader(1000, "\ncache-control: max-age=60"),
+        undefined,
+        "static",
+    ));
+    await withTtl(undefined, async () => {
+        await assert.rejects(
+            new Http().prepareFind(
+                findStmt(urlTarget("https://example.com/find-policy", "/find-policy")),
+                ctx,
+            ),
+            /PLURNK_SCHEMES_HTTP_TTL_MS is unset/,
+        );
+    });
+});
 
 test("304 merges freshness metadata without relabeling a processed representation", async () => {
     const projection = projectionCaps({

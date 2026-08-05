@@ -51,6 +51,64 @@ const HEADER = "header";
 // the last value so an origin using the same field name cannot override it.
 const FETCHED_AT = "x-plurnk-fetched-at";
 const REQUEST_METHOD = "x-plurnk-request-method";
+const DELTA_SECONDS_LIMIT = 2_147_483_648n;
+const BODY_PROCESSING_FIELDS = new Set([
+    "content-encoding",
+    "content-length",
+    "content-range",
+    "content-type",
+]);
+
+interface HeaderField {
+    readonly name: string;
+    readonly value: string;
+    readonly line: string;
+}
+
+interface StoredCachePolicy {
+    readonly noStore: boolean;
+    readonly noCache: boolean;
+    readonly freshnessLifetimeMs?: number;
+}
+
+const splitHttpList = (value: string): string[] => {
+    const members: string[] = [];
+    let start = 0;
+    let quoted = false;
+    let escaped = false;
+    for (let index = 0; index < value.length; index += 1) {
+        const character = value[index]!;
+        if (quoted) {
+            if (escaped) escaped = false;
+            else if (character === "\\") escaped = true;
+            else if (character === '"') quoted = false;
+        } else if (character === '"') {
+            quoted = true;
+        } else if (character === ",") {
+            members.push(value.slice(start, index).trim());
+            start = index + 1;
+        }
+    }
+    members.push(value.slice(start).trim());
+    return members.filter((member) => member.length > 0);
+};
+
+const cacheDirective = (member: string): { name: string; argument?: string } | null => {
+    const equals = member.indexOf("=");
+    const name = member.slice(0, equals < 0 ? undefined : equals).trim().toLowerCase();
+    if (!/^[!#$%&'*+.^_`|~0-9a-z-]+$/.test(name)) return null;
+    if (equals < 0) return { name };
+    return { name, argument: member.slice(equals + 1).trim() };
+};
+
+const deltaMilliseconds = (argument: string | undefined): number | null => {
+    if (argument === undefined) return null;
+    const match = /^(?:([0-9]+)|"([0-9]+)")$/.exec(argument);
+    const digits = match?.[1] ?? match?.[2];
+    if (digits === undefined) return null;
+    const seconds = BigInt(digits);
+    return Number(seconds > DELTA_SECONDS_LIMIT ? DELTA_SECONDS_LIMIT : seconds) * 1000;
+};
 
 const lastHeaderValue = (header: string, name: string): string | undefined => {
     const lines = header.split(/\r?\n/);
@@ -61,18 +119,6 @@ const lastHeaderValue = (header: string, name: string): string | undefined => {
         return line.slice(colon + 1).trim();
     }
     return undefined;
-};
-
-const replaceLastHeaderValue = (header: string, name: string, value: string): string => {
-    const lines = header === "" ? [] : header.split("\n");
-    for (let index = lines.length - 1; index >= 0; index -= 1) {
-        const line = lines[index]!;
-        const colon = line.indexOf(":");
-        if (colon < 0 || line.slice(0, colon).trim().toLowerCase() !== name) continue;
-        lines[index] = `${name}: ${value}`;
-        return lines.join("\n");
-    }
-    return [...lines, `${name}: ${value}`].join("\n");
 };
 
 // The package-shipped model teaching is loaded verbatim and fails hard if absent.
@@ -146,10 +192,13 @@ export default class Http implements SchemeHandler {
             if (priorMethod === undefined) {
                 return { shape: "passthrough", status: 200 };
             }
+            let reusable: boolean;
             try {
-                if (await Http.#reusableGetRepresentation(prior.entry, requestHeaders, ctx.projection)) {
-                    return { shape: "passthrough", status: 200 };
-                }
+                reusable = await Http.#reusableGetRepresentation(
+                    prior.entry,
+                    requestHeaders,
+                    ctx.projection,
+                );
             } catch (cause) {
                 return Http.#materializationFailure(
                     url,
@@ -160,6 +209,9 @@ export default class Http implements SchemeHandler {
                         cause,
                     ),
                 );
+            }
+            if (reusable && Http.#fresh(priorHeader)) {
+                return { shape: "passthrough", status: 200 };
             }
         }
         if (Results.isErrorStatus(prior.status) && prior.status !== 404) {
@@ -398,7 +450,7 @@ export default class Http implements SchemeHandler {
 
         // {§revalidation} TTL fast path. Serving does not refresh the stamp;
         // only a network acquisition or 304 vouches for a new acquisition time.
-        if (cached !== undefined && Http.#storedCopyServable(Http.#fetchedAt(cached.header), null)) {
+        if (cached !== undefined && Http.#fresh(cached.header)) {
             const written = await ctx.entries.write(pathname, Http.#seedEntry());
             if (Results.isErrorStatus(written.status)) return Http.#passthrough(written);
             const subscription = await ctx.subscriptions.open(pathname, { cancel: () => {} }, { publishedChannel });
@@ -441,12 +493,13 @@ export default class Http implements SchemeHandler {
 
             // {§revalidation} A 304 restores the GET representation into the
             // freshly seeded channels and remains an ordinary streaming READ.
-            if (cached !== undefined && Http.#storedCopyServable(Http.#fetchedAt(cached.header), response)) {
+            if (cached !== undefined && response.status === 304) {
                 await subscription.notifyChunk(
                     HEADER,
-                    Http.#stamp(
+                    Http.#refreshAfter304(
                         cached.header,
-                        classifyCacheVariant(headers, [...response.headers]),
+                        [...response.headers],
+                        headers,
                     ),
                     "text/plain",
                 );
@@ -651,12 +704,12 @@ export default class Http implements SchemeHandler {
     ): Promise<boolean> {
         const body = entry.channels[BODY];
         const header = entry.channels[HEADER];
-        return body !== undefined
-            && header !== undefined
-            && Http.#representationComplete(entry)
+        if (body === undefined || header === undefined) return false;
+        return Http.#representationComplete(entry)
             && Http.#requestMethod(header.content) === "GET"
             && requestHeaders.length === 0
             && Http.#cacheVariant(header.content) === "default"
+            && !Http.#storedCachePolicy(header.content).noStore
             && await Http.#projectionCurrent(header.content, projection);
     }
 
@@ -789,14 +842,18 @@ export default class Http implements SchemeHandler {
         return address;
     }
 
-    // {§revalidation} One predicate owns the TTL pre-fetch decision and the
-    // post-fetch 304 decision.
-    static #storedCopyServable(fetchedAtMs: number | undefined, response: Response | null): boolean {
-        if (response === null) {
-            const ttl = requireNumEnv("PLURNK_SCHEMES_HTTP_TTL_MS");
-            return ttl > 0 && fetchedAtMs !== undefined && Date.now() - fetchedAtMs < ttl;
-        }
-        return response.status === 304;
+    // {§revalidation} Validation-free reuse requires both the operator's local
+    // ceiling and the origin's response policy to remain live.
+    static #fresh(header: string, now = Date.now()): boolean {
+        const fetchedAt = Http.#fetchedAt(header);
+        const ttl = requireNumEnv("PLURNK_SCHEMES_HTTP_TTL_MS");
+        if (fetchedAt === undefined || ttl <= 0) return false;
+        const residentTime = Math.max(0, now - fetchedAt);
+        if (residentTime >= ttl) return false;
+        const policy = Http.#storedCachePolicy(header);
+        if (policy.noStore || policy.noCache) return false;
+        return policy.freshnessLifetimeMs === undefined
+            || Http.#currentAge(header, fetchedAt, now) < policy.freshnessLifetimeMs;
     }
 
     // Package metadata is appended after origin headers, so the last value wins.
@@ -805,6 +862,84 @@ export default class Http implements SchemeHandler {
         if (value === undefined) return undefined;
         const ms = Date.parse(value);
         return Number.isNaN(ms) ? undefined : ms;
+    }
+
+    static #headerField(line: string): HeaderField | null {
+        const colon = line.indexOf(":");
+        if (colon < 0) return null;
+        const name = line.slice(0, colon).trim().toLowerCase();
+        if (name.length === 0) return null;
+        return { name, value: line.slice(colon + 1).trim(), line };
+    }
+
+    static #packageStart(lines: readonly string[]): number {
+        let stampIndex = -1;
+        for (const [index, line] of lines.entries()) {
+            if (Http.#headerField(line)?.name === FETCHED_AT) stampIndex = index;
+        }
+        if (stampIndex < 0) return lines.length;
+        return Http.#headerField(lines[stampIndex - 1] ?? "")?.name === REQUEST_METHOD
+            ? stampIndex - 1
+            : stampIndex;
+    }
+
+    static #originFields(header: string): HeaderField[] {
+        const lines = header.split(/\r?\n/);
+        return lines.slice(1, Http.#packageStart(lines))
+            .map((line) => Http.#headerField(line))
+            .filter((field): field is HeaderField => field !== null);
+    }
+
+    static #originValues(fields: readonly HeaderField[], name: string): string[] {
+        return fields.filter((field) => field.name === name).map(({ value }) => value);
+    }
+
+    static #storedCachePolicy(header: string): StoredCachePolicy {
+        const fields = Http.#originFields(header);
+        const directives = Http.#originValues(fields, "cache-control")
+            .flatMap((value) => splitHttpList(value))
+            .map((member) => cacheDirective(member))
+            .filter((directive): directive is NonNullable<typeof directive> => directive !== null);
+        const maxAges = directives.filter(({ name }) => name === "max-age");
+        let freshnessLifetimeMs: number | undefined;
+        if (maxAges.length > 0) {
+            freshnessLifetimeMs = maxAges.length === 1
+                ? deltaMilliseconds(maxAges[0]!.argument) ?? 0
+                : 0;
+        } else {
+            const expiresValues = Http.#originValues(fields, "expires");
+            if (expiresValues.length > 0) {
+                const expires = expiresValues.length === 1
+                    ? Date.parse(expiresValues[0]!)
+                    : Number.NaN;
+                const fetchedAt = Http.#fetchedAt(header);
+                if (Number.isNaN(expires) || fetchedAt === undefined) {
+                    freshnessLifetimeMs = 0;
+                } else {
+                    const dateValues = Http.#originValues(fields, "date");
+                    const parsedDate = dateValues.length === 1
+                        ? Date.parse(dateValues[0]!)
+                        : Number.NaN;
+                    const generatedAt = Number.isNaN(parsedDate) ? fetchedAt : parsedDate;
+                    freshnessLifetimeMs = Math.max(0, expires - generatedAt);
+                }
+            }
+        }
+        return {
+            noStore: directives.some(({ name }) => name === "no-store"),
+            noCache: directives.some(({ name }) => name === "no-cache"),
+            ...(freshnessLifetimeMs === undefined ? {} : { freshnessLifetimeMs }),
+        };
+    }
+
+    static #currentAge(header: string, fetchedAt: number, now: number): number {
+        const fields = Http.#originFields(header);
+        const dateValues = Http.#originValues(fields, "date");
+        const date = dateValues.length === 1 ? Date.parse(dateValues[0]!) : Number.NaN;
+        const apparentAge = Number.isNaN(date) ? 0 : Math.max(0, fetchedAt - date);
+        const ageMember = Http.#originValues(fields, "age").flatMap(splitHttpList)[0];
+        const ageValue = deltaMilliseconds(ageMember) ?? 0;
+        return Math.max(apparentAge, ageValue) + Math.max(0, now - fetchedAt);
     }
 
     static #requestMethod(priorHeader: string): string | undefined {
@@ -851,14 +986,37 @@ export default class Http implements SchemeHandler {
         return await projection.identity(Http.#sourceMimetype(header)) === storedIdentity;
     }
 
-    // Re-stamp package evidence when the origin vouches with 304. A newly
-    // observed Vary field can only retire reuse; #198 owns other 304 updates.
-    static #stamp(header: string, variant: CacheVariant): string {
-        return replaceLastHeaderValue(
-            replaceLastHeaderValue(header, FETCHED_AT, new Date().toISOString()),
-            CACHE_VARIANT_HEADER,
-            variant,
+    // RFC 9111 §3.2 permits a processed cache to retain the metadata that its
+    // stored body depends upon. Other 304 fields update by name; package-owned
+    // evidence is then rebuilt after the origin block. {§revalidation}
+    static #refreshAfter304(
+        header: string,
+        responseHeaders: ReadonlyArray<readonly [string, string]>,
+        requestHeaders: ReadonlyArray<readonly [string, string]>,
+    ): string {
+        const lines = header.split(/\r?\n/);
+        const origin = Http.#originFields(header);
+        const updates = responseHeaders.filter(
+            ([name]) => !BODY_PROCESSING_FIELDS.has(name.toLowerCase()),
         );
+        const updatedNames = new Set(updates.map(([name]) => name.toLowerCase()));
+        const retained = origin.filter(({ name }) => !updatedNames.has(name));
+        const merged: Array<readonly [string, string]> = [
+            ...retained.map(({ name, value }) => [name, value] as const),
+            ...updates,
+        ];
+        const projectionIdentity = Http.#projectionIdentity(header);
+        return [
+            lines[0] ?? "HTTP 200 OK",
+            ...retained.map(({ line }) => line),
+            ...updates.map(([name, value]) => `${name}: ${value}`),
+            `${REQUEST_METHOD}: GET`,
+            `${FETCHED_AT}: ${new Date().toISOString()}`,
+            cacheVariantEvidence(classifyCacheVariant(requestHeaders, merged)),
+            ...(projectionIdentity === undefined
+                ? []
+                : [WebFetcher.projectionEvidence(projectionIdentity)]),
+        ].join("\n");
     }
 
     // Conditional-request headers from the prior fetch's stored response headers
