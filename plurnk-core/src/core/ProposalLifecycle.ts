@@ -238,11 +238,7 @@ export default class ProposalLifecycle {
         }
     }
 
-    // Daemon shutdown: settle EVERY pending waiter with a cancel so the stopped world can't
-    // deadlock the stop — a drain paused inside dispatch awaiting a resolution that will never
-    // come held Promise.allSettled(drains) open forever (a daemon with a pending HITL proposal
-    // could not shut down; the #344 wedge class). {§proposal-cancel-aborts} — same cancel lane as
-    // a timeout, outcome names the cause.
+    // {§worker-lifecycle-total-reap}: shutdown cancels every process-local proposal waiter.
     cancelAll(outcome: string): void {
         for (const [logEntryId, waiter] of [...this.#pending.entries()]) {
             if (waiter.timeoutHandle !== null) clearTimeout(waiter.timeoutHandle);

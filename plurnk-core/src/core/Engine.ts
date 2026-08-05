@@ -2177,8 +2177,7 @@ export default class Engine {
 
     // External API to feed a resolution into a pending proposal — the client-interface
     // seam, core-owned disposition, or the timeout watcher.
-    // Shutdown lane: settle every pending proposal with a cancel so a stopped world can never
-    // deadlock the stop ({§proposal-cancel-aborts}; the #344 wedge class).
+    // {§worker-lifecycle-total-reap}: release every stopped-world waiter before joining drains.
     cancelAllProposals(outcome: string): void {
         this.#proposals.cancelAll(outcome);
     }
