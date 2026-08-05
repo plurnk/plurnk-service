@@ -98,8 +98,8 @@ for (const { dir, name, release, owner, platformDependencies } of registry.packa
         continue;
     }
 
-    // A compatible artifact survives family releases unchanged. Invalid legacy
-    // ranges and genuinely incompatible artifacts are realigned and republished;
+    // A compatible artifact survives family releases unchanged. Invalid ranges
+    // and genuinely incompatible artifacts are realigned and republished;
     // provenance moves only when the artifact is rebuilt.
     if (state.errors.length === 0 && state.compatible && await registryContractMatches(manifest)) {
         console.log(`  guard   ${tag} — ${manifest.version} supports ${version}, built against ${manifest.plurnk.builtAgainst}`);

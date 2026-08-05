@@ -58,8 +58,8 @@ const mockResponse = (ops: PlurnkStatement[]) => ({
 
 // ───────────────────────────── {§membership} ─────────────────────────────
 //
-// git-substrate membership ({§membership-git-membership}) is BUILT — these two pass.
-// The two deferred reds (overlay, divergence signal) follow at the bottom.
+// Git-substrate membership ({§membership-git-membership}), its overlays, and
+// divergence signaling compose through the specimens below.
 
 // Set up a workspace whose project_root is a freshly `git init`'d repo holding
 // one COMMITTED, git-tracked file that is NEVER added via
@@ -283,12 +283,7 @@ test("membership is the workspace's — one overlay, identical for every worker"
     });
 });
 
-// ───────────── {§membership} deferred — `{ todo }` until built ─────────────
-// The deferral ledger: each asserts the promised behaviour and is EXPECTED TO
-// FAIL until the feature lands. Marked `{ todo }` (not hard-red): the assertion
-// still RUNS — it's the coverage — and reports as a known not-yet-passing, not a
-// false green; it FLIPS to a flagged passing-todo the day the feature lands. That
-// keeps CI a live gate instead of red-forever noise. Don't weaken to a real pass.
+// ───────────── {§membership} overlay and divergence composition ─────────────
 
 test("a hide-glob drops a tracked file from membership, reconciling already-registered ones", async () => {
     await withGitWorkspace(async (_root, ctx, db, trackedPath) => {
@@ -360,11 +355,7 @@ test("out-of-band change to a member surfaces as a system delta-EDIT", async () 
     });
 });
 
-// ─────────────── {§membership} deferral ledger (the new contract) ───────────────
-//
-// Each asserts a promised-but-unbuilt behavior and is EXPECTED TO FAIL until the
-// feature lands — `{ todo }`, so the assertion RUNS (the coverage) and reports a
-// known not-yet-passing, never a false green. Don't weaken to a real pass.
+// ─────────────── {§membership} incremental and concurrent passes ───────────────
 
 test("a member unchanged on disk is not re-tokenized on the next pass", async () => {
     await withGitWorkspace(async (_root, ctx) => {

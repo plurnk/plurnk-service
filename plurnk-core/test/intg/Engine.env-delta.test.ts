@@ -488,9 +488,8 @@ test("an environment delta preserves typed source attributes for model-facing pr
 });
 
 test("exactly two cross-worker channels — state via the env-delta, a message via inject", async () => {
-    // Both doors in one place. (Was a stale `unbuilt` todo stub — the voice door IS built: inject,
-    // and IRC through it resume parked workers in place under
-    // {§methods-loop-run-fold-consistency}.) No third channel — by design.
+    // Both doors in one place: inject and IRC resume parked workers in place
+    // under {§methods-loop-run-fold-consistency}. No third channel — by design.
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `two-doors-${crypto.randomUUID()}`);

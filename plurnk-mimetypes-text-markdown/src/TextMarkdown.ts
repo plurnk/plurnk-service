@@ -2,9 +2,8 @@ import { BaseHandler } from "@plurnk/plurnk-mimetypes";
 import type { HandlerContent, MimeSymbol } from "@plurnk/plurnk-mimetypes";
 import { Lexer, type Token } from "marked";
 
-// text/markdown handler. Replaces the legacy regex heading scanner with
-// marked's lexer — handles ATX headings, setext headings (=== / ---), leading
-// whitespace edge cases, and gives us code-fence positions for free.
+// text/markdown handler. marked's lexer handles ATX and setext headings,
+// leading whitespace edge cases, and code-fence positions.
 //
 // Symbols emitted:
 //   - heading: every heading at every depth, with `level` from token.depth

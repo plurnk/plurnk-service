@@ -29,7 +29,7 @@ function testDiscovery(): Discovery {
 
 // Deterministic embedder: vector = [text length], 4 bytes. embedBatch returns
 // the SAME bytes as embed() per text, in input order — the bit-identity the
-// issue depends on (no re-embed of stored vectors).
+// owning contract requires ({§mimetype-embedding}); stored vectors are not re-embedded.
 function bytesFor(text: string): Uint8Array {
     return EmbeddingVector.encode([text.length]);
 }

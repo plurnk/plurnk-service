@@ -150,8 +150,8 @@ export interface Provider {
     // (slot integers, connections); the mechanism is the provider's.
     //
     // `attributions` is opaque consumer-supplied creator telemetry; the consumer
-    // owns what contribution that set claims (#81). `client` is the consumer's
-    // workspace-stable, self-identified frontend. They are forwarded ONLY by a
+    // owns what contribution that set claims ({§attribution}). `client` is the
+    // consumer's workspace-stable, self-identified frontend. They are forwarded ONLY by a
     // provider whose spec opts in (the first-party `plurnk` endpoint, via
     // `Plurnk-Attribution` / `Plurnk-Client` headers); every other provider DROPS
     // them — the gate is structural so first-party metadata can never leak to a

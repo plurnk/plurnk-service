@@ -172,7 +172,7 @@ export interface DiscoverOptions {
     packageDirs?: string[];
 }
 
-// --- Subprocess-family helper (legacy path; see module header) -------------
+// --- Subprocess-family spawn recipe ({§executor-subprocess}) ---------------
 
 export interface SpawnArgs {
     /** Command to invoke (e.g. "node", "python3", or — when useShell — the raw command). */
