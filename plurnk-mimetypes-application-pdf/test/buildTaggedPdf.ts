@@ -1,4 +1,4 @@
-// Minimal TAGGED PDF builder for tests — a one-page document whose headings are
+// Test-only tagged PDF builder — a one-page document whose headings are
 // real structure elements (/StructTreeRoot → StructElem /S /H1.. with /K MCID)
 // drawn into a marked-content content stream. This lets the handler's
 // structTree extraction be tested against genuine pdfjs getStructTree() +

@@ -7,7 +7,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import ApplicationPdf from "./ApplicationPdf.ts";
-import { buildTaggedPdf } from "./buildTaggedPdf.ts";
+import { buildTaggedPdf } from "../test/buildTaggedPdf.ts";
 import { buildPdf } from "./buildPdf.ts";
 import type { MimeSymbol } from "@plurnk/plurnk-mimetypes";
 

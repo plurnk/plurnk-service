@@ -10,7 +10,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import ApplicationPdf from "./ApplicationPdf.ts";
-import { buildTaggedPdf, type TaggedHeading } from "./buildTaggedPdf.ts";
+import { buildTaggedPdf, type TaggedHeading } from "../test/buildTaggedPdf.ts";
 
 const h = new ApplicationPdf({ mimetype: "application/pdf", glyph: "📕", extensions: [".pdf"] as const });
 

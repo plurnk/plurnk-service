@@ -1,4 +1,4 @@
-// Minimal AcroForm PDF builder for tests — a one-page document with text form
+// Test-only AcroForm PDF builder — a one-page document with text form
 // fields (FT /Tx) carrying a value, so the handler's form-field extraction can
 // be tested against genuine pdfjs getFieldObjects() output. Internal test
 // helper only.

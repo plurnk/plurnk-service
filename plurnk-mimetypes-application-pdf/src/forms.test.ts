@@ -5,7 +5,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import ApplicationPdf from "./ApplicationPdf.ts";
-import { buildFormPdf } from "./buildFormPdf.ts";
+import { buildFormPdf } from "../test/buildFormPdf.ts";
 import { buildPdf } from "./buildPdf.ts";
 
 const h = new ApplicationPdf({ mimetype: "application/pdf", glyph: "📕", extensions: [".pdf"] as const });
