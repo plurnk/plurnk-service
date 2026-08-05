@@ -3,6 +3,16 @@ import assert from "node:assert/strict";
 import SchemeRegistry from "./SchemeRegistry.ts";
 import type { SchemeManifest } from "./scheme-types.ts";
 import { SchemeDiscovery } from "@plurnk/plurnk-schemes";
+import type { PluginAttributionContext } from "@plurnk/plurnk-meta";
+
+const attributionContext: PluginAttributionContext = {
+    workspaceId: "workspace",
+    workerId: "worker",
+    primaryWorkerId: "primary",
+    loop: 1,
+    turn: 1,
+    attempt: 1,
+};
 
 const manifest = (name: string): SchemeManifest => ({
     name,
@@ -42,7 +52,26 @@ test("discoverExternal treats the same package claim as an idempotent rescan", a
     await registry.discoverExternal();
 
     assert.equal(registry.get("http"), original, "a rescan retains the already-admitted handler instance");
-    assert.deepEqual(registry.attributions(), ["@plurnk/http"], "idempotent scans retain one package fact");
+    assert.deepEqual(registry.attributions(attributionContext), ["@plurnk/http"], "idempotent scans retain one package fact");
+});
+
+test("discoverExternal retains loaded package handlers as runtime attribution sources", async (t: TestContext) => {
+    t.mock.method(SchemeDiscovery, "discover", async () => ({
+        schemes: [{ name: "http", packageName: "@plurnk/plurnk-schemes-http" }],
+        skipped: [],
+        packageAttributions: new Map([["@plurnk/plurnk-schemes-http", ["@plurnk/static-http"]]]),
+    }));
+    const registry = new SchemeRegistry();
+    await registry.discoverExternal();
+    const source = registry.get("http") as { attributions?: (context: PluginAttributionContext) => string[] };
+    source.attributions = ({ attempt }) => attempt === 1
+        ? ["@plurnk/runtime-http", "@plurnk/static-http"]
+        : [];
+
+    assert.deepEqual(
+        registry.attributions(attributionContext),
+        ["@plurnk/runtime-http", "@plurnk/static-http"],
+    );
 });
 
 type RegistryArg = Parameters<SchemeRegistry["registerRuntimeSchemes"]>[0];

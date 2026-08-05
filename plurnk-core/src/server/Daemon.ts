@@ -17,7 +17,7 @@ import type { Provider, ProviderAlias } from "@plurnk/plurnk-providers";
 // (workspace/created), {workspaceId} = workspace-scoped.
 export type NotifyTarget = "all" | { workspaceId: number };
 // One drained loop's terminal shape — the drain's return currency.
-export interface DrainLoopResult { loopId: number; result: SchemeResult; hitMaxTurns: boolean; turnIds: number[]; action?: string; usage?: { promptTokens: number; completionTokens: number; costUsd: number } }
+export interface DrainLoopResult { loopId: number; result: SchemeResult; hitMaxTurns: boolean; turnIds: number[]; action?: string; usage?: { promptTokens: number; completionTokens: number; costUsd: number }; attributions?: string[] }
 import {
     parsePath,
     Validator,
@@ -1593,8 +1593,11 @@ export default class Daemon {
                         continue;
                     }
                     this.#owedWakes.delete(workerId); // the loop concluded (non-202) — no park to honor a held wake at
-                    const usage = await this.#engine.loopUsage(loopRow.id);
-                    const turnIds = await this.#lifecycle.turnIds(loopRow.id);
+                    const [usage, attributions, turnIds] = await Promise.all([
+                        this.#engine.loopUsage(loopRow.id),
+                        this.#engine.loopAttributions(loopRow.id),
+                        this.#lifecycle.turnIds(loopRow.id),
+                    ]);
                     this.#broadcast({ workspaceId }, "loop/terminated", {
                         workerId,
                         loopId: loopRow.id,
@@ -1602,6 +1605,7 @@ export default class Daemon {
                         hitMaxTurns: result.hitMaxTurns,
                         turnIds,
                         usage,
+                        attributions,
                     });
                     loopsDrained++;
                     const loopResult: DrainLoopResult = {
@@ -1610,6 +1614,7 @@ export default class Daemon {
                         result: result.result,
                         hitMaxTurns: result.hitMaxTurns,
                         usage,
+                        attributions,
                     };
                     lastResult = loopResult;
                     if (!firstSettled) {
@@ -1630,6 +1635,9 @@ export default class Daemon {
                     const usage = currentLoopId === null
                         ? { promptTokens: 0, completionTokens: 0, costUsd: 0, contextTokens: 0, promptBudget: null, meta: {} }
                         : await this.#engine.loopUsage(currentLoopId);
+                    const attributions = currentLoopId === null
+                        ? []
+                        : await this.#engine.loopAttributions(currentLoopId);
                     const message = ErrorDetail.preview(controller.signal.reason ?? "user_cancelled")
                         || "no reason was supplied";
                     if (currentLoopId !== null) {
@@ -1659,6 +1667,7 @@ export default class Daemon {
                                 hitMaxTurns: false,
                                 turnIds: await this.#lifecycle.turnIds(currentLoopId),
                                 usage,
+                                attributions,
                             });
                         }
                     }
@@ -1721,7 +1730,10 @@ export default class Daemon {
                         if (settled === null) {
                             throw new Error(`drain could not settle loop ${currentLoopId}`, { cause: err });
                         }
-                        const usage = await this.#engine.loopUsage(currentLoopId);
+                        const [usage, attributions] = await Promise.all([
+                            this.#engine.loopUsage(currentLoopId),
+                            this.#engine.loopAttributions(currentLoopId),
+                        ]);
                         this.#broadcast({ workspaceId }, "loop/terminated", {
                             workerId,
                             loopId: currentLoopId,
@@ -1729,6 +1741,7 @@ export default class Daemon {
                             hitMaxTurns: false,
                             turnIds: await this.#lifecycle.turnIds(currentLoopId),
                             usage,
+                            attributions,
                         });
                     }
                     if (!firstSettled) {
@@ -1875,7 +1888,10 @@ export default class Daemon {
         for (const { loopId, workerId: targetWorkerId, result } of cancelled.loops) {
             const row = await this.#db.drain_get_worker_workspace.get<{ workspace_id: number }>({ worker_id: targetWorkerId });
             if (row === undefined) continue;
-            const usage = await this.#engine.loopUsage(loopId);
+            const [usage, attributions] = await Promise.all([
+                this.#engine.loopUsage(loopId),
+                this.#engine.loopAttributions(loopId),
+            ]);
             this.#broadcast({ workspaceId: row.workspace_id }, "loop/terminated", {
                 workerId: targetWorkerId,
                 loopId,
@@ -1883,6 +1899,7 @@ export default class Daemon {
                 hitMaxTurns: false,
                 turnIds: await this.#lifecycle.turnIds(loopId),
                 usage,
+                attributions,
             });
         }
     }

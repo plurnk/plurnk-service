@@ -1,6 +1,7 @@
 import test, { mock } from "node:test";
 import { strict as assert } from "node:assert";
 import { instantiateProvider, loadActiveProvider, resetDiscoveryCache } from "./ProviderRegistry.ts";
+import type { PluginAttributionContext } from "@plurnk/plurnk-meta";
 
 const mapOf = (entries: Record<string, string>, skipped: Record<string, string> = {}) =>
     async () => ({ registry: new Map(Object.entries(entries)), skipped: new Map(Object.entries(skipped)), attributions: new Map<string, string | string[]>() });
@@ -47,6 +48,38 @@ test("instantiateProvider: an installed AI SDK provider resolves through discove
     assert.equal(p.model, "model-a");
     assert.equal(p.contextWindow, 8192);
     assert.deepEqual(calls, ["@acme/ai-provider", "model-a"]);
+});
+
+test("instantiateProvider: a selected plugin composes its static and runtime attribution sources", async () => {
+    resetDiscoveryCache();
+    const context: PluginAttributionContext = {
+        workspaceId: "workspace",
+        workerId: "worker",
+        primaryWorkerId: "primary",
+        loop: 3,
+        turn: 2,
+        attempt: 1,
+    };
+    const sdkProvider = {
+        languageModel: () => ({} as never),
+        attributions: ({ attempt }: PluginAttributionContext) => attempt === 1
+            ? ["runtime:provider", "static:provider"]
+            : [],
+    };
+    const provider = await instantiateProvider(
+        "acme",
+        { ...fullEnv, PLURNK_PROVIDERS_CONTEXT_WINDOW: "8192" },
+        "model-a",
+        async () => ({ default: sdkProvider }),
+        async () => ({
+            registry: new Map([["acme", "@acme/ai-provider"]]),
+            skipped: new Map(),
+            attributions: new Map([["acme", "static:provider"]]),
+            packageAttributions: new Map([["@acme/ai-provider", ["static:provider"]]]),
+        }),
+    );
+
+    assert.deepEqual(provider.attributions?.(context), ["runtime:provider", "static:provider"]);
 });
 
 test("instantiateProvider: a per-alias baseUrl drives the built-in Ollama probe", async () => {

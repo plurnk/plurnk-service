@@ -5,6 +5,7 @@ import StoredPacket, { type RequestPacket } from "./StoredPacket.ts";
 const request = (): RequestPacket => ({
     tokens: 3,
     sections: [{ name: "prompt", slot: "user", header: null, content: "hello", tokens: 3 }],
+    attributions: ["creator:ada", "topic:search"],
 });
 
 test("StoredPacket: NULL is the singular no-request representation", () => {
@@ -21,6 +22,21 @@ test("StoredPacket: admission extends the request without changing its weight", 
     assert.equal(packet.tokens, 3);
     assert.equal(packet.assistantRaw, null);
     assert.equal(StoredPacket.isAdmitted(packet), true);
+});
+
+test("StoredPacket: attribution evidence is a canonical opaque tag set", () => {
+    assert.throws(
+        () => StoredPacket.assert({ ...request(), attributions: ["topic:search", "creator:ada"] }),
+        /packet\.attributions must be deduplicated and sorted/,
+    );
+    assert.throws(
+        () => StoredPacket.assert({ ...request(), attributions: ["creator:ada", "creator:ada"] }),
+        /packet\.attributions must be deduplicated and sorted/,
+    );
+    assert.throws(
+        () => StoredPacket.assert({ ...request(), attributions: [""] }),
+        /packet\.attributions\[0\] must be a non-empty string/,
+    );
 });
 
 test("StoredPacket: malformed durable shapes fail with their causal location", () => {

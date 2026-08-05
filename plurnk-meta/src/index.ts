@@ -34,6 +34,19 @@ export type PluginAttributionDeclaration = string | string[];
 export type PluginAttribution = readonly string[];
 export type PackageAttributions = ReadonlyMap<string, PluginAttribution>;
 
+export interface PluginAttributionContext {
+    readonly workspaceId: string;
+    readonly workerId: string;
+    readonly primaryWorkerId: string;
+    readonly loop: number;
+    readonly turn: number;
+    readonly attempt: number;
+}
+
+export interface PluginAttributionSource {
+    attributions?(context: PluginAttributionContext): PluginAttributionDeclaration | null | undefined;
+}
+
 const SCHEME_TEACHING = Object.freeze({
     log: "docs/log.md",
     worker: "docs/worker.md",
@@ -90,6 +103,35 @@ export default class Meta {
             return value;
         });
         return Object.freeze(tags);
+    }
+
+    // {§plugin-attribution} — one synchronous runtime pull with the same shape
+    // and sole namespace reservation as the static declaration. Tags remain
+    // opaque; this boundary validates structure, not meaning.
+    static runtimeAttribution(
+        source: unknown,
+        context: PluginAttributionContext,
+        packageName: string,
+    ): PluginAttribution {
+        if (source === null || source === undefined) return EMPTY_ATTRIBUTION;
+        const hook = (source as { attributions?: unknown }).attributions;
+        if (hook === undefined) return EMPTY_ATTRIBUTION;
+        if (typeof hook !== "function") {
+            throw new TypeError(`plugin '${packageName}': attributions must be a function when present`);
+        }
+        let raw: unknown;
+        try {
+            raw = hook.call(source, context);
+        } catch (cause) {
+            throw new Error(`plugin '${packageName}': attributions() failed`, { cause });
+        }
+        return Meta.normalizeAttribution(raw, packageName);
+    }
+
+    static composeAttributions(...lists: readonly PluginAttribution[]): PluginAttribution {
+        if (lists.length === 0) return EMPTY_ATTRIBUTION;
+        const tags = [...new Set(lists.flat())].toSorted();
+        return tags.length === 0 ? EMPTY_ATTRIBUTION : Object.freeze(tags);
     }
 
     static async #packageDirsOne(nodeModulesDir: string): Promise<PackageCandidate[]> {

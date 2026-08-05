@@ -4,6 +4,11 @@
 
 import type { ProviderNotice } from "./notices.ts";
 import type { LanguageModel } from "ai";
+import type {
+    PluginAttribution,
+    PluginAttributionContext,
+    PluginAttributionSource,
+} from "@plurnk/plurnk-meta";
 
 export interface ChatMessage {
     role: "system" | "user" | "assistant";
@@ -122,6 +127,9 @@ export interface ProviderResponse<TFinish extends ProviderAttemptFinishReason = 
 export type ProviderAttempt = ProviderResponse<ProviderAttemptFinishReason>;
 
 export interface Provider {
+    // Optional package-authored folksonomy evaluated by the consumer immediately
+    // before a provider emission attempt ({§plugin-attribution}).
+    attributions?(context: PluginAttributionContext): PluginAttribution;
     // `grammar` is an optional GBNF string (canonically @plurnk/plurnk-contracts'
     // plurnk.gbnf, possibly root-substituted by the consumer). Backends that
     // support grammar-constrained sampling attach it verbatim; all others
@@ -235,6 +243,6 @@ export interface ProviderOptions {
 
 // A discovered provider plugin default-exports an AI SDK provider. PLURNK owns
 // the adapter into Provider; the plugin owns only its protocol binding.
-export interface AiSdkProviderPlugin {
+export interface AiSdkProviderPlugin extends PluginAttributionSource {
     languageModel(model: string): LanguageModel;
 }

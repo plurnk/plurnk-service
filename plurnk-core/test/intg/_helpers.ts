@@ -148,6 +148,7 @@ export const insertLoop = async (db: Db, workerId: number, sequence: number, pro
 const MIN_PACKET = JSON.stringify({
     tokens: 0,
     sections: [],
+    attributions: [],
     assistant: { content: "", ops: [], reasoning: null },
     assistantRaw: null,
 });

@@ -49,6 +49,11 @@ export { ProviderError, classifyProviderError, toProviderError } from "./errors.
 export { providerSource } from "./notices.ts";
 export type { ProviderErrorKind } from "./errors.ts";
 export type { ProviderNotice, ProviderNoticeKind } from "./notices.ts";
+export type {
+    PluginAttributionContext,
+    PluginAttributionDeclaration,
+    PluginAttributionSource,
+} from "@plurnk/plurnk-meta";
 
 export { default as Mock } from "./Mock.ts";
 export type { MockAssistant, MockResponse, MockReturnedAssistant } from "./Mock.ts";

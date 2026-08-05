@@ -17,6 +17,10 @@ import Tokenizers, { type TokenizerResolution } from "./Tokenizers.ts";
 import { classifyMimetype, classifyWithHandler, type MimeClassification } from "./classify.ts";
 import { mimetypeSource, type Notice } from "./Notice.ts";
 import MimetypePluginError from "./MimetypePluginError.ts";
+import Meta, {
+    type PluginAttribution,
+    type PluginAttributionContext,
+} from "@plurnk/plurnk-meta";
 import type {
     DetectInput,
     DiscoverOptions,
@@ -181,6 +185,28 @@ export default class Mimetypes {
     async skippedPackages(): Promise<readonly string[]> {
         await this.ready();
         return [...this.#discovery!.skipped];
+    }
+
+    // {§plugin-attribution} Static package tags remain always-on. Runtime
+    // collection consults only handler objects already loaded by ordinary
+    // mimetype work, preserving the family's lazy-loading contract.
+    async attributions(context: PluginAttributionContext): Promise<PluginAttribution> {
+        await this.ready();
+        const lists: PluginAttribution[] = [...this.#discovery!.packageAttributions.values()];
+        const packageSources = new Map<string, Set<BaseHandler>>();
+        for (const [mimetype, resolution] of this.#handlerInstances) {
+            const info = this.#discovery!.handlers.get(mimetype);
+            if (info?.source !== "package") continue;
+            const sources = packageSources.get(info.packageName) ?? new Set<BaseHandler>();
+            sources.add(await resolution);
+            packageSources.set(info.packageName, sources);
+        }
+        for (const [packageName, sources] of packageSources) {
+            for (const source of sources) {
+                lists.push(Meta.runtimeAttribution(source, context, packageName));
+            }
+        }
+        return Meta.composeAttributions(...lists);
     }
 
     async detect(input: DetectInput): Promise<string | null> {

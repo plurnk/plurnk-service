@@ -262,7 +262,8 @@ at boot; changing package membership or configuration requires a restart.
 The framework carries example and documentation content unchanged. The
 consumer decides when and how to present either surface. A multi-tag package
 appears at most once in `Discovery.packageAttributions`, and only when at least
-one of its tags survives discovery policy.
+one of its tags survives discovery policy. An instantiated executor may add
+attempt-time tags through the shared runtime hook ({§plugin-attribution}).
 
 Runtime-name admission is one identity contract:
 

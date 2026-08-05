@@ -367,7 +367,7 @@ export default class PacketBuilder {
             tokens: countTokens(PacketWire.renderSection(section)),
         }));
         const packetTokens = countTokens(PacketWire.renderSlot(sections, "system")) + countTokens(PacketWire.renderSlot(sections, "user"));
-        return { tokens: packetTokens, sections };
+        return { tokens: packetTokens, sections, attributions: [] };
     }
 
     // {§operator-config-workspace-execs} — the capability sheet and executor

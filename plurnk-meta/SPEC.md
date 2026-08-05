@@ -77,20 +77,23 @@ Coordinated capabilities spanning families use explicit daemon-module
 composition ({§module-lifecycle}); a multi-kind manifest is not a parallel
 module mechanism.
 
-### §plugin-attribution One package attribution fact
+### §plugin-attribution Plugin-authored attribution tags
 
-| Stage                  | Contract                                                                                                                                                     |
-| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Declaration            | Optional `plurnk.attribution` is one non-empty string or an array of non-empty strings. `null`, absence, and an empty array normalize to no tags.             |
-| Trust                  | The family applies {§plugin-trust-boundary} before attribution validation; a withheld declaration is not interpreted.                                             |
-| Normalization          | `Meta.normalizeAttribution(raw, packageName)` produces one readonly, ordered list of opaque tags. A malformed trusted declaration fails package admission.   |
-| Namespace reservation  | A tag beginning `@plurnk/` is valid only when `packageName` also begins `@plurnk/`; a violating trusted package fails admission.                              |
-| Discovery result       | Each family returns `packageAttributions`, keyed once by package name. Only non-empty lists for packages represented after family admission are present.       |
-| Published projections  | Existing per-tag, per-handler, or name-keyed attribution fields may project the validated declaration for 1.x compatibility; they do not own another policy. |
+| Surface                 | Contract                                                                                                                                                                                                                                  |
+| ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Static declaration      | Optional `plurnk.attribution` is one non-empty string or an array of non-empty strings. `null`, absence, and an empty array normalize to no tags. A declaration is an always-on source for the admitted package.                            |
+| Runtime declaration     | A loaded plugin object may implement synchronous `attributions(context)`, returning the same declaration shape, `null`, or `undefined`. The hook is pulled once for each provider emission attempt; returning no tags omits that source.     |
+| Hook context            | `workspaceId`, `workerId`, and `primaryWorkerId` are opaque strings; `loop`, `turn`, and `attempt` are positive sequence numbers. The hook receives no engine, database, trust, or mutation capability.                                      |
+| Trust                   | The family applies {§plugin-trust-boundary} before attribution validation or plugin import. Trust admits executable code; it does not make an authored tag truthful.                                                                        |
+| Normalization           | `Meta.normalizeAttribution(raw, packageName)` and `Meta.runtimeAttribution(source, context, packageName)` produce readonly ordered lists. A malformed trusted declaration, malformed hook, or thrown hook fails at the package boundary.    |
+| Namespace reservation   | A tag beginning `@plurnk/` is valid only when `packageName` also begins `@plurnk/`; a violating trusted package fails. Other tag vocabularies, collisions, and meanings are deliberately uninterpreted.                                      |
+| Discovery result        | Each family returns `packageAttributions`, keyed once by package name. Only non-empty static lists for packages represented after family admission are present.                                                                             |
+| Host composition        | The host flattens static and runtime lists from its admitted plugin objects, deduplicates and sorts the result, and treats it as an opaque folksonomy. It does not infer contribution, provenance, weight, trustworthiness, or causal value. |
+| Published projections   | Existing per-tag, per-handler, or name-keyed attribution fields may project the validated static declaration for 1.x compatibility; they do not own another policy.                                                                       |
 
-Manifest acquisition and attribution validation therefore occur once in the
-family discovery path. A composed host consumes the admitted package map and
-never reopens a plugin manifest for this fact.
+Manifest acquisition and static validation occur once in the family discovery
+path. A composed host consumes the admitted package map and loaded plugin
+objects without reopening a manifest or tracing tags through produced values.
 
 ### §plugin-trust-boundary One policy, enforcement before import
 

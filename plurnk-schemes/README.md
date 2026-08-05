@@ -43,6 +43,8 @@ engine-owned compositions over `ctx.entries` and `editBatch`, so plugins do not
 override them or author COPY/MOVE effect envelopes. A regional `editBatch`
 returns `EditBatchResult` with its typed `EditBatchReceipt`; the engine validates
 and projects it.
+The optional synchronous `attributions(context)` hook may return no, one, or
+many opaque tags for each provider emission attempt ({§plugin-attribution}).
 `implements SchemeHandler` gives compile-time signature checking. The statement
 and path types (`ReadStatement`, `SendStatement`, `UrlPath`, etc.) are re-exported
 from this package, so you depend on and peer (`^1`) only
@@ -96,7 +98,7 @@ That's the whole contract: declare, `implements SchemeHandler`, manifest with se
 - `Matcher.matchAgainstContent(body, content, mimetype, mimetypes)` - boolean resource selection over `Mimetypes.query` (glob/regex/jsonpath/xpath), returning locator/exact-region `MatchEvidence`.
 - `Results.problem` / `.failure` / `.assert` / `.assertReadResult` / `.assertMatchEvidenceList` / `.attachInstance` / `.isEntry` / `.isProposal` / `.isPassthrough` / `.isErrorStatus` - RFC 9457 result builders, validators, durable-occurrence attachment, and guards.
 - `PacketSections.assertDrafts(value, subject?)` — validates the exact tokenless section-draft list returned by a packet transformer.
-- `SchemeDiscovery.discover({ cwd? })` — scope-agnostic `node_modules` scan for `plurnk.kind:"scheme"` packages (trust-gated, fail-hard on prefix collision); returns descriptors plus one normalized attribution fact per admitted package (SPEC §6, {§plugin-attribution}).
+- `SchemeDiscovery.discover({ cwd? })` — scope-agnostic `node_modules` scan for `plurnk.kind:"scheme"` packages (trust-gated, fail-hard on prefix collision); returns descriptors plus canonical static attribution lists for represented packages (SPEC §6, {§plugin-attribution}).
 
 `SchemeCtx` is the stable semantic API for trusted in-process schemes, not a
 sandbox. The consumer injects its implementation; database layout and private

@@ -1,72 +1,134 @@
-// {§attribution-discovery-placeholder}
+// {§attribution}
 
 import test from "node:test";
 import assert from "node:assert/strict";
 import Engine from "../../src/core/Engine.ts";
+import ExecutorRegistry from "../../src/core/ExecutorRegistry.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
+import { Mimetypes, emptyRegistry } from "@plurnk/plurnk-mimetypes";
 import { Mock } from "@plurnk/plurnk-providers";
 import type { MockResponse } from "@plurnk/plurnk-providers";
-import type { PlurnkStatement } from "@plurnk/plurnk-contracts";
+import type { PluginAttributionContext } from "@plurnk/plurnk-meta";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop } from "./_helpers.ts";
-import { parseDsl } from "./_rpc.ts";
 
-const sendDone = parseDsl("<<PLAN::PLAN\n<<SEND[200]:done:SEND");
-const turn = (ops: PlurnkStatement[]): MockResponse => ({
-    assistant: { content: "", ops, reasoning: null, usage: { prompt: 0, completion: 0, reasoning: 0, cached: 0, total: 0 } },
+const response = (content: string): MockResponse => ({
+    assistant: {
+        content,
+        reasoning: null,
+        usage: { prompt: 0, completion: 0, reasoning: 0, cached: 0, total: 0 },
+    },
     assistantRaw: null,
 });
 
-// Run one turn against a provider whose generate() is shadowed to capture the attributions
-// arg, with the scheme registry's discovered-attribution set stubbed to `tags`.
-const captureAttributions = async (tags: string[] | null): Promise<string[] | undefined> => {
+const invalid = response("unframed prose");
+const valid = response("<<PLAN:finish:PLAN\n<<SEND[200]:done:SEND");
+const canonical = (...tags: string[]): string[] => [...new Set(tags)].toSorted();
+
+test("each emission attempt composes opaque family hooks and records exactly what was forwarded", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `attr-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1, "go");
+        const contexts: PluginAttributionContext[] = [];
+
         const schemes = new SchemeRegistry();
-        if (tags !== null) schemes.attributions = () => [...tags]; // stand in for the discovered set
-        const engine = new Engine({ db, schemes });
+        schemes.attributions = ({ attempt }) => ["shared", `scheme:${attempt}`];
+        const executors = new ExecutorRegistry(new Map());
+        executors.attributions = ({ attempt }) => ["shared", `executor:${attempt}`];
+        const mimetypes = new Mimetypes({
+            discovery: { registry: emptyRegistry(), handlers: new Map(), skipped: [] },
+        });
+        mimetypes.attributions = async ({ attempt }) => ["shared", `mimetype:${attempt}`];
 
-        const provider = new Mock({ contextWindow: 100000, responses: [turn(sendDone)] });
-        let captured: string[] | undefined;
-        let seen = false;
-        const real = provider.generate.bind(provider);
-        // Mock's generate() param type is narrower than the Provider interface (no
-        // attributions field), but the engine passes it at runtime — read it through a cast.
-        provider.generate = (req) => { captured = (req as { attributions?: string[] }).attributions; seen = true; return real(req); };
+        const provider = new Mock({ contextWindow: 100_000, responses: [invalid, valid] });
+        const providerWithAttribution = provider as Mock & {
+            attributions?: (context: PluginAttributionContext) => readonly string[];
+        };
+        providerWithAttribution.attributions = (context) => {
+            contexts.push(context);
+            return ["shared", `provider:${context.attempt}`];
+        };
+        const forwarded: Array<readonly string[] | undefined> = [];
+        const generate = provider.generate.bind(provider);
+        provider.generate = (args) => {
+            forwarded.push((args as { attributions?: readonly string[] }).attributions);
+            return generate(args);
+        };
 
-        await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
-        assert.ok(seen, "generate() was called");
-        return captured;
-    } finally { await db.close(); }
-};
+        const engine = new Engine({ db, schemes, mimetypes });
+        engine.setExecutors(executors);
+        const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
 
-test("discovered attribution tags are unioned, deduped, sorted, and passed to generate()", async () => {
-    // Duplicate across the set + out of order — the wire must be a clean, stable, deduped list.
-    const captured = await captureAttributions(["npm:jane", "@acme/widgets", "npm:jane"]);
-    assert.deepEqual(captured, ["@acme/widgets", "npm:jane"], "deduped + sorted union reaches the provider");
+        const first = canonical("shared", "scheme:1", "executor:1", "mimetype:1", "provider:1");
+        const second = canonical("shared", "scheme:2", "executor:2", "mimetype:2", "provider:2");
+        assert.deepEqual(forwarded, [first, second], "each call receives that attempt's canonical union");
+        assert.deepEqual(contexts, [
+            {
+                workspaceId: String(workspaceId),
+                workerId: String(workerId),
+                primaryWorkerId: String(workerId),
+                loop: 1,
+                turn: 1,
+                attempt: 1,
+            },
+            {
+                workspaceId: String(workspaceId),
+                workerId: String(workerId),
+                primaryWorkerId: String(workerId),
+                loop: 1,
+                turn: 1,
+                attempt: 2,
+            },
+        ], "plugins receive only the exact provider-attempt coordinates");
+
+        const attempts = await db.test_turn_attempts.all<{ sequence: number; attributions: string }>({
+            turn_id: result.turnId,
+        });
+        assert.deepEqual(
+            attempts.map(({ sequence, attributions }) => ({ sequence, attributions: JSON.parse(attributions) })),
+            [
+                { sequence: 1, attributions: first },
+                { sequence: 2, attributions: second },
+            ],
+            "response-bearing attempt evidence retains each exact forwarded set",
+        );
+
+        const row = await db.test_get_turn.get<{ packet: string }>({ id: result.turnId });
+        const packet = JSON.parse(row!.packet) as { attributions: string[] };
+        assert.deepEqual(packet.attributions, second, "the turn request retains the latest attempted set");
+        assert.deepEqual(
+            await engine.loopAttributions(loopId),
+            canonical(...first, ...second),
+            "loop reporting derives its union from exact request evidence",
+        );
+    } finally {
+        await db.close();
+    }
 });
 
-test("no discovered attribution omits the provider wire field", async () => {
-    const captured = await captureAttributions(null);
-    assert.equal(captured, undefined, "a workspace with no attributing plugins sends no attributions field");
-});
-
-test("the loop stores its discovered plugin attribution tags", async () => {
+test("an empty folksonomy omits the provider field but persists the exact empty request set", async () => {
     const db = await openMigrated();
     try {
-        const workspaceId = await insertWorkspace(db, `loop-attr-${crypto.randomUUID()}`);
+        const workspaceId = await insertWorkspace(db, `attr-empty-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1, "go");
-        const schemes = new SchemeRegistry();
-        schemes.attributions = () => ["npm:jane", "@acme/widgets"]; // the active plugins' declared tags
-        const engine = new Engine({ db, schemes });
-        const provider = new Mock({ contextWindow: 100000, responses: [turn(sendDone)] });
+        const engine = new Engine({ db, schemes: new SchemeRegistry() });
+        const provider = new Mock({ contextWindow: 100_000, responses: [valid] });
+        let forwarded: readonly string[] | undefined;
+        const generate = provider.generate.bind(provider);
+        provider.generate = (args) => {
+            forwarded = (args as { attributions?: readonly string[] }).attributions;
+            return generate(args);
+        };
 
-        await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
+        const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
 
-        const row = await db.test_loops_get_attributions.get<{ attributions: string }>({ loop_id: loopId });
-        assert.deepEqual(JSON.parse(row!.attributions), ["@acme/widgets", "npm:jane"], "the activity is tagged with its plugins' tags, deduped + sorted");
-    } finally { await db.close(); }
+        assert.equal(forwarded, undefined);
+        const row = await db.test_get_turn.get<{ packet: string }>({ id: result.turnId });
+        assert.deepEqual((JSON.parse(row!.packet) as { attributions: string[] }).attributions, []);
+        assert.deepEqual(await engine.loopAttributions(loopId), []);
+    } finally {
+        await db.close();
+    }
 });

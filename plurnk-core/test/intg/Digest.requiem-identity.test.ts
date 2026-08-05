@@ -28,6 +28,7 @@ const MODEL_PACKET = (worker: string) => JSON.stringify({
         { name: "system", slot: "system", header: null, content: `system for ${worker}`, tokens: 1 },
         { name: "log", slot: "user", header: "Log", content: `log for ${worker}`, tokens: 1 },
     ],
+    attributions: [],
     assistant: { content: `last emission of ${worker}`, ops: [], reasoning: null },
     assistantRaw: null,
 });
@@ -58,6 +59,7 @@ test("{§digest-requiem}: every interview identifies as its own root", async () 
                 },
             }),
             parse_errors: JSON.stringify([{ message: "missing PLAN" }]),
+            attributions: "[]",
             usage_prompt: 2,
             usage_completion: 2,
             usage_reasoning: 2,
@@ -80,6 +82,7 @@ test("{§digest-requiem}: every interview identifies as its own root", async () 
                 },
             }),
             parse_errors: "[]",
+            attributions: "[]",
             usage_prompt: 2,
             usage_completion: 2,
             usage_reasoning: 2,

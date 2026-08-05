@@ -21,7 +21,11 @@ import type { Executor, RuntimeNamespaceOwner } from "./ExecutorRegistry.ts";
 import { docsExcludeSet } from "./teaching.ts";
 import type { CoreSchemeAdapter, CoreSchemeServices } from "./CoreSchemeServices.ts";
 import type { RuntimeSchemeFacet } from "../server/DaemonModule.ts";
-import { TEACHING_CORPUS, type PluginAttribution } from "@plurnk/plurnk-meta";
+import Meta, {
+    TEACHING_CORPUS,
+    type PluginAttribution,
+    type PluginAttributionContext,
+} from "@plurnk/plurnk-meta";
 import { readTeachingSource, type ReadTeaching } from "./teaching-corpus.ts";
 
 interface NamespaceClaim {
@@ -38,6 +42,7 @@ export default class SchemeRegistry {
     #closures = new Map<object, Promise<void>>();
     #coreServices: CoreSchemeServices | undefined;
     #packageAttributions = new Map<string, PluginAttribution>();
+    #packageAttributionSources = new Map<string, Set<object>>();
     // {§exec} — runtime-tag schemes (sh/node/…) that ALIAS the exec handler for output-entry
     // addressing (sh:///l/t/s). Routable via get(), but NOT separately taught or doc-materialized
     // (exec is taught once); else the catalog + docs bloat by one redundant line/entry per tag.
@@ -317,14 +322,27 @@ export default class SchemeRegistry {
             const mod = await import(packageName) as Record<string, new () => SchemeHandler>;
             const Handler = mod[exportName ?? "default"];
             if (typeof Handler !== "function") throw new Error(`external scheme '${name}' (${packageName}): export '${exportName ?? "default"}' is not a constructor`);
-            this.#registerClaimed(name, new Handler(), claim, true);
+            const handler = new Handler();
+            this.#registerClaimed(name, handler, claim, true);
+            const sources = this.#packageAttributionSources.get(packageName) ?? new Set<object>();
+            sources.add(handler);
+            this.#packageAttributionSources.set(packageName, sources);
             const attribution = packageAttributions.get(packageName);
             if (attribution !== undefined) this.#packageAttributions.set(packageName, attribution);
         }
     }
 
-    // {§attribution-discovery-placeholder}
-    attributions(): string[] { return [...this.#packageAttributions.values()].flat(); }
+    // {§plugin-attribution} — static declarations are always-on; each admitted
+    // external handler may add or omit opaque tags for this exact attempt.
+    attributions(context: PluginAttributionContext): PluginAttribution {
+        const lists: PluginAttribution[] = [...this.#packageAttributions.values()];
+        for (const [packageName, sources] of this.#packageAttributionSources) {
+            for (const source of sources) {
+                lists.push(Meta.runtimeAttribution(source, context, packageName));
+            }
+        }
+        return Meta.composeAttributions(...lists);
+    }
 
     // Active set under the given loop flags (SPEC {§engine-rails}). Delegates to
     // the in-tree ResolveForLoop utility.

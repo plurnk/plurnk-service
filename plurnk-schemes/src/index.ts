@@ -106,6 +106,11 @@ export type {
 export type { SchemeHandler } from "./handler.ts";
 export type { PacketSectionDraft, PacketSectionTransformer } from "./packet.ts";
 export type {
+    PluginAttributionContext,
+    PluginAttributionDeclaration,
+    PluginAttributionSource,
+} from "@plurnk/plurnk-meta";
+export type {
     PlurnkStatement,
     FindStatement,
     ReadStatement,

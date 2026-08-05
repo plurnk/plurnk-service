@@ -17,6 +17,10 @@ import { ollamaProviderFromEnv } from "./ollama.ts";
 import { compatibleProviderFromEnv } from "./compatibleProvider.ts";
 import { contextWindowFromEnv } from "./env.ts";
 import { withProviderDefaults } from "./defaults.ts";
+import Meta, {
+    type PluginAttribution,
+    type PluginAttributionContext,
+} from "@plurnk/plurnk-meta";
 
 // Two injectable seams, both defaulting to production behavior and never passed
 // by real callers: the module importer (tests exercise the bespoke path without
@@ -57,7 +61,7 @@ export const instantiateProvider = async (
     if (catalog !== null) return catalog;
     if (name === "ollama") return ollamaProviderFromEnv(env, model, baseUrl === undefined ? undefined : { baseUrl });
     if (name === "openai" || name === "plurnk") return compatibleProviderFromEnv(name, env, model, baseUrl);
-    const { registry, skipped } = await providerPackages(discoverFn, env);
+    const { registry, skipped, packageAttributions = new Map() } = await providerPackages(discoverFn, env);
     const specifier = registry.get(name);
     if (specifier === undefined) {
         const declined = skipped.get(name);
@@ -83,12 +87,18 @@ export const instantiateProvider = async (
     if (contextWindow === null) {
         throw new Error(`${specifier}: PLURNK_PROVIDERS_CONTEXT_WINDOW must be set because Models.dev has no metadata for provider "${name}"`);
     }
+    const declared = packageAttributions.get(specifier) ?? [];
+    const attributions = (context: PluginAttributionContext): PluginAttribution => Meta.composeAttributions(
+        declared,
+        Meta.runtimeAttribution(sdkProvider, context, specifier),
+    );
     return providerFromSdkModel({
         name,
         env,
         model,
         languageModel: sdkProvider.languageModel(model),
         contextWindow,
+        attributions,
     });
 };
 

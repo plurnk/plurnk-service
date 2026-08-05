@@ -5,6 +5,16 @@ import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import ExecutorRegistry from "./ExecutorRegistry.ts";
+import type { PluginAttributionContext } from "@plurnk/plurnk-meta";
+
+const attributionContext = (attempt: number): PluginAttributionContext => ({
+    workspaceId: "workspace",
+    workerId: "worker",
+    primaryWorkerId: "primary",
+    loop: 1,
+    turn: 1,
+    attempt,
+});
 
 // A fake executor whose probe() diverges by tag (this.runtime). build() only
 // constructs it + calls probe(), so this minimal shape is a complete stand-in.
@@ -17,6 +27,9 @@ class FakeExecutor {
         return this.runtime === "alpha"
             ? { available: true, detail: undefined }
             : { available: false, detail: "not on PATH" };
+    }
+    attributions({ attempt }: PluginAttributionContext): string[] {
+        return attempt === 2 ? ["runtime:executor"] : [];
     }
 }
 
@@ -94,7 +107,12 @@ test("ExecutorRegistry consumes discovery attribution without reopening a strict
         load: loadFake,
     });
 
-    assert.deepEqual(registry.attributions(), ["@plurnk/strict"], "one package fact survives its two runtime tags");
+    assert.deepEqual(registry.attributions(attributionContext(1)), ["@plurnk/strict"], "one package fact survives its two runtime tags");
+    assert.deepEqual(
+        registry.attributions(attributionContext(2)),
+        ["@plurnk/strict", "runtime:executor"],
+        "one hook call per unique executor object is combined with the package's static tags",
+    );
 });
 
 test("{§plugin-trust-boundary}: build() notes untrusted packages that discovery withheld", async () => {

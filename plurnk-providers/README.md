@@ -70,6 +70,11 @@ The default export is an AI SDK provider with
 contract, so plugins do not reproduce retries, usage normalization, envelopes,
 notices, or RFC 9457 failure normalization.
 
+The manifest may declare always-on `plurnk.attribution`. The default export may
+also implement synchronous `attributions(context)` and decide per provider
+attempt whether to return no, one, or many additional opaque tags
+({§plugin-attribution}).
+
 Discovery is scope-agnostic and rejects duplicate names.
 Third-party discovery uses the shared pre-import trust contract ({§plugin-trust-boundary}).
 

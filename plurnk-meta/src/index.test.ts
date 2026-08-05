@@ -3,7 +3,16 @@ import assert from "node:assert/strict";
 import { mkdtemp, mkdir, writeFile, symlink, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import Meta, { TEACHING_CORPUS } from "./index.ts";
+import Meta, { TEACHING_CORPUS, type PluginAttributionContext } from "./index.ts";
+
+const attributionContext: PluginAttributionContext = {
+    workspaceId: "workspace-7",
+    workerId: "worker-11",
+    primaryWorkerId: "worker-3",
+    loop: 2,
+    turn: 4,
+    attempt: 1,
+};
 
 test("teaching corpus: the meta owner publishes one exact immutable membership", () => {
     assert.deepEqual(TEACHING_CORPUS, {
@@ -72,6 +81,54 @@ test("normalizeAttribution: only @plurnk packages may claim the reserved @plurnk
         ["@plurnk/creators/johnny-cash"],
     );
     assert.deepEqual(Meta.normalizeAttribution("@acme/widgets", "evil-pkg"), ["@acme/widgets"]);
+});
+
+test("runtimeAttribution: a plugin authors no, one, or many attempt-time tags", () => {
+    let received: PluginAttributionContext | undefined;
+    const source = {
+        marker: "source",
+        attributions(context: PluginAttributionContext) {
+            assert.equal(this.marker, "source", "the hook retains its plugin-object receiver");
+            received = context;
+            return ["folksonomy:search", "creator:ada"];
+        },
+    };
+
+    assert.deepEqual(Meta.runtimeAttribution({}, attributionContext, "@acme/plugin"), []);
+    assert.deepEqual(
+        Meta.runtimeAttribution(source, attributionContext, "@acme/plugin"),
+        ["folksonomy:search", "creator:ada"],
+    );
+    assert.equal(received, attributionContext, "the exact host-owned attempt context reaches the hook");
+});
+
+test("runtimeAttribution: the reserved lane and structural failures remain package-boundary errors", () => {
+    assert.throws(
+        () => Meta.runtimeAttribution(
+            { attributions: () => "@plurnk/claimed" },
+            attributionContext,
+            "@acme/plugin",
+        ),
+        /'@plurnk\/' is reserved.*'@plurnk\/claimed'/,
+    );
+    assert.throws(
+        () => Meta.runtimeAttribution({ attributions: ["not callable"] }, attributionContext, "@acme/plugin"),
+        /plugin '@acme\/plugin': attributions must be a function/,
+    );
+    const cause = new Error("plugin decision failed");
+    assert.throws(
+        () => Meta.runtimeAttribution({ attributions: () => { throw cause; } }, attributionContext, "@acme/plugin"),
+        (error: Error) => error.cause === cause,
+    );
+});
+
+test("composeAttributions: composition has one stable deduplicated representation", () => {
+    const tags = Meta.composeAttributions(
+        ["topic:search", "creator:ada"],
+        ["creator:ada", "runtime:sqlite"],
+    );
+    assert.deepEqual(tags, ["creator:ada", "runtime:sqlite", "topic:search"]);
+    assert.equal(Object.isFrozen(tags), true);
 });
 
 test("packageDirs: enumerates the fixture plus legitimate packages farther up the open ancestor chain", async () => {

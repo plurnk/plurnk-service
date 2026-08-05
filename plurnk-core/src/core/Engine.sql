@@ -30,12 +30,6 @@ SELECT flags FROM loops WHERE id = $loop_id;
 -- Updates the loop's persisted flags (json). Called by the runLoop seam.
 UPDATE loops SET flags = $flags WHERE id = $loop_id;
 
--- PREP: engine_tag_loop_attributions
--- {§attribution-discovery-placeholder} — tag the loop with its active plugins' attribution tags
--- (string[] JSON), write-once: the
--- active set is loop-stable, so the `= '[]'` guard keeps later turns from rewriting it.
-UPDATE loops SET attributions = $attributions WHERE id = $loop_id AND attributions = '[]';
-
 -- PREP: engine_set_loop_open_paths
 -- {§methods-loop-run-open-paths}: persist the initial prompt frame's selected
 -- paths (string[] JSON) until turn 1 materializes that frame.
@@ -129,6 +123,24 @@ SELECT COALESCE(SUM(usage_prompt), 0)     AS prompt,
        (SELECT meta FROM turns WHERE loop_id = $loop_id ORDER BY sequence DESC LIMIT 1) AS meta
 FROM turns WHERE loop_id = $loop_id;
 
+-- PREP: engine_loop_attributions
+-- {§attribution} — derive the loop projection from exact response-attempt
+-- evidence plus each turn's latest request (which also covers a call that
+-- failed without response evidence).
+SELECT attribution
+FROM (
+    SELECT value AS attribution
+    FROM turns t, json_each(t.packet, '$.attributions')
+    WHERE t.loop_id = $loop_id
+    UNION
+    SELECT value AS attribution
+    FROM turn_attempts a
+    JOIN turns t ON t.id = a.turn_id,
+         json_each(a.attributions)
+    WHERE t.loop_id = $loop_id
+)
+ORDER BY attribution;
+
 -- PREP: engine_loop_turn_seqs
 -- Look up (loop_seq, turn_seq) for a given (loop_id, turn_id). Used by
 -- #writeLog when an op needs to address itself or its output by log
@@ -175,6 +187,7 @@ INSERT INTO turn_attempts (
     accepted,
     response,
     parse_errors,
+    attributions,
     usage_prompt,
     usage_completion,
     usage_reasoning,
@@ -189,6 +202,7 @@ VALUES (
     $accepted,
     $response,
     $parse_errors,
+    $attributions,
     $usage_prompt,
     $usage_completion,
     $usage_reasoning,
