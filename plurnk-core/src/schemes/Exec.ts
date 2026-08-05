@@ -732,8 +732,8 @@ export default class Exec extends CoreSchemeAdapterBase {
                         entryId, channel, state, notify: ctx.streamEventNotify, coordinate,
                     })),
                     emit: (event) => {
-                        // The executor plugin's Notice predates grammar's required `level`;
-                        // inject a default (forwarding the producer's own severity when it supplies one). #276
+                        // Compatibility deviation from {§notice-level}: missing executor severity
+                        // is currently coerced to info; #190 owns restoring required producer truth.
                         const level = (event as { level?: Notice["level"] }).level ?? "info";
                         ctx.pushNotice?.({ ...event, level } as Notice);
                     },
