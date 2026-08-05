@@ -26,7 +26,7 @@ test("op.edit creates an entry via engine.dispatch (origin=client)", async () =>
     });
 });
 
-test("op.edit: log/entry notification precedes the RPC response on the wire (#253)", async () => {
+test("{§methods-op-mirror}: op.edit log/entry notification precedes the action response", async () => {
     await withDaemon(null, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
@@ -42,7 +42,7 @@ test("op.edit: log/entry notification precedes the RPC response on the wire (#25
             const notifyIdx = order.indexOf("log/entry");
             const respIdx = order.indexOf("response#2");
             assert.ok(notifyIdx !== -1, `log/entry should have fired (order: ${order.join(", ")})`);
-            assert.ok(respIdx !== -1 && notifyIdx < respIdx, `#253: log/entry must precede the op response (order: ${order.join(", ")})`);
+            assert.ok(respIdx !== -1 && notifyIdx < respIdx, `{§methods-op-mirror}: log/entry must precede the op response (order: ${order.join(", ")})`);
         } finally { ws.close(); }
     });
 });
