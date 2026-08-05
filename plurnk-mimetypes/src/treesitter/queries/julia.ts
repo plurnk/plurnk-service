@@ -1,4 +1,4 @@
-// References query for tree-sitter-julia (issue #19; SPEC §16).
+// References query for tree-sitter-julia ({§mimetype-references}).
 // S-expression patterns; `@ref.<kind>` captures yield MimeRef rows via the
 // framework engine (refsEngine.ts).
 //
@@ -37,7 +37,7 @@
 //     trailing identifier, parametric heads (`Vector{Point}` → Vector) and
 //     their identifier parameters (→ Point, the Python `List[int]`
 //     precedent). Qualified types and `where` constraints are skipped.
-//   - `use` is reserved; bare identifier reads are not emitted (SPEC §16
+//   - `use` is reserved; bare identifier reads are not emitted ({§mimetype-references}
 //     invariants).
 
 // Parents in which a call_expression is a USE, never a definition head.

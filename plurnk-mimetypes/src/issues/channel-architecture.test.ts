@@ -1,5 +1,4 @@
 // Contracts: {§mimetype-channel-architecture}, {§mimetype-materialization}.
-// Issue #10 is provenance.
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
@@ -48,13 +47,10 @@ class FakeJsonHandler extends BaseHandler {
 
 const meta = { mimetype: "text/x-test", glyph: "🧪", extensions: [".test"] as const };
 
-describe("Issue #10 — C1: ProcessResult exposes three channels", () => {
-    // The ProcessResult shape is asserted at the Mimetypes integration level
-    // (Mimetypes.test.ts has the deepEqual shape check including the three
-    // channel fields). This file's role is to enforce the per-handler contract
-    // that BaseHandler.deepJson() and BaseHandler.deepXml() exist and return
-    // sensible defaults — so every handler automatically participates in the
-    // channel architecture without special-casing.
+describe("{§mimetype-channel-architecture} — C1: BaseHandler supplies deep projections", () => {
+    // Mimetypes.test.ts covers ProcessResult. This suite enforces the
+    // per-handler contract: BaseHandler.deepJson() and BaseHandler.deepXml()
+    // provide defaults, so handlers participate without special-casing.
     it("BaseHandler exposes deepJson() returning null by default", () => {
         const h = new BaseHandler(meta);
         const result = h.deepJson("anything");
@@ -74,11 +70,10 @@ describe("Issue #10 — C1: ProcessResult exposes three channels", () => {
     });
 });
 
-describe("Issue #10 — C3: cross-dispatch matrix", () => {
-    // The half of #10 most prone to silent omission: queries on the "wrong"
-    // dialect for the source mimetype. xpath on JSON, jsonpath on XML, both
-    // on code. These cases were the missing test discipline that let the
-    // xpath gap ship.
+describe("{§mimetype-channel-architecture} — C3: cross-dispatch matrix", () => {
+    // The cross-dispatch path most prone to silent omission: queries on the
+    // "wrong" dialect for the source mimetype. xpath on JSON, jsonpath on XML,
+    // and both on code must follow the universal dispatch contract.
 
     it("xpath on a tree-shaped entry returns matches via the projected deep-xml", async () => {
         const h = new FakeTreeHandler(meta);
@@ -120,7 +115,7 @@ describe("Issue #10 — C3: cross-dispatch matrix", () => {
     });
 });
 
-describe("Issue #10 — C4: deep-xml is congruent with deep-json", () => {
+describe("{§mimetype-channel-architecture} — C4: deep-xml is congruent with deep-json", () => {
     // The two views describe the same tree. A jsonpath query for X should
     // be answerable by an equivalent xpath query against the same entry.
 
@@ -145,12 +140,10 @@ describe("Issue #10 — C4: deep-xml is congruent with deep-json", () => {
     });
 });
 
-describe("Issue #10 — C2: deep channels are eager (no lazy materialization)", () => {
-    // Eagerness is asserted at the Mimetypes integration level — every
-    // process() call must populate both channels regardless of whether a
-    // query is ever issued. The contract here: deepJson() is callable
-    // synchronously-promptly (no fetch, no IO), and deepXml() depends only
-    // on its output.
+describe("{§mimetype-channel-architecture} — C2: deep channels are eager (no lazy materialization)", () => {
+    // Mimetypes integration tests cover channel selection. The contract here:
+    // requested projections resolve locally rather than returning a lazy
+    // wrapper, and deepXml() depends only on deepJson().
     it("deepJson + deepXml resolve quickly and synchronously-after-microtask", async () => {
         const h = new FakeTreeHandler(meta);
         const before = performance.now();

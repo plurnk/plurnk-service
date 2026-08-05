@@ -43,7 +43,7 @@ describe("BaseHandler", () => {
         assert.equal(h.projectionConfiguration(), "");
     });
 
-    it("returns an empty references list by default (#19 lands the engine)", async () => {
+    it("returns an empty references list by default ({§mimetype-references})", async () => {
         const h = new BaseHandler(metadata);
         assert.deepEqual(await h.references("anything"), []);
     });

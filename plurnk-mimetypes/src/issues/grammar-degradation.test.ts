@@ -1,4 +1,4 @@
-// Contract: {§mimetype-error-policy}. Issue #14 is provenance.
+// Contract: {§mimetype-error-policy}.
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
@@ -62,7 +62,7 @@ function makeMimetypes() {
     });
 }
 
-describe("Issue #14 — C1: missing grammar degrades (not an error)", () => {
+describe("{§mimetype-error-policy} — C1: missing grammar degrades (not an error)", () => {
     it("process() returns ok:true when grammar is missing", async () => {
         const m = makeMimetypes();
         const result = await m.process({ path: "foo.fake", content: "line one\nline two\nline three" });
@@ -98,7 +98,7 @@ describe("Issue #14 — C1: missing grammar degrades (not an error)", () => {
     });
 });
 
-describe("Issue #14 — C2: grammarMissing surfaces the install hint as data", () => {
+describe("{§mimetype-error-policy} — C2: grammarMissing surfaces the install hint as data", () => {
     it("grammarMissing is set to the package name on the degraded result", async () => {
         const m = makeMimetypes();
         const result = await m.process({ path: "foo.fake", content: "x" });
@@ -125,7 +125,7 @@ describe("Issue #14 — C2: grammarMissing surfaces the install hint as data", (
     });
 });
 
-describe("Issue #14 — C3: strict mode throws instead of degrading", () => {
+describe("{§mimetype-error-policy} — C3: strict mode throws instead of degrading", () => {
     it("process(input, { strict: true }) throws GrammarNotInstalledError on missing-grammar paths", async () => {
         const m = makeMimetypes();
         await assert.rejects(

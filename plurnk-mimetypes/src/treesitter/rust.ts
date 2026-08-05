@@ -3,7 +3,7 @@ import type { TreeSitterSymbolProjection } from "../ParserCoordinates.ts";
 import type { SymbolKind } from "../types.ts";
 import type { TreeSitterNode } from "../TreeSitterExtractor.ts";
 
-// Rust SPEC §3 mapping via tree-sitter-rust.
+// Rust symbol mapping ({§mimetype-symbol}) via tree-sitter-rust.
 //
 //   function_item         → function (or method inside impl_item body)
 //   struct_item           → class
@@ -17,7 +17,7 @@ import type { TreeSitterNode } from "../TreeSitterExtractor.ts";
 //   union_item            → class
 //   macro_definition      → function
 //
-// Container semantics (issue #18): impl blocks (the impl'd type name), trait
+// Container semantics ({§mimetype-symbol-container}): impl blocks (the impl'd type name), trait
 // bodies (the trait name), and mod blocks (the mod name) are containers —
 // items inside carry the dotted path of enclosing scope names. `container`
 // is the path; `inImplOrTrait` stays a separate flag because mod members

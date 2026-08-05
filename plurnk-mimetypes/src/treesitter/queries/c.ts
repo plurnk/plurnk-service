@@ -1,10 +1,10 @@
-// References query for tree-sitter-c (issue #19; SPEC §16).
+// References query for tree-sitter-c ({§mimetype-references}).
 // S-expression patterns; `@ref.<kind>` captures yield MimeRef rows via the
 // framework engine (refsEngine.ts).
 //
 // Conventions:
 //   - import: NOT emitted. `#include` takes a path string (<stdio.h> /
-//     "local.h"), not a name-join-resolvable symbol name — SPEC §16 bans
+//     "local.h"), not a name-join-resolvable symbol name — {§mimetype-references} bans
 //     path strings from the refs channel. No import refs for C.
 //   - call refs capture the callee identifier of a plain call. Calls
 //     through function-pointer fields/derefs are not emitted (the field
@@ -19,7 +19,7 @@
 //   - instantiate/inherit: not applicable — C has no constructors or
 //     inheritance.
 //   - `use` is reserved; bare identifier reads are not emitted (precision
-//     over recall — SPEC §16 invariants).
+//     over recall — {§mimetype-references} invariants).
 export const refsQuery = `
 (call_expression function: (identifier) @ref.call)
 

@@ -48,7 +48,7 @@ describe("text/x-scala via tree-sitter registry", () => {
     });
 });
 
-describe("text/x-scala — container + columns (issue #18)", () => {
+describe("text/x-scala — container + columns ({§mimetype-symbol-container})", () => {
     it("members carry the enclosing scope as container; nesting is dotted", async () => {
         const src = "object Outer {\n  object Inner {\n    def deep() = 1\n  }\n  def shallow() = 1\n  val k = 1\n}\n";
         const syms = await h().extractRaw(src);

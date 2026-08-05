@@ -48,7 +48,7 @@ describe("text/x-c via tree-sitter registry", () => {
     });
 });
 
-describe("text/x-c — container + columns (issue #18)", () => {
+describe("text/x-c — container + columns ({§mimetype-symbol-container})", () => {
     it("enumerators carry the named enum as container", async () => {
         const syms = await h().extractRaw("enum Color { RED, GREEN };\n");
         assert.equal(syms.find((s) => s.name === "Color")?.container, undefined);

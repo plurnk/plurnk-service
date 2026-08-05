@@ -3,10 +3,11 @@ import type { TextRegion } from "@plurnk/plurnk-contracts";
 
 // json-p3's default recursion-descent cap (50 nodes visited) is a DoS guard for
 // untrusted deeply-nested JSON. Our jsonpath target is deepJson — our OWN parse
-// tree (§12), trusted and traversed linearly, so `$..*` over it can't amplify.
+// tree ({§mimetype-channel-architecture}), trusted and traversed linearly, so
+// `$..*` over it can't amplify.
 // Real parse trees run hundreds to millions of nodes (a 2-line Erlang file is
 // 348), so the 50-node default breaks recursive descent on every ANTLR/tree-
-// sitter handler (#523 — the regression the #490 swap's shallow fixtures missed).
+// sitter handler; shallow fixtures do not exercise that depth.
 // Unbounded over trusted trees is the honest bound, not a magic threshold.
 const JP3 = new JSONPathEnvironment({ maxRecursionDepth: Number.MAX_SAFE_INTEGER });
 import { DOMParser } from "@xmldom/xmldom";
@@ -16,7 +17,7 @@ import type { LineSpan, QueryMatch } from "./types.ts";
 import TextCoordinates from "./TextCoordinates.ts";
 
 // regex against arbitrary text. Returns one QueryMatch per match. Polymorphic
-// `matched` shape per grammar #17:
+// `matched` shape under {§mimetype-query}:
 //   - no captures → string (the whole match)
 //   - anonymous captures → readonly string[] (positional only)
 //   - named captures (and mixed) → object with named keys and positional
@@ -67,8 +68,8 @@ function advanceStringIndex(text: string, index: number, unicode: boolean): numb
     return second >= 0xDC00 && second <= 0xDFFF ? index + 2 : index + 1;
 }
 
-// glob applied line-anchored against text body. Per grammar #17: each line
-// that matches the glob is a separate QueryMatch; matched = the full line.
+// glob applied line-anchored against text body. Under {§mimetype-query}, each
+// matching line is a separate QueryMatch; matched = the full line.
 export function queryGlob(text: string, pattern: string): QueryMatch[] {
     const regex = globToRegex(pattern);
     const coordinates = new TextCoordinates(text);
@@ -103,7 +104,8 @@ export function queryJsonpathObject(
     // history). Normalized paths per RFC §2.7; pointers per RFC 6901.
     let results: Array<{ value: unknown; path: string; pointer: string }>;
     try {
-        // deepJson is JSON-shaped by the §12 contract; the cast is the seam.
+        // deepJson is JSON-shaped by {§mimetype-channel-architecture}; the
+        // cast is the seam.
         results = JP3.query(pattern, obj as JSONValue).nodes.map((n) => ({
             value: n.value,
             path: n.path,
@@ -127,7 +129,7 @@ export function queryJsonpathObject(
 
 // xpath against a string of XML — parses the XML via @xmldom/xmldom, runs the
 // xpath expression via the `xpath` package's XPath 1.0 engine, shapes results
-// per grammar #17. Returns:
+// under {§mimetype-query}. Returns:
 //   - element node match  → string (serialized XML)
 //   - attribute/text/comment/PI node match → string (text content)
 //   - primitive result (from string()/count()/etc.) → string
@@ -165,10 +167,11 @@ export function queryXpathString(
     return shapeXpathResult(pattern, result, readableText);
 }
 
-// Translate xpath.select result to QueryMatch[] per grammar #17. Source-line
-// recovery (#13 Q1): element matches read the `pk:line` attribute the
-// framework's projection wrote to every element node — that's the source-line
-// the original handler's deepJson knew about. Attribute/text/comment/PI
+// Translate xpath.select result to QueryMatch[] under {§mimetype-query}.
+// Source-line recovery under {§mimetype-query-conformance}: element matches
+// read the `pk:line` attribute the framework's projection wrote to every
+// element node — that's the source-line the original handler's deepJson knew
+// about. Attribute/text/comment/PI
 // matches walk up to the parent element to find the same. Primitive results
 // (string/number/boolean from `string(...)`, `count(...)`, etc.) retain only
 // the authored expression because they have no node context.
@@ -230,10 +233,12 @@ function regionOfMatchedNode(
         el = cur as unknown as Element | null;
     }
     // pk:line / pk:endLine — the source span the projection wrote onto the
-    // element (SPEC §12.3 + #12). A line-less child (e.g. a bare `name:"g"`
+    // element ({§mimetype-channel-architecture}). A line-less child (e.g. a
+    // bare `name:"g"`
     // field projected to <name>g</name>) carries none of its own, so walk up to
     // the nearest ancestor element that does — mirroring jsonpath's ancestorChain
-    // walk in defaultLines so both dialects report the SAME enclosing span (#41).
+    // walk in defaultLines so both dialects report the same enclosing span
+    // ({§mimetype-query-conformance}).
     // Only when nothing in the chain is annotated do we honestly return no span;
     // we never fake a line.
     while (el && pkAttr(el, "line") === undefined) {
@@ -286,7 +291,8 @@ function serializeXpathNode(node: Node): string {
     return (node as unknown as { toString: () => string }).toString();
 }
 
-// Pick a return shape for a regex match per grammar #17's polymorphism rule.
+// Pick a return shape for a regex match under the polymorphism rule in
+// {§mimetype-query}.
 function shapeMatched(m: RegExpExecArray): unknown {
     if (m.length === 1) return m[0]; // no captures → string
     if (m.groups) {
@@ -334,9 +340,9 @@ export function globToRegex(glob: string): RegExp {
     return new RegExp(pat + "$");
 }
 
-// Default jsonpath source-line resolver (issue #41), for deepJson that carries
-// its own line annotations (synthesized models like PDF) or the bare-number
-// outline. Strategy, in order:
+// Default jsonpath source-line resolver under {§mimetype-query-conformance},
+// for deepJson that carries its own line annotations (synthesized models like
+// PDF) or the bare-number outline. Strategy, in order:
 //   1. The matched value's own span — explicit line/endLine, or for the outline
 //      convention (bare numbers = lines) the min..max of its leaf numbers.
 //   2. Walk up the matched node's ancestors (via the JSON pointer) to the
@@ -397,8 +403,9 @@ function regionsForSpans(
     return regions;
 }
 
-// Outline to projectJsonToXml line resolver (#41 dialect symmetry). The
-// bare-number symbol outline carries no `line` fields; a leaf number is its
+// Outline-to-projectJsonToXml line resolver under the dialect symmetry in
+// {§mimetype-query-conformance}. The bare-number symbol outline carries no
+// `line` fields; a leaf number is its
 // line. So when a symbols-only handler projects that outline for XPath
 // (BaseHandler.deepXml), this resolves each pointer to the SAME min..max leaf
 // span jsonpath's spanOfValue computes, keeping both dialects in agreement.

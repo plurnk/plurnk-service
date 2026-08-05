@@ -43,7 +43,7 @@ pub fn main() void {
 // CommentDecoy() never surfaces
 `;
 
-describe("conformance: text/x-zig defs + refs (issues #19/#20)", () => {
+describe("conformance: text/x-zig defs + refs ({§mimetype-references})", () => {
     it("passes the shared invariants and expected captures", async () => {
         const { references } = await runConformance({
             mimetype: "text/x-zig",
@@ -84,7 +84,7 @@ describe("conformance: text/x-zig defs + refs (issues #19/#20)", () => {
             ],
         });
         // @import takes path strings, not symbol names — no import refs for
-        // Zig (SPEC §16 bans path strings from the refs channel).
+        // Zig ({§mimetype-references} bans path strings from the refs channel).
         assert.ok(!references.some((r) => r.kind === "import"), "no import refs for Zig");
         assert.ok(!references.some((r) => r.name === "std"), "import path binding never surfaces");
         // Builtins are builtin_function nodes, not call_expressions —

@@ -39,7 +39,7 @@ describe("text/x-dart via tree-sitter registry", () => {
     });
 });
 
-describe("text/x-dart — container + columns (issue #18)", () => {
+describe("text/x-dart — container + columns ({§mimetype-symbol-container})", () => {
     it("class and mixin members carry the owning declaration as container", async () => {
         const src = "class Foo {\n  String name = '';\n  void greet(String prefix) {}\n}\nmixin Greeter { void hi() {} }\n";
         const syms = await h().extractRaw(src);
@@ -59,7 +59,7 @@ describe("text/x-dart — container + columns (issue #18)", () => {
     });
 });
 
-describe("text/x-dart — def spans cover sibling bodies (issue #22)", () => {
+describe("text/x-dart — def spans cover sibling bodies ({§mimetype-references})", () => {
     it("multi-line method def endLine covers the body's last line", async () => {
         const src = "class Foo {\n  int twice(int n) {\n    final m = n * 2;\n    return m;\n  }\n}\n";
         const syms = await h().extractRaw(src);

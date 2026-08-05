@@ -1,6 +1,6 @@
-// #32: the references-conformance harness is public — a third-party handler
+// {§mimetype-public-api}: the references-conformance harness is public — a third-party handler
 // author imports assertHandlerConformance from @plurnk/plurnk-mimetypes/
-// conformance and runs the SPEC §16 invariants against their OWN handler
+// conformance and runs the {§mimetype-references} invariants against their OWN handler
 // instance, with no registry involvement. This proves the decoupled entry
 // (src/conformance.ts) drives a bare duck handler, the same invariants the
 // in-registry suites run through the wrapper.
@@ -35,7 +35,7 @@ const FIXTURE: ConformanceFixture = {
     expectRefs: [{ name: "Helper", kind: "instantiate" }],
 };
 
-describe("#32 — public conformance harness", () => {
+describe("{§mimetype-public-api} — public conformance harness", () => {
     it("a conformant handler passes and returns its symbols + references", async () => {
         const { symbols, references } = await assertHandlerConformance(handlerWith(REFS), FIXTURE);
         assert.equal(symbols.length, 2);

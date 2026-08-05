@@ -2,19 +2,19 @@ import type { MimeRef, MimeSymbol, RefKind } from "../types.ts";
 import ParserCoordinates from "../ParserCoordinates.ts";
 import type { TreeSitterNode, TreeSitterTree } from "../TreeSitterExtractor.ts";
 
-// References-channel engine (issue #19). Executes a language's refs query
+// References-channel engine ({§mimetype-references}). Executes a language's refs query
 // (S-expression patterns with `@ref.<kind>` captures) against a parsed tree
 // and normalizes the captures to MimeRef rows. The engine is language-blind:
 // everything language-specific lives in the query source.
 //
 // Container resolution: a ref's `container` is the FULL qualified path of
-// the innermost enclosing emitted definition (SPEC §16 — the @> join key),
+// the innermost enclosing emitted definition ({§mimetype-references} — the @> join key),
 // derived from the symbols channel by line containment. No second walk, no
 // duplicated container stack: the defs the symbols channel already emits ARE
 // the scopes.
 
 // The ONLY node fields the engine reads off a capture: the matched text and
-// its source span. Blessed as a public type (issue #26) so a Tier 2 adapter
+// its source span. Blessed as a public type ({§mimetype-public-api}) so a Tier 2 adapter
 // composing a qualified name from several capture nodes (HCL `TYPE.NAME`) can
 // construct an honest capture node — no cast through TreeSitterNode relying on
 // a comment-only field-subset contract. A real
@@ -78,7 +78,7 @@ export function collectReferences(
             ...(container !== null && { container }),
         });
     }
-    // Deterministic document order (conformance invariant, issue #20).
+    // Deterministic document order (conformance invariant, {§mimetype-references}).
     out.sort((a, b) => a.line - b.line || a.column - b.column);
     return out;
 }

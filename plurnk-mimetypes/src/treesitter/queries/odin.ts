@@ -1,4 +1,4 @@
-// References query for tree-sitter-odin (issue #19; SPEC §16).
+// References query for tree-sitter-odin ({§mimetype-references}).
 // S-expression patterns; `@ref.<kind>` captures yield MimeRef rows via the
 // framework engine (refsEngine.ts).
 //
@@ -6,7 +6,7 @@
 //   - import: NOT emitted. Odin imports are collection PATHS
 //     (`import "core:fmt"` — a string literal), and an alias
 //     (`str "core:strings"`) binds a local package name; neither resolves
-//     to a def by the service's name-join (go precedent; SPEC §16 bans
+//     to a def by the service's name-join (go precedent; {§mimetype-references} bans
 //     path strings from the refs channel).
 //   - call refs capture the callee identifier. Member calls
 //     (`fmt.println(...)`) parse as a member_expression wrapping an INNER
@@ -26,7 +26,7 @@
 //     the grammar has no primitive_type — they surface but never join.
 //   - inherit: not applicable — Odin has no inheritance.
 //   - `use` is reserved; bare identifier reads are not emitted (precision
-//     over recall — SPEC §16 invariants).
+//     over recall — {§mimetype-references} invariants).
 export const refsQuery = `
 (call_expression function: (identifier) @ref.call)
 

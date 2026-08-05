@@ -24,7 +24,7 @@ log_message() {
 main
 `;
 
-describe("conformance: text/x-shellscript refs (SPEC §16)", () => {
+describe("conformance: text/x-shellscript refs ({§mimetype-references})", () => {
     it("command calls join to local functions; externals are dead rows", async () => {
         await runConformance({
             mimetype: "text/x-shellscript",

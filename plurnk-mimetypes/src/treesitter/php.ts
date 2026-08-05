@@ -3,7 +3,7 @@ import type { TreeSitterSymbolProjection } from "../ParserCoordinates.ts";
 import type { SymbolKind } from "../types.ts";
 import type { TreeSitterNode } from "../TreeSitterExtractor.ts";
 
-// PHP SPEC §3 mapping via tree-sitter-php.
+// PHP symbol mapping ({§mimetype-symbol}) via tree-sitter-php.
 //
 //   namespace_definition    → module (recurse into body)
 //   class_declaration       → class (recurse, inClass=true)
@@ -15,7 +15,7 @@ import type { TreeSitterNode } from "../TreeSitterExtractor.ts";
 //   property_declaration    → field (per property_element)
 //   const_declaration       → constant (per const_element)
 //
-// Container semantics (issue #18): symbols inside a namespace/class/interface/
+// Container semantics ({§mimetype-symbol-container}): symbols inside a namespace/class/interface/
 // trait/enum carry the dotted path of enclosing emitted names. Top-level
 // symbols carry none.
 export function extract(root: TreeSitterNode, _content: string): TreeSitterSymbolProjection[] {

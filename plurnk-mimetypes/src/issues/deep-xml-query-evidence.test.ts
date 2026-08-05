@@ -1,19 +1,4 @@
-// Issue #13: deep-xml channel: three contract refinements — service-side
-// input requested.
-// https://github.com/plurnk/mimetypes/issues/13
-//
-// Three questions; service answered A/A/A. Test file enforces the answers as
-// contracts so future refactors can't drift from them.
-//
-//   Q1 (A). xpath dispatch returns QueryMatch.line from the matched element's
-//           pk:line attribute (the framework's projected source-line
-//           bookkeeping). Symmetric to jsonpath, which already returns the
-//           correct source line.
-//   Q2 (A). Trivial/empty deepXml stays as-is (covered indirectly by
-//           issue-10 tests; no incremental claim here).
-//   Q3 (A). application-xml's deepXml stays as a projection — pk:line on
-//           every element is load-bearing for the find→EDIT flow. The
-//           handler does not override deepXml() to expose raw source.
+// Contract: {§mimetype-query-conformance}.
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
@@ -47,7 +32,7 @@ class FakeTreeHandler extends BaseHandler {
 const meta = { mimetype: "text/x-test", glyph: "🧪", extensions: [".test"] as const };
 const source = Array.from({ length: 100 }, (_, index) => `line ${index + 1}`).join("\n");
 
-describe("Issue #13 — Q1: xpath QueryMatch.line reflects pk:line on element", () => {
+describe("{§mimetype-query-conformance} — Q1: xpath QueryMatch.line reflects pk:line on element", () => {
     it("element match returns the source line from pk:line", async () => {
         const h = new FakeTreeHandler(meta);
         const matches = await h.query(source, "xpath", "//function");
@@ -68,7 +53,7 @@ describe("Issue #13 — Q1: xpath QueryMatch.line reflects pk:line on element", 
         assert.equal(matches[0].regions![0].startLine, 73);
     });
 
-    it("computed scalars (count/string/…) carry no lines — no source node (#41)", async () => {
+    it("computed scalars (count/string/…) carry no lines — no source node ({§mimetype-query-conformance})", async () => {
         const h = new FakeTreeHandler(meta);
         const matches = await h.query(source, "xpath", "count(//function)");
         assert.equal(matches.length, 1);

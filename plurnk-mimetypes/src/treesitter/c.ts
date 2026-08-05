@@ -3,7 +3,7 @@ import type { TreeSitterSymbolProjection } from "../ParserCoordinates.ts";
 import type { SymbolKind } from "../types.ts";
 import type { TreeSitterNode } from "../TreeSitterExtractor.ts";
 
-// C SPEC §3 mapping via tree-sitter-c.
+// C symbol mapping ({§mimetype-symbol}) via tree-sitter-c.
 //
 //   function_definition  → function (name via declarator chain)
 //   struct_specifier     → class (only when named with a body)
@@ -12,7 +12,7 @@ import type { TreeSitterNode } from "../TreeSitterExtractor.ts";
 //   type_definition      → type (typedef)
 //   declaration          → variable (file-scope, named, not extern/static-fn-proto)
 //
-// Container semantics (issue #18): the mapping is flat except enum bodies —
+// Container semantics ({§mimetype-symbol-container}): the mapping is flat except enum bodies —
 // enumerators of a *named* enum carry the enum name as container.
 export function extract(root: TreeSitterNode, _content: string): TreeSitterSymbolProjection[] {
     const out: TreeSitterSymbolProjection[] = [];

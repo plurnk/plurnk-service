@@ -55,7 +55,7 @@ describe("text/javascript via tree-sitter registry", () => {
     });
 });
 
-describe("text/javascript — container + columns (issue #18)", () => {
+describe("text/javascript — container + columns ({§mimetype-symbol-container})", () => {
     it("methods and fields carry the enclosing class as container", async () => {
         const src = "class Counter {\n  count = 0;\n  increment(by) { this.count += by; }\n}\n";
         const syms = await h().extractRaw(src);

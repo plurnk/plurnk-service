@@ -42,7 +42,7 @@ g_tok: Token
 // CommentDecoy
 `;
 
-describe("conformance: text/x-odin defs + refs (issues #19/#20)", () => {
+describe("conformance: text/x-odin defs + refs ({§mimetype-references})", () => {
     it("passes the shared invariants and expected captures", async () => {
         const { references } = await runConformance({
             mimetype: "text/x-odin",
@@ -81,7 +81,7 @@ describe("conformance: text/x-odin defs + refs (issues #19/#20)", () => {
             ],
         });
         // Odin imports take collection-path strings, not symbol names — no
-        // import refs (SPEC §16 bans path strings from the refs channel).
+        // import refs ({§mimetype-references} bans path strings from the refs channel).
         assert.ok(!references.some((r) => r.kind === "import"), "no import refs for Odin");
         assert.ok(!references.some((r) => r.name === "core:fmt" || r.name === "fmt"));
         // No inheritance in Odin.

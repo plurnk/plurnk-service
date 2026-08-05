@@ -3,7 +3,7 @@ import type { TreeSitterSymbolProjection } from "../ParserCoordinates.ts";
 import type { SymbolKind } from "../types.ts";
 import type { TreeSitterNode } from "../TreeSitterExtractor.ts";
 
-// OCaml SPEC §3 mapping via tree-sitter-ocaml.
+// OCaml symbol mapping ({§mimetype-symbol}) via tree-sitter-ocaml.
 //
 //   module_definition           → module (module M = struct ... end)
 //   module_type_definition      → interface (signature)
@@ -14,7 +14,7 @@ import type { TreeSitterNode } from "../TreeSitterExtractor.ts";
 //   exception_definition        → class
 //   signature                   → interface
 //
-// Container semantics (issue #18): symbols inside `module M = struct ... end`
+// Container semantics ({§mimetype-symbol-container}): symbols inside `module M = struct ... end`
 // carry the dotted path of enclosing module names; top-level symbols carry
 // no container.
 export function extract(root: TreeSitterNode, _content: string): TreeSitterSymbolProjection[] {

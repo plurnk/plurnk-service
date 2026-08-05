@@ -47,7 +47,7 @@ describe("text/x-ocaml via tree-sitter registry", () => {
     });
 });
 
-describe("text/x-ocaml — container + columns (issue #18)", () => {
+describe("text/x-ocaml — container + columns ({§mimetype-symbol-container})", () => {
     it("struct-body declarations carry the enclosing module path as container", async () => {
         const src = "module Outer = struct\n  module Inner = struct\n    let deep x = x\n  end\n  let shallow = 1\nend\n";
         const syms = await h().extractRaw(src);

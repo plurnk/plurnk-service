@@ -3,7 +3,7 @@ import type { TreeSitterSymbolProjection } from "../ParserCoordinates.ts";
 import type { SymbolKind } from "../types.ts";
 import type { TreeSitterNode } from "../TreeSitterExtractor.ts";
 
-// CSS SPEC §3 mapping for tree-sitter-css.
+// CSS symbol mapping ({§mimetype-symbol}) for tree-sitter-css.
 //
 //   rule_set with selectors → field, name = serialized selector text
 //   keyframes_statement     → module, name = keyframe name

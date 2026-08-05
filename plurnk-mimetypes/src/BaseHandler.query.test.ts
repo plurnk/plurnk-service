@@ -75,7 +75,7 @@ describe("BaseHandler.query — xpath default", () => {
         );
     });
 
-    // #41 symmetry: a symbols-only handler answers jsonpath via the bare-number
+    // {§mimetype-query-conformance} symmetry: a symbols-only handler answers jsonpath via the bare-number
     // outline, so xpath must reach the SAME outline with the SAME real lines.
     it("dispatches xpath against the projected symbol outline with real lines", async () => {
         class WithSymbols extends BaseHandler {

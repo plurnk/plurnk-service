@@ -1,4 +1,4 @@
-// Contract: {§mimetype-query-input}. Issue #42 is provenance.
+// Contract: {§mimetype-query-input}.
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
@@ -54,7 +54,7 @@ function makeMimetypes(): Mimetypes {
 const SOURCE = "alpha\n//foo bar\n";
 const INPUT = { path: "f.fake", content: SOURCE };
 
-describe("Issue #42 — C1: parsed-form matcher is accepted alongside the raw string", () => {
+describe("{§mimetype-query-input} — C1: parsed-form matcher is accepted alongside the raw string", () => {
     it("dispatches a parsed { dialect, pattern } object", async () => {
         const m = makeMimetypes();
         const out = await m.query(INPUT, { dialect: "jsonpath", pattern: "$..children[*]" });
@@ -65,7 +65,7 @@ describe("Issue #42 — C1: parsed-form matcher is accepted alongside the raw st
     });
 });
 
-describe("Issue #42 — C2: parsed and raw forms agree, with m.lines, on every dialect", () => {
+describe("{§mimetype-query-input} — C2: parsed and raw forms agree, with m.lines, on every dialect", () => {
     const cases: ReadonlyArray<{ raw: string; parsed: { dialect: "regex" | "glob" | "jsonpath" | "xpath"; pattern: string; flags?: string } }> = [
         { raw: "/foo/", parsed: { dialect: "regex", pattern: "foo" } },
         { raw: "*foo*", parsed: { dialect: "glob", pattern: "*foo*" } },
@@ -88,7 +88,7 @@ describe("Issue #42 — C2: parsed and raw forms agree, with m.lines, on every d
     }
 });
 
-describe("Issue #42 — C3: parsed dialect is authoritative; no re-parse by prefix (anti-drift)", () => {
+describe("{§mimetype-query-input} — C3: parsed dialect is authoritative; no re-parse by prefix (anti-drift)", () => {
     it("a parsed { regex, '//foo' } runs as regex even though '//foo' string-classifies as xpath", async () => {
         const m = makeMimetypes();
         // As a regex over the source text, "//foo" matches the literal on line 2.

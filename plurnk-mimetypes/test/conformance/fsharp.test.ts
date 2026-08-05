@@ -4,7 +4,7 @@ import { runConformance } from "./harness.ts";
 
 // NOTE on containers: the fsharp mapping emits named modules, record/union
 // types + their fields/cases, top-level let bindings, AND implicit-constructor
-// types (anon_type_defn, `type Parser(...) =`) with their members (issue #22).
+// types (anon_type_defn, `type Parser(...) =`) with their members ({§mimetype-references}).
 // Refs inside member bodies resolve to the member's dotted path
 // (Geometry.Core.Parser.Parse); refs in the type header (inherit/interface)
 // resolve to the type itself (probed via extractRaw).
@@ -40,7 +40,7 @@ let decoy = "StringDecoy should never surface"
 // CommentDecoy should never surface
 `;
 
-describe("conformance: text/x-fsharp defs + refs (issues #19/#20)", () => {
+describe("conformance: text/x-fsharp defs + refs ({§mimetype-references})", () => {
     it("passes the shared invariants and expected captures", async () => {
         const { references } = await runConformance({
             mimetype: "text/x-fsharp",
@@ -52,7 +52,7 @@ describe("conformance: text/x-fsharp defs + refs (issues #19/#20)", () => {
                 { refName: "Shape", container: "Geometry.Core.tokenize" },
                 { refName: "Shape", container: "Geometry.Core.area" },
                 // Call inside Parser.Parse — anon_type_defn members are
-                // emitted (issue #22), so the ref joins at member level.
+                // emitted ({§mimetype-references}), so the ref joins at member level.
                 { refName: "tokenize", container: "Geometry.Core.Parser.Parse" },
                 // Interface clause names the local Runnable type; the ref
                 // sits in Parser's header, inside the emitted Parser def.
@@ -65,7 +65,7 @@ describe("conformance: text/x-fsharp defs + refs (issues #19/#20)", () => {
                 { name: "Helpers", kind: "import", line: 4 },
                 { name: "int", kind: "type", line: 6 },
                 // Member-signature annotation types — the abstract member is
-                // itself an emitted def (anon_type_defn, issue #22).
+                // itself an emitted def (anon_type_defn, {§mimetype-references}).
                 { name: "Shape", kind: "type", line: 11, container: "Geometry.Core.Runnable.Run" },
                 { name: "int", kind: "type", line: 11, container: "Geometry.Core.Runnable.Run" },
                 { name: "BaseParser", kind: "inherit", line: 14, container: "Geometry.Core.Parser" },

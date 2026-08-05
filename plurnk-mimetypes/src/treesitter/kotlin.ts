@@ -3,7 +3,7 @@ import type { TreeSitterSymbolProjection } from "../ParserCoordinates.ts";
 import type { SymbolKind } from "../types.ts";
 import type { TreeSitterNode } from "../TreeSitterExtractor.ts";
 
-// Kotlin SPEC §3 mapping via @tree-sitter-grammars/tree-sitter-kotlin.
+// Kotlin symbol mapping ({§mimetype-symbol}) via @tree-sitter-grammars/tree-sitter-kotlin.
 //
 //   package_header                → module
 //   class_declaration             → class (recurse, inClass=true)
@@ -14,7 +14,7 @@ import type { TreeSitterNode } from "../TreeSitterExtractor.ts";
 //   property_declaration          → field (in class) / variable or constant (top)
 //   type_alias                    → type
 //
-// Container semantics (issue #18): members carry the dotted path of enclosing
+// Container semantics ({§mimetype-symbol-container}): members carry the dotted path of enclosing
 // emitted class/object/interface/enum names. Top-level symbols carry no
 // container (package_header has no body, so it never contains).
 export function extract(root: TreeSitterNode, _content: string): TreeSitterSymbolProjection[] {

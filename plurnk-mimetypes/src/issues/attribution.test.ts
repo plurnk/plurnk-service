@@ -20,7 +20,7 @@ describe("discover attribution", () => {
     let tmpRoot: string;
 
     before(async () => {
-        tmpRoot = await fs.mkdtemp(path.join(os.tmpdir(), "plurnk-issue37-"));
+        tmpRoot = await fs.mkdtemp(path.join(os.tmpdir(), "plurnk-attribution-"));
     });
 
     after(async () => {

@@ -1,4 +1,4 @@
-// References query for tree-sitter-elixir (issue #19; SPEC §16).
+// References query for tree-sitter-elixir ({§mimetype-references}).
 // S-expression patterns; `@ref.<kind>` captures yield MimeRef rows via the
 // framework engine (refsEngine.ts).
 //
@@ -33,7 +33,7 @@
 //     expressions where type calls are not cleanly separable from the spec
 //     header; skipped (precision over recall).
 //   - `use` (the RefKind) is reserved; bare identifier reads are not emitted
-//     (SPEC §16 invariants).
+//     ({§mimetype-references} invariants).
 const DEF_FAMILY = `"def" "defp" "defdelegate" "defguard" "defguardp"
     "defmacro" "defmacrop" "defn" "defnp" "defmodule" "defprotocol" "defimpl"
     "defstruct" "defexception" "defoverridable"`;

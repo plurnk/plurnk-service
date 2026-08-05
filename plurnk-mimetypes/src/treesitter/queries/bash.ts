@@ -1,4 +1,4 @@
-// References query for tree-sitter-bash (issue #19; SPEC §16). A shell script's
+// References query for tree-sitter-bash ({§mimetype-references}). A shell script's
 // edges are its command invocations: a function call and an external command
 // are syntactically identical, so every command name is a `call` ref. Local
 // function calls (`greet`, `main`) name-join to their function_definition defs;

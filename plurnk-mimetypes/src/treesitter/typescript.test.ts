@@ -53,7 +53,7 @@ describe("text/typescript via tree-sitter registry", () => {
     });
 });
 
-describe("text/typescript — container + columns (issue #18)", () => {
+describe("text/typescript — container + columns ({§mimetype-symbol-container})", () => {
     it("namespace members and class methods nest the container path", async () => {
         const src = "namespace ns {\n  export class C {\n    m(x: number) {}\n  }\n  export function inner() {}\n}\n";
         const syms = await h().extractRaw(src);

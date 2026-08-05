@@ -1,4 +1,4 @@
-// References query for tree-sitter-rust (issue #19; SPEC §16).
+// References query for tree-sitter-rust ({§mimetype-references}).
 // Same conventions as queries/typescript.ts:
 //   - import refs capture the BOUND names of use declarations: the trailing
 //     path segment (`use std::mem` → mem), each use-list leaf, and the

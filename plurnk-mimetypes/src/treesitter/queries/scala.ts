@@ -1,4 +1,4 @@
-// References query for tree-sitter-scala (issue #19; SPEC §16).
+// References query for tree-sitter-scala ({§mimetype-references}).
 // Same conventions as queries/typescript.ts:
 //   - import refs capture the BOUND names: import paths are flat `path:`
 //     identifier lists, so the FINAL segment is captured via the `.` anchor

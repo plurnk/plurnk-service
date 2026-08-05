@@ -35,7 +35,7 @@ void helper(Token t) {}
 // CommentDecoy() never surfaces
 `;
 
-describe("conformance: text/x-c defs + refs (issues #19/#20)", () => {
+describe("conformance: text/x-c defs + refs ({§mimetype-references})", () => {
     it("passes the shared invariants and expected captures", async () => {
         const { references } = await runConformance({
             mimetype: "text/x-c",
@@ -70,7 +70,7 @@ describe("conformance: text/x-c defs + refs (issues #19/#20)", () => {
             ],
         });
         // #include takes path strings, not symbol names — no import refs
-        // for C (SPEC §16 bans path strings from the refs channel).
+        // for C ({§mimetype-references} bans path strings from the refs channel).
         assert.ok(!references.some((r) => r.kind === "import"), "no import refs for C");
         assert.ok(!references.some((r) => r.name === "stdio.h" || r.name === "local.h"));
     });

@@ -1,4 +1,4 @@
-// References query for tree-sitter-cpp (issue #19; SPEC §16).
+// References query for tree-sitter-cpp ({§mimetype-references}).
 // Same conventions as queries/typescript.ts and queries/rust.ts:
 //   - import refs capture bound names: the final identifier of
 //     `using std::vector;` (qualified chains nest on the NAME side in this

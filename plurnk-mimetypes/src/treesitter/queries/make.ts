@@ -1,8 +1,8 @@
-// References query for tree-sitter-make (issue #19 pattern; dev-DSL grind).
+// References query for tree-sitter-make ({§mimetype-references}).
 // Make is the registry's purest dependency-graph language: a rule's
 // prerequisite list IS the edge list make executes. Both capture groups
 // classify as `use` — the first legitimate emission of the otherwise-reserved
-// kind (SPEC §16): these are declared dependencies, not bare identifier reads.
+// kind ({§mimetype-references}): these are declared dependencies, not bare identifier reads.
 //
 //   - prerequisites: each word is an edge target →use→ prerequisite
 //     (`build: compile link` emits compile, link with container "build").

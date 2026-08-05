@@ -1,5 +1,4 @@
 // Contracts: {§mimetype-embedding}, {§mimetype-embedding-wire}.
-// Issue #24 is provenance.
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
@@ -95,7 +94,7 @@ describe("a present-but-broken embedder crashes, never silently degrades to abse
     });
 });
 
-describe("Issue #24 — C1: the embedding channel is request-only", () => {
+describe("{§mimetype-embedding} — C1: the embedding channel is request-only", () => {
     it("the default channel set never materializes embedding", async () => {
         let embedderRequested = false;
         const m = new Mimetypes({
@@ -111,7 +110,7 @@ describe("Issue #24 — C1: the embedding channel is request-only", () => {
     });
 });
 
-describe("Issue #24 — C2: Float32 bytes, scalar per entry, arbitrary text", () => {
+describe("{§mimetype-embedding} — C2: Float32 bytes, scalar per entry, arbitrary text", () => {
     it("returns 4×dimension bytes readable through the owned codec", async () => {
         const m = makeMimetypes({ withEmbedder: true });
         const r = await m.process(
@@ -147,7 +146,7 @@ describe("Issue #24 — C2: Float32 bytes, scalar per entry, arbitrary text", ()
     });
 });
 
-describe("Issue #24 — C3: missing embedder package degrades per #14", () => {
+describe("{§mimetype-embedding} — C3: missing embedder package degrades under {§mimetype-error-policy}", () => {
     it("empty bytes + embeddingMissing hint, ok stays true", async () => {
         const m = makeMimetypes({ withEmbedder: false });
         const r = await m.process(
@@ -168,7 +167,7 @@ describe("Issue #24 — C3: missing embedder package degrades per #14", () => {
     });
 });
 
-describe("Issue #24 — C4: honest empties carry no hint", () => {
+describe("{§mimetype-embedding} — C4: honest empties carry no hint", () => {
     it("empty content embeds to empty bytes without embeddingMissing", async () => {
         const m = makeMimetypes({ withEmbedder: true });
         const r = await m.process({ path: "a.txt", content: "" }, { channels: ["embedding"] });
@@ -177,7 +176,7 @@ describe("Issue #24 — C4: honest empties carry no hint", () => {
     });
 });
 
-describe("Issue #24 — C6: model identity rides with the vector", () => {
+describe("{§mimetype-embedding} — C6: model identity rides with the vector", () => {
     it("embeddingModel surfaces when the embedder declares it", async () => {
         const m = makeMimetypes({ withEmbedder: true });
         const r = await m.process({ path: "a.txt", content: "x" }, { channels: ["embedding"] });
@@ -193,7 +192,7 @@ describe("Issue #24 — C6: model identity rides with the vector", () => {
     });
 });
 
-describe("Issue #24 — C5: grammar-degrade still embeds", () => {
+describe("{§mimetype-embedding} — C5: grammar-degrade still embeds", () => {
     it("grammarMissing and a real embedding coexist", async () => {
         const m = makeMimetypes({ withEmbedder: true, handler: MissingGrammarHandler });
         const r = await m.process(

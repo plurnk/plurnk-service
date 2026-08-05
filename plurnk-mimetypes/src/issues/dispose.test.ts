@@ -1,4 +1,4 @@
-// Contract: {§mimetype-lifecycle}. Issue #36 is provenance.
+// Contract: {§mimetype-lifecycle}.
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
@@ -91,7 +91,7 @@ function lifecycleMimetypes({
     });
 }
 
-describe("#36 — Mimetypes.dispose()", () => {
+describe("{§mimetype-lifecycle} — Mimetypes.dispose()", () => {
     it("D1: awaits the embedder's dispose() once it was loaded", async () => {
         const embedder = makeEmbedder();
         const m = mk(embedder);

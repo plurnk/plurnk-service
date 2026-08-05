@@ -52,7 +52,7 @@ describe("text/x-elixir via tree-sitter registry", () => {
     });
 });
 
-describe("text/x-elixir — container + columns (issue #18)", () => {
+describe("text/x-elixir — container + columns ({§mimetype-symbol-container})", () => {
     it("defs carry the enclosing module path as container; dotted aliases are verbatim segments", async () => {
         const src = "defmodule MyApp.User do\n  defmodule Inner do\n    def deep(x), do: x\n  end\n  def greet(name), do: name\nend\n";
         const syms = await h().extractRaw(src);

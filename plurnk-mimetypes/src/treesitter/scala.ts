@@ -3,7 +3,7 @@ import type { TreeSitterSymbolProjection } from "../ParserCoordinates.ts";
 import type { SymbolKind } from "../types.ts";
 import type { TreeSitterNode } from "../TreeSitterExtractor.ts";
 
-// Scala SPEC §3 mapping via tree-sitter-scala.
+// Scala symbol mapping ({§mimetype-symbol}) via tree-sitter-scala.
 //
 //   package_clause       → module
 //   class_definition     → class (recurse, inClass=true)
@@ -16,7 +16,7 @@ import type { TreeSitterNode } from "../TreeSitterExtractor.ts";
 //   var_definition       → variable (or field in class)
 //   type_definition      → type
 //
-// Container semantics (issue #18): members carry the dotted path of enclosing
+// Container semantics ({§mimetype-symbol-container}): members carry the dotted path of enclosing
 // emitted class/object/trait/enum/package names. Top-level symbols carry no
 // container. Package blocks (`package foo { ... }`) contribute to the
 // container path but are NOT class scope — defs/vals inside stay

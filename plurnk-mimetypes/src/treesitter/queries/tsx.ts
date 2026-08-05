@@ -1,6 +1,6 @@
 import { refsQuery as typescriptRefsQuery } from "./typescript.ts";
 
-// References query for tree-sitter-tsx (issue #19; SPEC §16). The tsx grammar is
+// References query for tree-sitter-tsx ({§mimetype-references}). The tsx grammar is
 // the typescript grammar plus JSX, so this is the typescript query (imports,
 // calls, instantiations, inherit, types — identical node names) PLUS JSX
 // component instantiation:

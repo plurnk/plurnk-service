@@ -3,7 +3,7 @@ import type { TreeSitterSymbolProjection } from "../ParserCoordinates.ts";
 import type { SymbolKind } from "../types.ts";
 import type { TreeSitterNode } from "../TreeSitterExtractor.ts";
 
-// Odin SPEC §3 mapping via tree-sitter-odin.
+// Odin symbol mapping ({§mimetype-symbol}) via tree-sitter-odin.
 //
 //   package_declaration   → module
 //   procedure_declaration → function (identifier + procedure → parameters)
@@ -14,7 +14,7 @@ import type { TreeSitterNode } from "../TreeSitterExtractor.ts";
 //   var(iable)_declaration → variable (typed `x: T` and inferred `x := e`)
 //   type_declaration      → type
 //
-// Container semantics (issue #18): top-level declarations are flat (procs are
+// Container semantics ({§mimetype-symbol-container}): top-level declarations are flat (procs are
 // never nested in structs). Struct/union fields carry the struct name as
 // container; enum constants carry the enum name.
 export function extract(root: TreeSitterNode, _content: string): TreeSitterSymbolProjection[] {

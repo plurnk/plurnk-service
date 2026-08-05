@@ -4,7 +4,7 @@ import type { TreeSitterSymbolProjection } from "../ParserCoordinates.ts";
 import type { SymbolKind } from "../types.ts";
 import type { TreeSitterNode } from "../TreeSitterExtractor.ts";
 
-// TOML SPEC §3 mapping via @tree-sitter-grammars/tree-sitter-toml.
+// TOML symbol mapping ({§mimetype-symbol}) via @tree-sitter-grammars/tree-sitter-toml.
 //
 // Two channels:
 //   - symbols (extract): tree-sitter walk surfacing tables/keys as a

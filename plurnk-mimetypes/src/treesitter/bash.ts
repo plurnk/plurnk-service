@@ -2,7 +2,7 @@ import { treeSitterSpan } from "../ParserCoordinates.ts";
 import type { TreeSitterSymbolProjection } from "../ParserCoordinates.ts";
 import type { TreeSitterNode } from "../TreeSitterExtractor.ts";
 
-// Bash SPEC §3 mapping via tree-sitter-bash.
+// Bash symbol mapping ({§mimetype-symbol}) via tree-sitter-bash.
 //
 //   function_definition          → function
 //   variable_assignment          → variable (or constant if `readonly`)

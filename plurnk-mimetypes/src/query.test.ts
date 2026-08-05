@@ -47,7 +47,7 @@ describe("queryRegex — bare patterns", () => {
 });
 
 describe("queryRegex — anonymous captures", () => {
-    it("returns an array of captures per grammar #17", () => {
+    it("returns an array of captures under {§mimetype-query}", () => {
         const out = queryRegex("name: alice", "(\\w+): (\\w+)");
         assert.equal(out.length, 1);
         assert.deepEqual(out[0].matched, ["name", "alice"]);
@@ -232,7 +232,7 @@ describe("queryJsonpathObject - custom region resolver", () => {
     });
 });
 
-describe("queryXpathString — line-less child elements walk to the enclosing span (#41 symmetry)", () => {
+describe("queryXpathString — line-less child elements walk to the enclosing span ({§mimetype-query-conformance} symmetry)", () => {
     // A bare `name`/`params` field projects to a child element with no pk:line of
     // its own; xpath must report the SAME enclosing span jsonpath's ancestor walk
     // gives the corresponding JSON value — not an absent line.
@@ -259,7 +259,7 @@ describe("queryXpathString — line-less child elements walk to the enclosing sp
     });
 });
 
-describe("outlineLineFor — bare-number outline projection resolver (#41 symmetry)", () => {
+describe("outlineLineFor — bare-number outline projection resolver ({§mimetype-query-conformance} symmetry)", () => {
     const outline = { Top: { Section: { Sub: 5 }, Other: 7 }, Trailer: 9 };
     const lineFor = outlineLineFor(outline);
 
@@ -286,7 +286,7 @@ describe("outlineLineFor — bare-number outline projection resolver (#41 symmet
     });
 });
 
-describe("jsonpath recursive descent over deep parse trees (#523)", () => {
+describe("jsonpath recursive descent over deep parse trees", () => {
     it("$..* traverses a tree far past json-p3's default 50-node cap", () => {
         // A deepJson-shaped tree with ~200 nodes — mirrors an ANTLR/tree-sitter
         // handler's full parse tree. The default recursion cap threw here,

@@ -2,7 +2,7 @@ import { treeSitterSpan } from "../ParserCoordinates.ts";
 import type { TreeSitterSymbolProjection } from "../ParserCoordinates.ts";
 import type { TreeSitterNode } from "../TreeSitterExtractor.ts";
 
-// Haskell SPEC §3 mapping via tree-sitter-haskell.
+// Haskell symbol mapping ({§mimetype-symbol}) via tree-sitter-haskell.
 //
 //   header → module                       module name → module
 //   data_type                             → class (Haskell data types are
@@ -20,7 +20,7 @@ import type { TreeSitterNode } from "../TreeSitterExtractor.ts";
 //                                            equation nodes are the body —
 //                                            deduped, but the def's span
 //                                            extends to the last equation
-//                                            so body refs join, issue #22)
+//                                            so body refs join, {§mimetype-references})
 //   function                              → function (when no preceding
 //                                            signature; we dedup by name)
 //   instance                              → not surfaced as its own symbol
@@ -30,7 +30,7 @@ import type { TreeSitterNode } from "../TreeSitterExtractor.ts";
 //                                            optionally surface)
 //   import                                → excluded
 //
-// Container semantics (issue #18): module-level declarations are flat (the
+// Container semantics ({§mimetype-symbol-container}): module-level declarations are flat (the
 // header module is a sibling, not a structural parent). Only class-body
 // method signatures carry a container — the type class name.
 export function extract(root: TreeSitterNode, _content: string): TreeSitterSymbolProjection[] {
@@ -90,7 +90,7 @@ export function extract(root: TreeSitterNode, _content: string): TreeSitterSymbo
                 if (!v) break;
                 if (emittedFns.has(v.text)) break;
                 emittedFns.add(v.text);
-                // Issue #22: the def's span must cover the function's body —
+                // {§mimetype-references}: the def's span must cover the function's body —
                 // each equation is a sibling `function` node sharing the
                 // variable name, so extend to the last consecutive equation.
                 let endNode = node;

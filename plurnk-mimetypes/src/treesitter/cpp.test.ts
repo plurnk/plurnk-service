@@ -58,7 +58,7 @@ describe("text/x-cpp via tree-sitter registry", () => {
     });
 });
 
-describe("text/x-cpp — container + columns (issue #18)", () => {
+describe("text/x-cpp — container + columns ({§mimetype-symbol-container})", () => {
     it("class members carry the enclosing class as container; namespace nesting is dotted", async () => {
         const src = "namespace ns {\nclass Box {\npublic:\n  int width;\n  void resize(int w) {}\n};\n}\n";
         const syms = await h().extractRaw(src);

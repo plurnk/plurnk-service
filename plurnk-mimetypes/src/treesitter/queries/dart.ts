@@ -1,4 +1,4 @@
-// References query for tree-sitter-dart (issue #19; SPEC §16).
+// References query for tree-sitter-dart ({§mimetype-references}).
 // S-expression patterns; `@ref.<kind>` captures yield MimeRef rows via the
 // framework engine (refsEngine.ts).
 //
@@ -14,7 +14,7 @@
 //     followed by an argument_part selector. The sibling-anchored patterns
 //     capture the callee name only when the very next selector is an
 //     argument list. Bare `Foo()` instantiation is syntactically identical
-//     to a call and classified `call` (python precedent, SPEC §16).
+//     to a call and classified `call` (python precedent, {§mimetype-references}).
 //   - instantiate refs: only explicit `new Foo()` / `const Foo(...)` — the
 //     grammar marks those (new_expression / const_object_expression).
 //   - inherit refs: extends (superclass), with (mixins), implements
@@ -26,7 +26,7 @@
 //     (formal_parameter), returns (function_signature / getter_signature),
 //     typed locals (initialized_variable_definition), and type arguments.
 //     Casts (`as T`) and tests (`is T`) are skipped: precision over recall.
-//   - `use` is reserved; bare identifier reads are not emitted (SPEC §16
+//   - `use` is reserved; bare identifier reads are not emitted ({§mimetype-references}
 //     invariants).
 export const refsQuery = `
 (combinator "show" (identifier) @ref.import)

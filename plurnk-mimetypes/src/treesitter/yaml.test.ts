@@ -32,7 +32,7 @@ describe("application/yaml via tree-sitter registry", () => {
     });
 });
 
-describe("application/yaml — container + columns (issue #18)", () => {
+describe("application/yaml — container + columns ({§mimetype-symbol-container})", () => {
     it("nested keys carry the dotted path of enclosing emitted keys", async () => {
         const src = "server:\n  host: localhost\n  opts:\n    deep: 1\n";
         const syms = await h().extractRaw(src);

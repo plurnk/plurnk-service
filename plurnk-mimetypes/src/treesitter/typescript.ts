@@ -9,7 +9,7 @@ import {
     position,
 } from "./javascript.ts";
 
-// TypeScript SPEC §3 mapping via tree-sitter-typescript (and tree-sitter-tsx).
+// TypeScript symbol mapping ({§mimetype-symbol}) via tree-sitter-typescript (and tree-sitter-tsx).
 // Extends the JS mapping with interface/type/enum/module declarations.
 //
 //   interface_declaration   → interface
@@ -19,7 +19,7 @@ import {
 //   abstract_class_declaration → class (handled in JS dispatch)
 //   ambient_declaration     → unwrap and dispatch
 //
-// Container semantics (issue #18): symbols inside a class, interface, enum,
+// Container semantics ({§mimetype-symbol-container}): symbols inside a class, interface, enum,
 // or namespace/module carry the dotted path of enclosing emitted scope names.
 // Top-level symbols carry no container.
 export function extract(root: TreeSitterNode, _content: string): TreeSitterSymbolProjection[] {

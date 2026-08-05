@@ -37,7 +37,7 @@ describe("text/x-lua via tree-sitter registry", () => {
     });
 });
 
-describe("text/x-lua — container + columns (issue #18)", () => {
+describe("text/x-lua — container + columns ({§mimetype-symbol-container})", () => {
     // Flat mapping: no recursion into named scopes, so no containers.
     it("top-level symbols carry no container; columns are 1-indexed", async () => {
         const syms = await h().extractRaw("local function bar(z) return z end\nlocal v = 1\n");

@@ -45,7 +45,7 @@ describe("text/x-ruby via tree-sitter registry", () => {
     });
 });
 
-describe("text/x-ruby — container + columns (issue #18)", () => {
+describe("text/x-ruby — container + columns ({§mimetype-symbol-container})", () => {
     it("symbols carry the enclosing module/class path as container; nesting is dotted", async () => {
         const src = "module MyApp\n  class User\n    def initialize(name)\n      @name = name\n    end\n  end\nend\n";
         const syms = await h().extractRaw(src);

@@ -1,4 +1,4 @@
-// #41: projectJsonToXml's lineFor stamps pk:line so xpath-over-deepXml gets the
+// {§mimetype-query-conformance}: projectJsonToXml's lineFor stamps pk:line so xpath-over-deepXml gets the
 // SAME real source lines as jsonpath for handlers whose deepJson is raw,
 // position-less data (JSON/INI/…). And xpath omits lines (never fakes 1) when
 // the projection carries no position at all.
@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 import { projectJsonToXml } from "./projectJsonToXml.ts";
 import { queryXpathString } from "./query.ts";
 
-describe("#41 — projectJsonToXml lineFor + xpath honesty", () => {
+describe("{§mimetype-query-conformance} — projectJsonToXml lineFor + xpath honesty", () => {
     it("stamps pk:line from the resolver, including nested pointers", () => {
         const deepJson = { host: "x", pool: { size: 5 } };
         const readable = Array.from({ length: 5 }, () => "x").join("\n");

@@ -246,7 +246,7 @@ closed kind vocabulary. Their behavioral invariants are:
 |-----------------------|---------------------------------------------------------------------------------------------------------------|
 | `name`, `kind`        | Identify one named structural definition using the exported `SymbolKind` vocabulary.                          |
 | `line`, `endLine`     | Positive and 1-based. Line-only symbols use an inclusive interval; complete regions use exact endpoint lines. |
-| `column`, `endColumn` | Present together; complete {§text-region}: Unicode code points, start included, end excluded.                 |
+| `column`, `endColumn` | Present together; complete under {§text-region}: Unicode code points, start included, end excluded.           |
 | `params`              | Function/method parameter spellings when the grammar exposes them; omitted otherwise.                         |
 | `level`               | Heading depth from 1 through 6; meaningful only for `heading`.                                                |
 | `container`           | Qualified path of enclosing emitted definitions; absent at top level.                                         |
@@ -339,7 +339,7 @@ is the unbudgeted human/diagnostic renderer for structured symbols.
 Default: no-op. Override only for mimetypes with a real syntax check that can fail (e.g., `application/json` throws on malformed JSON).
 
 When `validate` throws inside `Mimetypes.process`, the orchestrator wraps its
-cause once as `MimetypeInputError` (§7). `Mimetypes.query` invokes the same gate
+cause once as `MimetypeInputError` ({§mimetype-error-policy}). `Mimetypes.query` invokes the same gate
 for JSONPath and XPath, whose projections require valid structure; regex and
 glob remain available against the readable text without structural validation.
 
@@ -350,7 +350,7 @@ The exported `ProcessResult` type owns the executable field shape.
 | Field family                         | Presence contract                                                                                  |
 |--------------------------------------|----------------------------------------------------------------------------------------------------|
 | `mimetype`, `ok`, `totalLines`       | Present on every returned result.                                                                  |
-| Projection channel fields            | Present exactly when requested; an honest empty projection differs from an unrequested field (§5). |
+| Projection channel fields            | Requested only; absence differs from an honest empty projection ({§mimetype-channel-selection}).   |
 | `grammarMissing`, `embeddingMissing` | Present only for the corresponding non-strict degradation.                                         |
 | `embeddingModel`                     | Present only when the returned vector carries a model-space identity.                              |
 | `notices`                            | Present only when a successful result carries one or more non-fatal degradations ({§notice}).      |
@@ -402,7 +402,8 @@ Returns the resolved mimetype string or `null`.
 `Mimetypes.detect()` wraps the pure function and applies an optional fallback
 from `MimetypesOptions.defaultMimetype`. When all lanes miss but a default is
 configured, it returns that default. The fallback does not alter handler
-discovery; an unknown default still produces the §7 handler-missing result.
+discovery; an unknown default still produces the handler-missing result in
+{§mimetype-error-policy}.
 
 ## 9. Parser backends
 
@@ -460,7 +461,7 @@ the adapter never guesses that an arbitrary exception is source invalidity.
 For tree-sitter-backed handlers:
 
 1. The `web-tree-sitter` runtime ships with the framework as a direct dependency; no handler-side install needed.
-2. Own the language's WASM: a pre-built `.wasm` committed in the handler package from a pinned upstream commit (§13.5).
+2. Own the language's WASM: a pre-built `.wasm` committed in the handler package from a pinned upstream commit ({§grammar-leaf-reproducibility}).
 3. Extend `TreeSitterExtractor` instead of `BaseHandler`.
 4. Implement `loadParser()` (async; init web-tree-sitter, load the language WASM, return a ready parser) and `extractFromTree(tree, content)` (return `MimeSymbol[]` from the parsed tree). Preserve that public method contract; construct parser-derived regions with `treeSitterSpan(...)` and `materializeTreeSitterSymbols(...)` ({§mimetype-parser-coordinates}). The base class handles parser lifecycle and async coordination via a primed-promise cache.
 
@@ -510,7 +511,7 @@ For the rare format where neither tree-sitter nor grammars-v4 has coverage and t
 
 ## 10. Tokenization — a consumer concern
 
-The framework neither tokenizes nor budgets content for its own projection pipeline. Token counting is wholly a consumer concern. Plurnk-service uses one stable model-independent ruler for stored, catalog, and model-facing packet weights ({§tokenomics-agnostic-ruler}); a provider's counter is confined to its physical packet-admission check. The `Mimetypes.tokenizer()` seam (§19) supplies model-vocabulary counting to consumers but never participates in the framework's own projection budgeting.
+The framework neither tokenizes nor budgets content for its own projection pipeline. Token counting is wholly a consumer concern. Plurnk-service uses one stable model-independent ruler for stored, catalog, and model-facing packet weights ({§tokenomics-agnostic-ruler}); a provider's counter is confined to its physical packet-admission check. The `Mimetypes.tokenizer()` seam ({§mimetype-tokenizer}) supplies model-vocabulary counting to consumers but never participates in the framework's own projection budgeting.
 
 ## §mimetype-query 11. Body-matcher query
 
@@ -573,8 +574,8 @@ Evidence is honest or absent:
   remain separate `QueryMatch` values.
 
 JSONPath and XPath apply the same evidence rule. Neither dialect fabricates
-coordinates merely to satisfy a consumer. The conformance harness in §14
-enforces this matrix.
+coordinates merely to satisfy a consumer. The conformance harness in
+{§mimetype-query-conformance} enforces this matrix.
 
 `matched` is polymorphic by extractor:
 
@@ -642,8 +643,8 @@ failure truth.
 
 ## §mimetype-channel-architecture 12. Channel architecture
 
-`ProcessResult` carries up to six caller-selected channels (§5). The four
-structural channels are:
+`ProcessResult` carries up to six caller-selected channels
+({§mimetype-channel-selection}). The four structural channels are:
 
 ### 12.1 The channels
 
@@ -698,7 +699,7 @@ Example: `{ type: "function_definition", line: 5, endLine: 10, name: "greet", pa
 
 ### §mimetype-materialization 12.4 Materialization policy
 
-Channels are built **per request** (§5): a requested channel is computed eagerly within the call; an unrequested channel costs nothing. The caller owns persistence and refresh policy. The standard content matcher queries the current readable body through `Mimetypes.query`. Core's eager `SearchIndex` maintenance requests symbols and references before model dispatch and attaches content-addressed FTS, graph, and vector artifacts to each current readable projection. Bulk vectors are produced through `embedBatch`, not by persisting the per-entry `embedding` process channel.
+Channels are built **per request** ({§mimetype-channel-selection}): a requested channel is computed eagerly within the call; an unrequested channel costs nothing. The caller owns persistence and refresh policy. The standard content matcher queries the current readable body through `Mimetypes.query`. Core's eager `SearchIndex` maintenance requests symbols and references before model dispatch and attaches content-addressed FTS, graph, and vector artifacts to each current readable projection. Bulk vectors are produced through `embedBatch`, not by persisting the per-entry `embedding` process channel.
 
 The deep channels are **never model-visible**. They are consumed exclusively by the jsonpath and xpath body-matcher tool implementations.
 

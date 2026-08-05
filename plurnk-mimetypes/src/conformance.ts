@@ -4,17 +4,17 @@ import type { HandlerContent } from "./BaseHandler.ts";
 import { UnsupportedDialectError } from "./QueryError.ts";
 import type { MimeRef, MimeSymbol } from "./types.ts";
 
-// Third-party references-channel conformance harness (issue #20 made public,
-// issue #32). The framework's own per-language suites and an external handler
-// author run the SAME invariants — there is one implementation, exposed via
+// The public conformance harness implements {§mimetype-references} under
+// {§mimetype-public-api}. Framework suites and external handler authors run the
+// same invariants through one implementation, exposed via
 // the `@plurnk/plurnk-mimetypes/conformance` subpath so node:assert stays out
 // of the runtime bundle.
 //
 // A handler whose `references()` returns rows is conformant — and may
 // participate in plurnk-service's code graph — only when a real-world-shaped
-// fixture passes every invariant in SPEC §16. Refs-free handlers (data
-// formats, symbols-only hand-rolls) do not need this: references are a
-// code-graph concept and an empty channel is honest, not a failure.
+// fixture passes every invariant in {§mimetype-references}. References-free
+// handlers (data formats, symbols-only hand-rolls) do not need this: references
+// are a code-graph concept and an empty channel is honest, not a failure.
 
 // Minimal duck surface the harness drives — any handler instance satisfies it
 // (BaseHandler and its subclasses do structurally). Typed locally so an author
@@ -48,7 +48,7 @@ export interface ConformanceResult {
     references: MimeRef[];
 }
 
-// Run the SPEC §16 invariants against a handler + fixture. Throws an
+// Run the {§mimetype-references} invariants against a handler + fixture. Throws an
 // AssertionError (node:assert) on the first violation — wire it into a
 // `node:test` `it(...)` per fixture. Returns the materialized symbols + refs
 // for any additional handler-specific assertions the author wants to add.
@@ -59,7 +59,7 @@ export async function assertHandlerConformance(
     const symbols = await handler.extractRaw(fixture.source);
     const references = await handler.references(fixture.source);
 
-    // ——— Shared invariants (SPEC §16) ———
+    // ——— Shared invariants ({§mimetype-references}) ———
 
     assert.ok(references.length > 0, "fixture must produce at least one ref");
 

@@ -3,7 +3,7 @@ import type { TreeSitterSymbolProjection } from "../ParserCoordinates.ts";
 import type { SymbolKind } from "../types.ts";
 import type { TreeSitterNode } from "../TreeSitterExtractor.ts";
 
-// Go SPEC §3 mapping via tree-sitter-go.
+// Go symbol mapping ({§mimetype-symbol}) via tree-sitter-go.
 //
 //   package_clause       → module
 //   function_declaration → function
@@ -13,7 +13,7 @@ import type { TreeSitterNode } from "../TreeSitterExtractor.ts";
 //   const_declaration    → constant (per const_spec)
 //   var_declaration      → variable (per var_spec)
 //
-// Container semantics (issue #18): flat — the mapping walks no nested scopes
+// Container semantics ({§mimetype-symbol-container}): flat — the mapping walks no nested scopes
 // and never emits the method receiver type, so no symbol carries a container.
 export function extract(root: TreeSitterNode, _content: string): TreeSitterSymbolProjection[] {
     const out: TreeSitterSymbolProjection[] = [];

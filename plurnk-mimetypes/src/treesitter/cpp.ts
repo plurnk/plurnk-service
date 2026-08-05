@@ -3,7 +3,7 @@ import type { TreeSitterSymbolProjection } from "../ParserCoordinates.ts";
 import type { SymbolKind } from "../types.ts";
 import type { TreeSitterNode } from "../TreeSitterExtractor.ts";
 
-// C++ SPEC §3 mapping via tree-sitter-cpp.
+// C++ symbol mapping ({§mimetype-symbol}) via tree-sitter-cpp.
 //
 //   function_definition           → function (top-level) / method (in class)
 //   class_specifier               → class (recurse into body, inClass=true)
@@ -16,7 +16,7 @@ import type { TreeSitterNode } from "../TreeSitterExtractor.ts";
 //   field_declaration             → field (in class)
 //   declaration (file-scope var)  → variable
 //
-// Container semantics (issue #18): classes/structs/unions, namespaces, and
+// Container semantics ({§mimetype-symbol-container}): classes/structs/unions, namespaces, and
 // named enums are containers — members carry the dotted path of enclosing
 // emitted scope names. `container` is the path; `inClass` stays a separate
 // flag because namespace members keep function/variable kinds.

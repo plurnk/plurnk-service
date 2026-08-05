@@ -3,7 +3,7 @@ import type { TreeSitterSymbolProjection } from "../ParserCoordinates.ts";
 import type { SymbolKind } from "../types.ts";
 import type { TreeSitterNode } from "../TreeSitterExtractor.ts";
 
-// Elixir SPEC §3 mapping via tree-sitter-elixir.
+// Elixir symbol mapping ({§mimetype-symbol}) via tree-sitter-elixir.
 //
 // Elixir's uniform syntax means everything is a `call` node whose `target`
 // identifier names the macro (def, defp, defmodule, defprotocol, etc). We
@@ -13,7 +13,7 @@ import type { TreeSitterNode } from "../TreeSitterExtractor.ts";
 //   call defmodule/defprotocol  → module (recurse into do_block)
 //   call def/defp/defmacro/...  → function (no body recursion)
 //
-// Container semantics (issue #18): symbols inside a defmodule carry the
+// Container semantics ({§mimetype-symbol-container}): symbols inside a defmodule carry the
 // dotted path of enclosing emitted module names; module names are already
 // dotted aliases (`Foo.Bar`) and are used verbatim as path segments.
 const MODULE_MACROS = new Set(["defmodule", "defprotocol", "defimpl"]);

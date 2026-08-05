@@ -4,7 +4,7 @@ import { runConformance } from "./harness.ts";
 
 // tree-sitter-dart parses bodies as siblings of their signatures; the
 // extractor extends each def's span over the sibling function_body
-// (issue #22), so refs inside multi-line bodies join at method level.
+// ({§mimetype-references}), so refs inside multi-line bodies join at method level.
 const SOURCE = `import 'package:demo/helper.dart' show Helper, Shape hide Junk;
 import 'dart:math';
 
@@ -38,7 +38,7 @@ const decoy = "StringDecoy() should never surface";
 // CommentDecoy() should never surface
 `;
 
-describe("conformance: text/x-dart defs + refs (issues #19/#20)", () => {
+describe("conformance: text/x-dart defs + refs ({§mimetype-references})", () => {
     it("passes the shared invariants and expected captures", async () => {
         const { references } = await runConformance({
             mimetype: "text/x-dart",

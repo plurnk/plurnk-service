@@ -17,7 +17,7 @@
 //      root element carries `xmlns:pk="https://plurnk.dev/deep-xml/1"` so the
 //      namespace declaration scopes the whole document.
 //
-//      Why namespaced: per issue #12, source content's own attributes can
+//      Why namespaced: under {§mimetype-channel-architecture}, source content's own attributes can
 //      collide with bookkeeping (e.g. HTML with `<foo line="5">` content
 //      yielded duplicate `line` attrs → invalid XML). Namespacing makes the
 //      framework's bookkeeping always distinguishable from content attrs,
@@ -74,7 +74,7 @@ const RESERVED_FIELDS = new Set([
 const PK_PREFIX = "pk";
 const PK_NS = "https://plurnk.dev/deep-xml/1";
 
-// Optional source-line resolver (issue #41): for deepJson whose nodes carry no
+// Optional source-line resolver ({§mimetype-query-conformance}): for deepJson whose nodes carry no
 // `line` of their own (raw parsed JSON/INI/etc.), the handler supplies a
 // resolver keyed by JSON pointer, so xpath-over-deepXml gets the SAME real lines
 // as jsonpath — both dialects agree. A node's own `line` field still wins.
@@ -138,7 +138,7 @@ function renderObject(obj: Record<string, unknown>, fallbackName: string, pointe
             if (key === "line") hasOwnLine = true;
         }
     }
-    // Node carries no line of its own → take it from the resolver (#41).
+    // Node carries no line of its own → take it from the resolver ({§mimetype-query-conformance}).
     if (!hasOwnLine) attrs += resolvedLineAttrs(lineFor, pointer);
     // Additional attrs from the optional `attrs` object — HTML/XML
     // convention for source-algebra attributes. Rendered in the default

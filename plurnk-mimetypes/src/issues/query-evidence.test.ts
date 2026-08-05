@@ -1,4 +1,4 @@
-// Contract: {§mimetype-query-conformance}. Issue #41 is provenance.
+// Contract: {§mimetype-query-conformance}.
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
@@ -18,7 +18,7 @@ const model = {
 };
 const readable = Array.from({ length: 12 }, (_, index) => `line ${index + 1}`).join("\n");
 
-describe("issue #41 — structural matches report source-line spans", () => {
+describe("{§mimetype-query-conformance} — structural matches report source-line spans", () => {
     it("C1: a node with explicit line/endLine reports that span", () => {
         const out = queryJsonpathObject(model, "$.children[0]", undefined, readable);
         assert.equal(out.length, 1);

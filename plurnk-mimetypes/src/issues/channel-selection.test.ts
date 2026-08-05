@@ -1,5 +1,4 @@
 // Contracts: {§mimetype-channel-selection}, {§mimetype-public-api}.
-// Issue #17 is provenance.
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
@@ -53,7 +52,7 @@ function makeMimetypes() {
     });
 }
 
-describe("Issue #17 — C1: channel selection semantics", () => {
+describe("{§mimetype-channel-selection} — C1: channel selection semantics", () => {
     it("default selects every structural channel", async () => {
         const m = makeMimetypes();
         const r = await m.process({ path: "a.tst", content: "x\ny" });
@@ -99,7 +98,7 @@ describe("Issue #17 — C1: channel selection semantics", () => {
     });
 });
 
-describe("Issue #17 — C2: symbols are structured, preview is gone", () => {
+describe("{§mimetype-channel-selection} — C2: symbols are structured, preview is gone", () => {
     it("symbols carry MimeSymbol[] verbatim from extractRaw", async () => {
         const m = makeMimetypes();
         const r = await m.process({ path: "a.tst", content: "x" }, { channels: ["symbols"] });
@@ -117,7 +116,7 @@ describe("Issue #17 — C2: symbols are structured, preview is gone", () => {
     });
 });
 
-describe("Issue #17 — C3: references field shape ships ahead of the engine", () => {
+describe("{§mimetype-channel-selection} — C3: references follow the handler contract", () => {
     it("references is [] for a handler without an implementation", async () => {
         const m = makeMimetypes();
         const r = await m.process({ path: "a.tst", content: "x" }, { channels: ["references"] });
@@ -155,7 +154,7 @@ describe("Issue #17 — C3: references field shape ships ahead of the engine", (
     });
 });
 
-describe("Issue #17 — C4: the fitting layer is gone; outline primitives survive", () => {
+describe("{§mimetype-public-api} — C4: only outline render primitives are public", () => {
     it("fitPreview / fitSymbols / fitContent / defaultTokenize are not exported", () => {
         const dead = ["fitPreview", "fitSymbols", "fitContent", "defaultTokenize"];
         for (const name of dead) {

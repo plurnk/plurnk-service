@@ -1,4 +1,4 @@
-// References query for tree-sitter-java (issue #19; SPEC §16).
+// References query for tree-sitter-java ({§mimetype-references}).
 // S-expression patterns; `@ref.<kind>` captures yield MimeRef rows via the
 // framework engine (refsEngine.ts).
 //
@@ -14,7 +14,7 @@
 //     interface / enum declaration names are plain `identifier` nodes in
 //     this grammar, so type_identifier never collides with a def name node.
 //   - `use` is reserved; bare identifier reads are not emitted (precision
-//     over recall — SPEC §16 invariants).
+//     over recall — {§mimetype-references} invariants).
 export const refsQuery = `
 (import_declaration (scoped_identifier name: (identifier) @ref.import) .)
 

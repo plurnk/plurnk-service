@@ -3,7 +3,7 @@ import type { TreeSitterSymbolProjection } from "../ParserCoordinates.ts";
 import type { SymbolKind } from "../types.ts";
 import type { TreeSitterNode } from "../TreeSitterExtractor.ts";
 
-// Ruby SPEC §3 mapping via tree-sitter-ruby.
+// Ruby symbol mapping ({§mimetype-symbol}) via tree-sitter-ruby.
 //
 //   module                              → module; recurse into body
 //   class                               → class; recurse into body
@@ -12,7 +12,7 @@ import type { TreeSitterNode } from "../TreeSitterExtractor.ts";
 //   assignment of constant (UPPER_CASE) → constant
 //   call → attr_accessor / attr_reader  → field
 //
-// Container semantics (issue #18): symbols inside a module/class carry the
+// Container semantics ({§mimetype-symbol-container}): symbols inside a module/class carry the
 // dotted path of enclosing emitted names. Top-level symbols carry none.
 export function extract(root: TreeSitterNode, _content: string): TreeSitterSymbolProjection[] {
     const out: TreeSitterSymbolProjection[] = [];

@@ -3,7 +3,7 @@ import type { TreeSitterSymbolProjection } from "../ParserCoordinates.ts";
 import type { SymbolKind } from "../types.ts";
 import type { TreeSitterNode } from "../TreeSitterExtractor.ts";
 
-// JavaScript SPEC §3 mapping via tree-sitter-javascript.
+// JavaScript symbol mapping ({§mimetype-symbol}) via tree-sitter-javascript.
 //
 //   function_declaration       → function
 //   class_declaration          → class (recurse, inClass=true)
@@ -13,7 +13,7 @@ import type { TreeSitterNode } from "../TreeSitterExtractor.ts";
 //   variable_declaration (var) → variable
 //   export_statement / export_default → unwrap and dispatch
 //
-// Container semantics (issue #18): symbols inside a class carry the dotted
+// Container semantics ({§mimetype-symbol-container}): symbols inside a class carry the dotted
 // path of enclosing emitted scope names. Top-level symbols carry no container.
 export function extract(root: TreeSitterNode, _content: string): TreeSitterSymbolProjection[] {
     const out: TreeSitterSymbolProjection[] = [];

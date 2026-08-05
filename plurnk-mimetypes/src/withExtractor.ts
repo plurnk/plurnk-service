@@ -78,7 +78,7 @@ export function withExtractor<T extends VisitorCtor>(Base: T): MixedCtor<T> {
         }
 
         get refs(): MimeRef[] {
-            // Document order (SPEC §16 conformance invariant), matching the
+            // Document order ({§mimetype-references} conformance invariant), matching the
             // tree-sitter refsEngine. Visitors emit in traversal order, which
             // is usually document order but not always — e.g. a helper that
             // collects sibling nodes via a stack walk returns them reversed.
@@ -136,7 +136,7 @@ export function withExtractor<T extends VisitorCtor>(Base: T): MixedCtor<T> {
             return null;
         }
 
-        // Visit children inside a named container scope (issue #18): symbols
+        // Visit children inside a named container scope ({§mimetype-symbol-container}): symbols
         // added during the recursion carry `container` = the dotted path of
         // enclosing gateContainer names. Call after addSymbol-ing the
         // container's own symbol so it doesn't contain itself.

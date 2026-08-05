@@ -57,7 +57,7 @@ describe("text/x-php via tree-sitter registry", () => {
     });
 });
 
-describe("text/x-php — container + columns (issue #18)", () => {
+describe("text/x-php — container + columns ({§mimetype-symbol-container})", () => {
     it("members carry the enclosing class as container", async () => {
         const src = "<?php\nclass User {\n  public string $name;\n  public function greet($prefix) { return $prefix; }\n}\n";
         const syms = await h().extractRaw(src);

@@ -44,7 +44,7 @@ const DECOY: &str = "StringDecoy() should never surface";
 // CommentDecoy() should never surface
 `;
 
-describe("conformance: text/x-rust defs + refs (issues #19/#20)", () => {
+describe("conformance: text/x-rust defs + refs ({§mimetype-references})", () => {
     it("passes the shared invariants and expected captures", async () => {
         const { references } = await runConformance({
             mimetype: "text/x-rust",

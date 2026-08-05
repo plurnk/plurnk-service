@@ -43,7 +43,7 @@ describe("text/x-zig via tree-sitter registry", () => {
     });
 });
 
-describe("text/x-zig — container + columns (issue #18)", () => {
+describe("text/x-zig — container + columns ({§mimetype-symbol-container})", () => {
     it("struct fields and enum members carry the declared name as container", async () => {
         const src = "const Point = struct { x: f32, y: f32 };\nconst Color = enum { red, green };\n";
         const syms = await h().extractRaw(src);

@@ -3,7 +3,7 @@ import type { TreeSitterSymbolProjection } from "../ParserCoordinates.ts";
 import type { SymbolKind } from "../types.ts";
 import type { TreeSitterNode } from "../TreeSitterExtractor.ts";
 
-// Dart SPEC §3 mapping via tree-sitter-dart.
+// Dart symbol mapping ({§mimetype-symbol}) via tree-sitter-dart.
 //
 //   class_definition      → class (recurse into body as container)
 //   mixin_declaration     → class
@@ -17,7 +17,7 @@ import type { TreeSitterNode } from "../TreeSitterExtractor.ts";
 //   constructor_signature → method
 //   type_alias            → type
 //
-// Container semantics (issue #18): members inside a class/mixin/extension
+// Container semantics ({§mimetype-symbol-container}): members inside a class/mixin/extension
 // body carry its name (dotted for nesting); enum constants carry the enum
 // name. Top-level symbols carry no container.
 export function extract(root: TreeSitterNode, _content: string): TreeSitterSymbolProjection[] {

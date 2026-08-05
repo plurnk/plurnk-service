@@ -1,4 +1,4 @@
-// References query for tree-sitter-fsharp (issue #19; SPEC §16).
+// References query for tree-sitter-fsharp ({§mimetype-references}).
 // S-expression patterns; `@ref.<kind>` captures yield MimeRef rows via the
 // framework engine (refsEngine.ts). Also serves text/x-fsharp-signature —
 // the signature grammar shares these node names.
@@ -18,7 +18,7 @@
 //     application, and `new Base()` merely wraps the same application in a
 //     prefixed_expression — capturing it separately would double-emit the
 //     head. All construction is classified `call` (python precedent,
-//     SPEC §16).
+//     {§mimetype-references}).
 //   - inherit refs capture `inherit Base(...)` clauses and
 //     `interface I with` implementations inside type definitions.
 //   - type refs capture annotation type names in their use contexts only
@@ -26,7 +26,7 @@
 //     signatures) — never via a bare simple_type pattern, which would also
 //     match the inherit/interface clauses and type DEFINITION heads.
 //   - `use` is reserved; bare identifier reads are not emitted (precision
-//     over recall — SPEC §16 invariants).
+//     over recall — {§mimetype-references} invariants).
 export const refsQuery = `
 (import_decl (long_identifier) @ref.import)
 

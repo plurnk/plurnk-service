@@ -1,4 +1,4 @@
-// Contract: {§mimetype-tokenizer}. Issue #44 is provenance.
+// Contract: {§mimetype-tokenizer}.
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
@@ -62,7 +62,7 @@ function mk(artifact: unknown | null, loadError?: Error) {
     return { m, loads: () => loads };
 }
 
-describe("Issue #44 — T1: bundled match resolves exact", () => {
+describe("{§mimetype-tokenizer} — T1: bundled match resolves exact", () => {
     it("returns the artifact's counter and vocab-sha id, exact:true", async () => {
         const { m } = mk(fakeArtifact);
         const r = await m.tokenizer("gemma-4-26b");
@@ -73,7 +73,7 @@ describe("Issue #44 — T1: bundled match resolves exact", () => {
     });
 });
 
-describe("Issue #44 — T2: missing package degrades honestly", () => {
+describe("{§mimetype-tokenizer} — T2: missing package degrades honestly", () => {
     it("chars/2 estimate + tokenizer_unavailable warn with install hint", async () => {
         const { m } = mk(null);
         const r = await m.tokenizer("gemma-4-26b");
@@ -93,7 +93,7 @@ describe("Issue #44 — T2: missing package degrades honestly", () => {
     });
 });
 
-describe("Issue #44 — T3: no bundled match degrades honestly", () => {
+describe("{§mimetype-tokenizer} — T3: no bundled match degrades honestly", () => {
     it("same degrade shape, names the model, no install hint", async () => {
         const { m } = mk(fakeArtifact);
         const r = await m.tokenizer("claude-fable-5");
@@ -105,7 +105,7 @@ describe("Issue #44 — T3: no bundled match degrades honestly", () => {
     });
 });
 
-describe("Issue #44 — T4: strict throws instead of degrading", () => {
+describe("{§mimetype-tokenizer} — T4: strict throws instead of degrading", () => {
     it("missing package → throws with the install hint", async () => {
         const { m } = mk(null);
         await assert.rejects(
@@ -122,7 +122,7 @@ describe("Issue #44 — T4: strict throws instead of degrading", () => {
     });
 });
 
-describe("Issue #44 — T5: present-but-broken artifact rethrows", () => {
+describe("{§mimetype-tokenizer} — T5: present-but-broken artifact rethrows", () => {
     it("a non-MODULE_NOT_FOUND load error propagates, never degrades", async () => {
         const { m } = mk(null, new RangeError("tokenizers artifact misconfigured"));
         await assert.rejects(
@@ -140,7 +140,7 @@ describe("Issue #44 — T5: present-but-broken artifact rethrows", () => {
     });
 });
 
-describe("Issue #44 — T6: artifact loads once", () => {
+describe("{§mimetype-tokenizer} — T6: artifact loads once", () => {
     it("two tokenizer() calls share one load", async () => {
         const { m, loads } = mk(fakeArtifact);
         await m.tokenizer("gemma-4-26b");

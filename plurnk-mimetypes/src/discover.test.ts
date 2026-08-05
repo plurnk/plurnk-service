@@ -426,7 +426,7 @@ describe("discover", () => {
     });
 });
 
-describe("discover — scope-agnostic scan (issue #28)", () => {
+describe("discover — scope-agnostic scan ({§mimetype-discovery})", () => {
     it("finds mimetype handlers under @plurnk, third-party scopes, AND unscoped; skips non-mimetype", async () => {
         const root = await fs.mkdtemp(path.join(os.tmpdir(), "plurnk-scan-"));
         try {
@@ -561,7 +561,7 @@ describe("discover — scope-agnostic scan (issue #28)", () => {
     });
 });
 
-describe("discover — plugin trust gate PLURNK_PLUGINS_TRUSTED_ONLY (issue #29)", () => {
+describe("discover — plugin trust gate PLURNK_PLUGINS_TRUSTED_ONLY ({§plugin-trust-boundary})", () => {
     async function buildNm(root: string) {
         const nm = path.join(root, "node_modules");
         await makePackage(nm, "@plurnk/plurnk-mimetypes-text-plain", {

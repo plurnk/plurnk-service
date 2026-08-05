@@ -1,4 +1,4 @@
-// Coverage: SPEC §9 (backend registry).
+// Coverage: {§mimetype-backend-selection} (backend registry).
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import {

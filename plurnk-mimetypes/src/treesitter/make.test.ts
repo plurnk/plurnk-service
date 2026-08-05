@@ -31,7 +31,7 @@ describe("text/x-makefile via tree-sitter registry", () => {
     });
 });
 
-describe("text/x-makefile — container + columns (issue #18)", () => {
+describe("text/x-makefile — container + columns ({§mimetype-symbol-container})", () => {
     it("all symbols carry 1-indexed columns; targets are flat (no container)", async () => {
         const src = "PREFIX = /usr/local\nbuild:\n\tgcc main.c\n";
         const syms = await h().extractRaw(src);

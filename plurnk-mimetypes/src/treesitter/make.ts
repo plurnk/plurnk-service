@@ -3,7 +3,7 @@ import type { TreeSitterSymbolProjection } from "../ParserCoordinates.ts";
 import type { SymbolKind } from "../types.ts";
 import type { TreeSitterNode } from "../TreeSitterExtractor.ts";
 
-// Makefile SPEC §3 mapping via tree-sitter-make.
+// Makefile symbol mapping ({§mimetype-symbol}) via tree-sitter-make.
 //
 //   variable_assignment  → variable (or constant if SCREAMING_SNAKE)
 //   rule.targets         → function per word (targets are entry points)

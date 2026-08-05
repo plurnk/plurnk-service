@@ -1,4 +1,4 @@
-// References query for tree-sitter-javascript (issue #19; SPEC §16).
+// References query for tree-sitter-javascript ({§mimetype-references}).
 // S-expression patterns; `@ref.<kind>` captures yield MimeRef rows via the
 // framework engine (refsEngine.ts).
 //
@@ -10,7 +10,7 @@
 //     calls), not the expression root.
 //   - JavaScript has no type annotations — no `type` patterns.
 //   - `use` is reserved; bare identifier reads are not emitted (precision
-//     over recall — SPEC §16 invariants).
+//     over recall — {§mimetype-references} invariants).
 //
 // Grammar note: tree-sitter-javascript wraps `extends X` in class_heritage
 // holding a bare expression — there is no extends_clause (that's the TS

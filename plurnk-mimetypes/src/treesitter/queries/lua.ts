@@ -1,6 +1,6 @@
-// References query for @tree-sitter-grammars/tree-sitter-lua (issue #19;
-// SPEC §16). S-expression patterns; `@ref.<kind>` captures yield MimeRef
-// rows via the framework engine (refsEngine.ts).
+// References query for @tree-sitter-grammars/tree-sitter-lua
+// ({§mimetype-references}). S-expression patterns; `@ref.<kind>` captures
+// yield MimeRef rows via the framework engine (refsEngine.ts).
 //
 // Conventions:
 //   - call refs capture the function_call's name node: bare identifier
@@ -19,8 +19,8 @@
 //     inherit refs (precision over recall).
 //   - type/instantiate: not applicable — Lua has no type annotations and
 //     no constructor syntax; tables are built with `{}` literals.
-//   - `use` is reserved; bare identifier reads are not emitted (SPEC §16
-//     invariants).
+//   - `use` is reserved; bare identifier reads are not emitted under
+//     {§mimetype-references}.
 export const refsQuery = `
 ((function_call name: (identifier) @ref.call)
   (#not-eq? @ref.call "require"))

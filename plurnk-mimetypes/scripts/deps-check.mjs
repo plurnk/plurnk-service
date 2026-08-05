@@ -94,7 +94,7 @@ function rangeCeiling(range) {
 const reachesPast = (latest, ceil) => { const L = triplet(latest); for (let i = 0; i < 3; i += 1) { if ((L[i] || 0) !== ceil[i]) return (L[i] || 0) > ceil[i]; } return true; };
 
 // Does version v satisfy a range built from the family's vocabulary — exact,
-// ^x.y.z, ~x.y.z, ">=a.b.c [<d.e.f]", and `||` unions of those? (#45: the PEERS
+// ^x.y.z, ~x.y.z, ">=a.b.c [<d.e.f]", and `||` unions of those? The peer
 // check needs real satisfaction, not just ceilings.) Unknown syntax → null
 // (skip, never guess).
 function satisfies(v, range) {
@@ -200,7 +200,7 @@ if (runPins) {
     console.log("");
 
     // PEERS — every plugin's peer range on the core must admit the core TIP,
-    // where tip = max(npm latest, the LOCAL core version). #45: core 0.17.0
+    // where tip = max(npm latest, the local core version). Core 0.17.0
     // published while every plugin peer topped out at ^0.16.0 — nothing in the
     // family failed until a CONSUMER hit ERESOLVE. Checking against the local
     // version makes a core minor bump turn this section red before the publish,

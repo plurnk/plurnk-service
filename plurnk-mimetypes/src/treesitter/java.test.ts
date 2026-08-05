@@ -59,7 +59,7 @@ describe("text/x-java via tree-sitter registry", () => {
     });
 });
 
-describe("text/x-java — container + columns (issue #18)", () => {
+describe("text/x-java — container + columns ({§mimetype-symbol-container})", () => {
     it("members carry the enclosing class as container; nesting is dotted", async () => {
         const src = "class Outer {\n  class Inner {\n    void deep() {}\n  }\n  void shallow() {}\n  int count;\n}\n";
         const syms = await h().extractRaw(src);

@@ -3,7 +3,7 @@ import type { TreeSitterSymbolProjection } from "../ParserCoordinates.ts";
 import type { SymbolKind } from "../types.ts";
 import type { TreeSitterNode } from "../TreeSitterExtractor.ts";
 
-// Lua SPEC §3 mapping via @tree-sitter-grammars/tree-sitter-lua.
+// Lua symbol mapping ({§mimetype-symbol}) via @tree-sitter-grammars/tree-sitter-lua.
 //
 //   function_declaration with name: identifier            → function
 //   function_declaration with name: dot_index_expression  → method (M.foo on table M)
@@ -11,7 +11,7 @@ import type { TreeSitterNode } from "../TreeSitterExtractor.ts";
 //   local_declaration → variable_declaration → assignment → identifier:
 //                                                          variable / constant
 //
-// Issue #18: flat mapping — no recursion into named scopes, so no containers;
+// {§mimetype-symbol-container}: flat mapping — no recursion into named scopes, so no containers;
 // symbols carry 1-indexed columns only.
 export function extract(root: TreeSitterNode, _content: string): TreeSitterSymbolProjection[] {
     const out: TreeSitterSymbolProjection[] = [];

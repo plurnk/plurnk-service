@@ -1,4 +1,4 @@
-// References query for tree-sitter-ruby (issue #19; SPEC §16).
+// References query for tree-sitter-ruby ({§mimetype-references}).
 // S-expression patterns; `@ref.<kind>` captures yield MimeRef rows via the
 // framework engine (refsEngine.ts).
 //
@@ -22,7 +22,7 @@
 //     scope-qualified) plus constant arguments to `include`/`extend`/
 //     `prepend` — Ruby's mixin inheritance.
 //   - type: not applicable — Ruby has no type annotations.
-//   - `use` is reserved; bare identifier reads are not emitted (SPEC §16
+//   - `use` is reserved; bare identifier reads are not emitted ({§mimetype-references}
 //     invariants).
 export const refsQuery = `
 ((call method: (identifier) @ref.call)

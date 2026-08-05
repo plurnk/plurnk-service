@@ -13,7 +13,7 @@ export interface ParsedBodyMatcher {
 //   //...       → xpath
 //   /pat/flags  → regex (flags optional; escapes `\/` allowed inside pat)
 //   $...        → jsonpath
-//   otherwise   → glob (line-anchored body matching per grammar #17)
+//   otherwise   → glob (line-anchored body matching under {§mimetype-query})
 //
 // Order matters: `//` must be tested before `/` because both start with `/`.
 export function parseBodyMatcher(expr: string): ParsedBodyMatcher {

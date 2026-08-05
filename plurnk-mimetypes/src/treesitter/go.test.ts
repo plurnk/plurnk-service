@@ -53,7 +53,7 @@ describe("text/x-go via tree-sitter registry", () => {
     });
 });
 
-describe("text/x-go — container + columns (issue #18)", () => {
+describe("text/x-go — container + columns ({§mimetype-symbol-container})", () => {
     it("flat mapping: no symbol carries a container", async () => {
         const src = "package x\ntype T struct{}\nfunc (t *T) Do() {}\nfunc free() {}\n";
         const syms = await h().extractRaw(src);

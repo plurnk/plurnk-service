@@ -59,7 +59,7 @@ describe("text/x-rust via tree-sitter registry", () => {
     });
 });
 
-describe("text/x-rust — container + columns (issue #18)", () => {
+describe("text/x-rust — container + columns ({§mimetype-symbol-container})", () => {
     it("impl methods carry the impl'd type as container; mod nesting is dotted", async () => {
         const src = "mod inner {\n  struct S;\n  impl S { fn act(&self) {} }\n  fn deep() {}\n}\n";
         const syms = await h().extractRaw(src);

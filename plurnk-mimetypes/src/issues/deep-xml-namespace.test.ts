@@ -1,30 +1,11 @@
-// Issue #12: deep-xml: line/endLine source-position attrs collide with content
-// attributes → invalid XML.
-// https://github.com/plurnk/plurnk-mimetypes/issues/12
-//
-// Issue #12's load-bearing claims, restated as testable contracts:
-//
-//   C1. deep-xml is ALWAYS valid XML — even when content has attributes
-//       named line, endLine, column, endColumn, or level.
-//   C2. Framework-emitted source-position attributes live in a reserved
-//       namespace (xmlns:pk="https://plurnk.dev/deep-xml/1") so they are
-//       structurally distinguishable from content attributes.
-//   C3. A consumer can strip framework bookkeeping from a matched node
-//       (for clean model-facing serialization) without affecting
-//       legitimate content attributes of the same name.
-//
-// Reproduction from the issue:
-//   process({ content: '<root><foo line="5" id="a">text</foo></root>',
-//             hint: "application/xml" })
-// pre-fix: deep-xml had `<foo line="1" endLine="1" line="5" id="a">` —
-// duplicate `line` attr → @xmldom/xmldom throws on parse.
+// Contract: {§mimetype-channel-architecture}.
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { DOMParser } from "@xmldom/xmldom";
 import { projectJsonToXml } from "../projectJsonToXml.ts";
 
-describe("Issue #12 — C1: deep-xml is valid XML even with colliding content attrs", () => {
+describe("{§mimetype-channel-architecture} — C1: deep-xml is valid XML even with colliding content attrs", () => {
     it("source content with line attribute produces parseable XML", () => {
         // Simulates what an XML handler's deepJson would emit for content
         // <root><foo line="5" id="a">text</foo></root>: a tree where the
@@ -91,7 +72,7 @@ describe("Issue #12 — C1: deep-xml is valid XML even with colliding content at
     });
 });
 
-describe("Issue #12 — C2: bookkeeping attrs use a reserved namespace", () => {
+describe("{§mimetype-channel-architecture} — C2: bookkeeping attrs use a reserved namespace", () => {
     it("the root element declares xmlns:pk", () => {
         const xml = projectJsonToXml({ type: "x", line: 1 });
         assert.ok(
@@ -124,7 +105,7 @@ describe("Issue #12 — C2: bookkeeping attrs use a reserved namespace", () => {
     });
 });
 
-describe("Issue #12 — C3: consumer can strip bookkeeping cleanly", () => {
+describe("{§mimetype-channel-architecture} — C3: consumer can strip bookkeeping cleanly", () => {
     it("removing all pk:* attrs leaves content attrs intact", () => {
         const xml = projectJsonToXml({
             type: "user",

@@ -1,4 +1,4 @@
-// References query for tree-sitter-go (issue #19; SPEC §16).
+// References query for tree-sitter-go ({§mimetype-references}).
 // S-expression patterns; `@ref.<kind>` captures yield MimeRef rows via the
 // framework engine (refsEngine.ts).
 //
@@ -20,7 +20,7 @@
 //   - inherit: struct embedding — a field_declaration with a type but no
 //     name field.
 //   - `use` is reserved; bare identifier reads are not emitted (precision
-//     over recall — SPEC §16 invariants).
+//     over recall — {§mimetype-references} invariants).
 export const refsQuery = `
 (call_expression function: (identifier) @ref.call)
 (call_expression function: (selector_expression field: (field_identifier) @ref.call))

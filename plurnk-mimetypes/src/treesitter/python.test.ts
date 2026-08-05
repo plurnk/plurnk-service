@@ -128,7 +128,7 @@ describe("text/x-python via tree-sitter registry", () => {
     });
 });
 
-describe("text/x-python — container + columns (issue #18)", () => {
+describe("text/x-python — container + columns ({§mimetype-symbol-container})", () => {
     it("methods carry the enclosing class as container; nesting is dotted", async () => {
         const src = "class Outer:\n    class Inner:\n        def deep(self):\n            pass\n    def shallow(self):\n        pass\n";
         const syms = await makeHandler().extractRaw(src);

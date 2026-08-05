@@ -3,7 +3,7 @@ import type { TreeSitterSymbolProjection } from "../ParserCoordinates.ts";
 import type { SymbolKind } from "../types.ts";
 import type { TreeSitterNode } from "../TreeSitterExtractor.ts";
 
-// F# SPEC §3 mapping via tree-sitter-fsharp.
+// F# symbol mapping ({§mimetype-symbol}) via tree-sitter-fsharp.
 //
 //   named_module / namespace                    → module (recurse)
 //   value_declaration → function_or_value_defn:
@@ -20,7 +20,7 @@ import type { TreeSitterNode } from "../TreeSitterExtractor.ts";
 //   interface_implementation                    → unwrap recursively
 //   module_defn                                 → unwrap recursively
 //
-// Container semantics (issue #18): declarations inside a named module or
+// Container semantics ({§mimetype-symbol-container}): declarations inside a named module or
 // namespace carry its name; record fields, union cases, and members carry
 // the owning type appended to that path.
 export function extract(root: TreeSitterNode, _content: string): TreeSitterSymbolProjection[] {

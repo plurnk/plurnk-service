@@ -1,5 +1,4 @@
 // Contracts: {§mimetype-symbol}, {§mimetype-symbol-container}.
-// Issue #18 is provenance.
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
@@ -24,7 +23,7 @@ function makeDiscovery(handlers: HandlerInfo[]): Discovery {
     return { registry, handlers: handlerMap, skipped: [] };
 }
 
-describe("Issue #18 — C1: container + columns flow through the symbols channel", () => {
+describe("{§mimetype-symbol-container} — C1: container + columns flow through the symbols channel", () => {
     it("process() returns symbols with container and 1-indexed columns verbatim", async () => {
         class V2Handler extends BaseHandler {
             override extractRaw(): MimeSymbol[] {
@@ -55,7 +54,7 @@ describe("Issue #18 — C1: container + columns flow through the symbols channel
     });
 });
 
-describe("Issue #18 — C2: reference mapping nests containers by dotted path", () => {
+describe("{§mimetype-symbol-container} — C2: reference mapping nests containers by dotted path", () => {
     it("python: Outer.Inner.deep chain with absent container at top level", async () => {
         const entry = lookupTreeSitterLanguage("text/x-python")!;
         const h = new TreeSitterLanguageHandler(
@@ -76,7 +75,7 @@ describe("Issue #18 — C2: reference mapping nests containers by dotted path", 
     });
 });
 
-describe("Issue #18 — C3: withExtractor mixin supports container + columns", () => {
+describe("{§mimetype-symbol-container} — C3: withExtractor mixin supports container + columns", () => {
     class FakeVisitorBase {
         visit(_tree: unknown): unknown { return null; }
         visitChildren(node: unknown): unknown {

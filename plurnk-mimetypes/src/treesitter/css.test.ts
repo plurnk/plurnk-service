@@ -52,7 +52,7 @@ describe("text/css via tree-sitter registry", () => {
     });
 });
 
-describe("text/css — container + columns (issue #18)", () => {
+describe("text/css — container + columns ({§mimetype-symbol-container})", () => {
     it("rules inside @media carry the @media symbol name as container", async () => {
         const src = "@media (max-width: 600px) {\n  .card { color: red; }\n}\n";
         const syms = await h().extractRaw(src);

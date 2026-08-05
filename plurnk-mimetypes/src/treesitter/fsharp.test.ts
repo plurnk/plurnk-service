@@ -35,7 +35,7 @@ describe("text/x-fsharp via tree-sitter registry", () => {
     });
 });
 
-describe("text/x-fsharp — container + columns (issue #18)", () => {
+describe("text/x-fsharp — container + columns ({§mimetype-symbol-container})", () => {
     it("module members carry the module; record fields and union cases append the type", async () => {
         const src = "module M\nlet add a b = a + b\ntype Person = { Name: string; Age: int }\ntype Color = Red | Green\n";
         const syms = await h().extractRaw(src);
@@ -57,7 +57,7 @@ describe("text/x-fsharp — container + columns (issue #18)", () => {
     });
 });
 
-describe("text/x-fsharp — implicit-constructor types (issue #22)", () => {
+describe("text/x-fsharp — implicit-constructor types ({§mimetype-references})", () => {
     it("anon_type_defn emits the type and its members with dotted containers", async () => {
         const src = "module M\ntype Parser(token: string) =\n    member this.Run x = x\n    member val Count = 0 with get, set\n    let mutable cache = 0\n";
         const syms = await h().extractRaw(src);

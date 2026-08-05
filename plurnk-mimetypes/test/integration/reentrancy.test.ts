@@ -1,10 +1,10 @@
-// #33: process() must be safe to call concurrently — plurnk-service parallelizes
+// {§mimetype-lifecycle}: process() must be safe to call concurrently — plurnk-service parallelizes
 // the cold-start manifest derive (symbols + references + embedding for every
 // member at once). The risk is the shared, cached tree-sitter parser + compiled
 // query held on the one handler instance per mimetype: if any channel held a
 // tree (or tree node) across an await, an overlapping call could corrupt it.
 //
-// This is the standing guarantee, asserted against the exact shape #33 cites —
+// This standing guarantee is asserted under {§mimetype-lifecycle} against
 // TypeScript files with import/inherit/instantiate/call refs, parsed concurrently
 // vs sequentially. The invariant: concurrent results are byte-identical to
 // sequential. A future change that parks a tree across an await would break here.
@@ -30,7 +30,7 @@ const inputs = Array.from({ length: N }, (_, i) => ({
 
 const CHANNELS = ["symbols", "references", "deepJson", "deepXml"] as const;
 
-describe("#33 — process() is re-entrant under concurrency", () => {
+describe("{§mimetype-lifecycle} — process() is re-entrant under concurrency", () => {
     it("concurrent symbols/references match a sequential baseline, byte-for-byte", async () => {
         const m = new Mimetypes({ discovery: await discover() });
         const opts = { channels: [...CHANNELS] };

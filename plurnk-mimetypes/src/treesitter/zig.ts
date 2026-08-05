@@ -3,7 +3,7 @@ import type { TreeSitterSymbolProjection } from "../ParserCoordinates.ts";
 import type { SymbolKind } from "../types.ts";
 import type { TreeSitterNode } from "../TreeSitterExtractor.ts";
 
-// Zig SPEC §3 mapping via @tree-sitter-grammars/tree-sitter-zig.
+// Zig symbol mapping ({§mimetype-symbol}) via @tree-sitter-grammars/tree-sitter-zig.
 //
 //   function_declaration → function with params
 //   variable_declaration:
@@ -14,7 +14,7 @@ import type { TreeSitterNode } from "../TreeSitterExtractor.ts";
 //     other (literal/builtin)    → constant (if SCREAMING) or variable
 //   test_declaration → function (Zig's test blocks)
 //
-// Container semantics (issue #18): container_fields of a named
+// Container semantics ({§mimetype-symbol-container}): container_fields of a named
 // struct/enum/union declaration carry the declared name as container.
 export function extract(root: TreeSitterNode, _content: string): TreeSitterSymbolProjection[] {
     const out: TreeSitterSymbolProjection[] = [];

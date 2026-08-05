@@ -1,4 +1,4 @@
-// References query for tree-sitter-python (issue #19; SPEC §16).
+// References query for tree-sitter-python ({§mimetype-references}).
 // S-expression patterns; `@ref.<kind>` captures yield MimeRef rows via the
 // framework engine (refsEngine.ts).
 //
@@ -21,7 +21,7 @@
 //     annotations, generic parameters — `List[int]` yields both `List` and
 //     `int`). Qualified (`t.Optional`) and union types are skipped:
 //     precision over recall.
-//   - `use` is reserved; bare identifier reads are not emitted (SPEC §16
+//   - `use` is reserved; bare identifier reads are not emitted ({§mimetype-references}
 //     invariants).
 export const refsQuery = `
 (import_statement name: (dotted_name (identifier) @ref.import .))

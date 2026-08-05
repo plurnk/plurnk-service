@@ -45,7 +45,7 @@ describe("text/x-kotlin via tree-sitter registry", () => {
     });
 });
 
-describe("text/x-kotlin — container + columns (issue #18)", () => {
+describe("text/x-kotlin — container + columns ({§mimetype-symbol-container})", () => {
     it("members carry the enclosing class as container; nesting is dotted", async () => {
         const src = "class Outer {\n  class Inner {\n    fun deep() = 1\n  }\n  fun shallow() = 1\n  val name: String = \"\"\n}\n";
         const syms = await h().extractRaw(src);

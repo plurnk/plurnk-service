@@ -1,4 +1,4 @@
-// References query for tree-sitter-kotlin (issue #19; SPEC §16).
+// References query for tree-sitter-kotlin ({§mimetype-references}).
 // S-expression patterns; `@ref.<kind>` captures yield MimeRef rows via the
 // framework engine (refsEngine.ts).
 //
@@ -26,7 +26,7 @@
 //     yields both List and Token). Class/object/interface definition names
 //     are plain identifiers, never user_type, so defs are never captured.
 //   - `use` is reserved; bare identifier reads are not emitted (precision
-//     over recall — SPEC §16 invariants).
+//     over recall — {§mimetype-references} invariants).
 export const refsQuery = `
 ((import (qualified_identifier (identifier) @ref.import .) .) @_import (#not-match? @_import "\\\\*"))
 (import (qualified_identifier (identifier) @ref.import .) (identifier))

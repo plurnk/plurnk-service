@@ -28,7 +28,7 @@ describe("text/x-odin via tree-sitter registry", () => {
     });
 });
 
-describe("text/x-odin — container + columns (issue #18)", () => {
+describe("text/x-odin — container + columns ({§mimetype-symbol-container})", () => {
     it("struct fields and enum constants carry the owning type as container", async () => {
         const src = "package main\nPoint :: struct { x: int, y: int }\nColor :: enum { Red, Green }\n";
         const syms = await h().extractRaw(src);

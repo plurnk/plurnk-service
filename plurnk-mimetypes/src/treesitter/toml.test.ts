@@ -32,7 +32,7 @@ describe("application/toml via tree-sitter registry", () => {
     });
 });
 
-describe("application/toml — container + columns (issue #18)", () => {
+describe("application/toml — container + columns ({§mimetype-symbol-container})", () => {
     it("keys inside a table carry the table name as container", async () => {
         const src = "[server]\nhost = \"localhost\"\nport = 8080\n";
         const syms = await h().extractRaw(src);

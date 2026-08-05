@@ -109,7 +109,7 @@ export default class TextCobol extends BaseHandler {
 ### 3. Pick a parser backend
 
 1. **tree-sitter, clean WASM** — in-registry via framework PR. Most languages.
-2. **tree-sitter, own WASM** — `extends TreeSitterExtractor`, commit a built `.wasm` from a pinned grammar commit. `references()` is ~3 lines via the base `collectRefs()` helper (§16).
+2. **tree-sitter, own WASM** — `extends TreeSitterExtractor`, commit a built `.wasm` from a pinned grammar commit. `references()` is ~3 lines via the base `collectRefs()` helper ({§mimetype-references}).
 3. **ANTLR** — vendor `.g4` in `grammar/`, run `npx plurnk-mimetypes-compile`, `extends AntlrExtractor`. `antlr4ng` ships with the framework; `antlr-ng` is your devDep (the only optional peer).
 4. **hand-roll** — `extends BaseHandler` and scan directly. Justify in your README; the bar is high.
 

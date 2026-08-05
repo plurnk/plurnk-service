@@ -3,7 +3,7 @@ import type { TreeSitterSymbolProjection } from "../ParserCoordinates.ts";
 import type { SymbolKind } from "../types.ts";
 import type { TreeSitterNode } from "../TreeSitterExtractor.ts";
 
-// Julia SPEC §3 mapping via tree-sitter-julia.
+// Julia symbol mapping ({§mimetype-symbol}) via tree-sitter-julia.
 //
 //   module_definition         → module (recurse)
 //   struct_definition         → class (with type_head identifier)
@@ -16,7 +16,7 @@ import type { TreeSitterNode } from "../TreeSitterExtractor.ts";
 //   const_statement           → constant (assignment LHS identifier)
 //   assignment (top-level)    → variable / constant (SCREAMING → constant)
 //
-// Container semantics (issue #18): symbols inside a module carry the dotted
+// Container semantics ({§mimetype-symbol-container}): symbols inside a module carry the dotted
 // path of enclosing emitted module names. Top-level symbols carry none.
 export function extract(root: TreeSitterNode, _content: string): TreeSitterSymbolProjection[] {
     const out: TreeSitterSymbolProjection[] = [];

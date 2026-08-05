@@ -1,19 +1,4 @@
-// Issue #19: 0.15 P3+P4 — references channel: RefKind lock, query engine,
-// priority languages. https://github.com/plurnk/plurnk-mimetypes/issues/19
-//
-// Load-bearing claims, restated as testable contracts:
-//
-//   C1. The engine resolves each ref's `container` to the FULL qualified
-//       path of the innermost enclosing emitted def (SPEC §16 — the @> join
-//       key): a ref inside method `parse` of class `Parser` carries
-//       "Parser.parse", never just "Parser". Module-level refs omit the key.
-//   C2. Engine hygiene: only `@ref.<frozen-kind>` captures are emitted;
-//       duplicate captures at one position dedupe; output is in document
-//       order.
-//   C3. End-to-end: process({channels:["references"]}) on a language with a
-//       refsQuery yields classified rows; a language without one yields [].
-//
-// Per-language capture coverage lives in test/conformance/{slug}.test.ts.
+// Contract: {§mimetype-references}.
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
@@ -47,7 +32,7 @@ const SYMBOLS: MimeSymbol[] = [
     { name: "helper", kind: "function", line: 22, endLine: 25 },
 ];
 
-describe("Issue #19 — C1: container is the innermost def's FULL qualified path", () => {
+describe("{§mimetype-references} — C1: container is the innermost def's FULL qualified path", () => {
     it("ref inside a method carries container.parent-composed path", () => {
         const refs = collectReferences(
             fakeQuery([{ name: "ref.call", node: fakeNode("tokenize", 5, 9) }]),
@@ -76,7 +61,7 @@ describe("Issue #19 — C1: container is the innermost def's FULL qualified path
     });
 });
 
-describe("Issue #19 — C2: engine hygiene", () => {
+describe("{§mimetype-references} — C2: engine hygiene", () => {
     it("non-ref and unknown-kind captures are ignored", () => {
         const refs = collectReferences(
             fakeQuery([
@@ -143,7 +128,7 @@ describe("Issue #19 — C2: engine hygiene", () => {
     });
 });
 
-describe("Issue #19 — C3: end-to-end through process()", () => {
+describe("{§mimetype-references} — C3: end-to-end through process()", () => {
     it("typescript yields classified references via the channel", async () => {
         const { default: Mimetypes } = await import("../Mimetypes.ts");
         const m = new Mimetypes();

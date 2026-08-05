@@ -1,4 +1,4 @@
-// References query for tree-sitter-php (issue #19; SPEC §16).
+// References query for tree-sitter-php ({§mimetype-references}).
 // S-expression patterns; `@ref.<kind>` captures yield MimeRef rows via the
 // framework engine (refsEngine.ts).
 //
@@ -19,7 +19,7 @@
 //   - qualified positions (extends \\App\\Base, new Qual\\Name, App\\fn())
 //     capture the final segment, same rule as imports.
 //   - `use` is reserved; bare variable reads are not emitted (precision
-//     over recall — SPEC §16 invariants).
+//     over recall — {§mimetype-references} invariants).
 export const refsQuery = `
 (namespace_use_clause . (name) @ref.import)
 (namespace_use_clause (qualified_name (name) @ref.import))

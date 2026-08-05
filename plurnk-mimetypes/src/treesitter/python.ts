@@ -3,7 +3,7 @@ import type { TreeSitterSymbolProjection } from "../ParserCoordinates.ts";
 import type { SymbolKind } from "../types.ts";
 import type { TreeSitterNode } from "../TreeSitterExtractor.ts";
 
-// Python SPEC §3 mapping. Tree-sitter-python produces a `module` root whose
+// Python symbol mapping ({§mimetype-symbol}). Tree-sitter-python produces a `module` root whose
 // children are top-level statements. We walk the named children at each
 // scope and emit symbols for the declaration node types:
 //
@@ -18,7 +18,7 @@ import type { TreeSitterNode } from "../TreeSitterExtractor.ts";
 // Function-body locals are excluded by not recursing into function bodies.
 // Class-body recursion is necessary to surface methods + class-level fields.
 //
-// Container semantics (issue #18): symbols inside a class carry the dotted
+// Container semantics ({§mimetype-symbol-container}): symbols inside a class carry the dotted
 // path of enclosing emitted class names (`Outer.Inner` for a method on a
 // nested class). Top-level symbols carry no container.
 export function extract(root: TreeSitterNode, _content: string): TreeSitterSymbolProjection[] {

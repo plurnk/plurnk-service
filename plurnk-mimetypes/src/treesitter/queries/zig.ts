@@ -1,10 +1,10 @@
-// References query for tree-sitter-zig (issue #19; SPEC §16).
+// References query for tree-sitter-zig ({§mimetype-references}).
 // S-expression patterns; `@ref.<kind>` captures yield MimeRef rows via the
 // framework engine (refsEngine.ts).
 //
 // Conventions:
 //   - import: NOT emitted. `@import("std")` takes a path string, not a
-//     name-join-resolvable symbol name — SPEC §16 bans path strings from
+//     name-join-resolvable symbol name — {§mimetype-references} bans path strings from
 //     the refs channel. No import refs for Zig.
 //   - call refs capture the callee name node (field_expression member for
 //     `std.debug.print`-style calls), not the expression root. Builtin
@@ -26,7 +26,7 @@
 //     parse as variable_declaration with a second UNFIELDED identifier.
 //   - inherit: not applicable — Zig has no inheritance.
 //   - `use` is reserved; bare identifier reads are not emitted (precision
-//     over recall — SPEC §16 invariants).
+//     over recall — {§mimetype-references} invariants).
 export const refsQuery = `
 (call_expression function: (identifier) @ref.call)
 (call_expression function: (field_expression member: (identifier) @ref.call))

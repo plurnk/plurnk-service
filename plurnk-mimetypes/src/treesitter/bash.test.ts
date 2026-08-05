@@ -40,7 +40,7 @@ describe("text/x-shellscript via tree-sitter registry", () => {
     });
 });
 
-describe("text/x-shellscript — container + columns (issue #18)", () => {
+describe("text/x-shellscript — container + columns ({§mimetype-symbol-container})", () => {
     it("all symbols carry 1-indexed columns; functions are flat (no container)", async () => {
         const src = "greet() {\n  echo hi\n}\nDB_HOST=localhost\n";
         const syms = await h().extractRaw(src);

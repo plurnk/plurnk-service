@@ -1,4 +1,4 @@
-// References query for tree-sitter-ocaml (issue #19; SPEC §16).
+// References query for tree-sitter-ocaml ({§mimetype-references}).
 // S-expression patterns; `@ref.<kind>` captures yield MimeRef rows via the
 // framework engine (refsEngine.ts).
 //
@@ -26,7 +26,7 @@
 //     while type DEFINITION names are bare type_constructor children of
 //     type_binding, so definition names never surface.
 //   - `use` is reserved; bare identifier reads are not emitted (precision
-//     over recall — SPEC §16 invariants).
+//     over recall — {§mimetype-references} invariants).
 export const refsQuery = `
 (open_module (module_path (module_name) @ref.import))
 

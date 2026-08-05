@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { runConformance } from "./harness.ts";
 
 // NOTE: the haskell.ts mapping is mostly FLAT, but a function def's span
-// covers its signature AND all body equations (issue #22) — refs inside
+// covers its signature AND all body equations ({§mimetype-references}) — refs inside
 // function bodies carry the function as container. Type refs on declaration
 // lines join the same way: signature types inside a function/method def's
 // span, and field/RHS types inside a data/newtype/synonym def's span.
@@ -44,7 +44,7 @@ decoy = "StringDecoy should never surface"
 -- CommentDecoy should never surface
 `;
 
-describe("conformance: text/x-haskell defs + refs (issues #19/#20)", () => {
+describe("conformance: text/x-haskell defs + refs ({§mimetype-references})", () => {
     it("passes the shared invariants and expected captures", async () => {
         const { references } = await runConformance({
             mimetype: "text/x-haskell",
@@ -61,7 +61,7 @@ describe("conformance: text/x-haskell defs + refs (issues #19/#20)", () => {
                 { refName: "Shape", container: "process" },
                 { refName: "Result", container: "process" },
                 // Body CALL refs join at function level now that the def's
-                // span covers the equations (issue #22).
+                // span covers the equations ({§mimetype-references}).
                 { refName: "tokenize", container: "process" },
                 { refName: "render", container: "process" },
             ],
@@ -78,7 +78,7 @@ describe("conformance: text/x-haskell defs + refs (issues #19/#20)", () => {
                 // Instance target type — the type the class is implemented for.
                 { name: "Shape", kind: "type", line: 19 },
                 { name: "Token", kind: "type", line: 24, container: "tokenize" },
-                // Body refs carry the enclosing function (issue #22).
+                // Body refs carry the enclosing function ({§mimetype-references}).
                 { name: "sort", kind: "call", line: 25, container: "tokenize" },
                 { name: "tokenize", kind: "call", line: 28, container: "process" },
                 { name: "render", kind: "call", line: 28, container: "process" },

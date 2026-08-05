@@ -29,7 +29,7 @@ export interface TreeSitterLanguageEntry {
 
 export interface TreeSitterLanguageMapping {
     extract(root: TreeSitterNode, content: string): TreeSitterSymbolProjection[];
-    // Optional override for the deep-json channel (issue #10). When present,
+    // Optional override for the deep-json channel ({§mimetype-channel-architecture}). When present,
     // TreeSitterLanguageHandler.deepJson() bypasses the default tree-sitter
     // AST walker and uses this function instead. Used by languages where the
     // algebra-natural deep-json shape is the parsed value rather than the
@@ -37,7 +37,7 @@ export interface TreeSitterLanguageMapping {
     // right answer for code-shaped languages where the AST IS what users
     // want to query.
     deepJson?(content: string): unknown | Promise<unknown>;
-    // Optional references-channel query (issue #19): tree-sitter query
+    // Optional references-channel query ({§mimetype-references}): tree-sitter query
     // source (S-expression patterns) whose `@ref.<kind>` captures yield the
     // classified symbol uses. Lives in src/treesitter/queries/{slug}.ts as
     // an embedded string (reviewable .scm content without a build-time copy

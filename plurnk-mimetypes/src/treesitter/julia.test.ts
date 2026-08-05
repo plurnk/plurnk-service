@@ -40,7 +40,7 @@ describe("text/x-julia via tree-sitter registry", () => {
     });
 });
 
-describe("text/x-julia — container + columns (issue #18)", () => {
+describe("text/x-julia — container + columns ({§mimetype-symbol-container})", () => {
     it("symbols carry the enclosing module path as container; nesting is dotted", async () => {
         const src = "module Outer\nmodule Inner\nf(x) = x\nend\nstruct Point\n  x::Int\nend\nend\n";
         const syms = await h().extractRaw(src);

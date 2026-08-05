@@ -277,7 +277,7 @@ describe("Mimetypes — process: metadata + error paths", () => {
     });
 });
 
-describe("Mimetypes — process: channel selection (#17)", () => {
+describe("Mimetypes — process: channel selection ({§mimetype-channel-selection})", () => {
     it("default selects every structural channel", async () => {
         const m = new Mimetypes({
             discovery: makeDiscovery([plainInfo]),
@@ -413,7 +413,7 @@ describe("Mimetypes — process: channel selection (#17)", () => {
         assert.equal(r.deepXml, "<real-source-markup/>");
     });
 
-    it("references channel defaults to [] (engine lands with #19)", async () => {
+    it("references channel defaults to [] ({§mimetype-references})", async () => {
         const m = new Mimetypes({
             discovery: makeDiscovery([plainInfo]),
             loader: async () => ({ default: FakePlainHandler }),
@@ -597,7 +597,7 @@ describe("Mimetypes — query", () => {
         assert.equal(results[1].matched, "error: c");
     });
 
-    it("dispatches xpath via // against the projected symbol outline (symbols-only handlers gain xpath; #41 symmetry)", async () => {
+    it("dispatches xpath via // against the projected symbol outline (symbols-only handlers gain xpath; {§mimetype-query-conformance} symmetry)", async () => {
         const m = new Mimetypes({
             discovery: makeDiscovery([plainInfo]),
             loader: async () => ({ default: FakePlainHandler }),
@@ -685,7 +685,7 @@ describe("Mimetypes — query", () => {
     });
 });
 
-describe("[{§mimetype-error-policy}] Mimetypes degradation notices", () => {
+describe("Mimetypes degradation notices ({§mimetype-error-policy})", () => {
     it("embeddingMissing surfaces a warn-level Notice on an ok:true result", async () => {
         const m = new Mimetypes({
             discovery: makeDiscovery([plainInfo]),

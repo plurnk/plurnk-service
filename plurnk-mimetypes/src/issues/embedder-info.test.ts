@@ -96,7 +96,7 @@ describe("embedderInfo()", () => {
         assert.equal(await info.countTokens("hello"), 5, "delegates to the embedder's counter");
     });
 
-    it("E4: surfaces the model id when the embedder declares it (#31)", async () => {
+    it("E4: surfaces the model id when the embedder declares it ({§mimetype-embedding})", async () => {
         const info = await mk(fullEmbedder).embedderInfo();
         assert.equal(info?.model, "fake@1", "model rides for deep_hash re-derivation");
     });

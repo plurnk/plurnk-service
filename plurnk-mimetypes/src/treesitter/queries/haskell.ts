@@ -1,10 +1,10 @@
-// References query for tree-sitter-haskell (issue #19; SPEC §16).
+// References query for tree-sitter-haskell ({§mimetype-references}).
 // S-expression patterns; `@ref.<kind>` captures yield MimeRef rows via the
 // framework engine (refsEngine.ts).
 //
 // Haskell is whole-program application syntax — almost every expression is
 // an `apply` chain — so the conventions here are deliberately conservative
-// (precision over recall, SPEC §16):
+// (precision over recall, {§mimetype-references}):
 //   - import: ONLY explicit import-list names (`import Data.List (sort)` →
 //     sort). Module names are dotted paths (`Data.List`) and the haskell.ts
 //     mapping emits no def they could name-join to (the header module def is

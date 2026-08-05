@@ -3,7 +3,7 @@ import type { TreeSitterSymbolProjection } from "../ParserCoordinates.ts";
 import type { SymbolKind } from "../types.ts";
 import type { TreeSitterNode } from "../TreeSitterExtractor.ts";
 
-// Java SPEC §3 mapping via tree-sitter-java.
+// Java symbol mapping ({§mimetype-symbol}) via tree-sitter-java.
 //
 //   class_declaration            → class (recurse into body as inClass)
 //   interface_declaration        → interface (recurse)
@@ -15,7 +15,7 @@ import type { TreeSitterNode } from "../TreeSitterExtractor.ts";
 //   field_declaration            → field (per variable_declarator)
 //   enum_constant                → constant
 //
-// Container semantics (issue #18): members carry the dotted path of enclosing
+// Container semantics ({§mimetype-symbol-container}): members carry the dotted path of enclosing
 // emitted class/interface/enum names. Top-level symbols carry no container.
 export function extract(root: TreeSitterNode, _content: string): TreeSitterSymbolProjection[] {
     const out: TreeSitterSymbolProjection[] = [];
