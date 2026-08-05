@@ -12,6 +12,8 @@ import Browser, { BROWSER_UA, requireNumEnv, type RenderResult } from "./Browser
 import Guard from "./Guard.ts";
 import { responseMimetype } from "./ContentType.ts";
 
+export const PROJECTION_ID_HEADER = "x-plurnk-projection-id";
+
 // {§host-rewrite} — one transport-only policy for acquisition GETs. Callers
 // retain the addressed URL as entry identity; mutations never pass through it.
 export const rewriteAcquisitionTarget = (url: string): string => {
@@ -53,6 +55,7 @@ export interface WebFetchResult {
 export interface WebMaterializedResult {
     readonly body: { content: string; mimetype: string };
     readonly html?: { content: string; mimetype: string };
+    readonly header?: string;
     readonly projection?: { sourceMimetype: string; identity: string };
 }
 
@@ -83,7 +86,7 @@ export default class WebFetcher {
     // only null asks the lazy renderer or reports final absence. Projection and
     // render exceptions retain their causes in WebMaterializationError.
     static async materialize(
-        fetched: Pick<WebFetchResult, "body" | "mimetype" | "render">,
+        fetched: Pick<WebFetchResult, "body" | "mimetype" | "header" | "render">,
         projection: ProjectionCaps,
     ): Promise<WebMaterializedResult | null> {
         if (typeof fetched.body !== "string") {
@@ -100,15 +103,21 @@ export default class WebFetcher {
                     projection,
                 );
                 if (projected === null) return null;
-                return WebFetcher.#materialized(projected);
+                return WebFetcher.#materialized(projected, undefined, fetched.header);
             }
             const content = await fetched.body.text();
             return content.length === 0
                 ? null
-                : { body: { content, mimetype: fetched.mimetype } };
+                : {
+                    body: { content, mimetype: fetched.mimetype },
+                    ...(fetched.header === undefined ? {} : { header: fetched.header }),
+                };
         }
         if (!MimetypeClassifier.isHtml(fetched.mimetype)) {
-            return { body: { content: fetched.body, mimetype: fetched.mimetype } };
+            return {
+                body: { content: fetched.body, mimetype: fetched.mimetype },
+                ...(fetched.header === undefined ? {} : { header: fetched.header }),
+            };
         }
         let html = { content: fetched.body, mimetype: fetched.mimetype };
         let projected = await WebFetcher.#project(html, projection);
@@ -124,7 +133,9 @@ export default class WebFetcher {
                 projected = await WebFetcher.#project(html, projection);
             }
         }
-        return projected === null ? null : WebFetcher.#materialized(projected, html);
+        return projected === null
+            ? null
+            : WebFetcher.#materialized(projected, html, fetched.header);
     }
 
     static async projectBytes(
@@ -171,15 +182,23 @@ export default class WebFetcher {
     static #materialized(
         projected: ProjectedText,
         html?: { content: string; mimetype: string },
+        header?: string,
     ): WebMaterializedResult {
         return {
             body: { content: projected.content, mimetype: projected.mimetype },
             ...(html === undefined ? {} : { html }),
+            ...(header === undefined ? {} : {
+                header: `${header}\n${WebFetcher.projectionEvidence(projected.projectionIdentity)}`,
+            }),
             projection: {
                 sourceMimetype: projected.sourceMimetype,
                 identity: projected.projectionIdentity,
             },
         };
+    }
+
+    static projectionEvidence(identity: string): string {
+        return `${PROJECTION_ID_HEADER}: ${identity}`;
     }
 
     async close(): Promise<void> {

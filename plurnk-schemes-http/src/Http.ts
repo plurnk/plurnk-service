@@ -32,6 +32,7 @@ import { readFile } from "node:fs/promises";
 import Browser, { BROWSER_UA, requireNumEnv, type RenderResult } from "./Browser.ts";
 import ErrorDetail from "./ErrorDetail.ts";
 import WebFetcher, {
+    PROJECTION_ID_HEADER,
     rewriteAcquisitionTarget,
     WebMaterializationError,
     type WebFetchResult,
@@ -46,7 +47,6 @@ const HEADER = "header";
 // the last value so an origin using the same field name cannot override it.
 const FETCHED_AT = "x-plurnk-fetched-at";
 const REQUEST_METHOD = "x-plurnk-request-method";
-const PROJECTION_ID = "x-plurnk-projection-id";
 
 const lastHeaderValue = (header: string, name: string): string | undefined => {
     const lines = header.split(/\r?\n/);
@@ -197,15 +197,12 @@ export default class Http implements SchemeHandler {
             throw err;
         }
         if (materialized === null) return Http.#noReadableProjection(url);
-        const header = fetched.header === undefined
-            ? undefined
-            : materialized.projection === undefined
-                ? fetched.header
-                : Http.#withProjectionIdentity(fetched.header, materialized.projection.identity);
         const channels: EntryData["channels"] = {
             [BODY]: materialized.body,
             ...(materialized.html === undefined ? {} : { html: materialized.html }),
-            ...(header === undefined ? {} : { [HEADER]: { content: header, mimetype: "text/plain" } }),
+            ...(materialized.header === undefined
+                ? {}
+                : { [HEADER]: { content: materialized.header, mimetype: "text/plain" } }),
         };
         const written = await ctx.entries.write(pathname, { channels, tags: [] });
         return Http.#passthrough(written);
@@ -657,7 +654,11 @@ export default class Http implements SchemeHandler {
         subscription: StreamSubscription,
         identity: string,
     ): Promise<void> {
-        await subscription.notifyChunk(HEADER, `\n${PROJECTION_ID}: ${identity}`, "text/plain");
+        await subscription.notifyChunk(
+            HEADER,
+            `\n${WebFetcher.projectionEvidence(identity)}`,
+            "text/plain",
+        );
     }
 
     // Drain an acquired SSE body and settle its retained subscription. The READ
@@ -794,7 +795,7 @@ export default class Http implements SchemeHandler {
             if (colon < 0) continue;
             const name = line.slice(0, colon).trim().toLowerCase();
             if (name === FETCHED_AT) stampIndex = index;
-            if (name === PROJECTION_ID) {
+            if (name === PROJECTION_ID_HEADER) {
                 projectionIndex = index;
                 identity = line.slice(colon + 1).trim();
             }
@@ -812,10 +813,6 @@ export default class Http implements SchemeHandler {
         const storedIdentity = Http.#projectionIdentity(header);
         if (storedIdentity === undefined) return true;
         return await projection.identity(Http.#sourceMimetype(header)) === storedIdentity;
-    }
-
-    static #withProjectionIdentity(header: string, identity: string): string {
-        return `${header}\n${PROJECTION_ID}: ${identity}`;
     }
 
     // Re-stamp the package-owned (last) field when the origin vouches with 304.

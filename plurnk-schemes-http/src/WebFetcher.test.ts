@@ -293,8 +293,10 @@ test("handler-declared binary bytes reach one readable projection without a dura
         assert.ok(fetched !== null);
         assert.notEqual(typeof fetched.body, "string", "registry-declared binary input remains bytes");
         assert.match(fetched.header ?? "", /^content-type: text\/x-binary$/m);
-        assert.deepEqual(await WebFetcher.materialize(fetched, projection), {
+        const materialized = await WebFetcher.materialize(fetched, projection);
+        assert.deepEqual(materialized, {
             body: { content: "projected:1,2,3", mimetype: "text/markdown" },
+            header: `${fetched.header}\nx-plurnk-projection-id: binary-reader-v1`,
             projection: {
                 sourceMimetype: "text/x-binary",
                 identity: "binary-reader-v1",
