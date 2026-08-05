@@ -62,6 +62,7 @@ test("a FETCHED html page (via the exec sink) projects: decisive markdown body +
                 return { status: 200, exitCode: 0 };
             },
         },
+        namespaceOwner: { kind: "module", name: "fetchstub fixture" },
         glyph: "?", example: "", documentation: "", available: true, detail: undefined,
     } as never);
     try {

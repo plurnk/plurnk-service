@@ -17,12 +17,18 @@ import {
 import type { SchemeManifest } from "./scheme-types.ts";
 import ExecOutputScheme from "../schemes/ExecOutputScheme.ts";
 import type ExecutorRegistry from "./ExecutorRegistry.ts";
-import type { Executor } from "./ExecutorRegistry.ts";
+import type { Executor, RuntimeNamespaceOwner } from "./ExecutorRegistry.ts";
 import { docsExcludeSet } from "./teaching.ts";
 import type { CoreSchemeAdapter, CoreSchemeServices } from "./CoreSchemeServices.ts";
 import type { RuntimeSchemeFacet } from "../server/DaemonModule.ts";
 import { TEACHING_CORPUS, type PluginAttribution } from "@plurnk/plurnk-meta";
 import { readTeachingSource, type ReadTeaching } from "./teaching-corpus.ts";
+
+interface NamespaceClaim {
+    readonly key: string;
+    readonly label: string;
+    readonly reserved: boolean;
+}
 
 export default class SchemeRegistry {
     // Handler store. Dispatcher supplies one context implementation to bundled
@@ -36,8 +42,9 @@ export default class SchemeRegistry {
     // addressing (sh:///l/t/s). Routable via get(), but NOT separately taught or doc-materialized
     // (exec is taught once); else the catalog + docs bloat by one redundant line/entry per tag.
     #runtimeSchemes = new Set<string>();
-    // #181 — built-in scheme names (captured at construction), reserved namespace-wide.
-    #reserved: ReadonlySet<string> = new Set();
+    // One ownership ledger for built-ins, installed schemes, runtime output
+    // faces, and programmatic schemes. {§plugin-namespace-arbitration}
+    #claims = new Map<string, NamespaceClaim>();
     #readTeaching: ReadTeaching;
     #schemeDocs: Promise<ReadonlyMap<string, string>> | undefined;
     #questionsDoc: Promise<string> | undefined;
@@ -46,28 +53,80 @@ export default class SchemeRegistry {
     // = schemes-http's checked WebFetcher, injectable so tests substitute automatic network acquisition.
     constructor(opts?: { fetchWeb?: WebFetch; readTeaching?: ReadTeaching }) {
         this.#readTeaching = opts?.readTeaching ?? readTeachingSource;
-        this.register("log",    new Log());
+        this.#registerBuiltIn("log", new Log());
         // {§scheme} — "exec" is internal machinery, not an addressable scheme: the EXEC op routes here
         // and the spawn-abort/idle state lives here, but the model addresses output via the tag
         // schemes (sh://, jq://) and process-KILLs the tag coordinate. The knowledgebase
         // is worker:// (commons/~/name/plurnk), and task frames are prompt://.
-        this.register("exec",   new Exec(opts?.fetchWeb));
-        this.register("prompt", new Prompt());
-        this.register("skill",  new Skill());
-        this.register("file",   new File());
-        this.register("worker", new Worker());
-        // #181 — the in-tree names are reserved across the whole scheme namespace: a
-        // discovered executor or external scheme claiming one fails the boot hard, never
-        // silently shadowed. (exec stays poisoned-but-registered — the EXEC op + kill state.)
-        this.#reserved = new Set(this.#handlers.keys());
+        this.#registerBuiltIn("exec", new Exec(opts?.fetchWeb));
+        this.#registerBuiltIn("prompt", new Prompt());
+        this.#registerBuiltIn("skill", new Skill());
+        this.#registerBuiltIn("file", new File());
+        this.#registerBuiltIn("worker", new Worker());
     }
 
     register(name: string, handler: object): void {
-        if (this.#handlers.has(name)) throw new Error(`scheme '${name}' is already registered`);
+        const claim = SchemeRegistry.#programmaticClaim(name);
+        this.#registerClaimed(name, handler, claim);
+    }
+
+    #registerBuiltIn(name: string, handler: object): void {
+        const claim: NamespaceClaim = {
+            key: "core:@plurnk/plurnk-service",
+            label: "core package '@plurnk/plurnk-service'",
+            reserved: true,
+        };
+        this.#registerClaimed(name, handler, claim);
+    }
+
+    #registerClaimed(name: string, handler: object, claim: NamespaceClaim, sameOwnerRescan = false): boolean {
+        if (this.#assertClaim(name, claim, sameOwnerRescan) === "same") return false;
         Manifest.of(handler, name);
         const bindCore = (handler as Partial<CoreSchemeAdapter>).bindCore;
         if (this.#coreServices !== undefined && typeof bindCore === "function") bindCore.call(handler, this.#coreServices);
         this.#handlers.set(name, handler);
+        this.#claims.set(name, claim);
+        return true;
+    }
+
+    #assertClaim(name: string, incoming: NamespaceClaim, sameOwnerRescan: boolean): "new" | "same" {
+        const existing = this.#claims.get(name);
+        if (existing === undefined) return "new";
+        if (sameOwnerRescan && existing.key === incoming.key) return "same";
+        if (existing.reserved) {
+            throw new Error(`scheme name '${name}' is reserved by ${existing.label}; ${incoming.label} cannot claim it`);
+        }
+        throw new Error(`scheme name '${name}' is claimed by both ${existing.label} and ${incoming.label}`);
+    }
+
+    static #programmaticClaim(name: string): NamespaceClaim {
+        return {
+            key: `programmatic-scheme:${name}`,
+            label: `programmatic scheme '${name}'`,
+            reserved: false,
+        };
+    }
+
+    static #externalSchemeClaim(packageName: string): NamespaceClaim {
+        return {
+            key: `scheme-package:${packageName}`,
+            label: `scheme package '${packageName}'`,
+            reserved: false,
+        };
+    }
+
+    static #runtimeClaim(owner: RuntimeNamespaceOwner): NamespaceClaim {
+        return owner.kind === "package"
+            ? {
+                key: `executor-package:${owner.name}`,
+                label: `executor package '${owner.name}'`,
+                reserved: false,
+            }
+            : {
+                key: `module-runtime:${owner.name}`,
+                label: `daemon module runtime '${owner.name}'`,
+                reserved: false,
+            };
     }
 
     bindCore(services: CoreSchemeServices): void {
@@ -87,23 +146,30 @@ export default class SchemeRegistry {
         for (const tag of executors.availableRuntimes()) {
             const entry = executors.entry(tag);
             if (entry === undefined) continue;
-            this.registerRuntimeScheme(tag, entry.executor);
+            this.registerRuntimeScheme(tag, entry.executor, entry.namespaceOwner, undefined, true);
         }
     }
 
     // Register one executor tag's scheme face (the boot loop above or daemon-module setup).
-    // The reserved/cross-family arbitration
-    // lives here so both paths share it — one name, one owner across the exec/scheme families (#181):
-    // idempotent on a tag that already has its own runtime scheme (a boot re-scan), fail-hard on a
-    // collision with a reserved built-in or a DIFFERENT already-claimed scheme.
-    registerRuntimeScheme(tag: string, executor: Executor, facet?: RuntimeSchemeFacet): void {
+    // Cross-family arbitration lives here so boot and module paths share one
+    // namespace. {§plugin-namespace-arbitration}
+    registerRuntimeScheme(
+        tag: string,
+        executor: Executor,
+        owner: RuntimeNamespaceOwner,
+        facet?: RuntimeSchemeFacet,
+        sameOwnerRescan = false,
+    ): void {
         const exec = this.#handlers.get("exec");
         if (!(exec instanceof Exec)) throw new Error("registerRuntimeScheme: the exec handler is not registered");
-        if (this.#reserved.has(tag)) throw new Error(`executor tag '${tag}' collides with a reserved built-in scheme`);
-        if (this.#runtimeSchemes.has(tag)) return; // idempotent — already this tag's own runtime scheme
-        if (this.#handlers.has(tag)) throw new Error(`executor tag '${tag}' collides with an already-claimed scheme '${tag}' — one name, one owner across the exec/scheme families`);
-        this.register(tag, new ExecOutputScheme(executor, exec, facet));
+        const claim = SchemeRegistry.#runtimeClaim(owner);
+        if (this.#assertClaim(tag, claim, sameOwnerRescan) === "same") return;
+        this.#registerClaimed(tag, new ExecOutputScheme(executor, exec, facet), claim, sameOwnerRescan);
         this.#runtimeSchemes.add(tag);
+    }
+
+    assertRuntimeClaim(tag: string, owner: RuntimeNamespaceOwner): void {
+        this.#assertClaim(tag, SchemeRegistry.#runtimeClaim(owner), false);
     }
 
     get(name: string): object | undefined { return this.#handlers.get(name); }
@@ -243,15 +309,15 @@ export default class SchemeRegistry {
             console.warn(`scheme discovery: '${name}' is discovered but untrusted (PLURNK_PLUGINS_TRUSTED_ONLY); not registered`);
         }
         for (const { name, packageName, exportName } of schemes) {
-            if (this.#reserved.has(name)) throw new Error(`external scheme '${name}' (${packageName}) collides with a reserved built-in`);
-            if (this.has(name)) continue; // idempotent re-scan
+            const claim = SchemeRegistry.#externalSchemeClaim(packageName);
+            if (this.#assertClaim(name, claim, true) === "same") continue;
             // {§plugin-discovery} — a multi-scheme package names each scheme's export (`plurnk.schemes[].export`);
             // absent = the classic single default export. A declared export that isn't a constructor
             // fails the boot hard — a manifest naming a missing class is a misdeclaration, not a skip.
             const mod = await import(packageName) as Record<string, new () => SchemeHandler>;
             const Handler = mod[exportName ?? "default"];
             if (typeof Handler !== "function") throw new Error(`external scheme '${name}' (${packageName}): export '${exportName ?? "default"}' is not a constructor`);
-            this.register(name, new Handler());
+            this.#registerClaimed(name, new Handler(), claim, true);
             const attribution = packageAttributions.get(packageName);
             if (attribution !== undefined) this.#packageAttributions.set(packageName, attribution);
         }

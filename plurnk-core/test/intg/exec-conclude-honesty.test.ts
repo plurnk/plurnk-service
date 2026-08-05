@@ -41,6 +41,7 @@ const wire = async (run: Executor["run"]) => {
             probe: async () => ({ available: true as const, detail: undefined }),
             run,
         },
+        namespaceOwner: { kind: "module", name: `${tag} fixture` },
         glyph: "?", example: "", documentation: "", available: true, detail: undefined,
     } as never);
     const workspaceId = await insertWorkspace(db, `honesty-${crypto.randomUUID()}`);

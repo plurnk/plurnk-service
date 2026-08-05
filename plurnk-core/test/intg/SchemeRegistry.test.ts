@@ -55,7 +55,7 @@ test("SchemeRegistry: register(name) on already-registered name fails hard", () 
     const r = new SchemeRegistry();
     assert.throws(
         () => r.register("worker", new Worker()),
-        /scheme 'worker' is already registered/,
+        /scheme name 'worker' is reserved by core package '@plurnk\/plurnk-service'; programmatic scheme 'worker' cannot claim it/,
     );
 });
 

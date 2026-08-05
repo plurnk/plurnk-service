@@ -95,7 +95,7 @@ const wire = async (): Promise<{
         effect(target: string | null): Effect { return target === null ? "pure" : "read"; },
     };
     const executors = new ExecutorRegistry(new Map([
-        ["tool", { executor, glyph: "🔧", example: "", documentation: "", available: true, detail: undefined }],
+        ["tool", { executor, namespaceOwner: { kind: "module", name: "scheme-source fixture" }, glyph: "🔧", example: "", documentation: "", available: true, detail: undefined }],
     ]));
     const db = await openMigrated();
     const schemes = new SchemeRegistry();

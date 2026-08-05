@@ -1599,6 +1599,30 @@ capability framework owns its typed discovery result and trusted loading path.
 Core owns only cross-family composition, arbitration, and operator presentation
 of skipped-package evidence.
 
+§plugin-namespace-arbitration **Every addressable scheme name has one claim.**
+For an installed plugin, claim identity is the capability family plus its npm
+package name. Core's bundled names are reserved claims. A daemon module's
+runtime registration names its module owner and makes one composite executor
+claim: its ordinary output scheme and optional resource facet do not compete
+with each other.
+
+| Existing claim                 | Incoming claim                                          | Outcome |
+|--------------------------------|---------------------------------------------------------|---------|
+| None                           | Any valid claim                                         | Register it. |
+| Same installed family/package | Rescan of the same name                                 | No-op; retain the one registered handler. |
+| Reserved core name             | Any plugin or module                                    | Fail naming the reserved owner and claimant. |
+| Any plugin/module              | A different owner, including scheme/executor either way | Fail naming both owners. |
+| Module runtime                 | Its optional same-registration scheme facet             | Compose one handler under the runtime's single claim. |
+
+Arbitration precedes host registry mutation. External scheme descriptors are
+arbitrated before core imports their handlers; executor packages have already
+crossed their family-owned trusted loading path when core arbitrates their
+output faces. A rejected claim leaves both scheme and executor registries
+unchanged, so registration order cannot turn a collision into precedence.
+Installed third-party packages enter through the same scope-agnostic npm
+discovery as `@plurnk/*`; arbitration requires no first-party allowlist or
+registration.
+
 ---
 
 ## §bundled-set Bundled Set

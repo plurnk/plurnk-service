@@ -29,7 +29,7 @@ test("SchemeRegistry.discoverExternal registers the http sibling", async () => {
     assert.equal(registry.has("http"), true, "the external http sibling is discovered + registered");
 });
 
-test("SchemeRegistry consumes one discovered package attribution without reopening its manifest", async (t: TestContext) => {
+test("discoverExternal treats the same package claim as an idempotent rescan", async (t: TestContext) => {
     t.mock.method(SchemeDiscovery, "discover", async () => ({
         schemes: [{ name: "http", packageName: "@plurnk/plurnk-schemes-http" }],
         skipped: [],
@@ -38,56 +38,102 @@ test("SchemeRegistry consumes one discovered package attribution without reopeni
     const registry = new SchemeRegistry();
 
     await registry.discoverExternal();
+    const original = registry.get("http");
     await registry.discoverExternal();
 
+    assert.equal(registry.get("http"), original, "a rescan retains the already-admitted handler instance");
     assert.deepEqual(registry.attributions(), ["@plurnk/http"], "idempotent scans retain one package fact");
 });
 
-// #181 coverage — built-in scheme names are reserved namespace-wide; a discovered executor
-// claiming one fails the boot HARD rather than being silently shadowed (in-tree precedence
-// hid a collision that, for a security-relevant name like file/worker, must surface loudly).
 type RegistryArg = Parameters<SchemeRegistry["registerRuntimeSchemes"]>[0];
+const runtimeRegistry = (tag: string, namespaceOwner: string): RegistryArg => ({
+    availableRuntimes: () => [tag],
+    entry: () => ({ executor: { manifest: manifest(tag) }, namespaceOwner: { kind: "package", name: namespaceOwner } }),
+}) as unknown as RegistryArg;
 
 test("registerRuntimeSchemes: an executor tag shadowing a reserved built-in fails hard", () => {
     const registry = new SchemeRegistry();
-    const shadows = { availableRuntimes: () => ["file"], entry: () => ({ executor: { manifest: { name: "file", channels: {}, defaultChannel: "body" } } }) } as unknown as RegistryArg;
     assert.throws(
-        () => registry.registerRuntimeSchemes(shadows),
-        /collides with a reserved built-in/,
+        () => registry.registerRuntimeSchemes(runtimeRegistry("file", "@acme/exec-file")),
+        /core package '@plurnk\/plurnk-service'.*executor package '@acme\/exec-file'/,
         "a runtime tag claiming 'file' must fail-hard, never silently shadow the built-in",
     );
 });
 
 test("registerRuntimeSchemes: a non-reserved executor tag registers its own per-tag face", () => {
     const registry = new SchemeRegistry();
-    const real = {
-        availableRuntimes: () => ["sh"],
-        entry: () => ({ executor: { manifest: manifest("sh") } }),
-    } as unknown as RegistryArg;
-    registry.registerRuntimeSchemes(real);
+    registry.registerRuntimeSchemes(runtimeRegistry("sh", "@plurnk/plurnk-execs-common"));
     assert.ok(registry.has("sh"), "the sh per-tag face is registered under its tag");
 });
 
 test("registerRuntimeSchemes: a tag colliding with an already-claimed scheme fails hard — one name, one owner", () => {
     const registry = new SchemeRegistry();
     registry.register("figma", handler("figma")); // an external scheme sibling claims the name first
-    const collides = { availableRuntimes: () => ["figma"], entry: () => ({ executor: { manifest: { name: "figma", channels: {}, defaultChannel: "results" } } }) } as unknown as RegistryArg;
     assert.throws(
-        () => registry.registerRuntimeSchemes(collides),
-        /one name, one owner/,
+        () => registry.registerRuntimeSchemes(runtimeRegistry("figma", "@acme/exec-figma")),
+        /programmatic scheme 'figma'.*executor package '@acme\/exec-figma'/,
         "a runtime tag colliding with an external scheme must fail-hard, not silently first-wins-skip (cross-family namespace)",
     );
 });
 
 test("registerRuntimeSchemes: re-scanning the same runtime tag is idempotent, not a collision", () => {
     const registry = new SchemeRegistry();
-    const real = {
-        availableRuntimes: () => ["sh"],
-        entry: () => ({ executor: { manifest: manifest("sh") } }),
-    } as unknown as RegistryArg;
+    const real = runtimeRegistry("sh", "@plurnk/plurnk-execs-common");
     registry.registerRuntimeSchemes(real);
+    const original = registry.get("sh");
     assert.doesNotThrow(() => registry.registerRuntimeSchemes(real), "a second scan of an already-registered runtime tag skips (idempotent re-scan), never throws");
-    assert.ok(registry.has("sh"));
+    assert.equal(registry.get("sh"), original, "the rescan retains the first runtime scheme face");
+});
+
+test("registerRuntimeSchemes: a different executor package cannot hide behind a registered tag", () => {
+    const registry = new SchemeRegistry();
+    registry.registerRuntimeSchemes(runtimeRegistry("search", "@acme/exec-search"));
+
+    assert.throws(
+        () => registry.registerRuntimeSchemes(runtimeRegistry("search", "@beta/exec-search")),
+        /executor package '@acme\/exec-search'.*executor package '@beta\/exec-search'/,
+    );
+});
+
+test("discoverExternal rejects a different package claim across scans before importing it", async (t: TestContext) => {
+    let packageName = "@plurnk/plurnk-schemes-http";
+    t.mock.method(SchemeDiscovery, "discover", async () => ({
+        schemes: [{ name: "http", packageName }],
+        skipped: [],
+        packageAttributions: new Map(),
+    }));
+    const registry = new SchemeRegistry();
+    await registry.discoverExternal();
+    const original = registry.get("http");
+
+    packageName = "@acme/acme-scheme-http";
+    await assert.rejects(
+        () => registry.discoverExternal(),
+        /scheme package '@plurnk\/plurnk-schemes-http'.*scheme package '@acme\/acme-scheme-http'/,
+    );
+    assert.equal(registry.get("http"), original, "the rejected package cannot replace the first handler");
+});
+
+test("scheme/executor collisions have the same result in both registration orders", async (t: TestContext) => {
+    t.mock.method(SchemeDiscovery, "discover", async () => ({
+        schemes: [{ name: "http", packageName: "@plurnk/plurnk-schemes-http" }],
+        skipped: [],
+        packageAttributions: new Map(),
+    }));
+
+    const executorFirst = new SchemeRegistry();
+    executorFirst.registerRuntimeSchemes(runtimeRegistry("http", "@acme/exec-http"));
+    await assert.rejects(
+        () => executorFirst.discoverExternal(),
+        /executor package '@acme\/exec-http'.*scheme package '@plurnk\/plurnk-schemes-http'/,
+    );
+
+    const schemeFirst = new SchemeRegistry();
+    await schemeFirst.discoverExternal();
+    assert.throws(
+        () => schemeFirst.registerRuntimeSchemes(runtimeRegistry("http", "@acme/exec-http")),
+        /scheme package '@plurnk\/plurnk-schemes-http'.*executor package '@acme\/exec-http'/,
+    );
 });
 
 test("lifecycle hooks run once per unique handler object identity", async () => {

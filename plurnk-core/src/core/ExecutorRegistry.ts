@@ -22,8 +22,16 @@ export interface Executor {
     effect(target: string | null): Effect;
 }
 
+export type RuntimeNamespaceOwner =
+    | { readonly kind: "package"; readonly name: string }
+    | { readonly kind: "module"; readonly name: string };
+
 export interface RegistryEntry {
     readonly executor: Executor;
+    // The claim core arbitrates against the addressable scheme namespace.
+    // Installed runtimes retain their npm package; daemon modules retain their
+    // module-local runtime identity. {§plugin-namespace-arbitration}
+    readonly namespaceOwner: RuntimeNamespaceOwner;
     readonly glyph: string;
     // Compact verbatim plurnk snippet for the tag; every line is a complete
     // operation ({§executor-runtime-declaration}). Empty when omitted.
@@ -56,10 +64,25 @@ export default class ExecutorRegistry {
     // discover -> probe -> build; this is the setup door for a daemon module whose runtime names
     // depend on operator configuration. The caller owns availability; the SchemeRegistry face is registered
     // separately (registerRuntimeScheme), keeping the reserved/cross-family arbitration one-owned there.
-    // Fail hard on a tag already registered: one name, one owner ({§executor-runtime-declaration}).
+    // Fail hard on a tag already registered: one name, one owner ({§plugin-namespace-arbitration}).
     register(tag: string, entry: RegistryEntry): void {
-        if (this.#byTag.has(tag)) throw new Error(`executor tag '${tag}' is already registered — one name, one owner`);
+        this.assertCanRegister(tag, entry.namespaceOwner);
         this.#byTag.set(tag, entry);
+    }
+
+    assertCanRegister(tag: string, incoming: RuntimeNamespaceOwner): void {
+        const existing = this.#byTag.get(tag);
+        if (existing === undefined) return;
+        throw new Error(
+            `executor tag '${tag}' is already registered by ${ExecutorRegistry.#describeOwner(existing.namespaceOwner)}; `
+            + `${ExecutorRegistry.#describeOwner(incoming)} cannot claim it`,
+        );
+    }
+
+    static #describeOwner(owner: RuntimeNamespaceOwner): string {
+        return owner.kind === "package"
+            ? `executor package '${owner.name}'`
+            : `daemon module runtime '${owner.name}'`;
     }
 
     attributions(): string[] { return [...this.#attributions]; }
@@ -109,6 +132,7 @@ export default class ExecutorRegistry {
         for (const { info, executor, availability } of probed) {
             byTag.set(info.runtime, {
                 executor,
+                namespaceOwner: { kind: "package", name: info.packageName },
                 glyph: info.glyph,
                 example: info.example ?? "",
                 documentation: info.documentation ?? "",

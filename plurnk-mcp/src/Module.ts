@@ -21,6 +21,7 @@ interface RuntimeSchemeFacet {
 
 interface ModuleSetupSeam {
     registerRuntime(registration: {
+        readonly namespaceOwner: string;
         readonly decl: RuntimeDecl;
         readonly executor: McpExecutor;
         readonly availability: RuntimeAvailability;
@@ -60,6 +61,7 @@ export default class Module {
                     connection,
                 );
                 return {
+                    namespaceOwner: "@plurnk/plurnk-mcp",
                     decl,
                     executor,
                     availability: await executor.probe(),

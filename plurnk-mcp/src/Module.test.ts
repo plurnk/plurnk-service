@@ -18,6 +18,7 @@ test("module registers every configured current MCP server as one executor and r
         },
     });
     const registrations: Array<{
+        namespaceOwner: string;
         decl: RuntimeDecl;
         executor: McpExecutor;
         availability: RuntimeAvailability;
@@ -30,6 +31,7 @@ test("module registers every configured current MCP server as one executor and r
             },
         });
         assert.equal(registrations.length, 1);
+        assert.equal(registrations[0]?.namespaceOwner, "@plurnk/plurnk-mcp");
         assert.equal(registrations[0]?.decl.name, "echo");
         assert.equal(registrations[0]?.availability.available, true);
         assert.match(registrations[0]?.availability.detail ?? "", /MCP 2026-07-28/);

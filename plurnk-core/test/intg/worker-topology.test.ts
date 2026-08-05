@@ -70,6 +70,7 @@ test("an empty failed child stream is observed by the child before its terminal 
     ] });
     await withDaemon(mock, async (_db, daemon, addr) => {
         await daemon.registerRuntime({
+            namespaceOwner: "worker topology test module",
             decl: { name: "emptyfail", glyph: "×", example: "", documentation: "" },
             executor: {
                 runtime: "emptyfail", glyph: "×",

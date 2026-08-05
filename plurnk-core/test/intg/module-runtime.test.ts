@@ -14,7 +14,7 @@ import { openMigrated, makeSchemeCtx } from "./_helpers.ts";
 
 // A stand-in executor - the seam stores the entry + wraps the executor in a lazy scheme face
 // (ExecOutputScheme reads the executor only at dispatch), so registration needs no live runtime.
-const fakeEntry = (tag: string): RegistryEntry => ({
+const fakeEntry = (tag: string, namespaceOwner = `test module '${tag}'`): RegistryEntry => ({
     executor: {
         runtime: tag, glyph: "🔌",
         get manifest() {
@@ -34,6 +34,7 @@ const fakeEntry = (tag: string): RegistryEntry => ({
         probe: async () => ({ available: true, detail: "fake" }),
         effect: () => "read",
     } as unknown as Executor,
+    namespaceOwner: { kind: "module", name: namespaceOwner },
     glyph: "🔌", example: `<<EXEC[${tag}]:?:EXEC`, documentation: "", available: true, detail: "fake",
 });
 
@@ -111,6 +112,24 @@ test("module runtime registration preserves one-name-one-owner atomicity", async
         );
         assert.equal(executors.entry("only"), undefined);
         assert.equal(schemes.has("only"), false);
+    } finally { await db.close(); }
+});
+
+test("module runtime registration preflights both registries before mutating either", async () => {
+    const db = await openMigrated();
+    try {
+        const existing = fakeEntry("occupied", "existing module");
+        const schemes = new SchemeRegistry();
+        const executors = new ExecutorRegistry(new Map([["occupied", existing]]));
+        const engine = new Engine({ db, schemes });
+        engine.setExecutors(executors);
+
+        assert.throws(
+            () => engine.registerRuntime("occupied", fakeEntry("occupied", "incoming module")),
+            /daemon module runtime 'existing module'.*daemon module runtime 'incoming module'/,
+        );
+        assert.equal(schemes.has("occupied"), false, "an executor collision cannot leave a scheme half-written");
+        assert.equal(executors.entry("occupied"), existing, "the existing executor remains unchanged");
     } finally { await db.close(); }
 });
 

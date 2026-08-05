@@ -166,7 +166,7 @@ test("one canonical target derives one preserved effect fact (#107)", async () =
             return target === null ? "pure" : "read";
         },
     };
-    const registry = new ExecutorRegistry(new Map([["tool", { executor: exe, glyph: "🔧", example: "", documentation: "", available: true, detail: undefined }]]));
+    const registry = new ExecutorRegistry(new Map([["tool", { executor: exe, namespaceOwner: { kind: "module", name: "effect fixture" }, glyph: "🔧", example: "", documentation: "", available: true, detail: undefined }]]));
     const db = await openMigrated();
     const root = await mkdtemp(join(tmpdir(), "plurnk-effect-"));
     const schemes = new SchemeRegistry();

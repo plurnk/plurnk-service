@@ -17,6 +17,7 @@ export interface RuntimeSchemeFacet {
 }
 
 export interface RuntimeRegistration {
+    readonly namespaceOwner: string;
     readonly decl: RuntimeDecl;
     readonly executor: Executor;
     readonly availability: RuntimeAvailability;

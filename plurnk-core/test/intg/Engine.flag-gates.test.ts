@@ -82,7 +82,7 @@ const setup = async () => {
     schemes.register("sideeffect-test", new SideEffectingScheme());
     const engine = new Engine({ db, schemes, mimetypes: makeMimetypes() });
     engine.setExecutors(new ExecutorRegistry(new Map([
-        ["flag-tool", { executor: flagExecutor, glyph: "🧪", example: "", documentation: "", available: true, detail: undefined }],
+        ["flag-tool", { executor: flagExecutor, namespaceOwner: { kind: "module", name: "flag-tool fixture" }, glyph: "🧪", example: "", documentation: "", available: true, detail: undefined }],
     ])));
     return { db, workspaceId, workerId, loopId, turnId, engine, schemes, exec: schemes.get("exec") as Exec };
 };

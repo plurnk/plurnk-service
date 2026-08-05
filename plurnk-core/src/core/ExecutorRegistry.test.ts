@@ -56,6 +56,8 @@ test("{§executor-probe} ExecutorRegistry preserves per-tag availability within 
     assert.equal(registry.entry("alpha")?.available, true, "the present tag is available");
     assert.equal(registry.entry("beta")?.available, false, "the absent tag did NOT ride alpha's probe");
     assert.equal(registry.entry("beta")?.detail, "not on PATH", "the absent tag carries its own probe detail");
+    assert.deepEqual(registry.entry("alpha")?.namespaceOwner, { kind: "package", name: "fake-pkg" },
+        "the family-owned npm identity survives loading for host namespace arbitration");
     assert.deepEqual(registry.availableRuntimes(), ["alpha"], "only the present tag is offered to the model");
     // {§tools-capability-sheet}: the self-documenting example flows through;
     // absent → "" (not undefined).

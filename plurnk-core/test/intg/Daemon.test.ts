@@ -14,6 +14,7 @@ import { Mimetypes } from "@plurnk/plurnk-mimetypes";
 // framework types only — decl + executor + the driver's probe result. The kernel wraps the
 // RegistryEntry itself; registration needs no live driver (the scheme face reads lazily at dispatch).
 const fakeRegistration = (tag: string) => ({
+    namespaceOwner: "daemon test module",
     decl: { name: tag, glyph: "🔌", example: `<<EXEC[${tag}]:?:EXEC`, documentation: "" },
     executor: {
         runtime: tag, glyph: "🔌",
@@ -845,6 +846,11 @@ test("the module setup seam registers a live tag, dispatchable through the engin
             const created = (await rpcCall(ws, 1, "workspace.create", { name: "seam-module" })).result as { id: number };
             const clientWorker = (await db.test_get_client_worker_by_workspace.get<{ id: number }>({ workspace_id: created.id }))!;
 
+            await assert.rejects(
+                () => daemon.registerRuntime({ ...fakeRegistration("ownerless"), namespaceOwner: " " }),
+                /namespaceOwner must be a non-empty string/,
+            );
+            assert.equal(daemon.schemes.has("ownerless"), false, "invalid ownership cannot claim a scheme");
             await daemon.registerRuntime(fakeRegistration("seamtag"));
             // the tag is live — EXEC[seamtag] dispatches through the engine to the registered executor.
             const exec = await daemon.dispatchAsClient({ workspaceId: created.id, workerId: clientWorker.id, statement: Dsl.buildExec({ runtime: "seamtag", command: "ping" }) });
@@ -867,6 +873,7 @@ test("the client-interface seam — a dispatched EXEC's stdout streams as stream
         const ws = await connect(addr);
         try {
             await daemon.registerRuntime({
+                namespaceOwner: "stream test module",
                 decl: { name: "streamtag", glyph: "🔌", example: "", documentation: "" },
                 executor: {
                     runtime: "streamtag", glyph: "🔌",

@@ -41,6 +41,7 @@ const wire = async (finishAfterMs: number, effect: "read" | "host" | "pure" = "p
                 return { status: 200, exitCode: 0 };
             },
         },
+        namespaceOwner: { kind: "module", name: `${tag} fixture` },
         glyph: "?", example: "", documentation: "", available: true, detail: undefined,
     });
     const workspaceId = await insertWorkspace(db, `hold-${crypto.randomUUID()}`);

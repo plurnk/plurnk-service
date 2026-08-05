@@ -1074,9 +1074,13 @@ export default class Daemon {
         return { workerId: branchWorkerId, workerName: branch?.name ?? null, parentWorkerId: workerId };
     }
 
-    async registerRuntime({ decl, executor, availability, scheme }: RuntimeRegistration): Promise<void> {
+    async registerRuntime({ namespaceOwner, decl, executor, availability, scheme }: RuntimeRegistration): Promise<void> {
+        if (typeof namespaceOwner !== "string" || namespaceOwner.trim().length === 0) {
+            throw new Error("registerRuntime: namespaceOwner must be a non-empty string");
+        }
         this.#engine.registerRuntime(decl.name, {
             executor,
+            namespaceOwner: { kind: "module", name: namespaceOwner },
             glyph: decl.glyph ?? "",
             example: decl.example ?? "",
             documentation: decl.documentation ?? "",
