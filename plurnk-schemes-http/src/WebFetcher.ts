@@ -95,14 +95,11 @@ export default class WebFetcher {
             }
             if (binary) {
                 const projected = await WebFetcher.projectBytes(
-                    fetched.body.chunks,
+                    fetched.body,
                     fetched.mimetype,
                     projection,
                 );
-                if (projected === null) {
-                    await fetched.body.cancel();
-                    return null;
-                }
+                if (projected === null) return null;
                 return WebFetcher.#materialized(projected);
             }
             const content = await fetched.body.text();
@@ -131,15 +128,33 @@ export default class WebFetcher {
     }
 
     static async projectBytes(
-        chunks: AsyncIterable<Uint8Array>,
+        body: Pick<WebResponseBody, "chunks" | "cancel">,
         mimetype: string,
         projection: ProjectionCaps,
     ): Promise<ProjectedText | null> {
+        let projected: ProjectedText | null;
         try {
-            return await projection.readableBytes(chunks, mimetype);
+            projected = await projection.readableBytes(body.chunks, mimetype);
         } catch (cause) {
-            throw new WebMaterializationError("projection", mimetype, cause);
+            let failure: unknown = cause;
+            try {
+                await body.cancel();
+            } catch (cleanupCause) {
+                failure = new AggregateError(
+                    [cause, cleanupCause],
+                    `Binary projection and response-body cleanup both failed for ${mimetype}.`,
+                );
+            }
+            throw new WebMaterializationError("projection", mimetype, failure);
         }
+        if (projected === null) {
+            try {
+                await body.cancel();
+            } catch (cause) {
+                throw new WebMaterializationError("projection", mimetype, cause);
+            }
+        }
+        return projected;
     }
 
     static async #project(

@@ -1790,10 +1790,10 @@ test("TTL: fresh stamp serves the stored copy with ZERO round-trips", async () =
 });
 
 test("TTL: a changed projection identity invalidates derived content and its origin validators", async () => {
-    const header = stampedHeader(
+    const header = `${stampedHeader(
         1000,
-        '\ncontent-type: application/pdf\netag: "pdf-v1"\nx-plurnk-projection-id: pdf-reader-v1',
-    );
+        '\ncontent-type: application/pdf\netag: "pdf-v1"',
+    )}\nx-plurnk-projection-id: pdf-reader-v1`;
     const projection = projectionCaps({
         async identity(mimetype) {
             assert.equal(mimetype, "application/pdf");
