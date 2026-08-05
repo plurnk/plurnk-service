@@ -319,11 +319,42 @@ Only an eligible GET representation can supply a direct READ's body, TTL stamp,
 conditional validators, or exact-FIND preparation. Completion comes from
 channel lifecycle, not body length: every stored channel must be final (`static`
 after exact materialization or `closed` after a successful stream); `active`,
-`errored`, or unknown state is ineligible. A copy inside
-`PLURNK_SCHEMES_HTTP_TTL_MS` serves with no network request. Outside the window,
-READ sends stored ETag or Last-Modified validators. A 304 refreshes the package
-stamp and restores the stored channels without rendering; any other response
-replaces them. `0` disables the TTL fast path.
+`errored`, or unknown state is ineligible. Durable operation evidence and HTTP
+reuse eligibility remain distinct: an acquired response stays in the entry even
+when its origin policy prevents later cache use.
+
+| Stored origin policy                  | Direct READ after acquisition                          | Exact FIND after acquisition             |
+| ------------------------------------- | ------------------------------------------------------ | ---------------------------------------- |
+| `no-store`                            | Full acquisition without stored validators             | Full acquisition                         |
+| `no-cache` (qualified or unqualified) | Validate when a stored validator exists; else acquire  | Full acquisition                         |
+| Valid `max-age`                       | Serve only inside origin lifetime and operator ceiling | Reuse only while fresh under both limits |
+| Valid `Expires`, without `max-age`    | Same, using the origin expiration lifetime             | Same                                     |
+| Invalid or ambiguous explicit expiry  | Treat as stale; validate or acquire                    | Full acquisition                         |
+| No explicit origin lifetime           | Use the operator TTL as Plurnk's heuristic             | Reuse inside the operator TTL            |
+
+The operator ceiling is `PLURNK_SCHEMES_HTTP_TTL_MS`; `0` disables every
+validation-free reuse. Origin age is the greater of the response's `Age` value
+and apparent age from `Date`, plus residence since the authoritative package
+stamp. A representation is fresh only while both origin lifetime and operator
+ceiling permit it. Unknown cache extensions are inert. Stale content is never
+served, so `must-revalidate` requires no separate path.
+
+Outside the fresh window, direct READ sends stored ETag or Last-Modified
+validators. A successful 304 restores the stored channels without rendering
+and updates the header under the following ownership rule; any other response
+replaces the channels:
+
+| 304 metadata class                                                    | Stored-header action                                    |
+| --------------------------------------------------------------------- | ------------------------------------------------------- |
+| Present end-to-end origin fields, including cache and validators      | Replace prior fields of the same case-insensitive name  |
+| Origin fields absent from the 304                                     | Preserve                                                |
+| `Content-Type`, `Content-Encoding`, `Content-Range`, `Content-Length` | Preserve metadata describing the already-processed body |
+| Package method, acquisition stamp, and variant                        | Rebuild authoritatively; refresh stamp and variant      |
+| Projection identity                                                   | Preserve                                                |
+
+A 304-provided `Vary`, `no-store`, `no-cache`, expiry, or validator
+therefore governs the next operation without relabeling derived Unicode as a
+different source representation.
 
 A stored derived representation is reusable only while its projection identity
 matches the currently installed reader for the origin media type. A mismatch
@@ -332,8 +363,8 @@ certify unchanged source bytes, not output from a different projection.
 
 POST, PUT, and DELETE responses retain their method marker but cannot satisfy a
 later GET or exact-FIND acquisition. An unmarked authored entry and an eligible
-stored GET remain usable by universal FIND without revalidation. `SEND[410]`
-deletes the stored entry.
+stored GET remain visible to universal FIND as durable evidence; exact HTTP
+preparation applies the policy above. `SEND[410]` deletes the stored entry.
 
 ### §sse Server-sent events
 

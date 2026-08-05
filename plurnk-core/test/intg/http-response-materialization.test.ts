@@ -347,3 +347,50 @@ test("parser-produced request metadata cannot share a fresh HTTP representation"
         await db.close();
     }
 });
+
+test("a durable no-store response is operation evidence, not a reusable HTTP cache entry", async () => {
+    const db = await openMigrated();
+    const originalFetch = globalThis.fetch;
+    const originalTtl = process.env.PLURNK_SCHEMES_HTTP_TTL_MS;
+    const http = new Http();
+    try {
+        process.env.PLURNK_SCHEMES_HTTP_TTL_MS = "60000";
+        const requests: Array<{ conditional: boolean }> = [];
+        globalThis.fetch = async (_url, init) => {
+            const headers = new Headers(init?.headers);
+            requests.push({
+                conditional: headers.has("if-none-match") || headers.has("if-modified-since"),
+            });
+            return new Response(`acquisition ${requests.length}`, {
+                status: 200,
+                headers: {
+                    "cache-control": "no-store",
+                    "content-type": "text/plain",
+                    etag: `"evidence-${requests.length}"`,
+                },
+            });
+        };
+
+        const workspaceId = await insertWorkspace(db, `http-no-store-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const ctx = makeSchemeCtx({ db, workspaceId, workerId });
+        const handlerCtx = makeHandlerCtx(ctx, { ...Http.manifest, name: "https" });
+        const read = parsedRead("https://93.184.216.34/evidence");
+        const pathname = "/93.184.216.34/evidence";
+
+        assert.equal((await http.read(read, handlerCtx)).status, 102);
+        const first = await handlerCtx.entries.read(pathname);
+        assert.equal(first.entry?.channels.body.content, "acquisition 1");
+        assert.match(first.entry?.channels.header.content ?? "", /^cache-control: no-store$/m);
+
+        assert.equal((await http.read(read, handlerCtx)).status, 102);
+        assert.equal((await handlerCtx.entries.read(pathname)).entry?.channels.body.content, "acquisition 2");
+        assert.deepEqual(requests, [{ conditional: false }, { conditional: false }]);
+    } finally {
+        globalThis.fetch = originalFetch;
+        if (originalTtl === undefined) delete process.env.PLURNK_SCHEMES_HTTP_TTL_MS;
+        else process.env.PLURNK_SCHEMES_HTTP_TTL_MS = originalTtl;
+        await http.close();
+        await db.close();
+    }
+});

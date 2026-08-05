@@ -48,7 +48,8 @@ projection ceiling returns `413`.
   retained faithfully in `html`.
 - GET representations carry method, acquisition-time, and single-variant cache
   metadata; derived representations also carry projection identity. Explicit
-  request metadata, `Vary`, or a reader change prevents unsafe reuse.
+  request metadata, `Vary`, `no-store`, expired origin freshness, or a reader
+  change prevents unsafe reuse; the operator TTL remains an independent ceiling.
 - HTTP(S) and WS(S) entry identity retains protocol, authority, path, ordered
   query, and explicit empty query; a fragment selects a channel.
 - Handler-owned browser and socket state follows the shared readiness, drain,
