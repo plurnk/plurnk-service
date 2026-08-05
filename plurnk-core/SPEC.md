@@ -1202,8 +1202,8 @@ AST: `{ op: "COPY", target (source), lineMarker (source scope),
 body: ResourceSelection (destination), signal: tags | null }`.
 
 1. §copy-missing-source-404 Resolve source path, channel, and optional text scope; missing resource or
-   channel is 404. Binary whole-channel COPY is valid, but a binary region is
-   415.
+   channel is 404. A binary marker is not a byte channel and returns 415;
+   readable projections are ordinary text sources under {§membership-source-projection}.
 2. Resolve destination path, channel, and optional text scope. Source and
    destination mimetypes must agree or the result is 415.
 3. A scoped destination must already exist and is mutated through the
@@ -2951,15 +2951,15 @@ Carried from the contract walk; durable.
 - §copy-l-source-range **COPY/MOVE source scope** selects only the addressed source channel and
   transfers canonical text without the packet's `N:` prefix. A MOVE removes
   that same selected region; an unscoped MOVE removes only the selected
-  channel, deleting the entry only when no channels remain. Binary whole
-  channels may be copied/moved, but binary regions are 415.
+  channel, deleting the entry only when no channels remain. A binary marker
+  is not transferable; a readable binary projection is already a textual channel.
 
 - **COPY/MOVE destination scope** is independent of the source scope and lowers
   through the destination scheme's `editBatch`.
 - **COPY/MOVE result effects** are engine-owned and describe only mutations that
   landed. COPY orders destination only; MOVE orders destination then source.
   Any scoped textual transfer materializes create/update receipts; whole-channel
-  and binary changes do not. Operand selections remain independently visible per
+  changes do not. Operand selections remain independently visible per
   {§copy-move-observation}.
 - **READ rx** prefixes every textual line with `N:` per {§render-rule}.
 - **FIND body matcher** applies to entry content (all dialects), per-candidate via the in-tree `Matcher.matchAgainstContent` ({§matcher-dispatch}; status 200 = content hit → entry selected). Scope + tags select candidates in SQL; the path-glob is the (target).

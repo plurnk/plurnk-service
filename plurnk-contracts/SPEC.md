@@ -282,7 +282,8 @@ including their independent scopes, whether the result changed state, was a
 304 no-op, or failed after admission. Operands identify the request; `effects`
 describe only mutations that landed. If either operand uses textual scope,
 each landed textual create or update carries the same bounded receipt used by
-EDIT. Whole-channel and binary transfers remain bodyless structural effects.
+EDIT. Whole-channel transfers remain bodyless structural effects; runtime
+owners reject binary markers rather than treating a text field as a byte lane.
 
 
 Every operation returns the runtime-neutral `OperationResult` defined by

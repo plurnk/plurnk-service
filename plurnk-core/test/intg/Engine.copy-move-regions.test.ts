@@ -397,7 +397,10 @@ test("COPY and MOVE reject a binary marker without fabricating a byte-transfer c
             urlPath("multi", "/destination", "blob"),
         ));
         assert.equal(copied.status, 415);
-        assert.equal(copied.problem?.code, "binary-source-unsupported");
+        assert.equal(
+            copied.problem?.type,
+            "https://problems.plurnk.dev/engine/dispatcher/binary-source-unsupported",
+        );
         assert.equal((await read("/destination")).status, 404);
 
         const sliced = await dispatch(copyStmt(
@@ -413,7 +416,10 @@ test("COPY and MOVE reject a binary marker without fabricating a byte-transfer c
             urlPath("multi", "/destination", "blob"),
         ));
         assert.equal(moved.status, 415);
-        assert.equal(moved.problem?.code, "binary-source-unsupported");
+        assert.equal(
+            moved.problem?.type,
+            "https://problems.plurnk.dev/engine/dispatcher/binary-source-unsupported",
+        );
         assert.equal((await read("/destination")).status, 404);
         assert.equal((await read("/source")).entry?.channels.blob?.mimetype, "application/octet-stream");
     } finally {
