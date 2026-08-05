@@ -1,80 +1,185 @@
 #!/usr/bin/env node
-// Refresh ALL @plurnk/plurnk-mimetypes-grammar-* packages to upstream's latest
-// release in one command — locally, no CI. For each grammar that's behind:
-// advance the pin, rebuild + verify the WASM (build:wasm uses docker emscripten
-// when emcc is absent), and open a PR. Publishing each bump stays manual (OTP).
-//
-//   npm run grammars:check    # read-only: report which grammars are behind
-//   npm run grammars:update   # for each behind: bump + rebuild + verify + open PR
-//   ... -- --only python      # restrict to one grammar
-//
-// Config: PLURNK_MIMETYPES_GRAMMARS_ROOT (.env.example) — the directory holding the
-// grammar repos. Defaults to this checkout's parent (the usual side-by-side
-// layout). Loaded via Node's built-in process.loadEnvFile().
-import { readdir, readFile, writeFile } from "node:fs/promises";
-import { execFileSync } from "node:child_process";
+// Coordinated grammar-family maintenance for {§grammar-family-lifecycle}.
+import { execFile } from "node:child_process";
+import { access, readFile } from "node:fs/promises";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { parseArgs } from "node:util";
+import { promisify } from "node:util";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
-try { process.loadEnvFile(); } catch { /* no .env — fine */ }
+const execFileAsync = promisify(execFile);
+const PACKAGE_PREFIX = "@plurnk/plurnk-mimetypes-grammar-";
+const DIRECTORY_PREFIX = "plurnk-mimetypes-grammar-";
+const CANONICAL_REMOTE_PREFIX = "ssh://git@ssh.possumtech.com/plurnk/";
+const AGENT_ID = "plurnk_codex";
 
-
-const args = process.argv.slice(2);
-const check = args.includes("--check");
-const only = args.includes("--only") ? args[args.indexOf("--only") + 1] : null;
-
-const here = path.dirname(fileURLToPath(import.meta.url));
-const root = process.env.PLURNK_MIMETYPES_GRAMMARS_ROOT
-    ? path.resolve(process.env.PLURNK_MIMETYPES_GRAMMARS_ROOT)
-    : path.resolve(here, "..", "..");
-
-const names = (await readdir(root, { withFileTypes: true }))
-    .filter((e) => e.isDirectory() && e.name.startsWith("plurnk-mimetypes-grammar-"))
-    .map((e) => e.name)
-    .filter((n) => !only || n === only || n === `plurnk-mimetypes-grammar-${only}`)
-    .sort();
-
-const cap = (cmd, a, cwd) => {
-    try { return { ok: true, out: execFileSync(cmd, a, { cwd, encoding: "utf-8" }) }; }
-    catch (e) { return { ok: false, out: `${e.stdout ?? ""}${e.stderr ?? ""}` || String(e.message) }; }
+const invariant = (condition, message) => {
+    if (!condition) throw new Error(message);
 };
 
-const results = [];
-for (const name of names) {
-    const dir = path.join(root, name);
-    const slug = name.replace("plurnk-mimetypes-grammar-", "");
+const readJson = async (filename) => JSON.parse(await readFile(filename, "utf8"));
 
-    const probe = cap("node", ["scripts/update-pin.mjs", "--check"], dir);
-    if (!probe.ok) { results.push({ slug, state: "error", note: probe.out.trim().split("\n").pop() }); continue; }
-    const bump = probe.out.match(/^BUMP .*/m)?.[0];
-    if (!bump) { results.push({ slug, state: /up to date/.test(probe.out) ? "current" : "no-release-tags" }); continue; }
-    if (check) { results.push({ slug, state: "behind", note: bump }); continue; }
+const defaultRun = async (command, args, cwd) => {
+    try {
+        const { stdout = "", stderr = "" } = await execFileAsync(command, args, {
+            cwd,
+            encoding: "utf8",
+        });
+        return { stdout, stderr };
+    } catch (cause) {
+        throw new Error(
+            `${command} ${args.join(" ")} failed in ${cwd}`,
+            { cause },
+        );
+    }
+};
 
-    // Full refresh to MAIN, version-bumped and ready to publish: write the
-    // pin, rebuild + verify, bump the patch version, commit to main, push.
-    // The only step left is `npm publish` (OTP).
-    cap("node", ["scripts/update-pin.mjs"], dir);
-    const build = cap("npm", ["run", "build:wasm"], dir);
-    if (!build.ok) { results.push({ slug, state: "build-failed", note: build.out.trim().split("\n").slice(-2).join(" ") }); continue; }
-    const verify = cap("npm", ["run", "verify:wasm"], dir);
-    if (!verify.ok) { results.push({ slug, state: "verify-failed" }); continue; }
+export const expectedGrammarLeaves = (manifest, only) => {
+    const expected = Object.keys(manifest.devDependencies ?? {})
+        .filter((name) => name.startsWith(PACKAGE_PREFIX))
+        .map((name) => name.slice(PACKAGE_PREFIX.length))
+        .filter((slug) => only === undefined || slug === only)
+        .sort();
+    invariant(expected.length > 0, only === undefined
+        ? "framework declares no grammar leaf devDependencies"
+        : `unknown grammar slug: ${only}`);
+    return expected;
+};
 
-    const pkgPath = path.join(dir, "package.json");
-    const pkg = JSON.parse(await readFile(pkgPath, "utf-8"));
-    const [maj, min, pat] = pkg.version.split(".").map(Number);
-    pkg.version = `${maj}.${min}.${pat + 1}`;
-    await writeFile(pkgPath, `${JSON.stringify(pkg, null, 4)}\n`);
+export const resolveGrammarLeaves = async ({ frameworkRoot, familyRoot, only }) => {
+    const manifest = await readJson(path.join(frameworkRoot, "package.json"));
+    const expected = expectedGrammarLeaves(manifest, only);
+    const leaves = expected.map((slug) => ({
+        slug,
+        directory: path.join(familyRoot, `${DIRECTORY_PREFIX}${slug}`),
+    }));
+    const missing = [];
+    for (const leaf of leaves) {
+        try {
+            await access(path.join(leaf.directory, "package.json"));
+        } catch {
+            missing.push(leaf.slug);
+        }
+    }
+    invariant(missing.length === 0, `missing grammar leaf checkouts: ${missing.join(", ")}`);
+    return leaves;
+};
 
-    cap("git", ["checkout", "main"], dir);
-    cap("git", ["add", "-A"], dir);
-    cap("git", ["commit", "-m", `chore: grammar v${pkg.version} — pin + wasm to upstream latest\n\nCo-Authored-By: Claude Fable 5 <noreply@anthropic.com>`], dir);
-    const push = cap("git", ["push", "origin", "main"], dir);
-    results.push({ slug, state: push.ok ? "ready" : "push-failed", note: `v${pkg.version}${push.ok ? " pushed — npm publish to ship" : ""}` });
+const checkIdentity = async (run, directory) => {
+    const [{ stdout: author }, { stdout: email }] = await Promise.all([
+        run("git", ["var", "GIT_AUTHOR_IDENT"], directory),
+        run("git", ["config", "user.email"], directory),
+    ]);
+    invariant(author.startsWith(`${AGENT_ID} <`),
+        `${path.basename(directory)}: active Git author is not ${AGENT_ID}`);
+    invariant(email.trim() !== "", `${path.basename(directory)}: Git signer identity is unavailable`);
+};
+
+const admitLeafForUpdate = async (run, leaf, issue) => {
+    const { directory, slug } = leaf;
+    const [{ stdout: status }, { stdout: branch }, { stdout: remote }, { stdout: head }, { stdout: upstream }] = await Promise.all([
+        run("git", ["status", "--porcelain"], directory),
+        run("git", ["branch", "--show-current"], directory),
+        run("git", ["remote", "get-url", "origin"], directory),
+        run("git", ["rev-parse", "HEAD"], directory),
+        run("git", ["rev-parse", "origin/main"], directory),
+    ]);
+    invariant(status === "", `${slug}: checkout is dirty`);
+    invariant(branch.trim() === "main", `${slug}: expected main, found ${branch.trim() || "detached HEAD"}`);
+    invariant(remote.trim() === `${CANONICAL_REMOTE_PREFIX}${DIRECTORY_PREFIX}${slug}.git`,
+        `${slug}: origin is not the canonical Gitea repository`);
+    invariant(head.trim() === upstream.trim(), `${slug}: main does not equal origin/main`);
+    await checkIdentity(run, directory);
+    return `chore/grammar-upstream-${issue}`;
+};
+
+const readIssueMap = async (filename, leaves) => {
+    const issueMap = await readJson(filename);
+    for (const { slug } of leaves) {
+        invariant(Number.isSafeInteger(issueMap[slug]) && issueMap[slug] > 0,
+            `${slug}: issue map must contain a positive repository-local issue number`);
+    }
+    return issueMap;
+};
+
+const probeLeaf = async (run, leaf) => {
+    const { stdout } = await run("node", ["scripts/update-pin.mjs", "--check"], leaf.directory);
+    const bump = stdout.match(/^BUMP .*/m)?.[0];
+    if (bump !== undefined) return { ...leaf, state: "behind", note: bump };
+    invariant(/up to date|no stable release tags upstream/i.test(stdout),
+        `${leaf.slug}: update-pin probe returned no recognized verdict`);
+    return { ...leaf, state: "current" };
+};
+
+const updateLeaf = async (run, leaf, issue) => {
+    const branch = await admitLeafForUpdate(run, leaf, issue);
+    await run("git", ["switch", "-c", branch], leaf.directory);
+    try {
+        await run("node", ["scripts/update-pin.mjs"], leaf.directory);
+        await run("npm", ["run", "build:wasm"], leaf.directory);
+        await run("npm", ["run", "verify:wasm"], leaf.directory);
+        await run("npm", ["version", "patch", "--no-git-tag-version"], leaf.directory);
+        const manifest = await readJson(path.join(leaf.directory, "package.json"));
+        await run("git", ["add", "-A"], leaf.directory);
+        await run("git", ["commit", "-S", "-m", `chore(grammar): update upstream pin (#${issue})`], leaf.directory);
+        await run("git", ["push", "--set-upstream", "origin", branch], leaf.directory);
+        return { ...leaf, state: "pushed", note: `${manifest.version} on ${branch}` };
+    } catch (cause) {
+        throw new Error(`${leaf.slug}: update stopped on ${branch}`, { cause });
+    }
+};
+
+export const runGrammarLifecycle = async ({
+    check,
+    familyRoot,
+    frameworkRoot,
+    issueMapPath,
+    only,
+    run = defaultRun,
+}) => {
+    const leaves = await resolveGrammarLeaves({ frameworkRoot, familyRoot, only });
+    const probes = [];
+    for (const leaf of leaves) probes.push(await probeLeaf(run, leaf));
+    if (check) return probes;
+
+    const behind = probes.filter(({ state }) => state === "behind");
+    if (behind.length === 0) return probes;
+    invariant(issueMapPath !== undefined, "update requires --issue-map with repository-local issue numbers");
+    const issueMap = await readIssueMap(issueMapPath, behind);
+    const results = probes.filter(({ state }) => state === "current");
+    for (const leaf of behind) results.push(await updateLeaf(run, leaf, issueMap[leaf.slug]));
+    return results.sort((left, right) => left.slug.localeCompare(right.slug));
+};
+
+const main = async () => {
+    const { values } = parseArgs({
+        options: {
+            check: { type: "boolean", default: false },
+            "family-root": { type: "string" },
+            "issue-map": { type: "string" },
+            only: { type: "string" },
+        },
+    });
+    const here = path.dirname(fileURLToPath(import.meta.url));
+    const frameworkRoot = path.resolve(here, "..");
+    const familyRoot = path.resolve(values["family-root"]
+        ?? process.env.PLURNK_MIMETYPES_GRAMMARS_ROOT
+        ?? path.join(frameworkRoot, "..", ".."));
+    const results = await runGrammarLifecycle({
+        check: values.check,
+        familyRoot,
+        frameworkRoot,
+        issueMapPath: values["issue-map"] === undefined
+            ? undefined
+            : path.resolve(values["issue-map"]),
+        only: values.only,
+    });
+    console.log(`${values.check ? "CHECK" : "UPDATE"} — ${results.length} grammar packages under ${familyRoot}`);
+    for (const result of results) {
+        console.log(`  ${result.state.padEnd(8)} ${result.slug}${result.note === undefined ? "" : `  ${result.note}`}`);
+    }
+};
+
+if (process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href) {
+    await main();
 }
-
-// Summary
-const by = (s) => results.filter((r) => r.state === s).map((r) => r.slug);
-console.log(`\n${check ? "CHECK" : "UPDATE"} — ${names.length} grammar packages under ${root}`);
-for (const r of results) console.log(`  ${r.state.padEnd(15)} ${r.slug}${r.note ? "  " + r.note : ""}`);
-console.log(`\nbehind=${by("behind").length} ready=${by("ready").length} current=${by("current").length + by("no-release-tags").length} failed=${by("build-failed").length + by("verify-failed").length + by("error").length + by("push-failed").length}`);
-if (!check && by("ready").length > 0) console.log(`\nReady to ship: cd into each and \`npm publish\` (OTP), or run \`npm run grammars:publish\`.`);

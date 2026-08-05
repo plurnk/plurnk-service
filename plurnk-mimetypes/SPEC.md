@@ -824,6 +824,28 @@ only in temporary storage and positively compares both hashes. Fetch,
 dependency, generation, build, and mismatch failures remain visible with the
 failing command's output.
 
+### §grammar-family-lifecycle 13.6 Family maintenance
+
+The framework's exact grammar-leaf development dependencies are the family
+inventory. A family check resolves every declared leaf in the explicit family
+root and fails when a checkout is absent, a source probe fails, or a probe
+returns no recognized current/behind verdict. Check mode performs only each
+leaf's owned `update:pin --check` operation and never changes a checkout.
+
+A coordinated update requires one existing repository-local issue number for
+every leaf it will change. Before mutation, each checkout must be clean on
+`main`, equal canonical Gitea `origin/main`, and use the registered
+`plurnk_codex` author with an available human signer. The procedure creates a
+Conventional topic branch, updates the owned pin, rebuilds and verifies the
+artifact, increments the patch version and lockfile together, creates one
+signed Conventional commit ending in the leaf's issue number, and pushes only
+that topic branch to canonical Gitea. Any failed command terminates the
+procedure with its cause; no later lifecycle step for that leaf runs.
+
+Topic-branch review and an ordinary merge into each leaf's `main` are separate
+accepted-state operations. GitHub mirroring and npm publication are subsequent
+explicit release stages and never occur through family maintenance.
+
 ## §mimetype-query-conformance 14. Query-evidence conformance
 
 `@plurnk/plurnk-mimetypes/conformance` exports
