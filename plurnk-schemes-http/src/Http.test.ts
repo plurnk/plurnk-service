@@ -1808,6 +1808,13 @@ for (const {
         valid: true,
     },
     {
+        name: "an equivalent obsolete Last-Modified date identifies the stored response",
+        storedValidator: "last-modified: Tue, 15 Nov 1994 12:45:26 GMT",
+        responseHeaders: { "last-modified": "Tue Nov 15 12:45:26 1994" },
+        expectedConditional: ["if-modified-since", "Tue, 15 Nov 1994 12:45:26 GMT"],
+        valid: true,
+    },
+    {
         name: "a different Last-Modified value cannot certify the stored response",
         storedValidator: "last-modified: Tue, 15 Nov 1994 12:45:26 GMT",
         responseHeaders: { "last-modified": "Wed, 16 Nov 1994 12:45:26 GMT" },
