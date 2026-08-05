@@ -46,8 +46,8 @@ export function entryPathnameOf(path: ParsedPath): string {
 
 // {§prompt-self-only} — the prompt address is prompt:///<loopSeq>/<turnSeq>: the OWNER rides the
 // owner_id column ({§entry-owner}), so the coordinate is bare and loop-relative — the last
-// id-in-pathname (#382) is dead. Every prompt writer and query builds through these two; the
-// owner scoping is the query's owner_id param, never a path segment.
+// owner scoping is the query's owner_id param, never a path segment. Every
+// prompt writer and query builds through these two helpers.
 export function promptPathname(loopSeq: number, turnSeq: number): string {
     return `/${loopSeq}/${turnSeq}`;
 }

@@ -99,13 +99,13 @@ test("on overflow the prior turn's log entries are folded to their coordinate", 
         assert.ok(before.some((r) => r.turn_seq === 1 && r.expanded === 1), "turn 1 left an open (expanded=1) log entry");
         await engine.runTurn({ provider: tinyP, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 2 });
         const after = await db.engine_render_log.all<{ turn_seq: number; expanded: number; pathname: string | null }>({ worker_id: workerId });
-        // #382 — the prompt frame is grinder-exempt; the grinder folds the prior turn's WORK, not the task.
+        // The prompt frame is grinder-exempt. {§grinder-errors-exempt}
         const t1 = after.filter((r) => r.turn_seq === 1 && (r as { scheme?: string | null }).scheme !== "prompt");
         assert.ok(t1.length > 0 && t1.every((r) => r.expanded === 0), "prior turn's WORK folded (the exempt prompt stays open) — collapsed to coordinate, not deleted");
     } finally { await db.close(); }
 });
 
-test("a PLAN row at the newest boundary survives the overflow fold — the checklist steers the recovery (#465)", async () => {
+test("a PLAN row at the newest boundary survives the overflow fold", async () => {
     const db = await openMigrated();
     try {
         const { workspaceId, workerId, loopId } = await envelope(db);

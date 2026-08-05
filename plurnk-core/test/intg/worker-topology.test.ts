@@ -302,10 +302,9 @@ test("a wake re-queue (100) mid-drain is re-claimed and continued — never retu
     });
 });
 
-test("OPEN/FOLD are recorded in the DB, suppressed from the render; a failed one still surfaces (#382)", async () => {
-    // #382 (owner) — the render suppresses a SUCCESSFUL OPEN/FOLD (zero packet cost) but the row
-    // is RECORDED: a curation act with no forensic trace is how run43's task-frame fold stayed
-    // invisible. A FAILED FOLD still renders — errors are signals.
+test("OPEN/FOLD are recorded in the DB, suppressed from the render; a failed one still surfaces", async () => {
+    // Successful meta-operations are forensic but render-free; failures remain
+    // visible error signals. {§fold-open-meta-operations}
     const mock = new Mock({ contextWindow: 16384, responses: [
         makeMockResponse("<<EDIT(worker:///note):some content worth folding:EDIT\n<<SEND[102]:wrote:SEND", 10),
         // The phantom FOLD fails (400) — {§send-premature-terminate} refuses the same-turn [200], so the

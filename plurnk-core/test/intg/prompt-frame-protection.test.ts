@@ -1,5 +1,6 @@
-// Prompt frames are ordinary curatable log memory. The automatic grinder preserves the current
-// frame, but an explicit OPEN/FOLD request follows the universal log-curation state machine.
+// {§prompt-entry}, {§grinder-errors-exempt}. Prompt frames are ordinary
+// curatable log memory. The automatic grinder preserves them, while explicit
+// OPEN/FOLD/KILL follows the universal log-curation contract.
 import test from "node:test";
 import assert from "node:assert/strict";
 import Engine from "../../src/core/Engine.ts";
@@ -23,7 +24,7 @@ async function seedPromptWorker(db: Awaited<ReturnType<typeof openMigrated>>) {
         provider: new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [{ op: "SEND", suffix: "", signal: 102, target: null, lineMarker: null, body: null, position: { line: 1, column: 1 } }] } }] }),
         workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "Improve the module loader so require() stays deterministic." }],
     });
-    const curationTurn = await insertTurn(db, loopId, 2, 102); // curation happens on a later turn (run43: turn 4)
+    const curationTurn = await insertTurn(db, loopId, 2, 102);
     return { workspaceId, workerId, loopId, engine, curationTurn };
 }
 
@@ -73,7 +74,7 @@ test("prior and current loop prompts share the same explicit curation contract",
     } finally { await db.close(); }
 });
 
-test("KILL of the prompt is still allowed — deliberate curation preserved (#382)", async () => {
+test("KILL of the prompt remains deliberate curation", async () => {
     const db = await openMigrated();
     try {
         const { workspaceId, workerId, loopId, engine, curationTurn } = await seedPromptWorker(db);
@@ -82,7 +83,7 @@ test("KILL of the prompt is still allowed — deliberate curation preserved (#38
     } finally { await db.close(); }
 });
 
-test("the grinder never folds the prompt frame — even on overflow (#382)", async () => {
+test("the grinder never folds the prompt frame, even on overflow", async () => {
     const db = await openMigrated();
     try {
         const { workspaceId, workerId, loopId } = await seedPromptWorker(db);
@@ -112,10 +113,7 @@ test("the grinder never folds the prompt frame — even on overflow (#382)", asy
     } finally { await db.close(); }
 });
 
-test("sister workers' turn-1 prompts are DISTINCT rows at the same coordinate — owner-keyed, no clobber (#382 fault-1)", async () => {
-    // run43: exactly two writes hit /1/1 — the model worker's task foist and a WORK-spawned
-    // worker's — and the worker's DESTROYED the parent's task. Owner-keyed rows keep one
-    // filesystem with collision-free coordinates (/proc/<pid>-style).
+test("sister workers' turn-1 prompts are distinct owner-keyed rows at the same coordinate", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `frame-sisters-${crypto.randomUUID()}`);
@@ -139,7 +137,7 @@ test("sister workers' turn-1 prompts are DISTINCT rows at the same coordinate �
     } finally { await db.close(); }
 });
 
-test("OPEN/FOLD are recorded in the DB but suppressed from the packet render (#382)", async () => {
+test("OPEN/FOLD are recorded in the DB but suppressed from the packet render", async () => {
     const db = await openMigrated();
     try {
         const { workspaceId, workerId, loopId, engine, curationTurn } = await seedPromptWorker(db);
@@ -153,7 +151,7 @@ test("OPEN/FOLD are recorded in the DB but suppressed from the packet render (#3
     } finally { await db.close(); }
 });
 
-test("a successful KILL of a log item is suppressed from the render; a KILL of a non-log target renders (#561)", async () => {
+test("a successful log-item KILL is suppressed; a non-log KILL renders", async () => {
     const db = await openMigrated();
     try {
         const { workspaceId, workerId, loopId, engine, curationTurn } = await seedPromptWorker(db);

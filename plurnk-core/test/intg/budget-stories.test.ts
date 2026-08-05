@@ -80,7 +80,7 @@ const budgetHeadline = (packet: object): { ceiling: number; usage: number; perce
 };
 const logRows = async (db: Db, workerId: number): Promise<Array<{ turn_seq: number; expanded: number; tokens: number; op: string; pathname: string | null }>> =>
     db.engine_render_log.all<{ turn_seq: number; expanded: number; tokens: number; op: string; pathname: string | null }>({ worker_id: workerId });
-// #382 - the prompt:// frame is grinder-exempt; the grinder folds work, never the task.
+// The prompt frame is grinder-exempt. {§grinder-errors-exempt}
 const isPrompt = (r: { scheme?: string | null; pathname: string | null }): boolean => (r as { scheme?: string | null }).scheme === "prompt";
 
 // Two reference measurements on throwaway workers (deterministic FAT body), so the

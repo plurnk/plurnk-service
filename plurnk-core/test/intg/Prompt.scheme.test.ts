@@ -20,7 +20,7 @@ test("prompt:// scheme manifest: engine-authored, model-READ-ONLY, body channel,
     assert.deepEqual(Prompt.manifest.channels, { body: "text/markdown" });
     assert.equal(Prompt.manifest.defaultChannel, "body");
     assert.equal(Prompt.manifest.modelVisible, true, "the model READS its task frames");
-    assert.ok(!Prompt.manifest.writableBy.includes("model"), "the model never WRITES prompt:// — it is engine-authored (#310 scratch sink)");
+    assert.ok(!Prompt.manifest.writableBy.includes("model"), "the model never writes prompt:// — it is engine-authored");
     assert.ok(Prompt.manifest.writableBy.includes("client"));
     assert.ok(Prompt.manifest.writableBy.includes("plurnk"));
 });
@@ -32,8 +32,8 @@ test("the engine writes prompt:///<loop>/<N> owner-keyed; each worker READs only
         const ctxSelf = makeSchemeCtx({ db, workspaceId, workerId });
         const ctxSister = makeSchemeCtx({ db, workspaceId, workerId: sister });
 
-        // The engine writes each worker's frame at the SAME loop-relative coordinate (/1/1) —
-        // the #382 collision surface, now distinct rows keyed on the owner ({§entry-owner}).
+        // Each worker's same loop-relative coordinate remains distinct because
+        // prompt entries are owner-keyed. {§prompt-self-only}
         await EntryCrud.writeEntry("/1/1", { channels: { body: { content: "fix the parser", mimetype: "text/markdown" } }, tags: [] }, ctxSelf, "prompt", workerId);
         await EntryCrud.writeEntry("/1/1", { channels: { body: { content: "sister task", mimetype: "text/markdown" } }, tags: [] }, ctxSister, "prompt", sister);
 
