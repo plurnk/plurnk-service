@@ -70,7 +70,7 @@ test("a FETCHED html page (via the exec sink) projects: decisive markdown body +
         const loopId = await insertLoop(db, workerId, 1, "fetch test");
         const turnId = await insertTurn(db, loopId, 1, 102);
         await engine.dispatch({ statement: { op: "EXEC", suffix: "", signal: "fetchstub", target: null, lineMarker: null, body: "go", position: { line: 1, column: 1 } } as ExecStatement, workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model" });
-        await quiesceExecs(schemes); // drains the fetch spawn's tail + entry() write — no race with db.close (#432)
+        await quiesceExecs(schemes); // {§exec-entry-sink}: settle materialization before db.close().
 
         const entry = await db.test_entries_by_pathname.get<{ id: number }>({ pathname: "/news.example/a" });
         assert.ok(entry !== undefined, "the fetched page materialized");
