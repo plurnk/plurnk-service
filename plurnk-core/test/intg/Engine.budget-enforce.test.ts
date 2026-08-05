@@ -225,11 +225,8 @@ test("overflow is a terse op='error' log row (413) surfaced THIS turn as a LogCo
     } finally { await db.close(); }
 });
 
-test("a huge ENGINE-WRITTEN row on the current turn is part of the newest boundary — folds, never a needless 413 (#332)", async () => {
-    // The run14 shape: the prior turn is tiny, and the overflow lives in THIS turn's pre-model
-    // rows (a wake turn's auto-surfaced stream conclusion — 68KB of search results). The current
-    // turn's pre-model rows are part of the newest turn boundary, so they fold with it and the
-    // packet fits — the loop survives to read the folded, re-OPENable row. History is untouched.
+test("{§grinder-layer1-rollback}: a huge current-turn engine row folds with the newest boundary", async () => {
+    // Current-turn pre-model rows fold atomically with the newest boundary; older history is untouched.
     const db = await openMigrated();
     try {
         const { workspaceId, workerId, loopId } = await envelope(db);
