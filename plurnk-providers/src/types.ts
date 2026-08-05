@@ -150,8 +150,8 @@ export interface Provider {
     // knobs through; a direct consumer typically leaves it unset.
     //
     // `strikes` is the worker's CURRENT rail-strike streak at time-of-generate
-    // (0 = clean; a clean turn zeroes it; every loop starts at 0 — contract:
-    // plurnk-service#313). Forwarded as a `Plurnk-Strikes` header ONLY under the
+    // (0 = clean; a clean turn zeroes it; every loop starts at 0 — contract
+    // {§strikes-first-party-metadata}). Forwarded as a `Plurnk-Strikes` header ONLY under the
     // same firstPartyMetadata gate as attributions/client; dropped everywhere
     // else. Headers only — the packet NEVER carries strike state (the model must
     // not see engine accounting; it would become a metric to game).
@@ -180,7 +180,7 @@ export interface Provider {
     readonly constrainsOutput?: boolean;
     // OPTIONAL resolved capability (#43): true when this backend decodes
     // UNBOUNDED absent a caller cap — llama-server honors n_predict to the
-    // context wall (the 30,736-junk-token wall-run, providers#10), so a consumer
+    // context wall (observed in a 30,736-junk-token wall run), so a consumer
     // MUST bring an output envelope (SPEC §13). Cloud backends that silently
     // clamp an over-ask (fireworks/xai, verified live) never set this; undefined
     // = no claim. Introspectable so a consumer can refuse AT BOOT a local alias

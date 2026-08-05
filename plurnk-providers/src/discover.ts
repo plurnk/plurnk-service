@@ -21,7 +21,7 @@ import type {
 //
 // Cataloged and operator-declared providers resolve before this scan.
 //
-// Host plugin trust gate (PLURNK_PLUGINS_TRUSTED_ONLY, #15 / plurnk-service#229)
+// {§plugin-trust-boundary} Host plugin trust gate (PLURNK_PLUGINS_TRUSTED_ONLY)
 // — enforced uniformly across the four scope-agnostic families. An untrusted
 // package is discovered-but-declined (recorded in `skipped`, never registered,
 // never thrown), so the consumer can name it in a precise error.

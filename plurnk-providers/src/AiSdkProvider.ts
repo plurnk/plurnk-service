@@ -77,13 +77,13 @@ export type AiSdkProviderConfig = {
     // (PLURNK_PROVIDERS_REASONING + _BUDGET, read via reasoningFromEnv):
     // { mode: off|adaptive|on, budget: iff on }. The provider maps it to the
     // backend's mechanism via reasoningStyle; budget is only ever a magnitude,
-    // never a hidden activation flag (#33).
+    // never a hidden activation flag.
     reasoning: Reasoning;
     // Decode tuning: no in-code defaults; the canonical measured values (0.2 /
     // 1.15) ship as the floor in .env.defaults (alias-scopable). `temperature` is the
-    // DEFAULT for EVERY request, spread UNDER caller sampling (#30/endpoint#7).
+    // DEFAULT for EVERY request, spread UNDER caller sampling.
     // `repeatPenalty` is the FLOOR the provider manages wherever a grammar rides
-    // (greedy-under-mask loops without it, #9) — the VALUE is operator config;
+    // (greedy-under-mask loops without it) — the VALUE is operator config;
     // WHERE it applies stays mechanism.
     temperature: number;
     repeatPenalty: number;
@@ -487,7 +487,7 @@ export default class AiSdkProvider implements Provider {
     // attributions/client/strikes can never reach a third-party backend even if
     // the consumer passes them to the wrong provider. Empty values emit no header
     // — EXCEPT strikes, where 0 is a real value (clean streak) distinct from
-    // absent (consumer didn't report); contract per plurnk-service#313. Strikes
+    // absent (consumer didn't report); contract {§strikes-first-party-metadata}. Strikes
     // ride HTTP headers only — the packet never carries them (the model must
     // never see strike state; engine accounting is not a metric to game).
     #metadataHeaders(attributions: string[] | undefined, client: string | undefined, strikes: number | undefined, workerId: string, primaryWorkerId: string | undefined, workspaceId: string | undefined, loop: number | undefined, turn: number | undefined): Record<string, string> {
