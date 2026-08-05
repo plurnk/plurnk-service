@@ -174,6 +174,23 @@ The contracts package (`@plurnk/plurnk-contracts`) owns the parser and AST contr
 
 Server posture: this package is the one long-running runtime process. `plurnk-agui` exposes its external protocol; user-facing clients run separately and do not call core's in-process seam directly.
 
+### §startup-admission Startup admission
+
+```mermaid
+flowchart LR
+    DB["Acquire daemon lock<br/>and admit SQLite schema"] --> PROVIDER["Resolve and verify<br/>selected provider"]
+    PROVIDER --> DAEMON["Construct and start<br/>daemon composition"]
+    DAEMON --> CLIENT["Open client transport"]
+    DB -. failure .-> FAIL["Fail startup"]
+    PROVIDER -. failure .-> CLOSE["Close database<br/>and release lock"] --> FAIL
+    DAEMON -. failure .-> TEARDOWN["Close every started owner"] --> FAIL
+```
+
+§startup-admission-order Database admission completes before provider or
+capability initialization can perform external work. Every later startup
+failure closes the resources already admitted in reverse ownership order while
+preserving the originating failure.
+
 ### §actor-boundary The actor boundary: isolation by worker, two doors, self-hosting
 
 ```mermaid

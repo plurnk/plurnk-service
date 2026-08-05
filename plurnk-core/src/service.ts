@@ -209,14 +209,17 @@ export default class Service {
                 + `The knob takes an ALIAS name; for an inline model, declare PLURNK_MODEL_<alias>=${selectedModel} and set PLURNK_MODEL=<alias>.`,
             );
         }
-        const provider = alias === null ? null : await ProviderInstantiate.loadActiveProvider();
+        // {§startup-admission-order}: persistence and its exclusive owner are
+        // admitted before provider verification can perform external work.
         const db = await Service.#openDb(dbPath, true);
-        const daemon = new Daemon({ db, provider, nodeModulesPath: Service.#pluginsNodeModules() });
+        let daemon: Daemon | null = null;
         const teardown = new ServiceTeardown(
-            async () => daemon.stop(),
+            async () => { await daemon?.stop(); },
             async () => db.close(),
         );
         try {
+            const provider = alias === null ? null : await ProviderInstantiate.loadActiveProvider();
+            daemon = new Daemon({ db, provider, nodeModulesPath: Service.#pluginsNodeModules() });
             daemon.registerModule(McpModule.init());
             // {§rpc} — the AG-UI plugin module is the client surface; its init runs at boot with the
             // seam handle and binds PLURNK_HOST:PLURNK_PORT. The module owns its knobs' semantics.

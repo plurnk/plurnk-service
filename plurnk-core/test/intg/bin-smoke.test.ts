@@ -8,7 +8,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { spawn, ChildProcess } from "node:child_process";
-import { mkdtemp, mkdir, rm } from "node:fs/promises";
+import { access, mkdtemp, mkdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { dirname, join, resolve } from "node:path";
@@ -151,10 +151,18 @@ test("bin: a failed DB open names the path and any stale sidecars — never a ba
         const dbPath = join(dir, "plurnk.db");
         await mkdir(`${dbPath}-wal`);
         const result = await new Promise<{ code: number | null; stderr: string }>((resolvePromise, rejectPromise) => {
-            // same isolation as bootDaemon: the fixture's mock model must not reach the child,
-            // or its provider probe stalls the boot before the DB open this test asserts on
-            const env: NodeJS.ProcessEnv = { ...process.env, HOME: dir, PLURNK_SERVICE_DB_PATH: dbPath, PLURNK_HOST: "127.0.0.1", PLURNK_PORT: "0", PLURNK_WS_PORT: "0" };
-            delete env.PLURNK_MODEL;
+            // {§startup-admission-order}: the independently broken provider is a
+            // witness that database admission fails before provider initialization.
+            const env: NodeJS.ProcessEnv = {
+                ...process.env,
+                HOME: dir,
+                PLURNK_SERVICE_DB_PATH: dbPath,
+                PLURNK_HOST: "127.0.0.1",
+                PLURNK_PORT: "0",
+                PLURNK_WS_PORT: "0",
+                PLURNK_MODEL: "dbguard",
+                PLURNK_MODEL_dbguard: "missing/model",
+            };
             const child = spawn(process.execPath, [...CONDITION_ARGS, BIN_PATH, "start"], {
                 env,
                 stdio: ["ignore", "ignore", "pipe"],
@@ -169,6 +177,55 @@ test("bin: a failed DB open names the path and any stale sidecars — never a ba
         assert.match(result.stderr, /open .*plurnk\.db failed/, "the error names the DB path");
         assert.match(result.stderr, /stale sidecar/, "the error names the surviving sidecars and the likely culprit");
         assert.match(result.stderr, /plurnk\.db-wal/, "the offending sidecar path is spelled out");
+        assert.doesNotMatch(result.stderr, /unknown provider "missing"/, "provider initialization was never reached");
+    } finally {
+        await rm(dir, { recursive: true, force: true });
+    }
+});
+
+test("bin: provider initialization failure closes the admitted database", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "plurnk-provider-startup-"));
+    try {
+        const dbPath = join(dir, "plurnk.db");
+        const env: NodeJS.ProcessEnv = {
+            ...process.env,
+            HOME: dir,
+            PLURNK_SERVICE_DB_PATH: dbPath,
+            PLURNK_HOST: "127.0.0.1",
+            PLURNK_PORT: "0",
+            PLURNK_MODEL: "broken",
+            PLURNK_MODEL_broken: "missing/model",
+            PLURNK_SCHEMES_HTTP_PLAYWRIGHT_METHOD: "disabled",
+        };
+        const child = spawn(process.execPath, [...CONDITION_ARGS, BIN_PATH, "start"], {
+            env,
+            cwd: dir,
+            stdio: ["ignore", "ignore", "pipe"],
+        });
+        let stderr = "";
+        child.stderr?.on("data", (chunk: Buffer) => { stderr += chunk.toString("utf8"); });
+        const result = await new Promise<{ code: number | null; signal: NodeJS.Signals | null }>((resolvePromise, rejectPromise) => {
+            const timer = setTimeout(() => {
+                child.kill("SIGKILL");
+                rejectPromise(new Error(`provider-startup timeout; stderr=${stderr}`));
+            }, 10_000);
+            child.once("exit", (code, signal) => {
+                clearTimeout(timer);
+                resolvePromise({ code, signal });
+            });
+            child.once("error", (cause) => {
+                clearTimeout(timer);
+                rejectPromise(cause);
+            });
+        });
+        assert.equal(result.code, 1, `provider initialization fails startup (signal=${result.signal})`);
+        assert.match(stderr, /unknown provider "missing"/, "the originating provider failure is preserved");
+        await access(dbPath);
+        await assert.rejects(
+            access(`${dbPath}.lock`),
+            { code: "ENOENT" },
+            "the admitted database owner is closed and its lock released",
+        );
     } finally {
         await rm(dir, { recursive: true, force: true });
     }
