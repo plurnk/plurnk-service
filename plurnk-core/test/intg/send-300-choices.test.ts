@@ -1,5 +1,5 @@
-// {§send-300-choices} — SEND[300]:question;choice;… asks the operator and parks the loop; the parsed
-// choice set rides the log row's attrs; the answer returns via the existing inject → wake path.
+// {§send-300-choices}: an enabled SEND[300] stops inside the proposal lifecycle; attrs carry the
+// question and choices, the accepted body becomes the ask's rx, and the turn continues.
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -19,8 +19,7 @@ const withAsk = async <T>(fn: () => Promise<T>): Promise<T> => fn(); // enabled 
 
 const send300 = (body: string) => ({ ...sendStmt(300, null, body) });
 
-test("SEND[300] is a PROPOSAL — stop the world; the accept body IS the answer, in the ask's own rx", async () => { await withAsk(async () => {
-    // Owner ruling (#346): the question rides the same proposal system as file edits.
+test("{§send-300-choices}: SEND[300] stops the world and the accepted body becomes the ask's rx", async () => { await withAsk(async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `c300-${crypto.randomUUID()}`);
