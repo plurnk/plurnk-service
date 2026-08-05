@@ -63,8 +63,8 @@ const fingerprintOp = (stmt: PlurnkStatement): string => {
     return base;
 };
 
-// Rails #38 (strikes) + #39 (cycle detection): the per-loop failure-streak
-// accounting that decides abandonment. {§rail-accounting-private} — the model
+// {§engine-rails} — per-loop failure-streak and cycle accounting decides
+// abandonment. {§rail-accounting-private} — the model
 // sees admitted operation and engine-rail failures, never this bookkeeping.
 export default class StrikeRail {
     // Per-turn fingerprint: sorted set of per-op fingerprints, joined. Order
@@ -73,7 +73,7 @@ export default class StrikeRail {
         return ops.map(fingerprintOp).toSorted().join(",");
     }
 
-    // Rail #39 cycle detector. For each candidate period k in [1, maxCyclePeriod],
+    // {§engine-rails} cycle detector. For each candidate period k in [1, maxCyclePeriod],
     // check whether the last k*minCycles entries form minCycles repetitions of the
     // same length-k pattern. O(maxCyclePeriod × minCycles × max k) ≈ tiny.
     static detectCycle(
@@ -97,14 +97,15 @@ export default class StrikeRail {
         return { detected: false };
     }
 
-    // Rail #38 strike state per loop. `streak` = consecutive struck turns;
+    // {§engine-rails} strike state per loop. `streak` = consecutive struck turns;
     // resets on a clean turn. `turnErrors` is bumped by per-turn rails (cycle
-    // detection #39, grinder, steer) — read and reset at end of each turn.
-    // `history` holds per-turn fingerprints for rail #39 cycle detection.
+    // detection, grinder, steer) — read and reset at end of each turn.
+    // `history` holds per-turn fingerprints for cycle detection.
     #state = new Map<number, { streak: number; turnErrors: number; history: string[] }>();
 
     // The loop's CURRENT strike streak — the same figure the 500-threshold compares. Rides
-    // generate({strikes}) as first-party outbound metadata (Plurnk-Strikes, #313): the hosted
+    // generate({strikes}) as first-party outbound metadata (Plurnk-Strikes,
+    // {§strikes-first-party-metadata}): the hosted
     // router's escalation signal. NEVER model-facing ({§engine-rails} — a surfaced count is a
     // metric to game); the packet does not carry it.
     streak(loopId: number): number {
@@ -115,8 +116,8 @@ export default class StrikeRail {
     // sources strike a turn:
     //  1. recordedFailed — any action-entry at hard failure status
     //     (>= 400 and not in SOFT_FAILURE_STATUSES).
-    //  2. noOps — the turn emitted no ops at all (per #41).
-    //  3. turnErrors — bumped by per-turn rails (#39 cycle, grinder, steer).
+    //  2. noOps — the turn emitted no ops at all.
+    //  3. turnErrors — bumped by per-turn rails (cycle, grinder, steer).
     // Struck → streak++; clean → streak = 0. Threshold → thresholdCrossed,
     // and runLoop owns the abandonment.
     assess(loopId: number, turn: {
@@ -129,7 +130,7 @@ export default class StrikeRail {
         maxCyclePeriod: number;
         maxStrikes: number;
     }): { cycleDetected: boolean; thresholdCrossed: boolean } {
-        // Rail #39: cycle detection. Push this turn's fingerprint to
+        // {§engine-rails}: cycle detection. Push this turn's fingerprint to
         // history, scan for repetition patterns. Detection bumps
         // turnErrors so the strike system handles abandonment. It is intentionally
         // not a model-facing notice: cycle is the engine's reason for treating the

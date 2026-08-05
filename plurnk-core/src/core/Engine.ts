@@ -790,7 +790,7 @@ export default class Engine {
                 return { turnIds, result, hitMaxTurns: false, reason: "budget_overflow" };
             }
 
-            // Rails #38/#39 — per-turn strike accounting (cycle detection, the
+            // {§engine-rails} — per-turn strike accounting (cycle detection, the
             // grinder/steer coupling, hard-failure statuses). StrikeRail owns the
             // bookkeeping; runLoop owns abandonment.
             const verdict = this.#strikes.assess(loopId, {

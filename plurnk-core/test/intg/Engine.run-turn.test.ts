@@ -235,9 +235,8 @@ test("Engine.runTurn: multi-op turn - first-class prompt precedes model ops", as
     } finally { await db.close(); }
 });
 
-// Rail #41 (revised): per-turn requirement is "emit at least one op."
-// SEND is just one of nine grammar ops; any op satisfies the rule.
-// Empty op list is the only strike condition.
+// The Mock provider's pre-parsed fixture escape hatch can supply an incomplete
+// frame. #179 owns whether this legacy path represents a production rail state.
 
 test("Engine.runTurn: ops-without-SEND turn completes at status 102 (implicit continue)", async () => {
     const { db, engine, workspaceId, workerId, loopId } = await setup();
@@ -382,8 +381,9 @@ test("Engine.runTurn: PLURNK_SERVICE_MAX_COMMANDS=-1 (default) leaves the op cei
     }
 });
 
-// Rail #40: sudden-death soft warning fires in the last maxStrikes-sized
-// window before maxTurns. Soft: no strike, no loop-status change.
+// {§loop-terminals}: maxTurns ends the loop at 429. Near-ceiling accounting
+// remains model-invisible under {§rail-accounting-private}; #179 owns the stale
+// sudden-death terminology.
 
 test("Engine.runLoop: hitting maxTurns terminates the loop at 429 (max_turns)", async () => {
     const { db, engine, workspaceId, workerId, loopId } = await setup();
@@ -426,7 +426,7 @@ test("Engine.runLoop: sudden_death is engine-internal — NOT surfaced to model"
     } finally { await db.close(); }
 });
 
-// Rail #38: strike system. Hard outcomes accumulate consecutive strikes;
+// {§engine-rails}: hard outcomes accumulate consecutive strikes;
 // soft outcomes (404, 501) and clean turns reset the streak.
 
 test("Engine.runLoop: three consecutive hard failures abandon at 500 with strike_threshold reason", async () => {
@@ -459,7 +459,7 @@ test("Engine.runLoop: soft failures (404) do NOT accumulate strikes", async () =
     try {
         // READ a missing worker:/// path → 404 (soft). With maxStrikes=2 and
         // 4 consecutive soft turns, no abandon should fire.
-        // Vary path each turn to keep rail #39 cycle detection orthogonal.
+        // Vary path each turn to keep cycle detection orthogonal.
         const readMissing = (suffix: string): ReadStatement => ({
             op: "READ", suffix: "", signal: null,
             target: urlPath("worker", `/not-there-${suffix}`),
@@ -571,7 +571,7 @@ test("Engine.runLoop: strike is engine-internal — model sees action_failure bu
     } finally { await db.close(); }
 });
 
-// Rail #39: cycle detection. Identical-fingerprint turns repeated MIN_CYCLES
+// {§engine-rails}: identical-fingerprint turns repeated MIN_CYCLES
 // times trip the detector, bumping turnErrors (which the strike system reads).
 
 test("Engine.runLoop: 3 identical period-1 turns trip cycle → strikes accumulate", async () => {

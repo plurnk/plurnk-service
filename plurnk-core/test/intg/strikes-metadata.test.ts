@@ -1,6 +1,6 @@
-// {§strikes-first-party-metadata} (#313) — the loop's current strike streak rides
+// {§strikes-first-party-metadata} — the loop's current strike streak rides
 // generate({strikes}): 0 sent explicitly on clean turns, the live streak after struck
-// ones, zeroed by recovery. Assessment lives in runLoop (rail #38), so the proof drives
+// ones, zeroed by recovery. Assessment lives in runLoop, so the proof drives
 // the REAL loop via the daemon. The model-facing packet NEVER carries it ({§engine-rails}).
 
 import test from "node:test";
@@ -20,7 +20,7 @@ test("generate carries the live streak — 0 explicit, bumped by a struck turn, 
     const mock = new CapturingMock({ contextWindow: 100000, responses: [
         makeMockResponse("<<SEND[102]:working:SEND", 10),   // IDLE — a bare continue with no work op takes the idle steer strike
         makeMockResponse("no ops at all", 10),               // 422 no_ops → struck
-        makeMockResponse("<<EDIT(worker:///note):r:EDIT\n<<SEND[102]:recovered:SEND", 10),  // clean, DISTINCT shape (an A-B-A fingerprint would trip rail #39)
+        makeMockResponse("<<EDIT(worker:///note):r:EDIT\n<<SEND[102]:recovered:SEND", 10),  // clean, DISTINCT shape (an A-B-A fingerprint would trip cycle detection)
         makeMockResponse("<<SEND[200]:done:SEND", 10),       // conclude
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
