@@ -338,7 +338,7 @@ test("[#fts-fallback] no embedder uses FTS for unthresholded rank; <0.x> stays 5
             semanticStmt(url("auth.ts"), "payment", null),
             makeSchemeCtx({ db, workspaceId, workerId, mimetypes: noEmbedder }),
         );
-        assert.equal(exactMiss.status, 200);
+        assert.equal(exactMiss.status, 204);
         assert.deepEqual(exactMiss.results, [],
             "semantic ranking is constrained by the exact target before ranking — matches elsewhere never leak in");
         const exactHit = await new Worker().find(

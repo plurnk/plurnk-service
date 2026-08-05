@@ -115,12 +115,19 @@ test("@foo is the union of definitions, referrers, and referents", async () => {
     } finally { db.close(); }
 });
 
-test("@<nope currently returns 200 with empty results (#183)", async () => {
+test("a graph matcher selecting no resources returns 204", async () => {
     const { db, workspaceId, workerId } = await seed();
     try {
         const r = await find(db, workspaceId, workerId, "@<nope");
-        assert.equal(r.status, 200);
-        assert.deepEqual([...new Set(r.results.map((f) => f.path))], []);
+        assert.deepEqual(r, {
+            status: 204,
+            content: null,
+            mimetype: null,
+            results: [],
+            itemsTokenTotal: 0,
+            pathnames: [],
+            matches: [],
+        });
     } finally { db.close(); }
 });
 
@@ -131,7 +138,7 @@ test("editing foo's referrer away drops it from @<foo after index maintenance", 
         await new Worker().edit(editStmt(url("b.ts"), "export const x = 1;\n", fullReplace), makeSchemeCtx({ db, workspaceId, workerId }));
         await SearchIndex.maintain(makeSchemeCtx({ db, workspaceId, workerId }));
         const r = await find(db, workspaceId, workerId, "@<foo");
-        assert.equal(r.status, 200);
+        assert.equal(r.status, 204);
         assert.deepEqual([...new Set(r.results.map((f) => f.path))], []);
     } finally { db.close(); }
 });

@@ -145,7 +145,7 @@ test("{§find-semantic-default-top-k}: a decimal threshold composes with FIND re
 
         // A near-1 floor admits nothing - the threshold actually filters.
         const high = await new Worker().find(thresholdStmt(url(""), "database connection error", 0.999), findCtx());
-        assert.equal(high.status, 200);
+        assert.equal(high.status, 204);
         assert.deepEqual([...new Set(high.results.map((f) => f.path))], [], "a 0.999 floor filters everything out");
 
         const first = await new Worker().find(thresholdStmt(url(""), "database connection error", 0.05, 1), findCtx());

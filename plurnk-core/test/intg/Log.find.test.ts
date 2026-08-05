@@ -277,5 +277,12 @@ test("semantic and graph FIND over logs use the same persistent derivations as e
         assert.equal(graph.status, 200);
         assert.ok(graph.results.some(({ path }) => path.includes("/1/1/5/READ")),
             "graph relation returns the log address whose readable code projection references helper");
+
+        const graphMiss = await new Log().find(
+            findStmt(urlPath("log", "/**"), { dialect: "graph", raw: "@<absentSymbol" } as MatcherBody),
+            makeSchemeCtx({ db, workspaceId, workerId, mimetypes: DEFAULT_MIMETYPES }),
+        );
+        assert.equal(graphMiss.status, 204, "entry and log relation misses share the universal matcher status");
+        assert.deepEqual(graphMiss.results, []);
     } finally { await db.close(); }
 });

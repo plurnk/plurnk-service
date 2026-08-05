@@ -303,14 +303,14 @@ test("Worker.find regex `y` (sticky) anchors at content start", async () => {
     } finally { db.close(); }
 });
 
-test("Worker.find xpath matcher with no structural match → entry excluded (200, empty)", async () => {
+test("Worker.find xpath matcher with no structural match → 204", async () => {
     const { db, workspaceId, workerId } = await setup();
     try {
         // xpath runs over the markdown deepXml; `//x` matches no element →
         // no content hit → excluded.
         await seedEntries(db, workspaceId, workerId, [["a", "plain text"]]);
         const r = await new Worker().find(findStmt(url(""), { dialect: "xpath", raw: "//x" }), makeSchemeCtx({ db, workspaceId, workerId, loopId: 0, turnId: 0 }));
-        assert.equal(r.status, 200);
+        assert.equal(r.status, 204);
         assert.deepEqual([...new Set(r.results.map((f) => f.path))], []);
     } finally { db.close(); }
 });
@@ -332,14 +332,20 @@ test("Worker.find with <L> paginates results", async () => {
     } finally { db.close(); }
 });
 
-test("Worker.find with no matches returns 200 with empty results", async () => {
+test("Worker.find with no matches returns an empty 204 result", async () => {
     const { db, workspaceId, workerId } = await setup();
     try {
         await seedEntries(db, workspaceId, workerId, [["a", "x"]]);
         const r = await new Worker().find(findStmt(url(""), glob("nope*")), makeSchemeCtx({ db, workspaceId, workerId, loopId: 0, turnId: 0 }));
-        assert.equal(r.status, 200);
-        assert.deepEqual([...new Set(r.results.map((f) => f.path))], []);
-        assert.equal(r.content, "[]", "no matches → an empty JSON array");
+        assert.deepEqual(r, {
+            status: 204,
+            content: null,
+            mimetype: null,
+            results: [],
+            itemsTokenTotal: 0,
+            pathnames: [],
+            matches: [],
+        });
     } finally { db.close(); }
 });
 

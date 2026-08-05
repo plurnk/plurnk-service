@@ -416,8 +416,8 @@ export default class EntryFind {
     // that catalog, rendered as a JSON array (application/json). {§find-result-catalog-rows}
     static async findWorkspaceEntries(statement: FindStatement, ctx: PlurnkSchemeContext, manifest: SchemeManifest, explicitOwnerId?: number): Promise<FindResult> {
         const match = await EntryFind.#matchPathnames(statement, ctx, manifest, explicitOwnerId);
+        const empty = { content: null, mimetype: null, results: [], itemsTokenTotal: 0, pathnames: [], matches: [] };
         if (match.status !== 200) {
-            const empty = { content: null, mimetype: null, results: [], itemsTokenTotal: 0, pathnames: [], matches: [] };
             if (match.problem !== undefined) {
                 return Results.assert({
                     status: match.status,
@@ -439,6 +439,12 @@ export default class EntryFind {
                     ...match.extensions,
                 },
             ) as FindResult;
+        }
+        // Internal matchers successfully return an empty candidate set. Public
+        // FIND owns its operation status: a matcher miss is 204, while a
+        // body-less empty catalog remains a successful survey. {§matcher-result-resource-selection}
+        if (statement.body !== null && match.matches.length === 0) {
+            return { status: 204, ...empty };
         }
         const scheme = EntryCrud.identityScheme(manifest);
         // The catalog row is keyed by its addressable path; align each selected
