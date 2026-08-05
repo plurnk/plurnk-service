@@ -1,7 +1,6 @@
-// Conformance: the db-backed EntryCaps (keystone PR-2, #180) round-trips
-// write → read → delete against real SQLite — exactly how a third-party
-// `@plurnk/plurnk-schemes-*` sibling reaches entries through the capability
-// surface instead of the forbidden raw `ctx.db`.
+// Conformance: the EntryCaps namespace in plurnk-schemes {§capability-ctx}
+// round-trips write → read → delete against real SQLite through the public
+// capability surface rather than core's private database context.
 
 import test from "node:test";
 import assert from "node:assert/strict";

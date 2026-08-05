@@ -8,8 +8,8 @@
 // http scheme and real network, then polls the REAL db channel for the fetched bytes. Nothing is
 // mocked — no provider, no db mock, no model turn. The search test fires through the daemon.
 //
-//  - http: RUNS. The `ctx.subscriptions` (SubscriptionCaps) streaming capability is wired in
-//    SchemeCtxImpl (#180) — the http plugin's `ctx.subscriptions.open/.notifyChunk/.close` drives
+//  - http: RUNS. The `ctx.subscriptions` streaming capability is wired in
+//    SchemeCtxImpl ({§scheme-subscriptions}) — the http plugin's `ctx.subscriptions.open/.notifyChunk/.close` drives
 //    the real fetch into a streamed entry, validated end-to-end here against real network.
 //  - search: REQUIRED in this tier. An unavailable endpoint fails the live gate.
 

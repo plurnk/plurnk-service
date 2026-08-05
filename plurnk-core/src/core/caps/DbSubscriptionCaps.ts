@@ -1,4 +1,4 @@
-// db-backed SubscriptionCaps (@plurnk/plurnk-schemes) — keystone PR-2 seam (#180).
+// Db-backed implementation of plurnk-schemes {§scheme-subscriptions}.
 // The streaming lifecycle a sibling drives:
 //   open(pathname, handle) → registers the subscription and hands back a
 //     worker+teardown-composed AbortSignal; a worker abort also force-cancels the
@@ -6,7 +6,7 @@
 //   notifyChunk(channel, chunk) → FUSED append-to-channel + stream/event.
 //   close(result, summary?) → composites every channel's terminal state, the
 //     registry close, and the rich worker wake (the only place with the close
-//     context to populate it — which is why NotifyCaps dropped wakeWorker, #180).
+//     context to populate it; NotifyCaps therefore has no wakeWorker operation).
 // Stateful: open() binds the entry + subscription that notifyChunk()/close()
 // operate on. Models src/schemes/Exec.ts over the same ChannelWrite primitives.
 

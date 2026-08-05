@@ -1,6 +1,6 @@
-// Conformance: the db-backed ChannelCaps + TagCaps (keystone PR-2, #180)
-// against real SQLite, as a third-party sibling would drive them through the
-// capability surface. Entries are seeded via DbEntryCaps (the same seam).
+// Conformance: the ChannelCaps and TagCaps namespaces in plurnk-schemes
+// {§capability-ctx}, driven against real SQLite through the public capability
+// surface. Entries are seeded through that same surface.
 
 import test from "node:test";
 import assert from "node:assert/strict";

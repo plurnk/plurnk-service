@@ -1,7 +1,6 @@
-// Conformance: SchemeCtxImpl (keystone PR-2, #180) assembles the full capability
-// surface a sibling receives — identity off the PlurnkSchemeContext and the six
-// consumer-backed caps wired + functional through the seam. `visibility` is
-// intentionally absent.
+// Conformance: plurnk-schemes {§capability-ctx}. SchemeCtxImpl assembles the
+// plugin-visible identity and six consumer-backed capabilities; `visibility`
+// is intentionally absent.
 
 import test from "node:test";
 import assert from "node:assert/strict";

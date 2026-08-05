@@ -1,4 +1,5 @@
-// db-backed ChannelCaps (@plurnk/plurnk-schemes) — keystone PR-2 seam (#180).
+// Db-backed implementation of the channel namespace in plurnk-schemes
+// {§capability-ctx}.
 // append/replace/setState over a single channel, addressed by pathname. Resolves
 // pathname→entryId, then drives the ChannelWrite SQL. append grows existing
 // content (token re-count deferred to render, per {§tokenomics}); replace swaps content

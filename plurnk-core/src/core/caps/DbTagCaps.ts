@@ -1,4 +1,5 @@
-// db-backed TagCaps (@plurnk/plurnk-schemes) — keystone PR-2 seam (#180).
+// Db-backed implementation of the tag namespace in plurnk-schemes
+// {§capability-ctx}.
 // add/remove/list folksonomic tags on an entry, addressed by pathname. add is
 // INSERT OR IGNORE (idempotent — re-adding a tag is a no-op); list returns them
 // tag-sorted; remove drops the named tags. Absent entry → 404.
