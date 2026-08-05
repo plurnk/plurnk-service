@@ -55,7 +55,7 @@ test("core preserves the normalized item list, AG-UI correlates it, and the pack
     } finally { await db.close(); }
 });
 
-test("a MULTI-item turn serves N correlated spans — the array residual is closed (#482)", async () => {
+test("multiple encrypted-reasoning items project as distinct correlated spans", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `sealed-multi-${crypto.randomUUID()}`);
