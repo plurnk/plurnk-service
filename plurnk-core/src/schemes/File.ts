@@ -370,7 +370,7 @@ export default class File extends CoreSchemeAdapterBase {
                 },
             );
         }
-        const pathname = PathSyntax.decodeParens(statement.target.kind === "url" ? statement.target.pathname : statement.target.raw); // #239 item 4
+        const pathname = PathSyntax.decodeParens(statement.target.kind === "url" ? statement.target.pathname : statement.target.raw); // {§path-parentheses}
         const target = await this.#resolveWriteTarget(pathname, core);
         if (!target.ok) return failure(target.code, target.status, target.detail, target.extensions);
         const { canonical, rel, fileExists, original, mimetype, baseSig, admittedBy } = target;

@@ -1,6 +1,5 @@
-// #239 item 4 — the grammar's target slot is opaque: parens in a path are percent-encoded
-// (%28/%29) so a literal `)` doesn't close the op slot, and the service decodes them at
-// resolve time. Only parens are encoded, so the decode is exact (never a literal `%`).
+// {§path-parentheses}: the pathname `%28`/`%29` alias decodes at consumer
+// resolution; the contracts parser has already handled lexical target escapes.
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -28,7 +27,7 @@ const enc = (pathname: string): UrlPath => ({
 const editStmt = (target: UrlPath, body: string): EditStatement => ({ op: "EDIT", suffix: "", signal: null, target, lineMarker: null, body, position: { line: 1, column: 1 } });
 const readStmt = (target: UrlPath): ReadStatement => ({ op: "READ", suffix: "", signal: null, target, lineMarker: null, body: null, position: { line: 1, column: 1 } });
 
-test("an EDIT with percent-encoded parens resolves to the literal-paren entry (#239 item 4)", async () => {
+test("{§path-parentheses} a percent-encoded pathname alias resolves to literal parentheses", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `paren-${crypto.randomUUID()}`);

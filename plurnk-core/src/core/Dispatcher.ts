@@ -3046,7 +3046,7 @@ export default class Dispatcher {
     } {
         if (path === null) return { scheme: null, username: null, password: null, hostname: null, port: null, pathname: null, query: null, fragment: null };
         // `local` (bare path) carries no URL parts — store the raw text as the pathname for the log record, scheme=null.
-        if (path.kind === "local") return { scheme: null, username: null, password: null, hostname: null, port: null, pathname: PathSyntax.decodeParens(path.raw), query: null, fragment: null }; // #239 item 4
+        if (path.kind === "local") return { scheme: null, username: null, password: null, hostname: null, port: null, pathname: PathSyntax.decodeParens(path.raw), query: null, fragment: null }; // {§path-parentheses}
         const scheme = path.scheme === "file" ? null : path.scheme;
         // {§scheme-address-namespace-fold} — a registered non-network scheme folds its
         // namespace authority into the canonical pathname. Network authorities remain hosts;
@@ -3058,7 +3058,7 @@ export default class Dispatcher {
         return {
             scheme, username: path.username, password: path.password,
             hostname: foldNs ? null : path.hostname, port: path.port,
-            pathname: PathSyntax.decodeParens(foldNs ? foldAuthorityIntoPath(path.hostname, path.pathname) : path.pathname), // #239 item 4
+            pathname: PathSyntax.decodeParens(foldNs ? foldAuthorityIntoPath(path.hostname, path.pathname) : path.pathname), // {§path-parentheses}
             query: path.query, fragment: path.fragment,
         };
     }
