@@ -156,7 +156,7 @@ describe("TextMarkdown", () => {
         assert.deepEqual(h.extractRaw(poem), []);
     });
 
-    it("headings carry ancestor-heading container paths (issue #18)", async () => {
+    it("{§mimetype-symbol-container}: headings carry ancestor-heading container paths", async () => {
         const h = new TextMarkdown(metadata);
         const src = "# A\n\n## B\n\n### C\n\n## D\n";
         const syms = h.extractRaw(src);
@@ -167,14 +167,14 @@ describe("TextMarkdown", () => {
         assert.equal(byName.get("D")!.container, "A", "level-2 D closes B and C");
     });
 
-    it("code blocks carry the innermost open heading as container (issue #18)", async () => {
+    it("{§mimetype-symbol-container}: code blocks carry the innermost open heading as container", async () => {
         const h = new TextMarkdown(metadata);
         const src = "# A\n\n## B\n\n```ts\nconst x = 1;\n```\n";
         const syms = h.extractRaw(src);
         assert.equal(syms.find((s) => s.kind === "module")!.container, "A.B");
     });
 
-    it("code block before any heading has no container (issue #18)", async () => {
+    it("{§mimetype-symbol-container}: code block before any heading has no container", async () => {
         const h = new TextMarkdown(metadata);
         const src = "```ts\nconst x = 1;\n```\n\n# After\n";
         const syms = h.extractRaw(src);
@@ -202,7 +202,7 @@ describe("TextMarkdown", () => {
         assert.equal(await h.deepJson(new Uint8Array([1, 2, 3])), null);
     });
 
-    it("inherits jsonpath query against the deep-json markdown AST (issue #10)", async () => {
+    it("{§mimetype-channel-architecture}: jsonpath queries the deep-json markdown AST", async () => {
         const h = new TextMarkdown(metadata);
         const src = ["# Top", "", "## Section", "", "### Sub"].join("\n");
         // Find all heading nodes via filter expression — full-tree reach per
@@ -223,7 +223,7 @@ describe("TextMarkdown", () => {
         const src = "# Top\n\nSome body with codename: phoenix in it.";
         const out = await h.query(src, "regex", "codename: (\\w+)");
         assert.equal(out.length, 1);
-        // Anonymous captures per grammar #17: array of capture values only
+        // Anonymous captures per {§mimetype-query}: array of capture values only
         // (the full match itself is not included).
         assert.deepEqual(out[0].matched, ["phoenix"]);
     });

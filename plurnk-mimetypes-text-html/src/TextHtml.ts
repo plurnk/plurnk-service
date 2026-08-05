@@ -72,7 +72,7 @@ export default class TextHtml extends BaseHandler {
         return symbols;
     }
 
-    // Deep-channel (issue #10). Re-parses with parse5 and serializes the DOM
+    // Deep-channel ({§mimetype-channel-architecture}). Re-parses with parse5 and serializes the DOM
     // as nested objects: { type: tagName, line, endLine, attrs: {...},
     // children: [...] } per element; text nodes flatten into a `text` field
     // on the parent when the parent has no mixed content, else surface as
@@ -157,7 +157,7 @@ export default class TextHtml extends BaseHandler {
     }
 }
 
-// Translate an xpath.select return value to QueryMatch[] per grammar #17.
+// Translate an xpath.select return value to QueryMatch[] per {§mimetype-query}.
 function shapeXpathResult(pattern: string, result: xpath.SelectReturnType): QueryMatch[] {
     if (Array.isArray(result)) {
         return result.map((node, i): QueryMatch => ({
@@ -173,7 +173,7 @@ function shapeXpathResult(pattern: string, result: xpath.SelectReturnType): Quer
 }
 
 // Convert an xpath result node to a string suitable for QueryMatch.matched.
-// Per grammar #17: text/attribute → string value; element → serialized XML.
+// Per {§mimetype-query}: text/attribute → string value; element → serialized XML.
 // The xpath package's .d.ts advertises type-guard helpers (xpath.isAttribute
 // etc.) that aren't actually exported at runtime, so we dispatch on the
 // numeric nodeType the DOM spec defines.

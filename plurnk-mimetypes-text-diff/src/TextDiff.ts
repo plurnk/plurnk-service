@@ -61,7 +61,7 @@ export default class TextDiff extends BaseHandler {
         return {
             type: "diff",
             // Document span so a match on the root (e.g. $.type) resolves to a
-            // source line via walk-up (#41), not absent.
+            // source line via walk-up ({§mimetype-query}), not absent.
             line: 1,
             endLine: files.reduce((m, f) => Math.max(m, f.endLine), 1),
             files: files.map((f) => ({

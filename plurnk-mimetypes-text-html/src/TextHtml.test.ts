@@ -60,7 +60,7 @@ describe("TextHtml — heading extraction", () => {
     });
 });
 
-describe("TextHtml — container + columns (issue #18)", () => {
+describe("TextHtml — container + columns ({§mimetype-symbol})", () => {
     it("headings carry ancestor-heading container paths", async () => {
         const html = "<h1>A</h1><h2>B</h2><h3>C</h3><h2>D</h2>";
         const syms = h.extractRaw(html);
@@ -251,7 +251,7 @@ describe("TextHtml — regex/jsonpath inheritance", () => {
         assert.equal(shell.length, 0, "comment-only body projects to empty; nothing to match");
     });
 
-    it("jsonpath queries the deep-json DOM tree (issue #10): filter elements by type", async () => {
+    it("{§mimetype-channel-architecture}: jsonpath queries the deep-json DOM tree", async () => {
         const html = "<html><body><h1>Top</h1><h2>Section</h2><h3>Sub</h3></body></html>";
         const headings = await h.query(html, "jsonpath", "$..children[?(@.type=='h1' || @.type=='h2' || @.type=='h3')]");
         assert.equal(headings.length, 3);
@@ -260,7 +260,7 @@ describe("TextHtml — regex/jsonpath inheritance", () => {
     });
 });
 
-describe("TextHtml — deepJson (issue #10 DOM channel)", () => {
+describe("TextHtml — deepJson ({§mimetype-channel-architecture})", () => {
     const h = new TextHtml(metadata);
 
     it("returns a document root with nested element children", async () => {

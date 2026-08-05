@@ -218,7 +218,7 @@ describe("ApplicationJson — framework integration via BaseHandler", () => {
         assert.ok(out.includes("field b"));
     });
 
-    it("keys carry the dotted ancestor-key path as container (issue #18)", async () => {
+    it("{§mimetype-symbol-container}: keys carry the dotted ancestor-key path as container", async () => {
         const h = new ApplicationJson(jsonMetadata);
         const syms = h.extractRaw(`{"config":{"server":{"host":"x"}},"top":1}`);
         const byName = new Map(syms.map((s) => [s.name, s]));
@@ -228,7 +228,7 @@ describe("ApplicationJson — framework integration via BaseHandler", () => {
         assert.equal("container" in byName.get("top")!, false);
     });
 
-    it("array indices contribute nothing to the container path (issue #18)", async () => {
+    it("{§mimetype-symbol-container}: array indices contribute nothing to the container path", async () => {
         const h = new ApplicationJson(jsonMetadata);
         const syms = h.extractRaw(`{"users":[{"name":"a"},{"name":"b"}]}`);
         const names = syms.filter((s) => s.name === "name");
@@ -237,7 +237,7 @@ describe("ApplicationJson — framework integration via BaseHandler", () => {
         assert.equal(names[1].container, "users");
     });
 
-    it("keys carry 1-indexed columns spanning the quoted key token (issue #18)", async () => {
+    it("{§mimetype-symbol}: keys carry 1-indexed columns spanning the quoted key token", async () => {
         const h = new ApplicationJson(jsonMetadata);
         const syms = h.extractRaw(`{"a":1}`);
         const a = syms.find((s) => s.name === "a")!;
@@ -246,7 +246,7 @@ describe("ApplicationJson — framework integration via BaseHandler", () => {
     });
 });
 
-describe("ApplicationJson — deepJson (issue #10 channel)", () => {
+describe("ApplicationJson — deepJson ({§mimetype-channel-architecture})", () => {
     it("returns the parsed JSON value tree", async () => {
         const h = new ApplicationJson(jsonMetadata);
         const tree = await h.deepJson(`{"name":"Alice","age":30,"tags":["a","b"]}`);

@@ -28,7 +28,7 @@ export default class Jsonl extends BaseHandler {
         return scan(toText(content)).records;
     }
 
-    // jsonpath against the record array, with source-line spans (#41). deepJson
+    // jsonpath against the record array, with source-line spans ({§mimetype-query}). deepJson
     // is line-less raw records, so we map a match's record index (the first
     // pointer segment) to its source line — one record per non-empty parseable
     // line, the JSONL invariant. Absent for non-record pointers; never faked.
@@ -65,7 +65,7 @@ export default class Jsonl extends BaseHandler {
         return super.query(content, dialect, pattern, flags);
     }
 
-    // deep-xml carries the SAME source lines as jsonpath (#41): a match's record
+    // deep-xml carries the SAME source lines as jsonpath ({§mimetype-query}): a match's record
     // index (first pointer segment) → its source line (one record per line).
     override deepXml(content: HandlerContent): Promise<string> {
         const recordLines: number[] = [];

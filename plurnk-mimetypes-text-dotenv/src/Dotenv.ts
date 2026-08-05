@@ -24,7 +24,7 @@ export default class Dotenv extends BaseHandler {
         return out;
     }
 
-    // jsonpath against the flat {KEY:value} object, with source-line spans (#41)
+    // jsonpath against the flat {KEY:value} object, with source-line spans ({§mimetype-query})
     // from parseDotenv positions — deepJson is line-less raw values. A key on
     // line N → line N. Absent for unrecognized pointers; never faked.
     override async query(
@@ -47,7 +47,7 @@ export default class Dotenv extends BaseHandler {
         return super.query(content, dialect, pattern, flags);
     }
 
-    // deep-xml carries the SAME source lines as jsonpath (#41): stamp pk:line
+    // deep-xml carries the SAME source lines as jsonpath ({§mimetype-query}): stamp pk:line
     // from the same parseDotenv positions during projection.
     override deepXml(content: HandlerContent): Promise<string> {
         const byPointer = new Map<string, number>();

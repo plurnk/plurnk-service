@@ -64,7 +64,7 @@ export default class ApplicationJson extends BaseHandler {
         return symbols;
     }
 
-    // Deep-channel (issue #10). For JSON, the deep-json IS the parsed value
+    // Deep-channel ({§mimetype-channel-architecture}). For JSON, the deep-json IS the parsed value
     // tree — users writing jsonpath like `$.server.host` expect the actual
     // parsed value back, not a transformation. The framework's
     // projectJsonToXml renders this directly into deep-xml.
@@ -127,7 +127,7 @@ export default class ApplicationJson extends BaseHandler {
         return super.query(content, dialect, pattern, flags);
     }
 
-    // deep-xml carries the SAME source lines as jsonpath (#41): project the
+    // deep-xml carries the SAME source lines as jsonpath ({§mimetype-query}): project the
     // parsed value, stamping pk:line from the jsonc offsets via the shared
     // resolver, so xpath-over-deepXml and jsonpath agree. Degrades to the
     // framework default (positions absent) when the content doesn't parse.
@@ -143,7 +143,7 @@ export default class ApplicationJson extends BaseHandler {
 // Source-line span of a match from jsonc-parser offsets. The pointer locates
 // the value node; a property value widens to its property (key..value) so the
 // span is where the field is *defined*. Shared by query() and deepXml() so
-// jsonpath and xpath report identical lines (#41). undefined when unlocatable —
+// jsonpath and xpath report identical lines ({§mimetype-query}). undefined when unlocatable —
 // never a faked line.
 function spanFor(tree: Node, content: string): (pointer: string) => { line: number; endLine: number } | undefined {
     const locate = makeOffsetLocator(content);

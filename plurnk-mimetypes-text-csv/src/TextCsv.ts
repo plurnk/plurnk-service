@@ -48,7 +48,7 @@ export default class TextCsv extends BaseHandler {
         }));
     }
 
-    // Deep-channel (issue #10). CSV's natural deep-json IS the parsed value:
+    // Deep-channel ({§mimetype-channel-architecture}). CSV's natural deep-json IS the parsed value:
     // an array of row objects keyed by header column. Same shape the custom
     // jsonpath dispatch already uses — consistent across channels. The
     // framework projects this to deep-xml via projectJsonToXml; rows render
@@ -102,7 +102,7 @@ export default class TextCsv extends BaseHandler {
         return super.query(content, dialect, pattern, flags);
     }
 
-    // deep-xml carries the SAME source lines as jsonpath (#41): a match's record
+    // deep-xml carries the SAME source lines as jsonpath ({§mimetype-query}): a match's record
     // index (first pointer segment) → its source line (header line 1, data row N
     // on line N+2). Same convention as the jsonpath path.
     override deepXml(content: HandlerContent): Promise<string> {

@@ -49,7 +49,7 @@ describe("ApplicationXml — symbols channel", () => {
     });
 });
 
-describe("ApplicationXml — container (issue #18)", () => {
+describe("ApplicationXml — container ({§mimetype-symbol-container})", () => {
     it("direct children carry the root element name as container", async () => {
         const h = new ApplicationXml(metadata);
         const syms = h.extractRaw("<root><child/><other id='x'/></root>");
@@ -64,7 +64,7 @@ describe("ApplicationXml — container (issue #18)", () => {
     });
 });
 
-describe("ApplicationXml — deepJson (issue #10)", () => {
+describe("ApplicationXml — deepJson ({§mimetype-channel-architecture})", () => {
     it("returns document root with element tree", async () => {
         const h = new ApplicationXml(metadata);
         const xml = "<rss version='2.0'><channel><title>Feed</title></channel></rss>";
@@ -126,7 +126,7 @@ describe("ApplicationXml — query (xpath against DOM, jsonpath against deepJson
         }]);
     });
 
-    it("a computed scalar (count) carries no lines (#41)", async () => {
+    it("{§mimetype-query}: a computed scalar carries no lines", async () => {
         const h = new ApplicationXml(metadata);
         const out = await h.query("<a><b/><b/></a>", "xpath", "count(//b)");
         assert.equal(out.length, 1);

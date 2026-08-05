@@ -11,7 +11,7 @@ import { Lexer, type Token } from "marked";
 //   - module:  every fenced code block, named by its language tag (or "code"
 //              when no language), with line range covering the full fence
 //
-// container (SPEC §3, issue #18): the dotted path of the open ancestor
+// container ({§mimetype-symbol-container}): the dotted path of the open ancestor
 // headings — a lower `level` opens an ancestor scope; a heading at level N
 // closes every open heading at level >= N. Top-level symbols omit the key.
 // Heading names are used verbatim as path segments (may contain dots).
@@ -42,7 +42,7 @@ export default class TextMarkdown extends BaseHandler {
         return symbols;
     }
 
-    // Deep-channel (issue #10). The markdown AST as nested objects — heading,
+    // Deep-channel ({§mimetype-channel-architecture}). The markdown AST as nested objects — heading,
     // paragraph, list, code block, blockquote, etc. — preserves enough
     // structure for jsonpath like `$..code[?(@.lang=='ts')]` or
     // `$..heading[?(@.depth==1)]`. Each node carries `type`, `line`, `endLine`,

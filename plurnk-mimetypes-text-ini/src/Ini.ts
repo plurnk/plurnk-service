@@ -53,7 +53,7 @@ export default class Ini extends BaseHandler {
     }
 
     // jsonpath against the nested {section:{key:value}} object, with source-line
-    // spans (#41): deepJson is line-less (raw values), so we supply a lineFor
+    // spans ({§mimetype-query}): deepJson is line-less (raw values), so we supply a lineFor
     // from parseIni's positions, keyed by JSON pointer. A key on line N → line N
     // (single-line per v1). Absent for pointers we don't recognize — never faked.
     override async query(
@@ -87,7 +87,7 @@ export default class Ini extends BaseHandler {
         return super.query(content, dialect, pattern, flags);
     }
 
-    // deep-xml carries the SAME source lines as jsonpath (#41): stamp pk:line
+    // deep-xml carries the SAME source lines as jsonpath ({§mimetype-query}): stamp pk:line
     // from the same parseIni positions during projection.
     override deepXml(content: HandlerContent): Promise<string> {
         const text = toText(content);

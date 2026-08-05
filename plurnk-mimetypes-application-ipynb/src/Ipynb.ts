@@ -40,7 +40,7 @@ export default class Ipynb extends BaseHandler {
     }
 
     // A .ipynb IS json, so a jsonpath match's source line is the line in the
-    // notebook file (#41) — resolved from jsonc-parser offsets, like
+    // notebook file ({§mimetype-query}) — resolved from jsonc-parser offsets, like
     // application/json. deepJson is the raw notebook (no annotations), so we
     // supply a lineFor keyed by JSON pointer.
     override async query(
@@ -61,7 +61,7 @@ export default class Ipynb extends BaseHandler {
         return super.query(content, dialect, pattern, flags);
     }
 
-    // deep-xml carries the SAME notebook-file lines as jsonpath (#41): project
+    // deep-xml carries the SAME notebook-file lines as jsonpath ({§mimetype-query}): project
     // the parsed notebook, stamping pk:line from jsonc offsets. Degrades to the
     // framework default when the content doesn't parse.
     override deepXml(content: HandlerContent): Promise<string> {

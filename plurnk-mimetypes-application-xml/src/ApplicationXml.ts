@@ -21,7 +21,7 @@ import * as xpath from "xpath";
 //     field, named by the attribute value (preferring id over name)
 //   - direct children without identifiers → field, named by tag name
 //
-// Deep-json (deepJson, issue #10):
+// Deep-json ({§mimetype-channel-architecture}):
 //   - { type: "document", line, endLine, children: [<root element tree>] }
 //   - each element: { type: tagName, attrs: {...}, children: [...] }
 //   - text content collapses to a `text` field when it's the only child;
@@ -55,8 +55,8 @@ export default class ApplicationXml extends BaseHandler {
             { name: root.tagName, kind: "module", line: lineOf(root as unknown as { lineNumber?: number }) ?? 1, endLine: spanEnd(root as unknown as Element) },
         ];
 
-        // Direct children carry the root element's name as container
-        // (SPEC §3, issue #18) — the mapping only walks one level deep.
+        // Direct children carry the root element's name as container under
+        // {§mimetype-symbol-container}; the mapping only walks one level deep.
         for (let i = 0; i < root.childNodes.length; i += 1) {
             const child = root.childNodes.item(i);
             if (child === null || child.nodeType !== ELEMENT_NODE) continue;
@@ -72,8 +72,9 @@ export default class ApplicationXml extends BaseHandler {
         return symbols;
     }
 
-    // Deep-channel (issue #10). DOM tree with attrs convention so xpath like
-    // //*[@id='x'] and //channel/item work against the projected deep-xml.
+    // Deep-channel ({§mimetype-channel-architecture}). DOM tree with attrs
+    // convention so xpath like //*[@id='x'] and //channel/item work against the
+    // projected deep-xml.
     override deepJson(content: HandlerContent): unknown {
         const text = typeof content === "string"
             ? content
@@ -190,8 +191,8 @@ function elementToDeep(el: Element): Record<string, unknown> {
     return node;
 }
 
-// Translate xpath.select result per grammar #17, with real source-line spans
-// (#41) from @xmldom/xmldom's node lineNumber.
+// Translate xpath.select results per {§mimetype-query}, with real source-line
+// spans from @xmldom/xmldom's node lineNumber.
 function shapeXpathResult(
     pattern: string,
     result: xpath.SelectReturnType,
@@ -217,7 +218,7 @@ function shapeXpathResult(
     }
     if (result === null || result === undefined) return [];
     // Computed scalar (string()/count()/boolean()): no source node → no `lines`
-    // (#41). The value is reported; the location is honestly absent.
+    // under {§mimetype-query}. The value is reported; the location is honestly absent.
     return [{
         matched: typeof result === "string" ? result : String(result),
         matching: pattern,
