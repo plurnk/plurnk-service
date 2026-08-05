@@ -17,7 +17,8 @@ export default class ProviderInstantiate {
     // env is process-stable for these fields.
     static #instances = new Map<string, Promise<Provider>>();
     static #registeredInstances = new Map<string, Provider>();
-    // #352 — provider handle → the alias name that produced it, so the service scopes its own
+    // {§provider-instantiation-alias-resolution} — provider handle → the alias name that produced it,
+    // so the service scopes its own
     // per-alias packet-policy knobs by the provider it's building a packet
     // for. Service-owned metadata about handles WE created; never a provider-contract field.
     static #aliasByProvider = new WeakMap<Provider, string>();
@@ -28,7 +29,8 @@ export default class ProviderInstantiate {
         return ProviderInstantiate.#aliasByProvider.get(provider);
     }
 
-    // #488 — register a hand-built provider (a recording Mock) under an alias, so tests can
+    // {§grammar-enforcement-verified-at-boot} — register a hand-built provider (a recording Mock)
+    // under an alias, so tests can
     // drive the per-alias grammar-rail resolution through the REAL chain instead of the
     // boot-global fallback the silent-severance guard now refuses.
     static registerAlias(provider: Provider, alias: string): void {
@@ -77,7 +79,8 @@ export default class ProviderInstantiate {
     }
 
     static async #construct(alias: ProviderAlias, env: NodeJS.ProcessEnv): Promise<Provider> {
-        // #525 — promote the alias-scoped provider-knob family (PLURNK_PROVIDERS_*_<alias>) to
+        // {§operator-config-precedence} — promote the alias-scoped provider-knob family
+        // (PLURNK_PROVIDERS_*_<alias>) to
         // bare BEFORE construction, so a per-alias TEMPERATURE/reserve pin binds. Without this
         // the whole per-alias provider surface was silently dropped at construction.
         env = scopeEnvToAlias(env, alias.alias);
@@ -115,7 +118,8 @@ export default class ProviderInstantiate {
     static #VERIFY_PREFIX = `<|channel>thought\n${ProviderInstantiate.#VERIFY_REASONING}<channel|>`;
     static #VERIFY_INPUT = `${ProviderInstantiate.#VERIFY_PREFIX}${ProviderInstantiate.#VERIFY_TOKEN}`;
     static async verifyGrammarEnforcement(provider: Provider, env: NodeJS.ProcessEnv = process.env): Promise<void> {
-        // #353: resolve through the provider's registered alias, with the active alias
+        // {§grammar-enforcement-verified-at-boot}: resolve through the provider's registered alias,
+        // with the active alias
         // retained only for the boot-global fallback.
         const alias = ProviderInstantiate.aliasOf(provider) ?? resolveActiveAlias(env)?.alias ?? "";
         const scoped = scopeEnvToAlias(env, alias, ["PLURNK_PROVIDERS_GBNF", "PLURNK_PROVIDERS_REASONING"]);
