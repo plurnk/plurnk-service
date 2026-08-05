@@ -22,8 +22,7 @@ const execDsl = (command: string): string =>
     `<<EXEC[sh]:${command}:EXEC\n<<SEND[202]<-1>:done:SEND`;
 
 const mockResponse = (dsl: string) => {
-    // grammar 0.70: turns lead with PLAN. No `ops` here → the Engine re-parses
-    // content, so the PLAN must be in the content the mock emits.
+    // {§emission-admission}: Engine re-parses this content, so it includes the PLAN anchor.
     const turn = dsl.startsWith("<<PLAN") ? dsl : `<<PLAN::PLAN\n${dsl}`;
     return {
         assistant: {
@@ -35,7 +34,7 @@ const mockResponse = (dsl: string) => {
     };
 };
 
-test("#598: an async wake resumes with the loop's durable provider, never the boot default", async () => {
+test("{§methods-loop-run-model}: an async wake resumes with the loop's durable provider", async () => {
     const releaseDir = await mkdtemp(join(tmpdir(), "plurnk-wake-provider-"));
     const releasePath = join(releaseDir, "release");
     const boot = new Mock({
@@ -105,7 +104,7 @@ test("#598: an async wake resumes with the loop's durable provider, never the bo
     }
 });
 
-test("#598: a parked loop retains its provider across daemon restart", async () => {
+test("{§methods-loop-run-model}: a parked loop retains its provider across daemon restart", async () => {
     const boot = new Mock({
         contextWindow: 16384,
         responses: [mockResponse("<<SEND[500]:boot provider must remain unused:SEND")],
