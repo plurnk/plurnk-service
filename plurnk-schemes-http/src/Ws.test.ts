@@ -136,8 +136,8 @@ const makeCtx = (overrides: CtxOverrides = {}) => {
     const projection: ProjectionCaps = { async readable(content) { return { content, mimetype: "text/markdown" }; } };
     let current: StreamSubscription | null = null;
     const notifyChunk: StreamSubscription["notifyChunk"] = async (channel, chunk, mimetype) => {
-        chunks.push({ channel, chunk, mimetype });
         await overrides.notifyChunk?.(channel, chunk, mimetype);
+        chunks.push({ channel, chunk, mimetype });
     };
     const close: StreamSubscription["close"] = async (result, summary) => {
         closeCount += 1;
@@ -284,6 +284,37 @@ test("READ: terminal settlement waits for in-flight message persistence", async 
     await awaitClosed();
     assert.deepEqual(inspect().chunks.map(({ chunk }) => chunk), ["durable first"]);
     assert.equal(inspect().closed?.result.status, 200);
+});
+
+test("READ: inbound persistence remains transport-ordered under inverted latency", async () => {
+    const firstGate = Promise.withResolvers<void>();
+    const attempts: string[] = [];
+    const sock = fakeSocket();
+    const { ctx, inspect, awaitClosed } = makeCtx({
+        notifyChunk: async (_channel, chunk) => {
+            attempts.push(chunk);
+            if (chunk === "first") await firstGate.promise;
+        },
+    });
+    const read = new Ws(() => sock).read(readStmt(wss(PUB, "/feed")), ctx);
+    await flush();
+    sock.emit("open");
+    assert.equal((await read).status, 102);
+
+    sock.emit("message", { data: "first" });
+    sock.emit("message", { data: "second" });
+    await flush();
+    assert.deepEqual(attempts, ["first"], "the second write cannot begin while the first is pending");
+    assert.deepEqual(inspect().chunks, []);
+
+    firstGate.resolve();
+    await flush();
+    assert.deepEqual(attempts, ["first", "second"]);
+    assert.deepEqual(inspect().chunks.map(({ chunk }) => chunk), ["first", "second"]);
+
+    sock.emit("close", { code: 1000 });
+    await awaitClosed();
+    assert.equal(inspect().closed?.summary, "ws closed (1000); 2 messages");
 });
 
 test("READ: an explicit loopback target reaches the configured socket transport", async () => {
@@ -694,8 +725,12 @@ test("KILL: a socket close throw becomes a structured transport failure", async 
 
 test("READ: message persistence failure settles with a structured problem", async () => {
     const sock = fakeSocket();
+    const attempts: string[] = [];
     const { ctx, inspect, awaitClosed } = makeCtx({
-        notifyChunk: async () => { throw new Error("raw persistence failure"); },
+        notifyChunk: async (_channel, chunk) => {
+            attempts.push(chunk);
+            throw new Error("raw persistence failure");
+        },
     });
     const ws = new Ws(() => sock);
     const target = wss(PUB, "/feed");
@@ -704,15 +739,45 @@ test("READ: message persistence failure settles with a structured problem", asyn
     sock.emit("open");
     await flush();
     assert.equal((await read).status, 102);
-    sock.emit("message", { data: "hello" });
+    sock.emit("message", { data: "failed prefix" });
+    sock.emit("message", { data: "queued suffix" });
     const terminal = await awaitClosed();
     assert.equal(terminal.result.status, 500);
     assert.equal(terminal.result.problem?.type, "https://problems.plurnk.dev/scheme/wss/message-persistence-failed");
     assert.equal(terminal.result.problem?.stage, "persistence");
     assert.equal(inspect().closed?.result.problem, terminal.result.problem);
+    assert.deepEqual(attempts, ["failed prefix"], "the first failure prunes the queued suffix");
+    assert.deepEqual(inspect().chunks, [], "a failed write is not recorded as persisted");
+    assert.equal(inspect().closeCount, 1);
     assert.notEqual(sock.closed, null, "a terminal persistence failure closes its transport");
     await flush();
     assert.equal((await ws.send(sendStmt(200, target, "late"), ctx)).status, 409, "terminal cleanup releases address ownership");
+});
+
+test("READ: a pending persistence failure supersedes graceful close", async () => {
+    const persistenceGate = Promise.withResolvers<void>();
+    const sock = fakeSocket();
+    const { ctx, inspect, awaitClosed } = makeCtx({
+        notifyChunk: async () => {
+            await persistenceGate.promise;
+            throw new Error("late persistence failure");
+        },
+    });
+    const read = new Ws(() => sock).read(readStmt(wss(PUB, "/feed")), ctx);
+    await flush();
+    sock.emit("open");
+    assert.equal((await read).status, 102);
+    sock.emit("message", { data: "accepted before close" });
+    await flush();
+
+    sock.emit("close", { code: 1000 });
+    persistenceGate.resolve();
+    const terminal = await awaitClosed();
+
+    assert.equal(terminal.result.status, 500);
+    assert.equal(terminal.result.problem?.type, "https://problems.plurnk.dev/scheme/wss/message-persistence-failed");
+    assert.equal(terminal.summary, "The received WebSocket message could not be persisted.");
+    assert.equal(inspect().closeCount, 1);
 });
 
 test("READ: a pre-open transport error closes once before settling", async () => {
