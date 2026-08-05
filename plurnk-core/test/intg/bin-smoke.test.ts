@@ -43,7 +43,7 @@ const bootDaemon = (): Promise<BootedDaemon> => new Promise((resolvePromise, rej
 
         // cwd isolation, same reason as HOME: the service cascade loads ./.env (operator config,
         // the owner's surface) — an inherited cwd leaks the box's model selector into this
-        // hermetic tier (a jennifer pivot + #537's required key = boot death, no test bug).
+        // hermetic tier and can introduce unrelated provider credential requirements ({§operator-config}).
         const child = spawn(process.execPath, [...CONDITION_ARGS, BIN_PATH], { env, cwd: dir, stdio: ["ignore", "pipe", "pipe"] });
         let stdoutBuf = "";
         let stderrBuf = "";
@@ -53,7 +53,7 @@ const bootDaemon = (): Promise<BootedDaemon> => new Promise((resolvePromise, rej
             if (settled) return;
             settled = true;
             child.kill("SIGKILL");
-            // 90s, under the test's own 120s override (#495): concurrent lanes drill on one box, so a
+            // 90s, below the test's own 120s timeout: concurrent lanes drill on one box, so a
             // healthy boot is legitimately slow under tier concurrency — this smoke asserts
             // BOOTS-AND-ANSWERS, never boots-fast. Internal < per-test, so the legible diagnostic
             // (with captured stdout/stderr) always beats the runner's bare cancellation.
@@ -174,18 +174,17 @@ test("bin: a failed DB open names the path and any stale sidecars — never a ba
     }
 });
 
-// #501 (owner ruling, gates 1.0.6) — a SET-but-unresolvable PLURNK_MODEL must fail the boot hard,
-// naming the value and the contract; the old path booted silently modelless behind a warning that
-// claimed the knob was unset (the operator's live daemon was doing exactly this).
+// {§provider-resolution}: a set-but-unresolvable PLURNK_MODEL fails boot naming the value and
+// declaration contract; it never degrades to a silently modelless daemon.
 test("bin: PLURNK_MODEL naming no declared alias fails the boot LOUD — never a silent modelless daemon", { timeout: 60_000 }, async () => {
-    const dir = await mkdtemp(join(tmpdir(), "plurnk-bin-501-"));
+    const dir = await mkdtemp(join(tmpdir(), "plurnk-bin-model-"));
     try {
         const env: NodeJS.ProcessEnv = {
             ...process.env,
             HOME: dir,
             PLURNK_SERVICE_DB_PATH: join(dir, "plurnk.db"),
             PLURNK_HOST: "127.0.0.1", PLURNK_PORT: "0",
-            PLURNK_MODEL: "plurnk/jennifer",  // the run112-adjacent specimen: a provider/model PATH where an ALIAS belongs
+            PLURNK_MODEL: "plurnk/jennifer",  // a provider/model path where an alias belongs
         };
         const child = spawn(process.execPath, [...CONDITION_ARGS, BIN_PATH], { env, cwd: dir, stdio: ["ignore", "pipe", "pipe"] }); // cwd-isolated from ./.env like the boot smoke
         let stderrBuf = "";
