@@ -1,4 +1,4 @@
-// ~query semantic search end-to-end with the REAL embedding model
+// {§find-semantic-default-top-k} semantic search end-to-end with the real embedding model
 // (all-MiniLM-L6-v2 via @plurnk/plurnk-mimetypes-embeddings). Runs in test:intg —
 // semantics is NORMAL integration coverage, not a special live-only track; the
 // model load is an accepted cost. The test builds its OWN embeddings-enabled
@@ -51,7 +51,7 @@ const thresholdStmt = (
     position: { line: 1, column: 1 },
 });
 
-test("[#186-semantic-e2e] ~query ranks by REAL semantic similarity (full pipeline, real model)", async () => {
+test("~query ranks by real semantic similarity through the full pipeline", async () => {
     const mimetypes = new Mimetypes();
     await mimetypes.ready();
     const db = await openMigrated();

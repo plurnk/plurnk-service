@@ -990,7 +990,7 @@ model-independent ruler for stored/catalog weights and the model-facing budget
 confined to provider-physical recovery admission
 ({§tokenomics-physical-admission}).
 
-**Persistent search index.** `SearchIndex.maintain` is the pre-model engine pass. Each searchable resource supplies an address and the exact readable body its READ exposes. Entries supply their default body; `LogBody` resolves each log row's canonical full body from its durable tx/rx envelope. Acquisition schemes project remote source material before storing that body; search never introduces a second hidden text projection. The readable body, mimetype, resolved text/binary classification, mimetype projection identity, embedder configuration, and applicable search exclusion form a content hash. Complete artifacts own FTS, vectors, symbol definitions, and references; resource rows hold only the attachment hash. Binary, empty, and excluded derivations do not invoke handler projections and therefore use one fixed no-projection identity.
+§persistent-search-index **Persistent search index.** `SearchIndex.maintain` is the pre-model engine pass. Each searchable resource supplies an address and the exact readable body its READ exposes. Entries supply their default body; `LogBody` resolves each log row's canonical full body from its durable tx/rx envelope. Acquisition schemes project remote source material before storing that body; search never introduces a second hidden text projection. The readable body, mimetype, resolved text/binary classification, mimetype projection identity, embedder configuration, and applicable search exclusion form a content hash. Complete artifacts own FTS, vectors, symbol definitions, and references; resource rows hold only the attachment hash. Binary, empty, and excluded derivations do not invoke handler projections and therefore use one fixed no-projection identity.
 
 §search-exclusion **File-search eligibility is Core policy.**
 `PLURNK_SERVICE_SEARCH_EXCLUDE` is a comma-separated table of anchored
@@ -2574,6 +2574,19 @@ One parsed content matcher crosses three ownership layers:
 §relation-indexed-dialects `~semantic` and `@graph` are indexed relation dialects and never route through
 the content matcher. Candidate composition has no dependency on the table that
 stored a resource.
+
+§graph-relations **Graph matching is one-hop, kind-agnostic name matching.**
+Source definitions resolve over the complete relationship universe (the
+workspace for entry FIND; the worker's complete log for log FIND), while the
+authored target and tags still constrain every resource returned. Outgoing
+references belong to a definition through the handler-reported fully qualified
+container identity.
+
+| Matcher body | Selected resources                                                               | Match evidence                                                            |
+| ------------ | -------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
+| `@<symbol`   | In-scope resources that reference `symbol`                                       | Each matching reference's source span                                     |
+| `@>symbol`   | In-scope resources defining names referenced by each definition of `symbol`      | Each referenced symbol's definition span                                  |
+| `@symbol`    | Union of definitions of `symbol`, referrers, and definitions of referenced names | Corresponding definition/reference spans, deduplicated by resource + span |
 
 | Result | HTTP status |
 |---|---|

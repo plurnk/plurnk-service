@@ -1,4 +1,4 @@
-// {§relation-indexed-dialects} The symbol index behind the FIND `graph` dialect
+// {§graph-relations} The symbol index behind the FIND `graph` dialect
 // (@<sym referrers / @>sym referents / @sym neighborhood). Files are first-class
 // channel-backed entries, so the index is uniform across worker:/// and file:/// with
 // no scheme special-casing. Traversal is kind-agnostic; 1-hop (the grammar's
@@ -56,7 +56,7 @@ export default class EntryGraph {
     // address→derivation candidates. `universe` supplies relationship sources;
     // `candidates` constrains returned addresses. Each match is a (key, span) — the reference's line (@<) or
     // the symbol's def span (@> / def side of @) — so a matcher resolves to (file, span)
-    // uniformly with every other dialect (#286). Malformed → 400.
+    // uniformly with every other dialect ({§matcher-selection-signal}). Malformed → 400.
     static async matchCandidates(
         db: Db,
         universe: readonly SearchCandidate[],
@@ -110,7 +110,8 @@ export default class EntryGraph {
     }
 
     // @>sym: sym's def(s) → the target names those defs reference → those targets'
-    // defining entries (with their def spans). The def's full qualified path is the @> join key (#186).
+    // defining entries (with their def spans). The definition's fully qualified
+    // container identity is the @> join key. {§graph-relations}
     static async #referents(
         db: Db,
         universe: readonly SearchCandidate[],
@@ -133,6 +134,7 @@ export default class EntryGraph {
     }
 }
 
-// A @graph match: an entry and the (file, span) where the relation lands — a reference's
-// line (@<) or a symbol's def span (@> / def side of @). #286.
+// A @graph match: an entry and the span where the relation lands — a reference
+// line (@<) or a symbol definition span (@> / definition side of @).
+// {§matcher-selection-signal}
 export interface GraphMatch { key: string; lineStart: number; lineEnd: number; }

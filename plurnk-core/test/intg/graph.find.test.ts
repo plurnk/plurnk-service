@@ -1,9 +1,10 @@
-// {§relation-indexed-dialects} FIND graph dialect over symbol_defs/symbol_refs.
+// {§graph-relations} FIND graph dialect over symbol_defs/symbol_refs.
 //   @<sym  referrers — entries that REFERENCE sym
 //   @>sym  referents — entries DEFINING what sym references
 //   @sym   neighborhood — def ∪ referrers ∪ referents
 // Symbol rows derive from mimetype symbols/references during persistent-index
-// maintenance; resolution is name-match across (workspace, scheme).
+// maintenance. Source resolution is workspace-wide; the authored target and
+// tags constrain the returned resources.
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -47,8 +48,8 @@ const seed = async () => {
     for (const [pathname, body] of FILES) {
         await k.edit(editStmt(url(pathname), body), makeSchemeCtx({ db, workspaceId, workerId }));
     }
-    // @graph derives at manifest-add (engine-side, {§mimetype}) — building the manifest
-    // walks every entry and populates the symbol index from its content.
+    // The pre-model persistent-index pass derives graph artifacts from every
+    // readable entry. {§persistent-search-index}
     await SearchIndex.maintain(makeSchemeCtx({ db, workspaceId, workerId }));
     return { db, workspaceId, workerId };
 };
@@ -75,7 +76,7 @@ test("graph FIND reports an incomplete persistent index instead of silently drop
     } finally { db.close(); }
 });
 
-test("[#186-graph-referrers] @<foo finds entries that REFERENCE foo (not the definer)", async () => {
+test("@<foo finds entries that reference foo, not the definer", async () => {
     const { db, workspaceId, workerId } = await seed();
     try {
         const r = await find(db, workspaceId, workerId, "@<foo");
@@ -96,7 +97,7 @@ test("[#186-graph-referrers] @<foo finds entries that REFERENCE foo (not the def
     } finally { db.close(); }
 });
 
-test("[#186-graph-referents] @>foo finds entries DEFINING what foo references", async () => {
+test("@>foo finds entries defining what foo references", async () => {
     const { db, workspaceId, workerId } = await seed();
     try {
         const r = await find(db, workspaceId, workerId, "@>foo");
@@ -105,7 +106,7 @@ test("[#186-graph-referents] @>foo finds entries DEFINING what foo references", 
     } finally { db.close(); }
 });
 
-test("[#186-graph-neighborhood] @foo = def ∪ referrers ∪ referents", async () => {
+test("@foo is the union of definitions, referrers, and referents", async () => {
     const { db, workspaceId, workerId } = await seed();
     try {
         const r = await find(db, workspaceId, workerId, "@foo");
@@ -114,7 +115,7 @@ test("[#186-graph-neighborhood] @foo = def ∪ referrers ∪ referents", async (
     } finally { db.close(); }
 });
 
-test("[#186-graph-miss] @<nope (no such symbol) → 200 with empty results", async () => {
+test("@<nope currently returns 200 with empty results (#183)", async () => {
     const { db, workspaceId, workerId } = await seed();
     try {
         const r = await find(db, workspaceId, workerId, "@<nope");
@@ -123,19 +124,19 @@ test("[#186-graph-miss] @<nope (no such symbol) → 200 with empty results", asy
     } finally { db.close(); }
 });
 
-test("[#186-graph-rederive] editing foo's referrer away drops it from @<foo", async () => {
+test("editing foo's referrer away drops it from @<foo after index maintenance", async () => {
     const { db, workspaceId, workerId } = await seed();
     try {
         // b.ts no longer references foo — re-deriving its rows must remove the edge.
         await new Worker().edit(editStmt(url("b.ts"), "export const x = 1;\n", fullReplace), makeSchemeCtx({ db, workspaceId, workerId }));
-        await SearchIndex.maintain(makeSchemeCtx({ db, workspaceId, workerId }));  // re-derive at manifest-add
+        await SearchIndex.maintain(makeSchemeCtx({ db, workspaceId, workerId }));
         const r = await find(db, workspaceId, workerId, "@<foo");
         assert.equal(r.status, 200);
         assert.deepEqual([...new Set(r.results.map((f) => f.path))], []);
     } finally { db.close(); }
 });
 
-test("[#186-graph-gate] manifest-add re-derives only on content change (the deep_hash gate)", async () => {
+test("persistent-index maintenance re-derives only on content change", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `gate-${crypto.randomUUID()}`);

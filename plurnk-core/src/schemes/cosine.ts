@@ -1,4 +1,4 @@
-// SqlRite function module (#186, ~semantic). The sqlrite contract requires a
+// SqlRite function module for ~semantic ({§relation-indexed-dialects}). The sqlrite contract requires a
 // default-export handler and turns the filename into the SQL function name — so
 // this is a thin registration adapter; the logic lives in EntrySemantic.cosine
 // (OO). `deterministic` marks it a pure function so SQLite may optimize it. One

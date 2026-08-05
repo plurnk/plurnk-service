@@ -154,7 +154,7 @@ test("malformed matcher expression → 400 (model-facing, not a 500)", async () 
     assert.equal(r.problem?.retryable, false);
 });
 
-test("relation dialects (~semantic / @graph) never reach the content matcher — they resolve through FIND (#286)", async () => {
+test("relation dialects (~semantic / @graph) never reach the content matcher", async () => {
     // Invariant: both relation dialects resolve through the persistent search index to
     // (resource, span) items; neither is a content matcher. Reaching matchAgainstContent with one is a
     // routing bug → fail hard, not a silent 501/400.

@@ -1,4 +1,5 @@
-// The uniform matcher contract end-to-end through the engine. A matcher selects
+// {§matcher-result-resource-selection}, {§read-multi-file-fanout}. The uniform
+// matcher contract end-to-end through the engine. A matcher selects
 // resources; FIND lists each resource with match coordinates, while READ
 // returns one whole/scoped body per resource with the same evidence.
 //
@@ -18,7 +19,7 @@ import SearchIndex from "../../src/schemes/_search-index.ts";
 import type { Db } from "../../src/core/Db.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, makeSchemeCtx } from "./_helpers.ts";
 
-// A ~semantic READ-honors-FIND case (#286) asserts REAL vector ranking — re-enable the embedder the
+// A ~semantic READ-honors-FIND case asserts real vector ranking — re-enable the embedder the
 // Mock bootstrap turns off; --test-isolation scopes this to this file.
 process.env.PLURNK_SERVICE_EMBED_DISABLE = "0";
 
@@ -151,7 +152,7 @@ test("two structural matches on one source line remain distinguishable by path",
     } finally { await db.close(); }
 });
 
-test("[#286] a matcher READ with zero matches writes a single 204 row, never silence", async () => {
+test("a matcher READ with zero matches writes a single 204 row, never silence", async () => {
     const { db, engine, ctx, ...ids } = await setup();
     try {
         await seedRaw(ctx, "a.md", "nothing here");
@@ -217,7 +218,7 @@ test("@graph FIND groups reference coordinates by resource", async () => {
 
 // --- The target contract: bare = exact, folder/glob = scope — uniform for FIND and READ ------
 
-test("[#286] FIND(bare entry) is the ONE entry — never a prefix that pulls siblings", async () => {
+test("FIND(bare entry) is the one entry, never a prefix that pulls siblings", async () => {
     const { db, workspaceId, workerId, ctx } = await setup();
     try {
         await seedRaw(ctx, "config.md", "the config");
@@ -228,7 +229,7 @@ test("[#286] FIND(bare entry) is the ONE entry — never a prefix that pulls sib
     } finally { await db.close(); }
 });
 
-test("[#286] FIND(folder/) returns the folder's contents; a glob is a scope", async () => {
+test("FIND(folder/) returns the folder's contents; a glob is a scope", async () => {
     const { db, workspaceId, workerId, ctx } = await setup();
     try {
         await seedRaw(ctx, "docs/a.md", "alpha");
@@ -240,7 +241,7 @@ test("[#286] FIND(folder/) returns the folder's contents; a glob is a scope", as
     } finally { await db.close(); }
 });
 
-test("[#286] READ(folder/) reads the folder's contents — one row per entry, whole", async () => {
+test("READ(folder/) reads the folder's contents — one row per entry, whole", async () => {
     const { db, engine, ctx, ...ids } = await setup();
     try {
         await seedRaw(ctx, "docs/a.md", "alpha body");

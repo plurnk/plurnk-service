@@ -1,4 +1,4 @@
-// @graph over file:/// — the PRIMARY case (codebase navigation). Proves the
+// {§graph-relations} over file:/// — the primary codebase-navigation case. Proves the
 // symbol dialect resolves uniformly on file entries (scheme=file, bare-rendered):
 // materialize files the way git-membership does → derive at manifest-add → FIND
 // the graph dialect through File (using the shared entry backing).
@@ -40,12 +40,12 @@ const seed = async () => {
     for (const [pathname, content] of FILES) {
         await EntryCrud.writeEntry(`${pathname}`, { channels: { body: { content, mimetype: "text/typescript" } }, tags: [] }, ctx, "file");
     }
-    // @graph derives at manifest-add ({§mimetype}) — build the manifest to populate the index.
+    // Populate the graph through the pre-model persistent-index pass.
     await SearchIndex.maintain(ctx);
     return { db, workspaceId, workerId };
 };
 
-test("[#186-graph-file] @graph resolves over file:/// entries — the primary codebase-navigation case", async () => {
+test("@graph resolves over file:/// entries", async () => {
     const { db, workspaceId, workerId } = await seed();
     try {
         const ctx = makeSchemeCtx({ db, workspaceId, workerId, loopId: 0, turnId: 0 });

@@ -1,4 +1,5 @@
-// Semantic derivation coverage: FTS is the explicit no-embedder fallback;
+// {§persistent-search-index}, {§find-semantic-default-top-k}. FTS is the
+// explicit no-embedder fallback;
 // when vectors exist, exhaustive cosine ranking has no lexical eligibility gate.
 
 import test from "node:test";
@@ -47,7 +48,7 @@ const searchCandidates = async (db: Db, workspaceId: number): Promise<Array<{ ke
     return rows.map(({ pathname, deep_hash }) => ({ key: pathname, deepHash: deep_hash }));
 };
 
-test("[#186-fts] manifest-add indexes body content into derivation_fts; re-indexes on change", async () => {
+test("persistent-index maintenance indexes body content into derivation_fts and re-indexes on change", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `fts-${crypto.randomUUID()}`);
@@ -91,7 +92,7 @@ test("semantic artifacts index the exact READ body rather than a hidden mimetype
     } finally { db.close(); }
 });
 
-test("[#186-cosine] the cosine SqlRite function ranks canonical wire vectors", async () => {
+test("the cosine SqlRite function ranks canonical wire vectors", async () => {
     const db = await openMigrated();
     try {
         const blob = (arr: number[]) => Buffer.from(EmbeddingVector.encode(arr));
@@ -106,7 +107,7 @@ test("[#186-cosine] the cosine SqlRite function ranks canonical wire vectors", a
     } finally { db.close(); }
 });
 
-test("[#186-cosine-recall] semantic_rank searches every vector without a lexical gate", async () => {
+test("semantic_rank searches every vector without a lexical gate", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `fusion-${crypto.randomUUID()}`);

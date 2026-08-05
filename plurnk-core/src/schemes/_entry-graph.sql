@@ -1,4 +1,4 @@
--- {§relation-indexed-dialects} symbol_defs/refs population + @< / @> / @
+-- {§graph-relations} symbol_defs/refs population + @< / @> / @
 -- resolution. Populated delete-then-insert per readable derivation by SearchIndex;
 -- queried by the FIND `graph` dialect via EntryGraph. Traversal is kind-agnostic
 -- (every ref is an edge; `kind` is edge metadata, never filtered here). 1-hop —
@@ -48,8 +48,8 @@ SET state = 'complete', disposition = $disposition, reason = $reason
 WHERE id = $derivation_id;
 
 -- PREP: graph_referrers_candidates
--- @<sym — candidate resources that reference sym, with each reference's line
--- (#286: a matcher resolves to (file, span) — one item per reference occurrence).
+-- @<sym — candidate resources that reference sym, with each reference's line.
+-- {§matcher-selection-signal}
 WITH candidates AS (
     SELECT json_extract(value, '$.key') AS key,
            json_extract(value, '$.deepHash') AS deep_hash
@@ -65,7 +65,7 @@ ORDER BY c.key, r.line;
 -- PREP: graph_defs_candidates
 -- Resolve a name → the defining candidate keys + def span. Serves
 -- @>'s target resolution and @'s neighborhood def lookup. end_line falls back to line
--- when a def has no end (#286: the symbol's line..end_line is its (file, span)).
+-- when a definition has no end. {§matcher-selection-signal}
 WITH candidates AS (
     SELECT json_extract(value, '$.key') AS key,
            json_extract(value, '$.deepHash') AS deep_hash
@@ -91,8 +91,9 @@ JOIN candidates c ON c.deep_hash = x.deep_hash
 WHERE d.name = $name;
 
 -- PREP: graph_refs_from_source
--- @>sym step — the target names sym's def references (its own ref rows, keyed
--- by the source def's full qualified path = the @> join semantics from #186).
+-- @>sym step — the target names referenced by sym's definition, whose own
+-- reference rows key on the source definition's fully qualified container.
+-- {§graph-relations}
 SELECT DISTINCT name FROM symbol_refs
 WHERE derivation_id = $derivation_id AND container IS $container;
 
