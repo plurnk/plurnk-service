@@ -711,7 +711,8 @@ plugin discovery is the last protocol-extension seam.
 The ANTLR grammar always defines and validates the PLURNK language. Separately,
 an operator may configure `PLURNK_PROVIDERS_GBNF_<alias>` for a local
 llama-server. The provider must advertise GBNF transport and satisfy a forcing
-probe (`root ::= "PLURNK-RAILS-LIVE"`) or boot fails. The setting is resolved
+probe whose pre-projection sentence is one reasoning enclosure followed by the
+`PLURNK-RAILS-LIVE` sentinel, or boot fails. The setting is resolved
 per alias and is unset by default. Configuring it on a cloud or endpoint-managed
 provider is an error, not a request for best-effort filtering.
 Runtime injection uses the provider's registered alias, falling back only to
