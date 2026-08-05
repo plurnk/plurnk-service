@@ -1,12 +1,11 @@
-// #376 — the seam's readLog honors its workerId filter: two workers, one row each, each read returns
-// ONLY its own worker's rows (the worker is the isolation boundary, {§machine-processes}). Pinned after a
-// client report of workerId being ignored live — the in-tree seam was exonerated by this exact test.
+// {§methods-log-read}, {§machine-processes-model-worker-readable}: readLog selects one
+// ownership-verified worker without mixing sibling journal rows.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { rpcCall, connect, withDaemon } from "./_rpc.ts";
 import Dsl from "./dsl.ts";
 
-test("seam readLog honors the workerId filter — per-worker isolation of the journal read (#376)", async () => {
+test("{§methods-log-read}: readLog honors per-worker journal isolation", async () => {
     await withDaemon(null, async (_db, daemon, addr) => {
         const ws = await connect(addr);
         try {
