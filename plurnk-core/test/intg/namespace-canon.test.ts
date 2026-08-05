@@ -82,7 +82,7 @@ test("the storage fixpoint: every file-class row is its own canon", async () => 
     } finally { await db.close(); await rm(root, { recursive: true, force: true }); }
 });
 
-test("the log row: address COLUMNS speak canon, tx keeps the model's verbatim spelling — both halves of the line", async () => {
+test("the log row: address columns speak canon while tx retains non-sensitive authored spelling", async () => {
     const { root, db, workspaceId, ctx } = await setup();
     try {
         await writeFile(join(root, "readme.md"), "hello\n");
@@ -102,7 +102,7 @@ test("the log row: address COLUMNS speak canon, tx keeps the model's verbatim sp
         assert.equal(r.status, 200, "the ugly spelling resolves");
         const row = await db.test_last_log_row.get<{ pathname: string | null; tx: string }>({ loop_id: loopId });
         assert.equal(row?.pathname, "readme.md", "the engine-authored pathname COLUMN carries wire canon");
-        assert.ok(row?.tx.includes("/./readme.md"), "tx keeps the model's own spelling verbatim — history is never rewritten");
+        assert.ok(row?.tx.includes("/./readme.md"), "the durable projection retains non-sensitive authored spelling");
     } finally { await db.close(); await rm(root, { recursive: true, force: true }); }
 });
 
