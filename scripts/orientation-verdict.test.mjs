@@ -4,10 +4,10 @@ import { evaluateOrientation } from "./orientation-verdict.mjs";
 
 const record = {
     schemaVersion: 1,
-    response: `The daemon in plurnk-core/src/service.ts orchestrates the platform, while
-plurnk-contracts/README.md owns the DSL and repo/plurnk/README.md documents the client.
-The repository topology is a monorepo plus outside repositories. The current stabilization and
-acceptance goal is tracked in #583. A missing live issue feed is a remaining context gap.`,
+    response: `The daemon in plurnk-service/plurnk-core/src/service.ts orchestrates the platform, while
+plurnk-service/plurnk-contracts/README.md owns the DSL and outside-client/README.md documents the client.
+The repository topology is a monorepo plus outside repositories. No canonical forge issue feed
+was available, so the current stabilization goal is unverified; that missing context limits confidence.`,
     finalStatus: 200,
     hitMaxTurns: false,
     timedOut: false,
@@ -16,9 +16,9 @@ acceptance goal is tracked in #583. A missing live issue feed is a remaining con
         turn: 1,
         ops: [
             { op: "FIND", target: "**", status: 200 },
-            { op: "READ", target: "plurnk-core/src/service.ts", status: 200 },
-            { op: "READ", target: "plurnk-contracts/README.md", status: 200 },
-            { op: "READ", target: "repo/plurnk/README.md", status: 200 },
+            { op: "READ", target: "plurnk-service/plurnk-core/src/service.ts", status: 200 },
+            { op: "READ", target: "plurnk-service/plurnk-contracts/README.md", status: 200 },
+            { op: "READ", target: "outside-client/README.md", status: 200 },
         ],
     }],
 };
@@ -53,6 +53,19 @@ test("orientation verdict rejects a plausible answer that did not inspect its ev
     assert.ok(verdict.failed.includes("evidence"));
 });
 
+test("orientation verdict does not count archived issue URLs as inspected repository evidence", () => {
+    const archaeological = {
+        ...record,
+        response: record.response
+            .replace("plurnk-service/plurnk-core/src/service.ts", "https://github.com/plurnk/plurnk-service/issues/583")
+            .replace("plurnk-service/plurnk-contracts/README.md", "https://github.com/plurnk/plurnk-service/issues/585")
+            .replace("outside-client/README.md", "https://github.com/plurnk/plurnk-service/issues/621"),
+    };
+    const verdict = evaluateOrientation(archaeological, digest);
+    assert.equal(verdict.pass, false);
+    assert.ok(verdict.failed.includes("evidence"));
+});
+
 test("orientation verdict rejects failed documentation publication independently of model success", () => {
     const broken = structuredClone(digest);
     broken.log_entries.push({ turn_id: 1, op: "EDIT", status_rx: 400 });
@@ -69,8 +82,14 @@ test("orientation verdict rejects timeout, missing coverage, and empty delivery"
     assert.ok(verdict.failed.includes("coverage"));
 });
 
-test("orientation verdict rejects a generic stabilization narrative that misses the live housekeeping epic", () => {
-    const stale = { ...record, response: record.response.replace("#583", "the README") };
+test("orientation verdict rejects a report that omits current-forge evidence availability", () => {
+    const stale = {
+        ...record,
+        response: record.response.replace(
+            /No canonical forge issue feed[\s\S]*?limits confidence\./,
+            "The architecture appears stable.",
+        ),
+    };
     const verdict = evaluateOrientation(stale, digest);
     assert.equal(verdict.pass, false);
     assert.ok(verdict.failed.includes("coverage"));

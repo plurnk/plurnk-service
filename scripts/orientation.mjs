@@ -20,9 +20,17 @@ const operatorEnv = resolve(homedir(), ".plurnk", ".env");
 if (existsSync(operatorEnv)) process.loadEnvFile(operatorEnv);
 process.loadEnvFile(resolve(serviceRoot, "plurnk-meta", ".env.defaults"));
 
-const projectRoot = resolve(process.env.PLURNK_ACCEPTANCE_PROJECT_ROOT ?? resolve(serviceRoot, ".."));
-const clientRoot = resolve(process.env.PLURNK_CLIENT_CHECKOUT ?? resolve(projectRoot, "plurnk"));
-const benchmarksRoot = resolve(process.env.PLURNK_BENCHMARKS ?? resolve(projectRoot, "..", "benchmarks"));
+const projectCheckout = process.env.PLURNK_ACCEPTANCE_PROJECT_ROOT?.trim();
+if (!projectCheckout) {
+    throw new Error("PLURNK_ACCEPTANCE_PROJECT_ROOT must name the assembled open-project forest");
+}
+const projectRoot = resolve(projectCheckout);
+const clientCheckout = process.env.PLURNK_CLIENT_CHECKOUT?.trim();
+if (!clientCheckout) {
+    throw new Error("PLURNK_CLIENT_CHECKOUT must name the outside open-client checkout");
+}
+const clientRoot = resolve(clientCheckout);
+const benchmarksRoot = resolve(process.env.PLURNK_BENCHMARKS ?? resolve(projectRoot, "benchmarks"));
 const timeout = process.env.PLURNK_ACCEPTANCE_TIMEOUT;
 if (timeout === undefined) throw new Error("PLURNK_ACCEPTANCE_TIMEOUT is not configured");
 const prompt = readFileSync(resolve(import.meta.dirname, "fixtures", "orientation-prompt.md"), "utf8").trim();

@@ -9,7 +9,7 @@ const flattenOps = (record) =>
         : [];
 
 const evidenceNames = (response) => {
-    const matches = String(response).matchAll(/(?:^|[\s`("'[])((?:[A-Za-z0-9_.@-]+\/)+[A-Za-z0-9_.@-]+|AGENTS\.md|README\.md|package\.json|#[0-9]+)(?=$|[\s`)"'\],.:;])/gm);
+    const matches = String(response).matchAll(/(?:^|[\s`("'[])((?:[A-Za-z0-9_.@-]+\/)+[A-Za-z0-9_.@-]+|AGENTS\.md|README\.md|package\.json)(?=$|[\s`)"'\],.:;])/gm);
     return [...new Set([...matches].map((match) => match[1]))];
 };
 
@@ -19,8 +19,7 @@ const inspectedEvidence = (ops, evidence) => {
         .map((op) => String(op?.target ?? ""));
     return evidence.filter((name) => targets.some((target) =>
         target.endsWith(name)
-        || target.endsWith(`/${name}`)
-        || (name.startsWith("#") && target.includes("github")),
+        || target.endsWith(`/${name}`),
     ));
 };
 
@@ -86,16 +85,19 @@ export const evaluateOrientation = (record, digest) => {
                 ["grammar", "dsl"],
                 ["client", "ag-ui", "agui"],
                 ["monorepo", "topology", "repository", "repositories"],
-                ["stabil", "housekeeping", "acceptance"],
+                ["goal", "stabil", "housekeeping", "acceptance"],
+                ["forge"],
+                ["issue"],
+                ["unavailable", "unverified"],
                 ["missing", "contradiction", "unclear", "gap", "risk"],
-            ]) && response.includes("#583"),
+            ]),
             detail: {
                 required: [
                     "daemon/service",
                     "grammar/DSL",
                     "client/AG-UI",
                     "repository topology",
-                    "current stabilization goal (#583)",
+                    "current-work goal or its unavailable forge evidence",
                     "missing or contradictory context",
                 ],
             },
