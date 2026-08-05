@@ -193,6 +193,7 @@ never enters the absence channel.
 | SSE parser/transfer failure after acquisition              | `102` initial; terminal `502`                    |
 | Multi-statement HTTP edit batch                            | `409` (`non-atomic-edit-batch`)                  |
 | Invalid target, channel, line edit, or URL userinfo        | `400` with the corresponding stable Problem kind |
+| Non-corresponding 304                                      | `502` (`fetch-failed`)                           |
 | Direct network or acquisition exception                    | `502` (`fetch-failed`)                           |
 | Direct or prepared HTML render exception                   | `502` (`render-failed`)                          |
 | Direct or prepared projection exception                    | `500` (`projection-failed`)                      |
@@ -339,9 +340,20 @@ stamp. A representation is fresh only while both origin lifetime and operator
 ceiling permit it. Unknown cache extensions are inert. Stale content is never
 served, so `must-revalidate` requires no separate path.
 
-Outside the fresh window, direct READ sends stored ETag or Last-Modified
-validators. A successful 304 restores the stored channels without rendering
-and updates the header under the following ownership rule; any other response
+Outside the fresh window, direct READ sends a stored ETag or Last-Modified only
+when that field is singular and syntactically valid. A 304 can restore the
+stored channels only when its validator corresponds to the nominated stored
+representation:
+
+| 304 validator                                         | Correspondence requirement                  |
+| ----------------------------------------------------- | ------------------------------------------- |
+| Strong ETag                                           | Same stored strong ETag                     |
+| Weak ETag                                             | Same opaque tag under weak comparison       |
+| No ETag; Last-Modified                                | Same valid stored Last-Modified instant     |
+| Missing, malformed, unsolicited, or non-corresponding | Invalid acquisition; `502` (`fetch-failed`) |
+
+A corresponding 304 restores the stored channels without rendering and
+updates the header under the following ownership rule; any other response
 replaces the channels:
 
 | 304 metadata class                                                    | Stored-header action                                    |

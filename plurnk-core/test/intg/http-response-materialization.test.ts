@@ -237,7 +237,11 @@ test("an empty direct GET transitions active → closed and remains reusable thr
             }
             if (requests === 2) {
                 assert.equal(new Headers(init?.headers).get("if-none-match"), '"empty-v1"');
-                return new Response(null, { status: 304, statusText: "Not Modified" });
+                return new Response(null, {
+                    status: 304,
+                    statusText: "Not Modified",
+                    headers: { etag: '"empty-v1"' },
+                });
             }
             throw new Error("a fresh completed representation must not perform another request");
         };

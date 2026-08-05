@@ -1740,7 +1740,11 @@ test("READ revalidation: prior ETag → If-None-Match → 304 serves cached proj
     let seenINM = "";
     const probe = async (_url: string | URL | Request, init?: RequestInit) => {
         seenINM = new Headers(init?.headers).get("if-none-match") ?? "";
-        return new Response(null, { status: 304, statusText: "Not Modified" });
+        return new Response(null, {
+            status: 304,
+            statusText: "Not Modified",
+            headers: { etag: '"v1"' },
+        });
     };
     await withFetch(probe as typeof fetch, async () => {
         const r = await new Http(browser).read(readStmt(urlTarget("https://example.com/p", "/p")), ctx);
@@ -1753,6 +1757,147 @@ test("READ revalidation: prior ETag → If-None-Match → 304 serves cached proj
     assert.equal(inspect().chunks.find((c) => c.channel === "html")?.chunk, "<html>cached page</html>");
     assert.match(inspect().closed?.summary ?? "", /revalidated 304/); // honest in the close summary
 });
+
+for (const {
+    name,
+    storedValidator,
+    responseHeaders,
+    expectedConditional,
+    valid,
+} of [
+    {
+        name: "the same strong ETag identifies the stored response",
+        storedValidator: 'etag: "v1"',
+        responseHeaders: { etag: '"v1"' },
+        expectedConditional: ["if-none-match", '"v1"'],
+        valid: true,
+    },
+    {
+        name: "a different strong ETag cannot certify the stored response",
+        storedValidator: 'etag: "v1"',
+        responseHeaders: { etag: '"v2"' },
+        expectedConditional: ["if-none-match", '"v1"'],
+        valid: false,
+    },
+    {
+        name: "a weak response ETag can weakly identify a stored strong tag",
+        storedValidator: 'etag: "v1"',
+        responseHeaders: { etag: 'W/"v1"' },
+        expectedConditional: ["if-none-match", '"v1"'],
+        valid: true,
+    },
+    {
+        name: "a strong response ETag cannot relabel a weak stored tag",
+        storedValidator: 'etag: W/"v1"',
+        responseHeaders: { etag: '"v1"' },
+        expectedConditional: ["if-none-match", 'W/"v1"'],
+        valid: false,
+    },
+    {
+        name: "the same weak ETag identifies the stored response",
+        storedValidator: 'etag: W/"v1"',
+        responseHeaders: { etag: 'W/"v1"' },
+        expectedConditional: ["if-none-match", 'W/"v1"'],
+        valid: true,
+    },
+    {
+        name: "the same Last-Modified value identifies the stored response",
+        storedValidator: "last-modified: Tue, 15 Nov 1994 12:45:26 GMT",
+        responseHeaders: { "last-modified": "Tue, 15 Nov 1994 12:45:26 GMT" },
+        expectedConditional: ["if-modified-since", "Tue, 15 Nov 1994 12:45:26 GMT"],
+        valid: true,
+    },
+    {
+        name: "an equivalent obsolete Last-Modified date identifies the stored response",
+        storedValidator: "last-modified: Tue, 15 Nov 1994 12:45:26 GMT",
+        responseHeaders: { "last-modified": "Tue Nov 15 12:45:26 1994" },
+        expectedConditional: ["if-modified-since", "Tue, 15 Nov 1994 12:45:26 GMT"],
+        valid: true,
+    },
+    {
+        name: "a different Last-Modified value cannot certify the stored response",
+        storedValidator: "last-modified: Tue, 15 Nov 1994 12:45:26 GMT",
+        responseHeaders: { "last-modified": "Wed, 16 Nov 1994 12:45:26 GMT" },
+        expectedConditional: ["if-modified-since", "Tue, 15 Nov 1994 12:45:26 GMT"],
+        valid: false,
+    },
+    {
+        name: "matching malformed Last-Modified values cannot certify the stored response",
+        storedValidator: "last-modified: 0",
+        responseHeaders: { "last-modified": "0" },
+        expectedConditional: null,
+        valid: false,
+    },
+    {
+        name: "matching malformed ETags cannot certify the stored response",
+        storedValidator: "etag: not-an-entity-tag",
+        responseHeaders: { etag: "not-an-entity-tag" },
+        expectedConditional: null,
+        valid: false,
+    },
+    {
+        name: "a missing response validator cannot certify an ETag-nominated response",
+        storedValidator: 'etag: "v1"',
+        responseHeaders: {},
+        expectedConditional: ["if-none-match", '"v1"'],
+        valid: false,
+    },
+    {
+        name: "a malformed response ETag cannot certify the stored response",
+        storedValidator: 'etag: "v1"',
+        responseHeaders: { etag: "not-an-entity-tag" },
+        expectedConditional: ["if-none-match", '"v1"'],
+        valid: false,
+    },
+    {
+        name: "an unsolicited validator-less 304 cannot certify a stored response",
+        storedValidator: null,
+        responseHeaders: {},
+        expectedConditional: null,
+        valid: false,
+    },
+] as const) {
+    test(`304 correspondence: ${name}`, async () => {
+        const header = stampedHeader(
+            500_000,
+            storedValidator === null ? "" : `\n${storedValidator}`,
+        );
+        const { ctx, inspect } = makeCtx(priorEntry("cached", "text/plain", header));
+        let requests = 0;
+        await withTtl("0", async () => {
+            await withFetch(async (_url, init) => {
+                requests += 1;
+                const sent = new Headers(init?.headers);
+                if (expectedConditional === null) {
+                    assert.equal(sent.has("if-none-match"), false);
+                    assert.equal(sent.has("if-modified-since"), false);
+                } else {
+                    assert.equal(sent.get(expectedConditional[0]), expectedConditional[1]);
+                }
+                return new Response(null, { status: 304, headers: responseHeaders });
+            }, async () => {
+                const result = await new Http().read(
+                    readStmt(urlTarget("https://example.com/correspondence", "/correspondence")),
+                    ctx,
+                );
+                assert.equal(result.status, valid ? 102 : 502);
+                if (!valid) {
+                    assert.equal(
+                        result.problem?.type,
+                        "https://problems.plurnk.dev/scheme/http/fetch-failed",
+                    );
+                    assert.match(result.problem?.detail ?? "", /304/);
+                }
+            });
+        });
+        assert.equal(requests, 1, "an invalid 304 never triggers an implicit retry");
+        const body = inspect().chunks
+            .filter(({ channel }) => channel === "body")
+            .map(({ chunk }) => chunk)
+            .join("");
+        assert.equal(body, valid ? "cached" : "");
+    });
+}
 
 test("READ revalidation: 200 (changed) re-fetches + streams normally despite a prior entry", async () => {
     const { ctx, inspect } = makeCtx(priorEntry("old", "text/plain", stampedHeader(500_000, '\netag: "v1"')));
@@ -1919,7 +2064,7 @@ test("cache variant: a 304 that introduces Vary retires default reuse", async ()
     await withTtl("0", async () => {
         await withFetch(async () => new Response(null, {
             status: 304,
-            headers: { vary: "Accept-Language" },
+            headers: { etag: '"v1"', vary: "Accept-Language" },
         }), async () => {
             await new Http().read(readStmt(urlTarget("https://example.com/variant", "/variant")), ctx);
         });
@@ -2428,7 +2573,11 @@ test("READ revalidation: 304 restores a completed empty representation", async (
     await withTtl("60000", async () => {
         await withFetch((async (_url: string | URL | Request, init?: RequestInit) => {
             seenINM = new Headers(init?.headers).get("if-none-match") ?? "";
-            return new Response(null, { status: 304, statusText: "Not Modified" });
+            return new Response(null, {
+                status: 304,
+                statusText: "Not Modified",
+                headers: { etag: '"empty"' },
+            });
         }) as typeof fetch, async () => {
             await new Http().read(readStmt(urlTarget("https://example.com/empty", "/empty")), ctx);
         });
@@ -2488,7 +2637,10 @@ test("TTL: an unmarked authored entry never supplies GET freshness or validators
 test("TTL: explicit 0 disables the window — fresh stamp still revalidates", async () => {
     const { ctx } = makeCtx(priorEntry("cached", "text/plain", stampedHeader(1000, "\netag: \"v1\"")));
     let fetched = false;
-    const probe = async () => { fetched = true; return new Response(null, { status: 304 }); };
+    const probe = async () => {
+        fetched = true;
+        return new Response(null, { status: 304, headers: { etag: '"v1"' } });
+    };
     await withTtl("0", async () => {
         await withFetch(probe as typeof fetch, async () => {
             await new Http().read(readStmt(urlTarget("https://example.com/p", "/p")), ctx);
@@ -2518,7 +2670,10 @@ test("stamp: #writeHeader materializes x-plurnk-fetched-at; 304 re-serve refresh
     const old = stampedHeader(500_000, "\netag: \"v1\"");
     const { ctx: ctx2, inspect: inspect2 } = makeCtx(priorEntry("cached", "text/plain", old));
     await withTtl("0", async () => {
-        await withFetch((async () => new Response(null, { status: 304 })) as unknown as typeof fetch, async () => {
+        await withFetch((async () => new Response(null, {
+            status: 304,
+            headers: { etag: '"v1"' },
+        })) as unknown as typeof fetch, async () => {
             await new Http().read(readStmt(urlTarget("https://example.com/s", "/s")), ctx2);
         });
     });

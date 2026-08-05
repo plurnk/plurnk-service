@@ -65,6 +65,11 @@ interface HeaderField {
     readonly line: string;
 }
 
+interface EntityTag {
+    readonly weak: boolean;
+    readonly opaque: string;
+}
+
 interface StoredCachePolicy {
     readonly noStore: boolean;
     readonly noCache: boolean;
@@ -119,6 +124,93 @@ const lastHeaderValue = (header: string, name: string): string | undefined => {
         return line.slice(colon + 1).trim();
     }
     return undefined;
+};
+
+const entityTag = (value: string): EntityTag | null => {
+    const match = /^(W\/)?"([\x21\x23-\x7e\x80-\xff]*)"$/.exec(value);
+    return match === null
+        ? null
+        : { weak: match[1] !== undefined, opaque: match[2]! };
+};
+
+const MONTHS: readonly string[] = [
+    "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+    "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+];
+const WEEKDAYS: readonly string[] = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const IMF_FIXDATE = /^(Sun|Mon|Tue|Wed|Thu|Fri|Sat), ([0-9]{2}) (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) ([0-9]{4}) ([0-9]{2}):([0-9]{2}):([0-9]{2}) GMT$/;
+const RFC850_DATE = /^(Sunday|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday), ([0-9]{2})-(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)-([0-9]{2}) ([0-9]{2}):([0-9]{2}):([0-9]{2}) GMT$/;
+const ASCTIME_DATE = /^(Sun|Mon|Tue|Wed|Thu|Fri|Sat) (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) (?: ([0-9])|([0-9]{2})) ([0-9]{2}):([0-9]{2}):([0-9]{2}) ([0-9]{4})$/;
+
+const utcHttpDate = (
+    weekday: string,
+    day: string,
+    month: string,
+    year: number,
+    hour: string,
+    minute: string,
+    second: string,
+): number | null => {
+    const monthIndex = MONTHS.indexOf(month);
+    const weekdayIndex = WEEKDAYS.indexOf(weekday.slice(0, 3));
+    const numericDay = Number(day);
+    const numericHour = Number(hour);
+    const numericMinute = Number(minute);
+    const numericSecond = Number(second);
+    if (monthIndex < 0 || weekdayIndex < 0) return null;
+    const date = new Date(0);
+    date.setUTCFullYear(year, monthIndex, numericDay);
+    date.setUTCHours(numericHour, numericMinute, numericSecond, 0);
+    return date.getUTCFullYear() === year
+        && date.getUTCMonth() === monthIndex
+        && date.getUTCDate() === numericDay
+        && date.getUTCHours() === numericHour
+        && date.getUTCMinutes() === numericMinute
+        && date.getUTCSeconds() === numericSecond
+        && date.getUTCDay() === weekdayIndex
+        ? date.getTime()
+        : null;
+};
+
+const httpDate = (value: string, now = Date.now()): number | null => {
+    const preferred = IMF_FIXDATE.exec(value);
+    if (preferred !== null) {
+        return utcHttpDate(
+            preferred[1]!,
+            preferred[2]!,
+            preferred[3]!,
+            Number(preferred[4]),
+            preferred[5]!,
+            preferred[6]!,
+            preferred[7]!,
+        );
+    }
+    const rfc850 = RFC850_DATE.exec(value);
+    if (rfc850 !== null) {
+        let year = 2000 + Number(rfc850[4]);
+        if (year > new Date(now).getUTCFullYear() + 50) year -= 100;
+        return utcHttpDate(
+            rfc850[1]!,
+            rfc850[2]!,
+            rfc850[3]!,
+            year,
+            rfc850[5]!,
+            rfc850[6]!,
+            rfc850[7]!,
+        );
+    }
+    const asctime = ASCTIME_DATE.exec(value);
+    return asctime === null
+        ? null
+        : utcHttpDate(
+            asctime[1]!,
+            asctime[3] ?? asctime[4]!,
+            asctime[2]!,
+            Number(asctime[8]),
+            asctime[5]!,
+            asctime[6]!,
+            asctime[7]!,
+        );
 };
 
 // The package-shipped model teaching is loaded verbatim and fails hard if absent.
@@ -491,9 +583,13 @@ export default class Http implements SchemeHandler {
                 redirect: "follow",
             });
 
-            // {§revalidation} A 304 restores the GET representation into the
-            // freshly seeded channels and remains an ordinary streaming READ.
+            // {§revalidation} A corresponding 304 restores the nominated GET
+            // representation into the freshly seeded channels and remains an
+            // ordinary streaming READ.
             if (cached !== undefined && response.status === 304) {
+                if (!Http.#revalidationCorresponds(cached.header, response.headers)) {
+                    throw new Error("HTTP 304 did not identify the stored representation nominated for revalidation.");
+                }
                 await subscription.notifyChunk(
                     HEADER,
                     Http.#refreshAfter304(
@@ -910,17 +1006,17 @@ export default class Http implements SchemeHandler {
             const expiresValues = Http.#originValues(fields, "expires");
             if (expiresValues.length > 0) {
                 const expires = expiresValues.length === 1
-                    ? Date.parse(expiresValues[0]!)
-                    : Number.NaN;
+                    ? httpDate(expiresValues[0]!)
+                    : null;
                 const fetchedAt = Http.#fetchedAt(header);
-                if (Number.isNaN(expires) || fetchedAt === undefined) {
+                if (expires === null || fetchedAt === undefined) {
                     freshnessLifetimeMs = 0;
                 } else {
                     const dateValues = Http.#originValues(fields, "date");
                     const parsedDate = dateValues.length === 1
-                        ? Date.parse(dateValues[0]!)
-                        : Number.NaN;
-                    const generatedAt = Number.isNaN(parsedDate) ? fetchedAt : parsedDate;
+                        ? httpDate(dateValues[0]!)
+                        : null;
+                    const generatedAt = parsedDate ?? fetchedAt;
                     freshnessLifetimeMs = Math.max(0, expires - generatedAt);
                 }
             }
@@ -935,8 +1031,8 @@ export default class Http implements SchemeHandler {
     static #currentAge(header: string, fetchedAt: number, now: number): number {
         const fields = Http.#originFields(header);
         const dateValues = Http.#originValues(fields, "date");
-        const date = dateValues.length === 1 ? Date.parse(dateValues[0]!) : Number.NaN;
-        const apparentAge = Number.isNaN(date) ? 0 : Math.max(0, fetchedAt - date);
+        const date = dateValues.length === 1 ? httpDate(dateValues[0]!) : null;
+        const apparentAge = date === null ? 0 : Math.max(0, fetchedAt - date);
         const ageMember = Http.#originValues(fields, "age").flatMap(splitHttpList)[0];
         const ageValue = deltaMilliseconds(ageMember) ?? 0;
         return Math.max(apparentAge, ageValue) + Math.max(0, now - fetchedAt);
@@ -1019,16 +1115,48 @@ export default class Http implements SchemeHandler {
         ].join("\n");
     }
 
+    static #revalidationCorresponds(priorHeader: string, responseHeaders: Headers): boolean {
+        const fields = Http.#originFields(priorHeader);
+        const responseTagValue = responseHeaders.get("etag");
+        if (responseTagValue !== null) {
+            const storedTagValues = Http.#originValues(fields, "etag");
+            const responseTag = entityTag(responseTagValue);
+            const storedTag = storedTagValues.length === 1
+                ? entityTag(storedTagValues[0]!)
+                : null;
+            if (responseTag === null || storedTag === null) return false;
+            return responseTag.opaque === storedTag.opaque
+                && (responseTag.weak || !storedTag.weak);
+        }
+
+        const responseModifiedValue = responseHeaders.get("last-modified");
+        const storedModifiedValues = Http.#originValues(fields, "last-modified");
+        const responseModified = responseModifiedValue === null
+            ? null
+            : httpDate(responseModifiedValue);
+        const storedModified = storedModifiedValues.length === 1
+            ? httpDate(storedModifiedValues[0]!)
+            : null;
+        return responseModified !== null
+            && storedModified !== null
+            && responseModified === storedModified;
+    }
+
     // Conditional-request headers from the prior fetch's stored response headers
     // (the HEADER channel text #writeHeader wrote): ETag → If-None-Match,
     // Last-Modified → If-Modified-Since. Empty when neither is present — the
     // origin then just 200s with a full body, which is correct.
     static #validators(priorHeader: string): Array<[string, string]> {
+        const fields = Http.#originFields(priorHeader);
         const out: Array<[string, string]> = [];
-        const etag = /^etag:[ \t]*(.+)$/im.exec(priorHeader);
-        if (etag !== null) out.push(["If-None-Match", etag[1].trim()]);
-        const lastModified = /^last-modified:[ \t]*(.+)$/im.exec(priorHeader);
-        if (lastModified !== null) out.push(["If-Modified-Since", lastModified[1].trim()]);
+        const etags = Http.#originValues(fields, "etag");
+        if (etags.length === 1 && entityTag(etags[0]!) !== null) {
+            out.push(["If-None-Match", etags[0]!]);
+        }
+        const lastModified = Http.#originValues(fields, "last-modified");
+        if (lastModified.length === 1 && httpDate(lastModified[0]!) !== null) {
+            out.push(["If-Modified-Since", lastModified[0]!]);
+        }
         return out;
     }
 
