@@ -509,13 +509,8 @@ export default class EntryFind {
                 ), 0);
             }
         }
-        // {§find-count-not-contents} (#418) — a repo-scale FIND(**) over a 19k-entry workspace can't
-        // enumerate: materializing every match overflows the window (a clean grind should not be a
-        // crash-and-recover). Over the render budget, the result is a COUNT + narrow steer instead
-        // of the rows — the model sees "N match, too broad, narrow it" and adapts. INDEPENDENT of
-        // the window size: even a 256k window shouldn't render a whole repo's catalog into a turn.
-        // The meta line's count + itemsTokenTotal still self-describe the hit set. Budget is a knob
-        // (reader-declared); 0/unset = no gate (small workspaces enumerate as before).
+        // {§find-count-not-contents}: over the independent render limit, retain
+        // count and aggregate weight but never the enumerated rows. Zero disables.
         const budget = Number.parseInt(process.env.PLURNK_SERVICE_FIND_MAX_MATCHES ?? "0", 10);
         if (budget > 0 && results.length > budget) {
             const noun = results.some((item) => item.items !== undefined) ? "catalog items" : "entries";

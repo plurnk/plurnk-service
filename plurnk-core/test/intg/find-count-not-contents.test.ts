@@ -1,7 +1,5 @@
-// {§find-count-not-contents} #418 — a FIND whose match set exceeds the render budget returns a
-// COUNT + narrow-your-query steer instead of enumerating every match (a repo-scale FIND(**) over
-// a huge workspace grinds clean, not crash-and-recover). The meta line still self-describes the
-// full count.
+// {§find-count-not-contents}: oversized selections retain their count and weight
+// without enumerating rows.
 import test from "node:test";
 import assert from "node:assert/strict";
 import EntryFind from "../../src/schemes/_entry-find.ts";
@@ -15,7 +13,7 @@ const findAll = (): FindStatement => ({
     lineMarker: null, body: null, position: { line: 1, column: 1 },
 });
 
-test("over the budget, FIND returns a count + narrow steer, not the enumerated rows (#418)", async () => {
+test("{§find-count-not-contents}: an oversized FIND returns count and steer without rows", async () => {
     const prev = process.env.PLURNK_SERVICE_FIND_MAX_MATCHES;
     process.env.PLURNK_SERVICE_FIND_MAX_MATCHES = "3";
     const db = await openMigrated();
@@ -39,7 +37,7 @@ test("over the budget, FIND returns a count + narrow steer, not the enumerated r
     }
 });
 
-test("under the budget, FIND enumerates the catalog rows as before (#418)", async () => {
+test("{§find-count-not-contents}: a fitting FIND enumerates its catalog rows", async () => {
     const prev = process.env.PLURNK_SERVICE_FIND_MAX_MATCHES;
     process.env.PLURNK_SERVICE_FIND_MAX_MATCHES = "500";
     const db = await openMigrated();
