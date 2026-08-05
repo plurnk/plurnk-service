@@ -1,7 +1,5 @@
-// {§exec-entry-sink} (#340) — the executor's entry() materialization request: the consumer creates
-// the entry (upsert, tags UNIONED), and the AMBIENCE announces it — one EDIT row in the reserved
-// plurnk worker's log (the fs-fiction pattern) that env-delta folds into every worker's next packet.
-// A stub runtime drives the REAL dispatch path; nothing is mocked below the executor.
+// {§exec-entry-sink} — a stub runtime drives the real consumer-owned materialization
+// and ambience path; nothing below the executor is mocked.
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -40,7 +38,7 @@ const wire = async (opts?: {
     entryFailure?: boolean;
 }) => {
     // testExecutors() is a module singleton, so each wire() must claim a DISTINCT runtime tag —
-    // "one name, one owner" (#289) rejects a second registration of the same tag.
+    // {§executor-runtime-declaration}: one canonical runtime tag has one owner.
     const tag = opts?.tag ?? "stubsearch";
     const db = await openMigrated();
     const schemes = new SchemeRegistry(opts?.fetchWeb ? { fetchWeb: opts.fetchWeb } : undefined);
@@ -414,8 +412,8 @@ test("{§exec-entry-sink}: content:null materializes a live page and prunes an u
         assert.match(body?.content ?? "", /fetched live turkeys/, "the projected body carries the fetched content, not the raw markup alone");
         assert.equal(browserFallbacks, 0, "a useful byte-response projection never invokes browser rendering");
 
-        // The unavailable URL: the fake returned null, so the sink rejected and no HTTP entry materialized.
-        // Search discovery membership is independently preserved by the search executor (#596).
+        // {§exec-entry-sink} {§web-search-retrieval}: the sink rejects an unavailable URL,
+        // creates no HTTP entry, and lets the search executor prune that candidate.
         const dead = await db.test_entries_by_pathname.get<{ id: number }>({ pathname: "/example.org/dead" });
         assert.equal(dead, undefined, "a null fetch rejects the sink so no page body materializes");
     } finally { await quiesceExecs(schemes); await schemes.close(); await db.close(); }
@@ -492,7 +490,7 @@ test("entry(content:null) admits only HTTP acquisition targets", async () => {
     } finally { await quiesceExecs(schemes); await schemes.close(); await db.close(); }
 });
 
-test("#596: an absent byte-response projection renders once, then stores only useful fallback markdown", async () => {
+test("{§html-materialization}: an absent byte projection renders once and stores useful fallback Markdown", async () => {
     let browserFallbacks = 0;
     const fetchWeb: WebFetch = async (url) =>
         url.includes("/dead") ? null : {
