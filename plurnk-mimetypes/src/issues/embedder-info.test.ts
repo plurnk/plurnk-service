@@ -1,4 +1,4 @@
-// Contract: {§mimetype-embedding}. embeddings#1 is provenance.
+// Contract: {§mimetype-embedding}.
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
@@ -74,7 +74,7 @@ function mk(embedder: unknown | null) {
     });
 }
 
-describe("embeddings#1 — embedderInfo()", () => {
+describe("embedderInfo()", () => {
     it("E1: null when no embedder is installed", async () => {
         assert.equal(await mk(null).embedderInfo(), null);
     });

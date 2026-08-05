@@ -93,8 +93,8 @@ describe("embedder duck surface", () => {
     });
 
     it("vector-preserving: output matches the native (onnxruntime-node) baseline", async () => {
-        // The identity-stability contract for the WASM-runtime switch
-        // (plurnk-mimetypes#36): these first-6 floats were captured from the old
+        // The identity-stability contract for the WASM-runtime switch: these
+        // first six floats were captured from the old
         // @huggingface/transformers / onnxruntime-node path. The model id is
         // deliberately unchanged, so stored vectors stay comparable — this guards
         // against a future dep bump silently drifting them past that promise.
@@ -242,7 +242,7 @@ describe("embedder duck surface", () => {
     });
 });
 
-describe("PLURNK_MIMETYPES_EMBED_WORKERS contract (embeddings#2: -1 = match cores)", () => {
+describe("PLURNK_MIMETYPES_EMBED_WORKERS contract: -1 matches cores", () => {
     const indexPath = path.join(import.meta.dirname, "index.js");
     // Load index.js in a child with a given env value (bare import runs the
     // top-level requireWorkers; the pool/model stay lazy, so it's cheap).

@@ -685,7 +685,7 @@ describe("Mimetypes — query", () => {
     });
 });
 
-describe("Mimetypes — degradation notices (plurnk-service#276)", () => {
+describe("[{§mimetype-error-policy}] Mimetypes degradation notices", () => {
     it("embeddingMissing surfaces a warn-level Notice on an ok:true result", async () => {
         const m = new Mimetypes({
             discovery: makeDiscovery([plainInfo]),

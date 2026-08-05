@@ -3,7 +3,7 @@
 // embed(text) → Promise<Uint8Array> in {§mimetype-embedding-wire}
 // (4 × dimension), plus the dimension constant.
 //
-// TWO MODES, chosen at load (plurnk-mimetypes#46, routed from service#319):
+// TWO MODES, chosen at load:
 //
 //   LOCAL (default, PLURNK_MIMETYPES_EMBED_BASE_URL unset) — the bundled WASM
 //   path, unchanged: onnxruntime-web + @huggingface/tokenizers, hermetic, no
@@ -57,7 +57,7 @@ function resolveRemote() {
 }
 
 // PLURNK_MIMETYPES_EMBED_CONTEXT_WINDOW — the remote model's input window, an
-// OPERATOR-DECLARED fact (mimetypes#50): the endpoint owner knows their model.
+// OPERATOR-DECLARED fact: the endpoint owner knows their model.
 // Optional: unset → window unknown (hosts take their null-window lane).
 // Malformed → crash. Remote-only by nature — the bundled model's window is a
 // model fact the operator cannot re-declare (checked in local mode below).
@@ -72,7 +72,7 @@ function remoteContextWindow() {
 }
 const REMOTE = resolveRemote();
 // Set-to-EMPTY equals unset (the .env.defaults assembled floor sets every key,
-// empty when no default — mimetypes#52); only a non-empty value in local mode
+// empty when no default); only a non-empty value in local mode
 // is the contradiction that crashes.
 if (!REMOTE && (process.env.PLURNK_MIMETYPES_EMBED_CONTEXT_WINDOW ?? "").trim() !== "") {
     throw new RangeError(
@@ -189,7 +189,7 @@ export async function embed(text) {
 // included), scheduled through the same host-adaptive worker pool as batches.
 // LOCAL only — in remote mode the export is UNDEFINED, not a
 // throwing function: the seam duck-checks `typeof countTokens === "function"`
-// to distinguish "has a counter" from "hasn't" (mimetypes#50), and a throwing
+// to distinguish "has a counter" from "hasn't", and a throwing
 // decoy would read as the former.
 export const countTokens = REMOTE
     ? undefined

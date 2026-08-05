@@ -29,7 +29,7 @@ describe("Issue #43 — C1: binary axis (taxonomy heuristic)", () => {
     const text = [
         "text/plain", "text/markdown", "text/html", "text/csv",
         "application/json", "application/yaml", "application/toml", "application/xml",
-        "application/jsonl", "application/x-ndjson", // the schemes#28 lesson
+        "application/jsonl", "application/x-ndjson",
         "application/vnd.api+json", "image/svg+xml", "application/cloudevents+yaml",
     ];
     const binary = [

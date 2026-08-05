@@ -14,7 +14,7 @@ Portable local/remote embedder for [`@plurnk/plurnk-mimetypes`](https://github.c
 - **Xenova/all-MiniLM-L6-v2**, q8 quantized onnx (`onnx/model_quantized.onnx`), **384 dimensions**.
 - Pinned revision: `751bff37182d3f1213fa05d7196b954e230abad9` (`.model-pin`).
 - Model files are **bundled in the package**. Local mode performs no runtime network: it reads only these files and has no fetcher to disable. Integrity manifest in `model/model.sha256` (`npm run verify:model`).
-- Local inference runs on a **portable WASM runtime** — [`onnxruntime-web`](https://www.npmjs.com/package/onnxruntime-web) (single-threaded, **vendored** — see below) for the onnx graph, [`@huggingface/tokenizers`](https://www.npmjs.com/package/@huggingface/tokenizers) for WordPiece. No native N-API addon: supported Node hosts receive the same package bytes, with no per-platform binary or leaked event-loop handles (a process that embeds drains and exits on its own — plurnk-mimetypes#36). Output is vector-identical to the prior native (`onnxruntime-node`) path — same `model` identity, no re-embed.
+- Local inference runs on a **portable WASM runtime** — [`onnxruntime-web`](https://www.npmjs.com/package/onnxruntime-web) (single-threaded, **vendored** — see below) for the onnx graph, [`@huggingface/tokenizers`](https://www.npmjs.com/package/@huggingface/tokenizers) for WordPiece. No native N-API addon: supported Node hosts receive the same package bytes, with no per-platform binary or leaked event-loop handles. Output is vector-identical to the prior native (`onnxruntime-node`) path — same `model` identity, no re-embed.
 
 ## Vendored local runtime (clean install, no install scripts)
 

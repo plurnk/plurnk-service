@@ -1,6 +1,6 @@
-// Real-data tests: every bundled family must load through the engine and count
-// plausibly; the registry must route refs to the right vocab; unmatched refs are
-// an honest null (plurnk-mimetypes#44 / SPEC §19).
+// {§mimetype-tokenizer} Every bundled family must load through the engine and
+// count plausibly; the registry must route refs to the right vocabulary;
+// unmatched refs are an honest null.
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";

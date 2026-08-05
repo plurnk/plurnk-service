@@ -2,7 +2,7 @@
 // Downloads the pinned tokenizer.json set into tokenizers/<family>/ and writes
 // tokenizers/manifest.json — pins (HF commit shas), sha256 per file, and each
 // family's tokenizerId (sha256 prefix of the tokenizer.json bytes: the VOCAB
-// identity, deliberately not a model id — plurnk-mimetypes#44). The committed
+// identity, deliberately not a model id). The committed
 // bytes ARE the package (grammar-package precedent); this script only exists to
 // reproduce them. Run with no pins file → pins CURRENT main and records it;
 // with an existing manifest → re-fetches the recorded pins byte-exactly.

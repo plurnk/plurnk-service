@@ -1,4 +1,4 @@
-// Contract: {§mimetype-embedding}. plurnk-service#272 is provenance.
+// Contract: {§mimetype-embedding}.
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
@@ -52,7 +52,7 @@ function makeMimetypes(embedder: unknown | null): Mimetypes {
     });
 }
 
-describe("Mimetypes.embedBatch (plurnk-service#272)", () => {
+describe("Mimetypes.embedBatch", () => {
     it("delegates to the embedder's embedBatch and returns input-order vectors", async () => {
         const seen: string[][] = [];
         const m = makeMimetypes({

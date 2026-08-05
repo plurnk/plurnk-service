@@ -11,8 +11,8 @@ import type { HandlerContent, MimeSymbol } from "@plurnk/plurnk-mimetypes";
 // known to be a deletion rather than the start of a new file header. A
 // context-free grammar can't count that budget, so tree-sitter-diff
 // mis-classifies; and on combined/merge diffs (`diff --cc`, `@@@`) it ERRORs
-// outright. A focused line scanner has neither problem. (plurnk-mimetypes#0
-// probe, 2026-06: a ~53-LOC prototype matched `git diff --shortstat`
+// outright. A focused line scanner has neither problem. A 2026-06 probe with
+// a ~53-LOC prototype matched `git diff --shortstat`
 // byte-exact on a 10,894-line real diff.)
 //
 // Symbol model: each file section → `module` (name = new path, or `old → new`

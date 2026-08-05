@@ -1,4 +1,4 @@
-// Remote /v1/embeddings mode (plurnk-mimetypes#46). Mode is resolved at module
+// Remote /v1/embeddings mode. Mode is resolved at module
 // load, so every case runs index.js in a CHILD with the env set, against a real
 // ephemeral OpenAI-compatible endpoint served by this test. Children run ASYNC
 // (execFile, not execFileSync) — a sync child would block this process's event

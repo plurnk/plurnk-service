@@ -1,4 +1,4 @@
-// Resource caps + render-free guarantee (plurnk-mimetypes#38).
+// Resource caps + render-free guarantee.
 //
 // The handler extracts text + structure only and never rasterizes, so pdfjs's
 // lazy `require("@napi-rs/canvas")` (render path only) is never reached — a
@@ -59,4 +59,3 @@ describe("ApplicationPdf — resource caps (#38 DoS resistance)", () => {
         assert.ok(syms.some((s) => s.name === "Intro"), "structure extracted without rasterizing");
     });
 });
-

@@ -1,5 +1,5 @@
-// Bundled LLM tokenizer vocabularies for @plurnk/plurnk-mimetypes' tokenizer
-// seam (plurnk-mimetypes#44, SPEC §19). ONE artifact package, not a plugin
+// {§mimetype-tokenizer} Bundled LLM tokenizer vocabularies. ONE artifact package,
+// not a plugin
 // family: the engine (@huggingface/tokenizers) is universal — WordPiece,
 // byte-BPE, SentencePiece-BPE, Unigram all load from tokenizer.json — so the
 // per-model parts are pure data under the pin/sha256 discipline (manifest.json,
