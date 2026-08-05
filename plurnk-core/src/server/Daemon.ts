@@ -87,6 +87,10 @@ const daemonFailure = (
 );
 
 type ChannelRow = { name: string } & ClientEntryChannel;
+type TurnCeilingSelection = Readonly<{
+    effective: number;
+    source: "implicit" | "explicit";
+}>;
 
 const entryReadResult = (result: unknown): EntryReadResult =>
     Validator.assertEntryReadResult(result as EntryReadResult);
@@ -367,13 +371,17 @@ export default class Daemon {
         const ceiling = Number(process.env.PLURNK_SERVICE_MAX_TURNS ?? "-1");
         const requested = requestedMaxTurns ?? ceiling;
         const maxTurns = ceiling < 0 ? requested : (requested < 0 ? ceiling : Math.min(requested, ceiling));
+        const turnCeiling: TurnCeilingSelection = {
+            effective: maxTurns,
+            source: requestedMaxTurns === undefined ? "implicit" : "explicit",
+        };
         const { action, loopId, turnSeq } = await this.inject({
             workspaceId,
             workerId,
             prompt,
             ...(flags !== undefined ? { flags } : {}),
             ...(openPaths !== undefined ? { openPaths } : {}),
-            maxTurns,
+            turnCeiling,
             providerSpec: selection,
             systemPrompt,
         });
@@ -1347,7 +1355,7 @@ export default class Daemon {
     async inject(args: {
         workspaceId: number; workerId: number; prompt: string;
         providerSpec: ProviderAlias; systemPrompt: string;
-        maxTurns?: number; flags?: Partial<LoopFlags>; openPaths?: string[];
+        turnCeiling?: TurnCeilingSelection; flags?: Partial<LoopFlags>; openPaths?: string[];
     }): Promise<{
         action: "injected_next_turn" | "enqueued_new_loop";
         loopId: number;
@@ -1364,7 +1372,10 @@ export default class Daemon {
             if (active !== undefined) {
                 await this.#assertFoldPosture(workerId, args.flags, active.id); // compare with the exact durable loop
                 await this.#assertLoopProvider(active.id, args.providerSpec);
-                await this.#assertLoopMaxTurns(active.id, args.maxTurns);
+                await this.#assertLoopMaxTurns(
+                    active.id,
+                    args.turnCeiling?.source === "explicit" ? args.turnCeiling.effective : undefined,
+                );
             }
             const result = await this.#engine.inject(workerId, prompt, args.openPaths ?? []);
             if (result !== null) {
@@ -1382,7 +1393,10 @@ export default class Daemon {
             if (slept !== undefined) {
                 await this.#assertFoldPosture(workerId, args.flags, slept.id); // resume drops nothing silently
                 await this.#assertLoopProvider(slept.id, args.providerSpec);
-                await this.#assertLoopMaxTurns(slept.id, args.maxTurns);
+                await this.#assertLoopMaxTurns(
+                    slept.id,
+                    args.turnCeiling?.source === "explicit" ? args.turnCeiling.effective : undefined,
+                );
                 const injected = await this.#engine.inject(workerId, prompt, args.openPaths ?? []);
                 await this.#lifecycle.wake(slept.id);
                 const started = await this.#ensureDrain({
@@ -1396,7 +1410,7 @@ export default class Daemon {
             workerId,
             prompt,
             providerSpec: args.providerSpec,
-            maxTurns: args.maxTurns,
+            maxTurns: args.turnCeiling?.effective,
             flags: args.flags,
             openPaths: args.openPaths,
         });

@@ -3,7 +3,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { InvalidLoopFlagsError } from "@plurnk/plurnk-contracts";
 import { Mock } from "@plurnk/plurnk-providers";
-import { rpcCall, rpcProblem, connect, withDaemon, makeMockResponse, subscribeNotifications, waitFor, runLoopToTerminal } from "./_rpc.ts";
+import { rpcCall, rpcProblem, connect, withDaemon, makeMockResponse, subscribeNotifications, waitFor, waitForDb, runLoopToTerminal } from "./_rpc.ts";
 
 const heldLoopMock = () => new Mock({ contextWindow: 16384, responses: [
     // A non-auto EXEC proposal holds loop 1 live (paused at the review) while injects arrive.
@@ -80,23 +80,77 @@ test("inject surfaces contract-invalid durable posture before comparing it (#169
 });
 
 test("{§methods-loop-run-fold-consistency}: a folded prompt cannot replace the durable turn ceiling", async () => {
-    await withDaemon(heldLoopMock(), async (_db, _daemon, addr) => {
+    await withDaemon(heldLoopMock(), async (db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "max-turns-conflict" });
             const proposals = subscribeNotifications(ws, "loop/proposal");
-            await rpcCall(ws, 2, "loop.run", { prompt: "start working", maxTurns: 5 });
+            const started = await rpcCall(ws, 2, "loop.run", { prompt: "start working", maxTurns: 5 });
+            const loopId = (started.result as { loopId: number }).loopId;
             await waitFor(() => proposals(), (p) => p.length >= 1, { timeoutMs: 10_000 });
 
-            const matching = await rpcCall(ws, 3, "loop.run", { prompt: "same ceiling", maxTurns: 5 });
+            const omitted = await rpcCall(ws, 3, "loop.run", { prompt: "keep the ceiling" });
+            assert.equal((omitted.result as { action: string }).action, "injected_next_turn");
+            assert.equal(
+                (await db.drain_get_loop_max_turns.get<{ max_turns: number }>({ loop_id: loopId }))?.max_turns,
+                5,
+                "an omitted ceiling leaves the durable selection unchanged",
+            );
+
+            const matching = await rpcCall(ws, 4, "loop.run", { prompt: "same ceiling", maxTurns: 5 });
             assert.equal((matching.result as { action: string }).action, "injected_next_turn");
 
-            const conflicted = await rpcCall(ws, 4, "loop.run", { prompt: "different ceiling", maxTurns: 6 });
+            const conflicted = await rpcCall(ws, 5, "loop.run", { prompt: "different ceiling", maxTurns: 6 });
             const problem = rpcProblem(conflicted);
             assert.equal(problem.type, "https://problems.plurnk.dev/daemon/loop/turn-ceiling-conflict");
             assert.equal(problem.selectedMaximumTurns, 5);
             assert.equal(problem.requestedMaximumTurns, 6);
             assert.match(problem.recovery ?? "", /Cancel or conclude/);
+        } finally {
+            ws.close();
+        }
+    });
+});
+
+test("{§methods-loop-run-fold-consistency}: an omitted ceiling resumes a parked loop unchanged", async () => {
+    const mock = new Mock({
+        contextWindow: 16384,
+        responses: [
+            makeMockResponse("<<EXEC[sh]:sleep 30:EXEC\n<<SEND[202]<-1>:park:SEND", 10),
+            makeMockResponse("<<SEND[499]:done:SEND", 10),
+        ],
+    });
+
+    await withDaemon(mock, async (db, _daemon, addr) => {
+        const ws = await connect(addr);
+        try {
+            await rpcCall(ws, 1, "workspace.create", { name: "parked-max-turns" });
+            const started = await rpcCall(ws, 2, "loop.run", {
+                prompt: "start and park",
+                flags: { auto: true },
+                maxTurns: 5,
+            });
+            const loopId = (started.result as { loopId: number }).loopId;
+            await waitForDb(
+                async () => (await db.drain_get_loop_max_turns.get<{ max_turns: number }>({ loop_id: loopId }))?.max_turns,
+                (maxTurns) => maxTurns === 5,
+            );
+            await waitForDb(
+                async () => (await db.test_get_loop_status.get<{ status: number }>({ id: loopId }))?.status,
+                (status) => status === 202,
+                { timeoutMs: 10_000 },
+            );
+
+            const conflicted = await rpcCall(ws, 3, "loop.run", { prompt: "different ceiling", maxTurns: 6 });
+            assert.equal(rpcProblem(conflicted).type, "https://problems.plurnk.dev/daemon/loop/turn-ceiling-conflict");
+
+            const omitted = await rpcCall(ws, 4, "loop.run", { prompt: "resume with the durable ceiling" });
+            assert.equal((omitted.result as { action: string }).action, "injected_next_turn");
+            assert.equal((omitted.result as { loopId: number }).loopId, loopId, "the parked loop resumes in place");
+            assert.equal(
+                (await db.drain_get_loop_max_turns.get<{ max_turns: number }>({ loop_id: loopId }))?.max_turns,
+                5,
+            );
         } finally {
             ws.close();
         }
