@@ -705,8 +705,8 @@ export default class Digest {
     }
 
     static run(opts: DigestOptions): void {
-        // digest.sql is packaged beside this module (src/digest → dist/digest via copy-sql),
-        // so SqlRiteSync resolves it from node_modules in a published install too (#303).
+        // {§digest-programmatic-surface}: digest.sql is packaged beside this module
+        // (src/digest → dist/digest via copy-sql), including in an installed package.
         const moduleDir = dirname(fileURLToPath(import.meta.url));
         const dbPath = resolve(opts.dbPath);
         if (!existsSync(dbPath)) throw new Error(`digest: no DB at ${dbPath}`);
