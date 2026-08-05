@@ -10,7 +10,7 @@ npm i @plurnk/plurnk-mimetypes-text-html
 
 ## what it does
 
-- `content(content)` - the **content channel** (SPEC §18): the page's markup-free reading markdown. Main-content extraction via Readability strips nav, ads, and chrome; turndown renders the article body as markdown. Prose wraps at `PLURNK_MIMETYPES_HTML_WRAP_COLUMNS` (default `100`; `0` disables) so line-scoped reads remain useful on dense pages. Non-article pages (apps, forms, fragments, very short HTML) degrade to best-effort markdown of the `<body>` - never raw HTML, never a throw. Empty/whitespace input means absent. This is also the embed-source: an HTML entry's embedding reflects the article, not `<div class>` noise.
+- `content(content)` - the **content channel** ({§mimetype-content}): the page's markup-free reading markdown. Main-content extraction via Readability strips nav, ads, and chrome; turndown renders the article body as markdown. Prose wraps at `PLURNK_MIMETYPES_HTML_WRAP_COLUMNS` (default `100`; `0` disables) so line-scoped reads remain useful on dense pages. Non-article pages (apps, forms, fragments, very short HTML) degrade to best-effort markdown of the `<body>` - never raw HTML, never a throw. Empty/whitespace input means absent. This is also the embed-source: an HTML entry's embedding reflects the article, not `<div class>` noise.
 - `extractRaw(content)` — h1–h6 headings as `heading` symbols (with `level`), `<title>` as an h1 fallback when no headings exist, and code blocks as `module` symbols. Source line numbers come from parse5's location info.
 - `deepJson(content)` — the parse5 DOM as a nested node tree, with source-algebra attributes under the `attrs` convention (framework projects this to the deep-xml channel).
 - `query(content, dialect, pattern)` — overrides xpath to dispatch against the real parsed DOM (XPath 1.0) instead of the projected deep-xml. regex/glob run against the same readable markdown the content channel produces (one projection, shared by `toText`).
@@ -18,7 +18,7 @@ npm i @plurnk/plurnk-mimetypes-text-html
 
 ## two faces, one handler
 
-The structural channels (`extractRaw`/`deepJson`/`query` xpath) stay parse5-based with source positions — they answer "where is this tag, on what line." The content channel answers a different question — "what does this page *say*" — and for that the raw markup is noise. Readability + turndown denoise it into reading markdown. Web-page denoising used to be deferred to the fetcher layer; SPEC §18 moved it here, because the readable projection is a pure function of the HTML bytes (whatever a browser scheme rendered and serialized, or a file on disk) and belongs with the mimetype that owns HTML.
+The structural channels (`extractRaw`/`deepJson`/`query` xpath) stay parse5-based with source positions — they answer "where is this tag, on what line." The content channel answers a different question — "what does this page *say*" — and for that the raw markup is noise. Readability + turndown denoise it into reading markdown. Web-page denoising belongs here under {§mimetype-content}, because the readable projection is a pure function of the HTML bytes (whatever a browser scheme rendered and serialized, or a file on disk) and belongs with the mimetype that owns HTML.
 
 ## license
 

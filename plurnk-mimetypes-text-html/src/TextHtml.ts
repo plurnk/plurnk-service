@@ -94,15 +94,8 @@ export default class TextHtml extends BaseHandler {
         return root;
     }
 
-    // Content channel (SPEC §18) — the model-facing readable markdown. HTML
-    // is the only mimetype that populates this channel: an already-textual but
-    // markup-noisy body projected to clean reading markdown via Readability
-    // (main-content extraction, strips nav/ads/chrome) + turndown. Absent
-    // (undefined) for empty/whitespace input so the channel stays absent when
-    // there is no readable content. Also the embed-source — the framework
-    // embeds content() over the raw bytes, so HTML embeddings carry the
-    // article, not the chrome. Binary content is decoded utf-8 first, mirroring
-    // extractRaw/deepJson.
+    // {§mimetype-content} — project HTML into model-readable Markdown; empty or
+    // noise-only input has no readable projection. Bytes decode as UTF-8.
     override content(content: HandlerContent): string | undefined {
         const html = typeof content === "string"
             ? content
@@ -110,13 +103,8 @@ export default class TextHtml extends BaseHandler {
         return htmlToMarkdown(html);
     }
 
-    // Route the regex/glob query surface (and, transitively, the framework's
-    // content()??toText() embed-source) through the SAME markdown projection,
-    // so body matchers scan the readable text, not raw `<div class>` markup.
-    // xpath is unaffected — query() overrides it to hit the real DOM. A page
-    // with no readable content projects to EMPTY text (regex/glob match nothing,
-    // honestly) — never the raw body: that raw fall-through is what fed 2MB of
-    // DOM to the embedder and wedged the daemon (#412). Empty when empty.
+    // {§mimetype-content} — regex/glob and embedding share the readable Markdown
+    // projection. Absence maps to empty text, never raw HTML; XPath uses the DOM.
     protected override toText(content: HandlerContent): string {
         const html = typeof content === "string"
             ? content

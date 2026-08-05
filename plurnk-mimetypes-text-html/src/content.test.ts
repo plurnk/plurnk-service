@@ -31,7 +31,7 @@ const ARTICLE = `<!DOCTYPE html>
 </body>
 </html>`;
 
-describe("TextHtml — content channel (SPEC §18)", () => {
+describe("TextHtml — content channel ({§mimetype-content})", () => {
     it("returns markdown containing the article text", () => {
         const md = h.content(ARTICLE);
         assert.equal(typeof md, "string");
@@ -105,11 +105,7 @@ describe("TextHtml — toText routes through the same projection", () => {
     });
 
     it("toText() projects to empty string when there is no readable content", () => {
-        // A comment-only body has no readable text (content() → undefined). toText
-        // projects to EMPTY — regex/glob match nothing, honestly — NOT the raw
-        // HTML: that raw fall-through fed 2MB pages to the embedder and wedged the
-        // daemon (#412). Readable text projects (see the <form>/<div> cases); pure
-        // markup/comment noise projects to empty. Never the raw markup.
+        // {§mimetype-content}: absence becomes empty matcher/embedding text, not raw HTML.
         const html = "<html><body><!-- TODO: cleanup --></body></html>";
         const toText = (h as unknown as { toText(c: string): string }).toText.bind(h);
         assert.equal(h.content(html), undefined);

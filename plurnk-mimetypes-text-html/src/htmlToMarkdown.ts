@@ -3,21 +3,10 @@ import { Readability } from "@mozilla/readability";
 import TurndownService from "turndown";
 import { wrapMarkdown } from "./wrapMarkdown.ts";
 
-// The single readable-text projection backing both content() (the content
-// channel) and toText() (the regex/glob query surface + the framework's
-// embed-source). One implementation, so the markdown a model READs, the text
-// a regex/glob body-matcher scans, and the bytes the embedder vectorizes are
-// all the same denoised markdown — never raw HTML.
-//
-// Pipeline (SPEC §18): main-content extraction via @mozilla/readability over a
-// linkedom DOM, then HTML→markdown via turndown. Readability strips nav, ads,
-// and chrome and returns the article body; turndown renders it as markdown.
-// When Readability finds no article (app shells, forms, fragments, very short
-// HTML) the readable projection is genuinely ABSENT — return undefined. We do
-// NOT degrade to markdown-of-the-whole-body: that turned a 2MB JS-shell page
-// (e.g. youtube.com/watch) into 2MB of "markdown" and fed it to the embedder,
-// wedging the daemon (#412). Empty content when the content is empty; raw HTML
-// has exactly one destiny (article extraction) and no escape hatch downstream.
+// {§mimetype-content} — one HTML-to-Markdown projection backs content(),
+// regex/glob matching, and embedding. Readability extracts an article; otherwise
+// the noise-stripped body supplies best-effort text. Empty/noise-only input is
+// absent, and raw HTML is never a readable fallback.
 
 const turndown = new TurndownService({
     headingStyle: "atx",
@@ -36,13 +25,8 @@ export function htmlToMarkdown(html: string): string | undefined {
     // original stays intact for the body fallback below.
     let articleHtml = new Readability(document.cloneNode(true) as Document).parse()?.content;
 
-    // No article (app shells, forms, snippets) → project the READABLE TEXT, not
-    // the raw DOM: strip script/style/noscript/template first, then render what
-    // remains. A 2MB youtube.com/watch page is dominated by <script> JSON blobs
-    // — stripped, its structural markup renders to almost nothing (#412 freeze
-    // cured). A <p> of search-result prose keeps its text. The axis is
-    // readable-text-vs-noise, NOT size: a genuinely long article is legitimately
-    // large and stays whole. Never the raw markup, never a size cap.
+    // No article: remove non-reading elements before rendering the body. This is
+    // content-based, not a size cap; long readable prose remains whole.
     if (articleHtml === null || articleHtml === undefined || articleHtml.trim().length === 0) {
         articleHtml = readableBody(document);
     }
