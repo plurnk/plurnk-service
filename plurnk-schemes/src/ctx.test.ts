@@ -147,8 +147,24 @@ const makeCtx = () => {
         },
     };
     const projection: ProjectionCaps = {
-        async readable(content) {
-            return content.length > 0 ? { content, mimetype: "text/markdown" } : null;
+        async readable(content, mimetype) {
+            return content.length > 0 ? {
+                content,
+                mimetype: "text/markdown",
+                sourceMimetype: mimetype,
+                projectionIdentity: `${mimetype}-projection`,
+            } : null;
+        },
+        async readableBytes(_chunks, mimetype) {
+            return {
+                content: "projected bytes",
+                mimetype: "text/markdown",
+                sourceMimetype: mimetype,
+                projectionIdentity: `${mimetype}-projection`,
+            };
+        },
+        async identity(mimetype) {
+            return `${mimetype}-projection`;
         },
     };
 

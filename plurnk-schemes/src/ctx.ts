@@ -158,8 +158,17 @@ export interface NotifyCaps {
 // configured projection instead of shipping raw HTML down one path. A returned
 // object is a present projection even when content is empty; null alone means
 // the requested projection is absent.
+export interface ProjectedText {
+    content: string;
+    mimetype: string;
+    sourceMimetype: string;
+    projectionIdentity: string;
+}
+
 export interface ProjectionCaps {
-    readable(content: string, mimetype: string): Promise<{ content: string; mimetype: string } | null>;
+    readable(content: string, mimetype: string): Promise<ProjectedText | null>;
+    readableBytes(chunks: AsyncIterable<Uint8Array>, mimetype: string): Promise<ProjectedText | null>;
+    identity(mimetype: string): Promise<string>;
 }
 
 // ── subscriptions ────────────────────────────────────────────────────────
