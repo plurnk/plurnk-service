@@ -7,6 +7,7 @@
 // extensions and local endpoint probes the SDK cannot represent.
 
 import type { ChatMessage, GrammarEvidence, PromptTokenMeasurement, Provider, ProviderResponse, ProviderUsage } from "./types.ts";
+import type { ProviderCost } from "@plurnk/plurnk-contracts";
 import type { Reasoning, ReasoningResponseStyle, ReserveSpec } from "./env.ts";
 import { executeAiSdkModel, executeOpenAICompatible } from "./aiSdkTransport.ts";
 import type { LanguageModel } from "ai";
@@ -42,6 +43,7 @@ export type AiSdkProviderConfig = {
     reasoningResponseStyle?: ReasoningResponseStyle; // {§provider-tagged-reasoning}; default "verbatim"
     countPromptTokens?: (messages: readonly ChatMessage[], signal?: AbortSignal) => PromptTokenMeasurement | Promise<PromptTokenMeasurement>;
     calculateCost?: (usage: ProviderUsage) => number; // default () => 0
+    calculateCharge?: (usage: ProviderUsage) => Exclude<ProviderCost, { kind: "authoritative" }>;
     source?: string;                           // notice/problem source, e.g. "provider:openai"; default "provider"
     grammarStyle?: GrammarStyle;               // how a GBNF grammar is carried; default "none" (not sent)
     // Send the OpenAI-standard `prompt_cache_key` set to workerId, so a
@@ -240,6 +242,7 @@ export default class AiSdkProvider implements Provider {
     #countPromptTokens: (messages: readonly ChatMessage[], signal?: AbortSignal) => PromptTokenMeasurement | Promise<PromptTokenMeasurement>;
     #promptTokensUrl: string | undefined;
     #calculateCost: (usage: ProviderUsage) => number;
+    #calculateCharge?: (usage: ProviderUsage) => Exclude<ProviderCost, { kind: "authoritative" }>;
     #source: string;
     #grammarStyle: GrammarStyle;
     #promptCacheKey: boolean;
@@ -303,6 +306,7 @@ export default class AiSdkProvider implements Provider {
         this.#countPromptTokens = config.countPromptTokens ?? ((messages) => estimatePromptTokens(messages));
         this.#promptTokensUrl = config.promptTokensUrl;
         this.#calculateCost = config.calculateCost ?? (() => 0);
+        this.#calculateCharge = config.calculateCharge;
         this.#source = config.source ?? "provider";
         this.#grammarStyle = config.grammarStyle ?? "none";
         this.#promptCacheKey = config.promptCacheKey ?? false;
@@ -419,6 +423,10 @@ export default class AiSdkProvider implements Provider {
         }
     }
     calculateCost(usage: ProviderUsage): number { return this.#calculateCost(usage); }
+    calculateCharge(usage: ProviderUsage): Exclude<ProviderCost, { kind: "authoritative" }> {
+        return this.#calculateCharge?.(usage)
+            ?? { kind: "unknown", reason: "no provider rate or settled charge is available" };
+    }
 
     // Reasoning intent maps independently of grammar transport. The llama-server
     // template mapping is owned by {§llama-reasoning-request}.

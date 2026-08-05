@@ -25,6 +25,8 @@ INSERT INTO turn_attempts (
     response,
     parse_errors,
     usage_prompt,
+    usage_cost,
+    usage_cost_usd,
     model
 )
 VALUES (
@@ -34,5 +36,7 @@ VALUES (
     '{"assistant":{"content":"fixture"}}',
     '[]',
     $prompt,
+    '{"kind":"free","source":"context gauge fixture"}',
+    0,
     'fixture'
 );

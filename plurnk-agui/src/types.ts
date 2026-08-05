@@ -12,7 +12,7 @@ export type {
     AssistantMessage,
     RunAgentInput,
 } from "@ag-ui/core";
-import type { OperationResult, ProposalProjection } from "@plurnk/plurnk-contracts";
+import type { OperationResult, ProposalProjection, ProviderCost } from "@plurnk/plurnk-contracts";
 
 // The daemon event shapes this module consumes from the typed in-process seam.
 // Core owns the shapes; this module owns their external AG-UI projection.
@@ -48,7 +48,8 @@ export interface TerminatedNotification {
     usage: {
         promptTokens: number;
         completionTokens: number;
-        costUsd: number;
+        costUsd: number | null;
+        costs: ProviderCost[];
         contextTokens: number;
         promptBudget: number | null;
         meta: Record<string, unknown>;

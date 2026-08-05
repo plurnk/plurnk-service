@@ -43,6 +43,7 @@ interface Provider {
   ): Promise<PromptTokenMeasurement>;
   tokenize?(text: string): Promise<number[]>;
   calculateCost(usage: ProviderUsage): number;
+  calculateCharge?(usage: ProviderUsage): Exclude<ProviderCost, { kind: "authoritative" }>;
   generate(args: GenerateArgs): Promise<ProviderResponse>;
 }
 ```
@@ -73,11 +74,12 @@ hard; consumers do not reinterpret it as ordinary unavailability.
 endpoint exposes its real vocabulary. Content tokenization does not substitute
 for complete-request measurement.
 
-`calculateCost` returns the local USD estimate defined by
-{§model-fact-resolution}. It is not an authoritative upstream-settled charge.
-The current numeric surface cannot distinguish unknown rates from a genuine
-zero estimate; [#9](https://repo.possumtech.com/plurnk/plurnk-service/issues/9)
-owns that end-to-end monetary correction.
+§provider-monetary-evidence A provider response may carry an authoritative
+settled `charge`; it wins over every local calculation. Otherwise
+`calculateCharge` returns estimated, explicitly free, or unknown evidence under
+{§provider-cost}. The numeric `calculateCost` method remains only as a frozen
+1.x compatibility surface: a positive value adapts to an estimate, while zero
+adapts to unknown because it cannot prove free.
 
 ### Generation
 
@@ -211,7 +213,7 @@ Provider and model facts resolve independently:
 | Context window       | Catalog metadata or a local endpoint probe.            | `PLURNK_PROVIDERS_CONTEXT_WINDOW`.                   | Minimum when both exist; the sole value otherwise. A cataloged cloud miss fails construction; a compatible probe miss remains `null` with one warning. |
 | Completion envelope  | Catalog `maxOutput`; there is no live limit probe.     | `PLURNK_PROVIDERS_COMPLETION_RESERVE`.               | An absolute reserve wins. A percentage derives from the effective window and is capped by catalog `maxOutput` when present.                            |
 | Reasoning capability | Catalog `reasoning: true`, exposed by snapshot lookup. | Runtime activation, reserve, and adapter wire style. | The catalog bit is informational; provider construction neither activates nor blocks reasoning from it.                                                |
-| Estimated USD rates  | Catalog input, output, and optional cache-read rates.  | Complete input/output rate override; cache optional. | Operator rates win; otherwise catalog rates apply. With neither source, `calculateCost` returns `0`; no live price fetch exists.                       |
+| Estimated USD rates  | Catalog input, output, and optional cache-read rates.  | Complete input/output rate override; cache optional. | Operator rates win; otherwise catalog rates apply. Missing rates produce unknown evidence; explicit all-zero rates produce free evidence. No live price fetch exists. |
 
 The cached-input override defaults to the explicit input rate when omitted.
 Catalog cache-read cost likewise defaults to catalog input cost. Catalog

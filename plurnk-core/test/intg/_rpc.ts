@@ -113,7 +113,7 @@ export const runLoopToTerminal = async (
     loopId: number; finalStatus: number; accepted: number; action?: string; modelWorkerId?: number;
     result: OperationResult;
     hitMaxTurns?: boolean; turnIds?: number[]; attributions?: string[];
-    usage?: { promptTokens: number; completionTokens: number; costUsd: number };
+    usage?: { promptTokens: number; completionTokens: number; costUsd: number | null; costs: import("@plurnk/plurnk-contracts").ProviderCost[] };
 }> => {
     const terminated = subscribeNotifications(ws, "loop/terminated");
     const response = await rpcCall(ws, id, "loop.run", params);
@@ -128,7 +128,7 @@ export const runLoopToTerminal = async (
     );
     const term = seen.find((t) => t.loopId === loopId) as {
         loopId: number; result: OperationResult; hitMaxTurns?: boolean; turnIds?: number[]; attributions?: string[];
-        usage?: { promptTokens: number; completionTokens: number; costUsd: number };
+        usage?: { promptTokens: number; completionTokens: number; costUsd: number | null; costs: import("@plurnk/plurnk-contracts").ProviderCost[] };
     };
     return { ...term, finalStatus: term.result.status, accepted, action, modelWorkerId };
 };

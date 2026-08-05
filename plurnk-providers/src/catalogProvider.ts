@@ -21,6 +21,7 @@ import { calculateCostUsd } from "./usage.ts";
 import { emitWarningOnce } from "./warnings.ts";
 import type { LanguageModel } from "ai";
 import type { PluginAttribution, PluginAttributionContext } from "@plurnk/plurnk-meta";
+import type { ProviderCost } from "@plurnk/plurnk-contracts";
 
 const reasoningStyleFromEnv = (
     env: NodeJS.ProcessEnv,
@@ -91,6 +92,16 @@ export const providerFromSdkModel = ({
     const calculateCost = rates === null
         ? undefined
         : (usage: ProviderUsage): number => calculateCostUsd(usage, rates);
+    const rateSource = configuredRates === null ? "Models.dev catalog rates" : "operator-configured rates";
+    const calculateCharge: (usage: ProviderUsage) => Exclude<ProviderCost, { kind: "authoritative" }> = rates === null
+        ? () => ({ kind: "unknown", reason: "no provider rate or settled charge is available" })
+        : rates.input === 0 && rates.output === 0 && rates.cached === 0
+            ? () => ({ kind: "free", source: rateSource })
+            : (usage: ProviderUsage) => ({
+                kind: "estimated",
+                usd: String(calculateCostUsd(usage, rates)),
+                source: rateSource,
+            });
 
     return new AiSdkProvider({
         model,
@@ -114,6 +125,7 @@ export const providerFromSdkModel = ({
         promptCacheKey: url === undefined ? false : promptCacheKeyFromEnv(env, name),
         serviceTier: env.PLURNK_PROVIDERS_SERVICE_TIER,
         calculateCost,
+        calculateCharge,
         source: providerSource(name),
         gbnfDebug: env.PLURNK_PROVIDERS_GBNF_DEBUG !== undefined
             && env.PLURNK_PROVIDERS_GBNF_DEBUG !== ""

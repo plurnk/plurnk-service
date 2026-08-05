@@ -9,6 +9,7 @@ import type {
     PluginAttributionContext,
     PluginAttributionSource,
 } from "@plurnk/plurnk-meta";
+import type { ProviderCost } from "@plurnk/plurnk-contracts";
 
 export interface ChatMessage {
     role: "system" | "user" | "assistant";
@@ -42,6 +43,8 @@ export interface ProviderUsage {
     readonly cached: number;       // subset of prompt served from cache
     readonly total: number;        // prompt + completion + reasoning
 }
+
+export type AuthoritativeCharge = Extract<ProviderCost, { kind: "authoritative" }>;
 
 // A successful exchange's closed finish set. ProviderAttemptFinishReason adds
 // the failed disposition that may occur only on ProviderError attempt evidence.
@@ -102,6 +105,10 @@ export interface GrammarEvidence {
 export interface ProviderResponse<TFinish extends ProviderAttemptFinishReason = FinishReason> {
     readonly assistant: ProviderAssistant<TFinish>;
     readonly assistantRaw: unknown;
+    // A settled upstream charge is a validated public fact, not opaque metadata.
+    // Non-USD settlement carries an explicit provider-owned USD equivalent for
+    // the platform's existing USD aggregate. Core never supplies an FX rate.
+    readonly charge?: AuthoritativeCharge;
     // {§gbnf-response-observation} — evidence only; the consumer owns the verdict.
     readonly grammarEvidence?: GrammarEvidence;
     // Per-turn provider→client metadata bag: the backend's non-standard top-level
@@ -224,9 +231,12 @@ export interface Provider {
     // `tokenize === undefined` means the backend can't. Exact-counting
     // consumers (the tokenizer seam) prefer this over any client-side data.
     tokenize?(text: string): Promise<number[]>;
-    // {§model-fact-resolution} — local USD estimate. The current surface returns
-    // 0 for both unknown rates and a genuine zero estimate; #9 owns that split.
+    // {§model-fact-resolution} — frozen 1.x local USD estimate compatibility.
+    // Consumers adapt its zero to unknown; only calculateCharge can prove free.
     calculateCost(usage: ProviderUsage): number;
+    // Current monetary result. The numeric calculateCost surface remains frozen
+    // for 1.x compatibility; zero on that legacy surface cannot prove `free`.
+    calculateCharge?(usage: ProviderUsage): Exclude<ProviderCost, AuthoritativeCharge>;
 }
 
 // ProviderAlias lives in @plurnk/plurnk-aliases (the zero-dependency parser);

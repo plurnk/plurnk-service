@@ -46,11 +46,12 @@ import PacketWire from "../core/packet-wire.ts";
 import StoredPacket, { type DurablePacket } from "../core/StoredPacket.ts";
 import { renderTarget } from "../core/plurnk-uri.ts";
 import ProviderInstantiate from "../core/ProviderInstantiate.ts";
-import type { ChatMessage, Provider, ProviderResponse, ProviderUsage } from "@plurnk/plurnk-providers";
+import { providerCostFor, providerCostUsd, validateProviderCost, type ChatMessage, type Provider, type ProviderResponse, type ProviderUsage } from "@plurnk/plurnk-providers";
 import {
     Validator,
     type OperationResult,
     type ProblemDetails,
+    type ProviderCost,
 } from "@plurnk/plurnk-contracts";
 
 // The requiem prompt ({§digest-requiem}): the model's exit interview. Absolution up front - the system is
@@ -70,8 +71,8 @@ const readPositiveInt = (name: string): number => {
 
 // DB row shapes — only the columns this tool reads. JSON columns (packet,
 // flags, rx) arrive as strings, parsed on use.
-interface WorkspaceRow { id: number; name: string; cost_usd: number }
-interface WorkerRow { id: number; workspace_id: number; name: string; cost_usd: number }
+interface WorkspaceRow { id: number; name: string; cost_usd: number | null }
+interface WorkerRow { id: number; workspace_id: number; name: string; cost_usd: number | null }
 interface LoopRow {
     id: number;
     worker_id: number;
@@ -86,7 +87,7 @@ interface LoopRow {
 interface TurnRow {
     id: number; loop_id: number; sequence: number; status: number; packet: DurablePacket | null;
     usage_prompt: number; usage_completion: number; usage_reasoning: number;
-    usage_cached: number; usage_cost_usd: number;
+    usage_cached: number; usage_cost: string; usage_cost_usd: number | null;
     finish_reason: string | null; model: string | null;
     meta: string | null;  // {§meta-passthrough}, {§rail-truth-engine-verdict}
 }
@@ -95,7 +96,7 @@ interface TurnAttemptRow {
     id: number; turn_id: number; sequence: number; accepted: number;
     response: string; parse_errors: string; attributions: string;
     usage_prompt: number; usage_completion: number; usage_reasoning: number;
-    usage_cached: number; usage_cost_usd: number;
+    usage_cached: number; usage_cost: string; usage_cost_usd: number | null;
     finish_reason: string | null; model: string; timestamp: string;
 }
 interface LogRow {
@@ -108,7 +109,7 @@ interface LogRow {
 interface WorkerRollupRow {
     worker_id: number; loops: number; turns: number;
     total_prompt: number; total_completion: number; total_reasoning: number;
-    total_cached: number; total_cost_usd: number;
+    total_cached: number; total_cost_usd: number | null;
     last_status: number | null;
 }
 interface OpMixRow { worker_id: number; op: string; n: number }
@@ -172,6 +173,16 @@ export default class Digest {
     static #parseJson(s: unknown, fallback: unknown = null): unknown {
         if (s === null || s === undefined) return fallback;
         try { return JSON.parse(String(s)); } catch { return fallback; }
+    }
+
+    static #providerCosts(raw: unknown, subject: string): ProviderCost[] {
+        const parsed = Digest.#parseJson(raw);
+        if (!Array.isArray(parsed)) throw new TypeError(`digest: ${subject} monetary evidence is not an array`);
+        return parsed.map((cost) => validateProviderCost(cost as ProviderCost));
+    }
+
+    static #providerCost(raw: unknown, subject: string): ProviderCost {
+        return validateProviderCost(Digest.#parseJson(raw) as ProviderCost);
     }
 
     static #operationResult(raw: unknown, subject: string): OperationResult {
@@ -276,7 +287,9 @@ export default class Digest {
         const content = assistant?.content ?? "";
         const reasoning = assistant?.reasoning ?? null;
         const tokens = `prompt=${turn.usage_prompt} completion=${turn.usage_completion} reasoning=${turn.usage_reasoning} cached=${turn.usage_cached}`;
-        const cost = turn.usage_cost_usd > 0 ? ` cost=$${turn.usage_cost_usd.toFixed(6)}` : "";
+        const cost = turn.usage_cost_usd === null
+            ? " cost=unknown"
+            : ` cost=$${turn.usage_cost_usd.toFixed(6)}`;
         const finishReason = turn.finish_reason ?? "—";
         // Render only observed constraint metadata; absence makes no claim
         // about endpoint-owned settings. {§rail-truth-engine-verdict}
@@ -311,7 +324,7 @@ export default class Digest {
         // every worker has exactly one rollup row — digest_worker_rollups is FROM workers
         const roll = m.workerRollups.get(worker.id)!;
         const opMix = (m.opMixByWorker.get(worker.id) ?? []).map((o) => `${o.op}=${o.n}`).join(" ");
-        const costStr = roll.total_cost_usd > 0 ? `$${roll.total_cost_usd.toFixed(6)}` : "$0";
+        const costStr = roll.total_cost_usd === null ? "unknown" : `$${roll.total_cost_usd.toFixed(6)}`;
         return [
             `Loops:      ${roll.loops}`,
             `Turns:      ${roll.turns}`,
@@ -502,6 +515,7 @@ export default class Digest {
                 id: t.id, loop_id: t.loop_id, sequence: t.sequence, status: t.status,
                 usage_prompt: t.usage_prompt, usage_completion: t.usage_completion,
                 usage_reasoning: t.usage_reasoning, usage_cached: t.usage_cached,
+                usage_cost: Digest.#providerCosts(t.usage_cost, `turn ${t.id}`),
                 usage_cost_usd: t.usage_cost_usd,
                 finish_reason: t.finish_reason, model: t.model,
                 attributions: t.packet?.attributions ?? [],
@@ -520,6 +534,7 @@ export default class Digest {
                 usage_completion: attempt.usage_completion,
                 usage_reasoning: attempt.usage_reasoning,
                 usage_cached: attempt.usage_cached,
+                usage_cost: Digest.#providerCost(attempt.usage_cost, `attempt ${attempt.id}`),
                 usage_cost_usd: attempt.usage_cost_usd,
                 finish_reason: attempt.finish_reason,
                 model: attempt.model,
@@ -632,7 +647,8 @@ export default class Digest {
             messages: ChatMessage[];
             responses: ProviderResponse[];
             usage: ProviderUsage;
-            costUsd: number;
+            costs: ProviderCost[];
+            costUsd: number | null;
             testimony: string;
         }> = [];
         for (const worker of workers) {
@@ -683,21 +699,25 @@ export default class Digest {
                 cached: total.cached + response.assistant.usage.cached,
                 total: total.total + response.assistant.usage.total,
             }), { prompt: 0, completion: 0, reasoning: 0, cached: 0, total: 0 });
-            const costUsd = responses.reduce((total, response) =>
-                total + provider.calculateCost(response.assistant.usage), 0);
+            const costs = responses.map((response) => providerCostFor(provider, response.assistant.usage, response.charge));
+            const usdValues = costs.map(providerCostUsd);
+            const costUsd = usdValues.some((value) => value === null)
+                ? null
+                : usdValues.reduce<number>((total, value) => total + (value ?? 0), 0);
             reports.push({
                 workerId: worker.id,
                 workerName: worker.name,
                 messages,
                 responses,
                 usage,
+                costs,
                 costUsd,
                 testimony,
             });
             out.push(
                 `## Worker #${worker.id} - ${worker.name}`,
                 "",
-                `_(${resp.assistant.model}, ${resp.assistant.finishReason ?? "?"}, attempts ${responses.length}, prompt ${usage.prompt}, completion ${usage.completion}, reasoning ${usage.reasoning}, cached ${usage.cached}, cost USD ${costUsd})_`,
+                `_(${resp.assistant.model}, ${resp.assistant.finishReason ?? "?"}, attempts ${responses.length}, prompt ${usage.prompt}, completion ${usage.completion}, reasoning ${usage.reasoning}, cached ${usage.cached}, cost USD ${costUsd ?? "unknown"})_`,
                 "",
                 testimony,
                 "",

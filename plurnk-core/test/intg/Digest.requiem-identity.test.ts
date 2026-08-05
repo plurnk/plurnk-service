@@ -20,6 +20,10 @@ class WitnessMock extends Mock {
     override calculateCost(usage: ProviderUsage): number {
         return usage.total / 1_000;
     }
+
+    override calculateCharge(usage: ProviderUsage) {
+        return { kind: "estimated" as const, usd: String(this.calculateCost(usage)), source: "requiem witness" };
+    }
 }
 
 const MODEL_PACKET = (worker: string) => JSON.stringify({
@@ -64,6 +68,7 @@ test("{§digest-requiem}: every interview identifies as its own root", async () 
             usage_completion: 2,
             usage_reasoning: 2,
             usage_cached: 0,
+            usage_cost: JSON.stringify({ kind: "free", source: "requiem fixture" }),
             usage_cost_usd: 0,
             finish_reason: "stop",
             model: "mock",
@@ -87,6 +92,7 @@ test("{§digest-requiem}: every interview identifies as its own root", async () 
             usage_completion: 2,
             usage_reasoning: 2,
             usage_cached: 0,
+            usage_cost: JSON.stringify({ kind: "free", source: "requiem fixture" }),
             usage_cost_usd: 0,
             finish_reason: "stop",
             model: "mock",
@@ -125,7 +131,7 @@ test("{§digest-requiem}: every interview identifies as its own root", async () 
     assert.match(requiem, /the testimony/, "the testimony was written");
     assert.match(requiem, /prompt 10, completion 3, reasoning 0, cached 2, cost USD 0\.013/);
     const report = JSON.parse(readFileSync(reportPath, "utf8")) as {
-        workers: Array<{ costUsd: number; messages: ChatMessage[]; responses: unknown[] }>;
+        workers: Array<{ costs: import("@plurnk/plurnk-contracts").ProviderCost[]; costUsd: number | null; messages: ChatMessage[]; responses: unknown[] }>;
     };
     assert.equal(report.workers[0]?.costUsd, 0.013);
     assert.equal(report.workers[0]?.responses.length, 1);

@@ -71,8 +71,17 @@ The schemas own the runtime-neutral shapes; core owns their stateful values.
 | `LoopFlags`               | Complete effective `mode`, `auto`, `noWeb`, `noInteraction`, and `noProposals`  | Validate/expand persisted partial policy before use                                    |
 | `ProposalDisposition`     | Client authority, or the loop's exact automatic accept/reject                   | Compute precedence from effective loop policy, proposal kind, and stale-target truth   |
 | `ProposalProjection`      | Identity, review target/body/attrs, effective flags, stale signal, disposition  | Derive one validated projection for live delivery and durable reconnect discovery      |
+| `ProviderCost`            | Discriminated authoritative, estimated, free, or unknown monetary evidence      | Acquire evidence, preserve it per attempt, and derive nullable aggregate projections   |
 
 `DEFAULT_LOOP_FLAGS` is the contracts-owned effective default value. A consumer may persist a partial object as an implementation detail, but it never exposes or acts on that partial representation as though it were the complete contract.
+
+§provider-cost `ProviderCost` represents one provider attempt's monetary truth.
+An authoritative result preserves the provider's canonical decimal amount and
+currency plus its decimal USD equivalent; an estimate carries a decimal USD
+amount; free requires an explicit source; unknown requires a reason. Decimal
+strings preserve evidence without binary floating-point rewriting. Unknown is
+not zero, and no consumer may infer free from absent rates or a legacy numeric
+zero.
 
 The parser returns ordered statement, error, and text items. It recovers at a
 trustworthy statement boundary when possible and sets `unparsedTail` when a

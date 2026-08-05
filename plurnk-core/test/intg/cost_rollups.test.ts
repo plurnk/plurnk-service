@@ -15,7 +15,7 @@ const MIN_PACKET = JSON.stringify({
     assistantRaw: null,
 });
 
-const insertTurnWithCost = async (db: Db, loopId: number, sequence: number, costUsd: number): Promise<number> => {
+const insertTurnWithCost = async (db: Db, loopId: number, sequence: number, costUsd: number | null): Promise<number> => {
     const row = await db.test_cost_insert_turn.get<{ id: number }>({
         loop_id: loopId, sequence, packet: MIN_PACKET, cost_usd: costUsd,
     });
@@ -24,8 +24,8 @@ const insertTurnWithCost = async (db: Db, loopId: number, sequence: number, cost
 };
 
 const costs = async (db: Db, workspaceId: number, workerId: number) => ({
-    worker: (await db.test_cost_worker.get<{ cost_usd: number }>({ id: workerId }))?.cost_usd ?? 0,
-    workspace: (await db.test_cost_workspace.get<{ cost_usd: number }>({ id: workspaceId }))?.cost_usd ?? 0,
+    worker: (await db.test_cost_worker.get<{ cost_usd: number | null }>({ id: workerId }))?.cost_usd,
+    workspace: (await db.test_cost_workspace.get<{ cost_usd: number | null }>({ id: workspaceId }))?.cost_usd,
 });
 
 test("cost rollups: turn insert propagates to worker and workspace", async () => {
@@ -158,6 +158,20 @@ test("cost rollups: UPDATE with same usage_cost_usd is a no-op", async () => {
         const c = await costs(db, workspaceId, workerId);
         assert.equal(c.worker, 1000);
         assert.equal(c.workspace, 1000);
+    } finally { await db.close(); }
+});
+
+test("cost rollups: unknown remains null and a corrected turn restores the exact aggregate", async () => {
+    const db = await openMigrated();
+    try {
+        const workspaceId = await insertWorkspace(db, "ws-cost-unknown");
+        const workerId = await insertWorker(db, workspaceId);
+        const loopId = await insertLoop(db, workerId, 1);
+        await insertTurnWithCost(db, loopId, 1, 25);
+        const unknownId = await insertTurnWithCost(db, loopId, 2, null);
+        assert.deepEqual(await costs(db, workspaceId, workerId), { worker: null, workspace: null });
+        await db.test_cost_update_turn.run({ cost_usd: 75, id: unknownId });
+        assert.deepEqual(await costs(db, workspaceId, workerId), { worker: 100, workspace: 100 });
     } finally { await db.close(); }
 });
 

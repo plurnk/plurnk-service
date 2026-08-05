@@ -102,7 +102,16 @@ SELECT COALESCE(MAX(sequence), 0) + 1 AS next FROM turns WHERE loop_id = $loop_i
 -- provider attempt on the latest turn, distinct from summed billed `prompt`.
 SELECT COALESCE(SUM(usage_prompt), 0)     AS prompt,
        COALESCE(SUM(usage_completion), 0) AS completion,
-       COALESCE(SUM(usage_cost_usd), 0)  AS cost_usd,
+       CASE
+           WHEN COUNT(*) = 0 THEN 0
+           WHEN COUNT(usage_cost_usd) = COUNT(*) THEN SUM(usage_cost_usd)
+           ELSE NULL
+       END AS cost_usd,
+       COALESCE((
+           SELECT json_group_array(json(cost.value))
+           FROM turns charged, json_each(charged.usage_cost) AS cost
+           WHERE charged.loop_id = $loop_id
+       ), '[]') AS costs,
        (
            SELECT a.usage_prompt
            FROM turn_attempts a
@@ -171,6 +180,7 @@ UPDATE turns SET
     usage_completion = $usage_completion,
     usage_reasoning = $usage_reasoning,
     usage_cached = $usage_cached,
+    usage_cost = $usage_cost,
     usage_cost_usd = $usage_cost_usd,
     usage_prompt_budget = $usage_prompt_budget,
     finish_reason = $finish_reason,
@@ -192,6 +202,7 @@ INSERT INTO turn_attempts (
     usage_completion,
     usage_reasoning,
     usage_cached,
+    usage_cost,
     usage_cost_usd,
     finish_reason,
     model
@@ -207,6 +218,7 @@ VALUES (
     $usage_completion,
     $usage_reasoning,
     $usage_cached,
+    $usage_cost,
     $usage_cost_usd,
     $finish_reason,
     $model
