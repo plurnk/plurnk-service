@@ -23,6 +23,7 @@ test("loop.run accepts immediately (100); the loop's outcome arrives via loop/te
             assert.equal(result.usage?.completionTokens, 142, "completion tokens summed from the turn");
             assert.equal(result.usage?.promptTokens, 0);
             assert.equal(result.usage?.costUsd, 0);
+            assert.deepEqual(result.attributions, [], "attribution remains a top-level terminal projection, separate from usage");
 
             const entryCount = (await db.test_count_entries.get<{ n: number }>())?.n;
             // worker:///france/capital + the prompt frame (2 base — no manifest.json entry, the
@@ -170,7 +171,7 @@ test("loop.run fires loop/terminated notification on completion", async () => {
             const ack = accept.result as { loopId: number; status: number };
             assert.equal(ack.status, 100, "loop.run accepts immediately, not the terminal");
             const captured = await waitFor(
-                () => terminated() as Array<{ workerId: number; loopId: number; result: { status: number }; hitMaxTurns: boolean; usage: { promptTokens: number; completionTokens: number; costUsd: number } }>,
+                () => terminated() as Array<{ workerId: number; loopId: number; result: { status: number }; hitMaxTurns: boolean; attributions: string[]; usage: { promptTokens: number; completionTokens: number; costUsd: number } }>,
                 (ts) => ts.length >= 1,
             );
             assert.equal(captured.length, 1);
@@ -179,6 +180,7 @@ test("loop.run fires loop/terminated notification on completion", async () => {
             assert.equal(params.loopId, ack.loopId, "terminal coordinate matches the acknowledged loop");
             assert.equal(params.result.status, 200);
             assert.equal(params.hitMaxTurns, false);
+            assert.deepEqual(params.attributions, []);
             // {§notifications}: loop/terminated carries the loop's usage totals.
             assert.equal(params.usage.completionTokens, 50);
         } finally { ws.close(); }

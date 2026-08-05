@@ -644,23 +644,26 @@ rate limit, or provider-declared interruption). When the error carries
 interrupted attempt evidence, core stores it unaccepted with its usage and cost;
 the failed turn still stores the exact request and never fabricates an assistant.
 
-### §attribution First-party plugin attribution
+### §attribution Plugin-authored attribution folksonomy
 
-A plugin declares opaque attribution tags in its `package.json` under the
-shared discovery contract {§plugin-attribution}:
+A plugin may declare opaque attribution tags statically or at runtime under the
+shared contract {§plugin-attribution}:
 
 ```
-{ "plurnk": { "attribution": "@acme/widgets" } }   // a string, or string[]
+{ "plurnk": { "attribution": "@acme/widgets" } }   // always-on string or string[]
 ```
 
-§attribution-discovery-placeholder The engine currently unions the declared
-tags of every discovered external scheme and executor package onto
-`generate({ attributions })`, deduped and sorted; an empty set is omitted. This
-is registry membership, not evidence that a capability contributed to the
-turn. Mimetype and provider declarations are not collected. #81 owns replacing
-this placeholder with grounded value-flow attribution. The service consumes
-the family-owned package maps without reopening manifests and otherwise treats
-each tag as opaque.
+| Stage                | Contract                                                                                                                                                                                                                                      |
+| -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Collection           | Immediately before each provider emission attempt, Core pulls the admitted scheme, executor, loaded mimetype-handler, and selected provider sources. Static declarations and runtime hook results are additive.                                |
+| Composition          | Core flattens, deduplicates, and sorts the tags. The resulting non-empty array rides `generate({ attributions })`; an empty set omits that provider field.                                                                                      |
+| Meaning              | Core neither verifies nor infers contribution. Tags are plugin-authored folksonomy for telemetry, optimization, attribution, or downstream rules. The `@plurnk/` reservation is the only namespace policy ({§plugin-attribution}).             |
+| Request evidence     | The stored request packet carries the exact set most recently forwarded for that turn. Each response-bearing `turn_attempts` row carries its attempt's exact set, so rejected attempts remain distinguishable and a response-less failure is still represented by the request packet. |
+| Derived reporting    | Turn, loop, digest, and client views project the recorded sets. `loop/terminated.attributions` is their deduplicated sorted union and remains separate from provider usage and charge evidence.                                                 |
+
+Runtime hooks are synchronous and receive only the attempt coordinates. A hook
+failure is an internal plugin-contract failure; Core does not silently discard
+it or reinterpret a malformed tag list.
 
 §strikes-first-party-metadata The loop's **current strike streak** rides `generate({ strikes })` the same way — first-party outbound metadata (`Plurnk-Strikes` under the `firstPartyMetadata` gate): the hosted router's escalation signal (route-after-strike). The shape is a bare number — the streak at generate-time, the same figure the 500-threshold compares; a clean turn zeroes it, every loop starts at 0, and `0` is sent explicitly (clean ≠ unreported). It is NEVER model-facing ({§rail-accounting-private}) — headers only, the packet never carries it.
 
@@ -2011,7 +2014,7 @@ active lifecycle behind.
 | Event                                                        | Payload | When fired |
 |--------------------------------------------------------------|---------|------------|
 | §notifications-log-entry-notify `log/entry`                  | `{ entry: LogEntry }` | A `log_entries` row is committed. |
-| §notifications-loop-terminated `loop/terminated`             | `{ workerId, loopId, result, hitMaxTurns, turnIds, usage }` | One loop reaches a terminal state. `result` is the exact universal operation result, including its RFC 9457 Problem Details on failure. Worker and loop are an inseparable owning coordinate. |
+| §notifications-loop-terminated `loop/terminated`             | `{ workerId, loopId, result, hitMaxTurns, turnIds, usage, attributions }` | One loop reaches a terminal state. `result` is the exact universal operation result, including its RFC 9457 Problem Details on failure. `attributions` is the sorted union of exact provider-request evidence ({§attribution}), separate from `usage`. Worker and loop are an inseparable owning coordinate. |
 | `loop/proposal`                                              | contracts-owned `ProposalProjection` | Dispatch pauses on a durable 202 proposal. `disposition` is the sole authority for whether a client presents review UI; live and reconnect share {§proposal-projection}. |
 | `workspace/created`                                          | `{ id, name, projectRoot }` | A workspace is created. This is the only current global event. |
 | `workspace/branch-batch`                                     | Branch-batch lifecycle payload | A branch batch enters queued, running, completed, failed, or recovery-required state. |

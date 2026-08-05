@@ -1,6 +1,10 @@
 import { discover } from "@plurnk/plurnk-execs";
 import type { ChannelDecl, ExecArgs, ExecResult, Effect, RuntimeAvailability, ExecutorMetadata } from "@plurnk/plurnk-execs";
-import type { PackageAttributions } from "@plurnk/plurnk-meta";
+import Meta, {
+    type PackageAttributions,
+    type PluginAttribution,
+    type PluginAttributionContext,
+} from "@plurnk/plurnk-meta";
 import type { SchemeManifest } from "./types.ts";
 
 // The executor contract surface we consume (a BaseExecutor subclass). We bind
@@ -53,11 +57,11 @@ export interface RegistryEntry {
 // degrades that tag to unavailable — it never crashes boot. {§exec-registry-resolves}
 export default class ExecutorRegistry {
     readonly #byTag: Map<string, RegistryEntry>;   // own copy — runtime registration mutates it in place
-    readonly #attributions: readonly string[]; // {§attribution-discovery-placeholder}
+    readonly #packageAttributions: PackageAttributions;
 
-    constructor(byTag: ReadonlyMap<string, RegistryEntry>, attributions: readonly string[] = []) {
+    constructor(byTag: ReadonlyMap<string, RegistryEntry>, packageAttributions: PackageAttributions = new Map()) {
         this.#byTag = new Map(byTag);
-        this.#attributions = attributions;
+        this.#packageAttributions = new Map(packageAttributions);
     }
 
     // Module runtime registration - add an executor tag after boot discovery. The boot path is
@@ -85,7 +89,26 @@ export default class ExecutorRegistry {
             : `daemon module runtime '${owner.name}'`;
     }
 
-    attributions(): string[] { return [...this.#attributions]; }
+    // {§plugin-attribution} Package-owned executor objects participate once by
+    // identity even when one object is registered under several runtime tags.
+    attributions(context: PluginAttributionContext): PluginAttribution {
+        const packageSources = new Map<string, Set<Executor>>();
+        for (const { executor, namespaceOwner } of this.#byTag.values()) {
+            if (namespaceOwner.kind !== "package") continue;
+            const sources = packageSources.get(namespaceOwner.name) ?? new Set<Executor>();
+            sources.add(executor);
+            packageSources.set(namespaceOwner.name, sources);
+        }
+        const lists: PluginAttribution[] = [];
+        for (const [packageName, sources] of packageSources) {
+            const declared = this.#packageAttributions.get(packageName);
+            if (declared !== undefined) lists.push(declared);
+            for (const source of sources) {
+                lists.push(Meta.runtimeAttribution(source, context, packageName));
+            }
+        }
+        return Meta.composeAttributions(...lists);
+    }
 
     static async build({ defaultRuntime = null, probeTimeoutMs = 3000, cwd, discoverFn, load = (name: string): Promise<unknown> => import(name) }: {
         defaultRuntime?: string | null;
@@ -142,12 +165,7 @@ export default class ExecutorRegistry {
         }
 
         ExecutorRegistry.#assertDefaultUsable(byTag, defaultRuntime);
-        // The family scanner supplies one already-admitted package fact. Core's
-        // Git ceiling may remove a package's last tag, so collect only packages
-        // still represented here ({§attribution-discovery-placeholder}).
-        const packages = new Set(infos.map((info) => info.packageName));
-        const attributions = [...packages].flatMap((pkg) => packageAttributions.get(pkg) ?? []);
-        return new ExecutorRegistry(byTag, attributions);
+        return new ExecutorRegistry(byTag, packageAttributions);
     }
 
     // A configured default runtime that can't run is an operator misconfig the

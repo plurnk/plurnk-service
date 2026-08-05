@@ -46,6 +46,11 @@ export type {
 export { walkDeepNode } from "./TreeSitterExtractor.ts";
 export { withExtractor } from "./withExtractor.ts";
 export type { HandlerContent } from "./BaseHandler.ts";
+export type {
+    PluginAttributionContext,
+    PluginAttributionDeclaration,
+    PluginAttributionSource,
+} from "@plurnk/plurnk-meta";
 
 // Detection + discovery
 export { detect, emptyRegistry } from "./detect.ts";

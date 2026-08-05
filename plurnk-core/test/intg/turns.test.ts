@@ -7,6 +7,7 @@ import { openMigrated, insertWorkspace, insertWorker, insertLoop } from "./_help
 const MIN_PACKET = JSON.stringify({
     tokens: 0,
     sections: [],
+    attributions: [],
     assistant: { content: "", ops: [], reasoning: null },
     assistantRaw: null,
 });

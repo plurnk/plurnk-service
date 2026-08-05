@@ -16,6 +16,7 @@ import type { ProviderNotice } from "./notices.ts";
 import { validateGbnf } from "@plurnk/gbnf";
 import { assertPromptTokenMeasurement, estimatePromptTokens } from "./promptTokens.ts";
 import { emitWarningOnce } from "./warnings.ts";
+import type { PluginAttribution, PluginAttributionContext } from "@plurnk/plurnk-meta";
 
 export type ProviderFetch = typeof globalThis.fetch;
 
@@ -31,6 +32,7 @@ export type AiSdkProviderConfig = {
     model: string;
     url?: string;                             // OpenAI-compatible chat-completions URL
     languageModel?: LanguageModel;            // native AI SDK provider model
+    attributions?: (context: PluginAttributionContext) => PluginAttribution;
     fetchTimeoutMs: number;
     streamIdleTimeoutMs?: number;             // streamed body inter-chunk deadline; zero/unset disables
     headers?: Record<string, string>;         // fully-resolved request headers (incl. auth); default {}
@@ -256,6 +258,7 @@ export default class AiSdkProvider implements Provider {
     #rawBody: boolean;
     #servedModel: string | undefined;
     #requiresMaxTokens: boolean | undefined;
+    readonly attributions?: (context: PluginAttributionContext) => PluginAttribution;
 
     // Optional capability ({§provider-local-capabilities}): exact tokenization served by the backend's
     // own vocab. Assigned in the constructor ONLY when the config carries a
@@ -267,6 +270,7 @@ export default class AiSdkProvider implements Provider {
         this.#model = config.model;
         this.#url = config.url;
         this.#languageModel = config.languageModel;
+        this.attributions = config.attributions;
         if ((this.#url === undefined) === (this.#languageModel === undefined)) {
             throw new Error(`${config.source ?? "provider"}: configure exactly one AI SDK model or OpenAI-compatible URL`);
         }

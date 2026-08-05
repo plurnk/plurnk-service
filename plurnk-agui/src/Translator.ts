@@ -145,7 +145,7 @@ export default class Translator {
             ],
         });
         // Family channel — the full terminal truth the core STATE_DELTA can't hold
-        // (loopId, turnIds, costUsd, usage meta) PLUS the daemon workspaceId, so a
+        // (loopId, turnIds, costUsd, usage meta, attribution) PLUS the daemon workspaceId, so a
         // plurnk client rebuilds its json record from the stream with ONE schema
         // across transports (WS or bridge) — no second round-trip. Numbers verbatim
         // ({§agui-numbers-passthrough}). Generic frontends ignore it; the RUN_FINISHED/

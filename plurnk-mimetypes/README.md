@@ -167,6 +167,7 @@ before importing handler code.
 - **Scope-agnostic.** Publish under your own scope and the host's scan finds it like a first-party handler — no bundle membership, no registration.
 - **Trust gate.** Discovery enforces the metaproject's shared pre-import predicate and preserves withheld package names in `skipped` for the consumer to present ({§plugin-trust-boundary}).
 - **Failure boundary.** Non-mimetype packages are ignored; malformed trusted declarations and registered handler load failures throw `MimetypePluginError` with plugin identity and causal evidence ({§mimetype-plugin-failure}).
+- **Attribution.** An admitted package may declare always-on `plurnk.attribution`; an already-loaded handler may decide per provider attempt whether its synchronous `attributions(context)` hook returns additional opaque tags ({§plugin-attribution}). Attribution collection never forces a lazy handler to load.
 - **Default ordering.** Third-party packages are sorted first and `@plurnk` packages last; later declarations win, so the default scan protects the standard handlers from shadowing.
 - **Explicit ordering.** `packageDirs` bypasses default enumeration and preserves caller order; later declarations still win.
 

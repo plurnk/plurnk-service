@@ -20,6 +20,7 @@ import type { Provider, ProviderUsage } from "./types.ts";
 import { calculateCostUsd } from "./usage.ts";
 import { emitWarningOnce } from "./warnings.ts";
 import type { LanguageModel } from "ai";
+import type { PluginAttribution, PluginAttributionContext } from "@plurnk/plurnk-meta";
 
 const reasoningStyleFromEnv = (
     env: NodeJS.ProcessEnv,
@@ -47,6 +48,7 @@ export const providerFromSdkModel = ({
     headers,
     contextWindow,
     info,
+    attributions,
 }: {
     name: string;
     env: NodeJS.ProcessEnv;
@@ -56,6 +58,7 @@ export const providerFromSdkModel = ({
     headers?: Readonly<Record<string, string>>;
     contextWindow: number;
     info?: ModelInfo;
+    attributions?: (context: PluginAttributionContext) => PluginAttribution;
 }): Provider => {
     emitWarningOnce(
         `${name} provider: physical prompt counting is a chars/2 estimate; over-policy recovery fails closed without exact or bounded request evidence`,
@@ -91,6 +94,7 @@ export const providerFromSdkModel = ({
 
     return new AiSdkProvider({
         model,
+        ...(attributions === undefined ? {} : { attributions }),
         ...(languageModel === undefined ? {} : { languageModel }),
         ...(url === undefined ? {} : { url }),
         ...(headers === undefined ? {} : { headers: { ...headers } }),

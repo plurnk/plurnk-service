@@ -93,7 +93,7 @@ interface TurnRow {
 type StoredTurnRow = Omit<TurnRow, "packet"> & { packet: string | null };
 interface TurnAttemptRow {
     id: number; turn_id: number; sequence: number; accepted: number;
-    response: string; parse_errors: string;
+    response: string; parse_errors: string; attributions: string;
     usage_prompt: number; usage_completion: number; usage_reasoning: number;
     usage_cached: number; usage_cost_usd: number;
     finish_reason: string | null; model: string; timestamp: string;
@@ -409,6 +409,8 @@ export default class Digest {
                 const parseErrors = Digest.#parseJson(attempt.parse_errors, []) as Array<{ message?: unknown }>;
                 lines.push("");
                 lines.push(`### Attempt ${attempt.sequence} - ${attempt.accepted === 1 ? "admitted" : "rejected"}`);
+                const attributions = Digest.#parseJson(attempt.attributions, []) as unknown[];
+                lines.push(`Attributions: ${attributions.length === 0 ? "(none)" : attributions.join(", ")}`);
                 if (attempt.accepted !== 1) {
                     for (const error of parseErrors) {
                         if (typeof error.message === "string") lines.push(`- ${error.message}`);
@@ -473,6 +475,7 @@ export default class Digest {
                     ],
                     [`${prefix}.response.json`, JSON.stringify(response, null, 2)],
                     [`${prefix}.parse-errors.json`, JSON.stringify(Digest.#parseJson(attempt.parse_errors, []), null, 2)],
+                    [`${prefix}.attributions.json`, JSON.stringify(Digest.#parseJson(attempt.attributions, []), null, 2)],
                 ];
                 for (const [file, body] of attemptFiles) {
                     writeFileSync(join(m.digestDir, file), body);
@@ -501,6 +504,7 @@ export default class Digest {
                 usage_reasoning: t.usage_reasoning, usage_cached: t.usage_cached,
                 usage_cost_usd: t.usage_cost_usd,
                 finish_reason: t.finish_reason, model: t.model,
+                attributions: t.packet?.attributions ?? [],
                 // Preserve the opaque provider and engine metadata for aggregate
                 // tooling. {§meta-passthrough}, {§rail-truth-engine-verdict}
                 meta: Digest.#parseJson(t.meta ?? "null", null),
@@ -511,6 +515,7 @@ export default class Digest {
                 sequence: attempt.sequence,
                 accepted: attempt.accepted === 1,
                 parse_errors: Digest.#parseJson(attempt.parse_errors, []),
+                attributions: Digest.#parseJson(attempt.attributions, []),
                 usage_prompt: attempt.usage_prompt,
                 usage_completion: attempt.usage_completion,
                 usage_reasoning: attempt.usage_reasoning,
@@ -586,6 +591,7 @@ export default class Digest {
                 accepted: boolean;
                 response: unknown;
                 parseErrors: unknown;
+                attributions: unknown;
             }>;
         }>>();
         for (const t of (db.digest_turns as SyncPrep<StoredTurnRow>).all()) {
@@ -605,6 +611,7 @@ export default class Digest {
                         accepted: attempt.accepted === 1,
                         response: Digest.#parseJson(attempt.response, {}),
                         parseErrors: Digest.#parseJson(attempt.parse_errors, []),
+                        attributions: Digest.#parseJson(attempt.attributions, []),
                     })),
             });
             byWorker.set(loop.worker_id, arr);

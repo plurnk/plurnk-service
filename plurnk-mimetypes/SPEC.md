@@ -198,6 +198,9 @@ entry fills only unclaimed extension/filename keys.
 represented by at least one final package-sourced handler. A package whose
 handlers are all replaced by the family's later-claim collision rule contributes
 no discovery attribution; tree-sitter framework entries never contribute one.
+An instantiated package handler may additionally implement the synchronous
+attempt-time hook in {§plugin-attribution}; attribution collection never forces
+an otherwise-lazy handler to load.
 
 §mimetype-plugin-failure A missing manifest or package outside the mimetype
 family is ignored, and a withheld package is reported without importing its

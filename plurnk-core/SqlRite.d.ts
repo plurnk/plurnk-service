@@ -159,7 +159,6 @@ export class SqlRiteSync {
 	engine_count_active_loops_for_worker: SqlRiteSyncPreparedStatements;
 	engine_get_loop_flags: SqlRiteSyncPreparedStatements;
 	engine_set_loop_flags: SqlRiteSyncPreparedStatements;
-	engine_tag_loop_attributions: SqlRiteSyncPreparedStatements;
 	engine_set_loop_open_paths: SqlRiteSyncPreparedStatements;
 	engine_get_loop_prompt: SqlRiteSyncPreparedStatements;
 	engine_reclaim_queued_loop: SqlRiteSyncPreparedStatements;
@@ -169,6 +168,7 @@ export class SqlRiteSync {
 	engine_list_owner_entry_tags: SqlRiteSyncPreparedStatements;
 	engine_next_turn_sequence: SqlRiteSyncPreparedStatements;
 	engine_loop_usage: SqlRiteSyncPreparedStatements;
+	engine_loop_attributions: SqlRiteSyncPreparedStatements;
 	engine_loop_turn_seqs: SqlRiteSyncPreparedStatements;
 	engine_open_turn: SqlRiteSyncPreparedStatements;
 	engine_close_turn: SqlRiteSyncPreparedStatements;
@@ -386,7 +386,6 @@ export default class SqlRite {
 	engine_count_active_loops_for_worker: SqlRitePreparedStatements;
 	engine_get_loop_flags: SqlRitePreparedStatements;
 	engine_set_loop_flags: SqlRitePreparedStatements;
-	engine_tag_loop_attributions: SqlRitePreparedStatements;
 	engine_set_loop_open_paths: SqlRitePreparedStatements;
 	engine_get_loop_prompt: SqlRitePreparedStatements;
 	engine_reclaim_queued_loop: SqlRitePreparedStatements;
@@ -396,6 +395,7 @@ export default class SqlRite {
 	engine_list_owner_entry_tags: SqlRitePreparedStatements;
 	engine_next_turn_sequence: SqlRitePreparedStatements;
 	engine_loop_usage: SqlRitePreparedStatements;
+	engine_loop_attributions: SqlRitePreparedStatements;
 	engine_loop_turn_seqs: SqlRitePreparedStatements;
 	engine_open_turn: SqlRitePreparedStatements;
 	engine_close_turn: SqlRitePreparedStatements;

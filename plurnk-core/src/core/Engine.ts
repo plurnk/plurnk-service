@@ -15,6 +15,7 @@ const comparePosition = (
 ): number => a.line - b.line || a.column - b.column;
 import type SchemeRegistry from "./SchemeRegistry.ts";
 import { Mimetypes, emptyRegistry } from "@plurnk/plurnk-mimetypes";
+import Meta, { type PluginAttributionContext } from "@plurnk/plurnk-meta";
 import type { Db } from "./Db.ts";
 import type { EntryData } from "../schemes/_entry-crud.ts";
 import EntryCrud from "../schemes/_entry-crud.ts";
@@ -542,6 +543,32 @@ export default class Engine {
 
     promptBudgetFor(provider: Provider): number | null {
         return this.#packets.promptBudgetFor(provider);
+    }
+
+    async #attemptAttributions(
+        provider: Provider,
+        context: PluginAttributionContext,
+    ): Promise<string[]> {
+        const tags = Meta.composeAttributions(
+            this.#schemes.attributions(context),
+            this.#executors?.attributions(context) ?? [],
+            await this.#mimetypes.attributions(context),
+            provider.attributions?.(context) ?? [],
+        );
+        return [...tags];
+    }
+
+    // {§attribution} — reporting derives from exact provider-request evidence;
+    // malformed durable tags fail here instead of being silently filtered.
+    async loopAttributions(loopId: number): Promise<string[]> {
+        const rows = await this.#db.engine_loop_attributions.all<{ attribution: unknown }>({ loop_id: loopId });
+        const tags = rows.map(({ attribution }, index) => {
+            if (typeof attribution !== "string" || attribution.length === 0) {
+                throw new TypeError(`loop ${loopId} attribution row ${index} is not a non-empty string`);
+            }
+            return attribution;
+        });
+        return [...Meta.composeAttributions(tags)];
     }
 
     // Loop totals are billing evidence; the latest-turn pair is the client
@@ -1294,10 +1321,8 @@ export default class Engine {
         let usageCostUsd = 0;
         let providerCallInFlight = false;
         let providerAttemptSequence = 0;
+        let providerAttemptAttributions: string[] = [];
         const providerSignal = this.#loopAborts.get(loopId)?.signal ?? signal;
-        // {§attribution-discovery-placeholder}
-        const attributions = [...new Set([...this.#schemes.attributions(), ...(this.#executors?.attributions() ?? [])])].toSorted();
-        if (attributions.length > 0) await this.#db.engine_tag_loop_attributions.run({ loop_id: loopId, attributions: JSON.stringify(attributions) });
         // {§client-metadata}
         const { client } = await WorkspaceSettings.read(this.#db, workspaceId);
         const recordProviderAttempt = async (
@@ -1305,6 +1330,7 @@ export default class Engine {
             attemptSplit: SplitProviderResponse,
             sequence: number,
             accepted: boolean,
+            attributions: readonly string[],
         ): Promise<void> => {
             const attemptUsage = attemptSplit.callMetadata.usage;
             const attemptCost = provider.calculateCost(attemptUsage);
@@ -1314,6 +1340,7 @@ export default class Engine {
                 accepted: accepted ? 1 : 0,
                 response: JSON.stringify(attemptResponse),
                 parse_errors: JSON.stringify(attemptSplit.parseErrors),
+                attributions: JSON.stringify(attributions),
                 usage_prompt: attemptUsage.prompt,
                 usage_completion: attemptUsage.completion,
                 usage_reasoning: attemptUsage.reasoning,
@@ -1339,10 +1366,21 @@ export default class Engine {
             const maxTokens = this.#packets.maxTokensFor(provider) ?? undefined;
             const strikeStreak = this.#strikes.streak(loopId);
             for (let attempt = 1; attempt <= attemptLimit; attempt++) {
-                // Every attempt carries the exact same packet, coordinates, limits, and
-                // engine-strike state. No failed emission is appended to messages and no
-                // new engine turn opens between calls.
+                // Every attempt carries the exact same model packet, coordinates,
+                // limits, and engine-strike state. Plugin-authored tags are pulled
+                // for the attempt and do not alter the model messages. No failed
+                // emission is appended and no new engine turn opens between calls.
                 providerAttemptSequence = attempt;
+                const attributionContext: PluginAttributionContext = Object.freeze({
+                    workspaceId: String(workspaceId),
+                    workerId: String(workerId),
+                    primaryWorkerId,
+                    loop: loopSeq,
+                    turn: seq,
+                    attempt,
+                });
+                providerAttemptAttributions = await this.#attemptAttributions(provider, attributionContext);
+                requestPacket = { ...requestPacket, attributions: providerAttemptAttributions };
                 providerCallInFlight = true;
                 const completedResponse = await provider.generate({
                     messages: modelMessages,
@@ -1352,19 +1390,27 @@ export default class Engine {
                     grammar: railGrammar,
                     maxTokens,
                     strikes: strikeStreak,
-                    attributions: attributions.length > 0 ? attributions : undefined,
+                    attributions: providerAttemptAttributions.length > 0
+                        ? providerAttemptAttributions
+                        : undefined,
                     client: client ?? undefined,
                     workspaceId: String(workspaceId),
                     loop: loopSeq,
                     turn: seq,
-                }); // {§provider-surface-generate} {§provider-guarantees-signal-wired} {§provider-guarantees-serial-attempts} {§attribution-discovery-placeholder} {§client-metadata}
+                }); // {§provider-surface-generate} {§provider-guarantees-signal-wired} {§provider-guarantees-serial-attempts} {§attribution} {§client-metadata}
                 response = completedResponse;
                 providerCallInFlight = false;
                 railEvidence = railGrammar === undefined
                     ? undefined
                     : Engine.#requireGrammarEvidence(completedResponse);
                 splitResponse = this.#splitResponse(completedResponse);
-                await recordProviderAttempt(completedResponse, splitResponse, attempt, splitResponse.emissionValid);
+                await recordProviderAttempt(
+                    completedResponse,
+                    splitResponse,
+                    attempt,
+                    splitResponse.emissionValid,
+                    providerAttemptAttributions,
+                );
                 if (splitResponse.emissionValid) break;
             }
             if (!signal?.aborted) this.#notices.push(workspaceId, loopId, { source: "engine:turn", kind: "turn_generated", level: "info", message: "parsing model response" });
@@ -1383,6 +1429,7 @@ export default class Engine {
                     splitResponse,
                     providerAttemptSequence,
                     false,
+                    providerAttemptAttributions,
                 );
             }
             // {§turn-never-blank} — a ProviderError means no completed exchange exists.

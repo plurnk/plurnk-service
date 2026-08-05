@@ -22,7 +22,7 @@ test("Digest: journal-only and request-only turns remain visibly distinct", asyn
             loop_id: loopId,
             sequence: 2,
             status: 502,
-            packet: StoredPacket.stringify({ tokens: 0, sections: [] }),
+            packet: StoredPacket.stringify({ tokens: 0, sections: [], attributions: [] }),
         });
     } finally {
         await db.close();

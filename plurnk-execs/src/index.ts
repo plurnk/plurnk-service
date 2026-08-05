@@ -47,3 +47,8 @@ export type {
 
 // Transient observation contract, re-exported for executor authors.
 export type { Notice, NoticeLevel, ContentOffset, LogCoordinate } from "./Notice.ts";
+export type {
+    PluginAttributionContext,
+    PluginAttributionDeclaration,
+    PluginAttributionSource,
+} from "@plurnk/plurnk-meta";

@@ -31,12 +31,13 @@ import type {
     PlanStatement,
     ParsedPath,
 } from "@plurnk/plurnk-contracts";
+import type { PluginAttributionSource } from "@plurnk/plurnk-meta";
 import type { EntryAddress, ProposalApplyRequest, ProposalApplyResult, SchemeCtx } from "./ctx.ts";
 import type { EditBatchResult } from "./edit-receipt.ts";
 import type { SchemeResult } from "./Results.ts";
 import type { SchemeManifest } from "./types.ts";
 
-export interface SchemeHandler {
+export interface SchemeHandler extends PluginAttributionSource {
     // Per-instance manifest option. Every handler must expose either this or a
     // class-level `static manifest`; Manifest.of validates the resolved value at
     // registration. Per-tag executor schemes derive this instance value from

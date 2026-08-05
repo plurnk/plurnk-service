@@ -14,6 +14,7 @@ export type PacketAssistant = {
 export type RequestPacket = {
     tokens: number;
     sections: StoredPacketSection[];
+    attributions: string[];
 };
 
 export type AdmittedPacket = RequestPacket & {
@@ -67,22 +68,29 @@ export default class StoredPacket {
 
     static assert(value: unknown, subject = "packet"): DurablePacket {
         const packet = StoredPacket.#record(value, subject);
-        StoredPacket.#keys(packet, ["tokens", "sections"], ["tokens", "sections", "assistant", "assistantRaw"], subject);
+        StoredPacket.#keys(
+            packet,
+            ["tokens", "sections", "attributions"],
+            ["tokens", "sections", "attributions", "assistant", "assistantRaw"],
+            subject,
+        );
         StoredPacket.#nonnegativeInteger(packet.tokens, `${subject}.tokens`);
         if (!Array.isArray(packet.sections)) throw new TypeError(`${subject}.sections must be an array`);
 
         const sections = packet.sections.map((section, index) => StoredPacket.#section(section, `${subject}.sections[${index}]`));
+        const attributions = StoredPacket.#attributions(packet.attributions, `${subject}.attributions`);
         const hasAssistant = own(packet, "assistant");
         const hasAssistantRaw = own(packet, "assistantRaw");
         if (hasAssistant !== hasAssistantRaw) {
             throw new TypeError(`${subject}.assistant and ${subject}.assistantRaw must be present together`);
         }
-        if (!hasAssistant) return { tokens: packet.tokens as number, sections };
+        if (!hasAssistant) return { tokens: packet.tokens as number, sections, attributions };
         if (packet.assistantRaw === undefined) throw new TypeError(`${subject}.assistantRaw must be a JSON value`);
 
         return {
             tokens: packet.tokens as number,
             sections,
+            attributions,
             assistant: StoredPacket.#assistant(packet.assistant, `${subject}.assistant`),
             assistantRaw: packet.assistantRaw,
         };
@@ -127,6 +135,21 @@ export default class StoredPacket {
             content: section.content,
             tokens: section.tokens as number,
         };
+    }
+
+    static #attributions(value: unknown, subject: string): string[] {
+        if (!Array.isArray(value)) throw new TypeError(`${subject} must be an array`);
+        const tags = value.map((tag, index) => {
+            if (typeof tag !== "string" || tag.length === 0) {
+                throw new TypeError(`${subject}[${index}] must be a non-empty string`);
+            }
+            return tag;
+        });
+        const canonical = [...new Set(tags)].toSorted();
+        if (canonical.length !== tags.length || canonical.some((tag, index) => tag !== tags[index])) {
+            throw new TypeError(`${subject} must be deduplicated and sorted`);
+        }
+        return tags;
     }
 
     static #record(value: unknown, subject: string): Record<string, unknown> {

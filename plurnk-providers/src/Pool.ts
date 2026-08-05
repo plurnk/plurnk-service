@@ -2,6 +2,10 @@ import type { Provider, ProviderResponse, ProviderUsage, ChatMessage, PromptToke
 import { ProviderError, type ProviderErrorKind } from "./errors.ts";
 import { emitWarningOnce } from "./warnings.ts";
 import { assertPromptTokenMeasurement } from "./promptTokens.ts";
+import Meta, {
+    type PluginAttribution,
+    type PluginAttributionContext,
+} from "@plurnk/plurnk-meta";
 
 // A backend-AVAILABILITY failure: the sub-provider already exhausted its OWN
 // transient retries before throwing one of these, so re-hitting the same
@@ -34,6 +38,7 @@ export default class Pool implements Provider {
     // Optional exact tokenizer: present iff every backend exposes one (same
     // vocab, since interchangeable). Delegated; absent when the fleet can't.
     readonly tokenize?: (text: string) => Promise<number[]>;
+    readonly attributions?: (context: PluginAttributionContext) => PluginAttribution;
 
     constructor(backends: readonly Provider[]) {
         if (backends.length === 0) throw new Error("Pool: at least one backend is required");
@@ -62,6 +67,11 @@ export default class Pool implements Provider {
 
         // tokenize is a per-instance optional method; expose it iff the whole fleet has it.
         if (backends.every((b) => typeof b.tokenize === "function")) this.tokenize = (text) => this.#backends[0].tokenize!(text);
+        if (backends.some((backend) => typeof backend.attributions === "function")) {
+            this.attributions = (context) => Meta.composeAttributions(
+                ...backends.map((backend) => backend.attributions?.(context) ?? []),
+            );
+        }
     }
 
     // --- Provider surface: interchangeable backends collapse to one honest face ---

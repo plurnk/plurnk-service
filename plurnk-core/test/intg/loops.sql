@@ -29,8 +29,5 @@ SELECT id FROM loops WHERE worker_id = $worker_id ORDER BY id;
 -- PREP: test_loops_get_prompt
 SELECT prompt FROM loops WHERE worker_id = $worker_id LIMIT 1;
 
--- PREP: test_loops_get_attributions
-SELECT attributions FROM loops WHERE id = $loop_id;
-
 -- EXEC: test_loops_insert_no_worker_id
 INSERT INTO loops (sequence, prompt) VALUES (1, 'x');

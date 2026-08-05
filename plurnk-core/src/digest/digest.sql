@@ -21,7 +21,7 @@ SELECT id, loop_id, sequence, status, packet,
 FROM turns ORDER BY loop_id, sequence;
 
 -- PREP: digest_turn_attempts
-SELECT id, turn_id, sequence, accepted, response, parse_errors,
+SELECT id, turn_id, sequence, accepted, response, parse_errors, attributions,
        usage_prompt, usage_completion, usage_reasoning, usage_cached, usage_cost_usd,
        finish_reason, model, timestamp
 FROM turn_attempts

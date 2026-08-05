@@ -103,9 +103,6 @@ CREATE TABLE IF NOT EXISTS loops (
     flags    TEXT    NOT NULL DEFAULT '{}' CHECK (json_valid(flags)),
     provider_spec TEXT NOT NULL DEFAULT 'null' CHECK (json_valid(provider_spec)),
     max_turns INTEGER NOT NULL DEFAULT 50 CHECK (max_turns >= -1),
-    -- {§attribution-discovery-placeholder} — attribution tags of the loop's active plugins (string[] JSON); the activity tagged
-    -- with what its plugins offer. Same set the engine rides on each turn's generate() wire.
-    attributions TEXT NOT NULL DEFAULT '[]' CHECK (json_valid(attributions)),
     -- {§methods-loop-run-open-paths}: the initial prompt frame's selected paths,
     -- held here until turn 1 materializes that frame (string[] JSON).
     open_paths TEXT NOT NULL DEFAULT '[]' CHECK (json_valid(open_paths)),
@@ -271,6 +268,7 @@ CREATE TABLE IF NOT EXISTS turns (
                 AND json_type(packet, '$.tokens') = 'integer'
                 AND json_extract(packet, '$.tokens') >= 0
                 AND json_type(packet, '$.sections') = 'array'
+                AND json_type(packet, '$.attributions') = 'array'
                 AND (
                     (
                         json_type(packet, '$.assistant') IS NULL
@@ -309,6 +307,11 @@ CREATE TABLE IF NOT EXISTS turn_attempts (
     accepted         INTEGER NOT NULL CHECK (accepted IN (0, 1)),
     response         TEXT    NOT NULL CHECK (json_valid(response)),
     parse_errors     TEXT    NOT NULL DEFAULT '[]' CHECK (json_valid(parse_errors)),
+    -- Exact opaque tag set forwarded with this response-bearing provider call.
+    -- {§attribution}
+    attributions     TEXT    NOT NULL DEFAULT '[]' CHECK (
+        json_valid(attributions) AND json_type(attributions) = 'array'
+    ),
     usage_prompt     INTEGER NOT NULL DEFAULT 0 CHECK (usage_prompt >= 0),
     usage_completion INTEGER NOT NULL DEFAULT 0 CHECK (usage_completion >= 0),
     usage_reasoning  INTEGER NOT NULL DEFAULT 0 CHECK (usage_reasoning >= 0),

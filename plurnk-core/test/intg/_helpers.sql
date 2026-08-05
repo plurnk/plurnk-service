@@ -54,6 +54,7 @@ FROM turns WHERE id = $id;
 
 -- PREP: test_turn_attempts
 SELECT sequence, accepted, response, parse_errors,
+       attributions,
        usage_prompt, usage_completion, usage_reasoning, usage_cached, usage_cost_usd,
        finish_reason, model
 FROM turn_attempts

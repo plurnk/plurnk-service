@@ -44,6 +44,7 @@ export interface TerminatedNotification {
     result: OperationResult;
     hitMaxTurns: boolean;
     turnIds: number[];   // on the wire (Daemon.ts broadcast) — the turn count for a client's json record
+    attributions: string[];
     usage: {
         promptTokens: number;
         completionTokens: number;

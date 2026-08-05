@@ -52,6 +52,7 @@ const seedWorkerEvidence = async (
         accepted: 1,
         response: JSON.stringify({ assistant: { reasoning: `reason-${marker}` } }),
         parse_errors: "[]",
+        attributions: "[]",
         usage_prompt: ordinal * 100,
         usage_completion: ordinal * 10,
         usage_reasoning: ordinal,

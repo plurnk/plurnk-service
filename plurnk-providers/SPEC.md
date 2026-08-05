@@ -87,7 +87,7 @@ owns that end-to-end monetary correction.
 - caller cancellation through `signal`;
 - optional `grammar` and `maxTokens`;
 - standard `sampling` intent;
-- first-party attribution, client, strike, workspace, loop, and turn metadata.
+- opaque attribution tags plus client, strike, workspace, loop, and turn metadata.
 
 A successful return carries the model's raw content and reasoning, normalized
 usage, normalized finish reason, model identity, opaque evidence, optional
@@ -258,7 +258,8 @@ belongs in MCP, schemes, executors, or mimetypes instead.
 A provider plugin:
 
 1. declares the exact string `plurnk: { kind: "provider", name }` in `package.json` ({§plugin-family-kind});
-2. may declare package-level `plurnk.attribution` under {§plugin-attribution};
+2. may declare always-on package-level `plurnk.attribution` and/or implement the
+   synchronous runtime `attributions(context)` hook under {§plugin-attribution};
 3. may use any npm scope;
 4. default-exports an AI SDK provider with `languageModel(modelId)`;
 5. peers on compatible `ai` and `@plurnk/plurnk-providers` majors.
