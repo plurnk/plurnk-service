@@ -1,4 +1,4 @@
--- Durable serialized Git branch batches (#642).
+-- {§worker-branch-batch}: durable serialized Git branch batches.
 
 -- PREP: branch_batch_by_turn
 SELECT id, state
