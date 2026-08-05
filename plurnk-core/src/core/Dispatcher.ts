@@ -628,7 +628,7 @@ export default class Dispatcher {
         onDispatch?.(logEntryId);
         // Proposal lifecycle (SPEC.md {§engine-rails} + {§methods-proposal-resolve}; {§proposal-202-pauses}). When a
         // side-effecting op returns status 202 (a broadcast SEND[202] park is model
-        // speech, not a proposal — #isProposal, #255), the entry is written
+        // speech, not a proposal — #isProposal), the entry is written
         // state='proposed'; dispatch then PAUSES on a per-entry waiter until
         // resolution arrives via Engine.resolveProposal (from a client-interface resume,
         // core-owned disposition, or timeout). The post-resolution status replaces 202 in the
@@ -2957,7 +2957,7 @@ export default class Dispatcher {
         // state='proposed' until the proposal lifecycle resolves it; attrs holds the
         // scheme-supplied payload (file diff, exec command, etc.) the client renders
         // for review and the scheme consumes on accept. A broadcast SEND[202] is a
-        // parked-terminal, NOT a proposal (#isProposal / #255) → state='resolved'.
+        // parked-terminal, not a proposal (#isProposal) → state='resolved'.
         const isProposed = Dispatcher.#isProposal(statement, result);
         let attrsObj: Record<string, unknown> = (result.attrs !== undefined && result.attrs !== null)
             ? { ...(result.attrs as Record<string, unknown>) }

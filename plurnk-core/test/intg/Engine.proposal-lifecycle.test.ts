@@ -243,7 +243,7 @@ test("proposal: onProposalPending listener fires with the right payload", async 
     } finally { await db.close(); }
 });
 
-test("#255 — a broadcast SEND[202] (parked terminal) is NOT dispatched as a proposal", async () => {
+test("{§proposal-202-pauses}: a broadcast SEND[202] is not a proposal", async () => {
     const db = await openMigrated();
     try {
         const ctx = await setupEngine(db);
@@ -252,10 +252,9 @@ test("#255 — a broadcast SEND[202] (parked terminal) is NOT dispatched as a pr
 
         // A broadcast SEND[202] — the model PARKING the loop (no target). It returns
         // status 202, but it is model speech, not a reviewable side-effect, so it must
-        // NOT enter the propose/await path (the #255 collision that froze clients).
-        // A bare statement without a PLAN lead is a parse error (grammar 0.70 PLAN-first),
-        // and parseDsl drops kind:"error" items — so build from a PLAN-led turn and pluck
-        // the broadcast SEND[202] (target:null) the model would actually emit.
+        // not enter the propose/await path.
+        // {§emission-admission}: parse a complete PLAN…SEND frame, then pluck the
+        // broadcast SEND[202] (target:null) the model would actually emit.
         const sendParked = parseDsl("<<PLAN::PLAN\n<<SEND[202]<-1>:awaiting your reply:SEND").find((s) => s.op === "SEND");
         assert.ok(sendParked, "fixture: the broadcast park parsed as a statement");
         const parkDeferred = deferred<number>();
