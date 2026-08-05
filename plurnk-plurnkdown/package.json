@@ -46,8 +46,9 @@
         "test:unit": "node --conditions=plurnk-dev --test src/**/*.test.ts",
         "test": "npm run test:lint && npm run test:unit",
         "dev:lint-packets": "node --conditions=plurnk-dev bin/lint-packets.ts",
+        "build:clean": "rm -rf dist",
         "build:dist": "tsc -p tsconfig.build.json",
-        "build": "npm run build:dist",
+        "build": "npm run build:clean && npm run build:dist",
         "prepack": "npm run build",
         "prepublishOnly": "npm audit --audit-level=moderate && npm test"
     },

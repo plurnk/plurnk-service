@@ -42,8 +42,9 @@
         "constrained-generation"
     ],
     "scripts": {
-        "build:dist": "rm -rf dist && tsc -p tsconfig.build.json",
-        "build": "npm run build:dist",
+        "build:clean": "rm -rf dist",
+        "build:dist": "tsc -p tsconfig.build.json",
+        "build": "npm run build:clean && npm run build:dist",
         "oracle:fetch": "scripts/fetchLlamaGrammar.sh",
         "oracle:build": "scripts/buildLlama.sh",
         "oracle:check": "scripts/checkLlamaGrammar.sh",
@@ -53,6 +54,6 @@
         "test:coverage": "node --conditions=plurnk-dev --test --experimental-test-coverage --test-coverage-include='src/**' --test-coverage-lines=50 --test-coverage-branches=50 --test-coverage-functions=50 test/intg/*.test.ts",
         "test:all": "npm run test:lint && npm run test:coverage && npm run test:e2e",
         "prepublishOnly": "npm run test:lint && npm run test:intg && npm run build:dist",
-        "prepack": "npm run build:dist"
+        "prepack": "npm run build"
     }
 }

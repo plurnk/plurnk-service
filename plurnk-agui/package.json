@@ -35,8 +35,9 @@
         "test:intg": "node --conditions=plurnk-dev --env-file-if-exists=.env.defaults --test test/intg/*.test.ts",
         "test:clean-tmp": "node ../scripts/test-artifacts.mjs clean",
         "prepublishOnly": "npm test",
+        "build:clean": "rm -rf dist",
         "build:dist": "tsc -p tsconfig.build.json",
-        "build": "npm run build:dist",
+        "build": "npm run build:clean && npm run build:dist",
         "prepack": "npm run build"
     },
     "devDependencies": {

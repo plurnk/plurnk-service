@@ -53,9 +53,10 @@
     "scripts": {
         "build:grammar": "antlr-ng -D language=TypeScript -o src/generated --generate-visitor true --generate-listener false plurnkLexer.g4 plurnkParser.g4 && node --conditions=plurnk-dev scriptify/fix-generated-imports.ts",
         "build:types": "node --conditions=plurnk-dev scriptify/generate-types.ts",
-        "build:dist": "rm -rf dist && tsc -p tsconfig.build.json",
+        "build:clean": "rm -rf dist",
+        "build:dist": "tsc -p tsconfig.build.json",
         "build:gbnf": "node --conditions=plurnk-dev scriptify/generate-gbnf.ts",
-        "build": "npm run build:grammar && npm run build:types && npm run build:dist && npm run build:gbnf",
+        "build": "npm run build:clean && npm run build:grammar && npm run build:types && npm run build:dist && npm run build:gbnf",
         "antlr:tokens": "testrig src/generated/plurnk document --tokens",
         "antlr:trace": "testrig src/generated/plurnk document --trace",
         "antlr:parse": "testrig src/generated/plurnk document --tree",
