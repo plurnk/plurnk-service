@@ -175,10 +175,11 @@ for (const [providerPackage, provider] of [
 }
 ok(!existsSync(resolve(mods, "onnxruntime-node")) && !existsSync(resolve(mods, "sharp")), "native onnxruntime/sharp NOT pulled (script-free, portable)");
 
-const help = runBin(["--help"], { PLURNK_DB_PATH: resolve(sandbox, "x.db"), PLURNK_HOST: "127.0.0.1", PLURNK_PORT: "0" });
+const help = runBin(["--help"], { PLURNK_SERVICE_DB_PATH: resolve(sandbox, "x.db"), PLURNK_HOST: "127.0.0.1", PLURNK_PORT: "0" });
 ok(help.code === 0 && /usage: plurnk-service/.test(help.stdout), "`--help` prints usage, exit 0");
 
-const mig = runBin(["migrate"], { PLURNK_DB_PATH: resolve(sandbox, "test.db") });
+const migratedDb = resolve(sandbox, "test.db");
+const mig = runBin(["migrate"], { PLURNK_SERVICE_DB_PATH: migratedDb });
 ok(mig.code === 0 && /migrated:/.test(mig.stdout), "`migrate` boots the DB from installed dist (SQL + cosine load)");
 
 const firstEnv = resolve(sandbox, "cascade-first.env");
@@ -196,14 +197,14 @@ const cascade = execFileSync(bin, [`--env-file=${firstEnv}`, `--env-file=${secon
 });
 ok(cascade.includes(`migrated: ${secondDb}`), "the packed bin applies repeated env files in later-file-wins order");
 
-// first-run bootstrap: ~/.plurnk seeded with config (HOME → sandbox), no PLURNK_DB_PATH so it homes the DB
+// first-run bootstrap: ~/.plurnk seeded with config (HOME → sandbox), no PLURNK_SERVICE_DB_PATH so it homes the DB
 const home = runBin(["migrate"], {});
 ok(existsSync(resolve(sandbox, ".plurnk", ".env")) && existsSync(resolve(sandbox, ".plurnk", "plurnk.db")),
     "first run bootstraps ~/.plurnk (.env seeded + DB homed there, not CWD)");
 void home;
 
 const boot = await bootStart({
-    PLURNK_DB_PATH: resolve(sandbox, "start.db"),
+    PLURNK_SERVICE_DB_PATH: resolve(sandbox, "start.db"),
     // {§browser-provisioning}: this fixture provisions no operator browser.
     PLURNK_SCHEMES_HTTP_PLAYWRIGHT_METHOD: "disabled",
 });
@@ -237,7 +238,7 @@ try {
 const withheldEmbedderRoot = `${embedderRoot}.withheld`;
 renameSync(embedderRoot, withheldEmbedderRoot);
 const brokenComposition = await bootStart({
-    PLURNK_DB_PATH: resolve(sandbox, "broken-composition.db"),
+    PLURNK_SERVICE_DB_PATH: resolve(sandbox, "broken-composition.db"),
     PLURNK_SCHEMES_HTTP_PLAYWRIGHT_METHOD: "disabled",
 });
 renameSync(withheldEmbedderRoot, embedderRoot);

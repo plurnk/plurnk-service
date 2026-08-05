@@ -3,7 +3,7 @@
 // CLI wrapper for the Digest class (src/digest/Digest.ts). The class is the importable
 // "@plurnk/plurnk-service/digest" surface ({§digest-programmatic-surface}); this thin entry is
 // the dev/test CLI (npm run test:digest). Default DB = the SERVICE's DB
-// (PLURNK_DB_PATH, ~/.plurnk/plurnk.db floor), NOT the repo-local db; exit-1 on a missing DB.
+// (PLURNK_SERVICE_DB_PATH, ~/.plurnk/plurnk.db floor), NOT the repo-local db; exit-1 on a missing DB.
 //
 // --requiem writes the out-of-band forensic interview artifacts in {§digest-requiem}.
 import Digest from "../src/digest/Digest.ts";
