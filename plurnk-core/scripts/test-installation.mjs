@@ -7,6 +7,7 @@ import { execFileSync, spawn } from "node:child_process";
 import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { resolve } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { installPacked, installSandbox, uninstallSandbox, sandbox } from "./install-sandbox.mjs";
 
 let failures = 0;
@@ -181,6 +182,49 @@ ok(help.code === 0 && /usage: plurnk-service/.test(help.stdout), "`--help` print
 const migratedDb = resolve(sandbox, "test.db");
 const mig = runBin(["migrate"], { PLURNK_SERVICE_DB_PATH: migratedDb });
 ok(mig.code === 0 && /migrated:/.test(mig.stdout), "`migrate` boots the DB from installed dist (SQL + cosine load)");
+
+// {§digest-programmatic-surface}: exercise the package export from the clean
+// consumer, not the workspace source condition. A successful run proves the
+// packed dist/digest/digest.sql resolved beside Digest.js.
+const packedDigestDir = resolve(sandbox, "packed-digest");
+const digestFixture = new DatabaseSync(migratedDb);
+try {
+    digestFixture.exec("PRAGMA foreign_keys = ON");
+    const workspace = digestFixture.prepare(
+        "INSERT INTO workspaces (name) VALUES (?) RETURNING id",
+    ).get("packed-digest-workspace");
+    const worker = digestFixture.prepare(
+        "INSERT INTO workers (workspace_id, name, origin) VALUES (?, ?, 'model') RETURNING id",
+    ).get(workspace.id, "packed-digest-worker");
+    const loop = digestFixture.prepare(
+        "INSERT INTO loops (worker_id, sequence, prompt) VALUES (?, 1, ?) RETURNING id",
+    ).get(worker.id, "packed-digest-prompt");
+    digestFixture.prepare(
+        "INSERT INTO turns (loop_id, sequence, status, packet) VALUES (?, 1, 200, NULL)",
+    ).run(loop.id);
+} finally {
+    digestFixture.close();
+}
+const packedDigestProgram = `
+    import Digest from "@plurnk/plurnk-service/digest";
+    Digest.run({ dbPath: ${JSON.stringify(migratedDb)}, digestDir: ${JSON.stringify(packedDigestDir)} });
+`;
+execFileSync(process.execPath, ["--input-type=module", "--eval", packedDigestProgram], {
+    cwd: sandbox,
+    encoding: "utf8",
+});
+const packedDigest = JSON.parse(readFileSync(resolve(packedDigestDir, "digest.json"), "utf8"));
+ok(
+    packedDigest.workspaces.some(({ name }) => name === "packed-digest-workspace")
+        && packedDigest.workers.some(({ name }) => name === "packed-digest-worker")
+        && packedDigest.loops.some(({ prompt }) => prompt === "packed-digest-prompt")
+        && packedDigest.turns.length === 1,
+    "the packed digest subpath resolves its SQL and writes selected forensic artifacts",
+);
+ok(
+    /journal-only turn dispatched operations/.test(readFileSync(resolve(packedDigestDir, "packet000.packet.md"), "utf8")),
+    "the packed digest writes its model-visible packet artifact",
+);
 
 const firstEnv = resolve(sandbox, "cascade-first.env");
 const secondEnv = resolve(sandbox, "cascade-second.env");
