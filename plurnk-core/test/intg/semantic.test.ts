@@ -91,7 +91,7 @@ test("~query ranks by real semantic similarity through the full pipeline", async
     } finally { db.close(); }
 });
 
-test("[#272] the derivation pump emits throttled embed_progress notices for a multi-entry corpus pass, silent for a single entry", async () => {
+test("{§derivation-dedup-parallel} multi-resource warming reports aggregate progress while a single resource stays silent", async () => {
     const mimetypes = new Mimetypes();
     await mimetypes.ready();
     const db = await openMigrated();

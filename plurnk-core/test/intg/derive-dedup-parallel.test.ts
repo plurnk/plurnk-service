@@ -1,7 +1,5 @@
-// {§derivation-dedup-parallel} #416 — the pump groups pending entries by content_hash so each
-// unique content derives once (dedup preserved under concurrency), runs unique reps with bounded
-// concurrency, and releases each rep's duplicates immediately. This pins the SCHEDULING contract:
-// every pending entry is fully derived exactly once, without a global tail barrier.
+// {§derivation-dedup-parallel}: each identity derives once under bounded
+// concurrency, and its duplicate resources attach without a global tail barrier.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { EmbeddingVector } from "@plurnk/plurnk-mimetypes";
@@ -44,7 +42,7 @@ const runPump = async (concurrency: string): Promise<{ stamped: number; maxActiv
     }
 };
 
-test("every pending entry is derived once — identical at sequential, bounded, and host-sized concurrency (#416)", async () => {
+test("every pending entry derives once at sequential, bounded, and host-sized concurrency", async () => {
     const seq = await runPump("1");
     const par = await runPump("4");
     const host = await runPump("-1");
@@ -56,7 +54,7 @@ test("every pending entry is derived once — identical at sequential, bounded, 
     assert.ok(host.maxActive > 1, "host-sized scheduling is genuinely parallel");
 });
 
-test("a completed representative releases its duplicates while an unrelated representative is still blocked (#588)", async () => {
+test("a completed representative releases its duplicates while an unrelated representative is blocked", async () => {
     const previousConcurrency = process.env.PLURNK_SERVICE_DERIVE_CONCURRENCY;
     const previousDisable = process.env.PLURNK_SERVICE_EMBED_DISABLE;
     process.env.PLURNK_SERVICE_DERIVE_CONCURRENCY = "2";

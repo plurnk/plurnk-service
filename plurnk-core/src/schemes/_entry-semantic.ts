@@ -177,11 +177,9 @@ export default class EntrySemantic {
             (progress) => onProgress?.({ phase: "planning", ...progress }),
         );
         if (specs.length === 0) return { chunks: [], model: undefined };
-        // One data-parallel batch over the tiled chunk texts (#272 — embedBatch via the
-        // framework seam, ~6× the per-chunk loop on a multi-core box; vectors bit-identical,
-        // so no re-embed). Each tile embeds as PLAIN TEXT: a chunk is a fragment, not a
-        // standalone document, so embedding under the entry's mimetype (e.g. application/json)
-        // re-validates the partial and throws — embedBatch embeds raw text directly.
+        // Tiles cross the ordered batch seam as raw fragment text, never as
+        // standalone documents requiring format validation.
+        // {§mimetype-embedding}, {§derivation-dedup-parallel}
         const vectors = await plan.mimetypes.embedBatch(specs.map((s) => s.text), {
             signal,
             onProgress: (progress) => onProgress?.({ phase: "embedding", ...progress }),

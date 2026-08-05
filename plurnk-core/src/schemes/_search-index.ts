@@ -193,9 +193,8 @@ export default class SearchIndex {
         };
         // No embedder (absent OR PLURNK_SERVICE_EMBED_DISABLE) is represented by
         // the same plan and `embed:none` signature; derivation keeps only graph/FTS.
-        // The changed-entry worklist (body channel, deep_hash stale), computed up front so the
-        // corpus total is known — a multi-entry pass (the initial ingest, which otherwise looks
-        // frozen) emits a throttled progress signal; a normal turn (0-1 entries) stays silent. #272
+        // Compute the changed-resource worklist before scheduling so aggregate
+        // progress has a stable total. {§derivation-dedup-parallel}
         const pending: PendingDerivation[] = [];
         for (const r of entryRows) {
             if (r.channel !== "body") continue; // derivation fires on the body channel only
@@ -293,8 +292,8 @@ export default class SearchIndex {
             }
         };
 
-        // {§derivation-dedup-parallel} (#416) — each content+mimetype+configuration identity builds
-        // one shared artifact while distinct artifacts run with bounded concurrency.
+        // Each derivation identity builds one shared artifact while distinct
+        // artifacts run with bounded concurrency. {§derivation-dedup-parallel}
         const groups = new Map<string, PendingDerivation[]>();
         for (const p of pending) {
             const g = groups.get(p.hash);

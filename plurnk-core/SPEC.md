@@ -1029,7 +1029,13 @@ flowchart LR
 
 The graph projection stores only addressable symbol names. A structured-data handler may legitimately emit an empty key into its symbols channel, but the `@graph` matcher cannot name an empty symbol; that one definition is omitted from graph storage without suppressing FTS, vectors, or the remaining definitions. Invalid references and other persistence violations still fail the resource derivation explicitly.
 
-The pass tiles readable content into token-budgeted chunks and embeds it through `mimetypes.embedBatch`. Workspace warms coalesce; a request arriving during a pass forces one final rescan. Progress exposes `preparing`, `indexing`, `complete`, or `failed`. Producer concurrency, milestone count, and heartbeat interval are operator knobs in `.env.defaults`.
+The pass tiles the exact readable text into token-budgeted fragment strings and
+sends every tile for one resource through one ordered `mimetypes.embedBatch`
+call; it never re-runs a format handler against partial fragments. Workspace
+warms coalesce; a request arriving during a pass forces one final rescan.
+Progress exposes `preparing`, `indexing`, `complete`, or `failed`. Producer
+concurrency, milestone count, and heartbeat interval are operator knobs in
+`.env.defaults`.
 
 **Conformance.** Mimetype-specific behavioral tests live in each handler's own surface. plurnk-service intg covers integration: the engine routes through `Mimetypes.process` with the right hint and the catalog reflects `totalLines`; tests use auto-discovery (production handler set); a custom-handler test injects a stub `BaseHandler` via `loader + discovery`.
 

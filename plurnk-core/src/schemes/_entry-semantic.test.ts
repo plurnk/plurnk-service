@@ -12,8 +12,7 @@ const wordCount = (t: string): number => (t.match(/\S+/g) ?? []).length;
 const fakeVector = (s: string): Uint8Array => EmbeddingVector.encode([s.length, wordCount(s), 0]);
 const wireVector = (values: readonly number[]): Uint8Array => EmbeddingVector.encode(values);
 
-// A capable embedder: reports a window + a word-count tokenizer + model id, batch-"embeds"
-// any texts (the framework embedBatch seam — #272; vectors map 1:1 to inputs, in order).
+// A capable embedder with the ordered batch surface. {§mimetype-embedding}
 const capable = {
     embedderInfo: () => ({ contextWindow: 10000, countTokens: wordCount, model: "stub@1" }),
     embedBatch: async (texts: readonly string[]) => texts.map(fakeVector),
@@ -125,7 +124,7 @@ test("EntrySemantic.deriveEmbeddings: capable embedder tiles a large body lossle
     }
 });
 
-test("EntrySemantic.deriveEmbeddings: batches all tiled chunks into ONE embedBatch call, not a per-chunk loop (#272)", async () => {
+test("{§derivation-dedup-parallel} deriveEmbeddings batches every tile in one embedBatch call", async () => {
     const prev = process.env.PLURNK_SERVICE_SEMANTIC_CHUNK_TOKENS;
     process.env.PLURNK_SERVICE_SEMANTIC_CHUNK_TOKENS = "20";
     try {
@@ -146,7 +145,7 @@ test("EntrySemantic.deriveEmbeddings: batches all tiled chunks into ONE embedBat
     }
 });
 
-test("EntrySemantic.deriveEmbeddings reports planning and embedding progress within one large entry (#588)", async () => {
+test("{§derivation-dedup-parallel} deriveEmbeddings reports planning and embedding progress within one large entry", async () => {
     const prev = process.env.PLURNK_SERVICE_SEMANTIC_CHUNK_TOKENS;
     process.env.PLURNK_SERVICE_SEMANTIC_CHUNK_TOKENS = "4";
     try {

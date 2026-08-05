@@ -18,7 +18,7 @@ const statement: EditStatement = {
     body: "an interrupted derivation must never attach", position: { line: 1, column: 1 },
 };
 
-test("an interrupted artifact stays building and unattached; retry completes and attaches (#588)", async () => {
+test("{§derivation-dedup-parallel} an interrupted artifact remains unattached until retry completes", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `interrupt-${crypto.randomUUID()}`);

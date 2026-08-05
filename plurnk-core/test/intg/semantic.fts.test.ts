@@ -199,7 +199,8 @@ test("[#semantic-e2e] chunked ~query full pipeline: tile → embed → store →
         const wc = (t: string) => (t.match(/\S+/g) ?? []).length;
         const vec = (t: string) => EmbeddingVector.encode(t.includes("photosynthesis") ? [1, 0, 0] : [0, 1, 0]);
         const embedder = mimetypesFixture({
-            // process embeds the QUERY vector (rankCandidates); embedBatch embeds the chunk corpus (deriveEmbeddings, #272).
+            // Queries use process; the indexed chunk corpus uses embedBatch.
+            // {§mimetype-embedding}
             process: async (input: { content: string }) => ({ embedding: vec(input.content), embeddingModel: "stub@e2e" }),
             embedBatch: async (texts: readonly string[]) => texts.map(vec),
             embedderInfo: () => ({ contextWindow: 30, countTokens: wc, model: "stub@e2e" }),
@@ -265,12 +266,9 @@ test("semantic FIND maps a terminal-newline chunk to an addressable TextRegion",
     } finally { db.close(); }
 });
 
-test("[#semantic-json-tile] deriveEmbeddings embeds tiled chunks via embedBatch (raw text) — a JSON fragment is never re-validated under the entry mimetype (#272)", async () => {
-    // A tile of a JSON document is an invalid JSON fragment. Embedding it under application/json
-    // would re-validate and throw on the partial — which crashed every turn that held a JSON entry
-    // large enough to tile. embedBatch takes RAW TEXT (no mimetype path to validate against), so the
-    // hazard is structurally gone: the chunk corpus goes through embedBatch, never the JSON-validating
-    // process. The process stub here throws on application/json precisely to catch a regression to it.
+test("{§mimetype-embedding} tiled JSON embeds as raw fragments without format revalidation", async () => {
+    // The throwing process stub detects any regression from the raw batch seam
+    // to format-validating per-fragment projection.
     const wc = (t: string) => (t.match(/\S+/g) ?? []).length;
     const batched: string[][] = [];
     const embedder = mimetypesFixture({

@@ -1,5 +1,5 @@
-// Content-addressed semantic artifacts (#416 / #588): identical derivation inputs
-// build once, then every pathname attaches the same graph/FTS/vector projection.
+// {§semantic-embed-dedup}: identical derivation inputs build once, then every
+// resource attaches the same complete graph/FTS/vector artifact.
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -23,7 +23,7 @@ const edit = (pathname: string, body: string): EditStatement => ({
     position: { line: 1, column: 1 },
 });
 
-test("identical entries attach one complete semantic artifact and both remain addressable (#416, #588)", async () => {
+test("identical entries attach one complete semantic artifact and both remain addressable", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `artifact-share-${crypto.randomUUID()}`);
