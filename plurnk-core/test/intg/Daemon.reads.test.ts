@@ -231,7 +231,7 @@ test("log.read entries have hydrated JSON columns", async () => {
     });
 });
 
-test("log.read by full L/T/S coordinate resolves the single entry's full shape (#271)", async () => {
+test("{§methods-log-read}: a full L/T/S coordinate resolves the single entry's full shape", async () => {
     await withDaemon(async (_db, addr) => {
         const ws = await connect(addr);
         try {
@@ -244,7 +244,7 @@ test("log.read by full L/T/S coordinate resolves the single entry's full shape (
             const send = all.entries.find((e) => e.op === "SEND");
             assert.ok(send, "the SEND entry is in the log");
 
-            // #271 — one call by L/T/S returns exactly that entry, full shape.
+            // {§methods-log-read} — one call by L/T/S returns exactly that entry, full shape.
             const r = (await rpcCall(ws, 5, "log.read", { loopSeq: send!.loop_seq, turnSeq: send!.turn_seq, sequence: send!.sequence })).result as { status: number; entries: Array<{ id: number; op: string; tx: unknown; rx: unknown }> };
             assert.equal(r.status, 200);
             assert.equal(r.entries.length, 1, "a full coordinate resolves exactly one entry, not a list");
