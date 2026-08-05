@@ -114,6 +114,14 @@ const assertOpenPaths = (value: unknown, source: string): string[] => {
     return value as string[];
 };
 
+const parsePromptAttributes = (encoded: string, source: string): Readonly<Record<string, unknown>> => {
+    const attributes = JSON.parse(encoded) as unknown;
+    if (attributes === null || typeof attributes !== "object" || Array.isArray(attributes)) {
+        throw new TypeError(`${source}: expected a JSON object`);
+    }
+    return attributes as Readonly<Record<string, unknown>>;
+};
+
 const readMaxStrikes = (): number => {
     const raw = process.env.PLURNK_SERVICE_MAX_STRIKES;
     if (raw === undefined || raw.length === 0) return DEFAULT_MAX_STRIKES;
@@ -954,7 +962,7 @@ export default class Engine {
         // {§prompt-loop-containment}: the loop contains every prompt that arrived
         // while it ran. Publish each undelivered frame as a prompt row, oldest
         // first, so rapid arrivals reach the model together exactly once.
-        if (seq > 1) {
+        {
             const loopSeqRow = await this.#db.engine_loop_sequence.get<{ sequence: number }>({ loop_id: loopId });
             const loopSeq = loopSeqRow?.sequence ?? loopId;
             const prefix = promptLoopPrefix(loopSeq);
@@ -966,11 +974,8 @@ export default class Engine {
             }))
                 .filter((r) => typeof r.content === "string" && r.content.length > 0);
             for (const injectedRow of undelivered) {
-                const attributes = JSON.parse(injectedRow.attributes) as unknown;
-                if (attributes === null || typeof attributes !== "object" || Array.isArray(attributes)) {
-                    throw new TypeError(`Prompt ${injectedRow.pathname} attributes: expected a JSON object`);
-                }
-                const encodedOpenPaths = (attributes as { openPaths?: unknown }).openPaths;
+                const attributes = parsePromptAttributes(injectedRow.attributes, `Prompt ${injectedRow.pathname} attributes`);
+                const encodedOpenPaths = attributes.openPaths;
                 if (encodedOpenPaths !== undefined) {
                     turnOpenPaths.push(...assertOpenPaths(encodedOpenPaths, `Prompt ${injectedRow.pathname} openPaths`));
                 }

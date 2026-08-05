@@ -36,6 +36,16 @@ WHERE l.worker_id = $worker_id AND l.sequence = $loop_seq AND t.sequence = $turn
 -- PREP: test_get_loop_status
 SELECT status FROM loops WHERE id = $id;
 
+-- PREP: test_get_loop_posture
+SELECT flags, provider_spec, max_turns, orphan_source_loop_id
+FROM loops WHERE id = $id;
+
+-- PREP: test_prompt_paths_by_owner
+SELECT pathname FROM entries
+WHERE owner_id = $owner_id AND scheme = 'prompt'
+ORDER BY CAST(substr(pathname, 2, instr(substr(pathname, 2), '/') - 1) AS INTEGER),
+         CAST(substr(pathname, instr(substr(pathname, 2), '/') + 2) AS INTEGER);
+
 -- PREP: test_get_turn
 SELECT id, loop_id, sequence, status,
        usage_prompt, usage_completion, usage_reasoning, usage_cached, usage_cost_usd,

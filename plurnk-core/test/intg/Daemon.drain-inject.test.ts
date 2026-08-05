@@ -277,12 +277,12 @@ test("{§methods-loop-run-open-paths}: a parked-loop prompt carries its paths in
     });
 });
 
-test("loop ends before consuming an injected prompt → reconciled into a fresh loop (no wake lost)", async () => {
-    // Edge: a next-turn prompt injected into a loop that then terminates before
+test("{§prompt-loop-containment}: every orphaned prompt frame is promoted in order", async () => {
+    // Edge: next-turn prompts injected into a loop that then terminates before
     // reaching that turn would be silently lost. Forced deterministically: hold
-    // loop 1 at a proposal (status=102, turn 1), inject a turn-2 prompt, then
+    // loop 1 at a proposal (status=102, turn 1), inject two turn-2 frames, then
     // let turn 1 emit SEND[200] so loop 1 ends and turn 2 never runs. The drain
-    // must promote the orphaned prompt to a fresh loop that surfaces it — so two
+    // must promote the orphaned frames to a fresh loop that surfaces them — so two
     // loops terminate for the worker, not one (it would be one if the wake were
     // lost; no other op here spawns a loop — the EXEC proposal is rejected).
     // 16384: the inject-then-reconcile path accumulates both loops' rows across turns, cresting at the 8192 edge;
@@ -304,23 +304,33 @@ test("loop ends before consuming an injected prompt → reconciled into a fresh 
             const proposals = subscribeNotifications(ws, "loop/proposal");
             const terminated = subscribeNotifications(ws, "loop/terminated");
 
-            const firstPromise = rpcCall(ws, 2, "loop.run", { prompt: "kick off" });
+            const firstPromise = rpcCall(ws, 2, "loop.run", {
+                prompt: "kick off",
+                flags: { noWeb: true },
+            });
             const pending = await waitFor(() => proposals() as Array<{ logEntryId: number }>, (p) => p.length >= 1);
 
-            // Inject a turn-2 prompt while loop 1 is paused at turn 1.
+            // Inject two turn-2 frames while loop 1 is paused at turn 1.
             const r2 = await rpcCall(ws, 3, "loop.run", {
-                prompt: "the orphaned follow-up",
-                openPaths: ["src/orphan-context.ts"],
+                prompt: "the first orphaned follow-up",
+                openPaths: ["src/first-orphan-context.ts"],
             });
-            assert.equal((r2.result as { action: string }).action, "injected_next_turn");
+            assert.ok(r2.result !== undefined, JSON.stringify(r2.error));
+            assert.equal((r2.result as { action: string }).action, "injected_next_turn", JSON.stringify(r2.result));
+            const r3 = await rpcCall(ws, 4, "loop.run", {
+                prompt: "the second orphaned follow-up",
+                openPaths: ["src/second-orphan-context.ts"],
+            });
+            assert.ok(r3.result !== undefined, JSON.stringify(r3.error));
+            assert.equal((r3.result as { action: string }).action, "injected_next_turn", JSON.stringify(r3.result));
 
             // Release the proposal → turn 1 emits SEND[200] → loop 1 ends; the
             // injected turn 2 never runs (it's now orphaned).
-            await rpcCall(ws, 4, "loop.resolve", { logEntryId: pending[0].logEntryId, decision: "reject" });
+            await rpcCall(ws, 5, "loop.resolve", { logEntryId: pending[0].logEntryId, decision: "reject" });
             const first = await firstPromise;
             const firstLoopId = (first.result as { loopId: number }).loopId;
 
-            // The orphaned prompt is reconciled into a second loop that runs.
+            // The orphaned frames are reconciled into a second loop that runs.
             const ts = await waitFor(
                 () => terminated() as Array<{ loopId: number; result: { status: number } }>,
                 (t) => t.length >= 2,
@@ -331,14 +341,46 @@ test("loop ends before consuming an injected prompt → reconciled into a fresh 
             assert.deepEqual(statuses, [200, 499], "loop 1 abandoned (499, over the rejected EXEC); the reconciled loop concluded 200");
             const promoted = ts.find((event) => event.loopId !== firstLoopId);
             assert.ok(promoted, "the orphaned frame was promoted into a distinct loop");
+            const sourcePosture = await db.test_get_loop_posture.get<{
+                flags: string; provider_spec: string; max_turns: number;
+            }>({ id: firstLoopId });
+            const promotedPosture = await db.test_get_loop_posture.get<{
+                flags: string; provider_spec: string; max_turns: number; orphan_source_loop_id: number | null;
+            }>({ id: promoted.loopId });
+            assert.deepEqual(
+                promotedPosture,
+                { ...sourcePosture, orphan_source_loop_id: firstLoopId },
+                "recovery preserves the source loop's posture and names its durable source",
+            );
             const rows = await db.test_log_entries_by_loop.all<{
-                op: string; origin: string; scheme: string | null; pathname: string; turn_id: number;
+                op: string; origin: string; scheme: string | null; pathname: string; turn_id: number; rx: string;
             }>({ loop_id: promoted.loopId });
-            const frame = rows.find((row) => row.op === "prompt" && row.pathname === "/2/1");
-            const contextRead = rows.find((row) => row.op === "READ" && row.origin === "plurnk" && row.scheme === null && row.pathname === "src/orphan-context.ts");
-            assert.ok(frame && contextRead, "the promoted prompt keeps its selected path");
-            assert.equal(contextRead.turn_id, frame.turn_id,
-                "orphan promotion reads the path in the promoted frame's publishing turn");
+            const frames = rows.filter((row) => row.op === "prompt");
+            assert.deepEqual(
+                frames.map((row) => ({
+                    pathname: row.pathname,
+                    content: (JSON.parse(row.rx) as { content: string }).content,
+                })),
+                [
+                    { pathname: "/2/1", content: "the first orphaned follow-up" },
+                    { pathname: "/2/2", content: "the second orphaned follow-up" },
+                ],
+                "the complete orphan set remains separate and ordered in one subsequent turn",
+            );
+            const contextReads = rows.filter((row) => row.op === "READ" && row.origin === "plurnk" && row.scheme === null);
+            assert.deepEqual(
+                contextReads.map((row) => row.pathname),
+                ["src/first-orphan-context.ts", "src/second-orphan-context.ts"],
+                "each promoted frame keeps its selected paths in frame order",
+            );
+            assert.ok(contextReads.every((row) => row.turn_id === frames[0]?.turn_id),
+                "all promoted frame paths are read in the turn that publishes the frames");
+            const promptPaths = await db.test_prompt_paths_by_owner.all<{ pathname: string }>({ owner_id: (r2.result as { modelWorkerId: number }).modelWorkerId });
+            assert.deepEqual(
+                promptPaths.map((row) => row.pathname),
+                ["/1/1", "/2/1", "/2/2"],
+                "recovery re-homes each orphan identity instead of retaining duplicate old addresses",
+            );
         } finally { ws.close(); }
     });
 });

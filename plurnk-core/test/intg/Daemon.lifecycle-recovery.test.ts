@@ -64,6 +64,93 @@ test("boot restores a drain for accepted queued work", async () => {
     }
 });
 
+test("{§prompt-loop-containment}: boot completes one partially staged orphan recovery without replay", async () => {
+    const db = await openMigrated();
+    const firstProvider = new Mock({
+        contextWindow: 16384,
+        responses: [makeMockResponse("<<SEND[200]:recovered orphan frames:SEND")],
+    });
+    ProviderInstantiate.registerInstance(firstProvider, providerSpec);
+    const firstDaemon = new Daemon({ db, provider: firstProvider });
+    let secondDaemon: Daemon | undefined;
+    try {
+        const workspaceId = await insertWorkspace(db, `recovery-orphans-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const sourceLoopId = await enqueueLoop(db, workerId, 1, "concluded source");
+        await db.test_set_loop_status.run({
+            id: sourceLoopId,
+            status: 200,
+            terminal_result: JSON.stringify({ status: 200 }),
+        });
+
+        for (const [ordinal, content] of ["first orphan", "second orphan"].entries()) {
+            const entryId = await seedEntryWithChannel(db, {
+                workspaceId,
+                ownerId: workerId,
+                scheme: "prompt",
+                pathname: `/1/${ordinal + 2}`,
+                content,
+                mimetype: "text/markdown",
+            });
+            await db.crud_set_entry_attributes.run({
+                entry_id: entryId,
+                attributes: JSON.stringify({ openPaths: [] }),
+            });
+        }
+
+        const recovery = await db.drain_enqueue_orphan_recovery_loop.get<{
+            id: number; sequence: number; status: number;
+        }>({
+            worker_id: workerId,
+            sequence: 2,
+            prompt: "first orphan",
+            flags: "{}",
+            provider_spec: JSON.stringify(providerSpec),
+            max_turns: 50,
+            open_paths: "[]",
+            orphan_source_loop_id: sourceLoopId,
+        });
+        assert.ok(recovery !== undefined);
+        assert.equal(recovery.sequence, 2);
+
+        await firstDaemon.start();
+        assert.equal(await waitForDb(
+            async () => (await db.test_get_loop_status.get<{ status: number }>({ id: recovery.id }))?.status,
+            (status) => status === 200,
+        ), 200);
+        const frames = (await db.test_log_entries_by_loop.all<{
+            op: string; pathname: string; rx: string;
+        }>({ loop_id: recovery.id })).filter((row) => row.op === "prompt");
+        assert.deepEqual(
+            frames.map((row) => ({
+                pathname: row.pathname,
+                content: (JSON.parse(row.rx) as { content: string }).content,
+            })),
+            [
+                { pathname: "/2/1", content: "first orphan" },
+                { pathname: "/2/2", content: "second orphan" },
+            ],
+            "boot completed the existing queued recovery before its drain claimed it",
+        );
+        await firstDaemon.stop();
+
+        const secondProvider = new Mock({
+            contextWindow: 16384,
+            responses: [makeMockResponse("<<SEND[200]:must remain unused:SEND")],
+        });
+        ProviderInstantiate.registerInstance(secondProvider, providerSpec);
+        secondDaemon = new Daemon({ db, provider: secondProvider });
+        await secondDaemon.start();
+        const loopCount = await db.test_count_loops_by_worker.get<{ n: number }>({ worker_id: workerId });
+        assert.equal(loopCount?.n, 2, "a later boot neither remints nor replays the completed recovery");
+        assert.equal(secondProvider.remaining, 1, "no provider call was replayed");
+    } finally {
+        await secondDaemon?.stop();
+        await firstDaemon.stop();
+        await db.close();
+    }
+});
+
 test("boot terminalizes a proposed occurrence whose process-local resolution owner vanished", async () => {
     const db = await openMigrated();
     const first = new Daemon({ db, provider: null });

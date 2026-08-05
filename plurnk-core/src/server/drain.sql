@@ -86,16 +86,17 @@ WHERE e.scheme = 'prompt'
   AND c.name = 'body'
 ORDER BY CAST(substr(e.pathname, $prefix_len + 1) AS INTEGER) ASC;
 
--- PREP: drain_orphaned_prompt_for_loop
+-- PREP: drain_orphaned_prompts_for_loop
 -- A loop can terminate before consuming a next-turn prompt injected into it
 -- (a wake-on-completion, or a runLoop-while-active prompt that landed on a turn the
 -- loop never reached). Engine.inject writes prompt:///<loop>/<N>;
 -- if the loop ended at turn K, an injected prompt at turn > K never ran.
--- Returns the latest such orphan's body + the ended loop's flags so
--- the drain can promote it to a fresh loop — no wake silently lost.
+-- Return the complete orphan set oldest-first with the ended loop posture so
+-- one recovery loop can preserve frame cardinality and ordering.
 -- $pattern = promptLoopPrefix + '%', $prefix_len = length of that prefix
 -- built JS-side (per the SqlRite LIKE-binding note above).
 SELECT c.content AS body, l.flags AS flags, l.provider_spec AS provider_spec,
+       l.max_turns AS max_turns,
        json_extract(e.attributes, '$.openPaths') AS open_paths
 FROM entries e
 JOIN entry_channels c ON c.entry_id = e.id
@@ -109,8 +110,52 @@ WHERE e.scheme = 'prompt'
       WHERE le.loop_id = $loop_id AND le.origin = 'plurnk' AND le.op = 'prompt'
         AND le.scheme = 'prompt' AND le.pathname = e.pathname
   )
-ORDER BY CAST(substr(e.pathname, $prefix_len + 1) AS INTEGER) DESC
-LIMIT 1;
+ORDER BY CAST(substr(e.pathname, $prefix_len + 1) AS INTEGER) ASC;
+
+-- PREP: drain_enqueue_orphan_recovery_loop
+-- {§prompt-loop-containment}: recovery identity is the concluded source loop.
+-- Retrying returns that same queued loop instead of minting duplicate work.
+INSERT INTO loops (
+    worker_id, sequence, status, prompt, flags, provider_spec, max_turns,
+    open_paths, orphan_source_loop_id
+)
+VALUES (
+    $worker_id, $sequence, 100, $prompt, $flags, $provider_spec, $max_turns,
+    $open_paths, $orphan_source_loop_id
+)
+ON CONFLICT (orphan_source_loop_id) DO UPDATE
+SET orphan_source_loop_id = excluded.orphan_source_loop_id
+RETURNING id, sequence, status;
+
+-- PREP: drain_rehome_orphaned_prompt_frames
+-- Move, rather than copy, the source loop's undelivered entry identities into
+-- the recovery loop. The materialized rank freezes the complete source set for
+-- this one atomic statement while pathnames change underneath it.
+WITH orphaned(id, ordinal) AS MATERIALIZED (
+    SELECT e.id,
+           ROW_NUMBER() OVER (
+               ORDER BY CAST(substr(e.pathname, $source_prefix_len + 1) AS INTEGER) ASC
+           )
+    FROM entries e
+    WHERE e.scheme = 'prompt'
+      AND e.owner_id = $owner_id
+      AND e.pathname LIKE $source_pattern
+      AND EXISTS (
+          SELECT 1 FROM entry_channels c
+          WHERE c.entry_id = e.id AND c.name = 'body'
+      )
+      AND NOT EXISTS (
+          SELECT 1 FROM log_entries le
+          WHERE le.loop_id = $source_loop_id AND le.origin = 'plurnk' AND le.op = 'prompt'
+            AND le.scheme = 'prompt' AND le.pathname = e.pathname
+      )
+)
+UPDATE entries
+SET pathname = $target_prefix || (
+    SELECT ordinal FROM orphaned WHERE orphaned.id = entries.id
+)
+WHERE id IN (SELECT id FROM orphaned)
+RETURNING id, pathname;
 
 -- PREP: drain_find_slept_loop
 -- A worker's parked (slept) loop — SEND[202] suspends it at status 202, resumable by a wake

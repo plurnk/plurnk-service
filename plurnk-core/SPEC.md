@@ -2612,9 +2612,10 @@ authority slot.
 §prompt-loop-containment A loop contains every prompt that arrives before it
 concludes, ordinal-keyed as `N`; the next turn publishes every entry for which
 that loop has no `op='prompt'` row, oldest first. Every still-undelivered frame
-at conclusion must remain ordered and reach subsequent work exactly once; #75
-tracks the current newest-only recovery violation. The automatic grinder
-preserves prompt rows; explicit OPEN/FOLD/KILL follows the ordinary log
+at conclusion is re-ordinalized into one source-keyed recovery loop; that loop's
+first turn publishes the complete ordered set exactly once. Recovery retries
+complete the same queued loop and never mint duplicate work. The automatic
+grinder preserves prompt rows; explicit OPEN/FOLD/KILL follows the ordinary log
 contract.
 
 §packet-catalog **Catalogs are query results, not packet state.** The packet

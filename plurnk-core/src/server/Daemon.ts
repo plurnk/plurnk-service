@@ -1187,6 +1187,14 @@ export default class Daemon {
         await this.#db.recovery_resume_unblocked_parks.run({});
         await this.#branchBatches.recover();
 
+        const orphanSources = await this.#db.recovery_orphan_prompt_sources.all<{
+            loop_id: number;
+            worker_id: number;
+        }>({});
+        for (const source of orphanSources) {
+            await this.#reconcileOrphanedPrompts(source.worker_id, source.loop_id);
+        }
+
         const systemPrompt = await readFile(Paths.instructionsSystem, "utf8");
         const queued = await this.#db.recovery_queued_workers.all<{
             worker_id: number;
@@ -1593,7 +1601,7 @@ export default class Daemon {
                     // A next-turn prompt this loop ended before consuming (a
                     // wake conclusion or a runLoop-while-active prompt) is promoted to
                     // a fresh queued loop so it's never silently dropped.
-                    await this.#reconcileOrphanedWake(workerId, loopRow.id);
+                    await this.#reconcileOrphanedPrompts(workerId, loopRow.id);
                     currentLoopId = null;
                 }
             } catch (err) {
@@ -1774,33 +1782,52 @@ export default class Daemon {
         });
     }
 
-    // After a loop terminates, promote any next-turn prompt it never consumed —
-    // an injected wake (stream conclusion) or a runLoop-while-active prompt
-    // that landed on a turn the loop didn't reach — into a fresh queued loop.
-    // The drain claims it on its next iteration, so a conclusion or client
-    // prompt is never silently dropped. Inherits the ended loop's flags.
-    async #reconcileOrphanedWake(workerId: number, endedLoopId: number): Promise<void> {
-        const endedSeq = (await this.#db.engine_loop_sequence.get<{ sequence: number }>({ loop_id: endedLoopId }))?.sequence ?? endedLoopId;
-        const prefix = promptLoopPrefix(endedSeq);
-        const orphan = await this.#db.drain_orphaned_prompt_for_loop.get<{
-            body: string; flags: string | null; provider_spec: string; open_paths: string | null;
-        }>({ loop_id: endedLoopId, owner_id: workerId, pattern: `${prefix}%`, prefix_len: prefix.length });
-        if (orphan === undefined) return;
-        const seqRow = await this.#db.loop_run_next_sequence.get<{ next: number }>({ worker_id: workerId });
-        if (seqRow === undefined) throw new Error("reconcileOrphanedWake: next-sequence query returned no row");
-        const fresh = await this.#db.drain_enqueue_loop.get<{ id: number }>({
-            worker_id: workerId, sequence: seqRow.next, prompt: orphan.body,
-            provider_spec: orphan.provider_spec,
-            max_turns: (await this.#db.drain_get_loop_max_turns.get<{ max_turns: number }>({ loop_id: endedLoopId }))?.max_turns
-                ?? Number(process.env.PLURNK_SERVICE_MAX_TURNS ?? "50"),
+    // After a loop terminates, promote every next-turn frame it never consumed
+    // into one source-keyed queued loop. The first frame occupies the loop seed;
+    // later frames retain separate prompt entries and publish in the same turn.
+    // Re-entry and boot recovery complete that same queued identity.
+    async #reconcileOrphanedPrompts(workerId: number, endedLoopId: number): Promise<void> {
+        await this.#withDrainLock(workerId, async () => {
+            const endedSeq = (await this.#db.engine_loop_sequence.get<{ sequence: number }>({ loop_id: endedLoopId }))?.sequence ?? endedLoopId;
+            const prefix = promptLoopPrefix(endedSeq);
+            const frames = await this.#db.drain_orphaned_prompts_for_loop.all<{
+                body: string;
+                flags: string;
+                provider_spec: string;
+                max_turns: number;
+                open_paths: string | null;
+            }>({ loop_id: endedLoopId, owner_id: workerId, pattern: `${prefix}%`, prefix_len: prefix.length });
+            const first = frames[0];
+            if (first === undefined) return;
+            const seqRow = await this.#db.loop_run_next_sequence.get<{ next: number }>({ worker_id: workerId });
+            if (seqRow === undefined) throw new Error("reconcileOrphanedPrompts: next-sequence query returned no row");
+            const recovery = await this.#db.drain_enqueue_orphan_recovery_loop.get<{
+                id: number;
+                sequence: number;
+                status: number;
+            }>({
+                worker_id: workerId,
+                sequence: seqRow.next,
+                prompt: first.body,
+                flags: first.flags,
+                provider_spec: first.provider_spec,
+                max_turns: first.max_turns,
+                open_paths: first.open_paths ?? "[]",
+                orphan_source_loop_id: endedLoopId,
+            });
+            if (recovery === undefined) throw new Error("reconcileOrphanedPrompts: enqueue returned no row");
+            if (recovery.status !== 100) return;
+            const moved = await this.#db.drain_rehome_orphaned_prompt_frames.all<{ id: number; pathname: string }>({
+                owner_id: workerId,
+                source_loop_id: endedLoopId,
+                source_pattern: `${prefix}%`,
+                source_prefix_len: prefix.length,
+                target_prefix: promptLoopPrefix(recovery.sequence),
+            });
+            if (moved.length !== frames.length) {
+                throw new Error(`reconcileOrphanedPrompts: expected to re-home ${frames.length} frames, moved ${moved.length}`);
+            }
         });
-        if (fresh === undefined) throw new Error("reconcileOrphanedWake: enqueue returned no row");
-        if (orphan.flags !== null) {
-            await this.#db.engine_set_loop_flags.run({ loop_id: fresh.id, flags: orphan.flags });
-        }
-        if (orphan.open_paths !== null) {
-            await this.#db.engine_set_loop_open_paths.run({ loop_id: fresh.id, open_paths: orphan.open_paths });
-        }
     }
 
     // The worker's cancellation scope — lazily created, and replaced once aborted

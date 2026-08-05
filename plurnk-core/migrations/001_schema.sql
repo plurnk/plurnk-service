@@ -103,6 +103,9 @@ CREATE TABLE IF NOT EXISTS loops (
     -- {§methods-loop-run-open-paths}: the initial prompt frame's selected paths,
     -- held here until turn 1 materializes that frame (string[] JSON).
     open_paths TEXT NOT NULL DEFAULT '[]' CHECK (json_valid(open_paths)),
+    -- {§prompt-loop-containment}: one queued recovery loop may carry the
+    -- complete orphan frame set of one concluded source loop.
+    orphan_source_loop_id INTEGER,
     -- {§worker-scheme} loop-termination delta: terminated_at is stamped by the trigger
     -- below when status crosses into terminal (every death-path, uniformly);
     -- terminal_message is the deliverable — the SEND[200] body or the abandonment
@@ -113,10 +116,12 @@ CREATE TABLE IF NOT EXISTS loops (
     -- {§loop-terminal-authorship}: 'cancel' names an external loop.cancel;
     -- NULL covers model terminals and engine verdicts whose result carries the story.
     terminated_by    TEXT                      CHECK (terminated_by IS NULL OR terminated_by = 'cancel'),
-    FOREIGN KEY (worker_id) REFERENCES workers(id) ON DELETE CASCADE
+    FOREIGN KEY (worker_id) REFERENCES workers(id) ON DELETE CASCADE,
+    FOREIGN KEY (orphan_source_loop_id) REFERENCES loops(id)
 ) STRICT;
 
 CREATE UNIQUE INDEX IF NOT EXISTS loops_worker_id_sequence ON loops (worker_id, sequence);
+CREATE UNIQUE INDEX IF NOT EXISTS loops_orphan_source_loop_id ON loops (orphan_source_loop_id);
 
 -- {§worker-scheme}: a loop crossing into a terminal status stamps terminated_at, so sibling
 -- workers pull the termination as a folded ambient delta — caught uniformly across every
