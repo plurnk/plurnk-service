@@ -69,7 +69,7 @@ const packedMimetypeInventory = () => {
             { channels: ["symbols"] },
         );
         const embedder = await mimetypes.embedderInfo();
-        const tokenizer = await mimetypes.tokenizer("gpt-4o", { strict: true });
+        const tokenizer = await mimetypes.tokenizer("o200k", { strict: true });
         process.stdout.write(JSON.stringify({
             owners: Object.fromEntries([...discovery.handlers].map(([name, info]) => [name, info.packageName])),
             json: { ok: json.ok, mimetype: json.mimetype },
