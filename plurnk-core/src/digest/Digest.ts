@@ -151,7 +151,7 @@ interface DigestModel {
     };
 }
 
-// Programmatic entry options (#264 — plurnk-bench reuses Digest without the CLI).
+// Programmatic entry options ({§digest-programmatic-surface}).
 // dbPath is required; digestDir defaults to the bin's test/digest; an optional
 // workerId/workspaceId narrows the digest to one scope instead of the whole DB.
 interface DigestOptions {
@@ -710,7 +710,7 @@ export default class Digest {
         const moduleDir = dirname(fileURLToPath(import.meta.url));
         const dbPath = resolve(opts.dbPath);
         if (!existsSync(dbPath)) throw new Error(`digest: no DB at ${dbPath}`);
-        // A consumer (plurnk-bench) passes an explicit per-trial digestDir; the CLI default is cwd/test/digest.
+        // A caller may select an isolated output directory; the CLI default is cwd/test/digest.
         const digestDir = opts.digestDir ?? join(process.cwd(), "test", "digest");
 
         // Opens without readOnly so WAL-mode DBs (the daemon's normal operating
@@ -767,9 +767,8 @@ export default class Digest {
         probe.close();
         db.close();
 
-        // Optional worker/workspace selector — narrow to one worker or workspace; everything
-        // cascades from the kept workers (loops→turns→log entries→rollups), so a consumer
-        // (plurnk-bench) digests just the scope it cares about, not the whole DB. #264.
+        // {§digest-programmatic-surface} — optional worker/workspace selectors narrow the
+        // kept worker graph and its dependent evidence rather than emitting the whole DB.
         if (opts.workerId !== undefined) workers = workers.filter((r) => r.id === opts.workerId);
         if (opts.workspaceId !== undefined) workers = workers.filter((r) => r.workspace_id === opts.workspaceId);
         if (opts.workerId !== undefined || opts.workspaceId !== undefined) {
