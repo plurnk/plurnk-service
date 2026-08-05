@@ -36,7 +36,7 @@ export type CatalogEntry = {
 
 export default class EntryManifest {
     static toPath(scheme: string, pathname: string): string {
-        if (scheme === "file") return PathSyntax.encodeParens(pathname);
+        if (scheme === "file") return PathSyntax.escapeTarget(PathSyntax.encodeParens(pathname));
         return renderAddress(scheme, pathname);
     }
 
@@ -90,7 +90,9 @@ export default class EntryManifest {
                 totalLines = row.content.length === 0 ? 0 : row.content.split("\n").length;
             }
             const defaultChannel = ctx.defaultChannelFor?.(row.scheme) ?? "body";
-            const channelKey = row.channel === defaultChannel ? entry.path : `${entry.path}#${row.channel}`;
+            const channelKey = row.channel === defaultChannel
+                ? entry.path
+                : `${entry.path}#${PathSyntax.escapeTarget(row.channel)}`;
             entry.channels[channelKey] = {
                 mimetype: row.mimetype,
                 tokens: tokenize(row.content),

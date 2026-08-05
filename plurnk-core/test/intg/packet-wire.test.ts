@@ -81,6 +81,33 @@ test("a folded-authority web URL renders https://host/... — never https:///hos
     assert.match(out, /"target":"https:\/\/en\.wikipedia\.org\/wiki\/Paris"/, "the authority form, one spelling");
 });
 
+test("model-facing targets escape literal URI delimiters without rewriting percent-encoded identity", () => {
+    const target = {
+        kind: "url",
+        scheme: "https",
+        hostname: "example.test",
+        pathname: "/x",
+        query: "literal=)&encoded=%29",
+        fragment: "preview(",
+    };
+    const out = PacketWire.renderLog([{
+        coordinate: "1/1/10",
+        origin: "model",
+        op: "COPY",
+        status: 304,
+        target,
+        tx: {
+            target,
+            lineMarker: null,
+            body: { target, lineMarker: null },
+        },
+        rx: { status: 304 },
+    }], tok);
+    const spelling = String.raw`https://example.test/x?literal=\\)&encoded=%29#preview\\(`;
+    assert.ok(out.includes(`"source":"${spelling}"`));
+    assert.ok(out.includes(`"destination":"${spelling}"`));
+});
+
 test("COPY/MOVE render operand selections and scoped textual materialization receipts", () => {
     const out = PacketWire.renderLog([{
         coordinate: "1/2/5",

@@ -63,7 +63,7 @@ export function renderAddress(scheme: string, pathname: string): string {
     // model-facing rendering restores it to the authority slot.
     // worker:// renders :/// — the owner rides owner_id ({§entry-owner}), so empty authority IS
     // the canonical stored form; a querying face re-applies its authority (~/name) for display.
-    return `${scheme}://${encoded}`;
+    return PathSyntax.escapeTarget(`${scheme}://${encoded}`);
 }
 
 /** Render one stored target without exposing credentials or request metadata. {§scheme-address} */
@@ -74,19 +74,19 @@ export function renderTarget(target: RenderTargetParts): string | null {
     const scheme = target.scheme ?? null;
     let address: string;
     if (scheme === null) {
-        address = PathSyntax.encodeParens(target.pathname.replace(/^\//, ""));
+        address = PathSyntax.escapeTarget(PathSyntax.encodeParens(target.pathname.replace(/^\//, "")));
     } else if (hostname !== null && hostname.length > 0) {
         const port = target.port === null || target.port === undefined ? "" : `:${target.port}`;
-        address = `${scheme}://${hostname}${port}${PathSyntax.encodeParens(target.pathname)}`;
+        address = PathSyntax.escapeTarget(`${scheme}://${hostname}${port}${PathSyntax.encodeParens(target.pathname)}`);
     } else {
         address = renderAddress(scheme, target.pathname);
     }
 
     if (target.query !== null && target.query !== undefined) {
-        address += `?${target.query}`;
+        address += `?${PathSyntax.escapeTarget(target.query)}`;
     }
     if (target.fragment !== null && target.fragment !== undefined && target.fragment.length > 0) {
-        address += `#${target.fragment}`;
+        address += `#${PathSyntax.escapeTarget(target.fragment)}`;
     }
     return address.length === 0 ? null : address;
 }

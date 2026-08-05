@@ -1626,12 +1626,17 @@ export default class Dispatcher {
     }
 
     #resourceAddress(selection: ResolvedResourceSelection): string {
-        const address = selection.scheme === "file"
-            ? PathSyntax.encodeParens(selection.identityPathname.replace(/^\//, ""))
-            : renderAddress(selection.scheme, selection.identityPathname);
-        return selection.channel === selection.manifest.defaultChannel
-            ? address
-            : `${address}#${selection.channel}`;
+        const address = renderTarget({
+            scheme: selection.scheme === "file" ? null : selection.scheme,
+            pathname: selection.scheme === "file"
+                ? selection.identityPathname.replace(/^\//, "")
+                : selection.identityPathname,
+            fragment: selection.channel === selection.manifest.defaultChannel
+                ? null
+                : selection.channel,
+        });
+        if (address === null) throw new Error("resolved resource selection has no renderable address");
+        return address;
     }
 
     #pendingEffect(

@@ -200,12 +200,29 @@ test("[note4] manifest keys channels by addressable URI — default bare, non-de
         // A multi-channel exec stream entry at sh:///1/1/2 (stdout is the default channel, + stderr).
         const id = await seedEntryWithChannel(db, { workspaceId, ownerId: workerId, scheme: "sh", pathname: "/1/1/2", channel: "stdout", content: "out", mimetype: "text/stream" });
         await db.test_seed_channel.run({ entry_id: id, name: "stderr", content: "err", mimetype: "text/stream", state: "static" });
+        await db.test_seed_channel.run({ entry_id: id, name: "preview(\\", content: "detail", mimetype: "text/stream", state: "static" });
+        await seedEntryWithChannel(db, {
+            workspaceId,
+            ownerId: workerId,
+            scheme: "https",
+            pathname: "/example.test/x?literal=)&encoded=%29",
+            channel: "body",
+            content: "network",
+            mimetype: "text/plain",
+        });
         // sh's default channel is stdout (the Exec handler) — resolve it so stdout keys bare, stderr by #fragment.
         const ctx = makeSchemeCtx({ db, workspaceId, defaultChannelFor: (s) => (s === "sh" ? "stdout" : "body") });
         const catalog = await EntryManifest.catalogRowsFor(ctx, undefined, workerId) as Array<{ path: string; channels: Record<string, unknown> }>;
         const stream = catalog.find((e) => e.path === "sh:///1/1/2");
         assert.ok(stream, "exec stream listed");
-        assert.deepEqual(Object.keys(stream.channels).toSorted(), ["sh:///1/1/2", "sh:///1/1/2#stderr"],
-            "stdout (default) keyed by the bare URI; stderr by #stderr — the model READs either verbatim");
+        assert.deepEqual(
+            Object.keys(stream.channels).toSorted(),
+            ["sh:///1/1/2", "sh:///1/1/2#preview\\(\\\\", "sh:///1/1/2#stderr"],
+            "the default is bare and non-default channel keys use target-slot spelling",
+        );
+        assert.ok(
+            catalog.some((entry) => entry.path === "https://example.test/x?literal=\\)&encoded=%29"),
+            "network catalog paths preserve literal and percent-encoded query identity",
+        );
     } finally { await db.close(); }
 });

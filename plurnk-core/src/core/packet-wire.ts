@@ -7,7 +7,7 @@
 // Format and omission rules are owned by {§packet-markdown}. Section producers
 // supply names and typed content; this projection preserves their ordered evidence.
 
-import { PathSyntax, Validator, type LineMarker, type ProblemDetails, type TextRegion } from "@plurnk/plurnk-contracts";
+import { Validator, type LineMarker, type ProblemDetails, type TextRegion } from "@plurnk/plurnk-contracts";
 import { Results as SchemeResults } from "@plurnk/plurnk-schemes";
 import { renderTarget } from "./plurnk-uri.ts";
 import type { GitStatus } from "./git-state.ts";
@@ -515,9 +515,9 @@ export default class PacketWire {
     ): string | null {
         if (target === null || target === undefined) return null;
         const address = target.kind === "local" && typeof target.raw === "string"
-            ? target.raw
+            ? renderTarget({ scheme: null, pathname: target.raw })
             : target.scheme === "file"
-                ? PathSyntax.encodeParens(target.pathname?.replace(/^\//, "") ?? "")
+                ? renderTarget({ scheme: null, pathname: target.pathname ?? "" })
                 : PacketWire.#renderActionTarget(target);
         if (address === null || address.length === 0) return null;
         if (marker === null || marker === undefined) return address;

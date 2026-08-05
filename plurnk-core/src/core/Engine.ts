@@ -28,7 +28,7 @@ import type ExecutorRegistry from "./ExecutorRegistry.ts";
 import type { RegistryEntry } from "./ExecutorRegistry.ts";
 import type { StreamEventNotify, NoticeNotify, WakeWorkerNotify, InjectWorkerNotify, BranchWorkerNotify, BranchCompletionGate, CancelWorkerNotify, CancelDescendantsNotify } from "./ChannelWrite.ts";
 import { editedSpan } from "../content/index.ts";
-import { promptPathname, promptLoopPrefix } from "./plurnk-uri.ts";
+import { promptPathname, promptLoopPrefix, renderTarget } from "./plurnk-uri.ts";
 import { rulerCount } from "./token-ruler.ts";
 import SearchGate from "./search-gate.ts";
 import LiveSubscriptions from "./LiveSubscriptions.ts";
@@ -2040,8 +2040,14 @@ export default class Engine {
                 // information independently of payload. Emit the terminal marker ONCE: open,
                 // terse, carrying the close status ({§tokenomics-fetch-fits-free}).
                 if (closed && priorAttrs.terminal !== true) {
+                    const streamTarget = renderTarget({
+                        scheme: ch.runtime,
+                        pathname: ch.coord,
+                        fragment: visibleFragment,
+                    });
+                    if (streamTarget === null) throw new Error(`stream ${ch.subscription_id} has no renderable address`);
                     const pointer = cursor > 0
-                        ? `full output already delivered above; READ ${ch.runtime}://${ch.coord}${visibleFragment === null ? "" : `#${visibleFragment}`} to revisit`
+                        ? `full output already delivered above; READ ${streamTarget} to revisit`
                         : "stream produced no output";
                     const sequence = fromSequence + written;
                     await this.#db.engine_insert_stream_delta.run({

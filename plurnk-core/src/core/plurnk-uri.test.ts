@@ -76,7 +76,7 @@ test("renderTarget is the non-secret inverse for decomposed operation targets", 
         pathname: "/a(b)",
         query: "b=(2)&a=%281%29&a=3",
         fragment: "pre(view)",
-    }), "https://example.org:8443/a%28b%29?b=(2)&a=%281%29&a=3#pre(view)");
+    }), String.raw`https://example.org:8443/a%28b%29?b=\(2\)&a=%281%29&a=3#pre\(view\)`);
     assert.equal(renderTarget({
         scheme: "worker",
         hostname: "ada",
@@ -89,4 +89,22 @@ test("renderTarget is the non-secret inverse for decomposed operation targets", 
         scheme: null,
         pathname: "/docs/a(b).md",
     }), "docs/a%28b%29.md");
+});
+
+test("renderTarget round-trips exact URI query and fragment spelling through the target lexer", () => {
+    const rendered = renderTarget({
+        scheme: "https",
+        hostname: "example.org",
+        pathname: "/x",
+        query: "literal=)&encoded=%29&slash=\\",
+        fragment: "preview(\\",
+    });
+    assert.equal(
+        rendered,
+        String.raw`https://example.org/x?literal=\)&encoded=%29&slash=\\#preview\(\\`,
+    );
+    const parsed = parsePath(rendered ?? "");
+    if (parsed?.kind !== "url") assert.fail("expected rendered URL target");
+    assert.equal(parsed.query, "literal=)&encoded=%29&slash=\\");
+    assert.equal(parsed.fragment, "preview(\\");
 });
