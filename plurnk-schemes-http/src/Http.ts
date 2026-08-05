@@ -6,6 +6,7 @@ import { createParser, type ParseError } from "eventsource-parser";
 import type {
     SchemeCtx,
     SubscriptionHandle,
+    StreamSubscription,
     PassthroughResult,
     SchemeManifest,
     SchemeHandler,
@@ -357,11 +358,11 @@ export default class Http implements SchemeHandler {
         if (cached !== undefined && Http.#storedCopyServable(Http.#fetchedAt(cached.header), null)) {
             const written = await ctx.entries.write(pathname, Http.#seedEntry());
             if (Results.isErrorStatus(written.status)) return Http.#passthrough(written);
-            await ctx.subscriptions.open(pathname, { cancel: () => {} }, { publishedChannel });
-            await ctx.subscriptions.notifyChunk(HEADER, cached.header, "text/plain");
-            if (cached.html !== undefined) await ctx.subscriptions.notifyChunk("html", cached.html.content, cached.html.mimetype);
-            await ctx.subscriptions.notifyChunk(BODY, cached.body.content, cached.body.mimetype);
-            await ctx.subscriptions.close({ status: 200 }, `ttl-fresh; ${cached.body.content.length} chars from cache`);
+            const subscription = await ctx.subscriptions.open(pathname, { cancel: () => {} }, { publishedChannel });
+            await subscription.notifyChunk(HEADER, cached.header, "text/plain");
+            if (cached.html !== undefined) await subscription.notifyChunk("html", cached.html.content, cached.html.mimetype);
+            await subscription.notifyChunk(BODY, cached.body.content, cached.body.mimetype);
+            await subscription.close({ status: 200 }, `ttl-fresh; ${cached.body.content.length} chars from cache`);
             return { shape: "passthrough", status: 102 };
         }
 
@@ -376,9 +377,10 @@ export default class Http implements SchemeHandler {
 
         // open() returns the worker+teardown-composed signal — fires on loop.cancel
         // OR our local teardown. Wire it so either path aborts the fetch/render.
-        const composed = await ctx.subscriptions.open(pathname, handle, { publishedChannel });
+        const subscription = await ctx.subscriptions.open(pathname, handle, { publishedChannel });
         const onAbort = () => local.abort();
-        composed.addEventListener("abort", onAbort, { once: true });
+        subscription.addEventListener("abort", onAbort, { once: true });
+        let detached = false;
 
         try {
             const response = await fetch(url, {
@@ -397,10 +399,10 @@ export default class Http implements SchemeHandler {
             // {§revalidation} A 304 restores the GET representation into the
             // freshly seeded channels and remains an ordinary streaming READ.
             if (cached !== undefined && Http.#storedCopyServable(Http.#fetchedAt(cached.header), response)) {
-                await ctx.subscriptions.notifyChunk(HEADER, Http.#stamp(cached.header), "text/plain");
-                if (cached.html !== undefined) await ctx.subscriptions.notifyChunk("html", cached.html.content, cached.html.mimetype);
-                await ctx.subscriptions.notifyChunk(BODY, cached.body.content, cached.body.mimetype);
-                await ctx.subscriptions.close({ status: 200 }, `revalidated 304; ${cached.body.content.length} chars from cache`);
+                await subscription.notifyChunk(HEADER, Http.#stamp(cached.header), "text/plain");
+                if (cached.html !== undefined) await subscription.notifyChunk("html", cached.html.content, cached.html.mimetype);
+                await subscription.notifyChunk(BODY, cached.body.content, cached.body.mimetype);
+                await subscription.close({ status: 200 }, `revalidated 304; ${cached.body.content.length} chars from cache`);
                 return { shape: "passthrough", status: 102 };
             }
 
@@ -424,19 +426,19 @@ export default class Http implements SchemeHandler {
                 } catch (cause) {
                     throw new WebMaterializationError("render", responseMime, cause);
                 }
-                await Http.#writeHeader(ctx, method, result.status, result.statusText, result.headers);
-                await ctx.subscriptions.notifyChunk("html", result.html, "text/html");
+                await Http.#writeHeader(subscription, method, result.status, result.statusText, result.headers);
+                await subscription.notifyChunk("html", result.html, "text/html");
                 const materialized = await WebFetcher.materialize(
                     { body: result.html, mimetype: "text/html" },
                     ctx.projection,
                 );
                 if (materialized === null) {
                     const failure = Http.#noReadableProjection(url);
-                    await ctx.subscriptions.close(failure, failure.problem?.detail);
+                    await subscription.close(failure, failure.problem?.detail);
                     return failure;
                 }
-                await ctx.subscriptions.notifyChunk(BODY, materialized.body.content, materialized.body.mimetype);
-                await ctx.subscriptions.close({ status: 200 }, `rendered HTTP ${result.status}; ${materialized.body.content.length} readable chars`);
+                await subscription.notifyChunk(BODY, materialized.body.content, materialized.body.mimetype);
+                await subscription.close({ status: 200 }, `rendered HTTP ${result.status}; ${materialized.body.content.length} readable chars`);
                 return { shape: "passthrough", status: 102 };
             }
 
@@ -446,23 +448,36 @@ export default class Http implements SchemeHandler {
             // GET; events land in the body channel as they arrive across turns,
             // until the origin closes. Only GET — a POST reply is never an SSE READ.
             if (method === "GET" && /^text\/event-stream\b/i.test(contentType)) {
-                await Http.#writeHeader(ctx, method, response.status, response.statusText, [...response.headers]);
-                return await Http.#streamEvents(ctx, response);
+                await Http.#writeHeader(subscription, method, response.status, response.statusText, [...response.headers]);
+                if (response.body === null) {
+                    await subscription.close({ status: 200 }, "SSE stream; empty body");
+                    return { shape: "passthrough", status: 102 };
+                }
+                detached = true;
+                void Http.#settleEventStream(subscription, response, {
+                    url,
+                    method,
+                    signal: local.signal,
+                    errorDetailLimit: this.#errorDetailLimit,
+                }).catch((error: unknown) => {
+                    console.error("HTTP SSE terminal cleanup failed", { url, error });
+                }).finally(() => subscription.removeEventListener("abort", onAbort));
+                return { shape: "passthrough", status: 102 };
             }
 
             // {§http-lifecycle}/{§mimetype-classifier} String channels retain
             // textual response data. Binary responses become typed empty markers;
             // decoding bytes while preserving their origin MIME type would lie
             // about the stored representation.
-            await Http.#writeHeader(ctx, method, response.status, response.statusText, [...response.headers]);
+            await Http.#writeHeader(subscription, method, response.status, response.statusText, [...response.headers]);
             const bodyMime = responseMime || "application/octet-stream";
             if (response.body === null) {
-                await ctx.subscriptions.close({ status: 200 }, `HTTP ${response.status}; empty body`);
+                await subscription.close({ status: 200 }, `HTTP ${response.status}; empty body`);
                 return { shape: "passthrough", status: 102 };
             }
             if (MimetypeClassifier.isBinary(bodyMime)) {
                 await response.body.cancel();
-                await ctx.subscriptions.notifyChunk(BODY, "", bodyMime);
+                await subscription.notifyChunk(BODY, "", bodyMime);
                 const detail = `HTTP ${method} ${url} returned ${bodyMime}. The remote response was received, but its binary body cannot be represented in a Plurnk text channel.`;
                 const result = Http.#bad(
                     415,
@@ -478,30 +493,30 @@ export default class Http implements SchemeHandler {
                         retryable: false,
                     },
                 );
-                await ctx.subscriptions.close(result, detail);
+                await subscription.close(result, detail);
                 return result;
             }
             let bytes = 0;
             const decoder = new TextDecoder();
             for await (const chunk of response.body as AsyncIterable<Uint8Array>) {
                 bytes += chunk.length;
-                await ctx.subscriptions.notifyChunk(BODY, decoder.decode(chunk, { stream: true }), bodyMime);
+                await subscription.notifyChunk(BODY, decoder.decode(chunk, { stream: true }), bodyMime);
             }
             const tail = decoder.decode();
-            if (tail.length > 0) await ctx.subscriptions.notifyChunk(BODY, tail, bodyMime);
+            if (tail.length > 0) await subscription.notifyChunk(BODY, tail, bodyMime);
 
-            await ctx.subscriptions.close({ status: 200 }, `HTTP ${response.status}; ${bytes} bytes`);
+            await subscription.close({ status: 200 }, `HTTP ${response.status}; ${bytes} bytes`);
             return { shape: "passthrough", status: 102 };
         } catch (err) {
             const aborted = local.signal.aborted;
             if (aborted) {
                 const result = Http.#cancelled(url, method);
-                await ctx.subscriptions.close(result, result.problem?.detail);
+                await subscription.close(result, result.problem?.detail);
                 return result;
             }
             if (err instanceof WebMaterializationError) {
                 const result = Http.#materializationFailure(url, method, err);
-                await ctx.subscriptions.close(result, result.problem?.detail);
+                await subscription.close(result, result.problem?.detail);
                 return result;
             }
             console.error("HTTP acquisition failed", { method, url, err });
@@ -521,10 +536,10 @@ export default class Http implements SchemeHandler {
                     retryable: true,
                 },
             );
-            await ctx.subscriptions.close(result, reason);
+            await subscription.close(result, reason);
             return result;
         } finally {
-            composed.removeEventListener("abort", onAbort);
+            if (!detached) subscription.removeEventListener("abort", onAbort);
         }
     }
 
@@ -550,22 +565,53 @@ export default class Http implements SchemeHandler {
 
     // {§revalidation} Origin headers come first; authoritative package method
     // and acquisition-time metadata are appended last.
-    static async #writeHeader(ctx: SchemeCtx, method: string, status: number, statusText: string, headers: ReadonlyArray<readonly [string, string]>): Promise<void> {
+    static async #writeHeader(subscription: StreamSubscription, method: string, status: number, statusText: string, headers: ReadonlyArray<readonly [string, string]>): Promise<void> {
         const lines = [`HTTP ${status} ${statusText}`];
         for (const [k, v] of headers) lines.push(`${k}: ${v}`);
         lines.push(`${REQUEST_METHOD}: ${method}`);
         lines.push(`${FETCHED_AT}: ${new Date().toISOString()}`);
-        await ctx.subscriptions.notifyChunk(HEADER, lines.join("\n"), "text/plain");
+        await subscription.notifyChunk(HEADER, lines.join("\n"), "text/plain");
     }
 
-    // Drain an SSE body through the standard streaming parser and dispatch one
-    // BODY chunk per event. event/id/retry/comments remain transport metadata:
-    // this projection publishes data, not the wire, and does not reconnect.
-    static async #streamEvents(ctx: SchemeCtx, response: Response): Promise<PassthroughResult> {
-        if (response.body === null) {
-            await ctx.subscriptions.close({ status: 200 }, "SSE stream; empty body");
-            return { shape: "passthrough", status: 102 };
+    // Drain an acquired SSE body and settle its retained subscription. The READ
+    // has already returned 102, so terminal failure is durable stream state.
+    static async #settleEventStream(
+        subscription: StreamSubscription,
+        response: Response,
+        options: { url: string; method: string; signal: AbortSignal; errorDetailLimit: number },
+    ): Promise<void> {
+        try {
+            const events = await Http.#streamEvents(subscription, response);
+            await subscription.close({ status: 200 }, `SSE stream; ${events} events`);
+        } catch (error) {
+            if (options.signal.aborted) {
+                const result = Http.#cancelled(options.url, options.method);
+                await subscription.close(result, result.problem?.detail);
+                return;
+            }
+            console.error("HTTP SSE stream failed", { method: options.method, url: options.url, error });
+            const cause = ErrorDetail.preview(error, options.errorDetailLimit);
+            const reason = `HTTP ${options.method} ${options.url} failed: ${cause}`;
+            const result = Http.#bad(
+                502,
+                "http",
+                "fetch-failed",
+                reason,
+                {
+                    target: options.url,
+                    method: options.method,
+                    stage: "transfer",
+                    retryable: true,
+                },
+            );
+            await subscription.close(result, reason);
         }
+    }
+
+    // event/id/retry/comments remain transport metadata: this projection
+    // publishes event data, not the wire, and does not reconnect.
+    static async #streamEvents(subscription: StreamSubscription, response: Response): Promise<number> {
+        if (response.body === null) return 0;
         const decoder = new TextDecoder();
         const pending: string[] = [];
         let fatal: ParseError | null = null;
@@ -582,7 +628,7 @@ export default class Http implements SchemeHandler {
         const publish = async () => {
             for (const data of pending.splice(0)) {
                 events += 1;
-                await ctx.subscriptions.notifyChunk(BODY, `${data}\n`, "text/plain");
+                await subscription.notifyChunk(BODY, `${data}\n`, "text/plain");
             }
         };
         for await (const chunk of response.body as AsyncIterable<Uint8Array>) {
@@ -595,8 +641,7 @@ export default class Http implements SchemeHandler {
         parser.reset({ consume: true });
         if (fatal !== null) throw fatal;
         await publish();
-        await ctx.subscriptions.close({ status: 200 }, `SSE stream; ${events} events`);
-        return { shape: "passthrough", status: 102 };
+        return events;
     }
 
     static #address(target: UrlPath): NetworkAddress | PassthroughResult {

@@ -68,7 +68,9 @@ interface CtxOverrides {
 const makeCtx = (priorEntry: StoredEntryData | null = null, overrides: CtxOverrides = {}) => {
     const chunks: Array<{ channel: string; chunk: string; mimetype?: string }> = [];
     let opened: { pathname: string; handle: SubscriptionHandle; publishedChannel?: string } | null = null;
-    let closed: { result: Parameters<SubscriptionCaps["close"]>[0]; summary?: string } | null = null;
+    type ClosedSubscription = { result: Parameters<SubscriptionCaps["close"]>[0]; summary?: string };
+    let closed: ClosedSubscription | null = null;
+    const settled = Promise.withResolvers<ClosedSubscription>();
     let deleted: string | null = null;
     let wrote: { pathname: string; entry: EntryData } | null = null;
     let observedStorageRead: string | null = null;
@@ -133,7 +135,10 @@ const makeCtx = (priorEntry: StoredEntryData | null = null, overrides: CtxOverri
     const notifyChunk: StreamSubscription["notifyChunk"] = async (channel, chunk, mimetype) => {
         chunks.push({ channel, chunk, mimetype });
     };
-    const close: StreamSubscription["close"] = async (result, summary) => { closed = { result, summary }; };
+    const close: StreamSubscription["close"] = async (result, summary) => {
+        closed = { result, summary };
+        settled.resolve(closed);
+    };
     const subscriptions: SubscriptionCaps = {
         async open(pathname, handle, options) {
             opened = { pathname, handle, ...options };
@@ -158,6 +163,7 @@ const makeCtx = (priorEntry: StoredEntryData | null = null, overrides: CtxOverri
         ctx,
         inspect: () => ({ chunks, opened, closed, deleted, wrote, observedStorageRead, observedRead, seq }),
         forceCancel: () => opened?.handle.cancel(),
+        awaitClosed: () => settled.promise,
     };
 };
 
@@ -840,10 +846,11 @@ const sseBody = (chunks: Array<{ channel: string; chunk: string }>) =>
     chunks.filter((c) => c.channel === "body").map((c) => c.chunk);
 
 test("READ SSE: each event's data becomes one body chunk, framing stripped", async () => {
-    const { ctx, inspect } = makeCtx();
+    const { ctx, inspect, awaitClosed } = makeCtx();
     await withFetch(mockFetch(200, "OK", ["data: hello\n\n", "data: world\n\n"], { "content-type": "text/event-stream" }), async () => {
         const r = await new Http().read(readStmt(urlTarget("http://example.com/sse", "/sse")), ctx);
         assert.equal(r.status, 102);
+        await awaitClosed();
     });
     const { chunks, closed } = inspect();
     assert.deepEqual(sseBody(chunks), ["hello\n", "world\n"]);
@@ -860,7 +867,7 @@ test("READ SSE: returns 102 after acquisition while the origin stream remains op
             controller = value;
         },
     });
-    const { ctx, inspect } = makeCtx();
+    const { ctx, inspect, awaitClosed } = makeCtx();
     let returned = false;
 
     await withFetch(async () => new Response(body, {
@@ -875,6 +882,7 @@ test("READ SSE: returns 102 after acquisition while the origin stream remains op
         controller.close();
         assert.equal((await read).status, 102);
         assert.equal(returnedBeforeClose, true, "READ must return while the acquired SSE body is still open");
+        await awaitClosed();
     });
 
     assert.deepEqual(sseBody(inspect().chunks), ["after return\n"]);
@@ -882,17 +890,19 @@ test("READ SSE: returns 102 after acquisition while the origin stream remains op
 });
 
 test("READ SSE: multi-line data joins with \\n into a single event", async () => {
-    const { ctx, inspect } = makeCtx();
+    const { ctx, inspect, awaitClosed } = makeCtx();
     await withFetch(mockFetch(200, "OK", ["data: a\ndata: b\n\n"], { "content-type": "text/event-stream; charset=utf-8" }), async () => {
         await new Http().read(readStmt(urlTarget("http://example.com/sse", "/sse")), ctx);
+        await awaitClosed();
     });
     assert.deepEqual(sseBody(inspect().chunks), ["a\nb\n"]);
 });
 
 test("READ SSE: comment and metadata-only frames drop; only data dispatches", async () => {
-    const { ctx, inspect } = makeCtx();
+    const { ctx, inspect, awaitClosed } = makeCtx();
     await withFetch(mockFetch(200, "OK", [": keep-alive\n\n", "event: greet\nid: 7\ndata: payload\n\n"], { "content-type": "text/event-stream" }), async () => {
         await new Http().read(readStmt(urlTarget("http://example.com/sse", "/sse")), ctx);
+        await awaitClosed();
     });
     const { chunks, closed } = inspect();
     assert.deepEqual(sseBody(chunks), ["payload\n"]);
@@ -900,17 +910,19 @@ test("READ SSE: comment and metadata-only frames drop; only data dispatches", as
 });
 
 test("READ SSE: an event split across network chunks reassembles", async () => {
-    const { ctx, inspect } = makeCtx();
+    const { ctx, inspect, awaitClosed } = makeCtx();
     await withFetch(mockFetch(200, "OK", ["data: par", "tial\n", "\n"], { "content-type": "text/event-stream" }), async () => {
         await new Http().read(readStmt(urlTarget("http://example.com/sse", "/sse")), ctx);
+        await awaitClosed();
     });
     assert.deepEqual(sseBody(inspect().chunks), ["partial\n"]);
 });
 
 test("READ SSE: CRLF-framed events parse (\\r normalized)", async () => {
-    const { ctx, inspect } = makeCtx();
+    const { ctx, inspect, awaitClosed } = makeCtx();
     await withFetch(mockFetch(200, "OK", ["data: crlf\r", "\n\r", "\n"], { "content-type": "text/event-stream" }), async () => {
         await new Http().read(readStmt(urlTarget("http://example.com/sse", "/sse")), ctx);
+        await awaitClosed();
     });
     assert.deepEqual(sseBody(inspect().chunks), ["crlf\n"]);
 });
@@ -919,11 +931,13 @@ test("READ SSE: an oversized incomplete event fails the remote stream", async ()
     const previous = process.env.PLURNK_SCHEMES_HTTP_SSE_MAX_BUFFER_CHARS;
     process.env.PLURNK_SCHEMES_HTTP_SSE_MAX_BUFFER_CHARS = "8";
     try {
-        const { ctx, inspect } = makeCtx();
+        const { ctx, inspect, awaitClosed } = makeCtx();
         await withFetch(mockFetch(200, "OK", ["data: this event never terminates"], { "content-type": "text/event-stream" }), async () => {
             const result = await new Http().read(readStmt(urlTarget("http://example.com/sse", "/sse")), ctx);
-            assert.equal(result.status, 502);
-            assert.match(result.problem?.detail ?? "", /max buffer size of 8/);
+            assert.equal(result.status, 102);
+            const terminal = await awaitClosed();
+            assert.equal(terminal.result.status, 502);
+            assert.match(terminal.result.problem?.detail ?? "", /max buffer size of 8/);
         });
         assert.equal(inspect().closed?.result.status, 502);
         assert.equal(inspect().closed?.result.problem?.type, "https://problems.plurnk.dev/scheme/http/fetch-failed");
@@ -931,6 +945,27 @@ test("READ SSE: an oversized incomplete event fails the remote stream", async ()
         if (previous === undefined) delete process.env.PLURNK_SCHEMES_HTTP_SSE_MAX_BUFFER_CHARS;
         else process.env.PLURNK_SCHEMES_HTTP_SSE_MAX_BUFFER_CHARS = previous;
     }
+});
+
+test("READ SSE: cancellation after acquisition settles the retained stream at 499", async () => {
+    let controller!: ReadableStreamDefaultController<Uint8Array>;
+    const body = new ReadableStream<Uint8Array>({
+        start(value) { controller = value; },
+    });
+    const { ctx, forceCancel, awaitClosed } = makeCtx();
+
+    await withFetch(async () => new Response(body, {
+        status: 200,
+        headers: { "content-type": "text/event-stream" },
+    }), async () => {
+        const initial = await new Http().read(readStmt(urlTarget("http://example.com/sse", "/sse")), ctx);
+        assert.equal(initial.status, 102);
+        await forceCancel();
+        controller.error(new DOMException("aborted", "AbortError"));
+        const terminal = await awaitClosed();
+        assert.equal(terminal.result.status, 499);
+        assert.equal(terminal.result.problem?.type, "https://problems.plurnk.dev/scheme/http/cancelled");
+    });
 });
 
 test("READ: rendered HTML archives the DOM while body carries the model-facing projection", async () => {
