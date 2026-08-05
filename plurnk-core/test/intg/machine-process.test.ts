@@ -126,7 +126,7 @@ test("a fork creates a worker while retaining the shared workspace", async () =>
     } finally { db.close(); }
 });
 
-test("#254 — a fork inherits the log but spends no new money: workspace cost is not double-counted, the branch starts at 0", async () => {
+test("{§machine-processes-fork-cost} — a fork inherits the log but spends no new money: workspace cost is not double-counted, the branch starts at 0", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `ws-${crypto.randomUUID()}`);

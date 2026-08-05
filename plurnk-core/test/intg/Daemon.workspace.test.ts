@@ -71,7 +71,7 @@ test("{§methods-rebind}: a bound connection switches workspaces without reconne
     });
 });
 
-test("workspace.rename mutates the workspace name; rejects collision + empty (#248)", async () => {
+test("{§methods-workspace-rename} workspace.rename mutates the workspace name; rejects collision + empty", async () => {
     await withDaemon(async (_db, addr) => {
         const ws = await connect(addr);
         try {

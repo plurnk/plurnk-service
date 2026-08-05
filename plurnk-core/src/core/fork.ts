@@ -25,7 +25,8 @@ export default class Fork {
         }>({ id: parentWorkerId });
         if (parent === undefined) throw new Error(`fork: worker ${parentWorkerId} not found`);
 
-        // #248 — name the branch at instantiation (immutable after). An explicit name wins; the default
+        // {§worker-scheme-fork}, {§machine-processes-worker-origin} — name the branch at instantiation
+        // (immutable after). An explicit name wins; the default
         // is the next free `<parent>-fork-<N>` admitted by {§worker-name-minting}.
         const branch = name === undefined
             ? await WorkerName.claimAuto(db, {
@@ -87,7 +88,7 @@ export default class Fork {
         const turns = await db.fork_get_turns.all<{ id: number; loop_id: number; [k: string]: unknown }>({ worker_id: parentWorkerId });
         const turnMap = new Map<number, number>();
         for (const { id, loop_id, ...rest } of turns) {
-            // #254 — a fork inherits the parent's log for context but spends no new money:
+            // {§machine-processes-fork-cost} — a fork inherits the parent's log for context but spends no new money:
             // the copied turns are history, not fresh generations. Zero their usage so the
             // cost-rollup triggers add nothing — the workspace total stays true lifetime spend
             // (no double-count) and the branch's cost_usd accrues only what IT generates.

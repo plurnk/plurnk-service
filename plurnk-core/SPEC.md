@@ -257,7 +257,8 @@ terminal history.**
 | Shared worker entries (`worker:///...`)               | Workspace commons | Shared live.                                                                                                       |
 | Membership overlay ({§machine-processes-one-overlay}) | Workspace         | Shared unchanged; divergent membership requires another workspace.                                                 |
 | Log items ({§machine-processes-fork-copies-the-log})  | Worker            | Rows, event identities, tags, fold state, and the matching observation cursor are copied as terminal history.      |
-| Private worker entries (`worker://~/...`)             | Worker            | Deep-copied with ownership remapped; parent and child then diverge.                                                 |
+| §machine-processes-fork-cost **Turn usage and cost**  | Worker            | Copied turns carry zero usage and cost; branch totals cover new generation only and workspace spend stays exact.   |
+| Private worker entries (`worker://~/...`)             | Worker            | Deep-copied with ownership remapped; parent and child then diverge.                                                |
 | Active loops, turns, and cancellation                 | Worker            | Never copied as live work; inherited structure is terminal history, then a new loop starts.                        |
 
 §machine-processes-worker-is-its-log **A worker's conversational memory of
