@@ -1,4 +1,4 @@
-// {§lexicon} the providers-lane standing guard (#472/#477, owner-ruled OpenAI
+// {§lexicon} The providers-lane standing guard (OpenAI
 // lexicon). Retired terms fail CI here, not at the next audit — the mirror of
 // core's plurnk-core guard, tuned to what PROVIDERS retired. Scope: src/ non-test
 // + SPEC.md. A `lexicon-allow` line marker exempts the shed's own call sites
@@ -33,13 +33,13 @@ const WIRE_THINKING = /enable_thinking|`thinking`|thinking\s*:|\.thinking\b|thin
 
 // Each entry: the banned pattern and the canonical term the violation must become.
 const BANNED: Array<{ label: string; re: RegExp; canon: string; exempt?: RegExp }> = [
-    { label: "thinking (our-voice)", re: /\bthinking\b/i, canon: "reasoning (the #472 lexicon ruling)", exempt: WIRE_THINKING },
-    { label: "contextSize", re: /\bcontextSize\b/, canon: "contextWindow — the provider window (#472)" },
-    { label: "retired providers knob", re: /PLURNK_PROVIDERS_(THINKING|LOGPROB\b|CONTEXT_SIZE\b)/, canon: "PLURNK_PROVIDERS_{REASONING,TOP_LOGPROBS,CONTEXT_WINDOW} (#399/#472) — only the shed may name these" },
-    // #511: catch the retired run/session noun in the WIRE-HEADER form too (a
+    { label: "thinking (our-voice)", re: /\bthinking\b/i, canon: "reasoning ({§lexicon})", exempt: WIRE_THINKING },
+    { label: "contextSize", re: /\bcontextSize\b/, canon: "contextWindow — the provider window ({§model-fact-resolution})" },
+    { label: "retired providers knob", re: /PLURNK_PROVIDERS_(THINKING|LOGPROB\b|CONTEXT_SIZE\b)/, canon: "PLURNK_PROVIDERS_{REASONING,TOP_LOGPROBS,CONTEXT_WINDOW} ({§provider-configuration}) — only the shed may name these" },
+    // Catch the retired run/session noun in the wire-header form too (a
     // quoted string, not an identifier — the hole the old `Plurnk-Run-Id` hid in),
     // alongside the coordinate identifiers.
-    { label: "run/session (retired noun — coordinate or wire header)", re: /\b(sessionId|runId)\b|Plurnk-(Run|Session)-Id/, canon: "workerId/workspaceId, Plurnk-Worker-Id/Plurnk-Workspace-Id (#486/#511)" },
+    { label: "run/session (retired noun — coordinate or wire header)", re: /\b(sessionId|runId)\b|Plurnk-(Run|Session)-Id/, canon: "workerId/workspaceId, Plurnk-Worker-Id/Plurnk-Workspace-Id ({§lifecycle-terms})" },
 ];
 
 test("retired provider terms never reappear in src or SPEC — drift fails CI, not the next audit", () => {

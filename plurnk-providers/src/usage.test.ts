@@ -23,7 +23,7 @@ test("normalizeUsage: OpenAI-style — reasoning split out of completion_tokens"
     assert.equal(u.completion + u.reasoning, 100); // billable output unchanged
 });
 
-test("normalizeUsage: xAI/Grok-style — reasoning is ADDITIVE, not subtracted from completion (#28)", () => {
+test("normalizeUsage: xAI/Grok-style — reasoning is ADDITIVE, not subtracted from completion", () => {
     // Real grok-4.3 shape: completion_tokens is visible-only; reasoning_tokens is
     // detailed but ADDITIVE — total = prompt + completion + reasoning.
     const u = normalizeUsage({
@@ -74,9 +74,9 @@ test("normalizeUsage: absent usage → all zeros", () => {
     assert.deepEqual(normalizeUsage(undefined), { prompt: 0, completion: 0, reasoning: 0, cached: 0, total: 0 });
 });
 
-// -- Fireworks-style: reasoning shipped as TEXT, folded into completion, not itemized (#425) --
+// -- Fireworks-style: reasoning shipped as TEXT, folded into completion, not itemized --
 
-test("normalizeUsage: fireworks folds reasoning into completion -- re-split by text proportion, sum preserved (#425)", () => {
+test("normalizeUsage: fireworks folds reasoning into completion -- re-split by text proportion, sum preserved", () => {
     // total = prompt + completion (no gap), reasoning_tokens absent, but 750 vs 250
     // chars of reasoning vs content came back. Split completion 75/25; cost base held.
     const u = normalizeUsage(
@@ -89,7 +89,7 @@ test("normalizeUsage: fireworks folds reasoning into completion -- re-split by t
     assert.equal(u.prompt + u.completion + u.reasoning, u.total); // invariant
 });
 
-test("normalizeUsage: pure-reasoning turn (empty content) attributes all completion to reasoning (#425)", () => {
+test("normalizeUsage: pure-reasoning turn (empty content) attributes all completion to reasoning", () => {
     // The run52 runaway shape: 0 visible content, the whole budget spent reasoning.
     const u = normalizeUsage(
         { prompt_tokens: 100, completion_tokens: 500, total_tokens: 600 },

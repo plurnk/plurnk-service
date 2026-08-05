@@ -35,7 +35,7 @@ test("classifyProviderError maps HTTP status to kind", () => {
     assert.equal(k(404), "invalid_response");
 });
 
-test("classifyProviderError: a 422 flagged grammar_invalid is distinct (#548); other 422s are invalid responses", () => {
+test("classifyProviderError: a 422 flagged grammar_invalid is distinct; other 422s are invalid responses", () => {
     const rejected = apiError(422, JSON.stringify({ error: { type: "grammar_invalid", message: "non-conforming emission rejected: ..." } }));
     assert.equal(classifyProviderError(rejected).kind, "grammar_invalid");
     assert.equal(classifyProviderError(apiError(422, JSON.stringify({ error: { type: "invalid_request_error" } }))).kind, "invalid_response");

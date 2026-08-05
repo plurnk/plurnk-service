@@ -64,7 +64,7 @@ test("Pool: contextWindow is the safe floor (min) across backends", () => {
     assert.equal(new Pool([backend({ window: 48000 }).b, backend({ window: 32000 }).b]).contextWindow, 32000);
 });
 
-test("Pool: any unknown (null) window makes the pool null - no improvised cap (#421)", () => {
+test("Pool: any unknown (null) window makes the pool null - no improvised cap", () => {
     assert.equal(new Pool([backend({ window: 48000 }).b, backend({ window: null }).b]).contextWindow, null);
 });
 

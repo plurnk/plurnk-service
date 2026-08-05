@@ -43,7 +43,7 @@ export interface ProviderUsage {
 export type FinishReason = "stop" | "length" | "tool_calls" | "content_filter" | null;
 export type ProviderAttemptFinishReason = FinishReason | "resource_interrupted";
 
-// A per-token logprob (#36, SPEC §14). `logprob` is the backend's RAW model
+// {§provider-evidence} A per-token logprob. `logprob` is the backend's raw model
 // log-probability of the emitted token — the sampling-transform-invariant
 // confidence, chosen over Fireworks' post-mask `sampling_logprob` (measured
 // IDENTICAL under grammar, incl. an adversarial mask; the raw value is the honest
@@ -70,7 +70,7 @@ export interface ProviderAssistant<TFinish extends ProviderAttemptFinishReason =
     readonly usage: ProviderUsage;
     readonly finishReason: TFinish;
     readonly model: string;
-    // Per-token logprobs (#36), present ONLY when PLURNK_PROVIDERS_TOP_LOGPROBS is set
+    // Per-token logprobs, present only when PLURNK_PROVIDERS_TOP_LOGPROBS is set
     // AND the backend returned them. Absent otherwise — NEVER synthesized. Opt-in,
     // per-alias: a scraping alias enables it; serving turns carry nothing.
     readonly logprobs?: readonly TokenLogprob[];
@@ -96,16 +96,16 @@ export interface ProviderResponse<TFinish extends ProviderAttemptFinishReason = 
     // amount and currency; the provider does not reinterpret them. The consumer
     // (service) merges this into its Turn metadata and
     // filters what reaches the client; it reads `meta`, never mines `assistantRaw`.
-    // Absent when the backend reported no extra fields (#23, generalized).
+    // Absent when the backend reported no extra fields.
     readonly meta?: Record<string, unknown>;
-    // The VERBATIM backend response body (#36, SPEC §14) — the full wire JSON for
+    // The verbatim backend response body ({§provider-evidence}) — the full wire JSON for
     // a non-streamed turn, or the reassembled equivalent for a streamed one.
     // `assistantRaw` is a normalized DIGEST (it drops choices[]); this is the
     // capture-everything record for the endpoint's fine-tune corpus. Present ONLY
     // when PLURNK_PROVIDERS_RAWBODY is on — off by default so serving turns never
     // carry it. Absent otherwise.
     readonly rawBody?: unknown;
-    // Notices attached to the represented attempt (#24, SPEC §13). Successful
+    // Notices attached to the represented attempt. Successful
     // returns may relay them; interrupted attempt notices remain forensic.
     // Grammar conformance itself is consumer-owned.
     readonly notices?: readonly ProviderNotice[];
@@ -118,11 +118,12 @@ export interface Provider {
     // plurnk.gbnf, possibly root-substituted by the consumer). Backends that
     // support grammar-constrained sampling attach it verbatim; all others
     // ignore it. The provider never chooses or modifies the grammar — whether
-    // to constrain and which root variant to send is consumer policy (SPEC §13).
+    // to constrain and which root variant to send is consumer policy
+    // ({§gbnf-response-observation}).
     //
     // `maxTokens` is the consumer's per-call output ceiling (wire `max_tokens`).
     // Without it, most servers generate UNBOUNDED (llama-server n_predict -1) —
-    // under a multi-op grammar that degenerates to the context wall (SPEC §13),
+    // under a multi-op grammar that degenerates to the context wall,
     // so a constrained consumer is expected to pass it. Policy stays the
     // consumer's; the provider only transports.
     //
@@ -130,7 +131,7 @@ export interface Provider {
     // stream (loop/run). Providers MAY key backend affinity on it — e.g.
     // llama-server slot pinning for KV-cache reuse — and MUST NOT interpret
     // its content. The consumer never sees or chooses backend resources
-    // (slot integers, connections); the *mechanism* is the provider's (#11).
+    // (slot integers, connections); the mechanism is the provider's.
     //
     // `attributions` is opaque consumer-supplied creator telemetry; the consumer
     // owns what contribution that set claims (#81). `client` is the consumer's
@@ -145,7 +146,8 @@ export interface Provider {
     // the request body UNDER the provider's managed fields — model/messages/grammar/
     // reasoning/max_tokens/slot always win, and transport/protocol keys (stream,
     // response_format, grammar, id_slot) are stripped, so it carries sampling intent
-    // only and can't bypass grammar transport (SPEC §8 holds). A PROXY consumer (the
+    // only and can't bypass grammar transport ({§provider-request-authority}). A
+    // proxy consumer (the
     // plurnk endpoint fronting its own backends) uses it to pass its caller's sampling
     // knobs through; a direct consumer typically leaves it unset.
     //
@@ -156,7 +158,7 @@ export interface Provider {
     // else. Headers only — the packet NEVER carries strike state (the model must
     // not see engine accounting; it would become a metric to game).
     //
-    // `workspaceId`/`loop`/`turn` (#404, per #391) are the turn COORDINATE — the
+    // `workspaceId`/`loop`/`turn` are the turn coordinate ({§lifecycle-terms}) — the
     // daemon-side sequence of the turn being generated, which the endpoint can
     // never scrape from the wire. Forwarded as `Plurnk-Workspace-Id`/`Plurnk-Loop`/
     // `Plurnk-Turn` ONLY under the same firstPartyMetadata gate; dropped
@@ -167,26 +169,26 @@ export interface Provider {
     // means unknown; under llama-server parallelism the probed value is per slot.
     readonly contextWindow: number | null;
     readonly model: string;
-    // OPTIONAL (#37): the backend's SELF-REPORTED served model id, from a
+    // Optional: the backend's self-reported served model id, from a
     // /v1/models-shaped probe (llama-server today; any such backend). For a local
     // alias, `model` is the alias but this is the real served name (the .gguf) the
     // tokenizer seam maps exactly. Read-only, best-effort, no extra probing —
     // absent when no probe ran. Consumers resolve `servedModel ?? model`.
     readonly servedModel?: string;
-    // OPTIONAL resolved capability (#34): true when a transported grammar will
+    // Optional resolved capability: true when a transported grammar will
     // actually constrain the decode (rails LIVE), false/undefined otherwise —
     // introspectable so the consumer can fail hard on a dark-rails boot instead
     // of discovering it from unconstrained emissions.
     readonly constrainsOutput?: boolean;
-    // OPTIONAL resolved capability (#43): true when this backend decodes
+    // Optional resolved capability: true when this backend decodes
     // UNBOUNDED absent a caller cap — llama-server honors n_predict to the
     // context wall (observed in a 30,736-junk-token wall run), so a consumer
-    // MUST bring an output envelope (SPEC §13). Cloud backends that silently
+    // MUST bring an output envelope ({§provider-generation-envelope}). Cloud backends that silently
     // clamp an over-ask (fireworks/xai, verified live) never set this; undefined
     // = no claim. Introspectable so a consumer can refuse AT BOOT a local alias
     // with no declared envelope, instead of dying mid-turn in partition math.
     readonly requiresMaxTokens?: boolean;
-    // OPTIONAL generation-envelope reserves (#507, owner-ruled) — the amounts OF
+    // Optional generation-envelope reserves ({§provider-generation-envelope}) — the amounts of
     // the DETECTED window reserved for reasoning and completion: floor
     // percentages of `contextWindow`, or absolute per-alias pins that win
     // outright. The consumer's prompt budget is `contextWindow - reasoningReserve
@@ -211,7 +213,7 @@ export interface Provider {
     calculateCost(usage: ProviderUsage): number;
 }
 
-// ProviderAlias moved to @plurnk/plurnk-aliases (the zero-dep parser, #27);
+// ProviderAlias lives in @plurnk/plurnk-aliases (the zero-dependency parser);
 // index.ts re-exports it so the "." surface is unchanged.
 
 // Per-alias instantiation overrides, threaded from the alias cascade into the

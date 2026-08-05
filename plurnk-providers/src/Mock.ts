@@ -42,8 +42,9 @@ export default class Mock implements Provider {
     #completionReserve: number | null;
     #queue: MockResponse[];
 
-    // #507: reserves resolve the SAME way a real provider's do — the TOLERANT env
-    // read (the service's partition/budget suite sets PLURNK_PROVIDERS_*_RESERVE
+    // {§provider-generation-envelope} Reserves resolve the same way a real
+    // provider's do — the tolerant env read (the service's partition/budget
+    // suite sets PLURNK_PROVIDERS_*_RESERVE
     // and Mock reflects it, resolved against contextWindow). Tolerant, NOT the
     // fail-hard envelopeFromEnv: Mock is the universal fixture, constructed
     // without the reserves in most base tests, so absent env → null → the
@@ -78,7 +79,8 @@ export default class Mock implements Provider {
 
     async generate({ signal, grammar }: { messages: ChatMessage[]; workerId?: string; signal?: AbortSignal; grammar?: string }): Promise<MockReturnedResponse> {
         // Honor abort before consuming the queue — an aborted call makes no
-        // "wire call" and must not exhaust a queued response (SPEC §10.8).
+        // "wire call" and must not exhaust a queued response
+        // ({§provider-failure-normalization}).
         signal?.throwIfAborted();
         const next = this.#queue.shift();
         if (next === undefined) throw new Error("Mock provider exhausted: no more queued responses");
@@ -87,7 +89,7 @@ export default class Mock implements Provider {
             content: a.content,
             reasoning: a.reasoning,
             usage: { ...DEFAULT_USAGE, ...a.usage },
-            ...(a.reasoningEncrypted !== undefined ? { reasoningEncrypted: a.reasoningEncrypted } : {}), // #482 — sealed blobs ride the contract through Mock too
+            ...(a.reasoningEncrypted !== undefined ? { reasoningEncrypted: a.reasoningEncrypted } : {}),
             finishReason: a.finishReason ?? "stop",
             model: a.model ?? "mock",
             ...(a.ops !== undefined ? { ops: a.ops } : {}),

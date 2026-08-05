@@ -45,7 +45,7 @@ export const normalizeUsage = (raw: RawUsage | null | undefined, reasoningText =
         // o-series folds it INTO completion_tokens (subset: total = prompt + completion,
         // so completion must have reasoning subtracted out). xAI/Grok reports it
         // ADDITIVE to a visible-only completion_tokens (total = prompt + completion +
-        // reasoning), where subtracting wrongly zeroes the visible output (#28). Tell
+        // reasoning), where subtracting wrongly zeroes the visible output. Tell
         // them apart by the total identity; with no total reported, fall back on the
         // impossible-subset signal — reasoning can't exceed the completion it's a
         // subset of.
@@ -60,7 +60,7 @@ export const normalizeUsage = (raw: RawUsage | null | undefined, reasoningText =
         completion = completionRaw;
         // Fireworks folds reasoning INTO completion_tokens and itemizes no
         // reasoning_tokens, so a turn that shipped only reasoning reads reasoning=0
-        // though 300k chars of it arrived (#425). When reasoning TEXT came back but
+        // though 300k chars of it arrived. When reasoning TEXT came back but
         // the reported totals leave no gap, re-split the reported completion by the
         // emitted text proportions. Sum-preserving: billable output
         // (completion+reasoning) and cost are byte-identical; only the

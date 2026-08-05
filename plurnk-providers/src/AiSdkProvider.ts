@@ -34,13 +34,13 @@ export type AiSdkProviderConfig = {
     streamIdleTimeoutMs?: number;             // streamed body inter-chunk deadline; zero/unset disables
     headers?: Record<string, string>;         // fully-resolved request headers (incl. auth); default {}
     fetch?: ProviderFetch;                    // per-instance request executor; default globalThis.fetch
-    contextWindow?: number | null;              // default null; caller resolves-or-fails (#419), narrows to required with the interface
+    contextWindow?: number | null;              // default null; caller resolves-or-fails, narrows to required with the interface
     reasoningStyle?: ReasoningStyle;          // default "none"
     countPromptTokens?: (messages: readonly ChatMessage[], signal?: AbortSignal) => PromptTokenMeasurement | Promise<PromptTokenMeasurement>;
     calculateCost?: (usage: ProviderUsage) => number; // default () => 0
     source?: string;                           // notice/problem source, e.g. "provider:openai"; default "provider"
     grammarStyle?: GrammarStyle;               // how a GBNF grammar is carried; default "none" (not sent)
-    // #518: send the OpenAI-standard `prompt_cache_key` set to workerId, so a
+    // Send the OpenAI-standard `prompt_cache_key` set to workerId, so a
     // serverless backend with REPLICA-LOCAL prompt caching (fireworks, verified)
     // pins a worker's turns to one replica and claims its stable prefix. Default
     // false -- a backend that strict-validates unknown fields 400s, so enable only
@@ -52,9 +52,9 @@ export type AiSdkProviderConfig = {
     gbnfDebug?: boolean;                        // PLURNK_PROVIDERS_GBNF_DEBUG: validate the grammar locally + throw on invalid, but DON'T transport it (run unconstrained); default false
     streaming?: boolean;                        // SSE transport (default true); false → one non-streamed JSON
     firstPartyMetadata?: boolean;              // forward per-turn attributions + client as Plurnk-* headers (plurnk only); default false
-    apiKeyRejectedMessage?: string;            // #537: friendly hint when a PRESENT key is 401/403-rejected (distinct from unset); default undefined
-    eosText?: string;                          // #539: server-reported eos_token, stripped from the content tail (--special renders it as text); default undefined
-    // Slot affinity wiring (provider-INTERNAL — never consumer-facing, #11).
+    apiKeyRejectedMessage?: string;            // friendly hint when a present key is 401/403-rejected (distinct from unset); default undefined
+    eosText?: string;                          // server-reported eos_token, stripped from the content tail (--special renders it as text); default undefined
+    // Slot affinity wiring is provider-internal, never consumer-facing.
     supportsSlotPinning?: boolean;             // backend accepts an `id_slot` body field (llama-server); default false
     slotCount?: number | null;                 // probed slot count for pinning backends; default null
     // Backend-served exact tokenization (llama-server /tokenize). When set, the
@@ -64,12 +64,12 @@ export type AiSdkProviderConfig = {
     // Provider-authoritative count of a complete chat-completions request. This
     // is distinct from /tokenize, which sees content but not the chat template.
     promptTokensUrl?: string;
-    // #37: the backend's self-reported served model id (from the /v1/models probe),
+    // The backend's self-reported served model id (from the /v1/models probe),
     // surfaced as Provider.servedModel. For a local llama-server the wire `model` is
     // the alias; this is the real name (the .gguf) the tokenizer seam maps. Absent
     // when no probe ran or it read no row.
     servedModel?: string;
-    // #43: backend decodes unbounded without a caller cap (llama-server n_predict
+    // Backend decodes unbounded without a caller cap (llama-server n_predict
     // to the wall) — surfaced as Provider.requiresMaxTokens so consumers can
     // boot-refuse an envelope-less local alias. Default unset (no claim).
     requiresMaxTokens?: boolean;
@@ -87,12 +87,12 @@ export type AiSdkProviderConfig = {
     // WHERE it applies stays mechanism.
     temperature: number;
     repeatPenalty: number;
-    // #426: anti-degeneration guard on the CLOUD path (grammarStyle "none"), where the
+    // Anti-degeneration guard on the cloud path (grammarStyle "none"), where the
     // repeat_penalty multiplier isn't available - the OpenAI-standard frequency_penalty.
     // Optional (default 0 = off) so an out-of-date plugin that omits it just runs unguarded
     // rather than failing construction; the standard factory always supplies it.
     frequencyPenalty?: number;
-    // #567: optional llama.cpp anti-repetition controls. DRY can suppress long
+    // Optional llama.cpp anti-repetition controls. DRY can suppress long
     // repeated sequences, but it can also corrupt exact repetition required by
     // PLURNK operations. The portable default is off; these fields ride only
     // after an explicit operator opt-in. repeatLastN widens the repeat window.
@@ -102,13 +102,14 @@ export type AiSdkProviderConfig = {
     repeatLastN?: number;
     // Transient-failure retry budget — REQUIRED, no in-code default
     // (PLURNK_PROVIDERS_RETRY_ATTEMPTS, a non-negative int): 0 = surface the
-    // first failure; N = up to N retries on a transient error (§4, #18).
+    // first failure; N = up to N retries on a transient error
+    // ({§provider-failure-normalization}).
     retryAttempts: number;
     // Maximum characters retained from an upstream diagnostic in the public
     // ProviderError Problem. Standard factories supply the env-owned value;
     // direct construction may omit it to preserve the complete diagnostic.
     errorDetailLimit?: number;
-    // Data-capture knobs (#36), OFF by default — the flag IS the isolation, so a
+    // Data-capture knobs ({§provider-evidence}), off by default — the flag is the isolation, so a
     // serving turn requests nothing and carries nothing. `topLogprobs`: when a
     // non-negative int, request `logprobs:true, top_logprobs:<n>` and surface the
     // per-token confidence on assistant.logprobs (PLURNK_PROVIDERS_TOP_LOGPROBS;
@@ -117,7 +118,7 @@ export type AiSdkProviderConfig = {
     // gated per-alias.
     topLogprobs?: number | null;
     rawBody?: boolean;
-    // #507 (owner-ruled): the generation-envelope reserves, env-read via
+    // {§provider-generation-envelope} The generation-envelope reserves, env-read via
     // envelopeFromEnv — a percentage of the DETECTED window or an absolute token
     // count. Optional so an out-of-date sibling keeps constructing (no claim);
     // the standard factory always supplies them. Resolved against contextWindow
@@ -125,13 +126,13 @@ export type AiSdkProviderConfig = {
     // derives correctly.
     reasoningReserve?: ReserveSpec;
     completionReserve?: ReserveSpec;
-    // #507: the plurnk.ai router owns tuning (SPEC §5) — false suppresses the
+    // The plurnk.ai router owns tuning — false suppresses the
     // client-side temperature/penalty FLOORS on this provider (caller `sampling`
     // still passes through verbatim). Default true (floors ride).
     tuningFloors?: boolean;
 };
 
-// #539: drop trailing occurrences of a server-rendered EOG marker. llama-server
+// Drop trailing occurrences of a server-rendered EOG marker. llama-server
 // under --special renders EOS as literal text, so a raw-EOS-ended turn carries a
 // trailing <eos> the grammar never sanctioned. Trailing-only + exact-match, so it
 // can never eat body content (a body ending in the literal marker isn't producible
@@ -151,15 +152,15 @@ export const effortFromBudget = (budget: number): "low" | "medium" | "high" => {
 };
 
 // Body keys the provider owns — a caller's `sampling` passthrough may not set
-// these. Two families (#477 audit):
+// these. Two families:
 //   transport/managed — grammar transport, the stream/JSON choice, slot pinning,
-//     data capture (SPEC §8: backend-specific fields never cross the contract);
+//     data capture ({§provider-evidence}: backend-specific fields never cross the contract);
 //   contract invariants — `n` (atomic single completion: choices[0] is the
 //     response; n>1 = paid, dropped output), the tool-calling family (tools-in-
 //     body doctrine, §2: native tool_calls return null content = a broken turn),
 //     modalities/audio (text-only contract), prediction (decode semantics, not
 //     sampling), and the token caps (the envelope is the managed maxTokens —
-//     sampling must not bypass the consumer's #425 cap).
+//     sampling must not bypass the consumer's cap).
 // Sampling intent (temperature, top_p, penalties, stop, seed, logit_bias) and
 // platform knobs (user, service_tier, prompt_cache_*, safety_identifier,
 // metadata, store, verbosity) pass through; the managed floors spread UNDER
@@ -215,7 +216,7 @@ export default class AiSdkProvider implements Provider {
     #servedModel: string | undefined;
     #requiresMaxTokens: boolean | undefined;
 
-    // Optional capability (SPEC §2): exact tokenization served by the backend's
+    // Optional capability ({§provider-local-capabilities}): exact tokenization served by the backend's
     // own vocab. Assigned in the constructor ONLY when the config carries a
     // tokenizeUrl (llama-server), so `provider.tokenize === undefined` remains
     // the honest capability signal for every other backend.
@@ -302,7 +303,7 @@ export default class AiSdkProvider implements Provider {
     }
 
     get contextWindow(): number | null { return this.#contextWindow; }
-    // #507: envelope reserves — absolute pins stand alone; percentages need the
+    // {§provider-generation-envelope} Envelope reserves — absolute pins stand alone; percentages need the
     // detected window; null = underivable (no claim for core's no-cap path).
     #resolveReserve(spec: ReserveSpec | undefined): number | null {
         if (spec === undefined) return null;
@@ -312,11 +313,11 @@ export default class AiSdkProvider implements Provider {
     get reasoningReserve(): number | null { return this.#resolveReserve(this.#reasoningReserve); }
     get completionReserve(): number | null { return this.#resolveReserve(this.#completionReserve); }
     get model(): string { return this.#model; }
-    // #37: backend's self-reported served id; undefined when unprobed/unknown.
+    // Backend's self-reported served id; undefined when unprobed/unknown.
     get servedModel(): string | undefined { return this.#servedModel; }
-    // #43: resolved "decodes unbounded without a cap" fact; undefined = no claim.
+    // Resolved "decodes unbounded without a cap" fact; undefined = no claim.
     get requiresMaxTokens(): boolean | undefined { return this.#requiresMaxTokens; }
-    // Resolved capability (#34): will a transported grammar actually constrain
+    // Resolved capability: will a transported grammar actually constrain
     // this backend's decode? Introspectable so a consumer can verify the rails
     // are LIVE without spending a generation on a forcing-grammar probe.
     get constrainsOutput(): boolean { return this.#grammarStyle !== "none"; }
@@ -395,10 +396,10 @@ export default class AiSdkProvider implements Provider {
             // API's default depth is its adaptive).
             case "effort": return mode === "on" ? { reasoning_effort: effortFromBudget(budget!) } : {};
             // Fireworks enum: OFF is sent EXPLICITLY ("none") — omission leaves a
-            // reason-by-default model (DeepSeek V4: default 'high') reasoning (#30).
+            // reason-by-default model (DeepSeek V4: default 'high') reasoning.
             // ADAPTIVE omits the field: the backend's own default posture IS the
             // adaptive semantics, and the literal "adaptive" is MiniMax-M3-only —
-            // fireworks 400s it for every other model (wire-verified, #403; the
+            // Fireworks 400s it for every other model (wire-verified; the
             // 1.0.2 adaptive default refused to boot on it). V4 gotcha: integer
             // efforts 400.
             case "effort_explicit": return mode === "off"
@@ -420,7 +421,7 @@ export default class AiSdkProvider implements Provider {
         }
     }
 
-    // Per-run slot affinity (#11): the consumer passes WHICH run this is; the
+    // Per-worker slot affinity: the consumer passes which worker this is; the
     // provider owns WHICH slot serves it. Sticky per workerId, round-robin across
     // new runs (distinct runs → distinct slots while slots last), LRU-bounded
     // bookkeeping so a long-lived daemon never grows the map unboundedly —
@@ -443,19 +444,19 @@ export default class AiSdkProvider implements Provider {
         return { id_slot: slot };
     }
 
-    // Optional local llama-server GBNF transport (SPEC §13). Unsupported
+    // Optional local llama-server GBNF transport ({§gbnf-response-observation}). Unsupported
     // backends receive no grammar-related field.
     #grammarBody(grammar: string | undefined): Record<string, unknown> {
         if (grammar === undefined) return {};
         switch (this.#grammarStyle) {
             // Greedy decoding under hard constraint loops without a repeat-penalty
-            // floor (#9, SPEC §13) — llama.cpp spells it `repeat_penalty`.
+            // floor — llama.cpp spells it `repeat_penalty`.
             case "llamacpp": return { grammar, repeat_penalty: this.#repeatPenalty };
             case "none": return {};
         }
     }
 
-    // Anti-degeneration DEFAULT on EVERY request (#426), keyed to the backend's wire
+    // Anti-degeneration default on every request, keyed to the backend's wire
     // convention - NOT grammar-bound. GBNF is a local constraint, so a cloud
     // alias runs the sampler bare: firefast (deepseek/fireworks) ran 4/86 bench turns
     // straight to the token cap on pure looped repetition (run52). Ships next to
@@ -466,7 +467,7 @@ export default class AiSdkProvider implements Provider {
     // live: together/deepinfra/fireworks; it is OpenAI's own param, so real OpenAI takes it too).
     #repetitionPenaltyBody(): Record<string, unknown> {
         switch (this.#grammarStyle) {
-            // #567: repeat_penalty + optional DRY (repeated-SEQUENCE penalty) + a wider
+            // repeat_penalty + optional DRY (repeated-sequence penalty) + a wider
             // repeat_last_n window — the loop-breaking tools a llama.cpp backend serves.
             // Each rides only when its operator knob is set; absent = the box's default.
             case "llamacpp": return {
@@ -482,7 +483,7 @@ export default class AiSdkProvider implements Provider {
         }
     }
 
-    // First-party telemetry headers (SPEC §5): forwarded ONLY when the spec
+    // First-party telemetry headers ({§provider-request-authority}): forwarded only when the spec
     // opted in (the plurnk endpoint). The gate is here, not at the call site, so
     // attributions/client/strikes can never reach a third-party backend even if
     // the consumer passes them to the wrong provider. Empty values emit no header
@@ -496,11 +497,11 @@ export default class AiSdkProvider implements Provider {
         if (attributions !== undefined && attributions.length > 0) h["Plurnk-Attribution"] = JSON.stringify(attributions);
         if (client !== undefined && client.length > 0) h["Plurnk-Client"] = client;
         if (strikes !== undefined && Number.isInteger(strikes) && strikes >= 0) h["Plurnk-Strikes"] = String(strikes);
-        // Worker identity (#26, wire-name completed #486/#511): the opaque workerId
+        // Worker identity: the opaque workerId
         // the consumer already supplies, forwarded so the endpoint can key
         // per-worker affinity/telemetry — same gate as every first-party signal.
         h["Plurnk-Worker-Id"] = workerId;
-        // Root worker of the lineage (#522): the no-parent ancestor of this turn's
+        // Root worker of the lineage ({§worker-primary}): the no-parent ancestor of this turn's
         // worker tree. The consumer classifies primary-vs-spawned by equality
         // (primaryWorkerId == workerId ⇒ the primary/root worker). The provider
         // EMITS what the consumer supplies and never invents a primary; the
@@ -508,7 +509,7 @@ export default class AiSdkProvider implements Provider {
         // own, where it equals workerId). Absence is the consumer's violation for
         // the endpoint to surface, not a provider default.
         if (primaryWorkerId !== undefined && primaryWorkerId.length > 0) h["Plurnk-Worker-Primary"] = primaryWorkerId;
-        // Turn coordinate (#404, extends #26 per #391): workspace/loop/turn, the
+        // Turn coordinate ({§lifecycle-terms}): workspace/loop/turn, the
         // daemon-side sequence the endpoint can never scrape from the wire.
         // Coordinates are 1-based — 0 is not a real value, so no strikes-style
         // zero exception; absent/empty/0 emits no header.
@@ -518,7 +519,7 @@ export default class AiSdkProvider implements Provider {
         return h;
     }
 
-    // PLURNK_PROVIDERS_GBNF_DEBUG (SPEC §13): validate the supplied GBNF locally and fail
+    // PLURNK_PROVIDERS_GBNF_DEBUG ({§gbnf-response-observation}): validate the supplied GBNF locally and fail
     // hard if it's malformed, BEFORE any wire call — and the grammar is NOT
     // transported, so the request runs unconstrained. A debug aid to catch invalid
     // grammars (e.g. while editing the plurnk grammar) without a model round-trip;
@@ -533,7 +534,7 @@ export default class AiSdkProvider implements Provider {
         }
     }
 
-    // Per-turn metadata bag (#23): pass the backend's non-standard top-level fields
+    // Per-turn metadata bag: pass the backend's non-standard top-level fields
     // through verbatim. Providers do not reinterpret vendor currency or account
     // metadata; a monetary value carries its own amount and currency.
     #buildMeta(chunkMetadata: Record<string, unknown>): Record<string, unknown> | undefined {
@@ -545,7 +546,8 @@ export default class AiSdkProvider implements Provider {
     // penalties, stop, seed, …) merged UNDER the managed body: model, messages,
     // reasoning, grammar (+ its repeat-penalty floor), max_tokens and slot always
     // win, and reserved transport/protocol keys are stripped so the passthrough
-    // can't smuggle a grammar, a stream toggle, or a backend slot (SPEC §8).
+    // can't smuggle a grammar, a stream toggle, or a backend slot
+    // ({§provider-request-authority}).
     #samplingBody(sampling: Record<string, unknown> | undefined): Record<string, unknown> {
         if (sampling === undefined) return {};
         const out: Record<string, unknown> = {};
@@ -554,9 +556,10 @@ export default class AiSdkProvider implements Provider {
     }
 
     async generate({ messages, workerId, primaryWorkerId, signal, grammar, maxTokens, attributions, client, strikes, workspaceId, loop, turn, sampling }: { messages: ChatMessage[]; workerId: string; primaryWorkerId?: string; signal?: AbortSignal; grammar?: string; maxTokens?: number; attributions?: string[]; client?: string; strikes?: number; workspaceId?: string; loop?: number; turn?: number; sampling?: Record<string, unknown> }): Promise<ProviderResponse> {
-        // Boundary validation (SPEC §2): the worker identity is required.
+        // {§provider-interface} The worker identity is required.
         if (workerId === undefined || workerId.length === 0) throw new Error("generate: workerId is required — the worker's stable, opaque identity");
-        // Reject before any wire call when already aborted (SPEC §10.8).
+        // Reject before any wire call when already aborted
+        // ({§provider-failure-normalization}).
         signal?.throwIfAborted();
 
         // Grammar handling ({§gbnf-response-observation}). Debug validates the
@@ -566,11 +569,11 @@ export default class AiSdkProvider implements Provider {
         const sendGrammar = wantGrammar && !this.#gbnfDebug ? grammar : undefined;
 
         // Assembly order = precedence: the family's sampling DEFAULTS
-        // (PLURNK_PROVIDERS_TEMPERATURE — universal, #30 measured it on grammar
+        // (PLURNK_PROVIDERS_TEMPERATURE — universal, measured on grammar
         // paths and the name promises every request) < the caller's `sampling`
         // < the managed fields, which always win.
         const body: Record<string, unknown> = {
-            // #507: floors suppressed on router-owned-tuning providers (plurnk) —
+            // Floors are suppressed on router-owned-tuning providers (plurnk) —
             // the router's per-model tuning must not be overridden by client floors.
             ...(this.#tuningFloors ? { temperature: this.#temperature, ...this.#repetitionPenaltyBody() } : {}),
             ...this.#samplingBody(sampling),
@@ -580,11 +583,11 @@ export default class AiSdkProvider implements Provider {
             ...this.#reasoningBody(),
             ...this.#grammarBody(sendGrammar),
             ...(maxTokens !== undefined ? { max_tokens: maxTokens } : {}),
-            // #36: request per-token logprobs only when enabled (managed field —
+            // Request per-token logprobs only when enabled (managed field —
             // reserved from caller sampling; the env flag is the single control).
             ...(this.#topLogprobs !== null ? { logprobs: true, top_logprobs: this.#topLogprobs } : {}),
             ...this.#slotBody(workerId),
-            // #518: prompt-cache affinity -- workerId as the OpenAI-standard
+            // Prompt-cache affinity -- workerId as the OpenAI-standard
             // prompt_cache_key routes a worker's turns to one serverless replica so
             // its stable prefix caches (managed; reserved from caller sampling).
             ...(this.#promptCacheKey ? { prompt_cache_key: workerId } : {}),
@@ -651,7 +654,7 @@ export default class AiSdkProvider implements Provider {
             throw pe;
         }
 
-        // #539: llama-server --special renders EOG tokens as text, so a turn ending
+        // llama-server --special renders EOG tokens as text, so a turn ending
         // via raw EOS carries a trailing <eos> the grammar never sanctioned - it both
         // false-rejects the rail verdict and leaks a control token into the packet.
         // Strip the server-reported eos_token from the tail ONCE, before the verdict
@@ -686,7 +689,7 @@ export default class AiSdkProvider implements Provider {
         let notices: ProviderNotice[] | undefined;
         const usage = raw.usage;
         if (sendGrammar !== undefined && this.tokenize !== undefined) {
-            // #488 channel-escape detector (the run105 class): completion tokens
+            // Channel-escape detector: completion tokens
             // billed far beyond every visible channel mean the decode ESCAPED into
             // a server-discarded reasoning block mid-emission. This diagnostic
             // requires the serving vocabulary; an estimate cannot prove absence.

@@ -1,9 +1,9 @@
 // Provider instantiation + active-alias resolution. Alias PARSING (the
 // PLURNK_MODEL_<alias>=<provider>/<model> cascade + PLURNK_BASEURL_<alias>
 // overrides) lives in @plurnk/plurnk-aliases — the zero-dep parser shared with
-// thin clients (#27); this module resolves the active alias to a Provider.
+// thin clients; this module resolves the active alias to a Provider.
 //
-// Resolution order (SPEC §5): models.dev catalog → PLURNK provider declaration
+// {§provider-resolution} Models.dev catalog → PLURNK provider declaration
 // → local protocol adapter → scope-agnostic AI SDK plugin discovery. Generic
 // provider facts belong to models.dev or operator config; PLURNK owns only the
 // stable Provider contract and product-specific local behavior.

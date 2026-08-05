@@ -16,7 +16,7 @@ export type {
 } from "./types.ts";
 export { assertPromptTokenMeasurement } from "./promptTokens.ts";
 
-// Alias cascade — re-exported from the zero-dep @plurnk/plurnk-aliases (#27), so
+// Alias cascade — re-exported from the zero-dep @plurnk/plurnk-aliases, so
 // the "." surface is unchanged for existing importers and there's one source of
 // truth for the parser (thin clients depend on that package directly).
 export type { ProviderAlias } from "@plurnk/plurnk-aliases";
@@ -28,14 +28,14 @@ export {
     resetDiscoveryCache,
 } from "./ProviderRegistry.ts";
 
-// Scope-agnostic plugin discovery (SPEC §5).
+// Scope-agnostic plugin discovery ({§plugin-family-kind}).
 export { discover } from "./discover.ts";
 export type { DiscoverOptions, Discovery } from "./discover.ts";
 
 // Stable PLURNK adapter over AI SDK language models and compatible local URLs.
 export { default as AiSdkProvider, effortFromBudget } from "./AiSdkProvider.ts";
 export type { AiSdkProviderConfig, ReasoningStyle, GrammarStyle } from "./AiSdkProvider.ts";
-// Capacity pool (SPEC §15): front N interchangeable backends as one Provider -
+// {§provider-capacity-pool} Front N interchangeable backends as one Provider -
 // worker-sticky for KV-cache reuse, overflow to a healthy sibling; the blend
 // DECISION stays the consumer's, by choosing which pool to call.
 export { default as Pool } from "./Pool.ts";

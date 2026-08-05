@@ -5,11 +5,11 @@ import { instantiateProvider, loadActiveProvider, resetDiscoveryCache } from "./
 const mapOf = (entries: Record<string, string>, skipped: Record<string, string> = {}) =>
     async () => ({ registry: new Map(Object.entries(entries)), skipped: new Map(Object.entries(skipped)), attributions: new Map<string, string | string[]>() });
 
-// Alias PARSING is tested in @plurnk/plurnk-aliases (its owner, #27). Here we
+// Alias parsing is tested in @plurnk/plurnk-aliases (its owner). Here we
 // exercise the resolution + two-tier instantiation this module owns; the active
 // alias is driven end-to-end by loadActiveProvider below.
 
-// — provider resolution (SPEC §5) —
+// — provider resolution ({§provider-resolution}) —
 
 const fullEnv = Object.freeze({
     PLURNK_PROVIDERS_FETCH_TIMEOUT: "600000",
@@ -112,7 +112,7 @@ test("instantiateProvider: unknown provider throws — no standard, no discovere
     );
 });
 
-test("instantiateProvider: an untrusted (skipped) provider gives a precise error, not 'unknown' (#15)", async () => {
+test("instantiateProvider: an untrusted (skipped) provider gives a precise error, not 'unknown'", async () => {
     resetDiscoveryCache();
     const imports: string[] = [];
     await assert.rejects(
@@ -171,7 +171,7 @@ test("instantiateProvider: per-alias knobs scope through to the provider (per-al
     mock.restoreAll();
 });
 
-test("#633: public construction applies the package floor to a sparse consumer environment", async () => {
+test("public construction applies the package floor to a sparse consumer environment", async () => {
     const provider = await instantiateProvider(
         "fireworks",
         { FIREWORKS_API_KEY: "fw" },
@@ -249,7 +249,7 @@ test("{§deepseek-reasoning-request} #157: direct DeepSeek composes catalog fact
     mock.restoreAll();
 });
 
-test("#633: an explicit malformed operator override still fails at its owning contract", async () => {
+test("an explicit malformed operator override still fails at its owning contract", async () => {
     await assert.rejects(
         () => instantiateProvider(
             "fireworks",
@@ -265,7 +265,7 @@ test("#633: an explicit malformed operator override still fails at its owning co
     );
 });
 
-test("#634: a catalog provider with unknown model metadata never falls through to plugin discovery", async () => {
+test("a catalog provider with unknown model metadata never falls through to plugin discovery", async () => {
     let scanned = false;
     await assert.rejects(
         () => instantiateProvider(
@@ -290,7 +290,7 @@ test("#634: a catalog provider with unknown model metadata never falls through t
     assert.equal(scanned, false);
 });
 
-test("#634: explicit metadata constructs an out-of-snapshot Cloudflare model in the consolidated transport", async () => {
+test("explicit metadata constructs an out-of-snapshot Cloudflare model in the consolidated transport", async () => {
     let scanned = false;
     const provider = await instantiateProvider(
         "cloudflare",
@@ -315,7 +315,7 @@ test("#634: explicit metadata constructs an out-of-snapshot Cloudflare model in 
     assert.equal(scanned, false);
 });
 
-test("#622: two Fireworks aliases independently select default and priority service tiers", async () => {
+test("two Fireworks aliases independently select default and priority service tiers", async () => {
     const bodies: Record<string, unknown>[] = [];
     mock.method(globalThis, "fetch", async (_url: string, init?: RequestInit) => {
         bodies.push(JSON.parse(String(init?.body)) as Record<string, unknown>);

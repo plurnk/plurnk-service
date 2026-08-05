@@ -71,7 +71,7 @@ const injectedBase = {
     reasoning: { mode: "off" as const, budget: null },
 };
 
-test("#608: per-instance fetch owns streaming and buffered requests", async () => {
+test("per-instance fetch owns streaming and buffered requests", async () => {
     const calls: Array<{ input: string | URL | Request; init?: RequestInit }> = [];
     const streamingFetch: typeof globalThis.fetch = async (input, init) => {
         calls.push({ input, init });
@@ -105,7 +105,7 @@ test("#608: per-instance fetch owns streaming and buffered requests", async () =
     assert.equal(JSON.parse(String(calls[1].init?.body)).stream, undefined);
 });
 
-test("#608: caller cancellation and provider timeout reach an injected fetch", async () => {
+test("caller cancellation and provider timeout reach an injected fetch", async () => {
     const pendingFetch: typeof globalThis.fetch = async (_input, init) => {
         init?.signal?.throwIfAborted();
         return new Promise((_resolve, reject) => {
@@ -126,7 +126,7 @@ test("#608: caller cancellation and provider timeout reach an injected fetch", a
     );
 });
 
-test("#608: per-instance fetch owns tokenization and retry attempts", async () => {
+test("per-instance fetch owns tokenization and retry attempts", async () => {
     const calls: string[] = [];
     let generationAttempts = 0;
     const providerFetch: typeof globalThis.fetch = async (input) => {
@@ -192,7 +192,7 @@ const installFetchScript = (responses: ScriptedResponse[]) => {
 const flush = () => new Promise<void>((r) => setImmediate(r));
 
 import { resetEmittedWarnings } from "./warnings.ts";
-test.afterEach(() => { mock.restoreAll(); resetEmittedWarnings(); }); // #40: warning-asserting tests stay order-independent
+test.afterEach(() => { mock.restoreAll(); resetEmittedWarnings(); });
 
 test("effortFromBudget: maps budget to tiers", () => {
     assert.equal(effortFromBudget(1), "low");
@@ -202,7 +202,7 @@ test("effortFromBudget: maps budget to tiers", () => {
     assert.equal(effortFromBudget(4001), "high");
 });
 
-test("#543: a 524 Cloudflare edge timeout fails fast - not retried despite retryAttempts", async () => {
+test("a 524 Cloudflare edge timeout fails fast - not retried despite retryAttempts", async () => {
     const calls = installFetchScript([{ status: 524, retryAfter: 120 }]);
     const p = new AiSdkProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 1000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 3 });
     await assert.rejects(p.generate({ workerId: "r", messages: [] }));
@@ -211,7 +211,7 @@ test("#543: a 524 Cloudflare edge timeout fails fast - not retried despite retry
     mock.restoreAll();
 });
 
-test("#548: a 422 grammar_invalid is a failed exchange, not transport replay policy", async () => {
+test("a 422 grammar_invalid is a failed exchange, not transport replay policy", async () => {
     const body = JSON.stringify({ error: { message: "non-conforming emission rejected: ...", type: "grammar_invalid" } });
     const calls = installFetchScript([{ status: 422, body }]);
     const p = new AiSdkProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 1000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 2 });
@@ -237,21 +237,21 @@ test("an SSE error frame is a failed exchange, not an empty completion", async (
     assert.equal(calls.length, 1);
 });
 
-test("#539: a trailing eos_token (--special EOG leak) is stripped from content", async () => {
+test("a trailing eos_token (--special EOG leak) is stripped from content", async () => {
     installFetchJson({ model: "m", choices: [{ message: { content: "the answer<eos>" }, finish_reason: "stop" }], usage: { prompt_tokens: 1, completion_tokens: 3, total_tokens: 4 } });
     const p = new AiSdkProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, streaming: false, eosText: "<eos>" });
     const res = await p.generate({ workerId: "r", messages: [] });
     assert.equal(res.assistant.content, "the answer"); // trailing <eos> gone; packet + verdict see clean bytes
 });
 
-test("#539: without a probed eos_token the content passes through untouched", async () => {
+test("without a probed eos_token the content passes through untouched", async () => {
     installFetchJson({ model: "m", choices: [{ message: { content: "keeps <eos> literally" }, finish_reason: "stop" }], usage: { prompt_tokens: 1, completion_tokens: 3, total_tokens: 4 } });
     const p = new AiSdkProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, streaming: false });
     const res = await p.generate({ workerId: "r", messages: [] });
     assert.equal(res.assistant.content, "keeps <eos> literally"); // no eosText (a cloud backend) -> no strip
 });
 
-test("#539: only the TRAILING eos_token is stripped; a quoted one mid-body survives", async () => {
+test("only the trailing eos_token is stripped; a quoted one mid-body survives", async () => {
     installFetchJson({ model: "m", choices: [{ message: { content: "quotes <eos> in the body<eos>" }, finish_reason: "stop" }], usage: { prompt_tokens: 1, completion_tokens: 5, total_tokens: 6 } });
     const p = new AiSdkProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, streaming: false, eosText: "<eos>" });
     const res = await p.generate({ workerId: "r", messages: [] });
@@ -408,7 +408,7 @@ test("#161: a buffered resource interruption preserves the successful wire respo
     assert.equal(calls.length, 1);
 });
 
-test("generate translates a backend cap synonym to canonical length (#425)", async () => {
+test("generate translates a backend cap synonym to canonical length", async () => {
     // gemini shouts MAX_TOKENS, anthropic says max_tokens -- both must reach core as
     // "length" so its truncation check (=== "length") is a cross-backend invariant.
     const p = new AiSdkProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0 });
@@ -417,7 +417,7 @@ test("generate translates a backend cap synonym to canonical length (#425)", asy
     assert.equal(assistant.finishReason, "length");
 });
 
-test("generate translates end_turn to canonical stop (#425)", async () => {
+test("generate translates end_turn to canonical stop", async () => {
     const p = new AiSdkProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0 });
     installFetch([{ choices: [{ delta: { content: "x" }, finish_reason: "end_turn" }] }]);
     const { assistant } = await p.generate({ workerId: "r", messages: [] });
@@ -436,7 +436,7 @@ test("generate aggregates reasoning deltas under multiple field names", async ()
     installFetch([{ choices: [{ delta: { reasoning_content: "be", thinking: "cause" } }] }]);
     const { assistant } = await p.generate({ workerId: "r", messages: [] });
     assert.equal(assistant.reasoning, "because");
-    assert.equal("reasoningEncrypted" in assistant, false); // open reasoning only -> field absent (#482)
+    assert.equal("reasoningEncrypted" in assistant, false); // open reasoning only -> field absent
 });
 
 test("encrypted reasoning (non-streamed): encrypted entries normalize and text entries stay separate", async () => {
@@ -456,7 +456,7 @@ test("encrypted reasoning (non-streamed): encrypted entries normalize and text e
     assert.equal(assistant.content, "4");
 });
 
-test("#482 widening: distinct wire ids stay distinct items (a single-object shape would collide them)", async () => {
+test("distinct encrypted-reasoning wire ids stay distinct items", async () => {
     installFetchJson({ model: "m", choices: [{ message: { content: "ok", reasoning: null, reasoning_details: [
         { type: "reasoning.encrypted", data: "AAA", format: "openai-responses-v1", id: "rs_1" },
         { type: "reasoning.encrypted", data: "BBB", format: "openai-responses-v1", id: "rs_2" },
@@ -499,10 +499,10 @@ test("reasoningStyle 'effort' sends a reasoning_effort tier from the budget", as
     assert.equal(JSON.parse(calls[0].init.body as string).reasoning_effort, "high");
 });
 
-test("reasoningStyle 'effort_explicit': off SENDS none, adaptive OMITS (#403 — literal is MiniMax-only), on sends the tier", async () => {
+test("reasoningStyle 'effort_explicit': off SENDS none, adaptive OMITS, on sends the tier", async () => {
     // expected === null → the field must be ABSENT from the wire body. Fireworks
     // 400s reasoning_effort='adaptive' for non-MiniMax models (wire-verified,
-    // #403): adaptive = the backend's own default posture = omission.
+    // Adaptive = the backend's own default posture = omission.
     for (const [reasoning, expected] of [[{ mode: "off", budget: null }, "none"], [{ mode: "adaptive", budget: null }, null], [{ mode: "on", budget: 5000 }, "high"]] as Array<[{ mode: "off" | "adaptive" | "on"; budget: number | null }, string | null]>) {
         const p = new AiSdkProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning, retryAttempts: 0, reasoningStyle: "effort_explicit" });
         const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
@@ -546,7 +546,7 @@ test("{§deepseek-reasoning-request} #157: thinking_effort maps the complete Dee
     }
 });
 
-test("the family temperature default rides every request; caller sampling overrides it (#30)", async () => {
+test("the family temperature default rides every request; caller sampling overrides it", async () => {
     const p = new AiSdkProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0 });
     let calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await p.generate({ workerId: "r", messages: [] });
@@ -563,7 +563,7 @@ test("the family temperature default rides every request; caller sampling overri
     assert.equal(JSON.parse(calls[0].init.body as string).temperature, 0.2);
 });
 
-test("#567: DRY + repeat_last_n ride the llamacpp path when set; unset leaves the box default; never on cloud", async () => {
+test("DRY + repeat_last_n ride the llamacpp path when set; unset leaves the box default; never on cloud", async () => {
     const base = { model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off" as const, budget: null }, retryAttempts: 0 };
     // set + llamacpp -> the loop-breakers ride the wire
     const p = new AiSdkProvider({ ...base, grammarStyle: "llamacpp", dryMultiplier: 0.8, dryBase: 1.75, dryAllowedLength: 2, repeatLastN: 512 });
@@ -603,14 +603,14 @@ test("llamacpp grammar path: temperature default + the managed repeat-penalty fl
     assert.equal(body.repeat_penalty, 1.15);
 });
 
-test("#426: the repeat penalty rides EVERY request rail-off, keyed per backend (cloud degeneration guard)", async () => {
+test("the repeat penalty rides every request rail-off, keyed per backend", async () => {
     // llama.cpp with NO grammar carries its key too (unconstrained local is guarded)
     const llama = new AiSdkProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, grammarStyle: "llamacpp" });
     let calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await llama.generate({ workerId: "r", messages: [] });
     assert.equal(JSON.parse(calls[0].init.body as string).repeat_penalty, 1.15);
     mock.restoreAll();
-    // a `none`-style cloud backend WITH a frequency penalty gets frequency_penalty (OpenAI-standard, #426)
+    // A `none`-style cloud backend with a frequency penalty gets frequency_penalty.
     const cloud = new AiSdkProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, frequencyPenalty: 0.4, reasoning: { mode: "off", budget: null }, retryAttempts: 0 });
     calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await cloud.generate({ workerId: "r", messages: [] });
@@ -649,7 +649,7 @@ test("sampling passthrough forwards caller params; managed + reserved keys win",
     assert.equal("id_slot" in body, false); // reserved slot key stripped
 });
 
-test("#477 sampling passthrough guards contract invariants: n/tools/caps stripped, platform knobs pass", async () => {
+test("sampling passthrough guards contract invariants: n/tools/caps stripped, platform knobs pass", async () => {
     const p = new AiSdkProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0 });
     const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await p.generate({
@@ -660,7 +660,7 @@ test("#477 sampling passthrough guards contract invariants: n/tools/caps strippe
             n: 3,                                                    // breaks choices[0] atomicity -> stripped
             tools: [{ type: "function" }], tool_choice: "auto",      // tools-in-body doctrine -> stripped
             modalities: ["text", "audio"], prediction: { type: "content" }, // text-only / decode semantics -> stripped
-            max_tokens: 999999, max_completion_tokens: 999999,       // envelope bypass (#425 cap) -> stripped
+            max_tokens: 999999, max_completion_tokens: 999999,       // envelope bypass -> stripped
             seed: 42, user: "acct-7", service_tier: "flex",          // platform/sampling intent -> pass
         },
     });
@@ -674,7 +674,7 @@ test("#477 sampling passthrough guards contract invariants: n/tools/caps strippe
     assert.equal(body.service_tier, "flex");
 });
 
-test("template reasoning returns the exact pre-projection grammar sentence ({§gbnf-response-observation}, #12/#16)", async () => {
+test("template reasoning returns the exact pre-projection grammar sentence ({§gbnf-response-observation})", async () => {
     const p = new AiSdkProvider({ model: "m", url: "http://x/v1/chat/completions", contextWindow: 640, reasoningReserve: { tokens: 64 }, completionReserve: { tokens: 160 }, fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "adaptive", budget: null }, retryAttempts: 0, reasoningStyle: "template", grammarStyle: "llamacpp" });
     const calls = installFetch([{ choices: [{ delta: { reasoning_content: "con🙂sider", content: "x" } }] }]);
     const grammarInput = "<|channel>thought\ncon🙂sider<channel|>x";
@@ -699,7 +699,7 @@ test("template reasoning does not invent pre-projection evidence when the wire o
     assert.equal(res.grammarEvidence, undefined);
 });
 
-test("#488 channel-escape detector: billed completion tokens vastly beyond visible channels attach grammar_unenforced", async () => {
+test("channel-escape detector: billed completion tokens vastly beyond visible channels attach grammar_unenforced", async () => {
     // The run105 shape: tiny visible content, no reasoning, thousands billed — the decode
     // escaped into a discarded reasoning block, unconstrained.
     const chunks = [
@@ -723,7 +723,7 @@ test("#488 channel-escape detector: billed completion tokens vastly beyond visib
     assert.match(escape!.message ?? "", /5000 completion tokens billed/);
 });
 
-test("#488 loud state absent on grammarless calls; no escape event without a transported grammar", async () => {
+test("channel-escape state is absent without a transported grammar", async () => {
     const p = new AiSdkProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "adaptive", budget: null }, retryAttempts: 0, reasoningStyle: "template", grammarStyle: "llamacpp" });
     installFetch([
         { choices: [{ delta: { content: "x" }, finish_reason: "length" }] },
@@ -787,7 +787,7 @@ test("reasoningStyle 'include_reasoning' sets the relay passthrough toggle", asy
     assert.equal(JSON.parse(calls[0].init.body as string).include_reasoning, true);
 });
 
-// — grammar-constrained sampling (SPEC §13, issues #8/#9) —
+// — grammar-constrained sampling —
 
 test("grammar transport 'llamacpp': top-level grammar + the repeat-penalty floor", async () => {
     const p = new AiSdkProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, grammarStyle: "llamacpp" });
@@ -808,7 +808,7 @@ test("grammar transport 'none' (default): the grammar is never sent — no silen
     assert.equal("response_format" in body, false);
 });
 
-// — exact pre-projection grammar evidence ({§gbnf-response-observation}, #12/#16) —
+// — exact pre-projection grammar evidence ({§gbnf-response-observation}) —
 
 const grammarProvider = () => new AiSdkProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, grammarStyle: "llamacpp", source: "provider:test" });
 const streamingContent = (content: string) => installFetch([{ choices: [{ delta: { content }, finish_reason: "stop" }] }]);
@@ -895,7 +895,7 @@ test("gbnfDebug: an INVALID grammar throws before any wire call — it never rea
     assert.equal(calls.length, 0); // fail-hard before the fetch — grammar never transported
 });
 
-// — meta bag: verbatim provider metadata (#23) —
+// — meta bag: verbatim provider metadata —
 
 test("meta: passes backend fields through without reinterpreting monetary values", async () => {
     const p = new AiSdkProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, streaming: false });
@@ -906,7 +906,7 @@ test("meta: passes backend fields through without reinterpreting monetary values
     assert.equal(res.meta?.system_fingerprint, "fp_abc");
 });
 
-// — first-party telemetry headers (attribution + client, SPEC §5) —
+// — first-party telemetry headers ({§provider-request-authority}) —
 
 const headerVal = (init: RequestInit, name: string): string | undefined =>
     new Headers(init.headers).get(name) ?? undefined;
@@ -919,7 +919,7 @@ test("firstPartyMetadata: attributions + client ride as Plurnk-* headers", async
     assert.equal(headerVal(calls[0].init, "Plurnk-Client"), "plurnk.nvim/1.4.0");
 });
 
-test("#522 Plurnk-Worker-Primary: the lineage root rides under the gate; emitted even when it equals workerId", async () => {
+test("Plurnk-Worker-Primary: the lineage root rides under the gate; emitted even when it equals workerId", async () => {
     const p = new AiSdkProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, firstPartyMetadata: true });
     let calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await p.generate({ workerId: "w-child", primaryWorkerId: "w-root", messages: [] });
@@ -938,7 +938,7 @@ test("#522 Plurnk-Worker-Primary: the lineage root rides under the gate; emitted
     assert.equal(headerVal(calls[0].init, "Plurnk-Worker-Primary"), undefined);
 });
 
-test("#522 Plurnk-Worker-Primary is structurally dropped when firstPartyMetadata is off", async () => {
+test("Plurnk-Worker-Primary is structurally dropped when firstPartyMetadata is off", async () => {
     const p = new AiSdkProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0 });
     const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await p.generate({ workerId: "w-child", primaryWorkerId: "w-root", messages: [] });
@@ -961,13 +961,13 @@ test("firstPartyMetadata on but empty values: no header emitted", async () => {
     assert.equal(headerVal(calls[0].init, "Plurnk-Client"), undefined);
 });
 
-test("grammar transport: no grammar passed sends no grammar field, but the penalty rides (#426)", async () => {
+test("grammar transport: no grammar passed sends no grammar field, but the penalty rides", async () => {
     const p = new AiSdkProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, grammarStyle: "llamacpp" });
     const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await p.generate({ workerId: "r", messages: [] });
     const body = JSON.parse(calls[0].init.body as string);
     assert.equal("grammar" in body, false);
-    assert.equal(body.repeat_penalty, 1.15);           // #426: penalty is no longer grammar-gated - it rides rail-off
+    assert.equal(body.repeat_penalty, 1.15);           // penalty is not grammar-gated
 });
 
 test("maxTokens transports as max_tokens; absent → no wire field (server default)", async () => {
@@ -982,7 +982,7 @@ test("maxTokens transports as max_tokens; absent → no wire field (server defau
     assert.equal("max_tokens" in JSON.parse(calls[0].init.body as string), false);
 });
 
-test("slot affinity is internal: sticky per workerId, distinct runs spread across slots (#11)", async () => {
+test("slot affinity is internal: sticky per workerId, distinct workers spread across slots", async () => {
     const pinning = new AiSdkProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, supportsSlotPinning: true, slotCount: 2 });
     const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await pinning.generate({ workerId: "run-A", messages: [] });
@@ -1006,7 +1006,7 @@ test("slot affinity: no pinning backend or unknown slotCount → no id_slot ever
     assert.equal("id_slot" in JSON.parse(calls[0].init.body as string), false);
 });
 
-test("slot affinity: a worker past the LRU window (slotCount*8) loses its pin; recent runs stay sticky (#11)", async () => {
+test("slot affinity: a worker past the LRU window (slotCount*8) loses its pin; recent workers stay sticky", async () => {
     const p = new AiSdkProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, supportsSlotPinning: true, slotCount: 2 });
     const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     const slotOf = (i: number) => JSON.parse(calls[i].init.body as string).id_slot;
@@ -1082,7 +1082,7 @@ test("configured headers and url are sent verbatim", async () => {
     assert.equal(headers.get("x-title"), "plurnk");
 });
 
-// — transient-failure retry (#18) —
+// — transient-failure retry —
 
 const retryCfg = { model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null } as const };
 
@@ -1098,7 +1098,7 @@ test("retry: a transient failure retries and a later success resolves", async ()
     assert.equal(calls.length, 3); // 429 → 503 → 200
 });
 
-test("#559: streamed-body silence fails the exchange without replaying partial output", async () => {
+test("streamed-body silence fails the exchange without replaying partial output", async () => {
     let calls = 0;
     mock.method(globalThis, "fetch", async () => {
         calls++;
@@ -1141,7 +1141,7 @@ test("#559: streamed-body silence fails the exchange without replaying partial o
     mock.restoreAll();
 });
 
-test("#559: a zero stream-idle timeout permits a slow inter-chunk pause", async () => {
+test("a zero stream-idle timeout permits a slow inter-chunk pause", async () => {
     mock.method(globalThis, "fetch", async () => new Response(new ReadableStream({
         async start(controller) {
             controller.enqueue(new TextEncoder().encode('data: {"choices":[{"delta":{"content":"slow "}}]}\n\n'));
@@ -1201,7 +1201,7 @@ test("retry: retryAttempts 0 surfaces the first transient failure immediately", 
     assert.equal(calls.length, 1); // no retry budget
 });
 
-test("retry: a caller abort during backoff rejects promptly with no further attempt (mid-flight abort, SPEC )", async () => {
+test("retry: a caller abort during backoff rejects promptly with no further attempt", async () => {
     const ac = new AbortController();
     const calls = installFetchScript([{ status: 503, retryAfter: 5 }]); // 5s backoff we never wait out
     const p = new AiSdkProvider({ ...retryCfg, retryAttempts: 3 });
@@ -1213,7 +1213,7 @@ test("retry: a caller abort during backoff rejects promptly with no further atte
     assert.equal(calls.length, 1); // never retried after cancellation
 });
 
-// — anthropic reasoning style (thinking param, #18) —
+// — Anthropic reasoning style (wire `thinking` parameter) —
 
 test("reasoningStyle 'anthropic' maps the budget to the thinking param", async () => {
     // N>0 → enabled with budget_tokens
@@ -1260,10 +1260,10 @@ test("streaming:false posts without stream and parses the single JSON response",
     mock.restoreAll();
 });
 
-// ── Data capture (#36): logprobs + verbatim rawBody, opt-in, off by default ──
+// ── Data capture ({§provider-evidence}): logprobs + verbatim rawBody, opt-in, off by default ──
 const captureBase = { model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 1000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null } as const, retryAttempts: 0 };
 
-test("#36 logprobs OFF by default: no wire request, no assistant.logprobs, no rawBody", async () => {
+test("logprobs OFF by default: no wire request, no assistant.logprobs, no rawBody", async () => {
     const calls = installFetch([{ model: "m", choices: [{ delta: { content: "hi" }, finish_reason: "stop" }], usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 } }]);
     const p = new AiSdkProvider({ ...captureBase });
     const res = await p.generate({ workerId: "r", messages: [{ role: "user", content: "q" }] });
@@ -1276,7 +1276,7 @@ test("#36 logprobs OFF by default: no wire request, no assistant.logprobs, no ra
     mock.restoreAll();
 });
 
-test("#36 logprobs ON (streamed): requests logprobs+top_logprobs, surfaces raw logprob + meanLogprob", async () => {
+test("logprobs ON (streamed): requests logprobs+top_logprobs, surfaces raw logprob + meanLogprob", async () => {
     const chunk = { model: "m", usage: { prompt_tokens: 1, completion_tokens: 2, total_tokens: 3 }, choices: [{ delta: { content: "yesno" }, finish_reason: "stop", logprobs: { content: [
         { token: "yes", logprob: -0.5, sampling_logprob: -0.5, top_logprobs: [{ token: "yes", logprob: -0.5 }, { token: "no", logprob: -1.0 }] },
         { token: "no", logprob: -0.1, sampling_logprob: -0.1, top_logprobs: [{ token: "no", logprob: -0.1 }] },
@@ -1293,7 +1293,7 @@ test("#36 logprobs ON (streamed): requests logprobs+top_logprobs, surfaces raw l
     mock.restoreAll();
 });
 
-test("#36 rawBody ON (non-streamed): verbatim wire body incl. sampling_logprob preserved", async () => {
+test("rawBody ON (non-streamed): verbatim wire body incl. sampling_logprob preserved", async () => {
     const wire = { model: "m", extra_top_level: "kept", choices: [{ message: { content: "no" }, finish_reason: "stop", logprobs: { content: [{ token: "no", logprob: -0.1, sampling_logprob: -0.1, token_id: 42 }] } }], usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 } };
     installFetchJson(wire);
     const p = new AiSdkProvider({ ...captureBase, streaming: false, topLogprobs: 0, rawBody: true });
@@ -1305,7 +1305,7 @@ test("#36 rawBody ON (non-streamed): verbatim wire body incl. sampling_logprob p
     mock.restoreAll();
 });
 
-test("#36 caller sampling cannot forge logprobs (reserved keys): the env flag is the only control", async () => {
+test("caller sampling cannot forge logprobs (reserved keys): the env flag is the only control", async () => {
     const calls = installFetch([{ model: "m", choices: [{ delta: { content: "hi" }, finish_reason: "stop" }], usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 } }]);
     const p = new AiSdkProvider({ ...captureBase }); // logprobs OFF
     await p.generate({ workerId: "r", messages: [{ role: "user", content: "q" }], sampling: { logprobs: true, top_logprobs: 5 } });
@@ -1315,9 +1315,9 @@ test("#36 caller sampling cannot forge logprobs (reserved keys): the env flag is
     mock.restoreAll();
 });
 
-// — turn coordinate headers (#404, per #391): same gate as every first-party signal —
+// — turn coordinate headers ({§lifecycle-terms}): same gate as every first-party signal —
 
-test("#404: workspaceId/loop/turn ride as Plurnk-Workspace-Id/Loop/Turn under the first-party gate", async () => {
+test("workspaceId/loop/turn ride as Plurnk-Workspace-Id/Loop/Turn under the first-party gate", async () => {
     const p = new AiSdkProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, firstPartyMetadata: true });
     const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await p.generate({ workerId: "r", messages: [], workspaceId: "s-9", loop: 3, turn: 41 });
@@ -1327,7 +1327,7 @@ test("#404: workspaceId/loop/turn ride as Plurnk-Workspace-Id/Loop/Turn under th
     assert.equal(headers.get("plurnk-turn"), "41");
 });
 
-test("#404: third-party providers structurally DROP the coordinate (gate off by default)", async () => {
+test("third-party providers structurally DROP the coordinate (gate off by default)", async () => {
     const p = new AiSdkProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0 });
     const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await p.generate({ workerId: "r", messages: [], workspaceId: "s-9", loop: 3, turn: 41 });
@@ -1337,7 +1337,7 @@ test("#404: third-party providers structurally DROP the coordinate (gate off by 
     assert.equal(headers.has("plurnk-turn"), false);
 });
 
-test("#404: coordinates are 1-based — 0/absent/empty emit no header (no strikes-style zero exception)", async () => {
+test("coordinates are 1-based — 0/absent/empty emit no header", async () => {
     const p = new AiSdkProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, firstPartyMetadata: true });
     const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await p.generate({ workerId: "r", messages: [], workspaceId: "", loop: 0, turn: 0 });
@@ -1348,9 +1348,9 @@ test("#404: coordinates are 1-based — 0/absent/empty emit no header (no strike
     assert.equal(headers.has("plurnk-strikes"), false);
 });
 
-// -- #507: envelope surface + router-owned tuning --
+// -- {§provider-generation-envelope} --
 
-test("#507 reserves derive from the detected window; absolutes stand alone; null window + percent = no claim", () => {
+test("reserves derive from the detected window; absolutes stand alone; null window + percent = no claim", () => {
     const base = { model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 1000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null } as const, retryAttempts: 0 };
     const derived = new AiSdkProvider({ ...base, contextWindow: 49152, reasoningReserve: { percent: 0.1 }, completionReserve: { percent: 0.25 } });
     assert.equal(derived.reasoningReserve, 4915);   // jennifer/turboderp: 10% of 49152
@@ -1362,32 +1362,32 @@ test("#507 reserves derive from the detected window; absolutes stand alone; null
     assert.equal(legacy.reasoningReserve, null);    // out-of-date sibling: no claim
 });
 
-test("#507 router-owned tuning: tuningFloors:false drops the temperature/penalty floors, caller sampling still rides", async () => {
+test("router-owned tuning: tuningFloors:false drops the temperature/penalty floors, caller sampling still rides", async () => {
     const p = new AiSdkProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, frequencyPenalty: 0.4, reasoning: { mode: "off", budget: null }, retryAttempts: 0, tuningFloors: false });
     const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await p.generate({ workerId: "r", messages: [], sampling: { temperature: 0.9 } });
     const body = JSON.parse(calls[0].init.body as string);
     assert.equal(body.temperature, 0.9);           // caller intent passes verbatim
-    assert.equal("frequency_penalty" in body, false); // the floor is suppressed (router owns tuning, SPEC §5)
+    assert.equal("frequency_penalty" in body, false); // the floor is suppressed; the router owns tuning
 });
 
-// -- #518: prompt-cache affinity (workerId -> prompt_cache_key) --
+// -- prompt-cache affinity (workerId -> prompt_cache_key) --
 
-test("#518 promptCacheKey on: body sends prompt_cache_key = workerId (serverless replica affinity)", async () => {
+test("promptCacheKey on: body sends prompt_cache_key = workerId (serverless replica affinity)", async () => {
     const p = new AiSdkProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, promptCacheKey: true });
     const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await p.generate({ workerId: "worker-abc", messages: [] });
     assert.equal(JSON.parse(calls[0].init.body as string).prompt_cache_key, "worker-abc");
 });
 
-test("#518 promptCacheKey off (default): no prompt_cache_key on the wire", async () => {
+test("promptCacheKey off (default): no prompt_cache_key on the wire", async () => {
     const p = new AiSdkProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0 });
     const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await p.generate({ workerId: "worker-abc", messages: [] });
     assert.equal("prompt_cache_key" in JSON.parse(calls[0].init.body as string), false);
 });
 
-test("#518 prompt_cache_key is managed: caller sampling cannot forge/override the affinity key", async () => {
+test("prompt_cache_key is managed: caller sampling cannot forge/override the affinity key", async () => {
     const p = new AiSdkProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, promptCacheKey: true });
     const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await p.generate({ workerId: "worker-abc", messages: [], sampling: { prompt_cache_key: "hijack" } });

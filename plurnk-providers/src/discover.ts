@@ -7,7 +7,8 @@ import type {
     PluginAttributionDeclaration,
 } from "@plurnk/plurnk-meta";
 
-// Scope-agnostic discovery of installed AI SDK provider packages (SPEC §5).
+// Scope-agnostic discovery of installed AI SDK provider packages
+// ({§plugin-family-kind}).
 // Parallel to @plurnk/plurnk-execs' discover(): scan every installed package
 // under `<cwd>/node_modules` — scoped (`@scope/name`) and unscoped — and keep
 // the ones declaring `plurnk.kind === "provider"`. Scope-agnostic so a THIRD

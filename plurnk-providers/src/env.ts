@@ -43,7 +43,7 @@ export const promptCacheKeyFromEnv = (env: NodeJS.ProcessEnv, label: string): bo
     return value === "1";
 };
 
-// Old-name shed (the #399/#472 lexicon renames): a still-set retired knob fails
+// {§provider-configuration} A still-set retired knob fails
 // hard pointing at its successor — never silently coexists with the new floor.
 // The retired names appear ONLY as this function's ARGUMENTS at the call sites
 // (each lexicon-allow), never as a live identifier.
@@ -52,7 +52,8 @@ const shedRenamed = (env: NodeJS.ProcessEnv, oldName: string, newName: string, l
     if (stale !== undefined && stale.length > 0) throw new Error(`${label} provider: ${oldName} was renamed to ${newName} (${ref}); update the env`);
 };
 
-// Data-capture knobs (#36), read identically by every provider (standard AND
+// {§provider-evidence} Data-capture knobs are read identically by every provider
+// (standard AND
 // plugin) so the opt-in surface is one source of truth. Both OFF by default —
 // the flag is the isolation, so serving turns request and carry nothing.
 //   PLURNK_PROVIDERS_TOP_LOGPROBS   "off" or a non-negative int = the OpenAI
@@ -74,7 +75,7 @@ export const dataCaptureFromEnv = (env: NodeJS.ProcessEnv, label: string): { top
 // {§model-fact-resolution} — one context-window reader for every provider path;
 // the retired CONTEXT_SIZE spelling fails visibly at the same boundary.
 export const contextWindowFromEnv = (env: NodeJS.ProcessEnv, label: string): number | null => {
-    shedRenamed(env, "PLURNK_PROVIDERS_CONTEXT_SIZE", "PLURNK_PROVIDERS_CONTEXT_WINDOW", label, "the industry term, #472"); // lexicon-allow
+    shedRenamed(env, "PLURNK_PROVIDERS_CONTEXT_SIZE", "PLURNK_PROVIDERS_CONTEXT_WINDOW", label, "{§model-fact-resolution}"); // lexicon-allow
     return parseOptionalInt(env.PLURNK_PROVIDERS_CONTEXT_WINDOW, "PLURNK_PROVIDERS_CONTEXT_WINDOW", label);
 };
 
@@ -111,13 +112,11 @@ export const tokenRatesFromEnv = (env: NodeJS.ProcessEnv, label: string): Provid
     };
 };
 
-// The generation-envelope reserves (#507, owner-ruled migration): how much of a
+// {§provider-generation-envelope} How much of a
 // DETECTED context window is reserved for reasoning and for completion — the
 // remainder (minus the consumer's own packing-safety margin) is the prompt
 // budget. Provider-owned: the window is a provider fact and these are amounts OF
-// it; the former PLURNK_SERVICE_{CONTEXT_WINDOW,REASONING,COMPLETION} knobs were
-// provider quantities wearing a service prefix (born as #352 packet parameters
-// before this surface existed). Each knob accepts a percentage of the window
+// it. Each knob accepts a percentage of the window
 // ("10%") or an absolute token count ("4096"); the floor ships percentages so
 // every window-advertising endpoint (llama-server n_ctx, the plurnk.ai router,
 // a cataloged cloud model) arrives at sane defaults with ZERO operator tuning.
@@ -163,7 +162,7 @@ export const resolveEnvelopeFromEnv = (env: NodeJS.ProcessEnv, window: number | 
     };
 };
 
-// The side-channel reasoning knobs (SPEC §4, #32/#33) — ACTIVATION and BUDGET
+// {§provider-configuration} The side-channel reasoning knobs — activation and budget
 // are separate vars, so a numeric budget can never silently flip wire flags:
 //   PLURNK_PROVIDERS_REASONING           off | adaptive | on   (REQUIRED, fail-hard)
 //   PLURNK_PROVIDERS_REASONING_BUDGET  positive int, REQUIRED iff REASONING=on —
@@ -175,8 +174,8 @@ export type ReasoningMode = "off" | "adaptive" | "on";
 export type Reasoning = { mode: ReasoningMode; budget: number | null };
 
 export const reasoningFromEnv = (env: NodeJS.ProcessEnv, label: string): Reasoning => {
-    shedRenamed(env, "PLURNK_PROVIDERS_THINKING", "PLURNK_PROVIDERS_REASONING", label, "#399"); // lexicon-allow
-    shedRenamed(env, "PLURNK_PROVIDERS_THINKING_CAPACITY", "PLURNK_PROVIDERS_REASONING_BUDGET", label, "#399"); // lexicon-allow
+    shedRenamed(env, "PLURNK_PROVIDERS_THINKING", "PLURNK_PROVIDERS_REASONING", label, "provider configuration contract"); // lexicon-allow
+    shedRenamed(env, "PLURNK_PROVIDERS_THINKING_CAPACITY", "PLURNK_PROVIDERS_REASONING_BUDGET", label, "provider configuration contract"); // lexicon-allow
     const name = "PLURNK_PROVIDERS_REASONING";
     const raw = env[name];
     if (raw === undefined || raw.length === 0) throw new Error(`${label} provider: ${name} must be set (off | adaptive | on)`);

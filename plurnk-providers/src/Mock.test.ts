@@ -7,7 +7,7 @@ import type { MockResponse } from "./Mock.ts";
 const build = (responses: MockResponse[] = [{ assistant: { content: "hi", reasoning: null } }]) =>
     new Mock({ contextWindow: 100000, responses });
 
-// — Identity (SPEC §10.2, §10.6) —
+// — Identity ({§provider-interface}) —
 
 test("Mock: contextWindow and model are stable across reads", () => {
     const m = build();
@@ -22,7 +22,7 @@ test("Mock: contextWindow passes null through", () => {
     assert.equal(m.contextWindow, null);
 });
 
-// — Tokenomics (SPEC §10.3, §10.4, §10.5) —
+// — Tokenomics ({§provider-interface}) —
 
 test("Mock: prompt counting is exact for its declared mock vocabulary", async () => {
     const m = build();
@@ -39,7 +39,7 @@ test("Mock: calculateCost returns its deliberate zero estimate", () => {
     assert.equal(m.calculateCost({ prompt: 100, completion: 20, reasoning: 10, cached: 5, total: 130 }), 0);
 });
 
-// — Transport (SPEC §10.7, §10.10) —
+// — Transport ({§provider-interface}) —
 
 test("Mock: generate resolves a valid ProviderResponse shape", async () => {
     const m = build([{ assistant: { content: "hello", reasoning: "cot" } }]);
@@ -95,7 +95,7 @@ test("Mock: ops absent when not provided", async () => {
     assert.equal("ops" in assistant, false);
 });
 
-// — Abort (SPEC §10.8) —
+// — Abort ({§provider-failure-normalization}) —
 
 test("Mock: generate with a pre-aborted signal rejects and consumes no response", async () => {
     const m = build([{ assistant: { content: "untouched", reasoning: null } }]);
@@ -121,9 +121,9 @@ test("Mock: exhausted queue throws a specific error", async () => {
     await assert.rejects(() => m.generate({ messages: [] }), /exhausted/);
 });
 
-// -- #507: the reserve surface lives on the Provider CONTRACT, and Mock drives core's partition suite --
+// -- {§provider-generation-envelope} --
 
-test("#507 the reserve getters are on the Provider interface (not just the concrete class)", () => {
+test("the reserve getters are on the Provider interface (not just the concrete class)", () => {
     // Typing against the contract catches a getter-only concrete surface.
     const prevR = process.env.PLURNK_PROVIDERS_REASONING_RESERVE;
     try {
@@ -135,7 +135,7 @@ test("#507 the reserve getters are on the Provider interface (not just the concr
     }
 });
 
-test("#507 Mock resolves reserves from PLURNK_PROVIDERS_*_RESERVE against its window (the service partition path)", () => {
+test("Mock resolves reserves from PLURNK_PROVIDERS_*_RESERVE against its window (the service partition path)", () => {
     const prevR = process.env.PLURNK_PROVIDERS_REASONING_RESERVE;
     const prevC = process.env.PLURNK_PROVIDERS_COMPLETION_RESERVE;
     try {
@@ -150,7 +150,7 @@ test("#507 Mock resolves reserves from PLURNK_PROVIDERS_*_RESERVE against its wi
     }
 });
 
-test("#507 no reserve env → null (the #421 no-cap path; the ~100 bare Mocks unaffected)", () => {
+test("no reserve env → null (the no-cap path; bare Mocks unaffected)", () => {
     const m = new Mock({ contextWindow: 49152, responses: [] });
     assert.equal(m.reasoningReserve, null);
     assert.equal(m.completionReserve, null);

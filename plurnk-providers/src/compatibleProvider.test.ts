@@ -44,7 +44,7 @@ test("compatible endpoints preserve configured prompt-cache affinity", async () 
     assert.equal(body?.prompt_cache_key, "worker-affinity");
 });
 
-test("#567: the server-wide DRY-off floor emits no DRY request fields", async () => {
+test("the server-wide DRY-off floor emits no DRY request fields", async () => {
     let body: Record<string, unknown> | undefined;
     mock.method(globalThis, "fetch", async (input: string | URL | Request, init?: RequestInit) => {
         if (String(input).endsWith("/models")) {

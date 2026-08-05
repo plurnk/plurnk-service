@@ -26,7 +26,7 @@ test("provider source does not import the PLURNK parser", () => {
     }
 });
 
-test("#608: the OpenAI-compatible entrypoint excludes Node-owned provider machinery", () => {
+test("the OpenAI-compatible entrypoint excludes Node-owned provider machinery", () => {
     const allowed = new Set([
         "AiSdkProvider.ts",
         "aiSdkTransport.ts",

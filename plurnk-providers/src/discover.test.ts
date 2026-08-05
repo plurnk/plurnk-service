@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { discover } from "./discover.ts";
 
-// #551: create a temp dir AND register its removal on the test context, so it's
+// Create a temp dir and register its removal on the test context, so it is
 // cleaned on a GREEN or RED run. A trailing rm after the assertions leaks the dir
 // whenever one throws — thousands accumulate on a shared box at drill frequency.
 const tempDir = async (t: TestContext, prefix: string): Promise<string> => {
@@ -132,7 +132,7 @@ test("discover: missing node_modules yields an empty registry, not an error", as
     assert.equal(registry.size, 0);
 });
 
-// — trust gate (PLURNK_PLUGINS_TRUSTED_ONLY, #15) —
+// — trust gate ({§plugin-trust-boundary}) —
 
 const trustFixture = (t: TestContext) => buildModules(t, {
     "@plurnk/plurnk-provider-native": { name: "@plurnk/plurnk-provider-native", plurnk: { kind: "provider", name: "native" } },

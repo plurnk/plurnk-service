@@ -24,7 +24,8 @@ provider declaration, or left explicitly unknown.
 
 ## §2 Provider interface
 
-`Provider` exposes immutable model facts and one generation operation:
+§provider-interface `Provider` exposes immutable model facts and one generation
+operation:
 
 ```ts
 interface Provider {
@@ -108,7 +109,8 @@ disposition defined by {§provider-interrupted-attempt}.
 
 ## §3 AI SDK boundary
 
-Cataloged providers instantiate their Models.dev-declared AI SDK package.
+§provider-sdk-boundary Cataloged providers instantiate their
+Models.dev-declared AI SDK package.
 Standard request shaping, streaming, retries, cancellation, timeouts, usage,
 and vendor error parsing belong to the SDK.
 
@@ -144,7 +146,8 @@ SDK's ordinary transport.
 
 ## §4 Operator configuration
 
-Every operational value is an environment knob documented in `.env.defaults`.
+§provider-configuration Every operational value is an environment knob
+documented in `.env.defaults`.
 There are no hidden tuning constants. Every `PLURNK_PROVIDERS_*` knob may be
 scoped to an alias by appending `_<alias>`; the scoped value wins.
 
@@ -170,7 +173,8 @@ defaults.
 
 ## §5 Resolution
 
-`PLURNK_MODEL_<alias>=<provider>/<model-id>` declares an alias.
+§provider-resolution `PLURNK_MODEL_<alias>=<provider>/<model-id>` declares an
+alias.
 `PLURNK_MODEL=<alias>` selects the boot alias. Model IDs may contain `/`.
 `PLURNK_BASEURL_<alias>` is a per-alias endpoint override.
 
@@ -246,7 +250,8 @@ the published name-keyed `Discovery.attributions` remains its 1.x projection.
 
 ## §7 Local capabilities
 
-The `openai` local adapter probes `/v1/models`. A llama-server fingerprint may
+§provider-local-capabilities The `openai` local adapter probes `/v1/models`. A
+llama-server fingerprint may
 also expose:
 
 - the actual served model and per-slot context window;
@@ -287,7 +292,8 @@ response boundary.
 
 ## §8 Request authority
 
-The caller's `sampling` bag expresses sampling intent. It cannot override:
+§provider-request-authority The caller's `sampling` bag expresses sampling
+intent. It cannot override:
 
 - model or messages;
 - stream mode;
@@ -308,7 +314,8 @@ backend.
 
 ## §9 Failures, retries, and cancellation
 
-Provider failures normalize to `ProviderError`. Its public contract is an RFC
+§provider-failure-normalization Provider failures normalize to `ProviderError`.
+Its public contract is an RFC
 9457 Problem Details object with an exact status, stable type, occurrence
 detail, and provider-kind extension; the original error remains its cause.
 A caught failure is surfaced or deliberately preserved; it is never converted
@@ -370,7 +377,8 @@ call and sets `transported: false` for the unconstrained comparison.
 
 ## §11 Evidence and metadata
 
-`assistantRaw` is an opaque normalized transport record. Provider top-level
+§provider-evidence `assistantRaw` is an opaque normalized transport record.
+Provider top-level
 metadata is forwarded as an open bag without reinterpreting currencies or
 vendor fields.
 
@@ -387,14 +395,16 @@ described as verbatim evidence.
 
 ## §12 Generation envelopes
 
-Reasoning and completion reserves are percentages of the resolved context
+§provider-generation-envelope Reasoning and completion reserves are percentages
+of the resolved context
 window or absolute token counts. Absolute pins win. The provider reports the
 resolved reserves; the consumer owns prompt packing and the per-call output
 cap. Model-limit precedence is defined once in {§model-fact-resolution}.
 
 ## §13 Capacity pool
 
-`Pool` fronts interchangeable `Provider` instances. It keeps workers sticky for
+§provider-capacity-pool `Pool` fronts interchangeable `Provider` instances. It
+keeps workers sticky for
 cache locality, selects a healthy sibling for overflow, and preserves the same
 Provider contract. Whether endpoints are interchangeable is a consumer
 decision, not inferred from provider names. Overflow is limited to transport

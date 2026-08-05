@@ -4,7 +4,7 @@ import { emitWarningOnce } from "./warnings.ts";
 import { assertPromptTokenMeasurement } from "./promptTokens.ts";
 
 // A backend-AVAILABILITY failure: the sub-provider already exhausted its OWN
-// transient retries (#18) before throwing one of these, so re-hitting the same
+// transient retries before throwing one of these, so re-hitting the same
 // backend is pointless - a sibling may still serve, so the pool overflows to it.
 // Auth/quota/content kinds are deliberately absent: a peer backend fails them
 // identically, and failing over would only multiply the damage (and the spend).
@@ -16,11 +16,12 @@ const OVERFLOW_KINDS: ReadonlySet<ProviderErrorKind> = new Set(["network_failure
 // blend/escalation DECISION (which SKU, when to switch models) stays the
 // consumer's, one level up, by choosing WHICH pool to call. Backends MUST be
 // interchangeable - same served model, compatible window - so the pool presents ONE
-// honest Provider surface instead of pretending N models are one (#533).
+// honest Provider surface instead of pretending N models are one
+// ({§provider-capacity-pool}).
 //
 // Affinity is the load-bearing part. A worker's turns stick to one backend so its
 // stable prompt prefix keeps hitting the same KV cache; scattering a worker across
-// backends shreds the prefix cache (#531). It is the #11 slot-affinity pattern one
+// backends shreds the prefix cache. It is the same slot-affinity pattern one
 // level up: worker -> slot within a llama-server becomes worker -> backend across a
 // fleet - round-robin ACROSS workers, sticky WITHIN one.
 export default class Pool implements Provider {
@@ -30,7 +31,7 @@ export default class Pool implements Provider {
     #next = 0;                                        // round-robin cursor for NEW workers
     readonly #floor: Provider;                        // the min-window backend: the safe budget floor
 
-    // OPTIONAL exact tokenizer (#37): present iff EVERY backend exposes one (same
+    // Optional exact tokenizer: present iff every backend exposes one (same
     // vocab, since interchangeable). Delegated; absent when the fleet can't.
     readonly tokenize?: (text: string) => Promise<number[]>;
 
@@ -41,14 +42,15 @@ export default class Pool implements Provider {
         // SELECTION job, not this primitive - fail at construction, never mid-turn.
         const model = backends[0].model;
         const mixed = backends.find((b) => b.model !== model);
-        if (mixed !== undefined) throw new Error(`Pool: backends must be interchangeable, got mixed models "${model}" and "${mixed.model}" - heterogeneous blend is the consumer's selection, not a pool (#533)`);
+        if (mixed !== undefined) throw new Error(`Pool: backends must be interchangeable, got mixed models "${model}" and "${mixed.model}" - heterogeneous blend is the consumer's selection, not a pool`);
         this.#backends = backends;
         this.#cap = backends.length * 8;
 
         // The exposed window is the SAFE FLOOR across backends (a packet that fits the
         // smallest fits all); its reserves travel with it so the budget stays
         // self-consistent. ANY unknown (null) window makes the pool null - a worker
-        // might route to it, and the consumer must not improvise a cap (#421).
+        // might route to it, and the consumer must not improvise a cap
+        // ({§model-fact-resolution}).
         const anyUnknown = backends.find((b) => b.contextWindow === null);
         this.#floor = anyUnknown ?? backends.reduce((lo, b) => (b.contextWindow! < lo.contextWindow! ? b : lo));
         if (new Set(backends.map((b) => b.contextWindow)).size > 1) {

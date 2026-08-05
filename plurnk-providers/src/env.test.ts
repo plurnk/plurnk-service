@@ -29,7 +29,7 @@ test("parseOptionalInt: rejects fractional and negative values", () => {
     assert.throws(() => parseOptionalInt("-8", "PLURNK_PROVIDERS_CONTEXT_WINDOW", "openai"), /must be a non-negative integer/);
 });
 
-test("reasoningFromEnv: activation modes parse; budget required IFF on; fail-hard on everything else (#33)", () => {
+test("reasoningFromEnv: activation modes parse; budget required IFF on; fail-hard on everything else", () => {
     assert.deepEqual(reasoningFromEnv({ PLURNK_PROVIDERS_REASONING: "off" }, "openai"), { mode: "off", budget: null });
     assert.deepEqual(reasoningFromEnv({ PLURNK_PROVIDERS_REASONING: "adaptive" }, "openai"), { mode: "adaptive", budget: null });
     assert.deepEqual(reasoningFromEnv({ PLURNK_PROVIDERS_REASONING: "on", PLURNK_PROVIDERS_REASONING_BUDGET: "4096" }, "openai"), { mode: "on", budget: 4096 });
@@ -79,15 +79,15 @@ test("scopeEnvToAlias: suffixed knob wins, bare is the fallback, other aliases i
         PLURNK_PROVIDERS_REASONING: "off",
         PLURNK_PROVIDERS_REASONING_turboderp: "on",
         PLURNK_PROVIDERS_REASONING_BUDGET_TURBODERP: "4096", // case-folds like PLURNK_MODEL_ keys
-        PLURNK_PROVIDERS_CONTEXT_WINDOW_turboderp: "8000", // #525 gate knob — the client window cap
+        PLURNK_PROVIDERS_CONTEXT_WINDOW_turboderp: "8000",
         PLURNK_PROVIDERS_COMPLETION_RESERVE_turboderp: "4096",
         PLURNK_PROVIDERS_CONTEXT_WINDOW_other: "1",
     } as NodeJS.ProcessEnv;
     const scoped = scopeEnvToAlias(env, "turboderp");
     assert.equal(scoped.PLURNK_PROVIDERS_REASONING, "on");
     assert.equal(scoped.PLURNK_PROVIDERS_REASONING_BUDGET, "4096");
-    assert.equal(scoped.PLURNK_PROVIDERS_CONTEXT_WINDOW, "8000"); // #525: the alias-scoped window cap promotes to bare (the release-gate knob)
-    assert.equal(scoped.PLURNK_PROVIDERS_COMPLETION_RESERVE, "4096"); // the #507 reserves promote too
+    assert.equal(scoped.PLURNK_PROVIDERS_CONTEXT_WINDOW, "8000");
+    assert.equal(scoped.PLURNK_PROVIDERS_COMPLETION_RESERVE, "4096");
     assert.equal(scopeEnvToAlias(env, "plain").PLURNK_PROVIDERS_REASONING, "off"); // fallback intact
 });
 
@@ -103,7 +103,7 @@ test("scopeEnvToAlias: aliases with underscores resolve; a bare knob is never mi
     assert.equal(scopeEnvToAlias(env, "budget").PLURNK_PROVIDERS_REASONING, "off"); // collision guard
 });
 
-test("#36 dataCaptureFromEnv: both knobs OFF by default, ON when set (TOP_LOGPROBS = the OpenAI top_logprobs count)", async () => {
+test("dataCaptureFromEnv: both knobs OFF by default, ON when set (TOP_LOGPROBS = the OpenAI top_logprobs count)", async () => {
     const { dataCaptureFromEnv } = await import("./env.ts");
     assert.deepEqual(dataCaptureFromEnv({} as NodeJS.ProcessEnv, "x"), { topLogprobs: null, rawBody: false });
     assert.deepEqual(dataCaptureFromEnv({ PLURNK_PROVIDERS_RAWBODY: "0" } as NodeJS.ProcessEnv, "x"), { topLogprobs: null, rawBody: false });
@@ -120,7 +120,7 @@ test("OpenAI-lexicon shed: a still-set PLURNK_PROVIDERS_LOGPROB fails hard with 
     );
 });
 
-test("#472 contextWindowFromEnv: reads the new name, sheds CONTEXT_SIZE hard, null when unset", async () => {
+test("contextWindowFromEnv: reads the new name, sheds CONTEXT_SIZE hard, null when unset", async () => {
     const { contextWindowFromEnv } = await import("./env.ts");
     assert.equal(contextWindowFromEnv({ PLURNK_PROVIDERS_CONTEXT_WINDOW: "131072" } as NodeJS.ProcessEnv, "openai"), 131072);
     assert.equal(contextWindowFromEnv({} as NodeJS.ProcessEnv, "openai"), null);
@@ -150,7 +150,7 @@ test("scopeEnvToAlias: a caller-supplied knob list scopes consumer-owned vars", 
     assert.equal(mixed.PLURNK_PROVIDERS_REASONING, "off");
 });
 
-test("#36 capture knobs are per-alias scopable: enable on a scraping alias, serving alias stays clean", async () => {
+test("capture knobs are per-alias scopable: enable on a scraping alias, serving alias stays clean", async () => {
     const { scopeEnvToAlias, dataCaptureFromEnv } = await import("./env.ts");
     const env = {
         PLURNK_PROVIDERS_TOP_LOGPROBS_fireslow: "3",
@@ -160,10 +160,10 @@ test("#36 capture knobs are per-alias scopable: enable on a scraping alias, serv
     assert.deepEqual(dataCaptureFromEnv(scopeEnvToAlias(env, "grokfast"), "x"), { topLogprobs: null, rawBody: false });
 });
 
-// Reader-declares (#44 ecosystem standard): every knob the code reads appears in
+// Every knob the code reads appears in
 // the shipped .env.defaults — set (the floor) or commented (documented optional).
 // The file IS the operator documentation; this keeps it from drifting off the code.
-test("#44: every PROVIDERS_KNOBS entry appears in the shipped .env.defaults", async () => {
+test("every PROVIDERS_KNOBS entry appears in the shipped .env.defaults", async () => {
     const { readFileSync } = await import("node:fs");
     const { PROVIDERS_KNOBS } = await import("./env.ts");
     const defaults = readFileSync(new URL("../.env.defaults", import.meta.url), "utf8");
@@ -172,27 +172,27 @@ test("#44: every PROVIDERS_KNOBS entry appears in the shipped .env.defaults", as
     assert.ok(defaults.includes("PLURNK_PROVIDERS_GBNF="), "GBNF (service-read, providers-namespace) must be declared with its default");
 });
 
-// #399: the family word is REASONING (industry standard). Old names fail hard
+// The family word is REASONING (industry standard). Old names fail hard
 // with the migration pointer — never silently coexist with the new floor.
-test("#399: still-set old THINKING names fail hard with the rename pointer", () => {
+test("still-set old THINKING names fail hard with the rename pointer", () => {
     assert.throws(
         () => reasoningFromEnv({ PLURNK_PROVIDERS_THINKING: "on", PLURNK_PROVIDERS_REASONING: "adaptive" }, "openai"),
-        /PLURNK_PROVIDERS_THINKING was renamed to PLURNK_PROVIDERS_REASONING \(#399\)/,
+        /PLURNK_PROVIDERS_THINKING was renamed to PLURNK_PROVIDERS_REASONING \(provider configuration contract\)/,
     );
     assert.throws(
         () => reasoningFromEnv({ PLURNK_PROVIDERS_THINKING_CAPACITY: "4096", PLURNK_PROVIDERS_REASONING: "adaptive" }, "openai"),
-        /PLURNK_PROVIDERS_THINKING_CAPACITY was renamed to PLURNK_PROVIDERS_REASONING_BUDGET \(#399\)/,
+        /PLURNK_PROVIDERS_THINKING_CAPACITY was renamed to PLURNK_PROVIDERS_REASONING_BUDGET \(provider configuration contract\)/,
     );
 });
 
-test("#399: the shipped floor activates reasoning by default (adaptive — owner ruling)", async () => {
+test("the shipped floor activates reasoning by default (adaptive)", async () => {
     const { readFileSync } = await import("node:fs");
     const defaults = readFileSync(new URL("../.env.defaults", import.meta.url), "utf8");
     assert.ok(defaults.includes("PLURNK_PROVIDERS_REASONING=adaptive"), "floor must ship REASONING=adaptive");
     assert.ok(!defaults.match(/^PLURNK_PROVIDERS_REASONING_BUDGET=/m), "no shipped magnitude — budget is on-mode only");
 });
 
-test("#567: the shipped DRY floor is off and claims no universally safe shape", async () => {
+test("the shipped DRY floor is off and claims no universally safe shape", async () => {
     const { readFileSync } = await import("node:fs");
     const defaults = readFileSync(new URL("../.env.defaults", import.meta.url), "utf8");
     assert.match(defaults, /^PLURNK_PROVIDERS_DRY_MULTIPLIER=0$/m, "a fidelity-corrupting sampler cannot be a portable floor");
@@ -200,9 +200,9 @@ test("#567: the shipped DRY floor is off and claims no universally safe shape", 
     assert.doesNotMatch(defaults, /^PLURNK_PROVIDERS_DRY_ALLOWED_LENGTH=/m);
 });
 
-// -- #507: envelope reserves (owner-ruled migration from PLURNK_SERVICE_*) --
+// -- {§provider-generation-envelope} --
 
-test("#507 envelopeFromEnv: percentages and absolutes parse; missing/invalid fail hard", async () => {
+test("envelopeFromEnv: percentages and absolutes parse; missing/invalid fail hard", async () => {
     const { envelopeFromEnv } = await import("./env.ts");
     assert.deepEqual(
         envelopeFromEnv({ PLURNK_PROVIDERS_REASONING_RESERVE: "10%", PLURNK_PROVIDERS_COMPLETION_RESERVE: "4096" } as NodeJS.ProcessEnv, "x"),
@@ -213,7 +213,7 @@ test("#507 envelopeFromEnv: percentages and absolutes parse; missing/invalid fai
     assert.throws(() => envelopeFromEnv({ PLURNK_PROVIDERS_REASONING_RESERVE: "-5", PLURNK_PROVIDERS_COMPLETION_RESERVE: "25%" } as NodeJS.ProcessEnv, "x"), /positive integer token count/);
 });
 
-test("#507 envelope knobs are per-alias scopable (measured envelope per box)", async () => {
+test("envelope knobs are per-alias scopable (measured envelope per box)", async () => {
     const { scopeEnvToAlias, envelopeFromEnv } = await import("./env.ts");
     const env = {
         PLURNK_PROVIDERS_REASONING_RESERVE: "10%", PLURNK_PROVIDERS_COMPLETION_RESERVE: "25%",
