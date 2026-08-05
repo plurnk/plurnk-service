@@ -28,7 +28,7 @@ export default class MimetypeClassifier {
 
     // JSON-family check used by receipt summarization.
     // Matches application/json plus +json suffix variants per RFC 6839.
-    // Scheme semantics, deliberately NOT delegated (mimetypes#43).
+    // {§mimetype-classifier} Scheme semantics, deliberately NOT delegated.
     static isJson(mimetype: string): boolean {
         return mimetype === "application/json" || mimetype.endsWith("+json");
     }

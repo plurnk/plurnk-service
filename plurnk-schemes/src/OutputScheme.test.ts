@@ -19,7 +19,7 @@ test("manifestFromRuntime: derives a read-only-output manifest from the runtime 
     assert.deepEqual(m.writableBy, ["plugin"]);
     assert.equal(m.volatile, true);
     assert.equal(m.modelVisible, true);
-    assert.equal(m.foldedByDefault, true); // folded off the ranked surface (service#240)
+    assert.equal(m.foldedByDefault, true); // folded off the ranked surface
 });
 
 test("manifestFromRuntime: example is optional", () => {

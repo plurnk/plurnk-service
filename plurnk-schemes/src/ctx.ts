@@ -117,8 +117,8 @@ export interface ChannelCaps {
 // NOTE: there is no `visibility` capability. Entry-level SHOW/HIDE no longer
 // exists in plurnk-service — the `visibility` table was removed in the
 // index/visibility teardown; SHOW/HIDE now collapse/expand `log://` rows, a
-// log-side concern with no entry-visibility for a scheme to set (per
-// plurnk-service#180). If a sibling ever needs to influence what the model
+// log-side concern with no entry-visibility for a scheme to set ({§capability-ctx}).
+// If a sibling ever needs to influence what the model
 // retains, that's a log capability, not an entry one — designed if/when forced.
 
 // ── tags ─────────────────────────────────────────────────────────────────
@@ -145,7 +145,7 @@ export interface TagCaps {
 // only exists at stream completion, so it belongs to `subscriptions.close`,
 // which already composites it (channel state + registry close + worker wake).
 // Only streaming schemes wake a worker, and always via close; synchronous entry
-// schemes return their turn and never wake. (plurnk-service#180.)
+// schemes return their turn and never wake ({§scheme-subscriptions}).
 export interface NotifyCaps {
     streamEvent(pathname: string, channel: string, state: ChannelState, contentLength: number): void;
 }
@@ -199,7 +199,7 @@ export interface SubscriptionCaps {
     // content byte (correct before any mid-stream read). Omit it and the channel
     // keeps its seeded type (exec and non-typing schemes never pass it). Welding
     // the label to the chunk is deliberate: there is no separate set-type call to
-    // forget or mis-order. (plurnk-service#226.)
+    // forget or mis-order ({§scheme-subscriptions}).
     notifyChunk(channel: string, chunk: string, mimetype?: string): Promise<void>;
 
     // Settle the subscription: validate and persist the exact universal

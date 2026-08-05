@@ -1,5 +1,5 @@
-// The free default READ an executor-scheme inherits (executor-is-a-scheme RFC —
-// schemes#20 / service#240): generic matcher selection and `<L>` projection
+// {§executor-scheme-output} The free default READ an executor-scheme inherits:
+// generic matcher selection and `<L>` projection
 // over a produced output blob, reusing Slicer + Matcher so the logic is
 // single-sourced (not forked into BaseExecutor). A pure resolver - given the
 // stored output + the READ statement, it returns which text to serve; the

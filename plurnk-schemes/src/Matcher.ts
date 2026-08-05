@@ -53,7 +53,7 @@ export default class Matcher {
         return evidence;
     }
 
-    // Hand the framework the ALREADY-PARSED matcher (mimetypes#42), not the raw
+    // {§matcher-dispatch} Hand the framework the ALREADY-PARSED matcher, not the raw
     // string — the grammar owns the matcher syntax, so re-classifying `raw`
     // inside mimetypes is a second parser for one syntax and a silent drift
     // surface (a body the grammar parsed as regex that re-classifies as xpath:

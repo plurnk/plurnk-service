@@ -16,7 +16,7 @@ test("application/json + relatives are text", () => {
     assert.equal(MimetypeClassifier.isBinary("application/xml"), false);
 });
 
-test("NDJSON family is text and not a single JSON document (schemes#28)", () => {
+test("NDJSON family is text and not a single JSON document", () => {
     for (const mt of ["application/jsonl", "application/x-ndjson"]) {
         assert.equal(MimetypeClassifier.isBinary(mt), false);
         assert.equal(MimetypeClassifier.isJson(mt), false);

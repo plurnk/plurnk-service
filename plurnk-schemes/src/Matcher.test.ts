@@ -31,8 +31,8 @@ const at = (line: number, startColumn = 1, endColumn = 2) => [{
     endColumn,
 }];
 
-// Source fixture the matcher reads line text from. The matcher SELECTS a line;
-// READ returns that line's CONTENT, not the matched token (schemes#27).
+// {§matcher-dispatch} The matcher SELECTS a line; READ returns that line's
+// CONTENT, not the matched token.
 const doc = [
     "# Title",          // 1
     "alpha foo beta",   // 2 — one hit
@@ -76,7 +76,7 @@ test("matcher: a multi-line span remains one range", async () => {
     }]);
 });
 
-test("matcher: passes the PARSED matcher to query (no re-parse), declared dialect authoritative (mimetypes#42)", async () => {
+test("matcher: passes the PARSED matcher to query (no re-parse), declared dialect authoritative", async () => {
     let seen: string | ParsedBodyMatcher | undefined;
     const mts = stubMimetypes(async (_input, matcher) => { seen = matcher; return []; });
     // A regex body whose pattern `@foo` would STRING-classify as graph — the
@@ -226,7 +226,7 @@ test("matcher: unexpected error propagates (not caught)", async () => {
 // Integration guard: the xpath dialect is served by @plurnk/plurnk-mimetypes
 // (>=0.14.0, queryXpathString wired into Mimetypes.query) — NOT by a local
 // xml engine. This pins that schemes serves xpath through the framework with
-// zero runtime deps (resolves plurnk-service's de-dup ask, schemes#14). Uses
+// zero runtime deps. Uses
 // a real Mimetypes instance, not a stub, so a regression in the dep surfaces.
 test("matcher: xpath dialect served by the framework, no local xml engine", async () => {
     const { Mimetypes } = await import("@plurnk/plurnk-mimetypes");

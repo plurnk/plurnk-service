@@ -1,5 +1,5 @@
-// Derive an output-scheme manifest from an executor's per-tag runtime
-// declaration — the executor-is-a-scheme RFC (schemes#20 / service#240). An
+// {§executor-scheme-output} Derive an output-scheme manifest from an executor's
+// per-tag runtime declaration. An
 // executor authors NO SchemeManifest: its `plurnk.runtimes[]` entry already
 // carries name / example / output-channels, and everything else is the shared
 // read-only-output default. So `EXEC[sh]` gets `sh://` for free, and a multi-tag

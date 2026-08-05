@@ -1,5 +1,5 @@
-// The EXEC-receipt orient-index (executor-is-a-scheme RFC — schemes#20 /
-// service#240). Purely STRUCTURAL — counts / shape / keys / headings, never any
+// {§executor-scheme-output} The EXEC-receipt orient-index is purely STRUCTURAL —
+// counts / shape / keys / headings, never any
 // content. It carries just enough for the model to slice deliberately
 // (`READ <tag>://x<L>`) without a READ-to-orient; the body itself stays behind
 // the handle. Receipt = `address + OrientIndex`; reaching the body is always an
@@ -18,7 +18,7 @@ export default class Summarize {
     // mimetype. The mimetype must be honest (the per-call output type the
     // executor stamps) — fed a generic `text/stream`, a JSON body degrades to a
     // line-count and the flood returns one level removed. That honesty is the
-    // per-call-output-mimetype contract (#226 / service#240), upstream of here.
+    // per-call-output-mimetype contract, upstream of here.
     static summarize(content: string, mimetype: string): OrientIndex {
         if (MimetypeClassifier.isBinary(mimetype)) {
             return { kind: "binary", bytes: new TextEncoder().encode(content).length, mimetype };

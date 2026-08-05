@@ -65,8 +65,8 @@ export type {
     SchemeResultBase,
 } from "./Results.ts";
 
-// ── Capability ctx — DB-free authoring surface for siblings (keystone PR-2,
-// plurnk-service#180). Interfaces only; plurnk-service injects the impl.
+// {§capability-ctx} Capability ctx — DB-free authoring surface for siblings.
+// Interfaces only; plurnk-service injects the implementation.
 export type {
     ChannelCaps,
     ChannelState,

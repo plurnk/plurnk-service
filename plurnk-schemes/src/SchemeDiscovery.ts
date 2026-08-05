@@ -18,7 +18,7 @@ import type {
 // claims). The scan is scope-agnostic: it walks EVERY installed package under
 // `<cwd>/node_modules` — `@plurnk/*`, third-party scopes (`@acme/foo`), and
 // unscoped — so an operator-installed third-party scheme is found with zero
-// first-party involvement (plurnk-service#227).
+// first-party involvement ({§scheme-discovery}).
 //
 // Returns DESCRIPTORS, not instantiated handlers: this package is contract-only
 // and must never import a scheme package (that would nest plugins under the
@@ -26,7 +26,7 @@ import type {
 // `packageName` and registers `new mod.default()` — exactly as the exec scheme
 // loads executor packages from plurnk-execs' ExecInfo.
 //
-// The PLURNK_PLUGINS_TRUSTED_ONLY gate (plurnk-service#229) filters the scan:
+// {§plugin-trust-boundary} PLURNK_PLUGINS_TRUSTED_ONLY filters the scan:
 // when on, an untrusted third-party package is discovered but withheld from
 // `schemes` and returned in `skipped` for the consumer's Notice.
 
@@ -102,8 +102,8 @@ export default class SchemeDiscovery {
     }
 
     // Host plugin-trust gate, read from PLURNK_PLUGINS_TRUSTED_ONLY — the SAME
-    // env var plurnk-service decides once and every scope-agnostic discovery
-    // surface enforces through the shared Meta contract (plurnk-service#229):
+    // env var the host decides once and every scope-agnostic discovery
+    // surface enforces through the shared Meta contract ({§plugin-trust-boundary}):
     //   unset / "" / "0" → OFF: every installed package trusted (no regression).
     //   any value        → ON:  `@plurnk/*` always trusted, plus a comma-separated
     //                           allowlist of additionally-trusted package names.

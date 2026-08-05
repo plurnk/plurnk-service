@@ -40,7 +40,7 @@ export interface SchemeHandler {
     // Per-instance manifest option. Every handler must expose either this or a
     // class-level `static manifest`; Manifest.of validates the resolved value at
     // registration. Per-tag executor schemes derive this instance value from
-    // their runtime declaration. (executor-is-a-scheme RFC, schemes#20.)
+    // their runtime declaration ({§executor-scheme-output}).
     readonly manifest?: SchemeManifest;
 
     // Optional process hooks under {§handler-lifecycle}: readiness precedes
