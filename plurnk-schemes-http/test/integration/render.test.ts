@@ -10,7 +10,7 @@ import { strict as assert } from "node:assert";
 import http from "node:http";
 import type { AddressInfo } from "node:net";
 import type {
-    SchemeCtx, SchemeResult, SubscriptionHandle, ReadStatement, UrlPath,
+    SchemeCtx, SchemeResult, StreamSubscription, SubscriptionHandle, ReadStatement, UrlPath,
 } from "@plurnk/plurnk-schemes";
 import Browser from "../../src/Browser.ts";
 import Http from "../../src/Http.ts";
@@ -53,7 +53,12 @@ test("Browser.render: real chromium runs the page JS and serializes the final DO
 const makeCtx = () => {
     const chunks: Array<{ channel: string; chunk: string; mimetype?: string }> = [];
     let closed: { result: SchemeResult; summary?: string } | null = null;
+    let subscription: StreamSubscription | null = null;
     const ok = async () => ({ status: 200 });
+    const notifyChunk: StreamSubscription["notifyChunk"] = async (channel, chunk, mimetype) => {
+        chunks.push({ channel, chunk, mimetype });
+    };
+    const close: StreamSubscription["close"] = async (result, summary) => { closed = { result, summary }; };
     const ctx: SchemeCtx = {
         workspaceId: 1, workerId: 1, loopId: 1, turnId: 1, writer: "model", signal: undefined,
         entries: { read: async () => ({ status: 404, entry: null }), write: async () => ({ status: 201, created: true, entryId: 1 }), delete: ok },
@@ -66,9 +71,18 @@ const makeCtx = () => {
             },
         },
         subscriptions: {
-            async open(_p: string, _h: SubscriptionHandle) { return new AbortController().signal; },
-            async notifyChunk(channel, chunk, mimetype) { chunks.push({ channel, chunk, mimetype }); },
-            async close(result, summary) { closed = { result, summary }; },
+            async open(_p: string, _h: SubscriptionHandle) {
+                subscription = Object.assign(new AbortController().signal, { notifyChunk, close });
+                return subscription;
+            },
+            async notifyChunk(channel, chunk, mimetype) {
+                if (subscription === null) throw new Error("no open subscription");
+                await subscription.notifyChunk(channel, chunk, mimetype);
+            },
+            async close(result, summary) {
+                if (subscription === null) throw new Error("no open subscription");
+                await subscription.close(result, summary);
+            },
         },
     };
     return { ctx, inspect: () => ({ chunks, closed }) };

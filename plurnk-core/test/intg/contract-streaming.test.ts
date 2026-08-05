@@ -18,7 +18,7 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Exec from "../../src/schemes/Exec.ts";
 import ChannelWrite, { type StreamEventPayload } from "../../src/core/ChannelWrite.ts";
-import { Results, type SchemeCtx, type SchemeResult } from "@plurnk/plurnk-schemes";
+import { Results, type SchemeCtx, type StreamSubscription } from "@plurnk/plurnk-schemes";
 import {
     openMigrated, seedEnvelope, seedEntryWithChannel,
     insertWorkspace, insertWorker, insertLoop, insertTurn, testExecutors,
@@ -69,10 +69,12 @@ test("SEND[499] resolves the registry to the owning scheme + stored handle and t
                     channels: { data: { content: "partial", mimetype: "text/plain", state: "active" } },
                     tags: [],
                 });
-                await ctx.subscriptions.open(path.pathname, {
+                let subscription: StreamSubscription | undefined;
+                subscription = await ctx.subscriptions.open(path.pathname, {
                     cancel: async () => {
                         teardownByHandle.push(HANDLE);
-                        await ctx.subscriptions.close(
+                        if (subscription === undefined) throw new Error("stream subscription missing");
+                        await subscription.close(
                             Results.failure("scheme:fakestream", "cancelled", 499, "The stream was cancelled by SEND[499]."),
                             "cancelled by SEND[499]",
                         );
@@ -136,11 +138,7 @@ test("a public streaming READ returns its 102 row before detached subscription w
     const db = await openMigrated();
     try {
         const { workspaceId, workerId, loopId, turnId } = await seedEnvelope(db, `detached-sub-${crypto.randomUUID()}`);
-        type DetachedSubscriptionProbe = AbortSignal & {
-            notifyChunk(channel: string, chunk: string, mimetype?: string): Promise<void>;
-            close(result: SchemeResult, summary?: string): Promise<void>;
-        };
-        let subscription: DetachedSubscriptionProbe | undefined;
+        let subscription: StreamSubscription | undefined;
 
         class DetachedStream {
             static manifest = {
@@ -155,10 +153,7 @@ test("a public streaming READ returns its 102 row before detached subscription w
                     channels: { data: { content: "", mimetype: "text/plain", state: "active" } },
                     tags: [],
                 });
-                subscription = await ctx.subscriptions.open(
-                    target.pathname,
-                    { cancel() {} },
-                ) as DetachedSubscriptionProbe;
+                subscription = await ctx.subscriptions.open(target.pathname, { cancel() {} });
                 return { status: 102 };
             }
         }
@@ -189,8 +184,12 @@ test("a public streaming READ returns its 102 row before detached subscription w
             workspace_id: workspaceId, scheme: "detached", pathname: "/feed",
         });
         if (entry === undefined) throw new Error("detached stream entry missing");
+        const channel = await db.test_get_channel.get<{ content: string; state: string }>({
+            entry_id: entry.id,
+            name: "data",
+        });
         assert.deepEqual(
-            await db.test_get_channel.get<{ content: string; state: string }>({ entry_id: entry.id, name: "data" }),
+            channel === undefined ? undefined : { content: channel.content, state: channel.state },
             { content: "after-return", state: "closed" },
         );
         assert.equal(await ChannelWrite.findActiveSubscription(db, { workerId, entryId: entry.id }), null);

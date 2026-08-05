@@ -20,6 +20,7 @@ import {
     type NotifyCaps,
     type ProjectionCaps,
     type SubscriptionCaps,
+    type StreamSubscription,
     type EntryData,
     type ChannelState,
     type StoredEntryData,
@@ -128,10 +129,26 @@ const makeCtx = (priorEntry: StoredEntryData | null = null, overrides: CtxOverri
             return text.length > 0 ? { content: text, mimetype: "text/markdown" } : null;
         },
     };
+    let current: StreamSubscription | null = null;
+    const notifyChunk: StreamSubscription["notifyChunk"] = async (channel, chunk, mimetype) => {
+        chunks.push({ channel, chunk, mimetype });
+    };
+    const close: StreamSubscription["close"] = async (result, summary) => { closed = { result, summary }; };
     const subscriptions: SubscriptionCaps = {
-        async open(pathname, handle, options) { opened = { pathname, handle, ...options }; seq.push("open"); return localAbort.signal; },
-        async notifyChunk(channel, chunk, mimetype) { chunks.push({ channel, chunk, mimetype }); },
-        async close(result, summary) { closed = { result, summary }; },
+        async open(pathname, handle, options) {
+            opened = { pathname, handle, ...options };
+            seq.push("open");
+            current = Object.assign(localAbort.signal, { notifyChunk, close });
+            return current;
+        },
+        async notifyChunk(channel, chunk, mimetype) {
+            if (current === null) throw new Error("no open subscription");
+            await current.notifyChunk(channel, chunk, mimetype);
+        },
+        async close(result, summary) {
+            if (current === null) throw new Error("no open subscription");
+            await current.close(result, summary);
+        },
     };
     const ctx: SchemeCtx = {
         workspaceId: 1, workerId: 1, loopId: 1, turnId: 1, writer: "model", signal: overrides.signal,

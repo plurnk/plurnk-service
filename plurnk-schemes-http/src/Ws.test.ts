@@ -20,6 +20,7 @@ import {
     type NotifyCaps,
     type ProjectionCaps,
     type SubscriptionCaps,
+    type StreamSubscription,
 } from "@plurnk/plurnk-schemes";
 
 const PUB = "wss://93.184.216.34/feed"; // public IP literal - skips DNS
@@ -121,16 +122,29 @@ const makeCtx = (overrides: CtxOverrides = {}) => {
         },
     };
     const projection: ProjectionCaps = { async readable(content) { return { content, mimetype: "text/markdown" }; } };
-    const subscriptions: SubscriptionCaps = {
-        async open(pathname) { opened = { pathname }; return localAbort.signal; },
-        async notifyChunk(channel, chunk, mimetype) {
+    let current: StreamSubscription | null = null;
+    const notifyChunk: StreamSubscription["notifyChunk"] = async (channel, chunk, mimetype) => {
             chunks.push({ channel, chunk, mimetype });
             await overrides.notifyChunk?.(channel, chunk, mimetype);
-        },
-        async close(result, summary) {
+    };
+    const close: StreamSubscription["close"] = async (result, summary) => {
             closeCount += 1;
             closed = { result, summary };
             await overrides.close?.(result, summary);
+    };
+    const subscriptions: SubscriptionCaps = {
+        async open(pathname) {
+            opened = { pathname };
+            current = Object.assign(localAbort.signal, { notifyChunk, close });
+            return current;
+        },
+        async notifyChunk(channel, chunk, mimetype) {
+            if (current === null) throw new Error("no open subscription");
+            await current.notifyChunk(channel, chunk, mimetype);
+        },
+        async close(result, summary) {
+            if (current === null) throw new Error("no open subscription");
+            await current.close(result, summary);
         },
     };
     const ctx: SchemeCtx = {

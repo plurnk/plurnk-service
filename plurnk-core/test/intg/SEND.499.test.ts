@@ -7,7 +7,7 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Worker from "../../src/schemes/Worker.ts";
 import ChannelWrite from "../../src/core/ChannelWrite.ts";
-import { Results, type SchemeCtx } from "@plurnk/plurnk-schemes";
+import { Results, type SchemeCtx, type StreamSubscription } from "@plurnk/plurnk-schemes";
 import { openMigrated, seedEnvelope, makeSchemeCtx } from "./_helpers.ts";
 
 const url = (scheme: string, pathname: string): UrlPath => ({
@@ -99,10 +99,12 @@ test("End-to-end: synthetic streaming scheme — SEND[499] tears down subscripti
                     channels: { data: { content: "", mimetype: "text/plain", state: "active" } },
                     tags: [],
                 });
-                await ctx.subscriptions.open(path.pathname, {
+                let subscription: StreamSubscription | undefined;
+                subscription = await ctx.subscriptions.open(path.pathname, {
                     cancel: async () => {
                         teardownCalls.push(handle);
-                        await ctx.subscriptions.close(
+                        if (subscription === undefined) throw new Error("stream subscription missing");
+                        await subscription.close(
                             Results.failure("scheme:teststream", "cancelled", 499, "The stream was cancelled by SEND[499]."),
                             "cancelled by SEND[499]",
                         );

@@ -163,13 +163,27 @@ export interface ProjectionCaps {
 }
 
 // ── subscriptions ────────────────────────────────────────────────────────
-// The streaming lifecycle (service SPEC: streaming). The hard namespace; designed against
-// Exec (the proven two-channel, cancel-tested case — if it serves exec it
-// serves http). The registered-vs-content split (registry exists only for
-// cancel routing — service SPEC; channels carry lifecycle) is REAL and load-bearing
-// in the impl, but HIDDEN here: a sibling sees one lifecycle, not two
-// substrates.
-export interface SubscriptionCaps {
+// The one retainable capability returned by subscription acquisition. It is
+// still the composed AbortSignal used by existing streaming schemes, while its
+// methods bound all post-return work to this exact durable subscription.
+export interface StreamSubscription extends AbortSignal {
+    // FUSED append-and-notify: write the chunk to the named channel AND fire
+    // stream/event in one call. Optional `mimetype` retypes the channel to the
+    // content's actual per-call type ({§scheme-subscriptions}).
+    notifyChunk(channel: string, chunk: string, mimetype?: string): Promise<void>;
+
+    // Settle the subscription: validate and persist the exact universal
+    // operation result, set channel state, and fire the worker wake.
+    close(result: SchemeResult, summary?: string): Promise<void>;
+}
+
+// The streaming lifecycle (service SPEC: streaming). The registered-vs-content
+// split is hidden here: a sibling acquires and retains one lifecycle object,
+// not the consumer's persistence substrates or its per-dispatch context.
+// The inherited methods are operation-scoped compatibility forwarders to the
+// exact StreamSubscription returned by open; only that returned object may be
+// retained after the handler returns ({§scheme-ctx-lifetime}).
+export interface SubscriptionCaps extends Pick<StreamSubscription, "notifyChunk" | "close"> {
     // Register the subscription for cancel routing and return the signal the
     // sibling should await for teardown. The returned AbortSignal is the worker
     // signal COMPOSED WITH this subscription's own teardown — it fires on
@@ -184,29 +198,7 @@ export interface SubscriptionCaps {
         // READ passes its manifest default here; auxiliary/raw channels remain
         // implementation detail unless explicitly addressed.
         publishedChannel?: string;
-    }): Promise<AbortSignal>;
-
-    // FUSED append-and-notify: write the chunk to the named channel AND fire
-    // stream/event in one call. Kept composite by contract — a streaming
-    // sibling must never have to remember "append, then separately notify."
-    //
-    // Optional `mimetype` retypes the channel to the content's actual per-call
-    // type. A streaming body's type is often known only at stream time (an http
-    // body is JSON / PNG / HTML by response Content-Type); the manifest's
-    // channel mimetype is just the pre-fetch seed default. Pass it STATELESSLY
-    // on every chunk — the impl writes only when it differs from the stored
-    // label, so steady-state is a no-op, and the type lands welded to the first
-    // content byte (correct before any mid-stream read). Omit it and the channel
-    // keeps its seeded type (exec and non-typing schemes never pass it). Welding
-    // the label to the chunk is deliberate: there is no separate set-type call to
-    // forget or mis-order ({§scheme-subscriptions}).
-    notifyChunk(channel: string, chunk: string, mimetype?: string): Promise<void>;
-
-    // Settle the subscription: validate and persist the exact universal
-    // operation result, set channel state, and fire the worker wake ("stream
-    // concluded" + summary). The summary is presentation; it never substitutes
-    // for the structured terminal result.
-    close(result: SchemeResult, summary?: string): Promise<void>;
+    }): Promise<StreamSubscription>;
 }
 
 // The force-cancel hook a streaming scheme hands to `open`. The engine's

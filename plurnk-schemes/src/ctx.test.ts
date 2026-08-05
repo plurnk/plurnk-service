@@ -17,6 +17,7 @@ import type {
     ProjectionCaps,
     SubscriptionCaps,
     SubscriptionHandle,
+    StreamSubscription,
     ProposalAware,
     EntryData,
     StoredEntryData,
@@ -151,19 +152,32 @@ const makeCtx = () => {
         },
     };
 
+    let current: StreamSubscription | null = null;
+    const notifyChunk: StreamSubscription["notifyChunk"] = async (channel, chunk, mimetype) => {
+        // The contract: this is FUSED — append AND emit an event together.
+        // Optional mimetype retypes the channel to the per-call content type.
+        chunks.push({ channel, chunk, mimetype });
+        notify.streamEvent("sub", channel, "active", chunk.length);
+    };
+    const close: StreamSubscription["close"] = async (result, summary) => {
+        closed = { result, summary };
+        woken += 1;
+    };
     const subscriptions: SubscriptionCaps = {
         async open(_pathname, _handle: SubscriptionHandle) {
-            return new AbortController().signal;
+            current = Object.assign(new AbortController().signal, { notifyChunk, close });
+            return current;
         },
         async notifyChunk(channel, chunk, mimetype) {
-            // The contract: this is FUSED — append AND emit an event together.
-            // Optional mimetype retypes the channel to the per-call content type.
-            chunks.push({ channel, chunk, mimetype });
-            notify.streamEvent("sub", channel, "active", chunk.length);
+            if (current === null) throw new Error("no open subscription");
+            await current.notifyChunk(channel, chunk, mimetype);
         },
         // close composites the worker wake — there is no separate notify.wakeWorker;
         // the rich, summary-bearing wake lives where the close context is.
-        async close(result, summary) { closed = { result, summary }; woken += 1; },
+        async close(result, summary) {
+            if (current === null) throw new Error("no open subscription");
+            await current.close(result, summary);
+        },
     };
 
     const ctx: SchemeCtx = {
@@ -213,10 +227,7 @@ test("ctx: subscriptions.open returns an awaitable AbortSignal", async () => {
 
 test("ctx: the opened subscription is the retainable chunk and settlement capability", async () => {
     const { ctx, inspect } = makeCtx();
-    const subscription = await ctx.subscriptions.open("exec://r-1", { cancel() {} }) as AbortSignal & {
-        notifyChunk(channel: string, chunk: string, mimetype?: string): Promise<void>;
-        close(result: { status: number }, summary?: string): Promise<void>;
-    };
+    const subscription = await ctx.subscriptions.open("exec://r-1", { cancel() {} });
 
     await subscription.notifyChunk("stdout", "detached\n", "text/plain");
     await subscription.close({ status: 200 }, "detached complete");
@@ -227,6 +238,7 @@ test("ctx: the opened subscription is the retainable chunk and settlement capabi
 
 test("ctx: notifyChunk is fused — one call appends AND emits an event", async () => {
     const { ctx, inspect } = makeCtx();
+    await ctx.subscriptions.open("exec://r-1", { cancel() {} });
     await ctx.subscriptions.notifyChunk("stdout", "line1\n");
     await ctx.subscriptions.notifyChunk("stderr", "warn\n");
     const { chunks, events } = inspect();
@@ -238,6 +250,7 @@ test("ctx: notifyChunk is fused — one call appends AND emits an event", async 
 
 test("ctx: notifyChunk carries an optional per-call mimetype (channel retype)", async () => {
     const { ctx, inspect } = makeCtx();
+    await ctx.subscriptions.open("exec://r-1", { cancel() {} });
     await ctx.subscriptions.notifyChunk("body", "<html>hi</html>", "text/html");
     await ctx.subscriptions.notifyChunk("body", "more"); // omitted → channel keeps its type
     const { chunks } = inspect();
@@ -247,6 +260,7 @@ test("ctx: notifyChunk carries an optional per-call mimetype (channel retype)", 
 
 test("ctx: subscriptions.close composites state + wake (stream concluded)", async () => {
     const { ctx, inspect } = makeCtx();
+    await ctx.subscriptions.open("exec://r-1", { cancel() {} });
     await ctx.subscriptions.close({ status: 200 }, "exit=0 bytes=42");
     const { closed, woken } = inspect();
     assert.deepEqual(closed, { result: { status: 200 }, summary: "exit=0 bytes=42" });

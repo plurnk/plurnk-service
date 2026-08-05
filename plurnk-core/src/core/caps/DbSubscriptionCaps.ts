@@ -1,17 +1,23 @@
 // Db-backed implementation of plurnk-schemes {§scheme-subscriptions}.
 // The streaming lifecycle a sibling drives:
 //   open(pathname, handle) → registers the subscription and hands back a
-//     worker+teardown-composed AbortSignal; a worker abort also force-cancels the
-//     sibling's handle (mirrors the exec scheme's #activeAborts).
+//     worker+teardown-composed StreamSubscription; a worker abort also
+//     force-cancels the sibling's handle.
 //   notifyChunk(channel, chunk) → FUSED append-to-channel + stream/event.
 //   close(result, summary?) → composites every channel's terminal state, the
 //     registry close, and the rich worker wake (the only place with the close
 //     context to populate it; NotifyCaps therefore has no wakeWorker operation).
-// Stateful: open() binds the entry + subscription that notifyChunk()/close()
-// operate on. Models src/schemes/Exec.ts over the same ChannelWrite primitives.
+// The returned object owns the exact retained lifecycle. Namespace methods are
+// operation-scoped compatibility forwarders to that same object.
 
 import { Results } from "@plurnk/plurnk-schemes";
-import type { SubscriptionCaps, SubscriptionHandle, ChannelState, SchemeResult } from "@plurnk/plurnk-schemes";
+import type {
+    SubscriptionCaps,
+    SubscriptionHandle,
+    StreamSubscription,
+    ChannelState,
+    SchemeResult,
+} from "@plurnk/plurnk-schemes";
 import type { PlurnkSchemeContext } from "../scheme-types.ts";
 import ChannelWrite from "../ChannelWrite.ts";
 import CapsResolve from "./CapsResolve.ts";
@@ -22,11 +28,7 @@ export default class DbSubscriptionCaps implements SubscriptionCaps {
     readonly #ctx: PlurnkSchemeContext;
     readonly #scheme: string;
     readonly #liveSubscriptions: LiveSubscriptions;
-    #pathname: string | null = null;
-    #entryId: number | null = null;
-    #subscriptionId: number | null = null;
-    #publishedChannel: string | null = null;
-    #unlink: () => void = () => {};
+    #current: StreamSubscription | null = null;
 
     constructor(ctx: PlurnkSchemeContext, scheme: string, liveSubscriptions: LiveSubscriptions) {
         this.#ctx = ctx;
@@ -34,79 +36,84 @@ export default class DbSubscriptionCaps implements SubscriptionCaps {
         this.#liveSubscriptions = liveSubscriptions;
     }
 
-    async open(pathname: string, handle: SubscriptionHandle, options?: { publishedChannel?: string }): Promise<AbortSignal> {
+    async open(pathname: string, handle: SubscriptionHandle, options?: { publishedChannel?: string }): Promise<StreamSubscription> {
         const entryId = await CapsResolve.entryId(this.#ctx, this.#scheme, pathname);
         if (entryId === null) throw new Error(`subscriptions.open: no entry at ${pathname}`);
-        const subscriptionId = await ChannelWrite.openSubscription(this.#ctx.db, {
-            workerId: this.#ctx.workerId, entryId, scheme: this.#scheme, handle: pathname,
-            publishedChannel: options?.publishedChannel ?? null,
+        const {
+            db,
+            workerId,
+            workspaceId,
+            signal: parent,
+            streamEventNotify,
+            wakeWorkerNotify,
+        } = this.#ctx;
+        const scheme = this.#scheme;
+        const liveSubscriptions = this.#liveSubscriptions;
+        const publishedChannel = options?.publishedChannel ?? null;
+        const subscriptionId = await ChannelWrite.openSubscription(db, {
+            workerId, entryId, scheme, handle: pathname, publishedChannel,
         });
-        // Compose the worker signal with a fresh controller; a worker abort also
-        // force-cancels the sibling's handle.
         const controller = new AbortController();
-        this.#liveSubscriptions.register(subscriptionId, {
+        let unlink = (): void => {};
+        const notifyChunk = async (channel: string, chunk: string, mimetype?: string): Promise<void> => {
+            await ChannelWrite.appendToChannel(db, {
+                entryId, channel, chunk,
+                ...(publishedChannel === null || publishedChannel === channel ? { notify: streamEventNotify } : {}),
+                mimetype,
+            });
+        };
+        const close = async (result: SchemeResult, summary?: string): Promise<void> => {
+            Results.assert(result);
+            const state: ChannelState = result.status >= 400 ? "errored" : "closed";
+            const channels = await db.crud_read_channels.all<{ name: string }>({ entry_id: entryId });
+            for (const { name } of channels) {
+                await ChannelWrite.setChannelState(db, {
+                    entryId, channel: name, state,
+                    ...(publishedChannel === null || publishedChannel === name ? { notify: streamEventNotify } : {}),
+                });
+            }
+            await ChannelWrite.closeSubscription(db, { subscriptionId, result });
+            liveSubscriptions.unregister(subscriptionId);
+            unlink();
+            wakeWorkerNotify?.({
+                workspaceId, workerId, entryId,
+                target: renderAddress(scheme, pathname),
+                subscriptionId, result, scheme, summary: summary ?? "",
+            });
+        };
+        const subscription = Object.assign(controller.signal, { notifyChunk, close });
+
+        liveSubscriptions.register(subscriptionId, {
             cancel: async () => {
                 controller.abort("subscription cancelled");
                 await handle.cancel();
             },
         });
-        const parent = this.#ctx.signal;
+        this.#current = subscription;
         if (parent !== undefined) {
             const cancel = (): void => {
-                void this.#liveSubscriptions.cancel(subscriptionId).catch((err: unknown) => {
+                void liveSubscriptions.cancel(subscriptionId).catch((err: unknown) => {
                     console.error("subscription cancellation failed:", err);
                 });
             };
             if (parent.aborted) cancel();
             else {
                 parent.addEventListener("abort", cancel, { once: true });
-                this.#unlink = (): void => parent.removeEventListener("abort", cancel);
+                unlink = (): void => parent.removeEventListener("abort", cancel);
             }
         }
-        this.#pathname = pathname;
-        this.#entryId = entryId;
-        this.#subscriptionId = subscriptionId;
-        this.#publishedChannel = options?.publishedChannel ?? null;
-        return controller.signal;
+        return subscription;
     }
 
     async notifyChunk(channel: string, chunk: string, mimetype?: string): Promise<void> {
-        if (this.#entryId === null) throw new Error("subscriptions.notifyChunk: no open subscription");
-        await ChannelWrite.appendToChannel(this.#ctx.db, {
-            entryId: this.#entryId, channel, chunk,
-            ...(this.#publishedChannel === null || this.#publishedChannel === channel ? { notify: this.#ctx.streamEventNotify } : {}),
-            mimetype,
-        });
+        const current = this.#current;
+        if (current === null) throw new Error("subscriptions.notifyChunk: no open subscription");
+        await current.notifyChunk(channel, chunk, mimetype);
     }
 
     async close(result: SchemeResult, summary?: string): Promise<void> {
-        const entryId = this.#entryId;
-        const subscriptionId = this.#subscriptionId;
-        if (entryId === null || subscriptionId === null) throw new Error("subscriptions.close: no open subscription");
-        Results.assert(result);
-        const state: ChannelState = result.status >= 400 ? "errored" : "closed";
-        // Every channel of the entry → terminal state, then the registry row
-        // closes, then the worker wakes with the scheme's summary.
-        const channels = await this.#ctx.db.crud_read_channels.all<{ name: string }>({ entry_id: entryId });
-        for (const { name } of channels) {
-            await ChannelWrite.setChannelState(this.#ctx.db, {
-                entryId, channel: name, state,
-                ...(this.#publishedChannel === null || this.#publishedChannel === name ? { notify: this.#ctx.streamEventNotify } : {}),
-            });
-        }
-        await ChannelWrite.closeSubscription(this.#ctx.db, { subscriptionId, result });
-        this.#liveSubscriptions.unregister(subscriptionId);
-        this.#unlink();
-        const target = renderAddress(this.#scheme, this.#pathname ?? "");
-        this.#ctx.wakeWorkerNotify?.({
-            workspaceId: this.#ctx.workspaceId, workerId: this.#ctx.workerId,
-            entryId, target, subscriptionId, result,
-            scheme: this.#scheme, summary: summary ?? "",
-        });
-        this.#pathname = null;
-        this.#entryId = null;
-        this.#subscriptionId = null;
-        this.#publishedChannel = null;
-        this.#unlink = (): void => {};
+        const current = this.#current;
+        if (current === null) throw new Error("subscriptions.close: no open subscription");
+        await current.close(result, summary);
     }
 }
