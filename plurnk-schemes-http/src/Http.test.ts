@@ -8,6 +8,7 @@ import test, { mock } from "node:test";
 import { strict as assert } from "node:assert";
 import {
     MimetypeClassifier,
+    ProjectionInputLimitError,
     Results,
     type EntryStorageReadResult,
     type EntryStorageWriteResult,
@@ -288,6 +289,87 @@ test("prepareFind materializes an exact URL through the checked readable path", 
     assert.equal(inspect().wrote?.pathname, "/example.com/dist/index.json");
     assert.equal(inspect().wrote?.entry.channels.body?.content, '{"version":"24.18.0"}');
     assert.equal(inspect().wrote?.entry.channels.body?.mimetype, "application/json");
+});
+
+test("prepareFind persists a readable binary projection with source and projection evidence", async () => {
+    const projection = projectionCaps({
+        async isBinary(mimetype) { return mimetype === "application/pdf"; },
+        async readableBytes(chunks, mimetype) {
+            const bytes: number[] = [];
+            for await (const chunk of chunks) bytes.push(...chunk);
+            assert.deepEqual(bytes, [1, 2, 3]);
+            return {
+                content: "projected PDF",
+                mimetype: "text/markdown",
+                sourceMimetype: mimetype,
+                projectionIdentity: "pdf-reader-v2",
+            };
+        },
+    });
+    const { ctx, inspect } = makeCtx(null, { projection });
+    await withFetch(mockFetch(200, "OK", [Uint8Array.of(1, 2, 3)], {
+        "content-type": "application/pdf",
+        "x-plurnk-projection-id": "origin-spoof",
+    }), async () => {
+        const result = await new Http().prepareFind(
+            findStmt(urlTarget("https://example.com/paper.pdf", "/paper.pdf")),
+            ctx,
+        );
+        assert.equal(result.status, 201);
+    });
+
+    assert.deepEqual(inspect().wrote?.entry.channels.body, {
+        content: "projected PDF",
+        mimetype: "text/markdown",
+    });
+    const header = inspect().wrote?.entry.channels.header?.content ?? "";
+    assert.match(header, /^content-type: application\/pdf$/m);
+    assert.equal(
+        [...header.matchAll(/^x-plurnk-projection-id:[ \t]*(.*)$/gim)].at(-1)?.[1],
+        "pdf-reader-v2",
+        "package projection evidence wins over an origin field of the same name",
+    );
+});
+
+test("prepareFind reports the binary input ceiling as a typed 413 without persisting bytes", async (t) => {
+    let cancelled = false;
+    const stream = new ReadableStream<Uint8Array>({
+        start(controller) { controller.enqueue(Uint8Array.of(1, 2, 3, 4)); },
+        cancel() { cancelled = true; },
+    });
+    const projection = projectionCaps({
+        async isBinary() { return true; },
+        async readableBytes() {
+            throw new ProjectionInputLimitError({
+                mimetype: "application/pdf",
+                maximumBytes: 3,
+                observedBytes: 4,
+            });
+        },
+    });
+    const diagnostics: unknown[][] = [];
+    t.mock.method(console, "error", (...args: unknown[]) => { diagnostics.push(args); });
+    const { ctx, inspect } = makeCtx(null, { projection });
+    let result: Awaited<ReturnType<Http["prepareFind"]>> | undefined;
+    await withFetch(async () => new Response(stream, {
+        status: 200,
+        headers: { "content-type": "application/pdf" },
+    }), async () => {
+        result = await new Http().prepareFind(
+            findStmt(urlTarget("https://example.com/large.pdf", "/large.pdf")),
+            ctx,
+        );
+    });
+
+    assert.equal(result?.status, 413);
+    assert.equal(result?.problem?.type, "https://problems.plurnk.dev/scheme/http/projection-input-limit");
+    assert.equal(result?.problem?.mimetype, "application/pdf");
+    assert.equal(result?.problem?.maximumBytes, 3);
+    assert.equal(result?.problem?.observedBytes, 4);
+    assert.equal(result?.problem?.retryable, false);
+    assert.equal(cancelled, true);
+    assert.equal(inspect().wrote, null);
+    assert.equal(diagnostics.length, 0, "an enforced input ceiling is not an internal defect");
 });
 
 test("prepareFind treats XHTML and a present empty projection as successful materialization", async () => {
@@ -884,6 +966,89 @@ test("SEND[200]: a binary response becomes a typed marker and explicit non-retry
     );
     assert.equal(inspect().closed?.result.problem, result?.problem);
     assert.match(inspect().chunks.find(({ channel }) => channel === "header")?.chunk ?? "", /^HTTP 200 OK/m);
+});
+
+test("READ: a readable binary response publishes only derived Unicode and projection evidence", async () => {
+    const projection = projectionCaps({
+        async isBinary(mimetype) { return mimetype === "application/pdf"; },
+        async readableBytes(chunks, mimetype) {
+            const bytes: number[] = [];
+            for await (const chunk of chunks) bytes.push(...chunk);
+            assert.deepEqual(bytes, [37, 80, 68, 70]);
+            return {
+                content: "# projected paper",
+                mimetype: "text/markdown",
+                sourceMimetype: mimetype,
+                projectionIdentity: "pdf-reader-v3",
+            };
+        },
+    });
+    const { ctx, inspect } = makeCtx(null, { projection });
+    let result: Awaited<ReturnType<Http["read"]>> | undefined;
+    await withFetch(mockFetch(200, "OK", [Uint8Array.of(37, 80, 68, 70)], {
+        "content-type": "application/pdf",
+    }), async () => {
+        result = await new Http().read(
+            readStmt(urlTarget("https://example.com/paper.pdf", "/paper.pdf")),
+            ctx,
+        );
+    });
+
+    assert.equal(result?.status, 102);
+    assert.deepEqual(
+        inspect().chunks.filter(({ channel }) => channel === "body"),
+        [{ channel: "body", chunk: "# projected paper", mimetype: "text/markdown" }],
+    );
+    const header = inspect().chunks
+        .filter(({ channel }) => channel === "header")
+        .map(({ chunk }) => chunk)
+        .join("");
+    assert.match(header, /^content-type: application\/pdf$/m);
+    assert.match(header, /^x-plurnk-projection-id: pdf-reader-v3$/m);
+    assert.equal(inspect().closed?.result.status, 200);
+});
+
+test("READ: a binary projection input ceiling leaves a typed marker and closes with 413", async (t) => {
+    let cancelled = false;
+    const stream = new ReadableStream<Uint8Array>({
+        start(controller) { controller.enqueue(Uint8Array.of(1, 2, 3, 4)); },
+        cancel() { cancelled = true; },
+    });
+    const projection = projectionCaps({
+        async isBinary() { return true; },
+        async readableBytes() {
+            throw new ProjectionInputLimitError({
+                mimetype: "application/pdf",
+                maximumBytes: 3,
+                observedBytes: 4,
+            });
+        },
+    });
+    const diagnostics: unknown[][] = [];
+    t.mock.method(console, "error", (...args: unknown[]) => { diagnostics.push(args); });
+    const { ctx, inspect } = makeCtx(null, { projection });
+    let result: Awaited<ReturnType<Http["read"]>> | undefined;
+    await withFetch(async () => new Response(stream, {
+        status: 200,
+        headers: { "content-type": "application/pdf" },
+    }), async () => {
+        result = await new Http().read(
+            readStmt(urlTarget("https://example.com/large.pdf", "/large.pdf")),
+            ctx,
+        );
+    });
+
+    assert.equal(result?.status, 413);
+    assert.equal(result?.problem?.type, "https://problems.plurnk.dev/scheme/http/projection-input-limit");
+    assert.equal(result?.problem?.maximumBytes, 3);
+    assert.equal(result?.problem?.observedBytes, 4);
+    assert.deepEqual(
+        inspect().chunks.filter(({ channel }) => channel === "body"),
+        [{ channel: "body", chunk: "", mimetype: "application/pdf" }],
+    );
+    assert.equal(cancelled, true);
+    assert.equal(inspect().closed?.result.problem, result?.problem);
+    assert.equal(diagnostics.length, 0);
 });
 
 test("READ: an undeclared body is an application/octet-stream marker, not guessed text", async () => {
@@ -1505,6 +1670,53 @@ test("prepareFind reacquires an exact URL whose stored response came from a muta
     assert.equal(inspect().wrote?.entry.channels.body?.content, "current representation");
 });
 
+test("prepareFind reuses only a derived representation produced by the installed projection", async () => {
+    for (const [storedIdentity, expectedFetch] of [["pdf-reader-v2", false], ["pdf-reader-v1", true]] as const) {
+        const header = [
+            "HTTP 200 OK",
+            "content-type: application/pdf",
+            "x-plurnk-request-method: GET",
+            `x-plurnk-fetched-at: ${new Date().toISOString()}`,
+            `x-plurnk-projection-id: ${storedIdentity}`,
+        ].join("\n");
+        const projection = projectionCaps({
+            async identity(mimetype) {
+                assert.equal(mimetype, "application/pdf");
+                return "pdf-reader-v2";
+            },
+            async isBinary() { return true; },
+            async readableBytes(_chunks, mimetype) {
+                return {
+                    content: "current projection",
+                    mimetype: "text/markdown",
+                    sourceMimetype: mimetype,
+                    projectionIdentity: "pdf-reader-v2",
+                };
+            },
+        });
+        const { ctx, inspect } = makeCtx(
+            priorEntry("stored projection", "text/markdown", header, undefined, "static"),
+            { projection },
+        );
+        let fetched = false;
+        await withFetch(async () => {
+            fetched = true;
+            return new Response(Uint8Array.of(1), {
+                status: 200,
+                headers: { "content-type": "application/pdf" },
+            });
+        }, async () => {
+            const result = await new Http().prepareFind(
+                findStmt(urlTarget("https://example.com/paper.pdf", "/paper.pdf")),
+                ctx,
+            );
+            assert.equal(result.status, expectedFetch ? 201 : 200);
+        });
+        assert.equal(fetched, expectedFetch);
+        assert.equal(inspect().wrote?.entry.channels.body?.content, expectedFetch ? "current projection" : undefined);
+    }
+});
+
 test("READ revalidation: prior ETag → If-None-Match → 304 serves cached projection + DOM, skips render", async () => {
     const { ctx, inspect } = makeCtx(priorEntry("cached page", "text/markdown", "HTTP 200 OK\netag: \"v1\"\nx-plurnk-request-method: GET", "<html>cached page</html>"));
     const browser = fakeBrowser("<html>SHOULD NOT RENDER</html>");
@@ -1575,6 +1787,59 @@ test("TTL: fresh stamp serves the stored copy with ZERO round-trips", async () =
     const body = inspect().chunks.filter((c) => c.channel === "body").map((c) => c.chunk).join("");
     assert.equal(body, "cached page");
     assert.match(inspect().closed?.summary ?? "", /ttl-fresh/);
+});
+
+test("TTL: a changed projection identity invalidates derived content and its origin validators", async () => {
+    const header = stampedHeader(
+        1000,
+        '\ncontent-type: application/pdf\netag: "pdf-v1"\nx-plurnk-projection-id: pdf-reader-v1',
+    );
+    const projection = projectionCaps({
+        async identity(mimetype) {
+            assert.equal(mimetype, "application/pdf");
+            return "pdf-reader-v2";
+        },
+        async isBinary() { return true; },
+        async readableBytes(_chunks, mimetype) {
+            return {
+                content: "new projection",
+                mimetype: "text/markdown",
+                sourceMimetype: mimetype,
+                projectionIdentity: "pdf-reader-v2",
+            };
+        },
+    });
+    const { ctx, inspect } = makeCtx(
+        priorEntry("old projection", "text/markdown", header),
+        { projection },
+    );
+    let fetched = false;
+    let conditional = false;
+    await withTtl("60000", async () => {
+        await withFetch(async (_url, init) => {
+            fetched = true;
+            conditional = new Headers(init?.headers).has("if-none-match");
+            return new Response(Uint8Array.of(1), {
+                status: 200,
+                headers: { "content-type": "application/pdf" },
+            });
+        }, async () => {
+            assert.equal(
+                (await new Http().read(
+                    readStmt(urlTarget("https://example.com/paper.pdf", "/paper.pdf")),
+                    ctx,
+                )).status,
+                102,
+            );
+        });
+    });
+
+    assert.equal(fetched, true);
+    assert.equal(conditional, false, "a validator cannot certify output from a different projection");
+    assert.equal(
+        inspect().chunks.filter(({ channel }) => channel === "body").map(({ chunk }) => chunk).join(""),
+        "new projection",
+    );
 });
 
 test("TTL: an exact static WebFetcher materialization is reusable", async () => {
