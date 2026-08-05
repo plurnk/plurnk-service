@@ -130,6 +130,11 @@ if (selection?.target.kind !== "url" || JSON.stringify(selection.lineMarker?.mar
 }
 if (PathSyntax.encodeParens("/draft(1)") !== "/draft%281%29") throw new Error("PathSyntax encode failed");
 if (PathSyntax.decodeParens("/draft%281%29") !== "/draft(1)") throw new Error("PathSyntax decode failed");
+const escapedTarget = PathSyntax.escapeTarget("https://example.test/x?literal=)&encoded=%29");
+if (escapedTarget !== "https://example.test/x?literal=" + String.fromCharCode(92) + ")&encoded=%29"
+    || PathSyntax.unescapeTarget(escapedTarget) !== "https://example.test/x?literal=)&encoded=%29") {
+    throw new Error("PathSyntax target escape failed");
+}
 if (!PLURNK_OPS.includes("PLAN") || !WORKER_NAME.test("worker-1") || RESERVED_AUTHORITIES.join(",") !== "commons,plurnk") {
     throw new Error("contracts constants are not usable");
 }

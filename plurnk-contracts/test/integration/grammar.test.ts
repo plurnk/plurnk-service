@@ -42,7 +42,7 @@ test("#607: balanced parentheses are ordinary URL target content", () => {
     assert.equal(item.statement.target?.raw, "https://en.wikipedia.org/wiki/Igor_Smirnov_(politician)");
 });
 
-test("#607: unmatched target parentheses require percent-encoding", () => {
+test("#607: unescaped unmatched target parentheses require canonical spelling", () => {
     assert.ok(errorsOf("<<READ(https://example.test/a)b)::READ").length > 0);
     const unclosed = PlurnkParser.parseStatements("<<READ(https://example.test/a(b)::READ");
     assert.equal(unclosed.items.length, 0);

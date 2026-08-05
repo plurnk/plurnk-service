@@ -640,7 +640,7 @@ test("GBNF: targets use the canonical percent-encoded spelling for parentheses",
     assert.equal(derives("statement", "<<FIND(worker:///**)::FIND"), true);
     assert.equal(derives("statement", "<<READ(https://en.wikipedia.org/wiki/Igor_Smirnov_(politician))::READ"), false);
     assert.equal(derives("statement", "<<READ(https://en.wikipedia.org/wiki/Igor_Smirnov_%28politician%29)::READ"), true);
-    // Unbalanced delimiters are still not derivable; percent-encode those.
+    // Unescaped delimiters remain outside the canonical generation subset.
     assert.equal(derives("statement", "<<FIND(a)b)::FIND"), false);
     assert.equal(derives("statement", "<<FIND(a(b)::FIND"), false);
     // `<` in a path stays excluded (encode `%3C`) — strict-generate over ANTLR's tolerance
