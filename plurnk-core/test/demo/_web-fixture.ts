@@ -1,10 +1,5 @@
-// #530 — the DETERMINISTIC web fixture for the gate variant of the web-search story. A release
-// gate that generates its own nondeterminism can't distinguish flake from regression, so the
-// gate runs canned content through the REAL machinery: a local SearXNG-shaped stub feeds the real
-// search executor (PLURNK_EXECS_SEARCH_SEARXNG_URL is env-read per query), and the entry-sink's
-// injectable WebFetch serves the canned pages the guard would otherwise refuse to fetch locally.
-// The live-web form remains enabled as discovery coverage; these canned pages
-// pin deterministic search→materialize→retrieve behavior.
+// Deterministic search results and page bodies for the production
+// search→materialize→retrieve composition. {§search-gate}
 
 import { createServer, type Server } from "node:http";
 import type { WebFetch } from "../../src/schemes/Exec.ts";

@@ -37,7 +37,7 @@ interface StoryOpts {
     prompt: string;
     maxTurns?: number;
     flags?: Record<string, unknown>;
-    fetchWeb?: WebFetch; // #530 — the canned-web gate fixture's page source (absent = the real guarded fetcher)
+    fetchWeb?: WebFetch; // Canned gate override; absent uses the real guarded fetcher. {§search-gate}
 }
 
 interface StoryResult {
@@ -148,12 +148,9 @@ test("story: find a single value in a JSON config", { timeout: TIMEOUT }, async 
     } finally { await story.cleanup(); }
 });
 
-test("story: answer a question with a web search (canned gate — #530)", { timeout: TIMEOUT }, async () => {
-    // The Web Search Epic's composition through the REAL machinery with DETERMINISTIC content:
-    // EXEC[search] → a local SearXNG-shaped stub → the one-load flow (survivor pages served by
-    // the sink's injectable WebFetch, canned) → ambient narration → the model answers from what
-    // it retrieved. The MODEL is still live; the WEB is not — a gate must not generate its own
-    // nondeterminism (#530: an unautopsiable red from variable page sizes).
+test("{§search-gate} story: answer a question through deterministic web search and retrieval", { timeout: TIMEOUT }, async () => {
+    // The model remains live while the search results and page bodies are canned;
+    // the run still crosses the production search→materialize→retrieve path.
     const web = await cannedWeb();
     const prevSearx = process.env.PLURNK_EXECS_SEARCH_SEARXNG_URL;
     process.env.PLURNK_EXECS_SEARCH_SEARXNG_URL = web.searxngUrl;
@@ -240,13 +237,10 @@ test("story: search and recover an exact statement from a transcript page (canne
     }
 });
 
-test("story: answer a question with a web search (LIVE — #530, in the default sweep)", { timeout: TIMEOUT }, async () => {
-    // The live-web form runs by DEFAULT (#530, meta reversal): the demo stage is a DISCOVERY
-    // instrument, not a release gate that must stay green — a red on variable web content is the
-    // highest-signal thing it produces (the product is fragile on exactly the input real customers
-    // supply). Its failing db is KEPT (keep-on-fail, #410) to autopsy the red — flake vs regression
-    // is decided by the specimen, never by deleting the test. The canned gate above stays the
-    // deterministic REGRESSION pin; this discovers NEW fragility. A red is a finding, not a light.
+test("{§search-gate} story: answer a question through live web discovery", { timeout: TIMEOUT }, async () => {
+    // Live discovery remains diagnostic beside the deterministic gate, and its
+    // benchmark artifact remains available for autopsy.
+    // {§test-artifact-retention}
     const story = await runStory({
         label: "web-search-live",
         prompt: "Who was the spouse of President Igor Nikolaevich Smirnov?",
