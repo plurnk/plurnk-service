@@ -522,20 +522,17 @@ export default class Http implements SchemeHandler {
                 await subscription.close({ status: 200 }, `HTTP ${response.status}; empty body`);
                 return { shape: "passthrough", status: 102 };
             }
-            let binary: boolean;
-            try {
-                binary = await ctx.projection.isBinary(bodyMime);
-            } catch (cause) {
-                throw new WebMaterializationError("projection", bodyMime, cause);
-            }
+            const responseBody = response.body;
+            const byteBody = {
+                chunks: responseBody as AsyncIterable<Uint8Array>,
+                cancel: () => responseBody.cancel(),
+            };
+            const binary = await WebFetcher.classifyBinary(byteBody, bodyMime, ctx.projection);
             if (binary) {
                 let projected;
                 try {
                     projected = await WebFetcher.projectBytes(
-                        {
-                            chunks: response.body as AsyncIterable<Uint8Array>,
-                            cancel: () => response.body!.cancel(),
-                        },
+                        byteBody,
                         bodyMime,
                         ctx.projection,
                     );
@@ -575,7 +572,7 @@ export default class Http implements SchemeHandler {
             // Content-Type charset remains response evidence, not a second decoder.
             let bytes = 0;
             const decoder = new TextDecoder();
-            for await (const chunk of response.body as AsyncIterable<Uint8Array>) {
+            for await (const chunk of responseBody as AsyncIterable<Uint8Array>) {
                 bytes += chunk.length;
                 await subscription.notifyChunk(BODY, decoder.decode(chunk, { stream: true }), bodyMime);
             }

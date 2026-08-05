@@ -90,12 +90,11 @@ export default class WebFetcher {
         projection: ProjectionCaps,
     ): Promise<WebMaterializedResult | null> {
         if (typeof fetched.body !== "string") {
-            let binary: boolean;
-            try {
-                binary = await projection.isBinary(fetched.mimetype);
-            } catch (cause) {
-                throw new WebMaterializationError("projection", fetched.mimetype, cause);
-            }
+            const binary = await WebFetcher.classifyBinary(
+                fetched.body,
+                fetched.mimetype,
+                projection,
+            );
             if (binary) {
                 const projected = await WebFetcher.projectBytes(
                     fetched.body,
@@ -138,6 +137,18 @@ export default class WebFetcher {
             : WebFetcher.#materialized(projected, html, fetched.header);
     }
 
+    static async classifyBinary(
+        body: Pick<WebResponseBody, "chunks" | "cancel">,
+        mimetype: string,
+        projection: ProjectionCaps,
+    ): Promise<boolean> {
+        try {
+            return await projection.isBinary(mimetype);
+        } catch (cause) {
+            return await WebFetcher.#projectionFailure(body, mimetype, cause);
+        }
+    }
+
     static async projectBytes(
         body: Pick<WebResponseBody, "chunks" | "cancel">,
         mimetype: string,
@@ -147,25 +158,31 @@ export default class WebFetcher {
         try {
             projected = await projection.readableBytes(body.chunks, mimetype);
         } catch (cause) {
-            let failure: unknown = cause;
-            try {
-                await body.cancel();
-            } catch (cleanupCause) {
-                failure = new AggregateError(
-                    [cause, cleanupCause],
-                    `Binary projection and response-body cleanup both failed for ${mimetype}.`,
-                );
-            }
-            throw new WebMaterializationError("projection", mimetype, failure);
+            return await WebFetcher.#projectionFailure(body, mimetype, cause);
         }
-        if (projected === null) {
-            try {
-                await body.cancel();
-            } catch (cause) {
-                throw new WebMaterializationError("projection", mimetype, cause);
-            }
+        try {
+            await body.cancel();
+        } catch (cause) {
+            throw new WebMaterializationError("projection", mimetype, cause);
         }
         return projected;
+    }
+
+    static async #projectionFailure(
+        body: Pick<WebResponseBody, "cancel">,
+        mimetype: string,
+        cause: unknown,
+    ): Promise<never> {
+        let failure = cause;
+        try {
+            await body.cancel();
+        } catch (cleanupCause) {
+            failure = new AggregateError(
+                [cause, cleanupCause],
+                `Projection and response-body cleanup both failed for ${mimetype}.`,
+            );
+        }
+        throw new WebMaterializationError("projection", mimetype, failure);
     }
 
     static async #project(
