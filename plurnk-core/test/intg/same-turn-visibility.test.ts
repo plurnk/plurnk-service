@@ -1,13 +1,10 @@
-// #360/#619 — the per-turn world model is synchronized: MODE schedules observations after
-// settled mutations, irrespective of their authored position. Pinned
-// after a requiem confabulated a desync (run39): the model stitched the turn-1 init-foist
-// FIND (items:0, correct — pre-write) to its later EDIT[201] and testified they were one turn.
+// {§op-mode-phases}, {§edit-batch}: observations see settled atomic mutations.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
 import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal, flush } from "./_rpc.ts";
 
-test("same-turn visibility: an EDIT-created known entry is FINDable in the SAME turn (#360)", async () => {
+test("{§op-mode-phases}: FIND observes an entry created by EDIT in the same turn", async () => {
     const mock = new Mock({ contextWindow: 16384, responses: [
         // Turn 1: write, then read-back in the same turn; SEND[102] (a same-turn SEND[200] would
         // — correctly — trip the weigh-before-conclude 409; that gate is not under test here).
@@ -31,7 +28,7 @@ test("same-turn visibility: an EDIT-created known entry is FINDable in the SAME 
     });
 });
 
-test("MODE batches same-resource EDITs against one snapshot before an authored-earlier READ (#619)", async () => {
+test("{§edit-batch}: same-resource EDITs share one snapshot before READ", async () => {
     const mock = new Mock({ contextWindow: 16384, responses: [
         makeMockResponse("<<PLAN:create fixture:PLAN\n<<EDIT(worker:///mode.md):one\ntwo\nthree\nfour:EDIT\n<<SEND[102]:fixture created:SEND", 10),
         makeMockResponse("<<PLAN:observe the settled edits:PLAN\n<<READ(worker:///mode.md)::READ\n<<EDIT(worker:///mode.md)<4>:FOUR:EDIT\n<<EDIT(worker:///mode.md)<2>:TWO\n2.5:EDIT\n<<SEND[102]:mutated and observed:SEND", 10),
@@ -65,7 +62,7 @@ test("MODE batches same-resource EDITs against one snapshot before an authored-e
     });
 });
 
-test("MODE rejects an overlapping resource batch without applying either EDIT (#619)", async () => {
+test("{§edit-batch}: an overlapping resource batch applies no EDIT", async () => {
     const mock = new Mock({ contextWindow: 16384, responses: [
         makeMockResponse("<<EDIT(worker:///atomic.md):one\ntwo\nthree:EDIT\n<<SEND[102]:fixture:SEND", 10),
         makeMockResponse("<<EDIT(worker:///atomic.md)<1,2>:changed:EDIT\n<<EDIT(worker:///atomic.md)<2,3>:also changed:EDIT\n<<READ(worker:///atomic.md)::READ\n<<SEND[102]:checked:SEND", 10),

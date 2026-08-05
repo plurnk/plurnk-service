@@ -259,7 +259,7 @@ test("file.edit: creates a new file on accept (target doesn't exist)", async () 
     });
 });
 
-test("file.edit: reviewer-modified acceptance receipts the content that actually lands (#619)", async () => {
+test("{§edit-result-reviewer-replacement}: reviewer-modified acceptance receipts the landed content", async () => {
     await withWorkspaceRoot(async (root, ctx) => {
         const target = "reviewed.md";
         const stmt = fileEditStmt(target, "model proposal\n");

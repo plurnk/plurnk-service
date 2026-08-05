@@ -37,7 +37,7 @@ class ProposingTest {
     }
 }
 
-test("same-resource EDIT batch raises one proposal and one resolution governs every row (#619)", async () => {
+test("{§edit-batch}: one proposal resolution governs every same-resource EDIT row", async () => {
     const dsl = "<<EDIT(proposing-test://x)<1>:one:EDIT\n<<EDIT(proposing-test://x)<3>:three:EDIT\n<<SEND[200]:done:SEND";
     const mock = new Mock({ contextWindow: viableWindow(), responses: [makeMockResponse(dsl, 50)] });
 
