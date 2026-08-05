@@ -13,11 +13,8 @@ SELECT name, content, 0 AS contentOffset, length(content) AS contentLength, mime
 FROM entry_channels
 WHERE entry_id = $entry_id;
 
--- entry.read({channel, offset}) — incremental delta read for streaming viewers
--- (#192): substr ships only content from $offset (chars — the unit contentLength
--- counts), and contentLength is the full length so the client's next offset
--- survives growth between a stream/event and this read. $offset=0 → whole channel;
--- $offset past the end → '' (caught up). SQLite substr is 1-indexed → $offset + 1.
+-- {§entry-read-result}: return the selected channel suffix in Unicode code points
+-- plus its complete current length. SQLite substr is 1-indexed, hence offset + 1.
 -- PREP: entry_read_channel_slice
 SELECT name,
        substr(content, $offset + 1) AS content,

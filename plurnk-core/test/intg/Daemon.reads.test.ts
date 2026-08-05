@@ -62,7 +62,7 @@ test("entry.read returns the contracts-owned client projection", async () => {
     });
 });
 
-test("entry.read channel+offset returns the incremental slice + full contentLength (#192)", async () => {
+test("{§entry-read-result}: entry.read channel+offset returns a suffix and full contentLength", async () => {
     await withDaemon(async (_db, addr) => {
         const ws = await connect(addr);
         try {
