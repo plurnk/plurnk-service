@@ -11,7 +11,7 @@ VALUES (
     $loop_id,
     $sequence,
     200,
-    '{"tokens":0,"sections":[],"assistant":{"content":"fixture","ops":[],"reasoning":null},"assistantRaw":null}',
+    '{"tokens":0,"sections":[],"attributions":[],"assistant":{"content":"fixture","ops":[],"reasoning":null},"assistantRaw":null}',
     $prompt,
     $prompt_budget
 )
