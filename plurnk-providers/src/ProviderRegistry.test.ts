@@ -346,13 +346,13 @@ test("{§provider-tagged-reasoning} a Cloudflare model alias carries its explici
             CLOUDFLARE_ACCOUNT_ID: "account",
             CLOUDFLARE_API_TOKEN: "token",
             PLURNK_PROVIDERS_REASONING_RESPONSE_STYLE: "verbatim",
-            PLURNK_PROVIDERS_REASONING_RESPONSE_STYLE_cfkimi: "think-tags",
+            PLURNK_PROVIDERS_REASONING_RESPONSE_STYLE_cfds1: "think-tags",
         },
         "@cf/deepseek-ai/deepseek-r1-distill-qwen-32b",
         async () => ({}),
         mapOf({}),
         undefined,
-        "cfkimi",
+        "cfds1",
     );
 
     const response = await provider.generate({ workerId: "cloudflare-worker", messages: [] });
