@@ -61,7 +61,7 @@ const rejectedProblem = async (run: () => Promise<unknown> | unknown): Promise<P
     assert.fail("Expected operation failure.");
 };
 
-test("Daemon: listenerless boot — the seam is live with no socket bound (#364)", async () => {
+test("Daemon: listenerless boot — the seam is live with no socket bound", async () => {
     await withDaemon(null, async (_db, daemon, _addr) => {
         // No port, no listener — the seam itself is the surface. A basic seam read proves boot.
         const workspaces = await daemon.listWorkspaces();
@@ -199,7 +199,7 @@ test("workspace.create on an already-attached connection re-binds in place (no r
         try {
             const first = await rpcCall(ws, 1, "workspace.create", { name: "first" });
             const second = await rpcCall(ws, 2, "workspace.create", { name: "second" });
-            // #196: re-binding is allowed — the connection switches in place.
+            // {§methods-rebind}: re-binding is allowed; the connection switches in place.
             assert.equal(second.error, undefined, "re-create on a bound connection no longer rejects");
             assert.notEqual((second.result as { id: number }).id, (first.result as { id: number }).id, "switched to a fresh workspace");
         } finally { ws.close(); }
@@ -374,7 +374,7 @@ test("providers.list returns parsed aliases with active marker", async () => {
                 assert.equal(gemma?.model, "macher.gguf");
                 assert.equal(gemma?.active, true);
                 assert.equal(opus?.active, false);
-                // #263/#345 — the active alias carries the enforced prompt budget; an inactive
+                // {§tokenomics-window-partition} — the active alias carries the enforced prompt budget; an inactive
                 // alias is null (provider not instantiated), so the client omits the gauge.
                 const budget = 8192 - Number(process.env.PLURNK_PROVIDERS_REASONING_RESERVE) - Number(process.env.PLURNK_PROVIDERS_COMPLETION_RESERVE) - Number(process.env.PLURNK_SERVICE_SAFETY);
                 assert.equal(gemma?.promptBudget, budget, "active alias carries the effective prompt budget, not the raw window");
@@ -437,7 +437,7 @@ test("workspace/created notification broadcasts to other connected clients", asy
         } finally { observer.close(); creator.close(); }
     });
 });
-test("the client-interface seam — subscribeToEvents delivers workspace-scoped engine events in-process (#355)", async () => {
+test("the client-interface seam — subscribeToEvents delivers workspace-scoped engine events in-process", async () => {
     // The emit half of #broadcast, exposed as an in-process source: a transport module (plurnk-agui)
     // subscribes here and owns its client fan-out; core has no transport connections.
     await withDaemon(null, async (_db, daemon, addr) => {
@@ -483,14 +483,14 @@ test("the client-interface seam does not manufacture a resolver from an ownerles
     });
 });
 
-test("the client-interface seam — runLoop drives a loop end to end on the daemon's own provider + law (#355)", async () => {
+test("the client-interface seam — runLoop drives a loop end to end on the daemon's own provider + law", async () => {
     // The loop-control hook: the module supplies only workspace/worker/prompt; runLoop fills in the provider
     // and the law-file system prompt (core's), fires the drain via the unified inject, and returns. The
     // outcome arrives on the event source, not a socket. `cancelDrain` (already public) is the cancel hook.
     // A window that comfortably holds the packet: this test drives a loop to CONCLUSION and asserts
     // 200, so the full system prompt (law/definition) + the materialized docs must fit the prompt
-    // budget. An 8192 mock window left only ~6.8k after reserves — under the packet — so the loop
-    // concluded 413, not 200 (#433/#355). This test verifies the seam path, not small-window viability.
+    // budget. This test verifies the seam path, not small-window viability
+    // ({§tokenomics-window-partition}).
     const mock = new Mock({ contextWindow: viableWindow(), responses: [
         makeMockResponse("<<SEND[200]:done:SEND", 50),
         makeMockResponse("<<SEND[200]:done again:SEND", 50),
@@ -559,7 +559,7 @@ test("the client-interface seam — runLoop drives a loop end to end on the daem
     });
 });
 
-test("the client-interface seam — dispatchAsClient runs a client op through the engine and emits log/entry (#355)", async () => {
+test("the client-interface seam — dispatchAsClient runs a client op through the engine and emits log/entry", async () => {
     // The op keystone: one seam op backs the whole op_* family. The module parses at its edge and hands
     // over the statement; the op is journaled client-origin, dispatched, and the entry emitted on the source.
     await withDaemon(null, async (db, daemon, addr) => {
@@ -583,7 +583,7 @@ test("the client-interface seam — dispatchAsClient runs a client op through th
     });
 });
 
-test("the client-interface seam — one client action journals every statement in one terminal segment (#616)", async () => {
+test("the client-interface seam — one client action journals every statement in one terminal segment", async () => {
     await withDaemon(null, async (db, daemon, addr) => {
         const ws = await connect(addr);
         try {
@@ -611,7 +611,7 @@ test("the client-interface seam — one client action journals every statement i
     });
 });
 
-test("the client-interface seam — readLog returns a workspace's journal, ownership-verified (#355)", async () => {
+test("the client-interface seam — readLog returns a workspace's journal, ownership-verified", async () => {
     // The module's primary render input. Seeded here via the dispatch seam, read back via readLog, and the
     // cross-workspace invariant proven: a workspace reads only its own workers (core holds it, not the module).
     await withDaemon(null, async (db, daemon, addr) => {
@@ -638,7 +638,7 @@ test("the client-interface seam — readLog returns a workspace's journal, owner
     });
 });
 
-test("the client-interface seam — the metadata reads surface providers, workspaces, workers, and constraints (#355)", async () => {
+test("the client-interface seam — metadata reads surface providers, workspaces, workers, and constraints", async () => {
     // The render surface beyond the journal: providers+budget, workspaces, workers, and the constraint overlay.
     const mock = new Mock({ contextWindow: 8192, responses: [makeMockResponse("<<SEND[200]:done:SEND", 10)] });
     await withDaemon(mock, async (_db, daemon, addr) => {
@@ -651,7 +651,7 @@ test("the client-interface seam — the metadata reads surface providers, worksp
             const active = providers.aliases.find((a) => a.active);
             assert.ok(active !== undefined, "listProviders reports the active alias");
             assert.equal(active!.alias, "mocktest");
-            assert.equal(typeof active!.promptBudget, "number", "the active alias carries the effective prompt budget (#345)");
+            assert.equal(typeof active!.promptBudget, "number", "the active alias carries the effective prompt budget");
 
             // workspaces + workers — the created workspace and its client worker are present.
             const workspaces = await daemon.listWorkspaces();
@@ -672,9 +672,9 @@ test("the client-interface seam — the metadata reads surface providers, worksp
     });
 });
 
-test("the client-interface seam — workspace lifecycle: create/attach/rename/set-root/constrain (#355)", async () => {
-    // Inputs arrive pre-validated at the module's edge; core owns the envelope, the reserved-name +
-    // name-uniqueness invariants, membership, and the workspace/created emit. Driven entirely through the seam.
+test("the client-interface seam — workspace lifecycle: create/attach/rename/set-root/constrain", async () => {
+    // {§methods-workspace-create}: the module decodes its protocol; core owns semantic validation,
+    // the envelope, name invariants, membership, and workspace/created.
     const mock = new Mock({ contextWindow: 8192, responses: [makeMockResponse("<<SEND[200]:done:SEND", 10)] });
     await withDaemon(mock, async (_db, daemon, _addr) => {
         const events: Array<{ method: string; params: unknown }> = [];
@@ -726,7 +726,7 @@ test("the client-interface seam — workspace lifecycle: create/attach/rename/se
     });
 });
 
-test("the client-interface seam — readEntry returns an entry's shape and the #192 incremental slice (#355)", async () => {
+test("the client-interface seam — readEntry returns an entry's shape and incremental channel slice", async () => {
     await withDaemon(null, async (db, daemon, addr) => {
         const ws = await connect(addr);
         try {
@@ -742,7 +742,7 @@ test("the client-interface seam — readEntry returns an entry's shape and the #
             assert.equal(chan.content, "hello world");
             assert.equal(chan.contentLength, 11);
 
-            // #192 incremental slice — that channel's content from an offset; only the delta leaves storage.
+            // {§methods-entry-read}: an offset returns only that channel's remaining content.
             const sliced = (await daemon.readEntry({ workspaceId: created.id, workerId: clientWorker.id, target: "worker:///x", channel, offset: 6 })).entry!;
             assert.equal(sliced.channels[channel].content, "world", "the incremental read returns only the delta from the offset");
             assert.equal(sliced.channels[channel].contentLength, 11, "contentLength is the full length — the next poll resumes from there");
@@ -799,7 +799,7 @@ test("the client-interface seam — readEntry returns an entry's shape and the #
     });
 });
 
-test("the client-interface seam — forkWorker branches a worker's log, ownership + name invariants held (#355)", async () => {
+test("the client-interface seam — forkWorker branches a worker's log, ownership + name invariants held", async () => {
     await withDaemon(null, async (db, daemon, addr) => {
         const ws = await connect(addr);
         try {
@@ -836,7 +836,7 @@ test("the client-interface seam — forkWorker branches a worker's log, ownershi
     });
 });
 
-test("the module setup seam registers a live tag, dispatchable through the engine (#355)", async () => {
+test("the module setup seam registers a live tag, dispatchable through the engine", async () => {
     // The generic module-load hook builds the RegistryEntry with its own
     // driver and hands it here; the kernel knows nothing about the driver. Tested with a stand-in.
     await withDaemon(null, async (db, daemon, addr) => {
@@ -857,7 +857,7 @@ test("the module setup seam registers a live tag, dispatchable through the engin
     });
 });
 
-test("the client-interface seam — a dispatched EXEC's stdout streams as stream/event on the event source (#355)", async () => {
+test("the client-interface seam — a dispatched EXEC's stdout streams as stream/event on the event source", async () => {
     // Client-raised parity check: a seam-dispatched exec must emit incremental stream/event, not just
     // the log/entry + stream/concluded. dispatchAsClient routes through engine.dispatch identically to
     // the WS op.exec path; the stream fires via the engine's global streamEventNotify. Pinned so the
@@ -896,7 +896,7 @@ test("the client-interface seam — a dispatched EXEC's stdout streams as stream
     });
 });
 
-test("the client-interface seam — the boot plug-point hands a registered module a live CoreSeam handle (#355)", async () => {
+test("the client-interface seam — the boot plug-point hands a registered module a live CoreSeam handle", async () => {
     // Hook D: register a module before start(); at boot it receives the curated seam and wires itself.
     // "Here's your handle, open your own listener." Proven by driving the live seam from inside the init.
     const db = await openMigrated();

@@ -19,7 +19,7 @@ test("loop.run accepts immediately (100); the loop's outcome arrives via loop/te
             assert.equal(result.result.status, 200);
             assert.equal(result.hitMaxTurns, false);
             assert.equal(result.turnIds?.length, 1);
-            // #197 — loop/terminated carries usage summed over the loop's turns.
+            // {§notifications}: loop/terminated carries usage summed over the loop's turns.
             assert.equal(result.usage?.completionTokens, 142, "completion tokens summed from the turn");
             assert.equal(result.usage?.promptTokens, 0);
             assert.equal(result.usage?.costUsd, 0);
@@ -28,7 +28,7 @@ test("loop.run accepts immediately (100); the loop's outcome arrives via loop/te
             // worker:///france/capital + the prompt frame (2 base — no manifest.json entry, the
             // catalog is FIND-served), plus 11 docs: the 3 non-excluded in-tree schemes (log/worker/prompt
             // — file/exec dropped by the default PLURNK_SERVICE_DOCS_EXCLUDE, skill excluded too), the
-            // boot-discovered `http` + `wss` externals (#473), and sh/node/sqlite/git/jq —
+            // boot-discovered `http` + `wss` externals ({§plugin-discovery}), and sh/node/sqlite/git/jq —
             // executor docs the execs family ships. Configured protocol modules add their own
             // runtime docs only when present. 2 + 10 = 12.
             assert.equal(entryCount, 12);
@@ -36,7 +36,7 @@ test("loop.run accepts immediately (100); the loop's outcome arrives via loop/te
     });
 });
 
-test("loop.inject speaks into an existing worker; errors when there's none (#193)", async () => {
+test("loop.inject speaks into an existing worker; errors when there's none", async () => {
     const mock = new Mock({ contextWindow: 16384, responses: [
         makeMockResponse("<<SEND[200]:first done:SEND", 10),
         makeMockResponse("<<SEND[200]:injected done:SEND", 10),
@@ -74,7 +74,7 @@ test("loop.inject speaks into an existing worker; errors when there's none (#193
     });
 });
 
-test("run.fork branches the model worker into a new -fork worker; names it at instantiation; errors with no worker (#228, #248)", async () => {
+test("run.fork branches the model worker into a named worker; errors with no worker", async () => {
     const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse("<<EDIT(worker:///x):hi:EDIT\n<<SEND[200]:done:SEND", 10)] });
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -97,7 +97,7 @@ test("run.fork branches the model worker into a new -fork worker; names it at in
             assert.notEqual(r.workerId, r.parentWorkerId, "the fork is a distinct worker");
             assert.match(r.workerName ?? "", /-fork-\d+$/, "the fork is named <parent>-fork-<N> by default (unique per fork)");
 
-            // #248 — an explicit name names the branch at instantiation (immutable after; no rename).
+            // {§worker-scheme-fork} — an explicit branch name is immutable after instantiation.
             const named = await rpcCall(ws, 5, "run.fork", { name: "harvest" });
             assert.equal((named.result as { workerName: string | null }).workerName, "harvest", "an explicit name names the branch");
 
@@ -179,22 +179,21 @@ test("loop.run fires loop/terminated notification on completion", async () => {
             assert.equal(params.loopId, ack.loopId, "terminal coordinate matches the acknowledged loop");
             assert.equal(params.result.status, 200);
             assert.equal(params.hitMaxTurns, false);
-            // #197 — loop/terminated carries the loop's usage totals.
+            // {§notifications}: loop/terminated carries the loop's usage totals.
             assert.equal(params.usage.completionTokens, 50);
         } finally { ws.close(); }
     });
 });
 
-test("loop.run still fires loop/terminated when the loop throws — no client hang (#265)", async () => {
+test("loop.run still fires loop/terminated when the loop throws — no client hang", async () => {
     // A loop that ERRORS (terminal provider failure / engine throw — not a clean SEND, abort, or
     // strike-abandonment) must STILL broadcast loop/terminated: loop.run only acked 100, so it's the
     // async client's sole outcome channel. One non-terminal turn, then the Mock exhausts - generate()
     // throws outside the provider's typed failure contract, so the engine records a generic provider
-    // contract violation and the drain must still publish it. Pre-#265 the drain rejected the
-    // already-.catch()'d promise and broadcast nothing, leaving the client hung.
+    // contract violation and the drain must still publish it ({§notifications}).
     const dsl = "<<EDIT(worker:///x):iter:EDIT\n<<SEND[102]:continue:SEND";
     const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse(dsl, 10)] });
-    // #506 — the death must reach the daemon log too. Capture stderr around the loop.
+    // The failure must reach daemon diagnostics too. Capture stderr around the loop.
     const logged: string[] = [];
     const realErr = console.error;
     console.error = (...a: unknown[]) => { logged.push(a.map((x) => x instanceof Error ? x.stack ?? x.message : String(x)).join(" ")); };
@@ -211,7 +210,7 @@ test("loop.run still fires loop/terminated when the loop throws — no client ha
                 () => terminated() as Array<{ result: { status: number }; turnIds: number[]; hitMaxTurns: boolean; loopId: number }>,
                 (ts) => ts.length >= 1,
             );
-            assert.equal(captured.length, 1, "the errored loop fired loop/terminated — the client is not left hanging (#265)");
+            assert.equal(captured.length, 1, "the errored loop fired loop/terminated — the client is not left hanging");
             assert.equal(captured[0].result.status, 502, "the exact provider-boundary status reaches the client");
             assert.ok(captured[0].turnIds.length > 0, "every durable turn completed before the failure is accounted for");
             assert.equal(captured[0].hitMaxTurns, false);
@@ -241,7 +240,7 @@ test("loop.run still fires loop/terminated when the loop throws — no client ha
         } finally { ws.close(); }
     });
     console.error = realErr;
-    assert.ok(logged.some((l) => /drain error/.test(l)), "the daemon log carried the drain error — the WHY is never nowhere (#506)");
+    assert.ok(logged.some((l) => /drain error/.test(l)), "the daemon log carried the drain error — the cause is not swallowed");
 });
 
 test("loop.run without provider returns 501", async () => {
@@ -294,7 +293,7 @@ test("loop.run respects maxTurns cap when model emits non-terminal statuses repe
         } finally { ws.close(); }
     });
 });
-test("loop.run({ openPaths }) foists a turn-0 file READ for each path (#260)", async () => {
+test("loop.run({ openPaths }) foists a turn-0 file READ for each path", async () => {
     const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse("<<SEND[200]:done:SEND", 10)] });
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -315,9 +314,8 @@ test("loop.run({ openPaths }) foists a turn-0 file READ for each path (#260)", a
     });
 });
 
-// #506 — the run54/55 death class: a seam SUBSCRIBER throwing (a transport's bad socket) must
-// never propagate into engine control flow. The loop completes; the failure logs per event.
-test("a throwing seam subscriber never kills the loop — the transport's failure is its own (#506)", async () => {
+// {§methods-event-subscribe}: a subscriber failure never propagates into engine control flow.
+test("a throwing seam subscriber never kills the loop — the transport's failure is its own", async () => {
     const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse("<<SEND[200]:done:SEND", 10)] });
     const logged: string[] = [];
     const realErr = console.error;

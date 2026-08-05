@@ -1,6 +1,5 @@
 // Top-level daemon orchestrator. Owns the DB connection, engine, registries,
-// the plugin-module seam (#364: the daemon owns no transport).
-// SPEC {§rpc}.
+// the transport-free plugin-module seam ({§rpc}).
 
 import { readFile } from "node:fs/promises";
 import { resolve, dirname } from "node:path";
@@ -14,7 +13,7 @@ import ExecutorRegistry from "../core/ExecutorRegistry.ts";
 import SchemeRegistry from "../core/SchemeRegistry.ts";
 import { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import type { Provider, ProviderAlias } from "@plurnk/plurnk-providers";
-// The event scope (#364 — relocated from the retired MethodRegistry): "all" = a global event
+// {§notifications-envelope-carries-workspaceid}: "all" = a global event
 // (workspace/created), {workspaceId} = workspace-scoped.
 export type NotifyTarget = "all" | { workspaceId: number };
 // One drained loop's terminal shape — the drain's return currency.
@@ -104,12 +103,12 @@ export default class Daemon {
     #provider: Provider | null;
     #nodeModulesPath: string;
     #discoveryCwd: string;
-    #started = false; // start() runs once — boots discovery + plugin modules (#364: no listener, ever)
+    #started = false; // {§module-lifecycle}: one discovery/module boot; no listener
     #capabilitiesPublished = false;
     #modules: Array<DaemonModule<CoreSeam>> = [];
     #moduleClosers: StartedModule[] = [];
     #moduleActions = new Map<string, ModuleActionHandler>();
-    // The emit half of the broadcast, exposed as an in-process event source (#355). A transport
+    // {§methods-event-subscribe} — the broadcast's in-process event source. A transport
     // module (plurnk-agui) subscribes and fans out to its OWN clients; core emits, never owns
     // client transport or connection state.
     #eventSubscribers = new Set<(workspaceId: number | null, method: string, params: unknown) => void>();
@@ -134,7 +133,7 @@ export default class Daemon {
     // per worker (the tightest cadence); cleared/replaced on each park and on cancel.
     #parkTimers: Map<number, NodeJS.Timeout> = new Map();
     #pollTimers = new Map<number, ReturnType<typeof setTimeout>>();
-    #pollBackoff = new Map<number, number>(); // #521 — the exec-poll backoff step per worker (nth wake)
+    #pollBackoff = new Map<number, number>(); // {§exec-poll} — backoff step per worker
     // Per-worker drain-transition lock — see #withDrainLock (R4 / {§worker-lifecycle-single-drain}).
     #drainLocks = new Map<number, Promise<unknown>>();
     // {§worker-lifecycle-child-wake} — workers owed a wake: a child/stream conclusion fired while the worker was
@@ -265,7 +264,7 @@ export default class Daemon {
     }
 
 
-    // The client-interface seam (#355). A transport module subscribes to the daemon's in-process
+    // {§methods-event-subscribe}. A transport module subscribes to the daemon's in-process
     // event source: it receives every workspace-scoped engine event as `(workspaceId, method, params)`
     // and fans out to its OWN clients — core emits, it never fans out for the module. Returns an
     // unsubscribe. `workspaceId` is the event's workspace, or null for a global event (e.g. workspace/created).
@@ -275,7 +274,7 @@ export default class Daemon {
         return () => { this.#eventSubscribers.delete(handler); };
     }
 
-    // The client-interface seam (#355) — proposal HITL. A transport module reads the stopped-world
+    // {§methods-proposal-resolve} — proposal HITL. A transport module reads the stopped-world
     // proposals for a workspace (rendering each as a TOOL_CALL) and feeds back the human's decision. The
     // gate, validation, and applyResolution stay core (Engine.resolveProposal); the seam is the read +
     // the resolve, never the mechanism. `resolveProposal` throws for an unknown/already-resolved id.
@@ -290,7 +289,7 @@ export default class Daemon {
         this.#engine.resolveProposal(checkedLogEntryId, checkedResolution);
     }
 
-    // The client-interface seam (#355) — drive/steer a loop. The module supplies only workspace/worker/prompt;
+    // {§methods-loop-run} — drive/steer a loop. The module supplies only workspace/worker/prompt;
     // the provider and the law-file system prompt are core's and stay inside. Returns immediately — the
     // loop runs async and its outcome arrives on the event source (loop/terminated). `cancelDrain` (public)
     // is the cancel hook. Both funnel through the unified `inject`, which owns the drain lifecycle.
@@ -303,8 +302,8 @@ export default class Daemon {
         const alias = ClientInput.assertOptionalSelector("runLoop", "alias", args.alias);
         const model = ClientInput.assertOptionalSelector("runLoop", "model", args.model);
         const flags = ClientInput.normalizeLoopFlags("runLoop", args.flags) as Partial<LoopFlags> | undefined;
-        // #414 — per-loop model selection: a client sends its alias/model on every loop, so a
-        // switch takes effect turn-to-turn. `model` (client-resolved <provider>/<model>, #90) wins
+        // {§methods-loop-run-model} — a client sends alias/model on every loop, so a
+        // switch takes effect turn-to-turn. `model` (client-resolved <provider>/<model>) wins
         // over `alias`; neither → the boot default. Instantiation is cached, so ping-ponging
         // between two models is cheap, and an unresolvable alias/model fails loud here.
         const selection = await this.#resolveLoopProvider(alias, model);
@@ -381,8 +380,8 @@ export default class Daemon {
         return { status: 100, action, loopId, ...(turnSeq !== undefined ? { turnSeq } : {}) };
     }
 
-    // #414 — resolve a per-loop model override to a Provider (cached instances). `model`
-    // (<provider>/<model>, client-resolved #90) wins over a named `alias`; absent both, the
+    // {§methods-loop-run-model} — resolve a per-loop model override to a cached Provider. `model`
+    // (<provider>/<model>, client-resolved) wins over a named `alias`; absent both, the
     // boot default. A named alias missing from the env cascade, or a malformed model spec, throws
     // legibly rather than silently running the wrong model.
     async #resolveLoopProvider(alias: string | undefined, model: string | undefined): Promise<ProviderAlias | null> {
@@ -499,7 +498,7 @@ export default class Daemon {
         );
     }
 
-    // The op-dispatch hook (#355) — execute one parsed op on behalf of a client: journaled as a
+    // {§methods-op-mirror} — execute parsed ops on behalf of a client, journaled as a
     // client-origin turn (the log is core's, a client op is a first-class citizen), dispatched through
     // the engine, then emitted as log/entry on the event source. One seam op backs the whole op_*
     // family (read/edit/copy/find/fold/look/move/open/send/exec); the module parses at its edge with the
@@ -563,7 +562,7 @@ export default class Daemon {
         }
     }
 
-    // op.look (#283/#358) — the pure READ-projection query on the seam: resolve a READ through the
+    // {§op-look} — the pure READ-projection query on the seam: resolve a READ through the
     // full scheme resolver and return its content, writing NO log row — the client's out-of-band
     // inspection primitive (the module rewrites LOOK→READ and parses at its edge, exactly like
     // dispatchClientAction). Its closed observation segment supplies the numeric loop coordinate
@@ -587,9 +586,9 @@ export default class Daemon {
         }
     }
 
-    // The log-read hook (#355) — a workspace's journal, the module's primary render input. The worker is
+    // {§methods-log-read} — a workspace's journal, the module's primary render input. The worker is
     // ownership-verified against the workspace (a workspace reads only its own workers — the model worker included,
-    // #214); entries filter by loop/turn/since-id or the full L/T/S display coordinate. Core owns the
+    // {§methods-log-coordinate}); entries filter by loop/turn/since-id or the full L/T/S display coordinate. Core owns the
     // journal + the invariant; the module shapes the entries into AG-UI messages at its edge.
     async readLog(args: {
         workspaceId: number; workerId: number;
@@ -673,7 +672,7 @@ export default class Daemon {
         return entries;
     }
 
-    // The metadata-read hooks (#355) — the module's render surface beyond the journal. Thin delegations
+    // {§methods} — the module's render surface beyond the journal. Thin delegations
     // into core's envelope / membership / provider machinery; the module fans the results into its own views.
     listProviders(): { aliases: Array<{ alias: string; provider: string; model: string; active: boolean; promptBudget: number | null }> } {
         const active = resolveActiveAlias();
@@ -721,16 +720,15 @@ export default class Daemon {
         );
     }
 
-    // Workspace lifecycle (#355): the module's workspace-management surface. Inputs arrive already validated
-    // at the module's edge ("I am the wall" — settings as the stored JSON string, constraints as a typed
-    // array, roots absolute); core owns the envelope, its reserved-name + name-uniqueness invariants,
+    // {§methods-workspace-create}: the module owns protocol decoding; core validates the typed seam
+    // inputs and owns the envelope, its reserved-name + name-uniqueness invariants,
     // membership resolution, warmWorkspaceDerivations, and the workspace/created emit. No connection state
     // (which client is on which workspace) lives here — that's the module's.
     async createWorkspace(args: { name?: string; projectRoot?: string | null; settings?: string | object; constraints?: Array<{ effect: string; glob: string }> }): Promise<ClientEnvelope> {
-        // The SEAM fail-hards on malformed client input (#364 — validation flushed out of the
-        // retired WS handlers so every module inherits it): settings bag
+        // The seam fails hard on malformed semantic input so every module inherits one wall:
+        // the settings bag
         // ({§operator-config}, {§client-metadata}, {§send-300-choices}, #180),
-        // constraints (#200), absolute projectRoot.
+        // constraints, and absolute projectRoot.
         const name = ClientInput.assertOptionalName("workspace.create", "name", args.name);
         const projectRoot = ClientInput.assertProjectRoot("workspace.create", args.projectRoot);
         const settings = ClientInput.parseSettings(args.settings);
@@ -997,13 +995,8 @@ export default class Daemon {
         }
     }
 
-    // The fork hook (#355) — branch a worker's log into a new worker in the same workspace (#228), sharing the
-    // workspace's world (entries + overlay), copying nothing of it. The module resolves the default (the
-    // workspace's model worker) from its own connection state and passes the concrete workerId; the seam owns the
-    // #366 — a fresh conversation worker: AG-UI threads map to workers ({§machine-processes} — the workspace
-    // is the workspace, the worker is the conversation). ensureModelWorker is the stable DEFAULT door,
-    // forkWorker the branching door (copies history); this is the fresh door — a named, empty-log,
-    // model-origin root that runLoop accepts. New chat = new conversation, same workspace.
+    // {§methods}: a fresh conversation is a model-origin root worker with an empty private log.
+    // AG-UI threads map to these workers while the workspace world remains shared ({§machine-processes}).
     async createConversationWorker(args: { workspaceId: number; name?: string }): Promise<{ workerId: number; workerName: string }> {
         const workspaceId = ClientInput.assertId("worker.create", "workspaceId", args.workspaceId);
         const name = ClientInput.assertOptionalWorkerName("worker.create", "name", args.name);
@@ -1033,7 +1026,8 @@ export default class Daemon {
         return { workerId: worker.id, workerName: worker.name };
     }
 
-    // ownership check and the worker-name namespace + uniqueness invariants (names are immutable — no rename).
+    // {§worker-scheme-fork} — branch a worker's log while sharing the workspace world.
+    // Core owns the workspace check and immutable worker-name admission.
     async forkWorker(args: { workspaceId: number; workerId: number; name?: string }): Promise<{ workerId: number; workerName: string | null; parentWorkerId: number }> {
         const workspaceId = ClientInput.assertId("worker.fork", "workspaceId", args.workspaceId);
         const workerId = ClientInput.assertId("worker.fork", "workerId", args.workerId);
@@ -1151,7 +1145,7 @@ export default class Daemon {
         this.#schemes.registerRuntimeSchemes(executors);
         // Discover external @plurnk/plurnk-schemes-* siblings + register them
         // (agnostic, by plurnk.kind:"scheme"). They light up http://, etc. with
-        // no further engine change — #run wraps their ctx in SchemeCtxImpl (#195).
+        // no further engine change — #run wraps their context in SchemeCtxImpl ({§plugin-discovery}).
         await this.#schemes.discoverExternal(this.#discoveryCwd);
         const setupSeam: ModuleSetupSeam = this;
         for (const module of this.#modules) {
@@ -1170,7 +1164,7 @@ export default class Daemon {
 
         await this.#recoverLifecycle();
 
-        // #364 — the daemon opens no transport. Modules start their listeners only
+        // {§module-lifecycle} — the daemon opens no transport. Modules start their listeners only
         // after capability publication and durable lifecycle recovery are complete.
         for (const module of this.#modules) {
             const started = await module.start?.(this);
@@ -1249,7 +1243,7 @@ export default class Daemon {
         for (const t of this.#pollTimers.values()) clearTimeout(t); // drop pending hibernation poll-wakes
         this.#pollBackoff.clear();
         this.#pollTimers.clear();
-        // …and the park-DEADLINE timers (#432): a bounded park's timer fires #wakeParkedWorker after
+        // Cancel park-deadline timers before DB close; otherwise a late #wakeParkedWorker would run after
         // stop/db-close if left pending — an unhandled rejection (SqlRite closed) that abnormally
         // exits the worker under load. Symmetric with the poll-wakes above; both must be reaped.
         for (const t of this.#parkTimers.values()) clearTimeout(t);
@@ -1311,7 +1305,7 @@ export default class Daemon {
      * Both `runLoop` and wake-on-completion go through this method
      * ({§actor-boundary-passive-wake}).
      */
-    // #368 — flags are LOOP-scoped (persisted per loop row; the packet's teaching follows them), so a
+    // {§loop-flags-effective-read} — flags are loop-scoped, so a
     // prompt folding into a live/parked loop cannot re-flag it mid-flight — and it must never PRETEND
     // to: an inject carrying flags that DIFFER from the target loop's effective flags is refused
     // legibly (cancel the loop or omit the flags), never a silent posture discard. Identical or
@@ -1359,7 +1353,7 @@ export default class Daemon {
         if (this.#activeDrains.has(workerId)) {
             const active = await this.#db.drain_current_loop_for_worker.get<{ id: number }>({ worker_id: workerId });
             if (active !== undefined) {
-                await this.#assertFoldPosture(workerId, args.flags, active.id); // #368 - compare with the exact durable loop
+                await this.#assertFoldPosture(workerId, args.flags, active.id); // compare with the exact durable loop
                 await this.#assertLoopProvider(active.id, args.providerSpec);
                 await this.#assertLoopMaxTurns(active.id, args.maxTurns);
             }
@@ -1369,7 +1363,7 @@ export default class Daemon {
             }
         }
 
-        // #55 — a worker PARKED at 202 RESUMES that slept loop in place: the voice door (irc / loop.inject)
+        // {§worker-lifecycle-wake-requeue-not-terminal} — a worker parked at 202 resumes that loop in place:
         // is a wake edge like a stream/child conclusion, not a fresh loop that orphans the parked one
         // (which would leave the worker non-quiescent forever). engine.inject writes the message as the
         // slept loop's next-turn prompt (the directed message — distinct from the env door, which
@@ -1377,7 +1371,7 @@ export default class Daemon {
         if (!this.#activeDrains.has(workerId)) {
             const slept = await this.#db.drain_find_slept_loop.get<{ id: number }>({ worker_id: workerId });
             if (slept !== undefined) {
-                await this.#assertFoldPosture(workerId, args.flags, slept.id); // #368 — the resume path drops nothing silently either
+                await this.#assertFoldPosture(workerId, args.flags, slept.id); // resume drops nothing silently
                 await this.#assertLoopProvider(slept.id, args.providerSpec);
                 await this.#assertLoopMaxTurns(slept.id, args.maxTurns);
                 const injected = await this.#engine.inject(workerId, prompt);
@@ -1488,7 +1482,7 @@ export default class Daemon {
         const drainPromise = (async () => {
             let loopsDrained = 0;
             let lastResult: DrainLoopResult | null = null;
-            let currentLoopId: number | null = null; // the loop being drained — for the #204 abort→499 resolution below
+            let currentLoopId: number | null = null; // the loop being drained — for abort→499 settlement
             try {
                 while (true) {
                     controller.signal.throwIfAborted();
@@ -1510,13 +1504,12 @@ export default class Daemon {
                         if (loopRow === undefined) break;
                     }
                     currentLoopId = loopRow.id;
-                    // #598 — provider identity belongs to the claimed loop, not the
+                    // {§methods-loop-run-model} — provider identity belongs to the claimed loop, not the
                     // drain that happened to claim it. A drain can consume multiple
                     // queued loops; resolve each durable selection at this boundary.
                     const provider = await this.#providerForLoop(loopRow.id);
                     const onDispatch = (logEntryId: number): void => {
-                        // #506 — a rejection here was a silent process-death vector (unhandled in a
-                        // fire-and-forget void); a log-broadcast failure must never crash the drain.
+                        // {§methods-event-subscribe} — a log-broadcast failure must never crash the drain.
                         void (async () => {
                             const entry = await LogEntry.fetchLogEntry(this.#db, logEntryId);
                             this.#broadcast({ workspaceId }, "log/entry", { entry });
@@ -1604,7 +1597,7 @@ export default class Daemon {
                 }
             } catch (err) {
                 if (controller.signal.aborted) {
-                    // #204 / Model 3 — loop.cancel / shutdown aborted the live drain. A cancellation
+                    // {§methods-loop-cancel} — loop.cancel / shutdown aborted the live drain. A cancellation
                     // is the loop's TERMINAL state (499), delivered via loop/terminated (runLoop no
                     // longer blocks to return it). A genuine error rejects firstLoopPromise.
                     const usage = currentLoopId === null
@@ -2072,11 +2065,11 @@ export default class Daemon {
 
     #broadcast(target: NotifyTarget, method: string, params?: unknown): void {
         if (target === "all") {
-            // A global engine event (e.g. workspace/created) — emitted to the seam with workspaceId null (#355).
+            // {§notifications-envelope-carries-workspaceid}: global events carry workspaceId null.
             this.#emitTo(null, method, params);
             return;
         }
-        // Publish the raw event to the in-process source first (#355) — transport modules subscribe
+        // {§methods-event-subscribe}: publish to the in-process source; transport modules subscribe
         // here (plurnk-agui renders to AG-UI+). Each subscriber owns its own fan-out; core just emits.
         // Scope-stamping onto the notification envelope ({§notifications-envelope-carries-workspaceid})
         // is each subscriber's edge concern now — the seam hands (workspaceId, method, params) raw.
@@ -2084,7 +2077,7 @@ export default class Daemon {
     }
 }
 
-// The curated seam handed to a plugin module at boot (#355 hook D) — the client-interface contract,
+// {§methods} — the curated seam handed to a plugin module at boot is the client-interface contract,
 // not the daemon's guts. A module couples to this (or its own structural mirror) and nothing else; the
 // non-seam surface (start/stop/#internals) is not part of the contract. Derived from Daemon so the two
 // never drift.

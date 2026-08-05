@@ -43,7 +43,7 @@ export default class Service {
         const shippedPolicy = readTeachingSourceSync(TEACHING_CORPUS.personality);
         mkdirSync(Service.#homeDir, { recursive: true });
         // The first-run model selection lives HERE, as commented peers — an honest surfaced
-        // choice (no active default ships; #307). One uncomment per option; agents read this
+        // choice (no active default ships, {§operator-config-shipped-defaults}). One uncomment per option; agents read this
         // file as naturally as humans do.
         writeFileSync(resolve(Service.#homeDir, ".env"), [
             "# plurnk config — overrides the shipped defaults (~/.plurnk/.env.defaults is the assembled legend).",
@@ -195,7 +195,7 @@ export default class Service {
         const dbPath = Service.#expandHome(Service.#requireEnv("PLURNK_SERVICE_DB_PATH"));
         const host = Service.#requireEnv("PLURNK_HOST");
         // PLURNK_PORT is THE client surface — the AG-UI+ listener (the agui plugin module binds
-        // it at boot via the seam). Production is single-listener (#357): no daemon WS port.
+        // it at boot via the seam). {§rpc}: production has no daemon-owned listener.
         const port = Number(Service.#requireEnv("PLURNK_PORT"));
 
         const alias = resolveActiveAlias();
@@ -218,7 +218,7 @@ export default class Service {
         );
         try {
             daemon.registerModule(McpModule.init());
-            // AG-UI plugin module (#355) — THE client surface, always on: its init runs at boot with the
+            // {§rpc} — the AG-UI plugin module is the client surface; its init runs at boot with the
             // seam handle and binds PLURNK_HOST:PLURNK_PORT. The module owns its knobs' semantics.
             const aguiModule = AguiModule.init({
                 host, port,
@@ -230,7 +230,7 @@ export default class Service {
                     return agui;
                 },
             });
-            await daemon.start(); // the daemon owns no transport (#364) — the agui module opens the one listener
+            await daemon.start(); // {§module-lifecycle}: AG-UI opens the listener; daemon owns no transport
             if (agui === null) throw new Error("AG-UI module did not start");
             const aguiAddr = (agui as AguiModule).address();
             // {§mimetype-embedding} null means no embedder; an active remote embedder

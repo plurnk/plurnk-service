@@ -32,7 +32,7 @@ test("workspace.constrain / .constraints / .unconstrain round-trip over RPC (SPE
     });
 });
 
-test("workspace.create({constraints}) seeds the overlay atomically — listed with no follow-up RPC (#200)", async () => {
+test("workspace.create({constraints}) seeds the overlay atomically — listed with no follow-up RPC", async () => {
     await withDaemon(null, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
@@ -53,7 +53,7 @@ test("workspace.create({constraints}) seeds the overlay atomically — listed wi
     });
 });
 
-test("workspace.create rejects a malformed seeded constraint (#200)", async () => {
+test("workspace.create rejects a malformed seeded constraint", async () => {
     await withDaemon(null, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
         try {

@@ -70,10 +70,10 @@ export const liveWorkspace = async (opts: { name: string; projectRoot?: string; 
     const runDir = await claimRunDir(opts.name);
     const dbPath = join(runDir, "plurnk.db");
     const db = await openMigrated(dbPath);
-    // #530 — a caller-supplied WebFetch (the canned-web gate fixture) rides the sink's injectable
+    // {§search-gate} — a caller-supplied WebFetch rides the sink's injectable
     // seam; absent, the registry wires the real checked WebFetcher as in production.
     const daemon = new Daemon({ db, provider, ...(opts.fetchWeb !== undefined ? { schemes: new SchemeRegistry({ fetchWeb: opts.fetchWeb }) } : {}) });
-    await daemon.start(); // listenerless — the harness rides the seam (#364)
+    await daemon.start(); // {§rpc} — the harness rides the listenerless seam
     const ws = await connect({ daemon });
     // SANDBOX: every live/demo workspace roots at a fresh empty dir, NEVER the host repo. With
     // With Git permitted plus PLURNK_SERVICE_GIT_AUTO=1 + PLURNK_SERVICE_FILES_ITEMS=-1 (the real-model profile), an
