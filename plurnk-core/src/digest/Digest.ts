@@ -53,7 +53,7 @@ import {
     type ProblemDetails,
 } from "@plurnk/plurnk-contracts";
 
-// The requiem prompt (#requiem): the model's exit interview. Absolution up front - the system is
+// The requiem prompt ({§digest-requiem}): the model's exit interview. Absolution up front - the system is
 // under test, not the model - so RLHF'd self-blame doesn't crowd out the system indictment. The
 // operator's wording, plus a conditional question that distinguishes understanding from delayed action.
 const REQUIEM_PROMPT = "This was a test of the Plurnk System. The system is under test, not you - any faults you encountered are defects in the system's design or documentation, and cataloguing them is the task, never a criticism of your performance. Please numerically list all of the errors, issues, and ambiguities you encountered in the Plurnk System while attempting to perform your tasks. If you understood what action to take but delayed or avoided taking it, explain what made acting seem unsafe, premature, or unclear.";
@@ -546,10 +546,8 @@ export default class Digest {
         return resolve(homedir(), ".plurnk", "plurnk.db");
     }
 
-    // The requiem (#requiem) is an out-of-band audit, not another worker turn. The final packet and
-    // every provider attempt are quoted as evidence beneath an auditor system instruction,
-    // so the packet's model-facing commands remain visible without remaining active. One requiem per
-    // model-bearing worker. Fail hard when no provider can witness the history.
+    // {§digest-requiem}: one out-of-band audit per model-bearing worker, with exact
+    // historical evidence and a required witness provider.
     static async requiem(opts: DigestOptions & { signal?: AbortSignal; provider?: Provider }): Promise<{ path: string; reportPath: string; workers: number }> {
         const dbPath = resolve(opts.dbPath);
         if (!existsSync(dbPath)) throw new Error(`digest: no DB at ${dbPath}`);

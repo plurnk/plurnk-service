@@ -1,9 +1,4 @@
-// #561 - the requiem is a synthetic out-of-band model call (the exit interview, after the loop,
-// outside any live worker turn). A plurnk-endpoint witness requires FULL turn identity on every
-// call - Plurnk-Worker-Id AND Plurnk-Worker-Primary - and rejects an identity-less call 400. The
-// interview has no live worker tree, so it identifies as its OWN root (primaryWorkerId == workerId):
-// a testimony call is a primary, graded by the strong model. This pins that contract - the class
-// that went untested because every prior requiem ran against a witness that ignores the headers.
+// {§digest-requiem} — a synthetic interview carries a complete self-root identity.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -39,7 +34,7 @@ const MODEL_PACKET = (worker: string) => JSON.stringify({
 
 const TMP_DIR = fileURLToPath(new URL(".tmp/", import.meta.url));
 
-test("[#561] the requiem interview identifies as its own root - primaryWorkerId == workerId on every call", async () => {
+test("{§digest-requiem}: every interview identifies as its own root", async () => {
     const dbPath = join(TMP_DIR, `requiem-${crypto.randomUUID()}.db`);
     const db = await openMigrated(dbPath);
     try {
