@@ -1084,8 +1084,8 @@ export default class Engine {
                 nextActionIndex++;
                 turnZeroMoves.push("<<FIND(worker://~/*)::FIND");  // {§model-entry} — the own-space survey, into the turn-0 echo
             }
-            // #260 — foist a turn-0 READ of each client-passed @file path so its content sits in front
-            // of the model. Daemon owns the workspace → a normal file:/// member READ; a missing or
+            // {§methods-loop-run-open-paths}: foist a turn-zero READ of each client-selected path.
+            // Core owns the workspace → a normal file:/// member READ; a missing or
             // non-member path surfaces its READ outcome (4xx) in the log, visible to the model.
             const openPathsRow = await this.#db.engine_get_loop_open_paths.get<{ open_paths: string }>({ loop_id: loopId });
             for (const raw of JSON.parse(openPathsRow?.open_paths ?? "[]") as string[]) {

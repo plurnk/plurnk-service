@@ -100,8 +100,8 @@ CREATE TABLE IF NOT EXISTS loops (
     -- {§attribution-discovery-placeholder} — attribution tags of the loop's active plugins (string[] JSON); the activity tagged
     -- with what its plugins offer. Same set the engine rides on each turn's generate() wire.
     attributions TEXT NOT NULL DEFAULT '[]' CHECK (json_valid(attributions)),
-    -- #260 — client-passed @file paths foisted as turn-0 READs (string[] JSON). The daemon owns the
-    -- workspace, so it READs them in instead of the client inlining bytes (co-location law).
+    -- {§methods-loop-run-open-paths}: client-selected paths foisted as
+    -- turn-zero READs by the workspace-owning core (string[] JSON).
     open_paths TEXT NOT NULL DEFAULT '[]' CHECK (json_valid(open_paths)),
     -- {§worker-scheme} loop-termination delta: terminated_at is stamped by the trigger
     -- below when status crosses into terminal (every death-path, uniformly);

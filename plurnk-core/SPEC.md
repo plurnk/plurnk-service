@@ -1817,6 +1817,13 @@ Its function names are transport-neutral library calls, not public wire names.
 | Workspace metadata                                | `listWorkspaces()`, `listWorkers(...)`, `workspaceDerivationStatus(...)` | Reads current workspace topology and derivation progress. |
 | Extension actions                                 | `listModuleActions()`, `invokeModuleAction(name, params)` | Lists setup-registered names in sorted order and invokes the exact registered handler. Missing names fail; handler values remain opaque to core. |
 
+§methods-loop-run-open-paths **Workspace paths are core-owned context reads.**
+For a newly enqueued loop, `openPaths` persists a list of client-selected paths.
+On its first turn, core dispatches one ordinary `plurnk`-origin READ per path
+from inside the owning workspace; successes and failures surface through the
+normal operation-result contract. The client sends paths, never duplicated file
+bytes.
+
 §methods-rebind **Binding belongs to the client-interface module.** Core's
 workspace lifecycle calls return exactly the workspace and selected client actor
 (`workspaceId`, `workspaceName`, `projectRoot`, `workerId`, `workerName`); they

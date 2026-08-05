@@ -1348,6 +1348,8 @@ export default class Daemon {
         drainPromise?: Promise<unknown>;
     }> {
         const { workspaceId, workerId, prompt } = args;
+        // #187 tracks the unresolved openPaths disposition when this request
+        // folds into active or parked work; the fresh-loop branch persists them below.
         // Active loop (status=102)? Fold the wake/prompt into its next turn.
         // engine.inject returns null when no loop is currently executing, so
         // we enqueue a fresh loop below and ensure a drain claims it.

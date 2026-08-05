@@ -293,7 +293,7 @@ test("loop.run respects maxTurns cap when model emits non-terminal statuses repe
         } finally { ws.close(); }
     });
 });
-test("loop.run({ openPaths }) foists a turn-0 file READ for each path", async () => {
+test("{§methods-loop-run-open-paths}: a fresh loop foists one turn-zero READ per path", async () => {
     const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse("<<SEND[200]:done:SEND", 10)] });
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
