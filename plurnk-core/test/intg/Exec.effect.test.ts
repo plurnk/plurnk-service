@@ -105,11 +105,8 @@ test("effect-gating: a pure EXEC being applied is never discoverable as a client
     }
 });
 
-// Regression for #216 (execs-sqlite 0.1.4). In a WORKSPACE workspace the service
-// defaults the exec cwd to project_root, and sqlite uses cwd as its db path — a
-// DIRECTORY there used to 500 the open. The test above runs headless (cwd=null →
-// :memory:) and missed it; this exercises the project_root path that actually breaks.
-test("sqlite EXEC in a workspace workspace: a project_root cwd no longer 500s the db open (#216)", async () => {
+// {§exec-target-routing} {§executor-sinks}: cwd and target remain distinct inputs.
+test("{§exec-target-routing}: targetless sqlite ignores workspace cwd and opens an in-memory database", async () => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-sqlite-ws-"));
     const { db, engine, exec, workspaceId, workerId, loopId, turnId } = await wire();
     try {
@@ -120,8 +117,7 @@ test("sqlite EXEC in a workspace workspace: a project_root cwd no longer 500s th
         });
         assert.notEqual(result.status, 202, "pure runtime auto-runs ungated, no proposal");
         assert.ok(result.status < 400, `resolved cleanly with a project_root cwd; got ${result.status}`);
-        // A clean resolve (not 202, < 400) is the #216 signal: the db opened + the query ran with
-        // a DIRECTORY cwd. The output then streams like any exec ({§exec-stream}), no in-band body.
+        // The output streams like every EXEC; a project directory never becomes the SQLite target.
         await exec.idle();
     } finally { await db.close(); await rm(root, { recursive: true, force: true }); }
 });
