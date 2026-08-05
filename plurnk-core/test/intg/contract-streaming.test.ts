@@ -18,7 +18,7 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Exec from "../../src/schemes/Exec.ts";
 import ChannelWrite, { type StreamEventPayload } from "../../src/core/ChannelWrite.ts";
-import { Results, type SchemeCtx } from "@plurnk/plurnk-schemes";
+import { Results, type SchemeCtx, type SchemeResult } from "@plurnk/plurnk-schemes";
 import {
     openMigrated, seedEnvelope, seedEntryWithChannel,
     insertWorkspace, insertWorker, insertLoop, insertTurn, testExecutors,
@@ -130,6 +130,73 @@ test("SEND[499] resolves the registry to the owning scheme + stored handle and t
         const channel = await db.test_get_channel.get<{ state: string }>({ entry_id: entryId, name: "data" });
         assert.equal(channel?.state, "errored", "channel transitioned active → errored on cancellation");
     } finally { await db.close(); }
+});
+
+test("a public streaming READ returns its 102 row before detached subscription work settles", async () => {
+    const db = await openMigrated();
+    try {
+        const { workspaceId, workerId, loopId, turnId } = await seedEnvelope(db, `detached-sub-${crypto.randomUUID()}`);
+        type DetachedSubscriptionProbe = AbortSignal & {
+            notifyChunk(channel: string, chunk: string, mimetype?: string): Promise<void>;
+            close(result: SchemeResult, summary?: string): Promise<void>;
+        };
+        let subscription: DetachedSubscriptionProbe | undefined;
+
+        class DetachedStream {
+            static manifest = {
+                name: "detached", channels: { data: "text/plain" }, defaultChannel: "data",
+                category: "data" as const,
+                writableBy: ["model" as const, "client" as const], volatile: true, modelVisible: true,
+            };
+            async read(statement: ReadStatement, ctx: SchemeCtx): Promise<{ status: number }> {
+                const target = statement.target;
+                if (target === null || target.kind !== "url") throw new Error("detached fixture requires a URL");
+                await ctx.entries.write(target.pathname, {
+                    channels: { data: { content: "", mimetype: "text/plain", state: "active" } },
+                    tags: [],
+                });
+                subscription = await ctx.subscriptions.open(
+                    target.pathname,
+                    { cancel() {} },
+                ) as DetachedSubscriptionProbe;
+                return { status: 102 };
+            }
+        }
+
+        const schemes = new SchemeRegistry();
+        schemes.register("detached", new DetachedStream());
+        const engine = new Engine({ db, schemes });
+        const opened = await engine.dispatch({
+            statement: {
+                op: "READ", suffix: "", signal: null, target: urlPath("detached", "/feed"),
+                lineMarker: null, body: null, position: { line: 1, column: 1 },
+            },
+            workspaceId, workerId, loopId, turnId, sequence: 1, origin: "client",
+        });
+        assert.equal(opened.status, 102);
+        const rows = await db.test_log_entries_by_turn.all<{ op: string; status_rx: number }>({ turn_id: turnId });
+        assert.deepEqual(
+            rows.map(({ op, status_rx }) => ({ op, status_rx })),
+            [{ op: "READ", status_rx: 102 }],
+            "the initial observation is durable before retained work proceeds",
+        );
+        if (subscription === undefined) throw new Error("detached subscription missing");
+
+        await subscription.notifyChunk("data", "after-return", "text/plain");
+        await subscription.close({ status: 200 }, "detached complete");
+
+        const entry = await db.test_get_entry_by_path.get<{ id: number }>({
+            workspace_id: workspaceId, scheme: "detached", pathname: "/feed",
+        });
+        if (entry === undefined) throw new Error("detached stream entry missing");
+        assert.deepEqual(
+            await db.test_get_channel.get<{ content: string; state: string }>({ entry_id: entry.id, name: "data" }),
+            { content: "after-return", state: "closed" },
+        );
+        assert.equal(await ChannelWrite.findActiveSubscription(db, { workerId, entryId: entry.id }), null);
+    } finally {
+        await db.close();
+    }
 });
 
 // {§no-chunk-rows} — Channels are the source of truth for chunk content; the log captures

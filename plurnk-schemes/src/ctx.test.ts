@@ -211,6 +211,20 @@ test("ctx: subscriptions.open returns an awaitable AbortSignal", async () => {
     assert.equal(signal.aborted, false);
 });
 
+test("ctx: the opened subscription is the retainable chunk and settlement capability", async () => {
+    const { ctx, inspect } = makeCtx();
+    const subscription = await ctx.subscriptions.open("exec://r-1", { cancel() {} }) as AbortSignal & {
+        notifyChunk(channel: string, chunk: string, mimetype?: string): Promise<void>;
+        close(result: { status: number }, summary?: string): Promise<void>;
+    };
+
+    await subscription.notifyChunk("stdout", "detached\n", "text/plain");
+    await subscription.close({ status: 200 }, "detached complete");
+
+    assert.deepEqual(inspect().chunks, [{ channel: "stdout", chunk: "detached\n", mimetype: "text/plain" }]);
+    assert.deepEqual(inspect().closed, { result: { status: 200 }, summary: "detached complete" });
+});
+
 test("ctx: notifyChunk is fused — one call appends AND emits an event", async () => {
     const { ctx, inspect } = makeCtx();
     await ctx.subscriptions.notifyChunk("stdout", "line1\n");

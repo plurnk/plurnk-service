@@ -197,6 +197,29 @@ test("READ: inbound frames stream into messages; socket close settles done", asy
     assert.equal(closed?.summary, "ws closed (1000); 2 messages");
 });
 
+test("READ: returns 102 after native open while the socket remains owned", async () => {
+    const sock = fakeSocket();
+    const ws = new Ws(() => sock);
+    const { ctx, inspect } = makeCtx();
+    const target = wss(PUB, "/feed");
+    let returned = false;
+    const read = ws.read(readStmt(target), ctx);
+    void read.then(() => { returned = true; });
+
+    await flush();
+    assert.equal(returned, false, "claiming and CONNECTING do not complete acquisition");
+    sock.emit("open");
+    await flush();
+    const returnedWhileOpen = returned;
+    assert.equal((await ws.send(sendStmt(200, target, "same actor can continue"), ctx)).status, 200);
+    sock.close(1000);
+    assert.equal((await read).status, 102);
+
+    assert.equal(returnedWhileOpen, true, "native open plus durable activation returns the owning READ");
+    assert.deepEqual(sock.sent, ["same actor can continue"]);
+    assert.equal(inspect().closed?.result.status, 200);
+});
+
 test("READ: terminal settlement waits for in-flight message persistence", async () => {
     const persistenceGate = Promise.withResolvers<void>();
     const sock = fakeSocket();

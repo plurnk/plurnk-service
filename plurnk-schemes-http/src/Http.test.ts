@@ -203,6 +203,8 @@ const withFetch = async (
     }
 };
 
+const flush = () => new Promise<void>((resolve) => setImmediate(resolve));
+
 // ── manifest ──────────────────────────────────────────────────────────────
 test("manifest: name http, default channel body, requiresWeb, network-volatile", () => {
     assert.equal(Http.manifest.name, "http");
@@ -831,6 +833,35 @@ test("READ SSE: each event's data becomes one body chunk, framing stripped", asy
     assert.ok(chunks.every((c) => c.channel !== "body" || c.mimetype === "text/plain"));
     assert.ok(chunks.some((c) => c.channel === "header" && c.chunk.startsWith("HTTP 200 OK")));
     assert.equal(closed?.summary, "SSE stream; 2 events");
+});
+
+test("READ SSE: returns 102 after acquisition while the origin stream remains open", async () => {
+    const encoder = new TextEncoder();
+    let controller!: ReadableStreamDefaultController<Uint8Array>;
+    const body = new ReadableStream<Uint8Array>({
+        start(value) {
+            controller = value;
+        },
+    });
+    const { ctx, inspect } = makeCtx();
+    let returned = false;
+
+    await withFetch(async () => new Response(body, {
+        status: 200,
+        headers: { "content-type": "text/event-stream" },
+    }), async () => {
+        const read = new Http().read(readStmt(urlTarget("http://example.com/sse", "/sse")), ctx);
+        void read.then(() => { returned = true; });
+        await flush();
+        const returnedBeforeClose = returned;
+        controller.enqueue(encoder.encode("data: after return\n\n"));
+        controller.close();
+        assert.equal((await read).status, 102);
+        assert.equal(returnedBeforeClose, true, "READ must return while the acquired SSE body is still open");
+    });
+
+    assert.deepEqual(sseBody(inspect().chunks), ["after return\n"]);
+    assert.equal(inspect().closed?.result.status, 200);
 });
 
 test("READ SSE: multi-line data joins with \\n into a single event", async () => {
