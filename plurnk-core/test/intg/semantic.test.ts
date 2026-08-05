@@ -236,7 +236,7 @@ test("[#91] PLURNK_SERVICE_SEARCH_EXCLUDE applies only to file-scheme entries", 
     }
 });
 
-test("[#337] the pump derives smallest-first — a fat outlier never clogs the corpus warm-up", async () => {
+test("{§derivation-dedup-parallel}: the pump admits smallest-first without skipping a large outlier", async () => {
     // Pure scheduling: nothing skipped, nothing capped — the whale derives to full depth, LAST.
     // Proven by insertion order: embedding rowids are monotonic, so the small entries' vectors
     // must land before the big entry's despite the big entry being written first.
