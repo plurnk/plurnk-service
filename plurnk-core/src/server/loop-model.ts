@@ -1,12 +1,12 @@
 import type { ProviderAlias } from "@plurnk/plurnk-providers";
 import Results, { OperationFailureError } from "../core/results.ts";
 
-// #414 — per-loop model selection: resolve a runLoop call's optional (alias, model) to the
+// {§methods-loop-run-model}: resolve a runLoop call's optional (alias, model) to the
 // ProviderAlias to instantiate, or null for "use the boot default". PURE (no env read, no
 // construction) so the precedence + parse contract is hermetically testable; the Daemon wraps it
 // with ProviderInstantiate + the #provider fallback.
 //
-// Precedence: `model` (client-resolved `<provider>/<model>`, #90) wins over a named `alias`.
+// Precedence: `model` (client-resolved `<provider>/<model>`) wins over a named `alias`.
 // A malformed model spec or an undeclared alias throws legibly — the daemon must never silently
 // run the wrong model.
 export const resolveLoopAlias = (
@@ -31,7 +31,7 @@ export const resolveLoopAlias = (
                 },
             ));
         }
-        // A client-resolved spec is alias-independent (#90): the provider's own env carries the
+        // A client-resolved spec is alias-independent: the provider's own env carries the
         // base URL, so the synthetic alias name is cosmetic (reuse the given alias if present).
         return { alias: alias ?? model, provider: model.slice(0, slash), model: model.slice(slash + 1) };
     }

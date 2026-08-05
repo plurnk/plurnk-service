@@ -1,4 +1,4 @@
-// [methods-loop-run-model] - #414 per-loop model resolution precedence + parse contract.
+// {§methods-loop-run-model}: per-loop model resolution precedence and parse contract.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { resolveLoopAlias } from "./loop-model.ts";
@@ -25,7 +25,7 @@ test("neither alias nor model -> null (the daemon's boot default)", () => {
     assert.equal(resolveLoopAlias("", "", DECLARED), null);
 });
 
-test("model wins over alias - the client-resolved spec is authoritative (#90)", () => {
+test("model wins over alias because the client-resolved specification is authoritative", () => {
     const r = resolveLoopAlias("fireslow", "anthropic/claude-opus", DECLARED);
     assert.deepEqual(r, { alias: "fireslow", provider: "anthropic", model: "claude-opus" }, "the alias name rides along but the model spec decides the provider+model");
 });
