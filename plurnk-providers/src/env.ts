@@ -173,6 +173,21 @@ export const resolveEnvelopeFromEnv = (env: NodeJS.ProcessEnv, window: number | 
 export type ReasoningMode = "off" | "adaptive" | "on";
 export type Reasoning = { mode: ReasoningMode; budget: number | null };
 
+export type ReasoningResponseStyle = "verbatim" | "think-tags";
+
+export const reasoningResponseStyleFromEnv = (
+    env: NodeJS.ProcessEnv,
+    label: string,
+): ReasoningResponseStyle => {
+    const name = "PLURNK_PROVIDERS_REASONING_RESPONSE_STYLE";
+    const raw = env[name];
+    if (raw === undefined || raw.length === 0) return "verbatim";
+    if (raw !== "verbatim" && raw !== "think-tags") {
+        throw new Error(`${label} provider: ${name} must be "verbatim" or "think-tags" (got "${raw}")`);
+    }
+    return raw;
+};
+
 export const reasoningFromEnv = (env: NodeJS.ProcessEnv, label: string): Reasoning => {
     shedRenamed(env, "PLURNK_PROVIDERS_THINKING", "PLURNK_PROVIDERS_REASONING", label, "provider configuration contract"); // lexicon-allow
     shedRenamed(env, "PLURNK_PROVIDERS_THINKING_CAPACITY", "PLURNK_PROVIDERS_REASONING_BUDGET", label, "provider configuration contract"); // lexicon-allow
@@ -199,6 +214,7 @@ export const reasoningFromEnv = (env: NodeJS.ProcessEnv, label: string): Reasoni
 export const PROVIDERS_KNOBS = Object.freeze([
     "PLURNK_PROVIDERS_REASONING_RESERVE",
     "PLURNK_PROVIDERS_COMPLETION_RESERVE",
+    "PLURNK_PROVIDERS_REASONING_RESPONSE_STYLE",
     "PLURNK_PROVIDERS_REASONING_BUDGET",
     "PLURNK_PROVIDERS_REASONING",
     "PLURNK_PROVIDERS_CONTEXT_WINDOW",

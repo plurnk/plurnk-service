@@ -7,10 +7,11 @@
 // extensions and local endpoint probes the SDK cannot represent.
 
 import type { ChatMessage, GrammarEvidence, PromptTokenMeasurement, Provider, ProviderResponse, ProviderUsage } from "./types.ts";
-import type { Reasoning, ReserveSpec } from "./env.ts";
+import type { Reasoning, ReasoningResponseStyle, ReserveSpec } from "./env.ts";
 import { executeAiSdkModel, executeOpenAICompatible } from "./aiSdkTransport.ts";
 import type { LanguageModel } from "ai";
 import { toProviderError, ProviderError } from "./errors.ts";
+import { attributeUnitemizedReasoning } from "./usage.ts";
 import type { ProviderNotice } from "./notices.ts";
 import { validateGbnf } from "@plurnk/gbnf";
 import { assertPromptTokenMeasurement, estimatePromptTokens } from "./promptTokens.ts";
@@ -36,6 +37,7 @@ export type AiSdkProviderConfig = {
     fetch?: ProviderFetch;                    // per-instance request executor; default globalThis.fetch
     contextWindow?: number | null;              // default null; caller resolves-or-fails, narrows to required with the interface
     reasoningStyle?: ReasoningStyle;          // default "none"
+    reasoningResponseStyle?: ReasoningResponseStyle; // {§provider-tagged-reasoning}; default "verbatim"
     countPromptTokens?: (messages: readonly ChatMessage[], signal?: AbortSignal) => PromptTokenMeasurement | Promise<PromptTokenMeasurement>;
     calculateCost?: (usage: ProviderUsage) => number; // default () => 0
     source?: string;                           // notice/problem source, e.g. "provider:openai"; default "provider"
@@ -144,6 +146,44 @@ const stripTrailingSpecial = (content: string, marker: string): string => {
     return out;
 };
 
+type TaggedReasoningProjection = {
+    readonly content: string;
+    readonly reasoning: string;
+    readonly projected: boolean;
+    readonly contentStart: number;
+};
+
+// {§provider-tagged-reasoning} Only the model-contract position is structural:
+// one exact leading envelope. Parsing after stream assembly keeps SSE and JSON
+// on one path and leaves later literal tags in the visible suffix untouched.
+const projectTaggedReasoning = (
+    content: string,
+    structuredReasoning: string,
+    style: ReasoningResponseStyle,
+): TaggedReasoningProjection => {
+    const opening = "<think>";
+    if (style !== "think-tags" || structuredReasoning.length > 0 || !content.startsWith(opening)) {
+        return { content, reasoning: structuredReasoning, projected: false, contentStart: 0 };
+    }
+    const closing = "</think>";
+    const closingIndex = content.indexOf(closing, opening.length);
+    if (closingIndex === -1) {
+        return {
+            content: "",
+            reasoning: content.slice(opening.length),
+            projected: true,
+            contentStart: [...content].length,
+        };
+    }
+    const suffixStart = closingIndex + closing.length;
+    return {
+        content: content.slice(suffixStart),
+        reasoning: content.slice(opening.length, closingIndex),
+        projected: true,
+        contentStart: [...content.slice(0, suffixStart)].length,
+    };
+};
+
 // Shared budget→effort breakpoints (xai and google had identical copies).
 export const effortFromBudget = (budget: number): "low" | "medium" | "high" => {
     if (budget <= 1000) return "low";
@@ -194,6 +234,7 @@ export default class AiSdkProvider implements Provider {
     #dryAllowedLength: number | undefined;
     #repeatLastN: number | undefined;
     #reasoningStyle: ReasoningStyle;
+    #reasoningResponseStyle: ReasoningResponseStyle;
     #countPromptTokens: (messages: readonly ChatMessage[], signal?: AbortSignal) => PromptTokenMeasurement | Promise<PromptTokenMeasurement>;
     #promptTokensUrl: string | undefined;
     #calculateCost: (usage: ProviderUsage) => number;
@@ -251,6 +292,7 @@ export default class AiSdkProvider implements Provider {
         this.#retryAttempts = config.retryAttempts;
         this.#errorDetailLimit = config.errorDetailLimit;
         this.#reasoningStyle = config.reasoningStyle ?? "none";
+        this.#reasoningResponseStyle = config.reasoningResponseStyle ?? "verbatim";
         if (config.countPromptTokens !== undefined && config.promptTokensUrl !== undefined) {
             throw new Error(`${config.source ?? "provider"}: configure countPromptTokens or promptTokensUrl, not both`);
         }
@@ -662,13 +704,25 @@ export default class AiSdkProvider implements Provider {
         // wire text for forensics.
         if (this.#eosText !== undefined) raw.content = stripTrailingSpecial(raw.content, this.#eosText);
 
+        const taggedReasoning = projectTaggedReasoning(
+            raw.content,
+            raw.reasoning,
+            this.#reasoningResponseStyle,
+        );
+
         // Preserve the exact sentence seen at the grammar boundary. llama-server's
         // `reasoning_format: "auto"` projects one raw Harmony enclosure into the
         // reasoning/content fields; the wire field's presence is the proof that the
         // projection occurred. The provider represents this evidence and never grades it.
         let grammarEvidence: GrammarEvidence | undefined;
         if (wantGrammar) {
-            if (this.#reasoningStyle === "template" && this.#reasoning.mode !== "off") {
+            if (taggedReasoning.projected) {
+                grammarEvidence = {
+                    input: raw.content,
+                    contentStart: taggedReasoning.contentStart,
+                    transported: sendGrammar !== undefined,
+                };
+            } else if (this.#reasoningStyle === "template" && this.#reasoning.mode !== "off") {
                 if (raw.reasoningProjected) {
                     const prefix = `<|channel>thought\n${raw.reasoning}<channel|>`;
                     grammarEvidence = {
@@ -684,6 +738,12 @@ export default class AiSdkProvider implements Provider {
                     transported: sendGrammar !== undefined,
                 };
             }
+        }
+
+        if (taggedReasoning.projected) {
+            raw.content = taggedReasoning.content;
+            raw.reasoning = taggedReasoning.reasoning;
+            raw.usage = attributeUnitemizedReasoning(raw.usage, raw.reasoning, raw.content);
         }
 
         let notices: ProviderNotice[] | undefined;

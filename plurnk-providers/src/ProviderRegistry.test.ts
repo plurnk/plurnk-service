@@ -315,6 +315,55 @@ test("explicit metadata constructs an out-of-snapshot Cloudflare model in the co
     assert.equal(scanned, false);
 });
 
+test("{§provider-tagged-reasoning} a Cloudflare model alias carries its explicit response style through the public registry", async () => {
+    const calls: string[] = [];
+    mock.method(globalThis, "fetch", async (input: string | URL | Request) => {
+        calls.push(String(input));
+        const chunks = [
+            {
+                id: "cloudflare-reasoning",
+                object: "chat.completion.chunk",
+                created: 1,
+                model: "@cf/deepseek-ai/deepseek-r1-distill-qwen-32b",
+                choices: [{ index: 0, delta: { content: "<think>working</think>done" }, finish_reason: "stop" }],
+            },
+            {
+                id: "cloudflare-reasoning",
+                object: "chat.completion.chunk",
+                created: 2,
+                model: "@cf/deepseek-ai/deepseek-r1-distill-qwen-32b",
+                choices: [],
+                usage: { prompt_tokens: 2, completion_tokens: 4, total_tokens: 6 },
+            },
+        ];
+        const body = [...chunks.map((chunk) => `data: ${JSON.stringify(chunk)}`), "data: [DONE]"].join("\n\n");
+        return new Response(body, { status: 200, headers: { "Content-Type": "text/event-stream" } });
+    });
+    const provider = await instantiateProvider(
+        "cloudflare",
+        {
+            ...fullEnv,
+            CLOUDFLARE_ACCOUNT_ID: "account",
+            CLOUDFLARE_API_TOKEN: "token",
+            PLURNK_PROVIDERS_REASONING_RESPONSE_STYLE: "verbatim",
+            PLURNK_PROVIDERS_REASONING_RESPONSE_STYLE_cfkimi: "think-tags",
+        },
+        "@cf/deepseek-ai/deepseek-r1-distill-qwen-32b",
+        async () => ({}),
+        mapOf({}),
+        undefined,
+        "cfkimi",
+    );
+
+    const response = await provider.generate({ workerId: "cloudflare-worker", messages: [] });
+
+    assert.equal(response.assistant.reasoning, "working");
+    assert.equal(response.assistant.content, "done");
+    assert.deepEqual(calls, [
+        "https://api.cloudflare.com/client/v4/accounts/account/ai/v1/chat/completions",
+    ]);
+});
+
 test("two Fireworks aliases independently select default and priority service tiers", async () => {
     const bodies: Record<string, unknown>[] = [];
     mock.method(globalThis, "fetch", async (_url: string, init?: RequestInit) => {

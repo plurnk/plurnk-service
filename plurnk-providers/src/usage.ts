@@ -26,6 +26,24 @@ export type RawUsage = {
     completion_tokens_details?: { reasoning_tokens?: number };
 };
 
+// Some providers return distinct reasoning text while reporting one combined
+// output count. Attribute that count without disturbing an upstream split.
+export const attributeUnitemizedReasoning = (
+    usage: ProviderUsage,
+    reasoningText: string,
+    contentText: string,
+): ProviderUsage => {
+    if (usage.reasoning !== 0 || usage.completion === 0 || reasoningText.length === 0) return usage;
+    const reasoning = contentText.length === 0
+        ? usage.completion
+        : Math.round(usage.completion * reasoningText.length / (reasoningText.length + contentText.length));
+    return {
+        ...usage,
+        completion: usage.completion - reasoning,
+        reasoning,
+    };
+};
+
 export const normalizeUsage = (raw: RawUsage | null | undefined, reasoningText = "", contentText = ""): ProviderUsage => {
     const prompt = raw?.prompt_tokens ?? 0;
     const completionRaw = raw?.completion_tokens ?? 0;
@@ -58,20 +76,15 @@ export const normalizeUsage = (raw: RawUsage | null | undefined, reasoningText =
         // reasoning. Only trust the gap when a total was actually reported.
         reasoning = reportedTotal > 0 ? Math.max(0, reportedTotal - prompt - completionRaw) : 0;
         completion = completionRaw;
-        // Fireworks folds reasoning INTO completion_tokens and itemizes no
-        // reasoning_tokens, so a turn that shipped only reasoning reads reasoning=0
-        // though 300k chars of it arrived. When reasoning TEXT came back but
-        // the reported totals leave no gap, re-split the reported completion by the
-        // emitted text proportions. Sum-preserving: billable output
-        // (completion+reasoning) and cost are byte-identical; only the
-        // visible/reasoning gauge is corrected (pure-reasoning turn -> completion 0).
-        if (reasoning === 0 && reasoningText.length > 0 && reportedTotal > 0 && completionRaw > 0) {
-            reasoning = Math.round(completionRaw * reasoningText.length / (reasoningText.length + contentText.length));
-            completion = completionRaw - reasoning;
-        }
     }
     const total = reportedTotal > 0 ? reportedTotal : prompt + completion + reasoning;
-    return { prompt, completion, reasoning, cached, total };
+    const usage = { prompt, completion, reasoning, cached, total };
+    // Fireworks folds reasoning INTO completion_tokens and itemizes no
+    // reasoning_tokens. A reported total establishes that completion is an
+    // upstream quantity rather than a locally synthesized fallback.
+    return reasoningDetail === undefined && reportedTotal > 0
+        ? attributeUnitemizedReasoning(usage, reasoningText, contentText)
+        : usage;
 };
 
 // Conventional provider pricing: USD per million tokens, matching Models.dev.

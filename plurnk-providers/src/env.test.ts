@@ -1,6 +1,6 @@
 import test from "node:test";
 import { strict as assert } from "node:assert";
-import { parseRequiredInt, parseOptionalInt, requireEnv, reasoningFromEnv, tokenRatesFromEnv } from "./env.ts";
+import { parseRequiredInt, parseOptionalInt, requireEnv, reasoningFromEnv, reasoningResponseStyleFromEnv, tokenRatesFromEnv } from "./env.ts";
 
 test("parseRequiredInt: parses a non-negative integer", () => {
     assert.equal(parseRequiredInt("600000", "PLURNK_PROVIDERS_FETCH_TIMEOUT", "openai"), 600000);
@@ -38,6 +38,19 @@ test("reasoningFromEnv: activation modes parse; budget required IFF on; fail-har
     assert.throws(() => reasoningFromEnv({ PLURNK_PROVIDERS_REASONING: "on" }, "openai"), /PLURNK_PROVIDERS_REASONING_BUDGET must be set when/);
     assert.throws(() => reasoningFromEnv({ PLURNK_PROVIDERS_REASONING: "on", PLURNK_PROVIDERS_REASONING_BUDGET: "0" }, "openai"), /positive integer/);
     assert.throws(() => reasoningFromEnv({ PLURNK_PROVIDERS_REASONING: "on", PLURNK_PROVIDERS_REASONING_BUDGET: "1.5" }, "openai"), /positive integer/);
+});
+
+test("{§provider-tagged-reasoning} response style is explicit and invalid values fail at the provider boundary", () => {
+    assert.equal(reasoningResponseStyleFromEnv({}, "cloudflare"), "verbatim");
+    assert.equal(reasoningResponseStyleFromEnv({
+        PLURNK_PROVIDERS_REASONING_RESPONSE_STYLE: "think-tags",
+    }, "cloudflare"), "think-tags");
+    assert.throws(
+        () => reasoningResponseStyleFromEnv({
+            PLURNK_PROVIDERS_REASONING_RESPONSE_STYLE: "auto",
+        }, "cloudflare"),
+        /cloudflare provider: PLURNK_PROVIDERS_REASONING_RESPONSE_STYLE must be "verbatim" or "think-tags" \(got "auto"\)/,
+    );
 });
 
 test("requireEnv: returns the value or throws a named error", () => {

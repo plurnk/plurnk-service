@@ -440,7 +440,7 @@ test("generate aggregates reasoning deltas under multiple field names", async ()
 });
 
 test("{§provider-tagged-reasoning} explicit think-tags projects one streamed leading envelope and reclassifies usage", async () => {
-    const config = { ...injectedBase, reasoningResponseStyle: "think-tags" as const };
+    const config = { ...injectedBase, reasoningResponseStyle: "think-tags" as const, rawBody: true };
     const p = new AiSdkProvider(config);
     installFetch([
         { choices: [{ delta: { content: "<thi" } }] },
@@ -460,6 +460,13 @@ test("{§provider-tagged-reasoning} explicit think-tags projects one streamed le
         cached: 0,
         total: 13,
     });
+    assert.deepEqual(
+        ((response.assistantRaw as { content: string; reasoning: string }).content),
+        "abcde",
+    );
+    assert.equal((response.assistantRaw as { reasoning: string }).reasoning, "12345");
+    assert.match(JSON.stringify(response.rawBody), /<thi/);
+    assert.match(JSON.stringify(response.rawBody), /nk>12345/);
 });
 
 test("{§provider-tagged-reasoning} explicit think-tags projects one buffered leading envelope", async () => {
@@ -475,6 +482,26 @@ test("{§provider-tagged-reasoning} explicit think-tags projects one buffered le
     assert.equal(response.assistant.content, "abcde");
     assert.equal(response.assistant.usage.completion, 5);
     assert.equal(response.assistant.usage.reasoning, 5);
+});
+
+test("{§provider-tagged-reasoning} tagged text does not overwrite itemized reasoning usage", async () => {
+    installFetchJson({
+        model: "m",
+        choices: [{ message: { content: "<think>12345</think>abcde" }, finish_reason: "stop" }],
+        usage: {
+            prompt_tokens: 3,
+            completion_tokens: 10,
+            total_tokens: 13,
+            completion_tokens_details: { reasoning_tokens: 3 },
+        },
+    });
+    const config = { ...injectedBase, streaming: false, reasoningResponseStyle: "think-tags" as const };
+    const response = await new AiSdkProvider(config).generate({ workerId: "tagged-itemized", messages: [] });
+
+    assert.equal(response.assistant.reasoning, "12345");
+    assert.equal(response.assistant.content, "abcde");
+    assert.equal(response.assistant.usage.completion, 7);
+    assert.equal(response.assistant.usage.reasoning, 3);
 });
 
 test("{§provider-tagged-reasoning} an unclosed capped envelope is wholly reasoning in streamed and buffered responses", async () => {
@@ -548,7 +575,7 @@ test("{§provider-tagged-reasoning} verbatim, non-leading, and structured-reason
 });
 
 test("{§provider-tagged-reasoning} grammar evidence retains the exact pre-projection tagged sentence", async () => {
-    const content = "<think>reason</think><<PLAN::PLAN\n<<SEND[200]:done:SEND";
+    const content = "<think>🧠reason</think><<PLAN::PLAN\n<<SEND[200]:done:SEND";
     const config = {
         ...injectedBase,
         contextWindow: 640,
@@ -565,11 +592,11 @@ test("{§provider-tagged-reasoning} grammar evidence retains the exact pre-proje
         grammar: `root ::= ${JSON.stringify(content)}`,
     });
 
-    assert.equal(response.assistant.reasoning, "reason");
+    assert.equal(response.assistant.reasoning, "🧠reason");
     assert.equal(response.assistant.content, "<<PLAN::PLAN\n<<SEND[200]:done:SEND");
     assert.deepEqual(response.grammarEvidence, {
         input: content,
-        contentStart: [..."<think>reason</think>"].length,
+        contentStart: [..."<think>🧠reason</think>"].length,
         transported: true,
     });
 });

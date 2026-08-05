@@ -41,8 +41,8 @@ export type { AiSdkProviderConfig, ReasoningStyle, GrammarStyle } from "./AiSdkP
 // DECISION stays the consumer's, by choosing which pool to call.
 export { default as Pool } from "./Pool.ts";
 export type { ProviderFetch } from "./AiSdkProvider.ts";
-export { parseRequiredInt, parseOptionalInt, parseRequiredFloat, parseOptionalFloat, requireEnv, reasoningFromEnv, scopeEnvToAlias, dataCaptureFromEnv, contextWindowFromEnv, effectiveContextWindow, envelopeFromEnv, resolveReserve, PROVIDERS_KNOBS } from "./env.ts";
-export type { Reasoning, ReasoningMode, ReserveSpec } from "./env.ts";
+export { parseRequiredInt, parseOptionalInt, parseRequiredFloat, parseOptionalFloat, requireEnv, reasoningFromEnv, reasoningResponseStyleFromEnv, scopeEnvToAlias, dataCaptureFromEnv, contextWindowFromEnv, effectiveContextWindow, envelopeFromEnv, resolveReserve, PROVIDERS_KNOBS } from "./env.ts";
+export type { Reasoning, ReasoningMode, ReasoningResponseStyle, ReserveSpec } from "./env.ts";
 export { normalizeUsage, calculateCostUsd } from "./usage.ts";
 export type { RawUsage, TokenRates } from "./usage.ts";
 export { ProviderError, classifyProviderError, toProviderError } from "./errors.ts";
