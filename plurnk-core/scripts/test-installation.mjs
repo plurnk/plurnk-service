@@ -1,7 +1,7 @@
 // Off-hot-path e2e: install the built package into a clean sandbox as a consumer would, then
 // prove it works out of the box — the embedder ships in the default composition with no
 // native install scripts, the bin boots the DB from the installed dist, the daemon listens, and a
-// fresh install has NO active model (the #307 no-phone-home posture): the pointer surfaces instead.
+// fresh install has no active model ({§operator-config-shipped-defaults}): the pointer surfaces instead.
 // The hosted-model round-trip is a deliberate red until that endpoint is live.
 import { execFileSync, spawn } from "node:child_process";
 import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
@@ -209,8 +209,8 @@ const boot = await bootStart({
 });
 ok(boot.listening === true, "`start` boots the daemon (the AG-UI listener bound — single-listener production, #357)");
 ok(!/embedder inactive/.test(boot.stderr), "no embedder-inactive notice — the shipped embedder is active");
-// #307 — a fresh install resolves NO model: the boot line says so, the stderr pointer names the
-// three options, and nothing can phone the hosted relay without the user uncommenting it.
+// {§operator-config-shipped-defaults}: a fresh install resolves no model and names
+// the available configuration paths instead.
 ok(/ no model\n?$/m.test(boot.stdout) || /no model/.test(boot.stdout), "startup line reports 'no model' on an untouched install (no hosted default)");
 ok(/no model configured/.test(boot.stderr) && /local \/ cloud \/ plurnk\.ai/.test(boot.stderr), "the pointer names the three options in ~/.plurnk/.env");
 

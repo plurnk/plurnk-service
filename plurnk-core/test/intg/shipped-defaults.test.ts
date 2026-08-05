@@ -27,7 +27,7 @@ test("the template ships no double policy, no active model, ONLY service-owned k
     // Policy is a privileged section; shipping the same content as an MD entry would duplicate it.
     const mdKeys = [...env.keys()].filter((k) => k.startsWith("PLURNK_SERVICE_MD_"));
     assert.deepEqual(mdKeys, [], `no active PLURNK_SERVICE_MD_* doc default ships; got ${mdKeys.join(", ")}`);
-    // No active model — the local/cloud/plurnk.ai selection is the user's (#307).
+    // {§operator-config-shipped-defaults}: model selection belongs to the operator.
     assert.equal(env.get("PLURNK_MODEL"), undefined, "no active PLURNK_MODEL ships");
     // {§operator-config-env-defaults} — a knob has exactly one owner, and this file declares ONLY
     // the service's: PLURNK_SERVICE_* plus the daemon's own unprefixed surface (HOST/PORT, the
