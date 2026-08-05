@@ -10,6 +10,7 @@ import {
     parseRequiredInt,
     promptCacheKeyFromEnv,
     reasoningFromEnv,
+    reasoningResponseStyleFromEnv,
 } from "./env.ts";
 import { providerSource } from "./notices.ts";
 import type { Provider } from "./types.ts";
@@ -177,6 +178,7 @@ export const compatibleProviderFromEnv = async (
         fetchTimeoutMs: timeout,
         streamIdleTimeoutMs: parseRequiredInt(env.PLURNK_PROVIDERS_STREAM_IDLE_TIMEOUT, "PLURNK_PROVIDERS_STREAM_IDLE_TIMEOUT", provider),
         reasoning: reasoningFromEnv(env, provider),
+        reasoningResponseStyle: reasoningResponseStyleFromEnv(env, provider),
         reasoningStyle,
         temperature: parseRequiredFloat(env.PLURNK_PROVIDERS_TEMPERATURE, "PLURNK_PROVIDERS_TEMPERATURE", provider, 0),
         repeatPenalty: parseRequiredFloat(env.PLURNK_PROVIDERS_REPEAT_PENALTY, "PLURNK_PROVIDERS_REPEAT_PENALTY", provider, 0),

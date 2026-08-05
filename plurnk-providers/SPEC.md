@@ -107,6 +107,29 @@ cached ⊆ prompt
 `null` and emits a warning. `resource_interrupted` is the distinct failed-attempt
 disposition defined by {§provider-interrupted-attempt}.
 
+### Tagged reasoning responses
+
+§provider-tagged-reasoning Structured provider or SDK reasoning fields are
+authoritative. Visible content is interpreted as tagged reasoning only under an
+explicit alias-scoped response style:
+
+| Effective style | Leading content                                            | Normalized result                                                                                         |
+| --------------- | ---------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| `verbatim`      | Any bytes.                                                 | Content remains exact; only structured reasoning fields populate `reasoning`.                             |
+| `think-tags`    | No exact leading `<think>`.                                | Content remains exact.                                                                                   |
+| `think-tags`    | `<think>reasoning</think>visible`.                         | The first envelope body becomes reasoning; the exact suffix becomes content. Later tags remain literal.  |
+| `think-tags`    | `<think>reasoning` with no close, including a capped turn. | The complete post-open tail becomes reasoning; content is empty.                                         |
+
+Tag projection never runs when readable structured reasoning is already
+present. Streamed and buffered transports converge on this response boundary.
+When the upstream reports only combined output usage, the existing
+sum-preserving text-proportion estimate reclassifies completion versus reasoning
+without changing prompt, cached input, total output, or billed output.
+
+Grammar evidence retains the exact pre-projection sentence and its Unicode
+content offset. Response classification cannot rewrite what a transported GBNF
+rail observed.
+
 ## §3 AI SDK boundary
 
 §provider-sdk-boundary Cataloged providers instantiate their
@@ -160,6 +183,7 @@ knob's owning contract.
 The universal groups are:
 
 - reasoning activation and optional explicit budget;
+- explicit reasoning response-content style;
 - decode tuning;
 - request, stream-idle, retry, and probe budgets;
 - local GBNF and llama-server capability pins;
@@ -437,6 +461,8 @@ Coverage MUST prove:
 - local capability probes and pins;
 - exact, bounded, and estimated complete-request token measurements;
 - local reasoning activation, response-wide allowance, and GBNF coexistence;
+- explicit tagged-reasoning projection across streamed, buffered, capped, and
+  literal-tag responses;
 - usage, costs, evidence, metadata isolation, and grammar observation;
 - alias scoping and fail-hard invalid configuration.
 

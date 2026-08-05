@@ -1,6 +1,6 @@
 import test from "node:test";
 import { strict as assert } from "node:assert";
-import { parseRequiredInt, parseOptionalInt, requireEnv, reasoningFromEnv, tokenRatesFromEnv } from "./env.ts";
+import { parseRequiredInt, parseOptionalInt, requireEnv, reasoningFromEnv, reasoningResponseStyleFromEnv, tokenRatesFromEnv } from "./env.ts";
 
 test("parseRequiredInt: parses a non-negative integer", () => {
     assert.equal(parseRequiredInt("600000", "PLURNK_PROVIDERS_FETCH_TIMEOUT", "openai"), 600000);
@@ -38,6 +38,19 @@ test("reasoningFromEnv: activation modes parse; budget required IFF on; fail-har
     assert.throws(() => reasoningFromEnv({ PLURNK_PROVIDERS_REASONING: "on" }, "openai"), /PLURNK_PROVIDERS_REASONING_BUDGET must be set when/);
     assert.throws(() => reasoningFromEnv({ PLURNK_PROVIDERS_REASONING: "on", PLURNK_PROVIDERS_REASONING_BUDGET: "0" }, "openai"), /positive integer/);
     assert.throws(() => reasoningFromEnv({ PLURNK_PROVIDERS_REASONING: "on", PLURNK_PROVIDERS_REASONING_BUDGET: "1.5" }, "openai"), /positive integer/);
+});
+
+test("{§provider-tagged-reasoning} response style is explicit and invalid values fail at the provider boundary", () => {
+    assert.equal(reasoningResponseStyleFromEnv({}, "cloudflare"), "verbatim");
+    assert.equal(reasoningResponseStyleFromEnv({
+        PLURNK_PROVIDERS_REASONING_RESPONSE_STYLE: "think-tags",
+    }, "cloudflare"), "think-tags");
+    assert.throws(
+        () => reasoningResponseStyleFromEnv({
+            PLURNK_PROVIDERS_REASONING_RESPONSE_STYLE: "auto",
+        }, "cloudflare"),
+        /cloudflare provider: PLURNK_PROVIDERS_REASONING_RESPONSE_STYLE must be "verbatim" or "think-tags" \(got "auto"\)/,
+    );
 });
 
 test("requireEnv: returns the value or throws a named error", () => {
@@ -79,6 +92,7 @@ test("scopeEnvToAlias: suffixed knob wins, bare is the fallback, other aliases i
         PLURNK_PROVIDERS_REASONING: "off",
         PLURNK_PROVIDERS_REASONING_turboderp: "on",
         PLURNK_PROVIDERS_REASONING_BUDGET_TURBODERP: "4096", // case-folds like PLURNK_MODEL_ keys
+        PLURNK_PROVIDERS_REASONING_RESPONSE_STYLE_TURBODERP: "think-tags",
         PLURNK_PROVIDERS_CONTEXT_WINDOW_turboderp: "8000",
         PLURNK_PROVIDERS_COMPLETION_RESERVE_turboderp: "4096",
         PLURNK_PROVIDERS_CONTEXT_WINDOW_other: "1",
@@ -86,6 +100,7 @@ test("scopeEnvToAlias: suffixed knob wins, bare is the fallback, other aliases i
     const scoped = scopeEnvToAlias(env, "turboderp");
     assert.equal(scoped.PLURNK_PROVIDERS_REASONING, "on");
     assert.equal(scoped.PLURNK_PROVIDERS_REASONING_BUDGET, "4096");
+    assert.equal(scoped.PLURNK_PROVIDERS_REASONING_RESPONSE_STYLE, "think-tags");
     assert.equal(scoped.PLURNK_PROVIDERS_CONTEXT_WINDOW, "8000");
     assert.equal(scoped.PLURNK_PROVIDERS_COMPLETION_RESERVE, "4096");
     assert.equal(scopeEnvToAlias(env, "plain").PLURNK_PROVIDERS_REASONING, "off"); // fallback intact
