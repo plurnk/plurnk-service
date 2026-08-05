@@ -152,7 +152,7 @@ export default class GitMembership {
     // Shared overlay inputs — the candidate sets (git tracked+untracked union, pick scan) and
     // the overlay globs, before composition. Single-sources the (git ∪ pick) derivation + the
     // glob sets for resolveGitMembership (compose + reconcile) and resolveMembershipEffects
-    // (derive per-file effect for clients, #243). Headless (no project_root) → null.
+    // (derive per-file effect for clients, {§membership-resolved-effects}). Headless → null.
     static async #resolveOverlayInputs(
         db: Db,
         workspaceId: number,
@@ -238,8 +238,8 @@ export default class GitMembership {
         return desired;
     }
 
-    // Resolve each candidate's membership EFFECT without mutating — a read for clients (#243,
-    // plurnk.nvim gutter signs): the same (git ∪ pick) / hide / view resolution resolveGitMembership
+    // Resolve each candidate's membership effect without mutating — a read for clients
+    // ({§membership-resolved-effects}): the same (git ∪ pick) / hide / view resolution resolveGitMembership
     // composes, surfaced per-file so a client signs member/view/hidden with ZERO glob-matching of
     // its own. `members` are (git ∪ pick) − hide, each tagged `view` (read-only, refused at the
     // File edit gate {§membership-overlay-view}) or plain `member`; `hidden` are candidates a `hide`
@@ -297,7 +297,7 @@ export default class GitMembership {
     // (D4/D5). Change-gated: a member whose mtime:size signature is unchanged since its
     // last sync is a no-op (the stat-gate below) — re-read + rewrite only on change.
     // Binary members materialize as an EMPTY body
-    // channel stamped with their binary mimetype (#186 — visible in the manifest
+    // channel stamped with their binary mimetype ({§mimetype-classification-consumption} — visible in the manifest
     // and READ-415 via the one isBinaryMimetype gate, not a 404 ghost).
     // Missing-on-disk (tracked but deleted in the working tree) is
     // skipped — membership stands, no channel.
@@ -332,7 +332,7 @@ export default class GitMembership {
         if (await MimetypeBinary.isBinaryMimetype(mimetype, ctx.mimetypes)) {
             // Empty body channel stamped with the real binary mimetype — a first-
             // class entry that READ-415s through readWorkspaceEntry's isBinaryMimetype
-            // gate (#186), not a channel-less row that would read as 404.
+            // gate, not a channel-less row that would read as 404.
             const r = await EntryCrud.writeEntry(pathname, { channels: { body: { content: "", mimetype } }, tags: [] }, ctx, "file");
             if (r.entryId !== null) await ctx.db.crud_set_synced_sig.run({ entry_id: r.entryId, synced_sig: sig });
             return null;  // binary bodies are empty markers — no text divergence to narrate
@@ -344,7 +344,7 @@ export default class GitMembership {
             if ((err as NodeJS.ErrnoException).code === "ENOENT") return null;
             throw err;
         }
-        // {§membership-binary-sniff} (#320) — the extension map can lie (.wasm fell through to
+        // {§membership-binary-sniff} — the extension map can lie (.wasm fell through to
         // the markdown DEFAULT and a 3.3MB blob entered the corpus as prose, three copies,
         // ~10M tokens). NUL bytes in the head are binary truth regardless of the label:
         // re-stamp octet-stream and take the binary arm (empty body, READ-415, never

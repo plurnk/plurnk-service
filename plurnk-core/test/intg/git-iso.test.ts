@@ -1,4 +1,4 @@
-// {§git-isomorphic-opt-in} (#461) - differential coverage for the optional
+// {§git-isomorphic-opt-in} — differential coverage for the optional
 // GitIso backend. Fixtures are seeded with native Git, then read through both
 // backends. Native is the production default; isomorphic Git must be selected.
 
@@ -210,12 +210,12 @@ test("an unsupported isomorphic-git repository fails with the native-backend rem
     }
 });
 
-// The gitignore edge-case corpus (#463) — the differential gate for the pruning-walk untracked
+// The gitignore edge-case corpus is the differential gate for the pruning-walk untracked
 // scan. Native `ls-files --others --exclude-standard` is the oracle; the walk must reproduce it
 // byte-for-byte across: negations, anchored patterns, dir-vs-glob patterns (`build/**` + re-include
 // vs `node_modules/` prune), NESTED .gitignore precedence, `.git/info/exclude`, a submodule
 // boundary (gitlink — never descended), and an embedded plain repo (its own .git, not a submodule).
-test("untracked scan reproduces native --exclude-standard across the gitignore edge-case corpus (#463)", async () => {
+test("untracked scan reproduces native --exclude-standard across the gitignore edge-case corpus", async () => {
     const inner = await seedRepo("iso-corpus-sub-");
     await writeFile(join(inner, "inner.txt"), "i\n"); git(inner, "add", "."); commit(inner, "sub seed");
     const root = await seedRepo("iso-corpus-");

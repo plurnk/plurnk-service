@@ -358,7 +358,7 @@ CREATE TABLE IF NOT EXISTS entries (
     -- == members; 'client'/'constraint' (model-created, add-glob) are not git's to reclaim.
     -- NULL = not a file member (other schemes don't carry origin).
     membership_origin TEXT                   CHECK (membership_origin IS NULL OR membership_origin IN ('git', 'client', 'constraint')),
-    -- @graph / ~semantic change-gate (#186): hash of the body content at the last
+    -- {§membership-change-gated-sync}: hash of the body content at the last
     -- deep-channel derivation. The manifest-add pass re-derives symbols/refs (and
     -- embeddings, later) ONLY when this differs from the current body hash — an
     -- unchanged entry is skipped, never re-metadatafied every turn.

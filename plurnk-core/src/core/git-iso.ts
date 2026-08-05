@@ -1,4 +1,4 @@
-// Optional in-process Git reads (#461/#463, isomorphic-git + `ignore`). This
+// {§git-isomorphic-opt-in} — optional in-process Git reads. This
 // backend takes an explicit dir and reads no GIT_* env or global/system config.
 // Native Git is the default; PLURNK_SERVICE_GIT_ISO=1 selects this slower
 // portability backend for a deployment that cannot spawn Git.
@@ -61,8 +61,6 @@ export default class GitIso {
         const gitlinks: string[] = [];
         await git.walk({
             fs, dir: root, cache, trees: [STAGE()],
-            // Explicit param types (#469): a TS7031 fired on a box whose inference didn't flow the
-            // WalkerMap contextual type into the destructured param — annotate, never rely on it.
             map: async (filepath: string, [stage]: Array<WalkerEntry | null>) => {
                 if (filepath === "." || stage === null) return undefined;
                 const type = await stage.type();
@@ -83,7 +81,7 @@ export default class GitIso {
     }
 
     // Untracked-but-not-ignored files — parity with `git ls-files --others --exclude-standard`,
-    // differential-gated against it across the gitignore edge-case corpus (#463). A pruning
+    // differential-gated against it across the gitignore edge-case corpus. A pruning
     // fs-walk with the `ignore` lib: rules load ONCE per .gitignore (per-file `git.isIgnored`
     // re-parses every call — measured 237x native; statusMatrix hashes the workdir — 55x, and
     // crosses embedded-repo boundaries; the whole membership pass measures ~8x). Precedence is

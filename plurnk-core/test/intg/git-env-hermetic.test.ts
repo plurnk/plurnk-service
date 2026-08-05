@@ -1,9 +1,5 @@
-// {§membership-git-hermetic} — #401: a process launched from a git hook inherits GIT_DIR
-// (ABSOLUTE in a worktree checkout), which retargets every child git at the enclosing repo
-// regardless of cwd. The providers lane's pre-push drill stacked 16 fixture 'seed' commits onto
-// her lane branch and deleted tracked files. This pin runs the two spawn classes — a fixture
-// sandbox and production membership — under a hostile absolute GIT_DIR aimed at a victim
-// worktree, and proves the victim untouched.
+// {§membership-git-hermetic} — fixture and production Git spawns ignore a hostile
+// launch environment, bind repository identity to cwd, and never consume global hooks.
 import test from "node:test";
 import Owner from "../../src/core/Owner.ts";
 import assert from "node:assert/strict";
@@ -22,7 +18,7 @@ const execFileP = promisify(execFile);
 const git = (args: string[], cwd: string) => execFileP("git", args, { cwd, env: hermeticGitEnv() });
 const seed = (cwd: string) => execFileP("git", ["-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null", "commit", "--no-verify", "-q", "-m", "seed"], { cwd, env: hermeticGitEnv() });
 
-test("fixture + production git spawns ignore a hook's absolute GIT_DIR — the victim worktree stays untouched (#401)", async () => {
+test("fixture + production git spawns ignore a hook's absolute GIT_DIR — the victim worktree stays untouched", async () => {
     const base = await mkdtemp(join(tmpdir(), "plurnk-hermetic-"));
     const victim = join(base, "victim");
     const priorGitDir = process.env.GIT_DIR;
@@ -82,12 +78,12 @@ test("fixture + production git spawns ignore a hook's absolute GIT_DIR — the v
     }
 });
 
-test("a spawn under hermeticGitEnv severs a hostile GLOBAL core.hooksPath — it never fires or escapes (#428)", async () => {
+test("a spawn under hermeticGitEnv severs a hostile GLOBAL core.hooksPath — it never fires or escapes", async () => {
     const base = await mkdtemp(join(tmpdir(), "plurnk-hooksesc-"));
     const priorGlobal = process.env.GIT_CONFIG_GLOBAL;
     try {
         // A HOSTILE machine global config: core.hooksPath → a hook dir whose pre-commit fires a marker.
-        // This is the #428 vector — a real global core.hooksPath (the dotfiles hook) a sandbox git read.
+        // A real global core.hooksPath is the hostile machine-config vector under test.
         const evilHooks = join(base, "evil-hooks"); await mkdir(evilHooks);
         const marker = join(base, "PWNED");
         await writeFile(join(evilHooks, "pre-commit"), `#!/bin/sh\ntouch "${marker}"\n`); await chmod(join(evilHooks, "pre-commit"), 0o755);
@@ -106,7 +102,7 @@ test("a spawn under hermeticGitEnv severs a hostile GLOBAL core.hooksPath — it
         // CONTROL: a GIT_*-scrubbed env + the hostile global DOES fire the hook — proves the vector is
         // real, not a tautology. The scrub is essential and self-referential: raw process.env would
         // inherit a pre-push hook's absolute GIT_DIR (this test runs inside the drill) and the control
-        // commit would ESCAPE into the worktree — the very #401/#428 class under test. Scrubbing GIT_*
+        // commit would escape into the worktree. Scrubbing GIT_*
         // (what hermeticGitEnv also does) confines the commit to its own repo while the hostile
         // GIT_CONFIG_GLOBAL still routes the hook.
         const scrubbedGit = Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith("GIT_")));
