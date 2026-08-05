@@ -1074,7 +1074,7 @@ export default class Engine {
                     turnZeroMoves.push(`<<FIND(${isFile ? pattern : `${scheme}:///${pattern}`})${cap === null ? "" : `<1,${cap}>`}::FIND`);
                 }
                 // The kernel's self-documenting surface — FIND(worker://plurnk/docs/**), uncapped,
-                // always (the law materializes the docs): the #270 discovery foist, re-homed (#527).
+                // always ({§schemes-directory}, published under {§entry-owner}).
                 await Owner.kernelId(this.#db, workspaceId); // the row exists even before docs materialize — the empty survey is orienting, never 404
                 const kernelDocsFind: FindStatement = {
                     op: "FIND", suffix: "", signal: null,

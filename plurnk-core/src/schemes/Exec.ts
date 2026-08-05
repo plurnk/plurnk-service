@@ -108,7 +108,8 @@ const coordinateFromPathname = (pathname: string): StreamCoordinate | undefined 
 // {§stream-owner-scoped} — resolve a stream statement's authority to the owning worker and hand
 // back the statement authority-stripped (the storage path is the bare loop coordinate; the owner
 // rides the owner_id column, never the pathname). Empty authority = the CALLING worker — your own
-// streams need no qualifier, so a fan-out sibling's identical coordinate can never be yours (#526).
+// streams need no qualifier, so a fan-out sibling's identical coordinate can never be yours
+// ({§stream-owner-scoped}).
 // A named authority = that worker's streams, ancestry-gated (reader must be the owner or an
 // ancestor); an unknown name or unpermitted reader resolves null → the face 404s, no existence leak.
 export const resolveStreamStatement = async <S extends { target: ReadStatement["target"] }>(
@@ -205,7 +206,7 @@ export default class Exec extends CoreSchemeAdapterBase {
         // Not running — settle the outcome from the closed subscription's status, scoped to the
         // caller's own subscription (coordinates duplicate across workers, {§stream-owner-scoped}).
         // The error answers in the model's OWN runtime-tag address (sh:///…), never the retired
-        // internal `exec` scheme (#527, {§fs-answer-in-canon}) — the model KILLs what it addressed.
+        // internal `exec` machinery ({§fs-answer-in-canon}) — the model KILLs what it addressed.
         const terminal = await ChannelWrite.execTerminalStatus(core.db, {
             workspaceId: core.workspaceId,
             workerId: core.workerId,

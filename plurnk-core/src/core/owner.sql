@@ -1,4 +1,4 @@
--- #527 {§entry-owner} — entry ownership primitives. Every entry is owned by a worker; the
+-- {§entry-owner} — entry ownership primitives. Every entry is owned by a worker; the
 -- workspace's reserved 'commons' worker owns shared content, the spawning worker owns its
 -- capability streams. Owner ids never render — the model addresses owners by NAME (authority).
 

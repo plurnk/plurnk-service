@@ -23,7 +23,7 @@ export const markTerminal = (terminatedBy: string | null, message: string | null
     return message;
 };
 
-// worker:// — THE knowledgebase scheme (#527) plus inter-worker CONTROL (irc=SEND; WORK/FORK are
+// {§worker-scheme} — worker:// is the knowledgebase plus inter-worker control (irc=SEND; WORK/FORK are
 // Dispatcher.#handleWorkerControl). The authority names the OWNER ({§worker-authority-carving}):
 //   worker:///notes.md         — the COMMONS, a shared blackboard
 //   worker://~/draft.md        — the calling worker's own private space

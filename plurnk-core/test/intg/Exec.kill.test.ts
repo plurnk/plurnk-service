@@ -107,7 +107,7 @@ test("a stream KILL error answers in the model's runtime-tag scheme, never the i
         const exec = new Exec();
         // The model addresses a stream by its RUNTIME TAG; kill() must render the error in the
         // scheme it was CALLED with (the dispatcher passes the model's schemeName), never the
-        // retired-internal exec (#527). run11: the model KILLed sh:/// and got exec:// back.
+        // internal exec machinery. The model KILLed sh:/// and must not get exec:// back.
         const notRunning = await exec.kill("/3/1/4", null, ctx as never, "sh");
         assert.equal(notRunning.status, 404);
         assert.match(notRunning.problem?.detail ?? "", /sh:\/\/\/3\/1\/4/, "error names the model's own sh:/// address");

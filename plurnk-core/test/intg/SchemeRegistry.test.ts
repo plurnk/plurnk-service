@@ -65,7 +65,7 @@ test("SchemeRegistry: list() is sorted and exhaustive", () => {
     class FakeHttps { static manifest = manifest("https"); }
     r.register("wss", new FakeWs());
     r.register("https", new FakeHttps());
-    assert.deepEqual(r.list().toSorted(), ["exec", "file", "https", "log", "prompt", "skill", "worker", "wss"], "the #527 roster + the two registered externals");
+    assert.deepEqual(r.list().toSorted(), ["exec", "file", "https", "log", "prompt", "skill", "worker", "wss"], "the core roster plus two registered externals");
 });
 
 test("SchemeRegistry: two independent registries don't share state", () => {

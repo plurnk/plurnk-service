@@ -1,7 +1,7 @@
 import type { EntryAddress, EntryEditResult, EntryFindResult, EntryReadResult, SchemeCtx, SchemeHandler, SchemeManifest } from "@plurnk/plurnk-schemes";
 import type { EditStatement, FindStatement, ParsedPath, ReadStatement } from "@plurnk/plurnk-contracts";
 
-// prompt:// — the worker's own task frames ({§prompt-self-only}, #527): each loop's prompt at
+// {§prompt-self-only} — prompt:// carries the worker's own task frames: each loop's prompt at
 // prompt:///<loopSeq>/<turnSeq>, owned by the worker via owner_id — the address carries only the
 // loop coordinate, so no worker identity ever rides a pathname or a packet. SELF-ONLY by
 // construction: packets are per-worker and every cross-worker prompt flow (parent→child inject,

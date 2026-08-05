@@ -1,7 +1,7 @@
 import type { Db } from "./Db.ts";
 import type { PlurnkSchemeContext } from "./scheme-types.ts";
 
-// #527 {§entry-owner} — entry ownership. Every entry is owned by a worker row: the workspace's
+// {§entry-owner} — every entry is owned by a worker row: the workspace's
 // reserved 'commons' worker for shared content, the spawning worker for capability streams. The
 // owner id is a storage foreign key that NEVER renders into a URI or packet; the model addresses
 // owners by NAME in the authority slot, and an empty authority resolves to the ambient principal

@@ -346,7 +346,7 @@ CREATE TABLE IF NOT EXISTS entries (
     workspace_id INTEGER,
     scheme     TEXT    NOT NULL             CHECK (length(scheme) > 0),
     pathname   TEXT    NOT NULL,
-    -- #527 {§entry-owner} — every entry is owned by a worker: the spawning worker for capability
+    -- {§entry-owner} — every entry is owned by a worker: the spawning worker for capability
     -- streams, the workspace's reserved 'commons' worker for shared content. A real row, never
     -- NULL (NULLs are distinct under UNIQUE — a nullable owner would let the commons fragment).
     -- The id never renders into a URI or packet; the model addresses owners by NAME (authority).
@@ -380,7 +380,8 @@ CREATE TABLE IF NOT EXISTS entries (
 
 -- {§entry-owner} / {§stream-owner-scoped} — owner is the sole visibility and identity axis.
 -- Concurrent workers' capability streams share the loop-relative coordinate (every worker's first
--- loop is seq 1), so identity keys on the owner and identical coordinates are DISTINCT rows (#526).
+-- loop is seq 1), so identity keys on the owner and identical coordinates are distinct rows
+-- ({§stream-owner-scoped}).
 CREATE UNIQUE INDEX IF NOT EXISTS entries_identity ON entries (workspace_id, owner_id, scheme, pathname);
 
 -- The ONE engine-imposed constraint (SPEC {§stream-constraints}, {§stream-constraints-engine-one-cap}): 100 MiB char-length cap
