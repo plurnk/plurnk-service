@@ -39,8 +39,8 @@ import { homedir } from "node:os";
 import SqlRiteSync from "@possumtech/sqlrite/sync";
 import type { SqlRiteSyncPreparedStatements } from "@possumtech/sqlrite";
 
-// sqlrite 6.x types the dynamic PREP accessors as `any` ([method: string]) — bind each
-// block accessor to the shipped generic statement shape at the site (#535).
+// sqlrite types dynamic PREP accessors as `any` ([method: string]); bind each
+// block accessor to its shipped generic statement shape at the use site.
 type SyncPrep<T> = SqlRiteSyncPreparedStatements<T>;
 import PacketWire from "../core/packet-wire.ts";
 import StoredPacket, { type DurablePacket } from "../core/StoredPacket.ts";
