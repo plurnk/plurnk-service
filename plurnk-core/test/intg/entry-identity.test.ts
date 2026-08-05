@@ -1,19 +1,15 @@
-// {§entry-identity-no-null} (#545, run59) — the identity tuple admits no NULL component.
-// The proof is the exact production failure in miniature: the per-turn membership upsert
-// must CONFLICT (one row, ever) instead of fragmenting one phantom row per turn — the
-// 74k-rows-for-530-identities specimen. Plus the schema wall itself: a NULL scheme insert
-// is refused at the column, not discovered by a benchmark agent 220 turns later.
+// {§entry-identity-no-null} — repeated registration converges and NULL cannot fragment identity.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { openMigrated, insertWorkspace } from "./_helpers.ts";
 import Owner from "../../src/core/Owner.ts";
 
-test("the per-turn membership upsert converges to ONE row — the run59 fragmentation is structurally impossible", async () => {
+test("{§entry-identity-no-null}: repeated membership registration converges to one row", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `identity-${crypto.randomUUID()}`);
         const commonsId = await Owner.commonsId(db, workspaceId);
-        // Three "turn boundaries" re-registering the same member — the exact production shape.
+        // Simulate repeated turn-boundary registration of one member.
         for (let turn = 0; turn < 3; turn++) {
             await db.crud_register_workspace_member.get({ workspace_id: workspaceId, owner_id: commonsId, scheme: "file", pathname: "/evaluator/functions.go", membership_origin: "git" });
         }
@@ -22,7 +18,7 @@ test("the per-turn membership upsert converges to ONE row — the run59 fragment
     } finally { await db.close(); }
 });
 
-test("a NULL-scheme insert is refused by the schema wall", async () => {
+test("{§entry-identity-no-null}: the schema refuses a NULL scheme", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `identity-null-${crypto.randomUUID()}`);

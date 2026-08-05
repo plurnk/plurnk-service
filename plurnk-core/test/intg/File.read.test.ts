@@ -395,12 +395,8 @@ test("File.read: absolute path OUTSIDE workspace → 404 (never a member)", asyn
     });
 });
 
-// The run59 headline in miniature (#545): a write that GROWS a file, then a READ of the
-// newly-valid tail. run59 got 416 "entry has 2742 lines" against a file that had grown past
-// that — the stale post-write length, born of the identity fragmentation ({§entry-identity-no-null}:
-// one .get() hitting an arbitrary duplicate row). With one row per identity, the re-materialize
-// updates THE row and the read sees fresh length. The 981-416 disease, pinned as a named guard.
-test("a write that grows a file — the newly-valid tail READs 200, the over-EOF fact carries the POST-write count (run59 #545)", async () => {
+// {§membership-change-gated-sync} — rematerialization refreshes both content and extent.
+test("{§membership-change-gated-sync}: a grown file exposes newly valid lines and its current extent", async () => {
     await withWorkspaceRoot(async (root, ctx) => {
         await writeFile(join(root, "grow.txt"), "l1\nl2\nl3\n");
         await addMember(ctx, "grow.txt");
@@ -408,21 +404,21 @@ test("a write that grows a file — the newly-valid tail READs 200, the over-EOF
         const before = await new File().read(readStmt(urlPath("file", "/grow.txt"), { lineMarker: { marks: [6] } }), ctx);
         assert.equal(before.status, 416, "line 6 is out of range on the 3-line file");
 
-        // Grow the file to 8 lines and re-materialize (the reconcile path after a disk write).
+        // Grow the file to 8 lines and re-materialize.
         await writeFile(join(root, "grow.txt"), "l1\nl2\nl3\nl4\nl5\nl6\nl7\nl8\n");
         await addMember(ctx, "grow.txt");
 
-        // The SAME read now succeeds — no stale post-write length (run59's 981×416 killer).
+        // The same read now succeeds against the refreshed snapshot.
         const after = await new File().read(readStmt(urlPath("file", "/grow.txt"), { lineMarker: { marks: [6] } }), ctx);
         assert.equal(after.status, 200, "line 6 reads after the growth — the entry's length tracks disk, not a stale duplicate row");
         assert.equal(after.content, "l6");
 
-        // And an over-EOF read now names the POST-write count, distinguishable per {§fs-errno}.
+        // An over-EOF read names the refreshed line count per {§fs-errno}.
         // A trailing newline is a terminator, not a ninth addressable line; the
         // advertised extent and the slicer's actual address space are identical.
         const over = await new File().read(readStmt(urlPath("file", "/grow.txt"), { lineMarker: { marks: [99] } }), ctx);
         assert.equal(over.status, 416);
         const range = over.problem?.range as { available?: { total?: number } };
-        assert.equal(range.available?.total, 8, "the range fact carries the FRESH post-write count — not the stale pre-growth count");
+        assert.equal(range.available?.total, 8, "the range fact carries the refreshed line count");
     });
 });
