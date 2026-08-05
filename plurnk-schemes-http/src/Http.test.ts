@@ -1740,7 +1740,11 @@ test("READ revalidation: prior ETag → If-None-Match → 304 serves cached proj
     let seenINM = "";
     const probe = async (_url: string | URL | Request, init?: RequestInit) => {
         seenINM = new Headers(init?.headers).get("if-none-match") ?? "";
-        return new Response(null, { status: 304, statusText: "Not Modified" });
+        return new Response(null, {
+            status: 304,
+            statusText: "Not Modified",
+            headers: { etag: '"v1"' },
+        });
     };
     await withFetch(probe as typeof fetch, async () => {
         const r = await new Http(browser).read(readStmt(urlTarget("https://example.com/p", "/p")), ctx);
@@ -1808,6 +1812,13 @@ for (const {
         storedValidator: "last-modified: Tue, 15 Nov 1994 12:45:26 GMT",
         responseHeaders: { "last-modified": "Wed, 16 Nov 1994 12:45:26 GMT" },
         expectedConditional: ["if-modified-since", "Tue, 15 Nov 1994 12:45:26 GMT"],
+        valid: false,
+    },
+    {
+        name: "matching malformed Last-Modified values cannot certify the stored response",
+        storedValidator: "last-modified: 0",
+        responseHeaders: { "last-modified": "0" },
+        expectedConditional: ["if-modified-since", "0"],
         valid: false,
     },
     {
@@ -2039,7 +2050,7 @@ test("cache variant: a 304 that introduces Vary retires default reuse", async ()
     await withTtl("0", async () => {
         await withFetch(async () => new Response(null, {
             status: 304,
-            headers: { vary: "Accept-Language" },
+            headers: { etag: '"v1"', vary: "Accept-Language" },
         }), async () => {
             await new Http().read(readStmt(urlTarget("https://example.com/variant", "/variant")), ctx);
         });
@@ -2548,7 +2559,11 @@ test("READ revalidation: 304 restores a completed empty representation", async (
     await withTtl("60000", async () => {
         await withFetch((async (_url: string | URL | Request, init?: RequestInit) => {
             seenINM = new Headers(init?.headers).get("if-none-match") ?? "";
-            return new Response(null, { status: 304, statusText: "Not Modified" });
+            return new Response(null, {
+                status: 304,
+                statusText: "Not Modified",
+                headers: { etag: '"empty"' },
+            });
         }) as typeof fetch, async () => {
             await new Http().read(readStmt(urlTarget("https://example.com/empty", "/empty")), ctx);
         });
@@ -2608,7 +2623,10 @@ test("TTL: an unmarked authored entry never supplies GET freshness or validators
 test("TTL: explicit 0 disables the window — fresh stamp still revalidates", async () => {
     const { ctx } = makeCtx(priorEntry("cached", "text/plain", stampedHeader(1000, "\netag: \"v1\"")));
     let fetched = false;
-    const probe = async () => { fetched = true; return new Response(null, { status: 304 }); };
+    const probe = async () => {
+        fetched = true;
+        return new Response(null, { status: 304, headers: { etag: '"v1"' } });
+    };
     await withTtl("0", async () => {
         await withFetch(probe as typeof fetch, async () => {
             await new Http().read(readStmt(urlTarget("https://example.com/p", "/p")), ctx);
@@ -2638,7 +2656,10 @@ test("stamp: #writeHeader materializes x-plurnk-fetched-at; 304 re-serve refresh
     const old = stampedHeader(500_000, "\netag: \"v1\"");
     const { ctx: ctx2, inspect: inspect2 } = makeCtx(priorEntry("cached", "text/plain", old));
     await withTtl("0", async () => {
-        await withFetch((async () => new Response(null, { status: 304 })) as unknown as typeof fetch, async () => {
+        await withFetch((async () => new Response(null, {
+            status: 304,
+            headers: { etag: '"v1"' },
+        })) as unknown as typeof fetch, async () => {
             await new Http().read(readStmt(urlTarget("https://example.com/s", "/s")), ctx2);
         });
     });
