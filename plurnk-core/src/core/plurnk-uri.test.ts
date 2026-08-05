@@ -37,7 +37,7 @@ test("renderAddress gives retired and arbitrary non-network schemes no private r
     assert.equal(renderAddress("notes", "/docs/x.md"), "notes:///docs/x.md");
 });
 
-test("renderAddress: non-network schemes keep empty-authority :///; network schemes restore the authority (#370)", () => {
+test("{§network-address}: network schemes restore authority while namespaces retain :///", () => {
     assert.equal(renderAddress("notes", "/france/capital"), "notes:///france/capital");
     // {§scheme-address} — the folded first segment renders as the network host.
     assert.equal(renderAddress("http", "/en.wikipedia.org/wiki/Paris"), "http://en.wikipedia.org/wiki/Paris");
@@ -48,7 +48,7 @@ test("renderAddress: non-network schemes keep empty-authority :///; network sche
     );
 });
 
-test("schemeNameOf: https rides http; ws rides wss — two first-class schemes, one package (#473)", () => {
+test("{§scheme-address-network}: https routes through http and ws routes through wss", () => {
     assert.equal(schemeNameOf(parsePath("https://example.org/x")), "http");
     assert.equal(schemeNameOf(parsePath("http://example.org/x")), "http");
     assert.equal(schemeNameOf(parsePath("wss://example.org/socket")), "wss");
@@ -56,7 +56,7 @@ test("schemeNameOf: https rides http; ws rides wss — two first-class schemes, 
     assert.equal(schemeNameOf(parsePath("notes:///fact")), "notes");
 });
 
-test("renderAddress: ws/wss render the authority form like http/https (#470)", () => {
+test("{§network-address}: ws and wss render authority like http and https", () => {
     assert.equal(renderAddress("ws", "/example.org/socket"), "ws://example.org/socket");
     assert.equal(renderAddress("wss", "/example.org/socket"), "wss://example.org/socket");
 });

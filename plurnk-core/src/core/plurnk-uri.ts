@@ -19,9 +19,8 @@ export interface RenderTargetParts {
 // file:/// remains an optional explicit form for absolute paths.
 export function schemeNameOf(path: ParsedPath | null): string | null {
     if (path === null) return null;
-    // Prefix aliasing: http + https are one scheme (#195), ws + wss are one scheme (#473 — Ws is
-    // the http package's second first-class scheme, registered `wss` via plurnk.schemes). The
-    // secure prefix names the handler; the plain prefix rides it.
+    // {§scheme-address-network}: handler aliases route https through http and ws through wss
+    // without collapsing the addressed scheme's resource identity.
     if (path.kind === "url") {
         if (path.scheme === "https") return "http";
         if (path.scheme === "ws") return "wss";

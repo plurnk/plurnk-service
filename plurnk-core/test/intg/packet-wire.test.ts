@@ -72,7 +72,7 @@ test("environment-delta provenance renders as source, never a fictitious run ent
     assert.doesNotMatch(out, /"run":/);
 });
 
-test("a folded-authority web URL renders https://host/... — never https:///host (#370 class, run42 sweep)", () => {
+test("{§scheme-address-network}: a folded web identity renders https://host, never https:///host", () => {
     const out = PacketWire.renderLog([{
         coordinate: "1/1/9", origin: "model", op: "EDIT", status: 200,
         target: { scheme: "https", pathname: "/en.wikipedia.org/wiki/Paris" },
