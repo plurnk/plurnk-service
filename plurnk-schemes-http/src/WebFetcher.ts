@@ -13,6 +13,19 @@ import Guard from "./Guard.ts";
 import { responseMimetype } from "./ContentType.ts";
 
 export const PROJECTION_ID_HEADER = "x-plurnk-projection-id";
+export const CACHE_VARIANT_HEADER = "x-plurnk-cache-variant";
+export type CacheVariant = "default" | "bypass";
+
+export const classifyCacheVariant = (
+    requestHeaders: ReadonlyArray<readonly [string, string]>,
+    responseHeaders: ReadonlyArray<readonly [string, string]>,
+): CacheVariant => requestHeaders.length === 0
+    && !responseHeaders.some(([name]) => name.toLowerCase() === "vary")
+    ? "default"
+    : "bypass";
+
+export const cacheVariantEvidence = (variant: CacheVariant): string =>
+    `${CACHE_VARIANT_HEADER}: ${variant}`;
 
 // {§host-rewrite} — one transport-only policy for acquisition GETs. Callers
 // retain the addressed URL as entry identity; mutations never pass through it.
@@ -222,9 +235,18 @@ export default class WebFetcher {
         await this.#browser.close?.();
     }
 
-    async fetch(url: string, opts?: { signal?: AbortSignal }): Promise<WebFetchResult | null> {
+    async fetch(url: string, opts?: {
+        signal?: AbortSignal;
+        headers?: ReadonlyArray<readonly [string, string]>;
+    }): Promise<WebFetchResult | null> {
         opts?.signal?.throwIfAborted();
         const target = rewriteAcquisitionTarget(url);
+        const requestHeaders = opts?.headers ?? [];
+        const transportHeaders: ReadonlyArray<readonly [string, string]> = requestHeaders.some(
+            ([name]) => name.toLowerCase() === "user-agent",
+        )
+            ? requestHeaders
+            : [["User-Agent", BROWSER_UA], ...requestHeaders];
         // Bound the byte probe independently. Browser.render owns its navigation
         // deadline so it can apply the substantive-DOM timeout salvage contract.
         const probeTimeout = AbortSignal.timeout(requireNumEnv("PLURNK_SCHEMES_HTTP_FETCH_TIMEOUT"));
@@ -232,7 +254,11 @@ export default class WebFetcher {
 
         let response: Response;
         try {
-            response = await Guard.fetch(target, { method: "GET", body: undefined, headers: [["User-Agent", BROWSER_UA]] }, probeSignal);
+            response = await Guard.fetch(target, {
+                method: "GET",
+                body: undefined,
+                headers: transportHeaders,
+            }, probeSignal);
         } catch {
             // {§prefetch} AbortSignal.any preserves the first winning reason.
             // Only a caller-owned win escapes; the probe deadline remains the
@@ -244,7 +270,7 @@ export default class WebFetcher {
         }
         const mimetype = responseMimetype(response.headers.get("content-type"));
         if (!response.ok) { await response.body?.cancel(); return null; } // non-2xx dead
-        const header = WebFetcher.#header(response);
+        const header = WebFetcher.#header(response, requestHeaders);
 
         // Preserve server HTML as primary. Eager rendering can mutate already
         // useful content; the consumer alone decides whether projection is absent.
@@ -261,7 +287,7 @@ export default class WebFetcher {
                         // Caller cancellation still spans the whole operation.
                         // The renderer supplies its own per-navigation deadline.
                         signal: opts?.signal,
-                        headers: [["User-Agent", BROWSER_UA]],
+                        headers: transportHeaders,
                     });
                     return rendered.html.length > 0 ? { body: rendered.html, mimetype: "text/html" } : null;
                 },
@@ -284,12 +310,17 @@ export default class WebFetcher {
         };
     }
 
-    static #header(response: Response): string {
+    static #header(
+        response: Response,
+        requestHeaders: ReadonlyArray<readonly [string, string]>,
+    ): string {
+        const responseHeaders = [...response.headers];
         return [
             `HTTP ${response.status} ${response.statusText}`,
-            ...[...response.headers].map(([key, value]) => `${key}: ${value}`),
+            ...responseHeaders.map(([key, value]) => `${key}: ${value}`),
             "x-plurnk-request-method: GET",
             `x-plurnk-fetched-at: ${new Date().toISOString()}`,
+            cacheVariantEvidence(classifyCacheVariant(requestHeaders, responseHeaders)),
         ].join("\n");
     }
 }

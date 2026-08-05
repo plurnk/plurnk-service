@@ -32,9 +32,13 @@ import { readFile } from "node:fs/promises";
 import Browser, { BROWSER_UA, requireNumEnv, type RenderResult } from "./Browser.ts";
 import ErrorDetail from "./ErrorDetail.ts";
 import WebFetcher, {
+    CACHE_VARIANT_HEADER,
     PROJECTION_ID_HEADER,
+    cacheVariantEvidence,
+    classifyCacheVariant,
     rewriteAcquisitionTarget,
     WebMaterializationError,
+    type CacheVariant,
     type WebFetchResult,
     type WebMaterializedResult,
 } from "./WebFetcher.ts";
@@ -133,6 +137,7 @@ export default class Http implements SchemeHandler {
         const address = Http.#address(target);
         if (!(address instanceof NetworkAddress)) return address;
         const { pathname, url } = address;
+        const requestHeaders = target.headers ?? [];
         if (PathSyntax.hasGlob(target.pathname)) return { shape: "passthrough", status: 200 };
         const prior = await ctx.entries.read(pathname);
         if (prior.entry !== null) {
@@ -141,22 +146,20 @@ export default class Http implements SchemeHandler {
             if (priorMethod === undefined) {
                 return { shape: "passthrough", status: 200 };
             }
-            if (priorMethod === "GET") {
-                try {
-                    if (await Http.#projectionCurrent(priorHeader, ctx.projection)) {
-                        return { shape: "passthrough", status: 200 };
-                    }
-                } catch (cause) {
-                    return Http.#materializationFailure(
-                        url,
-                        "GET",
-                        new WebMaterializationError(
-                            "projection",
-                            Http.#sourceMimetype(priorHeader),
-                            cause,
-                        ),
-                    );
+            try {
+                if (await Http.#reusableGetRepresentation(prior.entry, requestHeaders, ctx.projection)) {
+                    return { shape: "passthrough", status: 200 };
                 }
+            } catch (cause) {
+                return Http.#materializationFailure(
+                    url,
+                    "GET",
+                    new WebMaterializationError(
+                        "projection",
+                        Http.#sourceMimetype(priorHeader),
+                        cause,
+                    ),
+                );
             }
         }
         if (Results.isErrorStatus(prior.status) && prior.status !== 404) {
@@ -166,7 +169,10 @@ export default class Http implements SchemeHandler {
         // this operation owns its one model-facing 499 projection.
         let fetched: WebFetchResult | null;
         try {
-            fetched = await this.#webFetcher.fetch(url, { signal: ctx.signal });
+            fetched = await this.#webFetcher.fetch(url, {
+                signal: ctx.signal,
+                headers: requestHeaders,
+            });
         } catch (err) {
             if (ctx.signal?.aborted === true && err === ctx.signal.reason) {
                 return Http.#cancelled(url, "GET");
@@ -365,16 +371,17 @@ export default class Http implements SchemeHandler {
             }
             const pb = prior.entry?.channels[BODY];
             const ph = prior.entry?.channels[HEADER];
-            if (
-                prior.entry !== null
-                && pb !== undefined
-                && ph !== undefined
-                && Http.#representationComplete(prior.entry)
-                && Http.#requestMethod(ph.content) === "GET"
-            ) {
-                let projectionCurrent: boolean;
+            if (prior.entry !== null && pb !== undefined && ph !== undefined) {
                 try {
-                    projectionCurrent = await Http.#projectionCurrent(ph.content, ctx.projection);
+                    if (await Http.#reusableGetRepresentation(prior.entry, headers, ctx.projection)) {
+                        const html = prior.entry.channels.html;
+                        cached = {
+                            header: ph.content,
+                            body: { content: pb.content, mimetype: pb.mimetype },
+                            ...(html === undefined || html.content.length === 0 ? {} : { html: { content: html.content, mimetype: html.mimetype } }),
+                        };
+                        conditional.push(...Http.#validators(ph.content));
+                    }
                 } catch (cause) {
                     return Http.#materializationFailure(
                         url,
@@ -385,15 +392,6 @@ export default class Http implements SchemeHandler {
                             cause,
                         ),
                     );
-                }
-                if (projectionCurrent) {
-                    const html = prior.entry.channels.html;
-                    cached = {
-                        header: ph.content,
-                        body: { content: pb.content, mimetype: pb.mimetype },
-                        ...(html === undefined || html.content.length === 0 ? {} : { html: { content: html.content, mimetype: html.mimetype } }),
-                    };
-                    conditional.push(...Http.#validators(ph.content));
                 }
             }
         }
@@ -444,7 +442,14 @@ export default class Http implements SchemeHandler {
             // {§revalidation} A 304 restores the GET representation into the
             // freshly seeded channels and remains an ordinary streaming READ.
             if (cached !== undefined && Http.#storedCopyServable(Http.#fetchedAt(cached.header), response)) {
-                await subscription.notifyChunk(HEADER, Http.#stamp(cached.header), "text/plain");
+                await subscription.notifyChunk(
+                    HEADER,
+                    Http.#stamp(
+                        cached.header,
+                        classifyCacheVariant(headers, [...response.headers]),
+                    ),
+                    "text/plain",
+                );
                 if (cached.html !== undefined) await subscription.notifyChunk("html", cached.html.content, cached.html.mimetype);
                 await subscription.notifyChunk(BODY, cached.body.content, cached.body.mimetype);
                 await subscription.close({ status: 200 }, `revalidated 304; ${cached.body.content.length} chars from cache`);
@@ -470,7 +475,7 @@ export default class Http implements SchemeHandler {
                 } catch (cause) {
                     throw new WebMaterializationError("render", responseMime, cause);
                 }
-                await Http.#writeHeader(subscription, method, result.status, result.statusText, result.headers);
+                await Http.#writeHeader(subscription, method, result.status, result.statusText, result.headers, headers);
                 await subscription.notifyChunk("html", result.html, "text/html");
                 const materialized = await WebFetcher.materialize(
                     { body: result.html, mimetype: "text/html" },
@@ -495,7 +500,7 @@ export default class Http implements SchemeHandler {
             // GET; events land in the body channel as they arrive across turns,
             // until the origin closes. Only GET — a POST reply is never an SSE READ.
             if (method === "GET" && responseMime === "text/event-stream") {
-                await Http.#writeHeader(subscription, method, response.status, response.statusText, [...response.headers]);
+                await Http.#writeHeader(subscription, method, response.status, response.statusText, [...response.headers], headers);
                 if (response.body === null) {
                     await subscription.close({ status: 200 }, "SSE stream; empty body");
                     return { shape: "passthrough", status: 102 };
@@ -516,7 +521,7 @@ export default class Http implements SchemeHandler {
             // textual response data. Binary input is transient: an installed
             // reader may derive Unicode, otherwise the durable body is a typed
             // empty marker rather than a fabricated byte channel.
-            await Http.#writeHeader(subscription, method, response.status, response.statusText, [...response.headers]);
+            await Http.#writeHeader(subscription, method, response.status, response.statusText, [...response.headers], headers);
             const bodyMime = responseMime;
             if (response.body === null) {
                 await subscription.close({ status: 200 }, `HTTP ${response.status}; empty body`);
@@ -637,13 +642,39 @@ export default class Http implements SchemeHandler {
         return Object.values(entry.channels).every(({ state }) => state === "static" || state === "closed");
     }
 
+    // {§revalidation} Direct READ and exact FIND share the complete reusable
+    // representation predicate; freshness only decides how READ uses a match.
+    static async #reusableGetRepresentation(
+        entry: StoredEntryData,
+        requestHeaders: ReadonlyArray<readonly [string, string]>,
+        projection: ProjectionCaps,
+    ): Promise<boolean> {
+        const body = entry.channels[BODY];
+        const header = entry.channels[HEADER];
+        return body !== undefined
+            && header !== undefined
+            && Http.#representationComplete(entry)
+            && Http.#requestMethod(header.content) === "GET"
+            && requestHeaders.length === 0
+            && Http.#cacheVariant(header.content) === "default"
+            && await Http.#projectionCurrent(header.content, projection);
+    }
+
     // {§revalidation} Origin headers come first; authoritative package method
-    // and acquisition-time metadata are appended last.
-    static async #writeHeader(subscription: StreamSubscription, method: string, status: number, statusText: string, headers: ReadonlyArray<readonly [string, string]>): Promise<void> {
+    // and acquisition metadata are appended last.
+    static async #writeHeader(
+        subscription: StreamSubscription,
+        method: string,
+        status: number,
+        statusText: string,
+        responseHeaders: ReadonlyArray<readonly [string, string]>,
+        requestHeaders: ReadonlyArray<readonly [string, string]>,
+    ): Promise<void> {
         const lines = [`HTTP ${status} ${statusText}`];
-        for (const [k, v] of headers) lines.push(`${k}: ${v}`);
+        for (const [k, v] of responseHeaders) lines.push(`${k}: ${v}`);
         lines.push(`${REQUEST_METHOD}: ${method}`);
         lines.push(`${FETCHED_AT}: ${new Date().toISOString()}`);
+        lines.push(cacheVariantEvidence(classifyCacheVariant(requestHeaders, responseHeaders)));
         await subscription.notifyChunk(HEADER, lines.join("\n"), "text/plain");
     }
 
@@ -780,26 +811,34 @@ export default class Http implements SchemeHandler {
         return lastHeaderValue(priorHeader, REQUEST_METHOD)?.toUpperCase();
     }
 
-    // Projection evidence is package-owned only when it follows the package's
-    // acquisition stamp. An origin field with the same name remains inert.
-    static #projectionIdentity(priorHeader: string): string | undefined {
+    // Package evidence is authoritative only after the package acquisition
+    // stamp. An origin field with the same name remains inert.
+    static #packageHeaderValue(priorHeader: string, field: string): string | undefined {
         const lines = priorHeader.split(/\r?\n/);
         let stampIndex = -1;
-        let projectionIndex = -1;
-        let identity: string | undefined;
         for (const [index, line] of lines.entries()) {
             const colon = line.indexOf(":");
             if (colon < 0) continue;
             const name = line.slice(0, colon).trim().toLowerCase();
             if (name === FETCHED_AT) stampIndex = index;
-            if (name === PROJECTION_ID_HEADER) {
-                projectionIndex = index;
-                identity = line.slice(colon + 1).trim();
-            }
         }
-        return stampIndex >= 0 && projectionIndex > stampIndex && identity !== ""
-            ? identity
-            : undefined;
+        if (stampIndex < 0) return undefined;
+        let value: string | undefined;
+        for (const line of lines.slice(stampIndex + 1)) {
+            const colon = line.indexOf(":");
+            if (colon < 0 || line.slice(0, colon).trim().toLowerCase() !== field) continue;
+            value = line.slice(colon + 1).trim();
+        }
+        return value === "" ? undefined : value;
+    }
+
+    static #projectionIdentity(priorHeader: string): string | undefined {
+        return Http.#packageHeaderValue(priorHeader, PROJECTION_ID_HEADER);
+    }
+
+    static #cacheVariant(priorHeader: string): CacheVariant | undefined {
+        const value = Http.#packageHeaderValue(priorHeader, CACHE_VARIANT_HEADER);
+        return value === "default" || value === "bypass" ? value : undefined;
     }
 
     static #sourceMimetype(header: string): string {
@@ -812,9 +851,14 @@ export default class Http implements SchemeHandler {
         return await projection.identity(Http.#sourceMimetype(header)) === storedIdentity;
     }
 
-    // Re-stamp the package-owned (last) field when the origin vouches with 304.
-    static #stamp(header: string): string {
-        return replaceLastHeaderValue(header, FETCHED_AT, new Date().toISOString());
+    // Re-stamp package evidence when the origin vouches with 304. A newly
+    // observed Vary field can only retire reuse; #198 owns other 304 updates.
+    static #stamp(header: string, variant: CacheVariant): string {
+        return replaceLastHeaderValue(
+            replaceLastHeaderValue(header, FETCHED_AT, new Date().toISOString()),
+            CACHE_VARIANT_HEADER,
+            variant,
+        );
     }
 
     // Conditional-request headers from the prior fetch's stored response headers

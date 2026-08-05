@@ -36,7 +36,7 @@ import {
 import Http from "./Http.ts";
 import type { RenderResult } from "./Browser.ts";
 import Guard from "./Guard.ts";
-import WebFetcher from "./WebFetcher.ts";
+import WebFetcher, { CACHE_VARIANT_HEADER } from "./WebFetcher.ts";
 
 // A fake render foundation: returns a canned rendered page, records the call
 // including ordered request-header metadata {§op-surface}.
@@ -1628,7 +1628,6 @@ const priorEntry = (
     tags: [],
 });
 
-const CACHE_VARIANT_HEADER = "x-plurnk-cache-variant";
 const stampedHeader = (
     ageMs: number,
     extra = "",
@@ -1734,7 +1733,7 @@ test("READ revalidation: prior ETag → If-None-Match → 304 serves cached proj
     const { ctx, inspect } = makeCtx(priorEntry(
         "cached page",
         "text/markdown",
-        stampedHeader(120_000, '\netag: "v1"'),
+        stampedHeader(500_000, '\netag: "v1"'),
         "<html>cached page</html>",
     ));
     const browser = fakeBrowser("<html>SHOULD NOT RENDER</html>");
@@ -1756,7 +1755,7 @@ test("READ revalidation: prior ETag → If-None-Match → 304 serves cached proj
 });
 
 test("READ revalidation: 200 (changed) re-fetches + streams normally despite a prior entry", async () => {
-    const { ctx, inspect } = makeCtx(priorEntry("old", "text/plain", stampedHeader(120_000, '\netag: "v1"')));
+    const { ctx, inspect } = makeCtx(priorEntry("old", "text/plain", stampedHeader(500_000, '\netag: "v1"')));
     await withFetch(mockFetch(200, "OK", ["fresh content"], { "content-type": "text/plain" }), async () => {
         await new Http().read(readStmt(urlTarget("https://example.com/p", "/p")), ctx);
     });
