@@ -9,19 +9,8 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import PacketWire from "../../src/core/packet-wire.ts";
 import { Mock, ProviderError } from "@plurnk/plurnk-providers";
 import type { MockResponse } from "@plurnk/plurnk-providers";
-import type { PlurnkStatement } from "@plurnk/plurnk-contracts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, packetSection } from "./_helpers.ts";
 import { OperationFailureError } from "../../src/core/results.ts";
-
-// Response from pre-parsed ops (clean turn) — mirrors the production wire
-// where the provider hands the engine already-parsed statements.
-const opsResponse = (ops: PlurnkStatement[]): MockResponse => ({
-    assistant: {
-        content: "", ops, reasoning: null,
-        usage: { prompt: 0, completion: 0, reasoning: 0, cached: 0, total: 0 },
-    },
-    assistantRaw: null,
-});
 
 // Response from raw content WITHOUT ops - forces the engine to run the real
 // PlurnkParser rather than Mock's trusted pre-parsed seam.
@@ -35,11 +24,9 @@ const contentResponse = (content: string): MockResponse => ({
     assistantRaw: null,
 });
 
-// A no-op draining turn — its only job is to RUN so the model's NEXT packet drains the
-// notices buffer on read. These tests assert the drain, never a dispatch; the former
-// bare-statement op builders (no PLAN lead) silently parsed to [] anyway - same effect,
-// now explicit.
-const drainTurn = opsResponse([]);
+// A complete, admitted draining turn. Its only job is to run so the model's
+// next packet drains the notices buffer on read.
+const drainTurn = contentResponse("<<SEND[200]:drained:SEND");
 
 // A provider transport anomaly notice. Grammar verdicts are engine-owned under
 // {§rail-truth-engine-verdict}; the provider notice path remains for observations

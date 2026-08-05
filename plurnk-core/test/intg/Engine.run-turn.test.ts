@@ -40,7 +40,7 @@ const planStmt = (body: string): PlanStatement => ({
 });
 
 // A response with content but NO pre-parsed ops, so the engine runs the parser.
-const contentResp = (content: string, completion: number): MockResponse => ({
+const contentResp = (content: string, completion: number = 0): MockResponse => ({
     assistant: {
         // grammar 0.70: turns lead with PLAN (the Engine re-parses this content).
         content: content.startsWith("<<PLAN") ? content : `<<PLAN::PLAN\n${content}`,
@@ -235,58 +235,17 @@ test("Engine.runTurn: multi-op turn - first-class prompt precedes model ops", as
     } finally { await db.close(); }
 });
 
-// The Mock provider's pre-parsed fixture escape hatch can supply an incomplete
-// frame. #179 owns whether this legacy path represents a production rail state.
-
-test("Engine.runTurn: ops-without-SEND turn completes at status 102 (implicit continue)", async () => {
+test("Engine.runTurn: the trusted pre-parsed seam cannot fabricate a missing-disposition turn", async () => {
     const { db, engine, workspaceId, workerId, loopId } = await setup();
     try {
         const provider = new Mock({
             contextWindow: 100000,
             responses: [response([editStmt("/x", "y")])],
         });
-        const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
-        assert.equal(result.status, 102, "EDIT-only turn is implicitly 'still going'");
-        assert.deepEqual(result.statuses, [201]);
-        const turnCount = (await db.test_count_turns.get<{ n: number }>())?.n;
-        assert.equal(turnCount, 1);
-    } finally { await db.close(); }
-});
-
-test("Engine.runTurn: zero-ops turn completes at status 422; failure is recorded", async () => {
-    const { db, engine, workspaceId, workerId, loopId } = await setup();
-    try {
-        const provider = new Mock({
-            contextWindow: 100000,
-            responses: [response([])],
-        });
-        const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
-        assert.equal(result.status, 422);
-        assert.deepEqual(result.statuses, []);
-        const turnCount = (await db.test_count_turns.get<{ n: number }>())?.n;
-        assert.equal(turnCount, 1, "turn row inserted at 422; failure is logged, not hidden");
-    } finally { await db.close(); }
-});
-
-test("Engine.runTurn: empty-ops turn does not leak strike bookkeeping as a notice", async () => {
-    // Per SPEC {§operation-results} gamification policy: zero ops is the model's emission
-    // choice, not an error to report. Engine still treats it as a struck
-    // turn internally (strike accounting), but no model-facing notice.
-    const { db, engine, workspaceId, workerId, loopId } = await setup();
-    try {
-        const provider = new Mock({
-            contextWindow: 100000,
-            responses: [
-                response([]),                                          // turn 1: empty ops
-                response([editStmt("/b", "2"), sendStmt(200, "ok")]),  // turn 2: clean
-            ],
-        });
-        await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
-        const t2 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
-        const row = await db.test_get_packet.get<{ packet: string }>({ id: t2.turnId });
-        const packet = JSON.parse(row?.packet ?? "{}");
-        const notices = packetSection(packet, "notices");
-        assert.doesNotMatch(notices, /no_ops|strike/);
+        await assert.rejects(
+            engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] }),
+            /an admitted emission must end in a disposition SEND/,
+        );
     } finally { await db.close(); }
 });
 
@@ -296,7 +255,7 @@ test("Engine.runTurn: empty-ops turn does not leak strike bookkeeping as a notic
 // Cap dispatches at the configured limit; overflow ops are silently dropped
 // (no per-op log rows, to keep forensics from drowning in identical refusals)
 // and a single max_commands_exceeded failure tells the model next turn.
-test("Engine.runTurn: PLURNK_SERVICE_MAX_COMMANDS caps dispatched ops; overflow drops + a durable failure pointer", async () => {
+test("Engine.runTurn: PLURNK_SERVICE_MAX_COMMANDS caps dispatched actions; overflow drops + a durable failure pointer", async () => {
     const original = process.env.PLURNK_SERVICE_MAX_COMMANDS;
     process.env.PLURNK_SERVICE_MAX_COMMANDS = "3";
     try {
@@ -305,20 +264,22 @@ test("Engine.runTurn: PLURNK_SERVICE_MAX_COMMANDS caps dispatched ops; overflow 
             const provider = new Mock({
                 contextWindow: 100000,
                 responses: [
-                    // Turn 1 emits 5 ops; cap = 3; expect 3 dispatched, 2 dropped.
+                    // Turn 1 emits 5 actions plus its disposition; cap = 3;
+                    // expect 3 actions dispatched, 2 dropped, and SEND dispatched.
                     response([
                         editStmt("/a", "1"),
                         editStmt("/b", "2"),
                         editStmt("/c", "3"),
                         editStmt("/d", "4"),
                         editStmt("/e", "5"),
+                        sendStmt(102, "continue"),
                     ]),
                     // Turn 2 clean — gives us a packet carrying turn 1's failure pointer.
                     response([editStmt("/z", "z"), sendStmt(200, "ok")]),
                 ],
             });
             const t1 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
-            assert.equal(t1.statuses.length, 3, "only 3 ops dispatched (cap)");
+            assert.equal(t1.statuses.length, 4, "3 actions plus the disposition dispatched");
 
             // Confirm only 3 model EDITs landed — overflow didn't sneak through.
             // Scope to scheme='worker' to exclude the engine's prompt:/// entry.
@@ -346,7 +307,7 @@ test("Engine.runTurn: PLURNK_SERVICE_MAX_COMMANDS caps dispatched ops; overflow 
 // Default (`-1`) = no cap: every generated op dispatches. Dropping already-generated
 // work is not the runaway guard (that lives at the sampler); a legitimate high-op turn
 // must land in full with no max_commands_exceeded signal.
-test("Engine.runTurn: PLURNK_SERVICE_MAX_COMMANDS=-1 (default) leaves the op ceiling off — all ops dispatch", async () => {
+test("Engine.runTurn: PLURNK_SERVICE_MAX_COMMANDS=-1 (default) leaves the action ceiling off", async () => {
     const original = process.env.PLURNK_SERVICE_MAX_COMMANDS;
     process.env.PLURNK_SERVICE_MAX_COMMANDS = "-1";
     try {
@@ -358,12 +319,13 @@ test("Engine.runTurn: PLURNK_SERVICE_MAX_COMMANDS=-1 (default) leaves the op cei
                     response([
                         editStmt("/a", "1"), editStmt("/b", "2"), editStmt("/c", "3"),
                         editStmt("/d", "4"), editStmt("/e", "5"),
+                        sendStmt(102, "continue"),
                     ]),
                     response([editStmt("/z", "z"), sendStmt(200, "ok")]),
                 ],
             });
             const t1 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
-            assert.equal(t1.statuses.length, 5, "all 5 ops dispatched — no cap");
+            assert.equal(t1.statuses.length, 6, "all 5 actions and the disposition dispatched — no cap");
             const workerEntries = await db.test_count_entries_by_workspace_scheme.get<{ n: number }>({
                 workspace_id: workspaceId, scheme: "worker",
             });
@@ -381,9 +343,7 @@ test("Engine.runTurn: PLURNK_SERVICE_MAX_COMMANDS=-1 (default) leaves the op cei
     }
 });
 
-// {§loop-terminals}: maxTurns ends the loop at 429. Near-ceiling accounting
-// remains model-invisible under {§rail-accounting-private}; #179 owns the stale
-// sudden-death terminology.
+// {§loop-terminals}: maxTurns ends the loop at 429 independently of strikes.
 
 test("Engine.runLoop: hitting maxTurns terminates the loop at 429 (max_turns)", async () => {
     const { db, engine, workspaceId, workerId, loopId } = await setup();
@@ -400,32 +360,6 @@ test("Engine.runLoop: hitting maxTurns terminates the loop at 429 (max_turns)", 
     } finally { await db.close(); }
 });
 
-test("Engine.runLoop: sudden_death is engine-internal — NOT surfaced to model", async () => {
-    // Per SPEC {§operation-results} gamification policy: telling the model "you're near
-    // my abandonment threshold" is engine bookkeeping, not an error. The
-    // loop still abandons at maxTurns; the model just doesn't see warnings.
-    const { db, engine, workspaceId, workerId, loopId } = await setup();
-    try {
-        const provider = new Mock({
-            contextWindow: 100000,
-            responses: Array.from({ length: 6 }, (_, i) => response([editStmt(`/var-${i}`, "v"), sendStmt(102, "go")])),
-        });
-        const result = await engine.runLoop({
-            provider, workspaceId, workerId, loopId, messages: [], maxTurns: 5, maxStrikes: 2,
-        });
-        assert.equal(result.hitMaxTurns, true);
-        assert.equal(result.turnIds.length, 5);
-
-        const turnHadSuddenDeath = await Promise.all(result.turnIds.map(async (id) => {
-            const row = await db.test_get_packet.get<{ packet: string }>({ id });
-            const packet = JSON.parse(row?.packet ?? "{}");
-            return packetSection(packet, "notices").includes("sudden_death");
-        }));
-        // Zero turns should carry sudden_death notices under gamification policy.
-        assert.deepEqual(turnHadSuddenDeath, [false, false, false, false, false]);
-    } finally { await db.close(); }
-});
-
 // {§engine-rails}: hard outcomes accumulate consecutive strikes;
 // soft outcomes (404, 501) and clean turns reset the streak.
 
@@ -435,14 +369,12 @@ test("Engine.runLoop: three consecutive hard failures abandon at 500 with strike
         // EDIT sealed:/// → 403 (writableBy denial = hard). SEND[102] keeps loop going.
         // Vary the path per turn so the failures stay DISTINCT (no cycle) — this isolates
         // the failure path → 500 (an identical-repeat would also trip cycle → 508).
-        const denied = (n: number): EditStatement => ({
-            op: "EDIT", suffix: "", signal: null,
-            target: urlPath("sealed", `/x-${n}`),
-            lineMarker: null, body: "v", position: { line: 1, column: 1 },
-        });
         const provider = new Mock({
             contextWindow: 100000,
-            responses: Array.from({ length: 5 }, (_, i) => response([denied(i), sendStmt(102, "going")])),
+            responses: Array.from({ length: 5 }, (_, i) => contentResp([
+                `<<EDIT(sealed:///x-${i}):v:EDIT`,
+                "<<SEND[102]:going:SEND",
+            ].join("\n"))),
         });
         const result = await engine.runLoop({
             provider, workspaceId, workerId, loopId, messages: [], maxTurns: 10, maxStrikes: 3,
@@ -520,23 +452,6 @@ test("Engine.runLoop: clean turn between hard failures resets the streak", async
     } finally { await db.close(); }
 });
 
-test("Engine.runLoop: no_ops turn counts as a hard strike", async () => {
-    const { db, engine, workspaceId, workerId, loopId } = await setup();
-    try {
-        // Two empty-ops turns in a row with maxStrikes=2 → abandon on turn 2.
-        const provider = new Mock({
-            contextWindow: 100000,
-            responses: [response([]), response([])],
-        });
-        const result = await engine.runLoop({
-            provider, workspaceId, workerId, loopId, messages: [], maxTurns: 10, maxStrikes: 2,
-        });
-        assert.equal(result.result.status, 500, "no-op strikes (no cycle) → 500");
-        assert.equal(result.reason, "strike_threshold");
-        assert.equal(result.turnIds.length, 2);
-    } finally { await db.close(); }
-});
-
 test("Engine.runLoop: strike is engine-internal — model sees action_failure but NOT a strike notice", async () => {
     // Per SPEC {§operation-results} gamification policy: model sees the failed action
     // (action_failure surfaces the 403), never the engine's strike
@@ -572,17 +487,20 @@ test("Engine.runLoop: strike is engine-internal — model sees action_failure bu
 });
 
 // {§engine-rails}: identical-fingerprint turns repeated MIN_CYCLES
-// times trip the detector, bumping turnErrors (which the strike system reads).
+// times trip the detector and strike the turn.
 
 test("Engine.runLoop: 3 identical period-1 turns trip cycle → strikes accumulate", async () => {
     const { db, engine, workspaceId, workerId, loopId } = await setup();
     try {
         // Same fingerprint each turn: EDIT worker:///fixed + SEND[102].
-        // detectCycle fires on turn 3 (period 1, MIN_CYCLES=3) → turnErrors++
-        // → strike. After turn 3: streak=1. After 4 + 5: streak=3 → ABANDON.
+        // detectCycle fires on turn 3 (period 1, MIN_CYCLES=3) → strike.
+        // After turn 3: streak=1. After 4 + 5: streak=3 → ABANDON.
         const provider = new Mock({
             contextWindow: 100000,
-            responses: Array.from({ length: 8 }, () => response([editStmt("/fixed", "v"), sendStmt(102, "go")])),
+            responses: Array.from({ length: 8 }, () => contentResp([
+                "<<EDIT(worker:///fixed)<1,-1>:v:EDIT",
+                "<<SEND[102]:go:SEND",
+            ].join("\n"))),
         });
         const result = await engine.runLoop({
             provider, workspaceId, workerId, loopId, messages: [], maxTurns: 20, maxStrikes: 3, minCycles: 3, maxCyclePeriod: 4,
@@ -645,9 +563,9 @@ test("Engine.runLoop: period-2 alternating cycle detected after 6 turns", async 
     } finally { await db.close(); }
 });
 
-test("Engine.runLoop: cycle detection is internal — bumps turnErrors, NO model-facing notice", async () => {
-    // {§rail-accounting-private} — cycle, strike, and sudden death are engine
-    // bookkeeping. The model sees admitted operation failures, not the accounting.
+test("Engine.runLoop: cycle detection is internal — NO model-facing notice", async () => {
+    // {§rail-accounting-private} — cycle and strike state are engine bookkeeping.
+    // The model sees admitted operation failures, not the accounting.
     const { db, engine, workspaceId, workerId, loopId } = await setup();
     try {
         const provider = new Mock({
@@ -660,36 +578,8 @@ test("Engine.runLoop: cycle detection is internal — bumps turnErrors, NO model
         const t4 = await db.test_get_packet.get<{ packet: string }>({ id: result.turnIds[3] });
         const packet = JSON.parse(t4?.packet ?? "{}");
         // None of the engine-bookkeeping kinds surface.
-        for (const kind of ["cycle", "strike", "sudden_death", "no_ops"]) {
+        for (const kind of ["cycle", "strike"]) {
             assert.equal(packetSection(packet, "notices").includes(kind), false, `${kind} is engine bookkeeping per gamification policy`);
-        }
-    } finally { await db.close(); }
-});
-
-// Sudden-death notices were removed under gamification policy. This test
-// remains as a regression guard: loops that terminate cleanly never carry
-// sudden_death anywhere.
-test("Engine.runLoop: sudden_death never surfaces to model", async () => {
-    const { db, engine, workspaceId, workerId, loopId } = await setup();
-    try {
-        const provider = new Mock({
-            contextWindow: 100000,
-            // Non-terminal turns carry a work op so they're real continues, not idle-strikes
-            // ({§send} the terminal contract) — else the two would strike out at maxStrikes:2 before SEND[200].
-            responses: [
-                response([editStmt("/1", "x"), sendStmt(102, "1")]),
-                response([editStmt("/2", "x"), sendStmt(102, "2")]),
-                response([sendStmt(200, "done")]),
-            ],
-        });
-        const result = await engine.runLoop({
-            provider, workspaceId, workerId, loopId, messages: [], maxTurns: 5, maxStrikes: 2,
-        });
-        assert.equal(result.result.status, 200);
-        for (const id of result.turnIds) {
-            const row = await db.test_get_packet.get<{ packet: string }>({ id });
-            const packet = JSON.parse(row?.packet ?? "{}");
-            assert.equal(packetSection(packet, "notices").includes("sudden_death"), false);
         }
     } finally { await db.close(); }
 });

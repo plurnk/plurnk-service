@@ -115,7 +115,7 @@ test("Mock.provider: remaining count tracks unconsumed responses", async () => {
     assert.equal(mock.remaining, 0);
 });
 
-test("Mock.provider: empty ops array is valid (model emitting no operations)", async () => {
+test("Mock.provider: preserves an explicitly empty test-fixture ops array", async () => {
     const mock = new Mock({ contextWindow: 100, responses: [response("", [])] });
     const result = await mock.generate({ messages: [] });
     assert.deepEqual(result.assistant.ops, []);

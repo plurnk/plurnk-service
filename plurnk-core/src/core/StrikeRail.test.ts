@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import StrikeRail from "./StrikeRail.ts";
 import { parsePath, type ReadStatement } from "@plurnk/plurnk-contracts";
 
-const base = { fingerprint: "READ(x)", noOps: false, budgetStruck: false, steerStruck: false, minCycles: 3, maxCyclePeriod: 4, maxStrikes: 3 };
+const base = { fingerprint: "READ(x)", budgetStruck: false, steerStruck: false, minCycles: 3, maxCyclePeriod: 4, maxStrikes: 3 };
 
 test("a 409 status alone is soft because Engine supplies the premature-terminate strike", () => {
     const rail = new StrikeRail();
@@ -34,6 +34,31 @@ test("a real hard failure (500-class status) still strikes normally", () => {
     let crossed = false;
     for (const fp of ["EDIT(a)", "EDIT(b)", "EDIT(c)"]) crossed = rail.assess(1, { ...base, fingerprint: fp, statuses: [500] }).thresholdCrossed || crossed;
     assert.equal(crossed, true, "a non-soft failure status accrues strikes as ever");
+});
+
+test("hard outcomes, grinder fires, and terminal steering are the three non-cycle strike sources", () => {
+    const rail = new StrikeRail();
+    assert.equal(rail.assess(1, { ...base, fingerprint: "hard", statuses: [400] }).thresholdCrossed, false);
+    assert.equal(rail.streak(1), 1);
+    assert.equal(rail.assess(1, { ...base, fingerprint: "budget", statuses: [], budgetStruck: true }).thresholdCrossed, false);
+    assert.equal(rail.streak(1), 2);
+    assert.equal(rail.assess(1, { ...base, fingerprint: "steer", statuses: [], steerStruck: true }).thresholdCrossed, true);
+    assert.equal(rail.streak(1), 3);
+});
+
+test("multiple sources still count once per turn, and a clean turn resets the streak", () => {
+    const rail = new StrikeRail();
+    const struck = rail.assess(1, {
+        ...base,
+        statuses: [500],
+        budgetStruck: true,
+        steerStruck: true,
+        maxStrikes: 2,
+    });
+    assert.equal(struck.thresholdCrossed, false);
+    assert.equal(rail.streak(1), 1, "one admitted turn contributes at most one strike");
+    rail.assess(1, { ...base, fingerprint: "clean", statuses: [] });
+    assert.equal(rail.streak(1), 0);
 });
 
 test("network query and channel coordinates remain distinct cycle fingerprints", () => {

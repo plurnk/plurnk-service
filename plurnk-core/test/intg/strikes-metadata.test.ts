@@ -6,7 +6,16 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
-import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal } from "./_rpc.ts";
+import type { MockResponse } from "@plurnk/plurnk-providers";
+import { rpcCall, connect, withDaemon, runLoopToTerminal } from "./_rpc.ts";
+
+const response = (content: string, completion: number = 0): MockResponse => ({
+    assistant: {
+        content,
+        reasoning: null,
+        usage: { prompt: 0, completion, reasoning: 0, cached: 0, total: completion },
+    },
+});
 
 class CapturingMock extends Mock {
     readonly seen: Array<number | undefined> = [];
@@ -18,10 +27,10 @@ class CapturingMock extends Mock {
 
 test("generate carries the live streak — 0 explicit, bumped by a struck turn, zeroed by recovery", async () => {
     const mock = new CapturingMock({ contextWindow: 100000, responses: [
-        makeMockResponse("<<SEND[102]:working:SEND", 10),   // IDLE — a bare continue with no work op takes the idle steer strike
-        makeMockResponse("no ops at all", 10),               // 422 no_ops → struck
-        makeMockResponse("<<EDIT(worker:///note):r:EDIT\n<<SEND[102]:recovered:SEND", 10),  // clean, DISTINCT shape (an A-B-A fingerprint would trip cycle detection)
-        makeMockResponse("<<SEND[200]:done:SEND", 10),       // conclude
+        response("<<PLAN:continue without work:PLAN\n<<SEND[102]:working:SEND", 10),
+        response("<<PLAN:attempt a malformed matcher:PLAN\n<<READ(worker:///x):$fC:READ\n<<SEND[102]:continue:SEND", 10),
+        response("<<PLAN:recover:PLAN\n<<EDIT(worker:///note):r:EDIT\n<<SEND[102]:recovered:SEND", 10),
+        response("<<PLAN:finish:PLAN\n<<SEND[200]:done:SEND", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -29,7 +38,7 @@ test("generate carries the live streak — 0 explicit, bumped by a struck turn, 
             await rpcCall(ws, 1, "workspace.create", { name: "strikes-meta" });
             const { finalStatus } = await runLoopToTerminal(ws, 2, { prompt: "go", maxTurns: 8 });
             assert.equal(finalStatus, 200, "the loop concluded through the struck turn");
-            assert.deepEqual(mock.seen, [0, 1, 2, 0], "explicit 0 at start → 1 after the idle strike → 2 after no-ops → the working turn zeroes it");
+            assert.deepEqual(mock.seen, [0, 1, 2, 0], "raw admitted turns carry 0 → idle strike → bounded-parse strike → clean reset");
             // The model-facing packets never carry it ({§engine-rails}: no metric to game).
             for (const row of await db.test_all_packets.all<{ packet: string }>({})) {
                 const sections = (JSON.parse(row.packet) as { sections?: object[] }).sections ?? [];
@@ -43,9 +52,9 @@ test("a 416 range-miss is an exploratory miss — soft, never a strike (like 404
     // Range-probing is the surgical behavior wanted under pressure; striking it prices
     // caution into the exact motion being taught. {404, 416, 501}: one set, evenly applied.
     const mock = new CapturingMock({ contextWindow: 100000, responses: [
-        makeMockResponse("<<EDIT(worker:///short):one line only:EDIT\n<<SEND[102]:wrote:SEND", 10),
-        makeMockResponse("<<READ(worker:///short)<99,100>::READ\n<<SEND[102]:probing:SEND", 10),
-        makeMockResponse("<<SEND[200]:done:SEND", 10),
+        response("<<PLAN:create a short entry:PLAN\n<<EDIT(worker:///short):one line only:EDIT\n<<SEND[102]:wrote:SEND", 10),
+        response("<<PLAN:probe a missing range:PLAN\n<<READ(worker:///short)<99,100>::READ\n<<SEND[102]:probing:SEND", 10),
+        response("<<PLAN:finish:PLAN\n<<SEND[200]:done:SEND", 10),
     ] });
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);

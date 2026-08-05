@@ -30,6 +30,10 @@ const response = (ops: PlurnkStatement[]): MockResponse => ({
     assistant: { content: "", ops, reasoning: null },
 });
 
+const contentResponse = (content: string): MockResponse => ({
+    assistant: { content, reasoning: null },
+});
+
 const setup = async () => {
     const db = await openMigrated();
     const workspaceId = await insertWorkspace(db, `ws-${crypto.randomUUID()}`);
@@ -123,7 +127,12 @@ test("Engine.runLoop: idle turn (102, no work op) steers and strikes — spins o
         // A bare SEND[102] is a continue that did no work — an idle turn ({§send} the terminal contract).
         // It steers the model (a hint) and strikes (silently); a model that keeps idling spins out to
         // the engine's 500, never its own 499.
-        const provider = new Mock({ contextWindow: 100000, responses: Array.from({ length: 5 }, () => response([sendStmt(102, "idling")])) });
+        const provider = new Mock({
+            contextWindow: 100000,
+            responses: Array.from({ length: 5 }, () => contentResponse(
+                "<<PLAN:continue without work:PLAN\n<<SEND[102]:idling:SEND",
+            )),
+        });
         const result = await engine.runLoop({ provider, workspaceId, workerId, loopId, maxTurns: 10, maxStrikes: 2, messages: [] });
         assert.equal(result.result.status, 500, "idle spin-out is the engine ruling failure, not the model's 499");
         assert.equal(result.turnIds.length, 2, "struck out at maxStrikes:2, well before maxTurns:10");

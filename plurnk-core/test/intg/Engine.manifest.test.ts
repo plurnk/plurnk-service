@@ -11,10 +11,14 @@ import type { CatalogEntry } from "../../src/schemes/_entry-manifest.ts";
 import ChannelWrite from "../../src/core/ChannelWrite.ts";
 import { Mock } from "@plurnk/plurnk-providers";
 import { Results } from "@plurnk/plurnk-schemes";
-import type { PlurnkStatement } from "@plurnk/plurnk-contracts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, seedEntryWithChannel, makeSchemeCtx, DEFAULT_MIMETYPES } from "./_helpers.ts";
 
-const emptyTurn = { assistant: { content: "", ops: [] as PlurnkStatement[], reasoning: null } };
+const indexingTurn = {
+    assistant: {
+        content: "<<PLAN:finish indexing:PLAN\n<<SEND[200]:done:SEND",
+        reasoning: null,
+    },
+};
 
 type CatalogItem = { path: string; shown?: unknown; channels: Record<string, { mimetype: string; tokens: number; lines: number }> };
 
@@ -32,7 +36,7 @@ test("the commons catalog is complete and unranked — every selected entry, no 
         // A real turn maintains the search index; the catalog is the
         // read-only render FIND serves — there is no manifest.json entry.
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-        const provider = new Mock({ contextWindow: 100000, responses: [emptyTurn] });
+        const provider = new Mock({ contextWindow: 100000, responses: [indexingTurn] });
         await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
 
         const catalog = await EntryManifest.catalogRowsFor(makeSchemeCtx({ db, workspaceId, workerId })) as CatalogItem[];
@@ -107,7 +111,7 @@ test("manifest build survives a malformed application/json entry — degrades to
         await seedEntryWithChannel(db, { workspaceId, scheme: "worker", pathname: "/bad.json", channel: "body", content: '{\n  "a": 1\n  "b": 2\n}', mimetype: "application/json" });
 
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-        const provider = new Mock({ contextWindow: 100000, responses: [emptyTurn] });
+        const provider = new Mock({ contextWindow: 100000, responses: [indexingTurn] });
         await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
 
         // The turn's pump survived the malformed entry (no -32603); the catalog renders it degraded.
@@ -137,7 +141,7 @@ test("a JSON entry large enough to tile builds through the live embedder — the
         await seedEntryWithChannel(db, { workspaceId, scheme: "worker", pathname: "/big.json", channel: "body", content: big, mimetype: "application/json" });
 
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-        const provider = new Mock({ contextWindow: 100000, responses: [emptyTurn] });
+        const provider = new Mock({ contextWindow: 100000, responses: [indexingTurn] });
         await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
 
         // The turn's pump tiled+embedded the large JSON without crashing; the catalog lists it.

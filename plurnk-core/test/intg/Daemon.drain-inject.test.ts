@@ -166,7 +166,7 @@ test("loop.run while a loop is live: second call injects into its next-turn slot
     const mock = new Mock({
         contextWindow: 16384,
         responses: [
-            sendOnly("<<EXEC[sh]:true:EXEC"),       // proposal → pause (no auto, no SEND → continue)
+            sendOnly("<<EXEC[sh]:true:EXEC\n<<SEND[102]:continue after review:SEND"), // proposal pauses before the required disposition
             sendOnly("<<SEND[200]:done:SEND"),      // turn 2 consumes the injected prompt, ends
         ],
     });

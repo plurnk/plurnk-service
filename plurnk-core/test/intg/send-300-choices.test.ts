@@ -143,6 +143,7 @@ test("not enabled by default — a [300] without the client's request is refused
         });
         const loopStatus = (await db.test_get_loop_status.get<{ status: number }>({ id: loopId }))?.status;
         assert.equal(loopStatus, 102, "no park — nobody is watching to answer");
+        assert.equal(r.steerStruck, true, "the refused final disposition contributes terminal steering under {§engine-rails}");
         const rows = await db.test_log_sequencees_by_turn.all<{ op: string; status_rx: number }>({ turn_id: r.turnId });
         assert.equal(rows.find((row) => row.op === "SEND")?.status_rx, 409, "the ask is refused with the self-decide steer");
     } finally { await db.close(); }

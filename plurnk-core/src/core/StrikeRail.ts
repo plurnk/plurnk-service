@@ -6,9 +6,10 @@ import { renderTarget } from "./plurnk-uri.ts";
 // range that doesn't exist (416), or a capability a scheme lacks (501) is how discovery
 // works — striking them prices caution into the motions we most want (range-reads ARE
 // the surgical behavior under budget pressure). One simple set, evenly applied.
-// 409 (premature-terminate refusal) is SOFT here because Engine accounts for that engine ruling
-// through steerStruck ({§send-premature-terminate}). Counting the raw status as well would
-// double-count one false terminal claim. The cycle detector remains an independent backstop.
+// 409 is SOFT here because Engine accounts for a refused final disposition
+// through steerStruck ({§engine-rails}). Counting that raw status as well would
+// double-count one ruling; other 409 outcomes remain soft. The cycle detector
+// remains an independent backstop.
 const SOFT_FAILURE_STATUSES: ReadonlySet<number> = new Set([404, 409, 416, 501]);
 
 // Per-op fingerprint: op verb + target URI, plus an op-specific discriminator
@@ -63,9 +64,9 @@ const fingerprintOp = (stmt: PlurnkStatement): string => {
     return base;
 };
 
-// {§engine-rails} — per-loop failure-streak and cycle accounting decides
-// abandonment. {§rail-accounting-private} — the model
-// sees admitted operation and engine-rail failures, never this bookkeeping.
+// {§engine-rails} — one per-loop rail owns the consecutive strike streak and
+// cycle history. The model sees admitted operation and engine-rail failures,
+// never this private accounting.
 export default class StrikeRail {
     // Per-turn fingerprint: sorted set of per-op fingerprints, joined. Order
     // within a turn doesn't matter — we want the SET of activities.
@@ -97,11 +98,9 @@ export default class StrikeRail {
         return { detected: false };
     }
 
-    // {§engine-rails} strike state per loop. `streak` = consecutive struck turns;
-    // resets on a clean turn. `turnErrors` is bumped by per-turn rails (cycle
-    // detection, grinder, steer) — read and reset at end of each turn.
-    // `history` holds per-turn fingerprints for cycle detection.
-    #state = new Map<number, { streak: number; turnErrors: number; history: string[] }>();
+    // {§engine-rails} strike state per loop. `streak` resets on a clean turn;
+    // `history` holds consecutive turn fingerprints for cycle detection.
+    #state = new Map<number, { streak: number; history: string[] }>();
 
     // The loop's CURRENT strike streak — the same figure the 500-threshold compares. Rides
     // generate({strikes}) as first-party outbound metadata (Plurnk-Strikes,
@@ -112,18 +111,11 @@ export default class StrikeRail {
         return this.#state.get(loopId)?.streak ?? 0;
     }
 
-    // Per-turn strike accounting, run by runLoop after every turn. Three
-    // sources strike a turn:
-    //  1. recordedFailed — any action-entry at hard failure status
-    //     (>= 400 and not in SOFT_FAILURE_STATUSES).
-    //  2. noOps — the turn emitted no ops at all.
-    //  3. turnErrors — bumped by per-turn rails (cycle, grinder, steer).
-    // Struck → streak++; clean → streak = 0. Threshold → thresholdCrossed,
-    // and runLoop owns the abandonment.
+    // Per-turn strike accounting, run by runLoop after every admitted turn.
+    // {§engine-rails} owns the complete source list and threshold semantics.
     assess(loopId: number, turn: {
         fingerprint: string;
         statuses: ReadonlyArray<number>;
-        noOps: boolean;
         budgetStruck: boolean;
         steerStruck: boolean;
         minCycles: number;
@@ -131,20 +123,13 @@ export default class StrikeRail {
         maxStrikes: number;
     }): { cycleDetected: boolean; thresholdCrossed: boolean } {
         // {§engine-rails}: cycle detection. Push this turn's fingerprint to
-        // history, scan for repetition patterns. Detection bumps
-        // turnErrors so the strike system handles abandonment. It is intentionally
-        // not a model-facing notice: cycle is the engine's reason for treating the
-        // turn as a failure, and its accounting stays private
-        // ({§rail-accounting-private}).
-        const state = this.#state.get(loopId) ?? { streak: 0, turnErrors: 0, history: [] };
+        // history and scan for repetition patterns. Detection is intentionally
+        // not a model-facing notice; it is private engine accounting.
+        const state = this.#state.get(loopId) ?? { streak: 0, history: [] };
         state.history.push(turn.fingerprint);
         const cycle = StrikeRail.detectCycle(state.history, turn.minCycles, turn.maxCyclePeriod);
-        if (cycle.detected) state.turnErrors++;
-        // SPEC {§grinder}: a non-soft grinder fire counts toward the strike streak.
-        if (turn.budgetStruck) state.turnErrors++; // a grinder fire bumps the strike streak — {§grinder-strike-coupling}
-        if (turn.steerStruck) state.turnErrors++; // idle / premature-terminate steer struck — {§send} the terminal contract
         const recordedFailed = turn.statuses.some((s) => s >= 400 && !SOFT_FAILURE_STATUSES.has(s));
-        const struck = turn.noOps || recordedFailed || state.turnErrors > 0;
+        const struck = recordedFailed || turn.budgetStruck || turn.steerStruck || cycle.detected;
         let thresholdCrossed = false;
         if (struck) {
             state.streak++;
@@ -152,7 +137,6 @@ export default class StrikeRail {
         } else {
             state.streak = 0;
         }
-        state.turnErrors = 0;
         this.#state.set(loopId, state);
         return { cycleDetected: cycle.detected, thresholdCrossed };
     }

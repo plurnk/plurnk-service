@@ -115,8 +115,8 @@ const readMaxStrikes = (): number => {
     return n;
 };
 
-// Per-emission op ceiling — OFF by default. `-1` (or unset/non-positive) = no cap: every
-// generated op dispatches. Runaway degeneration is a sampler concern (repetition penalty),
+// Per-emission action ceiling — OFF by default. `-1` (or unset/non-positive) = no cap:
+// every generated op dispatches. Runaway degeneration is a sampler concern (repetition penalty),
 // not grounds to drop already-generated work. A positive value is an operator ceiling a
 // workspace's maxCommands may tighten (min wins), never widen
 // ({§operator-config-workspace-max-commands}).
@@ -174,15 +174,10 @@ type EngineTurnResult = {
     budget?: BudgetOverflowMeasurement;
 };
 
-// Default turn.status when ops were emitted but no SEND. Model is implicitly
-// continuing; loop.status stays 102 either way (only SEND broadcast advances
-// loop terminal). No strike, no notices.
+// Runtime normalization for a disposition the engine refuses or resolves as a
+// continue after dispatch ({§send}). Every admitted emission itself ends in an
+// explicit disposition SEND ({§emission-admission}).
 const TURN_STATUS_IMPLICIT_CONTINUE = 102;
-
-// Status assigned to a turn that emitted NO ops at all. Strike-worthy; the
-// action routes through the durable log and packet Errors index
-// ({§operation-results}, {§operation-result-no-error-scheme}).
-const TURN_STATUS_NO_OPS = 422;
 
 const DEFAULT_MIN_CYCLES = 3;
 const DEFAULT_MAX_CYCLE_PERIOD = 4;
@@ -588,8 +583,6 @@ export default class Engine {
         // Its ceiling therefore counts every prior turn, not merely this process-local
         // execution segment.
         const turnIds = await this.#lifecycle.turnIds(loopId);
-        const suddenDeathThreshold = maxTurns - maxStrikes;
-
         // Per-loop AbortController for scheme-side cancellation propagation.
         // Chained from the caller's `signal` so an external abort cascades.
         const loopAbort = new AbortController();
@@ -786,15 +779,13 @@ export default class Engine {
             const verdict = this.#strikes.assess(loopId, {
                 fingerprint: turn.fingerprint,
                 statuses: turn.statuses,
-                noOps: turn.status === TURN_STATUS_NO_OPS,
                 budgetStruck: turn.budgetStruck,
                 steerStruck: turn.steerStruck,
                 minCycles, maxCyclePeriod, maxStrikes,
             });
             if (verdict.thresholdCrossed) {
-                // {§loop-terminals} — a cycle-driven strike is the model spinning in place
-                // (508 Loop Detected); a failure/no-op strike is the model failing (500
-                // Internal Server Error). The straw that crossed the threshold picks it.
+                // {§engine-rails} — the source on the crossing turn classifies
+                // the engine verdict: cycle-driven is 508; every other strike is 500.
                 const status = verdict.cycleDetected ? 508 : 500;
                 const failure = Results.failure(
                     "engine:rails",
@@ -802,7 +793,7 @@ export default class Engine {
                     status,
                     verdict.cycleDetected
                         ? `The loop reached its strike threshold after ${turnIds.length} turns because its operation pattern repeated.`
-                        : `The loop reached its strike threshold after ${turnIds.length} turns because turns repeatedly failed or performed no operation.`,
+                        : `The loop reached its strike threshold after ${turnIds.length} turns because consecutive turns failed.`,
                     {},
                     {
                         turns: turnIds.length,
@@ -814,13 +805,6 @@ export default class Engine {
                 if (result === null) throw new Error(`loop ${loopId} became terminal before strike settlement`);
                 cleanup("forceful", "strike_threshold");
                 return { turnIds, result, hitMaxTurns: false, reason: "strike_threshold" };
-            }
-
-            // Sudden-death threshold is engine-internal — abandonment
-            // happens at maxTurns regardless. Per gamification policy:
-            // we don't warn the model that it's nearing our limit.
-            if (turnIds.length >= suddenDeathThreshold && turnIds.length < maxTurns) {
-                // Threshold tripped; engine bookkeeping only.
             }
         }
     }
@@ -1530,16 +1514,21 @@ export default class Engine {
             }
         }
         const opsCount = packetAssistant.ops.length;
-        // PLAN is orientation, not an action. Every admitted SEND is a
-        // disposition, so only PLAN is excluded from the real-op count.
-        const realOpsCount = packetAssistant.ops.filter((op) => op.op !== "PLAN").length;
-        const sendOp = packetAssistant.ops.findLast(
-            (op): op is PlurnkStatement & { op: "SEND"; signal: number } =>
-                op.op === "SEND" && typeof op.signal === "number" && op.signal >= 200,
-        );
+        const finalOp = packetAssistant.ops.at(-1);
+        if (finalOp?.op !== "SEND") {
+            // Text emissions cannot reach this point without a disposition;
+            // this fail-hard guard also keeps Mock's trusted pre-parsed seam
+            // from creating runtime states that production admission forbids.
+            throw new Error("an admitted emission must end in a disposition SEND");
+        }
+        const dispositionSignal = finalOp.signal;
+        if (typeof dispositionSignal !== "number" || !TERMINAL_SEND_SIGNALS.has(dispositionSignal)) {
+            throw new Error("an admitted emission must end in a disposition SEND");
+        }
+        const sendOp = finalOp;
         // {§send} the terminal contract — engine error states verify a terminal claim against loop
-        // state, never trusting the model's code. They strike via turn.steerStruck (turnErrors,
-        // {§grinder-strike-coupling}): the loop continues, the model sees the steering hint not the strike
+        // state, never trusting the model's code. They strike via turn.steerStruck
+        // ({§engine-rails}): the loop continues, the model sees the steering hint not the strike
         // count, and a non-resolver spins out to the engine's 500.
         let steerStruck = false;
         // Engine errors raised this turn, minted as op='error' log rows after dispatch (they share the
@@ -1549,14 +1538,10 @@ export default class Engine {
         // Terminal adjudication moved to the DISPATCHER ({§send-premature-terminate}, the unified
         // pending set): the terminal SEND is judged AT ITS OWN DISPATCH — after the emission's
         // earlier ops executed — so a same-turn KILL+[200] repairs in one turn and a same-turn
-        // WORK+[200] is caught. A refused terminal (409) strikes via the dispatch-loop check below.
+        // WORK+[200] is caught. A refused final disposition (409) strikes via
+        // the dispatch-loop check below.
 
-        // The production parser admitted a complete PLAN...SEND frame before this point.
-        // Pre-parsed Mock fixtures remain a trusted test-only escape hatch, so the legacy
-        // implicit/no-op statuses stay defined for those fixtures.
-        let turnStatus = sendOp !== undefined
-            ? sendOp.signal
-            : realOpsCount === 0 ? TURN_STATUS_NO_OPS : TURN_STATUS_IMPLICIT_CONTINUE;
+        let turnStatus = dispositionSignal;
 
         // Idle turn: an implicit-continue (102) that did no WORK — its ops are only PLAN/SEND, no mid op.
         // The model continued with nothing to do.
@@ -1596,9 +1581,9 @@ export default class Engine {
         // model gets one notices signal next packet.
         // {§operator-config-workspace-max-commands} — workspace maxCommands min()s the env ceiling.
         const maxCommands = Math.min(readMaxCommands(), (await WorkspaceSettings.read(this.#db, workspaceId)).maxCommands ?? Number.POSITIVE_INFINITY);
-        // PLAN (intended goals) and a terminal SEND (signal ≥ 200, the conclusion) are not
-        // actions — they always dispatch and never count against the cap. maxCommands
-        // bounds real actions only; maxCommands:0 still admits a plan and a conclusion
+        // PLAN (intended goals) and the final disposition SEND are not actions —
+        // they always dispatch and never count against the cap. maxCommands
+        // bounds real actions only; maxCommands:0 still admits a plan and a disposition
         // (the PLAN/SEND ops, zero actions), which is its only coherent meaning.
         let realCommands = 0;
         const admittedOps = packetAssistant.ops.filter(
@@ -1606,7 +1591,7 @@ export default class Engine {
                 const constrained = operationConstraint !== undefined
                     && !operationConstraint.allowedOperations.includes(op.op);
                 return op.op === "PLAN"
-                || (op.op === "SEND" && typeof op.signal === "number" && op.signal >= 200)
+                || op === sendOp
                 || constrained
                 || realCommands++ < maxCommands;
             },
@@ -1677,8 +1662,8 @@ export default class Engine {
                 origin, onDispatch,
             });
             statuses.push(result.status);
-            // {§send-premature-terminate} — a refused terminal leaves both loop and turn
-            // continuing, and every such false terminal claim strikes uniformly.
+            // {§engine-rails} — a refused final disposition leaves both loop
+            // and turn continuing, and its 409 steering ruling strikes once.
             if (statement === sendOp && result.status === 409) {
                 steerStruck = true;
                 turnStatus = TURN_STATUS_IMPLICIT_CONTINUE;
@@ -1760,11 +1745,6 @@ export default class Engine {
         if (packetAssistant.content.trim().length > 0 || reasoningItems !== undefined) {
             await this.#dispatcher.writeModelEntry({ verbatim: packetAssistant.content, workerId, loopId, turnId, sequence: errSeq++, folded: true, ...(reasoningItems !== undefined ? { reasoningItems } : {}) });
         }
-
-        // Zero ops is NOT an error to report — the model knows it emitted
-        // nothing. Strike accounting (engine-internal) treats it as a
-        // struck turn; no corresponding error is added to the next packet.
-        // Per SPEC {§operation-results} gamification policy.
 
         return {
             turnId,

@@ -22,16 +22,17 @@ import { rpcCall, rpcProblem, connect, withDaemon, makeMockResponse, subscribeNo
 
 const execFileP = promisify(execFile);
 
-// Turn 1 emits two model EDITs; the cap decides how many land. Turn 2 SENDs to terminate
-// (no reliance on maxTurns composition), so the loop ends cleanly either way.
+// Turn 1 emits two model EDITs and its required continuation disposition; the
+// cap decides how many actions land. Turn 2 SENDs to terminate (no reliance on
+// maxTurns composition), so the loop ends cleanly either way.
 const twoEdits = () => new Mock({ contextWindow: viableWindow(), responses: [
-    makeMockResponse("<<EDIT(worker:///a.md):aaa:EDIT\n<<EDIT(worker:///b.md):bbb:EDIT", 50),
+    makeMockResponse("<<EDIT(worker:///a.md):aaa:EDIT\n<<EDIT(worker:///b.md):bbb:EDIT\n<<SEND[102]:continue:SEND", 50),
     makeMockResponse("<<SEND[200]:done:SEND", 50),
 ] });
 const entryId = (db: Db, pathname: string) =>
     db.test_get_entry_id_by_scheme_pathname.get<{ id: number }>({ scheme: "worker", pathname });
 
-test("workspace settings.maxCommands min()s the env op cap — tightens, never widens", async () => {
+test("workspace settings.maxCommands min()s the env action cap — tightens, never widens", async () => {
     const prev = process.env.PLURNK_SERVICE_MAX_COMMANDS;
     try {
         // TIGHTEN: env 99, workspace 1 → min 1 → only the first model op dispatches.
@@ -41,8 +42,8 @@ test("workspace settings.maxCommands min()s the env op cap — tightens, never w
             try {
                 await rpcCall(ws, 1, "workspace.create", { name: "mc-tighten", settings: { maxCommands: 1 } });
                 await runLoopToTerminal(ws, 2, { prompt: "go" });
-                assert.ok((await entryId(db, "/a.md"))?.id !== undefined, "the first model op dispatched");
-                assert.equal(await entryId(db, "/b.md"), undefined, "the second op was dropped — workspace maxCommands:1 tightened env 99");
+                assert.ok((await entryId(db, "/a.md"))?.id !== undefined, "the first model action dispatched");
+                assert.equal(await entryId(db, "/b.md"), undefined, "the second action was dropped — workspace maxCommands:1 tightened env 99");
             } finally { ws.close(); }
         });
         // NO-WIDEN: env 1, workspace 99 → min 1 → still only the first op; the client can't widen.
@@ -52,7 +53,7 @@ test("workspace settings.maxCommands min()s the env op cap — tightens, never w
             try {
                 await rpcCall(ws, 1, "workspace.create", { name: "mc-nowiden", settings: { maxCommands: 99 } });
                 await runLoopToTerminal(ws, 2, { prompt: "go" });
-                assert.equal(await entryId(db, "/b.md"), undefined, "workspace maxCommands:99 cannot widen env 1 — the second op stays dropped");
+                assert.equal(await entryId(db, "/b.md"), undefined, "workspace maxCommands:99 cannot widen env 1 — the second action stays dropped");
             } finally { ws.close(); }
         });
     } finally {

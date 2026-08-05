@@ -69,13 +69,32 @@ Independent axes on entries and channels. Confusion across them is a recurring s
 
 ### §engine-rails Engine rails
 
+After each admitted turn, one inline verdict decides whether the loop continues.
+An admitted turn contributes at most one strike, even when several sources fire.
+These are the complete strike sources:
+
+| Strike source       | Exact trigger                                                                                                    | Model-visible occurrence                                      |
+|---------------------|------------------------------------------------------------------------------------------------------------------|---------------------------------------------------------------|
+| Hard result         | An admitted operation or bounded parse-error status is `>= 400`, except the soft set `404`, `409`, `416`, `501`. | The originating failure row.                                  |
+| Grinder             | Packet overflow caused a grinder fold or admitted hard-recovery turn ({§grinder-strike-coupling}).               | The exact overflow Problem row.                               |
+| Terminal steering   | An idle `SEND[102]` or a final disposition refused at 409 sets the turn's steering ruling ({§send}).             | The idle rail row or refused SEND row.                        |
+| Cycle               | The configured consecutive fingerprint pattern repeats.                                                          | None; cycle detection itself is private engine accounting.    |
+
+A struck turn increments the consecutive streak once; a clean admitted turn
+resets it to zero. Reaching `MAX_STRIKES` terminates at **508 Loop Detected**
+when the crossing turn is cycle-detected, otherwise **500**. Rejected emission
+attempts never reach this rail ({§emission-admission}), and the independent turn
+ceiling terminates at **429** ({§loop-terminals}). The streak and cycle verdict
+are absent from model packets; only the concrete occurrences in the table are
+shown. The current streak may ride first-party provider metadata
+({§strikes-first-party-metadata}), which does not make it model-facing.
+
 | Term                         | Meaning |
 |------------------------------|---|
-| **verdict**                  | End-of-turn ruling computed directly in `Engine.runLoop` from strike/cycle/sudden-death rail state. Decides whether the loop terminates or another turn fires. No filter chain — rails are inline. |
-| **strike**                   | A turn whose verdict counts toward `MAX_STRIKES`. Fires when `turnErrors > 0` or cycle detection trips. The streak counter resets on clean turn; reaches `MAX_STRIKES` → loop abandons at 500 (failed), or 508 (Loop Detected) when the crossing strike was cycle-driven. |
+| **verdict**                  | The end-of-turn ruling computed inline in `Engine.runLoop` from the strike rail and independent loop terminals. No filter chain. |
+| **strike**                   | One admitted turn matching at least one source above. |
 | **emission attempt**         | One completed provider exchange beneath an engine turn. ANTLR admits it when it has a trustworthy PLAN...SEND frame and no boundary-destroying tail. A hard error bounded to an interior statement becomes a failed operation inside the admitted turn; a rejected attempt is forensic evidence, not another turn or an engine strike. |
-| **cycle**                    | A repeated turn fingerprint across consecutive turns. Detected silently; model never sees the trigger. Strike accumulates internally. |
-| **sudden death**             | The last `MAX_STRIKES` turns of a loop's `MAX_LOOP_TURNS` window emit soft 429 warnings so the model can wrap up cleanly. `soft=true`: no strike, no streak increment. |
+| **cycle**                    | A repeated turn fingerprint across consecutive turns. Detection strikes silently under the rule above. |
 | §mode-ask-read-only **mode** | `"ask" \| "act"`. Per-loop. Ask = read-only: the dispatch gate refuses every side-effecting op (a filesystem write — EDIT/COPY-dest/MOVE/KILL on the `file` scheme — or any EXEC invocation); reads of the workspace stay open. `act` = full surface. Ask never changes the world. |
 | **flag**                     | Per-loop value: `mode`, `noWeb`, and `noInteraction` shape scheme authority ({§manifest-flag-affinity}); `auto` and `noProposals` select proposal settlement. |
 | **proposal**                 | A deferred side-effecting action. State machine: `proposed → resolved` (accept), `→ failed` (reject), or `→ cancelled` (cancel). Its core-owned disposition says whether the client or loop owns resolution ({§proposal-disposition}). |
@@ -1296,10 +1315,10 @@ specific correction on its next packet, never the private strike count
 ({§rail-accounting-private}). Each state below contributes one strike and lets
 the loop continue; repeated offenses terminate through the engine's 500.
 
-| state                 | model-facing evidence                                        | accounting |
-|-----------------------|--------------------------------------------------------------|------------|
-| Idle turn             | An engine-rail error row with the corrective disposition     | One strike |
-| Premature termination | The refused SEND row at 409 with pending-kind Problem Detail | One strike |
+| state               | model-facing evidence                                      | accounting |
+|---------------------|------------------------------------------------------------|------------|
+| Idle turn           | An engine-rail error row with the corrective disposition   | One strike |
+| Refused disposition | The final SEND's 409 row with its exact Problem Detail     | One strike |
 
 - §send-idle-turn **Idle turn** — a continuing turn (102) whose ops are only PLAN/SEND — no work op. The model continued with nothing to do. The steer, verbatim: *"If your work is done, conclude with 200. If you're waiting on a child or stream you spawned, SEND[202] to block on it — a 202 with nothing to wait on simply concludes."*
 - §send-premature-terminate **Premature terminate — the pending set.**
@@ -1721,9 +1740,9 @@ Model selection: separate alias cascade in `ProviderRegistry` ({§provider-insta
 | `PLURNK_PORT`                                               | `3044` | TCP port for THE client surface — the AG-UI+ listener (the plurnk-agui plugin module binds it at boot). Production is single-listener. |
 | §operator-config-git-ceiling `PLURNK_SERVICE_GIT_ALLOWED`   | `1` | Hard service ceiling: only `1` admits Git membership, status, branch batching, and `git`/`isogit` executors; every other value denies them before executor registration or packet teaching. |
 | `PLURNK_SERVICE_MAX_TURNS`                                  | `-1` | Operator turn **ceiling** — `-1` = no cap; a positive value clamps `runLoop({maxTurns})`. The effective value is persisted on the durable loop and counts cumulatively across every `202` park/resume. |
-| `PLURNK_SERVICE_MAX_COMMANDS`                               | `-1` | Per-emission op ceiling; `-1` = no cap (default) — every generated op dispatches. A positive value caps dispatched actions: overflow ops drop with one durable `max-commands-exceeded` error row on the next packet. Tightened per workspace via `settings.maxCommands` (min wins). |
+| `PLURNK_SERVICE_MAX_COMMANDS`                               | `-1` | Per-emission action ceiling; `-1` = no cap (default) — every generated op dispatches. A positive value caps dispatched actions: overflow ops drop with one durable `max-commands-exceeded` error row on the next packet. PLAN and the final disposition always dispatch. Tightened per workspace via `settings.maxCommands` (min wins). |
 | §operator-config-loop-timeout `PLURNK_SERVICE_LOOP_TIMEOUT` | `86400000` | ms wall-clock budget for a single core loop: expiry aborts the loop signal mid-flight (a stuck `generate` included) and the loop terminates `504 loop_timeout` — a legible engine terminal, kin to the exec `<T>` reap's 504 ({§exec-timeout}). |
-| `PLURNK_SERVICE_MAX_STRIKES`                                | `3` | Strike threshold + sudden-death lead time ({§engine-rails}). |
+| `PLURNK_SERVICE_MAX_STRIKES`                                | `3` | Consecutive admitted-turn strike threshold ({§engine-rails}). |
 | `PLURNK_SERVICE_EMISSION_ATTEMPTS`                          | `3` | Completed provider responses allowed beneath one engine turn before an untrustworthy model-turn frame terminates the loop. Bounded interior operation errors are admitted and do not spend this budget. Independent of strikes. |
 | `PLURNK_SERVICE_PREVIEW_LINES`                              | `16` | Maximum lines in an ordinary bounded log-body projection ({§body-projection}). |
 | `PLURNK_SERVICE_PREVIEW_CHARS`                              | `1280` | Maximum characters in an ordinary bounded log-body projection; independently contains single-line bodies ({§body-projection}). |
@@ -1815,9 +1834,9 @@ leak into another.
   workspace: a client tightens the runaway-op guard and never raises it past
   the operator's.
 - §operator-config-workspace-max-commands-floor The cap bounds *actions* only.
-  PLAN (intended goals) and a terminal `SEND` (signal ≥ 200, the conclusion)
-  are never counted and always dispatch, so `0` is a valid floor — the
-  tightest — admitting a plan and a conclusion with zero actions.
+  PLAN (intended goals) and the final disposition `SEND` (`102`, `200`, `202`,
+  `300`, or `499`) are never counted and always dispatch, so `0` is a valid
+  floor — the tightest — admitting a plan and disposition with zero actions.
 - §operator-config-workspace-git `settings.git` (`false`) **denies** git for the workspace (`PLURNK_SERVICE_GIT_ALLOWED` AND workspace) — the client opts its workspace out of git membership and working-tree status; it can never re-enable git past the operator's service-wide lockout.
 - §operator-config-workspace-execs `settings.execs` is a workspace-stable
   snapshot of one `Record<string, string>` policy layer using
@@ -2293,9 +2312,9 @@ speculatively or "helpfully."
 - §loop-terminals **Engine-imposed terminals are HTTP-precise** — the loop-status vocabulary, one meaning each: `200` concluded (the model's SEND[200]) · `499` model-abandoned (SEND[499], or a cancel) · `429` maxTurns exhausted · `413` budget hard-stop · `500` strike threshold or invalid-emission exhaustion (distinct Problem types; `508` when the crossing strike was a detected cycle) · `504` loop timeout / exec-timeout restamp · `202` the bounded wait — a loop blocked on a live obligation (the model's `SEND[202]<T,P>`, {§wait-obligation-matrix}); a wait on nothing resolves to `200` instead · `100`/`102` queued/running. Never a catch-all, never a new value without an owner schema ruling.
 
 §grinder-strike-coupling **Strike coupling.** A grinder fire bumps the engine's
-`turnErrors` — the same internal counter cycle detection feeds — so an overflow
-counts toward the strike streak that ends a runaway loop at 500, or 508 if the
-crossing strike was cycle-driven.
+per-turn rail verdict, so an overflow contributes one strike under
+{§engine-rails}. If cycle detection also fires on that turn, the turn still
+contributes only one strike and a threshold crossing is classified as 508.
 
 §grinder-fold-strikes **Every grinder fold strikes, including turn 1.** There
 is no soft exemption. Folded rows still cost their coordinate lines, so
@@ -2629,7 +2648,7 @@ retain distinct contracts and lifetimes.
 - **Exact Problems cross every boundary.** Scheme capabilities, proposal application, subscription conclusion, loop settlement, AG-UI, clients, digests, and benchmark records preserve the originating Problem object. An adapter may add the durable `instance`; it must not rebuild failure truth from `status`, `detail`, `RUN_ERROR`, a scheduler projection, or a legacy string. A failed boundary without a valid Problem is a contract violation and fails hard.
 - **Caught diagnostics are bounded.** Core-owned Problems may include a bounded preview of a caught runtime diagnostic when it states the occurrence-specific cause. `PLURNK_SERVICE_ERROR_DETAIL_LIMIT` owns that model-facing character bound; complete errors remain in daemon diagnostics. Input validation and stable contract failures do not spend this allowance on implementation text.
 - §notice-drain-on-read **Notices** - the few observations that are not log rows render one terse line under their distinct `## Notices` section, never a JSON dump. Packet rendering normalizes whitespace, bounds the producer message with the shared preview limits, and appends any typed position. The notice buffer drains on read; each appears on exactly one packet.
-- §rail-accounting-private **Rail accounting is private.** The model sees failures from accepted turns that **happened** — its actions failed or it overflowed the window. It does not see rejected emissions or the engine's accounting *about* errors: attempt counts, strike streaks, cycle detection, sudden-death thresholds, or no-ops bookkeeping. Surfacing internal state creates a gamification surface where the model optimizes for engine metrics instead of the task.
+- §rail-accounting-private **Rail accounting is private.** Visibility is owned by {§engine-rails}: the model sees concrete failures from admitted turns, never rejected emissions, attempt counts, the strike streak, or cycle detection. Surfacing internal state creates a gamification surface where the model optimizes for engine metrics instead of the task.
 
 **The error rows (one channel) + the only non-log notices:**
 
@@ -2649,7 +2668,7 @@ retain distinct contracts and lifetimes.
 
 §notice-level **Severity on the wire (`level`, required).** Every `Notice` carries `level: "error" | "warn" | "info"`, set by the **producer** at the emit site. The level is client presentation, not operation status: even an `error` notice cannot terminalize work or substitute for a durable Problem. A forwarded `grammar_unenforced` is `warn`; ordinary lifecycle and progress notices are `info`. Clients color straight off `level` without interpreting the open `kind` vocabulary.
 
-§operation-result-no-error-scheme Strike accounting, cycle detection, sudden-death thresholds, and no-ops bookkeeping stay engine-internal ({§rail-accounting-private}). Every failure within an accepted turn - a bounded parse error, failed action, or engine rail - is a LOG ITEM (`log:///<coord>`, `status_rx ≥ 400`) with Problem Details, foldable and re-OPENable. The `errors` section surfaces a derived pointer to each. Rejected provider attempts stay in the forensic attempt relation. There is **no bespoke `error://` scheme** and no ephemeral per-category failure buffer.
+§operation-result-no-error-scheme Private strike and cycle accounting stays engine-internal ({§rail-accounting-private}). Every failure within an accepted turn - a bounded parse error, failed action, or engine rail - is a LOG ITEM (`log:///<coord>`, `status_rx ≥ 400`) with Problem Details, foldable and re-OPENable. The `errors` section surfaces a derived pointer to each. Rejected provider attempts stay in the forensic attempt relation. There is **no bespoke `error://` scheme** and no ephemeral per-category failure buffer.
 
 §notice-event-notify **Client surface.** Engine Notices broadcast live via the `notice/event` WS notification — `{ loopId, notice: { source, kind, level, message?, position?, …kind-specific } }` per the grammar's `Notice` schema — the moment they land, scoped to the loop's workspace. AG-UI projects the same observation as the custom `plurnk.notice` event. Failures do not broadcast on this surface: they are log rows, and the client reads them through `log.read` / the `log/entry` notification, the durable log.
 
