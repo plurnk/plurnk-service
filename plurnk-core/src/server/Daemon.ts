@@ -728,7 +728,7 @@ export default class Daemon {
     async createWorkspace(args: { name?: string; projectRoot?: string | null; settings?: string | object; constraints?: Array<{ effect: string; glob: string }> }): Promise<ClientEnvelope> {
         // The seam fails hard on malformed semantic input so every module inherits one wall:
         // the settings bag
-        // ({§operator-config}, {§client-metadata}, {§send-300-choices}, #180),
+        // ({§operator-config-workspace-settings}),
         // constraints, and absolute projectRoot.
         const name = ClientInput.assertOptionalName("workspace.create", "name", args.name);
         const projectRoot = ClientInput.assertProjectRoot("workspace.create", args.projectRoot);

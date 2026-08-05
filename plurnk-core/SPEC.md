@@ -1751,7 +1751,24 @@ a fresh-user configuration.
 
 §operator-config-max-turns-ceiling Enforcement is per-use-site — no central most-restrictive pass; each ceiling is checked where it bites. `PLURNK_SERVICE_MAX_TURNS` ships **off** (`-1` = no cap; the loop ends via SEND, budget, strikes, or cycle detection) and, when an operator sets a positive value, the per-call request is `min()`-capped against it.
 
-**Client open-context (per workspace).** `workspace.create({settings})` carries per-workspace overrides, persisted on `workspaces.settings` and composed against env at each knob's read-site. Two families, kept distinct so neither semantic leaks into the other; operator-arcane knobs stay env-only — this is the narrow client surface.
+§operator-config-workspace-settings **Client open-context (per workspace).**
+`workspace.create({ settings })` accepts only the following fields, normalizes
+them before creating the workspace, and persists the resulting snapshot on
+`workspaces.settings`. Unknown fields and malformed values fail at that input
+boundary. Operator-arcane knobs stay environment-only.
+
+| Field                  | Admitted value                                 | Composition / owner                                           |
+| ---------------------- | ---------------------------------------------- | ------------------------------------------------------------- |
+| `settings.filesItems`  | Integer `>= -1`                                | Explicit replacement {§operator-config-workspace-files-items} |
+| `settings.mdDocs`      | Array of `{ alias: [\w.-]+, content: string }` | Alias-keyed union {§operator-config-workspace-md-docs}        |
+| `settings.maxCommands` | Non-negative integer                           | Tightening ceiling {§operator-config-workspace-max-commands}  |
+| `settings.git`         | Boolean                                        | Tightening denial {§operator-config-workspace-git}            |
+| `settings.client`      | Nonempty string                                | Stable self-identification {§client-metadata}                 |
+| `settings.execs`       | Record of policy-key to string                 | Subtractive executor layer {§operator-config-workspace-execs} |
+| `settings.questions`   | Boolean                                        | Affirmative question request {§send-300-choices}              |
+
+The composition families remain distinct so one setting's semantics never
+leak into another.
 
 *Defaults — explicit-wins (the client replaces/merges freely):*
 - §operator-config-workspace-files-items `settings.filesItems` (number) **replaces** `PLURNK_SERVICE_FILES_ITEMS` for the workspace: a one-shot opens clean (`0`, no preview), a workspace full (`-1`), or with the file list capped (`N`, memory still full). A single scalar — the client value wins outright.
@@ -1767,6 +1784,17 @@ a fresh-user configuration.
   are never counted and always dispatch, so `0` is a valid floor — the
   tightest — admitting a plan and a conclusion with zero actions.
 - §operator-config-workspace-git `settings.git` (`false`) **denies** git for the workspace (`PLURNK_SERVICE_GIT_ALLOWED` AND workspace) — the client opts its workspace out of git membership and working-tree status; it can never re-enable git past the operator's service-wide lockout.
+- §operator-config-workspace-execs `settings.execs` is a workspace-stable
+  snapshot of one `Record<string, string>` policy layer using
+  {§executor-policy}. Keys are matched case-insensitively and must be
+  `PLURNK_EXECS_ONLY` or `PLURNK_EXECS_<canonical-runtime-tag>`; MCP connection
+  configuration and non-string values are rejected. The boot-discovered
+  registry is authoritative and the workspace layer only intersects it: it
+  cannot register or re-enable a runtime. A canonical key for a currently
+  absent tag is accepted as inert policy and applies if that tag later belongs
+  to the boot set. Dispatch, the model-facing capability sheet, and executor
+  document materialization use the same registered-set intersection and policy
+  predicate, so a workspace-disabled tag is neither executable nor taught.
 
 Feature-flag bools use `process.env.X === "1"` exactly — never `=== "true"`.
 
@@ -1828,7 +1856,7 @@ Its function names are transport-neutral library calls, not public wire names.
 | §methods-log-read Reads                           | `readLog({ workspaceId, workerId, ...coordinate })` | Ownership-checks the worker, then reads by ids, recency, or the complete `loopSeq`/`turnSeq`/`sequence` display coordinate. `limit` defaults to 100 and is capped at 1000. |
 | §methods-entry-read Reads                         | `readEntry({ workspaceId, workerId, target, channel?, offset? })` | Resolves the selector from that worker's perspective and returns {§entry-read-result}, either complete or as one channel suffix, without creating action evidence. |
 | Providers                                         | `listProviders()` | Lists configured aliases with provider/model identity, active state, and the effective `promptBudget` when core can establish it. |
-| §methods-workspace-create Workspace lifecycle     | `createWorkspace({ name?, projectRoot?, settings?, constraints? })` | Creates the world and its client envelope, materializes current docs and constraints, starts derivation warming, and emits global `workspace/created`. `projectRoot` is established here or the workspace remains headless. |
+| §methods-workspace-create Workspace lifecycle     | `createWorkspace({ name?, projectRoot?, settings?, constraints? })` | Validates `settings` through {§operator-config-workspace-settings}, creates the world and its client envelope, materializes current docs and constraints, starts derivation warming, and emits global `workspace/created`. `projectRoot` is established here or the workspace remains headless. |
 | §methods-workspace-attach Workspace lifecycle     | `attachWorkspace({ workspaceId, workerId?, workerName? })` | Validates ownership and returns a client envelope for an existing world. It does not retain caller or transport binding state in core. |
 | §methods-model-worker Workspace lifecycle         | `ensureModelWorker(workspaceId)` | Returns the workspace's stable default model worker, creating it on first use. Repeated and concurrent calls return the same root; fresh conversations and forks do not replace it. |
 | §methods-conversation-worker Workspace lifecycle  | `createConversationWorker({ workspaceId, name? })` | Creates a distinct model-origin root worker with empty private history: a fresh conversation over the same world, not a fork or the stable default. |

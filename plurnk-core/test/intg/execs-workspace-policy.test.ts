@@ -1,14 +1,14 @@
-// #180 coverage — the per-workspace client execs layer: a workspace whose client policy disables a runtime tag
-// (per-tag kill OR an ONLY allowlist that omits it) has that tag ABSENT — refused at EXEC dispatch,
-// subtractive over the boot registry. The no-op case (no workspace policy) is covered by every other
-// EXEC test running with settings='{}' and NOT being policy-refused.
+// {§operator-config-workspace-execs} — one subtractive workspace layer governs
+// dispatch, capability advertising, and executor document materialization.
 
 import test from "node:test";
 import assert from "node:assert/strict";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import type { ExecStatement } from "@plurnk/plurnk-contracts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, testExecutors } from "./_helpers.ts";
+import { Mock } from "@plurnk/plurnk-providers";
+import { sendStmt } from "./_dsl.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, packetSection, testExecutors } from "./_helpers.ts";
 
 const execStmt = (runtime: string): ExecStatement => ({ op: "EXEC", suffix: "", signal: runtime, target: null, lineMarker: null, body: "echo hi", position: { line: 1, column: 1 } });
 
@@ -26,7 +26,7 @@ const runDisabled = async (execsPolicy: Record<string, string>, runtime: string)
     } finally { await db.close(); }
 };
 
-test("per-tag kill: a workspace disabling sh refuses EXEC[sh] as absent (before executor resolution)", async () => {
+test("{§operator-config-workspace-execs} per-tag disable refuses EXEC before executor resolution", async () => {
     const r = await runDisabled({ PLURNK_EXECS_SH: "0" }, "sh");
     assert.equal(r.status, 501, "sh is disabled for this workspace by client policy");
     assert.equal(r.problem?.type, "https://problems.plurnk.dev/scheme/exec/runtime-disabled");
@@ -35,7 +35,7 @@ test("per-tag kill: a workspace disabling sh refuses EXEC[sh] as absent (before 
     assert.match(r.problem?.recovery as string, /enabled executable tool/);
 });
 
-test("allowlist (case-insensitive key): ONLY=jq makes sh absent for the workspace", async () => {
+test("{§operator-config-workspace-execs} case-insensitive ONLY makes omitted tags absent", async () => {
     const r = await runDisabled({ PLURNK_EXECS_ONLY: "jq" }, "sh");
     assert.equal(r.status, 501, "sh is not in the allowlist → absent");
     assert.equal(r.problem?.type, "https://problems.plurnk.dev/scheme/exec/runtime-disabled");
@@ -44,7 +44,7 @@ test("allowlist (case-insensitive key): ONLY=jq makes sh absent for the workspac
     assert.equal(r.problem?.retryable, false);
 });
 
-test("render filter: a workspace-disabled tag is absent from docEntries — never taught-then-refused", async () => {
+test("{§operator-config-workspace-execs} one effective set filters packet teaching and executor docs", async () => {
     const db = await openMigrated();
     try {
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
@@ -58,5 +58,27 @@ test("render filter: a workspace-disabled tag is absent from docEntries — neve
         const after = await engine.docEntries(workspaceId);
         assert.ok(!after.some((d) => d.name === "node"), "node disabled by workspace policy → no doc materialized");
         assert.ok(after.some((d) => d.name === "sh"), "other tags' docs survive the filter");
+
+        const workerId = await insertWorker(db, workspaceId);
+        const loopId = await insertLoop(db, workerId, 1, "policy teaching");
+        const provider = new Mock({
+            contextWindow: 100_000,
+            responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(200)] } }],
+        });
+        const { turnId } = await engine.runTurn({
+            provider,
+            workspaceId,
+            workerId,
+            loopId,
+            messages: [
+                { role: "system", content: "definition" },
+                { role: "user", content: "inspect the tools" },
+            ],
+        });
+        const stored = await db.test_get_packet.get<{ packet: string }>({ id: turnId });
+        assert.ok(stored !== undefined);
+        const tools = packetSection(JSON.parse(stored.packet) as unknown, "tools");
+        assert.doesNotMatch(tools, /<<EXEC\[node\]/, "node disabled by workspace policy → no capability example");
+        assert.match(tools, /<<EXEC:/, "an enabled shell example remains advertised");
     } finally { await db.close(); }
 });

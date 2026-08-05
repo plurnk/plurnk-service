@@ -322,9 +322,8 @@ export default class Exec extends CoreSchemeAdapterBase {
                 },
             ) as ExecResult;
         }
-        // #180 — per-workspace client policy narrows the boot-registered set (subtractive). A tag the
-        // workspace's client layer disables is ABSENT for this workspace — refused like an unavailable
-        // runtime. Bare EXEC resolves to sh before this gate, so disabling sh also disables the default.
+        // {§operator-config-workspace-execs} — the workspace layer only narrows
+        // the registered set. Bare EXEC resolves to sh before the same gate.
         if (workspaceExecs !== null && !Policy.isEnabled(runtime, workspaceExecs)) {
             const available = core.executors.availableRuntimes()
                 .filter((tag) => Policy.isEnabled(tag, workspaceExecs));

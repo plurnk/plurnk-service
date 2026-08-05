@@ -493,9 +493,8 @@ export default class ClientInput {
             }
             out.client = r.client;
         }
-        // #180 — the client's resolved PLURNK_EXECS_* policy subset, verbatim key→value, fed to execs'
-        // Policy as the per-workspace client layer (subtractive: narrows the boot-registered set, never
-        // widens). MCP connection configuration is daemon-owned and never workspace policy.
+        // {§operator-config-workspace-execs} — retain the admitted policy map as
+        // the workspace snapshot. MCP connection configuration remains daemon-owned.
         if (r.execs !== undefined) {
             if (typeof r.execs !== "object" || r.execs === null || Array.isArray(r.execs)) {
                 ClientInput.#invalid(

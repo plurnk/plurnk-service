@@ -13,7 +13,7 @@ const failureFrom = (run: () => unknown): OperationFailureError => {
     assert.fail("Expected operation failure.");
 };
 
-test("client input accepts valid project, constraint, flag, and settings shapes", () => {
+test("{§operator-config-workspace-settings} client input accepts the complete settings shape", () => {
     assert.equal(ClientInput.assertProjectRoot("workspace.create", "/srv/project"), "/srv/project");
     assert.equal(ClientInput.assertProjectRoot("workspace.create", null), null);
     assert.deepEqual(ClientInput.parseConstraints([{ effect: "pick", glob: "src/**" }]), [
@@ -54,7 +54,14 @@ test("client input accepts valid project, constraint, flag, and settings shapes"
     });
 });
 
-test("client input failures are exact RFC 9457 operation failures", () => {
+test("{§operator-config-workspace-execs} canonical absent-tag policy survives input normalization", () => {
+    assert.deepEqual(
+        JSON.parse(ClientInput.parseSettings({ execs: { PLURNK_EXECS_FUTURE: "0" } })),
+        { execs: { PLURNK_EXECS_FUTURE: "0" } },
+    );
+});
+
+test("{§operator-config-workspace-settings} client input failures are exact RFC 9457 occurrences", () => {
     const cases: Array<{
         run: () => unknown;
         code: string;
@@ -118,6 +125,18 @@ test("client input failures are exact RFC 9457 operation failures", () => {
             code: "setting-key-invalid",
             context: "workspace.create",
             field: "settings.execs.PLURNK_EXECS_ALIAS_TOOL",
+        },
+        {
+            run: () => ClientInput.parseSettings({ execs: [] }),
+            code: "setting-invalid",
+            context: "workspace.create",
+            field: "settings.execs",
+        },
+        {
+            run: () => ClientInput.parseSettings({ execs: { PLURNK_EXECS_SH: 0 } }),
+            code: "setting-invalid",
+            context: "workspace.create",
+            field: "settings.execs.PLURNK_EXECS_SH",
         },
         {
             run: () => ClientInput.parseSettings("{"),

@@ -19,7 +19,7 @@ export type WorkspaceOpenContext = {
     maxCommands: number | null; // {§operator-config-workspace-max-commands} — min() with env; null = unset
     git: boolean | null;       // {§operator-config-workspace-git} — env AND workspace; null = unset
     client: string | null;     // {§client-metadata} — workspace-stable frontend id; null = unset
-    execs: Record<string, string> | null; // #180 — subtractive workspace policy awaiting its core SPEC tag
+    execs: Record<string, string> | null; // {§operator-config-workspace-execs}
     questions: boolean | null;    // {§send-300-choices} — the client's affirmative per-workspace request for operator questions ([300]); enabled = allowed (PLURNK_QUESTIONS != 0) AND requested.
 };
 

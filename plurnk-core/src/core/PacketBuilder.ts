@@ -365,9 +365,8 @@ export default class PacketBuilder {
         return { tokens: packetTokens, sections };
     }
 
-    // #180 — the per-workspace client execs policy narrows what the packet advertises, matching what
-    // dispatch refuses: a workspace-disabled tag is absent from the capability sheet and the doc set,
-    // never taught-then-refused. No policy (execs unset) → everything boot-registered shows.
+    // {§operator-config-workspace-execs} — the capability sheet and executor
+    // documents share one workspace predicate with dispatch.
     async #workspaceEnabled(workspaceId: number): Promise<(tag: string) => boolean> {
         const { execs } = await WorkspaceSettings.read(this.#db, workspaceId);
         if (execs === null) return () => true;
@@ -404,7 +403,7 @@ export default class PacketBuilder {
             } else {
                 for (const tag of runtimes) {
                     if (excluded.has(tag)) continue; // {§tools-capability-sheet} — exclude drops the example and doc
-                    if (!workspaceEnabled(tag)) continue; // #180 — workspace-disabled tags aren't advertised
+                    if (!workspaceEnabled(tag)) continue; // {§operator-config-workspace-execs}
                     const entry = executors.entry(tag);
                     // {§tools-capability-sheet} — the example is the bare op fenced below; the fuller doc
                     // materializes at worker://plurnk/docs/<tag>.md. No example → no line.
@@ -432,7 +431,7 @@ export default class PacketBuilder {
         const executors = this.#executors();
         if (executors !== undefined) {
             const excluded = docsExcludeSet();
-            const workspaceEnabled = await this.#workspaceEnabled(workspaceId); // #180 — no doc for a disabled tag
+            const workspaceEnabled = await this.#workspaceEnabled(workspaceId); // {§operator-config-workspace-execs}
             for (const tag of executors.availableRuntimes()) {
                 if (excluded.has(tag)) continue; // {§tools-capability-sheet} — exec docs honor the same exclude
                 if (!workspaceEnabled(tag)) continue;
