@@ -27,7 +27,8 @@ const withFetch = async (impl: typeof fetch, fn: () => Promise<void>) => {
     globalThis.fetch = impl;
     try { await fn(); } finally { globalThis.fetch = orig; }
 };
-const resp = (body: string | null, status: number, headers: Record<string, string> = {}) => new Response(body, { status, headers });
+const resp = (body: string | Uint8Array | null, status: number, headers: Record<string, string> = {}) =>
+    new Response(body, { status, headers });
 
 test("live public textual URL → { body, mimetype }", async () => {
     await withFetch((async () => resp('{"a":1}', 200, { "content-type": "application/json" })) as typeof fetch, async () => {
@@ -45,6 +46,28 @@ test("the shared textual taxonomy accepts application/yaml", async () => {
         const fetched = await new WebFetcher().fetch(PUB);
         assert.equal(fetched?.body, "name: plurnk");
         assert.equal(fetched?.mimetype, "application/yaml");
+    });
+});
+
+test("text acquisition uses Fetch UTF-8 decoding and retains charset as metadata", async () => {
+    const windows1252 = Uint8Array.from([0x63, 0x61, 0x66, 0xe9]);
+    await withFetch((async () => resp(windows1252, 200, {
+        "content-type": "text/plain; charset=windows-1252",
+    })) as typeof fetch, async () => {
+        const fetched = await new WebFetcher().fetch(PUB);
+        assert.equal(fetched?.body, "caf�");
+        assert.equal(fetched?.mimetype, "text/plain");
+        assert.match(fetched?.header ?? "", /^content-type: text\/plain; charset=windows-1252$/m);
+    });
+});
+
+test("an unsupported charset does not invent a non-Fetch decoder", async () => {
+    await withFetch((async () => resp("Unicode stays Unicode", 200, {
+        "content-type": "text/plain; charset=not-a-real-encoding",
+    })) as typeof fetch, async () => {
+        const fetched = await new WebFetcher().fetch(PUB);
+        assert.equal(fetched?.body, "Unicode stays Unicode");
+        assert.equal(fetched?.mimetype, "text/plain");
     });
 });
 
@@ -229,6 +252,14 @@ test("non-2xx → null", async () => {
 
 test("non-textual (binary) → null (pruned)", async () => {
     await withFetch((async () => resp("PNGDATA", 200, { "content-type": "image/png" })) as typeof fetch, async () => {
+        assert.equal(await new WebFetcher().fetch(PUB), null);
+    });
+});
+
+test("an unparseable Content-Type is not admitted as text", async () => {
+    await withFetch((async () => resp("not trustworthy", 200, {
+        "content-type": "text/plain garbage",
+    })) as typeof fetch, async () => {
         assert.equal(await new WebFetcher().fetch(PUB), null);
     });
 });

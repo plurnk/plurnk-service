@@ -201,11 +201,18 @@ const findStmt = (target: UrlPath | null, body: FindStatement["body"] = null): F
 });
 
 // Mock fetch: a streaming Response over the given chunks.
-const mockFetch = (status: number, statusText: string, bodyChunks: string[], headers: Record<string, string> = {}) => {
+const mockFetch = (
+    status: number,
+    statusText: string,
+    bodyChunks: ReadonlyArray<string | Uint8Array>,
+    headers: Record<string, string> = {},
+) => {
     const enc = new TextEncoder();
     const stream = bodyChunks.length === 0 ? null : new ReadableStream<Uint8Array>({
         start(controller) {
-            for (const c of bodyChunks) controller.enqueue(enc.encode(c));
+            for (const chunk of bodyChunks) {
+                controller.enqueue(typeof chunk === "string" ? enc.encode(chunk) : chunk);
+            }
             controller.close();
         },
     });
@@ -787,6 +794,45 @@ test("READ: non-HTML body is labelled with its real content-type", async () => {
     });
     const body = inspect().chunks.filter((c) => c.channel === "body");
     assert.equal(body[0]?.mimetype, "application/json");
+});
+
+test("READ: textual bytes follow Fetch UTF-8 decoding regardless of charset metadata", async () => {
+    const { ctx, inspect } = makeCtx();
+    const windows1252 = Uint8Array.from([0x63, 0x61, 0x66, 0xe9]);
+    await withFetch(mockFetch(200, "OK", [windows1252], {
+        "content-type": "text/plain; charset=windows-1252",
+    }), async () => {
+        assert.equal(
+            (await new Http().read(readStmt(urlTarget("https://example.com/legacy.txt", "/legacy.txt")), ctx)).status,
+            102,
+        );
+    });
+
+    assert.equal(
+        inspect().chunks.filter(({ channel }) => channel === "body").map(({ chunk }) => chunk).join(""),
+        "caf�",
+    );
+    assert.match(
+        inspect().chunks.find(({ channel }) => channel === "header")?.chunk ?? "",
+        /^content-type: text\/plain; charset=windows-1252$/m,
+    );
+});
+
+test("READ: an unparseable Content-Type is an unknown binary representation", async () => {
+    const { ctx, inspect } = makeCtx();
+    let result: Awaited<ReturnType<Http["read"]>> | undefined;
+    await withFetch(mockFetch(200, "OK", ["not trustworthy"], {
+        "content-type": "text/plain garbage",
+    }), async () => {
+        result = await new Http().read(readStmt(urlTarget("https://example.com/bad", "/bad")), ctx);
+    });
+
+    assert.equal(result?.status, 415);
+    assert.equal(result?.problem?.mimetype, "application/octet-stream");
+    assert.deepEqual(
+        inspect().chunks.filter(({ channel }) => channel === "body"),
+        [{ channel: "body", chunk: "", mimetype: "application/octet-stream" }],
+    );
 });
 
 test("SEND[200]: a binary response becomes a typed marker and explicit non-retryable 415", async () => {
