@@ -450,7 +450,8 @@ test("encrypted reasoning (non-streamed): encrypted entries normalize and text e
     }, finish_reason: "stop" }], usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 } });
     const p = new AiSdkProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, streaming: false });
     const { assistant } = await p.generate({ workerId: "r", messages: [] });
-    // Wire id is preserved; #44 owns the evidence required for subtype selection.
+    // Wire detail ID is preserved; the assistant-message location supports the
+    // derived classification but supplies no downstream client entity ID.
     assert.deepEqual(assistant.reasoningEncrypted, [{ id: "rs_1", subtype: "message", encrypted: [{ data: "gAAAAABqBLOB", format: "openai-responses-v1" }] }]);
     assert.equal(assistant.reasoning, null); // Encrypted turn: nothing readable.
     assert.equal(assistant.content, "4");

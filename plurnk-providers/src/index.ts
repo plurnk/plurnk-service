@@ -9,6 +9,7 @@ export type {
     AiSdkProviderPlugin,
     ProviderOptions,
     ProviderResponse,
+    ProviderEncryptedReasoningItem,
     ProviderUsage,
     PromptTokenMeasurement,
     TokenLogprob,

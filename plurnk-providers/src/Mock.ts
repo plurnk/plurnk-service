@@ -5,7 +5,7 @@
 // Provider contract. Production providers don't expose the `ops` escape
 // hatch — that's an intg-only convenience.
 
-import type { ChatMessage, FinishReason, GrammarEvidence, PromptTokenMeasurement, Provider, ProviderAssistant, ProviderResponse, ProviderUsage } from "./types.ts";
+import type { ChatMessage, FinishReason, GrammarEvidence, PromptTokenMeasurement, Provider, ProviderAssistant, ProviderEncryptedReasoningItem, ProviderResponse, ProviderUsage } from "./types.ts";
 import { resolveEnvelopeFromEnv } from "./env.ts";
 
 export type MockAssistant = {
@@ -15,8 +15,8 @@ export type MockAssistant = {
     usage?: Partial<ProviderUsage>;
     finishReason?: FinishReason;
     model?: string;
-    // Provider-normalized encrypted reasoning fixture; #44 owns normalization.
-    reasoningEncrypted?: ReadonlyArray<{ id: string | null; subtype: string; encrypted: ReadonlyArray<{ data: string; format: string | null }> }>;
+    // Provider-normalized encrypted reasoning fixture.
+    reasoningEncrypted?: ReadonlyArray<ProviderEncryptedReasoningItem>;
     // Pre-parsed ops — intg-only escape hatch. Typed `unknown[]` so the
     // framework carries no parser dependency; plurnk-service
     // casts these to PlurnkStatement[] on its side. Production providers never

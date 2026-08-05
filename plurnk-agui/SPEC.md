@@ -73,13 +73,13 @@ same log identity and verbatim goals:
   list on the model mirror row's `attrs.reasoning`. The provider detail `id` is
   forensic identity, not an AG-UI entity ID ({§provider-encrypted-reasoning}).
 
-  | Condition                                  | Projection |
-  | ------------------------------------------ | ---------- |
+  | Condition                                   | Projection |
+  | ------------------------------------------- | ---------- |
   | Same-turn SEND + one nonempty message value | One `REASONING_ENCRYPTED_VALUE` with `subtype: "message"` and `entityId` equal to that SEND message's coordinate. |
-  | Null or absent provider detail `id`        | No effect on correlation; the actual SEND identity owns the client relation. |
-  | No SEND, non-message, or multiple values   | No standard encrypted event. Nothing is selected, joined, or overwritten. |
-  | Provider-only and unprojected evidence     | Detail `id`, `format`, ordering, and every value remain lossless on the `plurnk.row` mirror evidence. |
-  | Reattach                                   | The same singular value occupies `encryptedValue` on the corresponding SEND `AssistantMessage` in `MESSAGES_SNAPSHOT`. |
+  | Null or absent provider detail `id`         | No effect on correlation; the actual SEND identity owns the client relation. |
+  | No SEND or not exactly one message value    | No standard encrypted event. Nothing is selected, joined, or overwritten. |
+  | Provider-only and unprojected evidence      | Detail `id`, `format`, ordering, and every value remain lossless on the `plurnk.row` mirror evidence. |
+  | Reattach                                    | The same singular value occupies `encryptedValue` on the corresponding SEND `AssistantMessage` in `MESSAGES_SNAPSHOT`. |
 
   AG-UI's single message slot cannot represent multiple provider details without
   losing cardinality. The translator therefore emits neither invented reasoning

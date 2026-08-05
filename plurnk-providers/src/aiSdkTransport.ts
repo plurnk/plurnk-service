@@ -363,6 +363,9 @@ const extractEvidence = (values: unknown[]): {
                 : id === null ? `anonymous:${anonymous++}` : `id:${id}`;
             const item: AiSdkTransportResponse["reasoningEncrypted"][number] = encrypted.get(key) ?? {
                 id,
+                // {§provider-encrypted-reasoning} The documented wire location
+                // is the assistant message. `id` above still identifies only
+                // this provider detail, never a downstream message entity.
                 subtype: "message",
                 encrypted: [],
             };

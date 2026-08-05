@@ -1772,7 +1772,7 @@ export default class Engine {
         // (a 24k-char ramble mirrored open re-injects itself into the next packet: cost,
         // contamination, pressure feedback).
         // {§encrypted-reasoning-carrier} — core relays every provider-normalized
-        // item unchanged; #44 owns the upstream normalization rule.
+        // item unchanged.
         const reasoningItems = response.assistant.reasoningEncrypted?.length
             ? response.assistant.reasoningEncrypted
             : undefined;

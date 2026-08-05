@@ -63,6 +63,7 @@ import {
     type MatchEvidence,
     type SchemeResult,
 } from "@plurnk/plurnk-schemes";
+import type { ProviderEncryptedReasoningItem } from "@plurnk/plurnk-providers";
 import DurableStatement from "./DurableStatement.ts";
 
 // SPEC {§scheme-surface}: writer must be in target scheme's manifest.writableBy.
@@ -1433,8 +1434,8 @@ export default class Dispatcher {
     async writeModelEntry({ verbatim, workerId, loopId, turnId, sequence, folded, origin = "model", reasoningItems }: {
         verbatim: string; workerId: number; loopId: number; turnId: number; sequence: number; folded: boolean; origin?: WriterTier;
         // {§encrypted-reasoning-carrier} — relay provider-normalized encrypted
-        // reasoning items as opaque mirror-row evidence. #44 owns normalization.
-        reasoningItems?: ReadonlyArray<{ id: string | null; subtype: string; encrypted: ReadonlyArray<{ data: string; format: string | null }> }>;
+        // reasoning items as opaque mirror-row evidence.
+        reasoningItems?: ReadonlyArray<ProviderEncryptedReasoningItem>;
     }): Promise<number> {
         const row = await this.#db.engine_insert_log_entry.get<{ id: number }>({
             worker_id: workerId, loop_id: loopId, turn_id: turnId, sequence,
