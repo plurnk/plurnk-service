@@ -870,8 +870,8 @@ test("Engine.runTurn: the log section parses an application/json rx body", async
     } finally { await db.close(); }
 });
 
-// Action-bound failures project into the next packet's Errors section.
-// Task #49.
+// {§operation-result-uniform-error-channel}: action-bound failures project into
+// the next packet's Errors section.
 
 test("Engine.runTurn: Errors is empty on a clean first turn", async () => {
     const { db, engine, workspaceId, workerId, loopId } = await setup();

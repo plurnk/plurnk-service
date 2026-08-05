@@ -35,8 +35,8 @@ test("loop.cancel terminates a backgrounded exec; the stream concludes 499", asy
     // not merely cancelled=true. The wall clock used to hide a broken kill
     // behind a 30s leak (the original assertion never checked the kill).
     //
-    // `sleep 30` is the long-running job; loop.cancel must process-group-kill
-    // it (execs 0.4.0+ fixed the #4 grandchild leak) — proven by the 499
+    // `sleep 30` is the long-running job; {§executor-cancellation} requires
+    // loop.cancel to process-group-kill it — proven by the 499
     // conclusion, not a 30s wall-clock leak.
     const mock = new Mock({
         contextWindow: 16384,

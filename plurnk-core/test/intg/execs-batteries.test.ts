@@ -142,7 +142,8 @@ test("execs batteries: coverage census — every self-contained default-install 
 
     // Channel mimetype shape: a results-returning runtime declares the HONEST JSON family on its channel
     // so consumers route jsonpath/render correctly — sqlite/wat emit a single document (application/json),
-    // jq is a streaming filter that emits newline-delimited values (application/jsonl, jq 0.1.8 #2).
+    // jq is a streaming filter that emits newline-delimited values
+    // ({§executor-default-inventory}: application/jsonl).
     // Subprocess runtimes declare text/stream on stdout.
     const declMime = (tag: string): string | undefined => {
         const e = reg.entry(tag);

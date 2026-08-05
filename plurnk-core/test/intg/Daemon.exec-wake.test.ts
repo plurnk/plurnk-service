@@ -436,8 +436,8 @@ test("wake-on-completion: loop.cancel mid-spawn → daemon skips wake (skipped-a
 
 test("loop.cancel preserves partial stdout on the 499 conclusion (chunk-capture)", async () => {
     // printf lands "a\nb\n" (4 bytes) immediately, then `sleep 30` runs; at
-    // cancel time those bytes are already in the channel. loop.cancel
-    // process-group-kills the job (execs 0.4.0+ fixed #4); the 499
+    // cancel time those bytes are already in the channel. Under
+    // {§executor-cancellation}, loop.cancel process-group-kills the job; the 499
     // conclusion must STILL report those 4 bytes — partial output captured
     // + retained through an abort, not discarded.
     const mock = new Mock({

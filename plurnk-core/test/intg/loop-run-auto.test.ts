@@ -1,7 +1,6 @@
-// Server-side auto wire path (#147). Closes the Phase E.3 deferred TODO:
-// `loop.run` accepts `flags?: { auto?: boolean }`, persists to loops.flags,
-// and core's proposal disposition resolves without any client `loop.resolve`
-// call. The loop/proposal notification carries that same disposition.
+// {§proposal-ownership-loop-auto}: `loop.run` persists `flags.auto`, and core's
+// proposal disposition resolves without a client `loop.resolve` call. The
+// loop/proposal notification carries that same disposition.
 
 import test from "node:test";
 import { viableWindow } from "./_helpers.ts";

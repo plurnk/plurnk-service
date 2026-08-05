@@ -1,4 +1,5 @@
-// COPY/MOVE INTO file:/// — a disk write under the {§membership} proposal gate (#2).
+// COPY/MOVE into file:/// — a disk write under {§copy-cross-scheme-copy},
+// {§move-cross-scheme-move}, and the {§proposal} gate.
 // The dest write proposes (202); on accept the file lands + an entry registers.
 // MOVE's source-delete is DEFERRED to after the accept, so a rejected MOVE leaves
 // the source intact (no data loss behind a pending review).
@@ -90,7 +91,7 @@ const proposeAndResolve = async (
     return dispatchPromise;
 };
 
-test("[#2-copy-to-file] COPY worker:/// → file:/// proposes then lands the file on accept", async () => {
+test("{§copy-cross-scheme-copy}: COPY worker:/// → file:/// proposes then lands on accept", async () => {
     await withWorkspace(async (root, ctx) => {
         await seedWorker(ctx, "note", "copied content\n");
         const result = await proposeAndResolve(ctx, copyStmt(urlPath("worker", "/note"), urlPath("file", "/copied.txt")), "accept");
@@ -165,7 +166,7 @@ test("a scoped COPY into a new file reports the accepted creation receipt", asyn
     });
 });
 
-test("[#2-copy-to-file-reject] a rejected COPY into file:/// never touches disk", async () => {
+test("{§proposal-reject-fails}: a rejected COPY into file:/// never touches disk", async () => {
     await withWorkspace(async (root, ctx) => {
         await seedWorker(ctx, "note", "nope\n");
         const result = await proposeAndResolve(ctx, copyStmt(urlPath("worker", "/note"), urlPath("file", "/rejected.txt")), "reject");
@@ -205,7 +206,7 @@ test("a regional COPY into file:/// reports the accepted text receipt", async ()
     });
 });
 
-test("[#2-move-to-file] MOVE worker:/// → file:/// lands the file AND deletes the source on accept", async () => {
+test("{§move-cross-scheme-move}: accepted MOVE lands the file and deletes the source", async () => {
     await withWorkspace(async (root, ctx) => {
         await seedWorker(ctx, "movee", "moved content\n");
         const result = await proposeAndResolve(ctx, moveStmt(urlPath("worker", "/movee"), urlPath("file", "/moved.txt")), "accept");
@@ -358,7 +359,7 @@ test("a reviewer-rewritten cross-resource MOVE still reports its landed source r
     });
 });
 
-test("[#2-move-to-file-reject] a rejected MOVE into file:/// preserves the source (deferred delete)", async () => {
+test("{§proposal-reject-fails}: a rejected MOVE into file:/// preserves the source", async () => {
     await withWorkspace(async (_root, ctx) => {
         await seedWorker(ctx, "keepme", "keep\n");
         const result = await proposeAndResolve(ctx, moveStmt(urlPath("worker", "/keepme"), urlPath("file", "/rejected-move.txt")), "reject");
@@ -368,7 +369,7 @@ test("[#2-move-to-file-reject] a rejected MOVE into file:/// preserves the sourc
     });
 });
 
-test("[#2-move-file-to-file] MOVE file:/// → file:/// into a NEW subdir lands the dest AND unlinks the source (no silent 501 noop)", async () => {
+test("{§move-relocation-deletes-source}: file MOVE into a new subdir lands and unlinks", async () => {
     // The file→file MOVE that was a silent noop: File lacked deleteEntry, so #handleMove returned a
     // bare 501 before any write — the model's correct MOVE did nothing while the worker concluded 200.
     await withWorkspace(async (root, ctx) => {
