@@ -135,7 +135,7 @@ describe("embedder duck surface", () => {
         });
     });
 
-    it("dispose() is idempotent and re-lazy-inits (#36)", async () => {
+    it("{§mimetype-lifecycle}: dispose() is idempotent and re-lazy-inits", async () => {
         await dispose(); // before any use — no-op, must not throw
         await embed("warm");
         await dispose();
@@ -144,7 +144,7 @@ describe("embedder duck surface", () => {
         assert.equal(again.length, 4 * dimension);
     });
 
-    it("a process that embeds then dispose()s exits on its own — no leaked native handles (#36)", () => {
+    it("{§mimetype-lifecycle}: explicit embedder disposal leaves no native handles", () => {
         // The deliverable: a process that loaded the embedder must drain and
         // exit. Run as a child with a hard timeout — a hang makes execFileSync
         // throw, failing the test.
@@ -159,7 +159,7 @@ describe("embedder duck surface", () => {
         });
     });
 
-    it("a process that embeds and NEVER dispose()s still exits — #36 dissolved by the WASM runtime", () => {
+    it("the WASM runtime drains without explicit disposal", () => {
         // The structural win of the onnxruntime-web move: the old native runtime
         // held active+referenced libuv handles, so an undisposed embedder hung
         // the loop. The single-threaded WASM backend holds none — so even with
@@ -174,7 +174,7 @@ describe("embedder duck surface", () => {
         });
     });
 
-    it("embedBatch returns vectors in input order, byte-identical to embed() (#2)", async () => {
+    it("{§mimetype-embedding}: embedBatch preserves order and scalar wire identity", async () => {
         const texts = ["hello", "database connection error", "the quick brown fox", "birthday cake recipe"];
         const batch = await embedBatch(texts);
         assert.equal(batch.length, texts.length);
@@ -194,7 +194,7 @@ describe("embedder duck surface", () => {
         }
     });
 
-    it("embedBatch reports progress as completed/total (#2)", async () => {
+    it("{§mimetype-embedding}: embedBatch reports completed and total progress", async () => {
         const seen = [];
         const texts = ["a", "b", "c", "d", "e"];
         await embedBatch(texts, { onProgress: (p) => seen.push(p) });
@@ -205,21 +205,20 @@ describe("embedder duck surface", () => {
         assert.ok(seen.every((p) => p.total === texts.length));
     });
 
-    it("embedBatch([]) is a no-op empty result (#2)", async () => {
+    it("{§mimetype-embedding}: embedBatch([]) is a no-op empty result", async () => {
         assert.deepEqual(await embedBatch([]), []);
     });
 
-    it("embedBatch rejects an aborted signal (#2)", async () => {
+    it("{§mimetype-embedding}: embedBatch rejects an aborted signal", async () => {
         await assert.rejects(
             embedBatch(["x", "y"], { signal: AbortSignal.abort() }),
             (e) => e.name === "AbortError",
         );
     });
 
-    it("a process that embedBatch()es and never dispose()s still exits (#2)", () => {
+    it("an idle embedBatch pool does not hold the process open", () => {
         // The pool reuses single-threaded workers; they're unref'd while idle so
-        // the process drains without dispose() — the #36 clean-exit property must
-        // survive the worker pool.
+        // the process drains without dispose().
         const indexPath = path.join(import.meta.dirname, "index.js");
         const src = `import { embedBatch } from ${JSON.stringify(indexPath)};\n`
             + `await embedBatch(["one", "two", "three"]);\n`;

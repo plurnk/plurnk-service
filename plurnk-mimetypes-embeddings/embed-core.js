@@ -79,7 +79,7 @@ export async function embedText({ tokenizer, sepId, session }, text) {
 }
 
 // Untruncated token count in the model's own tokenizer (CLS/SEP included) — the
-// losslessness primitive for the chunker (#1).
+// losslessness primitive for the chunker ({§mimetype-embedding}).
 export function countTokensWith(tokenizer, text) {
     return tokenizer.encode(text, { add_special_tokens: true }).ids.length;
 }

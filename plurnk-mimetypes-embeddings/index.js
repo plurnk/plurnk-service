@@ -173,8 +173,8 @@ function runtime() {
 }
 
 // text → 4×dimension bytes. Local: WASM on the calling thread. Remote: one
-// endpoint request (failures throw with the endpoint named; the host's
-// degrade-to-FTS + Notice handling is service-side, per #46).
+// endpoint request. Failures throw with the endpoint named;
+// {§mimetype-embedding} leaves consumer recovery outside this artifact.
 export async function embed(text) {
     if (REMOTE) return (await remoteEmbedMany([text]))[0];
     const bytes = await embedText(await runtime(), text);

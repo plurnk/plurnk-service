@@ -72,7 +72,8 @@ for (const [family, repo] of Object.entries(FAMILIES)) {
         repo,
         pin,
         files,
-        // Vocab identity (#44): sha256 prefix of the tokenizer.json bytes.
+        // Vocabulary identity ({§mimetype-tokenizer}): sha256 prefix of the
+        // tokenizer.json bytes.
         tokenizerId: files["tokenizer.json"].slice(0, 16),
     };
     console.log(`${family.padEnd(9)} ${repo}  pin=${pin.slice(0, 8)}  id=${manifest[family].tokenizerId}  (${(tok.length / 1024 / 1024).toFixed(1)}MB${files["tokenizer_config.json"] ? " +cfg" : ""})`);

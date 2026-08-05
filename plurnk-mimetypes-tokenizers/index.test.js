@@ -11,7 +11,7 @@ const manifest = JSON.parse(readFileSync(new URL("./tokenizers/manifest.json", i
 // The family key is the caller's explicit vocabulary selection.
 const REFS = Object.fromEntries(Object.keys(manifest).map((family) => [family, family]));
 
-// The #44 measurement text shape: English + code + plurnk DSL.
+// Representative {§mimetype-tokenizer} input: English + code + plurnk DSL.
 const SAMPLE = 'READ<<EDIT[fix](src/index.ts)<12>:const x = users.filter((u) => u.active);:EDIT — apply the patch, then re-run the failing test and report the count.';
 
 describe("every bundled family loads and counts", () => {

@@ -24,7 +24,7 @@ async function withEnv(key: string, value: string, fn: () => Promise<void>): Pro
     }
 }
 
-describe("ApplicationPdf — resource caps (#38 DoS resistance)", () => {
+describe("ApplicationPdf — resource caps and render-free operation", () => {
     it("a PDF over the byte cap degrades to empty symbols / null deepJson, never throws", async () => {
         const pdf = buildPdf({ title: "Over Cap", outline: [{ title: "A" }] });
         await withEnv("PLURNK_MIMETYPES_PDF_MAX_BYTES", "10", async () => {

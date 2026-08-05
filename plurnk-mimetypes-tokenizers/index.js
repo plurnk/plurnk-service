@@ -14,7 +14,7 @@
 // swap never invalidates counts derived against it.
 //
 // countTokens counts CONTENT tokens (add_special_tokens: false) — the same
-// semantics as llama-server's /tokenize, which the #44 measurements used.
+// semantics as llama-server's /tokenize under {§mimetype-tokenizer}.
 // BOS/EOS/chat-template overhead is per-request framing the host budgets
 // separately; baking it into content counts would double-count it.
 import { readFileSync } from "node:fs";

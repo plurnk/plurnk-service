@@ -53,7 +53,7 @@ async function inRemote(snippet, envExtra = {}) {
     return stdout;
 }
 
-describe("remote mode (#46)", () => {
+describe("remote mode ({§mimetype-embedding})", () => {
     it("probes the dimension at load and folds model+dimension into the identity", async () => {
         const out = await inRemote(`console.log(JSON.stringify({ d: e.dimension, m: e.model, cw: e.contextWindow ?? null }));`);
         assert.deepEqual(JSON.parse(out), { d: DIM, m: `remote:test-model@d${DIM}`, cw: null });
@@ -106,7 +106,7 @@ describe("remote mode (#46)", () => {
 
 });
 
-describe("remote mode — embedderInfo contract facts (#50)", () => {
+describe("remote mode — embedderInfo contract facts ({§mimetype-embedding})", () => {
     it("countTokens is UNDEFINED (absent), never a throwing decoy", async () => {
         const out = await inRemote(`console.log(JSON.stringify(typeof e.countTokens));`);
         assert.equal(JSON.parse(out), "undefined");
