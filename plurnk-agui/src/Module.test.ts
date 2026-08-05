@@ -1150,7 +1150,7 @@ test("[{§agui-configuration}] the environment turn default yields to the Run va
 });
 
 
-test("a message AG-UI Run forwards forwardedProps.plurnk alias+model into runLoop (#414 per-loop model selection)", async () => {
+test("a message AG-UI Run forwards forwardedProps.plurnk alias+model into runLoop", async () => {
     const { seam, loopRuns, finish } = mockSeam();
     // The worker self-completes: the runLoop override closes the stream for its workspace (the working
     // message-drive pattern above), so the POST resolves.

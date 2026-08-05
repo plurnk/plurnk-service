@@ -495,8 +495,8 @@ export default class Module {
             ...(forwarded !== undefined && Object.hasOwn(forwarded, "openPaths")
                 ? { openPaths: forwarded.openPaths as string[] }
                 : {}),
-            // #414 — per-loop model selection: the client sends alias+model on every loop
-            // (model = client-resolved <provider>/<model>, #90); forward both, the daemon's
+            // {§methods-loop-run-model} The client sends alias and model on every loop;
+            // model is the client-resolved <provider>/<model>. Forward both, and the daemon's
             // runLoop applies precedence (model wins) and resolves the provider per loop.
             ...(forwarded !== undefined && Object.hasOwn(forwarded, "alias")
                 ? { alias: forwarded.alias as string }

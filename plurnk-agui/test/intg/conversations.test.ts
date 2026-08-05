@@ -123,7 +123,7 @@ test("two threads, one world: distinct workers, shared filesystem (the environme
         const names = workerList.map((worker) => worker.name);
         assert.ok(names.includes("second-look"), `thread B's conversation worker exists by ITS name: ${names.join(", ")}`);
 
-        // #376 isolation — the workerId filter through module HEAD + the REAL seam: the
+        // The workerId filter crosses the module and real seam: the
         // client ops journaled in each thread's client worker; per-worker reads must differ.
         // (The service's readlog-worker-filter pin exonerates the seam in isolation; this
         // pins the full module→seam path with live params.)
@@ -135,7 +135,7 @@ test("two threads, one world: distinct workers, shared filesystem (the environme
         }
         const counts = [...perWorker.values()];
         assert.ok(new Set(counts).size > 1 || counts.every((c) => c === 0) === false,
-            `per-worker reads are DISTINGUISHABLE (a uniform answer for every workerId is the #376 signature): ${JSON.stringify([...perWorker])}`);
+            `per-worker reads are distinguishable: ${JSON.stringify([...perWorker])}`);
     } finally {
         await daemon.stop();
         await db.close();
