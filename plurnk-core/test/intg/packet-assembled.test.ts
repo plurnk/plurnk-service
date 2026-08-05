@@ -239,7 +239,7 @@ test("assembled packet: the docs foist — FIND(worker://plurnk/docs/**) surface
         const log = packetSection(await getPacket(db, result.turnId), "log");
 
         // The kernel surface is scoped to its docs subtree, and the FIND renders its result —
-        // the materialized doc reaches the model via FIND, not an inline link (#270).
+        // the materialized doc reaches the model via FIND, not an inline link ({§schemes-directory}).
         assert.match(log, /"target":"worker:\/\/plurnk\/docs\/\*\*"/, "the foist scopes the kernel surface to the docs subtree");
         assert.match(log, /worker:\/\/plurnk\/docs\/worker\.md/, "the materialized doc surfaces in the foist's rendered result");
     } finally {
@@ -397,7 +397,7 @@ test("assembled packet: definition tables compact without changing other whitesp
     } finally { await db.close(); }
 });
 
-test("assembled packet: the grammar definition reaches the packet + the schemes directory renders well-formed << heredocs", async () => {
+test("{§schemes-directory}: the assembled packet renders complete fenced scheme examples", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `pkt-shape-${crypto.randomUUID()}`);
@@ -410,11 +410,9 @@ test("assembled packet: the grammar definition reaches the packet + the schemes 
 
         // The grammar (plurnk.md) must reach the model — a dropped definition section is a dead packet.
         assert.ok(packetSection(packet, "definition").length > 0, "the definition (grammar) section carries content");
-        // Every scheme-directory line is a well-formed heredoc — the service-side guard for the
-        // <<-less example class (a render dropping the << teaches the model malformed ops, the
-        // exact failure mode the EXEC examples shipped). Covers the part the service controls.
+        // Every scheme-directory line is a complete authored operation.
         const schemesSection = packetSection(packet, "schemes");
-        assert.ok(schemesSection.startsWith("```plurnk"), "the schemes catalog is a fenced plurnk block (#436), not a bullet list");
+        assert.ok(schemesSection.startsWith("```plurnk"), "the schemes catalog is a fenced plurnk block, not a bullet list");
         const schemeLines = schemesSection.split("\n").filter((l) => l.startsWith("<<"));
         assert.ok(schemeLines.length > 0, "the schemes directory lists entries");
         for (const line of schemeLines) assert.match(line, /^<</, `scheme directory line must be a << heredoc: ${line}`);

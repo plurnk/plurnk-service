@@ -1,9 +1,5 @@
-// note 12 — the scheme directory surfaces each scheme's `example` one-liner as its
-// directory line; docs() carries the manifest's `documentation` content for materialization
-// at worker://plurnk/docs/<name>.md (LoopDocs writes it like an operator doc, so its token cost
-// rides the entry). The doc is NOT linked inline (#270) — it's discovered via the turn-0
-// FIND(worker://plurnk/docs/**) foist, keeping the raw packet free of doc links. A scheme with no
-// `example` (provisional, e.g. skill) is omitted from the directory entirely.
+// {§schemes-directory}: terse fenced examples are pushed; full reference docs
+// are materialized under worker://plurnk/docs/ and discovered by the turn-zero FIND.
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -17,14 +13,14 @@ class DocStub {
     };
 }
 
-test("[note 12] teach() surfaces a scheme's example (no inline doc-link); docs() carries it for materialization", async () => {
+test("{§schemes-directory}: teach() pushes an example while docs() carries the pull reference", async () => {
     const registry = new SchemeRegistry();
     registry.register("docstub", new DocStub() as unknown as Parameters<typeof registry.register>[1]);
 
     const teaching = registry.teach();
-    assert.match(teaching, /^```plurnk\n/, "the Schemes catalog is a fenced plurnk block (#436), not a bullet list");
+    assert.match(teaching, /^```plurnk\n/, "the Schemes catalog is a fenced plurnk block, not a bullet list");
     assert.match(teaching, /<<READ\(docstub:\/\/\/x\)::READ/, "the scheme's canonical example is its bare op line (no bullet, no redundant scheme prefix — the example self-documents)");
-    assert.doesNotMatch(teaching, /\(docs:/, "no inline doc-link in the raw packet — docs are discovered via the turn-0 FIND(worker://plurnk/docs/**) foist (#270)");
+    assert.doesNotMatch(teaching, /\(docs:/, "pull references are discovered rather than linked in the pushed catalog");
 
     const stub = (await registry.docs()).find((d) => d.name === "docstub");
     assert.equal(stub?.content, "# docstub\nFuller reference content.", "docs() carries the content for materialization at worker://plurnk/docs/<name>.md");
