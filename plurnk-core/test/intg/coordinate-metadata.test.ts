@@ -1,7 +1,6 @@
-// #391 — the turn COORDINATE rides generate() as first-party metadata (Plurnk-Workspace-Id/Loop/Turn),
-// the authoritative workspace/loop/turn hierarchy the endpoint flywheel keys on. The daemon owns the
-// value; providers stamps the header (same split as Worker-Id #26). This pins that core passes it, and
-// that `loop` is the loop's SEQUENCE (the coordinate) — never the DB id, which they diverge to prove.
+// {§provider-surface-generate} {§lifecycle-terms}: core supplies the authoritative turn coordinate to
+// generate(); providers owns its first-party header transport. `loop` is the loop sequence, never its
+// database id; the fixture deliberately makes those values diverge.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
@@ -18,7 +17,7 @@ class CoordMock extends Mock {
     }
 }
 
-test("[#391] generate carries the turn coordinate — workspace id + loop/turn SEQUENCE, not the db id", async () => {
+test("generate carries the workspace/loop/turn coordinate, using loop sequence rather than database id", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `coord-${crypto.randomUUID()}`);
