@@ -1,11 +1,10 @@
-// #358 — look on the seam ({§op-look}): the pure READ-projection query. The module parses at its
-// edge (LOOK→READ) and hands the statement over; the resolution returns content and writes NO log
-// row — unlogged inspection, invisible to the model.
+// {§op-look}: the module parses LOOK→READ; core resolves it in one closed, rowless
+// observation segment that remains invisible to the model.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { rpcCall, connect, withDaemon, parseDsl } from "./_rpc.ts";
 
-test("seam look: resolves a READ in one closed, rowless observation segment (#358)", async () => {
+test("{§op-look}: seam look resolves a READ in one closed, rowless observation segment", async () => {
     await withDaemon(null, async (db, daemon, addr) => {
         const ws = await connect(addr);
         try {
