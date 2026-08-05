@@ -489,7 +489,7 @@ export default class Daemon {
         }
     }
 
-    // {§machine-processes} — the workspace's model worker (created on first use), distinct from the client
+    // {§methods-model-worker} — the workspace's model worker (created on first use), distinct from the client
     // worker so the model's packets never carry client-action rows. The module binds its threads to this.
     ensureModelWorker(workspaceId: number): Promise<number> {
         return Envelope.ensureModelWorker(
@@ -995,7 +995,7 @@ export default class Daemon {
         }
     }
 
-    // {§methods}: a fresh conversation is a model-origin root worker with an empty private log.
+    // {§methods-conversation-worker}: a fresh conversation is a model-origin root worker with an empty private log.
     // AG-UI threads map to these workers while the workspace world remains shared ({§machine-processes}).
     async createConversationWorker(args: { workspaceId: number; name?: string }): Promise<{ workerId: number; workerName: string }> {
         const workspaceId = ClientInput.assertId("worker.create", "workspaceId", args.workspaceId);

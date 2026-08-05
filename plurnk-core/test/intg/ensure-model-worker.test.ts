@@ -1,12 +1,9 @@
-// #371 — ensureModelWorker is idempotent at the seam: the connection's per-workspace cache used to
-// mask an insert-only implementation (26 workers in one e2e workspace once the seam exposed it). The
-// canonical conversation is the workspace's earliest model-origin root worker; forks and spawned
-// workers (which inherit origin='model' but carry parent_worker_id) never shadow it.
+// {§methods-model-worker}: the stable default is idempotent at the seam and fork-resistant.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { rpcCall, connect, withDaemon } from "./_rpc.ts";
 
-test("{§worker-auto-name} #159: concurrent ensureModelWorker calls return ONE conversation worker", async () => {
+test("{§methods-model-worker}, {§worker-auto-name}, #159: concurrent ensureModelWorker calls return ONE conversation worker", async () => {
     await withDaemon(null, async (db, daemon, addr) => {
         const ws = await connect(addr);
         try {

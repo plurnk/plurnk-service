@@ -1,14 +1,11 @@
-// #366 — the seam's FRESH conversation door ({§machine-processes}: two workers are two conversations
-// about one curated workspace). createConversationWorker mints a named, empty-log, model-origin ROOT
-// worker that runLoop accepts — distinct from ensureModelWorker (the stable default, #371 find-first)
-// and forkWorker (copies history). New chat = new conversation, same workspace.
+// {§methods-conversation-worker}: a fresh conversation has an empty history over the same world.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
 import { OperationFailureError } from "../../src/core/results.ts";
-import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal } from "./_rpc.ts";
+import { rpcCall, connect, withDaemon, makeMockResponse, waitFor } from "./_rpc.ts";
 
-test("createConversationWorker: fresh named conversation — empty log, runLoop accepts, the stable door unaffected (#366)", async () => {
+test("{§methods-conversation-worker}: fresh named conversation — empty log, runLoop accepts, stable door unaffected", async () => {
     const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse("<<SEND[200]:hello from thread-2:SEND", 10)] });
     await withDaemon(mock, async (_db, daemon, addr) => {
         const ws = await connect(addr);
@@ -23,13 +20,20 @@ test("createConversationWorker: fresh named conversation — empty log, runLoop 
             assert.equal(conv.workerName, "thread-2", "the client's name IS the worker name");
             assert.equal((await daemon.readLog({ workspaceId, workerId: conv.workerId })).length, 0, "an EMPTY log — fork copies history, this must not");
 
-            // runLoop accepts it (model-origin) — a full loop executes in the new conversation worker.
-            const term = await runLoopToTerminal(ws, 2, { prompt: "hi" }).catch(() => null);
-            void term; // the default-worker loop; the direct seam check below is the #366 assertion
+            // runLoop accepts it (model-origin), and the full loop settles on that conversation.
+            const terminated: Array<{ loopId: number; result: { status: number } }> = [];
+            daemon.subscribeToEvents((_workspaceId, method, params) => {
+                if (method === "loop/terminated") terminated.push(params as { loopId: number; result: { status: number } });
+            });
             const accepted = await daemon.runLoop({ workspaceId, workerId: conv.workerId, prompt: "start thread 2" });
             assert.ok(accepted.loopId > 0, "runLoop accepts the fresh conversation worker");
+            await waitFor(
+                () => terminated,
+                (events) => events.some(({ loopId, result }) => loopId === accepted.loopId && result.status === 200),
+                { timeoutMs: 8000 },
+            );
 
-            // The stable door still finds the ORIGINAL root — fresh conversations never shadow it (#371).
+            // The stable door still finds the original root; later fresh conversations never shadow it.
             assert.equal(await daemon.ensureModelWorker(workspaceId), stable, "ensureModelWorker is unmoved by fresh conversations");
 
             // Name invariants mirror forkWorker's: reserved + taken are legible refusals.

@@ -187,9 +187,8 @@ export default class Envelope {
     // The model's conversation lives in its own worker, distinct from the client's
     // client worker, so the packet — rendered from the model worker — never carries
     // the client's dispatched actions. The module resolves and retains the binding.
-    // #366 — a FRESH conversation over the same world ({§machine-processes}: two workers are two
-    // conversations about one curated workspace): a named, empty-log, model-origin root worker.
-    // Distinct from ensureModelWorker (the stable default conversation) and forkWorker (copies history).
+    // {§methods-conversation-worker}: a fresh conversation is a named, empty-log,
+    // model-origin root, distinct from the stable default and from a history-copying fork.
     static async createModelWorker(db: Db, workspaceId: number, name?: string): Promise<{ id: number; name: string }> {
         if (name === undefined) {
             return await WorkerName.claimAuto(db, {
@@ -208,10 +207,8 @@ export default class Envelope {
     }
 
     static async ensureModelWorker(db: Db, workspaceId: number): Promise<number> {
-        // #371 — ensure means FIND-FIRST (the WS connection's per-workspace cache used to hide the
-        // insert-only bug; the seam has no connection state, so idempotence lives HERE): reuse the
-        // workspace's canonical conversation worker — the earliest model-origin root (forks/workers
-        // inherit origin and are excluded by parent_worker_id). #366 is the explicit fresh-worker door.
+        // {§methods-model-worker}: idempotence lives at the seam, not in a client's
+        // connection cache. #186 tracks distinguishing this default from arbitrary fresh roots.
         const worker = await WorkerName.ensureAutoRoot(db, {
             workspaceId,
             prefix: "model",
