@@ -51,6 +51,39 @@ const setup = async () => {
     return { db, workspaceId, workerId, mimetypes };
 };
 
+const binaryProjectionMimetypes = (revision: string): Mimetypes => {
+    class BinaryProjectionHandler extends BaseHandler {
+        override projectionConfiguration(): string {
+            return revision;
+        }
+
+        override content(content: string | Uint8Array): string {
+            assert.ok(content instanceof Uint8Array);
+            return `${revision}:${[...content].join(",")}`;
+        }
+    }
+
+    return new Mimetypes({
+        discovery: {
+            registry: {
+                byExtension: new Map([[".binary", "application/x-readable-binary"]]),
+                byFilename: new Map(),
+            },
+            handlers: new Map([["application/x-readable-binary", {
+                mimetype: "application/x-readable-binary",
+                glyph: "",
+                extensions: [".binary"],
+                packageName: "stub://readable-binary",
+                projectionRevision: "test-1",
+                binary: true,
+                source: "package",
+            }]]),
+            skipped: [],
+        },
+        loader: async () => ({ default: BinaryProjectionHandler }),
+    });
+};
+
 // --- {§matcher-dispatch} matcher 203 soft-fallback ---------------------------------------
 // jsonpath against a `.json` entry whose body is malformed JSON: the json
 // handler's parseTree fails → QueryParseFailureError → Matcher.matchAgainstContent
@@ -294,6 +327,83 @@ test("write resolves mimetype without firing the handler; explicit projection fi
         );
         assert.deepEqual(projectionCalls, ["alpha\nbeta\ngamma"], "explicit projection passes the stored content to the handler");
     } finally { await db.close(); }
+});
+
+test("a binary file persists only derived Unicode and refreshes when its projection identity changes (#140)", async () => {
+    const root = await mkdtemp(join(tmpdir(), "plurnk-readable-binary-"));
+    const db = await openMigrated();
+    try {
+        await execFileP("git", ["init", "-q"], { cwd: root, env: hermeticGitEnv() });
+        await writeFile(join(root, "document.binary"), Uint8Array.of(1, 2, 3, 4));
+        await execFileP("git", ["add", "document.binary"], { cwd: root, env: hermeticGitEnv() });
+
+        const workspaceId = await insertWorkspace(db, `binary-projection-${crypto.randomUUID()}`);
+        await rootWorkspace(db, workspaceId, root);
+        const workerId = await insertWorker(db, workspaceId);
+        const firstMimetypes = binaryProjectionMimetypes("projection-v1");
+        const firstCtx = makeSchemeCtx({ db, workspaceId, workerId, mimetypes: firstMimetypes });
+
+        assert.deepEqual(await GitMembership.indexGitMembership(firstCtx), []);
+        const entry = await db.test_get_entry_by_path.get<{ id: number; attributes: string }>({
+            workspace_id: workspaceId,
+            scheme: "file",
+            pathname: "document.binary",
+        });
+        assert.ok(entry);
+        assert.deepEqual(
+            await db.test_get_channel.get<{ content: string; mimetype: string }>({ entry_id: entry.id, name: "body" }),
+            {
+                content: "projection-v1:1,2,3,4",
+                mimetype: "text/markdown",
+                tokens: 6,
+                state: "static",
+            },
+        );
+        assert.deepEqual(JSON.parse(entry.attributes), {
+            sourceProjection: {
+                mimetype: "application/x-readable-binary",
+                identity: await firstMimetypes.projectionIdentity("application/x-readable-binary"),
+                disposition: "projected",
+            },
+        });
+        const read = await new File().read(readStmt(urlPath("file", "/document.binary")), firstCtx);
+        assert.equal(read.status, 200);
+        assert.equal(read.content, "projection-v1:1,2,3,4");
+        assert.equal(read.mimetype, "text/markdown");
+
+        const secondMimetypes = binaryProjectionMimetypes("projection-v2");
+        const secondCtx = makeSchemeCtx({ db, workspaceId, workerId, mimetypes: secondMimetypes });
+        assert.deepEqual(
+            await GitMembership.indexGitMembership(secondCtx),
+            [],
+            "a reader-only refresh is not an ambient filesystem divergence",
+        );
+        const refreshed = await db.test_get_entry_by_path.get<{ id: number; attributes: string }>({
+            workspace_id: workspaceId,
+            scheme: "file",
+            pathname: "document.binary",
+        });
+        assert.ok(refreshed);
+        assert.deepEqual(
+            await db.test_get_channel.get<{ content: string; mimetype: string }>({ entry_id: refreshed.id, name: "body" }),
+            {
+                content: "projection-v2:1,2,3,4",
+                mimetype: "text/markdown",
+                tokens: 6,
+                state: "static",
+            },
+        );
+        assert.deepEqual(JSON.parse(refreshed.attributes), {
+            sourceProjection: {
+                mimetype: "application/x-readable-binary",
+                identity: await secondMimetypes.projectionIdentity("application/x-readable-binary"),
+                disposition: "projected",
+            },
+        });
+    } finally {
+        await db.close();
+        await rm(root, { recursive: true, force: true });
+    }
 });
 
 test("registry-aware classification governs file decoding, operation gates, and search eligibility (#93)", async () => {
