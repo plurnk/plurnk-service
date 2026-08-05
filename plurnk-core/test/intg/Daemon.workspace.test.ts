@@ -1,5 +1,4 @@
-// Daemon workspace-lifecycle methods: result shapes + connection re-binding.
-// #199 (create surfaces the auto-created worker), #196 (re-attach without reconnect).
+// {§methods-rebind} — workspace lifecycle envelopes and transport-local rebinding.
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -39,7 +38,7 @@ const withDaemon = async <T>(fn: (db: Db, addr: { daemon: Daemon }) => Promise<T
 
 const connect = (addr: { daemon: Daemon }): Promise<SeamSocket> => Promise.resolve(new SeamSocket(addr.daemon));
 
-test("workspace.create returns the auto-created worker's identity (workerId + workerName) — #199", async () => {
+test("{§methods-rebind}: workspace.create returns the selected client's identity", async () => {
     await withDaemon(async (_db, addr) => {
         const ws = await connect(addr);
         try {
@@ -53,7 +52,7 @@ test("workspace.create returns the auto-created worker's identity (workerId + wo
     });
 });
 
-test("#196 a bound connection re-binds to a different workspace in place (no reconnect)", async () => {
+test("{§methods-rebind}: a bound connection switches workspaces without reconnecting", async () => {
     await withDaemon(async (_db, addr) => {
         const ws = await connect(addr);
         try {
