@@ -159,7 +159,7 @@ test("a linked worktree workspace root resolves membership + status through iso 
     });
 });
 
-test("an unsupported isomorphic-git repository fails with the native-backend remedy on membership and status (#572)", async () => {
+test("an unsupported isomorphic-git repository fails with the native-backend remedy on membership and status", async () => {
     const root = await seedRepo("iso-index-v3-");
     const db = await openMigrated();
     const prior = process.env.PLURNK_SERVICE_GIT_ISO;
