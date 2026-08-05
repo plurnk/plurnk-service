@@ -714,7 +714,7 @@ export default class Dispatcher {
         return result;
     }
 
-    // op.look (#283) — resolve a READ and return its content WITHOUT writing a
+    // {§op-look}: resolve a READ and return its content without writing a
     // log_entries row: the client's out-of-band inspection primitive (LOOK → READ,
     // invisible to the model). READ never mutates and never proposes, so this is
     // dispatch's resolve path minus #writeLog. Runs on the client loop, so the

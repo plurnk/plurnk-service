@@ -72,7 +72,7 @@ test("op.read on nonexistent entry returns 404", async () => {
     });
 });
 
-test("op.look (#283) resolves a target like op.read but writes NO log entry", async () => {
+test("{§op-look}: resolves like READ without writing a log entry", async () => {
     await withDaemon(null, async (db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
@@ -89,7 +89,7 @@ test("op.look (#283) resolves a target like op.read but writes NO log entry", as
     });
 });
 
-test("op.look rejects a non-READ statement — it is READ-only (#283)", async () => {
+test("{§op-look}: rejects a non-READ statement", async () => {
     await withDaemon(null, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
         try {

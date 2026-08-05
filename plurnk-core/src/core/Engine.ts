@@ -2110,8 +2110,7 @@ export default class Engine {
         return this.#dispatcher.dispatch(context);
     }
 
-    // op.look (#283) — resolve a READ and return its content WITHOUT writing a
-    // log_entries row: the client's out-of-band inspection primitive. {§op-look}
+    // {§op-look}: resolve a READ without writing a log_entries row.
     async look(context: {
         statement: PlurnkStatement;
         workspaceId: number; workerId: number; loopId: number;
