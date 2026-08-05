@@ -306,9 +306,8 @@ export default class Worker extends CoreSchemeAdapterBase {
                     },
                 );
             }
-            // {§join-blocking-collect} (#354) — a still-running worker is a BLOCKING JOIN: the READ
-            // arms the join (awaitWorker), and the turn's bare SEND[102] parks until the worker delivers.
-            // The model doesn't drive the park — the engine does (a blocking read() hiding the scheduler).
+            // Let dispatch arm the blocking collect for this turn.
+            // {§join-blocking-collect}
             if (!Worker.#TERMINAL_LOOP.has(row.status)) {
                 const detail = `Worker '${controlAuthority}' is still running and has no deliverable yet.`;
                 return failure("worker-still-running", 425, detail, {

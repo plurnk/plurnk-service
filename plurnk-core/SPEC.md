@@ -421,11 +421,11 @@ The remaining worker surfaces are:
   `READ(worker://<name>)` collects the same deliverable on demand — the latest
   loop's terminal message (the result, or the abandonment reason) for a
   concluded worker; a worker **still running** has not delivered, so the READ
-  returns **425** (Too Early) and the turn's `SEND[202]` **blocks the loop on
-  the join** ({§join-blocking-collect}) until the worker delivers — the engine
-  holds the join, the model never drives a park. A missing name is 404. The
-  model therefore reads the worker itself for its outcome or a wait rather than
-  guessing a scratch path to "check on" it.
+  returns **425** (Too Early) and the turn's bare `SEND[102]` **becomes a
+  parked loop (202) on the join** ({§join-blocking-collect}) until the worker
+  delivers — the engine holds the join, the model never drives a park. A
+  missing name is 404. The model therefore reads the worker itself for its
+  outcome or a wait rather than guessing a scratch path to "check on" it.
 - §child-orientation **Child orientation.** Beyond the conclusion delta, every
   turn the packet's status clump surfaces the live things this worker currently
   holds — open streams (`## Child Streams`) and unconcluded child workers
@@ -439,7 +439,7 @@ The remaining worker surfaces are:
 
 ### §worker-loop-lifecycle Worker and loop lifecycle: drain, reap, and passive wake
 
-- §join-blocking-collect **A `READ` on a running child is a blocking join, not a poll.** A path-absent `READ(worker://<running-child>)` returns **425** (Too Early) and records a live obligation on the loop. The turn's `SEND[202]` waits for that obligation instead of asking the model to poll. When the child reaches any terminal status, the same loop resumes with the result in its log. Children are bounded by their own turn and strike limits, terminal failure also wakes the parent, and the owed-wake path covers completion before the parent parks. Any `SEND` clears the per-turn arm; `SEND[200]` with a live child remains a premature-termination error. A `<seconds>` timeout-poll is the explicit polling alternative.
+- §join-blocking-collect **A `READ` on a running child is a blocking join, not a poll.** A path-absent `READ(worker://<running-child>)` returns **425** (Too Early) and records a live obligation on the loop. The turn's bare `SEND[102]` is converted into an indefinite parked loop (202) instead of asking the model to poll or drive the scheduler. When the child reaches any terminal status, the same loop resumes with the result in its log. Children are bounded by their own turn and strike limits, terminal failure also wakes the parent, and the owed-wake path covers completion before the parent parks. Any `SEND` clears the per-turn arm; `SEND[200]` with a live child remains a premature-termination error. A `<seconds>` timeout-poll is the explicit polling alternative.
 
 A worker is a **log plus a cancellation scope** — one `AbortController` per worker, reused while live and replaced only once aborted, so a cancel ends the worker as a unit and a later `runLoop` request is never born cancelled. A worker's queued loops are advanced by a **drain**: a single per-worker drain that claims loops atomically (status 100→102) and runs each under the worker's scope. A loop may spawn **streams** (execs) that outlive it; each is a row in the subscription registry ({§subscriptions}) — the durable record of what the worker holds open. Cancellation and conclusion are defined against these structures, never wall-clock timing.
 

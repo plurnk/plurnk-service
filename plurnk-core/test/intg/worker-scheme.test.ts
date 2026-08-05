@@ -716,7 +716,7 @@ test("the kernel's published surface worker://plurnk/ refuses model writes (403)
     } finally { await db.close(); }
 });
 
-test("READ(worker://running-child) arms a join — the turn's bare SEND[102] PARKS, never spins (#354)", async () => {
+test("{§join-blocking-collect} READ(worker://running-child) makes the turn's bare SEND[102] park", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `join-collect-${crypto.randomUUID()}`);
@@ -738,7 +738,7 @@ test("READ(worker://running-child) arms a join — the turn's bare SEND[102] PAR
     } finally { await db.close(); }
 });
 
-test("a bare SEND[102] with NO armed join continues normally — the park is join-driven, not blanket (#354)", async () => {
+test("{§join-blocking-collect} a bare SEND[102] without an armed join continues normally", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `join-none-${crypto.randomUUID()}`);
@@ -753,7 +753,7 @@ test("a bare SEND[102] with NO armed join continues normally — the park is joi
     } finally { await db.close(); }
 });
 
-test("KILL(worker) is decisive — a same-turn KILL then SEND[200] concludes, no premature-terminate 409 (#354)", async () => {
+test("{§op-synchronous} KILL(worker) is decisive before same-turn SEND[200]", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `kill-sync-${crypto.randomUUID()}`);

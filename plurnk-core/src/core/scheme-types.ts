@@ -31,8 +31,7 @@ export type SchemeReadResult = SchemeResultBase & {
     startLine?: number | null;
     region?: TextRegion;
     matches?: ReadonlyArray<MatchEvidence>;
-    // {§join-blocking-collect} (#354) — a READ(worker://running-child) sets this to the worker name it is
-    // blocked on; the dispatcher arms a join so the turn's bare SEND[102] parks (the blocking collect).
+    // Arms this turn's blocking collect. {§join-blocking-collect}
     awaitWorker?: string;
 };
 

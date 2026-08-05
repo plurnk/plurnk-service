@@ -210,8 +210,7 @@ export default class Dispatcher {
     // -1 = indefinite). The dispatcher WRITES at park; the daemon's drain park-exit consumes.
     #parkDeadlines: Map<number, number>;
     readonly #searchGate: import("./search-gate.ts").default | undefined;
-    // {§join-blocking-collect} (#354) — loops with a READ(worker://running-child) armed this turn; a bare
-    // SEND[102] parks on it (blocking join). Engine-owned, twin of #parkDeadlines.
+    // Per-turn running-worker READ obligations. {§join-blocking-collect}
     #joinTargets: Set<number>;
     #liveSubscriptions: LiveSubscriptions;
     #lifecycle: LoopLifecycle;
@@ -614,8 +613,8 @@ export default class Dispatcher {
         }
         // {§fold-open-meta-operations} — persist OPEN/FOLD for forensics;
         // packet rendering suppresses their successful receipts.
-        // {§join-blocking-collect} (#354) — Worker.read on a still-running child returns an awaitWorker signal;
-        // arm the join so THIS turn's bare SEND[102] parks (the blocking collect) instead of spinning.
+        // A running-worker READ arms this turn's blocking collect.
+        // {§join-blocking-collect}
         if (typeof (result as { awaitWorker?: unknown }).awaitWorker === "string") this.#joinTargets.add(loopId);
         const logEntryId = await this.#writeLog({ statement, result, workspaceId, workerId, loopId, turnId, sequence, origin });
         // {§search-gate} — register successful searches AFTER #writeLog stamps the runtime
@@ -2665,11 +2664,8 @@ export default class Dispatcher {
             );
         }
 
-        // {§join-blocking-collect} (#354) — a READ(worker://running-child) this turn armed a join. A BARE
-        // continue becomes an indefinite PARK: the blocking collect, on the same park machinery <-1>
-        // uses. The armed READ said "I want this result"; parking IS the collect (the model never had
-        // to know the park syntax — the engine holds the join). Any SEND clears the per-turn arm; a
-        // terminal with a live child stays the existing premature-terminate steer (#354 decision #1).
+        // A bare continue after an armed running-worker READ becomes an
+        // indefinite park. {§join-blocking-collect}
         const joinArmed = this.#joinTargets.delete(loopId);
         if (status === 102 && statement.lineMarker === null && joinArmed) {
             if (!await this.#lifecycle.park(loopId, raw.length > 0 ? raw : "parked — awaiting a worker's result (blocking collect)")) {

@@ -237,9 +237,7 @@ export default class Engine {
     // marker's seconds; -1 = indefinite), consumed by the daemon's drain park-exit to schedule
     // the deadline wake. In-memory: a daemon restart drops pending deadlines (documented).
     readonly parkDeadlines: Map<number, number> = new Map();
-    // {§join-blocking-collect} (#354) — loops whose turn issued a READ(worker://running-child): the
-    // blocking join. The dispatcher arms this on the READ; the turn's bare SEND[102] parks on it
-    // (indefinite) instead of continuing, and any SEND clears it. Twin of parkDeadlines.
+    // Per-turn running-worker READ obligations. {§join-blocking-collect}
     readonly joinTargets: Set<number> = new Set();
 
     // The collaborators. Engine constructs them (they share its deps via
