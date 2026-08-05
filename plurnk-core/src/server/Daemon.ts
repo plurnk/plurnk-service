@@ -696,6 +696,7 @@ export default class Daemon {
             ClientInput.assertId("workspace.workers", "workspaceId", workspaceId),
         );
     }
+    // {§methods-workspace-prompts}: root-conversation loop seeds, newest-first.
     listPrompts(workspaceId: number, limit?: number) {
         const checkedWorkspaceId = ClientInput.assertId("workspace.prompts", "workspaceId", workspaceId);
         const checkedLimit = ClientInput.assertLimit("workspace.prompts", limit);

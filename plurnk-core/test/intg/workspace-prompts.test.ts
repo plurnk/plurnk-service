@@ -1,6 +1,4 @@
-// #238 — workspace.prompts: a workspace's prior user prompts, newest-first, for a client's
-// up/down readline history. One RPC queries loops.prompt, replacing the log-archaeology path
-// (workspace.workers → log.read → filter prompt entries → dig tx.body).
+// {§methods-workspace-prompts}: clients read prompt history without log archaeology.
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -9,7 +7,7 @@ import { rpcCall, rpcProblem, connect, withDaemon, makeMockResponse, runLoopToTe
 
 const send = () => makeMockResponse("<<SEND[200]:ok:SEND", 50);
 
-test("workspace.prompts returns the workspace's user prompts newest-first, capped by limit (#238)", async () => {
+test("{§methods-workspace-prompts}: workspace prompts are newest-first and limit-capped", async () => {
     const mock = new Mock({ contextWindow: 8192, responses: [send(), send()] });
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);

@@ -46,10 +46,8 @@ WHERE workspace_id = $workspace_id
 ORDER BY created_at DESC;
 
 -- PREP: envelope_list_workspace_prompts
--- #238 — a workspace's user prompts for client up/down history: the conversation worker's
--- non-empty loop seeds, newest-first, capped. The conversation worker is origin='model' +
--- parentless; spawned/forked child workers (parent_worker_id set) are excluded — their
--- seed prompts are not user input.
+-- {§methods-workspace-prompts}: nonempty model-root loop seeds, newest-first;
+-- spawned and forked children are not workspace-level user prompt history.
 SELECT l.prompt
 FROM loops l
 JOIN workers r ON r.id = l.worker_id

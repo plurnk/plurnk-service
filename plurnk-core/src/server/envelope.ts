@@ -232,9 +232,8 @@ export default class Envelope {
         return await db.envelope_list_workers_for_workspace.all<WorkerRow>({ workspace_id: workspaceId });
     }
 
-    // #238 — a workspace's prior user prompts, newest-first, capped. The conversation worker's
-    // loop seeds (engine_get_loop_prompt is the per-loop read); exposed directly so a
-    // client seeds up/down history without log archaeology.
+    // {§methods-workspace-prompts}: expose root-conversation loop seeds directly,
+    // without forcing clients to reconstruct prompt history from log rows.
     static async listPromptsForWorkspace(db: Db, workspaceId: number, limit: number): Promise<string[]> {
         const rows = await db.envelope_list_workspace_prompts.all<{ prompt: string }>({ workspace_id: workspaceId, limit });
         return rows.map((r) => r.prompt);
