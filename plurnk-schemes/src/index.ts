@@ -44,6 +44,7 @@ export { default as Results } from "./Results.ts";
 export { default as PacketSections } from "./PacketSections.ts";
 export { InvalidOperationResultError } from "./Results.ts";
 export { PathSyntax } from "@plurnk/plurnk-contracts";
+export { MimetypeInputLimitError as ProjectionInputLimitError } from "@plurnk/plurnk-mimetypes";
 export type {
     AppliedEditBatchReceipt,
     AppliedEditReceipt,

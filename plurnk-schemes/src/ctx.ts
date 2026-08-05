@@ -169,6 +169,7 @@ export interface ProjectionCaps {
     readable(content: string, mimetype: string): Promise<ProjectedText | null>;
     readableBytes(chunks: AsyncIterable<Uint8Array>, mimetype: string): Promise<ProjectedText | null>;
     identity(mimetype: string): Promise<string>;
+    isBinary(mimetype: string): Promise<boolean>;
 }
 
 // ── subscriptions ────────────────────────────────────────────────────────

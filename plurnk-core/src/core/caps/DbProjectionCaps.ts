@@ -30,4 +30,10 @@ export default class DbProjectionCaps implements ProjectionCaps {
         if (mimetypes === undefined) throw new Error("projection.identity: mimetype registry is required");
         return mimetypes.projectionIdentity(mimetype);
     }
+
+    async isBinary(mimetype: string): Promise<boolean> {
+        const mimetypes = this.#ctx.mimetypes;
+        if (mimetypes === undefined) throw new Error("projection.isBinary: mimetype registry is required");
+        return (await mimetypes.classify(mimetype)).binary;
+    }
 }

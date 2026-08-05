@@ -274,17 +274,20 @@ Acquisition schemes delegate model-facing projection to the consumer's one
 configured mimetype family. They neither instantiate readers nor widen durable
 entry channels beyond Unicode text.
 
-| Surface                            | Contract                                                                                                  |
-| ---------------------------------- | --------------------------------------------------------------------------------------------------------- |
-| `readable(content, mimetype)`      | Project an acquired Unicode representation.                                                               |
-| `readableBytes(chunks, mimetype)`  | Project one async byte source under the mimetype family's bounded-input policy.                            |
-| `identity(mimetype)`               | Return the opaque identity of configured projection behavior for cache and materialization freshness.      |
-| `ProjectedText`                    | Derived Unicode plus its output mimetype, source mimetype, and opaque projection identity.                 |
+| Surface                           | Contract                                                                                              |
+| --------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| `readable(content, mimetype)`     | Project an acquired Unicode representation.                                                           |
+| `readableBytes(chunks, mimetype)` | Project one async byte source under the mimetype family's bounded-input policy.                       |
+| `identity(mimetype)`              | Return the opaque identity of configured projection behavior for cache and materialization freshness. |
+| `isBinary(mimetype)`              | Classify through the configured registry; installed handler declarations remain authoritative.        |
+| `ProjectedText`                   | Derived Unicode plus its output mimetype, source mimetype, and opaque projection identity.            |
 
 A returned object is present even when its `content` is `""`; only `null`
 denotes absence. Consumers must not infer projection presence from content
 length. A thrown projection call is an execution failure whose cause
 propagates; it must never be converted to `null`.
+`ProjectionInputLimitError` is the projection boundary's exported name for the
+configured mimetype family's typed bounded-input failure.
 
 ### §slicer-text-algebra Text-region slicing and replacement - `Slicer`
 

@@ -166,6 +166,9 @@ const makeCtx = () => {
         async identity(mimetype) {
             return `${mimetype}-projection`;
         },
+        async isBinary(mimetype) {
+            return mimetype === "application/pdf";
+        },
     };
 
     let current: StreamSubscription | null = null;
