@@ -274,7 +274,7 @@ is `""`; only `null` denotes absence. Consumers must not infer projection
 presence from content length. A thrown projection call is an execution failure
 whose cause propagates; it must never be converted to `null`.
 
-### Text-region slicing and replacement - `Slicer`
+### §slicer-text-algebra Text-region slicing and replacement - `Slicer`
 
 `Slicer` owns one text algebra for every textual mimetype:
 

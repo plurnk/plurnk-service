@@ -4,7 +4,7 @@
 // the registry-free surface; a consumer with a configured Mimetypes service
 // uses Mimetypes.classify() so installed handler declarations remain authoritative.
 //
-// What stays LOCAL is scheme semantics, not filetype fact (ruled in #43):
+// {§mimetype-classifier} What stays local is scheme semantics, not filetype fact:
 //   isJson           - JSON receipt summarization (RFC 6839).
 //   normalizeAutoText — the text-primitive policy (auto-derived text is markdown).
 

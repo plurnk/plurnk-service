@@ -37,7 +37,7 @@ export interface SchemeInfo {
     // (the single-scheme `plurnk.name` sugar): the consumer instantiates
     // `mod[exportName ?? "default"]`. A multi-scheme package (`plurnk.schemes`)
     // names one export per scheme, so a package may own several names — one class
-    // per name, one NAME still one owner (#473).
+    // per name, while one name still has exactly one owner ({§scheme-discovery}).
     readonly exportName?: string;
     // Published per-scheme projection of the package declaration. Discovery
     // validates it through {§plugin-attribution} before admission.
@@ -146,7 +146,7 @@ export default class SchemeDiscovery {
     // The SchemeInfo(s) for an admitted package. A package
     // declares EITHER `plurnk.schemes: [{ name, export }, …]` (canonical, one
     // entry per scheme it owns) OR `plurnk.name: "<scheme>"` (sugar for exactly
-    // one, default export) — #473. A malformed `plurnk.schemes` is an authoring
+    // one, default export). A malformed `plurnk.schemes` is an authoring
     // contract violation and fails hard (locality of error), not a silent skip.
     static #readSchemeInfos(
         { packageName, plurnk: plurnkRec }: SchemePackage,

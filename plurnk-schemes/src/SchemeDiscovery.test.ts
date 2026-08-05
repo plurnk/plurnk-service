@@ -6,7 +6,7 @@ import path from "node:path";
 import SchemeDiscovery from "./SchemeDiscovery.ts";
 
 // Every mktemp dir is tracked and removed after the suite — a green OR red run
-// leaves nothing behind (these leaked ×6k into /tmp until #551).
+// Every temporary package tree is removed after the test.
 const tmpRoots: string[] = [];
 const mkTmp = async (prefix: string): Promise<string> => {
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), prefix));
@@ -98,7 +98,7 @@ test("discover: trust withholding precedes attribution and family-field validati
     }
 });
 
-// ── multi-scheme packages: plurnk.schemes (#473) ──────────────────────────
+// ── multi-scheme packages: plurnk.schemes ─────────────────────────────────
 test("discover: plurnk.schemes surfaces one SchemeInfo per named scheme, with exportName", async () => {
     const cwd = await makeTree([
         ["@plurnk/plurnk-schemes-http", {

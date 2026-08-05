@@ -37,10 +37,10 @@ export interface SchemeManifest {
     // Full contract + containment rationale: SPEC {§manifest} (foldedByDefault).
     readonly foldedByDefault?: boolean;
     readonly flags?: SchemeFlagAffinity;
-    // Self-doc, mirroring the exec contract: terse pushes, depth pulls (#25).
+    // Self-doc: terse pushes, depth pulls ({§manifest-self-doc}).
     // example = terse hot-path usage line (rendered every turn); documentation =
     // deep doc the consumer materializes as a pull-able worker://plurnk/docs/<name>.md.
-    // Field-by-field contract: SPEC {§manifest-self-doc}.
+    // Field-by-field contract: {§manifest-self-doc}.
     readonly example?: string;
     readonly documentation?: string;
     // Value persisted to `entries.scheme`, which may differ from the addressing

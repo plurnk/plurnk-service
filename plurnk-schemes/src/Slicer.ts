@@ -217,8 +217,8 @@ export default class Slicer {
     }
 
     static #normalize(marker: LineMarker, totalLines: number): NormalizedMarker | { error: string } {
-        // grammar 0.49 carries raw `marks: [number, ...]` and punts role
-        // assignment to us (#19): marks[0] = first/position, marks[1] = last
+        // {§slicer-text-algebra} The parser carries raw `marks: [number, ...]`;
+        // this owner assigns roles: marks[0] = first/position, marks[1] = last
         // (range end). A single mark is a position/sentinel; two is a range.
         if (marker.marks.length !== 1 && marker.marks.length !== 2) {
             return { error: `A positional range requires one or two coordinates; received ${marker.marks.length}.` };
