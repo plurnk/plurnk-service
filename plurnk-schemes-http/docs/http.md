@@ -60,12 +60,15 @@ Re-reading without a scope can reuse only a complete GET acquired without
 explicit request metadata whose response had no `Vary` field. Plurnk keeps one
 representation per URL, so any target metadata or `Vary` response bypasses both
 the freshness shortcut and old validators instead of creating a variant store.
-Eligible content inside the operator's freshness window is served directly;
-outside it, stored ETag or Last-Modified validators produce a conditional GET.
-A 304 restores the stored channels without rendering. Responses to POST, PUT,
-and DELETE are not reused as later GET representations. A projected GET is
-reused only while the installed reader has the same projection identity;
-changing it forces a full acquisition without old validators.
+Eligible content is served directly only while both the operator TTL and any
+origin `max-age` or `Expires` lifetime remain live. `no-cache` requires origin
+validation; `no-store` evidence remains in the log but supplies neither content
+nor validators to a later request. A 304 restores the stored channels without
+rendering and updates cache and validator metadata while preserving fields that
+describe the already-processed body. Responses to POST, PUT, and DELETE are not
+reused as later GET representations. A projected GET is reused only while the
+installed reader has the same projection identity; changing it forces a full
+acquisition without old validators.
 
 A scoped READ never fetches. Its fragment, or `body` by default, selects an
 already-materialized channel before the universal READ contract applies the
