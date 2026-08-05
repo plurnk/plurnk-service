@@ -1,14 +1,11 @@
-// {§send-premature-terminate} (#363, owner ruling) — a worker must not conclude 200 over a failed op.
-// A turn's failed operation results are UNSEEN until the next packet; a same-turn
-// SEND[200] is refused 409 (weigh, then conclude), SEND[499] is never gated,
-// and the gate judges only the current turn. Untrustworthy frames never dispatch;
-// bounded syntax failures enter this same failed-operation gate.
+// {§send-premature-terminate}: same-turn failures are unobserved pending results, so SEND[200]
+// refuses 409 until the next packet observes them; SEND[499] may abandon them deliberately.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
 import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal, flush } from "./_rpc.ts";
 
-test("a failed op + SEND[200] same turn → 409; the NEXT turn's [200] concludes", async () => {
+test("{§send-premature-terminate}: a failed op blocks same-turn 200 until the next packet observes it", async () => {
     const mock = new Mock({ contextWindow: 16384, responses: [
         // KILL of a nonexistent entry → 404 (a failure that is NOT a retrieval, isolating this gate
         // from the retrievals leg); the same-turn [200] must be refused.
@@ -32,7 +29,7 @@ test("a failed op + SEND[200] same turn → 409; the NEXT turn's [200] concludes
     });
 });
 
-test("SEND[499] over a same-turn failure abandons unimpeded — declaring failure IS weighing it", async () => {
+test("{§send-premature-terminate}: SEND[499] deliberately abandons a same-turn failure", async () => {
     const mock = new Mock({ contextWindow: 16384, responses: [
         makeMockResponse("<<PLAN:abort:PLAN\n<<KILL(worker:///no-such-entry)::KILL\n<<SEND[499]:giving up:SEND", 10),
     ] });
