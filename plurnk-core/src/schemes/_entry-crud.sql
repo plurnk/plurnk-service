@@ -18,6 +18,18 @@ INSERT INTO entries (workspace_id, owner_id, scheme, pathname)
 VALUES ($workspace_id, $owner_id, $scheme, $pathname)
 RETURNING id;
 
+-- PREP: crud_insert_workspace_entry_with_attributes
+-- Core-private metadata is present at identity creation, before any channel
+-- makes the entry visible to a reader.
+INSERT INTO entries (workspace_id, owner_id, scheme, pathname, attributes)
+VALUES ($workspace_id, $owner_id, $scheme, $pathname, $attributes)
+RETURNING id;
+
+-- PREP: crud_set_entry_attributes
+-- Core-private entry metadata. Omission at the EntryCrud seam preserves the
+-- existing value; an explicit bag replaces it before channels become visible.
+UPDATE entries SET attributes = $attributes WHERE id = $entry_id;
+
 -- PREP: crud_register_workspace_member
 -- Idempotent bare-membership insert (SPEC {§membership} D4 — git ls-files membership).
 -- A git-tracked file is a workspace member by virtue of being tracked; the row

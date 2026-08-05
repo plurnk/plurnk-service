@@ -100,8 +100,8 @@ CREATE TABLE IF NOT EXISTS loops (
     -- {§attribution-discovery-placeholder} — attribution tags of the loop's active plugins (string[] JSON); the activity tagged
     -- with what its plugins offer. Same set the engine rides on each turn's generate() wire.
     attributions TEXT NOT NULL DEFAULT '[]' CHECK (json_valid(attributions)),
-    -- {§methods-loop-run-open-paths}: client-selected paths foisted as
-    -- turn-zero READs by the workspace-owning core (string[] JSON).
+    -- {§methods-loop-run-open-paths}: the initial prompt frame's selected paths,
+    -- held here until turn 1 materializes that frame (string[] JSON).
     open_paths TEXT NOT NULL DEFAULT '[]' CHECK (json_valid(open_paths)),
     -- {§worker-scheme} loop-termination delta: terminated_at is stamped by the trigger
     -- below when status crosses into terminal (every death-path, uniformly);
@@ -345,6 +345,9 @@ CREATE TABLE IF NOT EXISTS entries (
     -- NULL (NULLs are distinct under UNIQUE — a nullable owner would let the commons fragment).
     -- The id never renders into a URI or packet; the model addresses owners by NAME (authority).
     owner_id   INTEGER NOT NULL,
+    -- Entry-private metadata. Prompt frames use `openPaths` to carry selected
+    -- workspace paths into the exact turn that publishes the frame
+    -- ({§methods-loop-run-open-paths}).
     attributes TEXT    NOT NULL DEFAULT '{}' CHECK (json_valid(attributes)),
     -- SPEC {§membership} — how a file member entered the curated surface. 'git' rows are
     -- reconciled against the repo's members each turn — tracked ls-files PLUS untracked-

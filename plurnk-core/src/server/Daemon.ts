@@ -1348,8 +1348,6 @@ export default class Daemon {
         drainPromise?: Promise<unknown>;
     }> {
         const { workspaceId, workerId, prompt } = args;
-        // #187 tracks the unresolved openPaths disposition when this request
-        // folds into active or parked work; the fresh-loop branch persists them below.
         // Active loop (status=102)? Fold the wake/prompt into its next turn.
         // engine.inject returns null when no loop is currently executing, so
         // we enqueue a fresh loop below and ensure a drain claims it.
@@ -1360,7 +1358,7 @@ export default class Daemon {
                 await this.#assertLoopProvider(active.id, args.providerSpec);
                 await this.#assertLoopMaxTurns(active.id, args.maxTurns);
             }
-            const result = await this.#engine.inject(workerId, prompt);
+            const result = await this.#engine.inject(workerId, prompt, args.openPaths ?? []);
             if (result !== null) {
                 return { action: "injected_next_turn", loopId: result.loopId, turnSeq: result.turnSeq };
             }
@@ -1377,7 +1375,7 @@ export default class Daemon {
                 await this.#assertFoldPosture(workerId, args.flags, slept.id); // resume drops nothing silently
                 await this.#assertLoopProvider(slept.id, args.providerSpec);
                 await this.#assertLoopMaxTurns(slept.id, args.maxTurns);
-                const injected = await this.#engine.inject(workerId, prompt);
+                const injected = await this.#engine.inject(workerId, prompt, args.openPaths ?? []);
                 await this.#lifecycle.wake(slept.id);
                 const started = await this.#ensureDrain({
                     workspaceId, workerId, systemPrompt: args.systemPrompt,
@@ -1785,8 +1783,8 @@ export default class Daemon {
         const endedSeq = (await this.#db.engine_loop_sequence.get<{ sequence: number }>({ loop_id: endedLoopId }))?.sequence ?? endedLoopId;
         const prefix = promptLoopPrefix(endedSeq);
         const orphan = await this.#db.drain_orphaned_prompt_for_loop.get<{
-            body: string; flags: string | null; provider_spec: string;
-        }>({ loop_id: endedLoopId, owner_id: workerId, pattern: `${prefix}%` });
+            body: string; flags: string | null; provider_spec: string; open_paths: string | null;
+        }>({ loop_id: endedLoopId, owner_id: workerId, pattern: `${prefix}%`, prefix_len: prefix.length });
         if (orphan === undefined) return;
         const seqRow = await this.#db.loop_run_next_sequence.get<{ next: number }>({ worker_id: workerId });
         if (seqRow === undefined) throw new Error("reconcileOrphanedWake: next-sequence query returned no row");
@@ -1799,6 +1797,9 @@ export default class Daemon {
         if (fresh === undefined) throw new Error("reconcileOrphanedWake: enqueue returned no row");
         if (orphan.flags !== null) {
             await this.#db.engine_set_loop_flags.run({ loop_id: fresh.id, flags: orphan.flags });
+        }
+        if (orphan.open_paths !== null) {
+            await this.#db.engine_set_loop_open_paths.run({ loop_id: fresh.id, open_paths: orphan.open_paths });
         }
     }
 

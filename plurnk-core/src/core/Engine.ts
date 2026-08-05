@@ -107,6 +107,13 @@ const promptTarget = (loopSeq: number, turnSeq: number): UrlPath => {
     };
 };
 
+const assertOpenPaths = (value: unknown, source: string): string[] => {
+    if (!Array.isArray(value) || value.some((path) => typeof path !== "string" || path.length === 0)) {
+        throw new TypeError(`${source}: expected an array of non-empty strings`);
+    }
+    return value as string[];
+};
+
 const readMaxStrikes = (): number => {
     const raw = process.env.PLURNK_SERVICE_MAX_STRIKES;
     if (raw === undefined || raw.length === 0) return DEFAULT_MAX_STRIKES;
@@ -256,6 +263,10 @@ export default class Engine {
     // Streaming schemes (exec) chain their per-spawn controllers off
     // ctx.signal so cancelled loops tear down their background spawns.
     #loopAborts = new Map<number, AbortController>();
+    // {§prompt-loop-containment}: one worker's prompt-frame allocation and
+    // persistence is a serial critical section. A completed later frame can
+    // therefore never overtake or replace an earlier concurrent arrival.
+    #promptWriteLocks = new Map<number, Promise<unknown>>();
     // One coalesced warm per workspace. Creation/membership changes start it as soon
     // as content exists; the first model turn joins it, so no operation observes
     // partial graph/vector coverage. A request arriving mid-pass marks the workspace
@@ -844,7 +855,7 @@ export default class Engine {
         // first turn ({§actor-boundary-catalog-preview}); per-loop foists such as
         // {§prompt-entry} still fire each loop. Read once, turn-1 only.
         const loopRow = seq === 1
-            ? await this.#db.engine_get_loop_prompt.get<{ prompt: string; sequence: number }>({ loop_id: loopId })
+            ? await this.#db.engine_get_loop_prompt.get<{ prompt: string; sequence: number; open_paths: string }>({ loop_id: loopId })
             : undefined;
         const workerFirstLoop = (loopRow?.sequence ?? 0) === 1;
         const openRow = await this.#db.engine_open_turn.get<{ id: number }>({
@@ -882,6 +893,7 @@ export default class Engine {
         //     we DON'T re-foist here for N>1.
         // Model ops dispatch after these pre-model rows.
         let nextActionIndex = 1;
+        const turnOpenPaths: string[] = [];
         // {§model-entry} — the worker's first turn opens with the model's own turn-0, mirrored OPEN: a
         // worked turn PLAN → the environment FINDs the foist ACTUALLY dispatches → SEND[102]. Built
         // from the real ops below (not a static print — we lean into the genuine echo paradigm) and
@@ -916,13 +928,16 @@ export default class Engine {
             }
             const promptRow = loopRow; // {§prompt-entry} — per-loop; fires every loop's turn 1
             if (promptRow !== undefined && typeof promptRow.prompt === "string" && promptRow.prompt.length > 0) {
+                const openPaths = assertOpenPaths(JSON.parse(promptRow.open_paths) as unknown, `Loop ${loopId} open_paths`);
                 const promptLoopSeq = promptRow.sequence; // the loop's per-worker sequence — model-facing, matching log coordinates (owner: the db id read as prompt/2/1)
                 const promptPath = promptTarget(promptLoopSeq, seq);
                 const entry: EntryData = {
                     channels: { body: { content: promptRow.prompt, mimetype: "text/markdown" } },
                     tags: [],
+                    attributes: { openPaths },
                 };
                 await EntryCrud.writeEntry(promptPath.pathname, entry, systemCtx, "prompt", workerId);
+                turnOpenPaths.push(...openPaths);
                 const promptLogId = await this.#writePromptLog({
                     workerId,
                     loopId,
@@ -942,9 +957,23 @@ export default class Engine {
         if (seq > 1) {
             const loopSeqRow = await this.#db.engine_loop_sequence.get<{ sequence: number }>({ loop_id: loopId });
             const loopSeq = loopSeqRow?.sequence ?? loopId;
-            const undelivered = (await this.#db.drain_undelivered_prompts_for_loop.all<{ content: string; pathname: string }>({ owner_id: workerId, pattern: `${promptLoopPrefix(loopSeq)}%`, loop_id: loopId }))
+            const prefix = promptLoopPrefix(loopSeq);
+            const undelivered = (await this.#db.drain_undelivered_prompts_for_loop.all<{ content: string; pathname: string; attributes: string }>({
+                owner_id: workerId,
+                pattern: `${prefix}%`,
+                prefix_len: prefix.length,
+                loop_id: loopId,
+            }))
                 .filter((r) => typeof r.content === "string" && r.content.length > 0);
             for (const injectedRow of undelivered) {
+                const attributes = JSON.parse(injectedRow.attributes) as unknown;
+                if (attributes === null || typeof attributes !== "object" || Array.isArray(attributes)) {
+                    throw new TypeError(`Prompt ${injectedRow.pathname} attributes: expected a JSON object`);
+                }
+                const encodedOpenPaths = (attributes as { openPaths?: unknown }).openPaths;
+                if (encodedOpenPaths !== undefined) {
+                    turnOpenPaths.push(...assertOpenPaths(encodedOpenPaths, `Prompt ${injectedRow.pathname} openPaths`));
+                }
                 const ordinal = Number(injectedRow.pathname.split("/").filter(Boolean).at(-1));
                 const injTarget = promptTarget(loopSeq, ordinal);
                 const promptLogId = await this.#writePromptLog({
@@ -1069,27 +1098,6 @@ export default class Engine {
                 nextActionIndex++;
                 turnZeroMoves.push("<<FIND(worker://~/*)::FIND");  // {§model-entry} — the own-space survey, into the turn-0 echo
             }
-            // {§methods-loop-run-open-paths}: foist a turn-zero READ of each client-selected path.
-            // Core owns the workspace → a normal file:/// member READ; a missing or
-            // non-member path surfaces its READ outcome (4xx) in the log, visible to the model.
-            const openPathsRow = await this.#db.engine_get_loop_open_paths.get<{ open_paths: string }>({ loop_id: loopId });
-            for (const raw of JSON.parse(openPathsRow?.open_paths ?? "[]") as string[]) {
-                const pathname = raw.startsWith("/") ? raw : `/${raw}`;
-                const fileRead: ReadStatement = {
-                    op: "READ", suffix: "", signal: null, lineMarker: null,
-                    target: {
-                        kind: "url", raw: `file://${pathname}`, scheme: "file",
-                        username: null, password: null, hostname: null, port: null,
-                        pathname, query: null, fragment: null,
-                    },
-                    body: null, position: UNKNOWN_POSITION,
-                };
-                await this.dispatch({
-                    statement: fileRead, workspaceId, workerId, loopId, turnId,
-                    sequence: nextActionIndex, origin: "plurnk", onDispatch,
-                });
-                nextActionIndex++;
-            }
             // {§model-entry} — mirror the model's turn-0 OPEN at sequence 1: PLAN → the FINDs actually
             // foisted above (real, their results already in the log) → SEND[102]. Dynamic — it reflects
             // the true survey, never a frozen print — and OPEN: the worked example the model orients on,
@@ -1098,6 +1106,27 @@ export default class Engine {
                 const emission = ["<<PLAN:Initialize:PLAN", ...turnZeroMoves, "<<SEND[102]:Next, address the prompt from the initialized context.:SEND"].join("\n");
                 await this.#dispatcher.writeModelEntry({ verbatim: emission, workerId, loopId, turnId, sequence: 1, folded: false, origin: "plurnk" });
             }
+        }
+
+        // {§methods-loop-run-open-paths}: selected workspace paths belong to
+        // the prompt frame. Publish the frame, then dispatch ordinary core READs
+        // in that same turn; missing/non-member paths retain their normal 4xx.
+        for (const raw of turnOpenPaths) {
+            const pathname = raw.startsWith("/") ? raw : `/${raw}`;
+            const fileRead: ReadStatement = {
+                op: "READ", suffix: "", signal: null, lineMarker: null,
+                target: {
+                    kind: "url", raw: `file://${pathname}`, scheme: "file",
+                    username: null, password: null, hostname: null, port: null,
+                    pathname, query: null, fragment: null,
+                },
+                body: null, position: UNKNOWN_POSITION,
+            };
+            await this.dispatch({
+                statement: fileRead, workspaceId, workerId, loopId, turnId,
+                sequence: nextActionIndex, origin: "plurnk", onDispatch,
+            });
+            nextActionIndex++;
         }
 
         // {§env-delta-log-pull} — materialize ambient observations before packet
@@ -2205,15 +2234,32 @@ export default class Engine {
         await this.#queueWorkspaceWarm(ctx); // materialize first; overlapping requests coalesce and rescan
     }
 
-    // Inject a prompt into the worker's currently executing loop. Writes the
+    // Inject a prompt into the worker's current non-terminal loop. Writes the
     // next owner-keyed prompt:///<loop>/<N> entry; the next turn publishes it
-    // as one actionless prompt row. Concurrent injections take distinct
-    // ordinals and remain ordered.
+    // as one actionless prompt row. Prompt-frame writes serialize per worker,
+    // so concurrent arrivals retain distinct ordered ordinals.
     //
-    // Returns null when no loop in the worker is currently active (status=102).
+    // Returns null when no loop in the worker is active or parked (102/202).
     // The daemon-side inject path then enqueues a fresh loop with this
     // prompt; engine doesn't open loops itself.
-    async inject(workerId: number, prompt: string): Promise<
+    inject(workerId: number, prompt: string, openPaths: readonly string[] = []): Promise<
+        { loopId: number; turnSeq: number } | null
+    > {
+        return this.#withPromptWriteLock(workerId, () => this.#injectPrompt(workerId, prompt, openPaths));
+    }
+
+    #withPromptWriteLock<T>(workerId: number, write: () => Promise<T>): Promise<T> {
+        const previous = this.#promptWriteLocks.get(workerId) ?? Promise.resolve();
+        const run = previous.then(write, write);
+        const tail = run.catch(() => {});
+        this.#promptWriteLocks.set(workerId, tail);
+        void tail.then(() => {
+            if (this.#promptWriteLocks.get(workerId) === tail) this.#promptWriteLocks.delete(workerId);
+        });
+        return run;
+    }
+
+    async #injectPrompt(workerId: number, prompt: string, openPaths: readonly string[]): Promise<
         { loopId: number; turnSeq: number } | null
     > {
         const loopRow = await this.#db.drain_current_loop_for_worker.get<{ id: number; sequence: number }>({ worker_id: workerId });
@@ -2225,8 +2271,13 @@ export default class Engine {
         if (workspaceRow === undefined) throw new Error(`Engine.inject: worker ${workerId} not found`);
         // {§prompt-loop-containment} — the frame is the loop's NEXT prompt ordinal, never a turn
         // slot: rapid arrivals land as N and N+1, both contained, nothing superseded.
-        const countRow = await this.#db.drain_count_prompts_for_loop.get<{ n: number }>({ owner_id: workerId, pattern: `${promptLoopPrefix(loopRow.sequence)}%` });
-        const pathname = promptPathname(loopRow.sequence, (countRow?.n ?? 0) + 1);
+        const prefix = promptLoopPrefix(loopRow.sequence);
+        const ordinalRow = await this.#db.drain_next_prompt_ordinal_for_loop.get<{ next: number }>({
+            owner_id: workerId,
+            pattern: `${prefix}%`,
+            prefix_len: prefix.length,
+        });
+        const pathname = promptPathname(loopRow.sequence, ordinalRow?.next ?? 2);
         const ctx: PlurnkSchemeContext = {
             db: this.#db, workspaceId: workspaceRow.workspace_id, workerId, loopId,
             turnId: 0,                   // no turn open at inject time; entries don't pin turnId
@@ -2240,6 +2291,7 @@ export default class Engine {
         const entry: EntryData = {
             channels: { body: { content: prompt, mimetype: "text/markdown" } },
             tags: [],
+            attributes: { openPaths },
         };
         await EntryCrud.writeEntry(pathname, entry, ctx, "prompt", workerId);
         return { loopId, turnSeq };

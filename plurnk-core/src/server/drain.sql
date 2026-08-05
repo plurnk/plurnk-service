@@ -45,17 +45,19 @@ SELECT COALESCE(MAX(sequence), 0) + 1 AS next FROM turns WHERE loop_id = $loop_i
 -- context paired with that worker's owner identity).
 SELECT workspace_id FROM workers WHERE id = $worker_id;
 
--- PREP: drain_count_prompts_for_loop
--- {§prompt-loop-containment} — the per-loop prompt ORDINAL source: N = count+1. The frame key is
--- the Nth prompt of the loop, never a turn slot, so rapid arrivals can never share a row.
-SELECT COUNT(*) AS n FROM entries
+-- PREP: drain_next_prompt_ordinal_for_loop
+-- {§prompt-loop-containment} — derive the next per-loop frame ordinal from the
+-- greatest materialized ordinal. The initial frame reserves ordinal 1 even
+-- before turn 1 materializes it, so an injection starts at 2.
+SELECT COALESCE(MAX(CAST(substr(pathname, $prefix_len + 1) AS INTEGER)), 1) + 1 AS next
+FROM entries
 WHERE scheme = 'prompt' AND owner_id = $owner_id AND pathname LIKE $pattern;
 
 -- PREP: drain_undelivered_prompts_for_loop
 -- {§prompt-loop-containment} - the prompts the loop contains but has not yet delivered: no
 -- actionless prompt row exists for the frame in this loop. Oldest first; the next turn
 -- boundary publishes each, so every arrival reaches the model exactly once.
-SELECT c.content, e.pathname
+SELECT c.content, e.pathname, e.attributes
 FROM entries e
 JOIN entry_channels c ON c.entry_id = e.id
 WHERE e.scheme = 'prompt'
@@ -67,7 +69,7 @@ WHERE e.scheme = 'prompt'
       WHERE le.loop_id = $loop_id AND le.origin = 'plurnk' AND le.op = 'prompt'
         AND le.scheme = 'prompt' AND le.pathname = e.pathname
   )
-ORDER BY e.id ASC;
+ORDER BY CAST(substr(e.pathname, $prefix_len + 1) AS INTEGER) ASC;
 
 -- PREP: drain_get_all_prompt_bodies_for_loop
 -- Sources the Active User Prompts section: EVERY prompt entry the
@@ -82,7 +84,7 @@ WHERE e.scheme = 'prompt'
   AND e.owner_id = $owner_id
   AND e.pathname LIKE $pattern
   AND c.name = 'body'
-ORDER BY e.id ASC;
+ORDER BY CAST(substr(e.pathname, $prefix_len + 1) AS INTEGER) ASC;
 
 -- PREP: drain_orphaned_prompt_for_loop
 -- A loop can terminate before consuming a next-turn prompt injected into it
@@ -93,7 +95,8 @@ ORDER BY e.id ASC;
 -- the drain can promote it to a fresh loop — no wake silently lost.
 -- $pattern = promptLoopPrefix + '%', $prefix_len = length of that prefix
 -- built JS-side (per the SqlRite LIKE-binding note above).
-SELECT c.content AS body, l.flags AS flags, l.provider_spec AS provider_spec
+SELECT c.content AS body, l.flags AS flags, l.provider_spec AS provider_spec,
+       json_extract(e.attributes, '$.openPaths') AS open_paths
 FROM entries e
 JOIN entry_channels c ON c.entry_id = e.id
 JOIN loops l ON l.id = $loop_id
@@ -106,7 +109,7 @@ WHERE e.scheme = 'prompt'
       WHERE le.loop_id = $loop_id AND le.origin = 'plurnk' AND le.op = 'prompt'
         AND le.scheme = 'prompt' AND le.pathname = e.pathname
   )
-ORDER BY e.id DESC
+ORDER BY CAST(substr(e.pathname, $prefix_len + 1) AS INTEGER) DESC
 LIMIT 1;
 
 -- PREP: drain_find_slept_loop

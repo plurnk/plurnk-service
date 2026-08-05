@@ -15,6 +15,8 @@ export type { ChannelState, StoredEntryData } from "@plurnk/plurnk-schemes";
 export interface EntryData {
     channels: Record<string, { content: string; mimetype: string; state?: ChannelState }>;
     tags: string[];
+    // Core-private metadata, never part of StoredEntryData or extension caps.
+    attributes?: Readonly<Record<string, unknown>>;
 }
 
 export interface ReadEntryResult extends SchemeResultBase {
@@ -85,13 +87,27 @@ export default class EntryCrud {
         let entryId: number;
         let created: boolean;
         if (existing === undefined) {
-            const row = await db.crud_insert_workspace_entry.get<{ id: number }>({ workspace_id: workspaceId, owner_id, scheme, pathname });
+            const row = entry.attributes === undefined
+                ? await db.crud_insert_workspace_entry.get<{ id: number }>({ workspace_id: workspaceId, owner_id, scheme, pathname })
+                : await db.crud_insert_workspace_entry_with_attributes.get<{ id: number }>({
+                    workspace_id: workspaceId,
+                    owner_id,
+                    scheme,
+                    pathname,
+                    attributes: JSON.stringify(entry.attributes),
+                });
             if (row === undefined) throw new Error("writeEntry: insert returned no row");
             entryId = row.id;
             created = true;
         } else {
             entryId = existing.id;
             created = false;
+            if (entry.attributes !== undefined) {
+                await db.crud_set_entry_attributes.run({
+                    entry_id: entryId,
+                    attributes: JSON.stringify(entry.attributes),
+                });
+            }
             await db.crud_delete_channels.run({ entry_id: entryId });
             await db.crud_delete_tags.run({ entry_id: entryId });
         }

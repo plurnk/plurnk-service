@@ -295,14 +295,14 @@ test("loop.run respects maxTurns cap when model emits non-terminal statuses repe
 });
 test("{§methods-loop-run-open-paths}: a fresh loop foists one turn-zero READ per path", async () => {
     const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse("<<SEND[200]:done:SEND", 10)] });
-    await withDaemon(mock, async (_db, _daemon, addr) => {
+    await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
             const logEntries = subscribeNotifications(ws, "log/entry");
             await rpcCall(ws, 1, "workspace.create", { name: "openpaths" });
             // Headless workspace: the files needn't exist — what's asserted is that the daemon FOISTS a
             // turn-0 READ for each path (a missing path just surfaces its own 4xx in the log).
-            await runLoopToTerminal(ws, 2, { prompt: "look at these", openPaths: ["src/foo.ts", "README.md"] });
+            const result = await runLoopToTerminal(ws, 2, { prompt: "look at these", openPaths: ["src/foo.ts", "README.md"] });
             await flush();
             // Bare file targets use scheme=NULL in log metadata even though the addressed
             // entry identity stores scheme='file'; origin plus the nullable target identifies the foists.
@@ -310,6 +310,14 @@ test("{§methods-loop-run-open-paths}: a fresh loop foists one turn-zero READ pe
                 .map((c) => c.entry)
                 .filter((e) => e.op === "READ" && e.origin === "plurnk" && e.scheme === null);
             assert.deepEqual(reads.map((r) => r.pathname).toSorted(), ["README.md", "src/foo.ts"], "a plurnk-origin file READ foisted per openPath at turn 0 — columns in wire canon ({§fs-answer-in-canon})");
+            const rows = await db.test_log_entries_by_loop.all<{
+                op: string; origin: string; scheme: string | null; pathname: string; turn_id: number;
+            }>({ loop_id: result.loopId });
+            const frame = rows.find((row) => row.op === "prompt" && row.pathname === "/1/1");
+            assert.ok(frame, "the initial prompt frame exists");
+            assert.ok(rows.filter((row) => row.op === "READ" && row.origin === "plurnk" && row.scheme === null)
+                .every((row) => row.turn_id === frame.turn_id),
+            "every selected path is read in the same turn that publishes the initial prompt frame");
         } finally { ws.close(); }
     });
 });

@@ -21,17 +21,20 @@ test("engine.inject: writes the loop's next prompt FRAME (prompt:///<loop>/<N>, 
         // matches the realistic mid-loop state.
         await insertTurn(db, loopId, 1, 102);
 
-        const result = await engine.inject(workerId, "follow-up");
+        const result = await engine.inject(workerId, "follow-up", ["src/context.ts", "README.md"]);
         assert.ok(result, "engine.inject returned a result");
         assert.equal(result.loopId, loopId);
         assert.equal(result.turnSeq, 2, "the LANDING turn is 2 (turn 1 already exists) — delivery timing, not the key");
 
-        // The frame keys on the per-loop ORDINAL ({§prompt-loop-containment}): this fixture holds
-        // no prior frames, so the inject is frame 1 — /1/1 — regardless of the landing turn.
-        const entry = await db.test_get_entry_by_path.get<{ id: number }>({
-            workspace_id: workspaceId, scheme: "prompt", pathname: "/1/1",
+        // The frame keys on the per-loop ORDINAL ({§prompt-loop-containment}). The loop's
+        // initial prompt owns ordinal 1 even before turn 1 materializes its entry, so the
+        // injected frame is /1/2 regardless of the landing turn.
+        const entry = await db.test_get_entry_by_path.get<{ id: number; attributes: string }>({
+            workspace_id: workspaceId, scheme: "prompt", pathname: "/1/2",
         });
-        assert.ok(entry, "prompt frame exists at prompt:///1/1, owned by the worker");
+        assert.ok(entry, "prompt frame exists at prompt:///1/2, owned by the worker");
+        assert.deepEqual(JSON.parse(entry.attributes), { openPaths: ["src/context.ts", "README.md"] },
+            "the prompt frame durably owns its selected workspace paths");
         const body = await db.test_get_channel.get<{ content: string }>({
             entry_id: entry.id, name: "body",
         });
@@ -39,7 +42,7 @@ test("engine.inject: writes the loop's next prompt FRAME (prompt:///<loop>/<N>, 
     } finally { await db.close(); }
 });
 
-test("rapid injects are BOTH contained — distinct frames, nothing superseded (owner: a loop holds every prompt sent before it concludes)", async () => {
+test("concurrent injects are contained as distinct ordered frames with their own attributes", async () => {
     const db = await openMigrated();
     try {
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
@@ -48,17 +51,27 @@ test("rapid injects are BOTH contained — distinct frames, nothing superseded (
         const loopId = await insertLoop(db, workerId, 1, "initial");
         await insertTurn(db, loopId, 1, 102);
 
-        const r1 = await engine.inject(workerId, "first follow-up");
-        const r2 = await engine.inject(workerId, "second follow-up");
+        const [r1, r2] = await Promise.all([
+            engine.inject(workerId, "first follow-up", ["first.ts"]),
+            engine.inject(workerId, "second follow-up", ["second.ts"]),
+        ]);
         assert.ok(r1 && r2, "both injects landed in the ACTIVE loop — no new loop while one is live");
 
-        const f1 = await db.test_get_entry_by_path.get<{ id: number }>({ workspace_id: workspaceId, scheme: "prompt", pathname: "/1/1" });
-        const f2 = await db.test_get_entry_by_path.get<{ id: number }>({ workspace_id: workspaceId, scheme: "prompt", pathname: "/1/2" });
+        const f1 = await db.test_get_entry_by_path.get<{ id: number; attributes: string }>({ workspace_id: workspaceId, scheme: "prompt", pathname: "/1/2" });
+        const f2 = await db.test_get_entry_by_path.get<{ id: number; attributes: string }>({ workspace_id: workspaceId, scheme: "prompt", pathname: "/1/3" });
         assert.ok(f1 && f2, "two frames at consecutive ordinals — the ordinal key cannot collide");
         const b1 = await db.test_get_channel.get<{ content: string }>({ entry_id: f1!.id, name: "body" });
         const b2 = await db.test_get_channel.get<{ content: string }>({ entry_id: f2!.id, name: "body" });
         assert.equal(b1?.content, "first follow-up", "the earlier prompt is CONTAINED, never superseded");
         assert.equal(b2?.content, "second follow-up");
+        assert.deepEqual(JSON.parse(f1.attributes), { openPaths: ["first.ts"] });
+        assert.deepEqual(JSON.parse(f2.attributes), { openPaths: ["second.ts"] });
+
+        const restarted = new Engine({ db, schemes: new SchemeRegistry() });
+        await restarted.inject(workerId, "after restart", ["third.ts"]);
+        const f3 = await db.test_get_entry_by_path.get<{ id: number; attributes: string }>({ workspace_id: workspaceId, scheme: "prompt", pathname: "/1/4" });
+        assert.ok(f3, "a new engine continues after the durable historical ordinals");
+        assert.deepEqual(JSON.parse(f3.attributes), { openPaths: ["third.ts"] });
     } finally { await db.close(); }
 });
 

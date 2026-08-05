@@ -57,6 +57,8 @@ export class SqlRiteSync {
 	crud_read_channels: SqlRiteSyncPreparedStatements;
 	crud_read_tags: SqlRiteSyncPreparedStatements;
 	crud_insert_workspace_entry: SqlRiteSyncPreparedStatements;
+	crud_insert_workspace_entry_with_attributes: SqlRiteSyncPreparedStatements;
+	crud_set_entry_attributes: SqlRiteSyncPreparedStatements;
 	crud_register_workspace_member: SqlRiteSyncPreparedStatements;
 	crud_get_member_sig: SqlRiteSyncPreparedStatements;
 	crud_set_synced_sig: SqlRiteSyncPreparedStatements;
@@ -142,7 +144,7 @@ export class SqlRiteSync {
 	drain_current_loop_for_worker: SqlRiteSyncPreparedStatements;
 	drain_next_turn_seq_for_loop: SqlRiteSyncPreparedStatements;
 	drain_get_worker_workspace: SqlRiteSyncPreparedStatements;
-	drain_count_prompts_for_loop: SqlRiteSyncPreparedStatements;
+	drain_next_prompt_ordinal_for_loop: SqlRiteSyncPreparedStatements;
 	drain_undelivered_prompts_for_loop: SqlRiteSyncPreparedStatements;
 	drain_get_all_prompt_bodies_for_loop: SqlRiteSyncPreparedStatements;
 	drain_orphaned_prompt_for_loop: SqlRiteSyncPreparedStatements;
@@ -157,7 +159,6 @@ export class SqlRiteSync {
 	engine_set_loop_flags: SqlRiteSyncPreparedStatements;
 	engine_tag_loop_attributions: SqlRiteSyncPreparedStatements;
 	engine_set_loop_open_paths: SqlRiteSyncPreparedStatements;
-	engine_get_loop_open_paths: SqlRiteSyncPreparedStatements;
 	engine_get_loop_prompt: SqlRiteSyncPreparedStatements;
 	engine_reclaim_queued_loop: SqlRiteSyncPreparedStatements;
 	workspace_get_settings: SqlRiteSyncPreparedStatements;
@@ -280,6 +281,8 @@ export default class SqlRite {
 	crud_read_channels: SqlRitePreparedStatements;
 	crud_read_tags: SqlRitePreparedStatements;
 	crud_insert_workspace_entry: SqlRitePreparedStatements;
+	crud_insert_workspace_entry_with_attributes: SqlRitePreparedStatements;
+	crud_set_entry_attributes: SqlRitePreparedStatements;
 	crud_register_workspace_member: SqlRitePreparedStatements;
 	crud_get_member_sig: SqlRitePreparedStatements;
 	crud_set_synced_sig: SqlRitePreparedStatements;
@@ -365,7 +368,7 @@ export default class SqlRite {
 	drain_current_loop_for_worker: SqlRitePreparedStatements;
 	drain_next_turn_seq_for_loop: SqlRitePreparedStatements;
 	drain_get_worker_workspace: SqlRitePreparedStatements;
-	drain_count_prompts_for_loop: SqlRitePreparedStatements;
+	drain_next_prompt_ordinal_for_loop: SqlRitePreparedStatements;
 	drain_undelivered_prompts_for_loop: SqlRitePreparedStatements;
 	drain_get_all_prompt_bodies_for_loop: SqlRitePreparedStatements;
 	drain_orphaned_prompt_for_loop: SqlRitePreparedStatements;
@@ -380,7 +383,6 @@ export default class SqlRite {
 	engine_set_loop_flags: SqlRitePreparedStatements;
 	engine_tag_loop_attributions: SqlRitePreparedStatements;
 	engine_set_loop_open_paths: SqlRitePreparedStatements;
-	engine_get_loop_open_paths: SqlRitePreparedStatements;
 	engine_get_loop_prompt: SqlRitePreparedStatements;
 	engine_reclaim_queued_loop: SqlRitePreparedStatements;
 	workspace_get_settings: SqlRitePreparedStatements;

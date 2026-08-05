@@ -270,7 +270,12 @@ export default class PacketBuilder {
         // Inject and turn-1 initialization write them. Bare callers that
         // bypass prompt persistence fall back to messages.user.
         const loopSeqRow = await this.#db.engine_loop_sequence.get<{ sequence: number }>({ loop_id: loopId });
-        const promptRows = (await this.#db.drain_get_all_prompt_bodies_for_loop.all<{ content: string; pathname: string }>({ owner_id: workerId, pattern: `${promptLoopPrefix(loopSeqRow?.sequence ?? loopId)}%` }))
+        const promptPrefix = promptLoopPrefix(loopSeqRow?.sequence ?? loopId);
+        const promptRows = (await this.#db.drain_get_all_prompt_bodies_for_loop.all<{ content: string; pathname: string }>({
+            owner_id: workerId,
+            pattern: `${promptPrefix}%`,
+            prefix_len: promptPrefix.length,
+        }))
             .filter((r) => typeof r.content === "string" && r.content.length > 0);
         // The section is a paths list (the errors shape - no bodies);
         // each prompt's content reaches the model through its actionless prompt row, and

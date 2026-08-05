@@ -70,7 +70,7 @@ SELECT COUNT(*) AS n FROM entries WHERE workspace_id = $workspace_id;
 SELECT COUNT(*) AS n FROM entries WHERE workspace_id = $workspace_id AND scheme = $scheme;
 
 -- PREP: test_get_entry_by_path
-SELECT id FROM entries
+SELECT id, attributes FROM entries
 WHERE workspace_id = $workspace_id AND scheme = $scheme AND pathname = $pathname;
 
 -- PREP: test_get_channel

@@ -155,7 +155,7 @@ test("loop.run: post-cancel, a fresh loop.run starts a new drain", async () => {
     });
 });
 
-test("loop.run while a loop is live: second call injects into its next-turn slot (no parallel drain)", async () => {
+test("{§methods-loop-run-open-paths}: an active-loop prompt carries its paths into the publishing turn", async () => {
     // Deterministic hold (no 50ms race): a non-auto EXEC proposal pauses
     // dispatch at status=202 BEFORE any subprocess spawns, so loop 1 is
     // provably live at status=102 when the second loop.run lands. We REJECT it
@@ -185,7 +185,10 @@ test("loop.run while a loop is live: second call injects into its next-turn slot
                 (p) => p.length >= 1,
             );
 
-            const r2 = await rpcCall(ws, 3, "loop.run", { prompt: "follow-up" });
+            const r2 = await rpcCall(ws, 3, "loop.run", {
+                prompt: "follow-up",
+                openPaths: ["src/active-context.ts"],
+            });
             const result2 = r2.result as { action: string; turnSeq?: number };
             assert.equal(result2.action, "injected_next_turn",
                 "a loop.run while a loop is live injects into its next turn — never a parallel drain");
@@ -210,6 +213,66 @@ test("loop.run while a loop is live: second call injects into its next-turn slot
             );
             assert.equal(ended.length, 1, "exactly one loop terminated — no parallel drain");
             assert.equal(ended[0].result.status, 200, "loop 1 ends cleanly after consuming the injected prompt");
+
+            const rows = await db.test_log_entries_by_loop.all<{
+                op: string; origin: string; scheme: string | null; pathname: string; turn_id: number;
+            }>({ loop_id: ended[0].loopId });
+            const frame = rows.find((row) => row.op === "prompt" && row.pathname === "/1/2");
+            const contextRead = rows.find((row) => row.op === "READ" && row.origin === "plurnk" && row.scheme === null && row.pathname === "src/active-context.ts");
+            assert.ok(frame, "the injected prompt was published as its own frame");
+            assert.ok(contextRead, "the injected prompt's selected path produced a core READ");
+            assert.equal(contextRead.turn_id, frame.turn_id,
+                "the context READ is observable in the same turn as its prompt frame");
+        } finally { ws.close(); }
+    });
+});
+
+test("{§methods-loop-run-open-paths}: a parked-loop prompt carries its paths into the resumed turn", async () => {
+    const mock = new Mock({
+        contextWindow: 16384,
+        responses: [
+            sendOnly("<<EXEC[sh]:sleep 30:EXEC\n<<SEND[202]<-1>:park:SEND"),
+            sendOnly("<<SEND[499]:done with the parked work:SEND"),
+        ],
+    });
+
+    await withDaemon(mock, async (db, _daemon, addr) => {
+        const ws = await connect(addr);
+        try {
+            await rpcCall(ws, 1, "workspace.create", { name: "openpaths-parked" });
+            const terminated = subscribeNotifications(ws, "loop/terminated");
+            const started = await rpcCall(ws, 2, "loop.run", {
+                prompt: "start and park",
+                flags: { auto: true },
+            });
+            const loopId = (started.result as { loopId: number }).loopId;
+            await waitForDb(
+                async () => (await db.test_get_loop_status.get<{ status: number }>({ id: loopId }))?.status,
+                (status) => status === 202,
+            );
+
+            const resumed = await rpcCall(ws, 3, "loop.run", {
+                prompt: "resume with this file",
+                openPaths: ["src/parked-context.ts"],
+            });
+            assert.equal((resumed.result as { action: string }).action, "injected_next_turn");
+            assert.equal((resumed.result as { loopId: number }).loopId, loopId,
+                "the prompt resumes the parked loop rather than opening another");
+
+            await waitFor(
+                () => terminated() as Array<{ loopId: number; result: { status: number } }>,
+                (events) => events.some((event) => event.loopId === loopId),
+                { timeoutMs: 5000 },
+            );
+            const rows = await db.test_log_entries_by_loop.all<{
+                op: string; origin: string; scheme: string | null; pathname: string; turn_id: number;
+            }>({ loop_id: loopId });
+            const frame = rows.find((row) => row.op === "prompt" && row.pathname === "/1/2");
+            const contextRead = rows.find((row) => row.op === "READ" && row.origin === "plurnk" && row.scheme === null && row.pathname === "src/parked-context.ts");
+            assert.ok(frame, "the waking prompt was published as its own frame");
+            assert.ok(contextRead, "the waking prompt's selected path produced a core READ");
+            assert.equal(contextRead.turn_id, frame.turn_id,
+                "the context READ is observable in the resumed turn that publishes its prompt frame");
         } finally { ws.close(); }
     });
 });
@@ -234,7 +297,7 @@ test("loop ends before consuming an injected prompt → reconciled into a fresh 
         ],
     });
 
-    await withDaemon(mock, async (_db, _daemon, addr) => {
+    await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "reconcile-orphan" });
@@ -245,13 +308,17 @@ test("loop ends before consuming an injected prompt → reconciled into a fresh 
             const pending = await waitFor(() => proposals() as Array<{ logEntryId: number }>, (p) => p.length >= 1);
 
             // Inject a turn-2 prompt while loop 1 is paused at turn 1.
-            const r2 = await rpcCall(ws, 3, "loop.run", { prompt: "the orphaned follow-up" });
+            const r2 = await rpcCall(ws, 3, "loop.run", {
+                prompt: "the orphaned follow-up",
+                openPaths: ["src/orphan-context.ts"],
+            });
             assert.equal((r2.result as { action: string }).action, "injected_next_turn");
 
             // Release the proposal → turn 1 emits SEND[200] → loop 1 ends; the
             // injected turn 2 never runs (it's now orphaned).
             await rpcCall(ws, 4, "loop.resolve", { logEntryId: pending[0].logEntryId, decision: "reject" });
-            await firstPromise;
+            const first = await firstPromise;
+            const firstLoopId = (first.result as { loopId: number }).loopId;
 
             // The orphaned prompt is reconciled into a second loop that runs.
             const ts = await waitFor(
@@ -262,6 +329,16 @@ test("loop ends before consuming an injected prompt → reconciled into a fresh 
             assert.equal(ts.length, 2, "the orphaned wake was reconciled into a second loop (would be 1 if lost)");
             const statuses = ts.map((t) => t.result.status).toSorted((a, b) => a - b);
             assert.deepEqual(statuses, [200, 499], "loop 1 abandoned (499, over the rejected EXEC); the reconciled loop concluded 200");
+            const promoted = ts.find((event) => event.loopId !== firstLoopId);
+            assert.ok(promoted, "the orphaned frame was promoted into a distinct loop");
+            const rows = await db.test_log_entries_by_loop.all<{
+                op: string; origin: string; scheme: string | null; pathname: string; turn_id: number;
+            }>({ loop_id: promoted.loopId });
+            const frame = rows.find((row) => row.op === "prompt" && row.pathname === "/2/1");
+            const contextRead = rows.find((row) => row.op === "READ" && row.origin === "plurnk" && row.scheme === null && row.pathname === "src/orphan-context.ts");
+            assert.ok(frame && contextRead, "the promoted prompt keeps its selected path");
+            assert.equal(contextRead.turn_id, frame.turn_id,
+                "orphan promotion reads the path in the promoted frame's publishing turn");
         } finally { ws.close(); }
     });
 });

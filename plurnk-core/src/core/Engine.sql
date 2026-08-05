@@ -37,18 +37,14 @@ UPDATE loops SET flags = $flags WHERE id = $loop_id;
 UPDATE loops SET attributions = $attributions WHERE id = $loop_id AND attributions = '[]';
 
 -- PREP: engine_set_loop_open_paths
--- {§methods-loop-run-open-paths}: persist client-selected paths (string[] JSON)
--- before the drain starts so runTurn foists one turn-zero READ for each.
+-- {§methods-loop-run-open-paths}: persist the initial prompt frame's selected
+-- paths (string[] JSON) until turn 1 materializes that frame.
 UPDATE loops SET open_paths = $open_paths WHERE id = $loop_id;
 
--- PREP: engine_get_loop_open_paths
--- {§methods-loop-run-open-paths}: turn-zero context paths for this loop.
-SELECT open_paths FROM loops WHERE id = $loop_id;
-
 -- PREP: engine_get_loop_prompt
--- Loop prompt + sequence. On turn 1, runTurn stores the owner-keyed
--- prompt:///<loop>/1 entry and publishes one actionless prompt log row.
-SELECT prompt, sequence FROM loops WHERE id = $loop_id;
+-- Initial prompt frame. On turn 1, runTurn stores the owner-keyed
+-- prompt:///<loop>/1 entry with its selected paths and publishes it.
+SELECT prompt, sequence, open_paths FROM loops WHERE id = $loop_id;
 
 -- PREP: engine_reclaim_queued_loop
 -- {§worker-lifecycle-wake-requeue-not-terminal} — atomic 100→102 re-claim by loop id. A wake

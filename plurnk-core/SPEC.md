@@ -1937,11 +1937,19 @@ the loop before changing configuration. A newly enqueued loop instead persists
 the requested configuration normally.
 
 §methods-loop-run-open-paths **Workspace paths are core-owned context reads.**
-For a newly enqueued loop, `openPaths` persists a list of client-selected paths.
-On its first turn, core dispatches one ordinary `plurnk`-origin READ per path
-from inside the owning workspace; successes and failures surface through the
-normal operation-result contract. The client sends paths, never duplicated file
-bytes.
+`openPaths` belongs to the prompt frame submitted by the client. The client
+sends paths, never duplicated file bytes; core dispatches one ordinary
+`plurnk`-origin READ per path from inside the owning workspace, and successes
+and failures surface through the normal operation-result contract.
+
+| `runLoop` disposition | Prompt-frame and path behavior                                                                    |
+|-----------------------|---------------------------------------------------------------------------------------------------|
+| New loop              | Persist with the initial frame; publish the frame and READ its paths on turn 1.                    |
+| Active loop           | Persist with the injected frame; publish the frame and READ its paths together on the next turn.  |
+| Parked loop           | Persist with the waking frame; publish the frame and READ its paths together on the resumed turn. |
+
+If an undelivered frame is promoted into subsequent work under
+{§prompt-loop-containment}, its selected paths travel with it.
 
 §methods-rebind **Binding belongs to the client-interface module.** Core's
 workspace lifecycle calls return exactly the workspace and selected client actor

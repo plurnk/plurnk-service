@@ -126,7 +126,7 @@ test("sister workers' turn-1 prompts are distinct owner-keyed rows at the same c
         const workerLoop = await insertLoop(db, childWorker, 1, "the worker task");
         await engine.runTurn({ provider: mkProvider(), workspaceId, workerId: childWorker, loopId: workerLoop, messages: [{ role: "system", content: "SD" }, { role: "user", content: "the worker task" }] });
 
-        const bodyAt = async (workerId: number) => (await db.drain_get_all_prompt_bodies_for_loop.all<{ content: string; pathname: string }>({ owner_id: workerId, pattern: "/1/%" }));
+        const bodyAt = async (workerId: number) => (await db.drain_get_all_prompt_bodies_for_loop.all<{ content: string; pathname: string }>({ owner_id: workerId, pattern: "/1/%", prefix_len: 3 }));
         const parentRows = await bodyAt(parentWorker);
         const workerRows = await bodyAt(childWorker);
         assert.equal(parentRows.length, 1, "the parent's prompt entry exists at its worker-qualified address");
