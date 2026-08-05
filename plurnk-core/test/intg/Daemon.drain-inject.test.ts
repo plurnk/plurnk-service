@@ -80,11 +80,10 @@ test("loop.cancel terminates a backgrounded exec; the stream concludes 499", asy
             assert.ok(conc.some((c) => c.scheme === "sh" && c.result.status === 499),
                 "loop.cancel terminated the backgrounded exec (stream concluded 499)");
 
-            // #204 — loop.run already returned its 100 accept; loop.cancel never makes it
-            // reject. The cancelled loop's 499 terminal is observed via the stream conclusion
-            // above (and loop/terminated), not loop.worker's return.
+            // {§methods-loop-run} {§notifications-loop-terminated}: cancellation cannot
+            // retroactively reject the immediate 100 acknowledgement; terminal truth is an event.
             const loopResp = await loopPromise;
-            assert.equal(loopResp.error, undefined, "loop.run accepted and resolved; cancel never rejects it (#204)");
+            assert.equal(loopResp.error, undefined, "loop.run acknowledgement remains accepted after cancellation");
             assert.equal((loopResp.result as { status: number }).status, 100, "loop.run returned the 100 accept, not the terminal");
         } finally { ws.close(); }
     });
