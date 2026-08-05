@@ -7,6 +7,7 @@ import path from "node:path";
 import os from "node:os";
 import Mimetypes from "./Mimetypes.ts";
 import BaseHandler from "./BaseHandler.ts";
+import MimetypeInputLimitError from "./MimetypeInputLimitError.ts";
 import MimetypePluginError from "./MimetypePluginError.ts";
 import { UnsupportedDialectError } from "./QueryError.ts";
 import type {
@@ -55,6 +56,15 @@ class FakeStrictHandler extends BaseHandler {
     }
 }
 
+class FakeBinaryHandler extends BaseHandler {}
+
+class FakeReadableBinaryHandler extends BaseHandler {
+    override content(content: string | Uint8Array): string {
+        assert.ok(content instanceof Uint8Array);
+        return `projected ${content.byteLength} bytes`;
+    }
+}
+
 const plainInfo: HandlerInfo = {
     mimetype: "text/plain",
     glyph: "📄",
@@ -74,6 +84,79 @@ const strictInfo: HandlerInfo = {
     binary: false,
     source: "package",
 };
+
+const binaryInfo: HandlerInfo = {
+    mimetype: "application/x-test-binary",
+    glyph: "📦",
+    packageName: "@plurnk/plurnk-mimetypes-application-test-binary",
+    projectionRevision: "test-1",
+    extensions: [".binary"],
+    binary: true,
+    source: "package",
+};
+
+describe("Mimetypes — bounded readable projections", () => {
+    it("does not consume binary bytes when the installed handler has no content projection", async () => {
+        let consumed = false;
+        async function* bytes() {
+            consumed = true;
+            yield Uint8Array.of(1, 2, 3);
+        }
+        const mimetypes = new Mimetypes({
+            discovery: makeDiscovery([binaryInfo]),
+            loader: async () => ({ default: FakeBinaryHandler }),
+        });
+
+        assert.equal(await mimetypes.projectReadableStream(bytes(), binaryInfo.mimetype), null);
+        assert.equal(consumed, false);
+    });
+
+    it("returns derived Unicode with source and projection identity", async () => {
+        async function* bytes() {
+            yield Uint8Array.of(1, 2);
+            yield Uint8Array.of(3, 4, 5);
+        }
+        const mimetypes = new Mimetypes({
+            discovery: makeDiscovery([binaryInfo]),
+            loader: async () => ({ default: FakeReadableBinaryHandler }),
+        });
+
+        const projected = await mimetypes.projectReadableStream(bytes(), binaryInfo.mimetype);
+        assert.equal(projected?.content, "projected 5 bytes");
+        assert.equal(projected?.sourceMimetype, binaryInfo.mimetype);
+        assert.match(projected?.projectionIdentity ?? "", /^[a-f0-9]{64}$/);
+    });
+
+    it("rejects inline and streamed binary input at the common byte ceiling", async () => {
+        const prior = process.env.PLURNK_MIMETYPES_BINARY_INPUT_MAX_BYTES;
+        process.env.PLURNK_MIMETYPES_BINARY_INPUT_MAX_BYTES = "3";
+        const mimetypes = new Mimetypes({
+            discovery: makeDiscovery([binaryInfo]),
+            loader: async () => ({ default: FakeReadableBinaryHandler }),
+        });
+        async function* bytes() {
+            yield Uint8Array.of(1, 2);
+            yield Uint8Array.of(3, 4);
+        }
+        try {
+            await assert.rejects(
+                () => mimetypes.projectReadable({ content: Uint8Array.of(1, 2, 3, 4), hint: binaryInfo.mimetype }),
+                (error: unknown) => error instanceof MimetypeInputLimitError
+                    && error.maximumBytes === 3
+                    && error.observedBytes === 4,
+            );
+            await assert.rejects(
+                () => mimetypes.projectReadableStream(bytes(), binaryInfo.mimetype),
+                (error: unknown) => error instanceof MimetypeInputLimitError
+                    && error.maximumBytes === 3
+                    && error.observedBytes === 4,
+            );
+        } finally {
+            if (prior === undefined) delete process.env.PLURNK_MIMETYPES_BINARY_INPUT_MAX_BYTES;
+            else process.env.PLURNK_MIMETYPES_BINARY_INPUT_MAX_BYTES = prior;
+        }
+    });
+});
 
 describe("Mimetypes — detection + discovery", () => {
     it("detect returns null when registry is empty", async () => {
