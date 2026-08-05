@@ -468,11 +468,8 @@ test("story: compute a value too big for arithmetic shortcuts", { timeout: TIMEO
     } finally { await story.cleanup(); }
 });
 
-test("story: ask mode answers directly — no EXEC reach, no 403 spiral (#367/#386)", { timeout: TIMEOUT }, async () => {
-    // The #367 probe shape: ask mode gates EXEC out and the capability sheet renders the
-    // 'EXEC operations disabled' line (#386) — silence invited confabulated commands, a 403
-    // cycle, and a 508 strike-out. A question that TEMPTS a shell answer must conclude 200
-    // with prose, never touch the rail.
+test("{§tools-loop-affinity}: ask mode answers a shell-tempting question in prose", { timeout: TIMEOUT }, async () => {
+    // Deterministic coverage pins the sheet and gate; this story probes model use.
     const story = await runStory({
         label: "ask-steer",
         prompt: "How many files are in this project, roughly? A ballpark from what you can see is fine.",

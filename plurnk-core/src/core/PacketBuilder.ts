@@ -289,16 +289,12 @@ export default class PacketBuilder {
             : Paths.defaultRequirementsTeachingSource === null
                 ? await readFile(Paths.defaultRequirements, "utf8")
                 : await readTeachingSource(Paths.defaultRequirementsTeachingSource);
-        // No injected syntax line: the grammar already headlines the system definition ("Syntax") and
-        // leads requirements.md, so a third copy here was pure duplication in the model's packet. PLAN
-        // is mandated unconditionally by plurnk.md "Imperatives" (grammar 0.70 requires every turn to
-        // lead with PLAN), so the service injects no separate plan directive either.
+        // {§emission-admission}: the definition owns PLAN framing, so the packet
+        // injects no duplicate syntax or plan directive.
         const log = await this.#buildLog(workerId);
         const failures = await this.buildFailurePointers(loopId, currentTurnSeq);
         const countTokens = rulerCount; // {§tokenomics-agnostic-ruler} — the ONE model-facing ruler (chars/2), not the provider
-        // #367 — the capability sheet must reflect the LOOP MODE, not just workspace-enablement: an
-        // ask-mode loop advertises only what its dispatch gate (resolveForLoop) will accept, so the
-        // model is never taught a tag it'll then be 403'd on (the taught→emitted→rejected→508 spiral).
+        // {§tools-loop-affinity}: teaching and dispatch resolve the same loop flags.
         const activeSchemes = this.#schemes.resolveForLoop(await LoopFlagsReader.read(this.#db, loopId));
         const tools = this.#collectTools(await this.#workspaceEnabled(workspaceId), await WorkspaceSettings.questionsEnabled(this.#db, workspaceId), activeSchemes);
         const ceiling = this.ceilingFor(provider);

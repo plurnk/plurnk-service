@@ -1,4 +1,4 @@
-// {§tools-capability-sheet} When no exec runtime is active, the capability sheet
+// {§tools-loop-affinity} When no exec runtime is active, the capability sheet
 // says EXEC is disabled instead of implying availability by silence.
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -8,7 +8,7 @@ import { packetSection } from "./_helpers.ts";
 
 const answer = () => new Mock({ contextWindow: 16384, responses: [makeMockResponse("<<SEND[200]:the answer is 4:SEND", 10)] });
 
-test("ask mode: the capability sheet says EXEC is disabled positively", async () => {
+test("{§tools-loop-affinity}: ask mode states that EXEC is disabled", async () => {
     await withDaemon(answer(), async (db, _daemon, addr) => {
         const ws = await connect(addr);
         try {

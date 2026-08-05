@@ -983,9 +983,7 @@ export default class Dispatcher {
         }
 
         const active = this.#schemes.resolveForLoop(flags);
-        // #367 — the steer NAMES the restriction and says DO NOT RETRY: the old vague "inactive under
-        // current loop flags" invited an identical re-emit each turn → the StrikeRail's 508. An
-        // unavailable op is not a failing one; the model must change course, not repeat.
+        // {§tools-loop-affinity}: name the non-retryable restriction so the model changes course.
         const restriction = flags.mode === "ask"
             ? "this is an ask-mode (read-only) loop — you cannot run commands or take host actions here"
             : flags.noWeb && flags.noInteraction ? "web and interaction are disabled for this loop"

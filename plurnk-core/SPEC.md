@@ -2552,6 +2552,13 @@ retain distinct contracts and lifetimes.
 
 §tools-capability-sheet The executable-tools capability sheet renders under `## Registered Executable Tools`, directly after the `definition` (plurnk.md) section and **above** `## Recap`. The heading defines the fenced examples as the closed set of valid executor selectors, not suggestions for an open-ended `[tag]` convention. Optional non-EXEC operations render separately under `## Enabled Optional Operations`, so the executable catalogue remains truthful. Both use `plurnk` fences — one packet, one shape for operation-example sheets — assembled by `PacketBuilder.#collectTools`; a prose notice (e.g. the EXEC-disabled line) stays beside the executor fence, and empty sections are omitted.
 
+§tools-loop-affinity **The capability sheet describes the current loop.** The
+sheet filters registered capabilities through the same
+`SchemeRegistry.resolveForLoop(flags)` predicate the dispatcher enforces. When
+registered executors exist but EXEC is inactive, their examples are replaced by
+an explicit disabled notice rather than silent absence. The dispatch 403 remains
+the backstop and names the non-retryable loop restriction.
+
 **Contributors: the wired executor tags.** Each available executor tag *with an example* contributes ONE bare op — its canonical usage — into the `plurnk` fence (identical shape to the scheme directory, {§schemes}); its doc is materialized at `worker://plurnk/docs/<tag>.md` and discovered via the turn-0 `FIND(worker://plurnk/docs/**)` foist, not linked inline. A tag with no example contributes nothing; `PLURNK_SERVICE_DOCS_EXCLUDE` drops a named tag's line + doc. The boot `ExecutorRegistry` probes availability per tag, so the catalogue advertises runnable selectors instead of presuming a particular runtime exists.
 
 ### §schemes user.schemes — the scheme directory
