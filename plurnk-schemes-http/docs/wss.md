@@ -20,13 +20,12 @@ operations address that owner.
 | `open`       | `open` was observed and the native state is open     | Sends the message                                |
 | `settling`   | A terminal transition owns cleanup                   | `409`; wait for cleanup before another READ      |
 
-The native `open` event is the readiness boundary. It transitions `messages` to
-`active` and emits the ordinary metadata-only stream event. The READ remains
-pending until the socket settles, so a separate concurrent worker or client
-dispatch must SEND or KILL. Operations in one model turn run in order; a SEND
-after the pending READ in that turn cannot run. A close before `open` is a
-`502` connection failure. An ordinary close after `open` finishes the
-subscription and the READ resolves with streaming status `102`.
+The native `open` event plus durable `messages` activation is the acquisition
+boundary. It emits the ordinary metadata-only stream event and returns the READ
+at `102`; later operations from the same worker or client may then SEND or KILL
+the live owner. A close before acquisition is a direct `502` connection
+failure. After acquisition, close, cancellation, and failure settle the retained
+subscription without rewriting the initial READ.
 
 Connection identity includes the workspace, exact `ws`/`wss` protocol, host,
 non-default port, path, and ordered query. A fragment does not change socket

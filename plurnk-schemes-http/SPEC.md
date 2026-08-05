@@ -90,7 +90,8 @@ flowchart TD
     stream --> response{"Response path"}
     response -->|304 with stored GET| restore["Restore stored channels and refresh stamp"]
     response -->|GET + HTML| render["Browser → rendered HTML"]
-    response -->|GET + SSE| events["Event data → body chunks"]
+    response -->|GET + SSE| acquired["Persist header → READ 102"]
+    acquired --> events["Detached event data → body chunks"]
     response -->|other| representation{"Body representation"}
     representation -->|none| empty["Header only"]
     representation -->|textual| text["UTF-8 response chunks → body"]
@@ -105,15 +106,15 @@ flowchart TD
     binary --> close
 ```
 
-| Consumer / response                      | `body`                                                          | Auxiliary materialization                 | Completion                              |
-| ---------------------------------------- | --------------------------------------------------------------- | ----------------------------------------- | --------------------------------------- |
-| Direct GET + HTML                        | Present projection of the rendered DOM, including `""`          | Rendered DOM in `html`; render headers    | `102`; absent projection is `422`       |
-| Direct GET + `text/event-stream`         | One `data` value plus newline per `text/plain` chunk            | Initial response in `header`              | Origin close ends the subscription      |
-| Direct request + no response body        | Empty seed                                                      | Response and package metadata in `header` | Subscription closes; op is `102`        |
-| Direct request + textual response        | Incremental UTF-8 text under the declared type                  | Response and package metadata in `header` | Response-body end closes the stream     |
-| Direct request + binary or unknown type  | Empty marker; declared type or `application/octet-stream`       | Response and package metadata in `header` | `415 binary-response-unsupported`       |
-| Exact WebFetcher + non-empty 2xx HTML    | Present projection of server HTML or the lazy rendered fallback | Selected HTML in `html`; byte headers     | Materialize; absent projection is `422` |
-| WebFetcher + accepted non-empty 2xx text | Complete textual response                                       | Byte response in `header`                 | Materialize, then universal query       |
+| Consumer / response                      | `body`                                                          | Auxiliary materialization                 | Completion                               |
+| ---------------------------------------- | --------------------------------------------------------------- | ----------------------------------------- | ---------------------------------------- |
+| Direct GET + HTML                        | Present projection of the rendered DOM, including `""`          | Rendered DOM in `html`; render headers    | `102`; absent projection is `422`        |
+| Direct GET + `text/event-stream`         | One `data` value plus newline per `text/plain` chunk            | Initial response in `header`              | `102` after header; origin close settles |
+| Direct request + no response body        | Empty seed                                                      | Response and package metadata in `header` | Subscription closes; op is `102`         |
+| Direct request + textual response        | Incremental UTF-8 text under the declared type                  | Response and package metadata in `header` | Response-body end closes the stream      |
+| Direct request + binary or unknown type  | Empty marker; declared type or `application/octet-stream`       | Response and package metadata in `header` | `415 binary-response-unsupported`        |
+| Exact WebFetcher + non-empty 2xx HTML    | Present projection of server HTML or the lazy rendered fallback | Selected HTML in `html`; byte headers     | Materialize; absent projection is `422`  |
+| WebFetcher + accepted non-empty 2xx text | Complete textual response                                       | Byte response in `header`                 | Materialize, then universal query        |
 
 A fragmentless direct operation publishes only `body`. An explicit fragment
 publishes that named channel. Every acquired channel remains durable even when
@@ -151,7 +152,9 @@ never enters the absence channel.
 | Direct non-textual response                           | `415` (`binary-response-unsupported`)            |
 | `SEND[410]`                                           | Exact entry-delete result                        |
 | Routed `SEND[499]` dispatch                           | `200`                                            |
-| Client-cancelled acquisition                          | `499` (`cancelled`)                              |
+| Client-cancelled acquisition                          | Direct `499` (`cancelled`)                       |
+| SSE cancellation after acquisition                    | `102` initial; terminal `499`                    |
+| SSE parser/transfer failure after acquisition         | `102` initial; terminal `502`                    |
 | Multi-statement HTTP edit batch                       | `409` (`non-atomic-edit-batch`)                  |
 | Invalid target, channel, line edit, or URL userinfo   | `400` with the corresponding stable Problem kind |
 | Direct network or acquisition exception               | `502` (`fetch-failed`)                           |
@@ -276,8 +279,12 @@ stored entry.
 A direct GET whose response is `text/event-stream` feeds the bounded parser.
 Each event's joined `data` value plus a newline becomes one `text/plain` body
 chunk. Comments and `event`, `id`, and `retry` metadata are not projected.
-Buffer exhaustion fails the stream. The handler does not reconnect; events
-accumulate until the origin closes or the operation is cancelled.
+The response plus persisted header is the acquisition boundary: READ returns
+`102`, and parsing continues through the retained `StreamSubscription` without
+retaining `SchemeCtx`. Buffer exhaustion and post-acquisition transport failure
+settle that subscription at `502`; cancellation settles it at `499`. The
+handler does not reconnect; events accumulate until the origin closes or the
+operation is cancelled.
 
 ## §prefetch §7 WebFetcher
 
@@ -315,22 +322,23 @@ stateDiagram-v2
     Idle --> Claimed: claim canonical workspace address
     Claimed --> Connecting: seed entry, open subscription, construct socket
     Claimed --> Idle: setup or construction failure
-    Connecting --> Open: native open; messages becomes active
+    Connecting --> Open: native open; messages active; READ 102
     Connecting --> Settling: pre-open close/error, KILL, cancel, activation failure, or shutdown
     Open --> Open: inbound frame or SEND[200]
     Open --> Settling: closing state, close/error, KILL, cancel, persistence failure, or shutdown
-    Settling --> Idle: await capability work, close subscription, release claim, finish READ
+    Settling --> Idle: await retained work, close subscription, release claim
 ```
 
-| Operation                    | Contract                                                                                                          |
-| ---------------------------- | ----------------------------------------------------------------------------------------------------------------- |
-| `READ(ws(s)://…)`            | Claim, seed/subscribe, construct `CONNECTING`, commit native `open`, then await terminal settlement               |
-| Concurrent duplicate READ    | `409` in `claimed`, `connecting`, `open`, or `settling`; cleanup releases the only claim                          |
-| `SEND[200](ws(s)://…)`       | Send only for owner `open` plus native `readyState=OPEN`; absent or non-open owner is `409`; send throw is `502`  |
-| `SEND[499](ws(s)://…)`       | Engine-routed cancellation closes the owning READ; scheme dispatch returns `200`                                  |
-| `KILL(ws(s)://…)`            | Close/cancel the claimed owner; no owner is `404`; an attempted close throw is `502`                              |
-| Socket closes before `open`  | Close subscription with `502 connection-failed`; owning READ settles exactly once                                 |
-| Socket closes after `open`   | Close subscription with `200`; owning READ resolves `102`                                                         |
+| Operation                   | Contract                                                                                                         |
+| --------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `READ(ws(s)://…)`           | Claim, seed/subscribe, construct `CONNECTING`, then return `102` after native `open` plus durable activation     |
+| Concurrent duplicate READ   | `409` in `claimed`, `connecting`, `open`, or `settling`; cleanup releases the only claim                         |
+| `SEND[200](ws(s)://…)`      | Send only for owner `open` plus native `readyState=OPEN`; absent or non-open owner is `409`; send throw is `502` |
+| `SEND[499](ws(s)://…)`      | Engine-routed cancellation closes the owning READ; scheme dispatch returns `200`                                 |
+| `KILL(ws(s)://…)`           | Close/cancel the claimed owner; no owner is `404`; an attempted close throw is `502`                             |
+| Socket closes before `open` | Close subscription with `502 connection-failed`; the pending READ returns that exact failure                     |
+| Socket closes after `open`  | Initial READ remains `102`; close the retained subscription with `200`                                           |
+| Failure after `open`        | Initial READ remains `102`; persist the exact terminal failure and wake through subscription settlement          |
 
 The in-instance registry is keyed by workspace, addressed protocol, and
 canonical network pathname. The claim remains registered through terminal
@@ -338,7 +346,7 @@ cleanup, so a new READ cannot overlap an owner's subscription settlement. Every
 terminal path waits for already-started operation-capability work, closes the
 transport when necessary, closes the durable subscription, then releases the
 claim. Handler shutdown requests settlement for every remainder, awaits every
-owning READ, and aggregates transport-close failures under
+owner, and aggregates transport-close failures under
 {§handler-lifecycle}. Inbound persistence ordering is separately owned by #139.
 
 | Transport limit    | Current contract                                                          |

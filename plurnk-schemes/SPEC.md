@@ -140,7 +140,7 @@ ordinary; handlers must make concurrent access and semantic isolation explicit.
 | ------------------ | -------- |
 | Readiness          | `ready?()` runs after registration and before capability advertisement. It establishes that advertised resources are usable. |
 | Hook cardinality   | The consumer invokes each hook once per unique handler object identity, even when multiple registered names share that object. |
-| Operation context  | `SchemeCtx` and capabilities extracted from it remain operation-owned under {§scheme-ctx-lifetime}. |
+| Operation context  | `SchemeCtx` and capabilities extracted from it remain operation-owned under {§scheme-ctx-lifetime}; only the `StreamSubscription` returned by `subscriptions.open` is retainable. |
 | Retained state     | Tenant- or address-selectable state keys every semantic isolation coordinate. A global pool is valid only when it carries no cross-tenant session state. |
 | Live ownership     | An address-selectable live resource has one unambiguous owner. Conflicting acquisition fails explicitly; it never overwrites the existing owner. |
 | Shutdown           | After in-flight scheme work drains and before backing stores close, `close?()` releases partially or fully initialized handler resources. The consumer attempts and awaits every unique handler close, then aggregates every failure. |
@@ -227,7 +227,7 @@ effects shown to consumers; plugins do not invent a second effect envelope.
 - §executor-scheme-output Executor-scheme ("an executor is a scheme"): `OutputScheme.manifestFromRuntime(decl)` derives a read-only-output `SchemeManifest` from an executor's `RuntimeDecl` (zero scheme-authoring); `DefaultRead.read(content, mimetype, statement, mimetypes)` -> `ReadResolution` is the free text-scope/matcher read over produced output (reuses `Slicer`/`Matcher`). A matcher selects the complete output resource before `<scope>` projects text; without a scope, READ returns the complete resource. Match evidence remains metadata for a model-chosen follow-up READ. `Summarize.summarize(content, mimetype)` -> `OrientIndex` is the structural-only EXEC-receipt index (no content - universal-receipt containment). A per-tag executor-scheme supplies its manifest via instance `get manifest()` (§2 `SchemeHandler.manifest?`).
 - Results: `SchemeResult` is the universal operation-result contract. Statuses below 400 carry no `problem`; statuses 400–599 require RFC 9457 `ProblemDetails`, and the legacy `error` member is forbidden. `EntryResult`, `ProposalResult`, and `PassthroughResult` are optional conventional shapes, not engine routing discriminators. Guards inspect those optional shapes; proposal routing itself is engine-owned and follows status plus operation semantics.
 - Standard FIND results may carry `omittedItems` and `maximumItems` when a selected catalog is too large to enumerate. `omittedItems` is the exact selected-resource count and `maximumItems` is the active materialization limit. These names cannot collide with the model-facing string `overflow` metadata used for truncated packet bodies.
-- Capability ctx (see §3.bis): `SchemeCtx` and its domain capabilities. Entry authors additionally receive `EntryOperationCaps`, semantic `EntryOwner`/`EntryAddress`, and typed standard-operation results. `editBatch` receives every same-turn EDIT for one canonical resource and channel; it validates against one snapshot and commits one revision or none. There is no sequential single-EDIT fallback.
+- Capability ctx (see §3.bis): `SchemeCtx`, `StreamSubscription`, and the domain capabilities. Entry authors additionally receive `EntryOperationCaps`, semantic `EntryOwner`/`EntryAddress`, and typed standard-operation results. `editBatch` receives every same-turn EDIT for one canonical resource and channel; it validates against one snapshot and commits one revision or none. There is no sequential single-EDIT fallback.
 
 Behavior ships as `export default class` (one class per file, static methods) — the ecosystem class paradigm. Type-only modules, the barrel, and the frozen `DEFAULT_LOOP_FLAGS` constant are the only non-class files.
 
@@ -362,7 +362,19 @@ its implementation.
 - `tags` — entry tags (`add`/`remove`/`list`).
 - `notify` — between-turn client signal (`streamEvent`, metadata-only); not model-facing. (No `wakeWorker`: the worker wake carries subscription-close context that only exists at stream completion, so it lives on `subscriptions.close`. Only streaming schemes wake a worker, always via close.)
 - `projection` — `readable(content, mimetype)` asks the consumer's configured mimetype family for the model-facing text projection. Acquisition schemes own bytes/DOM; they do not instantiate or second-guess the reader family. `null` means no readable projection.
-- §scheme-subscriptions `subscriptions` — streaming lifecycle: `open(pathname, handle)` atomically binds durable subscription identity to the consumer's process-local live-handle registry, returns a worker+teardown-composed `AbortSignal`, and takes a force-cancel `SubscriptionHandle`; routed cancellation both invokes the handle and aborts that signal. `notifyChunk(channel, chunk, mimetype?)` is **fused** (append + stream/event in one call), with an optional per-call `mimetype` that retypes the channel to the content's actual type (passed statelessly per chunk; the impl writes only on change; the manifest channel mimetype is the pre-fetch seed default). `close(result, summary?)` validates and persists the exact universal `SchemeResult`, composites channel state, unregisters the live handle, and wakes the worker. `summary` is presentation only; it never replaces or reconstructs the result. Designed against Exec (two-channel, cancel-tested).
+- §scheme-subscriptions `subscriptions` — one streaming lifecycle:
+
+| Surface                           | Lifetime   | Contract                                                                                                   |
+| --------------------------------- | ---------- | ---------------------------------------------------------------------------------------------------------- |
+| `open(pathname, handle)`          | Operation  | Bind durable and live identity, return the exact object, and route cancellation through its signal/handle. |
+| Returned `StreamSubscription`     | Retainable | `AbortSignal` plus fused chunk publication and terminal settlement; the only retainable capability.        |
+| `subscriptions.notifyChunk/close` | Operation  | Forward to the exact returned object; own no second state or persistence path.                             |
+
+`notifyChunk` appends and emits one stream event. Its optional stateless
+`mimetype` retypes the channel only when the stored type differs.
+`close` validates and persists the exact universal `SchemeResult`, settles
+channel state, unregisters the live handle, and wakes the worker. `summary` is
+presentation only; it never replaces or reconstructs the result.
 
 There is **no `visibility` capability**: entry-level SHOW/HIDE was removed in the index/visibility teardown — SHOW/HIDE now collapse/expand `log://` rows, a log-side concern with no entry-visibility for a scheme to set.
 
@@ -374,9 +386,11 @@ callbacks, or other private service state.
 
 §scheme-ctx-lifetime `SchemeCtx` belongs to one operation call. A handler may
 use it for the duration of that call, including asynchronous work awaited by
-the call, but must not retain the context after the handler returns. Retained
-handler-owned resources follow {§handler-lifecycle}; they are not retained
-contexts.
+the call, but must not retain the context or any other extracted capability
+after the handler returns. A streaming handler may retain only the exact
+`StreamSubscription` returned by `subscriptions.open`; its bound methods carry
+that subscription's identity without retaining the general context. Other
+retained handler-owned resources follow {§handler-lifecycle}.
 
 **Proposals are not a capability.** A side-effecting scheme proposes by *returning* a `ProposalResult` (status 202); the engine owns the resolution lifecycle. On acceptance it calls the handler's optional `applyResolution({ attrs, body }, ctx)` hook. `attrs` is the payload returned by the proposing operation and `body` is the resolver-approved body, when present. The hook returns a `ProposalApplyResult`: a status below 400 completes the accept; a failure preserves the applying scheme's Problem Details as the proposal's final result.
 

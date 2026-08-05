@@ -25,7 +25,7 @@ independent byte-probe deadline remains an ordinary unavailable result.
 | Direct response           | `body`                                                       | Other channel                    |
 | ------------------------- | ------------------------------------------------------------ | -------------------------------- |
 | GET HTML                  | Readable projection of the rendered page                     | Faithful rendered DOM in `#html` |
-| GET `text/event-stream`   | One event `data` value per chunk                             | Initial response in `#header`    |
+| GET `text/event-stream`   | Event `data` chunks after READ `102`                          | Initial response in `#header`    |
 | Other textual response    | Incremental UTF-8 text under its declared type               | Status and headers in `#header`  |
 | Binary or undeclared type | Empty marker under its type or `application/octet-stream`    | Status and headers in `#header`  |
 
@@ -46,6 +46,11 @@ instead prunes non-textual responses because they cannot satisfy a text query.
 operation result describes the streaming lifecycle; `SEND[code]` is never the
 remote HTTP status. An HTTP 4xx/5xx response still streams normally and remains
 visible in `#header`.
+
+For SSE, the response and persisted `#header` establish acquisition. READ then
+returns `102` while events continue. Origin close settles the subscription at
+`200`; later cancellation or transfer failure settles it at `499` or `502`
+without rewriting the initial READ.
 
 Re-reading without a scope uses the stored GET when it is inside the operator's
 freshness window. Outside that window, stored ETag or Last-Modified validators
