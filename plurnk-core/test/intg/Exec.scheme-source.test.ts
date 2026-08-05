@@ -1,11 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { mkdir, readFile, rm, stat } from "node:fs/promises";
 import { parsePath } from "@plurnk/plurnk-contracts";
 import type { ExecStatement, ReadStatement, UrlPath } from "@plurnk/plurnk-contracts";
 import type { Effect } from "@plurnk/plurnk-execs";
 import type { SchemeHandler, SchemeManifest } from "@plurnk/plurnk-schemes";
 import Engine from "../../src/core/Engine.ts";
+import type { WakeWorkerPayload } from "../../src/core/ChannelWrite.ts";
 import ExecutorRegistry from "../../src/core/ExecutorRegistry.ts";
 import type { Executor } from "../../src/core/ExecutorRegistry.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
@@ -64,11 +65,13 @@ const wire = async (): Promise<{
     readonly workspaceId: number;
     readonly root: Actor;
     readonly runs: Run[];
+    readonly wakes: WakeWorkerPayload[];
     actor(parentWorkerId: number | null, name: string): Promise<Actor>;
     dispatch(actor: Actor, target: string, body?: string): Promise<Awaited<ReturnType<Engine["dispatch"]>>>;
     close(): Promise<void>;
 }> => {
     const runs: Run[] = [];
+    const wakes: WakeWorkerPayload[] = [];
     const executor: Executor = {
         runtime: "tool",
         glyph: "🔧",
@@ -81,6 +84,10 @@ const wire = async (): Promise<{
                 target,
                 ...(target === null ? {} : { materialized: await readFile(target, "utf8") }),
             });
+            if (command === "replace-temporary-with-directory" && target !== null) {
+                await rm(target);
+                await mkdir(target);
+            }
             setState("results", "closed");
             return { status: 200 };
         },
@@ -94,7 +101,11 @@ const wire = async (): Promise<{
     const schemes = new SchemeRegistry();
     schemes.registerRuntimeSchemes(executors);
     const exec = schemes.get("exec") as Exec;
-    const engine = new Engine({ db, schemes });
+    const engine = new Engine({
+        db,
+        schemes,
+        wakeWorkerNotify: (payload) => { wakes.push(payload); },
+    });
     engine.setExecutors(executors);
     const workspaceId = await insertWorkspace(db, `exec-source-${crypto.randomUUID()}`);
     const makeActor = async (parentWorkerId: number | null, name: string): Promise<Actor> => {
@@ -112,6 +123,7 @@ const wire = async (): Promise<{
         workspaceId,
         root,
         runs,
+        wakes,
         actor: makeActor,
         async dispatch(actor, target, body = "") {
             const result = await engine.dispatch({
@@ -134,7 +146,8 @@ const wire = async (): Promise<{
     };
 };
 
-// {§exec-target-routing} A scheme-backed EXEC source is one exact ordinary READ.
+// {§exec-target-routing} {§exec-source-temporary} A scheme-backed EXEC source
+// is one exact ordinary READ; a non-empty body uses a spawn-scoped temporary.
 test("EXEC source READ preserves the complete authored scheme address (#163)", async () => {
     const ctx = await wire();
     const seen: ReadStatement[] = [];
@@ -164,7 +177,47 @@ test("EXEC source READ preserves the complete authored scheme address (#163)", a
         assert.deepEqual(ctx.runs.map(({ command, materialized }) => ({ command, materialized })), [
             { command: "transform", materialized: "complete identity" },
         ]);
+        const tempPath = ctx.runs[0]?.target;
+        assert.ok(tempPath !== null && tempPath !== undefined);
+        await assert.rejects(
+            readFile(tempPath, "utf8"),
+            (cause: unknown) => cause instanceof Error && "code" in cause && cause.code === "ENOENT",
+            "the source temporary is removed after the executor settles",
+        );
     } finally {
+        await ctx.close();
+    }
+});
+
+test("{§exec-source-temporary} cleanup failure preserves the settled result and complete diagnostic cause", async (t) => {
+    const diagnostics: unknown[][] = [];
+    t.mock.method(console, "error", (...args: unknown[]) => { diagnostics.push(args); });
+    const ctx = await wire();
+    let tempPath: string | null = null;
+    try {
+        ctx.schemes.register("source", {
+            manifest: schemeManifest("source"),
+            async read() {
+                return { status: 200, content: "temporary content", mimetype: "text/plain", channel: "body" };
+            },
+        } satisfies SchemeHandler);
+
+        const started = await ctx.dispatch(ctx.root, "source:///item", "replace-temporary-with-directory");
+        tempPath = ctx.runs[0]?.target ?? null;
+
+        assert.equal(started.status, 200);
+        assert.equal(ctx.wakes.length, 1);
+        assert.equal(ctx.wakes[0]?.result.status, 200, "cleanup cannot rewrite the executor's settled result");
+        assert.ok(tempPath !== null);
+        assert.equal((await stat(tempPath)).isDirectory(), true, "the specimen leaves a real unlink failure behind");
+        assert.equal(diagnostics.length, 1, "cleanup failure is diagnosed exactly once");
+        assert.match(String(diagnostics[0]?.[0]), /EXEC source temporary cleanup failed/);
+        const cause = diagnostics[0]?.[1];
+        assert.ok(cause instanceof Error);
+        assert.equal("path" in cause ? cause.path : undefined, tempPath);
+        assert.ok("code" in cause && (cause.code === "EISDIR" || cause.code === "EPERM"));
+    } finally {
+        if (tempPath !== null) await rm(tempPath, { recursive: true, force: true });
         await ctx.close();
     }
 });

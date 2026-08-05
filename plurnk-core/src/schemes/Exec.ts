@@ -819,9 +819,13 @@ export default class Exec extends CoreSchemeAdapterBase {
             // {§exec-entry-sink} — the spawn tail owns every serialized entry/narration write.
             await entryChain;
             if (timeoutTimer !== null) clearTimeout(timeoutTimer); // a finished spawn leaves no pending timer
-            // A materialized source lives through its spawn. Cleanup policy: #184.
-            // {§exec-target-routing}
-            if (tempPath !== null) await unlink(tempPath).catch(() => {});
+            // {§exec-source-temporary} — cleanup cannot rewrite the settled
+            // executor result, but an exceptional failure remains observable.
+            if (tempPath !== null) {
+                await unlink(tempPath).catch((cause: unknown) => {
+                    console.error(`EXEC source temporary cleanup failed for '${tempPath}':`, cause);
+                });
+            }
             this.#activeAborts.get(subscriptionId)?.unlink();
             this.#activeAborts.delete(subscriptionId);
             this.liveSubscriptions().unregister(subscriptionId);

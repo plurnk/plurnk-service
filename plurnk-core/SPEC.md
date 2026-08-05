@@ -1340,6 +1340,13 @@ unscoped READ through that scheme's ordinary handler and addressed context.
 | Readable data-scheme address           | Empty     | `null`                  | Selected READ content becomes the command.            |
 | Readable data-scheme address           | Non-empty | Authored address        | Selected READ content becomes a local target.         |
 
+§exec-source-temporary A non-empty-body data-scheme source is materialized into
+one core-owned temporary file after acceptance. The file lives through the
+executor run and core removes it after the subscription's terminal result has
+settled. A removal failure is reported to daemon diagnostics with its complete
+cause; it cannot rewrite the execution result, stream state, or completion
+wake.
+
 Loop-flag authority follows the same target classification:
 
 | Target class                   | Schemes that must be active              |
