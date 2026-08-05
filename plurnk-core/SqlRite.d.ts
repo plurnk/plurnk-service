@@ -267,13 +267,6 @@ export class SqlRiteSync {
 	worker_name_count: SqlRiteSyncPreparedStatements;
 	worker_name_claim: SqlRiteSyncPreparedStatements;
 	worker_name_get_root: SqlRiteSyncPreparedStatements;
-	ws_dup_identities: SqlRiteSyncPreparedStatements;
-	ws_file_keys: SqlRiteSyncPreparedStatements;
-	ws_orphan_channels: SqlRiteSyncPreparedStatements;
-	ws_orphan_tags: SqlRiteSyncPreparedStatements;
-	ws_alien_origin: SqlRiteSyncPreparedStatements;
-	ws_sig_on_nonfile: SqlRiteSyncPreparedStatements;
-	ws_entry_count: SqlRiteSyncPreparedStatements;
 }
 
 export default class SqlRite {
@@ -497,11 +490,4 @@ export default class SqlRite {
 	worker_name_count: SqlRitePreparedStatements;
 	worker_name_claim: SqlRitePreparedStatements;
 	worker_name_get_root: SqlRitePreparedStatements;
-	ws_dup_identities: SqlRitePreparedStatements;
-	ws_file_keys: SqlRitePreparedStatements;
-	ws_orphan_channels: SqlRitePreparedStatements;
-	ws_orphan_tags: SqlRitePreparedStatements;
-	ws_alien_origin: SqlRitePreparedStatements;
-	ws_sig_on_nonfile: SqlRitePreparedStatements;
-	ws_entry_count: SqlRitePreparedStatements;
 }

@@ -13,7 +13,7 @@ import { Mock } from "@plurnk/plurnk-providers";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import GitMembership from "../../src/core/git-membership.ts";
-import WorldState from "../../src/core/world-state.ts";
+import WorldState from "./world-state.ts";
 import { hermeticGitEnv } from "../../src/core/git-env.ts";
 import type { PlurnkSchemeContext } from "../../src/core/scheme-types.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, rootWorkspace, makeSchemeCtx, DEFAULT_MIMETYPES, viableWindow } from "./_helpers.ts";

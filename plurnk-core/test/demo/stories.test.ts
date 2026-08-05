@@ -28,7 +28,7 @@ import { join } from "node:path";
 import type { Db } from "../../src/core/Db.ts";
 import { liveWorkspace, liveLoop } from "../_live-harness.ts";
 import { seedDemoFixture } from "./_fixture.ts";
-import WorldState from "../../src/core/world-state.ts";
+import WorldState from "../intg/world-state.ts";
 
 const TIMEOUT = 480_000; // 8-minute model-story ceiling.
 

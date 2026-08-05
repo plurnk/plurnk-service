@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { isZeroPinTuning, scrubZeroPinTuning } from "./zero-pin.ts";
+import { isZeroPinTuning, scrubZeroPinTuning } from "../../test/zero-pin.ts";
 
 test("[#510] operator model tuning is stripped; the fresh-user config is kept", () => {
     // STRIPPED — box tuning a fresh install would not have:

@@ -1,9 +1,9 @@
 // The WorldState invariant harness ({§fs-world-state}) — coverage that closes the CLASS,
 // not the instance: op-outcome tests check what an op returned; this checks what the world
-// looks like after. Run as a test epilogue, at every soak turn boundary, and by bench over
-// campaign specimens (#536). Pure-db, read-only; a violation names its law and its row.
-import type { Db } from "./Db.ts";
-import Namespace from "./namespace.ts";
+// looks like after. Run as a test epilogue and at every soak turn boundary. Pure-db,
+// read-only; a violation names its law and its row.
+import type { Db } from "../../src/core/Db.ts";
+import Namespace from "../../src/core/namespace.ts";
 
 export interface WorldStateViolation { invariant: string; detail: string }
 

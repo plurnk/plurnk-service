@@ -4,7 +4,7 @@
 // cascade (.env / .env.test) and the shell always win; only genuinely-unset knobs (siblings'
 // defaults, e.g. PLURNK_PROVIDERS_*) take floor values.
 import EnvDefaults from "../src/core/env-defaults.ts";
-import * as ZeroPin from "../src/core/zero-pin.ts";
+import * as ZeroPin from "./zero-pin.ts";
 import Meta from "@plurnk/plurnk-meta";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";

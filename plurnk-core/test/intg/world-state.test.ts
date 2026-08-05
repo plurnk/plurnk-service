@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import WorldState from "../../src/core/world-state.ts";
+import WorldState from "./world-state.ts";
 import EntryCrud from "../../src/schemes/_entry-crud.ts";
 import Owner from "../../src/core/Owner.ts";
 import { openMigrated, insertWorkspace, insertWorker, makeSchemeCtx, DEFAULT_MIMETYPES, rootWorkspace } from "./_helpers.ts";

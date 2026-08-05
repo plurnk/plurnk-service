@@ -1,4 +1,4 @@
-// #510 — the zero-pin gate mode strips operator model tuning so a demo/live run
+// The zero-pin gate mode strips operator model tuning so a demo/live run
 // walks the fresh-user derivation path. Kept: model selection and shipped defaults.
 // Stripped: physical envelope pins and virtual prompt pressure.
 export const isZeroPinTuning = (key: string): boolean =>

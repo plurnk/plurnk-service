@@ -1,5 +1,5 @@
 -- WorldState invariant queries ({§fs-world-state}) — the pure-db half of the harness.
--- Read-only; bench runs the same checks over campaign specimens (#536 evidence contract).
+-- Read-only; integration and demo harnesses run these checks over their specimens.
 
 -- PREP: ws_dup_identities
 -- {§entry-identity-no-null} in PRACTICE: no two rows may share the identity tuple. The
