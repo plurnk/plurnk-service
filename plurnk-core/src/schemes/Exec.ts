@@ -124,7 +124,7 @@ export const resolveStreamStatement = async <S extends { target: ReadStatement["
     return { statement: { ...statement, target: { ...t, hostname: null } }, ownerId };
 };
 
-// {§exec-entry-sink} / #455 — the web-fetch the sink calls when the executor hands content:null:
+// {§exec-entry-sink}: the web-fetch the sink calls when the executor hands content:null:
 // schemes-http's WebFetcher (checked byte acquisition + lazy browser
 // fallback, dead-as-null; caller cancellation rejects per {§prefetch}).
 // Injectable because automatic acquisition refuses localhost.
@@ -146,7 +146,7 @@ export default class Exec extends CoreSchemeAdapterBase {
         },
     };
 
-    // The web-fetch the entry sink calls on content:null ({§exec-entry-sink} / #455). Default = schemes-http's
+    // The web-fetch the entry sink calls on content:null ({§exec-entry-sink}). Default = schemes-http's
     // checked WebFetcher over one warm-Chromium pool shared across this handler's
     // fallback renders; injectable so tests substitute the network.
     readonly #fetchWeb: WebFetch;

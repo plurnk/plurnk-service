@@ -22,10 +22,6 @@ const execStmt = (runtime: string, body: string): ExecStatement => ({
     lineMarker: null, body, position: { line: 1, column: 1 },
 });
 
-// #455 — ExecArgs.entry widens to `content: string | null` in the execs lane; core's sink already honors
-// null (fetch-through), so the null-content stub casts args.entry to the widened shape to drive that path.
-type WidenedEntry = (path: string, content: string | null, opts: { tags: string[]; mimetype?: string }) => Promise<string>;
-
 const parseOne = (input: string): PlurnkStatement => {
     const parsed = PlurnkParser.parse(`<<PLAN::PLAN\n${input}`);
     const item = parsed.items.find((x) => x.kind === "statement" && x.statement.op !== "PLAN");
@@ -86,7 +82,7 @@ const wire = async (opts?: {
                     return { status: 200, exitCode: 0 };
                 }
                 if (opts?.unsupportedNullUrl !== undefined) {
-                    const entry = args.entry as WidenedEntry | undefined;
+                    const entry = args.entry;
                     let rejected = false;
                     try {
                         await entry?.(opts.unsupportedNullUrl, null, { tags: ["unsupported_query"] });
@@ -98,7 +94,7 @@ const wire = async (opts?: {
                     return { status: 200, exitCode: 0 };
                 }
                 if (opts?.cancelledNullContent !== undefined) {
-                    const entry = args.entry as WidenedEntry | undefined;
+                    const entry = args.entry;
                     try {
                         await entry?.("https://93.184.216.34/cancelled", null, { tags: ["cancelled_query"] });
                     } catch (failure) {
@@ -113,7 +109,7 @@ const wire = async (opts?: {
                     );
                 }
                 if (opts?.nullContent) {
-                    const entry = args.entry as WidenedEntry | undefined;
+                    const entry = args.entry;
                     await entry?.("https://example.org/live", null, { tags: ["turkeys_query"] });
                     let pruned = false;
                     try { await entry?.("https://example.org/dead", null, { tags: ["turkeys_query"] }); } catch { pruned = true; }
@@ -386,7 +382,7 @@ test("an absolute web URL ending in slash is one fetchable resource, not a folde
     }
 });
 
-test("entry(content:null) fetches through the checked sink — live XHTML materializes, unavailable does not (#455)", async () => {
+test("{§exec-entry-sink}: content:null materializes a live page and prunes an unavailable one", async () => {
     // The sink's WebFetch is faked: automatic acquisition blocks localhost, so no live server can stand in for
     // the fetch. A /dead URL resolves null; anything else returns useful server XHTML.
     let browserFallbacks = 0;
