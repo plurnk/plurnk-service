@@ -279,7 +279,6 @@ export class SqlRiteSync {
 	test_insert_turn: SqlRiteSyncPreparedStatements;
 	test_count_log_entries_by_turn: SqlRiteSyncPreparedStatements;
 	test_log_sequencees_by_turn: SqlRiteSyncPreparedStatements;
-	test_ops_by_turn: SqlRiteSyncPreparedStatements;
 	test_get_log_expanded: SqlRiteSyncPreparedStatements;
 	test_get_loop_status: SqlRiteSyncPreparedStatements;
 	test_get_turn: SqlRiteSyncPreparedStatements;
@@ -744,7 +743,6 @@ export default class SqlRite {
 	test_insert_turn: SqlRitePreparedStatements;
 	test_count_log_entries_by_turn: SqlRitePreparedStatements;
 	test_log_sequencees_by_turn: SqlRitePreparedStatements;
-	test_ops_by_turn: SqlRitePreparedStatements;
 	test_get_log_expanded: SqlRitePreparedStatements;
 	test_get_loop_status: SqlRitePreparedStatements;
 	test_get_turn: SqlRitePreparedStatements;
