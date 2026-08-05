@@ -1,5 +1,4 @@
 import { parsePath } from "@plurnk/plurnk-contracts";
-import type { Notice } from "@plurnk/plurnk-contracts";
 import type { ExecStatement, FindStatement, ReadStatement } from "@plurnk/plurnk-contracts";
 import { Policy, type ChannelState } from "@plurnk/plurnk-execs";
 import type { ExecResult as ExecutorResult } from "@plurnk/plurnk-execs";
@@ -730,12 +729,7 @@ export default class Exec extends CoreSchemeAdapterBase {
                     setState: (channel, state: ChannelState) => enqueue(() => ChannelWrite.setChannelState(db, {
                         entryId, channel, state, notify: ctx.streamEventNotify, coordinate,
                     })),
-                    emit: (event) => {
-                        // Compatibility deviation from {§notice-level}: missing executor severity
-                        // is currently coerced to info; #190 owns restoring required producer truth.
-                        const level = (event as { level?: Notice["level"] }).level ?? "info";
-                        ctx.pushNotice?.({ ...event, level } as Notice);
-                    },
+                    emit: (event) => ctx.pushNotice?.(event),
                 });
                 // Drain the queue so the subscription doesn't close before
                 // final chunk events / state transitions have committed.

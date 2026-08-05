@@ -4,6 +4,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
+import { InvalidNoticeError, type Notice } from "@plurnk/plurnk-contracts";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Results from "../../src/core/results.ts";
@@ -20,7 +21,14 @@ const wire = async (run: Executor["run"]) => {
     const db = await openMigrated();
     const schemes = new SchemeRegistry();
     const wakes: WakeWorkerPayload[] = [];
-    const engine = new Engine({ db, schemes, mimetypes: DEFAULT_MIMETYPES, wakeWorkerNotify: (p) => { wakes.push(p); } });
+    const notices: Notice[] = [];
+    const engine = new Engine({
+        db,
+        schemes,
+        mimetypes: DEFAULT_MIMETYPES,
+        wakeWorkerNotify: (p) => { wakes.push(p); },
+        noticeNotify: (_workspaceId, payload) => { notices.push(payload.notice); },
+    });
     engine.setExecutors(await testExecutors());
     schemes.registerRuntimeSchemes(await testExecutors());
     engine.registerRuntime(tag, {
@@ -39,7 +47,7 @@ const wire = async (run: Executor["run"]) => {
     const workerId = await insertWorker(db, workspaceId);
     const loopId = await insertLoop(db, workerId, 1, "honesty test");
     const turnId = await insertTurn(db, loopId, 1, 102);
-    return { db, engine, schemes, workspaceId, workerId, loopId, turnId, tag, wakes };
+    return { db, engine, schemes, workspaceId, workerId, loopId, turnId, tag, wakes, notices };
 };
 
 test("a rejecting driver still concludes its stream with an exact Problem, never an open corpse", async () => {
@@ -81,6 +89,72 @@ test("a status-only executor failure is replaced by an exact contract-violation 
         assert.equal(concluded[0].result.problem?.stage, "result-validation");
         assert.equal(concluded[0].result.problem?.runtime, tag);
         assert.equal(concluded[0].result.problem?.retryable, false);
+    } finally { await db.close(); }
+});
+
+test("{§notice-level} an executor notice with explicit severity crosses the plugin boundary unchanged", async () => {
+    const notice = {
+        source: "exec:honesty",
+        kind: "progress",
+        level: "warn",
+        message: "still working",
+        completed: 1,
+        total: 2,
+    } as const satisfies Notice;
+    const { db, engine, workspaceId, workerId, loopId, turnId, tag, wakes, notices } = await wire(async ({ emit }) => {
+        emit(notice);
+        return { status: 200 };
+    });
+    try {
+        const started = await engine.dispatch({
+            statement: execStmt(tag, "go"),
+            workspaceId,
+            workerId,
+            loopId,
+            turnId,
+            sequence: 1,
+            origin: "model",
+        });
+        assert.equal(started.status, 200);
+        const concluded = await waitFor(() => wakes, (events) => events.length > 0, { timeoutMs: 4000 });
+        assert.equal(concluded[0].result.status, 200);
+        assert.equal(notices.length, 1);
+        assert.equal(notices[0], notice, "the executor's Notice object is forwarded without rewriting severity or payload");
+    } finally { await db.close(); }
+});
+
+test("{§notice-level} a runtime-JavaScript notice without severity fails at the plugin boundary with its cause", async (t) => {
+    const diagnostics: unknown[][] = [];
+    t.mock.method(console, "error", (...args: unknown[]) => { diagnostics.push(args); });
+    const { db, engine, workspaceId, workerId, loopId, turnId, tag, wakes, notices } = await wire(async ({ emit }) => {
+        emit({
+            source: "exec:honesty",
+            kind: "progress",
+            message: "missing producer severity",
+        } as never);
+        return { status: 200 };
+    });
+    try {
+        const started = await engine.dispatch({
+            statement: execStmt(tag, "go"),
+            workspaceId,
+            workerId,
+            loopId,
+            turnId,
+            sequence: 1,
+            origin: "model",
+        });
+        assert.equal(started.status, 200);
+        const concluded = await waitFor(() => wakes, (events) => events.length > 0, { timeoutMs: 4000 });
+        assert.equal(concluded[0].result.status, 500);
+        assert.equal(
+            concluded[0].result.problem?.type,
+            "https://problems.plurnk.dev/scheme/exec/executor-threw",
+        );
+        assert.deepEqual(notices, [], "invalid third-party output is rejected before fan-out");
+        assert.equal(diagnostics.length, 1, "the boundary reports the contract failure once");
+        assert.match(String(diagnostics[0]?.[0]), new RegExp(`Executor '${tag}' threw outside its operation result contract`));
+        assert.ok(diagnostics[0]?.[1] instanceof InvalidNoticeError, "the contracts validator error remains the reported cause");
     } finally { await db.close(); }
 });
 
