@@ -9,7 +9,7 @@ const errorsOf = (input: string) =>
     PlurnkParser.parseStatements(input).items.filter((i) => i.kind === "error").map((i) => i.error);
 
 // {§parse-diagnostics} {§error-shape}
-test("#58: PlurnkParseError keeps diagnostic text separate from structured context", () => {
+test("PlurnkParseError keeps diagnostic text separate from structured context", () => {
     const error = new PlurnkParseError(3, 7, "lexer", "unrecognized character '-' in signal");
     assert.equal(error.message, "unrecognized character '-' in signal");
     assert.deepEqual(error.toJSON(), {
@@ -33,7 +33,7 @@ test("ex 4 — bare READ, empty body", () => {
     assert.equal(statementsOf("<<READ(https://www.britannica.com/biography/Donald-Rumsfeld)::READ").length, 1);
 });
 
-test("#607: balanced parentheses are ordinary URL target content", () => {
+test("balanced parentheses are ordinary URL target content", () => {
     const source = "<<READ(https://en.wikipedia.org/wiki/Igor_Smirnov_(politician)):/spouse|wife|married|Zhannetta|Lotnik/i:READ";
     const result = PlurnkParser.parseStatements(source);
     assert.equal(result.items.filter((item) => item.kind === "error").length, 0);
@@ -42,7 +42,7 @@ test("#607: balanced parentheses are ordinary URL target content", () => {
     assert.equal(item.statement.target?.raw, "https://en.wikipedia.org/wiki/Igor_Smirnov_(politician)");
 });
 
-test("#607: unescaped unmatched target parentheses require canonical spelling", () => {
+test("unescaped unmatched target parentheses require canonical spelling", () => {
     assert.ok(errorsOf("<<READ(https://example.test/a)b)::READ").length > 0);
     const unclosed = PlurnkParser.parseStatements("<<READ(https://example.test/a(b)::READ");
     assert.equal(unclosed.items.length, 0);
@@ -54,7 +54,7 @@ test("#607: unescaped unmatched target parentheses require canonical spelling", 
     }
 });
 
-test("#113: target escapes preserve literal and percent-encoded URI spelling", () => {
+test("target escapes preserve literal and percent-encoded URI spelling", () => {
     const source = String.raw`<<READ(https://example.test/x?literal=\)&encoded=%29#preview\()::READ`;
     const result = PlurnkParser.parseStatements(source);
     assert.deepEqual(result.items.filter((item) => item.kind === "error"), []);
@@ -67,7 +67,7 @@ test("#113: target escapes preserve literal and percent-encoded URI spelling", (
     assert.equal(item.statement.target.fragment, "preview(");
 });
 
-test("#113: COPY/MOVE destinations use the same target escape layer", () => {
+test("COPY/MOVE destinations use the same target escape layer", () => {
     const result = PlurnkParser.parseStatements(
         String.raw`<<COPY(worker:///draft):https://example.test/archive?literal=\)&encoded=%29:COPY`,
     );
@@ -125,7 +125,7 @@ test("ex 31 — nested EDIT via suffix discipline", () => {
     assert.equal(statementsOf(input).length, 1);
 });
 
-test("[#640] suffix-delimiter nesting is one parser contract for every protocol operation body", async (t) => {
+test("suffix-delimiter nesting is one parser contract for every protocol operation body", async (t) => {
     const forms: ReadonlyArray<readonly [string, string]> = [
         ["FIND", "(worker:///x)"],
         ["READ", "(worker:///x)"],
@@ -222,7 +222,7 @@ test("boundary-destroying error produces unparsedTail", () => {
 });
 
 // {§unparsed-tail-boundary}
-test("#127: unparsedTail excludes recovered items at and beyond its trust boundary", async (t) => {
+test("unparsedTail excludes recovered items at and beyond its trust boundary", async (t) => {
     const prefix = "<<EDIT(worker:///ok):yes:EDIT\n";
     const tails = [
         ["body", "<<EDIT(worker:///bad):unterminated", /body of `<<EDIT`/],
@@ -246,7 +246,7 @@ test("#127: unparsedTail excludes recovered items at and beyond its trust bounda
     }
 });
 
-test("#127: boundary loss does not synthesize a downstream turn-shape error", () => {
+test("boundary loss does not synthesize a downstream turn-shape error", () => {
     const result = PlurnkParser.parse("<<PLAN:p:PLAN\n<<EDIT(worker:///bad):unterminated");
     assert.deepEqual(
         result.items.map((item) => item.kind === "statement" ? item.statement.op : item.kind),
@@ -260,7 +260,7 @@ test("clean parse has no unparsedTail", () => {
     assert.equal(result.unparsedTail, undefined);
 });
 
-test("#45: bare text in parse() yields only the grammar error, no internal null-deref leak", () => {
+test("bare text in parse() yields only the grammar error, no internal null-deref leak", () => {
     const result = PlurnkParser.parse("phoenix");
     const errors = result.items.filter((i) => i.kind === "error").map((i) => (i.kind === "error" ? i.error : null));
     // No internal JS crash (the phantom PLAN context's null OPEN terminal) escapes as an error item.
@@ -273,7 +273,7 @@ test("#45: bare text in parse() yields only the grammar error, no internal null-
     assert.match(errors[0]!.message, /begin with `<<PLAN/);
 });
 
-test("#45: a valid turn still parses clean (the phantom-skip guard does not eat real statements)", () => {
+test("a valid turn still parses clean; the phantom-skip guard does not eat real statements", () => {
     const result = PlurnkParser.parse("<<PLAN:think:PLAN <<SEND[200]:done:SEND");
     assert.equal(result.items.filter((i) => i.kind === "error").length, 0);
     const ops = result.items.filter((i) => i.kind === "statement").map((i) => (i.kind === "statement" ? i.statement.op : ""));
@@ -431,7 +431,7 @@ test("value-add: a malformed signal collapses the per-character lexer cascade to
 });
 
 // {§parse-diagnostics} {§error-shape}
-test("#58: each malformed statement surfaces only its first hard diagnostic", () => {
+test("each malformed statement surfaces only its first hard diagnostic", () => {
     const exec = errorsOf("<<EXEC[-1,300]:x:EXEC");
     assert.equal(exec.length, 1, exec.map(({ message }) => message).join(" | "));
     assert.match(exec[0]!.message, /timeout\/poll ride the `<scope>` slot/);
@@ -652,7 +652,7 @@ test("valid regex body accepted", () => {
 });
 
 // {§matcher-prefix-claims}
-test("#59: a `/`-leading body that never closes the literal is a visitor ERROR, not a silent glob", () => {
+test("a `/`-leading body that never closes the literal is a visitor ERROR, not a silent glob", () => {
     const result = PlurnkParser.parseStatements("<<FIND(log://x):/unclosed-regex:FIND");
     const errors = result.items.filter((i) => i.kind === "error");
     assert.equal(errors.length, 1);
@@ -661,14 +661,14 @@ test("#59: a `/`-leading body that never closes the literal is a visitor ERROR, 
     assert.equal(result.items.filter((i) => i.kind === "statement").length, 0);
 });
 
-test("#59: invalid regex pattern is a visitor ERROR, not a silent glob", () => {
+test("invalid regex pattern is a visitor ERROR, not a silent glob", () => {
     const result = PlurnkParser.parseStatements("<<FIND(log://x):/(abc/:FIND");
     const errors = result.items.filter((i) => i.kind === "error");
     assert.equal(errors.length, 1);
     assert.match(errors[0]!.error.message, /is not a valid `\/pattern\/flags` regex/);
 });
 
-test("#59: a stray colon in regex flags errors with the library detail", () => {
+test("a stray colon in regex flags errors with the library detail", () => {
     // gemma's actual emission: a lying 204 told it "no matches" about a file with two;
     // it burned four matcher turns and delivered a confidently wrong conclusion.
     const result = PlurnkParser.parseStatements("<<READ(f.txt):/hello/i::READ");
@@ -678,13 +678,13 @@ test("#59: a stray colon in regex flags errors with the library detail", () => {
     assert.equal(result.items.filter((i) => i.kind === "statement").length, 0);
 });
 
-test("#59: the claim is per-statement — sibling statements still build around the errored matcher", () => {
+test("the matcher claim is per-statement; siblings still build around the errored matcher", () => {
     const result = PlurnkParser.parseStatements("<<READ(a.txt):/ok/i:READ\n<<READ(f.txt):/bad/i::READ\n<<KILL(log:///1/2/3)::KILL");
     assert.equal(result.items.filter((i) => i.kind === "statement").length, 2);
     assert.equal(result.items.filter((i) => i.kind === "error").length, 1);
 });
 
-test("#59 residual: a marker-shaped body prefix still claims nothing and stays a glob", () => {
+test("a marker-shaped body prefix claims nothing and stays a glob", () => {
     // A scope marker in the body does not claim a matcher dialect.
     // Documented residual: we claim declared intent, we don't heuristic every fumble.
     const result = PlurnkParser.parseStatements("<<READ(f.txt)::<1,-1>:/hello/i::READ");
@@ -730,14 +730,14 @@ test("valid xpath body with complex predicate accepted", () => {
     assert.equal(result.items.filter((i) => i.kind === "statement").length, 1);
 });
 
-test("#59: invalid xpath body (unterminated predicate) is a visitor ERROR, not a silent glob", () => {
+test("invalid xpath body (unterminated predicate) is a visitor ERROR, not a silent glob", () => {
     const result = PlurnkParser.parseStatements("<<FIND(doc.xml)://book[unterminated:FIND");
     const errors = result.items.filter((i) => i.kind === "error");
     assert.equal(errors.length, 1);
     assert.match(errors[0]!.error.message, /leads with `\/\/` but is not a valid xpath selector/);
 });
 
-test("#59: `//`-leading glob-intent body (stray operators) errors — the prefix claims xpath", () => {
+test("a `//`-leading glob-intent body with stray operators errors because the prefix claims xpath", () => {
     const result = PlurnkParser.parseStatements("<<FIND(doc.xml)://**/foo{bar}:FIND");
     const errors = result.items.filter((i) => i.kind === "error");
     assert.equal(errors.length, 1);
@@ -755,7 +755,7 @@ test("valid jsonpath body with descendant and wildcard accepted", () => {
     assert.equal(result.items.filter((i) => i.kind === "statement").length, 1);
 });
 
-test("#59: invalid jsonpath body (unclosed paren) is a visitor ERROR, not a silent glob", () => {
+test("invalid jsonpath body (unclosed paren) is a visitor ERROR, not a silent glob", () => {
     const result = PlurnkParser.parseStatements("<<READ(books.json):$[(:READ");
     const errors = result.items.filter((i) => i.kind === "error");
     assert.equal(errors.length, 1);
@@ -802,7 +802,7 @@ test("invented closer: Unicode offset conversion cannot scan a pre-op tag as bod
     assert.doesNotMatch(result.unparsedTail.reason, /found `:BEFORE`/);
 });
 
-test("#132: invented closer scanning begins after every pre-body slot and target header", () => {
+test("invented closer scanning begins after every pre-body slot and target header", () => {
     const specimens = [
         "<<EDIT[a:HEADER](x):unterminated",
         "<<EDIT(worker:///:HEADER):unterminated",
@@ -817,7 +817,7 @@ test("#132: invented closer scanning begins after every pre-body slot and target
     }
 });
 
-test("#132: Unicode before BODY does not obscure the first genuine body lookalike", () => {
+test("Unicode before BODY does not obscure the first genuine body lookalike", () => {
     const source = "<<EDIT[a:HEADER]\n(worker://😀/:TARGET)\n<1-2>\n:body 😀 :INSIDE";
     const result = PlurnkParser.parseStatements(source);
     assert.ok(result.unparsedTail);
@@ -825,7 +825,7 @@ test("#132: Unicode before BODY does not obscure the first genuine body lookalik
     assert.doesNotMatch(result.unparsedTail.reason, /found `:(?:HEADER|TARGET)`/);
 });
 
-test("#132: a healthy closed body never enters invented-closer recovery", () => {
+test("a healthy closed body never enters invented-closer recovery", () => {
     const result = PlurnkParser.parseStatements("<<EDIT(worker:///:HEADER):body :COMPARISON_TASK:EDIT");
     assert.equal(result.unparsedTail, undefined);
     assert.equal(result.items.filter((item) => item.kind === "statement").length, 1);
@@ -1103,7 +1103,7 @@ test("ParsedPath: absent query and fragment are null", () => {
 // -------------------------------------------------------------------------
 // Uniform authority — `://` introduces an authority for every scheme; an
 // authority-less reference uses the empty-authority form `scheme:///path`.
-// No per-scheme allowlist (replaces the issue #5 cleavage).
+// Grammar admission is scheme-generic; runtime registration owns availability.
 // -------------------------------------------------------------------------
 
 test("ParsedPath cleavage: HTTPS retains authority decomposition", () => {
@@ -1330,7 +1330,7 @@ test("MatcherBody: graph neighborhood query (@symbol) dispatches graph", () => {
     assert.equal(b.raw, "@createCoder");
 });
 
-test("#59: a `//`-leading literal (code comment) errors because the prefix claims xpath", () => {
+test("a `//`-leading literal (code comment) errors because the prefix claims xpath", () => {
     // The XPath prefix claims the dialect, so invalid XPath cannot become a glob.
     const result = PlurnkParser.parseStatements("<<READ(src/app.js):// TODO: add error handling:READ");
     const errors = result.items.filter((i) => i.kind === "error");
@@ -1338,7 +1338,7 @@ test("#59: a `//`-leading literal (code comment) errors because the prefix claim
     assert.match(errors[0]!.error.message, /leads with `\/\/` but is not a valid xpath selector/);
 });
 
-test("#59: a `//`-leading string with non-xpath syntax errors under the claim", () => {
+test("a `//`-leading string with non-xpath syntax errors under the claim", () => {
     const result = PlurnkParser.parseStatements("<<READ(file.txt):// foo {bar}:READ");
     const errors = result.items.filter((i) => i.kind === "error");
     assert.equal(errors.length, 1);
@@ -1847,7 +1847,7 @@ test("parseLog: :TURN inside an inner op body is opaque content, not a close", (
 });
 
 // -------------------------------------------------------------------------
-// #42: narrow single-colon empty-body toleration (close only at a boundary)
+// {§parser-architecture} Narrow single-colon empty-body toleration closes only at a boundary.
 // -------------------------------------------------------------------------
 
 const ssCount = (s: string) => PlurnkParser.parseStatements(s).items.filter((i) => i.kind === "statement").length;
@@ -1856,13 +1856,13 @@ const ssClean = (s: string) => {
     return !r.items.some((i) => i.kind === "error") && !r.unparsedTail;
 };
 
-test("#42: single-colon body-less operations close at newline", () => {
+test("single-colon body-less operations close at newline", () => {
     const r = PlurnkParser.parseStatements("<<READ(known://x/a):READ\n<<READ(known://x/b):READ");
     assert.equal(r.items.filter((i) => i.kind === "statement").length, 2);
     assert.equal(r.items.filter((i) => i.kind === "error").length, 0);
 });
 
-test("#42: single-colon body-less closes at EOF and before the next operation", () => {
+test("single-colon body-less closes at EOF and before the next operation", () => {
     assert.ok(ssClean("<<READ(t):READ"));                     // EOF boundary
     assert.equal(ssCount("<<READ(t):READ"), 1);
     assert.equal(ssCount("<<READ(a):READ<<FIND(b):FIND"), 2); // glued, next << boundary
@@ -1870,17 +1870,17 @@ test("#42: single-colon body-less closes at EOF and before the next operation", 
 });
 
 // {§close-tag-match}
-test("#42: canonical ::OP empty body still works", () => {
+test("canonical ::OP empty body still works", () => {
     assert.equal(ssCount("<<READ(a)::READ\n<<READ(b)::READ"), 2);
 });
 
-test("#42: a body starting with the op keyword is NOT mis-closed (non-boundary follow)", () => {
+test("a body starting with the op keyword is not mis-closed after a non-boundary follow", () => {
     const r = PlurnkParser.parseStatements("<<EDIT(t):EDIT this line:EDIT");
     const it = r.items[0];
     assert.ok(it.kind === "statement" && it.statement.body === "EDIT this line");
 });
 
-test("#42: a body equal to the op keyword is expressible via a suffix", () => {
+test("a body equal to the op keyword is expressible via a suffix", () => {
     const r = PlurnkParser.parseStatements("<<FIND1(t):FIND:FIND1");
     const it = r.items[0];
     assert.ok(it.kind === "statement" && (it.statement.body as any)?.raw === "FIND");

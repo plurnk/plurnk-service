@@ -51,7 +51,7 @@ test("every ```plurnk fenced turn in plurnk.md parses clean", () => {
 
 // Model teaching mirrors the packet prose thresholds without adding a reverse package
 // dependency. {§packet-atomic-prose}
-test("plurnk.md prose has no run-on sentences (#453 — split, don't weld)", () => {
+test("plurnk.md prose has no run-on sentences", () => {
     let inFence = false;
     const prose: string[] = [];
     for (const line of plurnkMd.split("\n")) {

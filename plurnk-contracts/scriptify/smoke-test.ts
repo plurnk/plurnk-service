@@ -46,7 +46,7 @@ try {
     await run("npm", ["install", "--no-package-lock", "--no-audit", "--no-fund", "--silent", tarballPath], { cwd: tempDir, env: cleanEnv });
 
     // Stale-artifact guard: the shipped dist/schema must mirror source schema/
-    // exactly — a deleted schema surviving in dist (issue #27) fails here.
+    // exactly; a deleted schema surviving in dist fails here.
     const sourceSchemas = (await readdir(join(contractsDir, "schema"))).sort();
     const shippedSchemas = (await readdir(join(tempDir, "node_modules", "@plurnk", "plurnk-contracts", "dist", "schema"))).sort();
     if (JSON.stringify(sourceSchemas) !== JSON.stringify(shippedSchemas)) {

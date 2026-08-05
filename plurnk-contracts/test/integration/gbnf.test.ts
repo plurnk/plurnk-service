@@ -265,7 +265,7 @@ test("PlurnkParser.parse preserves pre-PLAN TEXT and anchors statements on PLAN"
 
 // SPEC {§gbnf-turn-shape}: an op drafted inside the leading channel is reasoning text,
 // not the turn anchor. The random sampler does not otherwise guarantee this specimen.
-test("channel enclosure protects a drafted <<PLAN; parse anchors on the real one (#430)", () => {
+test("channel enclosure protects a drafted <<PLAN; parse anchors on the real one", () => {
     // A <<PLAN drafted WHILE reasoning (inside the channel body, a complement over the closer)
     // is protected content, not the anchor. GBNF derives it; parse anchors on the REAL PLAN
     // after <channel|>. PLAN's body is plain intended-goals text, not a {raw} object.
@@ -371,7 +371,7 @@ test("GBNF: SEND[300] (multiple-choice question) is a valid terminal disposition
     assert.equal(derivesTurn("<<PLAN:p:PLAN\n<<SEND[300]:q:SEND\n<<SEND[200]:done:SEND"), false);
 });
 
-test("GBNF: a header-bearing http target derives (constrained models can emit auth, #46)", () => {
+test("GBNF: a header-bearing http target derives so constrained models can emit auth", () => {
     // Request-metadata `{key: value}` blocks ride inside the target as free text;
     // `target-inner` already admits the required punctuation and spaces.
     assert.equal(derivesTurn("<<PLAN:p:PLAN\n<<READ(https://api.dev/me{Authorization: Bearer x})::READ\n<<SEND[102]:fetching:SEND"), true);
@@ -379,7 +379,7 @@ test("GBNF: a header-bearing http target derives (constrained models can emit au
     assert.equal(derivesTurn("<<PLAN:p:PLAN\n<<SEND[200](https://api.dev/items{Authorization: Bearer x}{Content-Type: application/json}):{\"n\":1}:SEND"), true);
 });
 
-test("GBNF: ws:// and wss:// targets derive — the rail'd model can reach the WebSocket handler (#470)", () => {
+test("GBNF: ws:// and wss:// targets derive so the constrained model can reach the WebSocket handler", () => {
     // {§path-syntax} The rail does not whitelist schemes.
     assert.equal(derivesTurn("<<PLAN:p:PLAN\n<<READ(ws://api.example.com/feed)::READ\n<<SEND(wss://api.example.com/feed):hello:SEND\n<<KILL(ws://api.example.com/feed)::KILL\n<<SEND[102]:streaming:SEND"), true);
 });

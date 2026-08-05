@@ -132,7 +132,7 @@ test("parsePath: hash-leading spellings are ordinary local paths", () => {
     }
 });
 
-// Request-metadata headers (#46): trailing `{key: value}` blocks split off a URL
+// {§path-request-metadata} Trailing `{key: value}` blocks split off a URL
 // target before WHATWG decomposition, exposed as ordered pairs for the scheme
 // handler (auth, content-type, method affordance). One header per block, so a
 // value may hold commas/colons; the URL components reflect the stripped URL.
@@ -209,8 +209,8 @@ test("parsePath: headers flow through a full parse to the statement target", () 
     assert.deepEqual(statement.target.headers, [["Authorization", "Bearer x"], ["Accept", "q"]]);
 });
 
-// {§path-syntax} Scheme-generic decomposition keeps the WebSocket surface reachable (#470).
-test("parsePath: ws:// and wss:// decompose as UrlPath (scheme, host, port, query) (#470)", () => {
+// {§path-syntax} Scheme-generic decomposition keeps the WebSocket surface reachable.
+test("parsePath: ws:// and wss:// decompose as UrlPath (scheme, host, port, query)", () => {
     const ws = AstBuilder.parsePath("ws://api.example.com/feed");
     assert.equal(ws?.kind, "url");
     if (ws?.kind !== "url") return;
@@ -226,7 +226,7 @@ test("parsePath: ws:// and wss:// decompose as UrlPath (scheme, host, port, quer
     assert.equal(wss.query, "room=x");
 });
 
-test("parsePath: the ws op trio (READ open+stream, SEND push, KILL close) parses to url targets (#470)", () => {
+test("parsePath: the ws op trio (READ open+stream, SEND push, KILL close) parses to url targets", () => {
     const src = [
         "<<READ(ws://api.example.com/feed)::READ",
         "<<SEND(wss://api.example.com/feed):hello:SEND",
@@ -240,7 +240,7 @@ test("parsePath: the ws op trio (READ open+stream, SEND push, KILL close) parses
     assert.deepEqual(schemes, ["ws", "wss", "ws"]);
 });
 
-// #527 ({§worker-name}): the mintable worker-name contract — a lowercase DNS label. The single
+// {§worker-name} The mintable worker-name contract is a lowercase DNS label. The single
 // source core's auto-namer and schemes' registry derive from. The parser stays permissive
 // (any authority decomposes); this pins the CONTRACT constant, not ingestion behavior.
 test("worker-name contract: WORKER_NAME is a lowercase DNS label", () => {

@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import Jsonplurnk from "../Jsonplurnk.ts";
 
-// The ratified #437 sample (fold-key = `display`): three entries, the middle one `open` with a
+// {§jsonplurnk} Three entries, the middle one `open` with a
 // heredoc body whose TAG is a `prompt://` URI (colons and slashes).
 const SAMPLE = `[
 {"op":"model","path":"log:///1/1/1/model","status":200,"tokens":109,"display":"folded"},
