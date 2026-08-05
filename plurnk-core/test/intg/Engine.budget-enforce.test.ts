@@ -26,7 +26,7 @@ const MESSAGES = [{ role: "system" as const, content: "You are an agent." }, { r
 const TINY = 2;          // absolute wall far below any real packet → forces overflow
 const WIDE = 1_000_000;  // absolute wall capped to the window → never overflows
 
-// #507 — the envelope is PROVIDER-owned, so the policy ceiling pins via RESERVES against the
+// {§tokenomics-window-partition} — the envelope is provider-owned, so the policy ceiling pins via reserves against the
 // provider's own window: promptBudget = window − reserves keeps an over-policy packet PHYSICALLY
 // sendable (the recovery-turn semantics the old env policy-window provided). parseReserve rejects
 // 0, so the pin is rr=1 + cr = window − ceiling − 1; a full-window ceiling is window − 2 (immaterial
@@ -43,7 +43,7 @@ const mockAt = (ceiling: number, responses: MockResponse[], window = 4096): Mock
     RESERVE_KEYS.forEach((k, i) => { if (prev[i] === undefined) delete process.env[k]; else process.env[k] = prev[i]; });
     return m;
 };
-// #507 — the over-budget-but-SENDABLE state (the recovery turn's premise) is the SAFETY gap:
+// {§tokenomics-window-partition} — the over-budget-but-sendable state (the recovery turn's premise) is the SAFETY gap:
 // budget = window − reserves − safety, sendability = window − reserves. Pin safety big → tiny
 // policy ceiling with honest physics. Restore via the returned fn.
 const pinSafety = (n: number): (() => void) => {
@@ -51,7 +51,8 @@ const pinSafety = (n: number): (() => void) => {
     process.env.PLURNK_SERVICE_SAFETY = String(n);
     return () => { process.env.PLURNK_SERVICE_SAFETY = p ?? "0"; };
 };
-// null reserves (no envelope claimed) — the #421 no-cap Mock; physics alone bounds it.
+// Null reserves (no envelope claimed) exercise {§tokenomics-window-unpollable-deliberate};
+// provider physics alone bounds the request.
 const mockNoEnvelope = (window: number, responses: MockResponse[]): Mock => {
     const prev = RESERVE_KEYS.map((k) => process.env[k]);
     RESERVE_KEYS.forEach((k) => delete process.env[k]);
@@ -247,7 +248,7 @@ test("a huge ENGINE-WRITTEN row on the current turn is part of the newest bounda
             status_rx: 200, tokens: 0, state: "resolved", outcome: null, attrs: "{}",
         });
         const { default: PacketBuilder } = await import("../../src/core/PacketBuilder.ts");
-        // #507 — one builder; the ceiling pins on the PROVIDER (window − reserves): a wide probe
+        // {§tokenomics-window-partition} — one builder; the ceiling pins on the provider (window − reserves): a wide probe
         // measures the open packet, then a provider pinned just under it forces the stage-2 fold.
         const builder = new PacketBuilder({ db, schemes: new SchemeRegistry(), problems: new ProblemLog(db), executors: () => undefined });
         const wideProbe = mockAt(999_998, [], 1_000_000);
@@ -293,7 +294,8 @@ test("the ceiling is the real window partition (window − reserves), no calibra
     try {
         const { default: PacketBuilder } = await import("../../src/core/PacketBuilder.ts");
         const b = new PacketBuilder({ db, schemes: new SchemeRegistry(), problems: new ProblemLog(db), executors: () => undefined });
-        // #507 — the provider window drives; reserves 1+1 (parseReserve floor) → ceiling 9998.
+        // {§tokenomics-window-partition} — the provider window drives; reserves 1+1
+        // (parseReserve floor) → ceiling 9998.
         // No ratio: the model-facing measure is the chars/2 ruler, and comparing ruler-weight to
         // this real-token ceiling is the conservative bias ({§tokenomics-agnostic-ruler}).
         const provider = mockAt(9998, [], 10_000);
@@ -355,7 +357,7 @@ test("the 413 row reports the exact measured budget violation", async () => {
     } finally { await db.close(); }
 });
 
-test("SAFETY resolves PER ALIAS — the suffix wins over the bare fallback (#352, #507)", async () => {
+test("SAFETY resolves per alias — the suffix wins over the bare fallback", async () => {
     // Provider capacity resolves in the provider tier. Core's safety margin also resolves per
     // alias. Driven through the REAL alias resolution: a Mock carries no provider→alias
     // side-table entry, so #partitionFor falls back to resolveActiveAlias(process.env).alias.

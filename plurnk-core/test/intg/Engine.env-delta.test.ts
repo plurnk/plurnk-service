@@ -32,7 +32,7 @@ const okSend = (): MockResponse => ({
 });
 const MESSAGES = [{ role: "system" as const, content: "You are an agent." }, { role: "user" as const, content: "go" }];
 
-// #507 — the envelope rides the provider; the wide Mock windows in this file keep the grinder out.
+// {§tokenomics-window-partition} — the envelope rides the provider; the wide Mock windows in this file keep the grinder out.
 const makeEngine = (db: Db): Engine => new Engine({ db, schemes: new SchemeRegistry() });
 
 // Controlled concurrency specimen: let one real prepared statement finish, then

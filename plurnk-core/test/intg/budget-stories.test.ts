@@ -48,7 +48,7 @@ const fatReads = (chars: number, n = 1): MockResponse[] =>
     Array.from({ length: n }, () => response([editStmt(urlPath("worker", "big"), heavy(chars)), readStmt(urlPath("worker", "big")), sendStmt(102, null, "ok")]));
 
 process.env.PLURNK_SERVICE_SAFETY = "0"; // the stories compute exact ceilings — no margin
-// #507 — the envelope rides the provider: the ceiling pins as the Mock's window − the 1+1
+// {§tokenomics-window-partition} — the envelope rides the provider: the ceiling pins as the Mock's window − the 1+1
 // reserve floor (parseReserve rejects 0), with SAFETY zeroed for the pin's duration.
 const engineAt = (db: Db, _ceiling?: number): Engine => new Engine({ db, schemes: new SchemeRegistry() });
 const RESERVE_KEYS = ["PLURNK_PROVIDERS_REASONING_RESERVE", "PLURNK_PROVIDERS_COMPLETION_RESERVE"] as const;
@@ -321,7 +321,8 @@ test("budget: the provider window governs the partition — ceiling = window −
     try {
         const { workspaceId, workerId, loopId } = await envelope(db);
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
-        // #507 — mockCeiling(10): window 12 with the 1+1 reserve floor → promptBudget 10.
+        // {§tokenomics-window-partition}: mockCeiling(10) gives window 12 with the
+        // 1+1 reserve floor → promptBudget 10.
         const t = await engine.runTurn({ provider: mockCeiling(10, okSends(1)), workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 2 });
         const { ceiling } = budgetHeadline((await packetOf(db, t.turnId)).packet);
         assert.equal(ceiling, 10, "window 12 − 1 − 1 reserves → promptBudget 10");

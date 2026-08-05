@@ -1,4 +1,4 @@
-// {§lexicon} (#477, #472, #486) — the standing guard: retired and misleading terms
+// {§lexicon} — the standing guard: retired and misleading terms
 // fail CI here, not the next audit. TWO STANDARDS BY LAYER: the operator/wire/storage layers
 // follow the industry lexicon (OpenAI where the concept is standard); the MODEL-FACING packet
 // follows the training distribution (ops mirror HTTP/shell, display mirrors CSS) and is OUT OF
@@ -26,16 +26,16 @@ const walk = (d: string, a: string[] = []): string[] => {
 
 // Each entry: the banned pattern and the canonical term the violation must become.
 const BANNED: Array<{ label: string; re: RegExp; canon: string }> = [
-    { label: "thinking", re: /\bthinking\b/i, canon: "reasoning (the #472 lexicon ruling)" },
+    { label: "thinking", re: /\bthinking\b/i, canon: "reasoning ({§lexicon})" },
     { label: "session (noun)", re: /\bsessions?\b/i, canon: "the exact workspace / worker / loop noun from {§lifecycle-terms}" },
-    { label: "contextSize", re: /contextSize/, canon: "contextWindow (the provider window) or promptBudget (the derived denominator) — #472/#481" },
-    { label: "decodeBudget", re: /decodeBudget/, canon: "maxTokensFor — it IS the standard max_tokens concept (#477)" },
-    { label: "usage_context_size", re: /usage_context_size/, canon: "usage_prompt_budget (#477)" },
-    { label: "retired partition knobs", re: /PLURNK_SERVICE_(CTX|ASSISTANT|CONTEXT_WINDOW|REASONING(?!_)|COMPLETION)/, canon: "PLURNK_PROVIDERS_{CONTEXT_WINDOW,REASONING_RESERVE,COMPLETION_RESERVE} (#507) — only the shed may name these" },
-    // #511 — QUOTED WIRE STRINGS are lexicon too: the endpoint agent caught `Plurnk-Run-Id` shipping
+    { label: "contextSize", re: /contextSize/, canon: "contextWindow (the provider window) or promptBudget (the derived denominator) — {§lexicon}" },
+    { label: "decodeBudget", re: /decodeBudget/, canon: "maxTokensFor — the standard max_tokens concept ({§lexicon})" },
+    { label: "usage_context_size", re: /usage_context_size/, canon: "usage_prompt_budget ({§lexicon})" },
+    { label: "retired partition knobs", re: /PLURNK_SERVICE_(CTX|ASSISTANT|CONTEXT_WINDOW|REASONING(?!_)|COMPLETION)/, canon: "PLURNK_PROVIDERS_{CONTEXT_WINDOW,REASONING_RESERVE,COMPLETION_RESERVE} ({§tokenomics-window-partition}) — only the shed may name these" },
+    // {§lexicon} — quoted wire strings are lexicon too: the endpoint agent caught `Plurnk-Run-Id` shipping
     // a workerId under the retired noun, invisible to identifier-shaped bans. Exact-string bans only
     // (the run noun is unguardable as a word — verbs are legal); extend per retired wire name.
-    { label: "retired wire header", re: /Plurnk-Run-Id/, canon: "Plurnk-Worker-Id (#486/#511)" },
+    { label: "retired wire header", re: /Plurnk-Run-Id/, canon: "Plurnk-Worker-Id ({§lexicon})" },
 ];
 
 test("retired terms never reappear in src or SPEC — drift fails CI, not the next audit", () => {

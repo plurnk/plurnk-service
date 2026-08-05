@@ -19,7 +19,8 @@ const fixture = {
     // Reserves scaled for fake Mock windows: a 8192-token Mock can't fit a real model's ~13312 of
     // reserves, so prompt budget must stay positive. `mocktest` has no per-alias override, so this
     // bare partition is what resolves for it — real models' PLURNK_SERVICE_*_<alias> never apply.
-    // #507 — the envelope is provider-owned; Mock reads the bare _RESERVE knobs and takes its
+    // {§tokenomics-window-partition} — the envelope is provider-owned; Mock reads the bare
+    // _RESERVE knobs and takes its
     // window from the constructor. 78848 (the old env window) is dead: each test's Mock declares.
     PLURNK_PROVIDERS_REASONING_RESERVE: "256",
     PLURNK_PROVIDERS_COMPLETION_RESERVE: "1024",

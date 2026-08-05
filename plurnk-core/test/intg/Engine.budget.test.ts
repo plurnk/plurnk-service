@@ -10,7 +10,7 @@ import type { PlurnkStatement, SendStatement } from "@plurnk/plurnk-contracts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, packetSection } from "./_helpers.ts";
 
 test("the prompt ceiling derives from the provider window minus reserves — reserves over the window fail hard", async () => {
-    // #507 — the envelope is PROVIDER-owned: the window is the provider's own (Mock ctor), the
+    // {§tokenomics-window-partition} — the envelope is provider-owned: the window is the provider's own (Mock ctor), the
     // reserves ride the bare PLURNK_PROVIDERS_*_RESERVE knobs Mock reads, SAFETY stays core's.
     // 1000+2000 reserves + 500 safety: a 10000 window → promptBudget 6500; a 5000 window → 1500;
     // a 3000 window → reserves exceed it → the build fails hard (pinned absolutes vs the window).

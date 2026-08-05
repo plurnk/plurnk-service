@@ -1,4 +1,4 @@
-// #421/#507 — {§tokenomics-window-unpollable-deliberate}: an unpollable window (provider.contextWindow
+// {§tokenomics-window-unpollable-deliberate}: an unpollable window (provider.contextWindow
 // null after the provider tier's env/probe/catalog all miss) is genuinely-unknown — nobody chose an
 // envelope — and is treated as NO-CAP: the prompt is unbounded, the budget/ceiling are null, and the
 // gauge omits its headline (never a stand-in the operator never chose; a probe blip degrades, never
@@ -12,7 +12,7 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, DEFAULT_MIMETYPES } from "./_helpers.ts";
 import { makeMockResponse } from "./_rpc.ts";
 
-test("null window + no per-alias knob → NO-CAP: the turn builds unbounded and the gauge omits its headline (#421)", async () => {
+test("null window + no per-alias knob → NO-CAP: the turn builds unbounded and the gauge omits its headline", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `unpollable-${crypto.randomUUID()}`);
@@ -32,7 +32,7 @@ test("null window + no per-alias knob → NO-CAP: the turn builds unbounded and 
     } finally { await db.close(); }
 });
 
-test("the retired per-alias window knob FAILS HARD naming its provider-tier successor (#507)", async () => {
+test("the retired per-alias window knob fails hard naming its provider-tier successor", async () => {
     // The deliberate-stand-in arm moved to the provider tier (PLURNK_PROVIDERS_CONTEXT_WINDOW_<alias>);
     // a stale core-prefixed pin must never silently lose the operator's window to the move.
     process.env.PLURNK_SERVICE_CONTEXT_WINDOW_mocktest = "8192";
@@ -40,7 +40,7 @@ test("the retired per-alias window knob FAILS HARD naming its provider-tier succ
     try {
         assert.throws(
             () => new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES }),
-            /PLURNK_SERVICE_CONTEXT_WINDOW_mocktest is retired \(#507\).+PLURNK_PROVIDERS_CONTEXT_WINDOW_mocktest/,
+            /PLURNK_SERVICE_CONTEXT_WINDOW_mocktest is retired:.+PLURNK_PROVIDERS_CONTEXT_WINDOW_mocktest/,
         );
     } finally {
         delete process.env.PLURNK_SERVICE_CONTEXT_WINDOW_mocktest;

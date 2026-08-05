@@ -134,7 +134,7 @@ test("the UN-FOLDABLE hard-413 record renders the overshoot honestly (free floor
         const workspaceId = await insertWorkspace(db, `tok-over-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1, "p");
-        // #507 — the envelope rides the provider: an 11-token window with the 1+1 reserve floor
+        // {§tokenomics-window-partition} — the envelope rides the provider: an 11-token window with the 1+1 reserve floor
         // and SAFETY 0 → promptBudget 9, same arithmetic as the retired env pin.
         const prevPart = ["PLURNK_PROVIDERS_REASONING_RESERVE", "PLURNK_PROVIDERS_COMPLETION_RESERVE", "PLURNK_SERVICE_SAFETY"].map((k) => process.env[k]);
         process.env.PLURNK_PROVIDERS_REASONING_RESERVE = "1";

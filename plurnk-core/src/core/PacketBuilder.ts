@@ -142,7 +142,7 @@ export default class PacketBuilder {
     // Boot-discovered runtime executors, late-injected on Engine after daemon
     // start() — read through a thunk so the post-construction set is visible.
     #executors: () => ExecutorRegistry | undefined;
-    // {§tokenomics-window-partition} — the partition is PER-ALIAS (#352), resolved per provider in
+    // {§tokenomics-window-partition} — the partition is PER-ALIAS, resolved per provider in
     // #partitionFor and cached by alias; no boot-time global read.
 
     constructor({ db, schemes, problems, executors }: {
@@ -155,14 +155,14 @@ export default class PacketBuilder {
         this.#schemes = schemes;
         this.#problems = problems;
         this.#executors = executors;
-        // #507 — the envelope rides the provider; construction only runs the retired-knob shed
+        // {§tokenomics-window-partition} — the envelope rides the provider; construction only runs the retired-knob shed
         // so a stale operator .env fails at BOOT, not first use.
         const bootAlias = resolveActiveAlias(process.env)?.alias ?? "";
         this.#safetyFor(bootAlias);
         this.#promptBudgetCapFor(bootAlias);
     }
 
-    // #352 — provider generation settings and core packet policy both resolve per alias.
+    // {§tokenomics-window-partition} — provider generation settings and core packet policy both resolve per alias.
     // scopeEnvToAlias resolves PLURNK_SERVICE_*_<alias> over the bare fallback with providers' own
     // battle-tested suffix parser. Cached per alias; the boot-global case falls back to the active
     // alias when a provider carries no side-table entry (a test Mock).
@@ -172,7 +172,7 @@ export default class PacketBuilder {
     #shedChecked = false;
 
     #safetyFor(alias: string): number {
-        // #507 hard shed (the #472 pattern): the three misprefixed partition knobs moved to the
+        // {§tokenomics-window-partition} hard shed: the three misprefixed partition knobs moved to the
         // provider tier; a stale operator .env must never silently lose its envelope to the move.
         if (!this.#shedChecked) {
             this.#shedChecked = true;
@@ -183,7 +183,7 @@ export default class PacketBuilder {
             };
             for (const k of Object.keys(process.env)) {
                 const m = /^PLURNK_SERVICE_(CTX|CONTEXT_WINDOW|REASONING|ASSISTANT|COMPLETION)(_.*)?$/.exec(k);
-                if (m !== null) throw new Error(`${k} is retired (#507): the envelope is provider-owned — the knob is ${MOVED[m[1]]}${m[2] ?? ""}.`);
+                if (m !== null) throw new Error(`${k} is retired: the envelope is provider-owned — the knob is ${MOVED[m[1]]}${m[2] ?? ""}.`);
             }
         }
         const view = scopeEnvToAlias(process.env, alias, PacketBuilder.#KNOBS);
@@ -202,10 +202,10 @@ export default class PacketBuilder {
 
     // The generation envelope — REASONING + COMPLETION, one undifferentiated pool, passed on
     // every generate({maxTokens}): no decode is unbounded ({§tokenomics-window-partition}). Per
-    // alias (#352): gemma's measured envelope; a cloud alias's generous default the backend clamps.
+    // alias: gemma's measured envelope; a cloud alias's generous default the backend clamps.
     maxTokensFor(provider: Provider): number | null {
         const { reasoning, completion } = this.#partitionFor(provider);
-        if (reasoning === null || completion === null) return null; // #421 — unknown envelope, no cap; the backend clamps
+        if (reasoning === null || completion === null) return null; // {§tokenomics-window-unpollable-deliberate}: unknown envelope, no cap; the backend clamps
         return reasoning + completion;
     }
 
@@ -233,7 +233,7 @@ export default class PacketBuilder {
         if (reasoning === null || completion === null) return operatorCap;
         const naturalBudget = provider.contextWindow - reasoning - completion - safety;
         if (naturalBudget <= 0) {
-            // #507 — post-migration this contradiction has ONE cause: pinned absolute reserves
+            // {§tokenomics-window-partition} — this contradiction has one cause: pinned absolute reserves
             // exceeding the window the provider detected (percent reserves derive and cannot contradict).
             throw new Error(`window partition contradiction for alias '${alias}': window ${provider.contextWindow} <= reserves ${reasoning}+${completion}+${safety}. Pinned PLURNK_PROVIDERS_{REASONING,COMPLETION}_RESERVE absolutes exceed the detected window — repin them under it, or use percent reserves, which derive from the window.`);
         }
@@ -460,7 +460,7 @@ export default class PacketBuilder {
     }): Promise<{ packet: RequestPacket; fit: boolean; struck: boolean; recorded: boolean }> {
         const ceiling = this.ceilingFor(provider);
         const measure = (p: RequestPacket): number => p.tokens;
-        // #421 — a null policy ceiling never triggers grinding. If a virtual ceiling
+        // {§tokenomics-window-unpollable-deliberate} — a null policy ceiling never triggers grinding. If a virtual ceiling
         // does trigger recovery while provider physics is unknown, physical admission
         // separately fails closed under {§tokenomics-physical-admission}.
         if (ceiling === null || measure(packet) <= ceiling) {
