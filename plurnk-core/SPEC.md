@@ -1817,6 +1817,21 @@ Its function names are transport-neutral library calls, not public wire names.
 | Workspace metadata                                | `listWorkspaces()`, `listWorkers(...)`, `workspaceDerivationStatus(...)` | Reads current workspace topology and derivation progress. |
 | Extension actions                                 | `listModuleActions()`, `invokeModuleAction(name, params)` | Lists setup-registered names in sorted order and invokes the exact registered handler. Missing names fail; handler values remain opaque to core. |
 
+§methods-loop-run-fold-consistency **A folded prompt cannot silently reconfigure
+its loop.** When `runLoop` targets an active or 202-parked loop, core appends the
+prompt to that same loop and returns `action: "injected_next_turn"`. Configuration
+already durable on the loop remains authoritative:
+
+| Requested input       | Omitted                                              | Equal to the durable selection | Different from the durable selection |
+|-----------------------|------------------------------------------------------|--------------------------------|--------------------------------------|
+| Provider/model        | The resolved request selection must still agree.     | Fold.                          | 409 provider conflict.               |
+| `maxTurns`            | Keep the durable ceiling.                            | Fold.                          | 409 turn-ceiling conflict.           |
+| Partial `flags`       | Keep every effective durable flag.                   | Fold.                          | 409 flag conflict.                   |
+
+The conflict names both selections and directs the caller to cancel or conclude
+the loop before changing configuration. A newly enqueued loop instead persists
+the requested configuration normally.
+
 §methods-loop-run-open-paths **Workspace paths are core-owned context reads.**
 For a newly enqueued loop, `openPaths` persists a list of client-selected paths.
 On its first turn, core dispatches one ordinary `plurnk`-origin READ per path

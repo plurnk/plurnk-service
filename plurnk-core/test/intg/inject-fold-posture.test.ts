@@ -1,7 +1,4 @@
-// #368 — flags are LOOP-scoped; a prompt folding into a live loop can't re-flag it mid-flight and
-// must never PRETEND to. An inject whose flags DIFFER from the target loop's is refused legibly
-// (the TUI's `? ask` against a running act loop gets an error, not a silently-act'd question);
-// identical or absent flags fold clean.
+// {§methods-loop-run-fold-consistency} — folded prompts preserve durable loop configuration.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { InvalidLoopFlagsError } from "@plurnk/plurnk-contracts";
@@ -15,7 +12,7 @@ const heldLoopMock = () => new Mock({ contextWindow: 16384, responses: [
     makeMockResponse("<<SEND[200]:done again:SEND", 10),
 ] });
 
-test("inject with flags DIFFERING from the live loop's is refused — never a silent posture discard (#368)", async () => {
+test("{§methods-loop-run-fold-consistency}: conflicting flags cannot re-posture a live loop", async () => {
     await withDaemon(heldLoopMock(), async (_db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
@@ -33,7 +30,7 @@ test("inject with flags DIFFERING from the live loop's is refused — never a si
     });
 });
 
-test("inject with MATCHING or ABSENT flags folds into the live loop untouched (#368)", async () => {
+test("{§methods-loop-run-fold-consistency}: matching or absent flags fold without changing posture", async () => {
     await withDaemon(heldLoopMock(), async (_db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
@@ -82,7 +79,7 @@ test("inject surfaces contract-invalid durable posture before comparing it (#169
     });
 });
 
-test("inject cannot silently replace a live loop's durable maxTurns ceiling", async () => {
+test("{§methods-loop-run-fold-consistency}: a folded prompt cannot replace the durable turn ceiling", async () => {
     await withDaemon(heldLoopMock(), async (_db, _daemon, addr) => {
         const ws = await connect(addr);
         try {

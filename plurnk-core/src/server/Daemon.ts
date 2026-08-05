@@ -1306,11 +1306,7 @@ export default class Daemon {
      * Both `runLoop` and wake-on-completion go through this method
      * ({§actor-boundary-passive-wake}).
      */
-    // {§loop-flags-effective-read} — flags are loop-scoped, so a
-    // prompt folding into a live/parked loop cannot re-flag it mid-flight — and it must never PRETEND
-    // to: an inject carrying flags that DIFFER from the target loop's effective flags is refused
-    // legibly (cancel the loop or omit the flags), never a silent posture discard. Identical or
-    // absent flags fold clean.
+    // {§methods-loop-run-fold-consistency} — a folded prompt cannot reconfigure its loop.
     async #assertFoldPosture(workerId: number, flags: Partial<LoopFlags> | undefined, loopId: number): Promise<void> {
         if (flags === undefined || Object.keys(flags).length === 0) return;
         const effective = await LoopFlagsReader.read(this.#db, loopId);
