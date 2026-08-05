@@ -200,7 +200,7 @@ describe("ApplicationJson — extract", () => {
         assert.deepEqual(result.map((s) => s.name), ["real"]);
     });
 
-    it("extracts a large line-oriented document without rescanning every prefix (#588)", () => {
+    it("extracts all fields and coordinates from a 10,000-field line-oriented document", () => {
         const fields = Array.from({ length: 10_000 }, (_, i) => `  "field${i}": ${i}`);
         const src = `{\n${fields.join(",\n")}\n}`;
         const result = h.extractRaw(src);
