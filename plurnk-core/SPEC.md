@@ -663,6 +663,10 @@ llama-server. The provider must advertise GBNF transport and satisfy a forcing
 probe (`root ::= "PLURNK-RAILS-LIVE"`) or boot fails. The setting is resolved
 per alias and is unset by default. Configuring it on a cloud or endpoint-managed
 provider is an error, not a request for best-effort filtering.
+Runtime injection uses the provider's registered alias, falling back only to
+the process's active alias. Suffixed rail settings with neither identity fail
+instead of guessing. A configured package variant or explicit path that cannot
+be loaded also fails; it never silently becomes unconstrained.
 
 §gbnf-requires-reasoning The shipped PLURNK rail requires reasoning. The same alias-scoped configuration
 must resolve reasoning to `adaptive` or `on`; `off` with GBNF is rejected before

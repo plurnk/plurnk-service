@@ -369,8 +369,8 @@ export default class Engine {
     readonly #acquireWorkspaceTurn: AcquireWorkspaceTurn;
     readonly #workspaceTurnCompleted: WorkspaceTurnCompleted | undefined;
 
-    // Cached plurnk GBNF — read once on the first constrained generate (#189).
-    #gbnfCache = new Map<string, string>();  // variant name -> GBNF text (per-alias selection, #353)
+    // Configured grammar text is cached by variant after its first load.
+    #gbnfCache = new Map<string, string>();
 
     // {§rail-truth-engine-verdict} — the verify GAP (a configured grammar @plurnk/gbnf can't
     // parse): warn once per message, never per turn; the turn records railsVerdict "unverifiable".
@@ -492,13 +492,12 @@ export default class Engine {
         this.#executors.register(tag, entry);
     }
 
-    // Optional local-model constrained sampling (#189). The PLURNK language is
-    // always parsed by ANTLR; this separately supplies a GBNF artifact to a
-    // backend that explicitly supports constrained sampling.
+    // Supply an explicitly configured local constraint; ANTLR remains the
+    // language authority. {§grammar-enforcement-verified-at-boot}
     async #grammarConstraint(provider: Provider): Promise<string | undefined> {
-        // {§rail-truth-engine-verdict} (#353/#488): resolve the configured grammar
-        // through the provider's alias. A package variant or BYO path is loaded once;
-        // an ambiguous unregistered provider fails instead of guessing a suffix.
+        // Resolve through the registered or active alias; ambiguity and load
+        // failures never degrade to unconstrained generation.
+        // {§grammar-enforcement-verified-at-boot}
         const registered = ProviderInstantiate.aliasOf(provider);
         const fallback = registered === undefined ? resolveActiveAlias(process.env)?.alias : undefined;
         if (registered === undefined && fallback === undefined && Object.keys(process.env).some((k) => k.startsWith("PLURNK_PROVIDERS_GBNF_"))) {
@@ -1502,9 +1501,8 @@ export default class Engine {
                     : {}),
             });
         }
-        // {§rail-truth-engine-verdict} (#534) — a configured local GBNF constraint is
-        // independently graded by the engine. Endpoint-owned constraints arrive only
-        // through provider metadata; absence of local configuration says nothing about them.
+        // Grade configured local evidence independently. Endpoint-owned
+        // constraints remain provider observations. {§rail-truth-engine-verdict}
         let railKeys: { railsAttached: "client" | "withheld"; railsVerdict: string } | undefined;
         if (railGrammar !== undefined) {
             if (railEvidence === undefined) throw new Error("configured GBNF response has no final grammar evidence");

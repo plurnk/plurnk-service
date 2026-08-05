@@ -4,8 +4,7 @@ import { Mock, resolveActiveAlias } from "@plurnk/plurnk-providers";
 import type { ChatMessage } from "@plurnk/plurnk-providers";
 import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal } from "./_rpc.ts";
 
-// A Mock that records the grammar handed to generate() — the one thing #189
-// plumbs that the stock Mock drops (it destructures only `signal`).
+// A Mock that records the grammar handed to generate().
 class GrammarCapturingMock extends Mock {
     lastGrammar: string | undefined = undefined;
     async generate(args: { messages: ChatMessage[]; signal?: AbortSignal; grammar?: string }) {
@@ -24,10 +23,9 @@ const runOneTurn = async (mock: Mock, name: string): Promise<void> => {
     });
 };
 
-// PLURNK_PROVIDERS_GBNF SELECTS the GBNF variant (#189/#225): a variant name
-// resolves to that grammar and reaches the provider verbatim; 0/empty → nothing
-// does. The service resolves and supplies it only when explicitly configured.
-test("PLURNK_PROVIDERS_GBNF is PER ALIAS — the active alias's suffix wins over the bare fallback (#353)", async () => {
+// {§grammar-enforcement-verified-at-boot}: configuration selects a grammar
+// variant per alias; empty or zero disables it.
+test("the active alias's GBNF setting wins over the bare fallback", async () => {
     // The daemon test's active alias (whatever the local .env selects) decides via its suffixed
     // knob. Bare is the fallback: GBNF is optional local constrained sampling, so
     // it is unset by default and a local alias opts in with its suffix.
@@ -42,11 +40,8 @@ test("PLURNK_PROVIDERS_GBNF is PER ALIAS — the active alias's suffix wins over
     try {
         process.env.PLURNK_PROVIDERS_GBNF = "";  // bare unset
         process.env[suffixKey] = "plurnk.gbnf";  // the active alias opts IN
-        // Window must clear the bundled generation-envelope floor (REASONING+COMPLETION+SAFETY
-        // ≈ 66.5k, plurnk-core/.env.defaults). 8192 fell UNDER it, so the budget derivation threw
-        // "window partition contradiction" and the turn died before generate — #grammarConstraint
-        // never ran, so lastGrammar was undefined regardless of the alias knob (#433). The window
-        // is incidental here; this test verifies grammar RESOLUTION, not the small-window envelope.
+        // Keep the incidental context window above the configured output reserves
+        // so this specimen reaches generation and isolates grammar resolution.
         const on = new GrammarCapturingMock({ contextWindow: 1_000_000, responses: [makeMockResponse(dsl, 10)] });
         await runOneTurn(on, "gbnf-on");
         assert.ok(on.lastGrammar?.includes("root ::="), "the alias suffix → that grammar reaches the provider despite bare being off");

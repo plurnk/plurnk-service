@@ -285,7 +285,7 @@ test("a zero-match sweep is a NO-OP SUCCESS — 204 with matched: 0, never an er
     } finally { await db.close(); }
 });
 
-test("a PARTIAL coordinate is a prefix, slash OPTIONAL — FOLD(log:///1/1) ≡ FOLD(log:///1/1/) folds the turn (#353-jumbo)", async () => {
+test("{§log-coordinate-hierarchy} a partial coordinate is a prefix with or without a trailing slash", async () => {
     const { db, workspaceId, workerId, loopId, turnId } = await setup();
     try {
         // The natural whole-turn fold the jumbo model reached for (no trailing slash) now resolves.

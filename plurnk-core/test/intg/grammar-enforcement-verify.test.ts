@@ -89,7 +89,7 @@ test("a configured GBNF fails hard when the provider does not advertise local tr
     );
 });
 
-test("a per-alias grammar verifies when the bare setting is empty (#353)", async () => {
+test("{§grammar-enforcement-verified-at-boot} a per-alias grammar verifies when the bare setting is empty", async () => {
     const env = { PLURNK_PROVIDERS_GBNF: "", PLURNK_MODEL: "rig", PLURNK_MODEL_rig: "openai/local", PLURNK_PROVIDERS_GBNF_rig: "plurnk.gbnf" };
     await assert.rejects(
         () => ProviderInstantiate.verifyGrammarEnforcement(fakeProvider("I am unconstrained"), env),

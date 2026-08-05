@@ -88,7 +88,7 @@ interface TurnRow {
     usage_prompt: number; usage_completion: number; usage_reasoning: number;
     usage_cached: number; usage_cost_usd: number;
     finish_reason: string | null; model: string | null;
-    meta: string | null;  // #498 — provider passthrough (timings, railsAttached/railsVerdict); digest consumers need rail truth
+    meta: string | null;  // {§meta-passthrough}, {§rail-truth-engine-verdict}
 }
 type StoredTurnRow = Omit<TurnRow, "packet"> & { packet: string | null };
 interface TurnAttemptRow {
@@ -278,8 +278,8 @@ export default class Digest {
         const tokens = `prompt=${turn.usage_prompt} completion=${turn.usage_completion} reasoning=${turn.usage_reasoning} cached=${turn.usage_cached}`;
         const cost = turn.usage_cost_usd > 0 ? ` cost=$${turn.usage_cost_usd.toFixed(6)}` : "";
         const finishReason = turn.finish_reason ?? "—";
-        // #498 — render only observed constraint metadata. Absence is ordinary and
-        // makes no claim about endpoint-owned model settings.
+        // Render only observed constraint metadata; absence makes no claim
+        // about endpoint-owned settings. {§rail-truth-engine-verdict}
         const tm = Digest.#parseJson(turn.meta ?? "null", null) as { railsAttached?: boolean | string; railsVerdict?: string } | null;
         const attached = tm?.railsAttached;
         const rails = attached === undefined || attached === false ? ""
@@ -501,8 +501,8 @@ export default class Digest {
                 usage_reasoning: t.usage_reasoning, usage_cached: t.usage_cached,
                 usage_cost_usd: t.usage_cost_usd,
                 finish_reason: t.finish_reason, model: t.model,
-                // #498 — the raw provider meta (timings + railsAttached/railsVerdict): rail truth for
-                // aggregate tooling, and the speculative-decode stats the #488 fingerprint needed.
+                // Preserve the opaque provider and engine metadata for aggregate
+                // tooling. {§meta-passthrough}, {§rail-truth-engine-verdict}
                 meta: Digest.#parseJson(t.meta ?? "null", null),
             })),
             turn_attempts: m.turnAttempts.map((attempt) => ({

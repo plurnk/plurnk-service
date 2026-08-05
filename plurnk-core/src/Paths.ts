@@ -23,8 +23,6 @@ export default class Paths {
     static instructionsSystem = resolve(Paths.#CONTRACTS_ROOT, "plurnk.md");
     // The first-run policy seed and built-in/conditional pull-doc sources.
     static personality = Paths.teachingSource(TEACHING_CORPUS.personality);
-    // (GBNF artifact resolution moved to Engine.#grammarConstraint — the env value
-    // SELECTS the variant from @plurnk/plurnk-contracts; no hardcoded default here, #225.)
     // {§requirements} — static recap appended at the end of the user slot.
     static #DEFAULT_REQUIREMENTS = Paths.#resolveDefaultRequirements();
     static defaultRequirements = Paths.#DEFAULT_REQUIREMENTS.path;

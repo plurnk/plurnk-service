@@ -1,4 +1,5 @@
-// {§rail-truth-engine-verdict} / {§gbnf-response-observation} (#488/#534).
+// {§grammar-enforcement-verified-at-boot}, {§rail-truth-engine-verdict},
+// and {§gbnf-response-observation} across a real core turn.
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -49,7 +50,7 @@ const envelope = async (db: Awaited<ReturnType<typeof openMigrated>>) => {
     return { workspaceId, workerId, loopId };
 };
 
-test("[#488] the resolved grammar text REACHES generate — the rail chain proven end-to-end through a real turn", async () => {
+test("the resolved grammar text reaches generate through a real turn", async () => {
     const dir = mkdtempSync(join(tmpdir(), "rail-"));
     const gbnfPath = join(dir, "probe.gbnf");
     await writeFile(gbnfPath, 'root ::= "PROBE-RAIL"\n');
@@ -71,7 +72,7 @@ test("[#488] the resolved grammar text REACHES generate — the rail chain prove
     }
 });
 
-test("[#488] an UNREGISTERED provider may not guess an alias while per-alias rails are configured — fail hard, never silently unconstrained", async () => {
+test("an unregistered provider without an active alias cannot guess a suffixed rail", async () => {
     const dir = mkdtempSync(join(tmpdir(), "rail-"));
     const gbnfPath = join(dir, "probe.gbnf");
     await writeFile(gbnfPath, 'root ::= "PROBE-RAIL"\n');
@@ -80,10 +81,8 @@ test("[#488] an UNREGISTERED provider may not guess an alias while per-alias rai
     const prior = process.env[key];
     try {
         process.env[key] = gbnfPath;
-        // A truly alias-less process: strip every PLURNK_MODEL* so resolveActiveAlias yields nothing —
-        // an unregistered provider then has NO alias to resolve the suffixed rail through. Silently
-        // running unconstrained here is run78's severance shape; the contract is a loud refusal.
-        // (With an active alias present, the boot-global fallback stands — the #353 contract.)
+        // Remove the active-alias fallback so this provider has no identity
+        // from which it could resolve a suffixed rail.
         const modelKeys = Object.keys(process.env).filter((k) => k.startsWith("PLURNK_MODEL"));
         const savedModels = modelKeys.map((k) => [k, process.env[k]] as const);
         for (const k of modelKeys) delete process.env[k];
@@ -102,7 +101,7 @@ test("[#488] an UNREGISTERED provider may not guess an alias while per-alias rai
     }
 });
 
-test("[#488] a configured-but-unloadable variant fails LOUD — a broken rail is never a silent fallback to unconstrained", async () => {
+test("a configured but unloadable grammar fails instead of running unconstrained", async () => {
     const db = await openMigrated();
     const key = "PLURNK_PROVIDERS_GBNF_railbroken";
     const prior = process.env[key];
@@ -122,9 +121,7 @@ test("[#488] a configured-but-unloadable variant fails LOUD — a broken rail is
     }
 });
 
-// {§rail-truth-engine-verdict} (#534) — the engine independently grades the
-// configured local constraint instead of trusting provider self-attestation.
-test("local GBNF path: the engine stamps client attachment + its own verdict (#534)", async () => {
+test("{§rail-truth-engine-verdict} the engine stamps local attachment and its own verdict", async () => {
     const dir = mkdtempSync(join(tmpdir(), "rail-"));
     const gbnfPath = join(dir, "verdict.gbnf");
     await writeFile(gbnfPath, 'root ::= "OK"\n');
