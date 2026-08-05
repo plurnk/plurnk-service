@@ -382,12 +382,12 @@ test("a divergent whole-channel destination conflicts and leaves the MOVE source
     }
 });
 
-test("whole-channel COPY supports binary content while binary regions fail", async () => {
+test("COPY and MOVE reject a binary marker without fabricating a byte-transfer channel (#140)", async () => {
     const { db, seed, read, dispatch } = await setup();
     try {
         await seed("/source", {
             channels: {
-                blob: { content: "AAEC", mimetype: "application/octet-stream" },
+                blob: { content: "", mimetype: "application/octet-stream" },
             },
             tags: [],
         });
@@ -396,12 +396,9 @@ test("whole-channel COPY supports binary content while binary regions fail", asy
             urlPath("multi", "/source", "blob"),
             urlPath("multi", "/destination", "blob"),
         ));
-        assert.equal(copied.status, 201);
-        assert.deepEqual(effectsOf(copied), [{
-            target: "multi:///destination#blob",
-            action: "create",
-        }]);
-        assert.equal((await read("/destination")).entry?.channels.blob?.content, "AAEC");
+        assert.equal(copied.status, 415);
+        assert.equal(copied.problem?.code, "binary-source-unsupported");
+        assert.equal((await read("/destination")).status, 404);
 
         const sliced = await dispatch(copyStmt(
             urlPath("multi", "/source", "blob"),
@@ -410,6 +407,15 @@ test("whole-channel COPY supports binary content while binary regions fail", asy
             { marks: [1] },
         ));
         assert.equal(sliced.status, 415);
+
+        const moved = await dispatch(moveStmt(
+            urlPath("multi", "/source", "blob"),
+            urlPath("multi", "/destination", "blob"),
+        ));
+        assert.equal(moved.status, 415);
+        assert.equal(moved.problem?.code, "binary-source-unsupported");
+        assert.equal((await read("/destination")).status, 404);
+        assert.equal((await read("/source")).entry?.channels.blob?.mimetype, "application/octet-stream");
     } finally {
         await db.close();
     }
