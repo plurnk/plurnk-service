@@ -120,7 +120,7 @@ test("{§derivation-dedup-parallel} multi-resource warming reports aggregate pro
     } finally { db.close(); }
 });
 
-test("[#209-semantic-threshold] a decimal threshold composes with ordinary FIND result positions", async () => {
+test("{§find-semantic-default-top-k}: a decimal threshold composes with FIND result positions", async () => {
     const mimetypes = new Mimetypes();
     await mimetypes.ready();
     const db = await openMigrated();

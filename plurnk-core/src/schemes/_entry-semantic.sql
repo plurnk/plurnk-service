@@ -44,9 +44,8 @@ ORDER BY score DESC
 LIMIT $k;
 
 -- PREP: semantic_rank_candidates_threshold
--- #209 - the <0.x> similarity-threshold form: same exhaustive cosine rank, but a cosine
--- floor ($threshold, in (0,1)) filters the ranked set. $cap is the ordered prefix
--- needed by the ordinary FIND result page; -1 keeps the threshold set unbounded.
+-- {§find-semantic-default-top-k}: threshold the exhaustive cosine rank, then
+-- retain the requested ordered prefix; -1 keeps the threshold set unbounded.
 WITH candidates AS (
     SELECT json_extract(value, '$.key') AS key,
            json_extract(value, '$.deepHash') AS deep_hash
