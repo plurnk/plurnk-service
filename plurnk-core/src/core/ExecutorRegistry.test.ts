@@ -20,8 +20,7 @@ class FakeExecutor {
     }
 }
 
-// One package, two tags — the shape that the old per-package probe mis-handled:
-// it stamped both tags with the first tag's result.
+// One package, two tags with divergent probe results. {§executor-probe}
 const oneTwoTagPackage = async () => ({
     registry: new Map([
         ["alpha", { runtime: "alpha", glyph: "α", example: "EXEC[alpha]:do a thing:EXEC", packageName: "fake-pkg" }],
@@ -51,7 +50,7 @@ const gitAndShell = async () => ({
     ]),
 });
 
-test("ExecutorRegistry probes per-tag — divergent availability within one package (#185)", async () => {
+test("{§executor-probe} ExecutorRegistry preserves per-tag availability within one package", async () => {
     const registry = await ExecutorRegistry.build({ discoverFn: oneTwoTagPackage, load: loadFake });
 
     assert.equal(registry.entry("alpha")?.available, true, "the present tag is available");
@@ -111,7 +110,7 @@ test("build() notes untrusted packages that discover() skipped (#229)", async ()
     assert.match(warnings[0], /@acme\/acme-execs-cobol.*untrusted.*not registered/, "the note names the package + why");
 });
 
-test("ExecutorRegistry: an unavailable configured default fails the boot (#185)", async () => {
+test("{§executor-probe} an unavailable configured default fails boot", async () => {
     await assert.rejects(
         () => ExecutorRegistry.build({ discoverFn: oneTwoTagPackage, load: loadFake, defaultRuntime: "beta" }),
         /default runtime 'beta' is unavailable.*not on PATH/s,

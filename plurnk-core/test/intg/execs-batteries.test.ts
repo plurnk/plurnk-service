@@ -92,12 +92,8 @@ const runExec = async (tag: string, body: string, cwd: string | null): Promise<{
 
 const tmp = mkdtempSync(join(tmpdir(), "plurnk-batt-"));
 
-// Each batteries-included tag with a deterministic, self-contained one-liner, its exact output, and
-// its GATE — the effect→proposal classification that is the executor security boundary ({§exec}, #182):
-//   "propose" = effect `host` (arbitrary host code/disk mutation) → human/policy review before it runs
-//   "auto"    = effect `pure`/`read` (sandboxed compute, at most a host FS read) → ungated
-// Bodies mirror each executor package's own declared usage example where one exists, so a drift in the
-// executor's contract surfaces here.
+// One deterministic specimen per bundled runtime. `gate` verifies its
+// executor-owned effect fact through core admission. {§executor-effect}
 const CASES: ReadonlyArray<{ tag: string; body: string; cwd: string | null; expect: string; gate: "propose" | "auto" }> = [
     // Subprocess runtimes execute arbitrary host code → ALWAYS `host` → always gated, even for a
     // visibly-harmless command (the executor classifies the target, never parses the command to judge it).
