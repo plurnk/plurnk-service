@@ -136,7 +136,8 @@ test("{§machine-processes-fork-cost} — a fork inherits the log but spends no 
         // Give the parent turn a real cost — the rollup triggers carry it to worker + workspace.
         await db.engine_close_turn.run({
             id: turnId, status: 200, packet: JSON.stringify({ tokens: 0, sections: [], attributions: [] }),
-            usage_prompt: 100, usage_completion: 50, usage_reasoning: 0, usage_cached: 0, usage_cost_usd: 1000,
+            usage_prompt: 100, usage_completion: 50, usage_reasoning: 0, usage_cached: 0,
+            usage_cost: JSON.stringify([{ kind: "estimated", usd: "1000", source: "machine fixture" }]), usage_cost_usd: 1000,
             finish_reason: null, model: "mock", meta: "{}",
         });
         const workspaceCost = async () =>

@@ -171,7 +171,7 @@ test("loop.run fires loop/terminated notification on completion", async () => {
             const ack = accept.result as { loopId: number; status: number };
             assert.equal(ack.status, 100, "loop.run accepts immediately, not the terminal");
             const captured = await waitFor(
-                () => terminated() as Array<{ workerId: number; loopId: number; result: { status: number }; hitMaxTurns: boolean; attributions: string[]; usage: { promptTokens: number; completionTokens: number; costUsd: number } }>,
+                () => terminated() as Array<{ workerId: number; loopId: number; result: { status: number }; hitMaxTurns: boolean; attributions: string[]; usage: { promptTokens: number; completionTokens: number; costUsd: number | null; costs: import("@plurnk/plurnk-contracts").ProviderCost[] } }>,
                 (ts) => ts.length >= 1,
             );
             assert.equal(captured.length, 1);

@@ -30,6 +30,10 @@ class AttemptWitness extends Mock {
         return (prompt + completion + reasoning) / 1_000;
     }
 
+    override calculateCharge(usage: ProviderUsage) {
+        return { kind: "estimated" as const, usd: String(this.calculateCost(usage)), source: "attempt witness" };
+    }
+
     override async generate(args: Parameters<Mock["generate"]>[0]): ReturnType<Mock["generate"]> {
         this.packets.push(JSON.stringify(args.messages));
         return await super.generate(args);
@@ -89,7 +93,8 @@ test("invalid emissions retry beneath one turn against the identical packet, the
         const turn = await db.test_get_turn.get<{
             usage_prompt: number;
             usage_completion: number;
-            usage_cost_usd: number;
+            usage_cost_usd: number | null;
+            usage_cost: string;
             packet: string;
         }>({ id: result.turnId });
         assert.equal(turn?.usage_prompt, 60, "turn accounting includes every billed attempt");
@@ -524,11 +529,16 @@ test("a provider failure after a rejected emission preserves the completed attem
             id: number;
             usage_prompt: number;
             usage_completion: number;
-            usage_cost_usd: number;
+            usage_cost_usd: number | null;
+            usage_cost: string;
         }>({ loop_id: loopId });
         assert.equal(turn?.usage_prompt, 10);
         assert.equal(turn?.usage_completion, 2);
-        assert.equal(turn?.usage_cost_usd, 0.012);
+        assert.equal(turn?.usage_cost_usd, null, "an unpriced provider failure makes the turn total unknown");
+        assert.deepEqual(JSON.parse(turn!.usage_cost), [
+            { kind: "estimated", usd: "0.012", source: "attempt witness" },
+            { kind: "unknown", reason: "provider call failed without response-bearing charge evidence" },
+        ]);
         const attempts = await db.test_turn_attempts.all<{ accepted: number }>({ turn_id: turn!.id });
         assert.deepEqual(attempts.map(({ accepted }) => accepted), [0]);
     } finally {
@@ -668,7 +678,7 @@ test("an internal attempt-processing failure is not mislabeled as a provider fai
     try {
         const root = new Error("cost contract failed");
         class BrokenCost extends AttemptWitness {
-            override calculateCost(): number {
+            override calculateCharge(): never {
                 throw root;
             }
         }

@@ -48,7 +48,7 @@ ORDER BY CAST(substr(pathname, 2, instr(substr(pathname, 2), '/') - 1) AS INTEGE
 
 -- PREP: test_get_turn
 SELECT id, loop_id, sequence, status,
-       usage_prompt, usage_completion, usage_reasoning, usage_cached, usage_cost_usd,
+       usage_prompt, usage_completion, usage_reasoning, usage_cached, usage_cost, usage_cost_usd,
        finish_reason, model, packet
 FROM turns WHERE id = $id;
 

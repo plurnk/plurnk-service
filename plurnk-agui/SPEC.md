@@ -102,6 +102,11 @@ never recomputes the daemon's gauge.
 | `STATE_DELTA /budget/promptTokens`          | `loop/terminated.usage.promptTokens`     | Loop-total provider-reported prompt usage. |
 | `STATE_DELTA /budget/completionTokens`      | `loop/terminated.usage.completionTokens` | Loop-total provider-reported completion usage. |
 
+§agui-cost-evidence `plurnk.terminated.usage` preserves the daemon's ordered
+`costs` evidence and nullable `costUsd` projection verbatim. Generic AG-UI has
+no standard monetary field; the custom event therefore distinguishes unknown
+from zero without fabricating either value.
+
 - §agui-row-channel **The row channel** — every log row ALSO rides `CUSTOM plurnk.row`
   carrying the full wire entry (fold state, tags-in-signal, tokens, coordinate) alongside its
   core projection. Rich clients (TUI/nvim) render plurnk-native fidelity from `plurnk.row`;

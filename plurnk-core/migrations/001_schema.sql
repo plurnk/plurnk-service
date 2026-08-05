@@ -11,7 +11,7 @@ CREATE TABLE IF NOT EXISTS workspaces (
     version                   INTEGER NOT NULL DEFAULT 0 CHECK (version >= 0),
     name                      TEXT    NOT NULL UNIQUE CHECK (length(name) > 0),
     created_at                TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
-    cost_usd                  REAL    NOT NULL DEFAULT 0 CHECK (cost_usd >= 0),
+    cost_usd                  REAL             DEFAULT 0 CHECK (cost_usd IS NULL OR cost_usd >= 0),
     project_root              TEXT,
     -- {§operator-config} validated client workspace settings; each field composes
     -- with operator configuration at its owning use site.
@@ -29,7 +29,7 @@ CREATE TABLE IF NOT EXISTS workers (
     created_at      TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
     -- workers fork via parent_worker_id; workspaces carry no parent — {§machine-processes-no-fork-workspace}
     parent_worker_id INTEGER          CHECK (parent_worker_id IS NULL OR parent_worker_id != id),
-    cost_usd        REAL    NOT NULL DEFAULT 0 CHECK (cost_usd >= 0),
+    cost_usd        REAL             DEFAULT 0 CHECK (cost_usd IS NULL OR cost_usd >= 0),
     origin          TEXT    NOT NULL DEFAULT 'client' CHECK (origin IN ('model', 'client', 'plurnk')),
     -- {§methods-model-worker}: durable identity for the workspace's stable
     -- default conversation; unrelated to its human-facing, reclaimable name.
@@ -252,7 +252,8 @@ CREATE TABLE IF NOT EXISTS turns (
     usage_completion INTEGER NOT NULL DEFAULT 0 CHECK (usage_completion >= 0),
     usage_reasoning  INTEGER NOT NULL DEFAULT 0 CHECK (usage_reasoning >= 0),
     usage_cached     INTEGER NOT NULL DEFAULT 0 CHECK (usage_cached >= 0),
-    usage_cost_usd   REAL    NOT NULL DEFAULT 0 CHECK (usage_cost_usd >= 0),
+    usage_cost       TEXT    NOT NULL DEFAULT '[]' CHECK (json_valid(usage_cost) AND json_type(usage_cost) = 'array'),
+    usage_cost_usd   REAL             DEFAULT 0 CHECK (usage_cost_usd IS NULL OR usage_cost_usd >= 0),
     -- Effective packet allowance for this turn's provider and policy; NULL is
     -- uncapped or unknown. {§tokenomics-client-gauge}
     usage_prompt_budget INTEGER                  CHECK (usage_prompt_budget IS NULL OR usage_prompt_budget >= 1),
@@ -316,7 +317,8 @@ CREATE TABLE IF NOT EXISTS turn_attempts (
     usage_completion INTEGER NOT NULL DEFAULT 0 CHECK (usage_completion >= 0),
     usage_reasoning  INTEGER NOT NULL DEFAULT 0 CHECK (usage_reasoning >= 0),
     usage_cached     INTEGER NOT NULL DEFAULT 0 CHECK (usage_cached >= 0),
-    usage_cost_usd   REAL    NOT NULL DEFAULT 0 CHECK (usage_cost_usd >= 0),
+    usage_cost       TEXT    NOT NULL CHECK (json_valid(usage_cost) AND json_type(usage_cost) = 'object'),
+    usage_cost_usd   REAL             CHECK (usage_cost_usd IS NULL OR usage_cost_usd >= 0),
     finish_reason    TEXT,
     model            TEXT    NOT NULL CHECK (length(model) >= 1),
     timestamp        TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
@@ -673,7 +675,12 @@ CREATE TRIGGER IF NOT EXISTS turns_cost_rollup_insert_worker
 AFTER INSERT ON turns
 BEGIN
     UPDATE workers
-       SET cost_usd = cost_usd + NEW.usage_cost_usd
+       SET cost_usd = (
+           SELECT CASE WHEN COUNT(*) FILTER (WHERE t.usage_cost_usd IS NULL) > 0
+                       THEN NULL ELSE COALESCE(SUM(t.usage_cost_usd), 0) END
+             FROM turns t JOIN loops l ON l.id = t.loop_id
+            WHERE l.worker_id = workers.id
+       )
      WHERE id = (SELECT worker_id FROM loops WHERE id = NEW.loop_id);
 END;
 
@@ -681,7 +688,14 @@ CREATE TRIGGER IF NOT EXISTS turns_cost_rollup_insert_workspace
 AFTER INSERT ON turns
 BEGIN
     UPDATE workspaces
-       SET cost_usd = cost_usd + NEW.usage_cost_usd
+       SET cost_usd = (
+           SELECT CASE WHEN COUNT(*) FILTER (WHERE t.usage_cost_usd IS NULL) > 0
+                       THEN NULL ELSE COALESCE(SUM(t.usage_cost_usd), 0) END
+             FROM turns t
+             JOIN loops l ON l.id = t.loop_id
+             JOIN workers r ON r.id = l.worker_id
+            WHERE r.workspace_id = workspaces.id
+       )
      WHERE id = (
          SELECT r.workspace_id
            FROM workers r
@@ -692,19 +706,31 @@ END;
 
 CREATE TRIGGER IF NOT EXISTS turns_cost_rollup_update_worker
 AFTER UPDATE OF usage_cost_usd ON turns
-WHEN NEW.usage_cost_usd != OLD.usage_cost_usd
+WHEN NEW.usage_cost_usd IS NOT OLD.usage_cost_usd
 BEGIN
     UPDATE workers
-       SET cost_usd = cost_usd + NEW.usage_cost_usd - OLD.usage_cost_usd
+       SET cost_usd = (
+           SELECT CASE WHEN COUNT(*) FILTER (WHERE t.usage_cost_usd IS NULL) > 0
+                       THEN NULL ELSE COALESCE(SUM(t.usage_cost_usd), 0) END
+             FROM turns t JOIN loops l ON l.id = t.loop_id
+            WHERE l.worker_id = workers.id
+       )
      WHERE id = (SELECT worker_id FROM loops WHERE id = NEW.loop_id);
 END;
 
 CREATE TRIGGER IF NOT EXISTS turns_cost_rollup_update_workspace
 AFTER UPDATE OF usage_cost_usd ON turns
-WHEN NEW.usage_cost_usd != OLD.usage_cost_usd
+WHEN NEW.usage_cost_usd IS NOT OLD.usage_cost_usd
 BEGIN
     UPDATE workspaces
-       SET cost_usd = cost_usd + NEW.usage_cost_usd - OLD.usage_cost_usd
+       SET cost_usd = (
+           SELECT CASE WHEN COUNT(*) FILTER (WHERE t.usage_cost_usd IS NULL) > 0
+                       THEN NULL ELSE COALESCE(SUM(t.usage_cost_usd), 0) END
+             FROM turns t
+             JOIN loops l ON l.id = t.loop_id
+             JOIN workers r ON r.id = l.worker_id
+            WHERE r.workspace_id = workspaces.id
+       )
      WHERE id = (
          SELECT r.workspace_id
            FROM workers r

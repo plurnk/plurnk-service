@@ -85,6 +85,9 @@ class ReasoningBillingMock extends Mock {
     calculateCost({ prompt, completion, reasoning }: ProviderUsage): number {
         return (prompt + completion + reasoning) / 1_000;
     }
+    override calculateCharge(usage: ProviderUsage) {
+        return { kind: "estimated" as const, usd: String(this.calculateCost(usage)), source: "reasoning billing fixture" };
+    }
 }
 
 test("Engine.runTurn: EDIT + SEND turn writes entry, log rows, turn row with status from SEND", async () => {

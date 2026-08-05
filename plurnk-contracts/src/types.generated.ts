@@ -457,6 +457,32 @@ disposition: ProposalDisposition
  * The complete effective policy posture of one model loop. Persisted partial objects are expanded to this shape by the runtime owner before use or projection.
  */
 
+export type ProviderCost = ({
+kind: "authoritative"
+amount: MonetaryAmount
+usdEquivalent: DecimalAmount
+source: NonEmptyString
+} | {
+kind: "estimated"
+usd: DecimalAmount
+source: NonEmptyString
+} | {
+kind: "free"
+source: NonEmptyString
+} | {
+kind: "unknown"
+reason: NonEmptyString
+})
+
+export type DecimalAmount = string
+
+export type NonEmptyString = string
+
+export interface MonetaryAmount {
+amount: DecimalAmount
+currency: string
+}
+
 export interface TextRegion {
 startLine: number
 startColumn: number

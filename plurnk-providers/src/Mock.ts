@@ -6,6 +6,7 @@
 // hatch — that's an intg-only convenience.
 
 import type { ChatMessage, FinishReason, GrammarEvidence, PromptTokenMeasurement, Provider, ProviderAssistant, ProviderEncryptedReasoningItem, ProviderResponse, ProviderUsage } from "./types.ts";
+import type { ProviderCost } from "@plurnk/plurnk-contracts";
 import { resolveEnvelopeFromEnv } from "./env.ts";
 
 export type MockAssistant = {
@@ -76,6 +77,7 @@ export default class Mock implements Provider {
 
     // Mock is free.
     calculateCost(_usage: ProviderUsage): number { return 0; }
+    calculateCharge(_usage: ProviderUsage): Exclude<ProviderCost, { kind: "authoritative" }> { return { kind: "free", source: "mock provider" }; }
 
     async generate({ signal, grammar }: { messages: ChatMessage[]; workerId?: string; signal?: AbortSignal; grammar?: string }): Promise<MockReturnedResponse> {
         // Honor abort before consuming the queue — an aborted call makes no

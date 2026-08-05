@@ -1,4 +1,6 @@
 import type { Provider, ProviderResponse, ProviderUsage, ChatMessage, PromptTokenMeasurement } from "./types.ts";
+import type { ProviderCost } from "@plurnk/plurnk-contracts";
+import { resolveProviderCost } from "./cost.ts";
 import { ProviderError, type ProviderErrorKind } from "./errors.ts";
 import { emitWarningOnce } from "./warnings.ts";
 import { assertPromptTokenMeasurement } from "./promptTokens.ts";
@@ -124,6 +126,10 @@ export default class Pool implements Provider {
         };
     }
     calculateCost(usage: ProviderUsage): number { return this.#backends[0].calculateCost(usage); }
+    calculateCharge(usage: ProviderUsage): Exclude<ProviderCost, { kind: "authoritative" }> {
+        const backend = this.#backends[0];
+        return resolveProviderCost(undefined, backend.calculateCharge?.(usage), () => backend.calculateCost(usage)) as Exclude<ProviderCost, { kind: "authoritative" }>;
+    }
 
     // --- dispatch ---
 

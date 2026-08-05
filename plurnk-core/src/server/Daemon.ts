@@ -17,7 +17,7 @@ import type { Provider, ProviderAlias } from "@plurnk/plurnk-providers";
 // (workspace/created), {workspaceId} = workspace-scoped.
 export type NotifyTarget = "all" | { workspaceId: number };
 // One drained loop's terminal shape — the drain's return currency.
-export interface DrainLoopResult { loopId: number; result: SchemeResult; hitMaxTurns: boolean; turnIds: number[]; action?: string; usage?: { promptTokens: number; completionTokens: number; costUsd: number }; attributions?: string[] }
+export interface DrainLoopResult { loopId: number; result: SchemeResult; hitMaxTurns: boolean; turnIds: number[]; action?: string; usage?: { promptTokens: number; completionTokens: number; costUsd: number | null; costs: import("@plurnk/plurnk-contracts").ProviderCost[] }; attributions?: string[] }
 import {
     parsePath,
     Validator,
@@ -1633,7 +1633,7 @@ export default class Daemon {
                     // is the loop's TERMINAL state (499), delivered via loop/terminated (runLoop no
                     // longer blocks to return it). A genuine error rejects firstLoopPromise.
                     const usage = currentLoopId === null
-                        ? { promptTokens: 0, completionTokens: 0, costUsd: 0, contextTokens: 0, promptBudget: null, meta: {} }
+                        ? { promptTokens: 0, completionTokens: 0, costUsd: 0, costs: [], contextTokens: 0, promptBudget: null, meta: {} }
                         : await this.#engine.loopUsage(currentLoopId);
                     const attributions = currentLoopId === null
                         ? []

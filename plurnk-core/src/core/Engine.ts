@@ -154,8 +154,8 @@ const readFilesItems = (): number | null => {
 };
 
 // Provider contract owned by @plurnk/plurnk-providers; engine is the consumer.
-import type { GrammarEvidence, Provider, ProviderAttempt, ProviderAttemptFinishReason, ProviderResponse, ProviderUsage } from "@plurnk/plurnk-providers";
-import { ProviderError, scopeEnvToAlias, resolveActiveAlias } from "@plurnk/plurnk-providers";
+import type { GrammarEvidence, Provider, ProviderAttempt, ProviderAttemptFinishReason, ProviderCost, ProviderResponse, ProviderUsage } from "@plurnk/plurnk-providers";
+import { ProviderError, providerCostFor, providerCostUsd, validateProviderCost, scopeEnvToAlias, resolveActiveAlias } from "@plurnk/plurnk-providers";
 import { validateGbnf } from "@plurnk/gbnf";
 import ProviderInstantiate from "./ProviderInstantiate.ts";
 import type { RuntimeSchemeFacet } from "../server/DaemonModule.ts";
@@ -573,12 +573,15 @@ export default class Engine {
 
     // Loop totals are billing evidence; the latest-turn pair is the client
     // occupancy gauge. {§tokenomics-client-gauge}, {§notifications-loop-terminated}
-    async loopUsage(loopId: number): Promise<{ promptTokens: number; completionTokens: number; costUsd: number; contextTokens: number; promptBudget: number | null; meta: Record<string, unknown> }> {
-        const row = await this.#db.engine_loop_usage.get<{ prompt: number; completion: number; cost_usd: number; context: number | null; context_size: number | null; meta: string | null }>({ loop_id: loopId });
+    async loopUsage(loopId: number): Promise<{ promptTokens: number; completionTokens: number; costUsd: number | null; costs: ProviderCost[]; contextTokens: number; promptBudget: number | null; meta: Record<string, unknown> }> {
+        const row = await this.#db.engine_loop_usage.get<{ prompt: number; completion: number; cost_usd: number | null; costs: string | null; context: number | null; context_size: number | null; meta: string | null }>({ loop_id: loopId });
+        const parsedCosts: unknown = JSON.parse(row?.costs ?? "[]");
+        if (!Array.isArray(parsedCosts)) throw new TypeError(`loop ${loopId} monetary evidence is not an array`);
         return {
             promptTokens: row?.prompt ?? 0,
             completionTokens: row?.completion ?? 0,
-            costUsd: row?.cost_usd ?? 0,
+            costUsd: row?.cost_usd ?? null,
+            costs: parsedCosts.map((cost) => validateProviderCost(cost as ProviderCost)),
             // Latest provider attempt on the latest turn, not the billed total.
             contextTokens: row?.context ?? 0,
             // Latest effective packet allowance; null when uncapped or unknown.
@@ -1284,7 +1287,8 @@ export default class Engine {
                 // Skip the LLM, close the turn, and let runLoop abandon.
                 await this.#db.engine_close_turn.run({
                     id: turnId, status: 413, packet: StoredPacket.stringify(requestPacket),
-                    usage_prompt: 0, usage_completion: 0, usage_reasoning: 0, usage_cached: 0, usage_cost_usd: 0,
+                    usage_prompt: 0, usage_completion: 0, usage_reasoning: 0, usage_cached: 0,
+                    usage_cost: "[]", usage_cost_usd: 0,
                     // The attempted turn retains its effective allowance even
                     // when no provider exchange completed. {§tokenomics-client-gauge}
                     usage_prompt_budget: this.#packets.promptBudgetFor(provider),
@@ -1318,7 +1322,8 @@ export default class Engine {
         let railEvidence: GrammarEvidence | undefined;
         let emissionAttempts = 0;
         const usage = { prompt: 0, completion: 0, reasoning: 0, cached: 0 };
-        let usageCostUsd = 0;
+        let usageCostUsd: number | null = 0;
+        const providerCosts: ProviderCost[] = [];
         let providerCallInFlight = false;
         let providerAttemptSequence = 0;
         let providerAttemptAttributions: string[] = [];
@@ -1333,7 +1338,8 @@ export default class Engine {
             attributions: readonly string[],
         ): Promise<void> => {
             const attemptUsage = attemptSplit.callMetadata.usage;
-            const attemptCost = provider.calculateCost(attemptUsage);
+            const attemptCost = providerCostFor(provider, attemptUsage, attemptResponse.charge);
+            const attemptCostUsd = providerCostUsd(attemptCost);
             await this.#db.engine_record_turn_attempt.run({
                 turn_id: turnId,
                 sequence,
@@ -1345,7 +1351,8 @@ export default class Engine {
                 usage_completion: attemptUsage.completion,
                 usage_reasoning: attemptUsage.reasoning,
                 usage_cached: attemptUsage.cached,
-                usage_cost_usd: attemptCost,
+                usage_cost: JSON.stringify(attemptCost),
+                usage_cost_usd: attemptCostUsd,
                 finish_reason: attemptSplit.callMetadata.finishReason,
                 model: attemptSplit.callMetadata.model,
             });
@@ -1353,7 +1360,10 @@ export default class Engine {
             usage.completion += attemptUsage.completion;
             usage.reasoning += attemptUsage.reasoning;
             usage.cached += attemptUsage.cached;
-            usageCostUsd += attemptCost;
+            providerCosts.push(attemptCost);
+            usageCostUsd = usageCostUsd === null || attemptCostUsd === null
+                ? null
+                : usageCostUsd + attemptCostUsd;
             emissionAttempts = sequence;
         };
         try {
@@ -1431,6 +1441,12 @@ export default class Engine {
                     false,
                     providerAttemptAttributions,
                 );
+            } else {
+                providerCosts.push({
+                    kind: "unknown",
+                    reason: "provider call failed without response-bearing charge evidence",
+                });
+                usageCostUsd = null;
             }
             // {§turn-never-blank} — a ProviderError means no completed exchange exists.
             // Persist its exact RFC 9457 result before propagating it. Grammar evidence
@@ -1448,6 +1464,7 @@ export default class Engine {
                     usage_completion: usage.completion,
                     usage_reasoning: usage.reasoning,
                     usage_cached: usage.cached,
+                    usage_cost: JSON.stringify(providerCosts),
                     usage_cost_usd: usageCostUsd,
                     usage_prompt_budget: this.#packets.promptBudgetFor(provider),
                     finish_reason: splitResponse?.callMetadata.finishReason ?? null,
@@ -1492,6 +1509,7 @@ export default class Engine {
                 usage_completion: usage.completion,
                 usage_reasoning: usage.reasoning,
                 usage_cached: usage.cached,
+                usage_cost: JSON.stringify(providerCosts),
                 usage_cost_usd: usageCostUsd,
                 usage_prompt_budget: this.#packets.promptBudgetFor(provider),
                 finish_reason: splitResponse?.callMetadata.finishReason ?? null,
@@ -1513,6 +1531,7 @@ export default class Engine {
                 usage_completion: usage.completion,
                 usage_reasoning: usage.reasoning,
                 usage_cached: usage.cached,
+                usage_cost: JSON.stringify(providerCosts),
                 usage_cost_usd: usageCostUsd,
                 usage_prompt_budget: this.#packets.promptBudgetFor(provider),
                 finish_reason: splitResponse.callMetadata.finishReason,
@@ -1643,6 +1662,7 @@ export default class Engine {
             usage_completion: usage.completion,
             usage_reasoning: usage.reasoning,
             usage_cached: usage.cached,
+            usage_cost: JSON.stringify(providerCosts),
             usage_cost_usd: usageCostUsd,
             usage_prompt_budget: this.#packets.promptBudgetFor(provider), // {§tokenomics-client-gauge}
             finish_reason: callMetadata.finishReason,

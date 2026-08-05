@@ -133,27 +133,28 @@ test("turn boundaries are STEPs; termination closes the step and flags the outco
     assert.equal(first[1]?.type, "STEP_STARTED");
     const second = tr.logEntry(entry({ op: "PLAN", turn_id: 2, tx: "{}" }));
     assert.deepEqual(second.slice(1, 3).map((e) => e.type), ["STEP_FINISHED", "STEP_STARTED"]);
-    const term: TerminatedNotification = { workerId: 2, loopId: 1, result: { status: 200 }, hitMaxTurns: false, turnIds: [1, 2], attributions: [], usage: { promptTokens: 10, completionTokens: 5, costUsd: 0, contextTokens: 10, promptBudget: 6848, meta: {} } };
+    const term: TerminatedNotification = { workerId: 2, loopId: 1, result: { status: 200 }, hitMaxTurns: false, turnIds: [1, 2], attributions: [], usage: { promptTokens: 10, completionTokens: 5, costUsd: 0, costs: [], contextTokens: 10, promptBudget: 6848, meta: {} } };
     const done = tr.terminated(term);
     assert.deepEqual(done.map((e) => e.type), ["STEP_FINISHED", "STATE_DELTA", "CUSTOM", "RUN_FINISHED"]);
 });
 
 test("plurnk.terminated carries the full terminal truth, including attribution outside usage", () => {
     const tr = new Translator({ threadId: "th-1", runId: "run-1", workspaceId: 512 });
-    const term: TerminatedNotification = { workerId: 2, loopId: 77, result: { status: 200 }, hitMaxTurns: false, turnIds: [1, 2, 3], attributions: ["creator:ada"], usage: { promptTokens: 10, completionTokens: 5, costUsd: 0.0042, contextTokens: 10, promptBudget: 6848, meta: { balance: { amount: "0.99", currency: "XMR" } } } };
+    const term: TerminatedNotification = { workerId: 2, loopId: 77, result: { status: 200 }, hitMaxTurns: false, turnIds: [1, 2, 3], attributions: ["creator:ada"], usage: { promptTokens: 10, completionTokens: 5, costUsd: null, costs: [{ kind: "unknown", reason: "no provider rate" }], contextTokens: 10, promptBudget: 6848, meta: { balance: { amount: "0.99", currency: "XMR" } } } };
     const custom = tr.terminated(term).find((e) => (e as { name?: string }).name === "plurnk.terminated") as { value: TerminatedNotification & { workspaceId: number | null } };
     assert.equal(custom.value.workspaceId, 512, "daemon workspaceId — one json schema across transports");
     assert.equal(custom.value.workerId, 2, "workerId stays paired with its owning loop");
     assert.equal(custom.value.loopId, 77, "loopId — absent from core events");
     assert.deepEqual(custom.value.turnIds, [1, 2, 3], "turn count for the record");
     assert.deepEqual(custom.value.attributions, ["creator:ada"], "opaque tags stay top-level rather than becoming usage or provider meta");
-    assert.equal(custom.value.usage.costUsd, 0.0042, "costUsd — dropped by the budget STATE_DELTA");
+    assert.equal(custom.value.usage.costUsd, null, "unknown cost is not projected as zero");
+    assert.deepEqual(custom.value.usage.costs, [{ kind: "unknown", reason: "no provider rate" }], "monetary authority survives the custom event");
     assert.deepEqual(custom.value.usage.meta, { balance: { amount: "0.99", currency: "XMR" } }, "opaque provider meta, verbatim");
 });
 
 test("the budget STATE_DELTA carries the daemon's numbers verbatim", () => {
     const tr = t();
-    const term: TerminatedNotification = { workerId: 2, loopId: 1, result: { status: 200 }, hitMaxTurns: false, turnIds: [1, 2, 3, 4], attributions: [], usage: { promptTokens: 4321, completionTokens: 99, costUsd: 0, contextTokens: 4321, promptBudget: 35840, meta: {} } };
+    const term: TerminatedNotification = { workerId: 2, loopId: 1, result: { status: 200 }, hitMaxTurns: false, turnIds: [1, 2, 3, 4], attributions: [], usage: { promptTokens: 4321, completionTokens: 99, costUsd: 0, costs: [], contextTokens: 4321, promptBudget: 35840, meta: {} } };
     const delta = tr.terminated(term).find((e) => e.type === "STATE_DELTA") as { delta: Array<{ path: string; value?: unknown }> };
     assert.equal(delta.delta.find((d) => d.path === "/budget/promptBudget")?.value, 35840, "the effective prompt budget is never recomputed");
     assert.equal(delta.delta.find((d) => d.path === "/budget/contextTokens")?.value, 4321);
@@ -175,7 +176,7 @@ test("a failed termination preserves its Problem and maps it to RUN_ERROR", () =
         hitMaxTurns: false,
         turnIds: [],
         attributions: [],
-        usage: { promptTokens: 0, completionTokens: 0, costUsd: 0, contextTokens: 0, promptBudget: null, meta: {} },
+        usage: { promptTokens: 0, completionTokens: 0, costUsd: 0, costs: [], contextTokens: 0, promptBudget: null, meta: {} },
     };
     const events = tr.terminated(term);
     const error = events.find((e) => e.type === "RUN_ERROR") as { code?: string; message?: string };
@@ -201,7 +202,7 @@ test("a failed termination without a Problem is rejected instead of synthesized 
         hitMaxTurns: false,
         turnIds: [],
         attributions: [],
-        usage: { promptTokens: 0, completionTokens: 0, costUsd: 0, contextTokens: 0, promptBudget: null, meta: {} },
+        usage: { promptTokens: 0, completionTokens: 0, costUsd: 0, costs: [], contextTokens: 0, promptBudget: null, meta: {} },
     };
     assert.throws(
         () => tr.terminated(term),
