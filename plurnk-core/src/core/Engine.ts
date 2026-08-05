@@ -487,7 +487,7 @@ export default class Engine {
     registerRuntime(tag: string, entry: RegistryEntry, scheme?: RuntimeSchemeFacet): void {
         if (this.#executors === undefined) throw new Error("registerRuntime: executor registry not wired yet");
         RuntimeTag.assert(tag, "module runtime");
-        // Scheme face FIRST — it is the arbitration gate (reserved / cross-family collision, #240) and
+        // Scheme face first — it is the arbitration gate (reserved / cross-family collision, #181) and
         // throws before we mutate the executor registry, so a rejected tag leaves neither registry
         // half-written. A brand-new tag registers on both; a reserved/claimed tag throws here untouched.
         this.#schemes.registerRuntimeScheme(tag, entry.executor, scheme);

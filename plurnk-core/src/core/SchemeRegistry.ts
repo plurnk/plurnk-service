@@ -36,18 +36,18 @@ export default class SchemeRegistry {
     // addressing (sh:///l/t/s). Routable via get(), but NOT separately taught or doc-materialized
     // (exec is taught once); else the catalog + docs bloat by one redundant line/entry per tag.
     #runtimeSchemes = new Set<string>();
-    // #240 — built-in scheme names (captured at construction), reserved namespace-wide.
+    // #181 — built-in scheme names (captured at construction), reserved namespace-wide.
     #reserved: ReadonlySet<string> = new Set();
     #readTeaching: ReadTeaching;
     #schemeDocs: Promise<ReadonlyMap<string, string>> | undefined;
     #questionsDoc: Promise<string> | undefined;
 
-    // `fetchWeb` ({§exec-entry-sink} / #455) is forwarded to the exec handler's content:null sink; default
+    // `fetchWeb` ({§exec-entry-sink}) is forwarded to the exec handler's content:null sink; default
     // = schemes-http's checked WebFetcher, injectable so tests substitute automatic network acquisition.
     constructor(opts?: { fetchWeb?: WebFetch; readTeaching?: ReadTeaching }) {
         this.#readTeaching = opts?.readTeaching ?? readTeachingSource;
         this.register("log",    new Log());
-        // #527 — "exec" is INTERNAL machinery, not an addressable scheme: the EXEC op routes here
+        // {§scheme} — "exec" is internal machinery, not an addressable scheme: the EXEC op routes here
         // and the spawn-abort/idle state lives here, but the model addresses output via the tag
         // schemes (sh://, jq://) and process-KILLs the tag coordinate. The knowledgebase
         // is worker:// (commons/~/name/plurnk), and task frames are prompt://.
@@ -56,7 +56,7 @@ export default class SchemeRegistry {
         this.register("skill",  new Skill());
         this.register("file",   new File());
         this.register("worker", new Worker());
-        // #240 — the in-tree names are RESERVED across the whole scheme namespace: a
+        // #181 — the in-tree names are reserved across the whole scheme namespace: a
         // discovered executor or external scheme claiming one fails the boot hard, never
         // silently shadowed. (exec stays poisoned-but-registered — the EXEC op + kill state.)
         this.#reserved = new Set(this.#handlers.keys());
@@ -78,11 +78,11 @@ export default class SchemeRegistry {
         }
     }
 
-    // {§exec} / #240 — exec OUTPUT entries address by their runtime TAG as authority
+    // {§exec} — exec output entries address by their runtime tag as authority
     // (sh:///l/t/s). Register each discovered executor as its OWN per-tag scheme face
     // (ExecOutputScheme): READ/FIND tag-scoped via the executor's manifest, process-KILL
     // delegated to the shared Exec handler. Minted from the boot ExecutorRegistry; in-tree
-    // names take precedence (a tag shadowing a built-in is skipped, never overrides it).
+    // names are reserved (a tag shadowing a built-in fails hard, never overrides it).
     registerRuntimeSchemes(executors: ExecutorRegistry): void {
         for (const tag of executors.availableRuntimes()) {
             const entry = executors.entry(tag);
@@ -93,15 +93,15 @@ export default class SchemeRegistry {
 
     // Register one executor tag's scheme face (the boot loop above or daemon-module setup).
     // The reserved/cross-family arbitration
-    // lives HERE so both paths share it — one name, one owner across the exec/scheme families (#240):
+    // lives here so both paths share it — one name, one owner across the exec/scheme families (#181):
     // idempotent on a tag that already has its own runtime scheme (a boot re-scan), fail-hard on a
     // collision with a reserved built-in or a DIFFERENT already-claimed scheme.
     registerRuntimeScheme(tag: string, executor: Executor, facet?: RuntimeSchemeFacet): void {
         const exec = this.#handlers.get("exec");
         if (!(exec instanceof Exec)) throw new Error("registerRuntimeScheme: the exec handler is not registered");
-        if (this.#reserved.has(tag)) throw new Error(`executor tag '${tag}' collides with a reserved built-in scheme — fail-hard (#240)`);
+        if (this.#reserved.has(tag)) throw new Error(`executor tag '${tag}' collides with a reserved built-in scheme`);
         if (this.#runtimeSchemes.has(tag)) return; // idempotent — already this tag's own runtime scheme
-        if (this.#handlers.has(tag)) throw new Error(`executor tag '${tag}' collides with an already-claimed scheme '${tag}' — one name, one owner across the exec/scheme families (#240)`);
+        if (this.#handlers.has(tag)) throw new Error(`executor tag '${tag}' collides with an already-claimed scheme '${tag}' — one name, one owner across the exec/scheme families`);
         this.register(tag, new ExecOutputScheme(executor, exec, facet));
         this.#runtimeSchemes.add(tag);
     }
@@ -177,11 +177,11 @@ export default class SchemeRegistry {
         const excluded = docsExcludeSet();
         for (const [name, handler] of this.#handlers) {
             if (this.#runtimeSchemes.has(name)) continue; // {§exec} — runtime aliases route, but exec is taught once
-            if (excluded.has(name)) continue; // #240 — PLURNK_SERVICE_DOCS_EXCLUDE drops the oneliner + the doc
+            if (excluded.has(name)) continue; // {§schemes-directory} — exclude drops the example and doc
             const manifest = this.manifestFor(name);
             const example = manifest?.example;
             if (typeof example !== "string" || example.length === 0) continue;
-            lines.push(example); // bare op — the Schemes catalog is fenced, not bulleted (#436); doc links removed (#270)
+            lines.push(example); // {§packet-operation-fences} — bare op, fenced rather than bulleted
         }
         // Scheme examples use the shared model-facing operation fence. {§packet-operation-fences}
         return lines.length > 0 ? `\`\`\`plurnk\n${lines.join("\n")}\n\`\`\`` : "";
@@ -203,7 +203,7 @@ export default class SchemeRegistry {
         const excluded = docsExcludeSet();
         for (const [name, handler] of this.#handlers) {
             if (this.#runtimeSchemes.has(name)) continue; // {§exec} — runtime aliases share exec's doc, not their own
-            if (excluded.has(name)) continue; // #240 — PLURNK_SERVICE_DOCS_EXCLUDE drops the doc
+            if (excluded.has(name)) continue; // {§schemes-directory} — exclude drops the doc
             const inline = this.manifestFor(name)?.documentation;
             const content = schemeDocs.get(name) ?? (typeof inline === "string" && inline.length > 0 ? inline : undefined);
             if (content !== undefined && content.length > 0) out.push({ name, content });
@@ -243,14 +243,14 @@ export default class SchemeRegistry {
             console.warn(`scheme discovery: '${name}' is discovered but untrusted (PLURNK_PLUGINS_TRUSTED_ONLY); not registered`);
         }
         for (const { name, packageName, exportName } of schemes) {
-            if (this.#reserved.has(name)) throw new Error(`external scheme '${name}' (${packageName}) collides with a reserved built-in — boot fail-hard (#240)`);
+            if (this.#reserved.has(name)) throw new Error(`external scheme '${name}' (${packageName}) collides with a reserved built-in`);
             if (this.has(name)) continue; // idempotent re-scan
-            // #473 — a multi-scheme package names each scheme's export (`plurnk.schemes[].export`);
+            // {§plugin-discovery} — a multi-scheme package names each scheme's export (`plurnk.schemes[].export`);
             // absent = the classic single default export. A declared export that isn't a constructor
             // fails the boot hard — a manifest naming a missing class is a misdeclaration, not a skip.
             const mod = await import(packageName) as Record<string, new () => SchemeHandler>;
             const Handler = mod[exportName ?? "default"];
-            if (typeof Handler !== "function") throw new Error(`external scheme '${name}' (${packageName}): export '${exportName ?? "default"}' is not a constructor — boot fail-hard (#473)`);
+            if (typeof Handler !== "function") throw new Error(`external scheme '${name}' (${packageName}): export '${exportName ?? "default"}' is not a constructor`);
             this.register(name, new Handler());
             const attribution = packageAttributions.get(packageName);
             if (attribution !== undefined) this.#packageAttributions.set(packageName, attribution);

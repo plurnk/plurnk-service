@@ -19,8 +19,8 @@ const handler = (name: string, behavior: object = {}): object => ({ manifest: ma
 // discoverExternal scans cwd/node_modules/@plurnk for plurnk.kind:"scheme"
 // siblings. @plurnk/plurnk-schemes-http is installed, so it's found, registered
 // by its declared name ("http"). Agnostic by kind — the package name is never
-// hardcoded (#195).
-test("SchemeRegistry.discoverExternal registers the http sibling (#195)", async () => {
+// hardcoded ({§plugin-discovery}).
+test("SchemeRegistry.discoverExternal registers the http sibling", async () => {
     const registry = new SchemeRegistry();
     assert.equal(registry.has("http"), false, "not registered until discovery runs");
 
@@ -43,12 +43,12 @@ test("SchemeRegistry consumes one discovered package attribution without reopeni
     assert.deepEqual(registry.attributions(), ["@plurnk/http"], "idempotent scans retain one package fact");
 });
 
-// #240 — the built-in scheme names are reserved namespace-wide; a discovered executor
+// #181 coverage — built-in scheme names are reserved namespace-wide; a discovered executor
 // claiming one fails the boot HARD rather than being silently shadowed (in-tree precedence
 // hid a collision that, for a security-relevant name like file/worker, must surface loudly).
 type RegistryArg = Parameters<SchemeRegistry["registerRuntimeSchemes"]>[0];
 
-test("registerRuntimeSchemes: an executor tag shadowing a reserved built-in fails hard (#240)", () => {
+test("registerRuntimeSchemes: an executor tag shadowing a reserved built-in fails hard", () => {
     const registry = new SchemeRegistry();
     const shadows = { availableRuntimes: () => ["file"], entry: () => ({ executor: { manifest: { name: "file", channels: {}, defaultChannel: "body" } } }) } as unknown as RegistryArg;
     assert.throws(
@@ -58,7 +58,7 @@ test("registerRuntimeSchemes: an executor tag shadowing a reserved built-in fail
     );
 });
 
-test("registerRuntimeSchemes: a non-reserved executor tag registers its own per-tag face (#240)", () => {
+test("registerRuntimeSchemes: a non-reserved executor tag registers its own per-tag face", () => {
     const registry = new SchemeRegistry();
     const real = {
         availableRuntimes: () => ["sh"],
@@ -68,7 +68,7 @@ test("registerRuntimeSchemes: a non-reserved executor tag registers its own per-
     assert.ok(registry.has("sh"), "the sh per-tag face is registered under its tag");
 });
 
-test("registerRuntimeSchemes: a tag colliding with an already-claimed (non-reserved) scheme fails hard — one name, one owner (#240)", () => {
+test("registerRuntimeSchemes: a tag colliding with an already-claimed scheme fails hard — one name, one owner", () => {
     const registry = new SchemeRegistry();
     registry.register("figma", handler("figma")); // an external scheme sibling claims the name first
     const collides = { availableRuntimes: () => ["figma"], entry: () => ({ executor: { manifest: { name: "figma", channels: {}, defaultChannel: "results" } } }) } as unknown as RegistryArg;
@@ -79,7 +79,7 @@ test("registerRuntimeSchemes: a tag colliding with an already-claimed (non-reser
     );
 });
 
-test("registerRuntimeSchemes: re-scanning the same runtime tag is idempotent, not a collision (#240)", () => {
+test("registerRuntimeSchemes: re-scanning the same runtime tag is idempotent, not a collision", () => {
     const registry = new SchemeRegistry();
     const real = {
         availableRuntimes: () => ["sh"],
@@ -190,9 +190,9 @@ test("register requires one identity-matched static or instance manifest", () =>
     assert.doesNotThrow(() => registry.register("dynamic", handler("dynamic")));
 });
 
-// #240 — PLURNK_SERVICE_DOCS_EXCLUDE drops a name from BOTH the teaching oneliner and the materialized
+// {§schemes-directory} — PLURNK_SERVICE_DOCS_EXCLUDE drops a name from both the teaching example and materialized
 // pull-doc, on load. A non-listed name is untouched; a stray name is inert (a filter, not a contract).
-test("teach()/docs(): PLURNK_SERVICE_DOCS_EXCLUDE drops the oneliner + the doc; stray names inert (#240)", async () => {
+test("teach()/docs(): PLURNK_SERVICE_DOCS_EXCLUDE drops the example + doc; stray names are inert", async () => {
     const registry = new SchemeRegistry();
     const prior = process.env.PLURNK_SERVICE_DOCS_EXCLUDE;
     try {

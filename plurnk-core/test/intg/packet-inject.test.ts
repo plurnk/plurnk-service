@@ -9,7 +9,7 @@ import { Mock } from "@plurnk/plurnk-providers";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, packetSection } from "./_helpers.ts";
 import { sendStmt } from "./_dsl.ts";
 
-// #240 — PLURNK_SERVICE_PACKET_INJECT lands as an operator section right after the teaching (schemes),
+// {§packet-inject} — PLURNK_SERVICE_PACKET_INJECT lands as an operator section right after the teaching,
 // in the cached system slot, before the log. The operator-side pressure valve.
 test("PLURNK_SERVICE_PACKET_INJECT: operator file rides as a system section after schemes", async () => {
     const db = await openMigrated();

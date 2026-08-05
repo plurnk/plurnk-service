@@ -5,7 +5,7 @@ import { tmpdir, homedir } from "node:os";
 import { join } from "node:path";
 import { resolveInjectPath, readPacketInject } from "./packet-inject.ts";
 
-// #240 — PLURNK_SERVICE_PACKET_INJECT: ~ expansion, per-turn read, fail-hard on a broken path.
+// {§packet-inject}: ~ expansion, per-turn read, fail-hard on a broken path.
 test("resolveInjectPath expands ~/, leaves absolute paths alone", () => {
     assert.equal(resolveInjectPath("~/notes.md"), join(homedir(), "notes.md"), "~/ → home dir");
     assert.equal(resolveInjectPath("/etc/notes.md"), "/etc/notes.md", "absolute path untouched");

@@ -31,7 +31,7 @@ test("fan-out: two sisters EXEC[jq] at the same coordinate; each READ resolves I
         const engine = new Engine({ db, schemes });
         const executors = await testExecutors();
         engine.setExecutors(executors);
-        schemes.registerRuntimeSchemes(executors); // #240 — per-tag faces so READ jq:// resolves (mirrors Daemon boot)
+        schemes.registerRuntimeSchemes(executors); // {§exec} — per-tag faces let READ jq:// resolve
         const exec = schemes.get("exec") as Exec;
         const jq = schemes.get("jq") as ExecOutputScheme;
         const ws = await insertWorkspace(db, `owner-fanout-${crypto.randomUUID()}`);

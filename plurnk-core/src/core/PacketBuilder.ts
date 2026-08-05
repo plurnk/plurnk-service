@@ -306,7 +306,7 @@ export default class PacketBuilder {
         // The canonical default order, trust boundary, and cache-locality bias are
         // specified at {§packet-cache-monotone}. Budget placeholders resolve only
         // after trusted whole-list transforms establish the packet being measured.
-        const inject = await readPacketInject(); // #240 — operator section, per-turn, fail-hard on a broken path
+        const inject = await readPacketInject(); // {§packet-inject} — per-turn; a broken configured path fails hard
         const workspaceRoot = (await this.#db.envelope_get_workspace.get<{ project_root: string | null }>({ id: workspaceId }))?.project_root ?? null;
         const systemPolicy = await readSystemPolicy();              // ~/.plurnk/AGENTS.md (or PLURNK_SERVICE_POLICY)
         const projectPolicy = await readProjectPolicy(workspaceRoot); // <projectRoot>/AGENTS.md (or PLURNK_SERVICE_PROJECT)
@@ -407,10 +407,10 @@ export default class PacketBuilder {
                 notices.push("EXEC operations are disabled for this loop — do not run commands; answer or advise directly");
             } else {
                 for (const tag of runtimes) {
-                    if (excluded.has(tag)) continue; // #240 — PLURNK_SERVICE_DOCS_EXCLUDE drops the oneliner + the doc
+                    if (excluded.has(tag)) continue; // {§tools-capability-sheet} — exclude drops the example and doc
                     if (!workspaceEnabled(tag)) continue; // #180 — workspace-disabled tags aren't advertised
                     const entry = executors.entry(tag);
-                    // #240 — the example IS the oneliner (a bare op, fenced below); the fuller doc
+                    // {§tools-capability-sheet} — the example is the bare op fenced below; the fuller doc
                     // materializes at worker://plurnk/docs/<tag>.md. No example → no line.
                     if (entry?.example) executorOps.push(entry.example);
                 }
@@ -438,7 +438,7 @@ export default class PacketBuilder {
             const excluded = docsExcludeSet();
             const workspaceEnabled = await this.#workspaceEnabled(workspaceId); // #180 — no doc for a disabled tag
             for (const tag of executors.availableRuntimes()) {
-                if (excluded.has(tag)) continue; // #240 — exec docs honor the same exclude
+                if (excluded.has(tag)) continue; // {§tools-capability-sheet} — exec docs honor the same exclude
                 if (!workspaceEnabled(tag)) continue;
                 const doc = executors.entry(tag)?.documentation;
                 if (doc !== undefined && doc.length > 0) out.push({ name: tag, content: doc });

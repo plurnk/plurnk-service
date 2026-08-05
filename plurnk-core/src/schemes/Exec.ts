@@ -257,7 +257,7 @@ export default class Exec extends CoreSchemeAdapterBase {
     // Proposes (status=202) with attrs={runtime, cwd, command, pathname}.
     // applyResolution spawns the subprocess; output streams into the
     // coordinate-stamped <runtime>:///<pathname> entry's stdout/stderr channels
-    // (e.g. sh:///1/1/2, {§exec}/#240). The model READs that entry on a subsequent turn.
+    // (e.g. sh:///1/1/2, {§exec}). The model READs that entry on a subsequent turn.
     async exec(statement: ExecStatement, ctx: CoreSchemeCallContext): Promise<ExecResult> {
         const core = this.coreContext(ctx);
         let command = statement.body ?? "";
