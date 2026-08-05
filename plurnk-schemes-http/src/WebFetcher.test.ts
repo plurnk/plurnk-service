@@ -27,7 +27,7 @@ const withFetch = async (impl: typeof fetch, fn: () => Promise<void>) => {
     globalThis.fetch = impl;
     try { await fn(); } finally { globalThis.fetch = orig; }
 };
-const resp = (body: string | Uint8Array | null, status: number, headers: Record<string, string> = {}) =>
+const resp = (body: string | Uint8Array<ArrayBuffer> | null, status: number, headers: Record<string, string> = {}) =>
     new Response(body, { status, headers });
 
 test("live public textual URL → { body, mimetype }", async () => {

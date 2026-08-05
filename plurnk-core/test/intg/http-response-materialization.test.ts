@@ -1,4 +1,5 @@
-// Composed HTTP response representation coverage {§http-lifecycle}: direct
+// Composed HTTP response representation coverage {§http-lifecycle} and
+// {§http-text-decoding}: direct
 // acquisition writes through real SchemeCtx capabilities to SQLite, then
 // universal READ observes the durable marker through the binary boundary.
 
@@ -59,6 +60,27 @@ const emptyStatement = (): ReadStatement => ({
     position: { line: 1, column: 0 },
 });
 
+const legacyTextStatement = (): ReadStatement => ({
+    op: "READ",
+    suffix: "READ",
+    signal: null,
+    target: {
+        kind: "url",
+        raw: "https://93.184.216.34/legacy.txt",
+        scheme: "https",
+        username: null,
+        password: null,
+        hostname: "93.184.216.34",
+        port: null,
+        pathname: "/legacy.txt",
+        query: null,
+        fragment: null,
+    },
+    lineMarker: null,
+    body: null,
+    position: { line: 1, column: 0 },
+});
+
 test("a direct binary response persists one typed marker whose universal READ is 415", async () => {
     const db = await openMigrated();
     const originalFetch = globalThis.fetch;
@@ -97,6 +119,42 @@ test("a direct binary response persists one typed marker whose universal READ is
         assert.equal(reread.status, 415);
         assert.equal(reread.problem?.type, "https://problems.plurnk.dev/scheme/https/binary-read-unsupported");
         assert.equal(reread.mimetype, "image/png");
+    } finally {
+        globalThis.fetch = originalFetch;
+        await http.close();
+        await db.close();
+    }
+});
+
+test("a direct textual response durably preserves Fetch UTF-8 normalization and charset evidence", async () => {
+    const db = await openMigrated();
+    const originalFetch = globalThis.fetch;
+    const http = new Http();
+    try {
+        globalThis.fetch = async () => new Response(
+            Uint8Array.from([0x63, 0x61, 0x66, 0xe9]),
+            {
+                status: 200,
+                statusText: "OK",
+                headers: { "content-type": "text/plain; charset=windows-1252" },
+            },
+        );
+        const workspaceId = await insertWorkspace(db, `http-text-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const ctx = makeSchemeCtx({ db, workspaceId, workerId });
+        const manifest = { ...Http.manifest, name: "https" };
+        const handlerCtx = makeHandlerCtx(ctx, manifest);
+
+        assert.equal((await http.read(legacyTextStatement(), handlerCtx)).status, 102);
+
+        const entry = await handlerCtx.entries.read("/93.184.216.34/legacy.txt");
+        assert.equal(entry.entry?.channels.body.content, "caf�");
+        assert.equal(entry.entry?.channels.body.mimetype, "text/plain");
+        assert.equal(entry.entry?.channels.body.state, "closed");
+        assert.match(
+            entry.entry?.channels.header.content ?? "",
+            /^content-type: text\/plain; charset=windows-1252$/m,
+        );
     } finally {
         globalThis.fetch = originalFetch;
         await http.close();

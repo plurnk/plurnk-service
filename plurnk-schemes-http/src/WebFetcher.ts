@@ -6,6 +6,7 @@
 import { MimetypeClassifier, type ProjectionCaps } from "@plurnk/plurnk-schemes";
 import Browser, { BROWSER_UA, requireNumEnv, type RenderResult } from "./Browser.ts";
 import Guard from "./Guard.ts";
+import { responseMimetype } from "./ContentType.ts";
 
 // {§host-rewrite} — one transport-only policy for acquisition GETs. Callers
 // retain the addressed URL as entry identity; mutations never pass through it.
@@ -129,11 +130,12 @@ export default class WebFetcher {
             }
             return null; // refused or unreachable — both unavailable
         }
-        const mimetype = (response.headers.get("content-type") ?? "").split(";")[0].trim().toLowerCase()
-            || "application/octet-stream";
+        const mimetype = responseMimetype(response.headers.get("content-type"));
         if (!response.ok) { await response.body?.cancel(); return null; } // non-2xx dead
         const header = WebFetcher.#header(response);
 
+        // {§http-text-decoding} Every byte-response text conversion below uses
+        // Response.text(), the Fetch UTF-8 contract.
         // Preserve server HTML as primary. Eager rendering can mutate already
         // useful content; the consumer alone decides whether projection is absent.
         if (MimetypeClassifier.isHtml(mimetype)) {

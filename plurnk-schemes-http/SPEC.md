@@ -122,6 +122,23 @@ it is not published to the requesting loop. FIND returns standard JSON metadata
 and match coordinates; matcher READ returns selected content and navigation
 evidence.
 
+### §http-text-decoding Text response decoding
+
+| Surface                       | Contract                                                                                         |
+| ----------------------------- | ------------------------------------------------------------------------------------------------ |
+| Response media type           | WHATWG `MIMEType` essence; absent or unparseable metadata becomes `application/octet-stream`     |
+| Direct textual response       | Incremental replacement-mode UTF-8 through `TextDecoder`, preserving response backpressure       |
+| WebFetcher textual response   | Fetch `Response.text()` UTF-8 decoding; buffering does not select a different character encoding |
+| `charset` parameter           | Preserve in `header` as origin evidence; it does not replace Fetch text decoding                 |
+| JSON and XML textual families | Use the same HTTP byte-to-string rule; format projections consume the resulting Unicode string   |
+| Direct HTML GET               | Browser navigation owns the separate HTML document encoding algorithm                            |
+| Server-sent events            | UTF-8 only under the HTML event-stream standard                                                  |
+| Malformed UTF-8               | Preserve the Encoding Standard's replacement-character behavior                                  |
+
+This boundary is text normalization, not a media-format processor. A byte-aware
+or format-specific source representation requires a separately ratified
+representation contract rather than a second HTTP decoding path.
+
 ### §html-materialization HTML materialization
 
 `WebFetcher.materialize` is the shared HTML-family projection seam for direct

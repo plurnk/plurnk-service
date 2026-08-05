@@ -30,6 +30,7 @@ import WebFetcher, {
     type WebFetchResult,
     type WebMaterializedResult,
 } from "./WebFetcher.ts";
+import { responseMimetype } from "./ContentType.ts";
 
 // The channel the response body streams into, and the header metadata channel.
 const BODY = "body";
@@ -406,8 +407,7 @@ export default class Http implements SchemeHandler {
                 return { shape: "passthrough", status: 102 };
             }
 
-            const contentType = response.headers.get("content-type") ?? "";
-            const responseMime = contentType.split(";")[0].trim().toLowerCase();
+            const responseMime = responseMimetype(response.headers.get("content-type"));
 
             // Always-render: a GET of an HTML page is re-acquired through the
             // browser so the body is projected from the final rendered DOM. The probe-fetch
@@ -447,7 +447,7 @@ export default class Http implements SchemeHandler {
             // so the model reads event content and not the transport. A long-lived
             // GET; events land in the body channel as they arrive across turns,
             // until the origin closes. Only GET — a POST reply is never an SSE READ.
-            if (method === "GET" && /^text\/event-stream\b/i.test(contentType)) {
+            if (method === "GET" && responseMime === "text/event-stream") {
                 await Http.#writeHeader(subscription, method, response.status, response.statusText, [...response.headers]);
                 if (response.body === null) {
                     await subscription.close({ status: 200 }, "SSE stream; empty body");
@@ -470,7 +470,7 @@ export default class Http implements SchemeHandler {
             // decoding bytes while preserving their origin MIME type would lie
             // about the stored representation.
             await Http.#writeHeader(subscription, method, response.status, response.statusText, [...response.headers]);
-            const bodyMime = responseMime || "application/octet-stream";
+            const bodyMime = responseMime;
             if (response.body === null) {
                 await subscription.close({ status: 200 }, `HTTP ${response.status}; empty body`);
                 return { shape: "passthrough", status: 102 };
@@ -496,6 +496,8 @@ export default class Http implements SchemeHandler {
                 await subscription.close(result, detail);
                 return result;
             }
+            // {§http-text-decoding} Fetch text is replacement-mode UTF-8;
+            // Content-Type charset remains response evidence, not a second decoder.
             let bytes = 0;
             const decoder = new TextDecoder();
             for await (const chunk of response.body as AsyncIterable<Uint8Array>) {
