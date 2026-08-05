@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import Discover from "./discover.ts";
 
-// Every temp dir this suite mints is tracked and removed after the run (#551):
+// Every temporary directory this suite creates is tracked and removed after the run.
 // mkdtemp otherwise leaks a dir per call permanently, and this suite is the
 // family's heaviest generator. One after() rms them all — a green OR red run
 // leaves nothing behind.
@@ -50,7 +50,7 @@ test("discover: registers each runtime tag of an exec package", async () => {
     });
 });
 
-test("discover: documentation is sourced from docs/<tag>.md, inline field as fallback (#12)", async () => {
+test("discover: documentation is sourced from docs/<tag>.md with the inline field as fallback", async () => {
     const dir = await makePkg({
         name: "@plurnk/plurnk-execs-common",
         plurnk: { kind: "exec", runtimes: [
@@ -150,7 +150,7 @@ const makeDynamicPkg = async (name: string, hookSrc: string, rel = "runtimes.mjs
     return dir;
 };
 
-test("discover: dynamic runtimesModule hook materializes per-deployment tags (#10)", async () => {
+test("discover: dynamic runtimesModule hook materializes per-deployment tags", async () => {
     const dir = await makeDynamicPkg(
         "@plurnk/plurnk-execs-dynamic-fixture",
         `export async function runtimes() {

@@ -148,7 +148,7 @@ export default class SubprocessExecutor extends BaseExecutor {
             // env: consumer-scoped when provided (drops plurnk's own secrets,
             // {§exec-env-scoped}); host env inherited when absent.
             // fd0: a provided stdin body gets a pipe (written + EOF'd below); NO
-            // stdin body gets /dev/null, never a dangling open pipe (#519). A bare
+            // stdin body gets /dev/null, never a dangling open pipe. A bare
             // interpreter reached via the sh fallthrough (`EXEC[python3]` → `sh -c
             // "python3 …"`) reads its program from fd0 — an unclosed pipe there
             // never EOFs, so the child blocks in the kernel (unix_stream_read) and
@@ -165,8 +165,8 @@ export default class SubprocessExecutor extends BaseExecutor {
             // A fast-exiting child (`jq` on a small file — dead in milliseconds)
             // can already be gone when this write lands; the end() then EPIPEs,
             // and with no 'error' listener the rejection escapes and fails the
-            // consumer even though the exec succeeded (#23 — the probe lane got
-            // the same guard in #16). The child's exit code is the truth; a
+            // consumer even though the exec succeeded. The child's exit code is
+            // the truth; a
             // stdin write racing child exit is expected noise, not a failure.
             if (stdin !== undefined && child.stdin) {
                 child.stdin.on("error", () => { /* EPIPE-class race with exit — outcome is the exit code */ });

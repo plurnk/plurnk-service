@@ -129,7 +129,7 @@ test("wasm from a file-path target reads + runs the binary module", async () => 
     assert.equal(JSON.parse(out!).returned, 42);
 });
 
-test("a relative file target resolves against cwd, not the process dir (#15)", async () => {
+test("a relative file target resolves against cwd, not the process dir", async () => {
     const dir = await mkdtemp(join(tmpdir(), "execs-wasm-cwd-"));
     try {
         await writeFile(join(dir, "mod.wat"), WAT, "utf8");

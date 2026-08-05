@@ -18,7 +18,7 @@ const setFetch = (impl: (url: string | URL, init?: RequestInit) => Promise<unkno
 
 // Route the stub: the SearXNG endpoint answers with `results`. It is the ONLY
 // url the executor is permitted to fetch — any other url is a contract breach
-// (candidate pages are the consumer's job now, ruling #5), so we throw on it.
+// Candidate pages are the consumer's job, so the stub rejects any other URL.
 const routes = (results: unknown[]) => {
     const fetched: string[] = [];
     setFetch(async (u) => {
@@ -114,7 +114,7 @@ test("URL userinfo becomes Basic auth and is redacted from requests and probes",
     assert.equal(authorization, `Basic ${Buffer.from("relay-key:").toString("base64")}`);
 });
 
-test("probe: blank / whitespace / malformed URL or credentials read as unavailable, not just unset (#3)", async () => {
+test("probe: blank, whitespace, malformed URL, or credentials read as unavailable", async () => {
     for (const v of ["", "   ", "not-a-url", "https://%ZZ@searxng.test"]) {
         process.env.PLURNK_EXECS_SEARCH_SEARXNG_URL = v;
         const r = await new Search({ runtime: "search", glyph: "🔎" }).probe();
@@ -122,7 +122,7 @@ test("probe: blank / whitespace / malformed URL or credentials read as unavailab
     }
 });
 
-test("run: a whitespace / malformed URL fails clean (501), never constructs a bad URL, never hangs (#3)", async () => {
+test("run: a whitespace or malformed URL fails clean (501), never constructs a bad URL, and never hangs", async () => {
     let fetched = false;
     setFetch(async () => { fetched = true; return { ok: true, status: 200, json: async () => ({ results: [] }) }; });
     for (const v of ["   ", "not-a-url"]) {
@@ -159,7 +159,7 @@ test("search: queries SearXNG, digests candidates, closes channel, status 200", 
     assert.deepEqual(fetched, [fetched[0]], "only the SearXNG /search url is ever fetched");
 });
 
-test("digest: emits only {title,url,snippet}, dropping SearXNG noise (#17)", async () => {
+test("digest: emits only {title,url,snippet}, dropping SearXNG noise", async () => {
     routes([{
         title: "Paris", url: "https://8.8.8.8/paris", content: "The capital of France.",
         template: "default.html", engine: "google", engines: ["google", "bing"], score: 3.2,
@@ -171,7 +171,7 @@ test("digest: emits only {title,url,snippet}, dropping SearXNG noise (#17)", asy
     ], "template/engine/score/parsed_url/positions all dropped — a ~10-20x shrink");
 });
 
-test("digest: SNIPPET bounds the snippet; RAW restores the verbatim payload and skips the prefetch pass (#17)", async () => {
+test("digest: SNIPPET bounds the snippet; RAW restores the verbatim payload and skips prefetch", async () => {
     const raw = { title: "t", url: "https://8.8.8.8/t", content: "abcdefghij", engine: "x" };
 
     process.env.PLURNK_EXECS_SEARCH_SNIPPET = "4";
@@ -189,7 +189,7 @@ test("digest: SNIPPET bounds the snippet; RAW restores the verbatim payload and 
     delete process.env.PLURNK_EXECS_SEARCH_RAW;
 });
 
-// --- page prefetch enrichment (#18, #596) ---------------------------------
+// --- page prefetch enrichment ---------------------------------------------
 
 test("entry(): the executor hands each unique candidate url to the sink as a prefetch request (url, null, [slug])", async () => {
     routes([{ title: "a", url: "https://8.8.8.8/a" }]);
@@ -203,7 +203,7 @@ test("entry(): the executor hands each unique candidate url to the sink as a pre
     assert.equal(calls[0].opts.mimetype, undefined, "no mimetype supplied — the consumer determines it");
 });
 
-test("#607: the digest uses the sink's canonical model address, not SearXNG's raw URL", async () => {
+test("the digest uses the sink's canonical model address, not SearXNG's raw URL", async () => {
     const raw = "https://en.wikipedia.org/wiki/Igor_Smirnov_(politician)";
     const canonical = "https://en.wikipedia.org/wiki/Igor_Smirnov_%28politician%29";
     routes([{ title: "Igor Smirnov", url: raw }]);
@@ -218,7 +218,7 @@ test("#607: the digest uses the sink's canonical model address, not SearXNG's ra
     ]);
 });
 
-test("#596: a rejected entry() is scrubbed from the model-facing digest", async () => {
+test("a rejected entry() is scrubbed from the model-facing digest", async () => {
     routes([
         { title: "a", url: "https://8.8.8.8/a" },
         { title: "b", url: "https://8.8.8.9/b" },
@@ -261,7 +261,7 @@ test("search acquisition emits bounded aggregate progress with no candidate URLs
     }
 });
 
-test("#596: every rejecting entry() leaves an empty model-facing digest", async () => {
+test("every rejecting entry() leaves an empty model-facing digest", async () => {
     routes([
         { title: "x", url: "https://8.8.8.8/x" },
         { title: "y", url: "https://8.8.8.9/y" },
@@ -285,7 +285,7 @@ test("dedupe: two candidates with the same url request the prefetch once and lis
     assert.deepEqual(requested, ["https://8.8.8.8/a"], "the duplicate url is handed to entry() exactly once");
 });
 
-test("#596 regression: materialization scrubbing preserves the upstream order of survivors", async () => {
+test("materialization scrubbing preserves the upstream order of survivors", async () => {
     routes([
         { title: "Bessent discusses AI", url: "https://news.example/bessent-ai", content: "Authoritative report." },
         { title: "Scott Credit Union", url: "https://scu.example/", content: "Banking." },

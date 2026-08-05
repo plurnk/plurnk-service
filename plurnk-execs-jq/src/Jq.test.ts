@@ -58,9 +58,9 @@ test("inline (-n): a self-contained program computes with no data source", { ski
     assert.deepEqual(states, ["closed"]);
 });
 
-test("multi-value object output is one compact JSON value per line — honest JSONL (#2)", { skip: !HAS_JQ }, async () => {
+test("multi-value object output is one compact JSON value per line — honest JSONL", { skip: !HAS_JQ }, async () => {
     // Without -c this object stream pretty-prints across multiple lines and is
-    // neither valid application/json nor valid JSONL — the bug in #2.
+    // A comma-joined stream is neither valid application/json nor valid JSONL.
     const { result, out } = await run("[{a:1},{a:2}] | .[]");
     assert.equal(result.status, 200);
     const lines = out!.trim().split("\n");
@@ -76,7 +76,7 @@ test("a file-path target is filtered", { skip: !HAS_JQ }, async () => {
     assert.deepEqual(out!.trim().split("\n"), ['"ada"', '"alan"']);
 });
 
-test("a relative target resolves against cwd, not the process dir (#15)", { skip: !HAS_JQ }, async () => {
+test("a relative target resolves against cwd, not the process dir", { skip: !HAS_JQ }, async () => {
     const full = tmp();
     await writeFile(full, JSON.stringify([{ x: 1 }, { x: 2 }, { x: 3 }]));
     // cwd = the file's dir, target = only its basename → resolves solely because
@@ -94,7 +94,7 @@ test("empty body defaults to the identity filter `.`", { skip: !HAS_JQ }, async 
     assert.deepEqual(JSON.parse(out!), { a: 1 });
 });
 
-test("env: honors a scoped env; vars the consumer dropped read as null (#8)", { skip: !HAS_JQ }, async () => {
+test("env: honors a scoped env; vars the consumer dropped read as null", { skip: !HAS_JQ }, async () => {
     // PATH is needed for spawn to locate jq; FOO is the only data var exposed.
     const seen = await run("env.FOO", null, { PATH: process.env.PATH, FOO: "bar" });
     assert.equal(seen.result.status, 200);

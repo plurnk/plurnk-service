@@ -24,7 +24,7 @@ const RECIPES: Readonly<Record<string, Recipe>> = Object.freeze({
     node: { bin: "node", arg: (c) => ["-e", c], alwaysAvailable: true },
     // `python` and `python3` both map to the python3 binary — the only Python we
     // offer (no python-2 path). `python3` is an alias, not a new capability
-    // (owner ruling #519): it's the name a coding model types by reflex, and
+    // because it is the name a coding model types by reflex, and
     // it owns the same Python-source body contract as `python`.
     python: { bin: "python3", arg: (c) => ["-c", c] },
     python3: { bin: "python3", arg: (c) => ["-c", c] },
@@ -62,7 +62,7 @@ export default class Common extends SubprocessExecutor {
         if (r === undefined) throw new Error(`plurnk-execs-common received unclaimed runtime tag '${runtime}'`);
         // With a target the program IS the target and the body is its stdin
         // ({§executor-subprocess-routing}), run as one script-file positional for every
-        // interpreter — transient exec (owner ruling, #500): the interpreter
+        // interpreter: the interpreter
         // READS the file, so no exec bit is consulted and none is ever set.
         // The old sh/bash `-c` arm made the shell execve() the target instead
         // (PATH lookup on bare names, +x demanded on EDIT-created scripts) and

@@ -46,7 +46,7 @@ test("manifest declares the sqlite runtime tag", async () => {
     const pkg = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf-8"));
     assert.equal(pkg.plurnk.kind, "exec");
     assert.deepEqual(pkg.plurnk.runtimes.map((r: { name: string }) => r.name), ["sqlite"]);
-    // #7: two self-documenting examples for the tools sheet — a file-target db,
+    // Two self-documenting examples cover a file-target database
     // and a transient :memory: tabular calc showing the `*1.0` float idiom that
     // avoids integer-division truncation.
     const examples = pkg.plurnk.runtimes[0].example.split("\n");
@@ -82,7 +82,7 @@ test("SELECT against default :memory: → rows as JSON, channel closed, 200", as
     assert.equal(events.length, 0);
 });
 
-test("a relative target resolves the db against cwd, not the process dir (#15)", async () => {
+test("a relative target resolves the database against cwd, not the process dir", async () => {
     const dir = await mkdtemp(join(tmpdir(), "execs-sqlite-cwd-"));
     try {
         // relative target + cwd → the db file must land inside cwd (the workspace),
@@ -127,7 +127,7 @@ test("syntax error -> sqlite_invalid_statement, 400", async () => {
     assert.equal(events.length, 0);
 });
 
-// #493 — SQLite's prepare compiles only the FIRST statement; a sqlite3-CLI-style
+// SQLite prepare compiles only the first statement; a sqlite3-CLI-style
 // script would partially execute under a 200. The contract is one statement per
 // op, ENFORCED: a real SQL tail fails hard instead of silently dropping.
 test("multi-statement script → sqlite_multi_statement, 400, nothing truncated silently", async () => {

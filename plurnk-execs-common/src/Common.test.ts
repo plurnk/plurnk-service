@@ -42,12 +42,12 @@ test("spawnArgs: the subprocess floor (sh/node/python)", () => {
     assert.deepEqual(make("node").spawnArgs("node", "console.log(1)"), { cmd: "node", args: ["-e", "console.log(1)"], useShell: false });
     // @ts-expect-error
     assert.deepEqual(make("python").spawnArgs("python", "print(1)"), { cmd: "python3", args: ["-c", "print(1)"], useShell: false });
-    // python3 is an alias of python — same python3 binary, same -c script arm (#519)
+    // python3 is an alias of python: same python3 binary, same -c script arm.
     // @ts-expect-error
     assert.deepEqual(make("python3").spawnArgs("python3", "print(1)"), { cmd: "python3", args: ["-c", "print(1)"], useShell: false });
 });
 
-test("spawnArgs: a target is the script-file positional for EVERY interpreter, body = stdin (#15, transient exec #500)", () => {
+test("spawnArgs: a target is the script-file positional for every interpreter and body is stdin", () => {
     // @ts-expect-error protected hook
     assert.deepEqual(make("sh").spawnArgs("sh", "stdin body", "./run.sh"), { cmd: "sh", args: ["./run.sh"], useShell: false, stdin: "stdin body" });
     // @ts-expect-error — bash rides the same arm: no -c, no execve of the target, no +x consulted
@@ -56,9 +56,9 @@ test("spawnArgs: a target is the script-file positional for EVERY interpreter, b
     assert.deepEqual(make("python").spawnArgs("python", "data", "t.py"), { cmd: "python3", args: ["t.py"], useShell: false, stdin: "data" });
 });
 
-// #500 the whole point end-to-end: an EDIT-created script has NO exec bit, and
+// An EDIT-created script has no exec bit, and
 // a file target still runs — the interpreter reads it; execve never happens.
-test("a file target runs WITHOUT +x — transient exec, mode never mutated (#500)", async () => {
+test("a file target runs without +x; transient exec never mutates its mode", async () => {
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), "execs-transient-"));
     try {
         const script = path.join(dir, "greet.sh");
@@ -75,7 +75,7 @@ test("a file target runs WITHOUT +x — transient exec, mode never mutated (#500
         assert.match(out.join(""), /hi plurnk/, "the non-executable script ran with the body as stdin");
         assert.equal(((await fs.stat(script)).mode & 0o111), 0, "the exec bit was never set — zero mutation");
     } finally {
-        await fs.rm(dir, { recursive: true, force: true }); // #551 — leave no temp dir behind
+        await fs.rm(dir, { recursive: true, force: true });
     }
 });
 

@@ -419,7 +419,7 @@ export default class Search extends BaseExecutor {
                 },
             );
         }
-        // Emit a model-consumable digest, not the raw upstream payload (#17): a
+        // {§web-search-retrieval} Emit a model-consumable digest, not the raw upstream payload: a
         // raw SearXNG result is ~10–20× its information content, and a wake that
         // folds the full response back into the prompt can exceed the budget
         // outright (a 68KB/query hard 413). Title + url + a snippet (optionally

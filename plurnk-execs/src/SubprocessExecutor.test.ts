@@ -44,24 +44,24 @@ test("effect: subprocess is always host (regardless of target)", () => {
     assert.equal(ex.effect("/work/dir"), "host");
 });
 
-test("cwd is the process working dir when there's no target (#15)", async () => {
+test("cwd is the process working dir when there is no target", async () => {
     const dir = realpathSync(tmpdir());
     const { result, out } = await exec("node", "process.stdout.write(process.cwd())", { cwd: dir });
     assert.equal(result.status, 200);
     assert.equal(realpathSync(out.stdout.trim()), dir);
 });
 
-test("a target runs as the program with the body as its stdin (#15)", async () => {
+test("a target runs as the program with the body as its stdin", async () => {
     // sh: target is the command line (sh -c "<target>"), body is its stdin.
     const { result, out } = await exec("sh", "hello from stdin", { target: "cat" });
     assert.equal(result.status, 200);
     assert.equal(out.stdout, "hello from stdin");
 });
 
-test("a stdin-reading program with NO stdin body gets /dev/null (EOF), never hangs (#519)", async () => {
+test("a stdin-reading program with no stdin body gets /dev/null (EOF) and never hangs", async () => {
     // `cat` with no argument reads fd0 to EOF — the exact shape of a bare
     // interpreter reached via the sh fallthrough (`EXEC[python3]` → `sh -c
-    // "python3 …"`). With the pre-#519 dangling pipe this blocked forever and
+    // "python3 …"`). With a dangling pipe this blocks forever and
     // parked the loop until a client cancel; /dev/null delivers immediate EOF, so
     // it exits 0 cleanly. If the fix regresses, this test HANGS to timeout — the
     // positive assertion is that it resolves at all, with a clean exit.
@@ -70,19 +70,19 @@ test("a stdin-reading program with NO stdin body gets /dev/null (EOF), never han
     assert.equal(out.stdout, "", "/dev/null yields no bytes");
 });
 
-test("env: a scoped env is handed to the child verbatim (#8)", async () => {
+test("env: a scoped env is handed to the child verbatim", async () => {
     const { result, out } = await exec("sh", 'echo "$FOO"', { env: { FOO: "scoped-value" } });
     assert.equal(result.status, 200);
     assert.equal(out.stdout.trim(), "scoped-value");
 });
 
-test("env: scoping hides host secrets; default inherits them (#8 back-compat)", async () => {
+test("env: scoping hides host secrets; default inherits them", async () => {
     process.env.PLURNK_TEST_SECRET = "leak-me";
     try {
         // Consumer-scoped env without the secret → the child cannot read it.
         const scoped = await exec("sh", 'echo "[${PLURNK_TEST_SECRET:-absent}]"', { env: { PATH: process.env.PATH } });
         assert.equal(scoped.out.stdout.trim(), "[absent]");
-        // No env override → host env inherited (the pre-#8 behavior is preserved).
+        // No env override means the host environment is inherited.
         const inherited = await exec("sh", 'echo "[${PLURNK_TEST_SECRET:-absent}]"');
         assert.equal(inherited.out.stdout.trim(), "[leak-me]");
     } finally {
@@ -156,14 +156,14 @@ test("probe: missing binary → unavailable with actionable detail", async () =>
     assert.match(String(detail), /not found on PATH/);
 });
 
-test("probe honors a pre-aborted signal → unavailable, no child spawned (#16)", async () => {
+test("probe honors a pre-aborted signal → unavailable, no child spawned", async () => {
     const ac = new AbortController();
     ac.abort();
     const { available } = await new BinExec("node").probe(ac.signal);
     assert.equal(available, false);
 });
 
-test("probe accepts a live signal and still reports version when not aborted (#16)", async () => {
+test("probe accepts a live signal and still reports version when not aborted", async () => {
     const { available, detail } = await new BinExec("node").probe(new AbortController().signal);
     assert.equal(available, true);
     assert.match(String(detail), /^v?\d+\./);
@@ -261,7 +261,7 @@ test("loop-end housekeeping marker: SIGHUP then SIGKILL after grace reaps a HUP-
     assert.equal(result.status, 499, "the housekeeping SIGKILL reaped the HUP-ignoring process");
 });
 
-test("stdin end() racing a fast-exiting child never escapes as EPIPE — outcome is the exit code (#23)", async () => {
+test("stdin end() racing a fast-exiting child never escapes as EPIPE; outcome is the exit code", async () => {
     // `head -c 0` exits without reading; a large stdin payload forces the write
     // to land after death often enough that an unguarded end() EPIPEs uncaught.
     // With the guard, every iteration settles on the child's own exit.
