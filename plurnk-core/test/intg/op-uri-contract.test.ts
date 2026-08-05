@@ -176,7 +176,7 @@ test("contract: a jsonpath READ returns the JSON resource with structural coordi
 });
 
 // CELL [FIND × file scheme glob] — the recursive tracked-file list. Confirm the explicit
-// file URI and bare project-relative form expose the same view. #287
+// file URI and bare project-relative form expose the same view ({§path-syntax}).
 test("contract: FIND(file:///**) and bare FIND(**) both list every tracked member", async () => {
     await withWorkspaceRoot(async (root, ctx) => {
         await writeFile(join(root, "a.md"), "alpha");
