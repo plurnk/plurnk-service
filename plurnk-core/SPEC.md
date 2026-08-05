@@ -1586,6 +1586,14 @@ default leaf missing from a service install is a broken install. A direct
 framework consumer may intentionally omit leaves and receives that framework's
 documented unavailable-capability behavior.
 
+§install-root-advisory-ownership **The composed service install owns
+third-party advisory detection.** Only that install resolves the default leaves
+and their combined transitive tree. Its audit reports advisories at the
+moderate floor without blocking by default; strict mode makes the same floor a
+gate. A chain rooted through an `@plurnk/*` dependency routes to that package's
+owner, while other direct roots remain service-owned. First-party package-pin
+freshness remains the owning family's concern.
+
 | Family    | Lean framework                     | Service-owned default leaves                                                                                                     |
 |-----------|------------------------------------|----------------------------------------------------------------------------------------------------------------------------------|
 | Schemes   | `@plurnk/plurnk-schemes`           | `@plurnk/plurnk-schemes-http`                                                                                                    |

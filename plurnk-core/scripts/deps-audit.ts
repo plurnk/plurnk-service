@@ -1,9 +1,5 @@
-// #267 — install-root npm-audit gate. plurnk-service alone resolves the COMBINED dependency tree
-// (framework + every -all + their transitives) and holds the lockfile where third-party advisories
-// land — the right altitude to catch cross-package transitive collisions a per-handler audit can't
-// see. When a chain roots in a @plurnk/* package the fix is upstream (bump the offending dep,
-// republish, re-pin -all); this names the owning package so the raw block routes there. Advisory by
-// default (#267: "not necessarily blocking"); --strict exits non-zero at the moderate floor.
+// Audit the composed dependency tree and route @plurnk/*-rooted chains to
+// their owning packages. {§install-root-advisory-ownership}
 
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
@@ -74,8 +70,8 @@ export const rootsFor = (vulns: Record<string, AuditVuln>, pkg: string, deps: Se
     return [...roots];
 };
 
-// One entry per advisory SOURCE (a `via` object carrying a GHSA url), routed to the direct deps at
-// its chain root. plurnkRoots = the @plurnk/* subset — the chains #267 routes upstream.
+// One entry per advisory source, routed to the direct dependencies at its
+// chain root. `plurnkRoots` is the @plurnk/* subset.
 export const routeAdvisories = (audit: AuditReport, deps: Set<string>): RoutedAdvisory[] => {
     const vulns = audit.vulnerabilities ?? {};
     const out: RoutedAdvisory[] = [];
@@ -98,7 +94,7 @@ export const routeAdvisories = (audit: AuditReport, deps: Set<string>): RoutedAd
 };
 
 const RANK: Record<string, number> = { info: 0, low: 1, moderate: 2, high: 3, critical: 4 };
-const LEVEL = "moderate"; // the #267 floor
+const LEVEL = "moderate";
 
 const main = (): number => {
     const strict = process.argv.includes("--strict");
@@ -118,7 +114,7 @@ const main = (): number => {
     const local = advisories.filter((a) => a.plurnkRoots.length === 0);
 
     if (upstream.length > 0) {
-        console.log("── ROUTE UPSTREAM — chain roots in a @plurnk/* package (fix at the source, per #267) ──");
+        console.log("── ROUTE UPSTREAM — chain roots in a @plurnk/* package (fix at the source) ──");
         for (const a of upstream) {
             console.log(`  [${a.severity}] ${a.package}  ${a.ghsa}`);
             console.log(`     → file on ${a.plurnkRoots.join(", ")} with the raw block below + this GHSA id`);
@@ -134,7 +130,7 @@ const main = (): number => {
     console.log("── raw npm audit ──");
     console.log(workerAudit([`--audit-level=${LEVEL}`]).trimEnd());
 
-    if (!strict) return 0; // advisory by default (#267)
+    if (!strict) return 0;
     return advisories.some((a) => (RANK[a.severity] ?? 0) >= RANK[LEVEL]) ? 1 : 0;
 };
 
