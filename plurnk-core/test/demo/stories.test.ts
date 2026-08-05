@@ -75,8 +75,7 @@ const runStory = async (opts: StoryOpts): Promise<StoryResult> => {
     }
     const { finalStatus, hitMaxTurns, turnIds, lastContent } = loop;
     console.error(`[story:${opts.label}] turns=${turnIds.length} finalStatus=${finalStatus} hitMaxTurns=${hitMaxTurns}`);
-    // {§fs-world-state} — every demo story doubles as a world-state audit: whatever the model
-    // did, the world it leaves behind is lawful (the run59 class self-names here, not in bench).
+    // {§fs-world-state} — every demo story also audits the world the model leaves behind.
     const wsViolations = await WorldState.check(s.db);
     assert.deepEqual(wsViolations, [], `[story:${opts.label}] the world stays lawful after the story`);
 
@@ -484,12 +483,8 @@ test("{§tools-loop-affinity}: ask mode answers a shell-tempting question in pro
 });
 
 
-// {§fs-world-state} Phase-4 (#546) — the edit-heavy belief test: the run59 shape on our own
-// terms. The model CREATES a file (O_EXCL + git auto-add admission), revises its OWN creation
-// (the address round-trip: the name it minted must resolve back), and reports it — then the
-// world is audited and the created file's identity is asserted to be exactly ONE row (the
-// 227× fragmentation class, pinned at the demo rung).
-test("story: create a decisions doc, then revise it — the world stays lawful (#546)", { timeout: TIMEOUT * 2 }, async () => {
+// {§fs-world-state} — create, revise, and reread one model-authored file across loops.
+test("{§fs-world-state}: create and revise a decisions document without fragmenting identity", { timeout: TIMEOUT * 2 }, async () => {
     const chain = await runStoryChain({
         label: "world-state-edit",
         prompts: [
@@ -508,8 +503,8 @@ test("story: create a decisions doc, then revise it — the world stays lawful (
         assert.doesNotMatch(onDisk, /sqlite/i, "the revised decision is gone");
         assert.match(chain.steps[2].lastContent, /express/i, "the model reports its own work");
         assert.match(chain.steps[2].lastContent, /postgres/i);
-        // the identity pin: one file, one row — under every spelling the model used across three loops.
+        // {§entry-identity-no-null}: one file remains one row across all three loops.
         const row = await chain.db.test_count_rows_for_pathname.get<{ n: number }>({ pathname: "docs/decisions.md" });
-        assert.equal(row?.n, 1, "the created file is exactly ONE row — the 227× class stays dead at the demo rung");
+        assert.equal(row?.n, 1, "the created file has exactly one durable identity");
     } finally { await chain.cleanup(); }
 });

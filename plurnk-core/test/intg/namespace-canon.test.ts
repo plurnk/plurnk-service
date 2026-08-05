@@ -1,7 +1,5 @@
-// The address-canon acceptance set (#546 iteration two; grammar's #545 pin matrix 1–3).
-// {§fs-answer-in-canon} — every engine-authored address renders the one wire-canon form
-// (bare git-pathspec); the log-COLUMN half of the law rides the Dispatcher chunk of the
-// same epic. {§fs-canonical-name}'s storage half is asserted via the fixpoint on rows.
+// {§fs-canonical-name} {§fs-answer-in-canon} — accepted spellings converge on one
+// stored git pathspec; engine-authored addresses render that same canonical form.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp, rm, writeFile, mkdir } from "node:fs/promises";
@@ -33,7 +31,7 @@ const setup = async () => {
     return { root, db, workspaceId, ctx };
 };
 
-test("pin 1+2: every spelling of one member resolves to the ONE row — bare, slashed, dotted, out-and-back-in", async () => {
+test("{§fs-canonical-name}: every spelling of one member resolves to the same row", async () => {
     const { root, db, workspaceId, ctx } = await setup();
     try {
         await mkdir(join(root, "src"), { recursive: true });
@@ -52,7 +50,7 @@ test("pin 1+2: every spelling of one member resolves to the ONE row — bare, sl
     } finally { await db.close(); await rm(root, { recursive: true, force: true }); }
 });
 
-test("pin 3: EDIT via a slashed spelling answers in bare canon and mints NO shadow row", async () => {
+test("{§fs-answer-in-canon}: EDIT through an alias answers canonically without minting a shadow row", async () => {
     const { root, db, workspaceId, ctx } = await setup();
     try {
         await writeFile(join(root, "note.md"), "original\n");
@@ -67,7 +65,7 @@ test("pin 3: EDIT via a slashed spelling answers in bare canon and mints NO shad
         assert.match((r as { body?: string }).body ?? "", /^Index: note\.md/, "the diff header speaks canon");
 
         const after = await db.test_entries_count_all.get<{ n: number }>({});
-        assert.equal(after?.n, before?.n, "no shadow row minted via the alternate spelling (the id-42854 pin)");
+        assert.equal(after?.n, before?.n, "no shadow row is minted via the alternate spelling");
     } finally { await db.close(); await rm(root, { recursive: true, force: true }); }
 });
 
@@ -147,7 +145,7 @@ test("the six-row write matrix — grantor-keyed mounts, O_EXCL create, the blin
     } finally { await db.close(); await rm(root, { recursive: true, force: true }); await rm(outside, { recursive: true, force: true }); }
 });
 
-test("pins 6+8: facts distinguish wrong-address / occupancy / empty-survey by the strings alone", async () => {
+test("{§fs-errno}: facts distinguish a wrong address, occupancy, and an empty survey", async () => {
     const { root, db, workspaceId, ctx } = await setup();
     try {
         await writeFile(join(root, "real.md"), "content\n");
@@ -159,11 +157,11 @@ test("pins 6+8: facts distinguish wrong-address / occupancy / empty-survey by th
         assert.equal(miss.status, 404);
         assert.equal(miss.problem?.detail, "No entry exists at no/such.md.", "the READ miss states its fact — resolved form, wire canon");
 
-        // The green-lie pin: FIND over an unresolvable EXACT path is ENOENT with its fact, never 200-empty.
+        // Exact-path FIND distinguishes absence from a successful empty survey.
         const findMissStmt = { op: "FIND", suffix: "", signal: null, lineMarker: null, position: { line: 1, column: 1 },
             target: { kind: "local", raw: "no/such.md" }, body: null } as never;
         const findMiss = await file.find(findMissStmt, ctx);
-        assert.equal(findMiss.status, 404, "FIND over nothing never certifies empty (run59's launcher)");
+        assert.equal(findMiss.status, 404, "FIND over an absent exact path cannot certify an empty set");
         assert.equal(findMiss.problem?.detail, "No entry exists at no/such.md.");
 
         // A FOLDER scope with zero matches stays the blessed orienting empty survey.
