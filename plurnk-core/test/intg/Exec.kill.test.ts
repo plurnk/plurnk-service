@@ -78,7 +78,7 @@ test("Engine.dispatch: KILL aborts a running (backgrounded) exec — 200, spawn 
     } finally { await db.close(); }
 });
 
-test("Engine.dispatch: KILL on an unknown exec coordinate → 404 (#203 matrix)", async () => {
+test("{§stream-control}: KILL on an unknown exec coordinate returns 404", async () => {
     const db = await openMigrated();
     try {
         const registry = new SchemeRegistry();
@@ -98,7 +98,7 @@ test("Engine.dispatch: KILL on an unknown exec coordinate → 404 (#203 matrix)"
     } finally { await db.close(); }
 });
 
-test("a stream KILL error answers in the model's runtime-tag scheme, never the internal exec:// (#553)", async () => {
+test("{§stream-control}: a KILL error answers in the model's runtime-tag scheme, never the internal exec://", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `exec-kill-canon-${crypto.randomUUID()}`);
