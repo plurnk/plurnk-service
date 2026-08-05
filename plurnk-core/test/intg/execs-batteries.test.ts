@@ -10,8 +10,8 @@
 // REQUIRES every available self-contained tag to be covered, REPORTS the resource-gated ones
 // (search is covered in the live tier; wasm needs a compiled module — its
 // compile+run path is covered inline via `wat`), and FAILS on a census tag that is not even
-// DISCOVERED (#471 — a deleted default leaf must read as composition drift, never as "unavailable
-// in this env"): never a silent omission reading as coverage.
+// discovered ({§exec-registry-resolves}), so a deleted default leaf cannot masquerade as an
+// environment-specific probe failure.
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -126,9 +126,8 @@ test("execs batteries: coverage census — every self-contained default-install 
     const reg = await testExecutors();
     const available = new Set(reg.availableRuntimes());
     const covered = new Set(CASES.map((c) => c.tag).concat("sh", "git")); // sh: Exec.scheme.test.ts; git: the init→status test below
-    // #471 — default-composition drift fails LOUDLY: every census tag must at least be DISCOVERED (the registry
-    // retains probe-failed entries as available:false; a DELETED package has no entry at all). The
-    // gh purge sailed through the old census as "unavailable in this env" — this is the hole, closed.
+    // {§exec-registry-resolves}: the registry retains probe-failed entries as unavailable; a missing
+    // entry means the default composition deleted or renamed a package, not that this host lacks it.
     const undiscovered = [...SELF_CONTAINED, ...RESOURCE_GATED].filter((t) => reg.entry(t) === undefined);
     assert.deepEqual(undiscovered, [], `census tags missing from the bundle entirely (deleted/renamed package?): ${undiscovered.join(", ")}`);
     const exercised = SELF_CONTAINED.filter((t) => available.has(t) && covered.has(t));
