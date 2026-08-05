@@ -1,4 +1,5 @@
-// #290 — Engine.warmWorkspaceDerivations runs the derivation pump at workspace scope (no loop), so a
+// {§derivation-exhaustive}, {§methods-workspace-create} — Engine.warmWorkspaceDerivations runs
+// the derivation pump at workspace scope (no loop), so a
 // freshly-created workspace's corpus warms during the client's startup window instead of freezing the
 // first loop.run. workspace.create fires it fire-and-forget; here we drive the seam directly and assert
 // it (1) derives the deep channels (FTS proves the pump ran with no loopId) and (2) live-fans-out the
@@ -38,7 +39,7 @@ const fts = async (db: Db, workspaceId: number, query: string): Promise<string[]
     return rows.map((r) => r.pathname);
 };
 
-test("[#290] Engine.warmWorkspaceDerivations derives deep channels at workspace scope (no loop) and fans out embed_progress", async () => {
+test("{§derivation-exhaustive}: workspace warming derives deep channels without a loop and fans out progress", async () => {
     const db = await openMigrated();
     try {
         const notices: Array<{ workspaceId: number; loopId: number; notice: Notice }> = [];
