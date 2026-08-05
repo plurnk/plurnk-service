@@ -1,4 +1,4 @@
-// #194 / {§connection-lifecycle} / {§machine-processes} — the client writes to its own worker, end-to-end.
+// {§connection-lifecycle} / {§actor-boundary-isolation} — the client writes to its own worker, end-to-end.
 //
 // A client `op.*` lands in the connection's client worker; `loop.run` runs the model
 // in its own model worker; the packet renders the model worker, so no client-origin row ever
@@ -6,7 +6,7 @@
 // proves the server wiring (op.* → client worker, loop.run → model worker) that the
 // engine-level {§actor-boundary-isolation} guarantee rests on.
 //
-// The converse direction (#214): a conversation client READS the model worker by id —
+// {§machine-processes-model-worker-readable}: a conversation client READS the model worker by id —
 // loop.run returns its modelWorkerId and log.read({ workerId }) targets it, ownership-gated.
 
 import test from "node:test";
@@ -15,7 +15,7 @@ import { Mock } from "@plurnk/plurnk-providers";
 import { rpcCall, rpcProblem, connect, withDaemon, makeMockResponse, runLoopToTerminal } from "./_rpc.ts";
 import { insertWorkspace, insertWorker } from "./_helpers.ts";
 
-test("a client op.* never enters the model's packet — the client writes to its own worker (#194)", async () => {
+test("a client op.* never enters the model's packet — the client writes to its own worker", async () => {
     // The model just terminates; we only care where the client op landed.
     const mock = new Mock({ contextWindow: 8192, responses: [makeMockResponse("<<SEND[200]:done:SEND", 50)] });
     await withDaemon(mock, async (db, _daemon, addr) => {
@@ -70,7 +70,7 @@ test("a connection reads the model worker by id — loop.run returns modelWorker
             const ownEntries = (own.result as { entries: Array<{ origin: string; op: string }> }).entries;
             assert.ok(ownEntries.some((e) => e.op === "EDIT" && e.origin === "client"), "default log.read reads the connection's own worker");
 
-            // log.read({ workerId }) → the MODEL worker's log: readable by id (unaddressable before #214),
+            // log.read({ workerId }) → the MODEL worker's log: readable by id,
             // and a DISTINCT worker — the client's op is absent from it.
             const conv = await rpcCall(ws, 5, "log.read", { workerId: modelWorkerId });
             const convEntries = (conv.result as { entries: Array<{ origin: string; op: string }> }).entries;
