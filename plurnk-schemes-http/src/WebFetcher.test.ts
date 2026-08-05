@@ -41,8 +41,9 @@ const resp = (body: string | Uint8Array<ArrayBuffer> | null, status: number, hea
 
 test("live public textual URL → { body, mimetype }", async () => {
     await withFetch((async () => resp('{"a":1}', 200, { "content-type": "application/json" })) as typeof fetch, async () => {
-        const fetched = await new WebFetcher().fetch(PUB, { projection: PROJECTION });
-        assert.equal(fetched?.body, '{"a":1}');
+        const fetched = await new WebFetcher().fetch(PUB);
+        const materialized = fetched === null ? null : await WebFetcher.materialize(fetched, PROJECTION);
+        assert.equal(materialized?.body.content, '{"a":1}');
         assert.equal(fetched?.mimetype, "application/json");
         assert.match(fetched?.header ?? "", /^HTTP 200 /);
         assert.match(fetched?.header ?? "", /^x-plurnk-request-method: GET$/m);
@@ -52,8 +53,9 @@ test("live public textual URL → { body, mimetype }", async () => {
 
 test("the shared textual taxonomy accepts application/yaml", async () => {
     await withFetch((async () => resp("name: plurnk", 200, { "content-type": "application/yaml" })) as typeof fetch, async () => {
-        const fetched = await new WebFetcher().fetch(PUB, { projection: PROJECTION });
-        assert.equal(fetched?.body, "name: plurnk");
+        const fetched = await new WebFetcher().fetch(PUB);
+        const materialized = fetched === null ? null : await WebFetcher.materialize(fetched, PROJECTION);
+        assert.equal(materialized?.body.content, "name: plurnk");
         assert.equal(fetched?.mimetype, "application/yaml");
     });
 });
@@ -63,8 +65,9 @@ test("text acquisition uses Fetch UTF-8 decoding and retains charset as metadata
     await withFetch((async () => resp(windows1252, 200, {
         "content-type": "text/plain; charset=windows-1252",
     })) as typeof fetch, async () => {
-        const fetched = await new WebFetcher().fetch(PUB, { projection: PROJECTION });
-        assert.equal(fetched?.body, "caf�");
+        const fetched = await new WebFetcher().fetch(PUB);
+        const materialized = fetched === null ? null : await WebFetcher.materialize(fetched, PROJECTION);
+        assert.equal(materialized?.body.content, "caf�");
         assert.equal(fetched?.mimetype, "text/plain");
         assert.match(fetched?.header ?? "", /^content-type: text\/plain; charset=windows-1252$/m);
     });
@@ -74,8 +77,9 @@ test("an unsupported charset does not invent a non-Fetch decoder", async () => {
     await withFetch((async () => resp("Unicode stays Unicode", 200, {
         "content-type": "text/plain; charset=not-a-real-encoding",
     })) as typeof fetch, async () => {
-        const fetched = await new WebFetcher().fetch(PUB, { projection: PROJECTION });
-        assert.equal(fetched?.body, "Unicode stays Unicode");
+        const fetched = await new WebFetcher().fetch(PUB);
+        const materialized = fetched === null ? null : await WebFetcher.materialize(fetched, PROJECTION);
+        assert.equal(materialized?.body.content, "Unicode stays Unicode");
         assert.equal(fetched?.mimetype, "text/plain");
     });
 });
@@ -90,7 +94,7 @@ test("GitHub blob acquisition uses one source target for byte fetch and render",
         seen.push(String(url));
         return resp("<html></html>", 200, { "content-type": "text/html" });
     }) as typeof fetch, async () => {
-        const fetched = await new WebFetcher(browser).fetch(blob, { projection: PROJECTION });
+        const fetched = await new WebFetcher(browser).fetch(blob);
         await fetched?.render?.();
     });
     assert.deepEqual(seen, [raw]);
@@ -100,7 +104,7 @@ test("GitHub blob acquisition uses one source target for byte fetch and render",
 test("HTML → guarded byte response first; ordinary browser render is a lazy fallback", async () => {
     const b = fakeBrowser("<html><body>rendered</body></html>");
     await withFetch((async () => resp("<html></html>", 200, { "content-type": "text/html; charset=utf-8" })) as typeof fetch, async () => {
-        const fetched = await new WebFetcher(b).fetch(PUB, { projection: PROJECTION });
+        const fetched = await new WebFetcher(b).fetch(PUB);
         assert.equal(fetched?.body, "<html></html>");
         assert.equal(fetched?.mimetype, "text/html");
         assert.equal(b.calls.length, 0, "a valid byte response does not launch the browser eagerly");
@@ -181,7 +185,7 @@ test("caller cancellation spans both byte probe and lazy render", async () => {
     const b = fakeBrowser("<html><body>rendered</body></html>");
     const caller = new AbortController();
     await withFetch((async () => resp("<html></html>", 200, { "content-type": "text/html" })) as typeof fetch, async () => {
-        const fetched = await new WebFetcher(b).fetch(PUB, { signal: caller.signal, projection: PROJECTION });
+        const fetched = await new WebFetcher(b).fetch(PUB, { signal: caller.signal });
         await fetched?.render?.();
     });
     assert.equal(b.calls[0].signal, caller.signal);
@@ -200,7 +204,7 @@ test("caller cancellation during the byte probe rejects with the exact caller re
         throw new Error("unreachable after abort");
     });
     await assert.rejects(
-        new WebFetcher().fetch(PUB, { signal: caller.signal, projection: PROJECTION }),
+        new WebFetcher().fetch(PUB, { signal: caller.signal }),
         (error: unknown) => error === reason,
     );
 });
@@ -211,7 +215,7 @@ test("a pre-aborted caller rejects before the automatic URL check", async (t) =>
     caller.abort(reason);
     const guarded = t.mock.method(Guard, "fetch");
     await assert.rejects(
-        new WebFetcher().fetch(PUB, { signal: caller.signal, projection: PROJECTION }),
+        new WebFetcher().fetch(PUB, { signal: caller.signal }),
         (error: unknown) => error === reason,
     );
     assert.equal(guarded.mock.callCount(), 0);
@@ -235,7 +239,7 @@ test("the independent byte-probe timeout remains an ordinary dead result", async
         else signal.addEventListener("abort", rejectTimedOut, { once: true });
     }));
     try {
-        assert.equal(await new WebFetcher().fetch(PUB, { signal: caller.signal, projection: PROJECTION }), null);
+        assert.equal(await new WebFetcher().fetch(PUB, { signal: caller.signal }), null);
     } finally {
         if (prior === undefined) delete process.env.PLURNK_SCHEMES_HTTP_FETCH_TIMEOUT;
         else process.env.PLURNK_SCHEMES_HTTP_FETCH_TIMEOUT = prior;
@@ -257,14 +261,14 @@ test("close releases the owned renderer", async () => {
 test("automatic URL check refusal → null, and never fetches", async () => {
     let called = false;
     await withFetch((async () => { called = true; return resp("x", 200); }) as typeof fetch, async () => {
-        assert.equal(await new WebFetcher().fetch("http://169.254.169.254/latest/meta-data/", { projection: PROJECTION }), null);
+        assert.equal(await new WebFetcher().fetch("http://169.254.169.254/latest/meta-data/"), null);
     });
     assert.equal(called, false);
 });
 
 test("non-2xx → null", async () => {
     await withFetch((async () => resp("nope", 404, { "content-type": "text/html" })) as typeof fetch, async () => {
-        assert.equal(await new WebFetcher(fakeBrowser("x")).fetch(PUB, { projection: PROJECTION }), null);
+        assert.equal(await new WebFetcher(fakeBrowser("x")).fetch(PUB), null);
     });
 });
 
@@ -285,9 +289,9 @@ test("handler-declared binary bytes reach one readable projection without a dura
     await withFetch((async () => resp(Uint8Array.of(1, 2, 3), 200, {
         "content-type": "text/x-binary",
     })) as typeof fetch, async () => {
-        const fetched = await new WebFetcher().fetch(PUB, { projection });
+        const fetched = await new WebFetcher().fetch(PUB);
         assert.ok(fetched !== null);
-        assert.equal(typeof fetched.body, "string", false, "registry-declared binary input remains bytes");
+        assert.notEqual(typeof fetched.body, "string", "registry-declared binary input remains bytes");
         assert.match(fetched.header ?? "", /^content-type: text\/x-binary$/m);
         assert.deepEqual(await WebFetcher.materialize(fetched, projection), {
             body: { content: "projected:1,2,3", mimetype: "text/markdown" },
@@ -303,22 +307,24 @@ test("an unparseable Content-Type reaches binary projection and is pruned when a
     await withFetch((async () => resp("not trustworthy", 200, {
         "content-type": "text/plain garbage",
     })) as typeof fetch, async () => {
-        const fetched = await new WebFetcher().fetch(PUB, { projection: PROJECTION });
+        const fetched = await new WebFetcher().fetch(PUB);
         assert.ok(fetched !== null);
-        assert.equal(typeof fetched.body, "string", false);
+        assert.notEqual(typeof fetched.body, "string");
         assert.equal(await WebFetcher.materialize(fetched, PROJECTION), null);
     });
 });
 
 test("empty textual body → null", async () => {
     await withFetch((async () => resp("", 200, { "content-type": "text/plain" })) as typeof fetch, async () => {
-        assert.equal(await new WebFetcher().fetch(PUB, { projection: PROJECTION }), null);
+        const fetched = await new WebFetcher().fetch(PUB);
+        assert.ok(fetched !== null);
+        assert.equal(await WebFetcher.materialize(fetched, PROJECTION), null);
     });
 });
 
 test("render yielding empty DOM → null", async () => {
     await withFetch((async () => resp("<html></html>", 200, { "content-type": "text/html" })) as typeof fetch, async () => {
-        const fetched = await new WebFetcher(fakeBrowser("")).fetch(PUB, { projection: PROJECTION });
+        const fetched = await new WebFetcher(fakeBrowser("")).fetch(PUB);
         assert.equal(await fetched?.render?.(), null);
     });
 });
@@ -331,7 +337,7 @@ test("lazy rendering preserves a browser exception instead of converting it to a
         },
     };
     await withFetch((async () => resp("<html></html>", 200, { "content-type": "text/html" })) as typeof fetch, async () => {
-        const fetched = await new WebFetcher(browser).fetch(PUB, { projection: PROJECTION });
+        const fetched = await new WebFetcher(browser).fetch(PUB);
         assert.ok(fetched?.render !== undefined);
         await assert.rejects(fetched.render(), (err: unknown) => err === cause);
     });
@@ -339,6 +345,6 @@ test("lazy rendering preserves a browser exception instead of converting it to a
 
 test("network error → null (unreachable is dead, not a throw)", async () => {
     await withFetch((async () => { throw new Error("ECONNREFUSED"); }) as typeof fetch, async () => {
-        assert.equal(await new WebFetcher().fetch(PUB, { projection: PROJECTION }), null);
+        assert.equal(await new WebFetcher().fetch(PUB), null);
     });
 });

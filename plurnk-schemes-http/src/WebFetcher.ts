@@ -3,7 +3,11 @@
 // readable projection is absent. Top-level deadness is the `null` value; caller
 // cancellation rejects with that signal's exact reason.
 
-import { MimetypeClassifier, type ProjectionCaps } from "@plurnk/plurnk-schemes";
+import {
+    MimetypeClassifier,
+    type ProjectedText,
+    type ProjectionCaps,
+} from "@plurnk/plurnk-schemes";
 import Browser, { BROWSER_UA, requireNumEnv, type RenderResult } from "./Browser.ts";
 import Guard from "./Guard.ts";
 import { responseMimetype } from "./ContentType.ts";
@@ -27,8 +31,14 @@ interface Renderer {
     close?(): Promise<void>;
 }
 
+export interface WebResponseBody {
+    readonly chunks: AsyncIterable<Uint8Array>;
+    text(): Promise<string>;
+    cancel(): Promise<void>;
+}
+
 export interface WebFetchResult {
-    body: string;
+    body: string | WebResponseBody;
     mimetype: string;
     // Canonical response metadata channel, including the materialization stamp
     // direct Http READ uses for TTL/conditional revalidation.
@@ -43,6 +53,7 @@ export interface WebFetchResult {
 export interface WebMaterializedResult {
     readonly body: { content: string; mimetype: string };
     readonly html?: { content: string; mimetype: string };
+    readonly projection?: { sourceMimetype: string; identity: string };
 }
 
 // {§html-materialization} Preserve the failing stage and original cause while
@@ -75,6 +86,30 @@ export default class WebFetcher {
         fetched: Pick<WebFetchResult, "body" | "mimetype" | "render">,
         projection: ProjectionCaps,
     ): Promise<WebMaterializedResult | null> {
+        if (typeof fetched.body !== "string") {
+            let binary: boolean;
+            try {
+                binary = await projection.isBinary(fetched.mimetype);
+            } catch (cause) {
+                throw new WebMaterializationError("projection", fetched.mimetype, cause);
+            }
+            if (binary) {
+                const projected = await WebFetcher.projectBytes(
+                    fetched.body.chunks,
+                    fetched.mimetype,
+                    projection,
+                );
+                if (projected === null) {
+                    await fetched.body.cancel();
+                    return null;
+                }
+                return WebFetcher.#materialized(projected);
+            }
+            const content = await fetched.body.text();
+            return content.length === 0
+                ? null
+                : { body: { content, mimetype: fetched.mimetype } };
+        }
         if (!MimetypeClassifier.isHtml(fetched.mimetype)) {
             return { body: { content: fetched.body, mimetype: fetched.mimetype } };
         }
@@ -92,18 +127,44 @@ export default class WebFetcher {
                 projected = await WebFetcher.#project(html, projection);
             }
         }
-        return projected === null ? null : { body: projected, html };
+        return projected === null ? null : WebFetcher.#materialized(projected, html);
+    }
+
+    static async projectBytes(
+        chunks: AsyncIterable<Uint8Array>,
+        mimetype: string,
+        projection: ProjectionCaps,
+    ): Promise<ProjectedText | null> {
+        try {
+            return await projection.readableBytes(chunks, mimetype);
+        } catch (cause) {
+            throw new WebMaterializationError("projection", mimetype, cause);
+        }
     }
 
     static async #project(
         html: { content: string; mimetype: string },
         projection: ProjectionCaps,
-    ): Promise<{ content: string; mimetype: string } | null> {
+    ): Promise<ProjectedText | null> {
         try {
             return await projection.readable(html.content, html.mimetype);
         } catch (cause) {
             throw new WebMaterializationError("projection", html.mimetype, cause);
         }
+    }
+
+    static #materialized(
+        projected: ProjectedText,
+        html?: { content: string; mimetype: string },
+    ): WebMaterializedResult {
+        return {
+            body: { content: projected.content, mimetype: projected.mimetype },
+            ...(html === undefined ? {} : { html }),
+            projection: {
+                sourceMimetype: projected.sourceMimetype,
+                identity: projected.projectionIdentity,
+            },
+        };
     }
 
     async close(): Promise<void> {
@@ -134,8 +195,6 @@ export default class WebFetcher {
         if (!response.ok) { await response.body?.cancel(); return null; } // non-2xx dead
         const header = WebFetcher.#header(response);
 
-        // {§http-text-decoding} Every byte-response text conversion below uses
-        // Response.text(), the Fetch UTF-8 contract.
         // Preserve server HTML as primary. Eager rendering can mutate already
         // useful content; the consumer alone decides whether projection is absent.
         if (MimetypeClassifier.isHtml(mimetype)) {
@@ -158,11 +217,20 @@ export default class WebFetcher {
             };
         }
 
-        // {§prefetch}/{§mimetype-classifier} Query preparation admits only the
-        // shared textual family; binary responses have no string entry value.
-        if (MimetypeClassifier.isBinary(mimetype)) { await response.body?.cancel(); return null; }
-        const body = await response.text();
-        return body.length > 0 ? { body, mimetype, header } : null; // empty is dead
+        // Preserve one unconsumed response body until the consumer's configured
+        // registry chooses Fetch UTF-8 text decoding or bounded byte projection.
+        // This keeps handler-declared binary text/* types from being decoded first.
+        if (response.body === null) return null;
+        const responseBody = response.body;
+        return {
+            body: {
+                chunks: responseBody as AsyncIterable<Uint8Array>,
+                text: () => response.text(),
+                cancel: () => responseBody.cancel(),
+            },
+            mimetype,
+            header,
+        };
     }
 
     static #header(response: Response): string {

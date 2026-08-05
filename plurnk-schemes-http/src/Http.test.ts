@@ -7,6 +7,7 @@
 import test, { mock } from "node:test";
 import { strict as assert } from "node:assert";
 import {
+    MimetypeClassifier,
     Results,
     type EntryStorageReadResult,
     type EntryStorageWriteResult,
@@ -53,6 +54,22 @@ const failingBrowser = (cause: Error) => ({
     async render(): Promise<RenderResult> {
         throw cause;
     },
+});
+
+const projectionCaps = (overrides: Partial<ProjectionCaps> = {}): ProjectionCaps => ({
+    async readable(content, mimetype) {
+        const text = content.replace(/<[^>]+>/g, "").trim();
+        return text.length > 0 ? {
+            content: text,
+            mimetype: "text/markdown",
+            sourceMimetype: mimetype,
+            projectionIdentity: `test:${mimetype}`,
+        } : null;
+    },
+    async readableBytes() { return null; },
+    async identity(mimetype) { return `test:${mimetype}`; },
+    async isBinary(mimetype) { return MimetypeClassifier.isBinary(mimetype); },
+    ...overrides,
 });
 
 // ── conformant ctx + recorder ─────────────────────────────────────────────
@@ -125,12 +142,7 @@ const makeCtx = (priorEntry: StoredEntryData | null = null, overrides: CtxOverri
         async list() { return { status: 200, tags: [] }; },
     };
     const notify: NotifyCaps = { streamEvent() {} };
-    const projection: ProjectionCaps = overrides.projection ?? {
-        async readable(content) {
-            const text = content.replace(/<[^>]+>/g, "").trim();
-            return text.length > 0 ? { content: text, mimetype: "text/markdown" } : null;
-        },
-    };
+    const projection = overrides.projection ?? projectionCaps();
     let current: StreamSubscription | null = null;
     const notifyChunk: StreamSubscription["notifyChunk"] = async (channel, chunk, mimetype) => {
         chunks.push({ channel, chunk, mimetype });
@@ -279,11 +291,16 @@ test("prepareFind materializes an exact URL through the checked readable path", 
 });
 
 test("prepareFind treats XHTML and a present empty projection as successful materialization", async () => {
-    const projection: ProjectionCaps = {
-        async readable() {
-            return { content: "", mimetype: "text/markdown" };
+    const projection = projectionCaps({
+        async readable(_content, mimetype) {
+            return {
+                content: "",
+                mimetype: "text/markdown",
+                sourceMimetype: mimetype,
+                projectionIdentity: `test:${mimetype}`,
+            };
         },
-    };
+    });
     const { ctx, inspect } = makeCtx(null, { projection });
     const browser = fakeBrowser("<p>wrong fallback</p>");
     await withFetch(
@@ -305,7 +322,7 @@ test("prepareFind treats XHTML and a present empty projection as successful mate
 });
 
 test("prepareFind reports an absent final HTML projection as 422", async () => {
-    const projection: ProjectionCaps = { async readable() { return null; } };
+    const projection = projectionCaps({ async readable() { return null; } });
     const { ctx, inspect } = makeCtx(null, { projection });
     const browser = fakeBrowser("<html><body><div></div></body></html>");
     await withFetch(
@@ -325,7 +342,7 @@ test("prepareFind reports an absent final HTML projection as 422", async () => {
 
 test("prepareFind reports a projection exception as 500 and logs its cause", async (t) => {
     const cause = new Error("reader implementation failed");
-    const projection: ProjectionCaps = { async readable() { throw cause; } };
+    const projection = projectionCaps({ async readable() { throw cause; } });
     const { ctx, inspect } = makeCtx(null, { projection });
     const diagnostics: unknown[][] = [];
     t.mock.method(console, "error", (...args: unknown[]) => { diagnostics.push(args); });
@@ -349,7 +366,7 @@ test("prepareFind reports a projection exception as 500 and logs its cause", asy
 
 test("prepareFind reports a lazy-render exception as a retryable 502", async (t) => {
     const cause = new Error("browser navigation failed");
-    const projection: ProjectionCaps = { async readable() { return null; } };
+    const projection = projectionCaps({ async readable() { return null; } });
     const { ctx, inspect } = makeCtx(null, { projection });
     const diagnostics: unknown[][] = [];
     t.mock.method(console, "error", (...args: unknown[]) => { diagnostics.push(args); });
@@ -373,7 +390,7 @@ test("prepareFind reports a lazy-render exception as a retryable 502", async (t)
 test("prepareFind keeps caller cancellation distinct from lazy-render failure", async (t) => {
     const controller = new AbortController();
     const cause = new Error("render aborted");
-    const projection: ProjectionCaps = { async readable() { return null; } };
+    const projection = projectionCaps({ async readable() { return null; } });
     const browser = {
         async render(): Promise<RenderResult> {
             controller.abort();
@@ -1036,11 +1053,16 @@ test("READ: rendered HTML archives the DOM while body carries the model-facing p
 });
 
 test("READ: a present empty rendered projection succeeds and retains its HTML evidence", async () => {
-    const projection: ProjectionCaps = {
-        async readable() {
-            return { content: "", mimetype: "text/markdown" };
+    const projection = projectionCaps({
+        async readable(_content, mimetype) {
+            return {
+                content: "",
+                mimetype: "text/markdown",
+                sourceMimetype: mimetype,
+                projectionIdentity: `test:${mimetype}`,
+            };
         },
-    };
+    });
     const { ctx, inspect } = makeCtx(null, { projection });
     const html = "<html><body></body></html>";
     const browser = fakeBrowser(html);
@@ -1064,7 +1086,7 @@ test("READ: a present empty rendered projection succeeds and retains its HTML ev
 });
 
 test("READ: an absent rendered projection returns 422 and retains its HTML evidence", async () => {
-    const projection: ProjectionCaps = { async readable() { return null; } };
+    const projection = projectionCaps({ async readable() { return null; } });
     const { ctx, inspect } = makeCtx(null, { projection });
     const html = "<html><body><div></div></body></html>";
     const browser = fakeBrowser(html);
@@ -1088,7 +1110,7 @@ test("READ: an absent rendered projection returns 422 and retains its HTML evide
 
 test("READ: a projection exception returns 500, retains evidence, and logs its cause", async (t) => {
     const cause = new Error("reader implementation failed");
-    const projection: ProjectionCaps = { async readable() { throw cause; } };
+    const projection = projectionCaps({ async readable() { throw cause; } });
     const { ctx, inspect } = makeCtx(null, { projection });
     const html = "<html><body>page</body></html>";
     const diagnostics: unknown[][] = [];
