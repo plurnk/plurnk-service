@@ -419,11 +419,8 @@ test("PLURNK_SERVICE_GIT_ALLOWED=0 denies all git membership, un-re-enableable",
     });
 });
 
-test("NUL-headed content is a binary marker regardless of the extension's lying label", async () => {
-    // #320 — extension detection fell through to the markdown default for .wasm and a
-    // 3.3MB blob entered the corpus as prose. The sniff reads bytes, not labels: a .md
-    // file whose head carries NUL materializes as the empty octet-stream marker (READ-415
-    // class), never as text — no FTS row, no tokens, no embedding.
+test("{§membership-binary-sniff}: NUL-headed content is binary regardless of the extension label", async () => {
+    // Byte evidence overrides the label before materialization and derivation.
     await withGitWorkspace(async (root, ctx, db) => {
         const evil = "blob.md"; // the most trusted-looking extension
         await writeFile(join(root, evil), Buffer.concat([Buffer.from("MZ"), Buffer.alloc(64, 0), Buffer.from("binary tail")]));
