@@ -81,7 +81,7 @@ test("no manifest.json entry — the catalog is FIND-served; preview-off foists 
     }
 });
 
-// #231 — a workspace's client-chosen filesItems REPLACES the env default outright,
+// {§operator-config-workspace-files-items} — workspace filesItems replaces the env default outright,
 // both directions: it can switch the preview off when env says on, and on when off.
 test("workspace.create settings.filesItems replaces the env default at turn 0", async () => {
     const prev = process.env.PLURNK_SERVICE_FILES_ITEMS;
@@ -116,8 +116,8 @@ test("workspace.create settings.filesItems replaces the env default at turn 0", 
     }
 });
 
-// #231 — the client surface is narrow + validated; malformed settings fail hard.
-test("workspace.create rejects malformed settings — fail hard, no silent accept (#231)", async () => {
+// {§operator-config-workspace-files-items} — the client surface is narrow and validated.
+test("workspace.create rejects malformed settings — fail hard, no silent accept", async () => {
     await withDaemon(mock(), async (_db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
@@ -134,11 +134,11 @@ test("workspace.create rejects malformed settings — fail hard, no silent accep
     });
 });
 
-// #269 — turn-0 once-per-worker foists (manifest preview, AGENTS, operator docs) fire on the worker's first
+// {§actor-boundary-catalog-preview} — turn-0 once-per-worker foists fire on the worker's first
 // loop only; later loops in the same worker already carry them in the persistent log, so re-foisting
 // each loop spammed the log + burned tokens. Two loops in one worker: the manifest READ is in loop 1's
 // log, absent from loop 2's.
-test("[#269] turn-0 once-per-worker foists fire on the worker's first loop only, not every loop", async () => {
+test("turn-0 once-per-worker foists fire on the worker's first loop only, not every loop", async () => {
     const prev = process.env.PLURNK_SERVICE_FILES_ITEMS;
     process.env.PLURNK_SERVICE_FILES_ITEMS = "-1"; // preview ON
     try {
@@ -155,7 +155,7 @@ test("[#269] turn-0 once-per-worker foists fire on the worker's first loop only,
                     return rows.find((r) => r.op === "FIND" && r.scheme === "worker" && r.hostname === null && r.pathname === "/*");
                 };
                 assert.ok((await catalogFind((r1 as { loopId: number }).loopId)) !== undefined, "worker's first loop foists the catalog preview");
-                assert.equal(await catalogFind((r2 as { loopId: number }).loopId), undefined, "the second loop does NOT re-foist it — it's already in the worker's log (#269)");
+                assert.equal(await catalogFind((r2 as { loopId: number }).loopId), undefined, "the second loop does NOT re-foist it — it's already in the worker's log");
             } finally { ws.close(); }
         });
     } finally {

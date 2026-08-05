@@ -382,7 +382,7 @@ export default class ClientInput {
         return f;
     }
 
-    // #231 — validate + serialize the client open-context bag. filesItems is a scalar (replace);
+    // {§operator-config} — validate and serialize the client open-context bag. filesItems is a scalar (replace);
     // mdDocs is [{alias, content}] (union'd with env at turn-0). A module may
     // serialize the object at its edge; core still parses and validates it here.
     static parseSettings(raw: unknown): string {
@@ -439,7 +439,7 @@ export default class ClientInput {
             }
             out.filesItems = r.filesItems;
         }
-        // #232 — tighten-only ceilings: a client may narrow, never widen (composed
+        // {§operator-config} — tighten-only ceilings: a client may narrow, never widen (composed
         // most-restrictive-wins at each read-site). maxCommands min()s the env ceiling;
         // git:false denies git for the workspace (env AND workspace).
         if (r.maxCommands !== undefined) {
@@ -480,7 +480,7 @@ export default class ClientInput {
             }
             out.questions = r.questions;
         }
-        // #249 — workspace-stable frontend id (e.g. "plurnk.nvim/1.4.0"), forwarded to the plurnk
+        // {§client-metadata} — workspace-stable frontend id (e.g. "plurnk.nvim/1.4.0"), forwarded to the plurnk
         // provider as Plurnk-Client metadata; ignored by every other provider. Self-identified.
         if (r.client !== undefined) {
             if (typeof r.client !== "string" || r.client.length === 0) {
@@ -493,7 +493,7 @@ export default class ClientInput {
             }
             out.client = r.client;
         }
-        // #328 - the client's resolved PLURNK_EXECS_* policy subset, verbatim key->value, fed to execs'
+        // #180 — the client's resolved PLURNK_EXECS_* policy subset, verbatim key→value, fed to execs'
         // Policy as the per-workspace client layer (subtractive: narrows the boot-registered set, never
         // widens). MCP connection configuration is daemon-owned and never workspace policy.
         if (r.execs !== undefined) {

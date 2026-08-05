@@ -1,4 +1,4 @@
-// #231 — a workspace's client-chosen open-context: the per-workspace overrides a client
+// {§operator-config} — a workspace's client-chosen open context: the per-workspace overrides a client
 // user legitimately sets at workspace.create, read at turn-0 with precedence over env.
 // Two knobs with deliberately different compose semantics:
 //   - filesItems: REPLACE — a single scalar; the client value wins outright over
@@ -14,12 +14,12 @@ import type { Db } from "./Db.ts";
 
 export type ClientMdDoc = { alias: string; content: string };
 export type WorkspaceOpenContext = {
-    filesItems: number | null; // default-semantics — REPLACE env; null = unset (#231)
-    mdDocs: ClientMdDoc[];        // default-semantics — UNION with env PLURNK_SERVICE_MD_* (#231)
-    maxCommands: number | null;   // ceiling — min() with env PLURNK_SERVICE_MAX_COMMANDS; null = unset (#232)
-    git: boolean | null;          // ceiling — env AND workspace; false denies git; null = unset (#232)
-    client: string | null;        // #249 — workspace-stable frontend id, forwarded as Plurnk-Client (plurnk provider only); null = unset
-    execs: Record<string, string> | null; // #328 — the client's PLURNK_EXECS_* policy layer; null = unset. Subtractive per-workspace narrowing over the boot registry.
+    filesItems: number | null; // {§operator-config-workspace-files-items} — replace env; null = unset
+    mdDocs: ClientMdDoc[];     // {§operator-config-workspace-md-docs} — union with env PLURNK_SERVICE_MD_*
+    maxCommands: number | null; // {§operator-config-workspace-max-commands} — min() with env; null = unset
+    git: boolean | null;       // {§operator-config-workspace-git} — env AND workspace; null = unset
+    client: string | null;     // {§client-metadata} — workspace-stable frontend id; null = unset
+    execs: Record<string, string> | null; // #180 — subtractive workspace policy awaiting its core SPEC tag
     questions: boolean | null;    // {§send-300-choices} — the client's affirmative per-workspace request for operator questions ([300]); enabled = allowed (PLURNK_QUESTIONS != 0) AND requested.
 };
 

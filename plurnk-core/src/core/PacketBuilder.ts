@@ -369,7 +369,7 @@ export default class PacketBuilder {
         return { tokens: packetTokens, sections };
     }
 
-    // #328 — the per-workspace client execs policy narrows what the packet ADVERTISES, matching what
+    // #180 — the per-workspace client execs policy narrows what the packet advertises, matching what
     // dispatch refuses: a workspace-disabled tag is absent from the capability sheet and the doc set,
     // never taught-then-refused. No policy (execs unset) → everything boot-registered shows.
     async #workspaceEnabled(workspaceId: number): Promise<(tag: string) => boolean> {
@@ -408,7 +408,7 @@ export default class PacketBuilder {
             } else {
                 for (const tag of runtimes) {
                     if (excluded.has(tag)) continue; // #240 — PLURNK_SERVICE_DOCS_EXCLUDE drops the oneliner + the doc
-                    if (!workspaceEnabled(tag)) continue; // #328 — workspace-disabled tags aren't advertised
+                    if (!workspaceEnabled(tag)) continue; // #180 — workspace-disabled tags aren't advertised
                     const entry = executors.entry(tag);
                     // #240 — the example IS the oneliner (a bare op, fenced below); the fuller doc
                     // materializes at worker://plurnk/docs/<tag>.md. No example → no line.
@@ -436,7 +436,7 @@ export default class PacketBuilder {
         const executors = this.#executors();
         if (executors !== undefined) {
             const excluded = docsExcludeSet();
-            const workspaceEnabled = await this.#workspaceEnabled(workspaceId); // #328 — no doc for a disabled tag
+            const workspaceEnabled = await this.#workspaceEnabled(workspaceId); // #180 — no doc for a disabled tag
             for (const tag of executors.availableRuntimes()) {
                 if (excluded.has(tag)) continue; // #240 — exec docs honor the same exclude
                 if (!workspaceEnabled(tag)) continue;

@@ -169,7 +169,7 @@ export default class GitMembership {
         // The repository containing project_root is the sole Git substrate.
         // PLURNK_SERVICE_GIT_ALLOWED=0 is the hard service ceiling and
         // PLURNK_SERVICE_GIT_AUTO=0 disables automatic Git membership.
-        // #232 — git:false is a workspace-level tighten of the env ALLOWED ceiling (env AND workspace).
+        // {§operator-config-workspace-git} — git:false tightens the env ALLOWED ceiling.
         const workspaceGit = (await WorkspaceSettings.read(db, workspaceId)).git;
         let gitMembers: string[] = [];
         if (

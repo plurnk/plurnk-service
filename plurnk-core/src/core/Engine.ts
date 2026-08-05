@@ -118,7 +118,8 @@ const readMaxStrikes = (): number => {
 // Per-emission op ceiling — OFF by default. `-1` (or unset/non-positive) = no cap: every
 // generated op dispatches. Runaway degeneration is a sampler concern (repetition penalty),
 // not grounds to drop already-generated work. A positive value is an operator ceiling a
-// workspace's maxCommands may tighten (min wins), never widen (#232).
+// workspace's maxCommands may tighten (min wins), never widen
+// ({§operator-config-workspace-max-commands}).
 const readMaxCommands = (): number => {
     const raw = process.env.PLURNK_SERVICE_MAX_COMMANDS;
     if (raw === undefined || raw.length === 0) return Number.POSITIVE_INFINITY;
@@ -865,9 +866,10 @@ export default class Engine {
         // writes consume low indices; model ops continue from there.
         const seqRow = await this.#db.engine_next_turn_sequence.get<{ next: number }>({ loop_id: loopId });
         const seq = (seqRow as { next: number }).next;
-        // #269 — loops.sequence is the loop's ordinal WITHIN the worker. Turn-0 foists that belong to the
+        // loops.sequence is the loop's ordinal within the worker. Turn-0 foists that belong to the
         // WORKER (manifest preview, AGENTS, operator docs) gate on the worker's first loop, not every loop's
-        // first turn; per-loop foists (the prompt, @file) still fire each loop. Read once, turn-1 only.
+        // first turn ({§actor-boundary-catalog-preview}); per-loop foists such as
+        // {§prompt-entry} still fire each loop. Read once, turn-1 only.
         const loopRow = seq === 1
             ? await this.#db.engine_get_loop_prompt.get<{ prompt: string; sequence: number }>({ loop_id: loopId })
             : undefined;
@@ -919,10 +921,10 @@ export default class Engine {
             // {§actor-boundary} keystone); foist a READ of each into THIS turn-0 so the model
             // reads them inline. It sees only the READ — the materializing EDIT
             // lives in the plurnk worker's log, never the model's.
-            // #231 — env docs (PLURNK_SERVICE_MD_*) UNION the workspace's client docs; foist a READ of
+            // {§operator-config-workspace-md-docs} — env docs union the workspace's client docs; foist a READ of
             // each materialized worker://plurnk/<alias>.md (LoopDocs materialized the same set).
             const { mdDocs } = await WorkspaceSettings.read(this.#db, workspaceId);
-            // #269 — operator docs appear once per worker, on its first loop.
+            // {§actor-boundary-doc-injection} — operator docs appear on the worker's first loop.
             for (const doc of workerFirstLoop ? await WorkspaceSettings.resolveDocs(mdDocs) : []) {
                 const docTarget: UrlPath = {
                     kind: "url", raw: `worker://plurnk/${doc.entryName}`, scheme: "worker",
@@ -939,7 +941,7 @@ export default class Engine {
                 });
                 nextActionIndex++;
             }
-            const promptRow = loopRow; // #269 — already read above (per-loop; fires every loop's turn 1)
+            const promptRow = loopRow; // {§prompt-entry} — per-loop; fires every loop's turn 1
             if (promptRow !== undefined && typeof promptRow.prompt === "string" && promptRow.prompt.length > 0) {
                 const promptLoopSeq = promptRow.sequence; // the loop's per-worker sequence — model-facing, matching log coordinates (owner: the db id read as prompt/2/1)
                 const promptPath = promptTarget(promptLoopSeq, seq);
@@ -1018,10 +1020,10 @@ export default class Engine {
         // actionable `dir/**` aggregate. The curated kernel docs remain recursive, so the
         // opening packet demonstrates both navigation forms. Empty results are orientation.
         if (seq === 1) {
-            // #231 — a workspace's client-chosen filesItems REPLACES the env default outright.
+            // {§operator-config-workspace-files-items} — workspace filesItems replaces the env default.
             const { filesItems: workspaceMI } = await WorkspaceSettings.read(this.#db, workspaceId);
             const filesItems = workspaceMI !== null ? normalizeFilesItems(workspaceMI) : readFilesItems();
-            if (filesItems !== null && workerFirstLoop) { // #269 — catalog preview appears once per worker
+            if (filesItems !== null && workerFirstLoop) { // {§actor-boundary-catalog-preview} — once per worker
                 // engine_scheme_catalog_summary is the workspace-bounded scheme source: ordered,
                 // one row per stored entry scheme. log:// is absent —
                 // it lives in log_entries, not the catalog (present-mode, the # Log section).
@@ -1608,7 +1610,7 @@ export default class Engine {
         // already-generated work post-hoc. The ceiling is an OPT-IN operator/client bound:
         // when set, overflow ops drop without per-op log entries (no forensics flood) and the
         // model gets one notices signal next packet.
-        // #232 — a workspace's maxCommands is a tighten-only ceiling: min() the env ceiling.
+        // {§operator-config-workspace-max-commands} — workspace maxCommands min()s the env ceiling.
         const maxCommands = Math.min(readMaxCommands(), (await WorkspaceSettings.read(this.#db, workspaceId)).maxCommands ?? Number.POSITIVE_INFINITY);
         // PLAN (intended goals) and a terminal SEND (signal ≥ 200, the conclusion) are not
         // actions — they always dispatch and never count against the cap. maxCommands

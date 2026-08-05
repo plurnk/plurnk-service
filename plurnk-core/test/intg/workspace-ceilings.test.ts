@@ -1,5 +1,5 @@
-// #232 — workspace.create({settings}) ceiling family: tighten-only, most-restrictive-wins
-// Each setting tightens the operator env ceiling at the knob's read site (companion to #231's
+// {§operator-config} — workspace.create({settings}) ceilings are tighten-only,
+// most-restrictive-wins. Each setting tightens the operator env ceiling at its read site (beside the
 // default-semantics knobs). maxCommands min()s PLURNK_SERVICE_MAX_COMMANDS; git:false ANDs the
 // PLURNK_SERVICE_GIT_ALLOWED service ceiling. A client may narrow, never widen.
 //
@@ -118,7 +118,7 @@ test("workspace settings.git:false denies git membership for the workspace (env 
     }
 });
 
-test("workspace.create rejects malformed ceiling settings — fail hard, no silent accept (#232)", async () => {
+test("workspace.create rejects malformed ceiling settings — fail hard, no silent accept", async () => {
     const mock = new Mock({ contextWindow: viableWindow(), responses: [makeMockResponse("<<SEND[200]:done:SEND", 50)] });
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);

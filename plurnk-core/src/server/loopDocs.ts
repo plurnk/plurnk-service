@@ -2,7 +2,8 @@
 // and when a new workspace is created, never as a per-worker or per-loop ritual. Two sets, both
 // idempotent EDITs through the workspace's reserved plurnk worker ({§actor-boundary}):
 //   1. operator/client reference docs (PLURNK_SERVICE_MD_* ∪ settings.mdDocs, client wins on
-//      collision) at worker://plurnk/<alias>.md — Engine.runTurn foists their READs at turn 0 (#231);
+//      collision) at worker://plurnk/<alias>.md — Engine.runTurn foists their READs at turn 0
+//      ({§operator-config-workspace-md-docs});
 //   2. plugin scheme/exec reference docs at worker://plurnk/docs/<name>.md — discovered
 //      by the turn-0 FIND(worker://plurnk/docs/**) foist (#270).
 import type Engine from "../core/Engine.ts";

@@ -56,7 +56,7 @@ test("PLURNK_SERVICE_MD_<ALIAS>: doc is materialized by the plurnk worker + READ
     }
 });
 
-// Note 293 (b): PLURNK_MD inclusions are NOT gated by the catalog-preview (PLURNK_SERVICE_FILES_ITEMS) switch.
+// {§actor-boundary-doc-injection}: operator docs are not gated by the catalog-preview switch.
 // With PLURNK_SERVICE_FILES_ITEMS=0 (preview off) the operator doc is STILL foisted into
 // turn 0 — it overrides/bypasses the cap rather than riding it.
 test("PLURNK_MD docs foist at turn 0 even when PLURNK_SERVICE_FILES_ITEMS=0 — the preview off-switch never gates operator docs", async () => {
@@ -88,7 +88,7 @@ test("PLURNK_MD docs foist at turn 0 even when PLURNK_SERVICE_FILES_ITEMS=0 — 
     }
 });
 
-// #231 — a client's workspace.create settings.mdDocs UNION with the server's PLURNK_SERVICE_MD_*
+// {§operator-config-workspace-md-docs} — client settings.mdDocs union with server PLURNK_SERVICE_MD_*
 // docs: the operator's policy doc rides into every workspace, the client adds its own on
 // top, and on an alias collision the client deliberately shadows the server's.
 test("workspace.create settings.mdDocs UNIONs with env PLURNK_SERVICE_MD_* — env rides, client adds, client wins a collision", async () => {

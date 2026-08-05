@@ -1,4 +1,4 @@
-// #249 — the workspace's self-identified client id (the originating frontend, e.g. "plurnk.nvim/1.4.0")
+// {§client-metadata} — the workspace's self-identified client id (the originating frontend, e.g. "plurnk.nvim/1.4.0")
 // is forwarded per turn on generate({ client }); only the plurnk provider emits it (Plurnk-Client).
 // This proves the service half end-to-end: workspace.create persists it (validated), the engine reads
 // it per turn and passes it to the provider call — omitted entirely when unset. The attribution
@@ -32,15 +32,15 @@ const captureClient = async (clientId: string | null): Promise<string | undefine
     return captured;
 };
 
-test("the workspace's client id reaches generate() (#249)", async () => {
+test("the workspace's client id reaches generate()", async () => {
     assert.equal(await captureClient("plurnk.nvim/1.4.0"), "plurnk.nvim/1.4.0", "the workspace-stable client id reaches the provider wire");
 });
 
-test("#249 — no client setting → generate's client field is omitted (undefined), not empty", async () => {
+test("no client setting → generate's client field is omitted (undefined), not empty", async () => {
     assert.equal(await captureClient(null), undefined, "a workspace without a client id sends no client field");
 });
 
-test("#249 — workspace.create refuses an empty client id", async () => {
+test("workspace.create refuses an empty client id", async () => {
     const mock = new Mock({ contextWindow: 8192, responses: [] });
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);

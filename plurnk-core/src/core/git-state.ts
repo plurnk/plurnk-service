@@ -31,7 +31,7 @@ export default class GitState {
     }
 
     static async status(db: Db, workspaceId: number, signal: AbortSignal | undefined): Promise<GitStatus | null> {
-        // #232 — git:false denies git status for the workspace (env AND workspace ceiling).
+        // {§operator-config-workspace-git} — git:false denies workspace git status.
         if (!GitState.enabled() || (await WorkspaceSettings.read(db, workspaceId)).git === false) return null;
         const row = await db.envelope_get_workspace.get<{ project_root: string | null }>({ id: workspaceId });
         const root = row?.project_root ?? null;

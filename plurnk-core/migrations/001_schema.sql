@@ -13,8 +13,8 @@ CREATE TABLE IF NOT EXISTS workspaces (
     created_at                TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
     cost_usd                  REAL    NOT NULL DEFAULT 0 CHECK (cost_usd >= 0),
     project_root              TEXT,
-    -- #231 client-chosen workspace-open context: { manifestItems?, mdDocs? }, read at turn-0
-    -- with precedence over env (manifestItems replaces PLURNK_MANIFEST_ITEMS; mdDocs unions PLURNK_MD_*).
+    -- {§operator-config} validated client workspace settings; each field composes
+    -- with operator configuration at its owning use site.
     settings                  TEXT    NOT NULL DEFAULT '{}' CHECK (json_valid(settings))
 ) STRICT;
 
@@ -97,7 +97,7 @@ CREATE TABLE IF NOT EXISTS loops (
     flags    TEXT    NOT NULL DEFAULT '{}' CHECK (json_valid(flags)),
     provider_spec TEXT NOT NULL DEFAULT 'null' CHECK (json_valid(provider_spec)),
     max_turns INTEGER NOT NULL DEFAULT 50 CHECK (max_turns >= -1),
-    -- #249 — attribution tags of the loop's active plugins (string[] JSON); the activity tagged
+    -- {§attribution-discovery-placeholder} — attribution tags of the loop's active plugins (string[] JSON); the activity tagged
     -- with what its plugins offer. Same set the engine rides on each turn's generate() wire.
     attributions TEXT NOT NULL DEFAULT '[]' CHECK (json_valid(attributions)),
     -- #260 — client-passed @file paths foisted as turn-0 READs (string[] JSON). The daemon owns the

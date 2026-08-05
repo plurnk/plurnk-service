@@ -325,7 +325,7 @@ export default class Exec extends CoreSchemeAdapterBase {
                 },
             ) as ExecResult;
         }
-        // #328 — per-workspace client policy narrows the boot-registered set (subtractive). A tag the
+        // #180 — per-workspace client policy narrows the boot-registered set (subtractive). A tag the
         // workspace's client layer disables is ABSENT for this workspace — refused like an unavailable
         // runtime. Bare EXEC resolves to sh before this gate, so disabling sh also disables the default.
         if (workspaceExecs !== null && !Policy.isEnabled(runtime, workspaceExecs)) {

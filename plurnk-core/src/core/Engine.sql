@@ -31,7 +31,8 @@ SELECT flags FROM loops WHERE id = $loop_id;
 UPDATE loops SET flags = $flags WHERE id = $loop_id;
 
 -- PREP: engine_tag_loop_attributions
--- #249 — tag the loop with its active plugins' attribution tags (string[] JSON), write-once: the
+-- {§attribution-discovery-placeholder} — tag the loop with its active plugins' attribution tags
+-- (string[] JSON), write-once: the
 -- active set is loop-stable, so the `= '[]'` guard keeps later turns from rewriting it.
 UPDATE loops SET attributions = $attributions WHERE id = $loop_id AND attributions = '[]';
 
@@ -57,8 +58,8 @@ SELECT prompt, sequence FROM loops WHERE id = $loop_id;
 UPDATE loops SET status = 102 WHERE id = $loop_id AND status = 100;
 
 -- PREP: workspace_get_settings
--- #231 — the workspace's client-chosen open-context bag ({ manifestItems?, mdDocs? }),
--- read at turn-0 with precedence over env.
+-- {§operator-config} — the workspace's validated client settings bag, read at
+-- each owning use site with its declared composition semantics.
 SELECT settings FROM workspaces WHERE id = $workspace_id;
 
 -- PREP: engine_target_diverged_this_turn

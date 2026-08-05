@@ -728,7 +728,8 @@ export default class Daemon {
     // (which client is on which workspace) lives here — that's the module's.
     async createWorkspace(args: { name?: string; projectRoot?: string | null; settings?: string | object; constraints?: Array<{ effect: string; glob: string }> }): Promise<ClientEnvelope> {
         // The SEAM fail-hards on malformed client input (#364 — validation flushed out of the
-        // retired WS handlers so every module inherits it): settings bag (#231/#232/#249/#328),
+        // retired WS handlers so every module inherits it): settings bag
+        // ({§operator-config}, {§client-metadata}, {§send-300-choices}, #180),
         // constraints (#200), absolute projectRoot.
         const name = ClientInput.assertOptionalName("workspace.create", "name", args.name);
         const projectRoot = ClientInput.assertProjectRoot("workspace.create", args.projectRoot);
