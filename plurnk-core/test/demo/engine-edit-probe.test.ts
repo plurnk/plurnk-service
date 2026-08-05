@@ -1,13 +1,7 @@
-// Large-file edit fidelity (adopted from meta's forensic probe, #569 / run61 follow-up). The
-// demo's tiny fixtures (app.js, a small config) can't reach the run61 failure mode: a bare-path
-// edit deep in a real 1,600+ line source file, where the model must LOCATE a target and HOLD the
-// coordinate across turns. Coordinate drift, class/method destruction, duplication, and bloat on
-// real-size files pass invisibly on tiny fixtures — this exercises long-span reproduction so a
-// sampler/config/grammar regression that degrades large-file editing can't sail through green.
-//
-// We COPY the real src/core/Engine.ts into a throwaway temp git repo (the source is never touched)
-// and ask for ONE precise, verifiable insertion. Assertions target the run61 signatures directly:
-// coordinate landed on the located target · exactly one class, key methods survive · minimal delta.
+// {§edit-marker-required-on-existing} {§render-rule-line-navigable-prefix}: exercise locate-and-edit
+// against a large source file, beyond the coordinate range of the small demo fixtures. The test
+// copies Engine.ts into a throwaway repository, then proves target adjacency, structural survival,
+// and byte-identical content after removing the one requested insertion.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile, copyFile, mkdtemp, rm } from "node:fs/promises";
@@ -17,13 +11,11 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { liveWorkspace, liveLoop } from "../_live-harness.ts";
 
-// The ceiling is a zero-flake safety bound, not the expected time — a working locate-and-edit
-// finishes well under it; a flail hits it. Trimmed from meta's 10min forensic value (her cost
-// heads-up); bump if real drill timing shows a passing run brushing it. maxTurns bounds the calls.
+// This is a safety ceiling, not the expected duration; maxTurns separately bounds provider calls.
 const TIMEOUT = 420_000;
 const ENGINE_SRC = fileURLToPath(new URL("../../src/core/Engine.ts", import.meta.url));
 
-test("demo: locate and edit deep in a real 1,600-line file (Engine.ts) — coordinate held, no corruption", { timeout: TIMEOUT }, async () => {
+test("demo: locate and edit deep in a large source file — coordinate held, no corruption", { timeout: TIMEOUT }, async () => {
     const fixture = await mkdtemp(join(tmpdir(), "plurnk-engine-probe-"));
     await copyFile(ENGINE_SRC, join(fixture, "Engine.ts")); // a copy of the real thing; the source is untouched
     execSync('git init -q && git config user.email "probe@plurnk.invalid" && git config user.name "probe" && git add . && git commit -q --no-verify -m "fixture"', { cwd: fixture });
