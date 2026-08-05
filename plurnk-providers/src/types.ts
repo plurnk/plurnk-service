@@ -61,12 +61,20 @@ export interface TokenLogprob {
     readonly top?: readonly TokenAlternative[];
 }
 
+// {§provider-encrypted-reasoning} `id` is provider detail identity; `subtype`
+// is the provider's evidence-backed classification. Neither is a client entity
+// correlation, so consumers must not substitute `id` for a message/tool-call ID.
+export interface ProviderEncryptedReasoningItem {
+    readonly id: string | null;
+    readonly subtype: string;
+    readonly encrypted: ReadonlyArray<{ data: string; format: string | null }>;
+}
+
 export interface ProviderAssistant<TFinish extends ProviderAttemptFinishReason = FinishReason> {
     readonly content: string;
     readonly reasoning: string | null;
-    // Encrypted reasoning remains distinct from readable `reasoning`; #44 owns
-    // the provider-boundary identity/subtype normalization rule.
-    readonly reasoningEncrypted?: ReadonlyArray<{ id: string | null; subtype: string; encrypted: ReadonlyArray<{ data: string; format: string | null }> }>;
+    // Encrypted reasoning remains distinct from readable `reasoning`.
+    readonly reasoningEncrypted?: ReadonlyArray<ProviderEncryptedReasoningItem>;
     readonly usage: ProviderUsage;
     readonly finishReason: TFinish;
     readonly model: string;

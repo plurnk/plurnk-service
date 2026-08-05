@@ -45,7 +45,7 @@ One accepted Run or daemon notification produces zero-or-more AG-UI events:
 | `log/entry` op=PLAN (model)                | `ACTIVITY_SNAPSHOT` {§agui-plan-activity} |
 | `log/entry` op=SEND (model)                | `TEXT_MESSAGE_START/CONTENT/END` + `CUSTOM plurnk.send` (signal/status) |
 | `log/entry` other op (model)               | `TOOL_CALL_START/ARGS/END` (+ `TOOL_CALL_RESULT` when rx exists) |
-| `log/entry` op=model (mirror)              | A correlated `REASONING_START` / `REASONING_ENCRYPTED_VALUE`* / `REASONING_END` span when the reasoning-item `attrs.reasoning` is present (see {§agui-encrypted-reasoning}); otherwise nothing — forensic. |
+| `log/entry` op=model (mirror)              | At most one `REASONING_ENCRYPTED_VALUE`, attached to the same turn's actual SEND assistant message when {§agui-encrypted-reasoning} is satisfied; otherwise nothing beyond the forensic row. |
 | `log/entry` origin≠model                   | `CUSTOM plurnk.ambient` (foists, deltas, narrations) |
 | client-owned `loop/proposal`               | `TOOL_CALL_START/ARGS/END`, then `RUN_FINISHED` with an interrupt outcome |
 | `loop/terminated`                          | `STATE_DELTA` (budget) + `CUSTOM plurnk.terminated` + `RAW` (the provider's native completion frame, `source: provider`, §475) + `RUN_FINISHED` (`result.status === 200`) or `RUN_ERROR` (otherwise, from the exact RFC 9457 Problem Details) |
@@ -68,19 +68,23 @@ same log identity and verbatim goals:
   delta: a dispatched plurnk op is atomic), its rx the result. The log-shaped richness the
   core vocabulary can't hold (fold state, tags, tokens) stays on the row inside
   `plurnk.ambient`/`TOOL_CALL_RESULT` payloads.
-- §agui-encrypted-reasoning **Encrypted reasoning projects only when it is
-  correlated.** Core supplies an item list on the model mirror row's
-  `attrs.reasoning`; AG-UI does not invent identity or classification.
+- §agui-encrypted-reasoning **Encrypted reasoning projects only onto an entity
+  AG-UI actually created.** Core supplies the exact normalized provider-detail
+  list on the model mirror row's `attrs.reasoning`. The provider detail `id` is
+  forensic identity, not an AG-UI entity ID ({§provider-encrypted-reasoning}).
 
-  | Input fact                                    | Projection |
-  | --------------------------------------------- | ---------- |
-  | String `id`; subtype `message` or `tool-call` | One `REASONING_START`, `REASONING_ENCRYPTED_VALUE`, and `REASONING_END` span keyed by that `id`. |
-  | Null/missing `id` or unknown `subtype`        | No reasoning event; an uncorrelatable item is dropped rather than coerced. |
-  | Encrypted `data`                              | Forwarded as the standard encrypted value without decoding. |
-  | Provider `format`                             | Retained on the lossless row because AG-UI has no corresponding field. |
+  | Condition                                   | Projection |
+  | ------------------------------------------- | ---------- |
+  | Same-turn SEND + one nonempty message value | One `REASONING_ENCRYPTED_VALUE` with `subtype: "message"` and `entityId` equal to that SEND message's coordinate. |
+  | Null or absent provider detail `id`         | No effect on correlation; the actual SEND identity owns the client relation. |
+  | No SEND or not exactly one message value    | No standard encrypted event. Nothing is selected, joined, or overwritten. |
+  | Provider-only and unprojected evidence      | Detail `id`, `format`, ordering, and every value remain lossless on the `plurnk.row` mirror evidence. |
+  | Reattach                                    | The same singular value occupies `encryptedValue` on the corresponding SEND `AssistantMessage` in `MESSAGES_SNAPSHOT`. |
 
-  #44 owns the unresolved provider-boundary evidence required to normalize an
-  item's identity and subtype before it reaches this projection.
+  AG-UI's single message slot cannot represent multiple provider details without
+  losing cardinality. The translator therefore emits neither invented reasoning
+  spans nor repeated events whose last value would silently overwrite its
+  siblings.
 - §agui-custom-namespace **The custom namespace** — plurnk-specific metadata rides
   `CUSTOM` events named `plurnk.*` (`plurnk.send`, `plurnk.ambient`,
   `plurnk.notice`, `plurnk.stream`, `plurnk.branch_batch`, `plurnk.terminated` — the full loop

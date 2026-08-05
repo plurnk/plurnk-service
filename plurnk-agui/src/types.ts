@@ -32,7 +32,7 @@ export interface LogEntryNotification {
         status_rx?: number;
         turn_id?: number;
         expanded?: number;
-        attrs?: string | null;
+        attrs?: unknown;
     };
 }
 

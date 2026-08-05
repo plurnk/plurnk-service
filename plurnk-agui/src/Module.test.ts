@@ -798,8 +798,11 @@ test("reattach replays PLAN as activity and SEND as speech through the thread ro
     seam.listWorkspaces = async () => [{ id: 3, name: "workspace" }];
     seam.attachWorkspace = async () => ({ workspaceId: 3, workspaceName: "workspace", projectRoot: null, workerId: 10, workerName: "client-1" });
     seam.readLog = async () => [
-        { id: 1, coordinate: "1/1/1/PLAN", op: "PLAN", origin: "model", tx: { body: "inspect, repair, verify" } },
-        { id: 2, coordinate: "1/1/2/SEND", op: "SEND", origin: "model", tx: { body: "checkpoint complete" } },
+        { id: 1, coordinate: "1/1/1/PLAN", op: "PLAN", origin: "model", turn_id: 1, sequence: 1, tx: { body: "inspect, repair, verify" } },
+        { id: 2, coordinate: "1/1/2/SEND", op: "SEND", origin: "model", turn_id: 1, sequence: 2, tx: { body: "checkpoint complete" } },
+        { id: 3, coordinate: "1/1/3/model", op: "model", origin: "model", turn_id: 1, sequence: 3, attrs: { reasoning: [
+            { id: "provider-detail", subtype: "message", encrypted: [{ data: "OPAQUE", format: "openai-responses-v1" }] },
+        ] } },
     ];
     seam.runLoop = async (args) => {
         finish(args.workspaceId);
@@ -816,7 +819,7 @@ test("reattach replays PLAN as activity and SEND as speech through the thread ro
         const snapshot = events.find((event) => event.type === "MESSAGES_SNAPSHOT") as { messages?: unknown[] } | undefined;
         assert.deepEqual(snapshot?.messages, [
             { id: "1/1/1/PLAN", role: "activity", activityType: "PLAN", content: { goals: "inspect, repair, verify" } },
-            { id: "1/1/2/SEND", role: "assistant", content: "checkpoint complete" },
+            { id: "1/1/2/SEND", role: "assistant", content: "checkpoint complete", encryptedValue: "OPAQUE" },
         ]);
     } finally { await mod.close(); }
 });

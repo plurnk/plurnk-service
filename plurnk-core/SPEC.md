@@ -2614,9 +2614,11 @@ When a provider returns encrypted reasoning items, core attaches that list to
 the admitted model mirror row's `attrs.reasoning`. `log/entry` and `readLog`
 carry it to AG-UI, which may project correlated standard reasoning entities.
 Core never decodes the blobs or renders them into a model packet; readable
-reasoning text remains separate in `assistant.reasoning`. #44 owns the
-unsettled provider-boundary rule for which metadata is preserved versus
-normalized and forbids calling derived fields verbatim.
+reasoning text remains separate in `assistant.reasoning`. The provider-detail
+identity and derived classification retain their exact provider-normalized
+meaning from {§provider-encrypted-reasoning}; core never reinterprets either as
+a client entity. The mirror row and provider attempt remain the lossless
+evidence when a downstream standard cannot represent the complete list.
 
 §body-projection **One full body, one packet projection.** Every durable log row has one canonical full body resolved from its stored tx/rx envelope by `LogBody`. READ and FIND over `log:///`, persistent search derivation, and packet rendering all consume that same meaning. Only packet rendering may project it:
 

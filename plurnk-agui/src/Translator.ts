@@ -27,6 +27,7 @@ export default class Translator {
     #threadId: string;
     #runId: string;   // AG-UI's Run id (echoed from RunAgentInput.runId) — the standard face
     #currentTurn: number | null = null;
+    #assistantMessage: { turnId: number; id: string } | null = null;
     #modelWorkerId: number | null;
     #workspaceId: number | null;
 
@@ -70,6 +71,7 @@ export default class Translator {
         if (typeof e.turn_id === "number" && e.turn_id !== this.#currentTurn) {
             if (this.#currentTurn !== null) events.push({ type: EventType.STEP_FINISHED, stepName: `turn-${this.#currentTurn}` });
             this.#currentTurn = e.turn_id;
+            this.#assistantMessage = null;
             events.push({ type: EventType.STEP_STARTED, stepName: `turn-${e.turn_id}` });
         }
         if (e.origin !== "model") {
@@ -90,6 +92,7 @@ export default class Translator {
         }
         if (e.op === "SEND") {
             const text = Translator.#txBody(e.tx);
+            if (typeof e.turn_id === "number") this.#assistantMessage = { turnId: e.turn_id, id };
             events.push({ type: EventType.TEXT_MESSAGE_START, messageId: id, role: "assistant" });
             if (text.length > 0) events.push({ type: EventType.TEXT_MESSAGE_CONTENT, messageId: id, delta: text });
             events.push({ type: EventType.TEXT_MESSAGE_END, messageId: id });
@@ -97,13 +100,21 @@ export default class Translator {
             return events;
         }
         if (e.op === "model") {
-            // {§agui-encrypted-reasoning} — project every correlated normalized
-            // item; #44 owns the provider-boundary normalization evidence.
-            for (const r of Translator.#reasoningItems(e.attrs)) {
-                if (r.encrypted.length === 0) continue;
-                events.push({ type: EventType.REASONING_START, messageId: r.id });
-                for (const blob of r.encrypted) events.push({ type: EventType.REASONING_ENCRYPTED_VALUE, subtype: r.subtype, entityId: r.id, encryptedValue: blob.data });
-                events.push({ type: EventType.REASONING_END, messageId: r.id });
+            const assistant = this.#assistantMessage;
+            this.#assistantMessage = null;
+            const encrypted = Translator.#messageEncryptedValues(e.attrs);
+            if (
+                assistant !== null
+                && typeof e.turn_id === "number"
+                && assistant.turnId === e.turn_id
+                && encrypted.length === 1
+            ) {
+                events.push({
+                    type: EventType.REASONING_ENCRYPTED_VALUE,
+                    subtype: "message",
+                    entityId: assistant.id,
+                    encryptedValue: encrypted[0],
+                });
             }
             return events;
         }
@@ -165,12 +176,34 @@ export default class Translator {
     // log.read projection (tx parsed).
     replay(entries: Array<Record<string, unknown>>): AguiEvent[] {
         const messages: Array<ActivityMessage | AssistantMessage> = [];
+        const assistantByTurn = new Map<number, { message: AssistantMessage; sequence: number }>();
+        const encryptedByTurn = new Map<number, string[]>();
         for (const e of entries) {
             if (e.origin !== "model") continue;
             const id = String(e.coordinate ?? e.id);
             const text = Translator.#txBody(e.tx);
             if (e.op === "PLAN") messages.push({ id, role: "activity", activityType: "PLAN", content: { goals: text } });
-            if (e.op === "SEND" && text.length > 0) messages.push({ id, role: "assistant", content: text });
+            if (e.op === "SEND") {
+                const message: AssistantMessage = { id, role: "assistant", content: text };
+                messages.push(message);
+                if (typeof e.turn_id === "number") {
+                    const sequence = typeof e.sequence === "number" ? e.sequence : Number.NEGATIVE_INFINITY;
+                    const prior = assistantByTurn.get(e.turn_id);
+                    if (prior === undefined || sequence >= prior.sequence) {
+                        assistantByTurn.set(e.turn_id, { message, sequence });
+                    }
+                }
+            }
+            if (e.op === "model" && typeof e.turn_id === "number") {
+                const values = Translator.#messageEncryptedValues(e.attrs);
+                if (values.length > 0) {
+                    encryptedByTurn.set(e.turn_id, [...(encryptedByTurn.get(e.turn_id) ?? []), ...values]);
+                }
+            }
+        }
+        for (const [turnId, values] of encryptedByTurn) {
+            const assistant = assistantByTurn.get(turnId)?.message;
+            if (assistant !== undefined && values.length === 1) assistant.encryptedValue = values[0];
         }
         return [{ type: EventType.MESSAGES_SNAPSHOT, messages }];
     }
@@ -179,26 +212,21 @@ export default class Translator {
         return [{ type: EventType.CUSTOM, name: "plurnk.notice", value: notice }];
     }
 
-    // Core carries an array of OpenAI/AG-UI reasoning items because a turn can
-    // contain multiple reasoning entities. Invalid shapes and uncorrelatable
-    // items are dropped; the projection never invents an id or subtype.
-    static #reasoningItems(attrs: unknown): Array<{ id: string; subtype: "message" | "tool-call"; encrypted: Array<{ data: string }> }> {
+    // {§agui-encrypted-reasoning} Preserve detail identity/cardinality on the
+    // row; return only nonempty values whose provider classification can target
+    // an assistant message. The caller projects only a singular result.
+    static #messageEncryptedValues(attrs: unknown): string[] {
         const parsed = typeof attrs === "string" ? (() => { try { return JSON.parse(attrs); } catch { return null; } })() : attrs;
         const raw = (parsed as { reasoning?: unknown } | null)?.reasoning;
         const list = Array.isArray(raw) ? raw : [];
-        const out: Array<{ id: string; subtype: "message" | "tool-call"; encrypted: Array<{ data: string }> }> = [];
-        for (const e of list) {
-            const r = e as { id?: unknown; subtype?: unknown; encrypted?: unknown };
-            // id null/absent (core allows `id: string | null`) or an unknown subtype = uncorrelatable
-            // → DROP the item: agui never coins an id or coerces a subtype to fake a conformant event.
-            if (typeof r.id !== "string" || r.id.length === 0) continue;
-            if (r.subtype !== "message" && r.subtype !== "tool-call") continue;
-            const encrypted = Array.isArray(r.encrypted)
-                ? r.encrypted.filter((b): b is { data: string } => typeof (b as { data?: unknown })?.data === "string" && (b as { data: string }).data.length > 0)
-                : [];
-            out.push({ id: r.id, subtype: r.subtype, encrypted });
-        }
-        return out;
+        return list.flatMap((value) => {
+            const item = value as { subtype?: unknown; encrypted?: unknown };
+            if (item.subtype !== "message" || !Array.isArray(item.encrypted)) return [];
+            return item.encrypted.flatMap((blob) => {
+                const data = (blob as { data?: unknown })?.data;
+                return typeof data === "string" && data.length > 0 ? [data] : [];
+            });
+        });
     }
 
     // The model-facing statement body out of the tx — SEND/PLAN carry their text here. The real

@@ -1,6 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { ActivitySnapshotEventSchema, MessagesSnapshotEventSchema } from "@ag-ui/core";
+import {
+    ActivitySnapshotEventSchema,
+    MessagesSnapshotEventSchema,
+    ReasoningEncryptedValueEventSchema,
+} from "@ag-ui/core";
 import Translator from "./Translator.ts";
 import type { LogEntryNotification, TerminatedNotification } from "./types.ts";
 
@@ -51,46 +55,75 @@ test("ambient (origin plurnk) rows ride plurnk.ambient; the model mirror row emi
     assert.deepEqual(mirror.map((e) => e.type), ["CUSTOM"], "the mirror rides plurnk.row only — forensic, never speech");
 });
 
-test("a non-array reasoning carrier is rejected", () => {
+test("a single encrypted value targets the actual same-turn SEND assistant", () => {
     const tr = t();
-    tr.logEntry(entry({ op: "PLAN", tx: "{}" })); // consume the turn boundary
-    const events = tr.logEntry(entry({ op: "model", coordinate: "1/1/9/model", tx: "<<PLAN:x:PLAN",
-        attrs: JSON.stringify({ reasoning: { id: "reason-42", subtype: "message", encrypted: [{ data: "SEALED-1", format: "openai-responses-v1" }, { data: "SEALED-2", format: "openai-responses-v1" }] } }) }));
-    assert.deepEqual(events.map((e) => e.type), ["CUSTOM"]);
+    tr.logEntry(entry({ op: "SEND", coordinate: "1/1/8/SEND", tx: { body: "answer" } }));
+    const events = tr.logEntry(entry({ op: "model", coordinate: "1/1/9/model",
+        attrs: { reasoning: [{ id: "rs_provider_detail", subtype: "message", encrypted: [{ data: "SEALED", format: "openai-responses-v1" }] }] } as never }));
+    assert.deepEqual(events.map((e) => e.type), ["CUSTOM", "REASONING_ENCRYPTED_VALUE"]);
+    const encrypted = events[1];
+    assert.deepEqual(encrypted, {
+        type: "REASONING_ENCRYPTED_VALUE",
+        subtype: "message",
+        entityId: "1/1/8/SEND",
+        encryptedValue: "SEALED",
+    });
+    assert.doesNotThrow(() => ReasoningEncryptedValueEventSchema.parse(encrypted));
 });
 
-test("an item array projects one correlated span per item", () => {
+test("provider detail identity is not required for SEND correlation", () => {
     const tr = t();
-    tr.logEntry(entry({ op: "PLAN", tx: "{}" }));
-    // A turn can carry multiple distinct reasoning entities.
-    const events = tr.logEntry(entry({ op: "model", tx: "<<PLAN:x:PLAN", attrs: JSON.stringify({ reasoning: [
-        { id: "rs_a", subtype: "message", encrypted: [{ data: "A1", format: "f" }] },
-        { id: "rs_b", subtype: "message", encrypted: [{ data: "B1", format: "f" }] },
+    tr.logEntry(entry({ op: "SEND", coordinate: "1/1/8/SEND", tx: { body: "answer" } }));
+    const events = tr.logEntry(entry({ op: "model", attrs: JSON.stringify({ reasoning: [
+        { id: null, subtype: "message", encrypted: [{ data: "SEALED", format: "f" }] },
     ] }) }));
-    assert.deepEqual(events.map((e) => e.type), ["CUSTOM", "REASONING_START", "REASONING_ENCRYPTED_VALUE", "REASONING_END", "REASONING_START", "REASONING_ENCRYPTED_VALUE", "REASONING_END"],
-        "one correlated span per item — the array is consumed, not collapsed");
-    assert.equal((events[1] as { messageId: string }).messageId, "rs_a");
-    assert.equal((events[2] as { entityId: string }).entityId, "rs_a", "item A's value correlates to item A's id");
-    assert.equal((events[5] as { entityId: string }).entityId, "rs_b", "item B's value correlates to item B's id — never cross-wired");
+    const encrypted = events.find((event) => event.type === "REASONING_ENCRYPTED_VALUE") as { entityId?: string } | undefined;
+    assert.equal(encrypted?.entityId, "1/1/8/SEND");
 });
 
-test("a missing identity or unknown subtype stays dark", () => {
-    const tr = t();
-    tr.logEntry(entry({ op: "PLAN", tx: "{}" }));
-    // {§agui-encrypted-reasoning} — neither item can be correlated honestly.
-    const events = tr.logEntry(entry({ op: "model", tx: "<<PLAN:x:PLAN",
-        attrs: JSON.stringify({ reasoning: [
-            { id: null, subtype: "message", encrypted: [{ data: "X", format: "f" }] },
-            { id: "reason-42", subtype: "unknown", encrypted: [{ data: "Y", format: "f" }] },
-        ] }) }));
-    assert.deepEqual(events.map((e) => e.type), ["CUSTOM"], "invalid items remain on plurnk.row only");
+test("uncorrelated or cardinality-losing encrypted evidence stays forensic", async (ctx) => {
+    const mirror = (reasoning: unknown, turn_id = 1) => entry({
+        op: "model",
+        turn_id,
+        attrs: JSON.stringify({ reasoning }),
+    });
+    await ctx.test("no SEND entity", () => {
+        const events = t().logEntry(mirror([
+            { id: "rs", subtype: "message", encrypted: [{ data: "X" }] },
+        ]));
+        assert.ok(!events.some((event) => event.type === "REASONING_ENCRYPTED_VALUE"));
+    });
+    await ctx.test("different turn", () => {
+        const tr = t();
+        tr.logEntry(entry({ op: "SEND", turn_id: 1 }));
+        const events = tr.logEntry(mirror([{ id: "rs", subtype: "message", encrypted: [{ data: "X" }] }], 2));
+        assert.ok(!events.some((event) => event.type === "REASONING_ENCRYPTED_VALUE"));
+    });
+    await ctx.test("non-message classification", () => {
+        const tr = t();
+        tr.logEntry(entry({ op: "SEND" }));
+        const events = tr.logEntry(mirror([{ id: "rs", subtype: "tool-call", encrypted: [{ data: "X" }] }]));
+        assert.ok(!events.some((event) => event.type === "REASONING_ENCRYPTED_VALUE"));
+    });
+    await ctx.test("multiple message values", () => {
+        const tr = t();
+        tr.logEntry(entry({ op: "SEND" }));
+        const events = tr.logEntry(mirror([
+            { id: "rs_a", subtype: "message", encrypted: [{ data: "A" }] },
+            { id: "rs_b", subtype: "message", encrypted: [{ data: "B" }] },
+        ]));
+        assert.ok(!events.some((event) => event.type === "REASONING_ENCRYPTED_VALUE"));
+    });
 });
 
-test("an unknown reasoning carrier is ignored", () => {
+test("malformed and unknown reasoning carriers are ignored", () => {
     const tr = t();
-    tr.logEntry(entry({ op: "PLAN", tx: "{}" }));
-    const unknown = tr.logEntry(entry({ op: "model", tx: "<<PLAN:x:PLAN",
+    tr.logEntry(entry({ op: "SEND" }));
+    const malformed = tr.logEntry(entry({ op: "model",
+        attrs: JSON.stringify({ reasoning: { id: "reason-42", subtype: "message", encrypted: [{ data: "SEALED" }] } }) }));
+    const unknown = tr.logEntry(entry({ op: "model",
         attrs: JSON.stringify({ reasoningEncrypted: [{ data: "SEALED", format: "openai-responses-v1" }] }) }));
+    assert.deepEqual(malformed.map((e) => e.type), ["CUSTOM"]);
     assert.deepEqual(unknown.map((e) => e.type), ["CUSTOM"]);
 });
 
@@ -182,20 +215,27 @@ test("a FOREIGN worker's rows never enter the core stream — plurnk.row/ambient
     assert.ok(!worker.some((e) => e.type === "TEXT_MESSAGE_START"), "a worker's SEND never masquerades as the assistant speaking");
 });
 
-test("the workspace log replays PLAN activities and model SEND speech through one MESSAGES_SNAPSHOT", () => {
+test("the workspace log replays PLAN, SEND, and singular encrypted evidence through one MESSAGES_SNAPSHOT", () => {
     const tr = new Translator({ threadId: "th", runId: "r" });
     const events = tr.replay([
-        { id: 1, op: "PLAN", origin: "model", coordinate: "1/1/1/PLAN", tx: { body: "orient" } },
-        { id: 2, op: "SEND", origin: "model", coordinate: "1/1/9/SEND", tx: { body: "The answer is 42." } },
+        { id: 1, op: "PLAN", origin: "model", coordinate: "1/1/1/PLAN", turn_id: 1, sequence: 1, tx: { body: "orient" } },
+        { id: 2, op: "SEND", origin: "model", coordinate: "1/1/9/SEND", turn_id: 1, sequence: 9, tx: { body: "The answer is 42." } },
+        { id: 5, op: "model", origin: "model", coordinate: "1/1/10/model", turn_id: 1, sequence: 10, attrs: { reasoning: [
+            { id: "provider-detail", subtype: "message", encrypted: [{ data: "SEALED", format: "f" }] },
+        ] } },
         { id: 3, op: "EDIT", origin: "plurnk", tx: { body: "ambient" } },
-        { id: 4, op: "SEND", origin: "model", tx: { body: "And done." } },
+        { id: 4, op: "SEND", origin: "model", turn_id: 2, sequence: 2, tx: { body: "And done." } },
+        { id: 6, op: "model", origin: "model", turn_id: 2, sequence: 3, attrs: { reasoning: [
+            { id: "a", subtype: "message", encrypted: [{ data: "A" }] },
+            { id: "b", subtype: "message", encrypted: [{ data: "B" }] },
+        ] } },
     ]);
     assert.equal(events.length, 1);
     const snap = events[0] as { type: string; messages: Array<{ id: string; role: string; activityType?: string; content: unknown }> };
     assert.equal(snap.type, "MESSAGES_SNAPSHOT");
     assert.deepEqual(snap.messages, [
         { id: "1/1/1/PLAN", role: "activity", activityType: "PLAN", content: { goals: "orient" } },
-        { id: "1/1/9/SEND", role: "assistant", content: "The answer is 42." },
+        { id: "1/1/9/SEND", role: "assistant", content: "The answer is 42.", encryptedValue: "SEALED" },
         { id: "4", role: "assistant", content: "And done." },
     ]);
     assert.doesNotThrow(() => MessagesSnapshotEventSchema.parse(snap), "reattach uses the standard AG-UI message snapshot");
