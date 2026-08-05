@@ -221,7 +221,7 @@ test("abort mid-run → status 499", async () => {
     assert.equal(states.at(-1)?.state, "errored");
 });
 
-test("abort terminates the whole process group — no shell grandchild survives (plurnk-execs#4)", async () => {
+test("abort terminates the whole process group — no shell grandchild survives", async () => {
     // Unique, long-lived duration so the spawned `sleep` is matchable via pgrep
     // and can't collide with another test's process.
     const dur = `9999.${process.hrtime.bigint().toString().slice(-9)}`;

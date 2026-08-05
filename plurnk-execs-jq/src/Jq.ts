@@ -19,8 +19,8 @@ import type { ChannelDecl, Effect, ExecArgs, ExecResult, RuntimeAvailability } f
 export default class Jq extends BaseExecutor {
     // jq is a streaming filter: a multi-value program emits one value per line.
     // run() spawns with -c so each value stays compact on its own line, making
-    // the channel honest JSONL — a single value is a valid 1-line JSONL doc too
-    // (plurnk-execs-jq#2).
+    // {§executor-channels} The channel is honest JSONL; a single value is a valid
+    // one-line JSONL document too.
     get channels(): Readonly<Record<string, ChannelDecl>> {
         return { results: { mimetype: "application/jsonl" } };
     }
@@ -58,7 +58,7 @@ export default class Jq extends BaseExecutor {
         // (the workspace). Absent → -n, the program stands alone
         // ({§executor-sinks}).
         // -c keeps each value compact on its own line so multi-value output is
-        // honest JSONL (plurnk-execs-jq#2).
+        // honest JSONL.
         const args = target !== null ? ["-c", program, target] : ["-c", "-n", program];
 
         return new Promise<ExecResult>((resolve) => {

@@ -4,7 +4,7 @@ import BaseExecutor from "../src/BaseExecutor.ts";
 import SubprocessExecutor from "../src/SubprocessExecutor.ts";
 import type { ChannelDecl, ExecArgs, ExecResult } from "../src/types.ts";
 
-// plurnk-service#181 — probe() availability check. Asserts the agreed contract:
+// {§executor-probe} Assert the availability contract:
 // {available, detail?}, default available, env-aware, may reject (consumer
 // catches → unavailable), distinct from discover()'s package-installed.
 

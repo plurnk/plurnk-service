@@ -33,8 +33,8 @@ const slugify = (query: string): string => query.toLowerCase().replace(/[^a-z0-9
 // The configured SearXNG base URL, or null if unusable — trimmed and validated,
 // NOT merely truthy: a blank/whitespace/malformed value (an env floor easily
 // emits `URL= ` with a trailing space) must read as unconfigured. Truthy-only
-// checks let " " through, and `new URL("/search", " ")` then throws uncaught →
-// the worker never resolves nor times out (plurnk-execs-search#3).
+// checks let " " through, and `new URL("/search", " ")` then throws uncaught,
+// so the worker never resolves nor times out.
 interface SearxngConfig {
     base: URL;
     authorization?: string;

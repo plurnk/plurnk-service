@@ -4,8 +4,7 @@ import { spawnSync } from "node:child_process";
 import SubprocessExecutor from "../src/SubprocessExecutor.ts";
 import type { ExecArgs, ExecResult } from "../src/types.ts";
 
-// plurnk-execs#4 — "abort leaks shell grandchildren (SIGTERMs only the shell,
-// not the process group)". Asserts the contract the fix promised, not the impl.
+// {§executor-cancellation} Assert the process-group contract, not its implementation.
 
 const run = async (command: string, signal: AbortSignal): Promise<ExecResult> => {
     const args: ExecArgs = {

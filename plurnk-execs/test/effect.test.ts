@@ -4,7 +4,7 @@ import BaseExecutor from "../src/BaseExecutor.ts";
 import SubprocessExecutor from "../src/SubprocessExecutor.ts";
 import type { ChannelDecl, Effect, ExecArgs, ExecResult } from "../src/types.ts";
 
-// plurnk-service#182 — effect() proposal gating. Asserts the agreed contract:
+// {§executor-effect} Assert the effect-admission contract:
 // pure + synchronous + cheap; classifies the TARGET only (never the command);
 // conservative `host` default; subprocess always host.
 

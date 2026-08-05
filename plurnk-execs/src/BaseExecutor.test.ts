@@ -79,7 +79,7 @@ test("BaseExecutor.run: matched tag flows through to the executor", async () => 
     assert.deepEqual(JSON.parse(h.writes[0].chunk), { runtime: "images", command: "golden retriever" });
 });
 
-// --- executor-is-a-scheme face (schemes#20 / service#240) ---
+// {§executor-output-address} Executor-as-scheme projection.
 
 test("BaseExecutor: scheme manifest derives from the tag + declared channels", () => {
     const executor = new EchoExecutor({ runtime: "sqlite", glyph: "🗃" });
@@ -109,7 +109,7 @@ test("BaseExecutor: defaultChannel is the first declared channel, overridable", 
     assert.equal(new Custom({ runtime: "sh", glyph: "🐚" }).defaultChannel, "stderr");
 });
 
-test("ExecArgs.write: an executor stamps the real per-call output mimetype (service#240)", async () => {
+test("ExecArgs.write: an executor stamps the real per-call output mimetype", async () => {
     class TypedExec extends BaseExecutor {
         get channels(): Readonly<Record<string, ChannelDecl>> {
             return { results: { mimetype: "application/json" } };

@@ -136,8 +136,8 @@ test("discover: an array kind claims no exec family", async () => {
     assert.equal(registry.size, 0);
 });
 
-// Materialize a package whose tags come from a dynamic runtimes hook
-// (plurnk-execs#10): writes the package.json with `plurnk.runtimesModule` and
+// {§executor-dynamic-runtimes} Materialize a package whose tags come from a
+// dynamic runtimes hook: write package.json with `plurnk.runtimesModule` and
 // an .mjs module exporting the given hook source. `hookSrc` is the body of an
 // ESM module (must `export` `runtimes` or `default`).
 const makeDynamicPkg = async (name: string, hookSrc: string, rel = "runtimes.mjs"): Promise<string> => {
@@ -361,7 +361,7 @@ test("discover: the node_modules scan is scope-agnostic — third-party scopes a
     assert.equal(registry.get("cobol")?.packageName, "@acme/acme-execs-cobol");
 });
 
-// --- PLURNK_PLUGINS_TRUSTED_ONLY host trust gate (plurnk-service#229) ---
+// {§executor-trust} PLURNK_PLUGINS_TRUSTED_ONLY host trust gate.
 
 // Run fn with the gate env set to `value` (undefined = unset), restoring after
 // so tests don't leak the gate into one another.

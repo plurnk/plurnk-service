@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import Jsonplurnk from "../Jsonplurnk.ts";
 
-// The magnum-opus assertion on real data (grammar#437). The corpus is the renderer's ACTUAL
+// {§jsonplurnk} The magnum-opus assertion on real data. The corpus is the renderer's ACTUAL
 // output - run52 packet011's Log, 184 entries, 20 open bodies - and the stripper is built
 // independently from the spec, so agreement here is a true cross-check (two implementations
 // converging on real data), not self-graded homework.
