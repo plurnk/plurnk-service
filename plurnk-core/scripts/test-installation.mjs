@@ -34,7 +34,7 @@ const packedExecInventory = (env = {}) => {
         const nodeModules = resolve("node_modules");
         const { default: EnvDefaults } = await import(pathToFileURL(resolve(serviceRoot, "dist/core/env-defaults.js")));
         const { default: ExecutorRegistry } = await import(pathToFileURL(resolve(serviceRoot, "dist/core/ExecutorRegistry.js")));
-        const { discover } = await import(pathToFileURL(resolve(nodeModules, "@plurnk/plurnk-execs/dist/index.js")));
+        const { Advertise, discover } = await import(pathToFileURL(resolve(nodeModules, "@plurnk/plurnk-execs/dist/index.js")));
         const files = await EnvDefaults.collect(serviceRoot, nodeModules);
         const merged = EnvDefaults.merge(files);
         EnvDefaults.apply(merged);
@@ -44,6 +44,7 @@ const packedExecInventory = (env = {}) => {
             defaultValue: process.env.PLURNK_EXECS_ISOGIT ?? null,
             defaultOwner: merged.get("PLURNK_EXECS_ISOGIT")?.owner ?? null,
             disabled: discovery.disabled,
+            advertise: typeof Advertise,
             owners: Object.fromEntries([...discovery.registry].map(([tag, info]) => [tag, info.packageName])),
             advertised: executors.availableRuntimes(),
         }));
@@ -337,6 +338,7 @@ process.stdout.write("-- optional executor lifecycle --\n");
 const isogitRoot = resolve(mods, "@plurnk", "plurnk-execs-isogit");
 ok(!existsSync(isogitRoot), "isogit is absent from a clean service install");
 const absentIsogit = packedExecInventory({ PLURNK_EXECS_ISOGIT: "1" });
+ok(absentIsogit.advertise === "function", "the packed executor framework retains its frozen 1.x Advertise export");
 for (const packageName of defaultExecPackages) {
     const manifest = installedManifest(packageName);
     for (const runtime of manifest.plurnk?.runtimes ?? []) {

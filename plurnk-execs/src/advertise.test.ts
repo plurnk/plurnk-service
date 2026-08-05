@@ -3,6 +3,9 @@ import { strict as assert } from "node:assert";
 import Advertise from "./advertise.ts";
 import type { ExecInfo, ExecRegistry } from "./types.ts";
 
+// Frozen compatibility behavior only; this is not the host's active filtering
+// or presentation path ({§executor-advertise-compat}).
+
 const info = (runtime: string): ExecInfo => ({
     runtime,
     glyph: "•",
@@ -13,11 +16,11 @@ const info = (runtime: string): ExecInfo => ({
 
 const registry = (...tags: string[]): ExecRegistry => new Map(tags.map((t) => [t, info(t)]));
 
-test("contribute: zero permitted runtimes yields the single teaching notice, no runtime lines", () => {
+test("contribute: zero permitted runtimes retains the 1.x compatibility notice", () => {
     const { permitted, notice } = Advertise.contribute(registry("sh", "jq", "search"), () => false);
     assert.deepEqual(permitted, []);
     assert.equal(notice, "No EXEC operations permitted");
-    assert.equal(notice, Advertise.NO_EXECS_NOTICE, "the notice is the framework's single source of truth");
+    assert.equal(notice, Advertise.NO_EXECS_NOTICE, "the compatibility constant remains stable");
 });
 
 test("contribute: any surviving runtime suppresses the notice — the sheet lists, it does not apologize", () => {

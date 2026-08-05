@@ -111,6 +111,7 @@ Policy is subtractive; a downstream layer cannot restore a removed tag. See
 
 - `BaseExecutor`, `SubprocessExecutor`, and `SpawnArgs`.
 - `discover`, `Policy`, `RuntimeTag`, and runtime discovery types.
+- `Advertise`, a deprecated frozen 1.x compatibility helper with no current service path.
 - `ErrorDetail` and `PLURNK_EXECS_ERROR_DETAIL_LIMIT`.
 - Executor arguments, channel, availability, and effect types.
 - `Results`, result types, and runtime-neutral Notice types.

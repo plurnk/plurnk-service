@@ -18,8 +18,8 @@ export const discover = Discover.scan;
 // cascade is byte-identical at both tiers.
 export { default as Policy } from "./policy.ts";
 
-// Legacy public capability contributor. It has no production consumer; #103
-// owns whether this surface is removed or becomes the single filtering path.
+// Frozen 1.x compatibility export ({§executor-advertise-compat}). It has no
+// production consumer and owns no capability filtering or presentation.
 export { default as Advertise } from "./advertise.ts";
 
 // Universal operation-result helpers. Executors return the same result shape as

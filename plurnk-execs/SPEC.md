@@ -319,6 +319,14 @@ Boot-disabled tags are absent from the registry and returned in
 `Discovery.disabled`. Workspace and loop admission remain consumer concerns;
 the framework does not define a second Active/Available state machine.
 
+### §executor-advertise-compat Frozen `Advertise` compatibility
+
+| Surface                              | 1.x contract                                                                                                |
+|--------------------------------------|-------------------------------------------------------------------------------------------------------------|
+| `Advertise.contribute(registry, fn)` | Filters the supplied registry; returns `NO_EXECS_NOTICE` only when the filtered result is empty.            |
+| Architectural ownership             | None. It does not discover, probe, admit, dispatch, or render; the composed service never calls it.         |
+| Evolution                            | Frozen. New consumers compose discovery and `Policy` with their own presentation. Removal is SemVer-major. |
+
 ## §executor-default-inventory Current installed set
 
 The default `@plurnk/plurnk-service` composition installs the following

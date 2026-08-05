@@ -1,6 +1,9 @@
 import type { ExecInfo, ExecRegistry } from "./types.ts";
 
-// Legacy public capability contributor; reconciliation is tracked in #103.
+/**
+ * @deprecated Frozen 1.x compatibility helper. Hosts own executable admission
+ * and presentation through their current composition ({§executor-advertise-compat}).
+ */
 export default class Advertise {
     static readonly NO_EXECS_NOTICE = "No EXEC operations permitted";
 
