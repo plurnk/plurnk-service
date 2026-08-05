@@ -1,4 +1,4 @@
-// The deterministic publish machine (#505 post-mortem). Replaces the shell loop whose piped
+// The deterministic publish machine replaces the shell loop whose piped
 // exit codes masked a refused publish and announced a torn release. Five laws, mechanized:
 //   1. The committed stamp is clean, then built and gated before the first publish.
 //   2. npm's REAL exit code — execFile rejects on nonzero; a refused publish HALTS the train.
@@ -7,7 +7,7 @@
 //      from the registry, dep tree counted, boot probe, live listener — as a GATE, not a courtesy.
 //   5. The script's green exit is the ONLY state that permits a release announcement.
 // Idempotent: a package the registry already serves at the stamp is skipped — a torn release
-// rerun publishes exactly the missing rungs (the #505 recovery, mechanized).
+// rerun publishes exactly the missing rungs.
 import { execFile, spawn } from "node:child_process";
 import { promisify } from "node:util";
 import fs from "node:fs/promises";
@@ -104,7 +104,7 @@ try {
 
 // The service and independently versioned client share one public AG-UI
 // composition contract. Verify the exact registry artifacts through a real,
-// deterministic model turn before the release can be announced (#630).
+// deterministic model turn before the release can be announced.
 console.log(`verify: packed client/service composition against ${ROOT_PKG}@${version}`);
 await new Promise((res, rej) => {
     const ph = spawn("node", [path.resolve("..", "plurnk", "scripts", "test-composition.mjs")], {

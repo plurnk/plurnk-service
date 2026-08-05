@@ -35,7 +35,7 @@ rather than carrying copies in core. Model-facing teaching changes are verified
 through the composed product gates and tracked against the meta owner in the
 monorepo forge.
 
-## Teaching doctrine (adopted from the grammar lane, #392 — data-backed, evidence cited)
+## Teaching doctrine
 
 **Canon-voice calibration (owner-ruled 2026-07-06, probe-backed).** Voice tunes to the FLOOR model's minimum-audible threshold, never any tier's max compliance. A footer loud enough to fix the floor OVER-DRIVES strong models (live evidence: Grok Build fanatically FOLDs under a loud budget footer). Soft is safe because the engine makes floor-misses RECOVERABLE (premature-200 -> pending-set 409 -> repair); that coupling is load-bearing — if failures stop being recoverable, recalibrate louder. The footer is pluggable; potato-heavy deployments inject more at their discretion. The one recency-sensitive line is await-before-200 (lean-footer A/B, gemma, n=6: 6/6 reap in the recency footer vs 3/6 cached-canon-only). Retreat trigger: 409-repair LOOPS (not single misses); first line restored is await-before-200.
 

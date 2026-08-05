@@ -4,10 +4,10 @@
 // exact builtAgainst provenance. Compatible packages stay put; an incompatible managed package
 // is realigned to the current family head, then `npm install` pulls the published head from the registry,
 // then `npm publish` (runs the repo's OWN prepublishOnly gate in its own context — a red there halts
-// with the repo's real exit code, #505's lesson), then poll the registry until it serves. Same laws:
+// with the repository's real exit code), then poll the registry until it serves. Same laws:
 // real exits, halt-on-red naming the repository and owner, and idempotency (a package already serving the version
-// is skipped, so a resumed sweep does exactly the missing leaves). #512's adopted-in-git-never-published
-// class dies here: a leaf that never adopted a head rename fails its own build/test and names itself.
+// is skipped, so a resumed sweep does exactly the missing leaves). A leaf that never
+// adopted a head rename fails its own build/test and names itself.
 //
 // Usage: node scripts/release-external-packages.mjs [--dry-run]
 import { execFile } from "node:child_process";
@@ -110,7 +110,7 @@ for (const { dir, name, release, owner, platformDependencies } of registry.packa
     else if (state.compatible) console.log(`  align   ${tag} — local compatibility/provenance is not published at ${manifest.version}`);
 
     // The release workflow updates an incompatible managed plugin.
-    // COLLISION DETECTOR (#542, the terraform lesson): a leaf whose registry LATEST exceeds the stamp
+    // A leaf whose registry latest exceeds the stamp has run an independent version line:
     // ran an independent version line that burned numbers ahead of the platform — align/publish cannot
     // succeed and a silent downgrade-align lies about lineage. Halt naming the leaf at the FIRST
     // window, not the third. (The serves-equality check below is trustworthy by construction: the
@@ -147,7 +147,7 @@ for (const { dir, name, release, owner, platformDependencies } of registry.packa
         console.log(`          would commit align + push + publish ${name}@${version}`);
         swept++; continue;
     }
-    // Idempotent against a lane pre-committing the alignment (#541 resume): commit only when the
+    // Idempotent when a lane pre-commits the alignment: commit only when the
     // align/install actually changed the tree — an empty `git commit` exits 1 and would halt a
     // resume on a leaf whose lane already landed the alignment. Push is a safe no-op either way.
     const aligned = (await run("git", ["-C", repo, "status", "--porcelain"])).stdout.trim();

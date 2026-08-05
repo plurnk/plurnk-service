@@ -59,7 +59,7 @@ for (const [file, pkg] of manifests) {
 
 console.log(`stamped ${manifests.size} workspaces at ${version}`);
 
-// LOCKFILE SYNC (#550): the stamp rewrites manifests, so the committed package-lock must be
+// The stamp rewrites manifests, so the committed package-lock must be
 // regenerated in the same act or `npm ci` fails on committed state (the 1.0.9 train shipped every
 // workspace's lock self-version a tick stale — benign only because the drill uses `npm install`).
 // --package-lock-only touches no node_modules; the verification is structural, not trusted.

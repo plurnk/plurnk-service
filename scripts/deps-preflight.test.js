@@ -4,7 +4,7 @@ import { classify } from "./deps-preflight.mjs";
 
 // A single outdated package, npm's object shape (one workspace).
 const OUT = { linkedom: { current: "0.18.13", latest: "1.0.0" } };
-const WAIVER = { reason: "1.0 drops the loose-fragment parsing #412 relies on", issue: "#500", lane: "mimetypes" };
+const WAIVER = { reason: "1.0 drops required loose-fragment parsing", issue: "https://example.test/issues/500", lane: "mimetypes" };
 
 describe("deps-preflight classify — fail on any update", () => {
     it("passes a fresh tree (nothing outdated)", () => {

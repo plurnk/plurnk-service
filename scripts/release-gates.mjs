@@ -1,4 +1,4 @@
-// The committed-candidate gate sweep (#505/#624): run every workspace's OWN
+// The committed-candidate gate sweep runs every workspace's own
 // prepublish gate after the stamp is committed but BEFORE the first package is
 // published. A red halts before the train leaves. The drill (lint+unit+intg) is the
 // push gate; the per-package prepublishOnly gates (audit, tests, conformance tiers) are
