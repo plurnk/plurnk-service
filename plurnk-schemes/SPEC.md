@@ -251,8 +251,10 @@ canonical entry `pathname`, a fragmentless and credential-free transport
 The canonical storage form is
 `/<host>[:<port>]<path>[?<query>]`, keyed together with workspace, owner, and
 the exact addressed scheme. `NetworkAddress.render(scheme, pathname)` is its
-model-facing inverse. Routing aliases select a handler; they do not collapse
-resource identity.
+model-facing inverse: it applies the Plurnk lexical target spelling
+{§path-parentheses} after reconstructing the exact address. Transport URLs and
+storage identity never carry that syntax layer. Routing aliases select a
+handler; they do not collapse resource identity.
 
 ### Active-scheme resolution — `SchemeResolver`
 

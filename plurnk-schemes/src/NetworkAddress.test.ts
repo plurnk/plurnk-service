@@ -38,7 +38,7 @@ test("render encodes canonical path parentheses without rewriting query spelling
     assert.equal(address.pathname, "/example.com/path(v1)?q=(literal)&q=%28encoded%29");
     assert.equal(
         NetworkAddress.render(address.scheme, address.pathname),
-        "https://example.com/path%28v1%29?q=(literal)&q=%28encoded%29",
+        String.raw`https://example.com/path%28v1%29?q=\(literal\)&q=%28encoded%29`,
     );
 });
 

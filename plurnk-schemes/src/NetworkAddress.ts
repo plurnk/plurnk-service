@@ -45,6 +45,8 @@ export default class NetworkAddress {
         const queryStart = pathname.indexOf("?");
         const path = queryStart === -1 ? pathname : pathname.slice(0, queryStart);
         const query = queryStart === -1 ? "" : pathname.slice(queryStart);
-        return `${scheme.toLowerCase()}://${PathSyntax.encodeParens(path.slice(1))}${query}`;
+        return PathSyntax.escapeTarget(
+            `${scheme.toLowerCase()}://${PathSyntax.encodeParens(path.slice(1))}${query}`,
+        );
     }
 }
