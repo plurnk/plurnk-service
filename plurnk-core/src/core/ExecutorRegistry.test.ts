@@ -94,7 +94,7 @@ test("ExecutorRegistry consumes discovery attribution without reopening a strict
     assert.deepEqual(registry.attributions(), ["@plurnk/strict"], "one package fact survives its two runtime tags");
 });
 
-test("build() notes untrusted packages that discover() skipped (#229)", async () => {
+test("{§plugin-trust-boundary}: build() notes untrusted packages that discovery withheld", async () => {
     const warnings: string[] = [];
     const origWarn = console.warn;
     console.warn = (msg: string): void => { warnings.push(String(msg)); };
