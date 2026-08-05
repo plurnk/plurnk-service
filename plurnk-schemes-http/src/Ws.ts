@@ -162,7 +162,7 @@ export default class Ws implements SchemeHandler {
             const acquisition = Promise.withResolvers<PassthroughResult>();
             let messages = 0;
             let settlement: Promise<void> | null = null;
-            let persistenceFailure: { result: PassthroughResult; summary: string } | null = null;
+            let frameFailure: { result: PassthroughResult; summary: string } | null = null;
             const pending = new Set<Promise<void>>();
             const settle = (
                 terminal: PassthroughResult,
@@ -178,12 +178,12 @@ export default class Ws implements SchemeHandler {
                     const errors: unknown[] = [];
                     try {
                         await Promise.allSettled([...pending]);
-                        const failedPersistence = persistenceFailure;
-                        const effectiveTerminal = !Results.isErrorStatus(terminal.status) && failedPersistence !== null
-                            ? failedPersistence.result
+                        const failedFrame = frameFailure;
+                        const effectiveTerminal = !Results.isErrorStatus(terminal.status) && failedFrame !== null
+                            ? failedFrame.result
                             : terminal;
-                        const effectiveSummary = !Results.isErrorStatus(terminal.status) && failedPersistence !== null
-                            ? failedPersistence.summary
+                        const effectiveSummary = !Results.isErrorStatus(terminal.status) && failedFrame !== null
+                            ? failedFrame.summary
                             : typeof summary === "function" ? summary() : summary;
                         if (transportClose !== undefined) {
                             try {
@@ -286,16 +286,36 @@ export default class Ws implements SchemeHandler {
             // {§ws-lifecycle} One owner chain makes transport order independent
             // of the subscription implementation's asynchronous scheduler.
             socket.addEventListener("message", (event) => {
-                if (!nativeOpened || settled || persistenceFailure !== null) return;
-                const chunk = String(event.data ?? "");
+                if (!nativeOpened || settled || frameFailure !== null) return;
+                const data = event.data;
                 const persistence = persistenceTail.then(async () => {
                     await activation;
-                    if (!owner.opened || persistenceFailure !== null) return;
+                    if (!owner.opened || frameFailure !== null) return;
+                    if (typeof data !== "string") {
+                        const detail = "The received WebSocket frame is binary; the messages channel accepts text only.";
+                        const result = Ws.#bad(
+                            415,
+                            "binary-frame-unsupported",
+                            detail,
+                            {
+                                target: url,
+                                stage: "materialization",
+                                retryable: false,
+                            },
+                        );
+                        frameFailure = { result, summary: detail };
+                        void settle(
+                            result,
+                            detail,
+                            { code: 1003, reason: "binary unsupported" },
+                        ).catch(reportCleanupFailure);
+                        return;
+                    }
                     try {
-                        await subscription.notifyChunk(MESSAGES, chunk, "text/plain");
+                        await subscription.notifyChunk(MESSAGES, data, "text/plain");
                         messages += 1;
                     } catch (err) {
-                        if (persistenceFailure !== null) return;
+                        if (frameFailure !== null) return;
                         console.error("WebSocket message persistence failed", { url, err });
                         const result = Ws.#bad(
                             500,
@@ -308,7 +328,7 @@ export default class Ws implements SchemeHandler {
                             },
                         );
                         const failureSummary = result.problem?.detail ?? "WebSocket message persistence failed.";
-                        persistenceFailure = { result, summary: failureSummary };
+                        frameFailure = { result, summary: failureSummary };
                         void settle(
                             result,
                             failureSummary,

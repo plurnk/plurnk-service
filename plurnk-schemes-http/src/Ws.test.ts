@@ -329,6 +329,52 @@ test("READ: inbound persistence remains transport-ordered under inverted latency
     assert.equal(inspect().closed?.summary, "ws closed (1000); 2 messages");
 });
 
+for (const [form, data] of [
+    ["Blob", new Blob([Uint8Array.of(1, 2, 3)])],
+    ["ArrayBuffer", new ArrayBuffer(3)],
+] as const) {
+    test(`READ: a ${form} binary frame terminates the textual owner after its durable prefix`, async () => {
+        const firstGate = Promise.withResolvers<void>();
+        const attempts: string[] = [];
+        const sock = fakeSocket();
+        const { ctx, inspect, awaitClosed } = makeCtx({
+            notifyChunk: async (_channel, chunk) => {
+                attempts.push(chunk);
+                if (chunk === "durable prefix") await firstGate.promise;
+            },
+        });
+        const ws = new Ws(() => sock);
+        const target = wss(PUB, "/feed");
+        const read = ws.read(readStmt(target), ctx);
+        await flush();
+        sock.emit("open");
+        assert.equal((await read).status, 102);
+
+        sock.emit("message", { data: "durable prefix" });
+        sock.emit("message", { data });
+        sock.emit("message", { data: "pruned suffix" });
+        await flush();
+        assert.deepEqual(attempts, ["durable prefix"], "the binary frame waits behind accepted persistence");
+
+        firstGate.resolve();
+        await flush();
+        sock.close(1000);
+        const terminal = await awaitClosed();
+
+        assert.deepEqual(attempts, ["durable prefix"], "neither binary object labels nor later frames are persisted");
+        assert.deepEqual(inspect().chunks.map(({ chunk }) => chunk), ["durable prefix"]);
+        assert.equal(terminal.result.status, 415);
+        assert.equal(terminal.result.problem?.type, "https://problems.plurnk.dev/scheme/wss/binary-frame-unsupported");
+        assert.equal(terminal.result.problem?.stage, "materialization");
+        assert.equal(terminal.result.problem?.retryable, false);
+        assert.equal(terminal.summary, "The received WebSocket frame is binary; the messages channel accepts text only.");
+        assert.deepEqual(sock.closed, { code: 1003, reason: "binary unsupported" });
+        assert.equal(inspect().closeCount, 1);
+        await flush();
+        assert.equal((await ws.send(sendStmt(200, target, "late"), ctx)).status, 409);
+    });
+}
+
 test("READ: an explicit loopback target reaches the configured socket transport", async () => {
     const sock = fakeSocket();
     let connected: string | null = null;

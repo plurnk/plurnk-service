@@ -373,7 +373,7 @@ stateDiagram-v2
     Connecting --> Open: native open; messages active; READ 102
     Connecting --> Settling: pre-open close/error, KILL, cancel, activation failure, or shutdown
     Open --> Open: ordered inbound frame or SEND[200]
-    Open --> Settling: closing state, close/error, KILL, cancel, persistence failure, or shutdown
+    Open --> Settling: closing state, close/error, KILL, cancel, binary frame, persistence failure, or shutdown
     Settling --> Idle: await retained work, close subscription, release claim
 ```
 
@@ -385,6 +385,7 @@ stateDiagram-v2
 | `SEND[499](ws(s)://…)`            | Engine-routed cancellation closes the owning READ; scheme dispatch returns `200`                                 |
 | `KILL(ws(s)://…)`                 | Close/cancel the claimed owner; no owner is `404`; an attempted close throw is `502`                             |
 | Inbound frame after native `open` | Join the owner's persistence chain; the next write begins only after the preceding write succeeds               |
+| Binary frame after native `open`  | Retain the text prefix, prune the binary and later frames, settle `415 binary-frame-unsupported`, close `1003`   |
 | First inbound persistence failure | Retain the successful prefix, prune queued and later frames, and settle with `500 message-persistence-failed`    |
 | Socket closes before `open`       | Close subscription with `502 connection-failed`; the pending READ returns that exact failure                     |
 | Socket closes after `open`        | Drain the accepted frame prefix; initial READ remains `102`; settle with `200` unless a drained write fails       |
@@ -400,9 +401,9 @@ transport failures retain their exact result. Handler shutdown requests
 settlement for every remainder, awaits every owner, and aggregates
 transport-close failures under {§handler-lifecycle}.
 
-| Transport limit    | Current contract                                                          |
-| ------------------ | ------------------------------------------------------------------------- |
-| Payload projection | `String(event.data)` into `text/plain`; binary semantics are not retained |
-| Reconnection       | None; READ again after terminal cleanup                                   |
-| Handshake metadata | Default global-WebSocket identity; custom target headers are not applied  |
-| Runtime            | Node ≥26                                                                  |
+| Transport limit    | Current contract                                                                                        |
+| ------------------ | ------------------------------------------------------------------------------------------------------- |
+| Payload projection | String event data only into `text/plain`; binary data terminates with Plurnk `415` and WebSocket `1003` |
+| Reconnection       | None; READ again after terminal cleanup                                                                 |
+| Handshake metadata | Default global-WebSocket identity; custom target headers are not applied                                |
+| Runtime            | Node ≥26                                                                                                |
