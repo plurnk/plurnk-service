@@ -83,8 +83,8 @@ export default class WebFetcher {
 
     // {§html-materialization} One projection seam for exact HTTP preparation
     // and executor entry acquisition. A present empty projection is valid;
-    // only null asks the lazy renderer or reports final absence. Projection and
-    // render exceptions retain their causes in WebMaterializationError.
+    // only null asks the lazy renderer or reports final absence. Projection
+    // provenance travels with the body; failures retain their exact cause.
     static async materialize(
         fetched: Pick<WebFetchResult, "body" | "mimetype" | "header" | "render">,
         projection: ProjectionCaps,

@@ -928,7 +928,7 @@ API and receive no implicit token accounting.
 
 Author-facing contract: [`@plurnk/plurnk-mimetypes`](../plurnk-mimetypes/SPEC.md). Below: firing semantics + core's consumption surface.
 
-§mimetype-schemes-do-not-invoke-handlers **Firing semantics.** Scheme writes are verbatim and do not invoke mimetype handlers. `SearchIndex.maintain` processes the current readable projections before model execution and attaches complete search artifacts. Catalog rendering independently asks handlers for extents. Fetch-time materialization is earlier still: the web-fetch sink converts guarded HTTP HTML into the sanitized markdown body that READ serves and search indexes, retaining faithful DOM only as an explicit auxiliary channel. An authored workspace HTML file remains verbatim; its markup is data.
+§mimetype-schemes-do-not-invoke-handlers **Firing semantics.** Scheme writes are verbatim and do not invoke mimetype handlers. `SearchIndex.maintain` processes the current readable projections before model execution and attaches complete search artifacts. Catalog rendering independently asks handlers for extents. Fetch-time materialization is earlier still: the web-fetch sink converts guarded HTTP HTML or supported binary input into derived Unicode that READ serves and search indexes, retaining faithful DOM and origin/projection evidence only in explicit auxiliary channels. An authored workspace HTML file remains verbatim; its markup is data.
 
 ### §mimetype-manifest Manifest
 
@@ -947,7 +947,7 @@ consume these public methods:
 |-------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------|
 | `ready`, `skippedPackages`                | Complete trust-gated discovery and present withheld-package evidence at daemon boot.                                        |
 | `detect`, `process`                       | Resolve mimetypes, extents, readable content, symbols, and references.                                                      |
-| `projectionIdentity`                      | Identify installed reader behavior for search artifacts that consume symbols and references.                               |
+| `projectionIdentity`                      | Identify installed reader behavior for derived entries and search artifacts that consume symbols and references.           |
 | `query`                                   | Execute glob/regex/JSONPath/XPath through `@plurnk/plurnk-schemes/Matcher`, which maps typed outcomes to operation results. |
 | `embedderInfo`, `embedBatch`, `tokenizer` | Plan and derive semantic-search chunks without reaching into artifact packages.                                             |
 
@@ -2195,8 +2195,9 @@ flowchart LR
 Search prefetch and direct HTTP READ materialize the same resource contract:
 protocol + canonical authority (including a non-default port) + path + serialized
 query is the absolute identity ({§scheme-address-network}); the sanitized
-readable projection is the fragmentless default, while faithful DOM and
-response metadata remain explicit auxiliary channels. A normal
+readable projection is the fragmentless default, while faithful DOM, origin
+media type, and projection identity remain explicit auxiliary evidence. A
+normal
 `READ(https://host/path?query)` therefore publishes only the sanitized body
 under that exact URL—never raw HTML, response headers, or a channel-selection
 lesson. FIND, matcher READ, and embeddings consume the same stored readable

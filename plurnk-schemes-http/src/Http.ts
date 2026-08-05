@@ -87,8 +87,8 @@ export default class Http implements SchemeHandler {
         name: "http",
         // Channel mimetypes here are SEED DEFAULTS (pre-fetch placeholders).
         // body is retyped per-call via notifyChunk's mimetype arg — to the real
-        // response Content-Type, or projected markdown for a rendered page; octet-stream
-        // is the honest "unknown until fetched". header is always the status
+        // response Content-Type or the configured readable projection type;
+        // octet-stream is the honest "unknown until fetched". header is always the status
         // line + headers (text/plain).
         channels: { [BODY]: "application/octet-stream", [HEADER]: "text/plain", html: "text/html" },
         defaultChannel: BODY,
