@@ -23,6 +23,9 @@ const context = (content: string | undefined): PlurnkSchemeContext => ({
         async projectionIdentity(mimetype: string) {
             return `${mimetype}-identity`;
         },
+        async classify(mimetype: string) {
+            return { binary: mimetype === "text/x-binary", source: "handler" };
+        },
     },
 } as unknown as PlurnkSchemeContext);
 
@@ -62,6 +65,12 @@ test("projection identity delegates to the configured mimetype family", async ()
         await new DbProjectionCaps(context("")).identity("application/pdf"),
         "application/pdf-identity",
     );
+});
+
+test("binary classification delegates to installed handler declarations", async () => {
+    const projection = new DbProjectionCaps(context(""));
+    assert.equal(await projection.isBinary("text/x-binary"), true);
+    assert.equal(await projection.isBinary("application/json"), false);
 });
 
 test("a typed mimetype input ceiling failure crosses the capability unchanged", async () => {
