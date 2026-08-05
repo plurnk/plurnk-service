@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { isZeroPinTuning, scrubZeroPinTuning } from "../../test/zero-pin.ts";
 
-test("[#510] operator model tuning is stripped; the fresh-user config is kept", () => {
+test("{§operator-config-zero-pin-gate}: operator tuning is stripped and provider configuration remains", () => {
     // STRIPPED — box tuning a fresh install would not have:
     for (const k of [
         "PLURNK_PROVIDERS_CONTEXT_WINDOW",           // bare window pin → force the probe
@@ -24,7 +24,7 @@ test("[#510] operator model tuning is stripped; the fresh-user config is kept", 
     ]) assert.equal(isZeroPinTuning(k), false, `${k} must be KEPT (fresh-user config)`);
 });
 
-test("[#510] scrubZeroPinTuning deletes in place and reports what it stripped", () => {
+test("{§operator-config-zero-pin-gate}: scrubbing mutates the gate environment and reports every removed key", () => {
     const env = {
         PLURNK_MODEL: "turboderp",
         PLURNK_PROVIDERS_CONTEXT_WINDOW_turboderp: "49152",

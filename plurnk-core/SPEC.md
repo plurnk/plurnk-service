@@ -1727,6 +1727,24 @@ instead of a user's boot, and a dead knob cannot ship.
 
 The profile does not repeat `NODE_OPTIONS`: runner selection belongs to the invoking command, and a process-global Node option would leak into the daemon and its children. Hard ceilings such as max turns, max commands, and Git denial remain operator-owned; harnesses bound paid experiments through their per-call contract and never widen a configured ceiling here.
 
+§operator-config-zero-pin-gate **Zero-pin is a counterfactual real-model gate,
+not another configuration source.** The live/demo `:zeropin` scripts load the
+ordinary environment cascade, then the test floor removes operator model tuning
+before assembled package defaults fill unset values:
+
+| Configuration family                                      | Zero-pin treatment |
+|-----------------------------------------------------------|--------------------|
+| Any `PLURNK_PROVIDERS_CONTEXT_WINDOW`                     | Remove             |
+| Alias-specific reasoning/completion reserves and safety   | Remove             |
+| Any `PLURNK_SERVICE_PROMPT_BUDGET`                        | Remove             |
+| Model selection, routes, and credentials                  | Retain             |
+| Bare shipped reserve and safety defaults                  | Retain             |
+| Unrelated environment                                     | Retain             |
+
+The floor reports every removed key. A gate that succeeds only with those pins
+is red because provider capacity and the natural prompt budget did not derive for
+a fresh-user configuration.
+
 §operator-config-max-turns-ceiling Enforcement is per-use-site — no central most-restrictive pass; each ceiling is checked where it bites. `PLURNK_SERVICE_MAX_TURNS` ships **off** (`-1` = no cap; the loop ends via SEND, budget, strikes, or cycle detection) and, when an operator sets a positive value, the per-call request is `min()`-capped against it.
 
 **Client open-context (per workspace).** `workspace.create({settings})` carries per-workspace overrides, persisted on `workspaces.settings` and composed against env at each knob's read-site. Two families, kept distinct so neither semantic leaks into the other; operator-arcane knobs stay env-only — this is the narrow client surface.
