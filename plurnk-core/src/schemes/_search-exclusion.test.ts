@@ -23,7 +23,7 @@ function withExclusions<T>(value: string | undefined, fn: () => T): T {
     }
 }
 
-test("[#91] repository exclusions apply only to file identities", () => {
+test("{§search-exclusion} #91: repository exclusions apply only to file identities", () => {
     withExclusions("*/dist/*", () => {
         const pathname = "/repo/dist/index.json";
         assert.equal(matchSearchExclusion({ scheme: "file", pathname }), "*/dist/*");
@@ -32,7 +32,7 @@ test("[#91] repository exclusions apply only to file identities", () => {
     });
 });
 
-test("[#91] exclusions use the body-glob dialect and return the first matching pattern", () => {
+test("{§search-exclusion} #91: exclusions use the body-glob dialect and return the first matching pattern", () => {
     withExclusions("*.min.*, *.map, chunk-?.js, *.mp[34], */dist/*", () => {
         assert.equal(matchSearchExclusion({ scheme: "file", pathname: "/dist/app.min.js" }), "*.min.*");
         assert.equal(matchSearchExclusion({ scheme: "file", pathname: "/dist/bundle.js.map" }), "*.map");
@@ -43,7 +43,7 @@ test("[#91] exclusions use the body-glob dialect and return the first matching p
     });
 });
 
-test("[#47] basename and path patterns remain anchored", () => {
+test("{§search-exclusion} #91: basename and path patterns remain anchored", () => {
     withExclusions("go.sum, dist/*", () => {
         assert.equal(matchSearchExclusion({ scheme: "file", pathname: "/x/go.sum" }), "go.sum");
         assert.equal(matchSearchExclusion({ scheme: "file", pathname: "/x/logo.sum" }), undefined);
@@ -52,7 +52,7 @@ test("[#47] basename and path patterns remain anchored", () => {
     });
 });
 
-test("[#339] the shipped table excludes generated drawers without eating source", () => {
+test("{§search-exclusion} #91: the shipped table excludes generated drawers without eating source", () => {
     withExclusions(DEFAULT_LIST, () => {
         for (const pathname of [
             "/repo/package-lock.json",
@@ -76,7 +76,7 @@ test("[#339] the shipped table excludes generated drawers without eating source"
     });
 });
 
-test("[#91] absent or empty configuration has no hidden fallback", () => {
+test("{§search-exclusion} #91: absent or empty configuration has no hidden fallback", () => {
     for (const value of [undefined, "  "]) {
         withExclusions(value, () => {
             assert.equal(matchSearchExclusion({ scheme: "file", pathname: "/repo/package-lock.json" }), undefined);
